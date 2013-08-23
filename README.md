@@ -14,7 +14,7 @@ Project aims
 
 Project anti-aims
 -----------------
-1. Defiance does not provide anonymity. Anonymity can be achieved by creating and only ever accessing a User address over Tor
+ - Defiance does not provide anonymity. Anonymity can be achieved by creating and only ever accessing a User address over Tor
 
 Architecture
 ------------
