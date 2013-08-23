@@ -41,6 +41,7 @@ Architecture:
 5.0 Repair after node disappearance
 
 6.0 Sharing of a file (with another user, or publicly)
+ - based on cryptree system used by wuala
  - publicly shared files would constitute a massively scalable web server
  - sharing of a text file with another user could constitute a secure email
  - files are read-only (will implement diff files later to accomodate changes without storage bloat)
