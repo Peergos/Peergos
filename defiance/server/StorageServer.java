@@ -3,6 +3,8 @@ package defiance.server;
 import org.nereus.http.*;
 import defiance.util.*;
 
+import java.io.*;
+
 public class StorageServer implements HTTPRequestHandler
 {
 
