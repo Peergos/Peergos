@@ -8,13 +8,13 @@ I would very much appreciate any help, be it code, testing, bugs, or advice.
 Project aims
 ------------
  - To allow individuals to securely and privately store files in a peer to peer network which has no central node and is generally difficult to disrupt
- - To allow sharing of such files with other users of the network
- - Enable a new secure form of email
+ - To allow secure sharing of such files with other users of the network
+ - To enable a new secure form of email
  - To be independent of any central trust architecture like SSL certificates
 
 Project anti-aims
 -----------------
- - Defiance does not provide anonymity. Anonymity can be achieved by creating and only ever accessing a User address over Tor
+ - Defiance does not provide anonymity. Anonymity can be achieved by creating and only ever accessing a User account over Tor
 
 Architecture
 ------------
