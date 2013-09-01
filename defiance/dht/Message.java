@@ -1,6 +1,7 @@
 package defiance.dht;
 
 import java.io.*;
+import java.util.*;
 
 public abstract class Message
 {
@@ -31,10 +32,33 @@ public abstract class Message
 
     public static class JOIN extends Message
     {
+        public NodeID target;
+        public List<NodeID> hopNodes = new ArrayList();
+
+        public JOIN(NodeID target)
+        {
+            super(Type.JOIN);
+            this.target = target;
+        }
+
         public JOIN(DataInput in) throws IOException
         {
             super(Type.JOIN);
+            target = new NodeID(in);
+            int n = in.readInt();
+            for (int i=0; i < n; i++)
+            {
+                hopNodes.add(new NodeID(in));
+            }
+        }
 
+        public void write(DataOutput out) throws IOException
+        {
+            super.write(out);
+            target.write(out);
+            out.writeInt(hopNodes.size());
+            for (NodeID hop: hopNodes)
+                hop.write(out);
         }
     }
 }

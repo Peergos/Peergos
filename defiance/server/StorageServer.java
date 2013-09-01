@@ -16,8 +16,8 @@ public class StorageServer implements HTTPRequestHandler
     
     public static void main(String[] args) throws Exception
     {
-	Args a = new Args(args);
-        int port = a.getInt("port", 8080);
+        Args.parse(args);
+        int port = Args.getInt("port", 8080);
         PathMappedHTTPRequestHandler special = new PathMappedHTTPRequestHandler();
         special.registerHandler("/", new StorageServer());
 

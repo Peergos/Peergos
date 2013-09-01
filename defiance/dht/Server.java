@@ -4,26 +4,58 @@ import defiance.util.*;
 
 import java.io.*;
 import java.net.*;
+import java.util.*;
 
 public class Server extends Thread
 {
-    private DatagramSocket socket;
     public static final int MAX_UDP_PACKET_SIZE = 65507;
-    public static final int MAX_PACKET_SIZE = MAX_UDP_PACKET_SIZE;
+    public static final int MAX_PACKET_SIZE = MAX_UDP_PACKET_SIZE; // TODO: decrease this once protocol is finalized
+
+    public static enum State
+    {
+        JOINING, READY;
+    }
+
+    private State state = State.JOINING;
+    private DatagramSocket socket;
+    private NodeID us;
+    private List<NodeID> leftNeighbours = new ArrayList();
+    private List<NodeID> rightNeighbours = new ArrayList();
+    private SortedMap<Long, NodeID> friends = new TreeMap();
 
     public Server(int port) throws IOException
     {
         socket = new DatagramSocket(port);
+        us = new NodeID();
     }
 
-    public void run() {
+    public void run()
+    {
+        // connect to network
+        if (!Args.hasOption("firstNode"))
+            try {
+                int port = Args.getInt("contactPort", 8080);
+                InetAddress entry = InetAddress.getByName(Args.getParameter("contactIP"));
 
+                // send JOIN message to ourselves via contact point
+                Message join = new Message.JOIN(us);
+
+                // wait for JOIN message to arrive, if it doesn'tID is already taken
+
+            } catch (IOException e) {
+                e.printStackTrace();
+                return;
+            }
+        state = State.READY;
+
+        byte[] buf = new byte[MAX_PACKET_SIZE];
         while (true) {
             try {
-                byte[] buf = new byte[MAX_PACKET_SIZE];
+
 
                 DatagramPacket packet = new DatagramPacket(buf, buf.length);
                 socket.receive(packet);
+
                 System.out.println(new String(packet.getData(), packet.getOffset(), packet.getLength()));
 
                 InetAddress address = packet.getAddress();
@@ -34,6 +66,18 @@ public class Server extends Thread
                 e.printStackTrace();
             }
         }
+    }
+
+    private void sendMessage(Message m, InetAddress addr, int port) throws IOException
+    {
+        byte[] buf = new byte[MAX_PACKET_SIZE];
+        DatagramPacket response = new DatagramPacket(buf, buf.length, addr, port);
+        socket.send(response);
+    }
+
+    private void routeMessage()
+    {
+
     }
 
     public static void main(String[] args) throws IOException
