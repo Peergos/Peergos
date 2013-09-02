@@ -20,9 +20,10 @@ public class Server extends Thread
     private State state = State.JOINING;
     private DatagramSocket socket;
     private NodeID us;
-    private SortedMap<Long, NodeID> leftNeighbours = new TreeMap();
-    private SortedMap<Long, NodeID> rightNeighbours = new TreeMap();
-    private SortedMap<Long, NodeID> friends = new TreeMap();
+
+    private SortedMap<Long, NodeID> leftNeighbours = new TreeMap();    //TODO add timestamps
+    private SortedMap<Long, NodeID> rightNeighbours = new TreeMap();    //TODO add timestamps
+    private SortedMap<Long, NodeID> friends = new TreeMap();    //TODO add timestamps
 
     public Server(int port) throws IOException
     {
@@ -113,7 +114,26 @@ public class Server extends Thread
 
     private void addNodes(Set<NodeID> hops)
     {
-
+        for (NodeID n: hops)
+        {
+            long toUs = us.d(n);
+            if (toUs == 0)
+                continue;
+            if ((n.id < us.id) && (leftNeighbours.size() > 0) && (leftNeighbours.get(leftNeighbours.firstKey()).d(us) > toUs))
+            {
+                leftNeighbours.put(n.id, n);
+                leftNeighbours.remove(leftNeighbours.firstKey());
+            }
+            else if ((n.id > us.id) && (rightNeighbours.size() > 0) && (rightNeighbours.get(rightNeighbours.lastKey()).d(us) > toUs))
+            {
+                rightNeighbours.put(n.id, n);
+                rightNeighbours.remove(rightNeighbours.lastKey());
+            }
+            else // add to friends
+            {
+                friends.put(n.id, n);
+            }
+        }
     }
 
     private void escalateMessage(Message m)

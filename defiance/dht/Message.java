@@ -62,6 +62,8 @@ public abstract class Message
         {
             case JOIN:
                 return new JOIN(in);
+            case ECHO:
+                return new ECHO(in);
         }
         throw new IllegalStateException("Unknown Message type: " + index);
     }
@@ -101,7 +103,7 @@ public abstract class Message
 
         public ECHO(NodeID target, Collection<NodeID> leftN, Collection<NodeID> rightN)
         {
-            super(Type.JOIN);
+            super(Type.ECHO);
             this.target = target;
             neighbours.addAll(leftN);
             neighbours.addAll(rightN);
@@ -109,8 +111,11 @@ public abstract class Message
 
         public ECHO(DataInput in) throws IOException
         {
-            super(Type.JOIN, in);
+            super(Type.ECHO, in);
             target = new NodeID(in);
+            int n = in.readInt();
+            for (int i=0; i < n; i++)
+                neighbours.add(new NodeID(in));
         }
 
         public long getTarget()
@@ -127,6 +132,9 @@ public abstract class Message
         {
             super.write(out);
             target.write(out);
+            out.writeInt(neighbours.size());
+            for (NodeID n: neighbours)
+                n.write(out);
         }
     }
 }
