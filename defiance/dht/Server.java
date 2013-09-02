@@ -20,8 +20,8 @@ public class Server extends Thread
     private State state = State.JOINING;
     private DatagramSocket socket;
     private NodeID us;
-    private List<NodeID> leftNeighbours = new ArrayList();
-    private List<NodeID> rightNeighbours = new ArrayList();
+    private SortedMap<Long, NodeID> leftNeighbours = new TreeMap();
+    private SortedMap<Long, NodeID> rightNeighbours = new TreeMap();
     private SortedMap<Long, NodeID> friends = new TreeMap();
 
     public Server(int port) throws IOException
@@ -75,11 +75,6 @@ public class Server extends Thread
                 socket.receive(packet);
                 Message m = Message.read(new DataInputStream(new ByteArrayInputStream(packet.getData())));
                 actOnMessage(m);
-
-                InetAddress address = packet.getAddress();
-                int port = packet.getPort();
-                DatagramPacket response = new DatagramPacket(buf, buf.length, address, port);
-                socket.send(response);
             } catch (IOException e)
             {
                 e.printStackTrace();
@@ -97,6 +92,9 @@ public class Server extends Thread
 
     private void actOnMessage(Message m)
     {
+        // add hop nodes to routing table/neighbours
+        addNodes(m.getHops());
+
         NodeID next = getClosest(m);
         if (next != us)
         {
@@ -113,26 +111,41 @@ public class Server extends Thread
             escalateMessage(m);
     }
 
+    private void addNodes(Set<NodeID> hops)
+    {
+
+    }
+
     private void escalateMessage(Message m)
     {
         if (m instanceof Message.JOIN)
         {
-            NodeID joiner = ((Message.JOIN)m).target;
+            NodeID joiner = ((Message.JOIN) m).target;
             if (joiner.id > us.id)
             {
-                rightNeighbours.add(0, joiner);
+                rightNeighbours.put(joiner.id, joiner);
                 if (rightNeighbours.size() > MAX_NEIGHBOURS)
-                    rightNeighbours.remove(rightNeighbours.size()-1);
-            }
-            else
+                    rightNeighbours.remove(rightNeighbours.lastKey());
+            } else
             {
-                leftNeighbours.add(0, joiner);
+                leftNeighbours.put(joiner.id, joiner);
                 if (leftNeighbours.size() > MAX_NEIGHBOURS)
-                    leftNeighbours.remove(leftNeighbours.size()-1);
+                    leftNeighbours.remove(leftNeighbours.firstKey());
             }
 
-            // send ECHO message to joiner
-            
+            // send ECHO message to joiner (1 attempt)
+            Message echo = new Message.ECHO(joiner, leftNeighbours.values(), rightNeighbours.values());
+            try
+            {
+                sendMessage(echo, joiner.addr, joiner.port);
+            } catch (IOException e)
+            {
+                e.printStackTrace();
+            }
+        }
+        else if (m instanceof Message.ECHO)
+        {
+
         }
     }
 
@@ -141,7 +154,7 @@ public class Server extends Thread
         long target = m.getTarget();
         NodeID next = us;
         long min = next.d(target);
-        for (NodeID n : leftNeighbours)
+        for (NodeID n : leftNeighbours.values())
         {
             if (n.d(target) < min)
             {
@@ -149,7 +162,7 @@ public class Server extends Thread
                 min = n.d(target);
             }
         }
-        for (NodeID n : rightNeighbours)
+        for (NodeID n : rightNeighbours.values())
         {
             if (n.d(target) < min)
             {
@@ -183,6 +196,11 @@ public class Server extends Thread
     public static void main(String[] args) throws IOException
     {
         Args.parse(args);
+        if (Args.hasOption("help"))
+        {
+            Args.printOptions();
+            System.exit(0);
+        }
         int port = Args.getInt("port", 8080);
         new Server(port).start();
     }

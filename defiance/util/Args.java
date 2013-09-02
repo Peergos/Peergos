@@ -55,4 +55,30 @@ public class Args
     {
         return params.get(param);
     }
+
+    public static final Map<String, String> OPTIONS = new HashMap();
+    static
+    {
+        OPTIONS.put("help", "Show this help.");
+        OPTIONS.put("firstNode", " This is the first node in the network (don't attempt to join the network).");
+        OPTIONS.put("logMessages", "Print every received message to the console.");
+    }
+    public static final Map<String, String> PARAMS = new HashMap();
+    static
+    {
+        PARAMS.put("port", " the I/O port to listen on.");
+        PARAMS.put("contactIP", "name or IP address of contact point to join the network");
+        PARAMS.put("contactPort", "port of contact point to join the network");
+    }
+
+    public static void printOptions()
+    {
+        System.out.println("\nDefiance Server help.");
+        System.out.println("\nOptions:");
+        for (String k: OPTIONS.keySet())
+            System.out.println("-"+ k + "\t " + OPTIONS.get(k));
+        System.out.println("\nParameters:");
+        for (String k: PARAMS.keySet())
+            System.out.println("-"+ k + "\t " + PARAMS.get(k));
+    }
 }

@@ -8,23 +8,47 @@ import java.util.*;
 public abstract class Message
 {
     public static final boolean LOG = Args.hasOption("logMessages");
-    public static enum Type {JOIN, ECHO}
+
+    public static enum Type
+    {
+        JOIN, ECHO
+    }
+
     private static Type[] lookup = Type.values();
     private Type t;
+    private Set<NodeID> visited = new HashSet<NodeID>();
 
     public Message(Type t)
     {
         this.t = t;
     }
 
+    public Message(Type t, DataInput in) throws IOException
+    {
+        this.t = t;
+        int n = in.readInt();
+        for (int i = 0; i < n; i++)
+        {
+            visited.add(new NodeID(in));
+        }
+    }
+
     public void write(DataOutput out) throws IOException
     {
-        out.writeByte((byte)t.ordinal());
+        out.writeByte((byte) t.ordinal());
+        out.writeInt(visited.size());
+        for (NodeID hop : visited)
+            hop.write(out);
     }
 
     public void addNode(NodeID n)
     {
+        visited.add(n);
+    }
 
+    public Set<NodeID> getHops()
+    {
+        return visited;
     }
 
     public abstract long getTarget();
@@ -45,7 +69,6 @@ public abstract class Message
     public static class JOIN extends Message
     {
         public NodeID target;
-        public List<NodeID> hopNodes = new ArrayList();
 
         public JOIN(NodeID target)
         {
@@ -55,13 +78,8 @@ public abstract class Message
 
         public JOIN(DataInput in) throws IOException
         {
-            super(Type.JOIN);
+            super(Type.JOIN, in);
             target = new NodeID(in);
-            int n = in.readInt();
-            for (int i=0; i < n; i++)
-            {
-                hopNodes.add(new NodeID(in));
-            }
         }
 
         public long getTarget()
@@ -73,9 +91,42 @@ public abstract class Message
         {
             super.write(out);
             target.write(out);
-            out.writeInt(hopNodes.size());
-            for (NodeID hop: hopNodes)
-                hop.write(out);
+        }
+    }
+
+    public static class ECHO extends Message
+    {
+        private NodeID target;
+        private Set<NodeID> neighbours = new HashSet();
+
+        public ECHO(NodeID target, Collection<NodeID> leftN, Collection<NodeID> rightN)
+        {
+            super(Type.JOIN);
+            this.target = target;
+            neighbours.addAll(leftN);
+            neighbours.addAll(rightN);
+        }
+
+        public ECHO(DataInput in) throws IOException
+        {
+            super(Type.JOIN, in);
+            target = new NodeID(in);
+        }
+
+        public long getTarget()
+        {
+            return target.id;
+        }
+
+        public Set<NodeID> getNeighbours()
+        {
+            return neighbours;
+        }
+
+        public void write(DataOutput out) throws IOException
+        {
+            super.write(out);
+            target.write(out);
         }
     }
 }
