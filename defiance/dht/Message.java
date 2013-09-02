@@ -1,11 +1,14 @@
 package defiance.dht;
 
+import defiance.util.*;
+
 import java.io.*;
 import java.util.*;
 
 public abstract class Message
 {
-    public static enum Type {JOIN}
+    public static final boolean LOG = Args.hasOption("logMessages");
+    public static enum Type {JOIN, ECHO}
     private static Type[] lookup = Type.values();
     private Type t;
 
@@ -19,9 +22,18 @@ public abstract class Message
         out.writeByte((byte)t.ordinal());
     }
 
+    public void addNode(NodeID n)
+    {
+
+    }
+
+    public abstract long getTarget();
+
     public static Message read(DataInput in) throws IOException
     {
         int index = in.readByte() & 0xff;
+        if (LOG)
+            System.out.printf("Received %s\n", lookup[index].name());
         switch (lookup[index])
         {
             case JOIN:
@@ -50,6 +62,11 @@ public abstract class Message
             {
                 hopNodes.add(new NodeID(in));
             }
+        }
+
+        public long getTarget()
+        {
+            return target.id;
         }
 
         public void write(DataOutput out) throws IOException
