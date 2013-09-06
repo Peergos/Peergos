@@ -10,7 +10,13 @@ public class Node
 
     public Node(NodeID node)
     {
-        lastSeen = System.currentTimeMillis();
+        this(node, true);
+    }
+
+    public Node(NodeID node, boolean seen)
+    {
+        if (seen)
+            lastSeen = System.currentTimeMillis();
         state = State.Good;
         this.node = node;
     }

@@ -184,7 +184,7 @@ public class Server extends Thread
 
                 if (!leftNeighbours.containsKey(n.id) && !rightNeighbours.containsKey(n.id))
                 {
-                    Node fresh = new Node(n);
+                    Node fresh = new Node(n, false);
                     temp.put(n.id, fresh);
                 }
             }
@@ -193,7 +193,9 @@ public class Server extends Thread
             if (temp.containsKey(from.id))
                 temp.get(from.id).receivedContact();
             else
+            {
                 temp.put(from.id, new Node(from));
+            }
             rightNeighbours.clear();
             leftNeighbours.clear();
             temp.remove(us.id);
@@ -273,7 +275,7 @@ public class Server extends Thread
         System.out.println("Right Neighbours:");
         for (Node n : rightNeighbours.values())
             System.out.printf("%s:%d %s id=%d d=%d\n", n.node.addr.getHostAddress(), n.node.port, n.state.name(), n.node.id, n.node.d(us));
-        System.out.println("Friends:");
+        System.out.println("\nFriends:");
         for (Node n : friends.values())
             System.out.printf("%s:%d %s id=%d d=%d\n", n.node.addr.getHostAddress(), n.node.port, n.state.name(), n.node.id, n.node.d(us));
         System.out.println();
