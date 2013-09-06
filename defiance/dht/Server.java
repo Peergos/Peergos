@@ -168,59 +168,127 @@ public class Server extends Thread
                 leftNeighbours.put(joiner.id, new Node(joiner));
                 if (leftNeighbours.size() > MAX_NEIGHBOURS)
                     leftNeighbours.remove(leftNeighbours.firstKey());
-            }
-            else
+            } else
                 return;
 
             // send ECHO message to joiner (1 attempt)
-            Message echo = new Message.ECHO(joiner, us, leftNeighbours.values(), rightNeighbours.values());
-            try
-            {
-                sendMessage(echo, joiner.addr, joiner.port);
-            } catch (IOException e)
-            {
-                e.printStackTrace();
-            }
+            sendECHO(joiner);
         } else if (m instanceof Message.ECHO)
         {
             int nright = 0;
             int nleft = 0;
-            NodeID from = ((Message.ECHO)m).getHops().get(0);
+            NodeID from = ((Message.ECHO) m).getHops().get(0);
+            SortedMap<Long, Node> temp = new TreeMap();
             for (NodeID n : ((Message.ECHO) m).getNeighbours())
             {
-                SortedMap<Long, Node> temp = new TreeMap();
+
                 if (!leftNeighbours.containsKey(n.id) && !rightNeighbours.containsKey(n.id))
                 {
                     Node fresh = new Node(n);
                     temp.put(n.id, fresh);
                 }
-                temp.putAll(rightNeighbours);
-                temp.putAll(leftNeighbours);
-                // take up to MAX_NEIGHBOURS in each direction that are not Lost and send them an ECHO (if they haven't already been sent one)
-                SortedMap<Long, Node> right = temp.tailMap(us.id+1);
-                while ((nright < MAX_NEIGHBOURS) && (!right.isEmpty()))
+            }
+            temp.putAll(rightNeighbours);
+            temp.putAll(leftNeighbours);
+            if (temp.containsKey(from.id))
+                temp.get(from.id).receivedContact();
+            else
+                temp.put(from.id, new Node(from));
+            rightNeighbours.clear();
+            leftNeighbours.clear();
+            temp.remove(us.id);
+            Set<Node> toSendECHO = new HashSet();
+
+            // take up to MAX_NEIGHBOURS in each direction that are not Lost and send them an ECHO (if they haven't already been sent one)
+            SortedMap<Long, Node> right = temp.tailMap(us.id + 1);
+            while ((nright < MAX_NEIGHBOURS) && (!right.isEmpty()))
+            {
+                Node nextClosest = right.get(right.firstKey());
+                right.remove(nextClosest.node.id);
+                if (nextClosest.isLost())
                 {
-                    Node nextClosest = right.get(right.firstKey());
-                    
+                    rightNeighbours.remove(nextClosest.node.id);
+                    leftNeighbours.remove(nextClosest.node.id);
+                    friends.remove(nextClosest.node.id);
+                    continue;
                 }
+                if (nextClosest.isRecent())
+                {
+                    rightNeighbours.put(nextClosest.node.id, nextClosest);
+                } else if (nextClosest.isWaiting())
+                {
+                    nextClosest.setTimedOut();
+                    continue;
+                } else // Good but not recent, send an ECHO
+                {
+                    rightNeighbours.put(nextClosest.node.id, nextClosest);
+                    toSendECHO.add(nextClosest);
+                }
+                nright++;
+            }
+            // and the let neighbours..
+            SortedMap<Long, Node> left = temp.headMap(us.id);
+            while ((nleft < MAX_NEIGHBOURS) && (!left.isEmpty()))
+            {
+                Node nextClosest = left.get(left.lastKey());
+                left.remove(nextClosest.node.id);
+                if (nextClosest.isLost())
+                {
+                    rightNeighbours.remove(nextClosest.node.id);
+                    leftNeighbours.remove(nextClosest.node.id);
+                    friends.remove(nextClosest.node.id);
+                    continue;
+                }
+                if (nextClosest.isRecent())
+                {
+                    leftNeighbours.put(nextClosest.node.id, nextClosest);
+                } else if (nextClosest.isWaiting())
+                {
+                    nextClosest.setTimedOut();
+                    continue;
+                } else // Good but not recent, send an ECHO
+                {
+                    leftNeighbours.put(nextClosest.node.id, nextClosest);
+                    toSendECHO.add(nextClosest);
+                }
+                nright++;
+            }
+            for (Node n: toSendECHO)
+            {
+                sendECHO(n.node);
             }
         }
+
         if (Message.LOG)
+
             printNeighboursAndFriends();
+
     }
 
     public void printNeighboursAndFriends()
     {
         System.out.println("Left Neighbours:");
         for (Node n : leftNeighbours.values())
-            System.out.printf("%s:%d %s d=%d\n", n.node.addr.getHostAddress(), n.node.port, n.state.name(), n.node.d(us));
+            System.out.printf("%s:%d %s id=%d d=%d\n", n.node.addr.getHostAddress(), n.node.port, n.state.name(), n.node.id, n.node.d(us));
         System.out.println("Right Neighbours:");
         for (Node n : rightNeighbours.values())
-            System.out.printf("%s:%d %s d=%d\n", n.node.addr.getHostAddress(), n.node.port, n.state.name(), n.node.d(us));
+            System.out.printf("%s:%d %s id=%d d=%d\n", n.node.addr.getHostAddress(), n.node.port, n.state.name(), n.node.id, n.node.d(us));
         System.out.println("Friends:");
         for (Node n : friends.values())
-            System.out.printf("%s:%d %s d=%d\n", n.node.addr.getHostAddress(), n.node.port, n.state.name(), n.node.d(us));
+            System.out.printf("%s:%d %s id=%d d=%d\n", n.node.addr.getHostAddress(), n.node.port, n.state.name(), n.node.id, n.node.d(us));
         System.out.println();
+    }
+
+    private void sendECHO(NodeID target)
+    {
+        Message echo = new Message.ECHO(target, us, leftNeighbours.values(), rightNeighbours.values());
+        try
+        {
+            sendMessage(echo, target.addr, target.port);
+        } catch (IOException e)
+        {
+            e.printStackTrace();
+        }
     }
 
     private NodeID getClosest(Message m)
