@@ -22,9 +22,9 @@ Architecture
  - Coded to run on JVM to get portability and speed, predominantly Java and maybe Scala
 
 2.0 Node discovery
- - modelled on the bitcoin network
  - initial nodes are either hard-coded or user-supplied
  - network addresses are shared after connection
+ - network topology is learned through normal traffic
 
 3.0 User address modelled on bitcoin addresses
  - 64 alpha-numeric characters

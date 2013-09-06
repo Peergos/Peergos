@@ -21,9 +21,9 @@ public class Server extends Thread
     private DatagramSocket socket;
     private NodeID us;
 
-    private SortedMap<Long, NodeID> leftNeighbours = new TreeMap();    //TODO add timestamps
-    private SortedMap<Long, NodeID> rightNeighbours = new TreeMap();    //TODO add timestamps
-    private SortedMap<Long, NodeID> friends = new TreeMap();    //TODO add timestamps
+    private SortedMap<Long, Node> leftNeighbours = new TreeMap();    //TODO add timestamps
+    private SortedMap<Long, Node> rightNeighbours = new TreeMap();    //TODO add timestamps
+    private SortedMap<Long, Node> friends = new TreeMap();    //TODO add timestamps
 
     public Server(int port) throws IOException
     {
@@ -112,26 +112,40 @@ public class Server extends Thread
             escalateMessage(m);
     }
 
-    private void addNodes(Set<NodeID> hops)
+    private void addNodes(List<NodeID> hops)
     {
         for (NodeID n: hops)
         {
             long toUs = us.d(n);
             if (toUs == 0)
                 continue;
-            if ((n.id < us.id) && (leftNeighbours.size() > 0) && (leftNeighbours.get(leftNeighbours.firstKey()).d(us) > toUs))
+            // maybe neighbours can be discovered purely through the ECHOs
+//            if ((n.id < us.id) && (leftNeighbours.size() > 0) && (leftNeighbours.get(leftNeighbours.firstKey()).d(us) > toUs))
+//            {
+//                leftNeighbours.put(n.id, n);
+//                leftNeighbours.remove(leftNeighbours.firstKey());
+//            }
+//            else if ((n.id > us.id) && (rightNeighbours.size() > 0) && (rightNeighbours.get(rightNeighbours.lastKey()).d(us) > toUs))
+//            {
+//                rightNeighbours.put(n.id, n);
+//                rightNeighbours.remove(rightNeighbours.lastKey());
+//            }
+//            else // add to friends
             {
-                leftNeighbours.put(n.id, n);
-                leftNeighbours.remove(leftNeighbours.firstKey());
-            }
-            else if ((n.id > us.id) && (rightNeighbours.size() > 0) && (rightNeighbours.get(rightNeighbours.lastKey()).d(us) > toUs))
-            {
-                rightNeighbours.put(n.id, n);
-                rightNeighbours.remove(rightNeighbours.lastKey());
-            }
-            else // add to friends
-            {
-                friends.put(n.id, n);
+                if (!friends.containsKey(n.id))
+                    friends.put(n.id, new Node(n));
+                else
+                {
+                    Node existing = friends.get(n.id);
+                    if ((!existing.node.addr.equals(n.addr)  || (existing.node.port != n.port)))
+                    {
+                         if (!existing.isLost())
+                             continue; // ignore nodes trying to overtake current node address
+                        else
+                             friends.put(n.id, new Node(n));
+                    }
+                    existing.receivedContact();
+                }
             }
         }
     }
@@ -143,12 +157,12 @@ public class Server extends Thread
             NodeID joiner = ((Message.JOIN) m).target;
             if (joiner.id > us.id)
             {
-                rightNeighbours.put(joiner.id, joiner);
+                rightNeighbours.put(joiner.id, new Node(joiner));
                 if (rightNeighbours.size() > MAX_NEIGHBOURS)
                     rightNeighbours.remove(rightNeighbours.lastKey());
             } else
             {
-                leftNeighbours.put(joiner.id, joiner);
+                leftNeighbours.put(joiner.id, new Node(joiner));
                 if (leftNeighbours.size() > MAX_NEIGHBOURS)
                     leftNeighbours.remove(leftNeighbours.firstKey());
             }
@@ -174,26 +188,26 @@ public class Server extends Thread
         long target = m.getTarget();
         NodeID next = us;
         long min = next.d(target);
-        for (NodeID n : leftNeighbours.values())
+        for (Node n : leftNeighbours.values())
         {
-            if (n.d(target) < min)
+            if ((n.node.d(target) < min) && !n.isLost())
             {
-                next = n;
-                min = n.d(target);
+                next = n.node;
+                min = n.node.d(target);
             }
         }
-        for (NodeID n : rightNeighbours.values())
+        for (Node n : rightNeighbours.values())
         {
-            if (n.d(target) < min)
+            if ((n.node.d(target) < min) && !n.isLost())
             {
-                next = n;
-                min = n.d(target);
+                next = n.node;
+                min = n.node.d(target);
             }
         }
         SortedMap lesser = friends.headMap(target);
         if (lesser.size() > 0)
         {
-            NodeID less = friends.get(lesser.lastKey());
+            NodeID less = friends.get(lesser.lastKey()).node;
             if (less.d(target) < min)
             {
                 next = less;
@@ -203,7 +217,7 @@ public class Server extends Thread
         SortedMap greaterEq = friends.tailMap(target);
         if (greaterEq.size() > 0)
         {
-            NodeID more = friends.get(greaterEq.firstKey());
+            NodeID more = friends.get(greaterEq.firstKey()).node;
             if (more.d(target) < min)
             {
                 next = more;

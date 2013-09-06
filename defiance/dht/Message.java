@@ -16,7 +16,7 @@ public abstract class Message
 
     private static Type[] lookup = Type.values();
     private Type t;
-    private Set<NodeID> visited = new HashSet<NodeID>();
+    private List<NodeID> visited = new ArrayList(); // last element is previous node
 
     public Message(Type t)
     {
@@ -46,7 +46,7 @@ public abstract class Message
         visited.add(n);
     }
 
-    public Set<NodeID> getHops()
+    public List<NodeID> getHops()
     {
         return visited;
     }
@@ -101,12 +101,14 @@ public abstract class Message
         private NodeID target;
         private Set<NodeID> neighbours = new HashSet();
 
-        public ECHO(NodeID target, Collection<NodeID> leftN, Collection<NodeID> rightN)
+        public ECHO(NodeID target, Collection<Node> leftN, Collection<Node> rightN)
         {
             super(Type.ECHO);
             this.target = target;
-            neighbours.addAll(leftN);
-            neighbours.addAll(rightN);
+            for (Node n: leftN)
+                neighbours.add(n.node);
+            for (Node n: rightN)
+            neighbours.add(n.node);
         }
 
         public ECHO(DataInput in) throws IOException
