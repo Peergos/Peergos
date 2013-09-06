@@ -36,6 +36,11 @@ public class NodeID
         port = in.readInt();
     }
 
+    public boolean greaterThan(NodeID other)
+    {
+        return id > other.id;
+    }
+
     public long d(NodeID other)
     {
         return d(other.id);

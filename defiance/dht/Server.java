@@ -21,9 +21,9 @@ public class Server extends Thread
     private DatagramSocket socket;
     private NodeID us;
 
-    private SortedMap<Long, Node> leftNeighbours = new TreeMap();    //TODO add timestamps
-    private SortedMap<Long, Node> rightNeighbours = new TreeMap();    //TODO add timestamps
-    private SortedMap<Long, Node> friends = new TreeMap();    //TODO add timestamps
+    private SortedMap<Long, Node> leftNeighbours = new TreeMap();
+    private SortedMap<Long, Node> rightNeighbours = new TreeMap();
+    private SortedMap<Long, Node> friends = new TreeMap();
 
     public Server(int port) throws IOException
     {
@@ -36,7 +36,7 @@ public class Server extends Thread
         byte[] buf = new byte[MAX_PACKET_SIZE];
         // connect to network
         if (!Args.hasOption("firstNode"))
-            while (true)
+            while (true) // TODO make multi-threaded
             {
                 try
                 {
@@ -114,12 +114,16 @@ public class Server extends Thread
 
     private void addNodes(List<NodeID> hops)
     {
-        for (NodeID n: hops)
-        {
-            long toUs = us.d(n);
-            if (toUs == 0)
-                continue;
-            // maybe neighbours can be discovered purely through the ECHOs
+        for (NodeID n : hops)
+            addNode(n);
+    }
+
+    private void addNode(NodeID n)
+    {
+        long toUs = us.d(n);
+        if (toUs == 0)
+            return;
+        // maybe neighbours can be discovered purely through the ECHOs
 //            if ((n.id < us.id) && (leftNeighbours.size() > 0) && (leftNeighbours.get(leftNeighbours.firstKey()).d(us) > toUs))
 //            {
 //                leftNeighbours.put(n.id, n);
@@ -131,21 +135,20 @@ public class Server extends Thread
 //                rightNeighbours.remove(rightNeighbours.lastKey());
 //            }
 //            else // add to friends
+        {
+            if (!friends.containsKey(n.id))
+                friends.put(n.id, new Node(n));
+            else
             {
-                if (!friends.containsKey(n.id))
-                    friends.put(n.id, new Node(n));
-                else
+                Node existing = friends.get(n.id);
+                if ((!existing.node.addr.equals(n.addr) || (existing.node.port != n.port)))
                 {
-                    Node existing = friends.get(n.id);
-                    if ((!existing.node.addr.equals(n.addr)  || (existing.node.port != n.port)))
-                    {
-                         if (!existing.isLost())
-                             continue; // ignore nodes trying to overtake current node address
-                        else
-                             friends.put(n.id, new Node(n));
-                    }
-                    existing.receivedContact();
+                    if (!existing.isLost())
+                        return; // ignore nodes trying to overtake current node address
+                    else
+                        friends.put(n.id, new Node(n));
                 }
+                existing.receivedContact();
             }
         }
     }
@@ -160,15 +163,17 @@ public class Server extends Thread
                 rightNeighbours.put(joiner.id, new Node(joiner));
                 if (rightNeighbours.size() > MAX_NEIGHBOURS)
                     rightNeighbours.remove(rightNeighbours.lastKey());
-            } else
+            } else if (joiner.id < us.id)
             {
                 leftNeighbours.put(joiner.id, new Node(joiner));
                 if (leftNeighbours.size() > MAX_NEIGHBOURS)
                     leftNeighbours.remove(leftNeighbours.firstKey());
             }
+            else
+                return;
 
             // send ECHO message to joiner (1 attempt)
-            Message echo = new Message.ECHO(joiner, leftNeighbours.values(), rightNeighbours.values());
+            Message echo = new Message.ECHO(joiner, us, leftNeighbours.values(), rightNeighbours.values());
             try
             {
                 sendMessage(echo, joiner.addr, joiner.port);
@@ -176,11 +181,46 @@ public class Server extends Thread
             {
                 e.printStackTrace();
             }
-        }
-        else if (m instanceof Message.ECHO)
+        } else if (m instanceof Message.ECHO)
         {
-
+            int nright = 0;
+            int nleft = 0;
+            NodeID from = ((Message.ECHO)m).getHops().get(0);
+            for (NodeID n : ((Message.ECHO) m).getNeighbours())
+            {
+                SortedMap<Long, Node> temp = new TreeMap();
+                if (!leftNeighbours.containsKey(n.id) && !rightNeighbours.containsKey(n.id))
+                {
+                    Node fresh = new Node(n);
+                    temp.put(n.id, fresh);
+                }
+                temp.putAll(rightNeighbours);
+                temp.putAll(leftNeighbours);
+                // take up to MAX_NEIGHBOURS in each direction that are not Lost and send them an ECHO (if they haven't already been sent one)
+                SortedMap<Long, Node> right = temp.tailMap(us.id+1);
+                while ((nright < MAX_NEIGHBOURS) && (!right.isEmpty()))
+                {
+                    Node nextClosest = right.get(right.firstKey());
+                    
+                }
+            }
         }
+        if (Message.LOG)
+            printNeighboursAndFriends();
+    }
+
+    public void printNeighboursAndFriends()
+    {
+        System.out.println("Left Neighbours:");
+        for (Node n : leftNeighbours.values())
+            System.out.printf("%s:%d %s d=%d\n", n.node.addr.getHostAddress(), n.node.port, n.state.name(), n.node.d(us));
+        System.out.println("Right Neighbours:");
+        for (Node n : rightNeighbours.values())
+            System.out.printf("%s:%d %s d=%d\n", n.node.addr.getHostAddress(), n.node.port, n.state.name(), n.node.d(us));
+        System.out.println("Friends:");
+        for (Node n : friends.values())
+            System.out.printf("%s:%d %s d=%d\n", n.node.addr.getHostAddress(), n.node.port, n.state.name(), n.node.d(us));
+        System.out.println();
     }
 
     private NodeID getClosest(Message m)

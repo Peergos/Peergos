@@ -101,7 +101,7 @@ public abstract class Message
         private NodeID target;
         private Set<NodeID> neighbours = new HashSet();
 
-        public ECHO(NodeID target, Collection<Node> leftN, Collection<Node> rightN)
+        public ECHO(NodeID target, NodeID us, Collection<Node> leftN, Collection<Node> rightN)
         {
             super(Type.ECHO);
             this.target = target;
@@ -109,6 +109,7 @@ public abstract class Message
                 neighbours.add(n.node);
             for (Node n: rightN)
             neighbours.add(n.node);
+            addNode(us);
         }
 
         public ECHO(DataInput in) throws IOException
