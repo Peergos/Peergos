@@ -154,6 +154,17 @@ public class Server extends Thread
             escalateMessage(m);
     }
 
+    private Node getNode(NodeID n)
+    {
+        if (leftNeighbours.containsKey(n.id))
+            return leftNeighbours.get(n.id);
+        if (rightNeighbours.containsKey(n.id))
+            return rightNeighbours.get(n.id);
+        if (friends.containsKey(n.id))
+            return friends.get(n.id);
+        return new Node(n);
+    }
+
     private void addNodes(List<NodeID> hops)
     {
         for (NodeID n : hops)
@@ -166,7 +177,9 @@ public class Server extends Thread
         if (toUs == 0)
             return;
         if (!friends.containsKey(n.id))
-            friends.put(n.id, new Node(n));
+        {
+            friends.put(n.id, getNode(n));
+        }
         else
         {
             Node existing = friends.get(n.id);
@@ -175,7 +188,7 @@ public class Server extends Thread
                 if (!existing.isLost())
                     return; // ignore nodes trying to overtake current node address
                 else
-                    friends.put(n.id, new Node(n));
+                    friends.put(n.id, getNode(n));
             }
             existing.receivedContact();
         }
@@ -188,12 +201,12 @@ public class Server extends Thread
             NodeID joiner = ((Message.JOIN) m).target;
             if (joiner.id > us.id)
             {
-                rightNeighbours.put(joiner.id, new Node(joiner));
+                rightNeighbours.put(joiner.id, getNode(joiner));
                 if (rightNeighbours.size() > MAX_NEIGHBOURS)
                     rightNeighbours.remove(rightNeighbours.lastKey());
             } else if (joiner.id < us.id)
             {
-                leftNeighbours.put(joiner.id, new Node(joiner));
+                leftNeighbours.put(joiner.id, getNode(joiner));
                 if (leftNeighbours.size() > MAX_NEIGHBOURS)
                     leftNeighbours.remove(leftNeighbours.firstKey());
             } else
@@ -210,7 +223,7 @@ public class Server extends Thread
             {
                 if (!leftNeighbours.containsKey(n.id) && !rightNeighbours.containsKey(n.id))
                 {
-                    Node fresh = new Node(n);
+                    Node fresh = getNode(n);
                     temp.put(n.id, fresh);
                 }
             }
@@ -220,7 +233,7 @@ public class Server extends Thread
                 temp.get(from.id).receivedContact();
             else
             {
-                Node fresh = new Node(from);
+                Node fresh = getNode(from);
                 temp.put(from.id, fresh);
             }
             rightNeighbours.clear();
@@ -233,10 +246,18 @@ public class Server extends Thread
             // check wrap around
             if (rightNeighbours.size() < MAX_NEIGHBOURS)
                 fillRight(temp.headMap(us.id), toSendECHO);
+            if (rightNeighbours.size() < MAX_NEIGHBOURS)
+                fillRight(friends.tailMap(us.id + 1), toSendECHO);
+            if (rightNeighbours.size() < MAX_NEIGHBOURS)
+                fillRight(friends.headMap(us.id), toSendECHO);
 
             fillLeft(temp.headMap(us.id), toSendECHO);
             if (leftNeighbours.size() < MAX_NEIGHBOURS)
                 fillLeft(temp.tailMap(us.id + 1), toSendECHO);
+            if (leftNeighbours.size() < MAX_NEIGHBOURS)
+                fillLeft(friends.headMap(us.id), toSendECHO);
+            if (leftNeighbours.size() < MAX_NEIGHBOURS)
+                fillLeft(friends.tailMap(us.id + 1), toSendECHO);
 
             for (Node n : toSendECHO)
             {
@@ -245,7 +266,6 @@ public class Server extends Thread
         }
 
         if (Message.LOG)
-
             printNeighboursAndFriends();
 
     }
@@ -300,7 +320,7 @@ public class Server extends Thread
             System.out.printf("%s:%d id=%d recentlySeen=%s recentlyContacted=%s d=%d\n", n.node.addr.getHostAddress(), n.node.port, n.node.id, n.wasRecentlySeen(), n.wasRecentlyContacted(), n.node.d(us));
         System.out.println("\nFriends:");
         for (Node n : friends.values())
-            System.out.printf("%s:%d id=%d recentlySeen=%s recentlyContacted=%s d=%d\n", n.node.addr.getHostAddress(), n.node.port, n.node.id, n.wasRecentlySeen(), n.wasRecentlyContacted(), n.node.d(us));
+            System.out.printf("%s:%d id=%d recentlySeen=%s d=%d\n", n.node.addr.getHostAddress(), n.node.port, n.node.id, n.wasRecentlySeen(), n.node.d(us));
         System.out.println();
     }
 
