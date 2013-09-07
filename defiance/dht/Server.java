@@ -89,7 +89,7 @@ public class Server extends Thread
                         count++;
                         if (count == max)
                         {
-                            if (!n.isRecent())
+                            if (!n.wasRecentlySeen())
                                 sendECHO(n.node);
                             break;
                         }
@@ -104,7 +104,7 @@ public class Server extends Thread
                         count++;
                         if (count == max)
                         {
-                            if (!n.isRecent())
+                            if (!n.wasRecentlySeen())
                                 sendECHO(n.node);
                             break;
                         }
@@ -165,33 +165,19 @@ public class Server extends Thread
         long toUs = us.d(n);
         if (toUs == 0)
             return;
-        // maybe neighbours can be discovered purely through the ECHOs
-//            if ((n.id < us.id) && (leftNeighbours.size() > 0) && (leftNeighbours.get(leftNeighbours.firstKey()).d(us) > toUs))
-//            {
-//                leftNeighbours.put(n.id, n);
-//                leftNeighbours.remove(leftNeighbours.firstKey());
-//            }
-//            else if ((n.id > us.id) && (rightNeighbours.size() > 0) && (rightNeighbours.get(rightNeighbours.lastKey()).d(us) > toUs))
-//            {
-//                rightNeighbours.put(n.id, n);
-//                rightNeighbours.remove(rightNeighbours.lastKey());
-//            }
-//            else // add to friends
+        if (!friends.containsKey(n.id))
+            friends.put(n.id, new Node(n));
+        else
         {
-            if (!friends.containsKey(n.id))
-                friends.put(n.id, new Node(n));
-            else
+            Node existing = friends.get(n.id);
+            if ((!existing.node.addr.equals(n.addr) || (existing.node.port != n.port)))
             {
-                Node existing = friends.get(n.id);
-                if ((!existing.node.addr.equals(n.addr) || (existing.node.port != n.port)))
-                {
-                    if (!existing.isLost())
-                        return; // ignore nodes trying to overtake current node address
-                    else
-                        friends.put(n.id, new Node(n));
-                }
-                existing.receivedContact();
+                if (!existing.isLost())
+                    return; // ignore nodes trying to overtake current node address
+                else
+                    friends.put(n.id, new Node(n));
             }
+            existing.receivedContact();
         }
     }
 
@@ -219,6 +205,7 @@ public class Server extends Thread
         {
             NodeID from = m.getHops().get(0);
             SortedMap<Long, Node> temp = new TreeMap();
+            Set<Node> toSendECHO = new HashSet();
             for (NodeID n : ((Message.ECHO) m).getNeighbours())
             {
                 if (!leftNeighbours.containsKey(n.id) && !rightNeighbours.containsKey(n.id))
@@ -233,14 +220,15 @@ public class Server extends Thread
                 temp.get(from.id).receivedContact();
             else
             {
-                temp.put(from.id, new Node(from));
+                Node fresh = new Node(from);
+                temp.put(from.id, fresh);
             }
             rightNeighbours.clear();
             leftNeighbours.clear();
             temp.remove(us.id);
-            Set<Node> toSendECHO = new HashSet();
 
-            // take up to MAX_NEIGHBOURS in each direction that are not Lost and send them an ECHO (if they haven't already been sent one)
+
+            // take up tisRecent() && !nextClosest.isWaiting()o MAX_NEIGHBOURS in each direction that are not Lost and send them an ECHO (if they haven't already been sent one)
             fillRight(temp.tailMap(us.id + 1), toSendECHO);
             // check wrap around
             if (rightNeighbours.size() < MAX_NEIGHBOURS)
@@ -274,7 +262,7 @@ public class Server extends Thread
                 continue;
             }
             leftNeighbours.put(nextClosest.node.id, nextClosest);
-            if (!nextClosest.isRecent() && !nextClosest.isWaiting())
+            if (!nextClosest.wasRecentlyContacted())
             {
                 nextClosest.sentECHO();
                 toSendECHO.add(nextClosest);
@@ -294,7 +282,7 @@ public class Server extends Thread
                 continue;
             }
             rightNeighbours.put(nextClosest.node.id, nextClosest);
-            if (!nextClosest.isRecent() && !nextClosest.isWaiting())
+            if (!nextClosest.wasRecentlyContacted())
             {
                 nextClosest.sentECHO();
                 toSendECHO.add(nextClosest);
@@ -306,13 +294,13 @@ public class Server extends Thread
     {
         System.out.println("Left Neighbours:");
         for (Node n : leftNeighbours.values())
-            System.out.printf("%s:%d %s id=%d d=%d\n", n.node.addr.getHostAddress(), n.node.port, n.state.name(), n.node.id, n.node.d(us));
+            System.out.printf("%s:%d id=%d recentlySeen=%s recentlyContacted=%s d=%d\n", n.node.addr.getHostAddress(), n.node.port, n.node.id, n.wasRecentlySeen(), n.wasRecentlyContacted(), n.node.d(us));
         System.out.println("Right Neighbours:");
         for (Node n : rightNeighbours.values())
-            System.out.printf("%s:%d %s id=%d d=%d\n", n.node.addr.getHostAddress(), n.node.port, n.state.name(), n.node.id, n.node.d(us));
+            System.out.printf("%s:%d id=%d recentlySeen=%s recentlyContacted=%s d=%d\n", n.node.addr.getHostAddress(), n.node.port, n.node.id, n.wasRecentlySeen(), n.wasRecentlyContacted(), n.node.d(us));
         System.out.println("\nFriends:");
         for (Node n : friends.values())
-            System.out.printf("%s:%d %s id=%d d=%d\n", n.node.addr.getHostAddress(), n.node.port, n.state.name(), n.node.id, n.node.d(us));
+            System.out.printf("%s:%d id=%d recentlySeen=%s recentlyContacted=%s d=%d\n", n.node.addr.getHostAddress(), n.node.port, n.node.id, n.wasRecentlySeen(), n.wasRecentlyContacted(), n.node.d(us));
         System.out.println();
     }
 
