@@ -2,7 +2,7 @@ package defiance.dht;
 
 public class Node
 {
-    public static enum State {Good, Waiting, Lost}
+    public static enum State {Good, Waiting}
     public long lastSeen;
     public State state;
     public NodeID node;
@@ -23,7 +23,7 @@ public class Node
 
     public boolean isLost()
     {
-        return state == State.Lost;
+        return System.currentTimeMillis() > lastSeen + 2*NEIGHBOUR_TIMEOUT; // allow for spread around NEIGHBOUR_TIMEOUT
     }
 
     public boolean isGood()
@@ -47,13 +47,8 @@ public class Node
         return System.currentTimeMillis() < lastSeen + NEIGHBOUR_TIMEOUT;
     }
 
-    public void sendECHO()
+    public void sentECHO()
     {
         state = State.Waiting;
-    }
-
-    public void setTimedOut()
-    {
-        state = State.Lost;
     }
 }

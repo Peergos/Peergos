@@ -82,9 +82,9 @@ public class Server extends Thread
                 // send ECHO to two random neighbours
                 if (rightNeighbours.size() != 0)
                 {
-                    int count=0;
+                    int count = 0;
                     int max = new Random().nextInt(rightNeighbours.size());
-                    for (Node n: rightNeighbours.values())
+                    for (Node n : rightNeighbours.values())
                     {
                         count++;
                         if (count == max)
@@ -97,9 +97,9 @@ public class Server extends Thread
                 }
                 if (leftNeighbours.size() != 0)
                 {
-                    int count=0;
+                    int count = 0;
                     int max = new Random().nextInt(leftNeighbours.size());
-                    for (Node n: leftNeighbours.values())
+                    for (Node n : leftNeighbours.values())
                     {
                         count++;
                         if (count == max)
@@ -217,16 +217,13 @@ public class Server extends Thread
             sendECHO(joiner);
         } else if (m instanceof Message.ECHO)
         {
-            int nright = 0;
-            int nleft = 0;
-            NodeID from = ((Message.ECHO) m).getHops().get(0);
+            NodeID from = m.getHops().get(0);
             SortedMap<Long, Node> temp = new TreeMap();
             for (NodeID n : ((Message.ECHO) m).getNeighbours())
             {
-
                 if (!leftNeighbours.containsKey(n.id) && !rightNeighbours.containsKey(n.id))
                 {
-                    Node fresh = new Node(n, false);
+                    Node fresh = new Node(n);
                     temp.put(n.id, fresh);
                 }
             }
@@ -244,59 +241,15 @@ public class Server extends Thread
             Set<Node> toSendECHO = new HashSet();
 
             // take up to MAX_NEIGHBOURS in each direction that are not Lost and send them an ECHO (if they haven't already been sent one)
-            SortedMap<Long, Node> right = temp.tailMap(us.id + 1);
-            while ((nright < MAX_NEIGHBOURS) && (!right.isEmpty()))
-            {
-                Node nextClosest = right.get(right.firstKey());
-                right.remove(nextClosest.node.id);
-                if (nextClosest.isLost())
-                {
-                    rightNeighbours.remove(nextClosest.node.id);
-                    leftNeighbours.remove(nextClosest.node.id);
-                    friends.remove(nextClosest.node.id);
-                    continue;
-                }
-                if (nextClosest.isRecent())
-                {
-                    rightNeighbours.put(nextClosest.node.id, nextClosest);
-                } else if (nextClosest.isWaiting())
-                {
-                    nextClosest.setTimedOut();
-                    continue;
-                } else // Good but not recent, send an ECHO
-                {
-                    rightNeighbours.put(nextClosest.node.id, nextClosest);
-                    toSendECHO.add(nextClosest);
-                }
-                nright++;
-            }
-            // and the let neighbours..
-            SortedMap<Long, Node> left = temp.headMap(us.id);
-            while ((nleft < MAX_NEIGHBOURS) && (!left.isEmpty()))
-            {
-                Node nextClosest = left.get(left.lastKey());
-                left.remove(nextClosest.node.id);
-                if (nextClosest.isLost())
-                {
-                    rightNeighbours.remove(nextClosest.node.id);
-                    leftNeighbours.remove(nextClosest.node.id);
-                    friends.remove(nextClosest.node.id);
-                    continue;
-                }
-                if (nextClosest.isRecent())
-                {
-                    leftNeighbours.put(nextClosest.node.id, nextClosest);
-                } else if (nextClosest.isWaiting())
-                {
-                    nextClosest.setTimedOut();
-                    continue;
-                } else // Good but not recent, send an ECHO
-                {
-                    leftNeighbours.put(nextClosest.node.id, nextClosest);
-                    toSendECHO.add(nextClosest);
-                }
-                nright++;
-            }
+            fillRight(temp.tailMap(us.id + 1), toSendECHO);
+            // check wrap around
+            if (rightNeighbours.size() < MAX_NEIGHBOURS)
+                fillRight(temp.headMap(us.id), toSendECHO);
+
+            fillLeft(temp.headMap(us.id), toSendECHO);
+            if (leftNeighbours.size() < MAX_NEIGHBOURS)
+                fillLeft(temp.tailMap(us.id + 1), toSendECHO);
+
             for (Node n : toSendECHO)
             {
                 sendECHO(n.node);
@@ -307,6 +260,46 @@ public class Server extends Thread
 
             printNeighboursAndFriends();
 
+    }
+
+    private void fillLeft(SortedMap<Long, Node> left, Set<Node> toSendECHO)
+    {
+        while ((leftNeighbours.size() < MAX_NEIGHBOURS) && (!left.isEmpty()))
+        {
+            Node nextClosest = left.get(left.lastKey());
+            left.remove(nextClosest.node.id);
+            if (nextClosest.isLost())
+            {
+                friends.remove(nextClosest.node.id);
+                continue;
+            }
+            leftNeighbours.put(nextClosest.node.id, nextClosest);
+            if (!nextClosest.isRecent() && !nextClosest.isWaiting())
+            {
+                nextClosest.sentECHO();
+                toSendECHO.add(nextClosest);
+            }
+        }
+    }
+
+    private void fillRight(SortedMap<Long, Node> right, Set<Node> toSendECHO)
+    {
+        while ((rightNeighbours.size() < MAX_NEIGHBOURS) && (!right.isEmpty()))
+        {
+            Node nextClosest = right.get(right.firstKey());
+            right.remove(nextClosest.node.id);
+            if (nextClosest.isLost())
+            {
+                friends.remove(nextClosest.node.id);
+                continue;
+            }
+            rightNeighbours.put(nextClosest.node.id, nextClosest);
+            if (!nextClosest.isRecent() && !nextClosest.isWaiting())
+            {
+                nextClosest.sentECHO();
+                toSendECHO.add(nextClosest);
+            }
+        }
     }
 
     public void printNeighboursAndFriends()
