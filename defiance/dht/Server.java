@@ -8,7 +8,7 @@ import java.util.*;
 
 public class Server extends Thread
 {
-    public static final int MAX_NEIGHBOURS = 10;
+    public static final int MAX_NEIGHBOURS = 2;
     public static final int MAX_UDP_PACKET_SIZE = 65507;
     public static final int MAX_PACKET_SIZE = MAX_UDP_PACKET_SIZE; // TODO: decrease this once protocol is finalized
 
@@ -73,9 +73,43 @@ public class Server extends Thread
             try
             {
                 DatagramPacket packet = new DatagramPacket(buf, buf.length);
+                socket.setSoTimeout((int) Node.NEIGHBOUR_TIMEOUT);
                 socket.receive(packet);
                 Message m = Message.read(new DataInputStream(new ByteArrayInputStream(packet.getData())));
                 actOnMessage(m);
+            } catch (SocketTimeoutException s)
+            {
+                // send ECHO to two random neighbours
+                if (rightNeighbours.size() != 0)
+                {
+                    int count=0;
+                    int max = new Random().nextInt(rightNeighbours.size());
+                    for (Node n: rightNeighbours.values())
+                    {
+                        count++;
+                        if (count == max)
+                        {
+                            if (!n.isRecent())
+                                sendECHO(n.node);
+                            break;
+                        }
+                    }
+                }
+                if (leftNeighbours.size() != 0)
+                {
+                    int count=0;
+                    int max = new Random().nextInt(leftNeighbours.size());
+                    for (Node n: leftNeighbours.values())
+                    {
+                        count++;
+                        if (count == max)
+                        {
+                            if (!n.isRecent())
+                                sendECHO(n.node);
+                            break;
+                        }
+                    }
+                }
             } catch (IOException e)
             {
                 e.printStackTrace();
@@ -85,6 +119,7 @@ public class Server extends Thread
 
     private void sendMessage(Message m, InetAddress addr, int port) throws IOException
     {
+        System.out.printf("Sent %s to %s:%d\n", m.name(), addr, port);
         ByteArrayOutputStream bout = new ByteArrayOutputStream();
         m.write(new DataOutputStream(bout));
         DatagramPacket response = new DatagramPacket(bout.toByteArray(), bout.size(), addr, port);
@@ -93,6 +128,13 @@ public class Server extends Thread
 
     private void actOnMessage(Message m)
     {
+        if (Message.LOG)
+        {
+            if (m.getHops().size() > 0)
+                System.out.printf("Received %s from %s:%d\n", m.name(), m.getHops().get(0).addr, m.getHops().get(0).port);
+            else
+                System.out.printf("Received %s\n", m.name());
+        }
         // add hop nodes to routing table/neighbours
         addNodes(m.getHops());
 
@@ -255,7 +297,7 @@ public class Server extends Thread
                 }
                 nright++;
             }
-            for (Node n: toSendECHO)
+            for (Node n : toSendECHO)
             {
                 sendECHO(n.node);
             }

@@ -6,7 +6,7 @@ public class Node
     public long lastSeen;
     public State state;
     public NodeID node;
-    public static final long NEIGHBOUR_TIMEOUT = 10*60*1000L; // 10 minutes
+    public static final long NEIGHBOUR_TIMEOUT = 2*60*1000L; // 10 minutes
 
     public Node(NodeID node)
     {

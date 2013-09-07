@@ -33,6 +33,11 @@ public abstract class Message
         }
     }
 
+    public String name()
+    {
+        return t.name();
+    }
+
     public void write(DataOutput out) throws IOException
     {
         out.writeByte((byte) t.ordinal());
@@ -56,8 +61,7 @@ public abstract class Message
     public static Message read(DataInput in) throws IOException
     {
         int index = in.readByte() & 0xff;
-        if (LOG)
-            System.out.printf("Received %s\n", lookup[index].name());
+
         switch (lookup[index])
         {
             case JOIN:
