@@ -20,10 +20,10 @@ Architecture
 ------------
 1.0 Layers of architecture
  - 1: Routing layer - Base layer which handles network creation and maintenance and message routing.
- - 2: Data Layer - Adds put, get and contains functions to turn 1.0 into a distributed hash table (no fault tolerance).
- - 3: Distributed file system - Erasure codes used to add fault tolerance, User's client responsible for ensuring enough fragments of their files survive
- - 4: Encryption - Strong encryption on users machine - convergent encryption -> deduplication for free
- - 5: Sharing - secure sharing of files with other users via cryptree key management
+ - 2: Data Layer - Adds "put", "get" and "contains" functions to turn 1.0 into a distributed hash table (no fault tolerance).
+ - 3: Distributed file system - Uses erasure codes to add fault tolerance. User's clients are responsible for ensuring that enough fragments of their files survive.
+ - 4: Encryption - Strong encryption is done on the user's machine. Specifically convergent encryption is used, which gives deduplication for free.
+ - 5: Sharing - Secure sharing of files with other users via cryptree key management.
 
 2.0 Language
  - Coded to run on JVM to get portability and speed, predominantly Java and maybe Scala
