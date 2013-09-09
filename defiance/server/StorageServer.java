@@ -26,6 +26,6 @@ public class StorageServer implements HTTPRequestHandler
         HTTPServer server = new HTTPServer(main, true);
         server.listenOn(port, null);
 
-        System.out.println("Defiance Storage Server listening on port "+port);
+        System.out.println("Defiance Storage RoutingServer listening on port "+port);
     }
 }

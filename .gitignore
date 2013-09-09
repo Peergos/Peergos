@@ -1,4 +1,5 @@
 build/*
+log/*
 *.class
 *.hprof
 *hs_err_pid*

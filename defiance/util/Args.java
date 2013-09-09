@@ -9,6 +9,8 @@ public class Args
 
     public static void parse(String[] args)
     {
+        options.clear();
+        params.clear();
         int i=0;
         while (i < args.length)
         {
@@ -73,7 +75,7 @@ public class Args
 
     public static void printOptions()
     {
-        System.out.println("\nDefiance Server help.");
+        System.out.println("\nDefiance RoutingServer help.");
         System.out.println("\nOptions:");
         for (String k: OPTIONS.keySet())
             System.out.println("-"+ k + "\t " + OPTIONS.get(k));

@@ -1,6 +1,7 @@
 package defiance.dht;
 
 import defiance.util.*;
+import defiance.util.Arrays;
 
 import java.io.*;
 import java.util.*;
@@ -8,10 +9,11 @@ import java.util.*;
 public abstract class Message
 {
     public static final boolean LOG = Args.hasOption("logMessages");
+    public static final int KEY_BYTE_LENGTH = 32;
 
     public static enum Type
     {
-        JOIN, ECHO
+        JOIN, ECHO, PUT
     }
 
     private static Type[] lookup = Type.values();
@@ -68,6 +70,8 @@ public abstract class Message
                 return new JOIN(in);
             case ECHO:
                 return new ECHO(in);
+            case PUT:
+                return new PUT(in);
         }
         throw new IllegalStateException("Unknown Message type: " + index);
     }
@@ -142,6 +146,43 @@ public abstract class Message
             out.writeInt(neighbours.size());
             for (NodeID n: neighbours)
                 n.write(out);
+        }
+    }
+
+    public static class PUT extends Message
+    {
+        private long target;
+        private byte[] key;
+        private int len;
+
+        public PUT(NodeID us, byte[] key, int len)
+        {
+            super(Type.PUT);
+            addNode(us);
+            this.key = key;
+            target = Arrays.getLong(key, 0);
+            this.len = len;
+        }
+
+        public PUT(DataInput in) throws IOException
+        {
+            super(Type.PUT, in);
+            byte[] key = new byte[KEY_BYTE_LENGTH];
+            in.readFully(key);
+            len = in.readInt();
+            target = Arrays.getLong(key, 0);
+        }
+
+        public long getTarget()
+        {
+            return target;
+        }
+
+        public void write(DataOutput out) throws IOException
+        {
+            super.write(out);
+            out.write(key);
+            out.writeInt(len);
         }
     }
 }
