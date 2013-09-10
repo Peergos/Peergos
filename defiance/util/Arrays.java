@@ -10,4 +10,12 @@ public class Arrays
             res = (res << 8) | (source[start+i] & 0xFF);
         return res;
     }
+
+    public static byte[] hexToBytes(String hex)
+    {
+        byte[] res = new byte[hex.length()/2];
+        for (int i=0; i < res.length; i++)
+            res[i] = (byte) Integer.parseInt(hex.substring(2*i, 2*i+2), 16);
+        return res;
+    }
 }

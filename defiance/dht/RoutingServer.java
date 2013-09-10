@@ -12,6 +12,7 @@ public class RoutingServer extends Thread
     public static final int MAX_NEIGHBOURS = 2;
     public static final int MAX_UDP_PACKET_SIZE = 65507;
     public static final int MAX_PACKET_SIZE = MAX_UDP_PACKET_SIZE; // TODO: decrease this once protocol is finalized
+    public static final long MAX_STORAGE_SIZE = 1024*1024*1024L;
     private static final String DATA_DIR = "data/";
 
     private DatagramSocket socket;
@@ -21,7 +22,7 @@ public class RoutingServer extends Thread
     private SortedMap<Long, Node> rightNeighbours = new TreeMap();
     private SortedMap<Long, Node> friends = new TreeMap();
     private final Storage storage;
-    private Logger LOGGER;
+    public Logger LOGGER;
 
     public RoutingServer(int port) throws IOException
     {
@@ -33,7 +34,7 @@ public class RoutingServer extends Thread
         Handler handler = new FileHandler("log/" + name + ".log", 10 * 1024 * 1024, 7);
         LOGGER.addHandler(handler);
         LOGGER.setLevel(Level.ALL);
-        storage = new Storage(new File(DATA_DIR));
+        storage = new Storage(new File(DATA_DIR), MAX_STORAGE_SIZE);
     }
 
     public void run()
@@ -136,7 +137,7 @@ public class RoutingServer extends Thread
     private void sendMessage(Message m, InetAddress addr, int port) throws IOException
     {
         if (Message.LOG)
-            LOGGER.log(Level.ALL, String.format("Sent %s to %s:%d\n", m.name(), addr, port));
+            LOGGER.log(Level.ALL, String.format("Sent %s with target %d to %s:%d\n", m.name(), m.getTarget(), addr, port));
         ByteArrayOutputStream bout = new ByteArrayOutputStream();
         m.write(new DataOutputStream(bout));
         DatagramPacket response = new DatagramPacket(bout.toByteArray(), bout.size(), addr, port);
@@ -148,7 +149,7 @@ public class RoutingServer extends Thread
         if (Message.LOG)
         {
             if (m.getHops().size() > 0)
-                LOGGER.log(Level.ALL, String.format("Received %s from %s:%d\n", m.name(), m.getHops().get(0).addr, m.getHops().get(0).port));
+                LOGGER.log(Level.ALL, String.format("Received %s from %s:%d with target %d\n", m.name(), m.getHops().get(0).addr, m.getHops().get(0).port, m.getTarget()));
             else
                 LOGGER.log(Level.ALL, String.format("Received %s\n", m.name()));
         }
@@ -215,8 +216,10 @@ public class RoutingServer extends Thread
         }
     }
 
-    private void escalateMessage(Message m)
+    private synchronized void escalateMessage(Message m)
     {
+        if (Message.LOG)
+            LOGGER.log(Level.ALL, String.format("Escalated to API %s\n", m.name()));
         if (m instanceof Message.JOIN)
         {
             NodeID joiner = ((Message.JOIN) m).target;
@@ -284,6 +287,26 @@ public class RoutingServer extends Thread
             {
                 sendECHO(n.node);
             }
+        }
+        else if (m instanceof Message.PUT)
+        {
+            if (storage.accept(((Message.PUT) m).getKey(), ((Message.PUT) m).getSize()))
+            {
+                // send PUT accept message
+                Message accept = new Message.PUT_ACCEPT(us, (Message.PUT)m);
+                forwardMessage(accept);
+            }
+            else
+            {
+                // DO NOT reply
+            }
+        }
+        else if (m instanceof Message.PUT_ACCEPT)
+        {
+            // initiate file transfer over tcp
+            NodeID target = m.getHops().get(0);
+            byte[] key = ((Message.PUT_ACCEPT) m).getKey();
+
         }
 
         if (Message.LOG)
@@ -359,7 +382,7 @@ public class RoutingServer extends Thread
         }
     }
 
-    private NodeID getClosest(Message m)
+    private synchronized NodeID getClosest(Message m)
     {
         long target = m.getTarget();
         NodeID next = us;
@@ -411,7 +434,7 @@ public class RoutingServer extends Thread
 
     public static void test(int nodes) throws IOException
     {
-        String[] args = new String[] {"-firstNode", "-port", "8000", "-logMessages"};
+        String[] args = new String[] {"-firstNode", "-port", "8000", "-logMessages", "-script", Args.getParameter("script")};
         main(args);
         args = new String[] {"-port", "8000", "-logMessages", "-contactIP", "127.0.0.1", "-contactPort", args[2]};
         for (int i=0; i < nodes-1; i++)
@@ -438,6 +461,12 @@ public class RoutingServer extends Thread
             return;
         }
         int port = Args.getInt("port", 8080);
-        new RoutingServer(port).start();
+        RoutingServer rs = new RoutingServer(port);
+        rs.start();
+        API api = new API(rs);
+        if (Args.hasParameter("script"))
+        {
+            new Scripter(api, Args.getParameter("script")).start();
+        }
     }
 }
