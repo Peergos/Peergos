@@ -23,7 +23,7 @@ public class Arrays
     {
         StringBuilder s = new StringBuilder();
         for (byte b : data)
-            s.append(String.format("%x", b & 0xFF));
+            s.append(String.format("%02x", b & 0xFF));
         return s.toString();
     }
 }

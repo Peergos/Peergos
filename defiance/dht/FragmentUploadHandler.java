@@ -5,7 +5,6 @@ import org.nereus.http.server.*;
 
 import java.io.*;
 import java.net.*;
-import java.util.*;
 
 public class FragmentUploadHandler extends DirectoryHandler
 {
@@ -17,6 +16,7 @@ public class FragmentUploadHandler extends DirectoryHandler
         this.storage = storage;
     }
 
+    @Override
     protected void handlePostRequest(String resourcePath, InetAddress clientAddress, HTTPRequest request, HTTPResponse response) throws IOException
     {
         String name = URLDecoder.decode(resourcePath, "UTF-8");
@@ -32,7 +32,6 @@ public class FragmentUploadHandler extends DirectoryHandler
             return;
         }
 
-        File target = new File(directory, "/" + name);
         HTTPResponseHeaders headers = response.getHeaders();
         try
         {
@@ -54,7 +53,7 @@ public class FragmentUploadHandler extends DirectoryHandler
                 bout.write(buffer, 0, r);
             }
             uploadStream.close();
-            storage.put(defiance.util.Arrays.hexToBytes(name), bout.toByteArray());
+            storage.put(new ByteArrayWrapper(defiance.util.Arrays.hexToBytes(name)), bout.toByteArray());
         } catch (Exception e)
         {
             headers.configureAsTooLarge();

@@ -18,6 +18,6 @@ public class StorageServer
             return;
         }
 
-        System.out.println("Defiance StorageServer listening on port "+port);
+        System.out.println("Defiance StorageServer listening on TCP port "+port);
     }
 }

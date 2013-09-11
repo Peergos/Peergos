@@ -11,9 +11,8 @@ public class Storage
     private final long maxBytes;
     private final AtomicLong totalSize = new AtomicLong(0);
     private final AtomicLong promisedSize = new AtomicLong(0);
-    private final Map<byte[], Integer> pending = new ConcurrentHashMap();
-    private static final String DUMMY = "";
-    private final Map<byte[], Integer> existing = new ConcurrentHashMap();
+    private final Map<ByteArrayWrapper, Integer> pending = new ConcurrentHashMap();
+    private final Map<ByteArrayWrapper, Integer> existing = new ConcurrentHashMap();
 
     public Storage(File root, long maxBytes) throws IOException
     {
@@ -29,10 +28,10 @@ public class Storage
 
     public boolean isWaitingFor(byte[] key)
     {
-        return pending.containsKey(key);
+        return pending.containsKey(new ByteArrayWrapper(key));
     }
 
-    public boolean accept(byte[] key, int size)
+    public boolean accept(ByteArrayWrapper key, int size)
     {
         if (existing.containsKey(key))
             return false; // don't overwrite old data for now (not sure this would ever be a problem with a cryptographic hash..
@@ -43,7 +42,7 @@ public class Storage
         return res;
     }
 
-    public boolean put(byte[] key, byte[] value)
+    public boolean put(ByteArrayWrapper key, byte[] value)
     {
         if (value.length != pending.get(key))
             return false;
@@ -62,12 +61,12 @@ public class Storage
         return true;
     }
 
-    public boolean contains(byte[] key)
+    public boolean contains(ByteArrayWrapper key)
     {
         return existing.containsKey(key);
     }
 
-    public int sizeOf(byte[] key)
+    public int sizeOf(ByteArrayWrapper key)
     {
         if (!existing.containsKey(key))
             return 0;
@@ -78,9 +77,9 @@ public class Storage
     {
         String name;
 
-        public Fragment(byte[] key)
+        public Fragment(ByteArrayWrapper key)
         {
-            name = defiance.util.Arrays.bytesToHex(key);
+            name = defiance.util.Arrays.bytesToHex(key.data);
         }
 
         public void write(byte[] data) throws IOException

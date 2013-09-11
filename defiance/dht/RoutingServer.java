@@ -25,8 +25,8 @@ public class RoutingServer extends Thread
     private SortedMap<Long, Node> friends = new TreeMap();
     private final Storage storage;
     public Logger LOGGER;
-    private final Map<byte[], PutHandler> pendingPuts = new ConcurrentHashMap();
-    private final Map<byte[], GetHandler> pendingGets = new ConcurrentHashMap();
+    private final Map<ByteArrayWrapper, PutHandler> pendingPuts = new ConcurrentHashMap();
+    private final Map<ByteArrayWrapper, GetHandler> pendingGets = new ConcurrentHashMap();
 
     public RoutingServer(int port) throws IOException
     {
@@ -299,7 +299,7 @@ public class RoutingServer extends Thread
             }
         } else if (m instanceof Message.PUT)
         {
-            if (storage.accept(((Message.PUT) m).getKey(), ((Message.PUT) m).getSize()))
+            if (storage.accept(new ByteArrayWrapper(((Message.PUT) m).getKey()), ((Message.PUT) m).getSize()))
             {
                 // send PUT accept message
                 Message accept = new Message.PUT_ACCEPT(us, (Message.PUT) m);
@@ -312,15 +312,16 @@ public class RoutingServer extends Thread
         {
             // initiate file transfer over tcp
             NodeID target = m.getHops().get(0);
-            byte[] key = ((Message.PUT_ACCEPT) m).getKey();
+            ByteArrayWrapper key = new ByteArrayWrapper(((Message.PUT_ACCEPT) m).getKey());
             if (pendingPuts.containsKey(key))
             {
+                LOGGER.log(Level.ALL, "handling PUT_ACCEPT");
                 pendingPuts.get(key).handleOffer(new PutOffer(target));
                 pendingPuts.remove(key);
             }
         } else if (m instanceof Message.GET)
         {
-            byte[] key = ((Message.GET) m).getKey();
+            ByteArrayWrapper key = new ByteArrayWrapper(((Message.GET) m).getKey());
             if (storage.contains(key))
             {
                 Message res = new Message.GET_RESULT(us, (Message.GET) m, storage.sizeOf(key));
@@ -479,7 +480,7 @@ public class RoutingServer extends Thread
     public void sendPUT(byte[] key, int len, PutHandler handler)
     {
         Message put = new Message.PUT(us, key, len);
-        pendingPuts.put(key, handler);
+        pendingPuts.put(new ByteArrayWrapper(key), handler);
         forwardMessage(put);
         handler.started();
     }
@@ -487,7 +488,7 @@ public class RoutingServer extends Thread
     public void sendGET(byte[] key, GetHandler handler)
     {
         Message con = new Message.GET(us, key);
-        pendingGets.put(key, handler);
+        pendingGets.put(new ByteArrayWrapper(key), handler);
         forwardMessage(con);
         handler.started();
     }
