@@ -11,6 +11,7 @@ server:
 	echo "Build-Date: " `date` >> def.manifest
 	echo "Class-Path: " lib/Nereus6.jar >> def.manifest
 	javac $(JAVA_BUILD_OPTS) -d build `find defiance -name \*.java`
-	jar -cfm DefianceServer.jar def.manifest \
+	cp lib/Nereus6.jar DefianceServer.jar
+	jar -ufm DefianceServer.jar def.manifest \
 	    -C build defiance
 	rm -f def.manifest
