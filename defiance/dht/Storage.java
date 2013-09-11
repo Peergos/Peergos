@@ -13,13 +13,23 @@ public class Storage
     private final AtomicLong promisedSize = new AtomicLong(0);
     private final Map<byte[], Integer> pending = new ConcurrentHashMap();
     private static final String DUMMY = "";
-    private final Map<byte[], String> existing = new ConcurrentHashMap<byte[], String>();
+    private final Map<byte[], Integer> existing = new ConcurrentHashMap();
 
-    public Storage(File root, long maxBytes)
+    public Storage(File root, long maxBytes) throws IOException
     {
         this.root = root;
         this.maxBytes = maxBytes;
         root.mkdirs();
+    }
+
+    public void start(int port) throws IOException
+    {
+        StorageServer.create(port, root, this);
+    }
+
+    public boolean isWaitingFor(byte[] key)
+    {
+        return pending.containsKey(key);
     }
 
     public boolean accept(byte[] key, int size)
@@ -38,7 +48,7 @@ public class Storage
         if (value.length != pending.get(key))
             return false;
         pending.remove(key);
-        existing.put(key, DUMMY);
+        existing.put(key, value.length);
         // commit data
         try
         {
@@ -52,16 +62,25 @@ public class Storage
         return true;
     }
 
+    public boolean contains(byte[] key)
+    {
+        return existing.containsKey(key);
+    }
+
+    public int sizeOf(byte[] key)
+    {
+        if (!existing.containsKey(key))
+            return 0;
+        return existing.get(key);
+    }
+
     public class Fragment
     {
         String name;
 
         public Fragment(byte[] key)
         {
-            StringBuilder s = new StringBuilder();
-            for (byte b : key)
-                s.append(String.format("%x", b & 0xFF));
-            name = s.toString();
+            name = defiance.util.Arrays.bytesToHex(key);
         }
 
         public void write(byte[] data) throws IOException

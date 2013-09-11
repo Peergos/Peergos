@@ -11,7 +11,6 @@ public class API
         this.routing = routing;
     }
 
-
     // 256 bit key / 32 byte
     public void put(byte[] key, byte[] value)
     {
@@ -23,11 +22,13 @@ public class API
 
     public void contains(byte[] key)
     {
-
+        routing.sendGET(key, new DefaultContainsHandler(key));
     }
 
-    public void get(byte[] key)
+    public GetHandler get(byte[] key)
     {
-
+        GetHandler res = new DefaultGetHandler(key);
+        routing.sendGET(key, res);
+        return res;
     }
 }

@@ -13,7 +13,7 @@ public abstract class Message
 
     public static enum Type
     {
-        JOIN, ECHO, PUT, PUT_ACCEPT
+        JOIN, ECHO, PUT, PUT_ACCEPT, GET, GET_RESULT
     }
 
     private static Type[] lookup = Type.values();
@@ -74,6 +74,10 @@ public abstract class Message
                 return new PUT(in);
             case PUT_ACCEPT:
                 return new PUT_ACCEPT(in);
+            case GET:
+                return new GET(in);
+            case GET_RESULT:
+                return new GET_RESULT(in);
         }
         throw new IllegalStateException("Unknown Message type: " + index);
     }
@@ -214,6 +218,100 @@ public abstract class Message
         }
 
         public PUT_ACCEPT(DataInput in) throws IOException
+        {
+            super(Type.PUT_ACCEPT, in);
+            key = new byte[KEY_BYTE_LENGTH];
+            in.readFully(key);
+            len = in.readInt();
+            target = in.readLong();
+        }
+
+        public long getTarget()
+        {
+            return target;
+        }
+
+        public void write(DataOutput out) throws IOException
+        {
+            super.write(out);
+            out.write(key);
+            out.writeInt(len);
+            out.writeLong(target);
+        }
+
+        public byte[] getKey()
+        {
+            return key;
+        }
+
+        public int getSize()
+        {
+            return len;
+        }
+    }
+
+    public static class GET extends Message
+    {
+        private final long target;
+        private final byte[] key;
+
+        public GET(NodeID us, byte[] key)
+        {
+            super(Type.GET);
+            addNode(us);
+            this.key = key;
+            target = Arrays.getLong(key, 0);
+        }
+
+        public GET(NodeID us, byte[] key, long target)
+        {
+            super(Type.GET);
+            addNode(us);
+            this.key = key;
+            this.target = target;
+        }
+
+        public GET(DataInput in) throws IOException
+        {
+            super(Type.GET, in);
+            key = new byte[KEY_BYTE_LENGTH];
+            in.readFully(key);
+            target = Arrays.getLong(key, 0);
+        }
+
+        public long getTarget()
+        {
+            return target;
+        }
+
+        public void write(DataOutput out) throws IOException
+        {
+            super.write(out);
+            out.write(key);
+        }
+
+        public byte[] getKey()
+        {
+            return key;
+        }
+    }
+
+    public static class GET_RESULT extends Message
+    {
+        private final long target;
+        private final byte[] key;
+        private final int len;
+
+        public GET_RESULT(NodeID us, Message.GET put, int len)
+        {
+            super(Type.GET_RESULT);
+            addNode(us);
+            this.key = put.getKey();
+            target = put.getHops().get(0).id;
+            this.len = len;
+        }
+
+        public GET_RESULT(DataInput in) throws IOException
         {
             super(Type.PUT_ACCEPT, in);
             key = new byte[KEY_BYTE_LENGTH];

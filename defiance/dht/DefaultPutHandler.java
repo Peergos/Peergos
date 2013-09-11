@@ -1,6 +1,6 @@
 package defiance.dht;
 
-public class DefaultPutHandler implements PutHandler
+public class DefaultPutHandler extends AbstractRequestHandler implements PutHandler
 {
     byte[] key, value;
 
@@ -13,6 +13,9 @@ public class DefaultPutHandler implements PutHandler
     @Override
     public void handleOffer(PutOffer offer)
     {
+        // upload file to target with a HTTP POST request
 
+
+        setCompleted();
     }
 }

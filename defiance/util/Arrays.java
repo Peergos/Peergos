@@ -18,4 +18,12 @@ public class Arrays
             res[i] = (byte) Integer.parseInt(hex.substring(2*i, 2*i+2), 16);
         return res;
     }
+
+    public static String bytesToHex(byte[] data)
+    {
+        StringBuilder s = new StringBuilder();
+        for (byte b : data)
+            s.append(String.format("%x", b & 0xFF));
+        return s.toString();
+    }
 }

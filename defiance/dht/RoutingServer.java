@@ -1,10 +1,12 @@
 package defiance.dht;
 
 import defiance.util.*;
+import defiance.util.Arrays;
 
 import java.io.*;
 import java.net.*;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.logging.*;
 
 public class RoutingServer extends Thread
@@ -12,7 +14,7 @@ public class RoutingServer extends Thread
     public static final int MAX_NEIGHBOURS = 2;
     public static final int MAX_UDP_PACKET_SIZE = 65507;
     public static final int MAX_PACKET_SIZE = MAX_UDP_PACKET_SIZE; // TODO: decrease this once protocol is finalized
-    public static final long MAX_STORAGE_SIZE = 1024*1024*1024L;
+    public static final long MAX_STORAGE_SIZE = 1024 * 1024 * 1024L;
     private static final String DATA_DIR = "data/";
 
     private DatagramSocket socket;
@@ -23,6 +25,8 @@ public class RoutingServer extends Thread
     private SortedMap<Long, Node> friends = new TreeMap();
     private final Storage storage;
     public Logger LOGGER;
+    private final Map<byte[], PutHandler> pendingPuts = new ConcurrentHashMap();
+    private final Map<byte[], GetHandler> pendingGets = new ConcurrentHashMap();
 
     public RoutingServer(int port) throws IOException
     {
@@ -35,6 +39,7 @@ public class RoutingServer extends Thread
         LOGGER.addHandler(handler);
         LOGGER.setLevel(Level.ALL);
         storage = new Storage(new File(DATA_DIR), MAX_STORAGE_SIZE);
+        storage.start(port);
     }
 
     public void run()
@@ -222,6 +227,11 @@ public class RoutingServer extends Thread
             LOGGER.log(Level.ALL, String.format("Escalated to API %s\n", m.name()));
         if (m instanceof Message.JOIN)
         {
+            // TODO: stop joining attacks
+            // where a new node requests an ID which is for an already published fragment, which is stored on another node
+            // thus receiving all future requests for that fragment
+            // randomise the target ID on the first 3 hops in the network
+
             NodeID joiner = ((Message.JOIN) m).target;
             if (joiner.id > us.id)
             {
@@ -287,27 +297,67 @@ public class RoutingServer extends Thread
             {
                 sendECHO(n.node);
             }
-        }
-        else if (m instanceof Message.PUT)
+        } else if (m instanceof Message.PUT)
         {
             if (storage.accept(((Message.PUT) m).getKey(), ((Message.PUT) m).getSize()))
             {
                 // send PUT accept message
-                Message accept = new Message.PUT_ACCEPT(us, (Message.PUT)m);
+                Message accept = new Message.PUT_ACCEPT(us, (Message.PUT) m);
                 forwardMessage(accept);
-            }
-            else
+            } else
             {
                 // DO NOT reply
             }
-        }
-        else if (m instanceof Message.PUT_ACCEPT)
+        } else if (m instanceof Message.PUT_ACCEPT)
         {
             // initiate file transfer over tcp
             NodeID target = m.getHops().get(0);
             byte[] key = ((Message.PUT_ACCEPT) m).getKey();
-
+            if (pendingPuts.containsKey(key))
+            {
+                pendingPuts.get(key).handleOffer(new PutOffer(target));
+                pendingPuts.remove(key);
+            }
+        } else if (m instanceof Message.GET)
+        {
+            byte[] key = ((Message.GET) m).getKey();
+            if (storage.contains(key))
+            {
+                Message res = new Message.GET_RESULT(us, (Message.GET) m, storage.sizeOf(key));
+                forwardMessage(res);
+            } else
+            {
+                // forward to two neighbours as they might have it (if we were the original target of the request
+                long keyLong = Arrays.getLong(((Message.GET) m).getKey(), 0);
+                if (leftNeighbours.size() != 0)
+                {
+                    Node left = leftNeighbours.get(leftNeighbours.lastKey());
+                    if (Math.abs(keyLong - us.id) < left.node.d(keyLong))
+                    {
+                        Message newput = new Message.GET(us, ((Message.GET) m).getKey(), left.node.id);
+                        forwardMessage(newput);
+                    }
+                }
+                if (rightNeighbours.size() != 0)
+                {
+                    Node right = rightNeighbours.get(rightNeighbours.firstKey());
+                    if (Math.abs(keyLong - us.id) < right.node.d(keyLong))
+                    {
+                        Message newput = new Message.GET(us, ((Message.GET) m).getKey(), right.node.id);
+                        forwardMessage(newput);
+                    }
+                }
+            }
+        } else if (m instanceof Message.GET_RESULT)
+        {
+            byte[] key = ((Message.GET_RESULT) m).getKey();
+            if (pendingGets.containsKey(key))
+            {
+                pendingGets.get(key).handleResult(new GetOffer(m.getHops().get(0), ((Message.GET_RESULT) m).getSize()));
+                pendingGets.remove(key);
+            }
         }
+
 
         if (Message.LOG)
             printNeighboursAndFriends();
@@ -429,17 +479,27 @@ public class RoutingServer extends Thread
     public void sendPUT(byte[] key, int len, PutHandler handler)
     {
         Message put = new Message.PUT(us, key, len);
+        pendingPuts.put(key, handler);
         forwardMessage(put);
+        handler.started();
+    }
+
+    public void sendGET(byte[] key, GetHandler handler)
+    {
+        Message con = new Message.GET(us, key);
+        pendingGets.put(key, handler);
+        forwardMessage(con);
+        handler.started();
     }
 
     public static void test(int nodes) throws IOException
     {
-        String[] args = new String[] {"-firstNode", "-port", "8000", "-logMessages", "-script", Args.getParameter("script")};
+        String[] args = new String[]{"-firstNode", "-port", "8000", "-logMessages", "-script", Args.getParameter("script")};
         main(args);
-        args = new String[] {"-port", "8000", "-logMessages", "-contactIP", "127.0.0.1", "-contactPort", args[2]};
-        for (int i=0; i < nodes-1; i++)
+        args = new String[]{"-port", "8000", "-logMessages", "-contactIP", "127.0.0.1", "-contactPort", args[2]};
+        for (int i = 0; i < nodes - 1; i++)
         {
-            args[1] = 9000 + 1000*i + "";
+            args[1] = 9000 + 1000 * i + "";
             main(args);
         }
     }
