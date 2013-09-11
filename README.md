@@ -57,3 +57,8 @@ Architecture
  - sharing of a text file with another user could constitute a secure email
  - files are read-only (will implement diff files later to accomodate changes without storage bloat)
  - have an API for sharing a file with an conventional email address, this sends a conventional email to the target with a link to the file (can be used to encourage viral aspect to spread to friends)
+
+Usage
+-----
+Run with the following to find out available options:
+java -jar DefianceServer.jar -help
