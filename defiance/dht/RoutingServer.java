@@ -27,6 +27,7 @@ public class RoutingServer extends Thread
     public Logger LOGGER;
     private final Map<ByteArrayWrapper, PutHandler> pendingPuts = new ConcurrentHashMap();
     private final Map<ByteArrayWrapper, GetHandler> pendingGets = new ConcurrentHashMap();
+    private final Random random = new Random(System.currentTimeMillis());
 
     public RoutingServer(int port) throws IOException
     {
@@ -169,7 +170,7 @@ public class RoutingServer extends Thread
         NodeID next = getClosest(m);
         if (next != us)
         {
-            m.addNode(us);
+            m.addNode(getRandomNeighbour());
             try
             {
                 sendMessage(m, next.addr, next.port);
@@ -180,6 +181,15 @@ public class RoutingServer extends Thread
             }
         } else
             escalateMessage(m); //bypass network in this unlikely case
+    }
+
+    private NodeID getRandomNeighbour()
+    {
+        List<Node> t = new ArrayList();
+        t.addAll(leftNeighbours.values());
+        t.addAll(rightNeighbours.values());
+        t.add(new Node(us));
+        return t.get(random.nextInt(t.size())).node;
     }
 
     private Node getNode(NodeID n)
