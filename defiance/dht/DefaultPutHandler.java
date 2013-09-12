@@ -21,7 +21,7 @@ public class DefaultPutHandler extends AbstractRequestHandler implements PutHand
         // upload file to target with a HTTP POST request
         try
         {
-            URL target = new URL("http", "localhost"/*offer.getTarget().addr.getHostAddress()*/, offer.getTarget().port, "/" + Arrays.bytesToHex(key));
+            URL target = new URL("http", offer.getTarget().addr.getHostAddress(), offer.getTarget().port, "/" + Arrays.bytesToHex(key));
             HttpURLConnection conn = (HttpURLConnection) target.openConnection();
             conn.setDoOutput(true);
             conn.setRequestMethod("POST");
