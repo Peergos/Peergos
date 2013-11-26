@@ -1,7 +1,7 @@
 Defiance
 ========
 
-Peer-to-peer encrypted filesystem with secure sharing of files.
+Fundamentally, Defiance is a peer-to-peer encrypted filesystem with secure sharing of files. 
 
 I would very much appreciate any help, be it code, testing, bugs, or advice. 
 
@@ -11,6 +11,8 @@ Project aims
  - To allow secure sharing of such files with other users of the network
  - To enable a new secure form of email
  - To be independent of any central trust architecture like SSL certificates
+ - A User should be able to easily run Defiance on a machine in their home and get their own secure cloud storage, and social communication platform from it. 
+ - To enable secure real time chat, and video conversations
 
 Project anti-aims
 -----------------
@@ -33,12 +35,8 @@ Architecture
  - network addresses are shared after connection
  - network topology is learned through normal traffic (ring based with random links across circle ~ log(N))
 
-4.0 User address modelled on bitcoin addresses
- - 64 alpha-numeric characters
- - uppercase letter "O", uppercase letter "I", lowercase letter "l", and the number "0" are never used
- - has an associated private and public key
+4.0 User address is a public key
  - private key is required to access the user's files
- - several of the characters are a checksum
  - each new address is validated by the network before it can be used to donate space
 
 5.0 Encryption
