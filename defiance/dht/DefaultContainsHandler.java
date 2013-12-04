@@ -1,10 +1,11 @@
 package defiance.dht;
 
-public class DefaultContainsHandler extends AbstractRequestHandler implements GetHandler
+public class DefaultContainsHandler extends AbstractRequestHandler implements ContainsHandler
 {
     private final byte[] key;
+    private boolean exists;
 
-    // use isCompleted() && !isFailed() to determine is key is found
+    // use isCompleted() && !isFailed() to determine if key is found
 
     public DefaultContainsHandler(byte[] key)
     {
@@ -14,12 +15,13 @@ public class DefaultContainsHandler extends AbstractRequestHandler implements Ge
     @Override
     public synchronized void handleResult(GetOffer offer)
     {
+        exists = offer.getSize() > 0;
         setCompleted();
     }
 
     @Override
-    public synchronized byte[] getResult()
+    public synchronized boolean getResult()
     {
-        return null;
+        return exists;
     }
 }

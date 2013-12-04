@@ -11,16 +11,19 @@ public class API
     }
 
     // 256 bit key / 32 byte
-    public void put(byte[] key, byte[] value)
+    public PutHandler put(byte[] key, byte[] value)
     {
         assert(key.length == 32);
         PutHandler handler = new DefaultPutHandler(key, value);
         routing.sendPUT(key, value.length, handler);
+        return handler;
     }
 
-    public void contains(byte[] key)
+    public ContainsHandler contains(byte[] key)
     {
-        routing.sendGET(key, new DefaultContainsHandler(key));
+        ContainsHandler handler = new DefaultContainsHandler(key);
+        routing.sendCONTAINS(key, handler);
+        return handler;
     }
 
     public GetHandler get(byte[] key)

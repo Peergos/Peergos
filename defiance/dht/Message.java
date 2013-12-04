@@ -313,7 +313,7 @@ public abstract class Message
 
         public GET_RESULT(DataInput in) throws IOException
         {
-            super(Type.PUT_ACCEPT, in);
+            super(Type.GET_RESULT, in);
             key = new byte[KEY_BYTE_LENGTH];
             in.readFully(key);
             len = in.readInt();

@@ -26,7 +26,7 @@ public class RoutingServer extends Thread
     private final Storage storage;
     public Logger LOGGER;
     private final Map<ByteArrayWrapper, PutHandler> pendingPuts = new ConcurrentHashMap();
-    private final Map<ByteArrayWrapper, GetHandler> pendingGets = new ConcurrentHashMap();
+    private final Map<ByteArrayWrapper, PullHandler> pendingGets = new ConcurrentHashMap();
     private final Random random = new Random(System.currentTimeMillis());
 
     public RoutingServer(int port) throws IOException
@@ -35,6 +35,7 @@ public class RoutingServer extends Thread
         socket = new DatagramSocket(port);
         us = new NodeID();
         String name = us.id + ":" + us.port;
+        setName("RoutingServer port: "+us.port);
         LOGGER = Logger.getLogger(name);
         Handler handler = new FileHandler("log/" + name + ".log", 10 * 1024 * 1024, 7);
         LOGGER.addHandler(handler);
@@ -361,12 +362,14 @@ public class RoutingServer extends Thread
             }
         } else if (m instanceof Message.GET_RESULT)
         {
-            byte[] key = ((Message.GET_RESULT) m).getKey();
+            ByteArrayWrapper key = new ByteArrayWrapper(((Message.GET_RESULT) m).getKey());
             if (pendingGets.containsKey(key))
             {
                 pendingGets.get(key).handleResult(new GetOffer(m.getHops().get(0), ((Message.GET_RESULT) m).getSize()));
                 pendingGets.remove(key);
             }
+            else
+                LOGGER.log(Level.ALL, "Couldn't find GET_RESULT handler for " + Arrays.bytesToHex(key.data));
         }
 
 
@@ -496,6 +499,14 @@ public class RoutingServer extends Thread
     }
 
     public void sendGET(byte[] key, GetHandler handler)
+    {
+        Message con = new Message.GET(us, key);
+        pendingGets.put(new ByteArrayWrapper(key), handler);
+        forwardMessage(con);
+        handler.started();
+    }
+
+    public void sendCONTAINS(byte[] key, ContainsHandler handler)
     {
         Message con = new Message.GET(us, key);
         pendingGets.put(new ByteArrayWrapper(key), handler);

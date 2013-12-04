@@ -21,7 +21,7 @@ public class DefaultGetHandler extends AbstractRequestHandler implements GetHand
         // download fragment using HTTP GET
         try
         {
-            URL target = new URL("http", offer.getTarget().addr.getHostName(), offer.getTarget().port, Arrays.bytesToHex(key));
+            URL target = new URL("http", offer.getTarget().addr.getHostName(), offer.getTarget().port, "/"+Arrays.bytesToHex(key));
             URLConnection conn = target.openConnection();
             InputStream in = conn.getInputStream();
             byte[] buf = new byte[2*1024*1024];
