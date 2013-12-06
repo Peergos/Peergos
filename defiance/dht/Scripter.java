@@ -60,5 +60,7 @@ public class Scripter extends Thread
         {
             e.printStackTrace();
         }
+        System.out.println("Finished tests!");
+        System.exit(0);
     }
 }
