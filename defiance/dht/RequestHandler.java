@@ -3,11 +3,9 @@ package defiance.dht;
 
 public interface RequestHandler
 {
-    public void started();
+    public void onStart();
 
-    public void setFailed();
-    public boolean isFailed();
+    public void onError(Throwable e);
 
-    public void setCompleted();
-    public boolean isCompleted();
+    public void onComplete();
 }

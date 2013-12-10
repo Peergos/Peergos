@@ -495,7 +495,7 @@ public class RoutingServer extends Thread
         Message put = new Message.PUT(us, key, len);
         pendingPuts.put(new ByteArrayWrapper(key), handler);
         forwardMessage(put);
-        handler.started();
+        handler.onStart();
     }
 
     public void sendGET(byte[] key, GetHandler handler)
@@ -503,7 +503,7 @@ public class RoutingServer extends Thread
         Message con = new Message.GET(us, key);
         pendingGets.put(new ByteArrayWrapper(key), handler);
         forwardMessage(con);
-        handler.started();
+        handler.onStart();
     }
 
     public void sendCONTAINS(byte[] key, ContainsHandler handler)
@@ -511,7 +511,7 @@ public class RoutingServer extends Thread
         Message con = new Message.GET(us, key);
         pendingGets.put(new ByteArrayWrapper(key), handler);
         forwardMessage(con);
-        handler.started();
+        handler.onStart();
     }
 
     public static void test(int nodes) throws IOException

@@ -37,22 +37,32 @@ public class Scripter extends Thread
                 }
                 if (parts[1].equals("PUT"))
                 {
-                    PutHandler put = api.put(Arrays.hexToBytes(parts[2]), Arrays.hexToBytes(parts[3]));
+                    api.put(Arrays.hexToBytes(parts[2]), Arrays.hexToBytes(parts[3]), new PutHandlerCallback(){
+                        public void callback(PutHandler handler) {
+                            System.out.println("Put completed with no error");
+                        }
+                    });
                     System.out.println("Sent PUT message..");
-                    while (!put.isCompleted()) try {Thread.sleep(100);} catch (InterruptedException e) {}
-                    System.out.println("Put completed with result: "+ !put.isFailed());
                 } else if (parts[1].equals("GET"))
                 {
-                    GetHandler get = api.get(Arrays.hexToBytes(parts[2]));
+                    api.get(Arrays.hexToBytes(parts[2]), new GetHandlerCallback() {
+                        @Override
+                        public void callback(GetHandler handler) {
+                            try {
+                            System.out.println("GET result: "+new String(handler.getResult(), "UTF-8"));
+                            } catch (UnsupportedEncodingException e) {e.printStackTrace();}
+                        }
+                    });
                     System.out.println("Sent Get message");
-                    while (!get.isCompleted()) try {Thread.sleep(100);} catch (InterruptedException e) {}
-                    System.out.println(new String(get.getResult(), "UTF-8"));
                 } else if (parts[1].equals("CON"))
                 {
-                    ContainsHandler con = api.contains(Arrays.hexToBytes(parts[2]));
+                    api.contains(Arrays.hexToBytes(parts[2]), new ContainsHandlerCallback() {
+                        @Override
+                        public void callback(ContainsHandler handler) {
+                             System.out.println(handler.getResult()? "true": "false");
+                        }
+                    });
                     System.out.println("Sent Contains message");
-                    while (!con.isCompleted()) try {Thread.sleep(100);} catch (InterruptedException e) {}
-                    System.out.println(con.getResult()? "true": "false");
                 } else
                     System.out.println("Unknown command: " + command);
             }
@@ -60,7 +70,8 @@ public class Scripter extends Thread
         {
             e.printStackTrace();
         }
-        System.out.println("Finished tests!");
+        System.out.println("Finished sending messages!");
+        try {Thread.sleep(1000);} catch (InterruptedException e) {}
         System.exit(0);
     }
 }

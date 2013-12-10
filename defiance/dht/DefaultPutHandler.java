@@ -7,12 +7,24 @@ import java.net.*;
 
 public class DefaultPutHandler extends AbstractRequestHandler implements PutHandler
 {
-    byte[] key, value;
+    private final byte[] key, value;
+    private final PutHandlerCallback onComplete;
 
-    public DefaultPutHandler(byte[] key, byte[] value)
+    public DefaultPutHandler(byte[] key, byte[] value, PutHandlerCallback onComplete)
     {
         this.key = key;
         this.value = value;
+        this.onComplete = onComplete;
+    }
+
+    protected void handleComplete()
+    {
+        onComplete.callback(this);
+    }
+
+    protected void handleError(Throwable e)
+    {
+        e.printStackTrace();
     }
 
     @Override
@@ -30,12 +42,10 @@ public class DefaultPutHandler extends AbstractRequestHandler implements PutHand
             out.flush();
             out.close();
             conn.getResponseCode();
-            setCompleted();
+            onComplete();
         } catch (IOException e)
         {
-            e.printStackTrace();
+            onError(e);
         }
-
-        setCompleted();
     }
 }

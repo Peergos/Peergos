@@ -4,19 +4,31 @@ public class DefaultContainsHandler extends AbstractRequestHandler implements Co
 {
     private final byte[] key;
     private boolean exists;
+    private final ContainsHandlerCallback onComplete;
 
     // use isCompleted() && !isFailed() to determine if key is found
 
-    public DefaultContainsHandler(byte[] key)
+    public DefaultContainsHandler(byte[] key, ContainsHandlerCallback onComplete)
     {
         this.key = key;
+        this.onComplete = onComplete;
+    }
+
+    protected void handleComplete()
+    {
+        onComplete.callback(this);
+    }
+
+    protected void handleError(Throwable e)
+    {
+        e.printStackTrace();
     }
 
     @Override
     public synchronized void handleResult(GetOffer offer)
     {
         exists = offer.getSize() > 0;
-        setCompleted();
+        onComplete();
     }
 
     @Override

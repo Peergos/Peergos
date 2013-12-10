@@ -20,7 +20,7 @@ public class Components
         ByteArrayWrapper bw = new ByteArrayWrapper(b);
         assertEquals(aw, bw);
 
-        Map<ByteArrayWrapper, String> map = new ConcurrentHashMap<>();
+        Map<ByteArrayWrapper, String> map = new ConcurrentHashMap();
         map.put(aw, "Hi");
         assertEquals("Map contains: ", true, map.containsKey(bw));
     }
