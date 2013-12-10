@@ -5,13 +5,15 @@ public class DefaultContainsHandler extends AbstractRequestHandler implements Co
     private final byte[] key;
     private boolean exists;
     private final ContainsHandlerCallback onComplete;
+    private final ErrorHandlerCallback onError;
 
     // use isCompleted() && !isFailed() to determine if key is found
 
-    public DefaultContainsHandler(byte[] key, ContainsHandlerCallback onComplete)
+    public DefaultContainsHandler(byte[] key, ContainsHandlerCallback onComplete, ErrorHandlerCallback onError)
     {
         this.key = key;
         this.onComplete = onComplete;
+        this.onError = onError;
     }
 
     protected void handleComplete()
@@ -21,7 +23,7 @@ public class DefaultContainsHandler extends AbstractRequestHandler implements Co
 
     protected void handleError(Throwable e)
     {
-        e.printStackTrace();
+        onError.callback(e);
     }
 
     @Override

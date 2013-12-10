@@ -6,7 +6,7 @@ import java.util.concurrent.TimeoutException;
 
 public abstract class AbstractRequestHandler implements RequestHandler
 {
-    public static final long TIMEOUT = 60*1000;
+    public static final long TIMEOUT = 1*1000;
     private final long duration;
     private boolean completed;
     private static final Executor timeoutPool = Executors.newCachedThreadPool();
@@ -24,12 +24,9 @@ public abstract class AbstractRequestHandler implements RequestHandler
     @Override
     public synchronized void onStart()
     {
-        final long expireTime = System.currentTimeMillis() + duration;
-        timeoutPool.execute(new Runnable() {
-            @Override
-            public void run() {
+        timeoutPool.execute(new Runnable(){ public void run(){
                 try {
-                    Thread.sleep(expireTime);
+                    Thread.sleep(duration);
                 } catch (InterruptedException f) {
                 }
                 onError(new TimeoutException("Request timedout."));

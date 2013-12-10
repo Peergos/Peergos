@@ -9,12 +9,14 @@ public class DefaultPutHandler extends AbstractRequestHandler implements PutHand
 {
     private final byte[] key, value;
     private final PutHandlerCallback onComplete;
+    private final ErrorHandlerCallback onError;
 
-    public DefaultPutHandler(byte[] key, byte[] value, PutHandlerCallback onComplete)
+    public DefaultPutHandler(byte[] key, byte[] value, PutHandlerCallback onComplete, ErrorHandlerCallback onError)
     {
         this.key = key;
         this.value = value;
         this.onComplete = onComplete;
+        this.onError = onError;
     }
 
     protected void handleComplete()
@@ -24,7 +26,7 @@ public class DefaultPutHandler extends AbstractRequestHandler implements PutHand
 
     protected void handleError(Throwable e)
     {
-        e.printStackTrace();
+        onError.callback(e);
     }
 
     @Override

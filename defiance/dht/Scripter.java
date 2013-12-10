@@ -71,7 +71,7 @@ public class Scripter extends Thread
             e.printStackTrace();
         }
         System.out.println("Finished sending messages!");
-        try {Thread.sleep(1000);} catch (InterruptedException e) {}
+        try {Thread.sleep(2000);} catch (InterruptedException e) {}
         System.exit(0);
     }
 }

@@ -10,12 +10,14 @@ public class DefaultGetHandler extends AbstractRequestHandler implements GetHand
     final byte[] key;
     byte[] value;
     private final GetHandlerCallback onComplete;
+    private final ErrorHandlerCallback onError;
 
-    public DefaultGetHandler(byte[] key, GetHandlerCallback oncomplete)
+    public DefaultGetHandler(byte[] key, GetHandlerCallback oncomplete, ErrorHandlerCallback onError)
     {
         super();
         this.key = key;
         this.onComplete = oncomplete;
+        this.onError = onError;
     }
 
     protected void handleComplete()
@@ -25,7 +27,7 @@ public class DefaultGetHandler extends AbstractRequestHandler implements GetHand
 
     protected void handleError(Throwable e)
     {
-        e.printStackTrace();
+        onError.callback(e);
     }
 
     @Override
@@ -51,7 +53,7 @@ public class DefaultGetHandler extends AbstractRequestHandler implements GetHand
             onComplete();
         } catch (IOException e)
         {
-            e.printStackTrace();
+            onError(e);
         }
     }
 
