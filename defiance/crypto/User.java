@@ -1,11 +1,11 @@
 package defiance.crypto;
 
-import defiance.util.Arrays;
-
+import java.io.UnsupportedEncodingException;
 import java.security.*;
 import javax.crypto.*;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.X509EncodedKeySpec;
+import java.util.Enumeration;
 import java.util.Set;
 
 public class User extends RemoteUser
@@ -110,6 +110,41 @@ public class User extends RemoteUser
         }
     }
 
+    public static User generateUserCredentials(String username, String password)
+    {
+        // need usernames and public keys to be in 1-1 correspondence, and the private key to be derivable from the username+password
+        // username is essentially salt against rainbow table attacks
+        byte[] hash = hash(username+password);
+        try {
+            KeyPairGenerator kpg = KeyPairGenerator.getInstance(AUTH);
+            SecureRandom random = SecureRandom.getInstance(SECURE_RANDOM);
+            random.setSeed(hash);
+            SecureRandom random2 = SecureRandom.getInstance(SECURE_RANDOM);
+            random2.setSeed(hash);
+            System.out.println(random.getProvider().getClass().getName());
+            kpg.initialize(RSA_KEY_SIZE, random);
+            return new User(kpg.generateKeyPair());
+        } catch (NoSuchAlgorithmException e)
+        {
+            throw new IllegalStateException("Couldn't generate key-pair from password - "+e.getMessage());
+        }
+    }
+
+    public static byte[] hash(String password)
+    {
+        try {
+            MessageDigest md = MessageDigest.getInstance(HASH);
+            md.update(password.getBytes("UTF-8"));
+            return md.digest();
+        } catch (NoSuchAlgorithmException e)
+        {
+            throw new IllegalStateException("couldn't hash password");
+        } catch (UnsupportedEncodingException e)
+        {
+            throw new IllegalStateException("couldn't hash password");
+        }
+    }
+
     public static void checkAllowedKeySizes()
     {
         try {
@@ -119,7 +154,21 @@ public class User extends RemoteUser
                 System.out.printf("%-22s: %dbit%n", algorithm, max);
             }
         } catch (NoSuchAlgorithmException e) {
-            e.printStackTrace();
+//            e.printStackTrace();
+        }
+    }
+
+    public static void enumerateAllCryptoAlgorithmsAvailable()
+    {
+        try {
+            Provider p[] = Security.getProviders();
+            for (int i = 0; i < p.length; i++) {
+                System.out.println(p[i]);
+                for (Enumeration e = p[i].keys(); e.hasMoreElements();)
+                    System.out.println("\t" + e.nextElement());
+            }
+        } catch (Exception e) {
+            System.out.println(e);
         }
     }
 

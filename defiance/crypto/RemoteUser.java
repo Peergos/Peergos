@@ -1,13 +1,12 @@
 package defiance.crypto;
 
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
+
 import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
-import java.security.InvalidKeyException;
-import java.security.Key;
-import java.security.KeyFactory;
-import java.security.NoSuchAlgorithmException;
+import java.security.*;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.X509EncodedKeySpec;
 
@@ -17,6 +16,7 @@ public class RemoteUser
     public static final String AUTH = "RSA";
     public static final String FILE = "AES";
     public static final String HASH = "SHA-256";
+    public static final String SECURE_RANDOM = "SHA1PRNG";
 
     private final Key publicKey;
 
@@ -99,5 +99,12 @@ public class RemoteUser
             e.printStackTrace();
             return null;
         }
+    }
+
+    public static void init() {}
+
+    static
+    {
+        Security.addProvider(new BouncyCastleProvider());
     }
 }
