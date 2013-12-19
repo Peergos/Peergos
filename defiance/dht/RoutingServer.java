@@ -1,5 +1,6 @@
 package defiance.dht;
 
+import defiance.crypto.PublicKey;
 import defiance.util.*;
 import defiance.util.Arrays;
 
@@ -16,6 +17,8 @@ public class RoutingServer extends Thread
     public static final int MAX_PACKET_SIZE = MAX_UDP_PACKET_SIZE; // TODO: decrease this once protocol is finalized
     public static final long MAX_STORAGE_SIZE = 1024 * 1024 * 1024L;
     private static final String DATA_DIR = "data/";
+    public static final long MAX_KEY_INFO_STORAGE_SIZE = 100 * 1024 * 1024L;
+    private static final String KEY_DATA_DIR = "keys/";
 
     private DatagramSocket socket;
     private NodeID us;
@@ -24,10 +27,14 @@ public class RoutingServer extends Thread
     private SortedMap<Long, Node> rightNeighbours = new TreeMap();
     private SortedMap<Long, Node> friends = new TreeMap();
     private final Storage storage;
+    private final Storage publicKeyStorage;
     public Logger LOGGER;
     private final Map<ByteArrayWrapper, PutHandler> pendingPuts = new ConcurrentHashMap();
     private final Map<ByteArrayWrapper, PullHandler> pendingGets = new ConcurrentHashMap();
+    private final Map<ByteArrayWrapper, PublicKeyPutHandler> pendingPublicKeyPuts = new ConcurrentHashMap();
+    private final Map<ByteArrayWrapper, PublicKeyGetHandler> pendingPublicKeyGets = new ConcurrentHashMap();
     private final Random random = new Random(System.currentTimeMillis());
+    private final Executor complexHandlers = Executors.newFixedThreadPool(10);
 
     public RoutingServer(int port) throws IOException
     {
@@ -41,7 +48,8 @@ public class RoutingServer extends Thread
         LOGGER.addHandler(handler);
         LOGGER.setLevel(Level.ALL);
         storage = new Storage(new File(DATA_DIR), MAX_STORAGE_SIZE);
-        storage.start(port);
+        publicKeyStorage = new Storage(new File(KEY_DATA_DIR), MAX_KEY_INFO_STORAGE_SIZE);
+        StorageServer.createAndStart(port, new File(DATA_DIR), storage, new File(KEY_DATA_DIR), publicKeyStorage);
     }
 
     public void run()
@@ -370,12 +378,78 @@ public class RoutingServer extends Thread
             }
             else
                 LOGGER.log(Level.ALL, "Couldn't find GET_RESULT handler for " + Arrays.bytesToHex(key.data));
+        } else if (m instanceof Message.PUBLIC_KEY_PUT)
+        {
+            LOGGER.log(Level.ALL, "received Public_Key_Put " + m.toString());
+            complexHandlers.execute(new PublicKeyPutManager((Message.PUBLIC_KEY_PUT)m));
+        } else if (m instanceof Message.PUBLIC_KEY_GET)
+        {
+            LOGGER.log(Level.ALL, "received Public_Key_Get " + m.toString());
+            ByteArrayWrapper key = new ByteArrayWrapper(((Message.PUBLIC_KEY_GET) m).getUsernameHash());
+            if (publicKeyStorage.contains(key))
+            {
+                Message res = new Message.PUBLIC_KEY_RESULT(us, m.getOrigin(), ((Message.PUBLIC_KEY_GET) m).getUsernameHash(), publicKeyStorage.get(key), true);
+                forwardMessage(res);
+            } else
+            {
+                Message res = new Message.PUBLIC_KEY_RESULT(us, m.getOrigin(), ((Message.PUBLIC_KEY_GET) m).getUsernameHash(), new byte[0], false);
+                forwardMessage(res);
+            }
+        } else if (m instanceof Message.PUBLIC_KEY_RESULT)
+        {
+            ByteArrayWrapper key = new ByteArrayWrapper(((Message.PUBLIC_KEY_RESULT) m).getUsernameHash());
+            if (pendingPublicKeyGets.containsKey(key))
+            {
+                pendingPublicKeyGets.get(key).handleResult(new PublicKeyGetResult(((Message.PUBLIC_KEY_RESULT) m).isValid(), ((Message.PUBLIC_KEY_RESULT) m).getPublicKey()));
+                pendingPublicKeyGets.remove(key);
+            }
+            else if (pendingPublicKeyPuts.containsKey(key))
+            {
+                pendingPublicKeyPuts.get(key).handleOffer(new PublicKeyPutResult(((Message.PUBLIC_KEY_RESULT) m).isValid()));
+                pendingPublicKeyPuts.remove(key);
+            }
+            else
+                LOGGER.log(Level.ALL, "Couldn't find GET_RESULT handler for " + Arrays.bytesToHex(key.data));
         }
 
 
         if (Message.LOG)
             printNeighboursAndFriends();
 
+    }
+
+    private class PublicKeyPutManager implements Runnable
+    {
+        private final Message.PUBLIC_KEY_PUT m;
+
+        public PublicKeyPutManager(Message.PUBLIC_KEY_PUT m)
+        {
+            this.m = m;
+        }
+
+        public void run()
+        {
+            // check all previous recursion levels have the same value
+            for (int level=0; level < m.getRecursion(); level++)
+            {
+                // TODO
+            }
+
+            // check all subsequent recursion levels are either empty, or the same
+            for (int level=m.getRecursion(); level < PublicKey.PUBLIC_KEY_DUPLICATION; level++)
+            {
+                // TODO
+            }
+            // write key to our storage
+            if (publicKeyStorage.accept(new ByteArrayWrapper(m.getHashedUsername()), m.getPublicKey().length))
+            {
+                publicKeyStorage.put(new ByteArrayWrapper(m.getHashedUsername()), m.getPublicKey());
+                // succeeded, send response
+                forwardMessage(new Message.PUBLIC_KEY_RESULT(us, m.getOrigin(), m.getHashedUsername(), m.getPublicKey(), true));
+            }
+            else
+                forwardMessage(new Message.PUBLIC_KEY_RESULT(us, m.getOrigin(), m.getHashedUsername(), m.getPublicKey(), false));
+        }
     }
 
     private void fillLeft(SortedMap<Long, Node> left, Set<Node> toSendECHO)
@@ -490,6 +564,24 @@ public class RoutingServer extends Thread
         return next;
     }
 
+    // username + public key API
+    public void sendPublicKeyPUT(byte[] username, byte[] publicKey, int recursion, PublicKeyPutHandler handler)
+    {
+        Message put = new Message.PUBLIC_KEY_PUT(us, username, publicKey, recursion);
+        pendingPublicKeyPuts.put(new ByteArrayWrapper(username), handler);
+        forwardMessage(put);
+        handler.onStart();
+    }
+
+    public void sendPublicKeyGET(byte[] username, PublicKeyGetHandler handler)
+    {
+        Message put = new Message.PUBLIC_KEY_GET(us, username);
+        pendingPublicKeyGets.put(new ByteArrayWrapper(username), handler);
+        forwardMessage(put);
+        handler.onStart();
+    }
+
+    // Fragment API
     public void sendPUT(byte[] key, int len, PutHandler handler)
     {
         Message put = new Message.PUT(us, key, len);

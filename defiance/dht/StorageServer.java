@@ -7,10 +7,13 @@ import java.io.*;
 public class StorageServer
 {
 
-    public static void create(int port, File root, Storage storage) throws IOException
+    public static void createAndStart(int port, File root1, Storage storage1, File root2, Storage storage2) throws IOException
     {
         try {
-            Server server = new Server(new FragmentUploadHandler(root, true, storage));
+            HTTPRequestFilter keys = new StaticURLFilter("key", new DirectoryHandler(root2, true));
+            HTTPRequestFilter fragments = new StaticURLFilter("", new FragmentUploadHandler(root1, true, storage1));
+            HTTPRequestFilter both = new OrderedHTTPRequestFilter(new HTTPRequestFilter[]{keys, fragments});
+            Server server = new Server(both);
             server.listenOn(port, false);
         } catch (Exception e)
         {
@@ -18,6 +21,6 @@ public class StorageServer
             return;
         }
 
-        System.out.println("Defiance StorageServer listening on TCP port "+port);
+        System.out.println("Defiance Storage and Key Server listening on TCP port "+port);
     }
 }

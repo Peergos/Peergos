@@ -18,12 +18,20 @@ public class Storage
     {
         this.root = root;
         this.maxBytes = maxBytes;
-        root.mkdirs();
-    }
-
-    public void start(int port) throws IOException
-    {
-        StorageServer.create(port, root, this);
+        if (root.exists())
+        {
+            for (File f: root.listFiles())
+            {
+                if (f.isDirectory())
+                    continue;
+                ByteArrayWrapper name = new ByteArrayWrapper(defiance.util.Arrays.hexToBytes(f.getName()));
+                Fragment frag = new Fragment(name);
+                int size = frag.getSize();
+                existing.put(name, size);
+            }
+        }
+        else
+            root.mkdirs();
     }
 
     public boolean isWaitingFor(byte[] key)
@@ -61,6 +69,18 @@ public class Storage
         return true;
     }
 
+    public byte[] get(ByteArrayWrapper key)
+    {
+        try {
+            return new Fragment(key).read();
+        } catch (IOException e)
+        {
+            e.printStackTrace();
+            existing.remove(key);
+            return null;
+        }
+    }
+
     public boolean contains(ByteArrayWrapper key)
     {
         return existing.containsKey(key);
@@ -82,12 +102,27 @@ public class Storage
             name = defiance.util.Arrays.bytesToHex(key.data);
         }
 
+        public int getSize()
+        {
+            return (int)new File(root, name).length(); // all fragments are WELL under 4GiB!
+        }
+
         public void write(byte[] data) throws IOException
         {
             OutputStream out = new FileOutputStream(new File(root, name));
             out.write(data);
             out.flush();
             out.close();
+        }
+
+        public byte[] read() throws IOException{
+            ByteArrayOutputStream bout = new ByteArrayOutputStream();
+            InputStream in = new FileInputStream(new File(root, name));
+            byte[] buf = new byte[4096];
+            int read;
+            while ((read = in.read(buf, 0, buf.length)) > 0)
+                bout.write(buf, 0, read);
+            return bout.toByteArray();
         }
     }
 }

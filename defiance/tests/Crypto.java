@@ -1,6 +1,6 @@
 package defiance.tests;
 
-import defiance.crypto.RemoteUser;
+import defiance.crypto.PublicKey;
 import defiance.crypto.User;
 import defiance.util.Arrays;
 import org.junit.Test;
@@ -31,12 +31,12 @@ public class Crypto
 //        System.out.println("Signed["+signed.length+"]: "+Arrays.bytesToHex(signed));
 //        System.out.println("Encryped["+encrypted.length+"]: "+Arrays.bytesToHex(encrypted));
 
-        assertEquals("Correct encrypted size", RemoteUser.RSA_KEY_SIZE/8, signed.length);
-        assertEquals("Correct encrypted size", RemoteUser.RSA_KEY_SIZE/8, encrypted.length);
+        assertEquals("Correct encrypted size", PublicKey.RSA_KEY_SIZE/8, signed.length);
+        assertEquals("Correct encrypted size", PublicKey.RSA_KEY_SIZE/8, encrypted.length);
         assertEquals("unsigning is the inverse of signing", Arrays.bytesToHex(raw), Arrays.bytesToHex(unsigned));
         assertEquals("decrypt is the inverse of encrypt", Arrays.bytesToHex(raw), Arrays.bytesToHex(decrypted));
 
-        RemoteUser rem = new RemoteUser(u.getPublicKey());
+        PublicKey rem = new PublicKey(u.getPublicKey());
         byte[] encrypted2 = rem.encryptMessageFor(raw);
         byte[] decrypted2 = u.decryptMessage(encrypted2);
         assertEquals("decrypt is the inverse of recover key -> encrypt", Arrays.bytesToHex(raw), Arrays.bytesToHex(decrypted2));

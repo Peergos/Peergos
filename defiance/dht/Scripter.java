@@ -28,7 +28,7 @@ public class Scripter extends Thread
         {
             while ((command = commands.readLine()) != null)
             {
-                String[] parts = command.split(" ");
+                final String[] parts = command.split(" ");
                 try
                 {
                     Thread.sleep(Integer.parseInt(parts[0]));
@@ -63,6 +63,24 @@ public class Scripter extends Thread
                         }
                     });
                     System.out.println("Sent Contains message");
+                } else if (parts[1].equals("KEY_PUT"))
+                {
+                    api.createUser(parts[2].getBytes(), Arrays.hexToBytes(parts[3]), new PublicKeyPutHandlerCallback() {
+                        @Override
+                        public void callback(PublicKeyPutHandler handler) {
+                             System.out.println(handler.getResult()? "Public key put succeeded": "Public key put failed");
+                        }
+                    });
+                    System.out.println("Sent Public Key Put message");
+                } else if (parts[1].equals("KEY_GET"))
+                {
+                    api.getPublicKey(parts[2].getBytes(), new PublicKeyGetHandlerCallback() {
+                        @Override
+                        public void callback(PublicKeyGetHandler handler) {
+                             System.out.println(handler.isValid()? "Public key("+parts[2]+") = "+Arrays.bytesToHex(handler.getResult()): "Unable to retrieve public key");
+                        }
+                    });
+                    System.out.println("Sent Public Key Get message");
                 } else
                     System.out.println("Unknown command: " + command);
             }

@@ -6,13 +6,16 @@ import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
+import java.io.UnsupportedEncodingException;
 import java.security.*;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.X509EncodedKeySpec;
 
-public class RemoteUser
+public class PublicKey
 {
     public static final int RSA_KEY_SIZE = 4096;
+    public static final int MAX_USERNAME_BYTES = 28;
+    public static final int PUBLIC_KEY_DUPLICATION = 10;
     public static final String AUTH = "RSA";
     public static final String FILE = "AES";
     public static final String HASH = "SHA-256";
@@ -20,12 +23,12 @@ public class RemoteUser
 
     private final Key publicKey;
 
-    public RemoteUser(Key pub)
+    public PublicKey(Key pub)
     {
         this.publicKey = pub;
     }
 
-    public RemoteUser(byte[] encodedPublicKey)
+    public PublicKey(byte[] encodedPublicKey)
     {
         try {
             publicKey = KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(encodedPublicKey));
@@ -106,5 +109,35 @@ public class RemoteUser
     static
     {
         Security.addProvider(new BouncyCastleProvider());
+    }
+
+    public static byte[] hash(String password)
+    {
+        try {
+            return hash(password.getBytes("UTF-8"));
+        } catch (UnsupportedEncodingException e)
+        {
+            throw new IllegalStateException("couldn't hash password");
+        }
+    }
+
+    public static byte[] hash(byte[] input)
+    {
+        try {
+            MessageDigest md = MessageDigest.getInstance(HASH);
+            md.update(input);
+            return md.digest();
+        } catch (NoSuchAlgorithmException e)
+        {
+            throw new IllegalStateException("couldn't hash password");
+        }
+    }
+
+    public static byte[] recursiveHash(byte[] input, int recursion)
+    {
+        byte[] hash = input;
+        for (int i=0; i < recursion; i++)
+            hash = User.hash(hash);
+        return hash;
     }
 }

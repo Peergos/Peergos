@@ -8,7 +8,7 @@ import java.security.spec.X509EncodedKeySpec;
 import java.util.Enumeration;
 import java.util.Set;
 
-public class User extends RemoteUser
+public class User extends PublicKey
 {
     private final Key privateKey;
 
@@ -127,21 +127,6 @@ public class User extends RemoteUser
         } catch (NoSuchAlgorithmException e)
         {
             throw new IllegalStateException("Couldn't generate key-pair from password - "+e.getMessage());
-        }
-    }
-
-    public static byte[] hash(String password)
-    {
-        try {
-            MessageDigest md = MessageDigest.getInstance(HASH);
-            md.update(password.getBytes("UTF-8"));
-            return md.digest();
-        } catch (NoSuchAlgorithmException e)
-        {
-            throw new IllegalStateException("couldn't hash password");
-        } catch (UnsupportedEncodingException e)
-        {
-            throw new IllegalStateException("couldn't hash password");
         }
     }
 

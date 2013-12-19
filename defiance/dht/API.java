@@ -10,6 +10,34 @@ public class API
         this.routing = routing;
     }
 
+    // username + public key API
+    public void createUser(byte[] username, byte[] publicKey, PublicKeyPutHandlerCallback onComplete, ErrorHandlerCallback onError)
+    {
+        PublicKeyPutHandler handler = new DefaultPublicKeyPutHandler(username, publicKey, onComplete, onError);
+        routing.sendPublicKeyPUT(username, publicKey, 0, handler);
+        // try each hash level in order
+        // TODO
+    }
+
+    public void getPublicKey(byte[] username, PublicKeyGetHandlerCallback onComplete, ErrorHandlerCallback onError)
+    {
+        PublicKeyGetHandler handler = new DefaultPublicKeyGetHandler(username, onComplete, onError);
+        routing.sendPublicKeyGET(username, handler);
+        // try each hash level in order
+        // TODO
+    }
+
+    public void createUser(byte[] username, byte[] publicKey, PublicKeyPutHandlerCallback onComplete)
+    {
+        createUser(username, publicKey, onComplete, getPrintErrorHandler());
+    }
+
+    public void getPublicKey(byte[] username, PublicKeyGetHandlerCallback onComplete)
+    {
+        getPublicKey(username, onComplete, getPrintErrorHandler());
+    }
+
+    // Fragment API
     // 256 bit key / 32 byte
     public void put(byte[] key, byte[] value, PutHandlerCallback onComplete, ErrorHandlerCallback onError)
     {
