@@ -416,18 +416,7 @@ public class RoutingServer extends Thread
 
         public void run()
         {
-            // check all previous recursion levels have the same value
-            for (int level=0; level < m.getRecursion(); level++)
-            {
-                // TODO
-            }
-
-            // check all subsequent recursion levels are either empty, or the same
-            for (int level=m.getRecursion(); level < PublicKey.PUBLIC_KEY_DUPLICATION; level++)
-            {
-                // TODO
-            }
-            // write key to our storage
+            // write key to reliable core storage
             if (publicKeyStorage.accept(new ByteArrayWrapper(m.getHashedUsername()), m.getPublicKey().length))
             {
                 publicKeyStorage.put(new ByteArrayWrapper(m.getHashedUsername()), m.getPublicKey());

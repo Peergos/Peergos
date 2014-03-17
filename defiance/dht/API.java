@@ -15,16 +15,14 @@ public class API
     {
         PublicKeyPutHandler handler = new DefaultPublicKeyPutHandler(username, publicKey, onComplete, onError);
         routing.sendPublicKeyPUT(username, publicKey, 0, handler);
-        // try each hash level in order
-        // TODO
+        // TODO use reliable core database
     }
 
     public void getPublicKey(byte[] username, PublicKeyGetHandlerCallback onComplete, ErrorHandlerCallback onError)
     {
         PublicKeyGetHandler handler = new DefaultPublicKeyGetHandler(username, onComplete, onError);
         routing.sendPublicKeyGET(username, handler);
-        // try each hash level in order
-        // TODO
+        // TODO use reliable core database
     }
 
     public void createUser(byte[] username, byte[] publicKey, PublicKeyPutHandlerCallback onComplete)

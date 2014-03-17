@@ -29,12 +29,10 @@ public class Scripter extends Thread
             while ((command = commands.readLine()) != null)
             {
                 final String[] parts = command.split(" ");
-                try
-                {
+                try {
                     Thread.sleep(Integer.parseInt(parts[0]));
-                } catch (InterruptedException e)
-                {
-                }
+                } catch (InterruptedException e) {}
+
                 if (parts[1].equals("PUT"))
                 {
                     api.put(Arrays.hexToBytes(parts[2]), Arrays.hexToBytes(parts[3]), new PutHandlerCallback(){
@@ -71,7 +69,6 @@ public class Scripter extends Thread
                              System.out.println(handler.getResult()? "Public key put succeeded": "Public key put failed");
                         }
                     });
-                    System.out.println("Sent Public Key Put message");
                 } else if (parts[1].equals("KEY_GET"))
                 {
                     api.getPublicKey(parts[2].getBytes(), new PublicKeyGetHandlerCallback() {
