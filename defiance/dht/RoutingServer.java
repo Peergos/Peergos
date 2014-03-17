@@ -13,14 +13,11 @@ import java.util.logging.*;
 public class RoutingServer extends Thread
 {
     public static final int MAX_NEIGHBOURS = 2;
-    public static final int MAX_UDP_PACKET_SIZE = 65507;
-    public static final int MAX_PACKET_SIZE = MAX_UDP_PACKET_SIZE; // TODO: decrease this once protocol is finalized
     public static final long MAX_STORAGE_SIZE = 1024 * 1024 * 1024L;
     private static final String DATA_DIR = "data/";
     public static final long MAX_KEY_INFO_STORAGE_SIZE = 100 * 1024 * 1024L;
     private static final String KEY_DATA_DIR = "keys/";
 
-    private DatagramSocket socket;
     private NodeID us;
 
     private SortedMap<Long, Node> leftNeighbours = new TreeMap();
@@ -35,18 +32,20 @@ public class RoutingServer extends Thread
     private final Map<ByteArrayWrapper, PublicKeyGetHandler> pendingPublicKeyGets = new ConcurrentHashMap();
     private final Random random = new Random(System.currentTimeMillis());
     private final Executor complexHandlers = Executors.newFixedThreadPool(10);
+    private Messenger messenger;
 
     public RoutingServer(int port) throws IOException
     {
         new File("log/").mkdir();
-        socket = new DatagramSocket(port);
         us = new NodeID();
-        String name = us.id + ":" + us.port;
+        String name = us.name() + ":" + us.port;
         setName("RoutingServer port: "+us.port);
         LOGGER = Logger.getLogger(name);
         Handler handler = new FileHandler("log/" + name + ".log", 10 * 1024 * 1024, 7);
         LOGGER.addHandler(handler);
         LOGGER.setLevel(Level.ALL);
+
+        messenger = Messenger.getDefault(port, LOGGER);
         storage = new Storage(new File(DATA_DIR), MAX_STORAGE_SIZE);
         publicKeyStorage = new Storage(new File(KEY_DATA_DIR), MAX_KEY_INFO_STORAGE_SIZE);
         StorageServer.createAndStart(port, new File(DATA_DIR), storage, new File(KEY_DATA_DIR), publicKeyStorage);
@@ -54,7 +53,6 @@ public class RoutingServer extends Thread
 
     public void run()
     {
-        byte[] buf = new byte[MAX_PACKET_SIZE];
         // connect to network
         if (!Args.hasOption("firstNode"))
             while (true) // TODO make multi-threaded
@@ -69,12 +67,8 @@ public class RoutingServer extends Thread
                     sendMessage(join, entry, port);
 
                     // wait for ECHO from nearest neighbour, otherwise retry with new NodeID
-                    socket.setSoTimeout(1000 * 60);
-                    DatagramPacket packet = new DatagramPacket(buf, buf.length);
-                    socket.receive(packet);
-                    Message m = Message.read(new DataInputStream(new ByteArrayInputStream(packet.getData())));
+                    Message m = messenger.awaitMessage(1000 * 60);
                     actOnMessage(m);
-                    socket.setSoTimeout(0);
                     break;
                 } catch (SocketTimeoutException s)
                 {
@@ -98,16 +92,14 @@ public class RoutingServer extends Thread
                 }
             }
         // Ready to receive traffic
+        LOGGER.log(Level.ALL, "Successfully joined network.");
         // TODO serialise our ID
 
         while (true)
         {
             try
             {
-                DatagramPacket packet = new DatagramPacket(buf, buf.length);
-                socket.setSoTimeout((int) Node.NEIGHBOUR_TIMEOUT);
-                socket.receive(packet);
-                Message m = Message.read(new DataInputStream(new ByteArrayInputStream(packet.getData())));
+                Message m = messenger.awaitMessage((int) Node.NEIGHBOUR_TIMEOUT);
                 actOnMessage(m);
             } catch (SocketTimeoutException s)
             {
@@ -151,12 +143,7 @@ public class RoutingServer extends Thread
 
     private void sendMessage(Message m, InetAddress addr, int port) throws IOException
     {
-        if (Message.LOG)
-            LOGGER.log(Level.ALL, String.format("Sent %s with target %d to %s:%d\n", m.name(), m.getTarget(), addr, port));
-        ByteArrayOutputStream bout = new ByteArrayOutputStream();
-        m.write(new DataOutputStream(bout));
-        DatagramPacket response = new DatagramPacket(bout.toByteArray(), bout.size(), addr, port);
-        socket.send(response);
+        messenger.sendMessage(m, addr, port);
     }
 
     private void actOnMessage(Message m)
@@ -627,8 +614,11 @@ public class RoutingServer extends Thread
             System.exit(0);
         }
         if (Args.hasOption("firstNode"))
+        {
+            new File("log/").mkdirs();
             for (File f : new File("log/").listFiles())
                 f.delete();
+        }
         if (Args.hasParameter("test"))
         {
             test(Args.getInt("test", 6));
