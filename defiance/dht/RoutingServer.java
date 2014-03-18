@@ -61,6 +61,7 @@ public class RoutingServer extends Thread
                 {
                     int port = Args.getInt("contactPort", 8080);
                     InetAddress entry = InetAddress.getByName(Args.getParameter("contactIP"));
+                    messenger.join(entry, port);
 
                     // send JOIN message to ourselves via contact point
                     Message join = new Message.JOIN(us);

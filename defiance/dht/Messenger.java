@@ -6,6 +6,10 @@ import java.util.logging.Logger;
 
 public abstract class Messenger
 {
+    public Messenger() {}
+
+    public abstract void join(InetAddress addr, int port) throws IOException;
+
     public abstract void sendMessage(Message m, InetAddress addr, int port) throws IOException;
 
     public abstract Message awaitMessage(int duration) throws IOException;

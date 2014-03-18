@@ -19,6 +19,11 @@ public class UDPMessenger extends Messenger
     }
 
     @Override
+    public void join(InetAddress addr, int port) {
+
+    }
+
+    @Override
     public void sendMessage(Message m, InetAddress addr, int port) throws IOException
     {
         if (Message.LOG)
