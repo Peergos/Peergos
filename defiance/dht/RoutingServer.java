@@ -1,6 +1,7 @@
 package defiance.dht;
 
-import defiance.crypto.PublicKey;
+import defiance.storage.Storage;
+import defiance.storage.StorageServer;
 import defiance.util.*;
 import defiance.util.Arrays;
 
@@ -48,13 +49,18 @@ public class RoutingServer extends Thread
         messenger = Messenger.getDefault(port, LOGGER);
         storage = new Storage(new File(DATA_DIR), MAX_STORAGE_SIZE);
         publicKeyStorage = new Storage(new File(KEY_DATA_DIR), MAX_KEY_INFO_STORAGE_SIZE);
-        StorageServer.createAndStart(port, new File(DATA_DIR), storage, new File(KEY_DATA_DIR), publicKeyStorage);
+        StorageServer.createAndStart(port + 1, new File(DATA_DIR), storage, new File(KEY_DATA_DIR), publicKeyStorage);
     }
 
     public void run()
     {
         // connect to network
-        if (!Args.hasOption("firstNode"))
+        if (Args.hasOption("firstNode")) {
+            try {
+                messenger.join(null, 0);
+            } catch (IOException e) {e.printStackTrace(); return;}
+        }
+        else
             while (true) // TODO make multi-threaded
             {
                 try
@@ -68,7 +74,11 @@ public class RoutingServer extends Thread
                     sendMessage(join, entry, port);
 
                     // wait for ECHO from nearest neighbour, otherwise retry with new NodeID
-                    Message m = messenger.awaitMessage(1000 * 60);
+                    Message m;
+                    try { m = messenger.awaitMessage(1000 * 60); } catch (InterruptedException e) {
+                        System.err.println("Failed to connect to network, timed out.");
+                        return;
+                    }
                     actOnMessage(m);
                     break;
                 } catch (SocketTimeoutException s)
@@ -102,42 +112,43 @@ public class RoutingServer extends Thread
             {
                 Message m = messenger.awaitMessage((int) Node.NEIGHBOUR_TIMEOUT);
                 actOnMessage(m);
-            } catch (SocketTimeoutException s)
-            {
-                // send ECHO to two random neighbours
-                if (rightNeighbours.size() != 0)
-                {
-                    int count = 0;
-                    int max = new Random().nextInt(rightNeighbours.size());
-                    for (Node n : rightNeighbours.values())
-                    {
-                        count++;
-                        if (count == max)
-                        {
-                            if (!n.wasRecentlySeen())
-                                sendECHO(n.node);
-                            break;
-                        }
-                    }
-                }
-                if (leftNeighbours.size() != 0)
-                {
-                    int count = 0;
-                    int max = new Random().nextInt(leftNeighbours.size());
-                    for (Node n : leftNeighbours.values())
-                    {
-                        count++;
-                        if (count == max)
-                        {
-                            if (!n.wasRecentlySeen())
-                                sendECHO(n.node);
-                            break;
-                        }
-                    }
-                }
-            } catch (IOException e)
+            }
+            catch (InterruptedException e) {}
+            catch (SocketTimeoutException s) {}
+            catch (IOException e)
             {
                 e.printStackTrace();
+            }
+            // send ECHO to two random neighbours
+            if (rightNeighbours.size() != 0)
+            {
+                int count = 0;
+                int max = new Random().nextInt(rightNeighbours.size());
+                for (Node n : rightNeighbours.values())
+                {
+                    count++;
+                    if (count == max)
+                    {
+                        if (!n.wasRecentlySeen())
+                            sendECHO(n.node);
+                        break;
+                    }
+                }
+            }
+            if (leftNeighbours.size() != 0)
+            {
+                int count = 0;
+                int max = new Random().nextInt(leftNeighbours.size());
+                for (Node n : leftNeighbours.values())
+                {
+                    count++;
+                    if (count == max)
+                    {
+                        if (!n.wasRecentlySeen())
+                            sendECHO(n.node);
+                        break;
+                    }
+                }
             }
         }
     }

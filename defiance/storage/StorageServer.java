@@ -1,5 +1,6 @@
-package defiance.dht;
+package defiance.storage;
 
+import defiance.dht.FragmentUploadHandler;
 import org.nereus.http.server.*;
 
 import java.io.*;

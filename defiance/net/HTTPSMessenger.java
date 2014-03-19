@@ -1,8 +1,10 @@
-package defiance.dht;
+package defiance.net;
 
 import com.sun.net.httpserver.HttpsConfigurator;
 import com.sun.net.httpserver.HttpsParameters;
 import com.sun.net.httpserver.HttpsServer;
+import defiance.dht.Message;
+import defiance.dht.Messenger;
 import sun.security.x509.*;
 
 import javax.net.ssl.*;
@@ -13,7 +15,7 @@ import java.security.*;
 import java.security.cert.*;
 import java.security.cert.Certificate;
 import java.util.Date;
-import java.util.Random;
+import java.util.concurrent.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -21,24 +23,27 @@ public class HTTPSMessenger extends Messenger
 {
     public static final String AUTH = "RSA";
     public static final int RSA_KEY_SIZE = 4096;
+    public static final int THREADS = 5;
+    public static final int CONNECTION_BACKLOG = 100;
 
     private final Logger LOGGER;
-    private final int port;
+    private final int localPort;
     HttpsServer httpsServer;
+    private final BlockingQueue<Message> queue = new LinkedBlockingDeque();
 
     public HTTPSMessenger(int port, Logger LOGGER) throws IOException
     {
         this.LOGGER = LOGGER;
-        this.port = port;
+        this.localPort = port;
     }
 
     @Override
     public void join(InetAddress addr, int port) throws IOException {
         try
         {
-            InetSocketAddress address = new InetSocketAddress (InetAddress.getLocalHost(), port);
+            InetSocketAddress address = new InetSocketAddress(InetAddress.getLocalHost(), localPort);
 
-            httpsServer = HttpsServer.create(address, 0);
+            httpsServer = HttpsServer.create(address, CONNECTION_BACKLOG);
             SSLContext sslContext = SSLContext.getInstance ("TLS");
 
             char[] password = "simulator".toCharArray();
@@ -85,6 +90,10 @@ public class HTTPSMessenger extends Messenger
             ex.printStackTrace(System.err);
         }
 
+        httpsServer.createContext("/", new HttpsMessageHandler(this));
+        httpsServer.setExecutor(Executors.newFixedThreadPool(THREADS));
+        httpsServer.start();
+
         // if we are the first node don't contact network
         if (addr == null)
         {
@@ -94,6 +103,11 @@ public class HTTPSMessenger extends Messenger
         {
 
         }
+    }
+
+    protected void queueRequestMessage(Message m)
+    {
+        queue.add(m);
     }
 
     private KeyStore getKeyStore(char[] password)
@@ -139,17 +153,17 @@ public class HTTPSMessenger extends Messenger
             LOGGER.log(Level.ALL, String.format("Sent %s with target %d to %s:%d\n", m.name(), m.getTarget(), addr, port));
         ByteArrayOutputStream bout = new ByteArrayOutputStream();
         m.write(new DataOutputStream(bout));
-//        bout.toByteArray(), addr, port;
-//        socket.send(response);
+        URL target = new URL("https", addr.getCanonicalHostName(), port, "");
+        URLConnection conn = target.openConnection();
+        OutputStream out = conn.getOutputStream();
+        out.write(bout.toByteArray());
+        out.flush();
+        out.close();
     }
 
     @Override
-    public Message awaitMessage(int duration) throws IOException
+    public Message awaitMessage(int duration) throws IOException, InterruptedException
     {
-//        socket.setSoTimeout(duration);
-//        socket.receive(packet);
-//        Message m = Message.read(new DataInputStream(new ByteArrayInputStream(packet.getData())));
-//        socket.setSoTimeout(0);
-        return null;
+        return queue.poll(duration, TimeUnit.MILLISECONDS);
     }
 }

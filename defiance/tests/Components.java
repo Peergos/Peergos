@@ -1,12 +1,12 @@
 package defiance.tests;
 
 import static org.junit.Assert.*;
+
+import defiance.util.ByteArrayWrapper;
 import org.junit.Test;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-
-import defiance.dht.*;
 
 
 public class Components

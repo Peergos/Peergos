@@ -1,6 +1,6 @@
-package defiance.dht;
+package defiance.util;
 
-import java.util.*;
+import java.util.Arrays;
 
 public class ByteArrayWrapper
 {
@@ -14,7 +14,7 @@ public class ByteArrayWrapper
     @Override
     public int hashCode()
     {
-        return Arrays.hashCode(data);
+        return java.util.Arrays.hashCode(data);
     }
 
     @Override

@@ -1,5 +1,7 @@
 package defiance.dht;
 
+import defiance.storage.Storage;
+import defiance.util.ByteArrayWrapper;
 import org.nereus.http.*;
 import org.nereus.http.server.*;
 

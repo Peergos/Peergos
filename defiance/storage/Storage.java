@@ -1,4 +1,6 @@
-package defiance.dht;
+package defiance.storage;
+
+import defiance.util.ByteArrayWrapper;
 
 import java.io.*;
 import java.util.*;

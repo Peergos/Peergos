@@ -1,4 +1,7 @@
-package defiance.dht;
+package defiance.net;
+
+import defiance.dht.Message;
+import defiance.dht.Messenger;
 
 import java.io.*;
 import java.net.*;

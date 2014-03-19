@@ -1,6 +1,6 @@
 package defiance.tests;
 
-import defiance.dht.HTTPSMessenger;
+import defiance.net.HTTPSMessenger;
 import org.junit.Test;
 
 import java.io.IOException;
