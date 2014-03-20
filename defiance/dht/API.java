@@ -40,7 +40,7 @@ public class API
     public void put(byte[] key, byte[] value, PutHandlerCallback onComplete, ErrorHandlerCallback onError)
     {
         assert(key.length == 32);
-        PutHandler handler = new DefaultPutHandler(key, value, onComplete, onError);
+        PutHandler handler = new DefaultPutHandler(key, value, onComplete, onError, routing.getMessenger());
         routing.sendPUT(key, value.length, handler);
     }
 
@@ -52,7 +52,7 @@ public class API
 
     public void get(byte[] key, GetHandlerCallback onComplete, ErrorHandlerCallback onError)
     {
-        GetHandler res = new DefaultGetHandler(key, onComplete, onError);
+        GetHandler res = new DefaultGetHandler(key, onComplete, onError, routing.getMessenger());
         routing.sendGET(key, res);
     }
 

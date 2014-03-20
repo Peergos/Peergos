@@ -10,13 +10,15 @@ public class DefaultPutHandler extends AbstractRequestHandler implements PutHand
     private final byte[] key, value;
     private final PutHandlerCallback onComplete;
     private final ErrorHandlerCallback onError;
+    private final Messenger messenger;
 
-    public DefaultPutHandler(byte[] key, byte[] value, PutHandlerCallback onComplete, ErrorHandlerCallback onError)
+    public DefaultPutHandler(byte[] key, byte[] value, PutHandlerCallback onComplete, ErrorHandlerCallback onError, Messenger messenger)
     {
         this.key = key;
         this.value = value;
         this.onComplete = onComplete;
         this.onError = onError;
+        this.messenger = messenger;
     }
 
     protected void handleComplete()
@@ -32,18 +34,10 @@ public class DefaultPutHandler extends AbstractRequestHandler implements PutHand
     @Override
     public void handleOffer(PutOffer offer)
     {
-        // upload file to target with a HTTP POST request
+        // upload file to target with messenger
         try
         {
-            URL target = new URL("http", offer.getTarget().addr.getHostAddress(), offer.getTarget().port, "/" + Arrays.bytesToHex(key));
-            HttpURLConnection conn = (HttpURLConnection) target.openConnection();
-            conn.setDoOutput(true);
-            conn.setRequestMethod("POST");
-            OutputStream out = conn.getOutputStream();
-            out.write(value);
-            out.flush();
-            out.close();
-            conn.getResponseCode();
+            messenger.putFragment(offer.getTarget().addr, offer.getTarget().port, "/" + Arrays.bytesToHex(key), value);
             onComplete();
         } catch (IOException e)
         {

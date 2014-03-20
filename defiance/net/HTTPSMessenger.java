@@ -22,6 +22,7 @@ import java.util.logging.Logger;
 
 public class HTTPSMessenger extends Messenger
 {
+    public static final String MESSAGE_URL = "/message";
     public static final String AUTH = "RSA";
     public static final int RSA_KEY_SIZE = 4096;
     public static final int THREADS = 5;
@@ -31,13 +32,15 @@ public class HTTPSMessenger extends Messenger
     private final int localPort;
     HttpsServer httpsServer;
     private final BlockingQueue<Message> queue = new LinkedBlockingDeque();
-    private final Storage keyStorage;
+    private final Storage keys;
+    private final Storage fragments;
 
-    public HTTPSMessenger(int port, Storage keyStorage, Logger LOGGER) throws IOException
+    public HTTPSMessenger(int port, Storage fragments, Storage keys, Logger LOGGER) throws IOException
     {
         this.LOGGER = LOGGER;
         this.localPort = port;
-        this.keyStorage = keyStorage;
+        this.keys = keys;
+        this.fragments = fragments;
     }
 
     @Override
@@ -93,8 +96,9 @@ public class HTTPSMessenger extends Messenger
             ex.printStackTrace(System.err);
         }
 
-        httpsServer.createContext("/", new HttpsMessageHandler(this));
-        httpsServer.createContext("/key/", new StorageGetHandler(keyStorage, "/key/"));
+        httpsServer.createContext(MESSAGE_URL, new HttpsMessageHandler(this));
+        httpsServer.createContext("/key/", new StorageGetHandler(keys, "/key/"));
+        httpsServer.createContext("/", new StoragePutHandler(fragments, "/"));
         httpsServer.setExecutor(Executors.newFixedThreadPool(THREADS));
         httpsServer.start();
 
@@ -157,12 +161,47 @@ public class HTTPSMessenger extends Messenger
             LOGGER.log(Level.ALL, String.format("Sent %s with target %d to %s:%d\n", m.name(), m.getTarget(), addr, port));
         ByteArrayOutputStream bout = new ByteArrayOutputStream();
         m.write(new DataOutputStream(bout));
-        URL target = new URL("https", addr.getCanonicalHostName(), port, "");
+        URL target = new URL("https", addr.getCanonicalHostName(), port, MESSAGE_URL);
         URLConnection conn = target.openConnection();
         OutputStream out = conn.getOutputStream();
         out.write(bout.toByteArray());
         out.flush();
         out.close();
+    }
+
+    @Override
+    public byte[] getFragment(InetAddress addr, int port, String key) throws IOException
+    {
+        // for now, make a direct connection
+        URL target = new URL("https", addr.getHostAddress(), port, key);
+        URLConnection conn = target.openConnection();
+        InputStream in = conn.getInputStream();
+        byte[] buf = new byte[2*1024*1024];
+        ByteArrayOutputStream bout = new ByteArrayOutputStream();
+
+        while (true)
+        {
+            int r = in.read(buf);
+            if (r < 0)
+                break;
+            bout.write(buf, 0, r);
+        }
+        return bout.toByteArray();
+    }
+
+    @Override
+    public void putFragment(InetAddress addr, int port, String key, byte[] value) throws IOException
+    {
+        // for now, make a direct connection
+        URL target = new URL("https", addr.getHostAddress(), port, key);
+        HttpURLConnection conn = (HttpURLConnection) target.openConnection();
+        conn.setDoOutput(true);
+        conn.setRequestMethod("POST");
+        OutputStream out = conn.getOutputStream();
+        out.write(value);
+        out.flush();
+        out.close();
+        conn.getResponseCode();
     }
 
     @Override

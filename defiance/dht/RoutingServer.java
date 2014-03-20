@@ -48,8 +48,12 @@ public class RoutingServer extends Thread
 
         storage = new Storage(new File(DATA_DIR), MAX_STORAGE_SIZE);
         publicKeyStorage = new Storage(new File(KEY_DATA_DIR), MAX_KEY_INFO_STORAGE_SIZE);
-        messenger = Messenger.getDefault(port, publicKeyStorage, LOGGER);
-//        StorageServer.createAndStart(port + 1, new File(DATA_DIR), storage, new File(KEY_DATA_DIR), publicKeyStorage);
+        messenger = Messenger.getDefault(port, storage, publicKeyStorage, LOGGER);
+    }
+
+    public Messenger getMessenger()
+    {
+        return messenger;
     }
 
     public void run()

@@ -11,13 +11,15 @@ public class DefaultGetHandler extends AbstractRequestHandler implements GetHand
     byte[] value;
     private final GetHandlerCallback onComplete;
     private final ErrorHandlerCallback onError;
+    private final Messenger messenger;
 
-    public DefaultGetHandler(byte[] key, GetHandlerCallback oncomplete, ErrorHandlerCallback onError)
+    public DefaultGetHandler(byte[] key, GetHandlerCallback oncomplete, ErrorHandlerCallback onError, Messenger messenger)
     {
         super();
         this.key = key;
         this.onComplete = oncomplete;
         this.onError = onError;
+        this.messenger = messenger;
     }
 
     protected void handleComplete()
@@ -33,23 +35,10 @@ public class DefaultGetHandler extends AbstractRequestHandler implements GetHand
     @Override
     public synchronized void handleResult(GetOffer offer)
     {
-        // download fragment using HTTP GET
+        // download fragment using messenger
         try
         {
-            URL target = new URL("http", offer.getTarget().addr.getHostName(), offer.getTarget().port, "/"+Arrays.bytesToHex(key));
-            URLConnection conn = target.openConnection();
-            InputStream in = conn.getInputStream();
-            byte[] buf = new byte[2*1024*1024];
-            ByteArrayOutputStream bout = new ByteArrayOutputStream();
-
-            while (true)
-            {
-                int r = in.read(buf);
-                if (r < 0)
-                    break;
-                bout.write(buf, 0, r);
-            }
-            value = bout.toByteArray();
+            value = messenger.getFragment(offer.getTarget().addr, offer.getTarget().port, "/"+Arrays.bytesToHex(key));
             onComplete();
         } catch (IOException e)
         {
