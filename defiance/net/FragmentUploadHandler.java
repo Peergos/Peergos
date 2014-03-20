@@ -1,4 +1,4 @@
-package defiance.dht;
+package defiance.net;
 
 import defiance.storage.Storage;
 import defiance.util.ByteArrayWrapper;

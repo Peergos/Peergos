@@ -1,7 +1,7 @@
 package defiance.dht;
 
 import defiance.storage.Storage;
-import defiance.storage.StorageServer;
+import defiance.tests.Scripter;
 import defiance.util.*;
 import defiance.util.Arrays;
 
@@ -46,10 +46,10 @@ public class RoutingServer extends Thread
         LOGGER.addHandler(handler);
         LOGGER.setLevel(Level.ALL);
 
-        messenger = Messenger.getDefault(port, LOGGER);
         storage = new Storage(new File(DATA_DIR), MAX_STORAGE_SIZE);
         publicKeyStorage = new Storage(new File(KEY_DATA_DIR), MAX_KEY_INFO_STORAGE_SIZE);
-        StorageServer.createAndStart(port + 1, new File(DATA_DIR), storage, new File(KEY_DATA_DIR), publicKeyStorage);
+        messenger = Messenger.getDefault(port, publicKeyStorage, LOGGER);
+//        StorageServer.createAndStart(port + 1, new File(DATA_DIR), storage, new File(KEY_DATA_DIR), publicKeyStorage);
     }
 
     public void run()
@@ -596,6 +596,8 @@ public class RoutingServer extends Thread
 
     public static void test(int nodes) throws IOException
     {
+        if (!Args.hasParameter("script"))
+            throw new IllegalStateException("Need a script argument for test mode");
         String[] args = new String[]{"-firstNode", "-port", "8000", "-logMessages", "-script", Args.getParameter("script")};
         main(args);
         args = new String[]{"-port", "8000", "-logMessages", "-contactIP", "127.0.0.1", "-contactPort", args[2]};

@@ -36,6 +36,11 @@ public class Storage
             root.mkdirs();
     }
 
+    public File getRoot()
+    {
+        return root;
+    }
+
     public boolean isWaitingFor(byte[] key)
     {
         return pending.containsKey(new ByteArrayWrapper(key));

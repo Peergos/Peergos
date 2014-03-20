@@ -1,5 +1,6 @@
-package defiance.dht;
+package defiance.tests;
 
+import defiance.dht.*;
 import defiance.util.*;
 
 import java.io.*;
@@ -77,7 +78,6 @@ public class Scripter extends Thread
                              System.out.println(handler.isValid()? "Public key("+parts[2]+") = "+Arrays.bytesToHex(handler.getResult()): "Unable to retrieve public key");
                         }
                     });
-                    System.out.println("Sent Public Key Get message");
                 } else
                     System.out.println("Unknown command: " + command);
             }

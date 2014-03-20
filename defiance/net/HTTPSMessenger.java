@@ -5,6 +5,7 @@ import com.sun.net.httpserver.HttpsParameters;
 import com.sun.net.httpserver.HttpsServer;
 import defiance.dht.Message;
 import defiance.dht.Messenger;
+import defiance.storage.Storage;
 import sun.security.x509.*;
 
 import javax.net.ssl.*;
@@ -30,11 +31,13 @@ public class HTTPSMessenger extends Messenger
     private final int localPort;
     HttpsServer httpsServer;
     private final BlockingQueue<Message> queue = new LinkedBlockingDeque();
+    private final Storage keyStorage;
 
-    public HTTPSMessenger(int port, Logger LOGGER) throws IOException
+    public HTTPSMessenger(int port, Storage keyStorage, Logger LOGGER) throws IOException
     {
         this.LOGGER = LOGGER;
         this.localPort = port;
+        this.keyStorage = keyStorage;
     }
 
     @Override
@@ -91,6 +94,7 @@ public class HTTPSMessenger extends Messenger
         }
 
         httpsServer.createContext("/", new HttpsMessageHandler(this));
+        httpsServer.createContext("/key/", new StorageGetHandler(keyStorage, "/key/"));
         httpsServer.setExecutor(Executors.newFixedThreadPool(THREADS));
         httpsServer.start();
 
