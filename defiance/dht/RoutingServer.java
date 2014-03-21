@@ -1,5 +1,6 @@
 package defiance.dht;
 
+import defiance.net.IP;
 import defiance.storage.Storage;
 import defiance.tests.Scripter;
 import defiance.util.*;
@@ -115,7 +116,8 @@ public class RoutingServer extends Thread
             try
             {
                 Message m = messenger.awaitMessage((int) Node.NEIGHBOUR_TIMEOUT);
-                actOnMessage(m);
+                if (m != null)
+                    actOnMessage(m);
             }
             catch (InterruptedException e) {}
             catch (SocketTimeoutException s) {}
@@ -604,7 +606,7 @@ public class RoutingServer extends Thread
             throw new IllegalStateException("Need a script argument for test mode");
         String[] args = new String[]{"-firstNode", "-port", "8000", "-logMessages", "-script", Args.getParameter("script")};
         main(args);
-        args = new String[]{"-port", "8000", "-logMessages", "-contactIP", "127.0.0.1", "-contactPort", args[2]};
+        args = new String[]{"-port", "8000", "-logMessages", "-contactIP", IP.getMyPublicAddress().getHostAddress(), "-contactPort", args[2]};
         for (int i = 0; i < nodes - 1; i++)
         {
             args[1] = 9000 + 1000 * i + "";

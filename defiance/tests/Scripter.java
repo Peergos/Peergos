@@ -41,7 +41,7 @@ public class Scripter extends Thread
                             System.out.println("Put completed with no error");
                         }
                     });
-                    System.out.println("Sent PUT message..");
+                    System.out.println("Sent Put message..");
                 } else if (parts[1].equals("GET"))
                 {
                     api.get(Arrays.hexToBytes(parts[2]), new GetHandlerCallback() {
@@ -78,6 +78,9 @@ public class Scripter extends Thread
                              System.out.println(handler.isValid()? "Public key("+parts[2]+") = "+Arrays.bytesToHex(handler.getResult()): "Unable to retrieve public key");
                         }
                     });
+                } else if (parts[1].equals("KILL"))
+                {
+                    System.exit(0);
                 } else
                     System.out.println("Unknown command: " + command);
             }
@@ -86,7 +89,5 @@ public class Scripter extends Thread
             e.printStackTrace();
         }
         System.out.println("Finished sending messages!");
-        try {Thread.sleep(2000);} catch (InterruptedException e) {}
-        System.exit(0);
     }
 }

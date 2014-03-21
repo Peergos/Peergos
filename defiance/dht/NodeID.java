@@ -1,5 +1,6 @@
 package defiance.dht;
 
+import defiance.net.IP;
 import defiance.util.*;
 
 import java.io.*;
@@ -21,7 +22,7 @@ public class NodeID
 
     public NodeID() throws IOException
     {
-        this(generateID(), getMyPublicAddress(), Args.getInt("port", 8080));
+        this(generateID(), IP.getMyPublicAddress(), Args.getInt("port", 8080));
     }
 
     public NodeID(DataInput in) throws IOException
@@ -70,24 +71,6 @@ public class NodeID
     public static NodeID newID(NodeID old)
     {
         return new NodeID(generateID(), old.addr, old.port);
-    }
-
-    private static InetAddress getMyPublicAddress() throws IOException
-    {
-        // try to find our public IP address
-        Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
-        while (interfaces.hasMoreElements()){
-            NetworkInterface current = interfaces.nextElement();
-            if (!current.isUp() || current.isLoopback() || current.isVirtual()) continue;
-            Enumeration<InetAddress> addresses = current.getInetAddresses();
-            while (addresses.hasMoreElements()){
-                InetAddress current_addr = addresses.nextElement();
-                if (current_addr.isLoopbackAddress()) continue;
-                //System.out.println(current_addr.getHostAddress());
-                return current_addr;
-            }
-        }
-       throw new IOException("Is server connected to the internet?");
     }
 
     private static long generateID()
