@@ -13,8 +13,7 @@ server:
 	echo "Build-Date: " `date` >> def.manifest
 	echo "Class-Path: " $(CP_SPACE)>> def.manifest
 	javac $(JAVA_BUILD_OPTS) -d build `find defiance -name \*.java`
-	cp lib/Nereus6.jar DefianceServer.jar
-	jar -ufm DefianceServer.jar def.manifest \
+	jar -cfm DefianceServer.jar def.manifest \
 	    -C build defiance
 	rm -f def.manifest
 
@@ -26,7 +25,6 @@ tests:
 	echo "Build-Date: " `date` >> def.manifest
 	echo "Class-Path: " $(CP_SPACE)>> def.manifest
 	javac $(JAVA_BUILD_OPTS) -d build `find defiance -name \*.java`
-	cp lib/Nereus6.jar DefianceTests.jar
-	jar -ufm DefianceTests.jar def.manifest \
+	jar -cfm DefianceTests.jar def.manifest \
 	    -C build defiance
 	rm -f def.manifest
