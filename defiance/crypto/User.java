@@ -123,7 +123,11 @@ public class User extends PublicKey
             random2.setSeed(hash);
             System.out.println(random.getProvider().getClass().getName());
             kpg.initialize(RSA_KEY_SIZE, random);
-            return new User(kpg.generateKeyPair());
+            long start = System.nanoTime();
+            User u = new User(kpg.generateKeyPair());
+            long end = System.nanoTime();
+            System.out.printf("User credential generation took %d mS\n", (end-start)/1000000);
+            return u;
         } catch (NoSuchAlgorithmException e)
         {
             throw new IllegalStateException("Couldn't generate key-pair from password - "+e.getMessage());
