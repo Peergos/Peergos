@@ -1,0 +1,14 @@
+Defiance To Do:
+- [ ] File Splitting, encryption, and erasure codes into fragments
+- [ ] Make DHT PUT check user quota + usage
+- [ ] API for Core node database
+- [ ] Directory Server over http
+- [ ] root key to sign release (including source to allow verifiable build), import root key into java keystore, and ideally browser keystore
+- [ ] distributed reputation measuring bandwidth and space
+- [ ] Cryptree link concept
+- [ ] transferral of earned storage rights between users
+- [ ] java client interface
+- [ ] javascript interface over https
+- [ ] auto update via root key signed releases
+- [ ] anonymising circuit construction ala Tor for sharing API
+- [ ] benchmarks, tests
