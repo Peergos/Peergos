@@ -604,42 +604,15 @@ public class RoutingServer extends Thread
     {
         if (!Args.hasParameter("script"))
             throw new IllegalStateException("Need a script argument for test mode");
+        int directoryPort = 80;
+        Start.main(new String[] {"-directoryServer", IP.getMyPublicAddress().getHostAddress()+":"+directoryPort});
         String[] args = new String[]{"-firstNode", "-port", "8000", "-logMessages", "-script", Args.getParameter("script")};
-        main(args);
-        args = new String[]{"-port", "8000", "-logMessages", "-contactIP", IP.getMyPublicAddress().getHostAddress(), "-contactPort", args[2]};
+        Start.main(args);
+        args = new String[]{"-port", "", "-logMessages", "-contactIP", IP.getMyPublicAddress().getHostAddress(), "-contactPort", args[2]};
         for (int i = 0; i < nodes - 1; i++)
         {
             args[1] = 9000 + 1000 * i + "";
-            main(args);
-        }
-    }
-
-    public static void main(String[] args) throws IOException
-    {
-        Args.parse(args);
-        if (Args.hasOption("help"))
-        {
-            Args.printOptions();
-            System.exit(0);
-        }
-        if (Args.hasOption("firstNode"))
-        {
-            new File("log/").mkdirs();
-            for (File f : new File("log/").listFiles())
-                f.delete();
-        }
-        if (Args.hasParameter("test"))
-        {
-            test(Args.getInt("test", 6));
-            return;
-        }
-        int port = Args.getInt("port", 8080);
-        RoutingServer rs = new RoutingServer(port);
-        rs.start();
-        API api = new API(rs);
-        if (Args.hasParameter("script"))
-        {
-            new Scripter(api, Args.getParameter("script")).start();
+            Start.main(args);
         }
     }
 }

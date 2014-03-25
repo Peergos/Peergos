@@ -9,7 +9,7 @@ build: server
 server: 
 	mkdir -p build
 	echo "Name: Defiance Storage Server" > def.manifest
-	echo "Main-Class: defiance.dht.RoutingServer" >> def.manifest
+	echo "Main-Class: defiance.dht.Start" >> def.manifest
 	echo "Build-Date: " `date` >> def.manifest
 	echo "Class-Path: " $(CP_SPACE)>> def.manifest
 	javac $(JAVA_BUILD_OPTS) -d build `find defiance -name \*.java`

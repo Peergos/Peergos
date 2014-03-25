@@ -70,7 +70,6 @@ public class SSL
 //        CertificateValidity interval = new CertificateValidity(from, to);
 //        info.set(X509CertInfo.VALIDITY, interval);
 //        info.set(X509CertInfo.SERIAL_NUMBER, new CertificateSerialNumber(sn));
-
 //        X500Name owner = new X500Name("EMAIL=hello.NSA.GCHQ.ASIO@goodluck.com");
 //        info.set(X509CertInfo.SUBJECT, new CertificateSubjectName(owner));
 //        info.set(X509CertInfo.ISSUER, new CertificateIssuerName(owner));
@@ -82,6 +81,9 @@ public class SSL
 //        X509CertImpl cert = new X509CertImpl(info);
 //        cert.sign(myPrivateKey, "MD5WithRSA");
 
+//        Certificate rootCert = hard coded;
+//        KeyStore.Entry root = new KeyStore.TrustedCertificateEntry();
+//        ks.setEntry("root", root, null);
         ks.setKeyEntry("private", myPrivateKey, password, new Certificate[]{cert});
         ks.store(new FileOutputStream("sslkeystore"), password);
         return ks;

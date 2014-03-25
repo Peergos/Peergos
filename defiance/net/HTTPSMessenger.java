@@ -46,7 +46,7 @@ public class HTTPSMessenger extends Messenger
             InetSocketAddress address = new InetSocketAddress(us, localPort);
             System.out.println("Listening on: " + us.getHostAddress() + ":" + localPort);
             httpsServer = HttpsServer.create(address, CONNECTION_BACKLOG);
-            SSLContext sslContext = SSLContext.getInstance ("TLS");
+            SSLContext sslContext = SSLContext.getInstance("TLS");
 
             char[] password = "simulator".toCharArray();
             KeyStore ks = SSL.getKeyStore(password);
