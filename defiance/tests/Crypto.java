@@ -1,9 +1,13 @@
 package defiance.tests;
 
-import defiance.crypto.PublicKey;
+import defiance.crypto.SSL;
+import defiance.crypto.UserPublicKey;
 import defiance.crypto.User;
 import defiance.util.Arrays;
+import junit.framework.Assert;
 import org.junit.Test;
+
+import java.security.KeyStore;
 
 import static junit.framework.TestCase.assertEquals;
 
@@ -14,6 +18,22 @@ public class Crypto
         boolean res = User.testEncryptionCapabilities();
         User.enumerateAllCryptoAlgorithmsAvailable();
         assertEquals("Crypto capabilities", true, res);
+    }
+
+    @Test
+    public void SSLCrypto()
+    {
+        try {
+            char[] rootpass = "password".toCharArray();
+            char[] dirpass = "password".toCharArray();
+            SSL.generateDirectoryCertificateAndCSR(dirpass);
+            SSL.signDirectoryCertificate("dirCSR.pem", rootpass);
+
+        } catch (Exception e)
+        {
+            e.printStackTrace();
+            assertEquals(true, false);
+        }
     }
 
     @Test
@@ -31,12 +51,12 @@ public class Crypto
 //        System.out.println("Signed["+signed.length+"]: "+Arrays.bytesToHex(signed));
 //        System.out.println("Encryped["+encrypted.length+"]: "+Arrays.bytesToHex(encrypted));
 
-        assertEquals("Correct encrypted size", PublicKey.RSA_KEY_SIZE/8, signed.length);
-        assertEquals("Correct encrypted size", PublicKey.RSA_KEY_SIZE/8, encrypted.length);
+        assertEquals("Correct encrypted size", UserPublicKey.RSA_KEY_SIZE/8, signed.length);
+        assertEquals("Correct encrypted size", UserPublicKey.RSA_KEY_SIZE/8, encrypted.length);
         assertEquals("unsigning is the inverse of signing", Arrays.bytesToHex(raw), Arrays.bytesToHex(unsigned));
         assertEquals("decrypt is the inverse of encrypt", Arrays.bytesToHex(raw), Arrays.bytesToHex(decrypted));
 
-        PublicKey rem = new PublicKey(u.getPublicKey());
+        UserPublicKey rem = new UserPublicKey(u.getPublicKey());
         byte[] encrypted2 = rem.encryptMessageFor(raw);
         byte[] decrypted2 = u.decryptMessage(encrypted2);
         assertEquals("decrypt is the inverse of recover key -> encrypt", Arrays.bytesToHex(raw), Arrays.bytesToHex(decrypted2));

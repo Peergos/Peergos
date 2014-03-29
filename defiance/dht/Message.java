@@ -1,7 +1,6 @@
 package defiance.dht;
 
-import defiance.crypto.PublicKey;
-import defiance.crypto.User;
+import defiance.crypto.UserPublicKey;
 import defiance.util.*;
 import defiance.util.Arrays;
 
@@ -368,12 +367,12 @@ public abstract class Message
         public PUBLIC_KEY_PUT(NodeID us, byte[] username, byte[] publicKey, int recursion)
         {
             super(Type.PUBLIC_KEY_PUT);
-            assert(username.length < PublicKey.MAX_USERNAME_BYTES);
+            assert(username.length < UserPublicKey.MAX_USERNAME_BYTES);
             addNode(us);
             this.username = username;
             this.publicKey = publicKey;
             this.recursion = recursion;
-            hashedUsername = PublicKey.recursiveHash(username, recursion);
+            hashedUsername = UserPublicKey.recursiveHash(username, recursion);
             target = Arrays.getLong(hashedUsername, 0);
         }
 
@@ -381,12 +380,12 @@ public abstract class Message
         {
             super(Type.PUBLIC_KEY_PUT, in);
             username = new byte[in.readInt()];
-            assert(username.length < PublicKey.MAX_USERNAME_BYTES);
+            assert(username.length < UserPublicKey.MAX_USERNAME_BYTES);
             in.readFully(username);
             publicKey = new byte[in.readInt()];
             in.readFully(publicKey);
             recursion = in.readInt();
-            hashedUsername = PublicKey.recursiveHash(username, recursion);
+            hashedUsername = UserPublicKey.recursiveHash(username, recursion);
             target = Arrays.getLong(hashedUsername, 0);
         }
 

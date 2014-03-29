@@ -1,6 +1,5 @@
 package defiance.crypto;
 
-import java.io.UnsupportedEncodingException;
 import java.security.*;
 import javax.crypto.*;
 import java.security.spec.InvalidKeySpecException;
@@ -8,7 +7,7 @@ import java.security.spec.X509EncodedKeySpec;
 import java.util.Enumeration;
 import java.util.Set;
 
-public class User extends PublicKey
+public class User extends UserPublicKey
 {
     private final Key privateKey;
 

@@ -1,5 +1,6 @@
 package defiance.dht;
 
+import defiance.crypto.SSL;
 import defiance.tests.Scripter;
 import defiance.util.Args;
 
@@ -25,20 +26,31 @@ public class Start
         if (Args.hasParameter("test"))
         {
             RoutingServer.test(Args.getInt("test", 6));
-            return;
         }
-        if (Args.hasParameter("directoryServer"))
+        else if (Args.hasParameter("directoryServer"))
         {
             DirectoryServer.createAndStart();
-            return;
         }
-        int port = Args.getInt("port", 8080);
-        RoutingServer rs = new RoutingServer(port);
-        rs.start();
-        API api = new API(rs);
-        if (Args.hasParameter("script"))
+        else if (Args.hasOption("rootGen"))
         {
-            new Scripter(api, Args.getParameter("script")).start();
+            SSL.generateAndSaveRootCertificate(Args.getParameter("password").toCharArray());
+        }
+        else if (Args.hasOption("dirGen"))
+        {
+            SSL.generateDirectoryCertificateAndCSR(Args.getParameter("password").toCharArray());
+        }
+        else if (Args.hasOption("dirSign"))
+        {
+            SSL.signDirectoryCertificate(Args.getParameter("csr"), Args.getParameter("rootPassword").toCharArray());
+        }
+        else {
+            int port = Args.getInt("port", 8080);
+            RoutingServer rs = new RoutingServer(port);
+            rs.start();
+            API api = new API(rs);
+            if (Args.hasParameter("script")) {
+                new Scripter(api, Args.getParameter("script")).start();
+            }
         }
     }
 }

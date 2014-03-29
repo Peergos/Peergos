@@ -11,7 +11,7 @@ import java.security.*;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.X509EncodedKeySpec;
 
-public class PublicKey
+public class UserPublicKey
 {
     public static final int RSA_KEY_SIZE = 4096;
     public static final int MAX_USERNAME_BYTES = 28;
@@ -23,12 +23,12 @@ public class PublicKey
 
     private final Key publicKey;
 
-    public PublicKey(Key pub)
+    public UserPublicKey(Key pub)
     {
         this.publicKey = pub;
     }
 
-    public PublicKey(byte[] encodedPublicKey)
+    public UserPublicKey(byte[] encodedPublicKey)
     {
         try {
             publicKey = KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(encodedPublicKey));
