@@ -37,7 +37,8 @@ public class Start
         }
         else if (Args.hasOption("dirGen"))
         {
-            SSL.generateDirectoryCertificateAndCSR(Args.getParameter("password").toCharArray());
+
+            SSL.generateCSR(Args.getParameter("password").toCharArray(), Args.getParameter("keyfile"), "dirCSR.pem");
         }
         else if (Args.hasOption("dirSign"))
         {

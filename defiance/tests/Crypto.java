@@ -4,10 +4,7 @@ import defiance.crypto.SSL;
 import defiance.crypto.UserPublicKey;
 import defiance.crypto.User;
 import defiance.util.Arrays;
-import junit.framework.Assert;
 import org.junit.Test;
-
-import java.security.KeyStore;
 
 import static junit.framework.TestCase.assertEquals;
 
@@ -26,7 +23,7 @@ public class Crypto
         try {
             char[] rootpass = "password".toCharArray();
             char[] dirpass = "password".toCharArray();
-            SSL.generateDirectoryCertificateAndCSR(dirpass);
+            SSL.generateCSR(dirpass, "dirKeys.pem", "dirCSR.pem");
             SSL.signDirectoryCertificate("dirCSR.pem", rootpass);
 
         } catch (Exception e)
