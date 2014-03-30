@@ -39,9 +39,7 @@ public class Crypto
             for (Certificate cert: dirCerts) {
                 cert.verify(SSL.getRootKeyStore(rootpass).getCertificate("rootCA").getPublicKey());
                 cert.verify(SSL.getRootCertificate().getPublicKey());
-                X500Name x500name = new JcaX509CertificateHolder((X509Certificate)cert).getSubject();
-                RDN cn = x500name.getRDNs(BCStyle.CN)[0];
-                System.out.println("Verified "+ IETFUtils.valueToString(cn.getFirst().getValue()));
+                System.out.println("Verified "+ SSL.getCommonName(cert));
             }
             System.out.printf("Verified %s directory server certificate(s) against rootCA\n", dirCerts.length);
         } catch (Exception e)

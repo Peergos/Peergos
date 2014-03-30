@@ -3,13 +3,17 @@ package defiance.crypto;
 import defiance.net.IP;
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
+import org.bouncycastle.asn1.x500.RDN;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x500.X500NameBuilder;
+import org.bouncycastle.asn1.x500.style.BCStyle;
+import org.bouncycastle.asn1.x500.style.IETFUtils;
 import org.bouncycastle.asn1.x500.style.RFC4519Style;
 import org.bouncycastle.asn1.x509.*;
 import org.bouncycastle.cert.X509CertificateHolder;
 import org.bouncycastle.cert.X509v3CertificateBuilder;
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
+import org.bouncycastle.cert.jcajce.JcaX509CertificateHolder;
 import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
 import org.bouncycastle.crypto.params.AsymmetricKeyParameter;
 import org.bouncycastle.crypto.params.RSAKeyParameters;
@@ -349,6 +353,18 @@ public class SSL
         KeyStore keyStore = KeyStore.getInstance("PKCS12", "BC");
         keyStore.load(new FileInputStream("rootCA.pem"), password);
         return keyStore;
+    }
+
+    public static String getCommonName(Certificate cert)
+    {
+        try {
+            X500Name x500name = new JcaX509CertificateHolder((X509Certificate) cert).getSubject();
+            RDN cn = x500name.getRDNs(BCStyle.CN)[0];
+            return IETFUtils.valueToString(cn.getFirst().getValue());
+        } catch (CertificateEncodingException e) {
+            e.printStackTrace();
+            throw new IllegalStateException(e.getMessage());
+        }
     }
 
     private static final int NUM_DIR_SERVERS = 1;

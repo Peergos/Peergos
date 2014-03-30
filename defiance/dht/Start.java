@@ -1,6 +1,7 @@
 package defiance.dht;
 
 import defiance.crypto.SSL;
+import defiance.directory.DirectoryServer;
 import defiance.tests.Scripter;
 import defiance.util.Args;
 
@@ -27,9 +28,12 @@ public class Start
         {
             RoutingServer.test(Args.getInt("test", 6));
         }
-        else if (Args.hasParameter("directoryServer"))
+        else if (Args.hasOption("directoryServer"))
         {
-            DirectoryServer.createAndStart();
+            String keyfile = Args.getParameter("keyfile", "dirKeys.pem");
+            char[] passphrase = Args.getParameter("passphrase", "password").toCharArray();
+            int port = Integer.parseInt(Args.getParameter("port", "80"));
+            DirectoryServer.createAndStart(keyfile, passphrase, port);
         }
         else if (Args.hasOption("rootGen"))
         {
