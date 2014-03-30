@@ -144,7 +144,7 @@ public class SSL
         builder.addRDN(PKCSObjectIdentifiers.pkcs_9_at_emailAddress, "hello.NSA.GCHQ.ASIO@goodluck.com");
 
         PKCS10CertificationRequestBuilder p10Builder =
-                new JcaPKCS10CertificationRequestBuilder(new X500Principal("CN=Requested Test Certificate"), signee);
+                new JcaPKCS10CertificationRequestBuilder(new X500Principal("CN="+commonName), signee);
         JcaContentSignerBuilder csBuilder = new JcaContentSignerBuilder("SHA256withRSA");
         ContentSigner csigner = csBuilder.build(signer);
         PKCS10CertificationRequest csr = p10Builder.build(csigner);
@@ -163,9 +163,7 @@ public class SSL
             KeyPair keypair = generateKeyPair();
             PrivateKey myPrivateKey = keypair.getPrivate();
             Certificate cert = generateRootCertificate(password, keypair);
-            String encoded = Base64.toBase64String(cert.getEncoded());
-            for (int i=0; i <= encoded.length()/70; i++)
-                System.out.println("\"" + encoded.substring(i*70, Math.min((i+1)*70, encoded.length())) + "\" +");
+            printCertificate(cert);
 
             ks.setKeyEntry("private", myPrivateKey, password, new Certificate[]{cert});
             ks.setCertificateEntry("rootCA", cert);
@@ -290,12 +288,23 @@ public class SSL
             ContentSigner sigGen = new BcRSAContentSignerBuilder(sigAlgId, digAlgId).build(foo);
 
             X509CertificateHolder holder = myCertificateGenerator.build(sigGen);
-            return new JcaX509CertificateConverter().getCertificate(holder);
+            Certificate signed = new JcaX509CertificateConverter().getCertificate(holder);
+            printCertificate(signed);
+            return signed;
         } catch (Exception e)
         {
             e.printStackTrace();
             return null;
         }
+    }
+
+    public static void printCertificate(Certificate cert)
+    {
+        try {
+            String encoded = Base64.toBase64String(cert.getEncoded());
+            for (int i = 0; i <= encoded.length() / 70; i++)
+                System.out.println("\"" + encoded.substring(i * 70, Math.min((i + 1) * 70, encoded.length())) + "\" +");
+        } catch (CertificateEncodingException e) {e.printStackTrace();}
     }
 
     private static byte[] rootCA = Base64.decode("MIIFrTCCA5WgAwIBAgIIfKBkrHTAKBEwDQYJKoZIhvcNAQELBQAwgYsxEjAQBgNVBAMMCT" +
@@ -345,7 +354,29 @@ public class SSL
     private static final int NUM_DIR_SERVERS = 1;
     private static byte[][] directoryServers = new byte[NUM_DIR_SERVERS][];
     static {
-        directoryServers[0] = Base64.decode("aaaa");
+        directoryServers[0] = Base64.decode("MIIEnjCCAoagAwIBAgIBATANBgkqhkiG9w0BAQsFADARMQ8wDQYDVQQDDAZpc3N1ZXIwHh" +
+                "cNMTQwMzMwMTIzMzQ5WhcNMTQwNDEzMDYyMDIzWjAUMRIwEAYDVQQDEwkxMC4wLjIuMTUw" +
+                "ggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQCSobZuAL1ofjUVUf9Ajihve4HUpX" +
+                "1i29dpdN9d0mPtMrwrH4jBPD7GErrSwcxHXG7KY/0ELL2bAHhL20XtbrR1D5JCMAMilGbx" +
+                "1ARa1jBC5X+SsTKzTJyV7D7yY3g9qSpl8td75rskgZC2ny6gz/m3XI/FAt9SzZNASY49E1" +
+                "olqGJaUY/NfRXxtp22XFUvG7nPR0gjNyWRaFtQ64dSrTdsFhBhaP8SldcYu7F4D3TC5kX4" +
+                "iTYQXuEiLqZAJOXZgDI/9LBJsk6fHKZ6zF/nsICIiyeRpUVBCx1lrLAbR5YdM91JCwh/HM" +
+                "IdUEBEuNnKd78epKj+/kqFrLVjygfByMEzSAMvcvSlZ5xq96uzhd9Kql+WOxplV4hVnqpn" +
+                "NFQtzCJ875mB3KecQ/9+BfWJ/CqtTfrqeT3eWyzXjk1xnAhVRpYveJL/GJjIFmWrAVE9zZ" +
+                "x/q187hIm159fBy8cPvZ3SYlSfohUMxlHDan6uOIqTz9h20RQv8VA4qntpbRS3l7QHK53w" +
+                "7P7NGScPMRm/Bc1KnTmhJVJazInQQU3htYGAByB+f9xK73t5GxfxPhdnAF0/N40wBwfEbr" +
+                "gr4T/gD5S0ovp258s/ZWCG7PQ9MbWKPIOpT4W90UYWHNa5RE4S/90EsgAQTWUKYFnvfZx5" +
+                "oFh9Bkxr6eSxnRy3Znr/Tfn/TQIDAQABMA0GCSqGSIb3DQEBCwUAA4ICAQCNmt5g3XrGhP" +
+                "s8ow4KkRYHD0a49QCldhD/JeMYLSa8OcZHAqH+/kgxzEwT/ZBdmA63iM7sQsgnEzNmmELL" +
+                "XQmVOJlGTir6Fpm0HaxzWhctIU0VdnChO6BWsxeOicDP1U67ZeRBsmu/rfWu+B7tLilWGo" +
+                "vB1C7gHTbJ9sW+T/jx0Js+MbNTAcH/MoYy2+GrEjoAUDEFHQu7JnkfDOReFTTpAiNMCEHS" +
+                "Ok/UKK3r2aMGI/tdVjBhqiYip9jP0Vv9vcgeDz0spPlil9cNPMyfJ1TkW3cYQYioiAMeqN" +
+                "tLmiOF4wVxEY/TtxOQcCHR+PiBHgZdbDNP9/s66j5LaWeCmZ9quPoz6dV7TTRERgB6WRjc" +
+                "i7W6T6etY3AXalN/GwMQAQ/fi4gAfD2NxMpft0Nn2tlzqsN9OyHuppzqCR2s2GOvz4JyP/" +
+                "rbVqiduqlJicdWbdiUGXnzpeQwEn2evTcuGPioyzkufIJjAP8zzpfeUbM8ReLeBfEvBu22" +
+                "ucKW/LQCYty5GnHPTBUu3gvfk+7Ub2xHvs2Vjc8ExPIIwxrij9fk+Fl40BRjiWs9qUnrac" +
+                "dzcvSLBTnvd+mEyrQaSYRbm17/6XoDHwY6kkVWf4fLtSr26R/WCiMiA9R+FuBj9PFuh+bH" +
+                "1qhqORKdFWmGqQYBfsANFi73q5WsYZ3PlGTah515/A==");
     }
 
     // Directory server certificates are signed by the root key
@@ -355,10 +386,8 @@ public class SSL
         Certificate[] dirs = new Certificate[NUM_DIR_SERVERS];
         for (int i =0; i < NUM_DIR_SERVERS; i++)
         {
-            KeyStore keyStore = KeyStore.getInstance("PKCS12", "BC");
-            ByteArrayInputStream input = new ByteArrayInputStream(directoryServers[i]);
-            keyStore.load(input, "dirserver".toCharArray());
-            dirs[i] = keyStore.getCertificate("dirserver");
+            CertificateFactory  fact = CertificateFactory.getInstance("X.509", "BC");
+            dirs[i] = fact.generateCertificate(new ByteArrayInputStream(directoryServers[i]));
         }
         return dirs;
     }

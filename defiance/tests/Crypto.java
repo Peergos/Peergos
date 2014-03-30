@@ -5,10 +5,16 @@ import defiance.crypto.UserPublicKey;
 import defiance.crypto.User;
 import defiance.util.Arrays;
 import junit.framework.Assert;
+import org.bouncycastle.asn1.x500.RDN;
+import org.bouncycastle.asn1.x500.X500Name;
+import org.bouncycastle.asn1.x500.style.BCStyle;
+import org.bouncycastle.asn1.x500.style.IETFUtils;
+import org.bouncycastle.cert.jcajce.JcaX509CertificateHolder;
 import org.junit.Test;
 
 import java.security.KeyPair;
 import java.security.cert.Certificate;
+import java.security.cert.X509Certificate;
 
 import static junit.framework.TestCase.assertEquals;
 
@@ -22,7 +28,31 @@ public class Crypto
     }
 
     @Test
-    public void SSLCrypto()
+    public void SSLDirectoryCertificateValidation()
+    {
+        try {
+            char[] rootpass = "password".toCharArray();
+            char[] dirpass = "password".toCharArray();
+            KeyPair dirKeys = SSL.loadKeyPair("dirKeys.pem", dirpass);
+            Certificate[] dirCerts = SSL.getDirectoryServerCertificates();
+            // verify certificate using RootCA and directly using public rootKey
+            for (Certificate cert: dirCerts) {
+                cert.verify(SSL.getRootKeyStore(rootpass).getCertificate("rootCA").getPublicKey());
+                cert.verify(SSL.getRootCertificate().getPublicKey());
+                X500Name x500name = new JcaX509CertificateHolder((X509Certificate)cert).getSubject();
+                RDN cn = x500name.getRDNs(BCStyle.CN)[0];
+                System.out.println("Verified "+ IETFUtils.valueToString(cn.getFirst().getValue()));
+            }
+            System.out.printf("Verified %s directory server certificate(s) against rootCA\n", dirCerts.length);
+        } catch (Exception e)
+        {
+            e.printStackTrace();
+            assertEquals(true, false);
+        }
+    }
+
+    // overwrites directory server keys
+    public void SSLCertificateGenerationAndSigning()
     {
         try {
             char[] rootpass = "password".toCharArray();
