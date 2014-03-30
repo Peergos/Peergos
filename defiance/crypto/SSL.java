@@ -384,6 +384,13 @@ public class SSL
         }
     }
 
+    public static String getCommonName(PKCS10CertificationRequest csr)
+    {
+        X500Name x500name = csr.getSubject();
+        RDN cn = x500name.getRDNs(BCStyle.CN)[0];
+        return IETFUtils.valueToString(cn.getFirst().getValue());
+    }
+
     private static final int NUM_DIR_SERVERS = 1;
     private static byte[][] directoryServers = new byte[NUM_DIR_SERVERS][];
     static {

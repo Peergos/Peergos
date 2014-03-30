@@ -44,14 +44,17 @@ public class DirectoryServer
         server = HttpServer.create(address, CONNECTION_BACKLOG);
         server.createContext("/dir", new StorageListHandler(this));
         server.createContext("/dirHuman", new ReadableStorageListHandler(this));
-//        server.createContext("/sign", new SignRequestHandler(this));
+        server.createContext("/sign", new SignRequestHandler(this));
         server.setExecutor(Executors.newFixedThreadPool(THREADS));
         server.start();
     }
 
     public Certificate signCertificate(PKCS10CertificationRequest csr)
     {
-        return SSL.signCertificate(csr, signing.getPrivate(), commonName);
+        Certificate signed =  SSL.signCertificate(csr, signing.getPrivate(), commonName);
+        // TODO don't overwrite existing certificates as this can easily be DOSed, rather require a cert invalidation first
+        storageServers.put(SSL.getCommonName(csr), signed);
+        return signed;
     }
 
     public byte[] getReadableStorageServers()
