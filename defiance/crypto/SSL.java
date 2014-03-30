@@ -3,7 +3,6 @@ package defiance.crypto;
 import defiance.net.IP;
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
-import org.bouncycastle.asn1.pkcs.PrivateKeyInfo;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x500.X500NameBuilder;
 import org.bouncycastle.asn1.x500.style.RFC4519Style;
@@ -16,7 +15,6 @@ import org.bouncycastle.crypto.params.AsymmetricKeyParameter;
 import org.bouncycastle.crypto.params.RSAKeyParameters;
 import org.bouncycastle.crypto.util.PrivateKeyFactory;
 import org.bouncycastle.crypto.util.PublicKeyFactory;
-import org.bouncycastle.crypto.util.SubjectPublicKeyInfoFactory;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.openssl.*;
 import org.bouncycastle.openssl.jcajce.*;
@@ -28,10 +26,8 @@ import org.bouncycastle.pkcs.PKCS10CertificationRequestBuilder;
 import org.bouncycastle.pkcs.PKCS8EncryptedPrivateKeyInfo;
 import org.bouncycastle.pkcs.PKCSException;
 import org.bouncycastle.pkcs.jcajce.JcaPKCS10CertificationRequestBuilder;
-import org.bouncycastle.pkcs.jcajce.JcaPKCS8EncryptedPrivateKeyInfoBuilder;
 import org.bouncycastle.util.encoders.Base64;
 import org.bouncycastle.util.io.pem.PemObject;
-import org.bouncycastle.util.io.pem.PemReader;
 
 import javax.security.auth.x500.X500Principal;
 import java.io.*;
@@ -41,9 +37,7 @@ import java.security.cert.*;
 import java.security.cert.Certificate;
 import java.security.interfaces.RSAPrivateCrtKey;
 import java.security.spec.InvalidKeySpecException;
-import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.RSAPublicKeySpec;
-import java.security.spec.X509EncodedKeySpec;
 import java.util.Date;
 
 public class SSL
@@ -182,10 +176,11 @@ public class SSL
         }
     }
 
-    public static void generateAndSaveKeyPair(String filename, char[] passphrase) throws IOException
+    public static KeyPair generateAndSaveKeyPair(String filename, char[] passphrase) throws IOException
     {
         KeyPair pair = generateKeyPair();
         saveKeyPair(filename, passphrase, pair);
+        return pair;
     }
 
     public static void saveKeyPair(String filename, char[] passphrase, KeyPair keypair) throws IOException
@@ -228,15 +223,18 @@ public class SSL
         return new KeyPair(publicKey, privateKey);
     }
 
-    public static void generateCSR(char[] passphrase, String keyfile, String csrfile) throws IOException
+    public static KeyPair generateCSR(char[] passphrase, String keyfile, String csrfile) throws IOException
     {
+        String msg;
         try {
-            generateAndSaveKeyPair(keyfile, passphrase);
+            KeyPair pair = generateAndSaveKeyPair(keyfile, passphrase);
             generateCSR(passphrase, loadKeyPair(keyfile, passphrase), csrfile);
-        } catch (NoSuchAlgorithmException e) {e.printStackTrace();}
-        catch (InvalidKeySpecException e) {e.printStackTrace();}
-        catch (OperatorCreationException e) {e.printStackTrace();}
-        catch (PKCSException e) {e.printStackTrace();}
+            return pair;
+        } catch (NoSuchAlgorithmException e) {e.printStackTrace(); msg= e.getMessage();}
+        catch (InvalidKeySpecException e) {e.printStackTrace();msg= e.getMessage();}
+        catch (OperatorCreationException e) {e.printStackTrace();msg= e.getMessage();}
+        catch (PKCSException e) {e.printStackTrace();msg= e.getMessage();}
+        throw new IllegalStateException(msg);
     }
 
     public static void generateCSR(char[] password, KeyPair keypair, String outfile)
@@ -329,16 +327,14 @@ public class SSL
             "bSQTqerx2I7wa9dPqDQ4/5WC3qCXMExt+8IMyLSdE6wWdaAWwharFwf6KDaGYIm8nhiLFF" +
             "p48/YW/ZxXUmRrNwQuValEJ8r3YnRbhpsl+jzxqL+S9UgchfOeMEI=");
 
-    private static Certificate getRootCertificate()
+    public static Certificate getRootCertificate()
             throws KeyStoreException, NoSuchProviderException, NoSuchAlgorithmException, CertificateException, IOException
     {
-        KeyStore keyStore = KeyStore.getInstance("PKCS12", "BC");
-        ByteArrayInputStream input = new ByteArrayInputStream(rootCA);
-        keyStore.load(input, "test".toCharArray());
-        return keyStore.getCertificate("rootCA");
+        CertificateFactory  fact = CertificateFactory.getInstance("X.509", "BC");
+        return fact.generateCertificate(new ByteArrayInputStream(rootCA));
     }
 
-    private static KeyStore getRootKeyStore(char[] password)
+    public static KeyStore getRootKeyStore(char[] password)
             throws KeyStoreException, NoSuchProviderException, NoSuchAlgorithmException, CertificateException, IOException
     {
         KeyStore keyStore = KeyStore.getInstance("PKCS12", "BC");

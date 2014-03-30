@@ -4,7 +4,11 @@ import defiance.crypto.SSL;
 import defiance.crypto.UserPublicKey;
 import defiance.crypto.User;
 import defiance.util.Arrays;
+import junit.framework.Assert;
 import org.junit.Test;
+
+import java.security.KeyPair;
+import java.security.cert.Certificate;
 
 import static junit.framework.TestCase.assertEquals;
 
@@ -23,8 +27,17 @@ public class Crypto
         try {
             char[] rootpass = "password".toCharArray();
             char[] dirpass = "password".toCharArray();
-            SSL.generateCSR(dirpass, "dirKeys.pem", "dirCSR.pem");
-            SSL.signDirectoryCertificate("dirCSR.pem", rootpass);
+            KeyPair pair = SSL.generateCSR(dirpass, "dirKeys.pem", "dirCSR.pem");
+            long start = System.nanoTime();
+            Certificate cert = SSL.signDirectoryCertificate("dirCSR.pem", rootpass);
+            long end = System.nanoTime();
+            System.out.printf("CSR signing took %d mS\n", (end-start)/1000000);
+            assertEquals(cert.getPublicKey(), pair.getPublic());
+            KeyPair samePair = SSL.loadKeyPair("dirKeys.pem", dirpass);
+            assertEquals(pair.getPrivate(), samePair.getPrivate());
+            // verify certificate using RootCA and directly using public rootKey
+            cert.verify(SSL.getRootKeyStore(rootpass).getCertificate("rootCA").getPublicKey());
+            cert.verify(SSL.getRootCertificate().getPublicKey());
 
         } catch (Exception e)
         {
