@@ -4,6 +4,7 @@ import com.sun.net.httpserver.HttpServer;
 import defiance.crypto.SSL;
 import defiance.net.IP;
 import org.bouncycastle.operator.OperatorCreationException;
+import org.bouncycastle.pkcs.PKCS10CertificationRequest;
 import org.bouncycastle.pkcs.PKCSException;
 
 import java.io.ByteArrayOutputStream;
@@ -28,6 +29,7 @@ public class DirectoryServer
     private final Map<String, Certificate> storageServers = new ConcurrentHashMap();
     private final KeyPair signing;
     private final HttpServer server;
+    private final String commonName;
     private byte[] cachedServerList = null;
 
     private DirectoryServer(String keyfile, char[] passphrase, int port)
@@ -37,6 +39,7 @@ public class DirectoryServer
         //start HTTP server
         InetAddress us = IP.getMyPublicAddress();
         InetSocketAddress address = new InetSocketAddress(us, port);
+        commonName = us.getHostAddress();
         System.out.println("Directory Server listening on: " + us.getHostAddress() + ":" + port);
         server = HttpServer.create(address, CONNECTION_BACKLOG);
         server.createContext("/dir", new StorageListHandler(this));
@@ -46,10 +49,9 @@ public class DirectoryServer
         server.start();
     }
 
-    public boolean signCertificate(Certificate csr)
+    public Certificate signCertificate(PKCS10CertificationRequest csr)
     {
-
-        return false;
+        return SSL.signCertificate(csr, signing.getPrivate(), commonName);
     }
 
     public byte[] getReadableStorageServers()

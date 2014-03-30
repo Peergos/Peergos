@@ -49,7 +49,7 @@ public class Start
             SSL.signDirectoryCertificate(Args.getParameter("csr"), Args.getParameter("rootPassword").toCharArray());
         }
         else {
-            int port = Args.getInt("port", 8080);
+            int port = Args.getInt("port", 8000);
             RoutingServer rs = new RoutingServer(port);
             rs.start();
             API api = new API(rs);

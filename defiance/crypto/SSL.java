@@ -251,13 +251,18 @@ public class SSL
         }
     }
 
-    public static Certificate signDirectoryCertificate(String csrFIle, char[] rootPassword)
+    public static PKCS10CertificationRequest loadCSR(String file) throws IOException
+    {
+        BufferedReader r = new BufferedReader(new FileReader(file));
+        String base64 = r.readLine();
+        byte[] csrBytes = Base64.decode(base64);
+        return new PKCS10CertificationRequest(csrBytes);
+    }
+
+    public static Certificate signDirectoryCertificate(String csrFile, char[] rootPassword)
     {
         try {
-            BufferedReader r = new BufferedReader(new FileReader(csrFIle));
-            String base64 = r.readLine();
-            byte[] csrBytes = Base64.decode(base64);
-            PKCS10CertificationRequest csr = new PKCS10CertificationRequest(csrBytes);
+            PKCS10CertificationRequest csr = loadCSR(csrFile);
             return signDirectoryCertificate(rootPassword, csr);
         } catch (IOException e)
         {
@@ -269,22 +274,35 @@ public class SSL
     public static Certificate signDirectoryCertificate(char[] rootPassword, PKCS10CertificationRequest csr)
     {
         try {
+            KeyStore ks = getRootKeyStore(rootPassword);
+            PrivateKey rootPriv = (PrivateKey) ks.getKey("private", rootPassword);
+            Certificate signed = signCertificate(csr, rootPriv, "issuer");
+            printCertificate(signed);
+            return signed;
+        } catch (Exception e)
+        {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    public static Certificate signCertificate(PKCS10CertificationRequest csr, PrivateKey priv, String issuerCN)
+    {
+        try {
             SubjectPublicKeyInfo pkInfo = csr.getSubjectPublicKeyInfo();
             RSAKeyParameters rsa = (RSAKeyParameters) PublicKeyFactory.createKey(pkInfo);
             RSAPublicKeySpec rsaSpec = new RSAPublicKeySpec(rsa.getModulus(), rsa.getExponent());
             KeyFactory kf = KeyFactory.getInstance("RSA");
             PublicKey dirPub = kf.generatePublic(rsaSpec);
+            SubjectPublicKeyInfo keyInfo = SubjectPublicKeyInfo.getInstance(dirPub.getEncoded());
 
             AlgorithmIdentifier sigAlgId = new DefaultSignatureAlgorithmIdentifierFinder().find("SHA256withRSA");
             AlgorithmIdentifier digAlgId = new DefaultDigestAlgorithmIdentifierFinder().find(sigAlgId);
 
-            KeyStore ks = getRootKeyStore(rootPassword);
-            PrivateKey rootCA = (PrivateKey) ks.getKey("private", rootPassword);
-            AsymmetricKeyParameter foo = PrivateKeyFactory.createKey(rootCA.getEncoded());
-            SubjectPublicKeyInfo keyInfo = SubjectPublicKeyInfo.getInstance(dirPub.getEncoded());
+            AsymmetricKeyParameter foo = PrivateKeyFactory.createKey(priv.getEncoded());
 
             X509v3CertificateBuilder myCertificateGenerator = new X509v3CertificateBuilder(
-                    new X500Name("CN=issuer"), new BigInteger("1"),
+                    new X500Name("CN="+issuerCN), new BigInteger("1"),
                     new Date(System.currentTimeMillis()),
                     new Date(System.currentTimeMillis() + 30 * 365 * 24 * 60 * 60 * 1000),
                     csr.getSubject(), keyInfo);
@@ -293,7 +311,6 @@ public class SSL
 
             X509CertificateHolder holder = myCertificateGenerator.build(sigGen);
             Certificate signed = new JcaX509CertificateConverter().getCertificate(holder);
-            printCertificate(signed);
             return signed;
         } catch (Exception e)
         {

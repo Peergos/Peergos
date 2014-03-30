@@ -3,6 +3,7 @@ package defiance.tests;
 import defiance.crypto.SSL;
 import defiance.crypto.UserPublicKey;
 import defiance.crypto.User;
+import defiance.net.IP;
 import defiance.util.Arrays;
 import junit.framework.Assert;
 import org.bouncycastle.asn1.x500.RDN;
@@ -10,6 +11,7 @@ import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x500.style.BCStyle;
 import org.bouncycastle.asn1.x500.style.IETFUtils;
 import org.bouncycastle.cert.jcajce.JcaX509CertificateHolder;
+import org.bouncycastle.pkcs.PKCS10CertificationRequest;
 import org.junit.Test;
 
 import java.security.KeyPair;
@@ -25,6 +27,30 @@ public class Crypto
         boolean res = User.testEncryptionCapabilities();
         User.enumerateAllCryptoAlgorithmsAvailable();
         assertEquals("Crypto capabilities", true, res);
+    }
+
+    @Test
+    public void SSLStorageCertificateCreationAndValidation()
+    {
+        try {
+            char[] storagePass = "password".toCharArray();
+            char[] dirpass = "password".toCharArray();
+            KeyPair dirKeys = SSL.loadKeyPair("dirKeys.pem", dirpass);
+            Certificate[] dirCerts = SSL.getDirectoryServerCertificates();
+            // pick one
+            Certificate dir = dirCerts[0];
+            KeyPair storageKeys = SSL.generateCSR(storagePass, "storageKeys.pem", "storageCSR.pem");
+            PKCS10CertificationRequest csr = SSL.loadCSR("storageCSR.pem");
+            Certificate signed = SSL.signCertificate(csr, dirKeys.getPrivate(), IP.getMyPublicAddress().getHostAddress());
+            // verify storage with dir key
+            signed.verify(dir.getPublicKey());
+            // verify dir with root key
+            dir.verify(SSL.getRootCertificate().getPublicKey());
+        } catch (Exception e)
+        {
+            e.printStackTrace();
+            assertEquals(true, false);
+        }
     }
 
     @Test
