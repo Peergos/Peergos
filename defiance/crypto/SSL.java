@@ -1,5 +1,6 @@
 package defiance.crypto;
 
+import defiance.directory.DirectoryServer;
 import defiance.net.IP;
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
@@ -36,6 +37,10 @@ import org.bouncycastle.util.io.pem.PemObject;
 import javax.security.auth.x500.X500Principal;
 import java.io.*;
 import java.math.BigInteger;
+import java.net.HttpURLConnection;
+import java.net.InetAddress;
+import java.net.URL;
+import java.net.URLConnection;
 import java.security.*;
 import java.security.cert.*;
 import java.security.cert.Certificate;
@@ -72,7 +77,7 @@ public class SSL
             NoSuchProviderException, SignatureException, OperatorCreationException
     {
         // store certificates to disk, otherwise an upgrade would induce a DDOS on the directory servers to sign all the new certificates
-        KeyStore ks = KeyStore.getInstance("JKS");
+        KeyStore ks = KeyStore.getInstance("PKCS12", "BC");
         if (new File(SSL_KEYSTORE_FILENAME).exists())
         {
             ks.load(new FileInputStream(SSL_KEYSTORE_FILENAME), password);
@@ -80,19 +85,50 @@ public class SSL
         }
         ks.load(null, password);
         KeyPair keypair = generateKeyPair();
+        PKCS10CertificationRequest csr = generateCSR(password, keypair, "storageCSR.pem");
         PrivateKey myPrivateKey = keypair.getPrivate();
         java.security.PublicKey myPublicKey = keypair.getPublic();
-        Certificate cert = generateRootCertificate(password, keypair);
 
-        // synchronously contact a directory server to sign our certificate
-
-
+        // make rootCA a trust source
         Certificate rootCert = getRootCertificate();
         KeyStore.Entry root = new KeyStore.TrustedCertificateEntry(rootCert);
         ks.setEntry("rootca", root, null);
+
+        Certificate[] dirs = SSL.getDirectoryServerCertificates();
+        Certificate cert;
+        while (true) {
+            Certificate dir = dirs[new SecureRandom().nextInt() % dirs.length];
+            ks.setCertificateEntry("dir", dir);
+
+            // synchronously contact a directory server to sign our certificate
+            String address = SSL.getCommonName(dir);
+            URL target = new URL("http", address, DirectoryServer.PORT, "/sign");
+            System.out.println("sending CSR to " + target.toString());
+            HttpURLConnection conn = (HttpURLConnection) target.openConnection();
+            conn.setDoOutput(true);
+//            conn.setDoInput(true);
+//            conn.setRequestMethod("PUT");
+            OutputStream out = conn.getOutputStream();
+            out.write(csr.getEncoded());
+            out.close();
+
+            InputStream in = conn.getInputStream();
+            byte[] buf = new byte[4*1024];
+            ByteArrayOutputStream bout = new ByteArrayOutputStream();
+            while (true)
+            {
+                int r = in.read(buf);
+                if (r < 0)
+                    break;
+                bout.write(buf, 0, r);
+            }
+            CertificateFactory  fact = CertificateFactory.getInstance("X.509", "BC");
+            cert = fact.generateCertificate(new ByteArrayInputStream(bout.toByteArray()));
+            break;
+        }
         ks.setKeyEntry("private", myPrivateKey, password, new Certificate[]{cert});
         ks.setKeyEntry("public", myPublicKey, password, new Certificate[]{cert});
-        ks.store(new FileOutputStream("sslkeystore"), password);
+        ks.store(new FileOutputStream(SSL_KEYSTORE_FILENAME), password);
         return ks;
     }
 
@@ -239,15 +275,16 @@ public class SSL
         throw new IllegalStateException(msg);
     }
 
-    public static void generateCSR(char[] password, KeyPair keypair, String outfile)
+    public static PKCS10CertificationRequest generateCSR(char[] password, KeyPair keypair, String outfile)
     {
         try {
             PrivateKey myPrivateKey = keypair.getPrivate();
             String cn = IP.getMyPublicAddress().getHostAddress();
-            generateCertificateSignRequest(outfile, password, cn, keypair.getPublic(), myPrivateKey);
+            return generateCertificateSignRequest(outfile, password, cn, keypair.getPublic(), myPrivateKey);
         } catch (Exception e)
         {
             e.printStackTrace();
+            return null;
         }
     }
 

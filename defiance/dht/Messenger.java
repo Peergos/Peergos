@@ -11,7 +11,7 @@ public abstract class Messenger
 {
     public Messenger() {}
 
-    public abstract void join(InetAddress addr, int port) throws IOException;
+    public abstract boolean join(InetAddress addr, int port) throws IOException;
 
     public abstract void sendMessage(Message m, InetAddress addr, int port) throws IOException;
 

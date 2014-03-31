@@ -32,8 +32,7 @@ public class Start
         {
             String keyfile = Args.getParameter("keyfile", "dirKeys.pem");
             char[] passphrase = Args.getParameter("passphrase", "password").toCharArray();
-            int port = Integer.parseInt(Args.getParameter("port", "80"));
-            DirectoryServer.createAndStart(keyfile, passphrase, port);
+            DirectoryServer.createAndStart(keyfile, passphrase, DirectoryServer.PORT);
         }
         else if (Args.hasOption("rootGen"))
         {

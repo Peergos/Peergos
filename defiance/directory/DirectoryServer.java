@@ -24,6 +24,7 @@ import java.util.concurrent.Executors;
 
 public class DirectoryServer
 {
+    public static final int PORT = 8080;
     public static final int THREADS = 5;
     public static final int CONNECTION_BACKLOG = 100;
     private final Map<String, Certificate> storageServers = new ConcurrentHashMap();
@@ -51,6 +52,7 @@ public class DirectoryServer
 
     public Certificate signCertificate(PKCS10CertificationRequest csr)
     {
+        System.out.println("Signing certificate for "+SSL.getCommonName(csr));
         Certificate signed =  SSL.signCertificate(csr, signing.getPrivate(), commonName);
         // TODO don't overwrite existing certificates as this can easily be DOSed, rather require a cert invalidation first
         storageServers.put(SSL.getCommonName(csr), signed);

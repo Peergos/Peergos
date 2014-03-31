@@ -26,7 +26,7 @@ public class IP
                     ipv6 = current_addr;
                     continue;
                 }
-                System.out.println("my public address: "+current_addr.getHostAddress());
+//                System.out.println("my public address: "+current_addr.getHostAddress());
                 return current_addr;
             }
             if (ipv6 != null)
