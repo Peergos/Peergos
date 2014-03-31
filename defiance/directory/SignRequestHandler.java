@@ -33,12 +33,14 @@ public class SignRequestHandler implements HttpHandler {
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
             byte[] buf = new byte[4096];
             int read = 0;
-            while ((read = in.read()) > 0)
+            while ((read = in.read(buf)) >= 0) {
                 bout.write(buf, 0, read);
+            }
+            in.close();
             PKCS10CertificationRequest csr = new PKCS10CertificationRequest(bout.toByteArray());
             Certificate signed = dir.signCertificate(csr);
             byte[] raw = signed.getEncoded();
-            exchange.sendResponseHeaders(200, 0);
+            exchange.sendResponseHeaders(200, raw.length);
             exchange.getResponseBody().write(raw);
             exchange.close();
         } catch (CertificateEncodingException e)

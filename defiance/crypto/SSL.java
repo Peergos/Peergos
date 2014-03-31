@@ -107,9 +107,10 @@ public class SSL
             HttpURLConnection conn = (HttpURLConnection) target.openConnection();
             conn.setDoOutput(true);
 //            conn.setDoInput(true);
-//            conn.setRequestMethod("PUT");
+            conn.setRequestMethod("PUT");
             OutputStream out = conn.getOutputStream();
-            out.write(csr.getEncoded());
+            byte[] raw = csr.getEncoded();
+            out.write(raw);
             out.close();
 
             InputStream in = conn.getInputStream();
@@ -127,7 +128,7 @@ public class SSL
             break;
         }
         ks.setKeyEntry("private", myPrivateKey, password, new Certificate[]{cert});
-        ks.setKeyEntry("public", myPublicKey, password, new Certificate[]{cert});
+//        ks.setKeyEntry("public", myPublicKey, password, new Certificate[]{cert});
         ks.store(new FileOutputStream(SSL_KEYSTORE_FILENAME), password);
         return ks;
     }
