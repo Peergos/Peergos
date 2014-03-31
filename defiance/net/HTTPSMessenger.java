@@ -61,6 +61,7 @@ public class HTTPSMessenger extends Messenger
 
             // setup the HTTPS context and parameters
             sslContext.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);
+            SSLContext.setDefault(sslContext);
             httpsServer.setHttpsConfigurator(new HttpsConfigurator(sslContext)
             {
                 public void configure(HttpsParameters params)
