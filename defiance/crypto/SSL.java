@@ -72,6 +72,53 @@ public class SSL
         }
     }
 
+    public static KeyPair generateAndSaveKeyPair(String filename, char[] passphrase) throws IOException
+    {
+        KeyPair pair = generateKeyPair();
+        saveKeyPair(filename, passphrase, pair);
+        return pair;
+    }
+
+    public static void saveKeyPair(String filename, char[] passphrase, KeyPair keypair) throws IOException
+    {
+        try {
+            JceOpenSSLPKCS8EncryptorBuilder encryptorBuilder = new JceOpenSSLPKCS8EncryptorBuilder(PKCS8Generator.AES_256_CBC);
+            encryptorBuilder.setRandom(new SecureRandom());
+            encryptorBuilder.setPasssword(passphrase);
+            OutputEncryptor oe = encryptorBuilder.build();
+            JcaPKCS8Generator gen = new JcaPKCS8Generator(keypair.getPrivate(), oe);
+            PemObject obj = gen.generate();
+
+            PEMWriter pemWrt = new PEMWriter(new FileWriter(filename));
+            pemWrt.writeObject(obj);
+            pemWrt.writeObject(keypair.getPublic());
+            pemWrt.close();
+        } catch (OperatorCreationException e)
+        {
+            e.printStackTrace();
+        }
+    }
+
+    public static KeyPair loadKeyPair(String filename, char[] passphrase)
+            throws IOException, NoSuchAlgorithmException, InvalidKeySpecException, OperatorCreationException, PKCSException
+    {
+        PEMParser pairReader = new PEMParser(new FileReader(filename));
+        Object priv = pairReader.readObject();
+        Object pub = pairReader.readObject();
+
+        InputDecryptorProvider pkcs8Prov = new JceOpenSSLPKCS8DecryptorProviderBuilder().build(passphrase);
+        PKCS8EncryptedPrivateKeyInfo encPrivKeyInfo = (PKCS8EncryptedPrivateKeyInfo)priv;
+        JcaPEMKeyConverter   converter = new JcaPEMKeyConverter().setProvider("BC");
+        RSAPrivateCrtKey privateKey = (RSAPrivateCrtKey)converter.getPrivateKey(encPrivKeyInfo.decryptPrivateKeyInfo(pkcs8Prov));
+
+        // Now convert to JCE objects
+        KeyFactory keyFactory = KeyFactory.getInstance( "RSA");
+        RSAKeyParameters rsa = (RSAKeyParameters) PublicKeyFactory.createKey((SubjectPublicKeyInfo)pub);
+        RSAPublicKeySpec rsaSpec = new RSAPublicKeySpec(rsa.getModulus(), rsa.getExponent());
+        PublicKey publicKey = keyFactory.generatePublic(rsaSpec);
+        return new KeyPair(publicKey, privateKey);
+    }
+
     public static KeyStore getKeyStore(char[] password)
             throws KeyStoreException, IOException, NoSuchAlgorithmException, CertificateException, InvalidKeyException,
             NoSuchProviderException, SignatureException, OperatorCreationException
@@ -130,20 +177,10 @@ public class SSL
         return ks;
     }
 
-    public static Certificate generateRootCertificate(char[] password, KeyPair keypair)
-            throws KeyStoreException, IOException, NoSuchAlgorithmException, CertificateException, InvalidKeyException,
-            NoSuchProviderException, SignatureException, OperatorCreationException
-    {
-        return generateCertificate(password, IP.getMyPublicAddress().getHostAddress(), keypair.getPublic(), keypair.getPrivate());
-    }
-
     public static Certificate generateCertificate(char[] password, String commonName, PublicKey signee, PrivateKey signer)
             throws KeyStoreException, IOException, NoSuchAlgorithmException, CertificateException, InvalidKeyException,
             NoSuchProviderException, SignatureException, OperatorCreationException
     {
-        KeyStore ks = KeyStore.getInstance("JKS");
-        ks.load(null, password);
-
         Date from = new Date();
         Date to = new Date(from.getTime() + 365 * 86400000l);
         BigInteger sn = new BigInteger(64, new SecureRandom());
@@ -164,6 +201,65 @@ public class SSL
         ContentSigner sigGen = new JcaContentSignerBuilder("SHA256withRSA").build(signer);
         X509CertificateHolder certHolder = certGen.build(sigGen);
         return new JcaX509CertificateConverter().getCertificate(certHolder);
+    }
+
+    public static Certificate generateRootCertificate(char[] password, KeyPair keypair)
+            throws KeyStoreException, IOException, NoSuchAlgorithmException, CertificateException, InvalidKeyException,
+            NoSuchProviderException, SignatureException, OperatorCreationException
+    {
+        return generateCertificate(password, IP.getMyPublicAddress().getHostAddress(), keypair.getPublic(), keypair.getPrivate());
+    }
+
+    public static void generateAndSaveRootCertificate(char[] password)
+    {
+        try {
+            KeyStore ks = KeyStore.getInstance("PKCS12", "BC");
+            ks.load(null, password);
+            KeyPair keypair = generateKeyPair();
+            PrivateKey myPrivateKey = keypair.getPrivate();
+            Certificate cert = generateRootCertificate(password, keypair);
+            BufferedWriter w = new BufferedWriter(new FileWriter("defiance/crypto/RootCertificate.java"));
+            w.write("package defiance.crypto;\n\nimport org.bouncycastle.util.encoders.Base64;\n\n" +
+                    "public class RootCertificate {\n    public static final byte[] rootCA = Base64.decode(");
+            printCertificate(cert, w);
+            w.write(");\n}");
+            w.flush();
+            w.close();
+
+            ks.setKeyEntry("private", myPrivateKey, password, new Certificate[]{cert});
+            ks.setCertificateEntry("rootCA", cert);
+            ks.store(new FileOutputStream("rootCA.p12"), password);
+        } catch (Exception e)
+        {
+            e.printStackTrace();
+        }
+    }
+
+    public static KeyPair generateCSR(char[] passphrase, String keyfile, String csrfile) throws IOException
+    {
+        String msg;
+        try {
+            KeyPair pair = generateAndSaveKeyPair(keyfile, passphrase);
+            generateCSR(passphrase, loadKeyPair(keyfile, passphrase), csrfile);
+            return pair;
+        } catch (NoSuchAlgorithmException e) {e.printStackTrace(); msg= e.getMessage();}
+        catch (InvalidKeySpecException e) {e.printStackTrace();msg= e.getMessage();}
+        catch (OperatorCreationException e) {e.printStackTrace();msg= e.getMessage();}
+        catch (PKCSException e) {e.printStackTrace();msg= e.getMessage();}
+        throw new IllegalStateException(msg);
+    }
+
+    public static PKCS10CertificationRequest generateCSR(char[] password, KeyPair keypair, String outfile)
+    {
+        try {
+            PrivateKey myPrivateKey = keypair.getPrivate();
+            String cn = IP.getMyPublicAddress().getHostAddress();
+            return generateCertificateSignRequest(outfile, password, cn, keypair.getPublic(), myPrivateKey);
+        } catch (Exception e)
+        {
+            e.printStackTrace();
+            return null;
+        }
     }
 
     public static PKCS10CertificationRequest generateCertificateSignRequest(String outfile, char[] password,
@@ -202,105 +298,6 @@ public class SSL
         w.flush();
         w.close();
         return csr;
-    }
-
-    public static void generateAndSaveRootCertificate(char[] password)
-    {
-        try {
-            KeyStore ks = KeyStore.getInstance("PKCS12", "BC");
-            ks.load(null, password);
-            KeyPair keypair = generateKeyPair();
-            PrivateKey myPrivateKey = keypair.getPrivate();
-            Certificate cert = generateRootCertificate(password, keypair);
-            BufferedWriter w = new BufferedWriter(new FileWriter("defiance/crypto/RootCertificate.java"));
-            w.write("package defiance.crypto;\n\nimport org.bouncycastle.util.encoders.Base64;\n\n" +
-                    "public class RootCertificate {\n    public static final byte[] rootCA = Base64.decode(");
-            printCertificate(cert, w);
-            w.write(");\n}");
-            w.flush();
-            w.close();
-
-            ks.setKeyEntry("private", myPrivateKey, password, new Certificate[]{cert});
-            ks.setCertificateEntry("rootCA", cert);
-            ks.store(new FileOutputStream("rootCA.p12"), password);
-        } catch (Exception e)
-        {
-            e.printStackTrace();
-        }
-    }
-
-    public static KeyPair generateAndSaveKeyPair(String filename, char[] passphrase) throws IOException
-    {
-        KeyPair pair = generateKeyPair();
-        saveKeyPair(filename, passphrase, pair);
-        return pair;
-    }
-
-    public static void saveKeyPair(String filename, char[] passphrase, KeyPair keypair) throws IOException
-    {
-        try {
-            JceOpenSSLPKCS8EncryptorBuilder encryptorBuilder = new JceOpenSSLPKCS8EncryptorBuilder(PKCS8Generator.AES_256_CBC);
-            encryptorBuilder.setRandom(new SecureRandom());
-            encryptorBuilder.setPasssword(passphrase);
-            OutputEncryptor oe = encryptorBuilder.build();
-            JcaPKCS8Generator gen = new JcaPKCS8Generator(keypair.getPrivate(), oe);
-            PemObject obj = gen.generate();
-
-            PEMWriter pemWrt = new PEMWriter(new FileWriter(filename));
-            pemWrt.writeObject(obj);
-            pemWrt.writeObject(keypair.getPublic());
-            pemWrt.close();
-        } catch (OperatorCreationException e)
-        {
-            e.printStackTrace();
-        }
-    }
-
-    public static KeyPair loadKeyPair(String filename, char[] passphrase)
-            throws IOException, NoSuchAlgorithmException, InvalidKeySpecException, OperatorCreationException, PKCSException
-    {
-        PEMParser pairReader = new PEMParser(new FileReader(filename));
-        Object priv = pairReader.readObject();
-        Object pub = pairReader.readObject();
-
-        InputDecryptorProvider pkcs8Prov = new JceOpenSSLPKCS8DecryptorProviderBuilder().build(passphrase);
-        PKCS8EncryptedPrivateKeyInfo encPrivKeyInfo = (PKCS8EncryptedPrivateKeyInfo)priv;
-        JcaPEMKeyConverter   converter = new JcaPEMKeyConverter().setProvider("BC");
-        RSAPrivateCrtKey privateKey = (RSAPrivateCrtKey)converter.getPrivateKey(encPrivKeyInfo.decryptPrivateKeyInfo(pkcs8Prov));
-
-        // Now convert to Java objects
-        KeyFactory keyFactory = KeyFactory.getInstance( "RSA");
-        RSAKeyParameters rsa = (RSAKeyParameters) PublicKeyFactory.createKey((SubjectPublicKeyInfo)pub);
-        RSAPublicKeySpec rsaSpec = new RSAPublicKeySpec(rsa.getModulus(), rsa.getExponent());
-        PublicKey publicKey = keyFactory.generatePublic(rsaSpec);
-        return new KeyPair(publicKey, privateKey);
-    }
-
-    public static KeyPair generateCSR(char[] passphrase, String keyfile, String csrfile) throws IOException
-    {
-        String msg;
-        try {
-            KeyPair pair = generateAndSaveKeyPair(keyfile, passphrase);
-            generateCSR(passphrase, loadKeyPair(keyfile, passphrase), csrfile);
-            return pair;
-        } catch (NoSuchAlgorithmException e) {e.printStackTrace(); msg= e.getMessage();}
-        catch (InvalidKeySpecException e) {e.printStackTrace();msg= e.getMessage();}
-        catch (OperatorCreationException e) {e.printStackTrace();msg= e.getMessage();}
-        catch (PKCSException e) {e.printStackTrace();msg= e.getMessage();}
-        throw new IllegalStateException(msg);
-    }
-
-    public static PKCS10CertificationRequest generateCSR(char[] password, KeyPair keypair, String outfile)
-    {
-        try {
-            PrivateKey myPrivateKey = keypair.getPrivate();
-            String cn = IP.getMyPublicAddress().getHostAddress();
-            return generateCertificateSignRequest(outfile, password, cn, keypair.getPublic(), myPrivateKey);
-        } catch (Exception e)
-        {
-            e.printStackTrace();
-            return null;
-        }
     }
 
     public static PKCS10CertificationRequest loadCSR(String file) throws IOException
@@ -363,18 +360,20 @@ public class SSL
             AlgorithmIdentifier sigAlgId = new DefaultSignatureAlgorithmIdentifierFinder().find("SHA256withRSA");
             AlgorithmIdentifier digAlgId = new DefaultDigestAlgorithmIdentifierFinder().find(sigAlgId);
 
-            AsymmetricKeyParameter foo = PrivateKeyFactory.createKey(priv.getEncoded());
 
-            X509v3CertificateBuilder myCertificateGenerator = new X509v3CertificateBuilder(
+            X509v3CertificateBuilder certGen = new X509v3CertificateBuilder(
                     new X500Name("CN="+issuerCN), new BigInteger("1"),
                     new Date(System.currentTimeMillis()),
                     new Date(System.currentTimeMillis() + 30 * 365 * 24 * 60 * 60 * 1000),
                     csr.getSubject(), keyInfo);
 
+            AsymmetricKeyParameter foo = PrivateKeyFactory.createKey(priv.getEncoded());
             ContentSigner sigGen = new BcRSAContentSignerBuilder(sigAlgId, digAlgId).build(foo);
 
-            X509CertificateHolder holder = myCertificateGenerator.build(sigGen);
-            Certificate signed = new JcaX509CertificateConverter().getCertificate(holder);
+            GeneralNames subjectAltName = new GeneralNames(new GeneralName(GeneralName.iPAddress, getCommonName(csr)));
+            X509CertificateHolder holder = certGen.addExtension(Extension.subjectAlternativeName, false, subjectAltName).build(sigGen);
+//                    .addExtension(new ASN1ObjectIdentifier("2.5.29.17"), false, subjectAltName).build(sigGen);
+            Certificate signed = new JcaX509CertificateConverter().setProvider("BC").getCertificate(holder);
             return signed;
         } catch (Exception e)
         {
