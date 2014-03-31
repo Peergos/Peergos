@@ -3,6 +3,7 @@ package defiance.crypto;
 import defiance.directory.DirectoryServer;
 import defiance.net.IP;
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
+import org.bouncycastle.asn1.DEROctetString;
 import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
 import org.bouncycastle.asn1.x500.RDN;
 import org.bouncycastle.asn1.x500.X500Name;
@@ -11,8 +12,10 @@ import org.bouncycastle.asn1.x500.style.BCStyle;
 import org.bouncycastle.asn1.x500.style.IETFUtils;
 import org.bouncycastle.asn1.x500.style.RFC4519Style;
 import org.bouncycastle.asn1.x509.*;
+import org.bouncycastle.asn1.x509.Extension;
 import org.bouncycastle.cert.X509CertificateHolder;
 import org.bouncycastle.cert.X509v3CertificateBuilder;
+import org.bouncycastle.cert.crmf.CRMFException;
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
 import org.bouncycastle.cert.jcajce.JcaX509CertificateHolder;
 import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
@@ -34,7 +37,6 @@ import org.bouncycastle.pkcs.jcajce.JcaPKCS10CertificationRequestBuilder;
 import org.bouncycastle.util.encoders.Base64;
 import org.bouncycastle.util.io.pem.PemObject;
 
-import javax.security.auth.x500.X500Principal;
 import java.io.*;
 import java.math.BigInteger;
 import java.net.HttpURLConnection;
@@ -103,7 +105,6 @@ public class SSL
             System.out.println("sending CSR to " + target.toString());
             HttpURLConnection conn = (HttpURLConnection) target.openConnection();
             conn.setDoOutput(true);
-//            conn.setDoInput(true);
             conn.setRequestMethod("PUT");
             OutputStream out = conn.getOutputStream();
             byte[] raw = csr.getEncoded();
@@ -165,11 +166,12 @@ public class SSL
         return new JcaX509CertificateConverter().getCertificate(certHolder);
     }
 
-    public static PKCS10CertificationRequest generateCertificateSignRequest(String outfile, char[] password, String commonName, PublicKey signee, PrivateKey signer)
+    public static PKCS10CertificationRequest generateCertificateSignRequest(String outfile, char[] password,
+                                                                            String commonName, PublicKey signee, PrivateKey signer)
             throws KeyStoreException, IOException, NoSuchAlgorithmException, CertificateException, InvalidKeyException,
-            NoSuchProviderException, SignatureException, OperatorCreationException
+            NoSuchProviderException, SignatureException, OperatorCreationException, CRMFException
     {
-        KeyStore ks = KeyStore.getInstance("JKS");
+        KeyStore ks = KeyStore.getInstance("PKCS12", "BC");
         ks.load(null, password);
 
         X500NameBuilder builder = new X500NameBuilder(RFC4519Style.INSTANCE);
@@ -180,11 +182,13 @@ public class SSL
         builder.addRDN(RFC4519Style.st, "Victoria");
         builder.addRDN(PKCSObjectIdentifiers.pkcs_9_at_emailAddress, "hello.NSA.GCHQ.ASIO@goodluck.com");
 
-        PKCS10CertificationRequestBuilder p10Builder =
-                new JcaPKCS10CertificationRequestBuilder(new X500Principal("CN="+commonName), signee);
-        JcaContentSignerBuilder csBuilder = new JcaContentSignerBuilder("SHA256withRSA");
-        ContentSigner csigner = csBuilder.build(signer);
-        PKCS10CertificationRequest csr = p10Builder.build(csigner);
+        GeneralNames subjectAltName = new GeneralNames(new GeneralName(GeneralName.iPAddress, commonName));
+
+        Extension[] ext = new Extension[] {new Extension(Extension.subjectAlternativeName, false, new DEROctetString(subjectAltName))};
+        PKCS10CertificationRequestBuilder requestBuilder = new JcaPKCS10CertificationRequestBuilder(builder.build(), signee);
+        PKCS10CertificationRequest csr = requestBuilder.addAttribute(PKCSObjectIdentifiers.pkcs_9_at_extensionRequest,
+                new Extensions(ext)).build(new JcaContentSignerBuilder("SHA256withRSA").setProvider("BC").build(signer));
+
         BufferedWriter w = new BufferedWriter(new FileWriter(outfile));
         String type = "CERTIFICATE REQUEST";
         byte[] encoding = csr.getEncoded();

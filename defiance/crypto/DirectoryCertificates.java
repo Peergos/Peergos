@@ -6,28 +6,30 @@ public class DirectoryCertificates {
     public static final int NUM_DIR_SERVERS = 1;
     public static byte[][] directoryServers = new byte[NUM_DIR_SERVERS][];
     static {
-        directoryServers[0] = Base64.decode(            "MIIEnjCCAoagAwIBAgIBATANBgkqhkiG9w0BAQsFADARMQ8wDQYDVQQDDAZpc3N1ZXIwHh" +
-            "cNMTQwMzMxMTcyNjI5WhcNMTQwNDE0MTExMzA0WjAUMRIwEAYDVQQDEwkxMC4wLjIuMTUw" +
-            "ggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQCcvebOQm9oeqb9MB9z6xwUHno1Ee" +
-            "Y2LuWzGbXm+LwpXP3HDIxBfRDcyp5Tn+Es3+ly6241a+XnaIgdXIVMmBB3NqIPZT3JmkCV" +
-            "Xun8xmjo1zqwBclLSgtZcVD4/2n6Tn+KC8KTK8Pt0oV0omMTS6GEYsqrK687rlM2PH4wR6" +
-            "aBGh4PSQ26cbeA8a/Kb9NjEDwQaWs6+G/vSycdOG6fP9R9kuBQoKj+9o0l/xbt6UBXoA9O" +
-            "6O+4B0StQOg1Q1FpGcB148scT5sqeEUnlMn870AkSn9xQh9zqnSkVGihAfv4u4n32yqbec" +
-            "3yLvP7PcxfYYMTy1LMN8Myf86eFga1i2SfGIlNLQxdjDSdDMjBJV1SDdYNedk1+8eXMIEM" +
-            "ELUMjOIG+YFj5Vl7L7n/p+w44bTRHV8Kl5x/afpbLy0ETeGIDLtUDo0Z0USJ1l5oBlLIbE" +
-            "xBHD/Sr8giC2fDVst4UjwRHuUEsQhJon5mEQhSx6V7ynN5frZhkT9+3MUlSTd1OaKycfhN" +
-            "26RLOpUQ+vJrKzd4ZxVY2WyRfTZ40ZOw63s5CtgzLyjRNQPj+VrM4gMm1MEHE2UDpIS/NK" +
-            "Rbr4/2HmeQUZNQWg/Xv80J5u49KzGlaXZwOu1yGYcTgzdFp6UwP7TPLA36rX1FMtduWZzT" +
-            "6M3Dam9hnK+zbMvePBv01fwqEQIDAQABMA0GCSqGSIb3DQEBCwUAA4ICAQBUzUPtvki3Bc" +
-            "raFfooyeJ9KmRS3jbZ6J1cV2DiHH+QHsv/72ZL9xo0ASb4G9g4uKXMLJhVaWBG7UxK6qOD" +
-            "1DyMm52MsQA8qm+ZEaRBROzQ6/J6mx/b8DLeFbLWMosok9vkd2kQeT64R4pXXvLRAl7X8M" +
-            "RsFi60nfMzx8PSjqyoCXtmB+8Z7XfCG0cu2Qu9+/jmeycQDP9H8GjTJj74oGTMCwjkrXtF" +
-            "Q3iGTlUcErKEZomB0HHblkgNLtBVRdL+emU421Z9MAzdCQ+bsJ4xo46jtNNvR5MULAQvzv" +
-            "ogPf2EPGIhX3WEUcTbPY/PWmcVicUMWPCG1HLJLYI4pNudVc7f48JK5syPFA+AWbIiOCQc" +
-            "eUsSx/ILcicQbjYArTWKUfBaYudYQ0rr24UsFwdr7GcIquBzwbBgwhqlw1yWxj7AqKCnXh" +
-            "/XFvr3tor5tWWRR/1XM1vvfssLpXIiEiUSF7nPVsgrSHRTTtl4E55Gv9p/zH6H0g8zMtEZ" +
-            "cr4zGNX4Y+1Tws54TrB1Tx/NVBJvCMPQ54phkMZYHgQfX+pKQA8fJ7bWulqOcQmeFV4lj0" +
-            "lw0XkAIRFn/MryjBiCtWvGhFKXdR+yRNSvGKeXyofxSAViqC+RWU3IwYQd//Jdxgu9ZH0T" +
-            "q44Vc/5lwRwQ2jnMaKdHG9Bspa2a1DhU+Jpeykw58w==" );
+        directoryServers[0] = Base64.decode(            "MIIFFjCCAv6gAwIBAgIBATANBgkqhkiG9w0BAQsFADARMQ8wDQYDVQQDDAZpc3N1ZXIwHh" +
+            "cNMTQwMzMxMjAzNjI1WhcNMTQwNDE0MTQyMzAwWjCBizESMBAGA1UEAwwJMTAuMC4yLjE1" +
+            "MQswCQYDVQQGEwJBVTEQMA4GA1UECgwHUGVlcmdvczESMBAGA1UEBwwJTWVsYm91cm5lMR" +
+            "EwDwYDVQQIDAhWaWN0b3JpYTEvMC0GCSqGSIb3DQEJAQwgaGVsbG8uTlNBLkdDSFEuQVNJ" +
+            "T0Bnb29kbHVjay5jb20wggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQCq5qJzyo" +
+            "xbsYABs82cgoPeiUu756VnFUwUmQxN4qbLkfnwZPmkU2ElJvZYIdjV2QPOa3QZGAkGfvGE" +
+            "Vz96Qsorz5iJxtd85B2MI72VD+7FeRS2e2Z1vqRrB7q0fYAXR2/FPeZZOuK6J9RgxIvU0G" +
+            "d648T3WKVz1QLvLhlT71zk/kfXYNalL1r/HY+P1BONMC8sf3ik2icYDHwAYM+/UyPxAja1" +
+            "xICaauMA0s95iCnC6KzK15NiwvVyM+f38wPU0hRw+0h6kTZs3lL6OcZnlOKWERUVXeAAal" +
+            "yTtI+MuWRZ9syOOOy1D16X6C97v5HeluT54dmSvzjrLJbDorAGqqcKPjgENs6oh5gqfR1/" +
+            "HItOcmnO1gQYkgZFfE3b5fTC32YcbIS723QuFQY3BbIgFefHSUai+1hShCXa4yqrdCi8xA" +
+            "AuiTZqAo+G/JCMfDloP7EUmIDJtQ+orZmatwNejn7Sp+tySluAD4/n4KyznG00FSkxodWL" +
+            "nedeDdCGAVYEx/egdVtA94G+8T68HKiJh+dNTEu33hkaSuJinLZjssqs0GytDyti9o0y7z" +
+            "qgjeKa1XtnPBETiVwEeA8ukGDYoMudDFpYnG9cpsH2PQj4bavYnNKXLmTP8xCDSk37BkO8" +
+            "qg3eguAklFgBp1LpQxJ+iYxyZNksORm+pUYQTCDKP62wlwIDAQABMA0GCSqGSIb3DQEBCw" +
+            "UAA4ICAQCwcQjChPSQZXImKbiUL6B3GlQz7lW5DcFB3j/F3X51BJ1Hrfyc2X2W0GpbzMDa" +
+            "grp76cJ+jz3TDLelotNgqudToKb22pQ9ePMiJx1uXP1UlAeNf+Zw8s2t/QTzxqyHMtcCHm" +
+            "osn67wovpshoSA6V+nDpalyY4goLrd7eU82dv75B2cS5t+atM77dTzT7GKL6fzSyXcoy7R" +
+            "vXv3LyKCFBmpBq/Tlb5mtU3ivqtRuajBfHVquki+SpcA6+1LFSJu0LddVJCg3InKEfzXPw" +
+            "8pGfuiombuWCSzpwYghmrUHspjBq6ezvEo3CI21oKzr62enx1U9DQYTA4I92PQNch59vwU" +
+            "3/ffggFbuhV39CMO8asTm6XmZGFCFZ328N9FwUWuCxzuZ4oZN2Ky7nymdBdfE8EAvdO0rr" +
+            "hTV0tokEdXTlXevPpnBtJFc1NQKoNICL8FLEeZIUxKrxUANVf6/TCWozsRrc8rJ71VON8N" +
+            "sFMw5aNXl4yw/F3RgCJ0Zb4qe/WLv72hX+DKg4j7qIHBwtGEEFojl9v8gbgwEl2X7kG6QR" +
+            "bOTX62Bz0JyoFZ9YO6NVcOCDlW01PIXYV740jx/bvdLm2hAAlN6UkHVQlA0WvqB9rLfuzK" +
+            "IWPkOPlbXfjfgSWnIe+DDMeJxdWxl2M5X8DMg9OpLoJ5npVX7wj2uKgfahKTmw==" );
     }
 }
