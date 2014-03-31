@@ -38,9 +38,7 @@ import javax.security.auth.x500.X500Principal;
 import java.io.*;
 import java.math.BigInteger;
 import java.net.HttpURLConnection;
-import java.net.InetAddress;
 import java.net.URL;
-import java.net.URLConnection;
 import java.security.*;
 import java.security.cert.*;
 import java.security.cert.Certificate;
@@ -53,7 +51,7 @@ public class SSL
 {
     public static final String AUTH = "RSA";
     public static final int RSA_KEY_SIZE = 4096;
-    public static final String SSL_KEYSTORE_FILENAME = "sslkeystore";
+    public static final String SSL_KEYSTORE_FILENAME = "storage.p12";
 
     static {
         Security.addProvider(new BouncyCastleProvider());
@@ -85,9 +83,8 @@ public class SSL
         }
         ks.load(null, password);
         KeyPair keypair = generateKeyPair();
-        PKCS10CertificationRequest csr = generateCSR(password, keypair, "storageCSR.pem");
+        PKCS10CertificationRequest csr = generateCSR(password, keypair, "storage.csr");
         PrivateKey myPrivateKey = keypair.getPrivate();
-        java.security.PublicKey myPublicKey = keypair.getPublic();
 
         // make rootCA a trust source
         Certificate rootCert = getRootCertificate();
@@ -128,7 +125,6 @@ public class SSL
             break;
         }
         ks.setKeyEntry("private", myPrivateKey, password, new Certificate[]{cert});
-//        ks.setKeyEntry("public", myPublicKey, password, new Certificate[]{cert});
         ks.store(new FileOutputStream(SSL_KEYSTORE_FILENAME), password);
         return ks;
     }
@@ -190,7 +186,15 @@ public class SSL
         ContentSigner csigner = csBuilder.build(signer);
         PKCS10CertificationRequest csr = p10Builder.build(csigner);
         BufferedWriter w = new BufferedWriter(new FileWriter(outfile));
-        w.write(Base64.toBase64String(csr.getEncoded()));
+        String type = "CERTIFICATE REQUEST";
+        byte[] encoding = csr.getEncoded();
+        PemObject pemObject = new PemObject(type, encoding);
+        StringWriter str = new StringWriter();
+        PEMWriter pemWriter = new PEMWriter(str);
+        pemWriter.writeObject(pemObject);
+        pemWriter.close();
+        str.close();
+        w.write(str.toString());
         w.flush();
         w.close();
         return csr;
@@ -204,11 +208,17 @@ public class SSL
             KeyPair keypair = generateKeyPair();
             PrivateKey myPrivateKey = keypair.getPrivate();
             Certificate cert = generateRootCertificate(password, keypair);
-            printCertificate(cert);
+            BufferedWriter w = new BufferedWriter(new FileWriter("defiance/crypto/RootCertificate.java"));
+            w.write("package defiance.crypto;\n\nimport org.bouncycastle.util.encoders.Base64;\n\n" +
+                    "public class RootCertificate {\n    public static final byte[] rootCA = Base64.decode(");
+            printCertificate(cert, w);
+            w.write(");\n}");
+            w.flush();
+            w.close();
 
             ks.setKeyEntry("private", myPrivateKey, password, new Certificate[]{cert});
             ks.setCertificateEntry("rootCA", cert);
-            ks.store(new FileOutputStream("rootCA.pem"), password);
+            ks.store(new FileOutputStream("rootCA.p12"), password);
         } catch (Exception e)
         {
             e.printStackTrace();
@@ -292,8 +302,12 @@ public class SSL
     public static PKCS10CertificationRequest loadCSR(String file) throws IOException
     {
         BufferedReader r = new BufferedReader(new FileReader(file));
-        String base64 = r.readLine();
-        byte[] csrBytes = Base64.decode(base64);
+        r.readLine();
+        StringBuilder base64 = new StringBuilder();
+        String line;
+        while (!(line=r.readLine()).contains("-----END CERTIFICATE REQUEST-----"))
+            base64.append(line);
+        byte[] csrBytes = Base64.decode(base64.toString());
         return new PKCS10CertificationRequest(csrBytes);
     }
 
@@ -315,7 +329,15 @@ public class SSL
             KeyStore ks = getRootKeyStore(rootPassword);
             PrivateKey rootPriv = (PrivateKey) ks.getKey("private", rootPassword);
             Certificate signed = signCertificate(csr, rootPriv, "issuer");
-            printCertificate(signed);
+            BufferedWriter w = new BufferedWriter(new FileWriter("defiance/crypto/DirectoryCertificates.java"));
+            w.write("package defiance.crypto;\n\nimport org.bouncycastle.util.encoders.Base64;\n\n" +
+                    "public class DirectoryCertificates {\n    public static final int NUM_DIR_SERVERS = 1;\n"+
+                    "    public static byte[][] directoryServers = new byte[NUM_DIR_SERVERS][];\n    static {\n"+
+                    "        directoryServers[0] = Base64.decode(");
+            printCertificate(signed, w);
+            w.write(");\n    }\n}");
+            w.flush();
+            w.close();
             return signed;
         } catch (Exception e)
         {
@@ -357,56 +379,28 @@ public class SSL
         }
     }
 
-    public static void printCertificate(Certificate cert)
+    public static void printCertificate(Certificate cert, BufferedWriter w) throws IOException
     {
         try {
             String encoded = Base64.toBase64String(cert.getEncoded());
-            for (int i = 0; i <= encoded.length() / 70; i++)
-                System.out.println("\"" + encoded.substring(i * 70, Math.min((i + 1) * 70, encoded.length())) + "\" +");
+            w.write("            \"" + encoded.substring(0, Math.min(70, encoded.length())) + "\" ");
+            for (int i = 1; i <= encoded.length() / 70; i++)
+                w.write("+\n            \"" + encoded.substring(i * 70, Math.min((i + 1) * 70, encoded.length())) + "\" ");
         } catch (CertificateEncodingException e) {e.printStackTrace();}
     }
-
-    private static byte[] rootCA = Base64.decode("MIIFrjCCA5agAwIBAgIJAJ98aTF/iUu5MA0GCSqGSIb3DQEBCwUAMIGLMRIwEAYDVQQDDA" +
-            "kxMC4wLjIuMTUxCzAJBgNVBAYTAkFVMRAwDgYDVQQKDAdQZWVyZ29zMRIwEAYDVQQHDAlN" +
-            "ZWxib3VybmUxETAPBgNVBAgMCFZpY3RvcmlhMS8wLQYJKoZIhvcNAQkBDCBoZWxsby5OU0" +
-            "EuR0NIUS5BU0lPQGdvb2RsdWNrLmNvbTAeFw0xNDAzMzExNDE0MTFaFw0xNTAzMzExNDE0" +
-            "MTFaMIGLMRIwEAYDVQQDDAkxMC4wLjIuMTUxCzAJBgNVBAYTAkFVMRAwDgYDVQQKDAdQZW" +
-            "VyZ29zMRIwEAYDVQQHDAlNZWxib3VybmUxETAPBgNVBAgMCFZpY3RvcmlhMS8wLQYJKoZI" +
-            "hvcNAQkBDCBoZWxsby5OU0EuR0NIUS5BU0lPQGdvb2RsdWNrLmNvbTCCAiIwDQYJKoZIhv" +
-            "cNAQEBBQADggIPADCCAgoCggIBAJNauILsFZY9aw2hljfzqBKXZZgV/OANDfExQ8wY0Leg" +
-            "flBcXS8VezmA6+5A6t0KyUatN0t0+YUMT8v2o51L5U9gOUBtttf6hBHJDKCklC4hw8p/Oc" +
-            "ZUgGAG8IEiTX0qr7/gnDMYmgUlGRkaII3OQ2xaOgLuHck7i9eCz8zd5Yl3vmOD5Z5PHl80" +
-            "1l79gq8jvNFNv/pF6WLXrpylx7Z4ia185po3fE8JDXpH9n+yx/y+YwdR2sR7J/jqwNv6u4" +
-            "/D4TRileQruVHqff2eV8MAwl1HACKh3aOw7Q6urr/uTn9i6yEkmauYjrr03K4Wtju5UtsQ" +
-            "3+G7evBEbWi2lwr0bftGVCmu0w29I8q2UQwss3iA+ZqbHDBVn4yBxIOvJCux8mbqoGGV7O" +
-            "6+GlxQXYgSiTyZnHKdsp4rJafSGJYwzeoli0Jrda8LW6b5ueWe/dJYelUcDO//rreCf75W" +
-            "0VRSfG+ZwoRMODNbmUeL/Of0D6LUoT+tTUR29q+rKMTlf66zbiRzdqtjGtx+Nz4u58B+ue" +
-            "DNYj78R+UWjEWX53dhmz+GJCDZ4HUsXxwFEpVcI6w4bYGoa2i1Lk7oClk8sMHUU1gftZw9" +
-            "P3CFA6eQJqODTPUwmXT+HnWRtocoX28hj239FP8ZRcBV9zXhjr4E8B3NL7S5qYKs0vuGH6" +
-            "ycWeugvUurAgMBAAGjEzARMA8GA1UdEQQIMAaHBAoAAg8wDQYJKoZIhvcNAQELBQADggIB" +
-            "AB+6a0MPUUCwsL5/9jV5c/XUEXY6rjb9O0nAEU6FUMNDjcWvMNtx4iifkUGUwqLYFcAWoV" +
-            "wzYIeRSPqOho0nTjG5870w1dzbbjNSQUNov5lSzMAiVL3Ck8bi2rIZhekQyDOnsqbp7ZG+" +
-            "Rqw9cXHD6ftGrSd7TOzxHtQjGC6Oi39uTj4JIDtyyU0NInVY2wM7VzdFZJOcZ/BuuTgFtY" +
-            "+Dl7XlkUo19EnSobxY7EJ0wpk7Jlv4qyKk8aa6ID8Ed3OPjtGvbO+w1kAZS1JvTOwB3AnP" +
-            "sdBuV1kw3JXHzXyhKVkt+9KgrjBfgCybeO5RqR0HvfrZK85zFgjLiEcXEeHkbkCMXEAgEe" +
-            "hToAI19S+lwACOGfE2snNmoXPIh3QwY17vCA/m9sj0ttcDrTeW7xRtRFzljBN0IYBlehZZ" +
-            "THUqcDhpLut7ASTWquF1Wvu93TiPdzKilajlKj7fIsngo3o5+WhpzseH3s7l6/YC9GfQys" +
-            "nkyjUWnhPem2ctCmvKdOzjlrnLG/KxUYLqLaRZzwBPRAFTvNiqFgC4ewy/OrvL7Xb6OCI2" +
-            "gIxSkRmdDUFaUMfkIV4+OwFn9eldn95gy+GRvF40Vk6hdOImQ8ED6B5LqcntVKXv0oBaIH" +
-            "ffcBlt6Dqm1kEWzaUM3UIc6zGs6t0p212A0NBkpRRzfagirRfemqFP");
 
     public static Certificate getRootCertificate()
             throws KeyStoreException, NoSuchProviderException, NoSuchAlgorithmException, CertificateException, IOException
     {
         CertificateFactory  fact = CertificateFactory.getInstance("X.509", "BC");
-        return fact.generateCertificate(new ByteArrayInputStream(rootCA));
+        return fact.generateCertificate(new ByteArrayInputStream(RootCertificate.rootCA));
     }
 
     public static KeyStore getRootKeyStore(char[] password)
             throws KeyStoreException, NoSuchProviderException, NoSuchAlgorithmException, CertificateException, IOException
     {
         KeyStore keyStore = KeyStore.getInstance("PKCS12", "BC");
-        keyStore.load(new FileInputStream("rootCA.pem"), password);
+        keyStore.load(new FileInputStream("rootCA.p12"), password);
         return keyStore;
     }
 
@@ -429,43 +423,15 @@ public class SSL
         return IETFUtils.valueToString(cn.getFirst().getValue());
     }
 
-    private static final int NUM_DIR_SERVERS = 1;
-    private static byte[][] directoryServers = new byte[NUM_DIR_SERVERS][];
-    static {
-        directoryServers[0] = Base64.decode("MIIEnjCCAoagAwIBAgIBATANBgkqhkiG9w0BAQsFADARMQ8wDQYDVQQDDAZpc3N1ZXIwHh" +
-                "cNMTQwMzMxMTQzOTQ3WhcNMTQwNDE0MDgyNjIxWjAUMRIwEAYDVQQDEwkxMC4wLjIuMTUw" +
-                "ggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQCeUD1oVx5voIRMRwNXkZ5yyW2p7e" +
-                "c1a43grOmYA7L31jNj86pFnnylhbxGyQP1kI7JVjFa+8eXkldIwAWHR09Jsh5+vucSO9/V" +
-                "YzLTaOmEwchPtA3cUqBQIib/iv7LKmYmGo2D2DVG2+atXydvF1pskshTwUy3/VC0rt7SIW" +
-                "Krh/26GiRUL4qaqjOwMiCMzep1T4tGrCV52I0w6kT401x1pCpAsZIu5oEYvH0difrN0vqP" +
-                "mZJeleh8SMg6VOE1cN5hszIp+NGPxhHEFEpVhX0OmsZqz3J20Bw0Ow5nsJHGAV6qIsOcLW" +
-                "ioKR0PdicGNFwY/x2Y44EdEbtLr0iym6Efxl+DhSQACB+Wv0hRET/UIalD7T/JXqpgzzvx" +
-                "SSO7eDzBFLuON1ueuepNppTsJu7K0UAZKJhsMnS5lN+MZ9hSCJAobY2gXN9fULNVD/PlE4" +
-                "Cg6s8SMTMzk5ZRZIhtFfsBtBdoa4kGi3dZvivqRGn88yjYNT9tBIgek4fTIqWgdBAG0EA1" +
-                "0ZrEkrp+rJP7u2oIt3lzaMB4jvhg1bOfyTkiWzKrJ9U4a/LHrKPUhmQw8wPgncZdHjP64o" +
-                "gziJ+rRpcUrEae5u502kfWnmvgAzY7uz0ZrjGbsu0sVuD44vvzNQEEUY+knhBVUd7Anx+4" +
-                "vZPBgrX1eBxywpaF5iliEPHDuQIDAQABMA0GCSqGSIb3DQEBCwUAA4ICAQBYDxQ4/WJgk3" +
-                "5yp7OgJBUP0OoAxtljMWPi4WvJQ/BUltBV7MsKhnl6KcMt2vGGwCcwmlLJJkkprbVyPkoH" +
-                "qF0kpP8zRNQgNfv3gWoqAtOAg+pQEEsXlYzmcXnAiGkDSgo7o8tpVm4YugDtErL2kSE4aD" +
-                "drCCQ0Yo9nugOKSqmyHcFPYmiNddRCgN9TjA9/watVD6yCVrhD7dtVdE+VfnuUw3AFh6Gu" +
-                "rHFCgTX3sV41fUfvPU0lXbkmUhU+hb6urlhuNEWpdVXPYe59cA1TJfcSwc6omoNHZrTpt7" +
-                "1Pi3Xx5IT6WP+LghwsUVIImzoQFAbFeXEQpg27KopEkNb/E+PLVvOnge7COPqpCJpKAnJc" +
-                "V0ehfRtqcHUFshLN5fyi+fBTZ0rTe2UmwGAQNViaJNCZf0LVFjE6o9dBKDo01ZA/x+uVn7" +
-                "x6MJ/ZdQQYlIPoRbfPwJYAtd7IVL7PZpYvrtR4TWdAZ9WJ/z6zOmPqgjkhtzPOo9j1l0WB" +
-                "Udj3kb82948855xKw/Mw2AObZvhLviazaxeHzyOjpoZkew+5ajb9QPZtQ1jkil+bgFXhKD" +
-                "BT6mUh+VuojvR7c9qUBEPD2AcGryDNUBKd1LZdscImdllus7iywvsaad/wM2TGCYn0HW7B" +
-                "w9doK4Lq/9JIV0reEaKlmxZ25BbyT5CuVZ2VT1Z6nQ==");
-    }
-
     // Directory server certificates are signed by the root key
     public static Certificate[] getDirectoryServerCertificates()
             throws KeyStoreException, NoSuchProviderException, NoSuchAlgorithmException, CertificateException, IOException
     {
-        Certificate[] dirs = new Certificate[NUM_DIR_SERVERS];
-        for (int i =0; i < NUM_DIR_SERVERS; i++)
+        Certificate[] dirs = new Certificate[DirectoryCertificates.NUM_DIR_SERVERS];
+        for (int i =0; i < dirs.length; i++)
         {
             CertificateFactory  fact = CertificateFactory.getInstance("X.509", "BC");
-            dirs[i] = fact.generateCertificate(new ByteArrayInputStream(directoryServers[i]));
+            dirs[i] = fact.generateCertificate(new ByteArrayInputStream(DirectoryCertificates.directoryServers[i]));
         }
         return dirs;
     }

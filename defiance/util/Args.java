@@ -55,6 +55,8 @@ public class Args
 
     public static String getParameter(String param)
     {
+        if (!params.containsKey(param))
+            throw new IllegalStateException("No parameter: "+param);
         return params.get(param);
     }
 

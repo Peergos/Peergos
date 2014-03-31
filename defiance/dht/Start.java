@@ -30,7 +30,7 @@ public class Start
         }
         else if (Args.hasOption("directoryServer"))
         {
-            String keyfile = Args.getParameter("keyfile", "dirKeys.pem");
+            String keyfile = Args.getParameter("keyfile", "dir.key");
             char[] passphrase = Args.getParameter("passphrase", "password").toCharArray();
             DirectoryServer.createAndStart(keyfile, passphrase, DirectoryServer.PORT);
         }
@@ -41,7 +41,7 @@ public class Start
         else if (Args.hasOption("dirGen"))
         {
 
-            SSL.generateCSR(Args.getParameter("password").toCharArray(), Args.getParameter("keyfile"), "dirCSR.pem");
+            SSL.generateCSR(Args.getParameter("password").toCharArray(), Args.getParameter("keyfile"), "dir.csr");
         }
         else if (Args.hasOption("dirSign"))
         {
