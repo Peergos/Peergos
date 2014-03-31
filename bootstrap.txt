@@ -1,13 +1,13 @@
 to bootstrap system:
 
-1) java -jar DefianceServer.jar -rootGen -password $rootCApass
+1) java -jar DefianceServer.jar -rootGen -password password
 
 2) copy the resulting standard out into the rootca in SSL.java
 
 3) make server
 
-4) java -jar DefianceServer.jar -dirGen -password $dirpass
+4) java -jar DefianceServer.jar -dirGen -password password -keyfile dirKeys.pem 
 
-5) java -jar DefianceServer.jar -dirSign -dircert $dircertfile -rootPassword $rootpass
+5) java -jar DefianceServer.jar -dirSign -csr dirCSR.pem -rootPassword password
 
 
