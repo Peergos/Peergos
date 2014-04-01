@@ -116,7 +116,7 @@ public class RoutingServer extends Thread
                 }
             }
         // Ready to receive traffic
-        LOGGER.log(Level.ALL, "Successfully joined network.");
+        LOGGER.log(Level.ALL, "Storage server successfully joined DHT.");
         // TODO serialise our ID
 
         while (true)

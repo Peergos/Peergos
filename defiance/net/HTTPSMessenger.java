@@ -46,7 +46,7 @@ public class HTTPSMessenger extends Messenger
         {
             InetAddress us = IP.getMyPublicAddress();
             InetSocketAddress address = new InetSocketAddress(us, localPort);
-            System.out.println("Storage server listening on: " + us.getHostAddress() + ":" + localPort);
+            System.out.println("Starting storage server at: " + us.getHostAddress() + ":" + localPort);
             httpsServer = HttpsServer.create(address, CONNECTION_BACKLOG);
             SSLContext sslContext = SSLContext.getInstance("TLS");
 
@@ -162,7 +162,7 @@ public class HTTPSMessenger extends Messenger
     {
         // for now, make a direct connection
         URL target = new URL("https", addr.getHostAddress(), port, key);
-        System.out.println("sending fragment to " + addr.getHostAddress()+":"+port+"/"+key);
+        System.out.println("sending fragment to " + target.toString());
         HttpURLConnection conn = (HttpURLConnection) target.openConnection();
         conn.setDoOutput(true);
         conn.setRequestMethod("PUT");
