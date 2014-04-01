@@ -87,6 +87,11 @@ public class RoutingServer extends Thread
                         System.err.println("Failed to connect to network, timed out.");
                         return;
                     }
+                    if (m == null)
+                    {
+                        System.err.println("Failed to connect to network, timed out.");
+                        return;
+                    }
                     actOnMessage(m);
                     break;
                 } catch (SocketTimeoutException s)

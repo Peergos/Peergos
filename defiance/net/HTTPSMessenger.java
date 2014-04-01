@@ -162,15 +162,14 @@ public class HTTPSMessenger extends Messenger
     {
         // for now, make a direct connection
         URL target = new URL("https", addr.getHostAddress(), port, key);
-        System.out.println("sending fragment to " + addr.getHostAddress());
+        System.out.println("sending fragment to " + addr.getHostAddress()+":"+port+"/"+key);
         HttpURLConnection conn = (HttpURLConnection) target.openConnection();
         conn.setDoOutput(true);
-        conn.setRequestMethod("POST");
+        conn.setRequestMethod("PUT");
         OutputStream out = conn.getOutputStream();
         out.write(value);
         out.flush();
         out.close();
-        conn.getResponseCode();
     }
 
     @Override
