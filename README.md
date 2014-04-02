@@ -1,11 +1,11 @@
 Peergos
 ========
 
-Peergos is a peer-to-peer encrypted filesystem with secure sharing of files. We plan a secure email replacement, with some interoperabiltiy with email. There will also be a totally private and secure social network, where users are in control of who sees what (executed cryptographically). Evnetually we plan an app-store for third party applications to use our API. 
+Peergos is a peer-to-peer encrypted filesystem with secure sharing of files. We plan a secure email replacement, with some interoperabiltiy with email. There will also be a totally private and secure social network, where users are in control of who sees what (executed cryptographically). Eventually we plan an app-store for third party applications to use our API. 
 
 The name Peergos comes from the Greek word Πύργος (Pyrgos), which means stronghold or tower, but phonetically spelt with the nice connection to being peer-to-peer. 
 
-I would very much appreciate any help, be it code, testing, bugs, or advice. 
+We would very much appreciate any help, be it code, testing, bugs, or advice. 
 
 Project aims
 ------------
