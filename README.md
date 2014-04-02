@@ -1,7 +1,7 @@
-Defiance
+Peergos
 ========
 
-Defiance is a peer-to-peer encrypted filesystem with secure sharing of files. We plan a secure email replacement, with some interoperabiltiy with email. There will also be a totally private and secure social network, where users are in control of who sees what (executed cryptographically). Evnetually we plan an app-store for third party applications to use our API. 
+Peergos is a peer-to-peer encrypted filesystem with secure sharing of files. We plan a secure email replacement, with some interoperabiltiy with email. There will also be a totally private and secure social network, where users are in control of who sees what (executed cryptographically). Evnetually we plan an app-store for third party applications to use our API. 
 
 I would very much appreciate any help, be it code, testing, bugs, or advice. 
 
@@ -13,13 +13,13 @@ Project aims
  - To have super fast file transfers by transfering fragments in parallel to/from different sources
  - To enable a new secure form of email
  - To be independent of  the central SSL CA trust architecture
- - A User should be able to easily run Defiance on a machine in their home and get their own secure cloud storage, and social communication platform from it. 
+ - A User should be able to easily run Peergos on a machine in their home and get their own secure cloud storage, and social communication platform from it. 
  - A secure web interface
  - To enable secure real time chat, and video conversations
 
 Project anti-aims
 -----------------
- - Defiance does not provide anonymity. Anonymity can be achieved by creating and only ever accessing a User account over Tor
+ - Peergos does not provide anonymity. Anonymity can be achieved by creating and only ever accessing a User account over Tor
 
 Architecture
 ------------
@@ -78,4 +78,4 @@ Architecture
 Usage
 -----
 Run with the following to find out available options:
-java -jar DefianceServer.jar -help
+java -jar PeergosServer.jar -help

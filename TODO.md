@@ -1,4 +1,4 @@
-Defiance To Do:
+Peergos To Do:
 - [ ] API for Core node database
 - [X] Directory Server over http
 - [ ] Storage servers sign their SSL cert with a directory server

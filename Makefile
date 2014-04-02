@@ -8,23 +8,23 @@ build: server
 .PHONY: server
 server: 
 	mkdir -p build
-	echo "Name: Defiance Storage Server" > def.manifest
-	echo "Main-Class: defiance.dht.Start" >> def.manifest
+	echo "Name: Peergos Storage Server" > def.manifest
+	echo "Main-Class: peergos.dht.Start" >> def.manifest
 	echo "Build-Date: " `date` >> def.manifest
 	echo "Class-Path: " $(CP_SPACE)>> def.manifest
-	javac $(JAVA_BUILD_OPTS) -d build `find defiance -name \*.java`
-	jar -cfm DefianceServer.jar def.manifest \
-	    -C build defiance
+	javac $(JAVA_BUILD_OPTS) -d build `find peergos -name \*.java`
+	jar -cfm PeergosServer.jar def.manifest \
+	    -C build peergos
 	rm -f def.manifest
 
 .PHONY: tests
 tests: 
 	mkdir -p build
-	echo "Name: Defiance Tests" > def.manifest
-	echo "Main-Class: defiance.tests.Tests" >> def.manifest
+	echo "Name: Peergos Tests" > def.manifest
+	echo "Main-Class: peergos.tests.Tests" >> def.manifest
 	echo "Build-Date: " `date` >> def.manifest
 	echo "Class-Path: " $(CP_SPACE)>> def.manifest
-	javac $(JAVA_BUILD_OPTS) -d build `find defiance -name \*.java`
-	jar -cfm DefianceTests.jar def.manifest \
-	    -C build defiance
+	javac $(JAVA_BUILD_OPTS) -d build `find peergos -name \*.java`
+	jar -cfm PeergosTests.jar def.manifest \
+	    -C build peergos
 	rm -f def.manifest
