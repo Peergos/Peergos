@@ -88,6 +88,6 @@ public class Scripter extends Thread
         {
             e.printStackTrace();
         }
-        System.out.println("Finished sending messages!");
+        System.out.println("Finished sending scripted messages!");
     }
 }

@@ -20,7 +20,7 @@ import java.util.logging.Logger;
 
 public class HTTPSMessenger extends Messenger
 {
-    public static final String MESSAGE_URL = "/message";
+    public static final String MESSAGE_URL = "/message/";
 
     public static final int THREADS = 5;
     public static final int CONNECTION_BACKLOG = 100;
@@ -126,14 +126,15 @@ public class HTTPSMessenger extends Messenger
             LOGGER.log(Level.ALL, String.format("Sent %s with target %d to %s:%d\n", m.name(), m.getTarget(), addr, port));
         ByteArrayOutputStream bout = new ByteArrayOutputStream();
         m.write(new DataOutputStream(bout));
-        System.out.println("sending message to "+addr.getHostAddress() + ":"+port);
         URL target = new URL("https", addr.getHostAddress(), port, MESSAGE_URL);
-        URLConnection conn = target.openConnection();
+        HttpURLConnection conn = (HttpURLConnection) target.openConnection();
         conn.setDoOutput(true);
+        conn.setRequestMethod("PUT");
         OutputStream out = conn.getOutputStream();
         out.write(bout.toByteArray());
         out.flush();
         out.close();
+        conn.getResponseCode();
     }
 
     @Override
