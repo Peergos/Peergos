@@ -1,5 +1,6 @@
 package peergos.net;
 
+import akka.actor.ActorRef;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import peergos.dht.Message;
@@ -11,18 +12,18 @@ import java.io.OutputStream;
 
 public class HttpsMessageHandler implements HttpHandler
 {
-    private final HTTPSMessenger messenger;
+    private final ActorRef router;
 
-    public HttpsMessageHandler(HTTPSMessenger m)
+    public HttpsMessageHandler(ActorRef r)
     {
-        this.messenger = m;
+        this.router = r;
     }
 
     @Override
     public void handle(HttpExchange httpExchange) throws IOException {
         InputStream in = httpExchange.getRequestBody();
         Message m = Message.read(new DataInputStream(in));
-        messenger.queueRequestMessage(m);
+        router.tell(m, ActorRef.noSender());
         httpExchange.sendResponseHeaders(200, 0);
         OutputStream out = httpExchange.getResponseBody();
         out.write("Nothing to see here... move along".getBytes());

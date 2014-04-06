@@ -15,7 +15,6 @@ public class UserPublicKey
 {
     public static final int RSA_KEY_SIZE = 4096;
     public static final int MAX_USERNAME_BYTES = 28;
-    public static final int PUBLIC_KEY_DUPLICATION = 10;
     public static final String AUTH = "RSA";
     public static final String FILE = "AES";
     public static final String HASH = "SHA-256";

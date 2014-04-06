@@ -1,13 +1,22 @@
 package peergos.net;
 
+import akka.actor.AbstractActor;
+import akka.actor.ActorRef;
+import akka.actor.Props;
+import akka.japi.Creator;
+import akka.japi.pf.FI;
+import akka.japi.pf.ReceiveBuilder;
 import com.sun.net.httpserver.HttpsConfigurator;
 import com.sun.net.httpserver.HttpsParameters;
 import com.sun.net.httpserver.HttpsServer;
 import peergos.crypto.SSL;
+import peergos.dht.Letter;
 import peergos.dht.Message;
 import peergos.dht.Messenger;
 import peergos.storage.Storage;
 import org.bouncycastle.operator.OperatorCreationException;
+import scala.PartialFunction;
+import scala.runtime.BoxedUnit;
 
 import javax.net.ssl.*;
 import java.io.*;
@@ -18,7 +27,7 @@ import java.util.concurrent.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-public class HTTPSMessenger extends Messenger
+public class HTTPSMessenger extends AbstractActor implements Messenger
 {
     public static final String MESSAGE_URL = "/message/";
 
@@ -28,20 +37,52 @@ public class HTTPSMessenger extends Messenger
     private final Logger LOGGER;
     private final int localPort;
     HttpsServer httpsServer;
-    private final BlockingQueue<Message> queue = new LinkedBlockingDeque();
-    private final Storage keys;
     private final Storage fragments;
+    private PartialFunction<Object, BoxedUnit> ready;
 
-    public HTTPSMessenger(int port, Storage fragments, Storage keys, Logger LOGGER) throws IOException
+    public HTTPSMessenger(int port, Storage fragments, Logger LOGGER) throws IOException
     {
         this.LOGGER = LOGGER;
         this.localPort = port;
-        this.keys = keys;
         this.fragments = fragments;
+        ready = ReceiveBuilder.match(Letter.class, new FI.UnitApply<Letter>() {
+            @Override
+            public void apply(Letter p) throws Exception {
+                if (p.dest == null)
+                    sender().tell(new JOINED(), self());
+                else
+                    sendMessage(p.m, p.dest, p.destPort);
+            }
+        }).build();
+
+        receive(ReceiveBuilder.match(INITIALIZE.class, new FI.UnitApply<INITIALIZE>() {
+            @Override
+            public void apply(INITIALIZE j) throws Exception {
+                if (init(sender()))
+                {
+                    context().become(ready);
+                    sender().tell(new INITIALIZED(), self());
+                }
+                else
+                {
+                    sender().tell(new INITERROR(), self());
+                }
+            }
+        }).build());
+    }
+
+    public static Props props(final int port, Storage fragments, Logger LOGGER)
+    {
+        return Props.create(HTTPSMessenger.class, new Creator<HTTPSMessenger>() {
+            @Override
+            public HTTPSMessenger create() throws Exception {
+                return new HTTPSMessenger(port, fragments, LOGGER);
+            }
+        });
     }
 
     @Override
-    public boolean join(InetAddress addr, int port) throws IOException {
+    public boolean init(ActorRef router) throws IOException {
         try
         {
             InetAddress us = IP.getMyPublicAddress();
@@ -96,27 +137,12 @@ public class HTTPSMessenger extends Messenger
             return false;
         }
 
-        httpsServer.createContext(MESSAGE_URL, new HttpsMessageHandler(this));
-        httpsServer.createContext("/key/", new StorageGetHandler(keys, "/key/"));
+        httpsServer.createContext(MESSAGE_URL, new HttpsMessageHandler(router));
         httpsServer.createContext("/", new StoragePutHandler(fragments, "/"));
         httpsServer.setExecutor(Executors.newFixedThreadPool(THREADS));
         httpsServer.start();
 
-        // if we are the first node don't contact network
-        if (addr == null)
-        {
-
-        }
-        else // contact network and accept SSL cert from the contact point
-        {
-
-        }
         return true;
-    }
-
-    protected void queueRequestMessage(Message m)
-    {
-        queue.add(m);
     }
 
     @Override
@@ -171,11 +197,5 @@ public class HTTPSMessenger extends Messenger
         out.write(value);
         out.flush();
         out.close();
-    }
-
-    @Override
-    public Message awaitMessage(int duration) throws IOException, InterruptedException
-    {
-        return queue.poll(duration, TimeUnit.MILLISECONDS);
     }
 }

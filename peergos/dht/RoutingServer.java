@@ -15,9 +15,7 @@ public class RoutingServer extends Thread
 {
     public static final int MAX_NEIGHBOURS = 2;
     public static final long MAX_STORAGE_SIZE = 1024 * 1024 * 1024L;
-    private static final String DATA_DIR = "data/";
-    public static final long MAX_KEY_INFO_STORAGE_SIZE = 100 * 1024 * 1024L;
-    private static final String KEY_DATA_DIR = "keys/";
+    public static final String DATA_DIR = "data/";
 
     private NodeID us;
 
@@ -25,14 +23,10 @@ public class RoutingServer extends Thread
     private SortedMap<Long, Node> rightNeighbours = new TreeMap();
     private SortedMap<Long, Node> friends = new TreeMap();
     private final Storage storage;
-    private final Storage publicKeyStorage;
     public Logger LOGGER;
     private final Map<ByteArrayWrapper, PutHandler> pendingPuts = new ConcurrentHashMap();
     private final Map<ByteArrayWrapper, PullHandler> pendingGets = new ConcurrentHashMap();
-    private final Map<ByteArrayWrapper, PublicKeyPutHandler> pendingPublicKeyPuts = new ConcurrentHashMap();
-    private final Map<ByteArrayWrapper, PublicKeyGetHandler> pendingPublicKeyGets = new ConcurrentHashMap();
     private final Random random = new Random(System.currentTimeMillis());
-    private final Executor complexHandlers = Executors.newFixedThreadPool(10);
     private Messenger messenger;
 
     public RoutingServer(int port) throws IOException
@@ -47,8 +41,7 @@ public class RoutingServer extends Thread
         LOGGER.setLevel(Level.ALL);
 
         storage = new Storage(new File(DATA_DIR), MAX_STORAGE_SIZE);
-        publicKeyStorage = new Storage(new File(KEY_DATA_DIR), MAX_KEY_INFO_STORAGE_SIZE);
-        messenger = Messenger.getDefault(port, storage, publicKeyStorage, LOGGER);
+        messenger = Messenger.getDefault(port, storage, LOGGER);
     }
 
     public Messenger getMessenger()
@@ -390,67 +383,11 @@ public class RoutingServer extends Thread
             }
             else
                 LOGGER.log(Level.ALL, "Couldn't find GET_RESULT handler for " + Arrays.bytesToHex(key.data));
-        } else if (m instanceof Message.PUBLIC_KEY_PUT)
-        {
-            LOGGER.log(Level.ALL, "received Public_Key_Put " + m.toString());
-            complexHandlers.execute(new PublicKeyPutManager((Message.PUBLIC_KEY_PUT)m));
-        } else if (m instanceof Message.PUBLIC_KEY_GET)
-        {
-            LOGGER.log(Level.ALL, "received Public_Key_Get " + m.toString());
-            ByteArrayWrapper key = new ByteArrayWrapper(((Message.PUBLIC_KEY_GET) m).getUsernameHash());
-            if (publicKeyStorage.contains(key))
-            {
-                Message res = new Message.PUBLIC_KEY_RESULT(us, m.getOrigin(), ((Message.PUBLIC_KEY_GET) m).getUsernameHash(), publicKeyStorage.get(key), true);
-                forwardMessage(res);
-            } else
-            {
-                Message res = new Message.PUBLIC_KEY_RESULT(us, m.getOrigin(), ((Message.PUBLIC_KEY_GET) m).getUsernameHash(), new byte[0], false);
-                forwardMessage(res);
-            }
-        } else if (m instanceof Message.PUBLIC_KEY_RESULT)
-        {
-            ByteArrayWrapper key = new ByteArrayWrapper(((Message.PUBLIC_KEY_RESULT) m).getUsernameHash());
-            if (pendingPublicKeyGets.containsKey(key))
-            {
-                pendingPublicKeyGets.get(key).handleResult(new PublicKeyGetResult(((Message.PUBLIC_KEY_RESULT) m).isValid(), ((Message.PUBLIC_KEY_RESULT) m).getPublicKey()));
-                pendingPublicKeyGets.remove(key);
-            }
-            else if (pendingPublicKeyPuts.containsKey(key))
-            {
-                pendingPublicKeyPuts.get(key).handleOffer(new PublicKeyPutResult(((Message.PUBLIC_KEY_RESULT) m).isValid()));
-                pendingPublicKeyPuts.remove(key);
-            }
-            else
-                LOGGER.log(Level.ALL, "Couldn't find GET_RESULT handler for " + Arrays.bytesToHex(key.data));
         }
-
 
         if (Message.LOG)
             printNeighboursAndFriends();
 
-    }
-
-    private class PublicKeyPutManager implements Runnable
-    {
-        private final Message.PUBLIC_KEY_PUT m;
-
-        public PublicKeyPutManager(Message.PUBLIC_KEY_PUT m)
-        {
-            this.m = m;
-        }
-
-        public void run()
-        {
-            // write key to reliable core storage
-            if (publicKeyStorage.accept(new ByteArrayWrapper(m.getHashedUsername()), m.getPublicKey().length))
-            {
-                publicKeyStorage.put(new ByteArrayWrapper(m.getHashedUsername()), m.getPublicKey());
-                // succeeded, send response
-                forwardMessage(new Message.PUBLIC_KEY_RESULT(us, m.getOrigin(), m.getHashedUsername(), m.getPublicKey(), true));
-            }
-            else
-                forwardMessage(new Message.PUBLIC_KEY_RESULT(us, m.getOrigin(), m.getHashedUsername(), m.getPublicKey(), false));
-        }
     }
 
     private void fillLeft(SortedMap<Long, Node> left, Set<Node> toSendECHO)
@@ -565,23 +502,6 @@ public class RoutingServer extends Thread
         return next;
     }
 
-    // username + public key API
-    public void sendPublicKeyPUT(byte[] username, byte[] publicKey, int recursion, PublicKeyPutHandler handler)
-    {
-        Message put = new Message.PUBLIC_KEY_PUT(us, username, publicKey, recursion);
-        pendingPublicKeyPuts.put(new ByteArrayWrapper(username), handler);
-        forwardMessage(put);
-        handler.onStart();
-    }
-
-    public void sendPublicKeyGET(byte[] username, PublicKeyGetHandler handler)
-    {
-        Message put = new Message.PUBLIC_KEY_GET(us, username);
-        pendingPublicKeyGets.put(new ByteArrayWrapper(username), handler);
-        forwardMessage(put);
-        handler.onStart();
-    }
-
     // Fragment API
     public void sendPUT(byte[] key, int len, PutHandler handler)
     {
@@ -605,22 +525,5 @@ public class RoutingServer extends Thread
         pendingGets.put(new ByteArrayWrapper(key), handler);
         forwardMessage(con);
         handler.onStart();
-    }
-
-    public static void test(int nodes) throws IOException
-    {
-        if (!Args.hasParameter("script"))
-            throw new IllegalStateException("Need a script argument for test mode");
-        String script = Args.getParameter("script");
-        Start.main(new String[] {"-directoryServer"});
-        String[] args = new String[]{"-firstNode", "-port", "8000", "-logMessages", "-script", script};
-        Start.main(args);
-        args = new String[]{"-port", "", "-logMessages", "-contactIP", IP.getMyPublicAddress().getHostAddress(), "-contactPort", args[2]};
-        if (nodes > 1)
-            for (int i = 0; i < nodes - 1; i++)
-            {
-                args[1] = 9000 + 1000 * i + "";
-                Start.main(args);
-            }
     }
 }

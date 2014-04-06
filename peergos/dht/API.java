@@ -1,27 +1,29 @@
 package peergos.dht;
 
 
+import akka.actor.ActorRef;
+
 public class API
 {
-    private RoutingServer routing;
+    private ActorRef router;
 
-    public API(RoutingServer routing)
+    public API(ActorRef router)
     {
-        this.routing = routing;
+        this.router = router;
     }
 
     // username + public key API
     public void createUser(byte[] username, byte[] publicKey, PublicKeyPutHandlerCallback onComplete, ErrorHandlerCallback onError)
     {
         PublicKeyPutHandler handler = new DefaultPublicKeyPutHandler(username, publicKey, onComplete, onError);
-        routing.sendPublicKeyPUT(username, publicKey, 0, handler);
+//        routing.sendPublicKeyPUT(username, publicKey, 0, handler);
         // TODO use reliable core database
     }
 
     public void getPublicKey(byte[] username, PublicKeyGetHandlerCallback onComplete, ErrorHandlerCallback onError)
     {
         PublicKeyGetHandler handler = new DefaultPublicKeyGetHandler(username, onComplete, onError);
-        routing.sendPublicKeyGET(username, handler);
+//        routing.sendPublicKeyGET(username, handler);
         // TODO use reliable core database
     }
 
