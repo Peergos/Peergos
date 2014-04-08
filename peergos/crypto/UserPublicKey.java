@@ -139,4 +139,34 @@ public class UserPublicKey
             hash = User.hash(hash);
         return hash;
     }
+    
+    public boolean equals(Object o)
+    {
+        if (! (o instanceof UserPublicKey))
+            return false;
+
+        return this.publicKey.equals(((UserPublicKey) o).publicKey);
+    }
+
+    public int hashCode()
+    {
+        return publicKey.hashCode();
+    }
+
+    public PublicKey getKey()
+    {
+        return (PublicKey) publicKey;
+    }
+
+    public boolean isValidSignature(byte[] signedHash, byte[] raw)
+    {
+        try
+        {
+            byte[] a = hash(raw);
+            byte[] b = unsignMessage(signedHash);
+            return java.util.Arrays.equals(a,b); 
+        } catch (Exception e) {
+            return false;
+        }
+    }
 }

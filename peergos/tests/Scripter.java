@@ -1,6 +1,7 @@
 package peergos.tests;
 
 import peergos.dht.*;
+import peergos.net.HTTPSMessenger;
 import peergos.util.*;
 
 import java.io.*;
@@ -37,7 +38,7 @@ public class Scripter extends Thread
                 if (parts[1].equals("PUT"))
                 {
                     api.put(Arrays.hexToBytes(parts[2]), Arrays.hexToBytes(parts[3]), new PutHandlerCallback(){
-                        public void callback(PutHandler handler) {
+                        public void callback(PutOffer offer) {
                             System.out.println("Put completed with no error");
                         }
                     });
@@ -46,19 +47,20 @@ public class Scripter extends Thread
                 {
                     api.get(Arrays.hexToBytes(parts[2]), new GetHandlerCallback() {
                         @Override
-                        public void callback(GetHandler handler) {
+                        public void callback(GetOffer offer) {
                             try {
-                            System.out.println("GET result: "+new String(handler.getResult(), "UTF-8"));
-                            } catch (UnsupportedEncodingException e) {e.printStackTrace();}
+                                byte[] fragment = HTTPSMessenger.getFragment(offer.getTarget().addr, offer.getTarget().port, "/" + parts[2]);
+                            System.out.println("GET result: "+new String(fragment, "UTF-8"));
+                            } catch (IOException e) {e.printStackTrace();}
                         }
                     });
                     System.out.println("Sent Get message");
                 } else if (parts[1].equals("CON"))
                 {
-                    api.contains(Arrays.hexToBytes(parts[2]), new ContainsHandlerCallback() {
+                    api.contains(Arrays.hexToBytes(parts[2]), new GetHandlerCallback() {
                         @Override
-                        public void callback(ContainsHandler handler) {
-                             System.out.println(handler.getResult()? "true": "false");
+                        public void callback(GetOffer offer) {
+                             System.out.println(offer.getSize() > 0 ? "true": "false");
                         }
                     });
                     System.out.println("Sent Contains message");

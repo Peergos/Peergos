@@ -5,6 +5,7 @@ import akka.actor.ActorSystem;
 import akka.actor.Inbox;
 import peergos.crypto.SSL;
 import peergos.directory.DirectoryServer;
+import peergos.net.HTTPSMessenger;
 import peergos.net.IP;
 import peergos.tests.Scripter;
 import peergos.util.Args;
@@ -19,6 +20,7 @@ import java.util.concurrent.TimeUnit;
 
 public class Start
 {
+
     public static void main(String[] args) throws IOException
     {
         Args.parse(args);
@@ -58,29 +60,29 @@ public class Start
         }
         else {
             int port = Args.getInt("port", 8000);
-            ActorSystem system = ActorSystem.create("DHT Router");
+            ActorSystem system = ActorSystem.create("DHTRouter");
             ActorRef router = Router.start(system, port);
             final Inbox inbox = Inbox.create(system);
-            inbox.send(router, new Messenger.INITIALIZE());
+            inbox.send(router, new HTTPSMessenger.INITIALIZE());
             // wait for INITIALIZED or INITERROR
             Object result = inbox.receive(Duration.create(10, TimeUnit.SECONDS));
-            if (result instanceof Messenger.INITERROR)
+            if (result instanceof HTTPSMessenger.INITERROR)
             {
                 throw new IllegalStateException("Couldn't INIT DHT router!");
             }
             if (Args.hasOption("firstNode"))
-                inbox.send(router, new Messenger.JOIN(null, 0));
+                inbox.send(router, new HTTPSMessenger.JOIN(null, 0));
             else
-                inbox.send(router, new Messenger.JOIN(InetAddress.getByName(Args.getParameter("contactIP")), Args.getInt("contactPort", 8080)));
+                inbox.send(router, new HTTPSMessenger.JOIN(InetAddress.getByName(Args.getParameter("contactIP")), Args.getInt("contactPort", 8080)));
             Object joinResult = inbox.receive(Duration.create(10, TimeUnit.SECONDS));
-            if (joinResult instanceof Messenger.JOINERROR)
+            if (joinResult instanceof HTTPSMessenger.JOINERROR)
             {
                 // maybe try again?
                 throw new IllegalStateException("Couldn't join the DHT!");
             }
             // router is ready!
 
-            API api = new API(router);
+            API api = new API(system, router);
             if (Args.hasParameter("script")) {
                 new Scripter(api, Args.getParameter("script")).start();
             }

@@ -9,8 +9,9 @@ public class Tests
 
     public static void main(String[] args)
     {
-        testClass(Components.class);
-        testClass(Crypto.class);
+        //testClass(Components.class);
+        //testClass(Crypto.class);
+        testClass(CoreNode.class);
     }
 
     private static void testClass(Class c)

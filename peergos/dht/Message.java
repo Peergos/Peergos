@@ -14,7 +14,7 @@ public abstract class Message
 
     public static enum Type
     {
-        JOIN, ECHO, PUT, PUT_ACCEPT, GET, GET_RESULT, PUBLIC_KEY_PUT, PUBLIC_KEY_GET, PUBLIC_KEY_RESULT
+        JOIN, ECHO, PUT, PUT_ACCEPT, GET, GET_RESULT
     }
 
     private static Type[] lookup = Type.values();
@@ -84,12 +84,6 @@ public abstract class Message
                 return new GET(in);
             case GET_RESULT:
                 return new GET_RESULT(in);
-            case PUBLIC_KEY_PUT:
-                return new PUBLIC_KEY_PUT(in);
-            case PUBLIC_KEY_GET:
-                return new PUBLIC_KEY_GET(in);
-            case PUBLIC_KEY_RESULT:
-                return new PUBLIC_KEY_RESULT(in);
         }
         throw new IllegalStateException("Unknown Message type: " + index);
     }
@@ -127,7 +121,7 @@ public abstract class Message
         private NodeID target;
         private Set<NodeID> neighbours = new HashSet();
 
-        public ECHO(NodeID target, NodeID us, Collection<Node> leftN, Collection<Node> rightN)
+        public ECHO(NodeID target, Collection<Node> leftN, Collection<Node> rightN)
         {
             super(Type.ECHO);
             this.target = target;
@@ -135,7 +129,6 @@ public abstract class Message
                 neighbours.add(n.node);
             for (Node n: rightN)
             neighbours.add(n.node);
-            addNode(us);
         }
 
         public ECHO(DataInput in) throws IOException
@@ -173,10 +166,9 @@ public abstract class Message
         private final byte[] key;
         private final int len;
 
-        public PUT(NodeID us, byte[] key, int len)
+        public PUT(byte[] key, int len)
         {
             super(Type.PUT);
-            addNode(us);
             this.key = key;
             target = Arrays.getLong(key, 0);
             this.len = len;
@@ -220,10 +212,9 @@ public abstract class Message
         private final byte[] key;
         private final int len;
 
-        public PUT_ACCEPT(NodeID us, Message.PUT put)
+        public PUT_ACCEPT(Message.PUT put)
         {
             super(Type.PUT_ACCEPT);
-            addNode(us);
             this.key = put.getKey();
             target = put.getHops().get(0).id;
             this.len = put.getSize();
@@ -267,18 +258,16 @@ public abstract class Message
         private final long target;
         private final byte[] key;
 
-        public GET(NodeID us, byte[] key)
+        public GET(byte[] key)
         {
             super(Type.GET);
-            addNode(us);
             this.key = key;
             target = Arrays.getLong(key, 0);
         }
 
-        public GET(NodeID us, byte[] key, long target)
+        public GET(byte[] key, long target)
         {
             super(Type.GET);
-            addNode(us);
             this.key = key;
             this.target = target;
         }
@@ -314,10 +303,9 @@ public abstract class Message
         private final byte[] key;
         private final int len;
 
-        public GET_RESULT(NodeID us, Message.GET put, int len)
+        public GET_RESULT(Message.GET put, int len)
         {
             super(Type.GET_RESULT);
-            addNode(us);
             this.key = put.getKey();
             target = put.getOrigin();
             this.len = len;
@@ -353,174 +341,6 @@ public abstract class Message
         public int getSize()
         {
             return len;
-        }
-    }
-
-    public static class PUBLIC_KEY_PUT extends Message
-    {
-        private final long target;
-        private final int recursion;
-        private final byte[] username;
-        private final byte[] hashedUsername;
-        private final byte[] publicKey;
-
-        public PUBLIC_KEY_PUT(NodeID us, byte[] username, byte[] publicKey, int recursion)
-        {
-            super(Type.PUBLIC_KEY_PUT);
-            assert(username.length < UserPublicKey.MAX_USERNAME_BYTES);
-            addNode(us);
-            this.username = username;
-            this.publicKey = publicKey;
-            this.recursion = recursion;
-            hashedUsername = UserPublicKey.recursiveHash(username, recursion);
-            target = Arrays.getLong(hashedUsername, 0);
-        }
-
-        public PUBLIC_KEY_PUT(DataInput in) throws IOException
-        {
-            super(Type.PUBLIC_KEY_PUT, in);
-            username = new byte[in.readInt()];
-            assert(username.length < UserPublicKey.MAX_USERNAME_BYTES);
-            in.readFully(username);
-            publicKey = new byte[in.readInt()];
-            in.readFully(publicKey);
-            recursion = in.readInt();
-            hashedUsername = UserPublicKey.recursiveHash(username, recursion);
-            target = Arrays.getLong(hashedUsername, 0);
-        }
-
-        public long getTarget()
-        {
-            return target;
-        }
-
-        public void write(DataOutput out) throws IOException
-        {
-            super.write(out);
-            out.writeInt(username.length);
-            out.write(username);
-            out.writeInt(publicKey.length);
-            out.write(publicKey);
-            out.writeInt(recursion);
-        }
-
-        public byte[] getUsername()
-        {
-            return username;
-        }
-
-        public byte[] getHashedUsername()
-        {
-            return hashedUsername;
-        }
-
-        public int getRecursion()
-        {
-            return recursion;
-        }
-
-        public byte[] getPublicKey()
-        {
-            return publicKey;
-        }
-    }
-
-    public static class PUBLIC_KEY_GET extends Message
-    {
-        private final long target;
-        private final byte[] usernameHash;
-
-        public PUBLIC_KEY_GET(NodeID us, byte[] usernameHash)
-        {
-            super(Type.PUBLIC_KEY_PUT);
-            addNode(us);
-            this.usernameHash = usernameHash;
-            target = Arrays.getLong(usernameHash, 0);
-        }
-
-        public PUBLIC_KEY_GET(DataInput in) throws IOException
-        {
-            super(Type.PUBLIC_KEY_PUT, in);
-            usernameHash = new byte[in.readInt()];
-            in.readFully(usernameHash);
-            target = Arrays.getLong(usernameHash, 0);
-        }
-
-        public long getTarget()
-        {
-            return target;
-        }
-
-        public void write(DataOutput out) throws IOException
-        {
-            super.write(out);
-            out.writeInt(usernameHash.length);
-            out.write(usernameHash);
-        }
-
-        public byte[] getUsernameHash()
-        {
-            return usernameHash;
-        }
-    }
-
-    public static class PUBLIC_KEY_RESULT extends Message
-    {
-        private final long target;
-        private final byte[] usernameHash;
-        private final byte[] publicKey;
-        private final boolean valid;
-
-        public PUBLIC_KEY_RESULT(NodeID us, long origin, byte[] usernameHash, byte[] publicKey, boolean isValid)
-        {
-            super(Type.PUBLIC_KEY_RESULT);
-            addNode(us);
-            this.usernameHash = usernameHash;
-            this.publicKey = publicKey;
-            target = origin;
-            valid = isValid;
-        }
-
-        public PUBLIC_KEY_RESULT(DataInput in) throws IOException
-        {
-            super(Type.PUBLIC_KEY_RESULT, in);
-            usernameHash = new byte[in.readInt()];
-            in.readFully(usernameHash);
-            publicKey = new byte[in.readInt()];
-            in.readFully(publicKey);
-            valid = in.readBoolean();
-            target = in.readLong();
-        }
-
-        public long getTarget()
-        {
-            return target;
-        }
-
-        public void write(DataOutput out) throws IOException
-        {
-            super.write(out);
-            out.writeInt(usernameHash.length);
-            out.write(usernameHash);
-            out.writeInt(publicKey.length);
-            out.write(publicKey);
-            out.writeBoolean(valid);
-            out.writeLong(target);
-        }
-
-        public boolean isValid()
-        {
-            return valid;
-        }
-
-        public byte[] getUsernameHash()
-        {
-            return usernameHash;
-        }
-
-        public byte[] getPublicKey()
-        {
-            return publicKey;
         }
     }
 }

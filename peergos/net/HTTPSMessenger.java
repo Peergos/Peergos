@@ -12,7 +12,6 @@ import com.sun.net.httpserver.HttpsServer;
 import peergos.crypto.SSL;
 import peergos.dht.Letter;
 import peergos.dht.Message;
-import peergos.dht.Messenger;
 import peergos.storage.Storage;
 import org.bouncycastle.operator.OperatorCreationException;
 import scala.PartialFunction;
@@ -27,7 +26,7 @@ import java.util.concurrent.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-public class HTTPSMessenger extends AbstractActor implements Messenger
+public class HTTPSMessenger extends AbstractActor
 {
     public static final String MESSAGE_URL = "/message/";
 
@@ -71,7 +70,7 @@ public class HTTPSMessenger extends AbstractActor implements Messenger
         }).build());
     }
 
-    public static Props props(final int port, Storage fragments, Logger LOGGER)
+    public static Props props(final int port, final Storage fragments, final Logger LOGGER)
     {
         return Props.create(HTTPSMessenger.class, new Creator<HTTPSMessenger>() {
             @Override
@@ -81,7 +80,6 @@ public class HTTPSMessenger extends AbstractActor implements Messenger
         });
     }
 
-    @Override
     public boolean init(ActorRef router) throws IOException {
         try
         {
@@ -145,7 +143,8 @@ public class HTTPSMessenger extends AbstractActor implements Messenger
         return true;
     }
 
-    @Override
+    // need to think about latency of opening all these SSL connections,
+    // maybe we could keep open connections to neighbours, and only open to distant nodes in the DHT?
     public void sendMessage(Message m, InetAddress addr, int port) throws IOException
     {
         if (Message.LOG)
@@ -163,8 +162,7 @@ public class HTTPSMessenger extends AbstractActor implements Messenger
         conn.getResponseCode();
     }
 
-    @Override
-    public byte[] getFragment(InetAddress addr, int port, String key) throws IOException
+    public static byte[] getFragment(InetAddress addr, int port, String key) throws IOException
     {
         // for now, make a direct connection
         URL target = new URL("https", addr.getHostAddress(), port, key);
@@ -184,11 +182,10 @@ public class HTTPSMessenger extends AbstractActor implements Messenger
         return bout.toByteArray();
     }
 
-    @Override
-    public void putFragment(InetAddress addr, int port, String key, byte[] value) throws IOException
+    public static void putFragment(InetAddress addr, int port, String key, byte[] value) throws IOException
     {
         // for now, make a direct connection
-        URL target = new URL("https", addr.getHostAddress(), port, key);
+        URL target = new URL("https", addr.getHostAddress(), port, key+"/");
         System.out.println("sending fragment to " + target.toString());
         HttpURLConnection conn = (HttpURLConnection) target.openConnection();
         conn.setDoOutput(true);
@@ -197,5 +194,30 @@ public class HTTPSMessenger extends AbstractActor implements Messenger
         out.write(value);
         out.flush();
         out.close();
+        conn.getResponseCode();
+    }
+
+    public static class JOIN
+    {
+        public final InetAddress addr;
+        public final int port;
+
+        public JOIN(InetAddress addr, int port)
+        {
+            this.addr = addr;
+            this.port = port;
+        }
+    }
+
+    public static class JOINED {}
+    public static class JOINERROR {}
+
+    public static class INITIALIZE {}
+    public static class INITIALIZED {}
+    public static class INITERROR {}
+
+    public static HTTPSMessenger getDefault(int port, Storage fragments, Logger log) throws IOException
+    {
+        return new HTTPSMessenger(port, fragments, log);
     }
 }

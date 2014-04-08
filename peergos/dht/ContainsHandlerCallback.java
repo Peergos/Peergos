@@ -2,5 +2,5 @@ package peergos.dht;
 
 public interface ContainsHandlerCallback
 {
-    public void callback(ContainsHandler handler);
+    public void callback(GetOffer offer);
 }

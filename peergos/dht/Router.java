@@ -33,8 +33,8 @@ public class Router extends AbstractActor
     private SortedMap<Long, Node> friends = new TreeMap();
     private final Storage storage;
     public Logger LOGGER;
-    private final Map<ByteArrayWrapper, PutHandler> pendingPuts = new ConcurrentHashMap();
-    private final Map<ByteArrayWrapper, PullHandler> pendingGets = new ConcurrentHashMap();
+    private final Map<ByteArrayWrapper, ActorRef> pendingPuts = new ConcurrentHashMap();
+    private final Map<ByteArrayWrapper, ActorRef> pendingGets = new ConcurrentHashMap();
     private final Random random = new Random(System.currentTimeMillis());
     private ActorRef messenger;
     private PartialFunction<Object, BoxedUnit> beginning;
@@ -55,38 +55,38 @@ public class Router extends AbstractActor
         storage = new Storage(new File(DATA_DIR), MAX_STORAGE_SIZE);
         messenger = context().actorOf(HTTPSMessenger.props(port, storage, LOGGER));
 
-        beginning = ReceiveBuilder.match(Messenger.INITIALIZE.class, new FI.UnitApply<Messenger.INITIALIZE>() {
+        beginning = ReceiveBuilder.match(HTTPSMessenger.INITIALIZE.class, new FI.UnitApply<HTTPSMessenger.INITIALIZE>() {
             @Override
-            public void apply(Messenger.INITIALIZE init) throws Exception {
+            public void apply(HTTPSMessenger.INITIALIZE init) throws Exception {
                 messenger.tell(init, self());
                 context().become(waitingForInitialized);
                 lastOrderer = sender();
             }
         }).build();
-        waitingForInitialized = ReceiveBuilder.match(Messenger.INITIALIZED.class, new FI.UnitApply<Messenger.INITIALIZED>() {
+        waitingForInitialized = ReceiveBuilder.match(HTTPSMessenger.INITIALIZED.class, new FI.UnitApply<HTTPSMessenger.INITIALIZED>() {
             @Override
-            public void apply(Messenger.INITIALIZED j) throws Exception {
+            public void apply(HTTPSMessenger.INITIALIZED j) throws Exception {
                     context().become(initialized);
-                    lastOrderer.tell(new Messenger.INITIALIZED(), self());
+                    lastOrderer.tell(new HTTPSMessenger.INITIALIZED(), self());
             }
-        }).match(Messenger.INITERROR.class, new FI.UnitApply<Messenger.INITERROR>() {
+        }).match(HTTPSMessenger.INITERROR.class, new FI.UnitApply<HTTPSMessenger.INITERROR>() {
             @Override
-            public void apply(Messenger.INITERROR j) throws Exception {
+            public void apply(HTTPSMessenger.INITERROR j) throws Exception {
                 context().become(beginning);
-                lastOrderer.tell(new Messenger.INITERROR(), self());
+                lastOrderer.tell(new HTTPSMessenger.INITERROR(), self());
             }
         }).build();
-        initialized = ReceiveBuilder.match(Messenger.JOIN.class, new FI.UnitApply<Messenger.JOIN>() {
+        initialized = ReceiveBuilder.match(HTTPSMessenger.JOIN.class, new FI.UnitApply<HTTPSMessenger.JOIN>() {
             @Override
-            public void apply(Messenger.JOIN j) throws Exception {
+            public void apply(HTTPSMessenger.JOIN j) throws Exception {
                 messenger.tell(new Letter(new Message.JOIN(us), j.addr, j.port), self());
                 lastOrderer = sender();
             }
-        }).match(Messenger.JOINED.class, new FI.UnitApply<Messenger.JOINED>() {
+        }).match(HTTPSMessenger.JOINED.class, new FI.UnitApply<HTTPSMessenger.JOINED>() {
             @Override
-            public void apply(Messenger.JOINED m) throws Exception {
+            public void apply(HTTPSMessenger.JOINED m) throws Exception {
                 context().become(ready);
-                lastOrderer.tell(new Messenger.JOINED(), self());
+                lastOrderer.tell(new HTTPSMessenger.JOINED(), self());
                 LOGGER.log(Level.ALL, "Initial Storage server successfully joined DHT.");
             }
         }).match(Message.ECHO.class, new FI.UnitApply<Message.ECHO>() {
@@ -94,19 +94,39 @@ public class Router extends AbstractActor
             public void apply(Message.ECHO m) throws Exception {
                 context().become(ready);
                 actOnMessage(m);
-                lastOrderer.tell(new Messenger.JOINED(), self());
+                lastOrderer.tell(new HTTPSMessenger.JOINED(), self());
                 LOGGER.log(Level.ALL, "Storage server successfully joined DHT.");
             }
-        }).match(Messenger.JOINERROR.class, new FI.UnitApply<Messenger.JOINERROR>() {
+        }).match(HTTPSMessenger.JOINERROR.class, new FI.UnitApply<HTTPSMessenger.JOINERROR>() {
             @Override
-            public void apply(Messenger.JOINERROR j) throws Exception {
-                lastOrderer.tell(new Messenger.JOINERROR(), self());
+            public void apply(HTTPSMessenger.JOINERROR j) throws Exception {
+                lastOrderer.tell(new HTTPSMessenger.JOINERROR(), self());
             }
         }).build();
+
         ready = ReceiveBuilder.match(Message.class, new FI.UnitApply<Message>() {
             @Override
             public void apply(Message m) throws Exception {
                 actOnMessage(m);
+            }
+        }).match(Letter.class, new FI.UnitApply<Letter>() {
+            @Override
+            public void apply(Letter m) throws Exception {
+                messenger.tell(m, self());
+            }
+        }).match(MessageMailbox.class, new FI.UnitApply<MessageMailbox>() {
+            @Override
+            public void apply(MessageMailbox mb) throws Exception {
+                Message m = mb.m;
+                if (m instanceof Message.PUT)
+                {
+                    pendingPuts.put(new ByteArrayWrapper(((Message.PUT) m).getKey()), sender());
+                }
+                else if (m instanceof Message.GET)
+                {
+                    pendingGets.put(new ByteArrayWrapper(((Message.GET) m).getKey()), sender());
+                }
+                forwardMessage(m);
             }
         }).build();
 
@@ -141,6 +161,7 @@ public class Router extends AbstractActor
     private void forwardMessage(Message m)
     {
         NodeID next = getClosest(m);
+        m.addNode(us);
         if (next != us)
         {
             m.addNode(getRandomNeighbour());
@@ -278,7 +299,7 @@ public class Router extends AbstractActor
             if (storage.accept(new ByteArrayWrapper(((Message.PUT) m).getKey()), ((Message.PUT) m).getSize()))
             {
                 // send PUT accept message
-                Message accept = new Message.PUT_ACCEPT(us, (Message.PUT) m);
+                Message accept = new Message.PUT_ACCEPT((Message.PUT) m);
                 forwardMessage(accept);
             } else
             {
@@ -292,7 +313,8 @@ public class Router extends AbstractActor
             if (pendingPuts.containsKey(key))
             {
                 LOGGER.log(Level.ALL, "handling PUT_ACCEPT");
-                pendingPuts.get(key).handleOffer(new PutOffer(target));
+                ActorRef mailbox = pendingPuts.get(key);
+                mailbox.tell(new PutOffer(target), self());
                 pendingPuts.remove(key);
             }
         } else if (m instanceof Message.GET)
@@ -300,7 +322,7 @@ public class Router extends AbstractActor
             ByteArrayWrapper key = new ByteArrayWrapper(((Message.GET) m).getKey());
             if (storage.contains(key))
             {
-                Message res = new Message.GET_RESULT(us, (Message.GET) m, storage.sizeOf(key));
+                Message res = new Message.GET_RESULT((Message.GET) m, storage.sizeOf(key));
                 forwardMessage(res);
             } else
             {
@@ -311,7 +333,7 @@ public class Router extends AbstractActor
                     Node left = leftNeighbours.get(leftNeighbours.lastKey());
                     if (Math.abs(keyLong - us.id) < left.node.d(keyLong))
                     {
-                        Message newput = new Message.GET(us, ((Message.GET) m).getKey(), left.node.id);
+                        Message newput = new Message.GET(((Message.GET) m).getKey(), left.node.id);
                         forwardMessage(newput);
                     }
                 }
@@ -320,7 +342,7 @@ public class Router extends AbstractActor
                     Node right = rightNeighbours.get(rightNeighbours.firstKey());
                     if (Math.abs(keyLong - us.id) < right.node.d(keyLong))
                     {
-                        Message newput = new Message.GET(us, ((Message.GET) m).getKey(), right.node.id);
+                        Message newput = new Message.GET(((Message.GET) m).getKey(), right.node.id);
                         forwardMessage(newput);
                     }
                 }
@@ -330,7 +352,8 @@ public class Router extends AbstractActor
             ByteArrayWrapper key = new ByteArrayWrapper(((Message.GET_RESULT) m).getKey());
             if (pendingGets.containsKey(key))
             {
-                pendingGets.get(key).handleResult(new GetOffer(m.getHops().get(0), ((Message.GET_RESULT) m).getSize()));
+                ActorRef mailbox = pendingGets.get(key);
+                mailbox.tell(new GetOffer(m.getHops().get(0), ((Message.GET_RESULT) m).getSize()), self());
                 pendingGets.remove(key);
             }
             else
@@ -400,7 +423,8 @@ public class Router extends AbstractActor
 
     private void sendECHO(NodeID target)
     {
-        Message echo = new Message.ECHO(target, us, leftNeighbours.values(), rightNeighbours.values());
+        Message echo = new Message.ECHO(target, leftNeighbours.values(), rightNeighbours.values());
+        echo.addNode(us);
         messenger.tell(new Letter(echo, target.addr, target.port), self());
     }
 
@@ -450,7 +474,7 @@ public class Router extends AbstractActor
 
     public static ActorRef start(ActorSystem system, int port)
     {
-        ActorRef master = system.actorOf(Router.props(port), "master");
+        ActorRef master = system.actorOf(Router.props(port), "master"+port);
         return master;
     }
 }
