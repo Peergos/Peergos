@@ -118,8 +118,6 @@ public class User extends UserPublicKey
             KeyPairGenerator kpg = KeyPairGenerator.getInstance(AUTH);
             SecureRandom random = SecureRandom.getInstance(SECURE_RANDOM);
             random.setSeed(hash);
-            SecureRandom random2 = SecureRandom.getInstance(SECURE_RANDOM);
-            random2.setSeed(hash);
             System.out.println(random.getProvider().getClass().getName());
             kpg.initialize(RSA_KEY_SIZE, random);
             long start = System.nanoTime();

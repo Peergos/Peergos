@@ -102,26 +102,29 @@ public class API
 
     // Fragment API
     // 256 bit key / 32 byte
-    public void put(byte[] key, byte[] value, PutHandlerCallback onComplete, OnFailure onError)
+    public Future<Object> put(byte[] key, byte[] value, PutHandlerCallback onComplete, OnFailure onError)
     {
         assert(key.length == 32);
         Future<Object> fut = ask(router, new MessageMailbox(new Message.PUT(key, value.length)), 5000);
         fut.onSuccess(new PutHandler(key, value, onComplete), system.dispatcher());
         fut.onFailure(onError, system.dispatcher());
+        return fut;
     }
 
-    public void contains(byte[] key, GetHandlerCallback onComplete, OnFailure onError)
+    public Future<Object> contains(byte[] key, GetHandlerCallback onComplete, OnFailure onError)
     {
         Future<Object> fut = ask(router, new MessageMailbox(new Message.GET(key)), 5000);
         fut.onSuccess(new GetHandler(key, onComplete), system.dispatcher());
         fut.onFailure(onError, system.dispatcher());
+        return fut;
     }
 
-    public void get(byte[] key, GetHandlerCallback onComplete, OnFailure onError)
+    public Future<Object> get(byte[] key, GetHandlerCallback onComplete, OnFailure onError)
     {
         Future<Object> fut = ask(router, new MessageMailbox(new Message.GET(key)), 5000);
         fut.onSuccess(new GetHandler(key, onComplete), system.dispatcher());
         fut.onFailure(onError, system.dispatcher());
+        return fut;
     }
 
     public void put(byte[] key, byte[] value, PutHandlerCallback onComplete)

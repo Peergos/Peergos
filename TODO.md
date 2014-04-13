@@ -1,7 +1,7 @@
 Peergos To Do:
-- [ ] API for Core node database
+- [X] API for Core node database
 - [X] Directory Server over http
-- [ ] Storage servers sign their SSL cert with a directory server
+- [X] Storage servers sign their SSL cert with a directory server
 - [ ] File Splitting, encryption, and erasure codes into fragments
 - [ ] Make DHT PUT check user quota + usage
 - [ ] root key signing of release (including source to allow verifiable build), import root key into java+browser keystore, download from directory servers

@@ -14,9 +14,7 @@ import java.security.spec.X509EncodedKeySpec;
 public class UserPublicKey
 {
     public static final int RSA_KEY_SIZE = 4096;
-    public static final int MAX_USERNAME_BYTES = 28;
     public static final String AUTH = "RSA";
-    public static final String FILE = "AES";
     public static final String HASH = "SHA-256";
     public static final String SECURE_RANDOM = "SHA1PRNG"; // TODO: need to figure out an implementation using HMAC-SHA-256
 
@@ -103,8 +101,6 @@ public class UserPublicKey
         }
     }
 
-    public static void init() {}
-
     static
     {
         Security.addProvider(new BouncyCastleProvider());
@@ -132,14 +128,6 @@ public class UserPublicKey
         }
     }
 
-    public static byte[] recursiveHash(byte[] input, int recursion)
-    {
-        byte[] hash = input;
-        for (int i=0; i < recursion; i++)
-            hash = User.hash(hash);
-        return hash;
-    }
-    
     public boolean equals(Object o)
     {
         if (! (o instanceof UserPublicKey))
