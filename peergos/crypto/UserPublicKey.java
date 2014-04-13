@@ -28,11 +28,8 @@ public class UserPublicKey
     public UserPublicKey(byte[] encodedPublicKey)
     {
         try {
-            publicKey = KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(encodedPublicKey));
-        } catch (NoSuchAlgorithmException e)
-        {
-            throw new IllegalStateException("Couldn't create public key");
-        } catch (InvalidKeySpecException e)
+            publicKey = KeyFactory.getInstance(AUTH, "BC").generatePublic(new X509EncodedKeySpec(encodedPublicKey));
+        } catch (NoSuchAlgorithmException|NoSuchProviderException|InvalidKeySpecException e)
         {
             throw new IllegalStateException("Couldn't create public key");
         }
@@ -46,10 +43,10 @@ public class UserPublicKey
     public byte[] encryptMessageFor(byte[] input)
     {
         try {
-            Cipher c = Cipher.getInstance(AUTH);
+            Cipher c = Cipher.getInstance(AUTH, "BC");
             c.init(Cipher.ENCRYPT_MODE, publicKey);
             return c.doFinal(input);
-        } catch (NoSuchAlgorithmException e)
+        } catch (NoSuchAlgorithmException|NoSuchProviderException e)
         {
             e.printStackTrace();
             return null;
@@ -75,10 +72,10 @@ public class UserPublicKey
     public byte[] unsignMessage(byte[] input)
     {
         try {
-            Cipher c = Cipher.getInstance(AUTH);
+            Cipher c = Cipher.getInstance(AUTH, "BC");
             c.init(Cipher.DECRYPT_MODE, publicKey);
             return c.doFinal(input);
-        } catch (NoSuchAlgorithmException e)
+        } catch (NoSuchAlgorithmException|NoSuchProviderException e)
         {
             e.printStackTrace();
             return null;

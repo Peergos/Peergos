@@ -3,40 +3,47 @@ package peergos.fs;
 import peergos.crypto.User;
 import peergos.crypto.UserPublicKey;
 
-import javax.crypto.KeyGenerator;
-import javax.crypto.SecretKey;
-import javax.crypto.SecretKeyFactory;
+import javax.crypto.*;
 import javax.crypto.spec.SecretKeySpec;
+import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
+import java.security.NoSuchProviderException;
 import java.security.SecureRandom;
 
 public class Chunk
 {
     public static final int MAX_SIZE = 4*1024*1024;
-    public static final String CIPHER = "AES";
+    public static final String ALGORITHM = "AES";
+    public static final String MODE = "AES/CFB/NoPadding";
 
     private final byte[] data;
+    private final SecretKey key;
 
     public Chunk(byte[] data)
     {
+        if (data.length > MAX_SIZE)
+            throw new IllegalArgumentException("Chunk size must be smaller than " + MAX_SIZE);
         this.data = data;
+        key = generateKey();
     }
 
-    public SecretKey generateKey()
+    public SecretKey getKey()
+    {
+        return key;
+    }
+
+    private SecretKey generateKey()
     {
         try {
             byte[] hash = UserPublicKey.hash(data);
             SecureRandom random = SecureRandom.getInstance(User.SECURE_RANDOM);
             random.setSeed(hash);
-            KeyGenerator kgen = KeyGenerator.getInstance("AES");
+            KeyGenerator kgen = KeyGenerator.getInstance(ALGORITHM, "BC");
             int keySize = 256;
             kgen.init(keySize, random);
             SecretKey key = kgen.generateKey();
-//            SecretKeyFactory keyFactory = SecretKeyFactory.getInstance("PBEWithSHA256And256BitAES-CBC-BC");
-//            SecretKeySpec secretKey = new SecretKeySpec(keyFactory.generateSecret(keySpec).getEncoded(), "AES");
-//            byte[] key = secretKey.getEncoded();
             return  key;
-        } catch (NoSuchAlgorithmException e) {
+        } catch (NoSuchAlgorithmException|NoSuchProviderException e) {
             e.printStackTrace();
             throw new IllegalStateException(e.getMessage());
         }
@@ -44,6 +51,14 @@ public class Chunk
 
     public byte[] encrypt()
     {
-
+        try {
+            Cipher cipher = Cipher.getInstance(MODE, "BC");
+            cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(key.getEncoded(), MODE));
+            return cipher.doFinal(data);
+        } catch (NoSuchAlgorithmException|NoSuchProviderException|NoSuchPaddingException|IllegalBlockSizeException|
+                BadPaddingException|InvalidKeyException e)
+        {
+            throw new IllegalStateException("Couldn't encrypt chink: "+e.getMessage());
+        }
     }
 }

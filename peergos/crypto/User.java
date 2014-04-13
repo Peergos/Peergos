@@ -26,10 +26,10 @@ public class User extends UserPublicKey
     public byte[] signMessage(byte[] input)
     {
         try {
-            Cipher c = Cipher.getInstance(AUTH);
+            Cipher c = Cipher.getInstance(AUTH, "BC");
             c.init(Cipher.ENCRYPT_MODE, privateKey);
             return c.doFinal(input);
-        } catch (NoSuchAlgorithmException e)
+        } catch (NoSuchAlgorithmException|NoSuchProviderException e)
         {
             e.printStackTrace();
             return null;
@@ -55,10 +55,10 @@ public class User extends UserPublicKey
     public byte[] decryptMessage(byte[] input)
     {
         try {
-            Cipher c = Cipher.getInstance(AUTH);
+            Cipher c = Cipher.getInstance(AUTH, "BC");
             c.init(Cipher.DECRYPT_MODE, privateKey);
             return c.doFinal(input);
-        } catch (NoSuchAlgorithmException e)
+        } catch (NoSuchAlgorithmException|NoSuchProviderException e)
         {
             e.printStackTrace();
             return null;
@@ -100,10 +100,10 @@ public class User extends UserPublicKey
     {
         try
         {
-            KeyPairGenerator kpg = KeyPairGenerator.getInstance(AUTH);
+            KeyPairGenerator kpg = KeyPairGenerator.getInstance(AUTH, "BC");
             kpg.initialize(RSA_KEY_SIZE);
             return new User(kpg.genKeyPair());
-        } catch (NoSuchAlgorithmException e)
+        } catch (NoSuchAlgorithmException|NoSuchProviderException e)
         {
             throw new IllegalStateException("No algorithm: "+AUTH);
         }
@@ -115,17 +115,16 @@ public class User extends UserPublicKey
         // username is essentially salt against rainbow table attacks
         byte[] hash = hash(username+password);
         try {
-            KeyPairGenerator kpg = KeyPairGenerator.getInstance(AUTH);
+            KeyPairGenerator kpg = KeyPairGenerator.getInstance(AUTH, "BC");
             SecureRandom random = SecureRandom.getInstance(SECURE_RANDOM);
             random.setSeed(hash);
-            System.out.println(random.getProvider().getClass().getName());
             kpg.initialize(RSA_KEY_SIZE, random);
             long start = System.nanoTime();
             User u = new User(kpg.generateKeyPair());
             long end = System.nanoTime();
             System.out.printf("User credential generation took %d mS\n", (end-start)/1000000);
             return u;
-        } catch (NoSuchAlgorithmException e)
+        } catch (NoSuchAlgorithmException|NoSuchProviderException e)
         {
             throw new IllegalStateException("Couldn't generate key-pair from password - "+e.getMessage());
         }
@@ -165,12 +164,12 @@ public class User extends UserPublicKey
         byte[] input = "Hello encryptor!".getBytes();
         try
         {
-            KeyPairGenerator kpg = KeyPairGenerator.getInstance(AUTH);
+            KeyPairGenerator kpg = KeyPairGenerator.getInstance(AUTH, "BC");
             kpg.initialize(RSA_KEY_SIZE);
             KeyPair kp = kpg.genKeyPair();
             Key publicKey = kp.getPublic();
             Key privateKey = kp.getPrivate();
-            Cipher cipher = Cipher.getInstance(AUTH);
+            Cipher cipher = Cipher.getInstance(AUTH, "BC");
             cipher.init(Cipher.ENCRYPT_MODE, publicKey);
 
             byte[] cipherText = cipher.doFinal(input);
@@ -178,7 +177,7 @@ public class User extends UserPublicKey
             cipher.init(Cipher.DECRYPT_MODE, privateKey);
             byte[] plainText = cipher.doFinal(cipherText);
             return true;
-        } catch (NoSuchAlgorithmException e)
+        } catch (NoSuchAlgorithmException|NoSuchProviderException e)
         {
             e.printStackTrace();
             return false;

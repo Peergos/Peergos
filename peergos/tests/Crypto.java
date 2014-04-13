@@ -3,11 +3,13 @@ package peergos.tests;
 import peergos.crypto.SSL;
 import peergos.crypto.UserPublicKey;
 import peergos.crypto.User;
+import peergos.fs.Chunk;
 import peergos.net.IP;
 import peergos.util.Arrays;
 import org.bouncycastle.pkcs.PKCS10CertificationRequest;
 import org.junit.Test;
 
+import javax.crypto.SecretKey;
 import java.security.KeyPair;
 import java.security.cert.Certificate;
 
@@ -23,17 +25,23 @@ public class Crypto
     }
 
     @Test
+    public void AESEncryption()
+    {
+        Chunk chunk = new Chunk(new byte[4*1024*1024]);
+    }
+
+    @Test
     public void SSLStorageCertificateCreationAndValidation()
     {
         try {
             char[] storagePass = "password".toCharArray();
             char[] dirpass = "password".toCharArray();
-            KeyPair dirKeys = SSL.loadKeyPair("dirKeys.pem", dirpass);
+            KeyPair dirKeys = SSL.loadKeyPair("dir.key", dirpass);
             Certificate[] dirCerts = SSL.getDirectoryServerCertificates();
             // pick one
             Certificate dir = dirCerts[0];
-            KeyPair storageKeys = SSL.generateCSR(storagePass, "storageKeys.pem", "storageCSR.pem");
-            PKCS10CertificationRequest csr = SSL.loadCSR("storageCSR.pem");
+            KeyPair storageKeys = SSL.generateCSR(storagePass, "storage.p12", "storage.csr");
+            PKCS10CertificationRequest csr = SSL.loadCSR("storage.csr");
             Certificate signed = SSL.signCertificate(csr, dirKeys.getPrivate(), IP.getMyPublicAddress().getHostAddress());
             // verify storage with dir key
             signed.verify(dir.getPublicKey());
@@ -52,7 +60,7 @@ public class Crypto
         try {
             char[] rootpass = "password".toCharArray();
             char[] dirpass = "password".toCharArray();
-            KeyPair dirKeys = SSL.loadKeyPair("dirKeys.pem", dirpass);
+            KeyPair dirKeys = SSL.loadKeyPair("dir.key", dirpass);
             Certificate[] dirCerts = SSL.getDirectoryServerCertificates();
             // verify certificate using RootCA and directly using public rootKey
             for (Certificate cert: dirCerts) {
@@ -74,13 +82,15 @@ public class Crypto
         try {
             char[] rootpass = "password".toCharArray();
             char[] dirpass = "password".toCharArray();
-            KeyPair pair = SSL.generateCSR(dirpass, "dirKeys.pem", "dirCSR.pem");
+            String privFile = "dir.key";
+            String csrFile = "dir.csr";
+            KeyPair pair = SSL.generateCSR(dirpass, privFile, csrFile);
             long start = System.nanoTime();
-            Certificate cert = SSL.signDirectoryCertificate("dirCSR.pem", rootpass);
+            Certificate cert = SSL.signDirectoryCertificate(csrFile, rootpass);
             long end = System.nanoTime();
             System.out.printf("CSR signing took %d mS\n", (end-start)/1000000);
             assertEquals(cert.getPublicKey(), pair.getPublic());
-            KeyPair samePair = SSL.loadKeyPair("dirKeys.pem", dirpass);
+            KeyPair samePair = SSL.loadKeyPair(privFile, dirpass);
             assertEquals(pair.getPrivate(), samePair.getPrivate());
             // verify certificate using RootCA and directly using public rootKey
             cert.verify(SSL.getRootKeyStore(rootpass).getCertificate("rootCA").getPublicKey());
