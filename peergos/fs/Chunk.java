@@ -4,16 +4,16 @@ import peergos.crypto.User;
 import peergos.crypto.UserPublicKey;
 
 import javax.crypto.*;
+import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
-import java.security.NoSuchProviderException;
-import java.security.SecureRandom;
+import java.security.*;
 
 public class Chunk
 {
-    public static final int MAX_SIZE = 4*1024*1024;
+    public static final int MAX_SIZE = 1*1024*1024;
     public static final String ALGORITHM = "AES";
+//    public static final String MODE = "AES/ECB/NoPadding"; // INSECURE, don't use ECB
+//    public static final String MODE = "AES/CBC/NoPadding";
     public static final String MODE = "AES/CFB/NoPadding";
 
     private final byte[] data;
@@ -49,16 +49,18 @@ public class Chunk
         }
     }
 
-    public byte[] encrypt()
+    public byte[] encrypt(byte[] initVector)
     {
         try {
             Cipher cipher = Cipher.getInstance(MODE, "BC");
-            cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(key.getEncoded(), MODE));
+            IvParameterSpec ivSpec = new IvParameterSpec(initVector);
+            cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(key.getEncoded(), ALGORITHM), ivSpec);
             return cipher.doFinal(data);
         } catch (NoSuchAlgorithmException|NoSuchProviderException|NoSuchPaddingException|IllegalBlockSizeException|
-                BadPaddingException|InvalidKeyException e)
+                BadPaddingException|InvalidKeyException|InvalidAlgorithmParameterException e)
         {
-            throw new IllegalStateException("Couldn't encrypt chink: "+e.getMessage());
+            e.printStackTrace();
+            throw new IllegalStateException("Couldn't encrypt chunk: "+e.getMessage());
         }
     }
 }

@@ -10,7 +10,8 @@ public class Tests
     public static void main(String[] args)
     {
         //testClass(Components.class);
-        testClass(Crypto.class);
+        testClass(ErasureCodes.class);
+//        testClass(Crypto.class);
 //        testClass(CoreNode.class);
     }
 
