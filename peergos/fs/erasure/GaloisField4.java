@@ -1,29 +1,40 @@
 package peergos.fs.erasure;
 
-public class GaloisField
+public class GaloisField4
 {
-    public static final int SIZE = 256;
+    private static final int POWER = 2;
+    private static final int SIZE = 1 << POWER;
     private static final int[] exp = new int[2*SIZE];
     private static final int[] log = new int[SIZE];
     static {
         exp[0] = 1;
         int x = 1;
-        for (int i=1; i < 255; i++)
+        for (int i=1; i < SIZE-1; i++)
         {
             x <<= 1;
-            if ((x & 0x100) != 0)
-                x ^= 0x11d;
+            if ((x & SIZE) != 0)
+                x ^= (SIZE | 0x3); // x^n = 1 + x
             exp[i] = x;
             log[x] = i;
         }
-        for (int i=255; i < 512; i++)
-            exp[i] = exp[i-255];
-        log[exp[255]] = 255;
+        for (int i=SIZE-1; i < 2*SIZE; i++)
+            exp[i] = exp[i+1-SIZE];
+        log[exp[SIZE-1]] = SIZE-1;
         // check
-        for (int i=0; i < 256; i++) {
+        for (int i=0; i < SIZE; i++) {
             assert (log[exp[i]] == i);
             assert (exp[log[i]] == i);
         }
+    }
+
+    public static int size()
+    {
+        return SIZE;
+    }
+
+    public static int mask()
+    {
+        return SIZE-1;
     }
 
     public static int exp(int y)
@@ -44,6 +55,6 @@ public class GaloisField
             throw new IllegalStateException("Divided by zero! Blackhole created.. ");
         if (x==0)
             return 0;
-        return exp[log[x]+255-log[y]];
+        return exp[log[x]+SIZE-1-log[y]];
     }
 }
