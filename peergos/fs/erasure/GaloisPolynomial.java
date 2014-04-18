@@ -1,9 +1,8 @@
 package peergos.fs.erasure;
 
-import java.util.Arrays;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Random;
+import org.junit.Test;
+
+import java.util.*;
 
 public class GaloisPolynomial
 {
@@ -11,7 +10,7 @@ public class GaloisPolynomial
 
     private GaloisPolynomial(int[] coefficients)
     {
-        if (coefficients.length > GaloisField4.size())
+        if (coefficients.length > GaloisField1024.size())
             throw new IllegalStateException("Polynomial order must be less than or equal to the degree of the Galois field.");
         this.coefficients = coefficients;
     }
@@ -25,7 +24,7 @@ public class GaloisPolynomial
     {
         int y = coefficients[0];
         for (int i=1; i < coefficients.length; i++)
-            y = GaloisField4.mul(y, x) ^ coefficients[i];
+            y = GaloisField1024.mul(y, x) ^ coefficients[i];
         return y;
     }
 
@@ -33,7 +32,7 @@ public class GaloisPolynomial
     {
         int[] res = new int[coefficients.length];
         for (int i=0; i < res.length; i++)
-            res[i] = GaloisField4.mul(x, coefficients[i]);
+            res[i] = GaloisField1024.mul(x, coefficients[i]);
         return new GaloisPolynomial(res);
     }
 
@@ -52,7 +51,7 @@ public class GaloisPolynomial
         int[] res = new int[order() + other.order() - 1];
         for (int i=0; i < order(); i++)
             for (int j=0; j < other.order(); j++)
-                res[i+j] ^= GaloisField4.mul(coefficients[i], other.coefficients[j]);
+                res[i+j] ^= GaloisField1024.mul(coefficients[i], other.coefficients[j]);
         return new GaloisPolynomial(res);
     }
 
@@ -68,7 +67,7 @@ public class GaloisPolynomial
     {
         GaloisPolynomial g = new GaloisPolynomial(new int[] {1});
         for (int i=0; i < nECSymbols; i++)
-            g = g.mul(new GaloisPolynomial(new int[]{1, GaloisField4.exp(i)}));
+            g = g.mul(new GaloisPolynomial(new int[]{1, GaloisField1024.exp(i)}));
         return g;
     }
 
@@ -82,7 +81,7 @@ public class GaloisPolynomial
             int c = res[i];
             if (c != 0)
                 for (int j=0; j < gen.order(); j++)
-                    res[i+j] ^= GaloisField4.mul(gen.coefficients[j], c);
+                    res[i+j] ^= GaloisField1024.mul(gen.coefficients[j], c);
         }
         System.arraycopy(input, 0, res, 0, input.length);
         return res;
@@ -93,7 +92,7 @@ public class GaloisPolynomial
         int[] res = new int[nEC];
         GaloisPolynomial poly = new GaloisPolynomial(input);
         for (int i=0; i < nEC; i++)
-            res[i] = poly.eval(GaloisField4.exp(i));
+            res[i] = poly.eval(GaloisField1024.exp(i));
         return res;
     }
 
@@ -104,7 +103,7 @@ public class GaloisPolynomial
         GaloisPolynomial q = new GaloisPolynomial(new int[]{1});
         for (int i: pos)
         {
-            int x = GaloisField4.exp(input.length - 1 - i);
+            int x = GaloisField1024.exp(input.length - 1 - i);
             q = q.mul(new GaloisPolynomial(new int[]{x, 1}));
         }
         int[] t = new int[pos.size()];
@@ -120,10 +119,10 @@ public class GaloisPolynomial
         GaloisPolynomial qprime = new GaloisPolynomial(t);
         for (int i: pos)
         {
-            int x = GaloisField4.exp(i + GaloisField4.size() - input.length);
+            int x = GaloisField1024.exp(i + GaloisField1024.size() - input.length);
             int y = p.eval(x);
-            int z = qprime.eval(GaloisField4.mul(x, x));
-            input[i] ^= GaloisField4.div(y, GaloisField4.mul(x, z));
+            int z = qprime.eval(GaloisField1024.mul(x, x));
+            input[i] ^= GaloisField1024.div(y, GaloisField1024.mul(x, z));
         }
     }
 
@@ -136,13 +135,13 @@ public class GaloisPolynomial
             oldPoly = oldPoly.append(0);
             int delta = synd[i];
             for (int j=1; j < errPoly.order(); j++)
-                delta ^= GaloisField4.mul(errPoly.coefficients[errPoly.order() - 1 - j], synd[i - j]);
+                delta ^= GaloisField1024.mul(errPoly.coefficients[errPoly.order() - 1 - j], synd[i - j]);
             if (delta != 0)
             {
                 if (oldPoly.order() > errPoly.order())
                 {
                     GaloisPolynomial newPoly = oldPoly.scale(delta);
-                    oldPoly = errPoly.scale(GaloisField4.div(1, delta));
+                    oldPoly = errPoly.scale(GaloisField1024.div(1, delta));
                     errPoly = newPoly;
                 }
                 errPoly = errPoly.add(oldPoly.scale(delta));
@@ -153,11 +152,10 @@ public class GaloisPolynomial
             throw new IllegalStateException("Too many errors to correct! ("+errs+")");
         List<Integer> errorPos = new LinkedList();
         for (int i=0; i < nmess; i++)
-            if (errPoly.eval(GaloisField4.exp(GaloisField4.size() - 1 - i)) == 0)
-                if (nmess -1 -i < synd.length)
+            if (errPoly.eval(GaloisField1024.exp(GaloisField1024.size() - 1 - i)) == 0)
                     errorPos.add(nmess - 1 - i);
         if (errorPos.size() != errs)
-            throw new IllegalStateException("couldn't find error positions!");
+            throw new IllegalStateException("couldn't find error positions! ("+errorPos.size()+"!="+errs+")");
         return errorPos;
     }
 
@@ -166,9 +164,9 @@ public class GaloisPolynomial
         int[] fsynd = Arrays.copyOf(synd, synd.length);
         for (int i: pos)
         {
-            int x = GaloisField4.exp(nmess - 1 - i);
+            int x = GaloisField1024.exp(nmess - 1 - i);
             for (int j=0; j < fsynd.length-1; j++)
-                fsynd[j] = GaloisField4.mul(fsynd[j], x) ^ fsynd[j+1];
+                fsynd[j] = GaloisField1024.mul(fsynd[j], x) ^ fsynd[j+1];
         }
         int[] t = new int[fsynd.length-1];
         System.arraycopy(fsynd, 1, t, 0, t.length);
@@ -205,46 +203,18 @@ public class GaloisPolynomial
         }
 
         @org.junit.Test
-        public void errorFreeSyndrome4() {
-            int nec = 2;
-            int[] input = new int[] {0, 2};
-            int[] encoded = GaloisPolynomial.encode(input, nec);
-            int[] original = Arrays.copyOf(encoded, encoded.length);
-            System.out.printf("Original:  ");
-            print(original);
-            int[] synd = syndromes(encoded, nec);
-            System.out.printf("Syndrome:  ");
-            print(synd);
-            for (int i: synd)
-                junit.framework.Assert.assertTrue(i == 0);
+        public void run()
+        {
+            int size = 1024;
+            errorFreeSyndrome(size);
+            singleError(size);
+            manyErrors(size);
         }
 
-        @org.junit.Test
-        public void e1Syndrome4() {
-            int nec = 2;
-            int[] input = new int[] {0, 2};
-            int[] encoded = GaloisPolynomial.encode(input, nec);
-            int[] original = Arrays.copyOf(encoded, encoded.length);
-            System.out.printf("Original:  ");
-            print(original);
-            encoded[0] ^= 1;
-            int[] synd = syndromes(encoded, nec);
-            System.out.printf("Syndrome:  ");
-            print(synd);
-            List<Integer> errPos = findErrors(synd, encoded.length);
-            System.out.printf("Error Positions: ");
-            for (int i : errPos)
-                System.out.printf(i + " ");
-            System.out.println();
-            correctErrata(encoded, synd, errPos);
-            System.out.printf("Corrected: ");
-            print(encoded);
-        }
-
-        public void errorFreeSyndrome() {
+        public void errorFreeSyndrome(int fieldSize) {
             Random r = new Random();
-            int size = 2;
-            int nec = 2;
+            int size = (int)(fieldSize * 0.6);
+            int nec = (int)(fieldSize * 0.4);
             byte[] bytes = new byte[size];
             r.nextBytes(bytes);
             int[] input = convert(bytes);
@@ -255,14 +225,13 @@ public class GaloisPolynomial
             int[] synd = syndromes(encoded, nec);
             System.out.printf("Syndrome:  ");
             print(synd);
-            for (int i: synd)
-                junit.framework.Assert.assertTrue(i == 0);
+            assert (Arrays.equals(synd, new int[synd.length]));
         }
 
-        public void test() {
+        public void singleError(int fieldSize) {
             Random r = new Random();
-            int size = 2;
-            int nec = 2;
+            int size = (int)(fieldSize * 0.6);
+            int nec = (int)(fieldSize * 0.4);
             byte[] bytes = new byte[size];
             r.nextBytes(bytes);
             int[] input = convert(bytes);
@@ -283,6 +252,45 @@ public class GaloisPolynomial
             correctErrata(encoded, synd, errPos);
             System.out.printf("Corrected: ");
             print(encoded);
+            assert (Arrays.equals(encoded, original));
+        }
+
+        public void manyErrors(int fieldSize) {
+            Random r = new Random();
+            int size = (int)(fieldSize * 0.6);
+            int nec = (int)(fieldSize * 0.4);
+            byte[] bytes = new byte[size];
+            r.nextBytes(bytes);
+            int[] input = convert(bytes);
+            int[] encoded = GaloisPolynomial.encode(input, nec);
+            int[] original = Arrays.copyOf(encoded, encoded.length);
+            System.out.printf("Original:  ");
+            print(original);
+            System.out.printf("Inserted errors at: ");
+            List<Integer> epositions = new ArrayList();
+            for (int i=0; i < nec/2-1; i++) {
+                int index = r.nextInt(encoded.length);
+                epositions.add(index);
+                encoded[index] ^= 1;
+            }
+            Collections.sort(epositions);
+            for (Integer i: epositions)
+                System.out.printf(i+" ");
+            System.out.println();
+
+            int[] synd = syndromes(encoded, nec);
+            System.out.printf("Syndrome:  ");
+            print(synd);
+            List<Integer> errPos = findErrors(synd, encoded.length);
+            Collections.sort(errPos);
+            System.out.printf("Found Error Positions: ");
+            for (int i : errPos)
+                System.out.printf(i + " ");
+            System.out.println();
+            correctErrata(encoded, synd, errPos);
+            System.out.printf("Corrected: ");
+            print(encoded);
+            assert (Arrays.equals(encoded, original));
         }
     }
 
@@ -297,7 +305,7 @@ public class GaloisPolynomial
     {
         int[] res = new int[in.length];
         for (int i=0; i < in.length; i++)
-            res[i] = GaloisField4.mask() & in[i];
+            res[i] = GaloisField1024.mask() & in[i];
         return res;
     }
 }

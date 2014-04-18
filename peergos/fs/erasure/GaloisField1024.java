@@ -13,7 +13,7 @@ public class GaloisField1024
         {
             x <<= 1;
             if ((x & SIZE) != 0)
-                x ^= (SIZE | 0x3); // x^n = 1 + x
+                x ^= (SIZE | 0b11011); // x^10 = 1 + x + x^3 + x^4
             exp[i] = x;
             log[x] = i;
         }
