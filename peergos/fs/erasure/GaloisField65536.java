@@ -1,6 +1,6 @@
 package peergos.fs.erasure;
 
-public class GaloisField65536
+public class GaloisField65536 extends GaloisField
 {
     private static final int POWER = 16;
     private static final int SIZE = 1 << POWER;
@@ -27,29 +27,29 @@ public class GaloisField65536
         }
     }
 
-    public static int size()
+    public int size()
     {
         return SIZE;
     }
 
-    public static int mask()
+    public int mask()
     {
         return SIZE-1;
     }
 
-    public static int exp(int y)
+    public int exp(int y)
     {
         return exp[y];
     }
 
-    public static int mul(int x, int y)
+    public int mul(int x, int y)
     {
         if ((x==0) || (y==0))
             return 0;
         return exp[log[x]+log[y]];
     }
 
-    public static int div(int x, int y)
+    public int div(int x, int y)
     {
         if (y==0)
             throw new IllegalStateException("Divided by zero! Blackhole created.. ");
