@@ -1,9 +1,11 @@
 package peergos.fs.erasure;
 
+import java.io.ByteArrayOutputStream;
 import java.util.*;
 
 public class GaloisPolynomial
 {
+    // TODO implement a Locally Repairable Erasure code, to reduce unnecessary bandwidth usage when repairing
     private final int[] coefficients;
     private final GaloisField f;
 
@@ -203,7 +205,67 @@ public class GaloisPolynomial
         public Test() {
         }
 
-        @org.junit.Test
+         @org.junit.Test
+        public void compareFields()
+        {
+            int size = 10*1024*1024;
+            byte[] input = new byte[size];
+            Random r = new Random();
+            r.nextBytes(input);
+
+            GaloisField f4 = new GaloisField16();
+            long t6 = System.nanoTime();
+            byte[][] transmissionBlocks16 = splitting(input, f4);
+            long t7 = System.nanoTime();
+            System.out.printf("16 took %d mS encoding %d bytes\n", (t7-t6)/1000000, transmissionBlocks16.length*transmissionBlocks16[0].length);
+
+            GaloisField f = new GaloisField256();
+            long t0 = System.nanoTime();
+            byte[][] transmissionBlocks256 = splitting(input, f);
+            long t1 = System.nanoTime();
+            System.out.printf("256 took %d mS encoding %d bytes\n", (t1-t0)/1000000, transmissionBlocks256.length*transmissionBlocks256[0].length);
+
+            GaloisField f2 = new GaloisField1024();
+            long t2 = System.nanoTime();
+            byte[][] transmissionBlocks1024 = splitting(input, f2);
+            long t3 = System.nanoTime();
+            System.out.printf("1024 took %d mS encoding %d bytes\n", (t3-t2)/1000000, transmissionBlocks1024.length*transmissionBlocks1024[0].length);
+
+            GaloisField f3 = new GaloisField65536();
+            long t4 = System.nanoTime();
+            byte[][] transmissionBlocks65536 = splitting(input, f3);
+            long t5 = System.nanoTime();
+            System.out.printf("65536 took %d mS encoding %d bytes\n", (t5-t4)/1000000, transmissionBlocks65536.length*transmissionBlocks65536[0].length);
+        }
+
+        public byte[][] splitting(byte[] input, GaloisField f)
+        {
+            int[] ints = convert(input, f);
+
+            ByteArrayOutputStream[] bouts = new ByteArrayOutputStream[14];
+            for (int i=0; i < bouts.length; i++)
+                bouts[i] = new ByteArrayOutputStream();
+            int encodeSize = (f.size()/14)*14;
+            int inputSize = encodeSize*10/14;
+            int nec = encodeSize-inputSize;
+            int symbolSize = inputSize/10;
+
+            for (int i=0; i < ints.length/inputSize+1; i++)
+            {
+                int[] copy = Arrays.copyOfRange(ints, i*inputSize, (i+1)*inputSize);
+                byte[] encoded = convert(GaloisPolynomial.encode(copy, nec, f));
+                for (int j=0; j < 14; j++)
+                {
+                    bouts[j].write(encoded, j*symbolSize, symbolSize);
+                }
+            }
+
+            byte[][] res = new byte[14][];
+            for (int i=0; i < 14; i++)
+                res[i] = bouts[i].toByteArray();
+            return res;
+        }
+
         public void run()
         {
 //            GaloisField f =  new GaloisField1024();
@@ -219,7 +281,7 @@ public class GaloisPolynomial
             System.out.printf("Single error took %d mS\n", (t4-t3)/1000000);
             manyErrors(f);
             long t5 = System.nanoTime();
-            System.out.printf("Single error took %d mS\n", (t5-t4)/1000000);
+            System.out.printf("Many error took %d mS\n", (t5-t4)/1000000);
         }
 
         public void errorFreeSyndrome(GaloisField f) {
@@ -332,6 +394,14 @@ public class GaloisPolynomial
         for (int i: d)
             System.out.printf("%02x ", i);
         System.out.println();
+    }
+
+    public static byte[] convert(int[] in)
+    {
+        byte[] res = new byte[in.length];
+        for (int i=0; i < in.length; i++)
+            res[i] = (byte)in[i];
+        return res;
     }
 
     public static int[] convert(byte[] in, GaloisField f)
