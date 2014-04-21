@@ -178,15 +178,6 @@ public class GaloisPolynomial
     public static int[] decode(int[] message, int nec, GaloisField f)
     {
         int[] out = Arrays.copyOf(message, message.length);
-        List<Integer> erasedPos = new LinkedList();
-        for (int i=0; i < out.length; i++)
-            if (out[i] < 0) // negative symbolises missing here
-            {
-                out[i] = 0;
-                erasedPos.add(i);
-            }
-        if (erasedPos.size() > nec)
-            throw new IllegalStateException("Too many erasures to correct! ("+erasedPos.size()+")");
         int[] synd = syndromes(out, nec, f);
         int max = 0;
         for (int i: synd)
@@ -194,14 +185,13 @@ public class GaloisPolynomial
                 max = i;
         if (max == 0)
             return out;
-        int[] fsynd = forneySyndromes(synd, erasedPos, out.length, f);
-        List<Integer> errPos = findErrors(fsynd, out.length, f);
-        correctErrata(out, fsynd, errPos, f);
+        List<Integer> errPos = findErrors(synd, out.length, f);
+        correctErrata(out, synd, errPos, f);
         return out;
     }
 
     public static class Test {
-        boolean print = false;
+        boolean print = true;
         public Test() {
         }
 
@@ -213,29 +203,89 @@ public class GaloisPolynomial
             Random r = new Random();
             r.nextBytes(input);
 
-            GaloisField f4 = new GaloisField16();
-            long t6 = System.nanoTime();
-            byte[][] transmissionBlocks16 = splitting(input, f4);
-            long t7 = System.nanoTime();
-            System.out.printf("16 took %d mS encoding %d bytes\n", (t7-t6)/1000000, transmissionBlocks16.length*transmissionBlocks16[0].length);
+            // // GF(16) doesn't work here because we need to handle splitting of byte to 4-bit words, and reassembly
+//            GaloisField f4 = new GaloisField16();
+//            long t6 = System.nanoTime();
+//            byte[][] transmissionBlocks16 = splitting(input, f4);
+//            long t7 = System.nanoTime();
+//            System.out.printf("16 took %d mS encoding %d bytes\n", (t7-t6)/1000000, transmissionBlocks16.length*transmissionBlocks16[0].length);
 
             GaloisField f = new GaloisField256();
+            byte[][] transmissionBlocks = timeEncoding(f, input);
+            byte[] decoded = timeDecoding(f, transmissionBlocks, input.length);
+            System.out.println("Decoded = original? " + Arrays.equals(decoded, input));
+            // 1 failure
+            transmissionBlocks[0] = new byte[transmissionBlocks[0].length];
+            decoded = timeDecoding(f, transmissionBlocks, input.length);
+            System.out.println("1 failure: Decoded = original? " + Arrays.equals(decoded, input));
+
+            // 2 failures
+            transmissionBlocks[1] = new byte[transmissionBlocks[0].length];
+            decoded = timeDecoding(f, transmissionBlocks, input.length);
+            System.out.println("2 failures: Decoded = original? " + Arrays.equals(decoded, input));
+
+            // 3 failures
+            transmissionBlocks[2] = new byte[transmissionBlocks[0].length];
+            decoded = timeDecoding(f, transmissionBlocks, input.length);
+            System.out.println("3 failures: Decoded = original? " + Arrays.equals(decoded, input));
+
+            // 4 failures
+            transmissionBlocks[3] = new byte[transmissionBlocks[0].length];
+            decoded = timeDecoding(f, transmissionBlocks, input.length);
+            System.out.println("4 failures: Decoded = original? " + Arrays.equals(decoded, input));
+
+
+//            GaloisField f2 = new GaloisField1024();
+//            long t2 = System.nanoTime();
+//            byte[][] transmissionBlocks1024 = splitting(input, f2);
+//            long t3 = System.nanoTime();
+//            System.out.printf("1024 took %d mS encoding %d bytes\n", (t3-t2)/1000000, transmissionBlocks1024.length*transmissionBlocks1024[0].length);
+//
+//            GaloisField f3 = new GaloisField65536();
+//            long t4 = System.nanoTime();
+//            byte[][] transmissionBlocks65536 = splitting(input, f3);
+//            long t5 = System.nanoTime();
+//            System.out.printf("65536 took %d mS encoding %d bytes\n", (t5-t4)/1000000, transmissionBlocks65536.length*transmissionBlocks65536[0].length);
+        }
+
+        public byte[][] timeEncoding(GaloisField f, byte[] input)
+        {
             long t0 = System.nanoTime();
-            byte[][] transmissionBlocks256 = splitting(input, f);
+            byte[][] transmissionBlocks = splitting(input, f);
             long t1 = System.nanoTime();
-            System.out.printf("256 took %d mS encoding %d bytes\n", (t1-t0)/1000000, transmissionBlocks256.length*transmissionBlocks256[0].length);
+            System.out.printf("GF(%d) took %d mS encoding %d bytes to %d bytes\n", f.size(), (t1-t0)/1000000, input.length, transmissionBlocks.length*transmissionBlocks[0].length);
+            return transmissionBlocks;
+        }
 
-            GaloisField f2 = new GaloisField1024();
-            long t2 = System.nanoTime();
-            byte[][] transmissionBlocks1024 = splitting(input, f2);
-            long t3 = System.nanoTime();
-            System.out.printf("1024 took %d mS encoding %d bytes\n", (t3-t2)/1000000, transmissionBlocks1024.length*transmissionBlocks1024[0].length);
+        public byte[] timeDecoding(GaloisField f, byte[][] encoded, int truncateTo)
+        {
+            long t0 = System.nanoTime();
+            byte[] original = recombine(f, encoded, truncateTo);
+            long t1 = System.nanoTime();
+            System.out.printf("GF(%d) took %d mS decoding\n", f.size(), (t1-t0)/1000000);
+            return original;
+        }
 
-            GaloisField f3 = new GaloisField65536();
-            long t4 = System.nanoTime();
-            byte[][] transmissionBlocks65536 = splitting(input, f3);
-            long t5 = System.nanoTime();
-            System.out.printf("65536 took %d mS encoding %d bytes\n", (t5-t4)/1000000, transmissionBlocks65536.length*transmissionBlocks65536[0].length);
+        public byte[] recombine(GaloisField f, byte[][] encoded, int truncateTo)
+        {
+            int encodeSize = (f.size()/14)*14;
+            int inputSize = encodeSize*10/14;
+            int nec = encodeSize-inputSize;
+            int symbolSize = inputSize/10;
+            int tbSize = encoded[0].length;
+
+            ByteArrayOutputStream res = new ByteArrayOutputStream();
+            for (int i=0; i < tbSize; i+=symbolSize)
+            {
+                ByteArrayOutputStream bout = new ByteArrayOutputStream();
+                // take a symbol from each stream
+                for (int j=0; j < 14; j++)
+                    bout.write(encoded[j], i, symbolSize);
+                int[] decodedInts = GaloisPolynomial.decode(convert(bout.toByteArray(), f), nec, f);
+                byte[] raw = convert(decodedInts, f);
+                res.write(raw, 0, inputSize);
+            }
+            return Arrays.copyOfRange(res.toByteArray(), 0, truncateTo);
         }
 
         public byte[][] splitting(byte[] input, GaloisField f)
@@ -250,10 +300,10 @@ public class GaloisPolynomial
             int nec = encodeSize-inputSize;
             int symbolSize = inputSize/10;
 
-            for (int i=0; i < ints.length/inputSize+1; i++)
+            for (int i=0; i < ints.length; i+=inputSize)
             {
-                int[] copy = Arrays.copyOfRange(ints, i*inputSize, (i+1)*inputSize);
-                byte[] encoded = convert(GaloisPolynomial.encode(copy, nec, f));
+                int[] copy = Arrays.copyOfRange(ints, i, i+inputSize);
+                byte[] encoded = convert(GaloisPolynomial.encode(copy, nec, f), f);
                 for (int j=0; j < 14; j++)
                 {
                     bouts[j].write(encoded, j*symbolSize, symbolSize);
@@ -270,7 +320,7 @@ public class GaloisPolynomial
         {
 //            GaloisField f =  new GaloisField1024();
             long t1 = System.nanoTime();
-            GaloisField f = new GaloisField65536();
+            GaloisField f = new GaloisField256();
             long t2 = System.nanoTime();
             System.out.printf("Constructing field took %d mS\n", (t2-t1)/1000000);
             errorFreeSyndrome(f);
@@ -286,8 +336,8 @@ public class GaloisPolynomial
 
         public void errorFreeSyndrome(GaloisField f) {
             Random r = new Random();
-            int size = (int)(f.size() * 0.6);
-            int nec = (int)(f.size() * 0.4);
+            int size = (f.size()/14 * 10);
+            int nec = (f.size()/14 * 4);
             byte[] bytes = new byte[size];
             r.nextBytes(bytes);
             int[] input = convert(bytes, f);
@@ -396,19 +446,41 @@ public class GaloisPolynomial
         System.out.println();
     }
 
-    public static byte[] convert(int[] in)
+    public static byte[] convert(int[] in, GaloisField f)
     {
-        byte[] res = new byte[in.length];
-        for (int i=0; i < in.length; i++)
-            res[i] = (byte)in[i];
-        return res;
+        if (f.size() >= 256) {
+            byte[] res = new byte[in.length];
+            for (int i = 0; i < in.length; i++)
+                res[i] = (byte) in[i];
+            return res;
+        }
+        if (f.size() == 16)
+        {
+            byte[] res = new byte[in.length/2];
+            for (int i = 0; i < res.length; i++)
+                res[i] = (byte) (in[2*i] | (in[2*i+1] << 4));
+            return res;
+        }
+        throw new IllegalStateException("Unimplemented GaloisField size conversion");
     }
 
     public static int[] convert(byte[] in, GaloisField f)
     {
-        int[] res = new int[in.length];
-        for (int i=0; i < in.length; i++)
-            res[i] = f.mask() & in[i];
-        return res;
+        if (f.size() >= 256) {
+            int[] res = new int[in.length];
+            for (int i = 0; i < in.length; i++)
+                res[i] = f.mask() & in[i];
+            return res;
+        }
+        if (f.size() == 16)
+        {
+            int[] res = new int[in.length*2];
+            for (int i = 0; i < in.length; i++) {
+                res[2*i] = f.mask() & in[i];
+                res[2*i+1] = f.mask() & (in[i] >> 4);
+            }
+            return res;
+        }
+        throw new IllegalStateException("Unimplemented GaloisField size conversion");
     }
 }
