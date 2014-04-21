@@ -1,7 +1,7 @@
 package peergos.fs;
 
 import peergos.crypto.User;
-import peergos.crypto.UserPublicKey;
+import peergos.fs.erasure.API;
 
 import javax.crypto.*;
 import javax.crypto.spec.IvParameterSpec;
@@ -10,6 +10,8 @@ import java.security.*;
 
 public class EncryptedChunk
 {
+    public static final int ERASURE_ORIGINAL = 40;
+    public static final int ERASURE_ALLOWED_FAILURES = 10;
     private final byte[] encrypted;
     private final byte[] hash;
 
@@ -19,6 +21,11 @@ public class EncryptedChunk
             throw new IllegalArgumentException("Encrypted chunk size ("+encrypted.length+") must be smaller than " + Chunk.MAX_SIZE);
         this.encrypted = encrypted;
         hash = User.hash(encrypted);
+    }
+
+    public EncryptedChunk(byte[][] fragments, int originalSize)
+    {
+        this(API.recombine(fragments, originalSize, ERASURE_ORIGINAL, ERASURE_ALLOWED_FAILURES));
     }
 
     public byte[] decrypt(SecretKey key, byte[] initVector)
@@ -36,8 +43,12 @@ public class EncryptedChunk
         }
     }
 
-    public Fragment[] generateFragments(int required, int extra)
+    public Fragment[] generateFragments()
     {
-        return null;
+        byte[][] bfrags = API.split(encrypted, ERASURE_ORIGINAL, ERASURE_ALLOWED_FAILURES);
+        Fragment[] frags = new Fragment[bfrags.length];
+        for (int i=0; i < frags.length; i++)
+            frags[i] = new Fragment(bfrags[i]);
+        return frags;
     }
 }

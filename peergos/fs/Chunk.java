@@ -10,7 +10,7 @@ import java.security.*;
 
 public class Chunk
 {
-    public static final int MAX_SIZE = 1*1024*1024;
+    public static final int MAX_SIZE = Fragment.SIZE*EncryptedChunk.ERASURE_ORIGINAL;
     public static final String ALGORITHM = "AES";
 //    public static final String MODE = "AES/ECB/NoPadding"; // INSECURE, don't use ECB
 //    public static final String MODE = "AES/CBC/NoPadding";
