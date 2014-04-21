@@ -210,28 +210,30 @@ public class GaloisPolynomial
 //            long t7 = System.nanoTime();
 //            System.out.printf("16 took %d mS encoding %d bytes\n", (t7-t6)/1000000, transmissionBlocks16.length*transmissionBlocks16[0].length);
 
+            int originalBlobs = 10;
+            int handleFailures = 4;
             GaloisField f = new GaloisField256();
-            byte[][] transmissionBlocks = timeEncoding(f, input);
-            byte[] decoded = timeDecoding(f, transmissionBlocks, input.length);
+            byte[][] transmissionBlocks = timeEncoding(f, input, originalBlobs, handleFailures);
+            byte[] decoded = timeDecoding(f, transmissionBlocks, input.length, originalBlobs, handleFailures);
             System.out.println("Decoded = original? " + Arrays.equals(decoded, input));
             // 1 failure
             transmissionBlocks[0] = new byte[transmissionBlocks[0].length];
-            decoded = timeDecoding(f, transmissionBlocks, input.length);
+            decoded = timeDecoding(f, transmissionBlocks, input.length, originalBlobs, handleFailures);
             System.out.println("1 failure: Decoded = original? " + Arrays.equals(decoded, input));
 
             // 2 failures
             transmissionBlocks[1] = new byte[transmissionBlocks[0].length];
-            decoded = timeDecoding(f, transmissionBlocks, input.length);
+            decoded = timeDecoding(f, transmissionBlocks, input.length, originalBlobs, handleFailures);
             System.out.println("2 failures: Decoded = original? " + Arrays.equals(decoded, input));
 
             // 3 failures
             transmissionBlocks[2] = new byte[transmissionBlocks[0].length];
-            decoded = timeDecoding(f, transmissionBlocks, input.length);
+            decoded = timeDecoding(f, transmissionBlocks, input.length, originalBlobs, handleFailures);
             System.out.println("3 failures: Decoded = original? " + Arrays.equals(decoded, input));
 
             // 4 failures
             transmissionBlocks[3] = new byte[transmissionBlocks[0].length];
-            decoded = timeDecoding(f, transmissionBlocks, input.length);
+            decoded = timeDecoding(f, transmissionBlocks, input.length, originalBlobs, handleFailures);
             System.out.println("4 failures: Decoded = original? " + Arrays.equals(decoded, input));
 
 
@@ -248,30 +250,31 @@ public class GaloisPolynomial
 //            System.out.printf("65536 took %d mS encoding %d bytes\n", (t5-t4)/1000000, transmissionBlocks65536.length*transmissionBlocks65536[0].length);
         }
 
-        public byte[][] timeEncoding(GaloisField f, byte[] input)
+        public byte[][] timeEncoding(GaloisField f, byte[] input, int originalBlobs, int allowedFailures)
         {
             long t0 = System.nanoTime();
-            byte[][] transmissionBlocks = splitting(input, f);
+            byte[][] transmissionBlocks = splitting(input, f, originalBlobs, allowedFailures);
             long t1 = System.nanoTime();
             System.out.printf("GF(%d) took %d mS encoding %d bytes to %d bytes\n", f.size(), (t1-t0)/1000000, input.length, transmissionBlocks.length*transmissionBlocks[0].length);
             return transmissionBlocks;
         }
 
-        public byte[] timeDecoding(GaloisField f, byte[][] encoded, int truncateTo)
+        public byte[] timeDecoding(GaloisField f, byte[][] encoded, int truncateTo, int originalBlobs, int allowedFailures)
         {
             long t0 = System.nanoTime();
-            byte[] original = recombine(f, encoded, truncateTo);
+            byte[] original = recombine(f, encoded, truncateTo, originalBlobs, allowedFailures);
             long t1 = System.nanoTime();
             System.out.printf("GF(%d) took %d mS decoding\n", f.size(), (t1-t0)/1000000);
             return original;
         }
 
-        public byte[] recombine(GaloisField f, byte[][] encoded, int truncateTo)
+        public byte[] recombine(GaloisField f, byte[][] encoded, int truncateTo, int originalBlobs, int allowedFailures)
         {
-            int encodeSize = (f.size()/14)*14;
-            int inputSize = encodeSize*10/14;
+            int n = originalBlobs + allowedFailures*2;
+            int encodeSize = (f.size()/n)*n;
+            int inputSize = encodeSize*originalBlobs/n;
             int nec = encodeSize-inputSize;
-            int symbolSize = inputSize/10;
+            int symbolSize = inputSize/originalBlobs;
             int tbSize = encoded[0].length;
 
             ByteArrayOutputStream res = new ByteArrayOutputStream();
@@ -279,7 +282,7 @@ public class GaloisPolynomial
             {
                 ByteArrayOutputStream bout = new ByteArrayOutputStream();
                 // take a symbol from each stream
-                for (int j=0; j < 14; j++)
+                for (int j=0; j < n; j++)
                     bout.write(encoded[j], i, symbolSize);
                 int[] decodedInts = GaloisPolynomial.decode(convert(bout.toByteArray(), f), nec, f);
                 byte[] raw = convert(decodedInts, f);
@@ -288,30 +291,33 @@ public class GaloisPolynomial
             return Arrays.copyOfRange(res.toByteArray(), 0, truncateTo);
         }
 
-        public byte[][] splitting(byte[] input, GaloisField f)
+        public byte[][] splitting(byte[] input, GaloisField f, int originalBlobs, int allowedFailures)
         {
             int[] ints = convert(input, f);
 
-            ByteArrayOutputStream[] bouts = new ByteArrayOutputStream[14];
+            int n = originalBlobs + allowedFailures*2;
+            ByteArrayOutputStream[] bouts = new ByteArrayOutputStream[n];
             for (int i=0; i < bouts.length; i++)
                 bouts[i] = new ByteArrayOutputStream();
-            int encodeSize = (f.size()/14)*14;
-            int inputSize = encodeSize*10/14;
+            int encodeSize = (f.size()/n)*n;
+            int inputSize = encodeSize*originalBlobs/n;
             int nec = encodeSize-inputSize;
-            int symbolSize = inputSize/10;
+            int symbolSize = inputSize/originalBlobs;
+            if (symbolSize * originalBlobs != inputSize)
+                throw new IllegalStateException(String.format("Bad alignment of bytes in chunking. %d != %d * %d", inputSize, symbolSize, originalBlobs));
 
             for (int i=0; i < ints.length; i+=inputSize)
             {
                 int[] copy = Arrays.copyOfRange(ints, i, i+inputSize);
                 byte[] encoded = convert(GaloisPolynomial.encode(copy, nec, f), f);
-                for (int j=0; j < 14; j++)
+                for (int j=0; j < n; j++)
                 {
                     bouts[j].write(encoded, j*symbolSize, symbolSize);
                 }
             }
 
-            byte[][] res = new byte[14][];
-            for (int i=0; i < 14; i++)
+            byte[][] res = new byte[n][];
+            for (int i=0; i < n; i++)
                 res[i] = bouts[i].toByteArray();
             return res;
         }
