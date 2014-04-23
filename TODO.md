@@ -2,14 +2,13 @@ Peergos To Do:
 - [X] API for Core node database
 - [X] Directory Server over http
 - [X] Storage servers sign their SSL cert with a directory server
-- [ ] File Splitting, encryption, and erasure codes into fragments
-- [ ] Make DHT PUT check user quota + usage
-- [ ] root key signing of release (including source to allow verifiable build), import root key into java+browser keystore, download from directory servers
-- [ ] distributed reputation measuring bandwidth and space
+- [X] File Splitting, encryption, and erasure codes into fragments
+- [ ] Make DHT PUT check user remaining space with core nodes
 - [ ] Cryptree link concept
+- [ ] javascript interface over https
+- [ ] root key signing of release (including source to allow verifiable build), import root key into java+browser keystore, download from directory servers
 - [ ] transferral of earned storage rights between users
 - [ ] java client interface
-- [ ] javascript interface over https
 - [ ] auto update via root key signed releases
 - [ ] anonymising circuit construction ala Tor for sharing API
 - [ ] benchmarks, tests

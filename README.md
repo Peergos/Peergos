@@ -1,7 +1,7 @@
 Peergos
 ========
 
-Peergos is a peer-to-peer encrypted filesystem with secure sharing of files. We plan a secure email replacement, with some interoperabiltiy with email. There will also be a totally private and secure social network, where users are in control of who sees what (executed cryptographically). Eventually we plan an app-store for third party applications to use our API. 
+Peergos is a peer-to-peer encrypted filesystem with secure sharing of files designed to be resistant to surveillance of data content or friendship graphs. It will have a secure email replacement, with some interoperabiltiy with email. There will also be a totally private and secure social network, where users are in control of who sees what (executed cryptographically). Eventually we plan an app-store for third party applications to use our API. 
 
 The name Peergos comes from the Greek word Πύργος (Pyrgos), which means stronghold or tower, but phonetically spelt with the nice connection to being peer-to-peer. 
 
@@ -14,8 +14,8 @@ Project aims
  - To have a beautiful user interface that any computer or mobile user can understand
  - To have super fast file transfers by transfering fragments in parallel to/from different sources
  - To enable a new secure form of email
- - To be independent of  the central SSL CA trust architecture
- - A User should be able to easily run Peergos on a machine in their home and get their own secure cloud storage, and social communication platform from it. 
+ - To be independent of the central SSL CA trust architecture
+ - A user should be able to easily run Peergos on a machine in their home and get their own Peergos storage space, and social communication platform from it. 
  - A secure web interface
  - To enable secure real time chat, and video conversations
 
@@ -28,9 +28,9 @@ Architecture
 1.0 Layers of architecture
  - 1: Routing layer - Base layer which handles network creation, maintenance and message routing.
  - 2: Data Layer - Adds "put", "get" and "contains" functions to turn layer 1 into a distributed hash table (no fault tolerance).
- - 3: Distributed file system - Uses erasure codes to add fault tolerance. User's clients are responsible for ensuring that enough fragments of their files survive.
+ - 3: Distributed file system - Uses erasure codes to add fault tolerance. User's clients are responsible for ensuring that enough fragments of their files survive. 
  - 4: Encryption - Strong encryption is done on the user's machine. 
- - 5: Social layer implementing the concept of following or beings friends with another user, without exposing the friend network to anyone.
+ - 5: Social layer implementing the concept of following or being friends with another user, without exposing the friend network to anyone.
  - 5: Sharing - Secure cryptographic sharing of files with friends.
 
 2.0 Language

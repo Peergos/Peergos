@@ -4,6 +4,7 @@ import peergos.crypto.SSL;
 import peergos.crypto.UserPublicKey;
 import peergos.crypto.User;
 import peergos.fs.Chunk;
+import peergos.fs.EncryptedChunk;
 import peergos.net.IP;
 import peergos.util.Arrays;
 import org.bouncycastle.pkcs.PKCS10CertificationRequest;
@@ -13,6 +14,7 @@ import javax.crypto.SecretKey;
 import java.security.KeyPair;
 import java.security.cert.Certificate;
 
+import static junit.framework.Assert.assertTrue;
 import static junit.framework.TestCase.assertEquals;
 
 public class Crypto
@@ -27,7 +29,13 @@ public class Crypto
     @Test
     public void AESEncryption()
     {
-        Chunk chunk = new Chunk(new byte[4*1024*1024]);
+        byte[] raw = new byte[1024*1024];
+        byte[] iv = new byte[16];
+        Chunk chunk = new Chunk(raw);
+        byte[] encrypted = chunk.encrypt(iv);
+        EncryptedChunk coded = new EncryptedChunk(encrypted);
+        byte[] original = coded.decrypt(chunk.getKey(), iv);
+        assertTrue(java.util.Arrays.equals(raw, original));
     }
 
     @Test

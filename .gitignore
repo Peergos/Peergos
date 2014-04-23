@@ -4,3 +4,5 @@ log/*
 *.hprof
 *hs_err_pid*
 *~
+peergos/crypto/RootCertificate.java
+peergos/crypto/DirectoryCertificates.java
