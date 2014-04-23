@@ -45,7 +45,8 @@ public class UserPublicKey
         try {
             Cipher c = Cipher.getInstance(AUTH, "BC");
             c.init(Cipher.ENCRYPT_MODE, publicKey);
-            return c.doFinal(input);
+            c.update(input);
+            return c.doFinal();
         } catch (NoSuchAlgorithmException|NoSuchProviderException e)
         {
             e.printStackTrace();
@@ -74,7 +75,8 @@ public class UserPublicKey
         try {
             Cipher c = Cipher.getInstance(AUTH, "BC");
             c.init(Cipher.DECRYPT_MODE, publicKey);
-            return c.doFinal(input);
+            c.update(input);
+            return c.doFinal();
         } catch (NoSuchAlgorithmException|NoSuchProviderException e)
         {
             e.printStackTrace();
