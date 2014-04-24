@@ -80,7 +80,8 @@ public class CoreNode
         //add fragment
         //
         signedHash = sharingPrivateKey.encryptMessageFor(sharingPrivateKey.hash(cipherText));
-        boolean addedFragment = coreNode.addFragment(username, sharingPublicKey.getPublicKey(), cipherText, signedHash);
+        byte[] mapKey = new byte[10];
+        boolean addedFragment = coreNode.addFragment(username, sharingPublicKey.getPublicKey(), mapKey, cipherText, signedHash);
         assertTrue("added fragment", !addedFragment);
 
         // add storage allowance
@@ -93,9 +94,12 @@ public class CoreNode
         assertTrue("quota after registering fragment", quota == coreNode.fragmentLength()*frags);
 
         // try again adding fragment
-        addedFragment = coreNode.addFragment(username, sharingPublicKey.getPublicKey(), cipherText, signedHash);
+        addedFragment = coreNode.addFragment(username, sharingPublicKey.getPublicKey(), mapKey, cipherText, signedHash);
         assertTrue("added fragment", addedFragment);
 
+        // get fragment and verify contents are the same
+        ByteArrayWrapper blob = coreNode.getFragment(username, sharingPublicKey.getPublicKey(), mapKey);
+        assertTrue("retrieved blob equality", new ByteArrayWrapper(cipherText).equals(blob));
 
         //
         //create a friend
