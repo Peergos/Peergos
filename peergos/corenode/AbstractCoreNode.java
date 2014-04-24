@@ -282,15 +282,9 @@ public abstract class AbstractCoreNode
         return true;
     }
 
-    /*
-     * @param userKey X509 encoded key of user that wishes to add a fragment
-     * @param hash the hash of the fragment to be removed 
-     * @param signedHash the SHA hash of hash, signed with the user private key 
-     */ 
-    //public boolean removeFragment(byte[] userKey, byte[] signedHash, byte[] hash)
-    public boolean removeFragment(String username, byte[] encodedSharingKey, byte[] fragmentHash, byte[] userKeySignedHash, byte[] sharingKeySignedHash)
+    public boolean removeFragment(String username, byte[] encodedSharingKey, byte[] mapKey, byte[] sharingKeySignedMapKey)
     {
-        UserPublicKey userKey = null;
+        UserPublicKey userKey;
         UserPublicKey sharingKey = new UserPublicKey(encodedSharingKey);
 
         synchronized(this)
@@ -301,16 +295,14 @@ public abstract class AbstractCoreNode
             if (! userMap.get(username).followers.contains(sharingKey))
                 return false;
         }
-        if (! userKey.isValidSignature(fragmentHash, userKeySignedHash))
-           return false; 
 
-        if (! sharingKey.isValidSignature(fragmentHash, sharingKeySignedHash))
+        if (! sharingKey.isValidSignature(sharingKeySignedMapKey, mapKey))
             return false;
 
-        return removeFragment(username, sharingKey, fragmentHash);
+        return removeFragment(username, sharingKey, mapKey);
     }
 
-    protected synchronized boolean removeFragment(String username, UserPublicKey sharingKey, byte[] fragmentHash)
+    protected synchronized boolean removeFragment(String username, UserPublicKey sharingKey, byte[] mapKey)
     {
         UserData userData = userMap.get(username);
 
@@ -320,7 +312,7 @@ public abstract class AbstractCoreNode
         if (fragments == null)
             return false;
 
-        return fragments.remove(new ByteArrayWrapper(fragmentHash)) != null;
+        return fragments.remove(new ByteArrayWrapper(mapKey)) != null;
     }
 
     /*
