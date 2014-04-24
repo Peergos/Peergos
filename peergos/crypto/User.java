@@ -23,6 +23,12 @@ public class User extends UserPublicKey
         this.privateKey = privateKey;
     }
 
+    public byte[] hashAndSignMessage(byte[] input)
+    {
+        byte[] hash = hash(input);
+        return signMessage(hash);
+    }
+
     public byte[] signMessage(byte[] input)
     {
         try {

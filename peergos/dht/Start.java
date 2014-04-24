@@ -66,7 +66,7 @@ public class Start
             inbox.send(router, new HTTPSMessenger.INITIALIZE());
             System.out.println("Sent initialize to "+port);
             // wait for INITIALIZED or INITERROR
-            Object result = inbox.receive(Duration.create(10, TimeUnit.SECONDS));
+            Object result = inbox.receive(Duration.create(30, TimeUnit.SECONDS));
             if (result instanceof HTTPSMessenger.INITERROR)
             {
                 throw new IllegalStateException("Couldn't INIT DHT router!");

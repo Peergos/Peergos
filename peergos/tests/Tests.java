@@ -12,9 +12,9 @@ public class Tests
     {
 //        testClass(Components.class);
 //        testClass(ErasureCodes.class);
-        testClass(GaloisPolynomial.Test.class);
+//        testClass(GaloisPolynomial.Test.class);
 //        testClass(Crypto.class);
-//        testClass(CoreNode.class);
+        testClass(CoreNode.class);
     }
 
     private static void testClass(Class c)

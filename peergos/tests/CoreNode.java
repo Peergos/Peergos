@@ -9,13 +9,11 @@ import peergos.util.ByteArrayWrapper;
 
 import org.junit.Test;
 
+import java.net.InetAddress;
 import java.util.*;
 import java.io.*;
 
 import java.security.*;
-import java.security.cert.*;
-
-import java.sql.*;
 
 public class CoreNode
 {
@@ -30,17 +28,17 @@ public class CoreNode
         //
         //generate key-pair & signed cert
         //
-        KeyPair keyPair = SSL.generateKeyPair();
-        UserPublicKey userPublicKey = new UserPublicKey(keyPair.getPublic());
-        User user = new User(keyPair);
+        User user = User.random();
+//        KeyPair keyPair = SSL.generateKeyPair();
+//        UserPublicKey userPublicKey = new UserPublicKey(keyPair.getPublic());
         String username = "USER";
 
-        UserPublicKey userPrivateKey = new UserPublicKey(keyPair.getPrivate());
-        byte[] signedHash = userPrivateKey.encryptMessageFor(userPrivateKey.hash(username.getBytes())); 
+//        UserPublicKey userPrivateKey = new UserPublicKey(keyPair.getPrivate());
+        byte[] signedHash = user.hashAndSignMessage(username.getBytes());//userPrivateKey.encryptMessageFor(userPrivateKey.hash(username.getBytes()));
         //
         //add to coreNode
         //
-        boolean userAdded = coreNode.addUsername(username, userPublicKey.getPublicKey(), signedHash);
+        boolean userAdded = coreNode.addUsername(username, user.getPublicKey(), signedHash);
 
         assertTrue("successfully added user", userAdded);
 
@@ -50,18 +48,12 @@ public class CoreNode
         //
         KeyPair sharingKeyPair = SSL.generateKeyPair();
 
-        ByteArrayOutputStream bout = new ByteArrayOutputStream();
-        ObjectOutputStream oout = new ObjectOutputStream(bout);
-        oout.writeObject(sharingKeyPair);
-        oout.close();
-        byte[] sharingKeyPairBlob = bout.toByteArray();
-        
-        UserPublicKey sharingPublicKey  = new UserPublicKey(sharingKeyPair.getPublic());
-        UserPublicKey sharingPrivateKey  = new UserPublicKey(sharingKeyPair.getPrivate());
-        signedHash = userPrivateKey.encryptMessageFor(userPrivateKey.hash(sharingKeyPairBlob)); 
+        UserPublicKey sharingPublicKey = new UserPublicKey(sharingKeyPair.getPublic());
+        UserPublicKey sharingPrivateKey = new UserPublicKey(sharingKeyPair.getPrivate());
+        signedHash = user.hashAndSignMessage(sharingPublicKey.getPublicKey());
         //byte[] signedSharingKeyPairBlob = userPublicKey.encryptMessageFor(sharingKeyPairBlob);
-        //boolean followingUser = coreNode.addSharingKey(username, sharingPublicKey.getPublicKey(), signedSharingKeyPairBlob, signedHash);
-        boolean followingUser = coreNode.addSharingKey(username, sharingPublicKey.getPublicKey(), sharingKeyPairBlob, signedHash);
+        //boolean followingUser = coreNode.allowSharingKey(username, sharingPublicKey.getPublicKey(), signedSharingKeyPairBlob, signedHash);
+        boolean followingUser = coreNode.allowSharingKey(username, sharingPublicKey.getPublicKey(), signedHash);
 
         assertTrue("following user", followingUser);
 
@@ -69,22 +61,10 @@ public class CoreNode
         //retrieve sharing key
         //
         boolean retrievedSharingKey = false;
-        signedHash = userPrivateKey.encryptMessageFor(userPrivateKey.hash(username.getBytes())); 
-        Iterator<ByteArrayWrapper> sharingKeyPairBlobs = coreNode.getSharingKeys(username, signedHash);
-        while (sharingKeyPairBlobs.hasNext())
-        {
-            byte[] signedBlob =sharingKeyPairBlobs.next().data;
-            //byte[] unsignedSharingKeyBlob = userPrivateKey.unsignMessage(signedBlob);
-            //ObjectInputStream oin = new ObjectInputStream(new ByteArrayInputStream(unsignedSharingKeyBlob));
-            ObjectInputStream oin = new ObjectInputStream(new ByteArrayInputStream(signedBlob));
-            try
-            {
-              KeyPair retrievedKeyPair = (KeyPair) oin.readObject();
-              if (retrievedKeyPair.getPublic().equals(sharingKeyPair.getPublic()) && retrievedKeyPair.getPrivate().equals(sharingKeyPair.getPrivate()))
-                retrievedSharingKey = true;
-            } finally {
-                oin.close();
-            }
+        Iterator<UserPublicKey> sharingKeys = coreNode.getSharingKeys(username);
+        while (sharingKeys.hasNext()) {
+            UserPublicKey next = sharingKeys.next();
+            retrievedSharingKey = next.equals(sharingPublicKey);
         }
 
         assertTrue("retrieved sharing key ", retrievedSharingKey);
@@ -94,13 +74,23 @@ public class CoreNode
         byte[] fragmentData = new byte[500];
         random.nextBytes(fragmentData);
         byte[] cipherText = sharingPublicKey.encryptMessageFor(fragmentData);
-        
+
         //
         //add fragment
         //
-        signedHash = sharingPrivateKey.encryptMessageFor(sharingPrivateKey.hash(cipherText)); 
-        boolean addedFragment = coreNode.addFragment(username, sharingPublicKey.getPublicKey(), cipherText, signedHash); 
+        signedHash = sharingPrivateKey.encryptMessageFor(sharingPrivateKey.hash(cipherText));
+        boolean addedFragment = coreNode.addFragment(username, sharingPublicKey.getPublicKey(), cipherText, signedHash);
+        assertTrue("added fragment", !addedFragment);
+
+        // add storage allowance
+        coreNode.addStorageNodeState(username, InetAddress.getByName("localhost"), 666, coreNode.fragmentLength() * 1000);
+        long quota = coreNode.getQuota(username);
+        assertTrue(quota == coreNode.fragmentLength() * 1000);
+
+        // try again adding fragment
+        addedFragment = coreNode.addFragment(username, sharingPublicKey.getPublicKey(), cipherText, signedHash);
         assertTrue("added fragment", addedFragment);
+
 
         //
         //create a friend
@@ -110,14 +100,13 @@ public class CoreNode
         UserPublicKey friendPrivateKey = new UserPublicKey(friendKeyPair.getPrivate());
         String friendname = "FRIEND";
 
-        signedHash = friendPrivateKey.encryptMessageFor(friendPrivateKey.hash(friendname.getBytes())); 
+        signedHash = friendPrivateKey.encryptMessageFor(friendPrivateKey.hash(friendname.getBytes()));
         //
         //add to coreNode
         //
         boolean friendAdded = coreNode.addUsername(friendname, friendPublicKey.getPublicKey(), signedHash);
 
         assertTrue("added friend", friendAdded);
-
 
     }
     /*
@@ -202,7 +191,7 @@ public class CoreNode
         //
         byte[] signedEncodedFriend = userPublicKey.encryptMessageFor(friendname.getBytes());
 
-        boolean userAddedFriend = coreNode.addSharingKey(username,  userPrivateKey.encryptMessageFor(userPublicKey.hash(signedEncodedFriend)), signedEncodedFriend);
+        boolean userAddedFriend = coreNode.allowSharingKey(username,  userPrivateKey.encryptMessageFor(userPublicKey.hash(signedEncodedFriend)), signedEncodedFriend);
         assertTrue("userA successfully added friend to friend-list", userAddedFriend);
 
         Iterator<ByteArrayWrapper> it = coreNode.getSharingKeys(encoded, userPrivateKey.encryptMessageFor(userPublicKey.hash(encoded)));
