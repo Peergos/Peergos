@@ -42,20 +42,33 @@ public abstract class AbstractCoreNode
 
     static class StorageNodeState
     {
-        private long size;
-
+        private final Set<ByteArrayWrapper> fragmentHashesOnThisNode;
         private final String owner;
         private final Map<String, Float> storageFraction;
         private final InetSocketAddress address;
-        StorageNodeState(String owner, InetAddress address, int port, long size, Map<String, Float> fractions)
+        StorageNodeState(String owner, InetSocketAddress address, Map<String, Float> fractions)
         {
             this.owner = owner;
-            this.address = new InetSocketAddress(address, port);
+            this.address = address;
             this.storageFraction = new HashMap<String,Float>(fractions);
-            this.size = size;
+            this.fragmentHashesOnThisNode = new HashSet();
         }
 
-        private void setSize(long size){this.size = size;}
+        public long getSize()
+        {
+            return calculateSize();
+        }
+
+        private long calculateSize()
+        {
+            return fragmentLength()*fragmentHashesOnThisNode.size();
+        }
+
+        public boolean addHash(byte[] hash)
+        {
+            return fragmentHashesOnThisNode.add(new ByteArrayWrapper(hash));
+        }
+
         public int hashCode(){return address.hashCode();}
         public boolean equals(Object that)
         {
@@ -70,7 +83,6 @@ public abstract class AbstractCoreNode
     protected final Map<String, UserPublicKey> userNameToPublicKeyMap;
     protected final Map<UserPublicKey, String> userPublicKeyToNameMap;
 
-    protected final long fragmentLength;
     //
     // quota stuff
     //
@@ -92,26 +104,18 @@ public abstract class AbstractCoreNode
     */
     protected final Map<InetSocketAddress, StorageNodeState> storageStates;
     protected final Map<String, Set<StorageNodeState> > userStorageFactories;
-    protected final Map<StorageNodeState, Set<ByteArrayWrapper> > storageNodeDonations;
-
 
     public AbstractCoreNode()
     {
-        this(DEFAULT_FRAGMENT_LENGTH);
-    } 
-    public AbstractCoreNode(long fragmentLength) 
-    {
-        this.fragmentLength = fragmentLength;
         this.userMap = new HashMap<String, UserData>();
         this.userNameToPublicKeyMap = new HashMap<String, UserPublicKey>();
         this.userPublicKeyToNameMap = new HashMap<UserPublicKey, String>();
 
         this.storageStates = new HashMap<InetSocketAddress, StorageNodeState>();
         this.userStorageFactories =new HashMap<String, Set<StorageNodeState> > ();
-        this.storageNodeDonations = new HashMap<StorageNodeState, Set<ByteArrayWrapper> >();
-    } 
+    }
 
-    public long fragmentLength(){return fragmentLength;}
+    public static long fragmentLength(){return DEFAULT_FRAGMENT_LENGTH;}
 
     public synchronized UserPublicKey getPublicKey(String username)
     {
@@ -143,6 +147,7 @@ public abstract class AbstractCoreNode
         userNameToPublicKeyMap.put(username, key); 
         userPublicKeyToNameMap.put(key, username); 
         userMap.put(username, new UserData());
+        userStorageFactories.put(username, new HashSet());
         return true;
     }
 
@@ -367,16 +372,14 @@ public abstract class AbstractCoreNode
         return Collections.unmodifiableCollection(sharedFragments.values()).iterator();
     }
 
-    public boolean addStorageNodeState(String owner, InetAddress address, int port, long size)
+    private boolean addStorageNodeState(String owner, InetSocketAddress address)
     {
         Map<String, Float> fracs = new HashMap<String, Float>();
         fracs.put(owner, 1.f);
-        return addStorageNodeState(owner, address, port, size, fracs);
+        return addStorageNodeState(owner, address, fracs);
     }
-    public boolean addStorageNodeState(String owner, InetAddress address, int port, long size, Map<String, Float> fracs)
+    private boolean addStorageNodeState(String owner, InetSocketAddress address, Map<String, Float> fracs)
     {
-        if (size < 0)
-            return false;
         //
         // validate map entries
         //
@@ -390,7 +393,7 @@ public abstract class AbstractCoreNode
         if (totalFraction -1 > FRAC_TOLERANCE)
             return false;
 
-        StorageNodeState state = new StorageNodeState(owner, address, port, size, fracs);
+        StorageNodeState state = new StorageNodeState(owner, address, fracs);
         return addStorageNodeState(state);
     }
 
@@ -418,6 +421,16 @@ public abstract class AbstractCoreNode
         return true;
     }
 
+    public synchronized boolean registerFragment(String recipient, InetSocketAddress node, byte[] hash)
+    {
+        if (!userStorageFactories.containsKey(recipient))
+            return false;
+        if (!storageStates.containsKey(node))
+            addStorageNodeState(recipient, node);
+        StorageNodeState donor = storageStates.get(node);
+        return donor.addHash(hash);
+    }
+
     public synchronized long getQuota(String user)
     {
         if (! userNameToPublicKeyMap.containsKey(user))
@@ -429,7 +442,7 @@ public abstract class AbstractCoreNode
         long quota = 0l;
         
         for (StorageNodeState state: storageStates)
-            quota += state.size* state.storageFraction.get(user);
+            quota += state.getSize()* state.storageFraction.get(user);
 
         return quota;    
     }

@@ -10,6 +10,7 @@ import peergos.util.ByteArrayWrapper;
 import org.junit.Test;
 
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.util.*;
 import java.io.*;
 
@@ -83,9 +84,13 @@ public class CoreNode
         assertTrue("added fragment", !addedFragment);
 
         // add storage allowance
-        coreNode.addStorageNodeState(username, InetAddress.getByName("localhost"), 666, coreNode.fragmentLength() * 1000);
+
+        int frags = 10;
+        for (int i=0; i < frags; i++) {
+            coreNode.registerFragment(username, new InetSocketAddress("localhost", 666), new byte[10+i]);
+        }
         long quota = coreNode.getQuota(username);
-        assertTrue(quota == coreNode.fragmentLength() * 1000);
+        assertTrue("quota after registering fragment", quota == coreNode.fragmentLength()*frags);
 
         // try again adding fragment
         addedFragment = coreNode.addFragment(username, sharingPublicKey.getPublicKey(), cipherText, signedHash);
