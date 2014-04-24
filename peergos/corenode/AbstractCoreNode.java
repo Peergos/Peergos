@@ -80,9 +80,9 @@ public abstract class AbstractCoreNode
         }
     } 
 
-    protected final Map<String, UserData> userMap;
-    protected final Map<String, UserPublicKey> userNameToPublicKeyMap;
-    protected final Map<UserPublicKey, String> userPublicKeyToNameMap;
+    private final Map<String, UserData> userMap;
+    private final Map<String, UserPublicKey> userNameToPublicKeyMap;
+    private final Map<UserPublicKey, String> userPublicKeyToNameMap;
 
     //
     // quota stuff
@@ -96,15 +96,15 @@ public abstract class AbstractCoreNode
     //
     //
     //map of username to list of storage nodes that are donating on behalf of this user  (with fraction)
-    protected final Map<InetSocketAddress, (String owner, Map<(String user, float frac))> > storageState;
+    private final Map<InetSocketAddress, (String owner, Map<(String user, float frac))> > storageState;
     //derivable from above map
-    protected final Map<String, List<InetSocketAddress> > userStorageFactories;
+    private final Map<String, List<InetSocketAddress> > userStorageFactories;
 
     //set of fragments donated by this storage node 
-    protected final Map<InetSocketAdress, Set<ByteArrayWrapper> > storageNodeDonations;
+    private final Map<InetSocketAdress, Set<ByteArrayWrapper> > storageNodeDonations;
     */
-    protected final Map<InetSocketAddress, StorageNodeState> storageStates;
-    protected final Map<String, Set<StorageNodeState> > userStorageFactories;
+    private final Map<InetSocketAddress, StorageNodeState> storageStates;
+    private final Map<String, Set<StorageNodeState> > userStorageFactories;
 
     public AbstractCoreNode()
     {
@@ -138,7 +138,7 @@ public abstract class AbstractCoreNode
         return addUsername(username, key);
     }
 
-    protected synchronized boolean addUsername(String username, UserPublicKey key)
+    private synchronized boolean addUsername(String username, UserPublicKey key)
     {
         if (userNameToPublicKeyMap.containsKey(username))
             return false;
@@ -260,7 +260,7 @@ public abstract class AbstractCoreNode
         return addFragment(username, sharingKey, mapKey, fragmentData);
     }
 
-    protected synchronized boolean addFragment(String username, UserPublicKey sharingKey, byte[] mapKey, byte[] fragmentData)
+    private synchronized boolean addFragment(String username, UserPublicKey sharingKey, byte[] mapKey, byte[] fragmentData)
     {
          
         UserData userData = userMap.get(username);
@@ -303,7 +303,7 @@ public abstract class AbstractCoreNode
         return removeFragment(username, sharingKey, mapKey);
     }
 
-    protected synchronized boolean removeFragment(String username, UserPublicKey sharingKey, byte[] mapKey)
+    private synchronized boolean removeFragment(String username, UserPublicKey sharingKey, byte[] mapKey)
     {
         UserData userData = userMap.get(username);
 
@@ -333,7 +333,7 @@ public abstract class AbstractCoreNode
         return removeUsername(key, username);
     }
 
-    protected synchronized boolean removeUsername(UserPublicKey key, String username)
+    private synchronized boolean removeUsername(UserPublicKey key, String username)
     {
         userPublicKeyToNameMap.remove(key);
         userMap.remove(key);

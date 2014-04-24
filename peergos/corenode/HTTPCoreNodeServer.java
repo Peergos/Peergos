@@ -21,15 +21,17 @@ public class HTTPCoreNodeServer
 
     class CoreNodeHandler implements HttpHandler 
     {
-        public void handle(HttpExchange httpExchange) throws IOException 
+        public void handle(HttpExchange exchange) throws IOException 
         {
-            DataInputStream din = new DataInputStream(httpExchange.getRequestBody());
-            DataOutputStream dout = new DataOutputStream(httpExchange.getResponseBody());
-
-            String urlStem = httpExchange.getRequestURI().getPath();
+            DataInputStream din = new DataInputStream(exchange.getRequestBody());
+            ByteArrayOutputStream bout = new ByteArrayOutputStream();
+            DataOutputStream dout = new DataOutputStream(bout);
+        
+            String method = deserializeString(din);;
+            System.out.println("method "+ method);
             try
             {
-                switch (urlStem)
+                switch (method)
                 {
                     case "addUsername": 
                         addUsername(din, dout);
@@ -74,12 +76,18 @@ public class HTTPCoreNodeServer
                         removeUsername(din,dout);
                         break;
                     default:
-                        throw new IOException("Unknown method "+ urlStem);
+                        throw new IOException("Unknown method "+ method);
                 }
-            } finally {
+
                 dout.flush();
-                din.close();
                 dout.close();
+                byte[] b = bout.toByteArray();
+                exchange.sendResponseHeaders(200, b.length);
+                exchange.getResponseBody().write(b);
+            } finally {
+                System.out.println("HERE 2");
+                exchange.sendResponseHeaders(400, 0);
+                exchange.close();
             }
 
         }
@@ -89,8 +97,9 @@ public class HTTPCoreNodeServer
             String username = deserializeString(din);
             byte[] encodedKey = deserializeByteArray(din);
             byte[] hash = deserializeByteArray(din);
-
+            
             boolean isAdded = coreNode.addUsername(username, encodedKey, hash);
+
             dout.writeBoolean(isAdded);
         }
 
@@ -128,6 +137,7 @@ public class HTTPCoreNodeServer
             String username = deserializeString(din);
             byte[] encodedSharingPublicKey = deserializeByteArray(din);
             byte[] signedHash = deserializeByteArray(din);
+
             boolean isAllowed = coreNode.allowSharingKey(username, encodedSharingPublicKey, signedHash);
 
             dout.writeBoolean(isAllowed);
@@ -226,18 +236,25 @@ public class HTTPCoreNodeServer
     }
 
     private final HttpServer server;
+    private final InetSocketAddress address; 
     private final AbstractCoreNode coreNode;
 
-    public HTTPCoreNodeServer(AbstractCoreNode coreNode, int port) throws IOException
+    public HTTPCoreNodeServer(AbstractCoreNode coreNode, InetAddress address, int port) throws IOException
     {
         this.coreNode = coreNode;
-        InetAddress us = IP.getMyPublicAddress();
-        InetSocketAddress address = new InetSocketAddress(us, port);
-        server = HttpServer.create(address, CONNECTION_BACKLOG);
+        this.address = new InetSocketAddress(address, port);
+        server = HttpServer.create(this.address, CONNECTION_BACKLOG);
         server.createContext("/", new CoreNodeHandler());
-        server.setExecutor(Executors.newFixedThreadPool(HANDLER_THREAD_COUNT));
+        //server.setExecutor(Executors.newFixedThreadPool(HANDLER_THREAD_COUNT));
+        server.setExecutor(null);
+    }
+
+    public void start() throws IOException
+    {
         server.start();
     }
+    
+    public InetSocketAddress getAddress(){return address;}
 
     public void close() throws IOException
     {   
@@ -246,14 +263,20 @@ public class HTTPCoreNodeServer
     }
     static byte[] deserializeByteArray(DataInputStream din) throws IOException
     {
-        int l = din.readInt();
-        return deserializeByteArray(l, MAX_KEY_LENGTH);
+        return deserializeByteArray(din, MAX_KEY_LENGTH);
     }
-    static byte[] deserializeByteArray(int len) throws IOException
+    static byte[] deserializeByteArray(DataInputStream din, int maxLength) throws IOException
     {
-        return deserializeByteArray(len, MAX_KEY_LENGTH);
+        int l = din.readInt();
+        byte[] b = getByteArray(l, maxLength);
+        din.readFully(b);
+        return b;
     }
-    static byte[] deserializeByteArray(int len, int maxLength) throws IOException
+    static byte[] getByteArray(int len) throws IOException
+    {
+        return getByteArray(len, MAX_KEY_LENGTH);
+    }
+    static byte[] getByteArray(int len, int maxLength) throws IOException
     {
         if (len > maxLength)
             throw new IOException("byte array of size "+ len +" too big.");

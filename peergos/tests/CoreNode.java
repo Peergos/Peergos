@@ -9,10 +9,9 @@ import peergos.util.ByteArrayWrapper;
 
 import org.junit.Test;
 
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
 import java.util.*;
 import java.io.*;
+import java.net.*;
 
 import java.security.*;
 
@@ -25,12 +24,8 @@ public class CoreNode
         public void close(){};
     }
 
-    @Test public void abstractTest() throws Exception 
+    public void coreNodeTests(AbstractCoreNode coreNode) throws Exception
     {
-
-        MockCoreNode coreNode = new MockCoreNode();
-
-        //
         //generate key-pair & signed cert
         //
         User user = User.random();
@@ -45,7 +40,7 @@ public class CoreNode
         //
         boolean userAdded = coreNode.addUsername(username, user.getPublicKey(), signedHash);
 
-        assertTrue("successfully added user", userAdded);
+        assertTrue("added user", userAdded);
 
 
         //
@@ -123,112 +118,42 @@ public class CoreNode
 
     }
 
-    @Test public void httpTest() throws Exception
-    {
-        MockCoreNode coreNode = new MockCoreNode();
-
-    }
     /*
        @Test public void abstractTest() throws Exception 
        {
-       if (true)
-       return;
-
-       Random random = new Random(666);
 
        MockCoreNode coreNode = new MockCoreNode();
-
-    //
-    //generate key-pair & signed cert
-    //
-    KeyPair keyPair = SSL.generateKeyPair();
-    UserPublicKey userPublicKey = new UserPublicKey(keyPair.getPublic());
-    User user = new User(keyPair);
-    String username = "USER";
-
-    UserPublicKey userPrivateKey = new UserPublicKey(keyPair.getPrivate());
-    byte[] hash = userPrivateKey.hash(userPublicKey.getPublicKey());
-    byte[] signedHash = userPrivateKey.encryptMessageFor(userPrivateKey.hash(username.getBytes())); 
-    //
-    //add to coreNode
-    //
-    boolean userAdded = coreNode.addUsername(userPublicKey.getPublicKey(), signedHash,username);
-
-    assertTrue("successfully added user", userAdded);
-
-    //
-    //generate some test data
-    //
-    byte[] fragmentData = new byte[500];
-    random.nextBytes(fragmentData);
-    byte[] cipherText = userPublicKey.encryptMessageFor(fragmentData);
-
-    //
-    //add to user 
-    //
-    boolean fragmentAdded = coreNode.addFragment(userPublicKey.getPublicKey(), userPrivateKey.encryptMessageFor(userPublicKey.hash(cipherText)), cipherText);
-    assertTrue("successfully added fragment", fragmentAdded);
-
-    byte[] encoded = userPublicKey.getPublicKey();
-    Iterator<ByteArrayWrapper> userFragments = coreNode.getFragments(encoded, userPrivateKey.encryptMessageFor(userPublicKey.hash(encoded)));
-
-    assertTrue("found fragments", userFragments != null);
-    //
-    //get back message
-    //
-    boolean foundFragment = false;
-    if (userFragments != null)
-    while(userFragments.hasNext())
-    {
-    byte[] plainText = user.decryptMessage(userFragments.next().data);
-    if (Arrays.equals(plainText, fragmentData))
-    foundFragment = true;
-    }
-    assertTrue("successfully found fragment", foundFragment);
-
-    //
-    //create a friend
-    //
-    KeyPair friendKeyPair = SSL.generateKeyPair();
-    UserPublicKey friendPublicKey = new UserPublicKey(friendKeyPair.getPublic());
-    UserPublicKey friendPrivateKey = new UserPublicKey(friendKeyPair.getPrivate());
-    User friend = new User(friendKeyPair);
-    String friendname = "FRIEND";
-
-    //
-    //add friend to corenode
-    //
-    boolean friendAdded = coreNode.addUsername(friendPublicKey.getPublicKey(), new byte[0],friendname);
-
-    assertFalse("successfully failed validation test", friendAdded);
-
-    friendAdded = coreNode.addUsername(friendPublicKey.getPublicKey(), friendPrivateKey.encryptMessageFor(friendPublicKey.hash(friendname)),friendname);
-    assertTrue("successfully added friend", friendAdded);
-
-    //
-    //user adds friend to his friend list
-    //
-    byte[] signedEncodedFriend = userPublicKey.encryptMessageFor(friendname.getBytes());
-
-    boolean userAddedFriend = coreNode.allowSharingKey(username,  userPrivateKey.encryptMessageFor(userPublicKey.hash(signedEncodedFriend)), signedEncodedFriend);
-    assertTrue("userA successfully added friend to friend-list", userAddedFriend);
-
-    Iterator<ByteArrayWrapper> it = coreNode.getSharingKeys(encoded, userPrivateKey.encryptMessageFor(userPublicKey.hash(encoded)));
-    assertTrue("got sharing keys ", it != null);
-
-    boolean foundFriend = false;
-    while (it.hasNext())
-    {
-        ByteArrayWrapper b = it.next();
-        byte[] unsigned = userPrivateKey.unsignMessage(b.data);
-        if (java.util.Arrays.equals(unsigned, friendname.getBytes()))
-            foundFriend = true;
-    }
-    assertTrue("found friend", foundFriend);
-    System.out.println("MADE IT");
-
+       coreNodeTests(coreNode);
        }
-*/
+       */
+
+    @Test public void httpTest() throws Exception
+    {
+        try
+        {
+            HTTPCoreNodeServer server = null;
+            try
+            {
+                MockCoreNode mockCoreNode = new MockCoreNode();
+                InetAddress address = InetAddress.getByName("localhost");
+                int port = 6666;
+
+                server = new HTTPCoreNodeServer(mockCoreNode,address, port);
+                server.start();
+
+                URL url = new URL("http://localhost:6666/"); 
+                HTTPCoreNode clientCoreNode = new HTTPCoreNode(url);
+
+                coreNodeTests(clientCoreNode);
+            } finally {
+                if (server != null)
+                    server.close();    
+            }
+        } catch (Throwable t) {
+            t.printStackTrace();
+            throw t;
+        }
+    }
 
     /*
        @Test public void sqlTest()

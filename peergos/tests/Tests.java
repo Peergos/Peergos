@@ -10,16 +10,11 @@ public class Tests
 
     public static void main(String[] args)
     {
-        try { // because JUnit sucks
 //        testClass(Components.class);
 //        testClass(ErasureCodes.class);
 //        testClass(GaloisPolynomial.Test.class);
 //        testClass(Crypto.class);
             testClass(CoreNode.class);
-        } catch (Throwable t)
-        {
-            t.printStackTrace();
-        }
     }
 
     private static void testClass(Class c)

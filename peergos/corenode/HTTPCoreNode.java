@@ -23,7 +23,7 @@ public class HTTPCoreNode extends AbstractCoreNode
 
     public URL getCoreNodeURL(){return coreNodeURL;}
 
-    @Override public synchronized UserPublicKey getPublicKey(String username) 
+    @Override public UserPublicKey getPublicKey(String username) 
     {
         HttpURLConnection conn = null;
         try
@@ -32,6 +32,7 @@ public class HTTPCoreNode extends AbstractCoreNode
             DataInputStream din = new DataInputStream(conn.getInputStream());
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
+            serialize("getPublicKey", dout);
             serialize(username, dout);
             byte[] publicKey = deserializeByteArray(din); 
             return new UserPublicKey(publicKey);
@@ -45,19 +46,22 @@ public class HTTPCoreNode extends AbstractCoreNode
     }
 
 
-    public boolean addUsername(String username, byte[] encodedUserKey, byte[] signedHash)
+    @Override public boolean addUsername(String username, byte[] encodedUserKey, byte[] signedHash)
     {
         HttpURLConnection conn = null;
         try
         {
             conn = (HttpURLConnection) coreNodeURL.openConnection();
-            DataInputStream din = new DataInputStream(conn.getInputStream());
+            conn.setDoOutput(true);
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
             
+            serialize("addUsername", dout);
             serialize(username, dout);
             serialize(encodedUserKey, dout);
             serialize(signedHash, dout);
+            dout.flush();
             
+            DataInputStream din = new DataInputStream(conn.getInputStream());
             return din.readBoolean();
         } catch (IOException ioe) {
             ioe.printStackTrace();
@@ -68,17 +72,21 @@ public class HTTPCoreNode extends AbstractCoreNode
         }
     }
 
-   @Override public synchronized boolean followRequest(String target, byte[] encodedSharingPublicKey)
+   @Override public boolean followRequest(String target, byte[] encodedSharingPublicKey)
     {
         HttpURLConnection conn = null;
         try
         {
             conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn.setDoOutput(true);
+
             DataInputStream din = new DataInputStream(conn.getInputStream());
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
-            
+        
+            serialize("followRequest", dout);    
             serialize(target, dout);
             serialize(encodedSharingPublicKey, dout);
+            dout.flush();
 
             return din.readBoolean();
         } catch (IOException ioe) {
@@ -95,12 +103,15 @@ public class HTTPCoreNode extends AbstractCoreNode
         try
         {
             conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn.setDoOutput(true);
             DataInputStream din = new DataInputStream(conn.getInputStream());
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
             
+            serialize("removeFollowRequest", dout);
             serialize(target, dout);
             serialize(data, dout);
             serialize(signedHash, dout);
+            dout.flush();
 
             return din.readBoolean();
         } catch (IOException ioe) {
@@ -111,18 +122,26 @@ public class HTTPCoreNode extends AbstractCoreNode
                 conn.disconnect();
         }
     }
+   
    @Override public boolean allowSharingKey(String username, byte[] encodedSharingPublicKey, byte[] signedHash)
     {
         HttpURLConnection conn = null;
         try
         {
             conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn.setDoOutput(true);
+            
+            System.out.println("HERE 4");
             DataInputStream din = new DataInputStream(conn.getInputStream());
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
+            System.out.println("HERE 45");
 
+            serialize("allowSharingKey", dout);
             serialize(username, dout);
             serialize(encodedSharingPublicKey, dout);
             serialize(signedHash, dout);
+            System.out.println("HERE 456");
+            dout.flush();
 
             return din.readBoolean();
         } catch (IOException ioe) {
@@ -139,12 +158,16 @@ public class HTTPCoreNode extends AbstractCoreNode
         try
         {
             conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn.setDoOutput(true);
+            
             DataInputStream din = new DataInputStream(conn.getInputStream());
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
             
+            serialize("banSharingKey", dout);
             serialize(username, dout);
             serialize(encodedSharingPublicKey, dout);
             serialize(signedHash, dout);
+            dout.flush();
 
             return din.readBoolean();
 
@@ -162,14 +185,18 @@ public class HTTPCoreNode extends AbstractCoreNode
         try
         {
             conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn.setDoOutput(true);
+            
             DataInputStream din = new DataInputStream(conn.getInputStream());
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
+            serialize("addFragment", dout);
             serialize(username, dout);
             serialize(encodedSharingPublicKey, dout);
             serialize(mapKey, dout);
             serialize(fragmentData, dout);
             serialize(sharingKeySignedHash, dout);
+            dout.flush();
 
             return din.readBoolean();
         } catch (IOException ioe) {
@@ -186,13 +213,17 @@ public class HTTPCoreNode extends AbstractCoreNode
         try
         {
             conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn.setDoOutput(true);
+            
             DataInputStream din = new DataInputStream(conn.getInputStream());
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
             
+            serialize("removeFragment", dout);
             serialize(username, dout);
             serialize(encodedSharingKey, dout);
             serialize(mapKey, dout);
             serialize(sharingKeySignedMapKey, dout);
+            dout.flush();
 
             return din.readBoolean();
         } catch (IOException ioe) {
@@ -209,12 +240,16 @@ public class HTTPCoreNode extends AbstractCoreNode
         try
         {
             conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn.setDoOutput(true);
+            
             DataInputStream din = new DataInputStream(conn.getInputStream());
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
             
+            serialize("removeUsername", dout);
             serialize(username, dout);
             serialize(userKey, dout);
             serialize(signedHash, dout);
+            dout.flush();
 
             return din.readBoolean();
         } catch (IOException ioe) {
@@ -225,15 +260,20 @@ public class HTTPCoreNode extends AbstractCoreNode
                 conn.disconnect();
         }
     }
-   @Override public synchronized Iterator<UserPublicKey> getSharingKeys(String username)
+   @Override public Iterator<UserPublicKey> getSharingKeys(String username)
     {
         HttpURLConnection conn = null;
         try
         {
             conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn.setDoOutput(true);
+            
             DataInputStream din = new DataInputStream(conn.getInputStream());
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
             
+            serialize("getSharingKeys", dout); 
+            dout.flush();
+
             ArrayList<UserPublicKey> sharingKeys = new ArrayList<UserPublicKey>();
             while(din.readInt() >=0)
             {
@@ -250,18 +290,22 @@ public class HTTPCoreNode extends AbstractCoreNode
                 conn.disconnect();
         }
     }
-   @Override public synchronized ByteArrayWrapper getFragment(String username, byte[] encodedSharingKey, byte[] mapKey)
+   @Override public ByteArrayWrapper getFragment(String username, byte[] encodedSharingKey, byte[] mapKey)
     {
         HttpURLConnection conn = null;
         try
         {
             conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn.setDoOutput(true);
+            
             DataInputStream din = new DataInputStream(conn.getInputStream());
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
+            serialize("getFragment", dout);
             serialize(username, dout);
             serialize(encodedSharingKey, dout);
             serialize(mapKey, dout);
+            dout.flush();
 
             byte[] b = deserializeByteArray(din);
             return new ByteArrayWrapper(b);
@@ -273,19 +317,23 @@ public class HTTPCoreNode extends AbstractCoreNode
                 conn.disconnect();
         }
     }
-   @Override public synchronized boolean registerFragment(String recipient, InetSocketAddress node, byte[] hash)
+   @Override public boolean registerFragment(String recipient, InetSocketAddress node, byte[] hash)
     {
         HttpURLConnection conn = null;
         try
         {
             conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn.setDoOutput(true);
+            
             DataInputStream din = new DataInputStream(conn.getInputStream());
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
+            serialize("registerFragment", dout);
             serialize(recipient, dout);
             serialize(node.getAddress().getAddress(), dout);
             dout.writeInt(node.getPort());
             serialize(hash, dout);
+            dout.flush();
 
             return din.readBoolean();
         } catch (IOException ioe) {
@@ -296,17 +344,21 @@ public class HTTPCoreNode extends AbstractCoreNode
                 conn.disconnect();
         }
     }
-   @Override public synchronized long getQuota(String user) 
+   @Override public long getQuota(String user) 
     {
         HttpURLConnection conn = null;
         try
         {
             conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn.setDoOutput(true);
+            
             DataInputStream din = new DataInputStream(conn.getInputStream());
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
+            serialize("getQuota", dout);
             serialize(user, dout);
-            
+            dout.flush();
+
             return din.readLong();
         } catch (IOException ioe) {
             ioe.printStackTrace();
@@ -316,16 +368,21 @@ public class HTTPCoreNode extends AbstractCoreNode
                 conn.disconnect();
         }
     }
-   @Override public synchronized long getUsage(String username)
+   @Override public long getUsage(String username)
     {
         HttpURLConnection conn = null;
         try
         {
             conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn.setDoOutput(true);
+            
             DataInputStream din = new DataInputStream(conn.getInputStream());
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
+            serialize("getUsage", dout);
             serialize(username, dout);
+            dout.flush();
+
             return din.readLong();
         } catch (IOException ioe) {
             ioe.printStackTrace();
