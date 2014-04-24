@@ -370,22 +370,6 @@ public abstract class AbstractCoreNode
         return sharedFragments.get(key);
     }
 
-    public synchronized Iterator<ByteArrayWrapper> getFragments(String username, byte[] encodedSharingKey)
-    {
-        UserPublicKey userKey = userNameToPublicKeyMap.get(username);
-        if (userKey == null)
-            return null;
-        
-        UserData userData = userMap.get(username);
-        
-        Map<ByteArrayWrapper, ByteArrayWrapper> sharedFragments = userData.fragments.get(new UserPublicKey(encodedSharingKey));
-        
-        if (sharedFragments == null)
-            return null;
-            
-        return Collections.unmodifiableCollection(sharedFragments.values()).iterator();
-    }
-
     private boolean addStorageNodeState(String owner, InetSocketAddress address)
     {
         Map<String, Float> fracs = new HashMap<String, Float>();

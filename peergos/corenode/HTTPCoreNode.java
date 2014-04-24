@@ -2,14 +2,20 @@ package peergos.corenode;
 
 import peergos.crypto.*;
 import peergos.util.ByteArrayWrapper;
+import peergos.net.IP;
 
 import java.util.*;
+import java.util.concurrent.*;
 import java.net.*;
 import java.io.*;
 
 import com.sun.net.httpserver.*;
+
 public class HTTPCoreNode
 {
+    private static final int CONNECTION_BACKLOG = 100;
+    private static final int HANDLER_THREAD_COUNT= 100;
+
     private static final int MAX_KEY_LENGTH = 4096;
     private static final int MAX_BLOB_LENGTH = 4*1024*1024;
 
@@ -97,7 +103,7 @@ public class HTTPCoreNode
             byte[] encodedSharingPublicKey = getByteArray(din);
             byte[] signedHash = getByteArray(din);
             boolean isBanned = coreNode.banSharingKey(username, encodedSharingPublicKey, signedHash);
-            
+
             dout.writeBoolean(isBanned);
         }
 
@@ -108,13 +114,20 @@ public class HTTPCoreNode
             byte[] mapKey = getByteArray(din);
             byte[] fragmentData = getByteArray(din);
             byte[] signedHash = getByteArray(din);
-        
+
             boolean isAdded = coreNode.addFragment(username, encodedSharingPublicKey, mapKey, fragmentData, signedHash);
             dout.writeBoolean(isAdded);
         }
 
-        void removeFragment(DataInputStream din, DataOutputStream dout)
+        void removeFragment(DataInputStream din, DataOutputStream dout) throws IOException
         {
+            String username = getString(din);
+            byte[] encodedSharingKey = getByteArray(din);
+            byte[] mapKey = getByteArray(din);
+            byte[] sharingKeySignedHash = getByteArray(din);
+
+            boolean isRemoved = coreNode.removeFragment(username, encodedSharingKey, mapKey, sharingKeySignedHash);
+            dout.writeBoolean(isRemoved);
         }
         void getSharingKeys(DataInputStream din, DataOutputStream dout) throws IOException
         {
@@ -127,8 +140,8 @@ public class HTTPCoreNode
                 dout.write(b);
             }
         }
-        
-        
+
+
         void getFragment(DataInputStream din, DataOutputStream dout) throws IOException
         {
             String username = getString(din);
@@ -139,18 +152,29 @@ public class HTTPCoreNode
             dout.writeInt(bb.length);
             dout.write(bb);
         }
-        void addStorageNodeState(DataInputStream din, DataOutputStream dout)
-        {
-        }
 
-        void registerFragment(DataInputStream din, DataOutputStream dout)
+        void registerFragment(DataInputStream din, DataOutputStream dout) throws IOException
         {
+            String recipient = getString(din);
+            byte[] address = getByteArray(din);
+            InetAddress node = InetAddress.getByAddress(address);
+            int port = din.readInt();
+            byte[] hash = getByteArray(din);
+            
+            boolean isRegistered = coreNode.registerFragment(recipient, new InetSocketAddress(node, port),hash);
+            dout.writeBoolean(isRegistered);
         }
-        void getQuota(DataInputStream din, DataOutputStream dout)
+        void getQuota(DataInputStream din, DataOutputStream dout) throws IOException
         {
+            String username = getString(din);
+            long quota = coreNode.getQuota(username);
+            dout.writeLong(quota);
         }
-        void getUsage(DataInputStream din, DataOutputStream dout)
+        void getUsage(DataInputStream din, DataOutputStream dout) throws IOException
         {
+            String username = getString(din);
+            long usage = coreNode.getUsage(username);
+            dout.writeLong(usage);
         }
         void removeUsername(DataInputStream din, DataOutputStream dout) throws IOException
         {
@@ -162,8 +186,20 @@ public class HTTPCoreNode
         } 
 
     }
-    
-    private AbstractCoreNode coreNode;
+
+    private final HttpServer server;
+    private final AbstractCoreNode coreNode;
+
+    public HTTPCoreNode(AbstractCoreNode coreNode, int port) throws IOException
+    {
+        this.coreNode = coreNode;
+        InetAddress us = IP.getMyPublicAddress();
+        InetSocketAddress address = new InetSocketAddress(us, port);
+        server = HttpServer.create(address, CONNECTION_BACKLOG);
+        server.createContext("/", new CoreNodeHandler());
+        server.setExecutor(Executors.newFixedThreadPool(HANDLER_THREAD_COUNT));
+        server.start();
+    }
 
     static byte[] getByteArray(DataInputStream din) throws IOException
     {
