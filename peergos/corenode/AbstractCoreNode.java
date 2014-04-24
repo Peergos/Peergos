@@ -151,14 +151,14 @@ public abstract class AbstractCoreNode
         return true;
     }
 
-    public synchronized boolean followRequest(String target, byte[] data)
+    public synchronized boolean followRequest(String target, byte[] encodedSharingPublicKey)
     {
         UserData userData = userMap.get(target);
         if (userData == null)
             return false;
         if (userData.followRequests.size() > UserData.MAX_PENDING_FOLLOWERS)
             return false;
-        userData.followRequests.add(new ByteArrayWrapper(data));
+        userData.followRequests.add(new ByteArrayWrapper(encodedSharingPublicKey));
         return true;
     }
 
@@ -319,7 +319,7 @@ public abstract class AbstractCoreNode
      *
      */
 
-    public boolean removeUsername(byte[] userKey, byte[] signedHash, String username)
+    public boolean removeUsername(String username, byte[] userKey, byte[] signedHash)
     {
         UserPublicKey key = new UserPublicKey(userKey);
 
