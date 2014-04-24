@@ -207,14 +207,26 @@ public abstract class AbstractCoreNode
         return true;
     }
 
-    protected synchronized boolean banSharingKey(UserPublicKey userKey, UserPublicKey sharingPublicKey)
+    public boolean banSharingKey(String username, byte[] encodedsharingPublicKey, byte[] signedHash)
     {
-        UserData userData = userMap.get(userKey);
+        UserPublicKey key = null;
+        synchronized(this)
+        {
+            key = userNameToPublicKeyMap.get(username);
+        }
 
-        if (userData == null)
+        if (key == null || ! key.isValidSignature(signedHash,encodedsharingPublicKey))
             return false;
-        
+
+        UserPublicKey sharingPublicKey = new UserPublicKey(encodedsharingPublicKey);
+
+       synchronized(this)
+       {
+        UserData userData = userMap.get(username);
+        if (userData == null)
+           return false; 
         return userData.followers.remove(sharingPublicKey);
+       }
     }
     
     /*
