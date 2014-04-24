@@ -155,11 +155,14 @@ public class HTTPSMessenger extends AbstractActor
         HttpURLConnection conn = (HttpURLConnection) target.openConnection();
         conn.setDoOutput(true);
         conn.setRequestMethod("PUT");
+        LOGGER.log(Level.ALL, String.format("prior to get output stream"));
         OutputStream out = conn.getOutputStream();
+        LOGGER.log(Level.ALL, String.format("post to get output stream"));
         out.write(bout.toByteArray());
         out.flush();
         out.close();
         conn.getResponseCode();
+        LOGGER.log(Level.ALL, String.format("Finished sending %s with target %d to %s:%d\n", m.name(), m.getTarget(), addr, port));
     }
 
     public static byte[] getFragment(InetAddress addr, int port, String key) throws IOException

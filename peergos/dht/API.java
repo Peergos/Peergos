@@ -105,7 +105,7 @@ public class API
     public Future<Object> put(byte[] key, byte[] value, PutHandlerCallback onComplete, OnFailure onError)
     {
         assert(key.length == 32);
-        Future<Object> fut = ask(router, new MessageMailbox(new Message.PUT(key, value.length)), 5000);
+        Future<Object> fut = ask(router, new MessageMailbox(new Message.PUT(key, value.length)), 20000);
         fut.onSuccess(new PutHandler(key, value, onComplete), system.dispatcher());
         fut.onFailure(onError, system.dispatcher());
         return fut;
@@ -113,7 +113,7 @@ public class API
 
     public Future<Object> contains(byte[] key, GetHandlerCallback onComplete, OnFailure onError)
     {
-        Future<Object> fut = ask(router, new MessageMailbox(new Message.GET(key)), 5000);
+        Future<Object> fut = ask(router, new MessageMailbox(new Message.GET(key)), 20000);
         fut.onSuccess(new GetHandler(key, onComplete), system.dispatcher());
         fut.onFailure(onError, system.dispatcher());
         return fut;
@@ -121,24 +121,24 @@ public class API
 
     public Future<Object> get(byte[] key, GetHandlerCallback onComplete, OnFailure onError)
     {
-        Future<Object> fut = ask(router, new MessageMailbox(new Message.GET(key)), 5000);
+        Future<Object> fut = ask(router, new MessageMailbox(new Message.GET(key)), 20000);
         fut.onSuccess(new GetHandler(key, onComplete), system.dispatcher());
         fut.onFailure(onError, system.dispatcher());
         return fut;
     }
 
-    public void put(byte[] key, byte[] value, PutHandlerCallback onComplete)
+    public Future<Object> put(byte[] key, byte[] value, PutHandlerCallback onComplete)
     {
-        put(key, value, onComplete, new ErrorHandler());
+        return put(key, value, onComplete, new ErrorHandler());
     }
 
-    public void contains(byte[] key, GetHandlerCallback onComplete)
+    public Future<Object> contains(byte[] key, GetHandlerCallback onComplete)
     {
-        contains(key, onComplete, new ErrorHandler());
+        return contains(key, onComplete, new ErrorHandler());
     }
 
-    public void get(byte[] key, GetHandlerCallback onComplete)
+    public Future<Object> get(byte[] key, GetHandlerCallback onComplete)
     {
-        get(key, onComplete, new ErrorHandler());
+        return get(key, onComplete, new ErrorHandler());
     }
 }

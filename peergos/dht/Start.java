@@ -64,6 +64,7 @@ public class Start
             ActorRef router = Router.start(system, port);
             final Inbox inbox = Inbox.create(system);
             inbox.send(router, new HTTPSMessenger.INITIALIZE());
+            System.out.println("Sent initialize to "+port);
             // wait for INITIALIZED or INITERROR
             Object result = inbox.receive(Duration.create(10, TimeUnit.SECONDS));
             if (result instanceof HTTPSMessenger.INITERROR)
@@ -74,14 +75,15 @@ public class Start
                 inbox.send(router, new HTTPSMessenger.JOIN(null, 0));
             else
                 inbox.send(router, new HTTPSMessenger.JOIN(InetAddress.getByName(Args.getParameter("contactIP")), Args.getInt("contactPort", 8080)));
-            Object joinResult = inbox.receive(Duration.create(10, TimeUnit.SECONDS));
+            System.out.println("Sent JOIN to "+ port);
+            Object joinResult = inbox.receive(Duration.create(30, TimeUnit.SECONDS));
             if (joinResult instanceof HTTPSMessenger.JOINERROR)
             {
                 // maybe try again?
                 throw new IllegalStateException("Couldn't join the DHT!");
             }
             // router is ready!
-
+            System.out.println(port+" joined dht");
             API api = new API(system, router);
             if (Args.hasParameter("script")) {
                 new Scripter(api, Args.getParameter("script")).start();

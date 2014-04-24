@@ -43,7 +43,7 @@ public class Router extends AbstractActor
     private PartialFunction<Object, BoxedUnit> ready;
     private ActorRef lastOrderer;
 
-    public Router(int port) throws IOException
+    public Router(final int port) throws IOException
     {
         new File("log/").mkdir();
         us = new NodeID();
@@ -81,6 +81,7 @@ public class Router extends AbstractActor
             public void apply(HTTPSMessenger.JOIN j) throws Exception {
                 messenger.tell(new Letter(new Message.JOIN(us), j.addr, j.port), self());
                 lastOrderer = sender();
+                System.out.println(port + " received JOIN, set lastordered = "+lastOrderer);
             }
         }).match(HTTPSMessenger.JOINED.class, new FI.UnitApply<HTTPSMessenger.JOINED>() {
             @Override
@@ -94,6 +95,7 @@ public class Router extends AbstractActor
             public void apply(Message.ECHO m) throws Exception {
                 context().become(ready);
                 actOnMessage(m);
+                System.out.println(port + " sent JOINED to " +lastOrderer);
                 lastOrderer.tell(new HTTPSMessenger.JOINED(), self());
                 LOGGER.log(Level.ALL, "Storage server successfully joined DHT.");
             }
