@@ -5,6 +5,7 @@ import peergos.util.ByteArrayWrapper;
 
 import java.util.*;
 import java.net.*;
+import java.io.*;
 
 
 public abstract class AbstractCoreNode
@@ -465,4 +466,6 @@ public abstract class AbstractCoreNode
 
         return Math.max(0, quota - usage);
     }
+
+    public abstract void close() throws IOException; 
 }

@@ -1,3 +1,4 @@
+
 package peergos.corenode;
 
 import peergos.crypto.*;
@@ -8,225 +9,332 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.net.*;
 import java.io.*;
+import static peergos.corenode.HTTPCoreNodeServer.*;
 
-import com.sun.net.httpserver.*;
 
-public class HTTPCoreNode
+public class HTTPCoreNode extends AbstractCoreNode
 {
-    private static final int CONNECTION_BACKLOG = 100;
-    private static final int HANDLER_THREAD_COUNT= 100;
+    private final URL coreNodeURL;
 
-    private static final int MAX_KEY_LENGTH = 4096;
-    private static final int MAX_BLOB_LENGTH = 4*1024*1024;
-
-    class CoreNodeHandler implements HttpHandler 
+    public HTTPCoreNode(URL coreNodeURL)
     {
-        public void handle(HttpExchange httpExchange) throws IOException 
+        this.coreNodeURL = coreNodeURL;
+    }
+
+    public URL getCoreNodeURL(){return coreNodeURL;}
+
+    @Override public synchronized UserPublicKey getPublicKey(String username) 
+    {
+        HttpURLConnection conn = null;
+        try
         {
-            DataInputStream din = new DataInputStream(httpExchange.getRequestBody());
-            DataOutputStream dout = new DataOutputStream(httpExchange.getResponseBody());
+            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            DataInputStream din = new DataInputStream(conn.getInputStream());
+            DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-            String urlStem = httpExchange.getRequestURI().getPath();
-            try
-            {
-                switch (urlStem)
-                {
-                    case "addUsername": 
-                        addUsername(din, dout);
-                        break;
-                    case "getPublicKey":
-                        getPublicKey(din, dout);
-                        break;
-                    default:
-                        throw new IOException("Unknown method "+ urlStem);
-                }
-            } finally {
-                dout.flush();
-                din.close();
-                dout.close();
-            }
-
+            serialize(username, dout);
+            byte[] publicKey = deserializeByteArray(din); 
+            return new UserPublicKey(publicKey);
+        } catch (IOException ioe) {
+            ioe.printStackTrace();
+            return null;
+        } finally {
+            if (conn != null)
+                conn.disconnect();
         }
+    }
 
-        void addUsername(DataInputStream din, DataOutputStream dout) throws IOException
+
+    public boolean addUsername(String username, byte[] encodedUserKey, byte[] signedHash)
+    {
+        HttpURLConnection conn = null;
+        try
         {
-            String username = getString(din);
-            byte[] encodedKey = getByteArray(din);
-            byte[] hash = getByteArray(din);
-
-            boolean isAdded = coreNode.addUsername(username, encodedKey, hash);
-            dout.writeBoolean(isAdded);
-        }
-
-        void getPublicKey(DataInputStream din, DataOutputStream dout) throws IOException
-        {
-            String username = getString(din);
-            UserPublicKey k = coreNode.getPublicKey(username);
-            if (k == null)
-                return;
-            byte[] b = k.getPublicKey();
-            dout.writeInt(b.length);
-            dout.write(b);
-        }
-
-        void followRequest(DataInputStream din, DataOutputStream dout) throws IOException
-        {
-            String target = getString(din);
-            byte[] encodedSharingPublicKey = getByteArray(din);
-
-            boolean followRequested = coreNode.followRequest(target, encodedSharingPublicKey);
-            dout.writeBoolean(followRequested);
-        }
-        void removeFollowRequest(DataInputStream din, DataOutputStream dout) throws IOException
-        {
-            String target = getString(din);
-            byte[] encodedSharingPublicKey = getByteArray(din);
-            byte[] hash = getByteArray(din);
-
-            boolean isRemoved = coreNode.removeFollowRequest(target, encodedSharingPublicKey, hash);
-            dout.writeBoolean(isRemoved);
-        }
-
-        void allowSharingKey(DataInputStream din, DataOutputStream dout) throws IOException
-        {
-            String username = getString(din);
-            byte[] encodedSharingPublicKey = getByteArray(din);
-            byte[] signedHash = getByteArray(din);
-            boolean isAllowed = coreNode.allowSharingKey(username, encodedSharingPublicKey, signedHash);
-
-            dout.writeBoolean(isAllowed);
-        }
-
-        void banSharingKey(DataInputStream din, DataOutputStream dout) throws IOException
-        {
-            String username = getString(din);
-            byte[] encodedSharingPublicKey = getByteArray(din);
-            byte[] signedHash = getByteArray(din);
-            boolean isBanned = coreNode.banSharingKey(username, encodedSharingPublicKey, signedHash);
-
-            dout.writeBoolean(isBanned);
-        }
-
-        void addFragment(DataInputStream din, DataOutputStream dout) throws IOException
-        {
-            String username = getString(din);
-            byte[] encodedSharingPublicKey = getByteArray(din);
-            byte[] mapKey = getByteArray(din);
-            byte[] fragmentData = getByteArray(din);
-            byte[] signedHash = getByteArray(din);
-
-            boolean isAdded = coreNode.addFragment(username, encodedSharingPublicKey, mapKey, fragmentData, signedHash);
-            dout.writeBoolean(isAdded);
-        }
-
-        void removeFragment(DataInputStream din, DataOutputStream dout) throws IOException
-        {
-            String username = getString(din);
-            byte[] encodedSharingKey = getByteArray(din);
-            byte[] mapKey = getByteArray(din);
-            byte[] sharingKeySignedHash = getByteArray(din);
-
-            boolean isRemoved = coreNode.removeFragment(username, encodedSharingKey, mapKey, sharingKeySignedHash);
-            dout.writeBoolean(isRemoved);
-        }
-        void getSharingKeys(DataInputStream din, DataOutputStream dout) throws IOException
-        {
-            String username = getString(din);
-            Iterator<UserPublicKey> it = coreNode.getSharingKeys(username);
-            while (it.hasNext())
-            {
-                byte[] b = it.next().getPublicKey();
-                dout.writeInt(b.length);
-                dout.write(b);
-            }
-        }
-
-
-        void getFragment(DataInputStream din, DataOutputStream dout) throws IOException
-        {
-            String username = getString(din);
-            byte[] encodedSharingKey = getByteArray(din);
-            byte[] mapKey = getByteArray(din);
-            ByteArrayWrapper b = coreNode.getFragment(username, encodedSharingKey, mapKey);
-            byte[] bb = b.data;
-            dout.writeInt(bb.length);
-            dout.write(bb);
-        }
-
-        void registerFragment(DataInputStream din, DataOutputStream dout) throws IOException
-        {
-            String recipient = getString(din);
-            byte[] address = getByteArray(din);
-            InetAddress node = InetAddress.getByAddress(address);
-            int port = din.readInt();
-            byte[] hash = getByteArray(din);
+            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            DataInputStream din = new DataInputStream(conn.getInputStream());
+            DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
             
-            boolean isRegistered = coreNode.registerFragment(recipient, new InetSocketAddress(node, port),hash);
-            dout.writeBoolean(isRegistered);
+            serialize(username, dout);
+            serialize(encodedUserKey, dout);
+            serialize(signedHash, dout);
+            
+            return din.readBoolean();
+        } catch (IOException ioe) {
+            ioe.printStackTrace();
+            return false;
+        } finally {
+            if (conn != null)
+                conn.disconnect();
         }
-        void getQuota(DataInputStream din, DataOutputStream dout) throws IOException
+    }
+
+   @Override public synchronized boolean followRequest(String target, byte[] encodedSharingPublicKey)
+    {
+        HttpURLConnection conn = null;
+        try
         {
-            String username = getString(din);
-            long quota = coreNode.getQuota(username);
-            dout.writeLong(quota);
+            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            DataInputStream din = new DataInputStream(conn.getInputStream());
+            DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
+            
+            serialize(target, dout);
+            serialize(encodedSharingPublicKey, dout);
+
+            return din.readBoolean();
+        } catch (IOException ioe) {
+            ioe.printStackTrace();
+            return false;
+        } finally {
+            if (conn != null)
+                conn.disconnect();
         }
-        void getUsage(DataInputStream din, DataOutputStream dout) throws IOException
+    }
+   @Override public boolean removeFollowRequest(String target, byte[] data, byte[] signedHash)
+    {
+        HttpURLConnection conn = null;
+        try
         {
-            String username = getString(din);
-            long usage = coreNode.getUsage(username);
-            dout.writeLong(usage);
+            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            DataInputStream din = new DataInputStream(conn.getInputStream());
+            DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
+            
+            serialize(target, dout);
+            serialize(data, dout);
+            serialize(signedHash, dout);
+
+            return din.readBoolean();
+        } catch (IOException ioe) {
+            ioe.printStackTrace();
+            return false;
+        } finally {
+            if (conn != null)
+                conn.disconnect();
         }
-        void removeUsername(DataInputStream din, DataOutputStream dout) throws IOException
+    }
+   @Override public boolean allowSharingKey(String username, byte[] encodedSharingPublicKey, byte[] signedHash)
+    {
+        HttpURLConnection conn = null;
+        try
         {
-            String username = getString(din);
-            byte[] userKey = getByteArray(din);
-            byte[] signedHash = getByteArray(din);
-            boolean isRemoved = coreNode.removeUsername(username, userKey, signedHash);
-            dout.writeBoolean(isRemoved);
-        } 
+            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            DataInputStream din = new DataInputStream(conn.getInputStream());
+            DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-    }
+            serialize(username, dout);
+            serialize(encodedSharingPublicKey, dout);
+            serialize(signedHash, dout);
 
-    private final HttpServer server;
-    private final AbstractCoreNode coreNode;
+            return din.readBoolean();
+        } catch (IOException ioe) {
+            ioe.printStackTrace();
+            return false;
+        } finally {
+            if (conn != null)
+                conn.disconnect();
+        }
+    }
+   @Override public boolean banSharingKey(String username, byte[] encodedSharingPublicKey, byte[] signedHash)
+    {
+        HttpURLConnection conn = null;
+        try
+        {
+            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            DataInputStream din = new DataInputStream(conn.getInputStream());
+            DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
+            
+            serialize(username, dout);
+            serialize(encodedSharingPublicKey, dout);
+            serialize(signedHash, dout);
 
-    public HTTPCoreNode(AbstractCoreNode coreNode, int port) throws IOException
-    {
-        this.coreNode = coreNode;
-        InetAddress us = IP.getMyPublicAddress();
-        InetSocketAddress address = new InetSocketAddress(us, port);
-        server = HttpServer.create(address, CONNECTION_BACKLOG);
-        server.createContext("/", new CoreNodeHandler());
-        server.setExecutor(Executors.newFixedThreadPool(HANDLER_THREAD_COUNT));
-        server.start();
-    }
+            return din.readBoolean();
 
-    static byte[] getByteArray(DataInputStream din) throws IOException
-    {
-        int l = din.readInt();
-        return getByteArray(l, MAX_KEY_LENGTH);
+        } catch (IOException ioe) {
+            ioe.printStackTrace();
+            return false;
+        } finally {
+            if (conn != null)
+                conn.disconnect();
+        }
     }
-    static byte[] getByteArray(int len) throws IOException
+   @Override public boolean addFragment(String username, byte[] encodedSharingPublicKey, byte[] mapKey, byte[] fragmentData, byte[] sharingKeySignedHash)
     {
-        return getByteArray(len, MAX_KEY_LENGTH);
+        HttpURLConnection conn = null;
+        try
+        {
+            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            DataInputStream din = new DataInputStream(conn.getInputStream());
+            DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
+
+            serialize(username, dout);
+            serialize(encodedSharingPublicKey, dout);
+            serialize(mapKey, dout);
+            serialize(fragmentData, dout);
+            serialize(sharingKeySignedHash, dout);
+
+            return din.readBoolean();
+        } catch (IOException ioe) {
+            ioe.printStackTrace();
+            return false;
+        } finally {
+            if (conn != null)
+                conn.disconnect();
+        }
     }
-    static byte[] getByteArray(int len, int maxLength) throws IOException
+   @Override public boolean removeFragment(String username, byte[] encodedSharingKey, byte[] mapKey, byte[] sharingKeySignedMapKey)
     {
-        if (len > maxLength)
-            throw new IOException("byte array of size "+ len +" too big.");
-        return new byte[len];
+        HttpURLConnection conn = null;
+        try
+        {
+            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            DataInputStream din = new DataInputStream(conn.getInputStream());
+            DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
+            
+            serialize(username, dout);
+            serialize(encodedSharingKey, dout);
+            serialize(mapKey, dout);
+            serialize(sharingKeySignedMapKey, dout);
+
+            return din.readBoolean();
+        } catch (IOException ioe) {
+            ioe.printStackTrace();
+            return false;
+        } finally {
+            if (conn != null)
+                conn.disconnect();
+        }
     }
-    static String getString(DataInputStream din) throws IOException
+   @Override public boolean removeUsername(String username, byte[] userKey, byte[] signedHash)
     {
-        return getString(din, 1024);
+        HttpURLConnection conn = null;
+        try
+        {
+            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            DataInputStream din = new DataInputStream(conn.getInputStream());
+            DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
+            
+            serialize(username, dout);
+            serialize(userKey, dout);
+            serialize(signedHash, dout);
+
+            return din.readBoolean();
+        } catch (IOException ioe) {
+            ioe.printStackTrace();
+            return false;
+        } finally {
+            if (conn != null)
+                conn.disconnect();
+        }
     }
-    static String getString(DataInputStream din, int len) throws IOException
+   @Override public synchronized Iterator<UserPublicKey> getSharingKeys(String username)
     {
-        int l = din.readInt();
-        if (l > len)
-            throw new IOException("String size "+ l + " too long.");
-        byte[] b = new byte[l];
-        din.readFully(b);
-        return new String(b);
+        HttpURLConnection conn = null;
+        try
+        {
+            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            DataInputStream din = new DataInputStream(conn.getInputStream());
+            DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
+            
+            ArrayList<UserPublicKey> sharingKeys = new ArrayList<UserPublicKey>();
+            while(din.readInt() >=0)
+            {
+                byte[] b = deserializeByteArray(din);
+                sharingKeys.add(new UserPublicKey(b));
+            }
+            return sharingKeys.iterator();
+
+        } catch (IOException ioe) {
+            ioe.printStackTrace();
+            return null;
+        } finally {
+            if (conn != null)
+                conn.disconnect();
+        }
     }
+   @Override public synchronized ByteArrayWrapper getFragment(String username, byte[] encodedSharingKey, byte[] mapKey)
+    {
+        HttpURLConnection conn = null;
+        try
+        {
+            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            DataInputStream din = new DataInputStream(conn.getInputStream());
+            DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
+
+            serialize(username, dout);
+            serialize(encodedSharingKey, dout);
+            serialize(mapKey, dout);
+
+            byte[] b = deserializeByteArray(din);
+            return new ByteArrayWrapper(b);
+        } catch (IOException ioe) {
+            ioe.printStackTrace();
+            return null;
+        } finally {
+            if (conn != null)
+                conn.disconnect();
+        }
+    }
+   @Override public synchronized boolean registerFragment(String recipient, InetSocketAddress node, byte[] hash)
+    {
+        HttpURLConnection conn = null;
+        try
+        {
+            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            DataInputStream din = new DataInputStream(conn.getInputStream());
+            DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
+
+            serialize(recipient, dout);
+            serialize(node.getAddress().getAddress(), dout);
+            dout.writeInt(node.getPort());
+            serialize(hash, dout);
+
+            return din.readBoolean();
+        } catch (IOException ioe) {
+            ioe.printStackTrace();
+            return false;
+        } finally {
+            if (conn != null)
+                conn.disconnect();
+        }
+    }
+   @Override public synchronized long getQuota(String user) 
+    {
+        HttpURLConnection conn = null;
+        try
+        {
+            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            DataInputStream din = new DataInputStream(conn.getInputStream());
+            DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
+
+            serialize(user, dout);
+            
+            return din.readLong();
+        } catch (IOException ioe) {
+            ioe.printStackTrace();
+            return -1l;
+        } finally {
+            if (conn != null)
+                conn.disconnect();
+        }
+    }
+   @Override public synchronized long getUsage(String username)
+    {
+        HttpURLConnection conn = null;
+        try
+        {
+            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            DataInputStream din = new DataInputStream(conn.getInputStream());
+            DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
+
+            serialize(username, dout);
+            return din.readLong();
+        } catch (IOException ioe) {
+            ioe.printStackTrace();
+            return -1l;
+        } finally {
+            if (conn != null)
+                conn.disconnect();
+        }
+    }
+   @Override public void close()     
+    {}
 }
