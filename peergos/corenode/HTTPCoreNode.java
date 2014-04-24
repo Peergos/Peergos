@@ -116,10 +116,29 @@ public class HTTPCoreNode
         void removeFragment(DataInputStream din, DataOutputStream dout)
         {
         }
-        void getSharingKeys(DataInputStream din, DataOutputStream dout)
+        void getSharingKeys(DataInputStream din, DataOutputStream dout) throws IOException
         {
+            String username = getString(din);
+            Iterator<UserPublicKey> it = coreNode.getSharingKeys(username);
+            while (it.hasNext())
+            {
+                byte[] b = it.next().getPublicKey();
+                dout.writeInt(b.length);
+                dout.write(b);
+            }
         }
-
+        
+        
+        void getFragment(DataInputStream din, DataOutputStream dout) throws IOException
+        {
+            String username = getString(din);
+            byte[] encodedSharingKey = getByteArray(din);
+            byte[] mapKey = getByteArray(din);
+            ByteArrayWrapper b = coreNode.getFragment(username, encodedSharingKey, mapKey);
+            byte[] bb = b.data;
+            dout.writeInt(bb.length);
+            dout.write(bb);
+        }
         void addStorageNodeState(DataInputStream din, DataOutputStream dout)
         {
         }
@@ -133,8 +152,13 @@ public class HTTPCoreNode
         void getUsage(DataInputStream din, DataOutputStream dout)
         {
         }
-        void removeUsername(DataInputStream din, DataOutputStream dout)
+        void removeUsername(DataInputStream din, DataOutputStream dout) throws IOException
         {
+            String username = getString(din);
+            byte[] userKey = getByteArray(din);
+            byte[] signedHash = getByteArray(din);
+            boolean isRemoved = coreNode.removeUsername(username, userKey, signedHash);
+            dout.writeBoolean(isRemoved);
         } 
 
     }
