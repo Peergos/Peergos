@@ -224,7 +224,7 @@ public abstract class AbstractCoreNode
      */ 
     
     //public boolean addFragment(byte[] userKey, byte[] signedHash, byte[] encodedFragmentData)
-    public boolean addFragment(String username, byte[] encodedSharingPublicKey, byte[] fragmentData, byte[] sharingKeySignedHash)
+    public boolean addFragment(String username, byte[] encodedSharingPublicKey, byte[] mapKey, byte[] fragmentData, byte[] sharingKeySignedHash)
     {
         UserPublicKey userKey = null;
         synchronized(this)
@@ -244,10 +244,10 @@ public abstract class AbstractCoreNode
         if (! sharingKey.isValidSignature(sharingKeySignedHash, fragmentData))
             return false;
 
-        return addFragment(username, sharingKey, fragmentData);
+        return addFragment(username, sharingKey, mapKey, fragmentData);
     }
 
-    protected synchronized boolean addFragment(String username, UserPublicKey sharingKey, byte[] fragmentData)
+    protected synchronized boolean addFragment(String username, UserPublicKey sharingKey, byte[] mapKey, byte[] fragmentData)
     {
          
         UserData userData = userMap.get(username);
@@ -262,12 +262,11 @@ public abstract class AbstractCoreNode
         if (fragments == null)
             return false;
 
-        byte[] hash = sharingKey.hash(fragmentData);
-        ByteArrayWrapper hashW = new ByteArrayWrapper(hash);
-        if (fragments.containsKey(hashW))
+        ByteArrayWrapper keyW = new ByteArrayWrapper(mapKey);
+        if (fragments.containsKey(keyW))
             return false;
         
-        fragments.put(hashW, new ByteArrayWrapper(fragmentData));
+        fragments.put(keyW, new ByteArrayWrapper(fragmentData));
         return true;
     }
 
@@ -352,10 +351,21 @@ public abstract class AbstractCoreNode
         
     } 
 
-    /*
-     * @param userKey X509 encoded key of user that wishes to share a fragment 
-     * @param signedHash the SHA hash of userKey, signed with the user private key 
-     */
+    public synchronized ByteArrayWrapper getFragment(String username, byte[] encodedSharingKey, byte[] mapkey)
+    {
+        UserPublicKey userKey = userNameToPublicKeyMap.get(username);
+        if (userKey == null)
+            return null;
+
+        UserData userData = userMap.get(username);
+        Map<ByteArrayWrapper, ByteArrayWrapper> sharedFragments = userData.fragments.get(new UserPublicKey(encodedSharingKey));
+
+        ByteArrayWrapper key = new ByteArrayWrapper(mapkey);
+        if ((sharedFragments == null) || (!sharedFragments.containsKey(key)))
+            return null;
+        return sharedFragments.get(key);
+    }
+
     public synchronized Iterator<ByteArrayWrapper> getFragments(String username, byte[] encodedSharingKey)
     {
         UserPublicKey userKey = userNameToPublicKeyMap.get(username);
