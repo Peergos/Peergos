@@ -118,14 +118,12 @@ public class CoreNode
 
     }
 
-    /*
-       @Test public void abstractTest() throws Exception 
-       {
+    @Test public void abstractTest() throws Exception 
+    {
 
-       MockCoreNode coreNode = new MockCoreNode();
-       coreNodeTests(coreNode);
-       }
-       */
+        MockCoreNode coreNode = new MockCoreNode();
+        coreNodeTests(coreNode);
+    }
 
     @Test public void httpTest() throws Exception
     {

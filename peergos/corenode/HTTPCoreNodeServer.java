@@ -24,11 +24,12 @@ public class HTTPCoreNodeServer
         public void handle(HttpExchange exchange) throws IOException 
         {
             DataInputStream din = new DataInputStream(exchange.getRequestBody());
+            
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
             DataOutputStream dout = new DataOutputStream(bout);
         
-            String method = deserializeString(din);;
-            System.out.println("method "+ method);
+            String method = deserializeString(din);
+            //System.out.println("method "+ method);
             try
             {
                 switch (method)
@@ -84,9 +85,9 @@ public class HTTPCoreNodeServer
                 byte[] b = bout.toByteArray();
                 exchange.sendResponseHeaders(200, b.length);
                 exchange.getResponseBody().write(b);
-            } finally {
-                System.out.println("HERE 2");
+            } catch (Exception e) {
                 exchange.sendResponseHeaders(400, 0);
+            } finally {
                 exchange.close();
             }
 
@@ -139,7 +140,6 @@ public class HTTPCoreNodeServer
             byte[] signedHash = deserializeByteArray(din);
 
             boolean isAllowed = coreNode.allowSharingKey(username, encodedSharingPublicKey, signedHash);
-
             dout.writeBoolean(isAllowed);
         }
 
@@ -258,7 +258,7 @@ public class HTTPCoreNodeServer
 
     public void close() throws IOException
     {   
-        server.stop(30);
+        server.stop(5);
         coreNode.close();
     }
     static byte[] deserializeByteArray(DataInputStream din) throws IOException

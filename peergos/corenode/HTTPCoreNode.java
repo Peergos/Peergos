@@ -29,11 +29,15 @@ public class HTTPCoreNode extends AbstractCoreNode
         try
         {
             conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn.setDoInput(true);
+            conn.setDoOutput(true);
             DataInputStream din = new DataInputStream(conn.getInputStream());
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
             serialize("getPublicKey", dout);
             serialize(username, dout);
+            dout.flush();
+            
             byte[] publicKey = deserializeByteArray(din); 
             return new UserPublicKey(publicKey);
         } catch (IOException ioe) {
@@ -52,6 +56,7 @@ public class HTTPCoreNode extends AbstractCoreNode
         try
         {
             conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn.setDoInput(true);
             conn.setDoOutput(true);
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
             
@@ -78,9 +83,9 @@ public class HTTPCoreNode extends AbstractCoreNode
         try
         {
             conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn.setDoInput(true);
             conn.setDoOutput(true);
 
-            DataInputStream din = new DataInputStream(conn.getInputStream());
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
         
             serialize("followRequest", dout);    
@@ -88,6 +93,7 @@ public class HTTPCoreNode extends AbstractCoreNode
             serialize(encodedSharingPublicKey, dout);
             dout.flush();
 
+            DataInputStream din = new DataInputStream(conn.getInputStream());
             return din.readBoolean();
         } catch (IOException ioe) {
             ioe.printStackTrace();
@@ -103,8 +109,8 @@ public class HTTPCoreNode extends AbstractCoreNode
         try
         {
             conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn.setDoInput(true);
             conn.setDoOutput(true);
-            DataInputStream din = new DataInputStream(conn.getInputStream());
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
             
             serialize("removeFollowRequest", dout);
@@ -113,6 +119,7 @@ public class HTTPCoreNode extends AbstractCoreNode
             serialize(signedHash, dout);
             dout.flush();
 
+            DataInputStream din = new DataInputStream(conn.getInputStream());
             return din.readBoolean();
         } catch (IOException ioe) {
             ioe.printStackTrace();
@@ -129,20 +136,18 @@ public class HTTPCoreNode extends AbstractCoreNode
         try
         {
             conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn.setDoInput(true);
             conn.setDoOutput(true);
             
-            System.out.println("HERE 4");
-            DataInputStream din = new DataInputStream(conn.getInputStream());
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
-            System.out.println("HERE 45");
 
             serialize("allowSharingKey", dout);
             serialize(username, dout);
             serialize(encodedSharingPublicKey, dout);
             serialize(signedHash, dout);
-            System.out.println("HERE 456");
             dout.flush();
 
+            DataInputStream din = new DataInputStream(conn.getInputStream());
             return din.readBoolean();
         } catch (IOException ioe) {
             ioe.printStackTrace();
@@ -158,9 +163,9 @@ public class HTTPCoreNode extends AbstractCoreNode
         try
         {
             conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn.setDoInput(true);
             conn.setDoOutput(true);
             
-            DataInputStream din = new DataInputStream(conn.getInputStream());
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
             
             serialize("banSharingKey", dout);
@@ -169,6 +174,7 @@ public class HTTPCoreNode extends AbstractCoreNode
             serialize(signedHash, dout);
             dout.flush();
 
+            DataInputStream din = new DataInputStream(conn.getInputStream());
             return din.readBoolean();
 
         } catch (IOException ioe) {
@@ -185,9 +191,9 @@ public class HTTPCoreNode extends AbstractCoreNode
         try
         {
             conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn.setDoInput(true);
             conn.setDoOutput(true);
             
-            DataInputStream din = new DataInputStream(conn.getInputStream());
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
             serialize("addFragment", dout);
@@ -198,6 +204,7 @@ public class HTTPCoreNode extends AbstractCoreNode
             serialize(sharingKeySignedHash, dout);
             dout.flush();
 
+            DataInputStream din = new DataInputStream(conn.getInputStream());
             return din.readBoolean();
         } catch (IOException ioe) {
             ioe.printStackTrace();
@@ -213,9 +220,9 @@ public class HTTPCoreNode extends AbstractCoreNode
         try
         {
             conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn.setDoInput(true);
             conn.setDoOutput(true);
             
-            DataInputStream din = new DataInputStream(conn.getInputStream());
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
             
             serialize("removeFragment", dout);
@@ -225,6 +232,7 @@ public class HTTPCoreNode extends AbstractCoreNode
             serialize(sharingKeySignedMapKey, dout);
             dout.flush();
 
+            DataInputStream din = new DataInputStream(conn.getInputStream());
             return din.readBoolean();
         } catch (IOException ioe) {
             ioe.printStackTrace();
@@ -240,9 +248,9 @@ public class HTTPCoreNode extends AbstractCoreNode
         try
         {
             conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn.setDoInput(true);
             conn.setDoOutput(true);
             
-            DataInputStream din = new DataInputStream(conn.getInputStream());
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
             
             serialize("removeUsername", dout);
@@ -251,6 +259,7 @@ public class HTTPCoreNode extends AbstractCoreNode
             serialize(signedHash, dout);
             dout.flush();
 
+            DataInputStream din = new DataInputStream(conn.getInputStream());
             return din.readBoolean();
         } catch (IOException ioe) {
             ioe.printStackTrace();
@@ -266,18 +275,23 @@ public class HTTPCoreNode extends AbstractCoreNode
         try
         {
             conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn.setDoInput(true);
             conn.setDoOutput(true);
             
-            DataInputStream din = new DataInputStream(conn.getInputStream());
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
             
             serialize("getSharingKeys", dout); 
+            serialize(username, dout); 
             dout.flush();
 
             ArrayList<UserPublicKey> sharingKeys = new ArrayList<UserPublicKey>();
-            while(din.readInt() >=0)
+
+            DataInputStream din = new DataInputStream(conn.getInputStream());
+            int l = 0;
+            while((l = din.readInt()) >=0)
             {
-                byte[] b = deserializeByteArray(din);
+                byte[] b = getByteArray(l);
+                din.readFully(b); 
                 sharingKeys.add(new UserPublicKey(b));
             }
             return sharingKeys.iterator();
@@ -296,9 +310,9 @@ public class HTTPCoreNode extends AbstractCoreNode
         try
         {
             conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn.setDoInput(true);
             conn.setDoOutput(true);
             
-            DataInputStream din = new DataInputStream(conn.getInputStream());
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
             serialize("getFragment", dout);
@@ -307,6 +321,7 @@ public class HTTPCoreNode extends AbstractCoreNode
             serialize(mapKey, dout);
             dout.flush();
 
+            DataInputStream din = new DataInputStream(conn.getInputStream());
             byte[] b = deserializeByteArray(din);
             return new ByteArrayWrapper(b);
         } catch (IOException ioe) {
@@ -323,9 +338,9 @@ public class HTTPCoreNode extends AbstractCoreNode
         try
         {
             conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn.setDoInput(true);
             conn.setDoOutput(true);
             
-            DataInputStream din = new DataInputStream(conn.getInputStream());
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
             serialize("registerFragment", dout);
@@ -335,6 +350,7 @@ public class HTTPCoreNode extends AbstractCoreNode
             serialize(hash, dout);
             dout.flush();
 
+            DataInputStream din = new DataInputStream(conn.getInputStream());
             return din.readBoolean();
         } catch (IOException ioe) {
             ioe.printStackTrace();
@@ -350,15 +366,16 @@ public class HTTPCoreNode extends AbstractCoreNode
         try
         {
             conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn.setDoInput(true);
             conn.setDoOutput(true);
             
-            DataInputStream din = new DataInputStream(conn.getInputStream());
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
             serialize("getQuota", dout);
             serialize(user, dout);
             dout.flush();
-
+            
+            DataInputStream din = new DataInputStream(conn.getInputStream());
             return din.readLong();
         } catch (IOException ioe) {
             ioe.printStackTrace();
@@ -374,15 +391,16 @@ public class HTTPCoreNode extends AbstractCoreNode
         try
         {
             conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn.setDoInput(true);
             conn.setDoOutput(true);
             
-            DataInputStream din = new DataInputStream(conn.getInputStream());
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
             serialize("getUsage", dout);
             serialize(username, dout);
             dout.flush();
 
+            DataInputStream din = new DataInputStream(conn.getInputStream());
             return din.readLong();
         } catch (IOException ioe) {
             ioe.printStackTrace();
