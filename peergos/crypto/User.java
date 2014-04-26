@@ -9,7 +9,7 @@ import java.util.Set;
 
 public class User extends UserPublicKey
 {
-    private final Key privateKey;
+    private final PrivateKey privateKey;
 
     public User(KeyPair pair)
     {
@@ -17,7 +17,7 @@ public class User extends UserPublicKey
         privateKey = pair.getPrivate();
     }
 
-    public User(Key privateKey, Key publicKey)
+    public User(PrivateKey privateKey, PublicKey publicKey)
     {
         super(publicKey);
         this.privateKey = privateKey;
@@ -90,8 +90,8 @@ public class User extends UserPublicKey
     public static User create(byte[] priv, byte[] pub)
     {
         try {
-            Key publicKey = KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(pub));
-            Key privateKey = KeyFactory.getInstance("RSA").generatePrivate(new X509EncodedKeySpec(priv));;
+            PublicKey publicKey = KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(pub));
+            PrivateKey privateKey = KeyFactory.getInstance("RSA").generatePrivate(new X509EncodedKeySpec(priv));;
             return new User(privateKey, publicKey);
         } catch (NoSuchAlgorithmException e)
         {

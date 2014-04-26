@@ -1,7 +1,7 @@
 package peergos.crypto;
 
 import peergos.directory.DirectoryServer;
-import peergos.net.IP;
+import peergos.storage.net.IP;
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.DEROctetString;
 import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;

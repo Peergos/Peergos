@@ -18,9 +18,9 @@ public class UserPublicKey
     public static final String HASH = "SHA-256";
     public static final String SECURE_RANDOM = "SHA1PRNG"; // TODO: need to figure out an implementation using HMAC-SHA-256
 
-    private final Key publicKey;
+    private final PublicKey publicKey;
 
-    public UserPublicKey(Key pub)
+    public UserPublicKey(PublicKey pub)
     {
         this.publicKey = pub;
     }

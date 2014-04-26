@@ -9,7 +9,7 @@ build: server
 server: 
 	mkdir -p build
 	echo "Name: Peergos Storage Server" > def.manifest
-	echo "Main-Class: peergos.dht.Start" >> def.manifest
+	echo "Main-Class: peergos.storage.dht.Start" >> def.manifest
 	echo "Build-Date: " `date` >> def.manifest
 	echo "Class-Path: " $(CP_SPACE)>> def.manifest
 	javac $(JAVA_BUILD_OPTS) -d build `find peergos -name \*.java`

@@ -1,7 +1,7 @@
 package peergos.tests;
 
-import peergos.dht.*;
-import peergos.net.HTTPSMessenger;
+import peergos.storage.dht.*;
+import peergos.storage.net.HTTPSMessenger;
 import peergos.util.*;
 import scala.concurrent.Await;
 import scala.concurrent.Future;
@@ -14,9 +14,9 @@ import java.util.concurrent.TimeUnit;
 public class Scripter extends Thread
 {
     BufferedReader commands;
-    API api;
+    DHTAPI api;
 
-    public Scripter(API api, String source)
+    public Scripter(DHTAPI api, String source)
     {
         this.api = api;
         try
@@ -74,20 +74,6 @@ public class Scripter extends Thread
                         });
                         System.out.println("Sent Contains message");
                         Await.result(fut, timeout);
-                    } else if (parts[1].equals("KEY_PUT")) {
-                        api.createUser(parts[2].getBytes(), Arrays.hexToBytes(parts[3]), new PublicKeyPutHandlerCallback() {
-                            @Override
-                            public void callback(PublicKeyPutHandler handler) {
-                                System.out.println(handler.getResult() ? "Public key put succeeded" : "Public key put failed");
-                            }
-                        });
-                    } else if (parts[1].equals("KEY_GET")) {
-                        api.getPublicKey(parts[2].getBytes(), new PublicKeyGetHandlerCallback() {
-                            @Override
-                            public void callback(PublicKeyGetHandler handler) {
-                                System.out.println(handler.isValid() ? "Public key(" + parts[2] + ") = " + Arrays.bytesToHex(handler.getResult()) : "Unable to retrieve public key");
-                            }
-                        });
                     } else if (parts[1].equals("KILL")) {
                         System.exit(0);
                     } else

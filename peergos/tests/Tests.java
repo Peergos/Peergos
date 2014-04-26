@@ -3,7 +3,7 @@ package peergos.tests;
 import org.junit.runner.JUnitCore;
 import org.junit.runner.Result;
 import org.junit.runner.notification.Failure;
-import peergos.fs.erasure.GaloisPolynomial;
+import peergos.user.UserContext;
 
 public class Tests
 {
@@ -14,7 +14,8 @@ public class Tests
 //        testClass(ErasureCodes.class);
 //        testClass(GaloisPolynomial.Test.class);
 //        testClass(Crypto.class);
-            testClass(CoreNode.class);
+        testClass(UserContext.Test.class);
+        testClass(CoreNode.class);
     }
 
     private static void testClass(Class c)

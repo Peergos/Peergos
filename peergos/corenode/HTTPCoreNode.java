@@ -3,10 +3,8 @@ package peergos.corenode;
 
 import peergos.crypto.*;
 import peergos.util.ByteArrayWrapper;
-import peergos.net.IP;
 
 import java.util.*;
-import java.util.concurrent.*;
 import java.net.*;
 import java.io.*;
 import static peergos.corenode.HTTPCoreNodeServer.*;

@@ -2,7 +2,7 @@ package peergos.directory;
 
 import com.sun.net.httpserver.HttpServer;
 import peergos.crypto.SSL;
-import peergos.net.IP;
+import peergos.storage.net.IP;
 import org.bouncycastle.operator.OperatorCreationException;
 import org.bouncycastle.pkcs.PKCS10CertificationRequest;
 import org.bouncycastle.pkcs.PKCSException;
@@ -24,7 +24,7 @@ import java.util.concurrent.Executors;
 
 public class DirectoryServer
 {
-    public static final int PORT = 8080;
+    public static final int PORT = 9998;
     public static final int THREADS = 5;
     public static final int CONNECTION_BACKLOG = 100;
     private final Map<String, Certificate> storageServers = new ConcurrentHashMap();

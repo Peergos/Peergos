@@ -1,11 +1,11 @@
 package peergos.corenode;
 
 import peergos.crypto.*;
+import peergos.storage.net.IP;
+import peergos.tests.CoreNode;
 import peergos.util.ByteArrayWrapper;
-import peergos.net.IP;
 
 import java.util.*;
-import java.util.concurrent.*;
 import java.net.*;
 import java.io.*;
 
@@ -304,5 +304,17 @@ public class HTTPCoreNodeServer
     {
         dout.writeInt(b.length);
         dout.write(b);
+    }
+
+    public static void createAndStart(String keyfile, char[] passphrase, int port)
+    {
+        // eventually will need our own keypair to sign traffic to other core nodes
+        try {
+            new HTTPCoreNodeServer(AbstractCoreNode.getDefault(), IP.getMyPublicAddress(), port);
+        } catch (Exception e)
+        {
+            e.printStackTrace();
+            System.out.println("Couldn't start Corenode server!");
+        }
     }
 }

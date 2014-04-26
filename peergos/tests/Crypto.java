@@ -3,14 +3,13 @@ package peergos.tests;
 import peergos.crypto.SSL;
 import peergos.crypto.UserPublicKey;
 import peergos.crypto.User;
-import peergos.fs.Chunk;
-import peergos.fs.EncryptedChunk;
-import peergos.net.IP;
+import peergos.user.fs.Chunk;
+import peergos.user.fs.EncryptedChunk;
+import peergos.storage.net.IP;
 import peergos.util.Arrays;
 import org.bouncycastle.pkcs.PKCS10CertificationRequest;
 import org.junit.Test;
 
-import javax.crypto.SecretKey;
 import java.security.KeyPair;
 import java.security.cert.Certificate;
 

@@ -10,6 +10,7 @@ import java.io.*;
 
 public abstract class AbstractCoreNode
 {
+    public static final int PORT = 9999;
     public static final float FRAC_TOLERANCE = 0.001f;
     private static final long DEFAULT_FRAGMENT_LENGTH = 0x10000;
 
@@ -467,5 +468,15 @@ public abstract class AbstractCoreNode
         return Math.max(0, quota - usage);
     }
 
-    public abstract void close() throws IOException; 
+    public abstract void close() throws IOException;
+
+    public static AbstractCoreNode getDefault()
+    {
+        return new AbstractCoreNode() {
+            @Override
+            public void close() throws IOException {
+
+            }
+        };
+    }
 }
