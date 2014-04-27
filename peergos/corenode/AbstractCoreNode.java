@@ -124,6 +124,15 @@ public abstract class AbstractCoreNode
         return userNameToPublicKeyMap.get(username);
     }
 
+    public synchronized String getUsername(byte[] encodedUserKey)
+    {
+        UserPublicKey key = new UserPublicKey(encodedUserKey);
+        String name = userPublicKeyToNameMap.get(key);
+        if (name == null)
+            name = "";
+        return name;
+    }
+
     /*
      * @param userKey X509 encoded public key
      * @param signedHash the SHA hash of bytes in the username, signed with the user private key 

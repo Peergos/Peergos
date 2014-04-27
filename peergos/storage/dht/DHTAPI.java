@@ -87,6 +87,7 @@ public class DHTAPI
 
     public Future<Object> contains(byte[] key, GetHandlerCallback onComplete, OnFailure onError)
     {
+        assert(key.length == 32);
         Future<Object> fut = ask(router, new MessageMailbox(new Message.GET(key)), 20000);
         fut.onSuccess(new GetHandler(key, onComplete), system.dispatcher());
         fut.onFailure(onError, system.dispatcher());
@@ -95,6 +96,7 @@ public class DHTAPI
 
     public Future<Object> get(byte[] key, GetHandlerCallback onComplete, OnFailure onError)
     {
+        assert(key.length == 32);
         Future<Object> fut = ask(router, new MessageMailbox(new Message.GET(key)), 20000);
         fut.onSuccess(new GetHandler(key, onComplete), system.dispatcher());
         fut.onFailure(onError, system.dispatcher());

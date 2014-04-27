@@ -47,6 +47,31 @@ public class HTTPCoreNode extends AbstractCoreNode
         }
     }
 
+    @Override public String getUsername(byte[] publicKey)
+    {
+        HttpURLConnection conn = null;
+        try
+        {
+            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn.setDoInput(true);
+            conn.setDoOutput(true);
+            DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
+
+            serialize("getUsername", dout);
+            serialize(publicKey, dout);
+            dout.flush();
+
+            DataInputStream din = new DataInputStream(conn.getInputStream());
+            byte[] name = deserializeByteArray(din);
+            return new String(name);
+        } catch (IOException ioe) {
+            ioe.printStackTrace();
+            return null;
+        } finally {
+            if (conn != null)
+                conn.disconnect();
+        }
+    }
 
     @Override public boolean addUsername(String username, byte[] encodedUserKey, byte[] signedHash)
     {

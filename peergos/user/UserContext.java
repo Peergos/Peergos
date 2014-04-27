@@ -40,6 +40,12 @@ public class UserContext
         return core.addUsername(username, user.getPublicKey(), signedHash);
     }
 
+    public boolean checkRegistered()
+    {
+        String name = core.getUsername(user.getPublicKey());
+        return name.equals(username);
+    }
+
     public boolean addSharingKey(PublicKey pub)
     {
         byte[] signedHash = user.hashAndSignMessage(pub.getEncoded());

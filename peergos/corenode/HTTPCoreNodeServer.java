@@ -40,6 +40,9 @@ public class HTTPCoreNodeServer
                     case "getPublicKey":
                         getPublicKey(din, dout);
                         break;
+                    case "getUsername":
+                        getUsername(din, dout);
+                        break;
                     case "followRequest":
                         followRequest(din, dout);
                         break;
@@ -113,6 +116,15 @@ public class HTTPCoreNodeServer
             byte[] b = k.getPublicKey();
             dout.writeInt(b.length);
             dout.write(b);
+        }
+
+        void getUsername(DataInputStream din, DataOutputStream dout) throws IOException
+        {
+            byte[] publicKey = deserializeByteArray(din);
+            String k = coreNode.getUsername(publicKey);
+            if (k == null)
+                k="";
+            serialize(k, dout);
         }
 
         void followRequest(DataInputStream din, DataOutputStream dout) throws IOException
@@ -247,6 +259,7 @@ public class HTTPCoreNodeServer
         server.createContext("/", new CoreNodeHandler());
         //server.setExecutor(Executors.newFixedThreadPool(HANDLER_THREAD_COUNT));
         server.setExecutor(null);
+        System.out.printf("Starting core node listening at %s:%d\n", address.getHostAddress(), port);
     }
 
     public void start() throws IOException

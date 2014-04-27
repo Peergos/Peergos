@@ -27,14 +27,10 @@ public class CoreNode
 
     public void coreNodeTests(AbstractCoreNode coreNode) throws Exception
     {
-        //generate key-pair & signed cert
-        //
         User user = User.random();
-        //        KeyPair keyPair = SSL.generateKeyPair();
-        //        UserPublicKey userPublicKey = new UserPublicKey(keyPair.getPublic());
         String username = "USER";
-
         UserContext context = new UserContext(username, user, null, coreNode);
+        assertTrue("Checking for username", !context.checkRegistered());
         assertTrue("added user", context.register());
 
         //
@@ -115,12 +111,11 @@ public class CoreNode
             {
                 MockCoreNode mockCoreNode = new MockCoreNode();
                 InetAddress address = InetAddress.getByName("localhost");
-                int port = 6666;
 
-                server = new HTTPCoreNodeServer(mockCoreNode,address, port);
+                server = new HTTPCoreNodeServer(mockCoreNode,address, AbstractCoreNode.PORT);
                 server.start();
 
-                URL url = new URL("http://localhost:6666/"); 
+                URL url = new URL("http://localhost:"+AbstractCoreNode.PORT+"/");
                 HTTPCoreNode clientCoreNode = new HTTPCoreNode(url);
 
                 coreNodeTests(clientCoreNode);
