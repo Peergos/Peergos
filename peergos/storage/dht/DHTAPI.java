@@ -6,7 +6,6 @@ import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
 import akka.dispatch.OnFailure;
 import akka.dispatch.OnSuccess;
-import peergos.user.fs.Fragment;
 import peergos.storage.net.HTTPSMessenger;
 import peergos.util.Arrays;
 import scala.concurrent.Future;
@@ -63,12 +62,10 @@ public class DHTAPI
         @Override public final void onSuccess(T obj)
         {
             GetOffer offer = (GetOffer) obj;
-//          byte[] frag = HTTPSMessenger.getFragment(offer.getTarget().addr, offer.getTarget().port, "/" + Arrays.bytesToHex(key));
             callback.callback(offer);
         }
     }
 
-    // Fragment DHTAPI
     // 256 bit key / 32 byte
     public Future<Object> put(byte[] key, byte[] value, PutHandlerCallback onComplete, OnFailure onError)
     {
@@ -111,16 +108,4 @@ public class DHTAPI
     {
         return get(key, onComplete, new ErrorHandler());
     }
-
-    // higher level DHTAPI
-    public Future uploadFragment(Fragment f)
-    {
-        return put(f.getHash(), f.getData(), new PutHandlerCallback() {
-            public void callback(PutOffer offer) {
-                System.out.println("Put completed with no error");
-            }
-        });
-    }
-
-
 }

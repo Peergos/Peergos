@@ -1,19 +1,25 @@
 package peergos.user;
 
+import akka.actor.ActorSystem;
+import akka.dispatch.OnFailure;
 import peergos.corenode.AbstractCoreNode;
 import peergos.corenode.HTTPCoreNode;
 import peergos.crypto.User;
 import peergos.storage.dht.DHTAPI;
+import peergos.storage.dht.PutHandlerCallback;
+import peergos.storage.dht.PutOffer;
 import peergos.storage.net.IP;
 import peergos.user.fs.Chunk;
 import peergos.user.fs.EncryptedChunk;
 import peergos.user.fs.Fragment;
 import peergos.user.fs.MetadataBlob;
 import scala.concurrent.Await;
+import scala.concurrent.Future;
 import scala.concurrent.duration.Duration;
 import scala.concurrent.duration.FiniteDuration;
 
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.net.URL;
 import java.security.PublicKey;
 import java.util.Random;
@@ -23,10 +29,10 @@ public class UserContext
 {
     String username;
     User user;
-    DHTAPI dht;
+    DHTUserAPI dht;
     AbstractCoreNode core;
 
-    public UserContext(String username, User user, DHTAPI dht, AbstractCoreNode core)
+    public UserContext(String username, User user, DHTUserAPI dht, AbstractCoreNode core)
     {
         this.username = username;
         this.user = user;
@@ -52,6 +58,11 @@ public class UserContext
         return core.allowSharingKey(username, pub.getEncoded(), signedHash);
     }
 
+    public Future uploadFragment(Fragment f)
+    {
+        return dht.put(f.getHash(), f.getData());
+    }
+
     public MetadataBlob uploadChunk(byte[] raw, byte[] initVector)
     {
         Chunk chunk = new Chunk(raw);
@@ -61,7 +72,7 @@ public class UserContext
         FiniteDuration timeout = Duration.create(30, TimeUnit.SECONDS);
         for (Fragment f: fragments)
             try {
-                Await.result(dht.uploadFragment(f), timeout);
+                Await.result(uploadFragment(f), timeout);
             } catch (Exception e) {e.printStackTrace();}
         return new MetadataBlob(fragments, initVector);
     }
@@ -73,6 +84,8 @@ public class UserContext
         @org.junit.Test
         public void all() throws IOException
         {
+            ActorSystem system = ActorSystem.create("UserRouter");
+
             // create a CoreNode API
             URL coreURL = new URL("http://"+IP.getMyPublicAddress()+":"+ AbstractCoreNode.PORT+"/");
             HTTPCoreNode clientCoreNode = new HTTPCoreNode(coreURL);
@@ -82,10 +95,12 @@ public class UserContext
             String ourname = "USER";
 
             // create a DHT API
-            DHTAPI dht = null;
+            DHTUserAPI dht = new HttpsUserAPI(new InetSocketAddress(IP.getMyPublicAddress(), 8000), system);
 
             UserContext context = new UserContext(ourname, us, dht, clientCoreNode);
 //            uploadChunkTest(context);
+
+            system.shutdown();
         }
 
         public void uploadChunkTest(UserContext context)

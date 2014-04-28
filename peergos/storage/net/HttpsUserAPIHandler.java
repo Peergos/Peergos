@@ -9,6 +9,7 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import peergos.storage.dht.*;
 import peergos.user.fs.Fragment;
+import peergos.util.Arrays;
 import peergos.util.Serialize;
 import scala.concurrent.Future;
 
@@ -42,7 +43,7 @@ public class HttpsUserAPIHandler implements HttpHandler
             {
                 Future<Object> fut = ask(router, new MessageMailbox(m), 30000);
                 DataOutputStream dout = new DataOutputStream(httpExchange.getResponseBody());
-                fut.onSuccess(new DHTAPI.GetHandler(((Message.GET) m).getKey(), new GetSuccess(dout)), system.dispatcher());
+                fut.onSuccess(new DHTAPI.GetHandler(((Message.GET) m).getKey(), new GetSuccess(((Message.GET) m).getKey(), dout)), system.dispatcher());
                 fut.onFailure(new Failure(dout), system.dispatcher());
             }
             else if (type == 2) // CONTAINS
@@ -83,9 +84,11 @@ public class HttpsUserAPIHandler implements HttpHandler
     private static class GetSuccess implements GetHandlerCallback
     {
         private final DataOutputStream dout;
+        private final byte[] key;
 
-        private GetSuccess(DataOutputStream dout)
+        private GetSuccess(byte[] key, DataOutputStream dout)
         {
+            this.key = key;
             this.dout = dout;
         }
 
@@ -93,7 +96,8 @@ public class HttpsUserAPIHandler implements HttpHandler
         public void callback(GetOffer offer) {
             try {
                 dout.writeInt(1); // success
-                Serialize.serialize(offer.getTarget().toString(), dout);
+                byte[] frag = HTTPSMessenger.getFragment(offer.getTarget().addr, offer.getTarget().port, "/" + Arrays.bytesToHex(key));
+                Serialize.serialize(frag, dout);
                 dout.flush();
                 dout.close();
             } catch (IOException e)
