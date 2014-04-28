@@ -1,25 +1,23 @@
 package peergos.util;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
+import java.io.*;
 
 public class Serialize
 {
 
-    public static void serialize(byte[] b, DataOutputStream dout) throws IOException
+    public static void serialize(byte[] b, DataOutput dout) throws IOException
     {
         dout.writeInt(b.length);
         dout.write(b);
     }
 
-    public static void serialize(String s, DataOutputStream dout) throws IOException
+    public static void serialize(String s, DataOutput dout) throws IOException
     {
         dout.writeInt(s.length());
         dout.write(s.getBytes());
     }
 
-    public static String deserializeString(DataInputStream din, int len) throws IOException
+    public static String deserializeString(DataInput din, int len) throws IOException
     {
         int l = din.readInt();
         if (l > len)
@@ -29,7 +27,7 @@ public class Serialize
         return new String(b);
     }
 
-    public static byte[] deserializeByteArray(DataInputStream din, int maxLength) throws IOException
+    public static byte[] deserializeByteArray(DataInput din, int maxLength) throws IOException
     {
         int l = din.readInt();
         byte[] b = getByteArray(l, maxLength);

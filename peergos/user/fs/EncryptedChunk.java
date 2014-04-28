@@ -10,7 +10,7 @@ import java.security.*;
 
 public class EncryptedChunk
 {
-    public static final int IV_SIZE = 32;
+    public static final int IV_SIZE = 16;
     public static final int ERASURE_ORIGINAL = 40;
     public static final int ERASURE_ALLOWED_FAILURES = 10;
     private final byte[] encrypted;

@@ -119,6 +119,18 @@ public class SSL
         return new KeyPair(publicKey, privateKey);
     }
 
+    public static KeyStore getTrustedKeyStore()
+            throws KeyStoreException, IOException, NoSuchAlgorithmException, CertificateException, InvalidKeyException,
+            NoSuchProviderException, SignatureException, OperatorCreationException
+    {
+        KeyStore ks = KeyStore.getInstance("PKCS12", "BC");
+        ks.load(null, "notsecret".toCharArray());
+        Certificate rootCert = getRootCertificate();
+        KeyStore.Entry root = new KeyStore.TrustedCertificateEntry(rootCert);
+        ks.setEntry("rootca", root, null);
+        return ks;
+    }
+
     public static KeyStore getKeyStore(char[] password)
             throws KeyStoreException, IOException, NoSuchAlgorithmException, CertificateException, InvalidKeyException,
             NoSuchProviderException, SignatureException, OperatorCreationException

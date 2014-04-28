@@ -44,7 +44,8 @@ public class Scripter extends Thread
 
                 try {
                     if (parts[1].equals("PUT")) {
-                        Future<Object> fut = api.put(Arrays.hexToBytes(parts[2]), Arrays.hexToBytes(parts[3]), new PutHandlerCallback() {
+                        Future<Object> fut = api.put(Arrays.hexToBytes(parts[2]), Arrays.hexToBytes(parts[3]),
+                                parts[4], Arrays.hexToBytes(parts[5]), Arrays.hexToBytes(parts[6]), new PutHandlerCallback() {
                             public void callback(PutOffer offer) {
                                 System.out.println("Put completed with no error");
                             }

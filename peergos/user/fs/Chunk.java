@@ -22,7 +22,7 @@ public class Chunk
     public Chunk(byte[] data)
     {
         if (data.length > MAX_SIZE)
-            throw new IllegalArgumentException("Chunk size must be smaller than " + MAX_SIZE);
+            throw new IllegalArgumentException("Chunk size can be at most " + MAX_SIZE);
         this.data = data;
         key = generateKey();
     }

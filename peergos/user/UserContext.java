@@ -1,13 +1,10 @@
 package peergos.user;
 
 import akka.actor.ActorSystem;
-import akka.dispatch.OnFailure;
 import peergos.corenode.AbstractCoreNode;
 import peergos.corenode.HTTPCoreNode;
+import peergos.corenode.HTTPCoreNodeServer;
 import peergos.crypto.User;
-import peergos.storage.dht.DHTAPI;
-import peergos.storage.dht.PutHandlerCallback;
-import peergos.storage.dht.PutOffer;
 import peergos.storage.net.IP;
 import peergos.user.fs.Chunk;
 import peergos.user.fs.EncryptedChunk;
@@ -17,6 +14,7 @@ import scala.concurrent.Await;
 import scala.concurrent.Future;
 import scala.concurrent.duration.Duration;
 import scala.concurrent.duration.FiniteDuration;
+import static org.junit.Assert.*;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -27,43 +25,46 @@ import java.util.concurrent.TimeUnit;
 
 public class UserContext
 {
+    public static final int MAX_USERNAME_SIZE = 1024;
+    public static final int MAX_KEY_SIZE = 1024;
+
     String username;
-    User user;
+    User us;
     DHTUserAPI dht;
     AbstractCoreNode core;
 
     public UserContext(String username, User user, DHTUserAPI dht, AbstractCoreNode core)
     {
         this.username = username;
-        this.user = user;
+        this.us = user;
         this.dht = dht;
         this.core = core;
     }
 
     public boolean register()
     {
-        byte[] signedHash = user.hashAndSignMessage(username.getBytes());
-        return core.addUsername(username, user.getPublicKey(), signedHash);
+        byte[] signedHash = us.hashAndSignMessage(username.getBytes());
+        return core.addUsername(username, us.getPublicKey(), signedHash);
     }
 
     public boolean checkRegistered()
     {
-        String name = core.getUsername(user.getPublicKey());
+        String name = core.getUsername(us.getPublicKey());
         return name.equals(username);
     }
 
     public boolean addSharingKey(PublicKey pub)
     {
-        byte[] signedHash = user.hashAndSignMessage(pub.getEncoded());
+        byte[] signedHash = us.hashAndSignMessage(pub.getEncoded());
         return core.allowSharingKey(username, pub.getEncoded(), signedHash);
     }
 
-    public Future uploadFragment(Fragment f)
+    public Future uploadFragment(Fragment f, String targetUser, User sharer)
     {
-        return dht.put(f.getHash(), f.getData());
+        return dht.put(f.getHash(), f.getData(), targetUser, sharer.getPublicKey(), sharer.hashAndSignMessage(f.getHash()));
     }
 
-    public MetadataBlob uploadChunk(byte[] raw, byte[] initVector)
+    public MetadataBlob uploadChunk(byte[] raw, byte[] initVector, String target, User sharer)
     {
         Chunk chunk = new Chunk(raw);
         EncryptedChunk encryptedChunk = new EncryptedChunk(chunk.encrypt(initVector));
@@ -72,7 +73,7 @@ public class UserContext
         FiniteDuration timeout = Duration.create(30, TimeUnit.SECONDS);
         for (Fragment f: fragments)
             try {
-                Await.result(uploadFragment(f), timeout);
+                Await.result(uploadFragment(f, target, sharer), timeout);
             } catch (Exception e) {e.printStackTrace();}
         return new MetadataBlob(fragments, initVector);
     }
@@ -84,26 +85,48 @@ public class UserContext
         @org.junit.Test
         public void all() throws IOException
         {
-            ActorSystem system = ActorSystem.create("UserRouter");
+            HTTPCoreNodeServer server = null;
+            ActorSystem system = null;
+            try {
+                system = ActorSystem.create("UserRouter");
 
-            // create a CoreNode API
-            URL coreURL = new URL("http://"+IP.getMyPublicAddress()+":"+ AbstractCoreNode.PORT+"/");
-            HTTPCoreNode clientCoreNode = new HTTPCoreNode(coreURL);
+                // create a CoreNode API
+                AbstractCoreNode mockCoreNode = new AbstractCoreNode() {
+                    @Override
+                    public void close() throws IOException {
 
-            // create a new user
-            User us = User.random();
-            String ourname = "USER";
+                    }
+                };
+                server = new HTTPCoreNodeServer(mockCoreNode, IP.getMyPublicAddress(), AbstractCoreNode.PORT);
+                server.start();
+                URL coreURL = new URL("http://"+IP.getMyPublicAddress().getHostAddress()+":"+ AbstractCoreNode.PORT+"/");
+                HTTPCoreNode clientCoreNode = new HTTPCoreNode(coreURL);
 
-            // create a DHT API
-            DHTUserAPI dht = new HttpsUserAPI(new InetSocketAddress(IP.getMyPublicAddress(), 8000), system);
+                // create a new us
+                User us = User.random();
+                String ourname = "USER";
 
-            UserContext context = new UserContext(ourname, us, dht, clientCoreNode);
-//            uploadChunkTest(context);
+                // create a DHT API
+                DHTUserAPI dht = new HttpsUserAPI(new InetSocketAddress(IP.getMyPublicAddress(), 8000), system);
 
-            system.shutdown();
+                UserContext context = new UserContext(ourname, us, dht, clientCoreNode);
+                assertTrue("Not already registered", !context.checkRegistered());
+                assertTrue("Register", context.register());
+
+                User sharer = User.random();
+                context.addSharingKey(sharer.getKey());
+
+                uploadChunkTest(context, sharer);
+
+            } finally
+            {
+                if (server != null)
+                    server.close();
+                system.shutdown();
+            }
         }
 
-        public void uploadChunkTest(UserContext context)
+        public void uploadChunkTest(UserContext context, User sharer)
         {
             Random r = new Random();
             byte[] initVector = new byte[EncryptedChunk.IV_SIZE];
@@ -113,7 +136,7 @@ public class UserContext
             for (int i=0; i < raw.length/32; i++)
                 System.arraycopy(contents, 0, raw, 32*i, 32);
 
-            MetadataBlob meta = context.uploadChunk(raw, initVector);
+            MetadataBlob meta = context.uploadChunk(raw, initVector, context.username, sharer);
             // upload metadata to core node
             byte[] metablob = meta.serialize();
 

@@ -106,8 +106,15 @@ public class Start
             throw new IllegalStateException("Need a script argument for test mode");
         String script = Args.getParameter("script");
         Start.main(new String[] {"-directoryServer"});
-        String[] args = new String[]{"-firstNode", "-port", "8000", "-logMessages"};//, "-script", script};
+
+        String[] args;
+        if (nodes > 1 )
+            args = new String[]{"-firstNode", "-port", "8000", "-logMessages"};//, "-script", script};
+        else
+            args = new String[]{"-firstNode", "-port", "8000", "-logMessages", "-script", script};
         Start.main(args);
+        if (nodes == 1)
+            return;
         args = new String[]{"-port", "", "-logMessages", "-contactIP", IP.getMyPublicAddress().getHostAddress(), "-contactPort", args[2]};
         if (nodes > 1)
             for (int i = 0; i < nodes - 2; i++)

@@ -4,7 +4,7 @@ import scala.concurrent.Future;
 
 public abstract class DHTUserAPI
 {
-    public abstract Future put(byte[] key, byte[] value);
+    public abstract Future put(byte[] key, byte[] value, final String user, final byte[] sharingKey, final byte[] signedHashOfKey);
 
     public abstract Future<Boolean> contains(byte[] key);
 

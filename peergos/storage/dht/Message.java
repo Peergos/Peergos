@@ -1,5 +1,6 @@
 package peergos.storage.dht;
 
+import peergos.user.UserContext;
 import peergos.util.*;
 import peergos.util.Arrays;
 
@@ -164,13 +165,19 @@ public abstract class Message
         private final long target;
         private final byte[] key;
         private final int len;
+        private final String user;
+        private final byte[] sharingKey;
+        private final byte[] signedHashOfKey;
 
-        public PUT(byte[] key, int len)
+        public PUT(byte[] key, int len, String user, byte[] sharingKey, byte[] signedHashOfKey)
         {
             super(Type.PUT);
             this.key = key;
             target = Arrays.getLong(key, 0);
             this.len = len;
+            this.user = user;
+            this.sharingKey = sharingKey;
+            this.signedHashOfKey = signedHashOfKey;
         }
 
         public PUT(DataInput in) throws IOException
@@ -180,6 +187,9 @@ public abstract class Message
             in.readFully(key);
             len = in.readInt();
             target = Arrays.getLong(key, 0);
+            user = Serialize.deserializeString(in, UserContext.MAX_USERNAME_SIZE);
+            sharingKey = Serialize.deserializeByteArray(in, UserContext.MAX_KEY_SIZE);
+            signedHashOfKey = Serialize.deserializeByteArray(in, UserContext.MAX_KEY_SIZE);
         }
 
         public long getTarget()
@@ -192,6 +202,9 @@ public abstract class Message
             super.write(out);
             out.write(key);
             out.writeInt(len);
+            Serialize.serialize(user, out);
+            Serialize.serialize(sharingKey, out);
+            Serialize.serialize(signedHashOfKey, out);
         }
 
         public byte[] getKey()
