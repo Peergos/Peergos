@@ -3,6 +3,7 @@ package peergos.corenode;
 
 import peergos.crypto.*;
 import peergos.util.ByteArrayWrapper;
+import peergos.util.Serialize;
 
 import java.util.*;
 import java.net.*;
@@ -32,8 +33,8 @@ public class HTTPCoreNode extends AbstractCoreNode
             DataInputStream din = new DataInputStream(conn.getInputStream());
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-            serialize("getPublicKey", dout);
-            serialize(username, dout);
+            Serialize.serialize("getPublicKey", dout);
+            Serialize.serialize(username, dout);
             dout.flush();
             
             byte[] publicKey = deserializeByteArray(din); 
@@ -57,8 +58,8 @@ public class HTTPCoreNode extends AbstractCoreNode
             conn.setDoOutput(true);
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-            serialize("getUsername", dout);
-            serialize(publicKey, dout);
+            Serialize.serialize("getUsername", dout);
+            Serialize.serialize(publicKey, dout);
             dout.flush();
 
             DataInputStream din = new DataInputStream(conn.getInputStream());
@@ -83,10 +84,10 @@ public class HTTPCoreNode extends AbstractCoreNode
             conn.setDoOutput(true);
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
             
-            serialize("addUsername", dout);
-            serialize(username, dout);
-            serialize(encodedUserKey, dout);
-            serialize(signedHash, dout);
+            Serialize.serialize("addUsername", dout);
+            Serialize.serialize(username, dout);
+            Serialize.serialize(encodedUserKey, dout);
+            Serialize.serialize(signedHash, dout);
             dout.flush();
             
             DataInputStream din = new DataInputStream(conn.getInputStream());
@@ -111,9 +112,9 @@ public class HTTPCoreNode extends AbstractCoreNode
 
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
         
-            serialize("followRequest", dout);    
-            serialize(target, dout);
-            serialize(encodedSharingPublicKey, dout);
+            Serialize.serialize("followRequest", dout);
+            Serialize.serialize(target, dout);
+            Serialize.serialize(encodedSharingPublicKey, dout);
             dout.flush();
 
             DataInputStream din = new DataInputStream(conn.getInputStream());
@@ -136,10 +137,10 @@ public class HTTPCoreNode extends AbstractCoreNode
             conn.setDoOutput(true);
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
             
-            serialize("removeFollowRequest", dout);
-            serialize(target, dout);
-            serialize(data, dout);
-            serialize(signedHash, dout);
+            Serialize.serialize("removeFollowRequest", dout);
+            Serialize.serialize(target, dout);
+            Serialize.serialize(data, dout);
+            Serialize.serialize(signedHash, dout);
             dout.flush();
 
             DataInputStream din = new DataInputStream(conn.getInputStream());
@@ -164,10 +165,10 @@ public class HTTPCoreNode extends AbstractCoreNode
             
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-            serialize("allowSharingKey", dout);
-            serialize(username, dout);
-            serialize(encodedSharingPublicKey, dout);
-            serialize(signedHash, dout);
+            Serialize.serialize("allowSharingKey", dout);
+            Serialize.serialize(username, dout);
+            Serialize.serialize(encodedSharingPublicKey, dout);
+            Serialize.serialize(signedHash, dout);
             dout.flush();
 
             DataInputStream din = new DataInputStream(conn.getInputStream());
@@ -191,10 +192,10 @@ public class HTTPCoreNode extends AbstractCoreNode
             
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
             
-            serialize("banSharingKey", dout);
-            serialize(username, dout);
-            serialize(encodedSharingPublicKey, dout);
-            serialize(signedHash, dout);
+            Serialize.serialize("banSharingKey", dout);
+            Serialize.serialize(username, dout);
+            Serialize.serialize(encodedSharingPublicKey, dout);
+            Serialize.serialize(signedHash, dout);
             dout.flush();
 
             DataInputStream din = new DataInputStream(conn.getInputStream());
@@ -219,12 +220,12 @@ public class HTTPCoreNode extends AbstractCoreNode
             
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-            serialize("addFragment", dout);
-            serialize(username, dout);
-            serialize(encodedSharingPublicKey, dout);
-            serialize(mapKey, dout);
-            serialize(fragmentData, dout);
-            serialize(sharingKeySignedHash, dout);
+            Serialize.serialize("addFragment", dout);
+            Serialize.serialize(username, dout);
+            Serialize.serialize(encodedSharingPublicKey, dout);
+            Serialize.serialize(mapKey, dout);
+            Serialize.serialize(fragmentData, dout);
+            Serialize.serialize(sharingKeySignedHash, dout);
             dout.flush();
 
             DataInputStream din = new DataInputStream(conn.getInputStream());
@@ -248,11 +249,11 @@ public class HTTPCoreNode extends AbstractCoreNode
             
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
             
-            serialize("removeFragment", dout);
-            serialize(username, dout);
-            serialize(encodedSharingKey, dout);
-            serialize(mapKey, dout);
-            serialize(sharingKeySignedMapKey, dout);
+            Serialize.serialize("removeFragment", dout);
+            Serialize.serialize(username, dout);
+            Serialize.serialize(encodedSharingKey, dout);
+            Serialize.serialize(mapKey, dout);
+            Serialize.serialize(sharingKeySignedMapKey, dout);
             dout.flush();
 
             DataInputStream din = new DataInputStream(conn.getInputStream());
@@ -276,10 +277,10 @@ public class HTTPCoreNode extends AbstractCoreNode
             
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
             
-            serialize("removeUsername", dout);
-            serialize(username, dout);
-            serialize(userKey, dout);
-            serialize(signedHash, dout);
+            Serialize.serialize("removeUsername", dout);
+            Serialize.serialize(username, dout);
+            Serialize.serialize(userKey, dout);
+            Serialize.serialize(signedHash, dout);
             dout.flush();
 
             DataInputStream din = new DataInputStream(conn.getInputStream());
@@ -303,8 +304,8 @@ public class HTTPCoreNode extends AbstractCoreNode
             
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
             
-            serialize("getSharingKeys", dout); 
-            serialize(username, dout); 
+            Serialize.serialize("getSharingKeys", dout);
+            Serialize.serialize(username, dout);
             dout.flush();
 
             ArrayList<UserPublicKey> sharingKeys = new ArrayList<UserPublicKey>();
@@ -338,10 +339,10 @@ public class HTTPCoreNode extends AbstractCoreNode
             
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-            serialize("getFragment", dout);
-            serialize(username, dout);
-            serialize(encodedSharingKey, dout);
-            serialize(mapKey, dout);
+            Serialize.serialize("getFragment", dout);
+            Serialize.serialize(username, dout);
+            Serialize.serialize(encodedSharingKey, dout);
+            Serialize.serialize(mapKey, dout);
             dout.flush();
 
             DataInputStream din = new DataInputStream(conn.getInputStream());
@@ -366,11 +367,11 @@ public class HTTPCoreNode extends AbstractCoreNode
             
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-            serialize("registerFragment", dout);
-            serialize(recipient, dout);
-            serialize(node.getAddress().getAddress(), dout);
+            Serialize.serialize("registerFragment", dout);
+            Serialize.serialize(recipient, dout);
+            Serialize.serialize(node.getAddress().getAddress(), dout);
             dout.writeInt(node.getPort());
-            serialize(hash, dout);
+            Serialize.serialize(hash, dout);
             dout.flush();
 
             DataInputStream din = new DataInputStream(conn.getInputStream());
@@ -394,8 +395,8 @@ public class HTTPCoreNode extends AbstractCoreNode
             
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-            serialize("getQuota", dout);
-            serialize(user, dout);
+            Serialize.serialize("getQuota", dout);
+            Serialize.serialize(user, dout);
             dout.flush();
             
             DataInputStream din = new DataInputStream(conn.getInputStream());
@@ -419,8 +420,8 @@ public class HTTPCoreNode extends AbstractCoreNode
             
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-            serialize("getUsage", dout);
-            serialize(username, dout);
+            Serialize.serialize("getUsage", dout);
+            Serialize.serialize(username, dout);
             dout.flush();
 
             DataInputStream din = new DataInputStream(conn.getInputStream());

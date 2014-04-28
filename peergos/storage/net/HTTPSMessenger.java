@@ -2,6 +2,7 @@ package peergos.storage.net;
 
 import akka.actor.AbstractActor;
 import akka.actor.ActorRef;
+import akka.actor.ActorSystem;
 import akka.actor.Props;
 import akka.japi.Creator;
 import akka.japi.pf.FI;
@@ -29,6 +30,7 @@ import java.util.logging.Logger;
 public class HTTPSMessenger extends AbstractActor
 {
     public static final String MESSAGE_URL = "/message/";
+    public static final String USER_URL = "/user/";
 
     public static final int THREADS = 5;
     public static final int CONNECTION_BACKLOG = 100;
@@ -57,7 +59,7 @@ public class HTTPSMessenger extends AbstractActor
         receive(ReceiveBuilder.match(INITIALIZE.class, new FI.UnitApply<INITIALIZE>() {
             @Override
             public void apply(INITIALIZE j) throws Exception {
-                if (init(sender()))
+                if (init(sender(), context().system()))
                 {
                     context().become(ready);
                     sender().tell(new INITIALIZED(), self());
@@ -80,7 +82,7 @@ public class HTTPSMessenger extends AbstractActor
         });
     }
 
-    public boolean init(ActorRef router) throws IOException {
+    public boolean init(ActorRef router, ActorSystem system) throws IOException {
         try
         {
             InetAddress us = IP.getMyPublicAddress();
@@ -136,6 +138,7 @@ public class HTTPSMessenger extends AbstractActor
         }
 
         httpsServer.createContext(MESSAGE_URL, new HttpsMessageHandler(router));
+        httpsServer.createContext(USER_URL, new HttpsUserAPIHandler(router, system));
         httpsServer.createContext("/", new StoragePutHandler(fragments, "/"));
         httpsServer.setExecutor(Executors.newFixedThreadPool(THREADS));
         httpsServer.start();

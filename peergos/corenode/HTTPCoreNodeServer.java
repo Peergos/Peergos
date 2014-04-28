@@ -2,7 +2,6 @@ package peergos.corenode;
 
 import peergos.crypto.*;
 import peergos.storage.net.IP;
-import peergos.tests.CoreNode;
 import peergos.util.ByteArrayWrapper;
 
 import java.util.*;
@@ -10,6 +9,7 @@ import java.net.*;
 import java.io.*;
 
 import com.sun.net.httpserver.*;
+import peergos.util.Serialize;
 
 public class HTTPCoreNodeServer
 {
@@ -124,7 +124,7 @@ public class HTTPCoreNodeServer
             String k = coreNode.getUsername(publicKey);
             if (k == null)
                 k="";
-            serialize(k, dout);
+            Serialize.serialize(k, dout);
         }
 
         void followRequest(DataInputStream din, DataOutputStream dout) throws IOException
@@ -276,47 +276,17 @@ public class HTTPCoreNodeServer
     }
     static byte[] deserializeByteArray(DataInputStream din) throws IOException
     {
-        return deserializeByteArray(din, MAX_KEY_LENGTH);
+        return Serialize.deserializeByteArray(din, MAX_KEY_LENGTH);
     }
-    static byte[] deserializeByteArray(DataInputStream din, int maxLength) throws IOException
-    {
-        int l = din.readInt();
-        byte[] b = getByteArray(l, maxLength);
-        din.readFully(b);
-        return b;
-    }
+
     static byte[] getByteArray(int len) throws IOException
     {
-        return getByteArray(len, MAX_KEY_LENGTH);
+        return Serialize.getByteArray(len, MAX_KEY_LENGTH);
     }
-    static byte[] getByteArray(int len, int maxLength) throws IOException
-    {
-        if (len > maxLength)
-            throw new IOException("byte array of size "+ len +" too big.");
-        return new byte[len];
-    }
+
     static String deserializeString(DataInputStream din) throws IOException
     {
-        return deserializeString(din, 1024);
-    }
-    static String deserializeString(DataInputStream din, int len) throws IOException
-    {
-        int l = din.readInt();
-        if (l > len)
-            throw new IOException("String size "+ l + " too long.");
-        byte[] b = new byte[l];
-        din.readFully(b);
-        return new String(b);
-    }
-    static void serialize(String s, DataOutputStream dout) throws IOException
-    {
-        dout.writeInt(s.length());
-        dout.write(s.getBytes());
-    }
-    static void serialize(byte[] b, DataOutputStream dout) throws IOException
-    {
-        dout.writeInt(b.length);
-        dout.write(b);
+        return Serialize.deserializeString(din, 1024);
     }
 
     public static void createAndStart(String keyfile, char[] passphrase, int port)

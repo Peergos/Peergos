@@ -27,7 +27,7 @@ public class DHTAPI
     static class ErrorHandler extends OnFailure {    @Override public final void onFailure(Throwable e) {      e.printStackTrace();    } }
     static class PrintResult<T> extends OnSuccess<T> {    @Override public final void onSuccess(T t) {      System.out.println(t);    } }
 
-    static class PutHandler<T> extends OnSuccess<T> {
+    public static class PutHandler<T> extends OnSuccess<T> {
         private final byte[] key, value;
         private final PutHandlerCallback callback;
 
@@ -51,7 +51,7 @@ public class DHTAPI
         }
     }
 
-    static class GetHandler<T> extends OnSuccess<T> {
+    public static class GetHandler<T> extends OnSuccess<T> {
         private final byte[] key;
         private final GetHandlerCallback callback;
 
@@ -63,14 +63,8 @@ public class DHTAPI
         @Override public final void onSuccess(T obj)
         {
             GetOffer offer = (GetOffer) obj;
-            try {
-                byte[] frag = HTTPSMessenger.getFragment(offer.getTarget().addr, offer.getTarget().port, "/" + Arrays.bytesToHex(key));
-                callback.callback(offer);
-            } catch (IOException e)
-            {
-                // what do here?
-                e.printStackTrace();
-            }
+//          byte[] frag = HTTPSMessenger.getFragment(offer.getTarget().addr, offer.getTarget().port, "/" + Arrays.bytesToHex(key));
+            callback.callback(offer);
         }
     }
 
