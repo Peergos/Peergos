@@ -22,6 +22,7 @@ import java.util.concurrent.TimeUnit;
 
 public class Start
 {
+    static ActorSystem system = ActorSystem.create("DHTRouter");;
 
     public static void main(String[] args) throws IOException
     {
@@ -68,7 +69,6 @@ public class Start
         }
         else {
             int port = Args.getInt("port", 8000);
-            ActorSystem system = ActorSystem.create("DHTRouter");
             ActorRef router = Router.start(system, port);
             final Inbox inbox = Inbox.create(system);
             inbox.send(router, new HttpsMessenger.INITIALIZE());
@@ -118,11 +118,11 @@ public class Start
         if (nodes > 1)
             for (int i = 0; i < nodes - 2; i++)
             {
-                args[1] = 9000 + 1000 * i + "";
+                args[1] = 9000 + 500 * i + "";
                 Start.main(args);
             }
         // execute the script on the last node
-        args[1] = 9000 + 1000 * (nodes-2) + "";
+        args[1] = 9000 + 500 * (nodes-2) + "";
         List<String> finalNodeArgs = new LinkedList();
         finalNodeArgs.addAll(java.util.Arrays.asList(args));
         finalNodeArgs.add("-script");
