@@ -124,11 +124,26 @@ public class SSL
             NoSuchProviderException, SignatureException, OperatorCreationException
     {
         KeyStore ks = KeyStore.getInstance("PKCS12", "BC");
-        ks.load(null, "notsecret".toCharArray());
-        Certificate rootCert = getRootCertificate();
+        ks.load(null);
+        X509Certificate rootCert = (X509Certificate) getRootCertificate();
         KeyStore.Entry root = new KeyStore.TrustedCertificateEntry(rootCert);
-        ks.setEntry("rootca", root, null);
+        String rootAlias = getCommonName(rootCert);
+        ks.setEntry(rootAlias, root, null);
+//        Certificate[] dirs = SSL.getDirectoryServerCertificates();
+//        for (Certificate dir: dirs) {
+//            String alias = ((X509Certificate) dir).getSubjectX500Principal().getName();
+//            ks.setCertificateEntry(alias, dir);
+//        }
         return ks;
+    }
+
+    public static String getCommonName(X509Certificate cert)
+    {
+        try {
+            X500Name x500name = new JcaX509CertificateHolder(cert).getSubject();
+            RDN cn = x500name.getRDNs(BCStyle.CN)[0];
+            return IETFUtils.valueToString(cn.getFirst().getValue());
+        } catch (CertificateEncodingException e) {e.printStackTrace(); throw new IllegalStateException(e.getMessage());}
     }
 
     public static KeyStore getKeyStore(char[] password)
@@ -144,19 +159,21 @@ public class SSL
         }
         ks.load(null, password);
         KeyPair keypair = generateKeyPair();
-        PKCS10CertificationRequest csr = generateCSR(password, keypair, "storage.csr");
+        PKCS10CertificationRequest csr = generateCSR(password, IP.getMyPublicAddress().getHostAddress(), keypair, "storage.csr");
         PrivateKey myPrivateKey = keypair.getPrivate();
 
         // make rootCA a trust source
-        Certificate rootCert = getRootCertificate();
+        X509Certificate rootCert = (X509Certificate) getRootCertificate();
         KeyStore.Entry root = new KeyStore.TrustedCertificateEntry(rootCert);
-        ks.setEntry("rootca", root, null);
+        String rootAlias = getCommonName(rootCert);
+        ks.setEntry(rootAlias, root, null);
 
         Certificate[] dirs = SSL.getDirectoryServerCertificates();
         Certificate cert;
         while (true) {
             Certificate dir = dirs[new SecureRandom().nextInt() % dirs.length];
-            ks.setCertificateEntry("dir", dir);
+//            String alias = getCommonName(dir);
+//            ks.setCertificateEntry(alias, dir);
 
             // synchronously contact a directory server to sign our certificate
             String address = SSL.getCommonName(dir);
@@ -184,12 +201,13 @@ public class SSL
             cert = fact.generateCertificate(new ByteArrayInputStream(bout.toByteArray()));
             break;
         }
+        ks.setCertificateEntry(getCommonName(cert), cert);
         ks.setKeyEntry("private", myPrivateKey, password, new Certificate[]{cert});
         ks.store(new FileOutputStream(SSL_KEYSTORE_FILENAME), password);
         return ks;
     }
 
-    public static Certificate generateCertificate(char[] password, String commonName, PublicKey signee, PrivateKey signer)
+    public static Certificate generateCertificate(char[] password, String commonName, String ipaddress, PublicKey signee, PrivateKey signer)
             throws KeyStoreException, IOException, NoSuchAlgorithmException, CertificateException, InvalidKeyException,
             NoSuchProviderException, SignatureException, OperatorCreationException
     {
@@ -207,7 +225,7 @@ public class SSL
 
         System.out.println("SAN = " + commonName);
         X509v3CertificateBuilder certGen = new JcaX509v3CertificateBuilder(builder.build(), sn, from, to, builder.build(), signee);
-        GeneralNames subjectAltName = new GeneralNames(new GeneralName(GeneralName.iPAddress, commonName));
+        GeneralNames subjectAltName = new GeneralNames(new GeneralName(GeneralName.iPAddress, ipaddress));
         certGen.addExtension(new ASN1ObjectIdentifier("2.5.29.17"), false, subjectAltName);
 
         ContentSigner sigGen = new JcaContentSignerBuilder("SHA256withRSA").build(signer);
@@ -219,7 +237,7 @@ public class SSL
             throws KeyStoreException, IOException, NoSuchAlgorithmException, CertificateException, InvalidKeyException,
             NoSuchProviderException, SignatureException, OperatorCreationException
     {
-        return generateCertificate(password, IP.getMyPublicAddress().getHostAddress(), keypair.getPublic(), keypair.getPrivate());
+        return generateCertificate(password, "Peergos", IP.getMyPublicAddress().getHostAddress(), keypair.getPublic(), keypair.getPrivate());
     }
 
     public static void generateAndSaveRootCertificate(char[] password)
@@ -247,12 +265,12 @@ public class SSL
         }
     }
 
-    public static KeyPair generateCSR(char[] passphrase, String keyfile, String csrfile) throws IOException
+    public static KeyPair generateCSR(char[] passphrase, String commonName, String keyfile, String csrfile) throws IOException
     {
         String msg;
         try {
             KeyPair pair = generateAndSaveKeyPair(keyfile, passphrase);
-            generateCSR(passphrase, loadKeyPair(keyfile, passphrase), csrfile);
+            generateCSR(passphrase, commonName, loadKeyPair(keyfile, passphrase), csrfile);
             return pair;
         } catch (NoSuchAlgorithmException e) {e.printStackTrace(); msg= e.getMessage();}
         catch (InvalidKeySpecException e) {e.printStackTrace();msg= e.getMessage();}
@@ -261,12 +279,12 @@ public class SSL
         throw new IllegalStateException(msg);
     }
 
-    public static PKCS10CertificationRequest generateCSR(char[] password, KeyPair keypair, String outfile)
+    public static PKCS10CertificationRequest generateCSR(char[] password, String cn, KeyPair keypair, String outfile)
     {
         try {
             PrivateKey myPrivateKey = keypair.getPrivate();
-            String cn = IP.getMyPublicAddress().getHostAddress();
-            return generateCertificateSignRequest(outfile, password, cn, keypair.getPublic(), myPrivateKey);
+            String ipaddress = IP.getMyPublicAddress().getHostAddress();
+            return generateCertificateSignRequest(outfile, password, cn, ipaddress, keypair.getPublic(), myPrivateKey);
         } catch (Exception e)
         {
             e.printStackTrace();
@@ -275,7 +293,7 @@ public class SSL
     }
 
     public static PKCS10CertificationRequest generateCertificateSignRequest(String outfile, char[] password,
-                                                                            String commonName, PublicKey signee, PrivateKey signer)
+                                                                            String commonName, String ipaddress, PublicKey signee, PrivateKey signer)
             throws KeyStoreException, IOException, NoSuchAlgorithmException, CertificateException, InvalidKeyException,
             NoSuchProviderException, SignatureException, OperatorCreationException, CRMFException
     {
@@ -290,7 +308,7 @@ public class SSL
         builder.addRDN(RFC4519Style.st, "Victoria");
         builder.addRDN(PKCSObjectIdentifiers.pkcs_9_at_emailAddress, "hello.NSA.GCHQ.ASIO@goodluck.com");
 
-        GeneralNames subjectAltName = new GeneralNames(new GeneralName(GeneralName.iPAddress, commonName));
+        GeneralNames subjectAltName = new GeneralNames(new GeneralName(GeneralName.iPAddress, ipaddress));
 
         Extension[] ext = new Extension[] {new Extension(Extension.subjectAlternativeName, false, new DEROctetString(subjectAltName))};
         PKCS10CertificationRequestBuilder requestBuilder = new JcaPKCS10CertificationRequestBuilder(builder.build(), signee);
@@ -341,7 +359,7 @@ public class SSL
         try {
             KeyStore ks = getRootKeyStore(rootPassword);
             PrivateKey rootPriv = (PrivateKey) ks.getKey("private", rootPassword);
-            Certificate signed = signCertificate(csr, rootPriv, "issuer");
+            Certificate signed = signCertificate(csr, rootPriv, "Peergos");
             BufferedWriter w = new BufferedWriter(new FileWriter("peergos/crypto/DirectoryCertificates.java"));
             w.write("package peergos.crypto;\n\nimport org.bouncycastle.util.encoders.Base64;\n\n" +
                     "public class DirectoryCertificates {\n    public static final int NUM_DIR_SERVERS = 1;\n"+

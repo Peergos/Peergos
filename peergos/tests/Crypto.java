@@ -47,7 +47,7 @@ public class Crypto
             Certificate[] dirCerts = SSL.getDirectoryServerCertificates();
             // pick one
             Certificate dir = dirCerts[0];
-            KeyPair storageKeys = SSL.generateCSR(storagePass, "storage.p12", "storage.csr");
+            KeyPair storageKeys = SSL.generateCSR(storagePass, "localhost", "storage.p12", "storage.csr");
             PKCS10CertificationRequest csr = SSL.loadCSR("storage.csr");
             Certificate signed = SSL.signCertificate(csr, dirKeys.getPrivate(), IP.getMyPublicAddress().getHostAddress());
             // verify storage with dir key
@@ -91,7 +91,7 @@ public class Crypto
             char[] dirpass = "password".toCharArray();
             String privFile = "dir.key";
             String csrFile = "dir.csr";
-            KeyPair pair = SSL.generateCSR(dirpass, privFile, csrFile);
+            KeyPair pair = SSL.generateCSR(dirpass, IP.getMyPublicAddress().getHostAddress(), privFile, csrFile);
             long start = System.nanoTime();
             Certificate cert = SSL.signDirectoryCertificate(csrFile, rootpass);
             long end = System.nanoTime();

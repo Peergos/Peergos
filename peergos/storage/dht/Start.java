@@ -61,7 +61,7 @@ public class Start
         else if (Args.hasOption("dirGen"))
         {
 
-            SSL.generateCSR(Args.getParameter("password").toCharArray(), Args.getParameter("keyfile"), "dir.csr");
+            SSL.generateCSR(Args.getParameter("password").toCharArray(), Args.getParameter("domain", "localhost"), Args.getParameter("keyfile"), "dir.csr");
         }
         else if (Args.hasOption("dirSign"))
         {

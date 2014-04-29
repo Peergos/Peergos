@@ -40,8 +40,9 @@ public class HttpsUserAPI extends DHTUserAPI
         try {
             SSLContext sslContext = SSLContext.getInstance("TLS");
 
-            KeyStore ks = SSL.getTrustedKeyStore();
-
+            char[] password = "storage".toCharArray();
+            KeyStore ks = SSL.getKeyStore(password); // fudge to get testing on a single machine working, need to fix the SSL chain recognition
+//            KeyStore ks = SSL.getTrustedKeyStore();
             TrustManagerFactory tmf = TrustManagerFactory.getInstance("SunX509");
             tmf.init(ks);
 

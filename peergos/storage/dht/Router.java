@@ -81,7 +81,7 @@ public class Router extends AbstractActor
             public void apply(HTTPSMessenger.JOIN j) throws Exception {
                 messenger.tell(new Letter(new Message.JOIN(us), j.addr, j.port), self());
                 lastOrderer = sender();
-                System.out.println(port + " received JOIN, set lastordered = "+lastOrderer);
+//                System.out.println(port + " received JOIN, set lastordered = "+lastOrderer);
             }
         }).match(HTTPSMessenger.JOINED.class, new FI.UnitApply<HTTPSMessenger.JOINED>() {
             @Override
