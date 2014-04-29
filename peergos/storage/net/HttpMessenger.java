@@ -25,7 +25,7 @@ public class HttpMessenger extends AbstractActor
     public static final String MESSAGE_URL = "/message/";
     public static final String USER_URL = "/user/";
 
-    public static final int THREADS = 5;
+    public static final int THREADS = 100;
     public static final int CONNECTION_BACKLOG = 100;
 
     private final Logger LOGGER;
@@ -43,23 +43,23 @@ public class HttpMessenger extends AbstractActor
             @Override
             public void apply(Letter p) throws Exception {
                 if (p.dest == null)
-                    sender().tell(new JOINED(), self());
+                    sender().tell(new HttpsMessenger.JOINED(), self());
                 else
-                    sendMessage(p.m, p.dest, p.destPort);
+                    sendMessage(p.m, p.dest, p.destPort+1);
             }
         }).build();
 
-        receive(ReceiveBuilder.match(INITIALIZE.class, new FI.UnitApply<INITIALIZE>() {
+        receive(ReceiveBuilder.match(HttpsMessenger.INITIALIZE.class, new FI.UnitApply<HttpsMessenger.INITIALIZE>() {
             @Override
-            public void apply(INITIALIZE j) throws Exception {
+            public void apply(HttpsMessenger.INITIALIZE j) throws Exception {
                 if (init(sender(), context().system()))
                 {
                     context().become(ready);
-                    sender().tell(new INITIALIZED(), self());
+                    sender().tell(new HttpsMessenger.INITIALIZED(), self());
                 }
                 else
                 {
-                    sender().tell(new INITERROR(), self());
+                    sender().tell(new HttpsMessenger.INITERROR(), self());
                 }
             }
         }).build());
@@ -98,7 +98,7 @@ public class HttpMessenger extends AbstractActor
             LOGGER.log(Level.ALL, String.format("Sent %s with target %d to %s:%d\n", m.name(), m.getTarget(), addr, port));
         ByteArrayOutputStream bout = new ByteArrayOutputStream();
         m.write(new DataOutputStream(bout));
-        URL target = new URL("https", addr.getHostAddress(), port, MESSAGE_URL);
+        URL target = new URL("http", addr.getHostAddress(), port, MESSAGE_URL);
         HttpURLConnection conn = (HttpURLConnection) target.openConnection();
         conn.setDoOutput(true);
         conn.setRequestMethod("PUT");
@@ -115,7 +115,7 @@ public class HttpMessenger extends AbstractActor
     public static byte[] getFragment(InetAddress addr, int port, String key) throws IOException
     {
         // for now, make a direct connection
-        URL target = new URL("https", addr.getHostAddress(), port, key);
+        URL target = new URL("http", addr.getHostAddress(), port, key);
         System.out.println("getting fragment from " + addr.getHostAddress());
         URLConnection conn = target.openConnection();
         InputStream in = conn.getInputStream();
@@ -135,7 +135,7 @@ public class HttpMessenger extends AbstractActor
     public static void putFragment(InetAddress addr, int port, String key, byte[] value) throws IOException
     {
         // for now, make a direct connection
-        URL target = new URL("https", addr.getHostAddress(), port, key+"/");
+        URL target = new URL("http", addr.getHostAddress(), port, key+"/");
         System.out.println("sending fragment to " + target.toString());
         HttpURLConnection conn = (HttpURLConnection) target.openConnection();
         conn.setDoOutput(true);
@@ -145,29 +145,5 @@ public class HttpMessenger extends AbstractActor
         out.flush();
         out.close();
         conn.getResponseCode();
-    }
-
-    public static class JOIN
-    {
-        public final InetAddress addr;
-        public final int port;
-
-        public JOIN(InetAddress addr, int port)
-        {
-            this.addr = addr;
-            this.port = port;
-        }
-    }
-
-    public static class JOINED {}
-    public static class JOINERROR {}
-
-    public static class INITIALIZE {}
-    public static class INITIALIZED {}
-    public static class INITERROR {}
-
-    public static HttpMessenger getDefault(int port, Storage fragments, Logger log) throws IOException
-    {
-        return new HttpMessenger(port, fragments, log);
     }
 }

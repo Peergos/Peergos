@@ -4,6 +4,7 @@ import akka.actor.*;
 import akka.japi.Creator;
 import akka.japi.pf.FI;
 import akka.japi.pf.ReceiveBuilder;
+import peergos.storage.net.HttpMessenger;
 import peergos.storage.net.HttpsMessenger;
 import peergos.storage.Storage;
 import peergos.util.*;
@@ -36,7 +37,7 @@ public class Router extends AbstractActor
     private final Map<ByteArrayWrapper, ActorRef> pendingPuts = new ConcurrentHashMap();
     private final Map<ByteArrayWrapper, ActorRef> pendingGets = new ConcurrentHashMap();
     private final Random random = new Random(System.currentTimeMillis());
-    private ActorRef messenger;
+    private ActorRef messenger, userAPI;
     private PartialFunction<Object, BoxedUnit> beginning;
     private PartialFunction<Object, BoxedUnit> waitingForInitialized;
     private PartialFunction<Object, BoxedUnit> initialized;
@@ -53,13 +54,14 @@ public class Router extends AbstractActor
         LOGGER.addHandler(handler);
         LOGGER.setLevel(Level.ALL);
         storage = new Storage(new File(DATA_DIR), MAX_STORAGE_SIZE);
-//        messenger = context().actorOf(HttpsMessenger.props(port, storage, LOGGER));
-        messenger = context().actorOf(HttpsMessenger.props(port, storage, LOGGER));
+        userAPI = context().actorOf(HttpsMessenger.props(port, LOGGER));
+        messenger = context().actorOf(HttpMessenger.props(port+1, storage, LOGGER));
 
         beginning = ReceiveBuilder.match(HttpsMessenger.INITIALIZE.class, new FI.UnitApply<HttpsMessenger.INITIALIZE>() {
             @Override
             public void apply(HttpsMessenger.INITIALIZE init) throws Exception {
                 messenger.tell(init, self());
+                userAPI.tell(init, self());
                 context().become(waitingForInitialized);
                 lastOrderer = sender();
             }
@@ -96,7 +98,6 @@ public class Router extends AbstractActor
             public void apply(Message.ECHO m) throws Exception {
                 context().become(ready);
                 actOnMessage(m);
-                System.out.println(port + " sent JOINED to " +lastOrderer);
                 lastOrderer.tell(new HttpsMessenger.JOINED(), self());
                 LOGGER.log(Level.ALL, "Storage server successfully joined DHT.");
             }

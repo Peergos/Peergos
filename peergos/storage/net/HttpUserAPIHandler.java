@@ -96,7 +96,7 @@ public class HttpUserAPIHandler implements HttpHandler
         public void callback(GetOffer offer) {
             try {
                 dout.writeInt(1); // success
-                byte[] frag = HttpsMessenger.getFragment(offer.getTarget().addr, offer.getTarget().port, "/" + Arrays.bytesToHex(key));
+                byte[] frag = HttpMessenger.getFragment(offer.getTarget().addr, offer.getTarget().port+1, "/" + Arrays.bytesToHex(key));
                 Serialize.serialize(frag, dout);
                 dout.flush();
                 dout.close();
@@ -142,6 +142,7 @@ public class HttpUserAPIHandler implements HttpHandler
         public void onFailure(java.lang.Throwable throwable) throws java.lang.Throwable {
             try {
                 dout.writeInt(-1);
+                Serialize.serialize(throwable.getMessage(), dout);
                 dout.flush();
                 dout.close();
             } catch (IOException e)
