@@ -27,25 +27,23 @@ import java.util.concurrent.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-public class HTTPSMessenger extends AbstractActor
+public class HttpsMessenger extends AbstractActor
 {
     public static final String MESSAGE_URL = "/message/";
     public static final String USER_URL = "/user/";
 
-    public static final int THREADS = 5;
+    public static final int THREADS = 100;
     public static final int CONNECTION_BACKLOG = 100;
 
     private final Logger LOGGER;
     private final int localPort;
     HttpsServer httpsServer;
-    private final Storage fragments;
     private PartialFunction<Object, BoxedUnit> ready;
 
-    public HTTPSMessenger(int port, Storage fragments, Logger LOGGER) throws IOException
+    public HttpsMessenger(int port, Logger LOGGER) throws IOException
     {
         this.LOGGER = LOGGER;
         this.localPort = port;
-        this.fragments = fragments;
         ready = ReceiveBuilder.match(Letter.class, new FI.UnitApply<Letter>() {
             @Override
             public void apply(Letter p) throws Exception {
@@ -72,12 +70,12 @@ public class HTTPSMessenger extends AbstractActor
         }).build());
     }
 
-    public static Props props(final int port, final Storage fragments, final Logger LOGGER)
+    public static Props props(final int port, final Logger LOGGER)
     {
-        return Props.create(HTTPSMessenger.class, new Creator<HTTPSMessenger>() {
+        return Props.create(HttpsMessenger.class, new Creator<HttpsMessenger>() {
             @Override
-            public HTTPSMessenger create() throws Exception {
-                return new HTTPSMessenger(port, fragments, LOGGER);
+            public HttpsMessenger create() throws Exception {
+                return new HttpsMessenger(port, LOGGER);
             }
         });
     }
@@ -87,7 +85,7 @@ public class HTTPSMessenger extends AbstractActor
         {
             InetAddress us = IP.getMyPublicAddress();
             InetSocketAddress address = new InetSocketAddress(us, localPort);
-            System.out.println("Starting storage server at: " + us.getHostAddress() + ":" + localPort);
+            System.out.println("Starting user API server at: " + us.getHostAddress() + ":" + localPort);
             httpsServer = HttpsServer.create(address, CONNECTION_BACKLOG);
             SSLContext sslContext = SSLContext.getInstance("TLS");
 
@@ -137,9 +135,7 @@ public class HTTPSMessenger extends AbstractActor
             return false;
         }
 
-        httpsServer.createContext(MESSAGE_URL, new HttpsMessageHandler(router));
-        httpsServer.createContext(USER_URL, new HttpsUserAPIHandler(router, system));
-        httpsServer.createContext("/", new StoragePutHandler(fragments, "/"));
+        httpsServer.createContext(USER_URL, new HttpUserAPIHandler(router, system));
         httpsServer.setExecutor(Executors.newFixedThreadPool(THREADS));
         httpsServer.start();
 
@@ -221,9 +217,4 @@ public class HTTPSMessenger extends AbstractActor
     public static class INITIALIZE {}
     public static class INITIALIZED {}
     public static class INITERROR {}
-
-    public static HTTPSMessenger getDefault(int port, Storage fragments, Logger log) throws IOException
-    {
-        return new HTTPSMessenger(port, fragments, log);
-    }
 }

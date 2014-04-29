@@ -14,12 +14,15 @@ import scala.concurrent.Await;
 import scala.concurrent.Future;
 import scala.concurrent.duration.Duration;
 import scala.concurrent.duration.FiniteDuration;
+import static akka.dispatch.Futures.sequence;
 import static org.junit.Assert.*;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URL;
 import java.security.PublicKey;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
 
@@ -32,13 +35,15 @@ public class UserContext
     User us;
     DHTUserAPI dht;
     AbstractCoreNode core;
+    ActorSystem system;
 
-    public UserContext(String username, User user, DHTUserAPI dht, AbstractCoreNode core)
+    public UserContext(String username, User user, DHTUserAPI dht, AbstractCoreNode core, ActorSystem system)
     {
         this.username = username;
         this.us = user;
         this.dht = dht;
         this.core = core;
+        this.system = system;
     }
 
     public boolean register()
@@ -70,11 +75,18 @@ public class UserContext
         EncryptedChunk encryptedChunk = new EncryptedChunk(chunk.encrypt(initVector));
         Fragment[] fragments = encryptedChunk.generateFragments();
 
-        FiniteDuration timeout = Duration.create(30, TimeUnit.SECONDS);
+        List<Future<Object>> futures = new ArrayList();
         for (Fragment f: fragments)
             try {
-                Await.result(uploadFragment(f, target, sharer), timeout);
+                futures.add(uploadFragment(f, target, sharer));
             } catch (Exception e) {e.printStackTrace();}
+
+        // wait for all fragments to upload
+        Future<Iterable<Object>> futureListOfObjects = sequence(futures, system.dispatcher());
+        FiniteDuration timeout = Duration.create(5*60, TimeUnit.SECONDS);
+        try {
+            Await.result(futureListOfObjects, timeout);
+        } catch (Exception e) {e.printStackTrace();}
         return new MetadataBlob(fragments, initVector);
     }
 
@@ -109,7 +121,7 @@ public class UserContext
                 // create a DHT API
                 DHTUserAPI dht = new HttpsUserAPI(new InetSocketAddress(IP.getMyPublicAddress(), 8000), system);
 
-                UserContext context = new UserContext(ourname, us, dht, clientCoreNode);
+                UserContext context = new UserContext(ourname, us, dht, clientCoreNode, system);
                 assertTrue("Not already registered", !context.checkRegistered());
                 assertTrue("Register", context.register());
 

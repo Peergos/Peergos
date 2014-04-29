@@ -4,14 +4,13 @@ import akka.actor.ActorSystem;
 import org.bouncycastle.operator.OperatorCreationException;
 import peergos.crypto.SSL;
 import peergos.storage.dht.Message;
-import peergos.storage.net.HTTPSMessenger;
+import peergos.storage.net.HttpsMessenger;
 import peergos.user.fs.Fragment;
 import peergos.util.Serialize;
 import scala.concurrent.Future;
 import static akka.dispatch.Futures.future;
 
 import javax.net.ssl.HttpsURLConnection;
-import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
 import java.io.DataInputStream;
@@ -30,7 +29,7 @@ public class HttpsUserAPI extends DHTUserAPI
 
     public HttpsUserAPI(InetSocketAddress target, ActorSystem system) throws IOException
     {
-        this.target = new URL("https", target.getHostString(), target.getPort(), HTTPSMessenger.USER_URL);
+        this.target = new URL("https", target.getHostString(), target.getPort(), HttpsMessenger.USER_URL);
         this.system = system;
         init();
     }
@@ -40,8 +39,9 @@ public class HttpsUserAPI extends DHTUserAPI
         try {
             SSLContext sslContext = SSLContext.getInstance("TLS");
 
-            KeyStore ks = SSL.getTrustedKeyStore();
-
+            char[] password = "storage".toCharArray();
+            KeyStore ks = SSL.getKeyStore(password); // fudge to get testing on a single machine working, need to fix the SSL chain recognition
+//            KeyStore ks = SSL.getTrustedKeyStore();
             TrustManagerFactory tmf = TrustManagerFactory.getInstance("SunX509");
             tmf.init(ks);
 
@@ -61,12 +61,13 @@ public class HttpsUserAPI extends DHTUserAPI
     }
 
     @Override
-    public Future put(final byte[] key, final byte[] value, final String user, final byte[] sharingKey, final byte[] signedHashOfKey) {
-        Future<Void> f = future(new Callable<Void>() {
-            public Void call() {
+    public Future<Boolean> put(final byte[] key, final byte[] value, final String user, final byte[] sharingKey, final byte[] signedHashOfKey) {
+        Future<Boolean> f = future(new Callable<Boolean>() {
+            public Boolean call() {
                 HttpsURLConnection conn = null;
                 try
                 {
+                    long start = System.nanoTime();
                     conn = (HttpsURLConnection) target.openConnection();
                     conn.setDoInput(true);
                     conn.setDoOutput(true);
@@ -78,13 +79,22 @@ public class HttpsUserAPI extends DHTUserAPI
 
                     DataInputStream din = new DataInputStream(conn.getInputStream());
                     int success = din.readInt();
+
+                    long end = System.nanoTime();
+                    if (success > 0)
+                    {
+                        System.out.printf("Uploaded succeeded in %d mS\n", (end-start)/1000000);
+                        return true;
+                    }
+                    String message = Serialize.deserializeString(din, 10*1024);
+                    System.out.printf("Uploaded failed in %d mS, with message %s\n", (end-start)/1000000, message);
                 } catch (IOException ioe) {
                     ioe.printStackTrace();
                 } finally {
                     if (conn != null)
                         conn.disconnect();
                 }
-                return null;
+                return false;
             }
         }, system.dispatcher());
         return f;

@@ -10,11 +10,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 
-public class HttpsMessageHandler implements HttpHandler
+public class HttpMessageHandler implements HttpHandler
 {
     private final ActorRef router;
 
-    public HttpsMessageHandler(ActorRef r)
+    public HttpMessageHandler(ActorRef r)
     {
         this.router = r;
     }

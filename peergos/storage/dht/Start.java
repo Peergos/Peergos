@@ -7,9 +7,8 @@ import peergos.corenode.AbstractCoreNode;
 import peergos.corenode.HTTPCoreNodeServer;
 import peergos.crypto.SSL;
 import peergos.directory.DirectoryServer;
-import peergos.storage.net.HTTPSMessenger;
+import peergos.storage.net.HttpsMessenger;
 import peergos.storage.net.IP;
-import peergos.tests.CoreNode;
 import peergos.tests.Scripter;
 import peergos.util.Args;
 import scala.concurrent.duration.Duration;
@@ -23,6 +22,7 @@ import java.util.concurrent.TimeUnit;
 
 public class Start
 {
+    static ActorSystem system = ActorSystem.create("DHTRouter");;
 
     public static void main(String[] args) throws IOException
     {
@@ -61,7 +61,7 @@ public class Start
         else if (Args.hasOption("dirGen"))
         {
 
-            SSL.generateCSR(Args.getParameter("password").toCharArray(), Args.getParameter("keyfile"), "dir.csr");
+            SSL.generateCSR(Args.getParameter("password").toCharArray(), Args.getParameter("domain", "localhost"), Args.getParameter("keyfile"), "dir.csr");
         }
         else if (Args.hasOption("dirSign"))
         {
@@ -69,24 +69,23 @@ public class Start
         }
         else {
             int port = Args.getInt("port", 8000);
-            ActorSystem system = ActorSystem.create("DHTRouter");
             ActorRef router = Router.start(system, port);
             final Inbox inbox = Inbox.create(system);
-            inbox.send(router, new HTTPSMessenger.INITIALIZE());
+            inbox.send(router, new HttpsMessenger.INITIALIZE());
             System.out.println("Sent initialize to "+port);
             // wait for INITIALIZED or INITERROR
             Object result = inbox.receive(Duration.create(30, TimeUnit.SECONDS));
-            if (result instanceof HTTPSMessenger.INITERROR)
+            if (result instanceof HttpsMessenger.INITERROR)
             {
                 throw new IllegalStateException("Couldn't INIT DHT router!");
             }
             if (Args.hasOption("firstNode"))
-                inbox.send(router, new HTTPSMessenger.JOIN(null, 0));
+                inbox.send(router, new HttpsMessenger.JOIN(null, 0));
             else
-                inbox.send(router, new HTTPSMessenger.JOIN(InetAddress.getByName(Args.getParameter("contactIP")), Args.getInt("contactPort", 8080)));
+                inbox.send(router, new HttpsMessenger.JOIN(InetAddress.getByName(Args.getParameter("contactIP")), Args.getInt("contactPort", 8080)));
             System.out.println("Sent JOIN to "+ port);
             Object joinResult = inbox.receive(Duration.create(30, TimeUnit.SECONDS));
-            if (joinResult instanceof HTTPSMessenger.JOINERROR)
+            if (joinResult instanceof HttpsMessenger.JOINERROR)
             {
                 // maybe try again?
                 throw new IllegalStateException("Couldn't join the DHT!");
@@ -119,11 +118,11 @@ public class Start
         if (nodes > 1)
             for (int i = 0; i < nodes - 2; i++)
             {
-                args[1] = 9000 + 1000 * i + "";
+                args[1] = 9000 + 500 * i + "";
                 Start.main(args);
             }
         // execute the script on the last node
-        args[1] = 9000 + 1000 * (nodes-2) + "";
+        args[1] = 9000 + 500 * (nodes-2) + "";
         List<String> finalNodeArgs = new LinkedList();
         finalNodeArgs.addAll(java.util.Arrays.asList(args));
         finalNodeArgs.add("-script");
