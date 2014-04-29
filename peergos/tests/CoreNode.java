@@ -13,6 +13,7 @@ import org.junit.Test;
 import java.util.*;
 import java.io.*;
 import java.net.*;
+import java.sql.*;
 
 import java.security.*;
 
@@ -95,57 +96,65 @@ public class CoreNode
 
     }
 
-    @Test public void abstractTest() throws Exception 
-    {
-
-        MockCoreNode coreNode = new MockCoreNode();
-        coreNodeTests(coreNode);
-    }
-
-    @Test public void httpTest() throws Exception
-    {
-        try
-        {
-            HTTPCoreNodeServer server = null;
-            try
-            {
-                MockCoreNode mockCoreNode = new MockCoreNode();
-                InetAddress address = InetAddress.getByName("localhost");
-
-                server = new HTTPCoreNodeServer(mockCoreNode,address, AbstractCoreNode.PORT);
-                server.start();
-
-                URL url = new URL("http://localhost:"+AbstractCoreNode.PORT+"/");
-                HTTPCoreNode clientCoreNode = new HTTPCoreNode(url);
-
-                coreNodeTests(clientCoreNode);
-            } finally {
-                if (server != null)
-                    server.close();    
-            }
-        } catch (Throwable t) {
-            t.printStackTrace();
-            throw t;
-        }
-    }
-
     /*
-       @Test public void sqlTest()
+       @Test public void abstractTest() throws Exception 
        {
-       Random random = new Random(666);
 
-       SQLiteCoreNode coreNode = null;
+       MockCoreNode coreNode = new MockCoreNode();
+       coreNodeTests(coreNode);
+       }
 
+       @Test public void httpTest() throws Exception
+       {
        try
        {
-       coreNode = new SQLiteCoreNode("corenode_test.db");
-       } catch (SQLException e){
-       e.printStackTrace();
-       fail(); 
-       }
+       HTTPCoreNodeServer server = null;
+       try
+       {
+       MockCoreNode mockCoreNode = new MockCoreNode();
+       InetAddress address = InetAddress.getByName("localhost");
 
+       server = new HTTPCoreNodeServer(mockCoreNode,address, AbstractCoreNode.PORT);
+       server.start();
+
+       URL url = new URL("http://localhost:"+AbstractCoreNode.PORT+"/");
+       HTTPCoreNode clientCoreNode = new HTTPCoreNode(url);
+
+       coreNodeTests(clientCoreNode);
+       } finally {
+       if (server != null)
+       server.close();    
+       }
+       } catch (Throwable t) {
+       t.printStackTrace();
+       throw t;
+       }
        }
        */
+
+
+    @Test public void sqlTest()
+    {
+        Random random = new Random(666);
+
+        SQLiteCoreNode coreNode = null;
+
+        String dbPath = "corenode_test.db";
+        File f = new File(dbPath);
+        f.delete();
+        try
+        {
+            coreNode = new SQLiteCoreNode(dbPath);
+            coreNodeTests(coreNode);
+        } catch (Throwable t){
+            t.printStackTrace();
+            fail(); 
+        } finally {
+            coreNode.close();
+            f.delete();
+        }
+
+    }
 
 
 

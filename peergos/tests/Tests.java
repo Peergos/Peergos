@@ -14,7 +14,7 @@ public class Tests
 //        testClass(ErasureCodes.class);
 //        testClass(GaloisPolynomial.Test.class);
 //        testClass(Crypto.class);
-        testClass(UserContext.Test.class);
+//        testClass(UserContext.Test.class);
         testClass(CoreNode.class);
     }
 

@@ -436,6 +436,7 @@ public abstract class AbstractCoreNode
             return false;
         if (!storageStates.containsKey(node))
             addStorageNodeState(recipient, node);
+
         StorageNodeState donor = storageStates.get(node);
         return donor.addHash(hash);
     }
