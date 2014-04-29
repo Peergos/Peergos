@@ -15,12 +15,12 @@ import scala.concurrent.Future;
 
 import java.io.*;
 
-public class HttpsUserAPIHandler implements HttpHandler
+public class HttpUserAPIHandler implements HttpHandler
 {
     private final ActorRef router;
     private final ActorSystem system;
 
-    public HttpsUserAPIHandler(ActorRef r, ActorSystem system)
+    public HttpUserAPIHandler(ActorRef r, ActorSystem system)
     {
         this.router = r;
         this.system = system;
@@ -96,7 +96,7 @@ public class HttpsUserAPIHandler implements HttpHandler
         public void callback(GetOffer offer) {
             try {
                 dout.writeInt(1); // success
-                byte[] frag = HTTPSMessenger.getFragment(offer.getTarget().addr, offer.getTarget().port, "/" + Arrays.bytesToHex(key));
+                byte[] frag = HttpsMessenger.getFragment(offer.getTarget().addr, offer.getTarget().port, "/" + Arrays.bytesToHex(key));
                 Serialize.serialize(frag, dout);
                 dout.flush();
                 dout.close();

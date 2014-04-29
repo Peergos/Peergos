@@ -1,7 +1,7 @@
 package peergos.tests;
 
 import peergos.storage.dht.*;
-import peergos.storage.net.HTTPSMessenger;
+import peergos.storage.net.HttpsMessenger;
 import peergos.util.*;
 import scala.concurrent.Await;
 import scala.concurrent.Future;
@@ -57,7 +57,7 @@ public class Scripter extends Thread
                             @Override
                             public void callback(GetOffer offer) {
                                 try {
-                                    byte[] fragment = HTTPSMessenger.getFragment(offer.getTarget().addr, offer.getTarget().port, "/" + parts[2]);
+                                    byte[] fragment = HttpsMessenger.getFragment(offer.getTarget().addr, offer.getTarget().port, "/" + parts[2]);
                                     System.out.println("GET result: " + new String(fragment, "UTF-8"));
                                 } catch (IOException e) {
                                     e.printStackTrace();

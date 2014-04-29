@@ -7,27 +7,20 @@ import akka.actor.Props;
 import akka.japi.Creator;
 import akka.japi.pf.FI;
 import akka.japi.pf.ReceiveBuilder;
-import com.sun.net.httpserver.HttpsConfigurator;
-import com.sun.net.httpserver.HttpsParameters;
-import com.sun.net.httpserver.HttpsServer;
-import peergos.crypto.SSL;
+import com.sun.net.httpserver.HttpServer;
+import peergos.storage.Storage;
 import peergos.storage.dht.Letter;
 import peergos.storage.dht.Message;
-import peergos.storage.Storage;
-import org.bouncycastle.operator.OperatorCreationException;
 import scala.PartialFunction;
 import scala.runtime.BoxedUnit;
 
-import javax.net.ssl.*;
 import java.io.*;
 import java.net.*;
-import java.security.*;
-import java.security.cert.CertificateException;
-import java.util.concurrent.*;
+import java.util.concurrent.Executors;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-public class HTTPSMessenger extends AbstractActor
+public class HttpMessenger extends AbstractActor
 {
     public static final String MESSAGE_URL = "/message/";
     public static final String USER_URL = "/user/";
@@ -37,11 +30,11 @@ public class HTTPSMessenger extends AbstractActor
 
     private final Logger LOGGER;
     private final int localPort;
-    HttpsServer httpsServer;
+    HttpServer httpServer;
     private final Storage fragments;
     private PartialFunction<Object, BoxedUnit> ready;
 
-    public HTTPSMessenger(int port, Storage fragments, Logger LOGGER) throws IOException
+    public HttpMessenger(int port, Storage fragments, Logger LOGGER) throws IOException
     {
         this.LOGGER = LOGGER;
         this.localPort = port;
@@ -74,74 +67,25 @@ public class HTTPSMessenger extends AbstractActor
 
     public static Props props(final int port, final Storage fragments, final Logger LOGGER)
     {
-        return Props.create(HTTPSMessenger.class, new Creator<HTTPSMessenger>() {
+        return Props.create(HttpMessenger.class, new Creator<HttpMessenger>() {
             @Override
-            public HTTPSMessenger create() throws Exception {
-                return new HTTPSMessenger(port, fragments, LOGGER);
+            public HttpMessenger create() throws Exception {
+                return new HttpMessenger(port, fragments, LOGGER);
             }
         });
     }
 
     public boolean init(ActorRef router, ActorSystem system) throws IOException {
-        try
-        {
-            InetAddress us = IP.getMyPublicAddress();
-            InetSocketAddress address = new InetSocketAddress(us, localPort);
-            System.out.println("Starting storage server at: " + us.getHostAddress() + ":" + localPort);
-            httpsServer = HttpsServer.create(address, CONNECTION_BACKLOG);
-            SSLContext sslContext = SSLContext.getInstance("TLS");
+        InetAddress us = IP.getMyPublicAddress();
+        InetSocketAddress address = new InetSocketAddress(us, localPort);
+        System.out.println("Starting storage server at: " + us.getHostAddress() + ":" + localPort);
+        httpServer = HttpServer.create(address, CONNECTION_BACKLOG);
 
-            char[] password = "storage".toCharArray();
-            KeyStore ks = SSL.getKeyStore(password);
-
-            KeyManagerFactory kmf = KeyManagerFactory.getInstance("SunX509");
-            kmf.init(ks, password);
-
-            TrustManagerFactory tmf = TrustManagerFactory.getInstance("SunX509");
-            tmf.init(ks);
-
-            // setup the HTTPS context and parameters
-            sslContext.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);
-            SSLContext.setDefault(sslContext);
-            httpsServer.setHttpsConfigurator(new HttpsConfigurator(sslContext)
-            {
-                public void configure(HttpsParameters params)
-                {
-                    try
-                    {
-                        // initialise the SSL context
-                        SSLContext c = SSLContext.getDefault();
-                        SSLEngine engine = c.createSSLEngine();
-                        params.setNeedClientAuth(false);
-                        params.setCipherSuites(engine.getEnabledCipherSuites());
-                        params.setProtocols(engine.getEnabledProtocols());
-
-                        // get the default parameters
-                        SSLParameters defaultSSLParameters = c.getDefaultSSLParameters();
-                        params.setSSLParameters(defaultSSLParameters);
-                    }
-                    catch (Exception ex)
-                    {
-                        System.err.println("Failed to create HTTPS port");
-                        ex.printStackTrace(System.err);
-                    }
-                }
-            } );
-        }
-        catch (NoSuchAlgorithmException|InvalidKeyException|KeyStoreException|CertificateException|
-                NoSuchProviderException|SignatureException|OperatorCreationException|
-                UnrecoverableKeyException|KeyManagementException ex)
-        {
-            System.err.println("Failed to create HTTPS port");
-            ex.printStackTrace(System.err);
-            return false;
-        }
-
-        httpsServer.createContext(MESSAGE_URL, new HttpsMessageHandler(router));
-        httpsServer.createContext(USER_URL, new HttpsUserAPIHandler(router, system));
-        httpsServer.createContext("/", new StoragePutHandler(fragments, "/"));
-        httpsServer.setExecutor(Executors.newFixedThreadPool(THREADS));
-        httpsServer.start();
+        httpServer.createContext(MESSAGE_URL, new HttpMessageHandler(router));
+        httpServer.createContext(USER_URL, new HttpUserAPIHandler(router, system));
+        httpServer.createContext("/", new StoragePutHandler(fragments, "/"));
+        httpServer.setExecutor(Executors.newFixedThreadPool(THREADS));
+        httpServer.start();
 
         return true;
     }
@@ -222,8 +166,8 @@ public class HTTPSMessenger extends AbstractActor
     public static class INITIALIZED {}
     public static class INITERROR {}
 
-    public static HTTPSMessenger getDefault(int port, Storage fragments, Logger log) throws IOException
+    public static HttpMessenger getDefault(int port, Storage fragments, Logger log) throws IOException
     {
-        return new HTTPSMessenger(port, fragments, log);
+        return new HttpMessenger(port, fragments, log);
     }
 }

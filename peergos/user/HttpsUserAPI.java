@@ -4,14 +4,13 @@ import akka.actor.ActorSystem;
 import org.bouncycastle.operator.OperatorCreationException;
 import peergos.crypto.SSL;
 import peergos.storage.dht.Message;
-import peergos.storage.net.HTTPSMessenger;
+import peergos.storage.net.HttpsMessenger;
 import peergos.user.fs.Fragment;
 import peergos.util.Serialize;
 import scala.concurrent.Future;
 import static akka.dispatch.Futures.future;
 
 import javax.net.ssl.HttpsURLConnection;
-import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
 import java.io.DataInputStream;
@@ -30,7 +29,7 @@ public class HttpsUserAPI extends DHTUserAPI
 
     public HttpsUserAPI(InetSocketAddress target, ActorSystem system) throws IOException
     {
-        this.target = new URL("https", target.getHostString(), target.getPort(), HTTPSMessenger.USER_URL);
+        this.target = new URL("https", target.getHostString(), target.getPort(), HttpsMessenger.USER_URL);
         this.system = system;
         init();
     }

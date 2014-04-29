@@ -4,7 +4,7 @@ import akka.actor.*;
 import akka.japi.Creator;
 import akka.japi.pf.FI;
 import akka.japi.pf.ReceiveBuilder;
-import peergos.storage.net.HTTPSMessenger;
+import peergos.storage.net.HttpsMessenger;
 import peergos.storage.Storage;
 import peergos.util.*;
 import peergos.util.Arrays;
@@ -53,41 +53,42 @@ public class Router extends AbstractActor
         LOGGER.addHandler(handler);
         LOGGER.setLevel(Level.ALL);
         storage = new Storage(new File(DATA_DIR), MAX_STORAGE_SIZE);
-        messenger = context().actorOf(HTTPSMessenger.props(port, storage, LOGGER));
+//        messenger = context().actorOf(HttpsMessenger.props(port, storage, LOGGER));
+        messenger = context().actorOf(HttpsMessenger.props(port, storage, LOGGER));
 
-        beginning = ReceiveBuilder.match(HTTPSMessenger.INITIALIZE.class, new FI.UnitApply<HTTPSMessenger.INITIALIZE>() {
+        beginning = ReceiveBuilder.match(HttpsMessenger.INITIALIZE.class, new FI.UnitApply<HttpsMessenger.INITIALIZE>() {
             @Override
-            public void apply(HTTPSMessenger.INITIALIZE init) throws Exception {
+            public void apply(HttpsMessenger.INITIALIZE init) throws Exception {
                 messenger.tell(init, self());
                 context().become(waitingForInitialized);
                 lastOrderer = sender();
             }
         }).build();
-        waitingForInitialized = ReceiveBuilder.match(HTTPSMessenger.INITIALIZED.class, new FI.UnitApply<HTTPSMessenger.INITIALIZED>() {
+        waitingForInitialized = ReceiveBuilder.match(HttpsMessenger.INITIALIZED.class, new FI.UnitApply<HttpsMessenger.INITIALIZED>() {
             @Override
-            public void apply(HTTPSMessenger.INITIALIZED j) throws Exception {
+            public void apply(HttpsMessenger.INITIALIZED j) throws Exception {
                     context().become(initialized);
-                    lastOrderer.tell(new HTTPSMessenger.INITIALIZED(), self());
+                    lastOrderer.tell(new HttpsMessenger.INITIALIZED(), self());
             }
-        }).match(HTTPSMessenger.INITERROR.class, new FI.UnitApply<HTTPSMessenger.INITERROR>() {
+        }).match(HttpsMessenger.INITERROR.class, new FI.UnitApply<HttpsMessenger.INITERROR>() {
             @Override
-            public void apply(HTTPSMessenger.INITERROR j) throws Exception {
+            public void apply(HttpsMessenger.INITERROR j) throws Exception {
                 context().become(beginning);
-                lastOrderer.tell(new HTTPSMessenger.INITERROR(), self());
+                lastOrderer.tell(new HttpsMessenger.INITERROR(), self());
             }
         }).build();
-        initialized = ReceiveBuilder.match(HTTPSMessenger.JOIN.class, new FI.UnitApply<HTTPSMessenger.JOIN>() {
+        initialized = ReceiveBuilder.match(HttpsMessenger.JOIN.class, new FI.UnitApply<HttpsMessenger.JOIN>() {
             @Override
-            public void apply(HTTPSMessenger.JOIN j) throws Exception {
+            public void apply(HttpsMessenger.JOIN j) throws Exception {
                 messenger.tell(new Letter(new Message.JOIN(us), j.addr, j.port), self());
                 lastOrderer = sender();
 //                System.out.println(port + " received JOIN, set lastordered = "+lastOrderer);
             }
-        }).match(HTTPSMessenger.JOINED.class, new FI.UnitApply<HTTPSMessenger.JOINED>() {
+        }).match(HttpsMessenger.JOINED.class, new FI.UnitApply<HttpsMessenger.JOINED>() {
             @Override
-            public void apply(HTTPSMessenger.JOINED m) throws Exception {
+            public void apply(HttpsMessenger.JOINED m) throws Exception {
                 context().become(ready);
-                lastOrderer.tell(new HTTPSMessenger.JOINED(), self());
+                lastOrderer.tell(new HttpsMessenger.JOINED(), self());
                 LOGGER.log(Level.ALL, "Initial Storage server successfully joined DHT.");
             }
         }).match(Message.ECHO.class, new FI.UnitApply<Message.ECHO>() {
@@ -96,13 +97,13 @@ public class Router extends AbstractActor
                 context().become(ready);
                 actOnMessage(m);
                 System.out.println(port + " sent JOINED to " +lastOrderer);
-                lastOrderer.tell(new HTTPSMessenger.JOINED(), self());
+                lastOrderer.tell(new HttpsMessenger.JOINED(), self());
                 LOGGER.log(Level.ALL, "Storage server successfully joined DHT.");
             }
-        }).match(HTTPSMessenger.JOINERROR.class, new FI.UnitApply<HTTPSMessenger.JOINERROR>() {
+        }).match(HttpsMessenger.JOINERROR.class, new FI.UnitApply<HttpsMessenger.JOINERROR>() {
             @Override
-            public void apply(HTTPSMessenger.JOINERROR j) throws Exception {
-                lastOrderer.tell(new HTTPSMessenger.JOINERROR(), self());
+            public void apply(HttpsMessenger.JOINERROR j) throws Exception {
+                lastOrderer.tell(new HttpsMessenger.JOINERROR(), self());
             }
         }).build();
 
