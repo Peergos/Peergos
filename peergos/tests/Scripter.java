@@ -2,7 +2,6 @@ package peergos.tests;
 
 import peergos.storage.dht.*;
 import peergos.storage.net.HttpMessenger;
-import peergos.storage.net.HttpsMessenger;
 import peergos.util.*;
 import scala.concurrent.Await;
 import scala.concurrent.Future;
@@ -45,8 +44,8 @@ public class Scripter extends Thread
 
                 try {
                     if (parts[1].equals("PUT")) {
-                        Future<Object> fut = api.put(Arrays.hexToBytes(parts[2]), Arrays.hexToBytes(parts[3]),
-                                parts[4], Arrays.hexToBytes(parts[5]), Arrays.hexToBytes(parts[6]), new PutHandlerCallback() {
+                        Future<Object> fut = api.put(ArrayOps.hexToBytes(parts[2]), ArrayOps.hexToBytes(parts[3]),
+                                parts[4], ArrayOps.hexToBytes(parts[5]), ArrayOps.hexToBytes(parts[6]), new PutHandlerCallback() {
                             public void callback(PutOffer offer) {
                                 System.out.println("Put completed with no error");
                             }
@@ -54,7 +53,7 @@ public class Scripter extends Thread
                         System.out.println("Sent Put message..");
                         Await.result(fut, timeout);
                     } else if (parts[1].equals("GET")) {
-                        Future<Object> fut = api.get(Arrays.hexToBytes(parts[2]), new GetHandlerCallback() {
+                        Future<Object> fut = api.get(ArrayOps.hexToBytes(parts[2]), new GetHandlerCallback() {
                             @Override
                             public void callback(GetOffer offer) {
                                 try {
@@ -68,7 +67,7 @@ public class Scripter extends Thread
                         System.out.println("Sent Get message");
                         Await.result(fut, timeout);
                     } else if (parts[1].equals("CON")) {
-                        Future<Object> fut = api.contains(Arrays.hexToBytes(parts[2]), new GetHandlerCallback() {
+                        Future<Object> fut = api.contains(ArrayOps.hexToBytes(parts[2]), new GetHandlerCallback() {
                             @Override
                             public void callback(GetOffer offer) {
                                 System.out.println(offer.getSize() > 0 ? "true" : "false");

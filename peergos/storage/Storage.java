@@ -1,5 +1,6 @@
 package peergos.storage;
 
+import peergos.util.ArrayOps;
 import peergos.util.ByteArrayWrapper;
 
 import java.io.*;
@@ -26,7 +27,7 @@ public class Storage
             {
                 if (f.isDirectory())
                     continue;
-                ByteArrayWrapper name = new ByteArrayWrapper(peergos.util.Arrays.hexToBytes(f.getName()));
+                ByteArrayWrapper name = new ByteArrayWrapper(ArrayOps.hexToBytes(f.getName()));
                 Fragment frag = new Fragment(name);
                 int size = frag.getSize();
                 existing.put(name, size);
@@ -106,7 +107,7 @@ public class Storage
 
         public Fragment(ByteArrayWrapper key)
         {
-            name = peergos.util.Arrays.bytesToHex(key.data);
+            name = ArrayOps.bytesToHex(key.data);
         }
 
         public int getSize()

@@ -2,7 +2,7 @@ package peergos.storage.net;
 
 import com.sun.net.httpserver.HttpExchange;
 import peergos.storage.Storage;
-import peergos.util.Arrays;
+import peergos.util.ArrayOps;
 import peergos.util.ByteArrayWrapper;
 
 import java.io.ByteArrayOutputStream;
@@ -31,7 +31,7 @@ public class StoragePutHandler extends StorageGetHandler
     protected void handlePut(HttpExchange exchange) throws IOException
     {
         String filename = exchange.getRequestURI().toString().substring(uri.length());
-        byte[] key = Arrays.hexToBytes(filename);
+        byte[] key = ArrayOps.hexToBytes(filename);
         if (storage.isWaitingFor(key))
         {
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
@@ -48,7 +48,7 @@ public class StoragePutHandler extends StorageGetHandler
             }
             uploadStream.close();
 
-            storage.put(new ByteArrayWrapper(peergos.util.Arrays.hexToBytes(filename)), bout.toByteArray());
+            storage.put(new ByteArrayWrapper(ArrayOps.hexToBytes(filename)), bout.toByteArray());
 
             exchange.close();
         }

@@ -209,7 +209,7 @@ public class HTTPCoreNode extends AbstractCoreNode
                 conn.disconnect();
         }
     }
-   @Override public boolean addFragment(String username, byte[] encodedSharingPublicKey, byte[] mapKey, byte[] fragmentData, byte[] sharingKeySignedHash)
+   @Override public boolean addMetadataBlob(String username, byte[] encodedSharingPublicKey, byte[] mapKey, byte[] metadataBlob, byte[] sharingKeySignedHash)
     {
         HttpURLConnection conn = null;
         try
@@ -220,11 +220,11 @@ public class HTTPCoreNode extends AbstractCoreNode
             
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-            Serialize.serialize("addFragment", dout);
+            Serialize.serialize("addMetadataBlob", dout);
             Serialize.serialize(username, dout);
             Serialize.serialize(encodedSharingPublicKey, dout);
             Serialize.serialize(mapKey, dout);
-            Serialize.serialize(fragmentData, dout);
+            Serialize.serialize(metadataBlob, dout);
             Serialize.serialize(sharingKeySignedHash, dout);
             dout.flush();
 
@@ -238,7 +238,7 @@ public class HTTPCoreNode extends AbstractCoreNode
                 conn.disconnect();
         }
     }
-   @Override public boolean removeFragment(String username, byte[] encodedSharingKey, byte[] mapKey, byte[] sharingKeySignedMapKey)
+   @Override public boolean removeMetadataBlob(String username, byte[] encodedSharingKey, byte[] mapKey, byte[] sharingKeySignedMapKey)
     {
         HttpURLConnection conn = null;
         try
@@ -249,7 +249,7 @@ public class HTTPCoreNode extends AbstractCoreNode
             
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
             
-            Serialize.serialize("removeFragment", dout);
+            Serialize.serialize("removeMetadataBlob", dout);
             Serialize.serialize(username, dout);
             Serialize.serialize(encodedSharingKey, dout);
             Serialize.serialize(mapKey, dout);
@@ -328,7 +328,7 @@ public class HTTPCoreNode extends AbstractCoreNode
                 conn.disconnect();
         }
     }
-   @Override public ByteArrayWrapper getFragment(String username, byte[] encodedSharingKey, byte[] mapKey)
+   @Override public MetadataBlob getMetadataBlob(String username, byte[] encodedSharingKey, byte[] mapKey)
     {
         HttpURLConnection conn = null;
         try
@@ -339,15 +339,16 @@ public class HTTPCoreNode extends AbstractCoreNode
             
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-            Serialize.serialize("getFragment", dout);
+            Serialize.serialize("getMetadataBlob", dout);
             Serialize.serialize(username, dout);
             Serialize.serialize(encodedSharingKey, dout);
             Serialize.serialize(mapKey, dout);
             dout.flush();
 
             DataInputStream din = new DataInputStream(conn.getInputStream());
-            byte[] b = deserializeByteArray(din);
-            return new ByteArrayWrapper(b);
+            byte[] meta = deserializeByteArray(din);
+            byte[] hashes = deserializeByteArray(din);
+            return new MetadataBlob(new ByteArrayWrapper(meta), hashes);
         } catch (IOException ioe) {
             ioe.printStackTrace();
             return null;
@@ -356,7 +357,8 @@ public class HTTPCoreNode extends AbstractCoreNode
                 conn.disconnect();
         }
     }
-   @Override public boolean registerFragment(String recipient, InetSocketAddress node, byte[] hash)
+
+    @Override public boolean isFragmentAllowed(String owner, byte[] encodedSharingKey, byte[] mapkey, byte[] hash)
     {
         HttpURLConnection conn = null;
         try
@@ -364,13 +366,13 @@ public class HTTPCoreNode extends AbstractCoreNode
             conn = (HttpURLConnection) coreNodeURL.openConnection();
             conn.setDoInput(true);
             conn.setDoOutput(true);
-            
+
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-            Serialize.serialize("registerFragment", dout);
-            Serialize.serialize(recipient, dout);
-            Serialize.serialize(node.getAddress().getAddress(), dout);
-            dout.writeInt(node.getPort());
+            Serialize.serialize("isFragmentAllowed", dout);
+            Serialize.serialize(owner, dout);
+            Serialize.serialize(encodedSharingKey, dout);
+            Serialize.serialize(mapkey, dout);
             Serialize.serialize(hash, dout);
             dout.flush();
 
@@ -384,6 +386,39 @@ public class HTTPCoreNode extends AbstractCoreNode
                 conn.disconnect();
         }
     }
+
+    @Override public boolean registerFragmentStorage(String spaceDonor, InetSocketAddress node, String owner, byte[] encodedSharingKey, byte[] hash, byte[] signedKeyPlusHash)
+    {
+        HttpURLConnection conn = null;
+        try
+        {
+            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn.setDoInput(true);
+            conn.setDoOutput(true);
+            
+            DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
+
+            Serialize.serialize("registerFragmentStorage", dout);
+            Serialize.serialize(spaceDonor, dout);
+            Serialize.serialize(node.getAddress().getAddress(), dout);
+            dout.writeInt(node.getPort());
+            Serialize.serialize(owner, dout);
+            Serialize.serialize(encodedSharingKey, dout);
+            Serialize.serialize(hash, dout);
+            Serialize.serialize(signedKeyPlusHash, dout);
+            dout.flush();
+
+            DataInputStream din = new DataInputStream(conn.getInputStream());
+            return din.readBoolean();
+        } catch (IOException ioe) {
+            ioe.printStackTrace();
+            return false;
+        } finally {
+            if (conn != null)
+                conn.disconnect();
+        }
+    }
+
    @Override public long getQuota(String user) 
     {
         HttpURLConnection conn = null;

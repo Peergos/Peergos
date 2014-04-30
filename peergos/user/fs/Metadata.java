@@ -2,12 +2,12 @@ package peergos.user.fs;
 
 import java.io.*;
 
-public class MetadataBlob
+public class Metadata
 {
     private final byte[][] fragmentHashes;
     private final byte[] initVector;
 
-    public MetadataBlob(Fragment[] fragments, byte[] initVector)
+    public Metadata(Fragment[] fragments, byte[] initVector)
     {
         fragmentHashes = new byte[fragments.length][];
         for (int i=0; i < fragments.length; i++)
@@ -15,7 +15,7 @@ public class MetadataBlob
         this.initVector = initVector;
     }
 
-    public MetadataBlob(byte[] decrypted)
+    public Metadata(byte[] decrypted)
     {
         try {
             initVector = new byte[EncryptedChunk.IV_SIZE];

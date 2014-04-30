@@ -9,7 +9,7 @@ import peergos.storage.net.IP;
 import peergos.user.fs.Chunk;
 import peergos.user.fs.EncryptedChunk;
 import peergos.user.fs.Fragment;
-import peergos.user.fs.MetadataBlob;
+import peergos.user.fs.Metadata;
 import scala.concurrent.Await;
 import scala.concurrent.Future;
 import scala.concurrent.duration.Duration;
@@ -69,7 +69,7 @@ public class UserContext
         return dht.put(f.getHash(), f.getData(), targetUser, sharer.getPublicKey(), sharer.hashAndSignMessage(f.getHash()));
     }
 
-    public MetadataBlob uploadChunk(byte[] raw, byte[] initVector, String target, User sharer)
+    public Metadata uploadChunk(byte[] raw, byte[] initVector, String target, User sharer)
     {
         Chunk chunk = new Chunk(raw);
         EncryptedChunk encryptedChunk = new EncryptedChunk(chunk.encrypt(initVector));
@@ -87,7 +87,7 @@ public class UserContext
         try {
             Await.result(futureListOfObjects, timeout);
         } catch (Exception e) {e.printStackTrace();}
-        return new MetadataBlob(fragments, initVector);
+        return new Metadata(fragments, initVector);
     }
 
     public static class Test
@@ -148,7 +148,7 @@ public class UserContext
             for (int i=0; i < raw.length/32; i++)
                 System.arraycopy(contents, 0, raw, 32*i, 32);
 
-            MetadataBlob meta = context.uploadChunk(raw, initVector, context.username, sharer);
+            Metadata meta = context.uploadChunk(raw, initVector, context.username, sharer);
             // upload metadata to core node
             byte[] metablob = meta.serialize();
 

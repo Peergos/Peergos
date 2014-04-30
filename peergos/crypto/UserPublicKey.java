@@ -14,6 +14,7 @@ import java.security.spec.X509EncodedKeySpec;
 public class UserPublicKey
 {
     public static final int RSA_KEY_SIZE = 4096;
+    public static final int HASH_SIZE = 256/8;
     public static final String AUTH = "RSA";
     public static final String HASH = "SHA-256";
     public static final String SECURE_RANDOM = "SHA1PRNG"; // TODO: need to figure out an implementation using HMAC-SHA-256

@@ -3,10 +3,7 @@ package peergos.corenode;
 import peergos.crypto.*;
 import peergos.util.ByteArrayWrapper;
 
-import java.security.PublicKey;
-
 import java.util.*;
-import java.io.*;
 import java.net.*;
 import java.sql.*;
 
@@ -516,22 +513,22 @@ public class SQLiteCoreNode extends AbstractCoreNode
         return request.delete();
     }
 
-    public boolean addFragment(String username, byte[] encodedSharingPublicKey, byte[] mapKey, byte[] fragmentData, byte[] sharingKeySignedHash)
+    public boolean addMetadataBlob(String username, byte[] encodedSharingPublicKey, byte[] mapKey, byte[] metadataBlob, byte[] sharingKeySignedHash)
     {
-        if (! super.addFragment(username, encodedSharingPublicKey, mapKey, fragmentData, sharingKeySignedHash))
+        if (! super.addMetadataBlob(username, encodedSharingPublicKey, mapKey, metadataBlob, sharingKeySignedHash))
             return false;
         
         int sharingKeyID = SharingKeyData.getID(username, encodedSharingPublicKey);
         if (sharingKeyID <0)
             return false;
 
-        FragmentData fragment = new FragmentData(sharingKeyID, mapKey, fragmentData); 
+        FragmentData fragment = new FragmentData(sharingKeyID, mapKey, metadataBlob);
         return fragment.insert();
     }
 
-    public boolean removeFragment(String username, byte[] encodedSharingKey, byte[] mapKey, byte[] sharingKeySignedMapKey)
+    public boolean removeMetadataBlob(String username, byte[] encodedSharingKey, byte[] mapKey, byte[] sharingKeySignedMapKey)
     {
-        if (! super.removeFragment(username, encodedSharingKey, mapKey, sharingKeySignedMapKey))
+        if (! super.removeMetadataBlob(username, encodedSharingKey, mapKey, sharingKeySignedMapKey))
             return false;
 
         int sharingKeyID = SharingKeyData.getID(username, encodedSharingKey);
@@ -545,14 +542,14 @@ public class SQLiteCoreNode extends AbstractCoreNode
         return super.getSharingKeys(username); 
     }
 
-    public ByteArrayWrapper getFragment(String username, byte[] encodedSharingKey, byte[] mapkey)
+    public MetadataBlob getMetadataBlob(String username, byte[] encodedSharingKey, byte[] mapkey)
     {
-        return super.getFragment(username, encodedSharingKey, mapkey); 
+        return super.getMetadataBlob(username, encodedSharingKey, mapkey);
     }
 
-    public boolean registerFragment(String recipient, InetSocketAddress node, byte[] hash)
+    public boolean registerFragmentStorage(String spaceDonor, InetSocketAddress node, String owner, byte[] encodedSharingKey, byte[] hash, byte[] signedKeyPlusHash)
     {
-        if (! super.registerFragment(recipient, node, hash))
+        if (! super.registerFragmentStorage(spaceDonor, node, owner, encodedSharingKey, hash, signedKeyPlusHash))
             return false;
         return true; 
 

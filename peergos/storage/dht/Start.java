@@ -88,7 +88,7 @@ public class Start
             if (joinResult instanceof HttpsMessenger.JOINERROR)
             {
                 // maybe try again?
-                throw new IllegalStateException("Couldn't join the DHT!");
+                throw new IllegalStateException("Couldn't concat the DHT!");
             }
             // router is ready!
             System.out.println(port+" joined dht");
