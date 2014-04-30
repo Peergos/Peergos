@@ -357,7 +357,37 @@ public class HTTPCoreNode extends AbstractCoreNode
                 conn.disconnect();
         }
     }
-   @Override public boolean registerFragmentStorage(String spaceDonor, InetSocketAddress node, String owner, byte[] encodedSharingKey, byte[] hash, byte[] signedKeyPlusHash)
+
+    @Override public boolean isFragmentAllowed(String owner, byte[] encodedSharingKey, byte[] mapkey, byte[] hash)
+    {
+        HttpURLConnection conn = null;
+        try
+        {
+            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn.setDoInput(true);
+            conn.setDoOutput(true);
+
+            DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
+
+            Serialize.serialize("isFragmentAllowed", dout);
+            Serialize.serialize(owner, dout);
+            Serialize.serialize(encodedSharingKey, dout);
+            Serialize.serialize(mapkey, dout);
+            Serialize.serialize(hash, dout);
+            dout.flush();
+
+            DataInputStream din = new DataInputStream(conn.getInputStream());
+            return din.readBoolean();
+        } catch (IOException ioe) {
+            ioe.printStackTrace();
+            return false;
+        } finally {
+            if (conn != null)
+                conn.disconnect();
+        }
+    }
+
+    @Override public boolean registerFragmentStorage(String spaceDonor, InetSocketAddress node, String owner, byte[] encodedSharingKey, byte[] hash, byte[] signedKeyPlusHash)
     {
         HttpURLConnection conn = null;
         try

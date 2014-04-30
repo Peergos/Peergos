@@ -67,6 +67,9 @@ public class HTTPCoreNodeServer
                     case "getMetadataBlob":
                         getMetadataBlob(din, dout);
                         break;
+                    case "isFragmentAllowed":
+                        isFragmentAllowed(din, dout);
+                        break;
                     case "registerFragmentStorage":
                         registerFragmentStorage(din, dout);
                         break;
@@ -210,6 +213,16 @@ public class HTTPCoreNodeServer
             AbstractCoreNode.MetadataBlob b = coreNode.getMetadataBlob(username, encodedSharingKey, mapKey);
             Serialize.serialize(b.metadata.data, dout);
             Serialize.serialize(b.fragmentHashes, dout);
+        }
+
+        void isFragmentAllowed(DataInputStream din, DataOutputStream dout) throws IOException
+        {
+            String owner = deserializeString(din);
+            byte[] sharingKey =deserializeByteArray(din);
+            byte[] mapKey =deserializeByteArray(din);
+            byte[] hash =deserializeByteArray(din);
+            boolean isAllowed = coreNode.isFragmentAllowed(owner, sharingKey, mapKey, hash);
+            dout.writeBoolean(isAllowed);
         }
 
         void registerFragmentStorage(DataInputStream din, DataOutputStream dout) throws IOException

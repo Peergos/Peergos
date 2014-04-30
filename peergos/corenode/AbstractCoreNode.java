@@ -36,6 +36,14 @@ public abstract class AbstractCoreNode
             this.metadata = metadata;// 32 bytes AES key + 16 bytes IV + Y bytes (pointer to next blob) + 256 bytes filename + Z bytes pointer to parent
             this.fragmentHashes = fragmentHashes;
         }
+
+        public boolean containsHash(byte[] hash)
+        {
+            for (int i=0; i < fragmentHashes.length/UserPublicKey.HASH_SIZE; i++)
+                if (Arrays.equals(hash, Arrays.copyOfRange(fragmentHashes, i*UserPublicKey.HASH_SIZE, i*UserPublicKey.HASH_SIZE+UserPublicKey.HASH_SIZE)))
+                    return true;
+            return false;
+        }
     }
 
     static class UserData
@@ -483,6 +491,21 @@ public abstract class AbstractCoreNode
             userStorageFactories.get(user).add(state);
         }
         return true;
+    }
+
+    public synchronized boolean isFragmentAllowed(String owner, byte[] encodedSharingKey, byte[] mapkey, byte[] hash)
+    {
+        UserData userData = userMap.get(owner);
+        UserPublicKey sharingPublicKey = new UserPublicKey(encodedSharingKey);
+        if (userData == null)
+            return false;
+        if (!userData.followers.contains(sharingPublicKey))
+            return false;
+        MetadataBlob blob = userData.metadata.get(sharingPublicKey).get(new ByteArrayWrapper(mapkey));
+        if (blob == null)
+            return false;
+
+        return blob.containsHash(hash);
     }
 
     public synchronized boolean registerFragmentStorage(String spaceDonor, InetSocketAddress node, String owner, byte[] encodedSharingKey, byte[] hash, byte[] signedKeyPlusHash)
