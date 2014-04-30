@@ -21,7 +21,6 @@ public class SQLiteCoreNode extends AbstractCoreNode
     private static final String CREATE_SHARING_KEYS_TABLE = "create table sharingkeys (id integer primary key autoincrement, name text not null, publickey text not null);";
     private static final String CREATE_FRAGMENTS_TABLE = "create table fragments (id integer primary key autoincrement, sharingkeyid not null, mapkey text not null, fragmentdata text not null);";
     private static final String CREATE_STORAGE_TABLE = "create table storage (id integer primary key autoincrement, address text not null, port integer not null);";
-    //private static final String CREATE_REPORTED_FRAGMENTS_TABLE = "create table storage (id integer primary key autoincrement, addressid integer not null, userid integer not null, fragmenthash text not null);";
 
     private static final Map<String,String> TABLES = new HashMap<String,String>();
     static
@@ -31,9 +30,6 @@ public class SQLiteCoreNode extends AbstractCoreNode
         TABLES.put("sharingkeys", CREATE_SHARING_KEYS_TABLE);
         TABLES.put("fragments", CREATE_FRAGMENTS_TABLE);
         TABLES.put("storage", CREATE_STORAGE_TABLE);
-        //TABLES.put("registeredFragments", CREATE_REPORTED_FRAGMENTS_TABLE);
-        //TABLES.put("friendships", CREATE_FRIENDSHIPS_TABLE);
-        //TABLES.put("fragments", CREATE_FRAGMENTS_TABLE);
     } 
 
     abstract static class RowData
