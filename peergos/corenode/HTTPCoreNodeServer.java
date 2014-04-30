@@ -55,20 +55,20 @@ public class HTTPCoreNodeServer
                     case "banSharingKey":
                         banSharingKey(din,dout);
                         break;
-                    case "addFragment":
-                        addFragment(din,dout);
+                    case "addMetadataBlob":
+                        addMetadataBlob(din, dout);
                         break;
-                    case "removeFragment":
-                        removeFragment(din,dout);
+                    case "removeMetadataBlob":
+                        removeMetadataBlob(din, dout);
                         break;
                     case "getSharingKeys":
                         getSharingKeys(din,dout);
                         break;
-                    case "getFragment":
-                        getFragment(din,dout);
+                    case "getMetadataBlob":
+                        getMetadataBlob(din, dout);
                         break;
-                    case "registerFragment":
-                        registerFragment(din,dout);
+                    case "registerFragmentStorage":
+                        registerFragmentStorage(din, dout);
                         break;
                     case "getQuota":
                         getQuota(din,dout);
@@ -165,7 +165,7 @@ public class HTTPCoreNodeServer
             dout.writeBoolean(isBanned);
         }
 
-        void addFragment(DataInputStream din, DataOutputStream dout) throws IOException
+        void addMetadataBlob(DataInputStream din, DataOutputStream dout) throws IOException
         {
             String username = deserializeString(din);
             byte[] encodedSharingPublicKey = deserializeByteArray(din);
@@ -173,18 +173,18 @@ public class HTTPCoreNodeServer
             byte[] fragmentData = deserializeByteArray(din);
             byte[] signedHash = deserializeByteArray(din);
 
-            boolean isAdded = coreNode.addFragment(username, encodedSharingPublicKey, mapKey, fragmentData, signedHash);
+            boolean isAdded = coreNode.addMetadataBlob(username, encodedSharingPublicKey, mapKey, fragmentData, signedHash);
             dout.writeBoolean(isAdded);
         }
 
-        void removeFragment(DataInputStream din, DataOutputStream dout) throws IOException
+        void removeMetadataBlob(DataInputStream din, DataOutputStream dout) throws IOException
         {
             String username = deserializeString(din);
             byte[] encodedSharingKey = deserializeByteArray(din);
             byte[] mapKey = deserializeByteArray(din);
             byte[] sharingKeySignedHash = deserializeByteArray(din);
 
-            boolean isRemoved = coreNode.removeFragment(username, encodedSharingKey, mapKey, sharingKeySignedHash);
+            boolean isRemoved = coreNode.removeMetadataBlob(username, encodedSharingKey, mapKey, sharingKeySignedHash);
             dout.writeBoolean(isRemoved);
         }
         void getSharingKeys(DataInputStream din, DataOutputStream dout) throws IOException
@@ -202,18 +202,18 @@ public class HTTPCoreNodeServer
         }
 
 
-        void getFragment(DataInputStream din, DataOutputStream dout) throws IOException
+        void getMetadataBlob(DataInputStream din, DataOutputStream dout) throws IOException
         {
             String username = deserializeString(din);
             byte[] encodedSharingKey = deserializeByteArray(din);
             byte[] mapKey = deserializeByteArray(din);
-            ByteArrayWrapper b = coreNode.getFragment(username, encodedSharingKey, mapKey);
+            ByteArrayWrapper b = coreNode.getMetadataBlob(username, encodedSharingKey, mapKey);
             byte[] bb = b.data;
             dout.writeInt(bb.length);
             dout.write(bb);
         }
 
-        void registerFragment(DataInputStream din, DataOutputStream dout) throws IOException
+        void registerFragmentStorage(DataInputStream din, DataOutputStream dout) throws IOException
         {
             String recipient = deserializeString(din);
             byte[] address = deserializeByteArray(din);
@@ -221,7 +221,7 @@ public class HTTPCoreNodeServer
             int port = din.readInt();
             byte[] hash = deserializeByteArray(din);
             
-            boolean isRegistered = coreNode.registerFragment(recipient, new InetSocketAddress(node, port),hash);
+            boolean isRegistered = coreNode.registerFragmentStorage(recipient, new InetSocketAddress(node, port), hash);
             dout.writeBoolean(isRegistered);
         }
         void getQuota(DataInputStream din, DataOutputStream dout) throws IOException

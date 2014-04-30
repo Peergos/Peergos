@@ -3,10 +3,7 @@ package peergos.corenode;
 import peergos.crypto.*;
 import peergos.util.ByteArrayWrapper;
 
-import java.security.PublicKey;
-
 import java.util.*;
-import java.io.*;
 import java.net.*;
 import java.sql.*;
 
@@ -549,14 +546,14 @@ public class SQLiteCoreNode extends AbstractCoreNode
         return super.getSharingKeys(username); 
     }
 
-    public ByteArrayWrapper getFragment(String username, byte[] encodedSharingKey, byte[] mapkey)
+    public ByteArrayWrapper getMetadataBlob(String username, byte[] encodedSharingKey, byte[] mapkey)
     {
-        return super.getFragment(username, encodedSharingKey, mapkey); 
+        return super.getMetadataBlob(username, encodedSharingKey, mapkey);
     }
 
-    public boolean registerFragment(String recipient, InetSocketAddress node, byte[] hash)
+    public boolean registerFragmentStorage(String spaceDonor, InetSocketAddress node, byte[] hash)
     {
-        if (! super.registerFragment(recipient, node, hash))
+        if (! super.registerFragmentStorage(spaceDonor, node, hash))
             return false;
         return true; 
 

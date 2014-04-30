@@ -209,7 +209,7 @@ public class HTTPCoreNode extends AbstractCoreNode
                 conn.disconnect();
         }
     }
-   @Override public boolean addFragment(String username, byte[] encodedSharingPublicKey, byte[] mapKey, byte[] fragmentData, byte[] sharingKeySignedHash)
+   @Override public boolean addMetadataBlob(String username, byte[] encodedSharingPublicKey, byte[] mapKey, byte[] fragmentData, byte[] sharingKeySignedHash)
     {
         HttpURLConnection conn = null;
         try
@@ -220,7 +220,7 @@ public class HTTPCoreNode extends AbstractCoreNode
             
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-            Serialize.serialize("addFragment", dout);
+            Serialize.serialize("addMetadataBlob", dout);
             Serialize.serialize(username, dout);
             Serialize.serialize(encodedSharingPublicKey, dout);
             Serialize.serialize(mapKey, dout);
@@ -238,7 +238,7 @@ public class HTTPCoreNode extends AbstractCoreNode
                 conn.disconnect();
         }
     }
-   @Override public boolean removeFragment(String username, byte[] encodedSharingKey, byte[] mapKey, byte[] sharingKeySignedMapKey)
+   @Override public boolean removeMetadataBlob(String username, byte[] encodedSharingKey, byte[] mapKey, byte[] sharingKeySignedMapKey)
     {
         HttpURLConnection conn = null;
         try
@@ -249,7 +249,7 @@ public class HTTPCoreNode extends AbstractCoreNode
             
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
             
-            Serialize.serialize("removeFragment", dout);
+            Serialize.serialize("removeMetadataBlob", dout);
             Serialize.serialize(username, dout);
             Serialize.serialize(encodedSharingKey, dout);
             Serialize.serialize(mapKey, dout);
@@ -328,7 +328,7 @@ public class HTTPCoreNode extends AbstractCoreNode
                 conn.disconnect();
         }
     }
-   @Override public ByteArrayWrapper getFragment(String username, byte[] encodedSharingKey, byte[] mapKey)
+   @Override public ByteArrayWrapper getMetadataBlob(String username, byte[] encodedSharingKey, byte[] mapKey)
     {
         HttpURLConnection conn = null;
         try
@@ -339,7 +339,7 @@ public class HTTPCoreNode extends AbstractCoreNode
             
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-            Serialize.serialize("getFragment", dout);
+            Serialize.serialize("getMetadataBlob", dout);
             Serialize.serialize(username, dout);
             Serialize.serialize(encodedSharingKey, dout);
             Serialize.serialize(mapKey, dout);
@@ -356,7 +356,7 @@ public class HTTPCoreNode extends AbstractCoreNode
                 conn.disconnect();
         }
     }
-   @Override public boolean registerFragment(String recipient, InetSocketAddress node, byte[] hash)
+   @Override public boolean registerFragmentStorage(String spaceDonor, InetSocketAddress node, byte[] hash)
     {
         HttpURLConnection conn = null;
         try
@@ -367,8 +367,8 @@ public class HTTPCoreNode extends AbstractCoreNode
             
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-            Serialize.serialize("registerFragment", dout);
-            Serialize.serialize(recipient, dout);
+            Serialize.serialize("registerFragmentStorage", dout);
+            Serialize.serialize(spaceDonor, dout);
             Serialize.serialize(node.getAddress().getAddress(), dout);
             dout.writeInt(node.getPort());
             Serialize.serialize(hash, dout);

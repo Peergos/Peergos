@@ -12,11 +12,7 @@ import peergos.util.ByteArrayWrapper;
 import org.junit.Test;
 
 import java.util.*;
-import java.io.*;
 import java.net.*;
-import java.sql.*;
-
-import java.security.*;
 
 public class CoreNode
 {
@@ -65,24 +61,24 @@ public class CoreNode
             //add fragment
             //
             byte[] mapKey = new byte[10];
-            boolean addedFragment = coreNode.addFragment(username, follower.getPublicKey(), mapKey, cipherText, follower.hashAndSignMessage(cipherText));
+            boolean addedFragment = coreNode.addMetadataBlob(username, follower.getPublicKey(), mapKey, cipherText, follower.hashAndSignMessage(cipherText));
             assertTrue("added fragment", !addedFragment);
 
             // add storage allowance
 
             int frags = 10;
             for (int i = 0; i < frags; i++) {
-                coreNode.registerFragment(username, new InetSocketAddress("localhost", 666), new byte[10 + i]);
+                coreNode.registerFragmentStorage(username, new InetSocketAddress("localhost", 666), new byte[10 + i]);
             }
             long quota = coreNode.getQuota(username);
             assertTrue("quota after registering fragment", quota == coreNode.fragmentLength() * frags);
 
             // try again adding fragment
-            addedFragment = coreNode.addFragment(username, follower.getPublicKey(), mapKey, cipherText, follower.hashAndSignMessage(cipherText));
+            addedFragment = coreNode.addMetadataBlob(username, follower.getPublicKey(), mapKey, cipherText, follower.hashAndSignMessage(cipherText));
             assertTrue("added fragment", addedFragment);
 
             // get fragment and verify contents are the same
-            ByteArrayWrapper blob = coreNode.getFragment(username, follower.getPublicKey(), mapKey);
+            ByteArrayWrapper blob = coreNode.getMetadataBlob(username, follower.getPublicKey(), mapKey);
             assertTrue("retrieved blob equality", new ByteArrayWrapper(cipherText).equals(blob));
 
             //

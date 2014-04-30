@@ -246,8 +246,8 @@ public abstract class AbstractCoreNode
      * @param encodedFragmentData fragment meta-data encoded with userKey
      */ 
     
-    //public boolean addFragment(byte[] userKey, byte[] signedHash, byte[] encodedFragmentData)
-    public boolean addFragment(String username, byte[] encodedSharingPublicKey, byte[] mapKey, byte[] fragmentData, byte[] sharingKeySignedHash)
+    //public boolean addMetadataBlob(byte[] userKey, byte[] signedHash, byte[] encodedFragmentData)
+    public boolean addMetadataBlob(String username, byte[] encodedSharingPublicKey, byte[] mapKey, byte[] fragmentData, byte[] sharingKeySignedHash)
     {
         UserPublicKey userKey = null;
         synchronized(this)
@@ -267,10 +267,10 @@ public abstract class AbstractCoreNode
         if (! sharingKey.isValidSignature(sharingKeySignedHash, fragmentData))
             return false;
 
-        return addFragment(username, sharingKey, mapKey, fragmentData);
+        return addMetadataBlob(username, sharingKey, mapKey, fragmentData);
     }
 
-    private synchronized boolean addFragment(String username, UserPublicKey sharingKey, byte[] mapKey, byte[] fragmentData)
+    private synchronized boolean addMetadataBlob(String username, UserPublicKey sharingKey, byte[] mapKey, byte[] fragmentData)
     {
          
         UserData userData = userMap.get(username);
@@ -293,7 +293,7 @@ public abstract class AbstractCoreNode
         return true;
     }
 
-    public boolean removeFragment(String username, byte[] encodedSharingKey, byte[] mapKey, byte[] sharingKeySignedMapKey)
+    public boolean removeMetadataBlob(String username, byte[] encodedSharingKey, byte[] mapKey, byte[] sharingKeySignedMapKey)
     {
         UserPublicKey userKey;
         UserPublicKey sharingKey = new UserPublicKey(encodedSharingKey);
@@ -310,10 +310,10 @@ public abstract class AbstractCoreNode
         if (! sharingKey.isValidSignature(sharingKeySignedMapKey, mapKey))
             return false;
 
-        return removeFragment(username, sharingKey, mapKey);
+        return removeMetaDataBlob(username, sharingKey, mapKey);
     }
 
-    private synchronized boolean removeFragment(String username, UserPublicKey sharingKey, byte[] mapKey)
+    private synchronized boolean removeMetaDataBlob(String username, UserPublicKey sharingKey, byte[] mapKey)
     {
         UserData userData = userMap.get(username);
 
@@ -366,7 +366,7 @@ public abstract class AbstractCoreNode
         
     } 
 
-    public synchronized ByteArrayWrapper getFragment(String username, byte[] encodedSharingKey, byte[] mapkey)
+    public synchronized ByteArrayWrapper getMetadataBlob(String username, byte[] encodedSharingKey, byte[] mapkey)
     {
         UserPublicKey userKey = userNameToPublicKeyMap.get(username);
         if (userKey == null)
@@ -430,12 +430,12 @@ public abstract class AbstractCoreNode
         return true;
     }
 
-    public synchronized boolean registerFragment(String recipient, InetSocketAddress node, byte[] hash)
+    public synchronized boolean registerFragmentStorage(String spaceDonor, InetSocketAddress node, byte[] hash)
     {
-        if (!userStorageFactories.containsKey(recipient))
+        if (!userStorageFactories.containsKey(spaceDonor))
             return false;
         if (!storageStates.containsKey(node))
-            addStorageNodeState(recipient, node);
+            addStorageNodeState(spaceDonor, node);
 
         StorageNodeState donor = storageStates.get(node);
         return donor.addHash(hash);
