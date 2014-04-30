@@ -207,10 +207,9 @@ public class HTTPCoreNodeServer
             String username = deserializeString(din);
             byte[] encodedSharingKey = deserializeByteArray(din);
             byte[] mapKey = deserializeByteArray(din);
-            ByteArrayWrapper b = coreNode.getMetadataBlob(username, encodedSharingKey, mapKey);
-            byte[] bb = b.data;
-            dout.writeInt(bb.length);
-            dout.write(bb);
+            AbstractCoreNode.MetadataBlob b = coreNode.getMetadataBlob(username, encodedSharingKey, mapKey);
+            Serialize.serialize(b.metadata.data, dout);
+            Serialize.serialize(b.fragmentHashes, dout);
         }
 
         void registerFragmentStorage(DataInputStream din, DataOutputStream dout) throws IOException
@@ -219,11 +218,15 @@ public class HTTPCoreNodeServer
             byte[] address = deserializeByteArray(din);
             InetAddress node = InetAddress.getByAddress(address);
             int port = din.readInt();
+            String owner = deserializeString(din);
+            byte[] encodedSharingKey = deserializeByteArray(din);
             byte[] hash = deserializeByteArray(din);
+            byte[] signedStuff = deserializeByteArray(din);
             
-            boolean isRegistered = coreNode.registerFragmentStorage(recipient, new InetSocketAddress(node, port), hash);
+            boolean isRegistered = coreNode.registerFragmentStorage(recipient, new InetSocketAddress(node, port), owner, encodedSharingKey, hash, signedStuff);
             dout.writeBoolean(isRegistered);
         }
+
         void getQuota(DataInputStream din, DataOutputStream dout) throws IOException
         {
             String username = deserializeString(din);

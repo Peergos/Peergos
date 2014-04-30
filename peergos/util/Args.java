@@ -64,15 +64,15 @@ public class Args
     static
     {
         OPTIONS.put("help", "Show this help.");
-        OPTIONS.put("firstNode", " This is the first node in the network (don't attempt to join the network).");
+        OPTIONS.put("firstNode", " This is the first node in the network (don't attempt to concat the network).");
         OPTIONS.put("logMessages", "Print every received message to the console.");
     }
     public static final Map<String, String> PARAMS = new LinkedHashMap();
     static
     {
         PARAMS.put("port", " the I/O port to listen on.");
-        PARAMS.put("contactIP", "name or IP address of contact point to join the network");
-        PARAMS.put("contactPort", "port of contact point to join the network");
+        PARAMS.put("contactIP", "name or IP address of contact point to concat the network");
+        PARAMS.put("contactPort", "port of contact point to concat the network");
         PARAMS.put("test", "number of local nodes to start in test mode");
         PARAMS.put("script", "script of commands to run during test");
     }

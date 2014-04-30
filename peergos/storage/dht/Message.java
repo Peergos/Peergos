@@ -2,7 +2,7 @@ package peergos.storage.dht;
 
 import peergos.user.UserContext;
 import peergos.util.*;
-import peergos.util.Arrays;
+import peergos.util.ArrayOps;
 
 import java.io.*;
 import java.util.*;
@@ -173,7 +173,7 @@ public abstract class Message
         {
             super(Type.PUT);
             this.key = key;
-            target = Arrays.getLong(key, 0);
+            target = ArrayOps.getLong(key, 0);
             this.len = len;
             this.user = user;
             this.sharingKey = sharingKey;
@@ -186,7 +186,7 @@ public abstract class Message
             key = new byte[KEY_BYTE_LENGTH];
             in.readFully(key);
             len = in.readInt();
-            target = Arrays.getLong(key, 0);
+            target = ArrayOps.getLong(key, 0);
             user = Serialize.deserializeString(in, UserContext.MAX_USERNAME_SIZE);
             sharingKey = Serialize.deserializeByteArray(in, UserContext.MAX_KEY_SIZE);
             signedHashOfKey = Serialize.deserializeByteArray(in, UserContext.MAX_KEY_SIZE);
@@ -274,7 +274,7 @@ public abstract class Message
         {
             super(Type.GET);
             this.key = key;
-            target = Arrays.getLong(key, 0);
+            target = ArrayOps.getLong(key, 0);
         }
 
         public GET(byte[] key, long target)
@@ -289,7 +289,7 @@ public abstract class Message
             super(Type.GET, in);
             key = new byte[KEY_BYTE_LENGTH];
             in.readFully(key);
-            target = Arrays.getLong(key, 0);
+            target = ArrayOps.getLong(key, 0);
         }
 
         public long getTarget()

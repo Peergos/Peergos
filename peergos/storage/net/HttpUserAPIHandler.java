@@ -9,7 +9,7 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import peergos.storage.dht.*;
 import peergos.user.fs.Fragment;
-import peergos.util.Arrays;
+import peergos.util.ArrayOps;
 import peergos.util.Serialize;
 import scala.concurrent.Future;
 
@@ -96,7 +96,7 @@ public class HttpUserAPIHandler implements HttpHandler
         public void callback(GetOffer offer) {
             try {
                 dout.writeInt(1); // success
-                byte[] frag = HttpMessenger.getFragment(offer.getTarget().addr, offer.getTarget().port+1, "/" + Arrays.bytesToHex(key));
+                byte[] frag = HttpMessenger.getFragment(offer.getTarget().addr, offer.getTarget().port+1, "/" + ArrayOps.bytesToHex(key));
                 Serialize.serialize(frag, dout);
                 dout.flush();
                 dout.close();

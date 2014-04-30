@@ -7,8 +7,7 @@ import akka.actor.ActorSystem;
 import akka.dispatch.OnFailure;
 import akka.dispatch.OnSuccess;
 import peergos.storage.net.HttpMessenger;
-import peergos.storage.net.HttpsMessenger;
-import peergos.util.Arrays;
+import peergos.util.ArrayOps;
 import scala.concurrent.Future;
 
 import java.io.IOException;
@@ -41,7 +40,7 @@ public class DHTAPI
         {
             PutOffer offer = (PutOffer) obj;
             try {
-                HttpMessenger.putFragment(offer.getTarget().addr, offer.getTarget().port+1, "/" + Arrays.bytesToHex(key), value);
+                HttpMessenger.putFragment(offer.getTarget().addr, offer.getTarget().port+1, "/" + ArrayOps.bytesToHex(key), value);
                 callback.callback(offer);
             } catch (IOException e)
             {

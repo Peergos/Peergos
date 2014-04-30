@@ -6,7 +6,7 @@ import peergos.crypto.User;
 import peergos.user.fs.Chunk;
 import peergos.user.fs.EncryptedChunk;
 import peergos.storage.net.IP;
-import peergos.util.Arrays;
+import peergos.util.ArrayOps;
 import org.bouncycastle.pkcs.PKCS10CertificationRequest;
 import org.junit.Test;
 
@@ -119,22 +119,22 @@ public class Crypto
         byte[] unsigned = u.unsignMessage(signed);
         byte[] encrypted = u.encryptMessageFor(raw);
         byte[] decrypted = u.decryptMessage(encrypted);
-//        System.out.println(Arrays.bytesToHex(raw));
-//        System.out.println(Arrays.bytesToHex(unsigned));
-//        System.out.println(Arrays.bytesToHex(decrypted));
-//        System.out.println("Signed["+signed.length+"]: "+Arrays.bytesToHex(signed));
-//        System.out.println("Encryped["+encrypted.length+"]: "+Arrays.bytesToHex(encrypted));
+//        System.out.println(ArrayOps.bytesToHex(raw));
+//        System.out.println(ArrayOps.bytesToHex(unsigned));
+//        System.out.println(ArrayOps.bytesToHex(decrypted));
+//        System.out.println("Signed["+signed.length+"]: "+ArrayOps.bytesToHex(signed));
+//        System.out.println("Encryped["+encrypted.length+"]: "+ArrayOps.bytesToHex(encrypted));
 
         assertEquals("Correct encrypted size", UserPublicKey.RSA_KEY_SIZE/8, signed.length);
         assertEquals("Correct encrypted size", UserPublicKey.RSA_KEY_SIZE/8, encrypted.length);
-        assertEquals("unsigning is the inverse of signing", Arrays.bytesToHex(raw), Arrays.bytesToHex(unsigned));
-        assertEquals("decrypt is the inverse of encrypt", Arrays.bytesToHex(raw), Arrays.bytesToHex(decrypted));
+        assertEquals("unsigning is the inverse of signing", ArrayOps.bytesToHex(raw), ArrayOps.bytesToHex(unsigned));
+        assertEquals("decrypt is the inverse of encrypt", ArrayOps.bytesToHex(raw), ArrayOps.bytesToHex(decrypted));
 
         UserPublicKey rem = new UserPublicKey(u.getPublicKey());
         byte[] encrypted2 = rem.encryptMessageFor(raw);
         byte[] decrypted2 = u.decryptMessage(encrypted2);
-        assertEquals("decrypt is the inverse of recover key -> encrypt", Arrays.bytesToHex(raw), Arrays.bytesToHex(decrypted2));
-        assertEquals("recovered public key and generated are identical", Arrays.bytesToHex(u.getPublicKey()), Arrays.bytesToHex(rem.getPublicKey()));
+        assertEquals("decrypt is the inverse of recover key -> encrypt", ArrayOps.bytesToHex(raw), ArrayOps.bytesToHex(decrypted2));
+        assertEquals("recovered public key and generated are identical", ArrayOps.bytesToHex(u.getPublicKey()), ArrayOps.bytesToHex(rem.getPublicKey()));
     }
 
     @Test
@@ -145,21 +145,21 @@ public class Crypto
         // test hashes are identical
         byte[] hash1 = User.hash(username+password);
         byte[] hash2 = User.hash(username+password);
-        assertEquals("hashes should be identical", Arrays.bytesToHex(hash1), Arrays.bytesToHex(hash2));
+        assertEquals("hashes should be identical", ArrayOps.bytesToHex(hash1), ArrayOps.bytesToHex(hash2));
 
         // independent logins must be able to decrypt each others encryption
         User u1 = User.generateUserCredentials(username, password);
         User u2 = User.generateUserCredentials(username, password);
 
         // public keys should be identical
-        assertEquals("public keys should be identical", Arrays.bytesToHex(u1.getPublicKey()), Arrays.bytesToHex(u2.getPublicKey()));
+        assertEquals("public keys should be identical", ArrayOps.bytesToHex(u1.getPublicKey()), ArrayOps.bytesToHex(u2.getPublicKey()));
 
         byte[] raw = "This is some random raw data.".getBytes();
         byte[] signed = u1.signMessage(raw);
         byte[] unsigned = u2.unsignMessage(signed);
         byte[] encrypted = u1.encryptMessageFor(raw);
         byte[] decrypted = u2.decryptMessage(encrypted);
-        assertEquals("unsigning is the inverse of signing", Arrays.bytesToHex(raw), Arrays.bytesToHex(unsigned));
-        assertEquals("decrypt is the inverse of encrypt", Arrays.bytesToHex(raw), Arrays.bytesToHex(decrypted));
+        assertEquals("unsigning is the inverse of signing", ArrayOps.bytesToHex(raw), ArrayOps.bytesToHex(unsigned));
+        assertEquals("decrypt is the inverse of encrypt", ArrayOps.bytesToHex(raw), ArrayOps.bytesToHex(decrypted));
     }
 }

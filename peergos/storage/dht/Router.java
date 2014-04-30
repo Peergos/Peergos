@@ -8,7 +8,7 @@ import peergos.storage.net.HttpMessenger;
 import peergos.storage.net.HttpsMessenger;
 import peergos.storage.Storage;
 import peergos.util.*;
-import peergos.util.Arrays;
+import peergos.util.ArrayOps;
 import scala.PartialFunction;
 import scala.runtime.BoxedUnit;
 
@@ -331,7 +331,7 @@ public class Router extends AbstractActor
             } else
             {
                 // forward to two neighbours as they might have it (if we were the original target of the request
-                long keyLong = Arrays.getLong(((Message.GET) m).getKey(), 0);
+                long keyLong = ArrayOps.getLong(((Message.GET) m).getKey(), 0);
                 if (leftNeighbours.size() != 0)
                 {
                     Node left = leftNeighbours.get(leftNeighbours.lastKey());
@@ -361,7 +361,7 @@ public class Router extends AbstractActor
                 pendingGets.remove(key);
             }
             else
-                LOGGER.log(Level.ALL, "Couldn't find GET_RESULT handler for " + Arrays.bytesToHex(key.data));
+                LOGGER.log(Level.ALL, "Couldn't find GET_RESULT handler for " + ArrayOps.bytesToHex(key.data));
         }
 
         if (Message.LOG)

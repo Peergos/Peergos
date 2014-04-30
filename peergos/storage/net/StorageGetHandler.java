@@ -3,7 +3,7 @@ package peergos.storage.net;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import peergos.storage.Storage;
-import peergos.util.Arrays;
+import peergos.util.ArrayOps;
 import peergos.util.ByteArrayWrapper;
 
 import java.io.IOException;
@@ -30,7 +30,7 @@ public class StorageGetHandler implements HttpHandler
     protected void handleGet(HttpExchange exchange) throws IOException
     {
         String filename = exchange.getRequestURI().toString().substring(uri.length());
-        ByteArrayWrapper key = new ByteArrayWrapper(Arrays.hexToBytes(filename));
+        ByteArrayWrapper key = new ByteArrayWrapper(ArrayOps.hexToBytes(filename));
         if (storage.contains(key))
         {
             byte[] res = storage.get(key);

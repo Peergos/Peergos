@@ -1,7 +1,23 @@
 package peergos.util;
 
-public class Arrays
+public class ArrayOps
 {
+    public static byte[] concat(byte[] one, byte[] two)
+    {
+        byte[] res = new byte[one.length+two.length];
+        System.arraycopy(one, 0, res, 0, one.length);
+        System.arraycopy(two, 0, res, one.length, two.length);
+        return res;
+    }
+
+    public static byte[] concat(byte[] one, byte[] two, byte[] three)
+    {
+        byte[] res = new byte[one.length+two.length+three.length];
+        System.arraycopy(one, 0, res, 0, one.length);
+        System.arraycopy(two, 0, res, one.length, two.length);
+        System.arraycopy(three, 0, res, one.length+two.length, three.length);
+        return res;
+    }
 
     public static long getLong(byte[] source, int start)
     {
