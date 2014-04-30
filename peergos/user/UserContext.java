@@ -18,6 +18,7 @@ import static akka.dispatch.Futures.sequence;
 import static org.junit.Assert.*;
 
 import java.io.IOException;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.URL;
 import java.security.PublicKey;
@@ -99,19 +100,22 @@ public class UserContext
         {
             HTTPCoreNodeServer server = null;
             ActorSystem system = null;
+            String coreIP = IP.getMyPublicAddress().getHostAddress();
+            String storageIP = IP.getMyPublicAddress().getHostAddress();
+            int storagePort = 8000;
             try {
                 system = ActorSystem.create("UserRouter");
 
                 // create a CoreNode API
-                AbstractCoreNode mockCoreNode = new AbstractCoreNode() {
-                    @Override
-                    public void close() throws IOException {
-
-                    }
-                };
-                server = new HTTPCoreNodeServer(mockCoreNode, IP.getMyPublicAddress(), AbstractCoreNode.PORT);
-                server.start();
-                URL coreURL = new URL("http://"+IP.getMyPublicAddress().getHostAddress()+":"+ AbstractCoreNode.PORT+"/");
+//                AbstractCoreNode mockCoreNode = new AbstractCoreNode() {
+//                    @Override
+//                    public void close() throws IOException {
+//
+//                    }
+//                };
+//                server = new HTTPCoreNodeServer(mockCoreNode, IP.getMyPublicAddress(), AbstractCoreNode.PORT);
+//                server.start();
+                URL coreURL = new URL("http://"+coreIP+":"+ AbstractCoreNode.PORT+"/");
                 HTTPCoreNode clientCoreNode = new HTTPCoreNode(coreURL);
 
                 // create a new us
@@ -119,7 +123,7 @@ public class UserContext
                 String ourname = "USER";
 
                 // create a DHT API
-                DHTUserAPI dht = new HttpsUserAPI(new InetSocketAddress(IP.getMyPublicAddress(), 8000), system);
+                DHTUserAPI dht = new HttpsUserAPI(new InetSocketAddress(InetAddress.getByName(storageIP), storagePort), system);
 
                 UserContext context = new UserContext(ourname, us, dht, clientCoreNode, system);
                 assertTrue("Not already registered", !context.checkRegistered());
