@@ -81,9 +81,38 @@ public class CoreNode
             addedFragment = coreNode.addMetadataBlob(username, follower.getPublicKey(), mapKey, cipherText, follower.hashAndSignMessage(cipherText));
             assertTrue("added fragment", addedFragment);
 
-            // get fragment and verify contents are the same
+
+
+            //
+            //add fragment hashes
+            //
+
+            byte[] generatedHashes = new byte[UserPublicKey.HASH_SIZE*10];
+            random.nextBytes(generatedHashes);
+            byte[] signedHash = follower.hashAndSignMessage(ArrayOps.concat(mapKey, cipherText, generatedHashes)); 
+            boolean addedHashes = coreNode.addFragmentHashes(username, follower.getPublicKey(), mapKey, cipherText, generatedHashes, signedHash); 
+            assertTrue("added hashes to metadatablob", addedHashes);
+
+
+            //
+            // is fragment allowed?
+            //
+            byte[] queryHash = Arrays.copyOfRange(generatedHashes,0, UserPublicKey.HASH_SIZE);
+            boolean isFragmentAllowed = coreNode.isFragmentAllowed(username, follower.getPublicKey(), mapKey, queryHash);
+            assertTrue("fragment is allowed ", isFragmentAllowed);
+
+            // non valid hash
+            queryHash = Arrays.copyOfRange(generatedHashes,3, UserPublicKey.HASH_SIZE+3);
+            isFragmentAllowed = coreNode.isFragmentAllowed(username, follower.getPublicKey(), mapKey, queryHash);
+
+            assertFalse("fragment is not allowed ", isFragmentAllowed);
+
+            //
+            // retrieve metadata blob with hashes
+            //
             AbstractCoreNode.MetadataBlob blob = coreNode.getMetadataBlob(username, follower.getPublicKey(), mapKey);
-            assertTrue("retrieved blob equality", new ByteArrayWrapper(cipherText).equals(blob));
+            assertTrue("retrieved blob equality", new ByteArrayWrapper(cipherText).equals(blob.metadata()));
+            assertTrue("retrieved blob hashes equality", Arrays.equals(generatedHashes, blob.fragmentHashes()));
 
             //
             //create a friend
@@ -102,63 +131,70 @@ public class CoreNode
     }
 
     /*
-       @Test public void abstractTest() throws Exception 
+       @Test public void abstractTest() throws Throwable 
        {
-
+       try
+       {
        MockCoreNode coreNode = new MockCoreNode();
        coreNodeTests(coreNode);
-       }*/
-
-       @Test public void httpTest() throws Exception
-       {
-       try
-       {
-       HTTPCoreNodeServer server = null;
-       try
-       {
-       MockCoreNode mockCoreNode = new MockCoreNode();
-       InetAddress address = InetAddress.getByName("localhost");
-
-       server = new HTTPCoreNodeServer(mockCoreNode,address, AbstractCoreNode.PORT);
-       server.start();
-
-       URL url = new URL("http://localhost:"+AbstractCoreNode.PORT+"/");
-       HTTPCoreNode clientCoreNode = new HTTPCoreNode(url);
-
-       coreNodeTests(clientCoreNode);
-       } finally {
-       if (server != null)
-       server.close();    
-       }
-       } catch (Throwable t) {
+       } catch (Throwable t) { 
        t.printStackTrace();
        throw t;
        }
        }
+       */
 
+    @Test public void httpTest() throws Exception
+    {
+        try
+        {
+            HTTPCoreNodeServer server = null;
+            try
+            {
+                MockCoreNode mockCoreNode = new MockCoreNode();
+                InetAddress address = InetAddress.getByName("localhost");
 
-//    @Test public void sqlTest()
-//    {
-//        Random random = new Random(666);
-//
-//        SQLiteCoreNode coreNode = null;
-//
-//        String dbPath = "corenode_test.db";
-//        File f = new File(dbPath);
-//        f.delete();
-//        try
-//        {
-//            coreNode = new SQLiteCoreNode(dbPath);
-//            coreNodeTests(coreNode);
-//        } catch (Throwable t){
-//            t.printStackTrace();
-//            fail();
-//        } finally {
-//            coreNode.close();
-//            f.delete();
-//        }
-//
-//    }
+                server = new HTTPCoreNodeServer(mockCoreNode,address, AbstractCoreNode.PORT);
+                server.start();
+
+                URL url = new URL("http://localhost:"+AbstractCoreNode.PORT+"/");
+                HTTPCoreNode clientCoreNode = new HTTPCoreNode(url);
+
+                coreNodeTests(clientCoreNode);
+            } finally {
+                if (server != null)
+                    server.close();    
+            }
+        } catch (Throwable t) {
+            t.printStackTrace();
+            throw t;
+        }
+    }
+
+    /*
+       @Test public void sqlTest()
+       {
+       Random random = new Random(666);
+
+       SQLiteCoreNode coreNode = null;
+
+       String dbPath = "corenode_test.db";
+       File f = new File(dbPath);
+       f.delete();
+       try
+       {
+       coreNode = new SQLiteCoreNode(dbPath);
+       coreNodeTests(coreNode);
+       } catch (Throwable t){
+       t.printStackTrace();
+       fail();
+       } finally {
+       coreNode.close();
+       f.delete();
+       }
+
+       }
+       */
 
 
 

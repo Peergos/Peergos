@@ -469,6 +469,38 @@ public class HTTPCoreNode extends AbstractCoreNode
                 conn.disconnect();
         }
     }
+
+   @Override public boolean addFragmentHashes(String username, byte[] encodedSharingPublicKey, byte[] mapKey, byte[] metadataBlob, byte[] allHashes, byte[] sharingKeySignedHash)
+   {
+        HttpURLConnection conn = null;
+        try
+        {
+            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn.setDoInput(true);
+            conn.setDoOutput(true);
+            
+            DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
+
+            Serialize.serialize("addFragmentHashes", dout);
+            Serialize.serialize(username, dout);
+            Serialize.serialize(encodedSharingPublicKey, dout);
+            Serialize.serialize(mapKey, dout);
+            Serialize.serialize(metadataBlob, dout);
+            Serialize.serialize(allHashes, dout);
+            Serialize.serialize(sharingKeySignedHash, dout);
+            dout.flush();
+
+            DataInputStream din = new DataInputStream(conn.getInputStream());
+            return din.readBoolean();
+        } catch (IOException ioe) {
+            ioe.printStackTrace();
+            return false;
+        } finally {
+            if (conn != null)
+                conn.disconnect();
+        }
+
+   }
    @Override public void close()     
     {}
 }

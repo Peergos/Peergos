@@ -67,6 +67,9 @@ public class HTTPCoreNodeServer
                     case "getMetadataBlob":
                         getMetadataBlob(din, dout);
                         break;
+                    case "addFragmentHashes":
+                        addFragmentHashes(din, dout);
+                        break;
                     case "isFragmentAllowed":
                         isFragmentAllowed(din, dout);
                         break;
@@ -214,7 +217,17 @@ public class HTTPCoreNodeServer
             Serialize.serialize(b.metadata.data, dout);
             Serialize.serialize(b.fragmentHashes, dout);
         }
-
+        void addFragmentHashes(DataInputStream din, DataOutputStream dout) throws IOException
+        {
+            String owner = deserializeString(din);
+            byte[] sharingKey = deserializeByteArray(din);
+            byte[] mapKey = deserializeByteArray(din);
+            byte[] metadataBlob = deserializeByteArray(din);
+            byte[] allHashes = deserializeByteArray(din);
+            byte[] sharingKeySignedHash = deserializeByteArray(din);
+            boolean isAllowed = coreNode.addFragmentHashes(owner, sharingKey, mapKey, metadataBlob, allHashes, sharingKeySignedHash);
+            dout.writeBoolean(isAllowed);
+        }
         void isFragmentAllowed(DataInputStream din, DataOutputStream dout) throws IOException
         {
             String owner = deserializeString(din);
