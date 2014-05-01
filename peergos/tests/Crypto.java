@@ -93,7 +93,7 @@ public class Crypto
             String csrFile = "dir.csr";
             KeyPair pair = SSL.generateCSR(dirpass, IP.getMyPublicAddress().getHostAddress(), privFile, csrFile);
             long start = System.nanoTime();
-            Certificate cert = SSL.signDirectoryCertificate(csrFile, rootpass);
+            Certificate cert = SSL.signCertificate(csrFile, rootpass, "Directory");
             long end = System.nanoTime();
             System.out.printf("CSR signing took %d mS\n", (end-start)/1000000);
             assertEquals(cert.getPublicKey(), pair.getPublic());

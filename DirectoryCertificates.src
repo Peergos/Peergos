@@ -1,0 +1,36 @@
+package peergos.crypto;
+
+import org.bouncycastle.util.encoders.Base64;
+
+public class DirectoryCertificates {
+    public static final int NUM_SERVERS = 1;
+    public static byte[][] servers = new byte[NUM_SERVERS][];
+    static {
+        servers[0] = Base64.decode(            "MIIFLDCCAxSgAwIBAgIBATANBgkqhkiG9w0BAQsFADASMRAwDgYDVQQDDAdQZWVyZ29zMB" +
+            "4XDTE0MDUwMTE4NTg0OVoXDTE0MDUxNTEyNDUyNFowgYsxEjAQBgNVBAMMCTEwLjAuMi4x" +
+            "NTELMAkGA1UEBhMCQVUxEDAOBgNVBAoMB1BlZXJnb3MxEjAQBgNVBAcMCU1lbGJvdXJuZT" +
+            "ERMA8GA1UECAwIVmljdG9yaWExLzAtBgkqhkiG9w0BCQEMIGhlbGxvLk5TQS5HQ0hRLkFT" +
+            "SU9AZ29vZGx1Y2suY29tMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAljegD5" +
+            "zSEvPpPbS/7VpZM7DCAlhN87mN4AUnN1wEONJRPTAVByJR7ABovTi6zQsRu3Rwy/n/UsXJ" +
+            "OcHk77NDdVYIJ/yPGpX65YwJsqjPpvxXQxhyr0nNl43I4PiJ2hDSi/ec4g9pYR3wdODuUG" +
+            "ohJZQSeaHNBhURC0fpXfwNQi1/K71aqEXQrvpsf+qmjAu26o9B/sJthHRlb9/Wb0c3p7gp" +
+            "tU4vrlYvoJjmDaWEyVpBOTC2K1kCA+TpxGXydP1gNEYKCUxj4cXN99Yz6+DXw8cga6wHYu" +
+            "8/bIab7nlXaME4qEJUZqJ8thsO/seTxOY7xbSn42tILG+FVtcl6Po7zwRtBAvhcWL4g1Bl" +
+            "UBSBftEbQMucP0ERu0IWWWI0qU6zXlPvZKKIFVmTsUowoc02SDGTq/T9kAry4NF2wY1LrX" +
+            "MWavXQxRbfOdBBlV7l/j300g1pMEW7/thdsxVY8cZHzKg8FZ0e0awmvGobXe0P5J85pMoV" +
+            "blWvDSHaWzW9aUjLZVOi25JV8xxy7x8ngFWbcpdgm3eFiKePKbKphRlKed9o31XKmznW0X" +
+            "9ViVZAuGnj6VFg/9t0TnV004ivov2IvJfUmv+gfm9j6vuBDjFN/M59OcQFUVjv0xc223wa" +
+            "+4DrTENdS8kXtSM/blxShGGkMaggeiDioLrhNQd/RCCA8LkCAwEAAaMTMBEwDwYDVR0RBA" +
+            "gwBocECgACDzANBgkqhkiG9w0BAQsFAAOCAgEATl6BpYxE6J9AmyVv/d9q8M0Ha7IQ9Sjb" +
+            "mqt/tgpVaM1EsqzoBRp83Vuv6YqbogXXbygmcqA8/OM6QNUj5Cmv6zQMAx6egtFYwIlgpq" +
+            "ATl6cP64rGgRgfAC7gFnqsWrSiPoVO/x6+9Gp4QBviICOrcXYQT1jVJbNY88vF6e2RBSWF" +
+            "UA+vk4qZ2sOqqUlWNeuI1KsEo3cIarTeUWPlPBSB2uf5Vi9BNG40V92hrOvooTWhaFfr9f" +
+            "QYEgBSKtLH9ORf+koAKKmA+5Wvj90nyYK1liRle89B7tHS+7nm4F2ZIQrTJoZG7qYS8MYe" +
+            "yvTkQvhuST1p61fwgpA/MVfvIqCv+Z22okQspy1GOJMoxrj3+ktJDFmn6hvS6TtGUtz7KT" +
+            "U9SD/Mv/s7u6qkBdWlHv83dsrHu4nLQCUlR9WrgHcd8FCPK7+F/sGqJjQUYXJ9bcL9hLkO" +
+            "b7tJlUWePy9O8kIlpKuR8GP6VWcZnnoJ9GhZywUiykSLGsIsD4SUI7/uHWeEn3KbKYz+cm" +
+            "Zo+5nX8GgijJKrLOshwLQ5LIwbchUbDrf4s0KqJOyfaT6TmdtDpZFD27mbdvggkyTz6/Tv" +
+            "TnZHFiOdAggcWmRGulxMlb4EJ9JLeSplLCLd2Bj+BXVhEPOU9YTU0Qt+MxfX6Nm9X6F54R" +
+            "Jo2j65r1v9vAI7BqsteQk=" );
+    }
+}

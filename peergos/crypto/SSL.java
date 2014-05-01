@@ -342,11 +342,11 @@ public class SSL
         return new PKCS10CertificationRequest(csrBytes);
     }
 
-    public static Certificate signDirectoryCertificate(String csrFile, char[] rootPassword)
+    public static Certificate signCertificate(String csrFile, char[] rootPassword, String type)
     {
         try {
             PKCS10CertificationRequest csr = loadCSR(csrFile);
-            return signDirectoryCertificate(rootPassword, csr);
+            return signCertificate(rootPassword, csr, type);
         } catch (IOException e)
         {
             e.printStackTrace();
@@ -354,17 +354,17 @@ public class SSL
         }
     }
 
-    public static Certificate signDirectoryCertificate(char[] rootPassword, PKCS10CertificationRequest csr)
+    public static Certificate signCertificate(char[] rootPassword, PKCS10CertificationRequest csr, String type)
     {
         try {
             KeyStore ks = getRootKeyStore(rootPassword);
             PrivateKey rootPriv = (PrivateKey) ks.getKey("private", rootPassword);
             Certificate signed = signCertificate(csr, rootPriv, "Peergos");
-            BufferedWriter w = new BufferedWriter(new FileWriter("peergos/crypto/DirectoryCertificates.java"));
+            BufferedWriter w = new BufferedWriter(new FileWriter("peergos/crypto/"+type+"Certificates.java"));
             w.write("package peergos.crypto;\n\nimport org.bouncycastle.util.encoders.Base64;\n\n" +
-                    "public class DirectoryCertificates {\n    public static final int NUM_DIR_SERVERS = 1;\n"+
-                    "    public static byte[][] directoryServers = new byte[NUM_DIR_SERVERS][];\n    static {\n"+
-                    "        directoryServers[0] = Base64.decode(");
+                    "public class "+type+"Certificates {\n    public static final int NUM_SERVERS = 1;\n"+
+                    "    public static byte[][] servers = new byte[NUM_SERVERS][];\n    static {\n"+
+                    "        servers[0] = Base64.decode(");
             printCertificate(signed, w);
             w.write(");\n    }\n}");
             w.flush();
@@ -460,11 +460,11 @@ public class SSL
     public static Certificate[] getDirectoryServerCertificates()
             throws KeyStoreException, NoSuchProviderException, NoSuchAlgorithmException, CertificateException, IOException
     {
-        Certificate[] dirs = new Certificate[DirectoryCertificates.NUM_DIR_SERVERS];
+        Certificate[] dirs = new Certificate[DirectoryCertificates.NUM_SERVERS];
         for (int i =0; i < dirs.length; i++)
         {
             CertificateFactory  fact = CertificateFactory.getInstance("X.509", "BC");
-            dirs[i] = fact.generateCertificate(new ByteArrayInputStream(DirectoryCertificates.directoryServers[i]));
+            dirs[i] = fact.generateCertificate(new ByteArrayInputStream(DirectoryCertificates.servers[i]));
         }
         return dirs;
     }

@@ -22,7 +22,7 @@ import java.util.concurrent.TimeUnit;
 
 public class Start
 {
-    static ActorSystem system = ActorSystem.create("DHTRouter");;
+    static ActorSystem system;
 
     public static void main(String[] args) throws IOException
     {
@@ -61,13 +61,23 @@ public class Start
         else if (Args.hasOption("dirGen"))
         {
 
-            SSL.generateCSR(Args.getParameter("password").toCharArray(), Args.getParameter("domain", "localhost"), Args.getParameter("keyfile"), "dir.csr");
+            SSL.generateCSR(Args.getParameter("password").toCharArray(), Args.getParameter("domain", IP.getMyPublicAddress().getHostAddress()), Args.getParameter("keyfile"), "dir.csr");
         }
         else if (Args.hasOption("dirSign"))
         {
-            SSL.signDirectoryCertificate(Args.getParameter("csr"), Args.getParameter("rootPassword").toCharArray());
+            SSL.signCertificate(Args.getParameter("csr"), Args.getParameter("rootPassword").toCharArray(), "Directory");
+        }
+        else if (Args.hasOption("coreGen"))
+        {
+            SSL.generateCSR(Args.getParameter("password").toCharArray(), Args.getParameter("domain", IP.getMyPublicAddress().getHostAddress()), Args.getParameter("keyfile"), "core.csr");
+        }
+        else if (Args.hasOption("coreSign"))
+        {
+            SSL.signCertificate(Args.getParameter("csr", "core.csr"), Args.getParameter("rootPassword").toCharArray(), "Core");
         }
         else {
+            if (system == null)
+                system = ActorSystem.create("DHTRouter");
             int port = Args.getInt("port", 8000);
             ActorRef router = Router.start(system, port);
             final Inbox inbox = Inbox.create(system);
