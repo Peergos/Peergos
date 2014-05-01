@@ -50,7 +50,7 @@ public class Start
         }
         else if (Args.hasOption("coreNode"))
         {
-            String keyfile = Args.getParameter("keyfile", "dir.key");
+            String keyfile = Args.getParameter("keyfile", "core.key");
             char[] passphrase = Args.getParameter("passphrase", "password").toCharArray();
             HTTPCoreNodeServer.createAndStart(keyfile, passphrase, AbstractCoreNode.PORT);
         }
@@ -105,6 +105,8 @@ public class Start
             throw new IllegalStateException("Need a script argument for test mode");
         String script = Args.getParameter("script");
         Start.main(new String[] {"-directoryServer"});
+
+        Start.main(new String[] {"-coreNode"});
 
         String[] args;
         if (nodes > 1 )
