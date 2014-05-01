@@ -28,10 +28,12 @@ public class DirectoryServer
     public static final int THREADS = 5;
     public static final int CONNECTION_BACKLOG = 100;
     private final Map<String, Certificate> storageServers = new ConcurrentHashMap();
+    private final Map<String, Certificate> coreServers = new ConcurrentHashMap();
     private final KeyPair signing;
     private final HttpServer server;
     private final String commonName;
     private byte[] cachedServerList = null;
+    private byte[] cachedCoreServerList = null;
 
     private DirectoryServer(String keyfile, char[] passphrase, int port)
             throws IOException, NoSuchAlgorithmException, InvalidKeySpecException, OperatorCreationException, PKCSException
@@ -41,11 +43,15 @@ public class DirectoryServer
         InetAddress us = IP.getMyPublicAddress();
         InetSocketAddress address = new InetSocketAddress(us, port);
         commonName = us.getHostAddress();
+        for (Certificate cert: SSL.getCoreServerCertificates())
+            coreServers.put(SSL.getCommonName(cert), cert);
         System.out.println("Directory Server listening on: " + us.getHostAddress() + ":" + port);
         server = HttpServer.create(address, CONNECTION_BACKLOG);
         server.createContext("/dir", new StorageListHandler(this));
         server.createContext("/dirHuman", new ReadableStorageListHandler(this));
         server.createContext("/sign", new SignRequestHandler(this));
+        server.createContext("/registerCore", new SignRequestHandler(this));
+        server.createContext("/dirCore", new CoreListHandler(this));
         server.setExecutor(Executors.newFixedThreadPool(THREADS));
         server.start();
     }
@@ -80,11 +86,41 @@ public class DirectoryServer
         return bout.toByteArray();
     }
 
+    public synchronized byte[] getCoreServers()
+    {
+        if (cachedCoreServerList == null)
+            cachedCoreServerList = serialiseCoreServerList();
+        return cachedCoreServerList;
+    }
+
     public synchronized byte[] getStorageServers()
     {
         if (cachedServerList == null)
             cachedServerList = serialiseServerList();
         return cachedServerList;
+    }
+
+    private byte[] serialiseCoreServerList()
+    {
+        ByteArrayOutputStream bout = new ByteArrayOutputStream();
+        try {
+            DataOutputStream dout = new DataOutputStream(bout);
+            byte[] html = "Core Server list".getBytes();
+            dout.writeInt(html.length);
+            dout.write(html);
+            Collection<Certificate> servers = coreServers.values();
+            dout.writeInt(servers.size());
+            for (Certificate c: servers)
+            {
+                byte[] bin = c.getEncoded();
+                dout.writeInt(bin.length);
+                dout.write(bin);
+            }
+        } catch (IOException e)
+        {e.printStackTrace();}
+        catch (CertificateEncodingException e)
+        {e.printStackTrace();}
+        return bout.toByteArray();
     }
 
     private byte[] serialiseServerList()

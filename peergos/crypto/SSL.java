@@ -457,6 +457,23 @@ public class SSL
     }
 
     // Directory server certificates are signed by the root key
+    public static Certificate[] getCoreServerCertificates()
+    {
+        try {
+            Certificate[] dirs = new Certificate[CoreCertificates.NUM_SERVERS];
+            for (int i = 0; i < dirs.length; i++) {
+                CertificateFactory fact = CertificateFactory.getInstance("X.509", "BC");
+                dirs[i] = fact.generateCertificate(new ByteArrayInputStream(CoreCertificates.servers[i]));
+            }
+            return dirs;
+        } catch (NoSuchProviderException | CertificateException e)
+        {
+            e.printStackTrace();
+            throw new IllegalStateException("Error in core certificates: " + e.getMessage());
+        }
+    }
+
+    // Directory server certificates are signed by the root key
     public static Certificate[] getDirectoryServerCertificates()
             throws KeyStoreException, NoSuchProviderException, NoSuchAlgorithmException, CertificateException, IOException
     {
