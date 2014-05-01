@@ -106,15 +106,6 @@ public class UserContext
             try {
                 system = ActorSystem.create("UserRouter");
 
-                // create a CoreNode API
-//                AbstractCoreNode mockCoreNode = new AbstractCoreNode() {
-//                    @Override
-//                    public void close() throws IOException {
-//
-//                    }
-//                };
-//                server = new HTTPCoreNodeServer(mockCoreNode, IP.getMyPublicAddress(), AbstractCoreNode.PORT);
-//                server.start();
                 URL coreURL = new URL("http://"+coreIP+":"+ AbstractCoreNode.PORT+"/");
                 HTTPCoreNode clientCoreNode = new HTTPCoreNode(coreURL);
 

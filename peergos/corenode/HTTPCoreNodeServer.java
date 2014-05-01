@@ -309,7 +309,8 @@ public class HTTPCoreNodeServer
     {
         // eventually will need our own keypair to sign traffic to other core nodes our register ourselves with directory servers
         try {
-            new HTTPCoreNodeServer(AbstractCoreNode.getDefault(), IP.getMyPublicAddress(), port).start();
+            HTTPCoreNodeServer server = new HTTPCoreNodeServer(AbstractCoreNode.getDefault(), IP.getMyPublicAddress(), port);
+            server.start();
         } catch (Exception e)
         {
             e.printStackTrace();
