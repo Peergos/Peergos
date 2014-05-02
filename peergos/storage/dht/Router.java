@@ -37,12 +37,13 @@ public class Router extends AbstractActor
     private final Map<ByteArrayWrapper, ActorRef> pendingPuts = new ConcurrentHashMap();
     private final Map<ByteArrayWrapper, ActorRef> pendingGets = new ConcurrentHashMap();
     private final Random random = new Random(System.currentTimeMillis());
-    private ActorRef messenger, userAPI;
     private PartialFunction<Object, BoxedUnit> beginning;
     private PartialFunction<Object, BoxedUnit> waitingForInitialized;
     private PartialFunction<Object, BoxedUnit> initialized;
     private PartialFunction<Object, BoxedUnit> ready;
     private ActorRef lastOrderer;
+    private ActorRef messenger, userAPI;
+
 
     public Router(final int port) throws IOException
     {
@@ -300,7 +301,8 @@ public class Router extends AbstractActor
             }
         } else if (m instanceof Message.PUT)
         {
-            if (storage.accept(new ByteArrayWrapper(((Message.PUT) m).getKey()), ((Message.PUT) m).getSize()))
+            Message.PUT put = (Message.PUT) m;
+            if (storage.accept(new ByteArrayWrapper(put.getKey()), put.getSize(), put.getOwner(), put.getSharingKey(), put.getMapKey()))
             {
                 // send PUT accept message
                 Message accept = new Message.PUT_ACCEPT((Message.PUT) m);

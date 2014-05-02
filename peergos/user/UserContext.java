@@ -10,6 +10,7 @@ import peergos.user.fs.Chunk;
 import peergos.user.fs.EncryptedChunk;
 import peergos.user.fs.Fragment;
 import peergos.user.fs.Metadata;
+import peergos.util.ArrayOps;
 import scala.concurrent.Await;
 import scala.concurrent.Future;
 import scala.concurrent.duration.Duration;
@@ -70,12 +71,19 @@ public class UserContext
         return dht.put(f.getHash(), f.getData(), targetUser, sharer.getPublicKey(), sharer.hashAndSignMessage(f.getHash()));
     }
 
-    public Metadata uploadChunk(byte[] raw, byte[] initVector, String target, User sharer)
+    public Metadata uploadChunk(byte[] raw, byte[] initVector, String target, User sharer, byte[] mapKey)
     {
         Chunk chunk = new Chunk(raw);
         EncryptedChunk encryptedChunk = new EncryptedChunk(chunk.encrypt(initVector));
         Fragment[] fragments = encryptedChunk.generateFragments();
+        Metadata meta = new Metadata(fragments, initVector);
+        // tell core node first to allow fragments
+        byte[] metaBlob = new byte[256];
+        byte[] allHashes = meta.getHashes();
+        core.addMetadataBlob(username, sharer.getPublicKey(), mapKey, metaBlob, sharer.hashAndSignMessage(metaBlob));
+        core.addFragmentHashes(username, sharer.getPublicKey(), mapKey, metaBlob, meta.getHashes(), sharer.hashAndSignMessage(ArrayOps.concat(mapKey, metaBlob, allHashes)));
 
+        // now upload fragments to DHT
         List<Future<Object>> futures = new ArrayList();
         for (Fragment f: fragments)
             try {
@@ -88,7 +96,7 @@ public class UserContext
         try {
             Await.result(futureListOfObjects, timeout);
         } catch (Exception e) {e.printStackTrace();}
-        return new Metadata(fragments, initVector);
+        return meta;
     }
 
     public static class Test
@@ -96,40 +104,48 @@ public class UserContext
         public Test() {}
 
         @org.junit.Test
-        public void all() throws IOException
+        public void all()
         {
-            HTTPCoreNodeServer server = null;
-            ActorSystem system = null;
-            String coreIP = IP.getMyPublicAddress().getHostAddress();
-            String storageIP = IP.getMyPublicAddress().getHostAddress();
-            int storagePort = 8000;
             try {
-                system = ActorSystem.create("UserRouter");
+                ActorSystem system = null;
+                String coreIP = IP.getMyPublicAddress().getHostAddress();
+                String storageIP = IP.getMyPublicAddress().getHostAddress();
+                int storagePort = 8000;
+                try {
+                    system = ActorSystem.create("UserRouter");
 
-                URL coreURL = new URL("http://"+coreIP+":"+ AbstractCoreNode.PORT+"/");
-                HTTPCoreNode clientCoreNode = new HTTPCoreNode(coreURL);
+                    URL coreURL = new URL("http://" + coreIP + ":" + AbstractCoreNode.PORT + "/");
+                    HTTPCoreNode clientCoreNode = new HTTPCoreNode(coreURL);
 
-                // create a new us
-                User us = User.random();
-                String ourname = "USER";
+                    // create a new us
+                    User us = User.random();
+                    String ourname = "USER";
 
-                // create a DHT API
-                DHTUserAPI dht = new HttpsUserAPI(new InetSocketAddress(InetAddress.getByName(storageIP), storagePort), system);
+                    // create a DHT API
+                    DHTUserAPI dht = new HttpsUserAPI(new InetSocketAddress(InetAddress.getByName(storageIP), storagePort), system);
 
-                UserContext context = new UserContext(ourname, us, dht, clientCoreNode, system);
-                assertTrue("Not already registered", !context.checkRegistered());
-                assertTrue("Register", context.register());
+                    UserContext context = new UserContext(ourname, us, dht, clientCoreNode, system);
+                    assertTrue("Not already registered", !context.checkRegistered());
+                    assertTrue("Register", context.register());
 
-                User sharer = User.random();
-                context.addSharingKey(sharer.getKey());
+                    User sharer = User.random();
+                    context.addSharingKey(sharer.getKey());
 
-                uploadChunkTest(context, sharer);
+                    int frags = 60;
+                    for (int i = 0; i < frags; i++) {
+                        byte[] signature = sharer.hashAndSignMessage(ArrayOps.concat(sharer.getPublicKey(), new byte[10 + i]));
+                        clientCoreNode.registerFragmentStorage(ourname, new InetSocketAddress("localhost", 666), ourname, sharer.getPublicKey(), new byte[10 + i], signature);
+                    }
+                    long quota = clientCoreNode.getQuota(ourname);
 
-            } finally
+                    uploadChunkTest(context, sharer);
+
+                } finally {
+                    system.shutdown();
+                }
+            } catch (Throwable t)
             {
-                if (server != null)
-                    server.close();
-                system.shutdown();
+                t.printStackTrace();
             }
         }
 
@@ -143,9 +159,7 @@ public class UserContext
             for (int i=0; i < raw.length/32; i++)
                 System.arraycopy(contents, 0, raw, 32*i, 32);
 
-            Metadata meta = context.uploadChunk(raw, initVector, context.username, sharer);
-            // upload metadata to core node
-            byte[] metablob = meta.serialize();
+            Metadata meta = context.uploadChunk(raw, initVector, context.username, sharer, new byte[10]);
 
         }
     }

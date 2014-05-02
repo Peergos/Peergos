@@ -272,7 +272,7 @@ public class HTTPCoreNodeServer
             byte[] signedHash = deserializeByteArray(din);
             boolean isRemoved = coreNode.removeUsername(username, userKey, signedHash);
             dout.writeBoolean(isRemoved);
-        } 
+        }
 
     }
 

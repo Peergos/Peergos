@@ -1,9 +1,13 @@
 package peergos.storage;
 
+import peergos.corenode.AbstractCoreNode;
+import peergos.corenode.HTTPCoreNode;
+import peergos.crypto.SSL;
 import peergos.util.ArrayOps;
 import peergos.util.ByteArrayWrapper;
 
 import java.io.*;
+import java.net.URL;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
@@ -16,6 +20,7 @@ public class Storage
     private final AtomicLong promisedSize = new AtomicLong(0);
     private final Map<ByteArrayWrapper, Integer> pending = new ConcurrentHashMap();
     private final Map<ByteArrayWrapper, Integer> existing = new ConcurrentHashMap();
+    private AbstractCoreNode coreAPI = new HTTPCoreNode(new URL("http://"+ SSL.getCommonName(SSL.getCoreServerCertificates()[0])+":"+AbstractCoreNode.PORT+"/"));
 
     public Storage(File root, long maxBytes) throws IOException
     {
@@ -47,10 +52,12 @@ public class Storage
         return pending.containsKey(new ByteArrayWrapper(key));
     }
 
-    public boolean accept(ByteArrayWrapper key, int size)
+    public boolean accept(ByteArrayWrapper key, int size, String owner, byte[] sharingKey, byte[] mapKey)
     {
         if (existing.containsKey(key))
             return false; // don't overwrite old data for now (not sure this would ever be a problem with a cryptographic hash..
+        if (!coreAPI.isFragmentAllowed(owner, sharingKey, mapKey, key.data))
+            return false;
         boolean res = totalSize.get() + promisedSize.get() + size < maxBytes;
         if (res)
             promisedSize.getAndAdd(size);
