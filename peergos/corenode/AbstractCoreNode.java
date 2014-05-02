@@ -38,7 +38,7 @@ public abstract class AbstractCoreNode
             if (fragmentHashes == null)
                 return false;
 
-            for (int pos=0; pos + HASH_SIZE < fragmentHashes.length; pos += HASH_SIZE)
+            for (int pos=0; pos + HASH_SIZE <= fragmentHashes.length; pos += HASH_SIZE)
                 if (Arrays.equals(hash, Arrays.copyOfRange(fragmentHashes, pos, pos + HASH_SIZE)))
                     return true;
 

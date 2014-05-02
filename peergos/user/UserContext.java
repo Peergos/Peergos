@@ -66,9 +66,9 @@ public class UserContext
         return core.allowSharingKey(username, pub.getEncoded(), signedHash);
     }
 
-    public Future uploadFragment(Fragment f, String targetUser, User sharer)
+    public Future uploadFragment(Fragment f, String targetUser, User sharer, byte[] mapKey)
     {
-        return dht.put(f.getHash(), f.getData(), targetUser, sharer.getPublicKey(), sharer.hashAndSignMessage(f.getHash()));
+        return dht.put(f.getHash(), f.getData(), targetUser, sharer.getPublicKey(), mapKey);
     }
 
     public Metadata uploadChunk(byte[] raw, byte[] initVector, String target, User sharer, byte[] mapKey)
@@ -87,7 +87,7 @@ public class UserContext
         List<Future<Object>> futures = new ArrayList();
         for (Fragment f: fragments)
             try {
-                futures.add(uploadFragment(f, target, sharer));
+                futures.add(uploadFragment(f, target, sharer, mapKey));
             } catch (Exception e) {e.printStackTrace();}
 
         // wait for all fragments to upload
@@ -131,7 +131,7 @@ public class UserContext
                     User sharer = User.random();
                     context.addSharingKey(sharer.getKey());
 
-                    int frags = 60;
+                    int frags = 61;
                     for (int i = 0; i < frags; i++) {
                         byte[] signature = sharer.hashAndSignMessage(ArrayOps.concat(sharer.getPublicKey(), new byte[10 + i]));
                         clientCoreNode.registerFragmentStorage(ourname, new InetSocketAddress("localhost", 666), ourname, sharer.getPublicKey(), new byte[10 + i], signature);
