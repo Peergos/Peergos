@@ -144,7 +144,7 @@ public class HttpsUserAPI extends DHTUserAPI
                     DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
                     Message m = new Message.GET(key);
                     m.write(dout);
-                    dout.writeInt(2); // CONTAINS
+                    dout.writeInt(1); // GET
                     dout.flush();
 
                     DataInputStream din = new DataInputStream(conn.getInputStream());

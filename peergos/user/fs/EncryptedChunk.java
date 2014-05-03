@@ -1,7 +1,7 @@
 package peergos.user.fs;
 
 import peergos.crypto.User;
-import peergos.user.fs.erasure.API;
+import peergos.user.fs.erasure.Erasure;
 
 import javax.crypto.*;
 import javax.crypto.spec.IvParameterSpec;
@@ -26,7 +26,7 @@ public class EncryptedChunk
 
     public EncryptedChunk(byte[][] fragments, int originalSize)
     {
-        this(API.recombine(fragments, originalSize, ERASURE_ORIGINAL, ERASURE_ALLOWED_FAILURES));
+        this(Erasure.recombine(fragments, originalSize, ERASURE_ORIGINAL, ERASURE_ALLOWED_FAILURES));
     }
 
     public byte[] decrypt(SecretKey key, byte[] initVector)
@@ -46,7 +46,7 @@ public class EncryptedChunk
 
     public Fragment[] generateFragments()
     {
-        byte[][] bfrags = API.split(encrypted, ERASURE_ORIGINAL, ERASURE_ALLOWED_FAILURES);
+        byte[][] bfrags = Erasure.split(encrypted, ERASURE_ORIGINAL, ERASURE_ALLOWED_FAILURES);
         Fragment[] frags = new Fragment[bfrags.length];
         for (int i=0; i < frags.length; i++)
             frags[i] = new Fragment(bfrags[i]);

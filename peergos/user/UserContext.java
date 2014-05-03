@@ -1,20 +1,27 @@
 package peergos.user;
 
 import akka.actor.ActorSystem;
+import akka.dispatch.Futures;
 import peergos.corenode.AbstractCoreNode;
 import peergos.corenode.HTTPCoreNode;
 import peergos.corenode.HTTPCoreNodeServer;
 import peergos.crypto.User;
+import peergos.crypto.UserPublicKey;
 import peergos.storage.net.IP;
 import peergos.user.fs.Chunk;
 import peergos.user.fs.EncryptedChunk;
 import peergos.user.fs.Fragment;
 import peergos.user.fs.Metadata;
 import peergos.util.ArrayOps;
+import scala.PartialFunction;
+import scala.collection.JavaConverters;
 import scala.concurrent.Await;
+import scala.concurrent.ExecutionContext;
 import scala.concurrent.Future;
 import scala.concurrent.duration.Duration;
 import scala.concurrent.duration.FiniteDuration;
+import scala.runtime.AbstractPartialFunction;
+
 import static akka.dispatch.Futures.sequence;
 import static org.junit.Assert.*;
 
@@ -24,9 +31,13 @@ import java.net.InetSocketAddress;
 import java.net.URL;
 import java.security.PublicKey;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class UserContext
 {
@@ -71,12 +82,9 @@ public class UserContext
         return dht.put(f.getHash(), f.getData(), targetUser, sharer.getPublicKey(), mapKey);
     }
 
-    public Metadata uploadChunk(byte[] raw, byte[] initVector, String target, User sharer, byte[] mapKey)
+    public Metadata uploadChunk(Metadata meta, Fragment[] fragments, String target, User sharer, byte[] mapKey)
     {
-        Chunk chunk = new Chunk(raw);
-        EncryptedChunk encryptedChunk = new EncryptedChunk(chunk.encrypt(initVector));
-        Fragment[] fragments = encryptedChunk.generateFragments();
-        Metadata meta = new Metadata(fragments, initVector);
+
         // tell core node first to allow fragments
         byte[] metaBlob = new byte[256];
         byte[] allHashes = meta.getHashes();
@@ -97,6 +105,53 @@ public class UserContext
             Await.result(futureListOfObjects, timeout);
         } catch (Exception e) {e.printStackTrace();}
         return meta;
+    }
+
+    public Fragment[] downloadFragments(Metadata meta)
+    {
+        byte[] hashes = meta.getHashes();
+        long start = System.nanoTime();
+        Fragment[] res = new Fragment[hashes.length / UserPublicKey.HASH_SIZE];
+        List<Future<byte[]>> futs = new ArrayList<Future<byte[]>>(res.length);
+        for (int i=0; i < res.length; i++)
+            futs.add(dht.get(Arrays.copyOfRange(hashes, i*UserPublicKey.HASH_SIZE, (i+1)*UserPublicKey.HASH_SIZE)));
+        Countdown<byte[]> first50 = new Countdown<byte[]>(50, futs, system.dispatcher());
+        first50.await();
+        long end = System.nanoTime();
+        System.out.printf("Succeeded downloading fragments in %d mS!", (end-start)/1000000);
+        List<Fragment> frags = new ArrayList<>();
+        for (byte[] frag: first50.results)
+            frags.add(new Fragment(frag));
+        return frags.toArray(new Fragment[frags.size()]);
+    }
+
+    public static class Countdown<V>
+    {
+        CountDownLatch left;
+        List<V> results;
+
+        public Countdown(int needed, List<Future<V>> futs, ExecutionContext context)
+        {
+            left = new CountDownLatch(needed);
+            results = new CopyOnWriteArrayList<V>();
+            for (Future<V> fut: futs)
+                fut.onSuccess(new AbstractPartialFunction<V, Object>() {
+                    @Override
+                    public boolean isDefinedAt(V v) {
+                        left.countDown();
+                        results.add(v);
+                        return false;
+                    }
+                }, context);
+        }
+
+        public void await()
+        {
+            while (left.getCount() > 0)
+                try {
+                    left.await();
+                } catch (InterruptedException e) {}
+        }
     }
 
     public static class Test
@@ -131,14 +186,14 @@ public class UserContext
                     User sharer = User.random();
                     context.addSharingKey(sharer.getKey());
 
-                    int frags = 61;
+                    int frags = 60;
                     for (int i = 0; i < frags; i++) {
                         byte[] signature = sharer.hashAndSignMessage(ArrayOps.concat(sharer.getPublicKey(), new byte[10 + i]));
                         clientCoreNode.registerFragmentStorage(ourname, new InetSocketAddress("localhost", 666), ourname, sharer.getPublicKey(), new byte[10 + i], signature);
                     }
                     long quota = clientCoreNode.getQuota(ourname);
 
-                    uploadChunkTest(context, sharer);
+                    chunkTest(context, sharer);
 
                 } finally {
                     system.shutdown();
@@ -149,7 +204,7 @@ public class UserContext
             }
         }
 
-        public void uploadChunkTest(UserContext context, User sharer)
+        public void chunkTest(UserContext context, User sharer)
         {
             Random r = new Random();
             byte[] initVector = new byte[EncryptedChunk.IV_SIZE];
@@ -159,8 +214,16 @@ public class UserContext
             for (int i=0; i < raw.length/32; i++)
                 System.arraycopy(contents, 0, raw, 32*i, 32);
 
-            Metadata meta = context.uploadChunk(raw, initVector, context.username, sharer, new byte[10]);
+            Chunk chunk = new Chunk(raw);
+            EncryptedChunk encryptedChunk = new EncryptedChunk(chunk.encrypt(initVector));
+            Fragment[] fragments = encryptedChunk.generateFragments();
+            Metadata meta = new Metadata(fragments, initVector);
 
+            // upload chunk
+            context.uploadChunk(meta, fragments, context.username, sharer, new byte[10]);
+
+            // retrieve chunk
+            Fragment[] retrievedfragments = context.downloadFragments(meta);
         }
     }
 }

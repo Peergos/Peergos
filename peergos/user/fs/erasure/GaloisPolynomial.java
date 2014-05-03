@@ -238,7 +238,7 @@ public class GaloisPolynomial
         public byte[][] timeEncoding(GaloisField f, byte[] input, int originalBlobs, int allowedFailures)
         {
             long t0 = System.nanoTime();
-            byte[][] transmissionBlocks = API.split(input, f, originalBlobs, allowedFailures);
+            byte[][] transmissionBlocks = Erasure.split(input, f, originalBlobs, allowedFailures);
             long t1 = System.nanoTime();
             System.out.printf("GF(%d) took %d mS encoding %d bytes to %d bytes\n", f.size(), (t1-t0)/1000000, input.length, transmissionBlocks.length*transmissionBlocks[0].length);
             return transmissionBlocks;
@@ -247,7 +247,7 @@ public class GaloisPolynomial
         public byte[] timeDecoding(GaloisField f, byte[][] encoded, int truncateTo, int originalBlobs, int allowedFailures)
         {
             long t0 = System.nanoTime();
-            byte[] original = API.recombine(f, encoded, truncateTo, originalBlobs, allowedFailures);
+            byte[] original = Erasure.recombine(f, encoded, truncateTo, originalBlobs, allowedFailures);
             long t1 = System.nanoTime();
             System.out.printf("GF(%d) took %d mS decoding\n", f.size(), (t1-t0)/1000000);
             return original;
@@ -276,7 +276,7 @@ public class GaloisPolynomial
             int nec = (f.size()/14 * 4);
             byte[] bytes = new byte[size];
             r.nextBytes(bytes);
-            int[] input = API.convert(bytes, f);
+            int[] input = Erasure.convert(bytes, f);
             int[] encoded = GaloisPolynomial.encode(input, nec, f);
             int[] original = Arrays.copyOf(encoded, encoded.length);
             if (print) {
@@ -297,7 +297,7 @@ public class GaloisPolynomial
             int nec = (int)(f.size() * 0.4);
             byte[] bytes = new byte[size];
             r.nextBytes(bytes);
-            int[] input = API.convert(bytes, f);
+            int[] input = Erasure.convert(bytes, f);
             int[] encoded = GaloisPolynomial.encode(input, nec, f);
             int[] original = Arrays.copyOf(encoded, encoded.length);
             if (print) {
@@ -332,7 +332,7 @@ public class GaloisPolynomial
             int nec = (int) (f.size() * 0.4);
             byte[] bytes = new byte[size];
             r.nextBytes(bytes);
-            int[] input = API.convert(bytes, f);
+            int[] input = Erasure.convert(bytes, f);
             int[] encoded = GaloisPolynomial.encode(input, nec, f);
             int[] original = Arrays.copyOf(encoded, encoded.length);
             if (print) {
