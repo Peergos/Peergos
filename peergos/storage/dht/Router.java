@@ -7,6 +7,7 @@ import akka.japi.pf.ReceiveBuilder;
 import peergos.storage.net.HttpMessenger;
 import peergos.storage.net.HttpsMessenger;
 import peergos.storage.Storage;
+import peergos.storage.net.IP;
 import peergos.util.*;
 import peergos.util.ArrayOps;
 import scala.PartialFunction;
@@ -14,6 +15,7 @@ import scala.runtime.BoxedUnit;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.FileHandler;
@@ -45,7 +47,7 @@ public class Router extends AbstractActor
     private ActorRef messenger, userAPI;
 
 
-    public Router(final int port) throws IOException
+    public Router(final String donor, final int port) throws IOException
     {
         new File("log/").mkdir();
         us = new NodeID();
@@ -54,7 +56,7 @@ public class Router extends AbstractActor
         Handler handler = new FileHandler("log/" + name + ".log", 10 * 1024 * 1024, 7);
         LOGGER.addHandler(handler);
         LOGGER.setLevel(Level.ALL);
-        storage = new Storage(new File(DATA_DIR), MAX_STORAGE_SIZE);
+        storage = new Storage(donor, new File(DATA_DIR), MAX_STORAGE_SIZE, new InetSocketAddress(IP.getMyPublicAddress(), port+1));
         userAPI = context().actorOf(HttpsMessenger.props(port, LOGGER));
         messenger = context().actorOf(HttpMessenger.props(port+1, storage, LOGGER));
 
@@ -138,12 +140,12 @@ public class Router extends AbstractActor
         receive(beginning);
     }
 
-    static Props props(final int port)
+    static Props props(final String donor, final int port)
     {
         return Props.create(Router.class, new Creator<Router>() {
             @Override
             public Router create() throws Exception {
-                return new Router(port);
+                return new Router(donor, port);
             }
         });
     }
@@ -302,7 +304,7 @@ public class Router extends AbstractActor
         } else if (m instanceof Message.PUT)
         {
             Message.PUT put = (Message.PUT) m;
-            if (storage.accept(new ByteArrayWrapper(put.getKey()), put.getSize(), put.getOwner(), put.getSharingKey(), put.getMapKey()))
+            if (storage.accept(new ByteArrayWrapper(put.getKey()), put.getSize(), put.getOwner(), put.getSharingKey(), put.getMapKey(), put.getProof()))
             {
                 // send PUT accept message
                 Message accept = new Message.PUT_ACCEPT((Message.PUT) m);
@@ -478,9 +480,9 @@ public class Router extends AbstractActor
         return next;
     }
 
-    public static ActorRef start(ActorSystem system, int port)
+    public static ActorRef start(String donor, ActorSystem system, int port)
     {
-        ActorRef master = system.actorOf(Router.props(port), "master"+port);
+        ActorRef master = system.actorOf(Router.props(donor, port), "master"+port);
         return master;
     }
 }

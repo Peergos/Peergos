@@ -168,8 +168,9 @@ public abstract class Message
         private final String user;
         private final byte[] sharingKey;
         private final byte[] mapKey;
+        private final byte[] proof;
 
-        public PUT(byte[] key, int len, String user, byte[] sharingKey, byte[] mapKey)
+        public PUT(byte[] key, int len, String user, byte[] sharingKey, byte[] mapKey, byte[] proof)
         {
             super(Type.PUT);
             this.key = key;
@@ -178,6 +179,7 @@ public abstract class Message
             this.user = user;
             this.sharingKey = sharingKey;
             this.mapKey = mapKey;
+            this.proof = proof;
         }
 
         public PUT(DataInput in) throws IOException
@@ -190,6 +192,7 @@ public abstract class Message
             user = Serialize.deserializeString(in, UserContext.MAX_USERNAME_SIZE);
             sharingKey = Serialize.deserializeByteArray(in, UserContext.MAX_KEY_SIZE);
             mapKey = Serialize.deserializeByteArray(in, UserContext.MAX_KEY_SIZE);
+            proof = Serialize.deserializeByteArray(in, UserContext.MAX_KEY_SIZE);
         }
 
         public long getTarget()
@@ -205,6 +208,7 @@ public abstract class Message
             Serialize.serialize(user, out);
             Serialize.serialize(sharingKey, out);
             Serialize.serialize(mapKey, out);
+            Serialize.serialize(proof, out);
         }
 
         public String getOwner() {return user;}
@@ -212,6 +216,8 @@ public abstract class Message
         public byte[] getSharingKey() {return sharingKey;}
 
         public byte[] getMapKey() {return mapKey;}
+
+        public byte[] getProof() {return proof;}
 
         public byte[] getKey()
         {

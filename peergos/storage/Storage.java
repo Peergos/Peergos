@@ -7,6 +7,7 @@ import peergos.util.ArrayOps;
 import peergos.util.ByteArrayWrapper;
 
 import java.io.*;
+import java.net.InetSocketAddress;
 import java.net.URL;
 import java.util.*;
 import java.util.concurrent.*;
@@ -20,12 +21,17 @@ public class Storage
     private final AtomicLong promisedSize = new AtomicLong(0);
     private final Map<ByteArrayWrapper, Integer> pending = new ConcurrentHashMap();
     private final Map<ByteArrayWrapper, Integer> existing = new ConcurrentHashMap();
+    private final Map<ByteArrayWrapper, Credentials> credentials = new ConcurrentHashMap();
     private AbstractCoreNode coreAPI = new HTTPCoreNode(new URL("http://"+ SSL.getCommonName(SSL.getCoreServerCertificates()[0])+":"+AbstractCoreNode.PORT+"/"));
+    private final InetSocketAddress us;
+    private final String donor;
 
-    public Storage(File root, long maxBytes) throws IOException
+    public Storage(String donor, File root, long maxBytes, InetSocketAddress us) throws IOException
     {
         this.root = root;
         this.maxBytes = maxBytes;
+        this.us = us;
+        this.donor = donor;
         if (root.exists())
         {
             for (File f: root.listFiles())
@@ -52,7 +58,7 @@ public class Storage
         return pending.containsKey(new ByteArrayWrapper(key));
     }
 
-    public boolean accept(ByteArrayWrapper key, int size, String owner, byte[] sharingKey, byte[] mapKey)
+    public boolean accept(ByteArrayWrapper key, int size, String owner, byte[] sharingKey, byte[] mapKey, byte[] proof)
     {
         if (existing.containsKey(key))
             return false; // don't overwrite old data for now (not sure this would ever be a problem with a cryptographic hash..
@@ -62,6 +68,7 @@ public class Storage
         if (res)
             promisedSize.getAndAdd(size);
         pending.put(key, size);
+        credentials.put(key, new Credentials(owner, sharingKey, proof));
         return res;
     }
 
@@ -81,6 +88,8 @@ public class Storage
             existing.remove(key);
             return false;
         }
+        Credentials cred = credentials.remove(key);
+        coreAPI.registerFragmentStorage(donor, us, cred.owner, cred.sharingKey, key.data, cred.proof);
         return true;
     }
 
@@ -138,6 +147,20 @@ public class Storage
             while ((read = in.read(buf, 0, buf.length)) > 0)
                 bout.write(buf, 0, read);
             return bout.toByteArray();
+        }
+    }
+
+    public static class Credentials
+    {
+        public String owner;
+        public byte[] sharingKey;
+        public byte[] proof;
+
+        Credentials(String owner, byte[] sharingKey, byte[] proof)
+        {
+            this.owner = owner;
+            this.sharingKey = sharingKey;
+            this.proof = proof;
         }
     }
 }

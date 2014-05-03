@@ -80,7 +80,7 @@ public class UserContext
 
     public Future uploadFragment(Fragment f, String targetUser, User sharer, byte[] mapKey)
     {
-        return dht.put(f.getHash(), f.getData(), targetUser, sharer.getPublicKey(), mapKey);
+        return dht.put(f.getHash(), f.getData(), targetUser, sharer.getPublicKey(), mapKey, sharer.hashAndSignMessage(ArrayOps.concat(sharer.getPublicKey(), f.getHash())));
     }
 
     public Metadata uploadChunk(Metadata meta, Fragment[] fragments, String target, User sharer, byte[] mapKey)

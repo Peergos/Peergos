@@ -61,7 +61,7 @@ public class HttpsUserAPI extends DHTUserAPI
     }
 
     @Override
-    public Future<Boolean> put(final byte[] key, final byte[] value, final String user, final byte[] sharingKey, final byte[] signedHashOfKey) {
+    public Future<Boolean> put(final byte[] key, final byte[] value, final String user, final byte[] sharingKey, final byte[] mapKey, final byte[] proof) {
         Future<Boolean> f = future(new Callable<Boolean>() {
             public Boolean call() {
                 HttpsURLConnection conn = null;
@@ -72,7 +72,7 @@ public class HttpsUserAPI extends DHTUserAPI
                     conn.setDoInput(true);
                     conn.setDoOutput(true);
                     DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
-                    Message m = new Message.PUT(key, value.length, user, sharingKey, signedHashOfKey);
+                    Message m = new Message.PUT(key, value.length, user, sharingKey, mapKey, proof);
                     m.write(dout);
                     Serialize.serialize(value, dout);
                     dout.flush();
@@ -83,7 +83,7 @@ public class HttpsUserAPI extends DHTUserAPI
                     long end = System.nanoTime();
                     if (success > 0)
                     {
-                        System.out.printf("Uploaded succeeded in %d mS\n", (end-start)/1000000);
+                        System.out.printf("Uploaded succeeded in %d mS\n", (end - start) / 1000000);
                         return true;
                     }
                     String message = Serialize.deserializeString(din, 10*1024);
