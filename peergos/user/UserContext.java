@@ -12,6 +12,7 @@ import peergos.user.fs.Chunk;
 import peergos.user.fs.EncryptedChunk;
 import peergos.user.fs.Fragment;
 import peergos.user.fs.Metadata;
+import peergos.user.fs.erasure.Erasure;
 import peergos.util.ArrayOps;
 import scala.PartialFunction;
 import scala.collection.JavaConverters;
@@ -118,8 +119,8 @@ public class UserContext
         Countdown<byte[]> first50 = new Countdown<byte[]>(50, futs, system.dispatcher());
         first50.await();
         long end = System.nanoTime();
-        System.out.printf("Succeeded downloading fragments in %d mS!", (end-start)/1000000);
-        List<Fragment> frags = new ArrayList<>();
+        System.out.printf("Succeeded downloading fragments in %d mS!\n", (end-start)/1000000);
+        List<Fragment> frags = new ArrayList<Fragment>();
         for (byte[] frag: first50.results)
             frags.add(new Fragment(frag));
         return frags.toArray(new Fragment[frags.size()]);
@@ -224,6 +225,32 @@ public class UserContext
 
             // retrieve chunk
             Fragment[] retrievedfragments = context.downloadFragments(meta);
+
+            byte[] enc = Erasure.recombine(reorder(meta, retrievedfragments), raw.length, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
+            EncryptedChunk encrypted = new EncryptedChunk(enc);
+            byte[] original = encrypted.decrypt(chunk.getKey(), initVector);
+            assertTrue("Retrieved chunk identical to original", Arrays.equals(raw, original));
         }
+    }
+
+    public static byte[][] reorder(Metadata meta, Fragment[] received)
+    {
+        byte[] hashConcat = meta.getHashes();
+        byte[][] originalHashes = new byte[hashConcat.length/UserPublicKey.HASH_SIZE][];
+        for (int i=0; i < originalHashes.length; i++)
+            originalHashes[i] = Arrays.copyOfRange(hashConcat, i*UserPublicKey.HASH_SIZE, (i+1)*UserPublicKey.HASH_SIZE);
+        byte[][] res = new byte[originalHashes.length][];
+        for (int i=0; i < res.length; i++)
+        {
+            for (int j=0; j < received.length; j++)
+                if (Arrays.equals(originalHashes[i], received[j].getHash()))
+                {
+                    res[i] = received[j].getData();
+                    break;
+                }
+            if (res[i] == null)
+                res[i] = new byte[received[0].getData().length];
+        }
+        return res;
     }
 }
