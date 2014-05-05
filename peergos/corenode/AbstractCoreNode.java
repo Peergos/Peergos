@@ -79,6 +79,11 @@ public abstract class AbstractCoreNode
             this.fragmentHashesOnThisNode = new HashSet();
         }
 
+        public InetSocketAddress address(){return address;}
+        public Map<String,Float> fractions()
+        {
+            return new HashMap<String,Float>(storageFraction);
+        }
         public long getSize()
         {
             return calculateSize();
@@ -171,7 +176,7 @@ public abstract class AbstractCoreNode
         return addUsername(username, key);
     }
 
-    private synchronized boolean addUsername(String username, UserPublicKey key)
+    protected synchronized boolean addUsername(String username, UserPublicKey key)
     {
         if (userNameToPublicKeyMap.containsKey(username))
             return false;
@@ -397,10 +402,10 @@ public abstract class AbstractCoreNode
         if (! sharingKey.isValidSignature(sharingKeySignedMapKey, mapKey))
             return false;
 
-        return removeMetaDataBlob(username, sharingKey, mapKey);
+        return removeMetadataBlob(username, sharingKey, mapKey);
     }
 
-    protected synchronized boolean removeMetaDataBlob(String username, UserPublicKey sharingKey, byte[] mapKey)
+    protected synchronized boolean removeMetadataBlob(String username, UserPublicKey sharingKey, byte[] mapKey)
     {
         UserData userData = userMap.get(username);
 
@@ -427,10 +432,10 @@ public abstract class AbstractCoreNode
         if (! Arrays.equals(key.hash(username),key.unsignMessage(signedHash)))
             return false;
 
-        return removeUsername(key, username);
+        return removeUsername(username, key);
     }
 
-    protected synchronized boolean removeUsername(UserPublicKey key, String username)
+    protected synchronized boolean removeUsername(String username, UserPublicKey key)
     {
         userPublicKeyToNameMap.remove(key);
         userMap.remove(key);
@@ -531,27 +536,32 @@ public abstract class AbstractCoreNode
         return blob.containsHash(hash);
     }
 
-    public synchronized boolean registerFragmentStorage(String spaceDonor, InetSocketAddress node, String owner, byte[] encodedSharingKey, byte[] hash, byte[] signedKeyPlusHash)
+    public boolean registerFragmentStorage(String spaceDonor, InetSocketAddress node, String owner, byte[] encodedSharingKey, byte[] hash, byte[] signedKeyPlusHash)
     {
-        if (!userStorageFactories.containsKey(spaceDonor))
-            return false;
-        if (!storageStates.containsKey(node))
-            addStorageNodeState(spaceDonor, node);
-
-        StorageNodeState donor = storageStates.get(node);
-
-        // verify signature
-        UserData userData = userMap.get(owner);
         UserPublicKey sharingPublicKey = new UserPublicKey(encodedSharingKey);
-        if (userData == null)
-            return false;
-        if (!userData.followers.contains(sharingPublicKey))
-            return false;
         byte[] keyAndHash = ArrayOps.concat(encodedSharingKey, hash);
         if (!sharingPublicKey.isValidSignature(signedKeyPlusHash, keyAndHash))
             return false;
 
+        return registerFragmentStorage(spaceDonor, node, owner, sharingPublicKey, hash);
+    }
+    
+    protected synchronized boolean registerFragmentStorage(String spaceDonor, InetSocketAddress node, String owner, UserPublicKey sharingKey, byte[] hash)
+    {
+        if (!userStorageFactories.containsKey(spaceDonor))
+            return false;
+        
+        UserData userData = userMap.get(owner);
+        if (userData == null)
+            return false;
+        if (!userData.followers.contains(sharingKey))
+            return false;
+
+        if (!storageStates.containsKey(node))
+            addStorageNodeState(spaceDonor, node);
+        StorageNodeState donor = storageStates.get(node);
         return donor.addHash(hash);
+
     }
 
     public synchronized long getQuota(String user)

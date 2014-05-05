@@ -17,7 +17,8 @@ public class SQLiteCoreNode extends AbstractCoreNode
     private static final String CREATE_FOLLOW_REQUESTS_TABLE = "create table followrequests (id integer primary key autoincrement, name text not null, publickey text not null);";
     private static final String CREATE_SHARING_KEYS_TABLE = "create table sharingkeys (id integer primary key autoincrement, name text not null, publickey text not null);";
     private static final String CREATE_FRAGMENTS_TABLE = "create table fragments (id integer primary key autoincrement, sharingkeyid not null, mapkey text not null, fragmentdata text not null);";
-    private static final String CREATE_STORAGE_TABLE = "create table storage (id integer primary key autoincrement, address text not null, port integer not null);";
+    private static final String CREATE_STORAGE_TABLE = "create table storage (id integer primary key autoincrement, address text not null, port integer not null, text owner not null, fraction double not null);";
+    private static final String CREATE_FRAGMENTHASHES_TABLE = "create table fragmenthashes (id integer primary key autoincrement, storageid integer not null, hash text not null);";
 
     private static final Map<String,String> TABLES = new HashMap<String,String>();
     static
@@ -28,6 +29,7 @@ public class SQLiteCoreNode extends AbstractCoreNode
         TABLES.put("fragments", CREATE_FRAGMENTS_TABLE);
         TABLES.put("storage", CREATE_STORAGE_TABLE);
     } 
+    private static Connection conn;
 
     abstract static class RowData
     {
@@ -134,8 +136,6 @@ public class SQLiteCoreNode extends AbstractCoreNode
             }
         }
 
-        protected static Connection conn;
-        public static void setConnection(Connection conn){RowData.conn = conn;}
     }
 
     static class UserData extends RowData
@@ -154,7 +154,7 @@ public class SQLiteCoreNode extends AbstractCoreNode
         public String selectStatement(){return "select name, "+b64DataName()+" from users where name = '"+name+"';";}
         public String deleteStatement(){return "delete from users where name = "+ name +" and "+ b64DataName()+ " = "+ b64string + ";";}
         static final String DATA_NAME = "publickey";
-        
+
         static int getID(String name)
         {
             PreparedStatement stmt = null;
@@ -250,6 +250,138 @@ public class SQLiteCoreNode extends AbstractCoreNode
         }
     }
 
+    static class FragmentHashData 
+    {
+        final int storageID;
+        final byte[] hash;
+        final String b64hash;
+
+        FragmentHashData(int storageID, byte[] hash)
+        {
+            this(storageID, hash, new String(Base64.encode(hash)));
+        }
+        FragmentHashData(int storageID, String b64hash)
+        {
+            this(storageID, Base64.decode(b64hash), b64hash);
+        }
+        FragmentHashData(int storageID, byte[] hash, String b64hash)
+        {
+            this.storageID = storageID;
+            this.hash = hash;
+            this.b64hash = b64hash;
+        }
+
+        public boolean insert()
+        {
+            PreparedStatement stmt = null;
+            try
+            {
+                stmt = conn.prepareStatement("insert into fragmenthashes (storageid, hash) VALUES(?,?);");
+                stmt.setInt(1,this.storageID);
+                stmt.setString(2,this.b64hash);
+                stmt.executeUpdate();
+                conn.commit();
+                return true;
+            } catch (SQLException sqe) {
+                sqe.printStackTrace();
+                return false;
+            } finally {
+                if (stmt != null)
+                    try
+                    {
+                        stmt.close();
+                    } catch (SQLException sqe2) {
+                        sqe2.printStackTrace();
+                    }
+            }
+        }
+
+        public static boolean delete(byte[] hash)
+        {
+            return SQLiteCoreNode.delete("fragmenthashes", "hash = '"+new String(Base64.encode(hash))+"'");
+        }
+    }
+
+    static class StorageNodeData
+    {
+        final String address, owner;
+        final int port;
+        final double fraction;
+        StorageNodeData(String address, int port, String owner, double fraction)
+        {
+            this.address = address;
+            this.port = port;
+            this.owner = owner;
+            this.fraction = fraction;
+        }
+
+        public boolean insert()
+        {
+            PreparedStatement stmt = null;
+            try
+            {
+                stmt = conn.prepareStatement("insert into storage(address, port, owner, fraction) VALUE(?, ?, ?, ?);");
+                stmt.setString(1,address);
+                stmt.setInt(2,port);
+                stmt.setString(3,owner);
+                stmt.setDouble(4, fraction);
+                stmt.executeUpdate();
+                conn.commit();
+                return true;
+            } catch (SQLException sqe) {
+                sqe.printStackTrace();
+                return false;
+            } finally {
+                if (stmt != null)
+                    try
+                    {
+                        stmt.close();
+                    } catch (SQLException sqe2) {
+                        sqe2.printStackTrace();
+                    }
+            }
+        }
+        
+        public static StorageNodeData[] selectByAddress(InetSocketAddress address)
+        {
+            return select("address = '"+ address.getAddress() +"' and port = "+ address.getPort()+";");
+        }
+        public static StorageNodeData[] selectByOwner(String owner)
+        {
+            return select("owner = '"+ owner+"';");
+        }
+        public static StorageNodeData[] select(String criteria)
+        {
+            PreparedStatement stmt = null;
+            try
+            {
+                stmt = conn.prepareStatement("select * from storage where "+criteria+";");
+                ResultSet rs = stmt.executeQuery();
+                List<StorageNodeData> list = new ArrayList<StorageNodeData>();
+                while (rs.next())
+                {
+                    String address = rs.getString("address");
+                    int port = rs.getInt("port");
+                    String owner = rs.getString("owner");
+                    double fraction = rs.getDouble("fraction");
+
+                    list.add(new StorageNodeData(address, port, owner, fraction));
+                }
+                return list.toArray(new StorageNodeData[0]);
+            } catch (SQLException sqe) { 
+                sqe.printStackTrace();
+                return null;
+            } finally {
+                if (stmt != null)
+                    try
+                    {
+                        stmt.close();
+                    } catch (SQLException sqe2) { 
+                        sqe2.printStackTrace();
+                    }
+            }
+        }
+    } 
     static class FragmentData 
     {
         final byte[] mapkey, fragmentdata;
@@ -278,7 +410,7 @@ public class SQLiteCoreNode extends AbstractCoreNode
 
         public String selectStatement(){return "select sharingkeyid, mapkey fragmentdata from fragments where sharingkeyid = "+sharingKeyID +";";}
         public String deleteStatement(){return "delete from fragments where sharingkeyid = "+ sharingKeyID +";";}
-        
+
         public boolean insert()
         {
             //int id = new SharingKeyData(name, publickey, b64string).getID();
@@ -308,7 +440,7 @@ public class SQLiteCoreNode extends AbstractCoreNode
                     }
             }
         }
-       
+
         public FragmentData selectOne()
         {
             FragmentData[] fd = select("where sharingKeyID = "+ sharingKeyID +" and mapkey = '"+ b64mapkey +"' and fragmentdata = '"+ b64fragmentdata+"'");
@@ -316,7 +448,7 @@ public class SQLiteCoreNode extends AbstractCoreNode
                 return null;
             return fd[0];
         }
-        
+
         public static boolean deleteOne(String name, int sharingKeyID, String b64mapkey)
         {
             return delete("name = "+ name +" and sharingKeyID = "+ sharingKeyID +" and mapkey = "+ b64mapkey);
@@ -354,7 +486,7 @@ public class SQLiteCoreNode extends AbstractCoreNode
         {
             return select("where name = "+ username);
         }
-        
+
         public static FragmentData[] select(String selectString)
         {
             PreparedStatement stmt = null;
@@ -368,7 +500,7 @@ public class SQLiteCoreNode extends AbstractCoreNode
                     FragmentData f = new FragmentData(rs.getInt("sharingkeyid"), rs.getString("mapkey"), rs.getString("fragmentdata"));
                     list.add(f);
                 }
-                
+
                 return list.toArray(new FragmentData[0]);
             } catch (SQLException sqe) {
                 sqe.printStackTrace();
@@ -383,13 +515,10 @@ public class SQLiteCoreNode extends AbstractCoreNode
                     }
             }
         }
-       
-       static Connection conn;
-       static void setConnection(Connection conn){FragmentData.conn = conn;} 
+
     }
 
     private final String dbPath;
-    private final Connection conn;
     private volatile boolean isClosed;
 
     public SQLiteCoreNode(String dbPath) throws SQLException 
@@ -405,8 +534,7 @@ public class SQLiteCoreNode extends AbstractCoreNode
         String url = "jdbc:sqlite:"+dbPath;
         this.conn= DriverManager.getConnection(url);
         this.conn.setAutoCommit(false);
-        RowData.setConnection(conn);
-        FragmentData.setConnection(conn);
+        SQLiteCoreNode.conn = conn;
 
         init();
     }
@@ -452,21 +580,21 @@ public class SQLiteCoreNode extends AbstractCoreNode
         return new UserPublicKey(users[0].data);
     }
 
-    public boolean addUsername(String username, byte[] encodedUserKey, byte[] signedHash)
+    protected synchronized boolean addUsername(String username, UserPublicKey key)
     {
-        if (! super.addUsername(username, encodedUserKey, signedHash))
+        if (! super.addUsername(username, key))
             return false;
 
-        UserData user = new UserData(username, encodedUserKey); 
+        UserData user = new UserData(username, key.getPublicKey()); 
         return user.insert();
     }
 
-    public boolean removeUsername(String username, byte[] userKey, byte[] signedHash)
+    protected synchronized boolean removeUsername(String username, UserPublicKey key)
     {
-        if (! super.removeUsername(username, userKey, signedHash))
+        if (! super.removeUsername(username, key))
             return false;
 
-        UserData user = new UserData(username, userKey);
+        UserData user = new UserData(username, key.getPublicKey());
         RowData[] rs = user.select();
         if (rs == null || rs.length ==0)
             return false;
@@ -475,7 +603,7 @@ public class SQLiteCoreNode extends AbstractCoreNode
 
     }
 
-    public boolean followRequest(String target, byte[] encodedSharingPublicKey)
+    public synchronized boolean followRequest(String target, byte[] encodedSharingPublicKey)
     {
         if (! super.followRequest(target, encodedSharingPublicKey))
             return false;
@@ -484,41 +612,41 @@ public class SQLiteCoreNode extends AbstractCoreNode
         return request.insert();
     }
 
-    public boolean removeFollowRequest(String target, byte[] data, byte[] signedHash)
+    protected synchronized boolean removeFollowRequest(String target, ByteArrayWrapper baw)
     {
-        if (! super.removeFollowRequest(target, data, signedHash))
+        if (! super.removeFollowRequest(target, baw))
             return false;
 
-        FollowRequestData request = new FollowRequestData(target, data);
+        FollowRequestData request = new FollowRequestData(target, baw.data);
         return request.delete();
     }
 
-    public boolean allowSharingKey(String username, byte[] encodedSharingPublicKey, byte[] signedHash)
+    protected synchronized boolean allowSharingKey(String username, UserPublicKey sharingPublicKey)
     {
-        if (! super.allowSharingKey(username, encodedSharingPublicKey, signedHash))
+        if (! super.allowSharingKey(username, sharingPublicKey))
             return false;
 
-        SharingKeyData request = new SharingKeyData(username, encodedSharingPublicKey);
+        SharingKeyData request = new SharingKeyData(username, sharingPublicKey.getPublicKey());
         return request.insert();
     }
 
 
 
-    public boolean banSharingKey(String username, byte[] encodedsharingPublicKey, byte[] signedHash)
+    protected synchronized boolean banSharingKey(String username, UserPublicKey sharingPublicKey)
     {
-        if (! super.banSharingKey(username, encodedsharingPublicKey, signedHash))
+        if (! super.banSharingKey(username, sharingPublicKey))
             return false;
 
-        SharingKeyData request = new SharingKeyData(username, encodedsharingPublicKey);
+        SharingKeyData request = new SharingKeyData(username, sharingPublicKey.getPublicKey());
         return request.delete();
     }
 
-    public boolean addMetadataBlob(String username, byte[] encodedSharingPublicKey, byte[] mapKey, byte[] metadataBlob, byte[] sharingKeySignedHash)
+    protected synchronized boolean addMetadataBlob(String username, UserPublicKey sharingKey, byte[] mapKey, byte[] metadataBlob)
     {
-        if (! super.addMetadataBlob(username, encodedSharingPublicKey, mapKey, metadataBlob, sharingKeySignedHash))
+        if (! super.addMetadataBlob(username, sharingKey, mapKey, metadataBlob))
             return false;
-        
-        int sharingKeyID = SharingKeyData.getID(username, encodedSharingPublicKey);
+
+        int sharingKeyID = SharingKeyData.getID(username, sharingKey.getPublicKey());
         if (sharingKeyID <0)
             return false;
 
@@ -526,12 +654,12 @@ public class SQLiteCoreNode extends AbstractCoreNode
         return fragment.insert();
     }
 
-    public boolean removeMetadataBlob(String username, byte[] encodedSharingKey, byte[] mapKey, byte[] sharingKeySignedMapKey)
+    protected synchronized boolean removeMetadataBlob(String username, UserPublicKey sharingKey, byte[] mapKey)
     {
-        if (! super.removeMetadataBlob(username, encodedSharingKey, mapKey, sharingKeySignedMapKey))
+        if (! super.removeMetadataBlob(username, sharingKey, mapKey))
             return false;
 
-        int sharingKeyID = SharingKeyData.getID(username, encodedSharingKey);
+        int sharingKeyID = SharingKeyData.getID(username, sharingKey.getPublicKey());
         if (sharingKeyID <0)
             return false;
         return FragmentData.deleteOne(username, sharingKeyID, new String(Base64.encode(mapKey)));
@@ -558,6 +686,27 @@ public class SQLiteCoreNode extends AbstractCoreNode
         //    return false;
     }
 
+    protected synchronized boolean addStorageNodeState(StorageNodeState state)
+    {
+        if (! super.addStorageNodeState(state))
+            return false;
+        Map<String,Float> map = state.fractions();
+        for (Map.Entry<String,Float> entry: map.entrySet())
+        {
+            StorageNodeData s = new StorageNodeData(state.address().getAddress().toString(), state.address().getPort(), entry.getKey(), (double) entry.getValue());
+            if (! s.insert())
+                return false;
+        }
+        return true;
+    }
+
+    protected synchronized boolean addFragmentHashes(String username, UserPublicKey sharingKey, byte[] mapKey, byte[] allHashes)
+    {
+       if (! super.addFragmentHashes(username, sharingKey, mapKey, allHashes))
+          return false; 
+        //TODO
+        return false;
+    }
     public long getQuota(String user)
     {
         return super.getQuota(user); 
@@ -579,6 +728,29 @@ public class SQLiteCoreNode extends AbstractCoreNode
             isClosed = true;
         } catch (Exception e) { 
             e.printStackTrace();
+        }
+    }
+
+    public static boolean delete(String table, String deleteString)
+    {
+        Statement stmt = null;
+        try
+        {
+            stmt = conn.createStatement();
+            stmt.executeUpdate("delete from "+table+" where "+ deleteString +";");
+            conn.commit();
+            return true;
+        } catch (SQLException sqe) { 
+            sqe.printStackTrace();
+            return false;
+        } finally { 
+            if (stmt != null)
+                try 
+                {
+                    stmt.close();
+                } catch (SQLException sqe2) { 
+                    sqe2.printStackTrace();
+                }
         }
     }
 }

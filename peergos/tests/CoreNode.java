@@ -21,11 +21,6 @@ public class CoreNode
 {
     private static Random random = new Random(666);
 
-    class MockCoreNode extends AbstractCoreNode
-    {
-        public void close(){};
-    }
-
     public void coreNodeTests(AbstractCoreNode coreNode) throws Exception {
         ActorSystem system = null;
         try {
@@ -135,7 +130,7 @@ public class CoreNode
        {
        try
        {
-       MockCoreNode coreNode = new MockCoreNode();
+       AbstractCoreNode coreNode = AbstractCoreNode.getDefault()();
        coreNodeTests(coreNode);
        } catch (Throwable t) { 
        t.printStackTrace();
@@ -151,7 +146,7 @@ public class CoreNode
             HTTPCoreNodeServer server = null;
             try
             {
-                MockCoreNode mockCoreNode = new MockCoreNode();
+                AbstractCoreNode mockCoreNode = AbstractCoreNode.getDefault();
                 InetAddress address = InetAddress.getByName("localhost");
 
                 server = new HTTPCoreNodeServer(mockCoreNode,address, AbstractCoreNode.PORT);
