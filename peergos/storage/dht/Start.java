@@ -79,7 +79,7 @@ public class Start
             if (system == null)
                 system = ActorSystem.create("DHTRouter");
             int port = Args.getInt("port", 8000);
-            ActorRef router = Router.start(system, port);
+            ActorRef router = Router.start(Args.getParameter("user", "root"), system, port);
             final Inbox inbox = Inbox.create(system);
             inbox.send(router, new HttpsMessenger.INITIALIZE());
             System.out.println("Sent initialize to "+port);

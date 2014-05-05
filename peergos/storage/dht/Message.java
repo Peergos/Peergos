@@ -167,9 +167,10 @@ public abstract class Message
         private final int len;
         private final String user;
         private final byte[] sharingKey;
-        private final byte[] signedHashOfKey;
+        private final byte[] mapKey;
+        private final byte[] proof;
 
-        public PUT(byte[] key, int len, String user, byte[] sharingKey, byte[] signedHashOfKey)
+        public PUT(byte[] key, int len, String user, byte[] sharingKey, byte[] mapKey, byte[] proof)
         {
             super(Type.PUT);
             this.key = key;
@@ -177,7 +178,8 @@ public abstract class Message
             this.len = len;
             this.user = user;
             this.sharingKey = sharingKey;
-            this.signedHashOfKey = signedHashOfKey;
+            this.mapKey = mapKey;
+            this.proof = proof;
         }
 
         public PUT(DataInput in) throws IOException
@@ -189,7 +191,8 @@ public abstract class Message
             target = ArrayOps.getLong(key, 0);
             user = Serialize.deserializeString(in, UserContext.MAX_USERNAME_SIZE);
             sharingKey = Serialize.deserializeByteArray(in, UserContext.MAX_KEY_SIZE);
-            signedHashOfKey = Serialize.deserializeByteArray(in, UserContext.MAX_KEY_SIZE);
+            mapKey = Serialize.deserializeByteArray(in, UserContext.MAX_KEY_SIZE);
+            proof = Serialize.deserializeByteArray(in, UserContext.MAX_KEY_SIZE);
         }
 
         public long getTarget()
@@ -204,8 +207,17 @@ public abstract class Message
             out.writeInt(len);
             Serialize.serialize(user, out);
             Serialize.serialize(sharingKey, out);
-            Serialize.serialize(signedHashOfKey, out);
+            Serialize.serialize(mapKey, out);
+            Serialize.serialize(proof, out);
         }
+
+        public String getOwner() {return user;}
+
+        public byte[] getSharingKey() {return sharingKey;}
+
+        public byte[] getMapKey() {return mapKey;}
+
+        public byte[] getProof() {return proof;}
 
         public byte[] getKey()
         {

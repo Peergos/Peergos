@@ -3,7 +3,7 @@ package peergos.user.fs.erasure;
 import java.io.ByteArrayOutputStream;
 import java.util.Arrays;
 
-public class API {
+public class Erasure {
 
     public static byte[][] split(byte[] input, int originalBlobs, int allowedFailures)
     {

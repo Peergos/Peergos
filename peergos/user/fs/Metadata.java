@@ -1,37 +1,25 @@
 package peergos.user.fs;
 
+import peergos.crypto.UserPublicKey;
+
 import java.io.*;
+import java.util.Arrays;
 
 public class Metadata
 {
-    private final byte[][] fragmentHashes;
+    private final byte[] fragmentHashes;
     private final byte[] initVector;
 
     public Metadata(Fragment[] fragments, byte[] initVector)
     {
-        fragmentHashes = new byte[fragments.length][];
+        fragmentHashes = new byte[fragments.length * UserPublicKey.HASH_SIZE];
         for (int i=0; i < fragments.length; i++)
-            fragmentHashes[i] = fragments[i].getHash();
+            System.arraycopy(fragments[i].getHash(), 0, fragmentHashes, i*UserPublicKey.HASH_SIZE, UserPublicKey.HASH_SIZE);
         this.initVector = initVector;
     }
 
-    public Metadata(byte[] decrypted)
-    {
-        try {
-            initVector = new byte[EncryptedChunk.IV_SIZE];
-            DataInputStream din = new DataInputStream(new ByteArrayInputStream(decrypted));
-            din.readFully(initVector);
-            fragmentHashes = new byte[din.readInt()][];
-            int hashSize = din.readInt();
-            for (int i=0; i < fragmentHashes.length; i++) {
-                fragmentHashes[i] = new byte[hashSize];
-                din.readFully(fragmentHashes[i]);
-            }
-        } catch (IOException e)
-        {
-            e.printStackTrace(); // shouldn't ever happen
-            throw new IllegalStateException(e.getMessage());
-        }
+    public byte[] getHashes(){
+        return Arrays.copyOf(fragmentHashes, fragmentHashes.length);
     }
 
     public byte[] serialize()
@@ -41,9 +29,7 @@ public class Metadata
             bout.write(initVector, 0, initVector.length);
             DataOutputStream dout = new DataOutputStream(bout);
             dout.writeInt(fragmentHashes.length);
-            dout.writeInt(fragmentHashes[0].length);
-            for (int i = 0; i < fragmentHashes.length; i++)
-                bout.write(fragmentHashes[i], 0, fragmentHashes[i].length);
+            bout.write(fragmentHashes, 0, fragmentHashes.length);
         } catch (IOException e) {
             e.printStackTrace(); // shouldn't ever happen
         }
