@@ -1,6 +1,7 @@
 package peergos.crypto;
 
 import org.bouncycastle.asn1.nist.NISTObjectIdentifiers;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
 import javax.crypto.*;
 import javax.crypto.spec.IvParameterSpec;
@@ -96,5 +97,10 @@ public class SymmetricKey
             e.printStackTrace();
             throw new IllegalStateException(e.getMessage());
         }
+    }
+
+    static
+    {
+        Security.addProvider(new BouncyCastleProvider());
     }
 }

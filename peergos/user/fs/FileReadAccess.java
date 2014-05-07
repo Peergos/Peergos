@@ -22,6 +22,11 @@ public class FileReadAccess
         this.metadata = metaKey.encrypt(rawMetadata, parent2meta.initializationVector());
     }
 
+    public FileReadAccess(SymmetricKey parentKey, byte[] rawMetadata)
+    {
+        this(SymmetricKey.random(), parentKey, null, rawMetadata);
+    }
+
     public FileReadAccess(byte[] m, byte[] p2m, byte[] s2p)
     {
         metadata = m;

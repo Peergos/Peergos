@@ -1,5 +1,7 @@
 package peergos.util;
 
+import java.util.Random;
+
 public class ArrayOps
 {
     public static byte[] concat(byte[] one, byte[] two)
@@ -41,5 +43,14 @@ public class ArrayOps
         for (byte b : data)
             s.append(String.format("%02x", b & 0xFF));
         return s.toString();
+    }
+
+    public static byte[] random(int length)
+    {
+        byte[] res = new byte[length];
+        Random r = new Random();
+        r.setSeed(System.nanoTime());
+        r.nextBytes(res);
+        return res;
     }
 }

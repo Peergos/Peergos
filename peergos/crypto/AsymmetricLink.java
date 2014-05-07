@@ -1,7 +1,5 @@
 package peergos.crypto;
 
-import java.util.Arrays;
-
 public class AsymmetricLink
 {
     private final byte[] link;

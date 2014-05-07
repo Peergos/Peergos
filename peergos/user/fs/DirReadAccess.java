@@ -6,17 +6,21 @@ import peergos.util.Serialize;
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 
 public class DirReadAccess
 {
-    private AsymmetricLink sharing2subfolders;
+    private AsymmetricLink sharing2subfolders; // optional
     private final SymmetricLink subfolders2files;
+    private final Map<SymmetricLink, byte[]> subfolders = new HashMap();
+    private final Map<SymmetricLink, byte[]> files = new HashMap();
     private final SymmetricLink subfolders2parent;
     private final SymmetricLink parent2meta;
     private final byte[] metadata;
     public static final int MAX_ELEMENT_SIZE = Integer.MAX_VALUE;
 
-    public DirReadAccess(SymmetricKey metaKey, SymmetricKey parentKey, SymmetricKey subfoldersKey, SymmetricKey filesKey, UserPublicKey sharingKey, byte[] rawMetadata)
+    public DirReadAccess(SymmetricKey metaKey, SymmetricKey parentKey, SymmetricKey filesKey, SymmetricKey subfoldersKey, UserPublicKey sharingKey, byte[] rawMetadata)
     {
         this.subfolders2files = new SymmetricLink(subfoldersKey, filesKey);
         this.subfolders2parent = new SymmetricLink(subfoldersKey, parentKey);
@@ -24,6 +28,11 @@ public class DirReadAccess
         this.metadata = metaKey.encrypt(rawMetadata, parent2meta.initializationVector());
         if (sharingKey != null)
             sharing2subfolders = new AsymmetricLink(sharingKey, subfoldersKey);
+    }
+
+    public DirReadAccess(SymmetricKey subfoldersKey, byte[] rawMetadata)
+    {
+        this(SymmetricKey.random(), SymmetricKey.random(), SymmetricKey.random(), subfoldersKey, null, rawMetadata);
     }
 
     public DirReadAccess(byte[] s2s, byte[] s2f, byte[] s2p, byte[] p2m, byte[] metadata)
@@ -48,6 +57,18 @@ public class DirReadAccess
         } else {
             dout.writeInt(0);
         }
+        dout.writeInt(subfolders.size());
+        for (SymmetricLink sub: subfolders.keySet())
+        {
+            Serialize.serialize(sub.serialize(), dout);
+            Serialize.serialize(subfolders.get(sub), dout);
+        }
+        dout.writeInt(files.size());
+        for (SymmetricLink file: files.keySet())
+        {
+            Serialize.serialize(file.serialize(), dout);
+            Serialize.serialize(files.get(file), dout);
+        }
     }
 
     public static DirReadAccess deserialize(DataInput din) throws IOException
@@ -59,7 +80,48 @@ public class DirReadAccess
         byte[] s2s = null;
         if (din.readInt() != 0)
             s2s = Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE);
-        return new DirReadAccess(s2s, s2f, s2p, p2m, meta);
+        DirReadAccess res =  new DirReadAccess(s2s, s2f, s2p, p2m, meta);
+        int subs = din.readInt();
+        for (int i=0; i < subs; i++)
+        {
+            SymmetricLink link = new SymmetricLink(Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE));
+            byte[] mapKey = Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE);
+            res.addSubFolder(mapKey, link);
+        }
+        int files = din.readInt();
+        for (int i=0; i < files; i++)
+        {
+            SymmetricLink link = new SymmetricLink(Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE));
+            byte[] mapKey = Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE);
+            res.addFile(mapKey, link);
+        }
+        return res;
+    }
+
+    public void addSubFolder(byte[] mapKey, SymmetricKey ourSubfolders, SymmetricKey targetSubfolders)
+    {
+        subfolders.put(new SymmetricLink(ourSubfolders, targetSubfolders), mapKey);
+    }
+
+    public void addFile(byte[] mapKey, SymmetricKey ourSubfolders, SymmetricKey targetParent)
+    {
+        files.put(new SymmetricLink(ourSubfolders, targetParent), mapKey);
+    }
+
+    public void addSubFolder(byte[] mapKey, SymmetricLink toTargetSubfolders)
+    {
+        subfolders.put(toTargetSubfolders, mapKey);
+    }
+
+    public void addFile(byte[] mapKey, SymmetricLink toTargetParent)
+    {
+        files.put(toTargetParent, mapKey);
+    }
+
+    public void setSharingKey(UserPublicKey sharingKey, SymmetricKey subfoldersKey)
+    {
+        if (sharingKey != null)
+            sharing2subfolders = new AsymmetricLink(sharingKey, subfoldersKey);
     }
 
     public SymmetricKey getParentKey(SymmetricKey subfoldersKey)
