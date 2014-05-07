@@ -1,16 +1,11 @@
 package peergos.user.fs;
 
+import peergos.crypto.SymmetricKey;
 import peergos.crypto.User;
 import peergos.user.fs.erasure.Erasure;
 
-import javax.crypto.*;
-import javax.crypto.spec.IvParameterSpec;
-import javax.crypto.spec.SecretKeySpec;
-import java.security.*;
-
 public class EncryptedChunk
 {
-    public static final int IV_SIZE = 16;
     public static final int ERASURE_ORIGINAL = 40;
     public static final int ERASURE_ALLOWED_FAILURES = 10;
     private final byte[] encrypted;
@@ -29,19 +24,9 @@ public class EncryptedChunk
         this(Erasure.recombine(fragments, originalSize, ERASURE_ORIGINAL, ERASURE_ALLOWED_FAILURES));
     }
 
-    public byte[] decrypt(SecretKey key, byte[] initVector)
+    public byte[] decrypt(SymmetricKey key, byte[] iv)
     {
-        try {
-            Cipher cipher = Cipher.getInstance(Chunk.MODE, "BC");
-            IvParameterSpec ivSpec = new IvParameterSpec(initVector);
-            cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(key.getEncoded(), Chunk.ALGORITHM), ivSpec);
-            return cipher.doFinal(encrypted);
-        } catch (NoSuchAlgorithmException|NoSuchProviderException|NoSuchPaddingException|IllegalBlockSizeException|
-                BadPaddingException|InvalidKeyException|InvalidAlgorithmParameterException e)
-        {
-            e.printStackTrace();
-            throw new IllegalStateException("Couldn't decrypt chunk: "+e.getMessage());
-        }
+        return key.decrypt(encrypted, iv);
     }
 
     public Fragment[] generateFragments()

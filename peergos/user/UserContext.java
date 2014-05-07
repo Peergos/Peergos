@@ -1,10 +1,9 @@
 package peergos.user;
 
 import akka.actor.ActorSystem;
-import akka.dispatch.Futures;
 import peergos.corenode.AbstractCoreNode;
 import peergos.corenode.HTTPCoreNode;
-import peergos.corenode.HTTPCoreNodeServer;
+import peergos.crypto.SymmetricKey;
 import peergos.crypto.User;
 import peergos.crypto.UserPublicKey;
 import peergos.storage.net.IP;
@@ -14,8 +13,6 @@ import peergos.user.fs.Fragment;
 import peergos.user.fs.Metadata;
 import peergos.user.fs.erasure.Erasure;
 import peergos.util.ArrayOps;
-import scala.PartialFunction;
-import scala.collection.JavaConverters;
 import scala.concurrent.Await;
 import scala.concurrent.ExecutionContext;
 import scala.concurrent.Future;
@@ -26,7 +23,6 @@ import scala.runtime.AbstractPartialFunction;
 import static akka.dispatch.Futures.sequence;
 import static org.junit.Assert.*;
 
-import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.URL;
@@ -38,7 +34,6 @@ import java.util.Random;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 
 public class UserContext
 {
@@ -208,14 +203,15 @@ public class UserContext
         public void chunkTest(UserContext context, User sharer)
         {
             Random r = new Random();
-            byte[] initVector = new byte[EncryptedChunk.IV_SIZE];
+            byte[] initVector = new byte[SymmetricKey.IV_SIZE];
             r.nextBytes(initVector);
             byte[] raw = new byte[Chunk.MAX_SIZE];
             byte[] contents = "Hello secure cloud! Goodbye NSA!".getBytes();
             for (int i=0; i < raw.length/32; i++)
                 System.arraycopy(contents, 0, raw, 32*i, 32);
 
-            Chunk chunk = new Chunk(raw);
+            SymmetricKey key = SymmetricKey.random();
+            Chunk chunk = new Chunk(raw, key);
             EncryptedChunk encryptedChunk = new EncryptedChunk(chunk.encrypt(initVector));
             Fragment[] fragments = encryptedChunk.generateFragments();
             Metadata meta = new Metadata(fragments, initVector);

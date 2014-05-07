@@ -1,6 +1,7 @@
 package peergos.tests;
 
 import peergos.crypto.SSL;
+import peergos.crypto.SymmetricKey;
 import peergos.crypto.UserPublicKey;
 import peergos.crypto.User;
 import peergos.user.fs.Chunk;
@@ -29,8 +30,8 @@ public class Crypto
     public void AESEncryption()
     {
         byte[] raw = new byte[1024*1024];
-        byte[] iv = new byte[16];
-        Chunk chunk = new Chunk(raw);
+        byte[] iv = new byte[SymmetricKey.IV_SIZE];
+        Chunk chunk = new Chunk(raw, SymmetricKey.random());
         byte[] encrypted = chunk.encrypt(iv);
         EncryptedChunk coded = new EncryptedChunk(encrypted);
         byte[] original = coded.decrypt(chunk.getKey(), iv);
