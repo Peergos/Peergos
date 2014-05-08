@@ -13,28 +13,36 @@ public class Cryptree
         @org.junit.Test
         public void all()
         {
-            // create read cryptree
+            try {
+                // create read cryptree
 
-            SymmetricKey rootKey = SymmetricKey.random();
-            String name = "/";
-            byte[] rootMapKey = ArrayOps.random(32); // root would be stored under this in the core node
-            DirReadAccess root = new DirReadAccess(rootKey, name.getBytes());
+                SymmetricKey rootRKey = SymmetricKey.random();
+                SymmetricKey rootWKey = SymmetricKey.random();
+                String name = "/";
+                byte[] rootMapKey = ArrayOps.random(32); // root would be stored under this in the core node
+                DirAccess root = new DirAccess(rootRKey, name.getBytes(), rootWKey);
 
-            // add subfolder
-            String name2 = "photos"; // /photos/
-            SymmetricKey photosKey = SymmetricKey.random();
-            byte[] photosMapKey = ArrayOps.random(32);
-            DirReadAccess photos = new DirReadAccess(photosKey, name2.getBytes());
-            root.addSubFolder(photosMapKey, rootKey, photosKey);
+                // add subfolder
+                String name2 = "photos"; // /photos/
+                SymmetricKey photosRKey = SymmetricKey.random();
+                SymmetricKey photosWKey = SymmetricKey.random();
+                byte[] photosMapKey = ArrayOps.random(32);
+                DirAccess photos = new DirAccess(photosRKey, name2.getBytes(), photosWKey);
+                root.addSubFolder(photosMapKey, rootRKey, photosRKey);
 
-            // add a file
-            String filename = "tree.jpg"; // /photos/tree.jpg
-            SymmetricKey fileKey = SymmetricKey.random();
-            byte[] fileMapKey = ArrayOps.random(32);
-            FileReadAccess file = new FileReadAccess(fileKey, filename.getBytes());
-            photos.addFile(fileMapKey, photosKey, fileKey);
+                // add a file
+                String filename = "tree.jpg"; // /photos/tree.jpg
+                SymmetricKey fileKey = SymmetricKey.random();
+                byte[] fileMapKey = ArrayOps.random(32);
+                FileAccess file = new FileAccess(fileKey, filename.getBytes());
+                photos.addFile(fileMapKey, photosRKey, fileKey);
 
 
+            } catch (Throwable t)
+            {
+                t.printStackTrace();
+            }
         }
     }
+
 }

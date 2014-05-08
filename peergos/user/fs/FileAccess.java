@@ -7,14 +7,17 @@ import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 
-public class FileReadAccess
+public class FileAccess
 {
+    // read permissions
     private AsymmetricLink sharing2parent;
     private final SymmetricLink parent2meta;
+    // write permissions
+
     private final byte[] metadata;
     public static final int MAX_ELEMENT_SIZE = Integer.MAX_VALUE;
 
-    public FileReadAccess(SymmetricKey metaKey, SymmetricKey parentKey, UserPublicKey sharingKey, byte[] rawMetadata)
+    public FileAccess(SymmetricKey metaKey, SymmetricKey parentKey, UserPublicKey sharingKey, byte[] rawMetadata)
     {
         this.parent2meta = new SymmetricLink(parentKey, metaKey);
         if (sharingKey != null)
@@ -22,12 +25,12 @@ public class FileReadAccess
         this.metadata = metaKey.encrypt(rawMetadata, parent2meta.initializationVector());
     }
 
-    public FileReadAccess(SymmetricKey parentKey, byte[] rawMetadata)
+    public FileAccess(SymmetricKey parentKey, byte[] rawMetadata)
     {
         this(SymmetricKey.random(), parentKey, null, rawMetadata);
     }
 
-    public FileReadAccess(byte[] m, byte[] p2m, byte[] s2p)
+    public FileAccess(byte[] m, byte[] p2m, byte[] s2p)
     {
         metadata = m;
         parent2meta = new SymmetricLink(p2m);
@@ -47,14 +50,14 @@ public class FileReadAccess
         }
     }
 
-    public static FileReadAccess deserialize(DataInput din) throws IOException
+    public static FileAccess deserialize(DataInput din) throws IOException
     {
         byte[] meta = Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE);
         byte[] p2m = Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE);
         byte[] s2p = null;
         if (din.readInt() != 0)
             s2p = Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE);
-        return new FileReadAccess(meta, p2m, s2p);
+        return new FileAccess(meta, p2m, s2p);
     }
 
     public SymmetricKey getMetaKey(SymmetricKey parentKey)
