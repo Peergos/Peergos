@@ -13,14 +13,11 @@ public class FileAccess
     // read permissions
     private SortedMap<UserPublicKey, AsymmetricLink> sharingR2parent = new TreeMap();
     private final SymmetricLink parent2meta;
-    // write permissions
-    private SortedMap<UserPublicKey, AsymmetricLink> sharingW2parent = new TreeMap();
 
     private final byte[] metadata;
     public static final int MAX_ELEMENT_SIZE = Integer.MAX_VALUE;
 
-    public FileAccess(Set<UserPublicKey> sharingR, SymmetricKey metaKey, SymmetricKey parentKey,
-                      Set<UserPublicKey> sharingW, byte[] rawMetadata)
+    public FileAccess(Set<UserPublicKey> sharingR, SymmetricKey metaKey, SymmetricKey parentKey, byte[] rawMetadata)
     {
         this.parent2meta = new SymmetricLink(parentKey, metaKey);
         if (sharingR != null) {
@@ -28,15 +25,11 @@ public class FileAccess
                 sharingR2parent.put(key, new AsymmetricLink(key, parentKey));
         }
         this.metadata = metaKey.encrypt(rawMetadata, parent2meta.initializationVector());
-        if (sharingW != null) {
-            for (UserPublicKey key: sharingW)
-                sharingW2parent.put(key, new AsymmetricLink(key, parentKey));
-        }
     }
 
     public FileAccess(SymmetricKey parentKey, byte[] rawMetadata)
     {
-        this(null, SymmetricKey.random(), parentKey, null, rawMetadata);
+        this(null, SymmetricKey.random(), parentKey, rawMetadata);
     }
 
     public FileAccess(byte[] m, byte[] p2m, Map<UserPublicKey, AsymmetricLink> sharingR)
