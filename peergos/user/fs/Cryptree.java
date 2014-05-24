@@ -14,8 +14,7 @@ public class Cryptree
         public void all()
         {
             try {
-                // create read cryptree
-
+                // create cryptree
                 SymmetricKey rootRKey = SymmetricKey.random();
                 SymmetricKey rootWKey = SymmetricKey.random();
                 String name = "/";
