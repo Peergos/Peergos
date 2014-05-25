@@ -4,6 +4,7 @@ import org.junit.runner.JUnitCore;
 import org.junit.runner.Result;
 import org.junit.runner.notification.Failure;
 import peergos.user.UserContext;
+import peergos.user.fs.Cryptree;
 
 public class Tests
 {
@@ -14,7 +15,8 @@ public class Tests
 //        testClass(ErasureCodes.class);
 //        testClass(GaloisPolynomial.Test.class);
 //        testClass(Crypto.class);
-        testClass(UserContext.Test.class);
+//        testClass(UserContext.Test.class);
+        testClass(Cryptree.Test.class);
 //        testClass(CoreNode.class);
     }
 
