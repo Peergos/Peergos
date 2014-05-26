@@ -30,6 +30,9 @@ public class Serialize
     public static byte[] deserializeByteArray(DataInput din, int maxLength) throws IOException
     {
         int l = din.readInt();
+        if (l == 0)
+            return null;
+
         byte[] b = getByteArray(l, maxLength);
         din.readFully(b);
         return b;

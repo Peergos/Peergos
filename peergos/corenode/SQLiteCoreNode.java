@@ -580,9 +580,9 @@ public class SQLiteCoreNode extends AbstractCoreNode
         return new UserPublicKey(users[0].data);
     }
 
-    protected synchronized boolean addUsername(String username, UserPublicKey key)
+    protected synchronized boolean addUsername(String username, UserPublicKey key, ByteArrayWrapper clearanceData)
     {
-        if (! super.addUsername(username, key))
+        if (! super.addUsername(username, key, clearanceData))
             return false;
 
         UserData user = new UserData(username, key.getPublicKey()); 

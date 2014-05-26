@@ -13,6 +13,7 @@ import peergos.user.fs.Fragment;
 import peergos.user.fs.Metadata;
 import peergos.user.fs.erasure.Erasure;
 import peergos.util.ArrayOps;
+import peergos.util.ByteArrayWrapper;
 import scala.concurrent.Await;
 import scala.concurrent.ExecutionContext;
 import scala.concurrent.Future;
@@ -39,26 +40,33 @@ public class UserContext
 {
     public static final int MAX_USERNAME_SIZE = 1024;
     public static final int MAX_KEY_SIZE = 1024;
+    public static final int CLEARANCE_SIZE = 1024;
 
     String username;
     User us;
     DHTUserAPI dht;
     AbstractCoreNode core;
     ActorSystem system;
+    ByteArrayWrapper clearanceData;
 
     public UserContext(String username, User user, DHTUserAPI dht, AbstractCoreNode core, ActorSystem system)
+    {
+        this(username, user, dht, core, system, randomClearanceData());
+    }
+    public UserContext(String username, User user, DHTUserAPI dht, AbstractCoreNode core, ActorSystem system, byte[] clearanceData)
     {
         this.username = username;
         this.us = user;
         this.dht = dht;
         this.core = core;
         this.system = system;
+        this.clearanceData = new ByteArrayWrapper(Arrays.copyOf(clearanceData, clearanceData.length));
     }
 
     public boolean register()
     {
         byte[] signedHash = us.hashAndSignMessage(username.getBytes());
-        return core.addUsername(username, us.getPublicKey(), signedHash);
+        return core.addUsername(username, us.getPublicKey(), signedHash, clearanceData.data);
     }
 
     public boolean checkRegistered()
@@ -248,5 +256,13 @@ public class UserContext
                 res[i] = new byte[received[0].getData().length];
         }
         return res;
+    }
+
+    public static byte[] randomClearanceData()
+    {
+        Random r = new Random();
+        byte[] clearanceData = new byte[CLEARANCE_SIZE];
+        r.nextBytes(clearanceData);
+        return clearanceData;
     }
 }

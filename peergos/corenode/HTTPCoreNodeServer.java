@@ -40,6 +40,12 @@ public class HTTPCoreNodeServer
                     case "getPublicKey":
                         getPublicKey(din, dout);
                         break;
+                    case "getClearanceData":
+                        getClearanceData(din, dout);
+                        break;
+                    case "updateClearanceData":
+                        updateClearanceData(din, dout);
+                        break;
                     case "getUsername":
                         getUsername(din, dout);
                         break;
@@ -107,8 +113,9 @@ public class HTTPCoreNodeServer
             String username = deserializeString(din);
             byte[] encodedKey = deserializeByteArray(din);
             byte[] hash = deserializeByteArray(din);
+            byte[] clearanceData = deserializeByteArray(din);
             
-            boolean isAdded = coreNode.addUsername(username, encodedKey, hash);
+            boolean isAdded = coreNode.addUsername(username, encodedKey, hash, clearanceData);
 
             dout.writeBoolean(isAdded);
         }
@@ -181,6 +188,26 @@ public class HTTPCoreNodeServer
 
             boolean isAdded = coreNode.addMetadataBlob(username, encodedSharingPublicKey, mapKey, fragmentData, signedHash);
             dout.writeBoolean(isAdded);
+        }
+        
+        void updateClearanceData(DataInputStream din, DataOutputStream dout) throws IOException
+        {
+            String username = deserializeString(din);
+            byte[] signedHash = deserializeByteArray(din);
+            byte[] clearanceData = deserializeByteArray(din);
+
+            boolean isUpdated = coreNode.updateClearanceData(username, signedHash, clearanceData);
+            dout.writeBoolean(isUpdated);
+        }
+        
+        void getClearanceData(DataInputStream din, DataOutputStream dout) throws IOException
+        {
+            String username = deserializeString(din);
+            byte[] userClearanceData = coreNode.getClearanceData(username);
+            if (userClearanceData == null)
+                dout.writeInt(0);
+            else
+                Serialize.serialize(userClearanceData, dout);
         }
 
         void removeMetadataBlob(DataInputStream din, DataOutputStream dout) throws IOException

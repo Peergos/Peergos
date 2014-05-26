@@ -48,6 +48,58 @@ public class HTTPCoreNode extends AbstractCoreNode
         }
     }
 
+    @Override public boolean updateClearanceData(String username, byte[] signedHash, byte[] clearanceData)
+    {
+        HttpURLConnection conn = null;
+        try
+        {
+            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn.setDoInput(true);
+            conn.setDoOutput(true);
+            DataInputStream din = new DataInputStream(conn.getInputStream());
+            DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
+
+            Serialize.serialize("updateClearanceData", dout);
+            Serialize.serialize(username, dout);
+            Serialize.serialize(signedHash, dout);
+            Serialize.serialize(clearanceData, dout);
+            dout.flush();
+        
+            return din.readBoolean();    
+        } catch (IOException ioe) {
+            ioe.printStackTrace();
+            return false;
+        } finally {
+            if (conn != null)
+                conn.disconnect();
+        }
+    }
+    
+    @Override public synchronized byte[] getClearanceData(String username) 
+    {
+        HttpURLConnection conn = null;
+        try
+        {
+            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn.setDoInput(true);
+            conn.setDoOutput(true);
+            DataInputStream din = new DataInputStream(conn.getInputStream());
+            DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
+
+            Serialize.serialize("getClearanceData", dout);
+            Serialize.serialize(username, dout);
+            dout.flush();
+        
+            return deserializeByteArray(din); 
+        } catch (IOException ioe) {
+            ioe.printStackTrace();
+            return null;
+        } finally {
+            if (conn != null)
+                conn.disconnect();
+        }
+    }
+
     @Override public String getUsername(byte[] publicKey)
     {
         HttpURLConnection conn = null;
@@ -74,7 +126,7 @@ public class HTTPCoreNode extends AbstractCoreNode
         }
     }
 
-    @Override public boolean addUsername(String username, byte[] encodedUserKey, byte[] signedHash)
+    @Override public boolean addUsername(String username, byte[] encodedUserKey, byte[] signedHash, byte[] clearanceData)
     {
         HttpURLConnection conn = null;
         try
@@ -88,6 +140,7 @@ public class HTTPCoreNode extends AbstractCoreNode
             Serialize.serialize(username, dout);
             Serialize.serialize(encodedUserKey, dout);
             Serialize.serialize(signedHash, dout);
+            Serialize.serialize(clearanceData, dout);
             dout.flush();
             
             DataInputStream din = new DataInputStream(conn.getInputStream());
