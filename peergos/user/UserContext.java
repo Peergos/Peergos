@@ -14,6 +14,7 @@ import peergos.user.fs.Metadata;
 import peergos.user.fs.erasure.Erasure;
 import peergos.util.ArrayOps;
 import peergos.util.ByteArrayWrapper;
+import peergos.util.Serialize;
 import scala.concurrent.Await;
 import scala.concurrent.ExecutionContext;
 import scala.concurrent.Future;
@@ -24,9 +25,13 @@ import scala.runtime.AbstractPartialFunction;
 import static akka.dispatch.Futures.sequence;
 import static org.junit.Assert.*;
 
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.URL;
+import java.security.KeyPair;
 import java.security.PublicKey;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -79,6 +84,30 @@ public class UserContext
     {
         byte[] signedHash = us.hashAndSignMessage(pub.getEncoded());
         return core.allowSharingKey(username, pub.getEncoded(), signedHash);
+    }
+
+    public boolean sendFollowRequest(String friend)
+    {
+        try {
+            // check friend is a registered user
+            UserPublicKey friendKey = core.getPublicKey(friend);
+
+            // create sharing keypair and give it write access
+            KeyPair sharing = User.generateKeyPair();
+            addSharingKey(sharing.getPublic());
+
+            // send private key to allow friend to share with us (i.e. e follow them)
+            ByteArrayOutputStream bout = new ByteArrayOutputStream();
+            DataOutputStream dout = new DataOutputStream(bout);
+            Serialize.serialize(friend.getBytes(), dout);
+            Serialize.serialize(sharing.getPrivate().getEncoded(), dout);
+
+            byte[] payload = friendKey.encryptMessageFor(bout.toByteArray());
+            return core.followRequest(friend, payload);
+        } catch (IOException e) {
+            e.printStackTrace();
+            return false;
+        }
     }
 
     public Future uploadFragment(Fragment f, String targetUser, User sharer, byte[] mapKey)
@@ -177,27 +206,31 @@ public class UserContext
                     HTTPCoreNode clientCoreNode = new HTTPCoreNode(coreURL);
 
                     // create a new us
-                    User us = User.random();
-                    String ourname = "USER";
+                    User ourKeys = User.random();
+                    String ourname = "Bob";
 
                     // create a DHT API
                     DHTUserAPI dht = new HttpsUserAPI(new InetSocketAddress(InetAddress.getByName(storageIP), storagePort), system);
 
-                    UserContext context = new UserContext(ourname, us, dht, clientCoreNode, system);
-                    assertTrue("Not already registered", !context.checkRegistered());
-                    assertTrue("Register", context.register());
+                    UserContext us = new UserContext(ourname, ourKeys, dht, clientCoreNode, system);
+                    assertTrue("Not already registered", !us.checkRegistered());
+                    assertTrue("Register", us.register());
 
-                    User sharer = User.random();
-                    context.addSharingKey(sharer.getKey());
+                    User friendKeys = User.random();
+                    String friendName = "Alice";
+                    UserContext friend = new UserContext(friendName, friendKeys, dht, clientCoreNode, system);
+
+                    friend.sendFollowRequest(ourname);
+                    us.addSharingKey(friendKeys.getKey());
 
                     int frags = 60;
                     for (int i = 0; i < frags; i++) {
-                        byte[] signature = sharer.hashAndSignMessage(ArrayOps.concat(sharer.getPublicKey(), new byte[10 + i]));
-                        clientCoreNode.registerFragmentStorage(ourname, new InetSocketAddress("localhost", 666), ourname, sharer.getPublicKey(), new byte[10 + i], signature);
+                        byte[] signature = friendKeys.hashAndSignMessage(ArrayOps.concat(friendKeys.getPublicKey(), new byte[10 + i]));
+                        clientCoreNode.registerFragmentStorage(ourname, new InetSocketAddress("localhost", 666), ourname, friendKeys.getPublicKey(), new byte[10 + i], signature);
                     }
                     long quota = clientCoreNode.getQuota(ourname);
 
-                    chunkTest(context, sharer);
+                    chunkTest(us, friendKeys);
 
                 } finally {
                     system.shutdown();

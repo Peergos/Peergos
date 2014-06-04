@@ -102,17 +102,22 @@ public class User extends UserPublicKey
         }
     }
 
-    public static User random()
+    public static KeyPair generateKeyPair()
     {
         try
         {
             KeyPairGenerator kpg = KeyPairGenerator.getInstance(AUTH, "BC");
             kpg.initialize(RSA_KEY_SIZE);
-            return new User(kpg.genKeyPair());
+            return kpg.genKeyPair();
         } catch (NoSuchAlgorithmException|NoSuchProviderException e)
         {
             throw new IllegalStateException("No algorithm: "+AUTH);
         }
+    }
+
+    public static User random()
+    {
+        return new User(generateKeyPair());
     }
 
     public static User generateUserCredentials(String username, String password)
