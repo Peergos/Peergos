@@ -1,6 +1,8 @@
 package peergos.crypto;
 
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import peergos.util.ArrayOps;
+import peergos.util.ByteArrayWrapper;
 
 import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
@@ -11,7 +13,7 @@ import java.security.*;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.X509EncodedKeySpec;
 
-public class UserPublicKey
+public class UserPublicKey implements Comparable<UserPublicKey>
 {
     public static final int RSA_KEY_SIZE = 4096;
     public static final int HASH_SIZE = 256/8;
@@ -28,12 +30,7 @@ public class UserPublicKey
 
     public UserPublicKey(byte[] encodedPublicKey)
     {
-        try {
-            publicKey = KeyFactory.getInstance(AUTH, "BC").generatePublic(new X509EncodedKeySpec(encodedPublicKey));
-        } catch (NoSuchAlgorithmException|NoSuchProviderException|InvalidKeySpecException e)
-        {
-            throw new IllegalStateException("Couldn't create public key");
-        }
+        publicKey = deserializePublic(encodedPublicKey);
     }
 
     public byte[] getPublicKey()
@@ -101,6 +98,36 @@ public class UserPublicKey
         }
     }
 
+    public boolean equals(Object o)
+    {
+        if (! (o instanceof UserPublicKey))
+            return false;
+
+        return this.publicKey.equals(((UserPublicKey) o).publicKey);
+    }
+
+    public int hashCode()
+    {
+        return publicKey.hashCode();
+    }
+
+    public PublicKey getKey()
+    {
+        return (PublicKey) publicKey;
+    }
+
+    public boolean isValidSignature(byte[] signedHash, byte[] raw)
+    {
+        try
+        {
+            byte[] a = hash(raw);
+            byte[] b = unsignMessage(signedHash);
+            return java.util.Arrays.equals(a,b);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     static
     {
         Security.addProvider(new BouncyCastleProvider());
@@ -128,33 +155,18 @@ public class UserPublicKey
         }
     }
 
-    public boolean equals(Object o)
+    public static PublicKey deserializePublic(byte[] pub)
     {
-        if (! (o instanceof UserPublicKey))
-            return false;
-
-        return this.publicKey.equals(((UserPublicKey) o).publicKey);
-    }
-
-    public int hashCode()
-    {
-        return publicKey.hashCode();
-    }
-
-    public PublicKey getKey()
-    {
-        return (PublicKey) publicKey;
-    }
-
-    public boolean isValidSignature(byte[] signedHash, byte[] raw)
-    {
-        try
+        try {
+            return KeyFactory.getInstance(AUTH, "BC").generatePublic(new X509EncodedKeySpec(pub));
+        } catch (NoSuchAlgorithmException|NoSuchProviderException|InvalidKeySpecException e)
         {
-            byte[] a = hash(raw);
-            byte[] b = unsignMessage(signedHash);
-            return java.util.Arrays.equals(a,b); 
-        } catch (Exception e) {
-            return false;
+            throw new IllegalStateException("Couldn't create public key");
         }
+    }
+
+    @Override
+    public int compareTo(UserPublicKey userPublicKey) {
+        return ArrayOps.compare(publicKey.getEncoded(), userPublicKey.publicKey.getEncoded());
     }
 }

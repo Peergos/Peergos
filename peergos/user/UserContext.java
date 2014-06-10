@@ -25,18 +25,14 @@ import scala.runtime.AbstractPartialFunction;
 import static akka.dispatch.Futures.sequence;
 import static org.junit.Assert.*;
 
-import java.io.ByteArrayOutputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
+import java.io.*;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.URL;
 import java.security.KeyPair;
+import java.security.PrivateKey;
 import java.security.PublicKey;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Random;
+import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -47,37 +43,45 @@ public class UserContext
     public static final int MAX_KEY_SIZE = 1024;
     public static final int CLEARANCE_SIZE = 1024;
 
-    String username;
-    User us;
-    DHTUserAPI dht;
-    AbstractCoreNode core;
-    ActorSystem system;
-    ByteArrayWrapper clearanceData;
+    private String username;
+    private User us;
+    private DHTUserAPI dht;
+    private AbstractCoreNode core;
+    private ActorSystem system;
+    private Map<UserPublicKey, StaticDataElement> staticData = new TreeMap();
+
 
     public UserContext(String username, User user, DHTUserAPI dht, AbstractCoreNode core, ActorSystem system)
-    {
-        this(username, user, dht, core, system, randomClearanceData());
-    }
-    public UserContext(String username, User user, DHTUserAPI dht, AbstractCoreNode core, ActorSystem system, byte[] clearanceData)
     {
         this.username = username;
         this.us = user;
         this.dht = dht;
         this.core = core;
         this.system = system;
-        this.clearanceData = new ByteArrayWrapper(Arrays.copyOf(clearanceData, clearanceData.length));
     }
 
     public boolean register()
     {
         byte[] signedHash = us.hashAndSignMessage(username.getBytes());
-        return core.addUsername(username, us.getPublicKey(), signedHash, clearanceData.data);
+        return core.addUsername(username, us.getPublicKey(), signedHash, serializeStatic());
+    }
+
+    public synchronized byte[] serializeStatic()
+    {
+        try {
+            ByteArrayOutputStream bout = new ByteArrayOutputStream();
+            DataOutput dout = new DataOutputStream(bout);
+            dout.writeInt(staticData.size());
+            for (UserPublicKey sharer : staticData.keySet())
+                Serialize.serialize(staticData.get(sharer).toByteArray(), dout);
+            return bout.toByteArray();
+        } catch (IOException e) {throw new IllegalStateException(e.getMessage());}
     }
 
     public boolean checkRegistered()
     {
         String name = core.getUsername(us.getPublicKey());
-        return name.equals(username);
+        return username.equals(name);
     }
 
     public boolean addSharingKey(PublicKey pub)
@@ -86,28 +90,32 @@ public class UserContext
         return core.allowSharingKey(username, pub.getEncoded(), signedHash);
     }
 
+    public boolean addToStaticData(UserPublicKey pub, StaticDataElement root)
+    {
+        staticData.put(pub, root);
+        byte[] rawStatic = serializeStatic();
+        return core.updateStaticData(username, us.hashAndSignMessage(rawStatic), rawStatic);
+    }
+
     public boolean sendFollowRequest(String friend)
     {
-        try {
-            // check friend is a registered user
-            UserPublicKey friendKey = core.getPublicKey(friend);
+        // check friend is a registered user
+        UserPublicKey friendKey = core.getPublicKey(friend);
 
-            // create sharing keypair and give it write access
-            KeyPair sharing = User.generateKeyPair();
-            addSharingKey(sharing.getPublic());
+        // create sharing keypair and give it write access
+        KeyPair sharing = User.generateKeyPair();
+        addSharingKey(sharing.getPublic());
+        ByteArrayWrapper rootMapKey = new ByteArrayWrapper(ArrayOps.random(32));
 
-            // send private key to allow friend to share with us (i.e. e follow them)
-            ByteArrayOutputStream bout = new ByteArrayOutputStream();
-            DataOutputStream dout = new DataOutputStream(bout);
-            Serialize.serialize(friend.getBytes(), dout);
-            Serialize.serialize(sharing.getPrivate().getEncoded(), dout);
+        // add a note to our static data so we know who we sent the private key to
+        SharedRootDir friendRoot = new SharedRootDir(friend, sharing.getPublic(), sharing.getPrivate(), rootMapKey);
+        addToStaticData(new UserPublicKey(sharing.getPublic()), friendRoot);
 
-            byte[] payload = friendKey.encryptMessageFor(bout.toByteArray());
-            return core.followRequest(friend, payload);
-        } catch (IOException e) {
-            e.printStackTrace();
-            return false;
-        }
+        // send details to allow friend to share with us (i.e. we follow them)
+        byte[] raw = friendRoot.toByteArray();
+
+        byte[] payload = friendKey.encryptMessageFor(raw);
+        return core.followRequest(friend, payload);
     }
 
     public Future uploadFragment(Fragment f, String targetUser, User sharer, byte[] mapKey)
@@ -156,6 +164,74 @@ public class UserContext
         for (byte[] frag: first50.results)
             frags.add(new Fragment(frag));
         return frags.toArray(new Fragment[frags.size()]);
+    }
+
+    private static abstract class StaticDataElement
+    {
+        public final int type;
+
+        public StaticDataElement(int type)
+        {
+            this.type = type;
+        }
+
+        public static StaticDataElement deserialize(DataInput din) throws IOException {
+            int type = din.readInt();
+            switch (type){
+                case 1:
+                    return SharedRootDir.deserialize(din);
+                default: throw new IllegalStateException("Unknown DataElement Type: "+type);
+            }
+        }
+
+        public byte[] toByteArray()
+        {
+            try {
+                ByteArrayOutputStream bout = new ByteArrayOutputStream();
+                serialize(new DataOutputStream(bout));
+                return bout.toByteArray();
+            } catch (IOException e) {throw new IllegalStateException(e.getMessage());}
+        }
+
+        public void serialize(DataOutput dout) throws IOException
+        {
+            dout.writeInt(type);
+        }
+    }
+
+    private static class SharedRootDir extends StaticDataElement
+    {
+        public final String username;
+        public final PublicKey pub;
+        public final PrivateKey priv;
+        public final ByteArrayWrapper mapKey;
+
+        public SharedRootDir(String username, PublicKey pub, PrivateKey priv, ByteArrayWrapper mapKey)
+        {
+            super(1);
+            this.username = username;
+            this.pub = pub;
+            this.priv = priv;
+            this.mapKey = mapKey;
+        }
+
+        public static SharedRootDir deserialize(DataInput din) throws IOException
+        {
+            String username = Serialize.deserializeString(din, MAX_USERNAME_SIZE);
+            byte[] pubBytes = Serialize.deserializeByteArray(din, MAX_KEY_SIZE);
+            byte[] privBytes = Serialize.deserializeByteArray(din, MAX_KEY_SIZE);
+            ByteArrayWrapper mapKey = new ByteArrayWrapper(Serialize.deserializeByteArray(din, MAX_KEY_SIZE));
+            return new SharedRootDir(username, UserPublicKey.deserializePublic(pubBytes), User.deserializePrivate(privBytes), mapKey);
+        }
+
+        @Override
+        public void serialize(DataOutput dout) throws IOException {
+            super.serialize(dout);
+            Serialize.serialize(username, dout);
+            Serialize.serialize(pub.getEncoded(), dout);
+            Serialize.serialize(priv.getEncoded(), dout);
+            Serialize.serialize(mapKey.data, dout);
+        }
     }
 
     public static class Countdown<V>
@@ -212,16 +288,19 @@ public class UserContext
                     // create a DHT API
                     DHTUserAPI dht = new HttpsUserAPI(new InetSocketAddress(InetAddress.getByName(storageIP), storagePort), system);
 
+                    // make and register us
                     UserContext us = new UserContext(ourname, ourKeys, dht, clientCoreNode, system);
                     assertTrue("Not already registered", !us.checkRegistered());
                     assertTrue("Register", us.register());
 
+                    // make another user
                     User friendKeys = User.random();
                     String friendName = "Alice";
                     UserContext friend = new UserContext(friendName, friendKeys, dht, clientCoreNode, system);
+                    friend.register();
 
+                    // make Alice follow Bob (Alice gives Bob write permission to a folder in Alice's space)
                     friend.sendFollowRequest(ourname);
-                    us.addSharingKey(friendKeys.getKey());
 
                     int frags = 60;
                     for (int i = 0; i < frags; i++) {

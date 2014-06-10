@@ -16,7 +16,7 @@ public class Tests
 //        testClass(GaloisPolynomial.Test.class);
 //        testClass(Crypto.class);
 //        testClass(UserContext.Test.class);
-        testClass(Cryptree.Test.class);
+        testClass(UserContext.Test.class);
 //        testClass(CoreNode.class);
     }
 

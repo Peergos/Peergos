@@ -54,11 +54,11 @@ public abstract class AbstractCoreNode
         private final Set<UserPublicKey> followers;
         private final Map<UserPublicKey, Map<ByteArrayWrapper, MetadataBlob> > metadata;
 
-        private ByteArrayWrapper clearanceData;
+        private ByteArrayWrapper staticData;
 
         UserData(ByteArrayWrapper clearanceData)
         {
-            this.clearanceData = clearanceData; 
+            this.staticData = clearanceData;
             this.followRequests = new HashSet<ByteArrayWrapper>();
             this.followers = new HashSet<UserPublicKey>();
             this.metadata = new HashMap<UserPublicKey, Map<ByteArrayWrapper, MetadataBlob> >();
@@ -156,14 +156,14 @@ public abstract class AbstractCoreNode
      * @param signedHash the SHA hash of bytes in the username, signed with the user private key 
      * @param username the username that is being claimed
      */
-    public boolean addUsername(String username, byte[] encodedUserKey, byte[] signedHash, byte[] clearanceData)
+    public boolean addUsername(String username, byte[] encodedUserKey, byte[] signedHash, byte[] staticData)
     {
         UserPublicKey key = new UserPublicKey(encodedUserKey);
 
-        if (! key.isValidSignature(signedHash, clearanceData))
+        if (! key.isValidSignature(signedHash, staticData))
             return false;
 
-        return addUsername(username, key, new ByteArrayWrapper(clearanceData));
+        return addUsername(username, key, new ByteArrayWrapper(staticData));
     }
 
     protected synchronized boolean addUsername(String username, UserPublicKey key, ByteArrayWrapper clearanceData)
@@ -180,7 +180,7 @@ public abstract class AbstractCoreNode
         return true;
     }
 
-    public boolean updateClearanceData(String username, byte[] signedHash, byte[] clearanceData)
+    public boolean updateStaticData(String username, byte[] signedHash, byte[] clearanceData)
     {
         UserPublicKey key = null; 
         synchronized(this)
@@ -194,10 +194,10 @@ public abstract class AbstractCoreNode
         return updateClearanceData(username, new ByteArrayWrapper(clearanceData));
     }
 
-    public synchronized byte[] getClearanceData(String username) 
+    public synchronized byte[] getStaticData(String username)
     {
         UserData userData = userMap.get(username);
-        return userData != null ? Arrays.copyOf(userData.clearanceData.data, userData.clearanceData.data.length) : null;
+        return userData != null ? Arrays.copyOf(userData.staticData.data, userData.staticData.data.length) : null;
     }
 
     protected synchronized boolean updateClearanceData(String username, ByteArrayWrapper clearanceData)
@@ -205,7 +205,7 @@ public abstract class AbstractCoreNode
         UserData userData = userMap.get(username);
         if (userData == null)
             return false;
-        userData.clearanceData = clearanceData;
+        userData.staticData = clearanceData;
         return true;
     }
     public synchronized boolean followRequest(String target, byte[] encodedSharingPublicKey)

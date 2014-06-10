@@ -2,7 +2,6 @@ package peergos.corenode;
 
 import peergos.crypto.*;
 import peergos.storage.net.IP;
-import peergos.util.ByteArrayWrapper;
 
 import java.util.*;
 import java.net.*;
@@ -40,10 +39,10 @@ public class HTTPCoreNodeServer
                     case "getPublicKey":
                         getPublicKey(din, dout);
                         break;
-                    case "getClearanceData":
+                    case "getStaticData":
                         getClearanceData(din, dout);
                         break;
-                    case "updateClearanceData":
+                    case "updateStaticData":
                         updateClearanceData(din, dout);
                         break;
                     case "getUsername":
@@ -101,6 +100,7 @@ public class HTTPCoreNodeServer
                 exchange.sendResponseHeaders(200, b.length);
                 exchange.getResponseBody().write(b);
             } catch (Exception e) {
+                e.printStackTrace();
                 exchange.sendResponseHeaders(400, 0);
             } finally {
                 exchange.close();
@@ -196,14 +196,14 @@ public class HTTPCoreNodeServer
             byte[] signedHash = deserializeByteArray(din);
             byte[] clearanceData = deserializeByteArray(din);
 
-            boolean isUpdated = coreNode.updateClearanceData(username, signedHash, clearanceData);
+            boolean isUpdated = coreNode.updateStaticData(username, signedHash, clearanceData);
             dout.writeBoolean(isUpdated);
         }
         
         void getClearanceData(DataInputStream din, DataOutputStream dout) throws IOException
         {
             String username = deserializeString(din);
-            byte[] userClearanceData = coreNode.getClearanceData(username);
+            byte[] userClearanceData = coreNode.getStaticData(username);
             if (userClearanceData == null)
                 dout.writeInt(0);
             else

@@ -102,6 +102,16 @@ public class User extends UserPublicKey
         }
     }
 
+    public static PrivateKey deserializePrivate(byte[] encoded)
+    {
+        try {
+            return KeyFactory.getInstance(AUTH, "BC").generatePrivate(new X509EncodedKeySpec(encoded));
+        } catch (NoSuchAlgorithmException|NoSuchProviderException|InvalidKeySpecException e)
+        {
+            throw new IllegalStateException("Couldn't create private key");
+        }
+    }
+
     public static KeyPair generateKeyPair()
     {
         try

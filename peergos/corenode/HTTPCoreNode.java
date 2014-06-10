@@ -2,6 +2,7 @@
 package peergos.corenode;
 
 import peergos.crypto.*;
+import peergos.user.UserContext;
 import peergos.util.ByteArrayWrapper;
 import peergos.util.Serialize;
 
@@ -30,14 +31,14 @@ public class HTTPCoreNode extends AbstractCoreNode
             conn = (HttpURLConnection) coreNodeURL.openConnection();
             conn.setDoInput(true);
             conn.setDoOutput(true);
-            DataInputStream din = new DataInputStream(conn.getInputStream());
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
             Serialize.serialize("getPublicKey", dout);
             Serialize.serialize(username, dout);
             dout.flush();
-            
-            byte[] publicKey = deserializeByteArray(din); 
+
+            DataInputStream din = new DataInputStream(conn.getInputStream());
+            byte[] publicKey = deserializeByteArray(din);
             return new UserPublicKey(publicKey);
         } catch (IOException ioe) {
             ioe.printStackTrace();
@@ -48,7 +49,7 @@ public class HTTPCoreNode extends AbstractCoreNode
         }
     }
 
-    @Override public boolean updateClearanceData(String username, byte[] signedHash, byte[] clearanceData)
+    @Override public boolean updateStaticData(String username, byte[] signedHash, byte[] staticData)
     {
         HttpURLConnection conn = null;
         try
@@ -56,16 +57,16 @@ public class HTTPCoreNode extends AbstractCoreNode
             conn = (HttpURLConnection) coreNodeURL.openConnection();
             conn.setDoInput(true);
             conn.setDoOutput(true);
-            DataInputStream din = new DataInputStream(conn.getInputStream());
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-            Serialize.serialize("updateClearanceData", dout);
+            Serialize.serialize("updateStaticData", dout);
             Serialize.serialize(username, dout);
             Serialize.serialize(signedHash, dout);
-            Serialize.serialize(clearanceData, dout);
+            Serialize.serialize(staticData, dout);
             dout.flush();
-        
-            return din.readBoolean();    
+
+            DataInputStream din = new DataInputStream(conn.getInputStream());
+            return din.readBoolean();
         } catch (IOException ioe) {
             ioe.printStackTrace();
             return false;
@@ -75,7 +76,7 @@ public class HTTPCoreNode extends AbstractCoreNode
         }
     }
     
-    @Override public synchronized byte[] getClearanceData(String username) 
+    @Override public synchronized byte[] getStaticData(String username)
     {
         HttpURLConnection conn = null;
         try
@@ -86,7 +87,7 @@ public class HTTPCoreNode extends AbstractCoreNode
             DataInputStream din = new DataInputStream(conn.getInputStream());
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-            Serialize.serialize("getClearanceData", dout);
+            Serialize.serialize("getStaticData", dout);
             Serialize.serialize(username, dout);
             dout.flush();
         
@@ -115,8 +116,7 @@ public class HTTPCoreNode extends AbstractCoreNode
             dout.flush();
 
             DataInputStream din = new DataInputStream(conn.getInputStream());
-            byte[] name = deserializeByteArray(din);
-            return new String(name);
+            return Serialize.deserializeString(din, UserContext.MAX_USERNAME_SIZE);
         } catch (IOException ioe) {
             ioe.printStackTrace();
             return null;
@@ -126,7 +126,7 @@ public class HTTPCoreNode extends AbstractCoreNode
         }
     }
 
-    @Override public boolean addUsername(String username, byte[] encodedUserKey, byte[] signedHash, byte[] clearanceData)
+    @Override public boolean addUsername(String username, byte[] encodedUserKey, byte[] signedHash, byte[] staticData)
     {
         HttpURLConnection conn = null;
         try
@@ -140,7 +140,7 @@ public class HTTPCoreNode extends AbstractCoreNode
             Serialize.serialize(username, dout);
             Serialize.serialize(encodedUserKey, dout);
             Serialize.serialize(signedHash, dout);
-            Serialize.serialize(clearanceData, dout);
+            Serialize.serialize(staticData, dout);
             dout.flush();
             
             DataInputStream din = new DataInputStream(conn.getInputStream());

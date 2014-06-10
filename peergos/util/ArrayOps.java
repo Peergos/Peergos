@@ -53,4 +53,12 @@ public class ArrayOps
         r.nextBytes(res);
         return res;
     }
+
+    public static int compare(byte[] a, byte[] b)
+    {
+        for (int i=0; i < Math.min(a.length, b.length); i++)
+            if (a[i] != b[i])
+                return a[i] & 0xff - b[i] & 0xff;
+            return 0;
+    }
 }
