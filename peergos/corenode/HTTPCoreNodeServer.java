@@ -113,9 +113,9 @@ public class HTTPCoreNodeServer
             String username = deserializeString(din);
             byte[] encodedKey = deserializeByteArray(din);
             byte[] hash = deserializeByteArray(din);
-            byte[] clearanceData = deserializeByteArray(din);
+            byte[] staticData = deserializeByteArray(din);
             
-            boolean isAdded = coreNode.addUsername(username, encodedKey, hash, clearanceData);
+            boolean isAdded = coreNode.addUsername(username, encodedKey, hash, staticData);
 
             dout.writeBoolean(isAdded);
         }

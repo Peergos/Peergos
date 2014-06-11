@@ -62,8 +62,9 @@ public class UserContext
 
     public boolean register()
     {
-        byte[] signedHash = us.hashAndSignMessage(username.getBytes());
-        return core.addUsername(username, us.getPublicKey(), signedHash, serializeStatic());
+        byte[] rawStatic = serializeStatic();
+        byte[] signedHash = us.hashAndSignMessage(rawStatic);
+        return core.addUsername(username, us.getPublicKey(), signedHash, rawStatic);
     }
 
     public synchronized byte[] serializeStatic()
