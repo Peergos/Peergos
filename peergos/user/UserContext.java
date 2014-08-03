@@ -161,8 +161,8 @@ public class UserContext
         // tell core node first to allow fragments
         byte[] metaBlob = new byte[256];
         byte[] allHashes = meta.getHashes();
-        core.addMetadataBlob(username, sharer.getPublicKey(), mapKey, metaBlob, sharer.hashAndSignMessage(metaBlob));
-        core.addFragmentHashes(username, sharer.getPublicKey(), mapKey, metaBlob, meta.getHashes(), sharer.hashAndSignMessage(ArrayOps.concat(mapKey, metaBlob, allHashes)));
+        core.addMetadataBlob(target, sharer.getPublicKey(), mapKey, metaBlob, sharer.hashAndSignMessage(metaBlob));
+        core.addFragmentHashes(target, sharer.getPublicKey(), mapKey, metaBlob, meta.getHashes(), sharer.hashAndSignMessage(ArrayOps.concat(mapKey, metaBlob, allHashes)));
 
         // now upload fragments to DHT
         List<Future<Object>> futures = new ArrayList();
@@ -340,6 +340,7 @@ public class UserContext
                     SharedRootDir root = us.decodeFollowRequest(reqs.get(0));
                     User sharer = new User(root.priv, root.pub);
 
+                    // store a chunk in alices space using the permitted sharing key (this could be alice or bob at this point)
                     int frags = 60;
                     for (int i = 0; i < frags; i++) {
                         byte[] signature = sharer.hashAndSignMessage(ArrayOps.concat(sharer.getPublicKey(), new byte[10 + i]));
@@ -347,7 +348,9 @@ public class UserContext
                     }
                     long quota = clientCoreNode.getQuota(friendName);
                     System.out.println("Generated quota: "+quota);
-                    chunkTest(alice, sharer);
+                    chunkTest(alice.username, sharer, us);
+
+
 
                 } finally {
                     system.shutdown();
@@ -358,7 +361,7 @@ public class UserContext
             }
         }
 
-        public void chunkTest(UserContext context, User sharer)
+        public void chunkTest(String owner, User sharer, UserContext context)
         {
             Random r = new Random();
             byte[] initVector = new byte[SymmetricKey.IV_SIZE];
@@ -375,7 +378,7 @@ public class UserContext
             Metadata meta = new Metadata(fragments, initVector);
 
             // upload chunk
-            context.uploadChunk(meta, fragments, context.username, sharer, new byte[10]);
+            context.uploadChunk(meta, fragments, owner, sharer, new byte[10]);
 
             // retrieve chunk
             Fragment[] retrievedfragments = context.downloadFragments(meta);
