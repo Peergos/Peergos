@@ -1,8 +1,15 @@
 package peergos.crypto;
 
+import peergos.util.Serialize;
+
+import java.io.ByteArrayInputStream;
+import java.io.DataInput;
+import java.io.DataInputStream;
+import java.io.IOException;
 import java.security.*;
 import javax.crypto.*;
 import java.security.spec.InvalidKeySpecException;
+import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Enumeration;
 import java.util.Set;
@@ -63,7 +70,13 @@ public class User extends UserPublicKey
         try {
             Cipher c = Cipher.getInstance(AUTH, "BC");
             c.init(Cipher.DECRYPT_MODE, privateKey);
-            return c.doFinal(input);
+            DataInput din = new DataInputStream(new ByteArrayInputStream(input));
+            byte[] encryptedSym = Serialize.deserializeByteArray(din, UserPublicKey.RSA_KEY_SIZE);
+            byte[] iv = Serialize.deserializeByteArray(din, SymmetricKey.IV_SIZE);
+            byte[] encryptedContent = Serialize.deserializeByteArray(din, Integer.MAX_VALUE);
+            byte[] rawSym = c.doFinal(encryptedSym);
+            SymmetricKey sym = new SymmetricKey(rawSym);
+            return sym.decrypt(encryptedContent, iv);
         } catch (NoSuchAlgorithmException|NoSuchProviderException e)
         {
             e.printStackTrace();
@@ -84,6 +97,10 @@ public class User extends UserPublicKey
         {
             e.printStackTrace();
             return null;
+        } catch (IOException e)
+        {
+            e.printStackTrace();
+            return null;
         }
     }
 
@@ -91,7 +108,7 @@ public class User extends UserPublicKey
     {
         try {
             PublicKey publicKey = KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(pub));
-            PrivateKey privateKey = KeyFactory.getInstance("RSA").generatePrivate(new X509EncodedKeySpec(priv));;
+            PrivateKey privateKey = KeyFactory.getInstance("RSA").generatePrivate(new PKCS8EncodedKeySpec(priv));;
             return new User(privateKey, publicKey);
         } catch (NoSuchAlgorithmException e)
         {
@@ -105,10 +122,10 @@ public class User extends UserPublicKey
     public static PrivateKey deserializePrivate(byte[] encoded)
     {
         try {
-            return KeyFactory.getInstance(AUTH, "BC").generatePrivate(new X509EncodedKeySpec(encoded));
+            return KeyFactory.getInstance(AUTH, "BC").generatePrivate(new PKCS8EncodedKeySpec(encoded));
         } catch (NoSuchAlgorithmException|NoSuchProviderException|InvalidKeySpecException e)
         {
-            throw new IllegalStateException("Couldn't create private key");
+            throw new IllegalStateException("Couldn't create private key:" + e.getMessage());
         }
     }
 

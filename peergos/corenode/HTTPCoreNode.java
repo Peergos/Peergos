@@ -180,6 +180,31 @@ public class HTTPCoreNode extends AbstractCoreNode
                 conn.disconnect();
         }
     }
+    @Override public byte[] getFollowRequests(String username)
+    {
+        HttpURLConnection conn = null;
+        try
+        {
+            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn.setDoInput(true);
+            conn.setDoOutput(true);
+
+            DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
+
+            Serialize.serialize("getFollowRequests", dout);
+            Serialize.serialize(username, dout);
+            dout.flush();
+
+            DataInputStream din = new DataInputStream(conn.getInputStream());
+            return deserializeByteArray(din);
+        } catch (IOException ioe) {
+            ioe.printStackTrace();
+            return null;
+        } finally {
+            if (conn != null)
+                conn.disconnect();
+        }
+    }
    @Override public boolean removeFollowRequest(String target, byte[] data, byte[] signedHash)
     {
         HttpURLConnection conn = null;

@@ -3,12 +3,13 @@ package peergos.crypto;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import peergos.util.ArrayOps;
 import peergos.util.ByteArrayWrapper;
+import peergos.util.Serialize;
 
 import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
-import java.io.UnsupportedEncodingException;
+import java.io.*;
 import java.security.*;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.X509EncodedKeySpec;
@@ -43,8 +44,18 @@ public class UserPublicKey implements Comparable<UserPublicKey>
         try {
             Cipher c = Cipher.getInstance(AUTH, "BC");
             c.init(Cipher.ENCRYPT_MODE, publicKey);
-            c.update(input);
-            return c.doFinal();
+            SymmetricKey sym = SymmetricKey.random();
+            byte[] rawSym = sym.getKey().getEncoded();
+            byte[] iv = SymmetricKey.randomIV();
+            c.update(rawSym);
+            byte[] encryptedSym = c.doFinal();
+            byte[] content = sym.encrypt(input, iv);
+            ByteArrayOutputStream bout = new ByteArrayOutputStream();
+            DataOutput dout = new DataOutputStream(bout);
+            Serialize.serialize(encryptedSym, dout);
+            Serialize.serialize(iv, dout);
+            Serialize.serialize(content, dout);
+            return bout.toByteArray();
         } catch (NoSuchAlgorithmException|NoSuchProviderException e)
         {
             e.printStackTrace();
@@ -62,6 +73,10 @@ public class UserPublicKey implements Comparable<UserPublicKey>
             e.printStackTrace();
             return null;
         } catch (BadPaddingException e)
+        {
+            e.printStackTrace();
+            return null;
+        } catch (IOException e)
         {
             e.printStackTrace();
             return null;

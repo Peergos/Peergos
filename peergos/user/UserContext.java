@@ -40,7 +40,7 @@ import java.util.concurrent.TimeUnit;
 public class UserContext
 {
     public static final int MAX_USERNAME_SIZE = 1024;
-    public static final int MAX_KEY_SIZE = 1024;
+    public static final int MAX_KEY_SIZE = UserPublicKey.RSA_KEY_SIZE;
     public static final int CLEARANCE_SIZE = 1024;
 
     private String username;
@@ -117,6 +117,37 @@ public class UserContext
 
         byte[] payload = friendKey.encryptMessageFor(raw);
         return core.followRequest(friend, payload);
+    }
+
+
+    public List<byte[]> getFollowRequests()
+    {
+        byte[] raw = core.getFollowRequests(username);
+        List<byte[]> requests = new ArrayList();
+        DataInput din = new DataInputStream(new ByteArrayInputStream(raw));
+        try {
+            int number = din.readInt();
+            for (int i=0; i < number; i++)
+                requests.add(Serialize.deserializeByteArray(din, Integer.MAX_VALUE));
+            return requests;
+        } catch (IOException e)
+        {
+            e.printStackTrace();
+            return requests;
+        }
+    }
+
+    public SharedRootDir decodeFollowRequest(byte[] data)
+    {
+        byte[] decrypted = us.decryptMessage(data);
+        try {
+            SharedRootDir root = (SharedRootDir) StaticDataElement.deserialize(new DataInputStream(new ByteArrayInputStream(decrypted)));
+            return root;
+        } catch (IOException e)
+        {
+            e.printStackTrace();
+            return null;
+        }
     }
 
     public Future uploadFragment(Fragment f, String targetUser, User sharer, byte[] mapKey)
@@ -297,20 +328,26 @@ public class UserContext
                     // make another user
                     User friendKeys = User.random();
                     String friendName = "Alice";
-                    UserContext friend = new UserContext(friendName, friendKeys, dht, clientCoreNode, system);
-                    friend.register();
+                    UserContext alice = new UserContext(friendName, friendKeys, dht, clientCoreNode, system);
+                    alice.register();
 
                     // make Alice follow Bob (Alice gives Bob write permission to a folder in Alice's space)
-                    friend.sendFollowRequest(ourname);
+                    alice.sendFollowRequest(ourname);
+
+                    // get the sharing key alice sent us
+                    List<byte[]> reqs = us.getFollowRequests();
+                    assertTrue("Got follow Request", reqs.size() == 1);
+                    SharedRootDir root = us.decodeFollowRequest(reqs.get(0));
+                    User sharer = new User(root.priv, root.pub);
 
                     int frags = 60;
                     for (int i = 0; i < frags; i++) {
-                        byte[] signature = friendKeys.hashAndSignMessage(ArrayOps.concat(friendKeys.getPublicKey(), new byte[10 + i]));
-                        clientCoreNode.registerFragmentStorage(ourname, new InetSocketAddress("localhost", 666), ourname, friendKeys.getPublicKey(), new byte[10 + i], signature);
+                        byte[] signature = sharer.hashAndSignMessage(ArrayOps.concat(sharer.getPublicKey(), new byte[10 + i]));
+                        clientCoreNode.registerFragmentStorage(friendName, new InetSocketAddress("localhost", 666), friendName, root.pub.getEncoded(), new byte[10 + i], signature);
                     }
-                    long quota = clientCoreNode.getQuota(ourname);
-
-                    chunkTest(us, friendKeys);
+                    long quota = clientCoreNode.getQuota(friendName);
+                    System.out.println("Generated quota: "+quota);
+                    chunkTest(alice, sharer);
 
                 } finally {
                     system.shutdown();

@@ -3,6 +3,7 @@ package peergos.corenode;
 import peergos.crypto.*;
 import peergos.util.ArrayOps;
 import peergos.util.ByteArrayWrapper;
+import peergos.util.Serialize;
 
 import java.util.*;
 import java.net.*;
@@ -217,6 +218,25 @@ public abstract class AbstractCoreNode
             return false;
         userData.followRequests.add(new ByteArrayWrapper(encodedSharingPublicKey));
         return true;
+    }
+
+    public synchronized byte[] getFollowRequests(String username)
+    {
+        UserData userData = userMap.get(username);
+        if (userData == null)
+            return null;
+
+        ByteArrayOutputStream bout  =new ByteArrayOutputStream();
+        DataOutput dout = new DataOutputStream(bout);
+        try {
+            dout.writeInt(userData.followRequests.size());
+            for (ByteArrayWrapper req : userData.followRequests)
+                Serialize.serialize(req.data, dout);
+            return bout.toByteArray();
+        } catch (IOException e) {
+            e.printStackTrace();
+            return null;
+        }
     }
 
     public boolean removeFollowRequest(String target, byte[] data, byte[] signedHash)

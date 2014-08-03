@@ -173,8 +173,16 @@ public class Router extends AbstractActor
         {
             m.addNode(getRandomNeighbour());
             messenger.tell(new Letter(m, next.addr, next.port), self());
-        } else
+        } else {
+            //avoid infinite loop of forwarding message to ourselves
+            List<NodeID> hops = new ArrayList();
+            if (hops.size() > 5) {
+                for (NodeID n: hops)
+                    System.out.printf(n.toString());
+                System.out.println();
+            }
             escalateMessage(m); //bypass network in this unlikely case
+        }
     }
 
     private NodeID getRandomNeighbour()

@@ -51,6 +51,9 @@ public class HTTPCoreNodeServer
                     case "followRequest":
                         followRequest(din, dout);
                         break;
+                    case "getFollowRequests":
+                        getFollowRequests(din, dout);
+                        break;
                     case "removeFollowRequest":
                         removeFollowRequest(din,dout);
                         break;
@@ -147,6 +150,12 @@ public class HTTPCoreNodeServer
 
             boolean followRequested = coreNode.followRequest(target, encodedSharingPublicKey);
             dout.writeBoolean(followRequested);
+        }
+        void getFollowRequests(DataInputStream din, DataOutputStream dout) throws IOException
+        {
+            String username = deserializeString(din);
+            byte[] res = coreNode.getFollowRequests(username);
+            Serialize.serialize(res, dout);
         }
         void removeFollowRequest(DataInputStream din, DataOutputStream dout) throws IOException
         {
