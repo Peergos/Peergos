@@ -156,7 +156,7 @@ public class GaloisPolynomial
             if (errPoly.eval(f.exp(f.size() - 1 - i)) == 0)
                     errorPos.add(nmess - 1 - i);
         if (errorPos.size() != errs)
-            throw new IllegalStateException("couldn't find error positions! ("+errorPos.size()+"!="+errs+")");
+            throw new IllegalStateException(String.format("couldn't find error positions! ("+errorPos.size()+"!="+errs+") ( missing fragments)"));
         return errorPos;
     }
 

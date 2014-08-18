@@ -7,10 +7,7 @@ import peergos.crypto.SymmetricKey;
 import peergos.crypto.User;
 import peergos.crypto.UserPublicKey;
 import peergos.storage.net.IP;
-import peergos.user.fs.Chunk;
-import peergos.user.fs.EncryptedChunk;
-import peergos.user.fs.Fragment;
-import peergos.user.fs.Metadata;
+import peergos.user.fs.*;
 import peergos.user.fs.erasure.Erasure;
 import peergos.util.ArrayOps;
 import peergos.util.ByteArrayWrapper;
@@ -79,7 +76,7 @@ public class UserContext
         } catch (IOException e) {throw new IllegalStateException(e.getMessage());}
     }
 
-    public boolean checkRegistered()
+    public boolean isRegistered()
     {
         String name = core.getUsername(us.getPublicKey());
         return username.equals(name);
@@ -91,7 +88,7 @@ public class UserContext
         return core.allowSharingKey(username, pub.getEncoded(), signedHash);
     }
 
-    public boolean addToStaticData(UserPublicKey pub, StaticDataElement root)
+    private boolean addToStaticData(UserPublicKey pub, StaticDataElement root)
     {
         staticData.put(pub, root);
         byte[] rawStatic = serializeStatic();
@@ -150,12 +147,12 @@ public class UserContext
         }
     }
 
-    public Future uploadFragment(Fragment f, String targetUser, User sharer, byte[] mapKey)
+    private Future uploadFragment(Fragment f, String targetUser, User sharer, byte[] mapKey)
     {
         return dht.put(f.getHash(), f.getData(), targetUser, sharer.getPublicKey(), mapKey, sharer.hashAndSignMessage(ArrayOps.concat(sharer.getPublicKey(), f.getHash())));
     }
 
-    public Metadata uploadChunk(Metadata meta, Fragment[] fragments, String target, User sharer, byte[] mapKey)
+    private Metadata uploadChunk(Metadata meta, Fragment[] fragments, String target, User sharer, byte[] mapKey)
     {
 
         // tell core node first to allow fragments
@@ -180,22 +177,47 @@ public class UserContext
         return meta;
     }
 
-    public Fragment[] downloadFragments(Metadata meta)
+    private Fragment[] downloadFragments(Metadata meta)
     {
         byte[] hashes = meta.getHashes();
-        long start = System.nanoTime();
         Fragment[] res = new Fragment[hashes.length / UserPublicKey.HASH_SIZE];
         List<Future<byte[]>> futs = new ArrayList<Future<byte[]>>(res.length);
         for (int i=0; i < res.length; i++)
             futs.add(dht.get(Arrays.copyOfRange(hashes, i*UserPublicKey.HASH_SIZE, (i+1)*UserPublicKey.HASH_SIZE)));
         Countdown<byte[]> first50 = new Countdown<byte[]>(50, futs, system.dispatcher());
         first50.await();
-        long end = System.nanoTime();
-        System.out.printf("Succeeded downloading fragments in %d mS!\n", (end-start)/1000000);
         List<Fragment> frags = new ArrayList<Fragment>();
         for (byte[] frag: first50.results)
             frags.add(new Fragment(frag));
         return frags.toArray(new Fragment[frags.size()]);
+    }
+
+    public List<DirAccess> getRoots()
+    {
+        List<DirAccess> res = new ArrayList();
+        for (UserPublicKey pub: staticData.keySet()) {
+            StaticDataElement dataElement = staticData.get(pub);
+            if (dataElement instanceof SharedRootDir) {
+                DirAccess dir = recreateDir((SharedRootDir) dataElement);
+                if (dir != null)
+                    res.add(dir);
+            }
+        }
+        return res;
+    }
+
+    private DirAccess recreateDir(SharedRootDir raw)
+    {
+        ByteArrayWrapper mapKey = raw.mapKey;
+        PublicKey pub = raw.pub;
+        AbstractCoreNode.MetadataBlob meta = core.getMetadataBlob(username, pub.getEncoded(), mapKey.data);
+        ByteArrayWrapper rawMeta = meta.metadata();
+        try {
+            return DirAccess.deserialize(new DataInputStream(new ByteArrayInputStream(rawMeta.data)));
+        } catch (IOException e) {
+            e.printStackTrace();
+            return null;
+        }
     }
 
     private static abstract class StaticDataElement
@@ -314,7 +336,10 @@ public class UserContext
                     HTTPCoreNode clientCoreNode = new HTTPCoreNode(coreURL);
 
                     // create a new us
+                    long t1 = System.nanoTime();
                     User ourKeys = User.random();
+                    long t2 = System.nanoTime();
+                    System.out.printf("User generation took %d mS\n", (t2-t1)/1000000);
                     String ourname = "Bob";
 
                     // create a DHT API
@@ -322,11 +347,14 @@ public class UserContext
 
                     // make and register us
                     UserContext us = new UserContext(ourname, ourKeys, dht, clientCoreNode, system);
-                    assertTrue("Not already registered", !us.checkRegistered());
+                    assertTrue("Not already registered", !us.isRegistered());
                     assertTrue("Register", us.register());
 
                     // make another user
+                    t1 = System.nanoTime();
                     User friendKeys = User.random();
+                    t2 = System.nanoTime();
+                    System.out.printf("User generation took %d mS\n", (t2-t1)/1000000);
                     String friendName = "Alice";
                     UserContext alice = new UserContext(friendName, friendKeys, dht, clientCoreNode, system);
                     alice.register();
@@ -348,8 +376,10 @@ public class UserContext
                     }
                     long quota = clientCoreNode.getQuota(friendName);
                     System.out.println("Generated quota: "+quota);
-                    chunkTest(alice.username, sharer, us);
-
+                    t1 = System.nanoTime();
+                    fileTest(alice.username, sharer, alice, us);
+                    t2 = System.nanoTime();
+                    System.out.printf("Chunk test took %d mS\n", (t2-t1)/1000000);
 
 
                 } finally {
@@ -361,7 +391,42 @@ public class UserContext
             }
         }
 
-        public void chunkTest(String owner, User sharer, UserContext context)
+        public void fileTest(String owner, User sharer, UserContext receiver, UserContext sender)
+        {
+            // create a root dir and a file to it, then retrieve and decrypt the file using the receiver
+            // create root cryptree
+            SymmetricKey rootRKey = SymmetricKey.random();
+            SymmetricKey rootWKey = SymmetricKey.random();
+            String name = "/";
+            byte[] rootMapKey = ArrayOps.random(32); // root will be stored under this in the core node
+            DirAccess root = new DirAccess(rootRKey, name.getBytes(), rootWKey);
+
+            // generate file (single chunk)
+            Random r = new Random();
+            byte[] initVector = new byte[SymmetricKey.IV_SIZE];
+            r.nextBytes(initVector);
+            byte[] raw = new byte[Chunk.MAX_SIZE];
+            byte[] template = "Hello secure cloud! Goodbye NSA!".getBytes();
+            for (int i=0; i < raw.length/32; i++)
+                System.arraycopy(template, 0, raw, 32*i, 32);
+
+            // add file to root dir
+            String filename = "tree.jpg"; // /photos/tree.jpg
+            SymmetricKey fileKey = SymmetricKey.random();
+            byte[] fileMapKey = ArrayOps.random(32); // file metablob will be stored under this in the core node
+            FileAccess file = new FileAccess(fileKey, filename.getBytes());
+            root.addFile(fileMapKey, rootRKey, fileKey);
+
+            Chunk chunk = new Chunk(raw, fileKey);
+            EncryptedChunk encryptedChunk = new EncryptedChunk(chunk.encrypt(initVector));
+            Fragment[] fragments = encryptedChunk.generateFragments();
+            Metadata meta = new Metadata(fragments, initVector);
+
+            // now write the root to the core nodes
+
+        }
+
+        public void chunkTest(String destUser, User sharer, UserContext sender)
         {
             Random r = new Random();
             byte[] initVector = new byte[SymmetricKey.IV_SIZE];
@@ -378,15 +443,28 @@ public class UserContext
             Metadata meta = new Metadata(fragments, initVector);
 
             // upload chunk
-            context.uploadChunk(meta, fragments, owner, sharer, new byte[10]);
+            long t1 = System.nanoTime();
+            sender.uploadChunk(meta, fragments, destUser, sharer, new byte[10]);
+            long t2 = System.nanoTime();
+            System.out.printf("Chunk upload took %d mS\n", (t2-t1)/1000000);
 
             // retrieve chunk
-            Fragment[] retrievedfragments = context.downloadFragments(meta);
+            t1 = System.nanoTime();
+            Fragment[] retrievedfragments = sender.downloadFragments(meta);
+            t2 = System.nanoTime();
+            System.out.printf("Chunk download took %d mS\n", (t2-t1)/1000000);
 
+            t1 = System.nanoTime();
             byte[] enc = Erasure.recombine(reorder(meta, retrievedfragments), raw.length, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
+            t2 = System.nanoTime();
+            System.out.printf("Chunk Erasure decoding took %d mS\n", (t2-t1)/1000000);
+
             EncryptedChunk encrypted = new EncryptedChunk(enc);
+            t1 = System.nanoTime();
             byte[] original = encrypted.decrypt(chunk.getKey(), initVector);
-            assertTrue("Retrieved chunk identical to original", Arrays.equals(raw, original));
+            t2 = System.nanoTime();
+            System.out.printf("Chunk Decryption took %d mS\n", (t2-t1)/1000000);
+            assertTrue("Retrieve chunk identical to original", Arrays.equals(raw, original));
         }
     }
 

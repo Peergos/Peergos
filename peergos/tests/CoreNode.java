@@ -7,13 +7,11 @@ import akka.actor.ActorSystem;
 import peergos.crypto.*;
 import peergos.corenode.*;
 import peergos.user.UserContext;
-import peergos.user.fs.Metadata;
 import peergos.util.ArrayOps;
 import peergos.util.ByteArrayWrapper;
 
 import org.junit.Test;
 
-import java.io.File;
 import java.util.*;
 import java.net.*;
 
@@ -28,7 +26,7 @@ public class CoreNode
             User user = User.random();
             String username = "USER";
             UserContext context = new UserContext(username, user, null, coreNode, system);
-            assertTrue("Checking for username", !context.checkRegistered());
+            assertTrue("Checking for username", !context.isRegistered());
             assertTrue("added user", context.register());
 
             //
