@@ -8,6 +8,7 @@ import java.net.*;
 import java.io.*;
 
 import com.sun.net.httpserver.*;
+import peergos.util.ArrayOps;
 import peergos.util.Serialize;
 
 public class HTTPCoreNodeServer
@@ -55,13 +56,13 @@ public class HTTPCoreNodeServer
                         getFollowRequests(din, dout);
                         break;
                     case "removeFollowRequest":
-                        removeFollowRequest(din,dout);
+                        removeFollowRequest(din, dout);
                         break;
                     case "allowSharingKey":
-                        allowSharingKey(din,dout);
+                        allowSharingKey(din, dout);
                         break;
                     case "banSharingKey":
-                        banSharingKey(din,dout);
+                        banSharingKey(din, dout);
                         break;
                     case "addMetadataBlob":
                         addMetadataBlob(din, dout);
@@ -70,13 +71,16 @@ public class HTTPCoreNodeServer
                         removeMetadataBlob(din, dout);
                         break;
                     case "getSharingKeys":
-                        getSharingKeys(din,dout);
+                        getSharingKeys(din, dout);
                         break;
                     case "getMetadataBlob":
                         getMetadataBlob(din, dout);
                         break;
                     case "addFragmentHashes":
                         addFragmentHashes(din, dout);
+                        break;
+                    case "getFragmentHashes":
+                        getFragmentHashes(din, dout);
                         break;
                     case "isFragmentAllowed":
                         isFragmentAllowed(din, dout);
@@ -192,10 +196,10 @@ public class HTTPCoreNodeServer
             String username = deserializeString(din);
             byte[] encodedSharingPublicKey = deserializeByteArray(din);
             byte[] mapKey = deserializeByteArray(din);
-            byte[] fragmentData = deserializeByteArray(din);
+            byte[] metaDataBlob = deserializeByteArray(din);
             byte[] signedHash = deserializeByteArray(din);
-
-            boolean isAdded = coreNode.addMetadataBlob(username, encodedSharingPublicKey, mapKey, fragmentData, signedHash);
+            System.out.println("Add " + username + ", " + ArrayOps.bytesToHex(mapKey) +" ==> "+metaDataBlob.length + " bytes.");
+            boolean isAdded = coreNode.addMetadataBlob(username, encodedSharingPublicKey, mapKey, metaDataBlob, signedHash);
             dout.writeBoolean(isAdded);
         }
         
@@ -243,15 +247,18 @@ public class HTTPCoreNodeServer
 
         }
 
-
         void getMetadataBlob(DataInputStream din, DataOutputStream dout) throws IOException
         {
             String username = deserializeString(din);
             byte[] encodedSharingKey = deserializeByteArray(din);
             byte[] mapKey = deserializeByteArray(din);
             AbstractCoreNode.MetadataBlob b = coreNode.getMetadataBlob(username, encodedSharingKey, mapKey);
+            System.out.println(username + ", " + ArrayOps.bytesToHex(mapKey) + "  => " + b);
             Serialize.serialize(b.metadata.data, dout);
-            Serialize.serialize(b.fragmentHashes, dout);
+            if (b.fragmentHashes != null)
+                Serialize.serialize(b.fragmentHashes, dout);
+            else
+                Serialize.serialize(new byte[0], dout);
         }
         void addFragmentHashes(DataInputStream din, DataOutputStream dout) throws IOException
         {
@@ -261,8 +268,15 @@ public class HTTPCoreNodeServer
             byte[] metadataBlob = deserializeByteArray(din);
             byte[] allHashes = deserializeByteArray(din);
             byte[] sharingKeySignedHash = deserializeByteArray(din);
-            boolean isAllowed = coreNode.addFragmentHashes(owner, sharingKey, mapKey, metadataBlob, allHashes, sharingKeySignedHash);
+            boolean isAllowed = coreNode.addFragmentHashes(owner, sharingKey, mapKey, metadataBlob, ArrayOps.split(allHashes, UserPublicKey.HASH_BYTES), sharingKeySignedHash);
             dout.writeBoolean(isAllowed);
+        }
+        void getFragmentHashes(DataInputStream din, DataOutputStream dout) throws IOException
+        {
+            String owner = deserializeString(din);
+            byte[] sharingKey = deserializeByteArray(din);
+            byte[] mapKey = deserializeByteArray(din);
+            Serialize.serialize(coreNode.getFragmentHashes(owner, new UserPublicKey(sharingKey), mapKey), dout);
         }
         void isFragmentAllowed(DataInputStream din, DataOutputStream dout) throws IOException
         {

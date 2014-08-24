@@ -19,11 +19,12 @@ public class FileAccess extends Metadata
     public static final int MAX_ELEMENT_SIZE = Integer.MAX_VALUE;
 
     // public data
-    LinkedHashMap<ByteArrayWrapper, Fragment> fragments = new LinkedHashMap();
+    private List<ByteArrayWrapper> fragments;
 
-    public FileAccess(Set<UserPublicKey> sharingR, SymmetricKey metaKey, SymmetricKey parentKey, byte[] rawMetadata)
+    public FileAccess(Set<UserPublicKey> sharingR, SymmetricKey metaKey, SymmetricKey parentKey, byte[] rawMetadata, List<ByteArrayWrapper> fragments)
     {
         super(TYPE.FILE);
+        this.fragments = fragments;
         this.parent2meta = new SymmetricLink(parentKey, metaKey);
         if (sharingR != null) {
             for (UserPublicKey key: sharingR)
@@ -32,17 +33,18 @@ public class FileAccess extends Metadata
         this.metadata = metaKey.encrypt(rawMetadata, parent2meta.initializationVector());
     }
 
-    public FileAccess(SymmetricKey parentKey, byte[] rawMetadata)
+    public FileAccess(SymmetricKey parentKey, byte[] rawMetadata, List<ByteArrayWrapper> fragments)
     {
-        this(null, SymmetricKey.random(), parentKey, rawMetadata);
+        this(null, SymmetricKey.random(), parentKey, rawMetadata, fragments);
     }
 
-    public FileAccess(byte[] m, byte[] p2m, Map<UserPublicKey, AsymmetricLink> sharingR)
+    public FileAccess(byte[] m, byte[] p2m, Map<UserPublicKey, AsymmetricLink> sharingR, List<ByteArrayWrapper> fragments)
     {
         super(TYPE.FILE);
         metadata = m;
         parent2meta = new SymmetricLink(p2m);
         sharingR2parent.putAll(sharingR);
+        this.fragments = fragments;
     }
 
     public void serialize(DataOutput dout) throws IOException
@@ -57,7 +59,7 @@ public class FileAccess extends Metadata
         }
     }
 
-    public static FileAccess deserialize(DataInput din) throws IOException
+    public static FileAccess deserialize(DataInput din, List<ByteArrayWrapper> fragments) throws IOException
     {
         byte[] meta = Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE);
         byte[] p2m = Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE);
@@ -67,15 +69,12 @@ public class FileAccess extends Metadata
             sharingR.put(new UserPublicKey(Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE)),
                     new AsymmetricLink(Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE)));
         }
-        FileAccess res = new FileAccess(meta, p2m, sharingR);
+        FileAccess res = new FileAccess(meta, p2m, sharingR, fragments);
         return res;
     }
 
     public List<ByteArrayWrapper> getFragmentHashes() {
-        List<ByteArrayWrapper> res = new ArrayList();
-        for (ByteArrayWrapper b: fragments.keySet())
-            res.add(b);
-        return res;
+        return Collections.unmodifiableList(fragments);
     }
 
     public SymmetricKey getMetaKey(SymmetricKey parentKey)
@@ -88,8 +87,8 @@ public class FileAccess extends Metadata
         return sharingR2parent.get(sharingKey.getKey()).target(sharingKey);
     }
 
-    public byte[] getMetadata(SymmetricKey metaKey)
+    public byte[] getMetadata(SymmetricKey parentKey)
     {
-        return metaKey.decrypt(metadata, parent2meta.initializationVector());
+        return parent2meta.target(parentKey).decrypt(metadata, parent2meta.initializationVector());
     }
 }

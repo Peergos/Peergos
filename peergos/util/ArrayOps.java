@@ -2,6 +2,8 @@ package peergos.util;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 
@@ -31,6 +33,15 @@ public class ArrayOps
                 bout.write(bw.data);
         } catch (IOException e) {e.printStackTrace();}
         return bout.toByteArray();
+    }
+
+    public static List<ByteArrayWrapper> split(byte[] data, int size) {
+        if (data.length % size != 0)
+            throw new IllegalStateException("Can only split an array that is multiple of split size! " + data.length + " !/ " + size);
+        List<ByteArrayWrapper> res = new ArrayList(data.length/size);
+        for (int i=0; i < data.length/size; i++)
+            res.add(new ByteArrayWrapper(Arrays.copyOfRange(data, i*size, (i+1)*size)));
+        return res;
     }
 
     public static long getLong(byte[] source, int start)

@@ -9,7 +9,7 @@ import java.util.*;
 import java.net.*;
 import java.io.*;
 
-import static peergos.crypto.UserPublicKey.HASH_SIZE;
+import static peergos.crypto.UserPublicKey.HASH_BYTES;
 
 public abstract class AbstractCoreNode
 {
@@ -37,8 +37,8 @@ public abstract class AbstractCoreNode
             if (fragmentHashes == null)
                 return false;
 
-            for (int pos=0; pos + HASH_SIZE <= fragmentHashes.length; pos += HASH_SIZE)
-                if (Arrays.equals(hash, Arrays.copyOfRange(fragmentHashes, pos, pos + HASH_SIZE)))
+            for (int pos=0; pos + HASH_BYTES <= fragmentHashes.length; pos += HASH_BYTES)
+                if (Arrays.equals(hash, Arrays.copyOfRange(fragmentHashes, pos, pos + HASH_BYTES)))
                     return true;
 
             return false;
@@ -422,6 +422,23 @@ public abstract class AbstractCoreNode
         return true;
     }
 
+    public synchronized byte[] getFragmentHashes(String username, UserPublicKey sharingKey, byte[] mapKey) {
+        if (!userMap.get(username).followers.contains(sharingKey))
+            return null;
+        UserData userData = userMap.get(username);
+        if (userData == null)
+            return null;
+        Map<ByteArrayWrapper, MetadataBlob> fragments = userData.metadata.get(sharingKey);
+        if (fragments == null)
+            return null;
+
+        MetadataBlob meta = fragments.get(new ByteArrayWrapper(mapKey));
+        if (meta == null)
+            return null;
+
+        return meta.fragmentHashes;
+    }
+
 
     // should delete fragments from dht as well (once that call exists)
     public boolean removeMetadataBlob(String username, byte[] encodedSharingKey, byte[] mapKey, byte[] sharingKeySignedMapKey)
@@ -629,7 +646,7 @@ public abstract class AbstractCoreNode
         for (Map<ByteArrayWrapper, MetadataBlob> fragmentsMap: userMap.get(username).metadata.values())
             for (MetadataBlob blob: fragmentsMap.values())
                 if (blob.fragmentHashes != null)
-                    usage += blob.fragmentHashes.length/UserPublicKey.HASH_SIZE * fragmentLength();
+                    usage += blob.fragmentHashes.length/UserPublicKey.HASH_BYTES * fragmentLength();
 
         return usage;
     }

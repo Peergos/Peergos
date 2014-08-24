@@ -4,7 +4,6 @@ import org.junit.runner.JUnitCore;
 import org.junit.runner.Result;
 import org.junit.runner.notification.Failure;
 import peergos.user.UserContext;
-import peergos.user.fs.Cryptree;
 
 public class Tests
 {

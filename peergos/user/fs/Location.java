@@ -36,8 +36,8 @@ public class Location
         ByteArrayInputStream bin = new ByteArrayInputStream(raw);
         DataInputStream din = new DataInputStream(bin);
         String owner = Serialize.deserializeString(din, UserContext.MAX_USERNAME_SIZE);
-        UserPublicKey pub = new UserPublicKey(Serialize.deserializeByteArray(din, UserPublicKey.RSA_KEY_SIZE/8));
-        ByteArrayWrapper mapKey = new ByteArrayWrapper(Serialize.deserializeByteArray(din, UserPublicKey.HASH_SIZE));
+        UserPublicKey pub = new UserPublicKey(Serialize.deserializeByteArray(din, UserPublicKey.RSA_KEY_BITS));
+        ByteArrayWrapper mapKey = new ByteArrayWrapper(Serialize.deserializeByteArray(din, UserPublicKey.HASH_BYTES));
         return new Location(owner, pub, mapKey);
     }
 }

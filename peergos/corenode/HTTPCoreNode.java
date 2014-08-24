@@ -3,6 +3,7 @@ package peergos.corenode;
 
 import peergos.crypto.*;
 import peergos.user.UserContext;
+import peergos.util.ArrayOps;
 import peergos.util.ByteArrayWrapper;
 import peergos.util.Serialize;
 
@@ -548,7 +549,7 @@ public class HTTPCoreNode extends AbstractCoreNode
         }
     }
 
-   @Override public boolean addFragmentHashes(String username, byte[] encodedSharingPublicKey, byte[] mapKey, byte[] metadataBlob, byte[] allHashes, byte[] sharingKeySignedHash)
+   @Override public boolean addFragmentHashes(String username, byte[] encodedSharingPublicKey, byte[] mapKey, byte[] metadataBlob, List<ByteArrayWrapper> allHashes, byte[] sharingKeySignedHash)
    {
         HttpURLConnection conn = null;
         try
@@ -564,7 +565,7 @@ public class HTTPCoreNode extends AbstractCoreNode
             Serialize.serialize(encodedSharingPublicKey, dout);
             Serialize.serialize(mapKey, dout);
             Serialize.serialize(metadataBlob, dout);
-            Serialize.serialize(allHashes, dout);
+            Serialize.serialize(ArrayOps.concat(allHashes), dout);
             Serialize.serialize(sharingKeySignedHash, dout);
             dout.flush();
 
@@ -577,8 +578,34 @@ public class HTTPCoreNode extends AbstractCoreNode
             if (conn != null)
                 conn.disconnect();
         }
-
    }
+    @Override public byte[] getFragmentHashes(String username, UserPublicKey sharingKey, byte[] mapKey)
+    {
+        HttpURLConnection conn = null;
+        try
+        {
+            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn.setDoInput(true);
+            conn.setDoOutput(true);
+
+            DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
+
+            Serialize.serialize("getFragmentHashes", dout);
+            Serialize.serialize(username, dout);
+            Serialize.serialize(sharingKey.getPublicKey(), dout);
+            Serialize.serialize(mapKey, dout);
+            dout.flush();
+
+            DataInputStream din = new DataInputStream(conn.getInputStream());
+            return Serialize.deserializeByteArray(din, Integer.MAX_VALUE);
+        } catch (IOException ioe) {
+            ioe.printStackTrace();
+            return null;
+        } finally {
+            if (conn != null)
+                conn.disconnect();
+        }
+    }
    @Override public void close()     
     {}
 }

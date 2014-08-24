@@ -4,9 +4,7 @@ import peergos.user.fs.Location;
 import peergos.util.ArrayOps;
 import peergos.util.Serialize;
 
-import java.io.ByteArrayInputStream;
-import java.io.DataInputStream;
-import java.io.IOException;
+import java.io.*;
 import java.util.Arrays;
 
 public class SymmetricLocationLink
@@ -34,7 +32,13 @@ public class SymmetricLocationLink
 
     public byte[] serialize()
     {
-        return link;
+        ByteArrayOutputStream bout = new ByteArrayOutputStream();
+        DataOutputStream dout = new DataOutputStream(bout);
+        try {
+            Serialize.serialize(link, dout);
+            Serialize.serialize(loc, dout);
+        } catch (IOException e) {e.printStackTrace();}
+        return bout.toByteArray();
     }
 
     public byte[] initializationVector()

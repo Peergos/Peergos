@@ -8,7 +8,8 @@ public class Serialize
     public static void serialize(byte[] b, DataOutput dout) throws IOException
     {
         dout.writeInt(b.length);
-        dout.write(b);
+        if (b.length > 0)
+            dout.write(b);
     }
 
     public static void serialize(String s, DataOutput dout) throws IOException
@@ -31,7 +32,7 @@ public class Serialize
     {
         int l = din.readInt();
         if (l == 0)
-            return null;
+            return new byte[0];
 
         byte[] b = getByteArray(l, maxLength);
         din.readFully(b);

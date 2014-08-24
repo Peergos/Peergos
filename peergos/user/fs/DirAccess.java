@@ -35,12 +35,14 @@ public class DirAccess extends Metadata
         this.subfolders2parent = new SymmetricLink(subfolders, parent);
         this.parent2meta = new SymmetricLink(parent, meta);
         this.metadata = meta.encrypt(rawMetadata, parent2meta.initializationVector());
-        for (UserPublicKey key: sharingR)
-            sharingR2subfoldersR.put(key, new AsymmetricLink(key, subfolders));
+        if (sharingR != null)
+            for (UserPublicKey key: sharingR)
+                sharingR2subfoldersR.put(key, new AsymmetricLink(key, subfolders));
         subfoldersW2sign = new SymmetricLinkToPrivate(subfoldersW, signingW.getPrivate());
         verifyW = new UserPublicKey(signingW.getPublic());
-        for (UserPublicKey key: sharingW)
-            sharingW2subfoldersW.put(key, new AsymmetricLink(key, subfoldersW));
+        if (sharingW != null)
+            for (UserPublicKey key: sharingW)
+                sharingW2subfoldersW.put(key, new AsymmetricLink(key, subfoldersW));
     }
 
     public DirAccess(SymmetricKey subfoldersKey, byte[] rawMetadata, SymmetricKey subfoldersKeyW)
@@ -155,6 +157,11 @@ public class DirAccess extends Metadata
     public void addRSharingKey(UserPublicKey key, SymmetricKey subfoldersKey)
     {
         sharingR2subfoldersR.put(key, new AsymmetricLink(key, subfoldersKey));
+    }
+
+    public Collection<SymmetricLocationLink> getFiles()
+    {
+        return files.values();
     }
 
     public SymmetricKey getRParentKey(SymmetricKey subfoldersKey)

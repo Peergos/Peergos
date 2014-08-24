@@ -71,7 +71,7 @@ public class User extends UserPublicKey
             Cipher c = Cipher.getInstance(AUTH, "BC");
             c.init(Cipher.DECRYPT_MODE, privateKey);
             DataInput din = new DataInputStream(new ByteArrayInputStream(input));
-            byte[] encryptedSym = Serialize.deserializeByteArray(din, UserPublicKey.RSA_KEY_SIZE);
+            byte[] encryptedSym = Serialize.deserializeByteArray(din, UserPublicKey.RSA_KEY_BITS);
             byte[] iv = Serialize.deserializeByteArray(din, SymmetricKey.IV_SIZE);
             byte[] encryptedContent = Serialize.deserializeByteArray(din, Integer.MAX_VALUE);
             byte[] rawSym = c.doFinal(encryptedSym);
@@ -134,7 +134,7 @@ public class User extends UserPublicKey
         try
         {
             KeyPairGenerator kpg = KeyPairGenerator.getInstance(AUTH, "BC");
-            kpg.initialize(RSA_KEY_SIZE);
+            kpg.initialize(RSA_KEY_BITS);
             return kpg.genKeyPair();
         } catch (NoSuchAlgorithmException|NoSuchProviderException e)
         {
@@ -156,7 +156,7 @@ public class User extends UserPublicKey
             KeyPairGenerator kpg = KeyPairGenerator.getInstance(AUTH, "BC");
             SecureRandom random = SecureRandom.getInstance(SECURE_RANDOM);
             random.setSeed(hash);
-            kpg.initialize(RSA_KEY_SIZE, random);
+            kpg.initialize(RSA_KEY_BITS, random);
             long start = System.nanoTime();
             User u = new User(kpg.generateKeyPair());
             long end = System.nanoTime();
@@ -203,7 +203,7 @@ public class User extends UserPublicKey
         try
         {
             KeyPairGenerator kpg = KeyPairGenerator.getInstance(AUTH, "BC");
-            kpg.initialize(RSA_KEY_SIZE);
+            kpg.initialize(RSA_KEY_BITS);
             KeyPair kp = kpg.genKeyPair();
             Key publicKey = kp.getPublic();
             Key privateKey = kp.getPrivate();

@@ -126,8 +126,8 @@ public class Crypto
 //        System.out.println("Signed["+signed.length+"]: "+ArrayOps.bytesToHex(signed));
 //        System.out.println("Encryped["+encrypted.length+"]: "+ArrayOps.bytesToHex(encrypted));
 
-        assertEquals("Correct encrypted size", UserPublicKey.RSA_KEY_SIZE/8, signed.length);
-        assertEquals("Correct encrypted size", UserPublicKey.RSA_KEY_SIZE/8, encrypted.length);
+        assertEquals("Correct encrypted size", UserPublicKey.RSA_KEY_BITS /8, signed.length);
+        assertEquals("Correct encrypted size", UserPublicKey.RSA_KEY_BITS /8, encrypted.length);
         assertEquals("unsigning is the inverse of signing", ArrayOps.bytesToHex(raw), ArrayOps.bytesToHex(unsigned));
         assertEquals("decrypt is the inverse of encrypt", ArrayOps.bytesToHex(raw), ArrayOps.bytesToHex(decrypted));
 
