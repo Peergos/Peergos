@@ -1,6 +1,7 @@
 package peergos.user.fs;
 
 import peergos.crypto.*;
+import peergos.util.ByteArrayWrapper;
 import peergos.util.Serialize;
 
 import java.io.DataInput;
@@ -8,7 +9,7 @@ import java.io.DataOutput;
 import java.io.IOException;
 import java.util.*;
 
-public class FileAccess
+public class FileAccess extends Metadata
 {
     // read permissions
     private SortedMap<UserPublicKey, AsymmetricLink> sharingR2parent = new TreeMap();
@@ -17,8 +18,12 @@ public class FileAccess
     private final byte[] metadata;
     public static final int MAX_ELEMENT_SIZE = Integer.MAX_VALUE;
 
+    // public data
+    LinkedHashMap<ByteArrayWrapper, Fragment> fragments = new LinkedHashMap();
+
     public FileAccess(Set<UserPublicKey> sharingR, SymmetricKey metaKey, SymmetricKey parentKey, byte[] rawMetadata)
     {
+        super(TYPE.FILE);
         this.parent2meta = new SymmetricLink(parentKey, metaKey);
         if (sharingR != null) {
             for (UserPublicKey key: sharingR)
@@ -34,6 +39,7 @@ public class FileAccess
 
     public FileAccess(byte[] m, byte[] p2m, Map<UserPublicKey, AsymmetricLink> sharingR)
     {
+        super(TYPE.FILE);
         metadata = m;
         parent2meta = new SymmetricLink(p2m);
         sharingR2parent.putAll(sharingR);
@@ -41,6 +47,7 @@ public class FileAccess
 
     public void serialize(DataOutput dout) throws IOException
     {
+        super.serialize(dout);
         Serialize.serialize(metadata, dout);
         Serialize.serialize(parent2meta.serialize(), dout);
         dout.writeInt(sharingR2parent.size());
@@ -61,6 +68,13 @@ public class FileAccess
                     new AsymmetricLink(Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE)));
         }
         FileAccess res = new FileAccess(meta, p2m, sharingR);
+        return res;
+    }
+
+    public List<ByteArrayWrapper> getFragmentHashes() {
+        List<ByteArrayWrapper> res = new ArrayList();
+        for (ByteArrayWrapper b: fragments.keySet())
+            res.add(b);
         return res;
     }
 

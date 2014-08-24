@@ -372,7 +372,7 @@ public abstract class AbstractCoreNode
         return true;
     }
 
-    public boolean addFragmentHashes(String username, byte[] encodedSharingPublicKey, byte[] mapKey, byte[] metadataBlob, byte[] allHashes, byte[] sharingKeySignedHash)
+    public boolean addFragmentHashes(String username, byte[] encodedSharingPublicKey, byte[] mapKey, byte[] metadataBlob, List<ByteArrayWrapper> fragmentHashes, byte[] sharingKeySignedHash)
     {
         UserPublicKey userKey = null;
         synchronized(this)
@@ -391,6 +391,7 @@ public abstract class AbstractCoreNode
         if (remainingStorage(username) < fragmentLength())
             return false;
 
+        byte[] allHashes = ArrayOps.concat(fragmentHashes);
         byte[] concat = ArrayOps.concat(mapKey, metadataBlob, allHashes);
         if (! sharingKey.isValidSignature(sharingKeySignedHash, concat))
             return false;

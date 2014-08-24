@@ -23,6 +23,8 @@ import static akka.dispatch.Futures.sequence;
 import static org.junit.Assert.*;
 
 import java.io.*;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.URL;
@@ -152,14 +154,20 @@ public class UserContext
         return dht.put(f.getHash(), f.getData(), targetUser, sharer.getPublicKey(), mapKey, sharer.hashAndSignMessage(ArrayOps.concat(sharer.getPublicKey(), f.getHash())));
     }
 
-    private Metadata uploadChunk(Metadata meta, Fragment[] fragments, String target, User sharer, byte[] mapKey)
+    private boolean uploadChunk(Metadata meta, Fragment[] fragments, String target, User sharer, byte[] mapKey)
     {
 
         // tell core node first to allow fragments
-        byte[] metaBlob = new byte[256];
-        byte[] allHashes = meta.getHashes();
+        ByteArrayOutputStream bout = new ByteArrayOutputStream();
+        DataOutputStream dout = new DataOutputStream(bout);
+        try {
+            meta.serialize(dout);
+            dout.flush();
+        } catch (IOException e) {e.printStackTrace();}
+        List<ByteArrayWrapper> allHashes = meta.getFragmentHashes();
+        byte[] metaBlob = bout.toByteArray();
         core.addMetadataBlob(target, sharer.getPublicKey(), mapKey, metaBlob, sharer.hashAndSignMessage(metaBlob));
-        core.addFragmentHashes(target, sharer.getPublicKey(), mapKey, metaBlob, meta.getHashes(), sharer.hashAndSignMessage(ArrayOps.concat(mapKey, metaBlob, allHashes)));
+        core.addFragmentHashes(target, sharer.getPublicKey(), mapKey, metaBlob, meta.getFragmentHashes(), sharer.hashAndSignMessage(ArrayOps.concat(mapKey, metaBlob, ArrayOps.concat(allHashes))));
 
         // now upload fragments to DHT
         List<Future<Object>> futures = new ArrayList();
@@ -173,17 +181,20 @@ public class UserContext
         FiniteDuration timeout = Duration.create(5*60, TimeUnit.SECONDS);
         try {
             Await.result(futureListOfObjects, timeout);
-        } catch (Exception e) {e.printStackTrace();}
-        return meta;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+        return true;
     }
 
     private Fragment[] downloadFragments(Metadata meta)
     {
-        byte[] hashes = meta.getHashes();
-        Fragment[] res = new Fragment[hashes.length / UserPublicKey.HASH_SIZE];
+        List<ByteArrayWrapper> hashes = meta.getFragmentHashes();
+        Fragment[] res = new Fragment[hashes.size()];
         List<Future<byte[]>> futs = new ArrayList<Future<byte[]>>(res.length);
         for (int i=0; i < res.length; i++)
-            futs.add(dht.get(Arrays.copyOfRange(hashes, i*UserPublicKey.HASH_SIZE, (i+1)*UserPublicKey.HASH_SIZE)));
+            futs.add(dht.get(hashes.get(i).data));
         Countdown<byte[]> first50 = new Countdown<byte[]>(50, futs, system.dispatcher());
         first50.await();
         List<Fragment> frags = new ArrayList<Fragment>();
@@ -192,15 +203,15 @@ public class UserContext
         return frags.toArray(new Fragment[frags.size()]);
     }
 
-    public List<DirAccess> getRoots()
+    public Map<Location, DirAccess> getRoots()
     {
-        List<DirAccess> res = new ArrayList();
+        Map<Location, DirAccess> res = new HashMap();
         for (UserPublicKey pub: staticData.keySet()) {
             StaticDataElement dataElement = staticData.get(pub);
             if (dataElement instanceof SharedRootDir) {
                 DirAccess dir = recreateDir((SharedRootDir) dataElement);
                 if (dir != null)
-                    res.add(dir);
+                    res.put(new Location(username, pub, ((SharedRootDir) dataElement).mapKey), dir);
             }
         }
         return res;
@@ -414,16 +425,26 @@ public class UserContext
             String filename = "tree.jpg"; // /photos/tree.jpg
             SymmetricKey fileKey = SymmetricKey.random();
             byte[] fileMapKey = ArrayOps.random(32); // file metablob will be stored under this in the core node
+            Location fileLocation = new Location(owner, sharer, new ByteArrayWrapper(fileMapKey));
             FileAccess file = new FileAccess(fileKey, filename.getBytes());
-            root.addFile(fileMapKey, rootRKey, fileKey);
+            root.addFile(fileLocation, rootRKey, fileKey);
 
             Chunk chunk = new Chunk(raw, fileKey);
             EncryptedChunk encryptedChunk = new EncryptedChunk(chunk.encrypt(initVector));
             Fragment[] fragments = encryptedChunk.generateFragments();
-            Metadata meta = new Metadata(fragments, initVector);
 
             // now write the root to the core nodes
+            sender.uploadChunk(root, new Fragment[0], owner, sharer, rootMapKey);
+            // now upload the file meta blob
+            sender.uploadChunk(file, fragments, owner, sharer, fileMapKey);
 
+
+            // now check the retrieval from zero knowledge
+            Map<Location, DirAccess> roots = receiver.getRoots();
+            for (Location loc: roots.keySet()) {
+                DirAccess dir = roots.get(loc);
+                List<FileAccess> files = dir.getFiles();
+            }
         }
 
         public void chunkTest(String destUser, User sharer, UserContext sender)
@@ -470,10 +491,10 @@ public class UserContext
 
     public static byte[][] reorder(Metadata meta, Fragment[] received)
     {
-        byte[] hashConcat = meta.getHashes();
-        byte[][] originalHashes = new byte[hashConcat.length/UserPublicKey.HASH_SIZE][];
+        List<ByteArrayWrapper> hashes = meta.getFragmentHashes();
+        byte[][] originalHashes = new byte[hashes.size()][];
         for (int i=0; i < originalHashes.length; i++)
-            originalHashes[i] = Arrays.copyOfRange(hashConcat, i*UserPublicKey.HASH_SIZE, (i+1)*UserPublicKey.HASH_SIZE);
+            originalHashes[i] = hashes.get(i).data;
         byte[][] res = new byte[originalHashes.length][];
         for (int i=0; i < res.length; i++)
         {

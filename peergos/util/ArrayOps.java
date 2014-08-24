@@ -1,5 +1,8 @@
 package peergos.util;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.util.List;
 import java.util.Random;
 
 public class ArrayOps
@@ -19,6 +22,15 @@ public class ArrayOps
         System.arraycopy(two, 0, res, one.length, two.length);
         System.arraycopy(three, 0, res, one.length+two.length, three.length);
         return res;
+    }
+
+    public static byte[] concat(List<ByteArrayWrapper> data) {
+        ByteArrayOutputStream bout = new ByteArrayOutputStream();
+        try {
+            for (ByteArrayWrapper bw : data)
+                bout.write(bw.data);
+        } catch (IOException e) {e.printStackTrace();}
+        return bout.toByteArray();
     }
 
     public static long getLong(byte[] source, int start)

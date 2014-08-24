@@ -1,38 +1,57 @@
 package peergos.user.fs;
 
 import peergos.crypto.UserPublicKey;
+import peergos.util.ByteArrayWrapper;
 
 import java.io.*;
-import java.util.Arrays;
+import java.util.ArrayList;
+import java.util.List;
+
+// The user side version of a metadatablob on the core node
 
 public class Metadata
 {
-    private final byte[] fragmentHashes;
-    private final byte[] initVector;
+    public static enum TYPE {DIR, FILE, FOLLOWER}
+    private final TYPE type;
 
-    public Metadata(Fragment[] fragments, byte[] initVector)
+    public Metadata(TYPE t)
     {
-        fragmentHashes = new byte[fragments.length * UserPublicKey.HASH_SIZE];
-        for (int i=0; i < fragments.length; i++)
-            System.arraycopy(fragments[i].getHash(), 0, fragmentHashes, i*UserPublicKey.HASH_SIZE, UserPublicKey.HASH_SIZE);
-        this.initVector = initVector;
+        this.type = t;
     }
 
-    public byte[] getHashes(){
-        return Arrays.copyOf(fragmentHashes, fragmentHashes.length);
+    public List<ByteArrayWrapper> getFragmentHashes() {
+        return new ArrayList();
     }
 
-    public byte[] serialize()
-    {
+    public byte[] serialiseFragmentHashes() {
         ByteArrayOutputStream bout = new ByteArrayOutputStream();
         try {
-            bout.write(initVector, 0, initVector.length);
-            DataOutputStream dout = new DataOutputStream(bout);
-            dout.writeInt(fragmentHashes.length);
-            bout.write(fragmentHashes, 0, fragmentHashes.length);
-        } catch (IOException e) {
-            e.printStackTrace(); // shouldn't ever happen
-        }
+            List<ByteArrayWrapper> hashes = getFragmentHashes();
+            for (ByteArrayWrapper bw : hashes)
+                bout.write(bw.data);
+        } catch (IOException e) {e.printStackTrace();}
         return bout.toByteArray();
+    }
+
+    public static Metadata deserialize(DataInput din) throws IOException {
+        int index = din.readByte() & 0xff;
+        if (index > TYPE.values().length)
+            throw new IllegalStateException("Unknown metadata blob type! " + (index));
+        TYPE t = TYPE.values()[index];
+        switch (t) {
+            case DIR:
+                return DirAccess.deserialize(din);
+            case FILE:
+                return FileAccess.deserialize(din);
+            case FOLLOWER:
+                return null;
+            default:
+                return null;
+        }
+    }
+
+    public void serialize(DataOutput dout) throws IOException
+    {
+        dout.writeByte(type.ordinal());
     }
 }

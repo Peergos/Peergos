@@ -1,6 +1,7 @@
 package peergos.user.fs;
 
 import peergos.crypto.*;
+import peergos.util.ByteArrayWrapper;
 import peergos.util.Serialize;
 
 import java.io.DataInput;
@@ -9,13 +10,13 @@ import java.io.IOException;
 import java.security.KeyPair;
 import java.util.*;
 
-public class DirAccess
+public class DirAccess extends Metadata
 {
     // read permissions
     private SortedMap<UserPublicKey, AsymmetricLink> sharingR2subfoldersR = new TreeMap(); // optional
     private final SymmetricLink subfolders2files;
-    private final Map<SymmetricLink, byte[]> subfolders = new HashMap();
-    private final Map<SymmetricLink, byte[]> files = new HashMap();
+    private final Map<SymmetricLink, Location> subfolders = new HashMap();
+    private final Map<SymmetricLink, Location> files = new HashMap();
     private final SymmetricLink subfolders2parent;
     private final SymmetricLink parent2meta;
     // write permissions => able to create files and subfolders
@@ -29,6 +30,7 @@ public class DirAccess
     public DirAccess(SymmetricKey meta, SymmetricKey parent, SymmetricKey files, SymmetricKey subfolders, Set<UserPublicKey> sharingR,
                      byte[] rawMetadata, KeyPair signingW, SymmetricKey subfoldersW, Set<UserPublicKey> sharingW)
     {
+        super(TYPE.DIR);
         this.subfolders2files = new SymmetricLink(subfolders, files);
         this.subfolders2parent = new SymmetricLink(subfolders, parent);
         this.parent2meta = new SymmetricLink(parent, meta);
@@ -49,6 +51,7 @@ public class DirAccess
     public DirAccess(Map<UserPublicKey, AsymmetricLink> sharingR, byte[] s2f, byte[] s2p, byte[] p2m, byte[] metadata,
                      byte[] verr, byte[] sW2si, Map<UserPublicKey, AsymmetricLink> sharingW)
     {
+        super(TYPE.DIR);
         sharingR2subfoldersR.putAll(sharingR);
         subfolders2files = new SymmetricLink(s2f);
         subfolders2parent = new SymmetricLink(s2p);
@@ -61,6 +64,7 @@ public class DirAccess
 
     public void serialize(DataOutput dout) throws IOException
     {
+        super.serialize(dout);
         Serialize.serialize(metadata, dout);
         // read access
         Serialize.serialize(parent2meta.serialize(), dout);
@@ -132,24 +136,24 @@ public class DirAccess
         return res;
     }
 
-    public void addSubFolder(byte[] mapKey, SymmetricKey ourSubfolders, SymmetricKey targetSubfolders)
+    public void addSubFolder(Location location, SymmetricKey ourSubfolders, SymmetricKey targetSubfolders)
     {
-        subfolders.put(new SymmetricLink(ourSubfolders, targetSubfolders), mapKey);
+        subfolders.put(new SymmetricLink(ourSubfolders, targetSubfolders), location);
     }
 
-    public void addFile(byte[] mapKey, SymmetricKey ourSubfolders, SymmetricKey targetParent)
+    public void addFile(Location location, SymmetricKey ourSubfolders, SymmetricKey targetParent)
     {
-        files.put(new SymmetricLink(ourSubfolders, targetParent), mapKey);
+        files.put(new SymmetricLink(ourSubfolders, targetParent), location);
     }
 
-    public void addSubFolder(byte[] mapKey, SymmetricLink toTargetSubfolders)
+    public void addSubFolder(Location location, SymmetricLink toTargetSubfolders)
     {
-        subfolders.put(toTargetSubfolders, mapKey);
+        subfolders.put(toTargetSubfolders, location);
     }
 
-    public void addFile(byte[] mapKey, SymmetricLink toTargetParent)
+    public void addFile(Location location, SymmetricLink toTargetParent)
     {
-        files.put(toTargetParent, mapKey);
+        files.put(toTargetParent, location);
     }
 
     public void addRSharingKey(UserPublicKey key, SymmetricKey subfoldersKey)
