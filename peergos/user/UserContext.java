@@ -108,7 +108,7 @@ public class UserContext
         ByteArrayWrapper rootMapKey = new ByteArrayWrapper(ArrayOps.random(32));
 
         // add a note to our static data so we know who we sent the private key to
-        SharedRootDir friendRoot = new SharedRootDir(friend, sharing.getPublic(), sharing.getPrivate(), rootMapKey);
+        SharedRootDir friendRoot = new SharedRootDir(friend, sharing.getPublic(), sharing.getPrivate(), rootMapKey, SymmetricKey.random());
         addToStaticData(new UserPublicKey(sharing.getPublic()), friendRoot);
 
         // send details to allow friend to share with us (i.e. we follow them)
@@ -224,7 +224,7 @@ public class UserContext
         AbstractCoreNode.MetadataBlob meta = core.getMetadataBlob(username, pub.getEncoded(), mapKey.data);
         ByteArrayWrapper rawMeta = meta.metadata();
         try {
-            return DirAccess.deserialize(new DataInputStream(new ByteArrayInputStream(rawMeta.data)));
+            return DirAccess.deserialize(new DataInputStream(new ByteArrayInputStream(rawMeta.data)), raw.rootDirKey);
         } catch (IOException e) {
             e.printStackTrace();
             return null;
@@ -270,14 +270,16 @@ public class UserContext
         public final PublicKey pub;
         public final PrivateKey priv;
         public final ByteArrayWrapper mapKey;
+        public final SymmetricKey rootDirKey;
 
-        public SharedRootDir(String username, PublicKey pub, PrivateKey priv, ByteArrayWrapper mapKey)
+        public SharedRootDir(String username, PublicKey pub, PrivateKey priv, ByteArrayWrapper mapKey, SymmetricKey rootDirKey)
         {
             super(1);
             this.username = username;
             this.pub = pub;
             this.priv = priv;
             this.mapKey = mapKey;
+            this.rootDirKey = rootDirKey;
         }
 
         public static SharedRootDir deserialize(DataInput din) throws IOException
@@ -286,16 +288,19 @@ public class UserContext
             byte[] pubBytes = Serialize.deserializeByteArray(din, MAX_KEY_SIZE);
             byte[] privBytes = Serialize.deserializeByteArray(din, MAX_KEY_SIZE);
             ByteArrayWrapper mapKey = new ByteArrayWrapper(Serialize.deserializeByteArray(din, MAX_KEY_SIZE));
-            return new SharedRootDir(username, UserPublicKey.deserializePublic(pubBytes), User.deserializePrivate(privBytes), mapKey);
+            byte[] secretRootDirKey = Serialize.deserializeByteArray(din, MAX_KEY_SIZE);
+            return new SharedRootDir(username, UserPublicKey.deserializePublic(pubBytes), User.deserializePrivate(privBytes), mapKey, new SymmetricKey(secretRootDirKey));
         }
 
         @Override
         public void serialize(DataOutput dout) throws IOException {
             super.serialize(dout);
+            // TODO encrypt this
             Serialize.serialize(username, dout);
             Serialize.serialize(pub.getEncoded(), dout);
             Serialize.serialize(priv.getEncoded(), dout);
             Serialize.serialize(mapKey.data, dout);
+            Serialize.serialize(rootDirKey.getKey().getEncoded(), dout);
         }
     }
 

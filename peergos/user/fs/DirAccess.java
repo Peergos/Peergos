@@ -15,8 +15,8 @@ public class DirAccess extends Metadata
     // read permissions
     private SortedMap<UserPublicKey, AsymmetricLink> sharingR2subfoldersR = new TreeMap(); // optional
     private final SymmetricLink subfolders2files;
-    private final Map<SymmetricLink, Location> subfolders = new HashMap();
-    private final Map<SymmetricLink, Location> files = new HashMap();
+    private final Map<Location, SymmetricLocationLink> subfolders = new HashMap(); // encrypted locations
+    private final Map<Location, SymmetricLocationLink> files = new HashMap();
     private final SymmetricLink subfolders2parent;
     private final SymmetricLink parent2meta;
     // write permissions => able to create files and subfolders
@@ -85,20 +85,18 @@ public class DirAccess extends Metadata
         }
         // read subtree
         dout.writeInt(subfolders.size());
-        for (SymmetricLink sub: subfolders.keySet())
+        for (SymmetricLocationLink sub: subfolders.values())
         {
             Serialize.serialize(sub.serialize(), dout);
-            Serialize.serialize(subfolders.get(sub), dout);
         }
         dout.writeInt(files.size());
-        for (SymmetricLink file: files.keySet())
+        for (SymmetricLocationLink file: files.values())
         {
             Serialize.serialize(file.serialize(), dout);
-            Serialize.serialize(files.get(file), dout);
         }
     }
 
-    public static DirAccess deserialize(DataInput din) throws IOException
+    public static DirAccess deserialize(DataInput din, SymmetricKey ourSubfolders) throws IOException
     {
         byte[] meta = Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE);
         byte[] p2m = Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE);
@@ -122,38 +120,36 @@ public class DirAccess extends Metadata
         int subs = din.readInt();
         for (int i=0; i < subs; i++)
         {
-            SymmetricLink link = new SymmetricLink(Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE));
-            byte[] mapKey = Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE);
-            res.addSubFolder(mapKey, link);
+            SymmetricLocationLink link = new SymmetricLocationLink(Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE));
+            res.addSubFolder(ourSubfolders, link);
         }
         int files = din.readInt();
         for (int i=0; i < files; i++)
         {
-            SymmetricLink link = new SymmetricLink(Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE));
-            byte[] mapKey = Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE);
-            res.addFile(mapKey, link);
+            SymmetricLocationLink link = new SymmetricLocationLink(Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE));
+            res.addFile(ourSubfolders, link);
         }
         return res;
     }
 
     public void addSubFolder(Location location, SymmetricKey ourSubfolders, SymmetricKey targetSubfolders)
     {
-        subfolders.put(new SymmetricLink(ourSubfolders, targetSubfolders), location);
+        subfolders.put(location, new SymmetricLocationLink(ourSubfolders, targetSubfolders, location));
     }
 
     public void addFile(Location location, SymmetricKey ourSubfolders, SymmetricKey targetParent)
     {
-        files.put(new SymmetricLink(ourSubfolders, targetParent), location);
+        files.put(location, new SymmetricLocationLink(ourSubfolders, targetParent, location));
     }
 
-    public void addSubFolder(Location location, SymmetricLink toTargetSubfolders)
+    public void addSubFolder(SymmetricKey ourSubfolders, SymmetricLocationLink toTargetSubfolders) throws IOException
     {
-        subfolders.put(toTargetSubfolders, location);
+        subfolders.put(toTargetSubfolders.targetLocation(ourSubfolders), toTargetSubfolders);
     }
 
-    public void addFile(Location location, SymmetricLink toTargetParent)
+    public void addFile(SymmetricKey ourSubfolders, SymmetricLocationLink toTargetParent) throws IOException
     {
-        files.put(toTargetParent, location);
+        files.put(toTargetParent.targetLocation(ourSubfolders), toTargetParent);
     }
 
     public void addRSharingKey(UserPublicKey key, SymmetricKey subfoldersKey)
