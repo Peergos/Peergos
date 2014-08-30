@@ -2,6 +2,7 @@ package peergos.user.fs;
 
 import peergos.crypto.SymmetricKey;
 import peergos.util.ByteArrayWrapper;
+import peergos.util.Serialize;
 
 import java.io.*;
 import java.util.ArrayList;
@@ -34,11 +35,12 @@ public abstract class Metadata
         if (index > TYPE.values().length)
             throw new IllegalStateException("Unknown metadata blob type! " + (index));
         TYPE t = TYPE.values()[index];
+        byte[] meta = Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE);
         switch (t) {
             case DIR:
-                return DirAccess.deserialize(din, ourKey);
+                return DirAccess.deserialize(din, ourKey, meta);
             case FILE:
-                return FileAccess.deserialize(din, fragments);
+                return FileAccess.deserialize(din, fragments, meta);
             case FOLLOWER:
                 return null;
             default:
@@ -49,5 +51,6 @@ public abstract class Metadata
     public void serialize(DataOutput dout) throws IOException
     {
         dout.writeByte(type.ordinal());
+        Serialize.serialize(encryptedMetadata, dout);
     }
 }

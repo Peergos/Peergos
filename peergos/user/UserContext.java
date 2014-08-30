@@ -192,7 +192,7 @@ public class UserContext
 
             // wait for all fragments to upload
             Future<Iterable<Object>> futureListOfObjects = sequence(futures, system.dispatcher());
-            FiniteDuration timeout = Duration.create(5 * 60, TimeUnit.SECONDS);
+            FiniteDuration timeout = Duration.create(10 * 60, TimeUnit.SECONDS);
             try {
                 Await.result(futureListOfObjects, timeout);
             } catch (Exception e) {

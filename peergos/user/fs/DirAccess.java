@@ -92,9 +92,8 @@ public class DirAccess extends Metadata
         }
     }
 
-    public static DirAccess deserialize(DataInput din, SymmetricKey ourSubfolders) throws IOException
+    public static DirAccess deserialize(DataInput din, SymmetricKey ourSubfolders, byte[] metadata) throws IOException
     {
-        byte[] meta = Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE);
         byte[] p2m = Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE);
         byte[] s2p = Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE);
         byte[] s2f = Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE);
@@ -112,7 +111,7 @@ public class DirAccess extends Metadata
             sharingW.put(new UserPublicKey(Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE)),
                     new AsymmetricLink(Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE)));
         }
-        DirAccess res =  new DirAccess(sharingR, s2f, s2p, p2m, meta, verr, sW2si, sharingW);
+        DirAccess res =  new DirAccess(sharingR, s2f, s2p, p2m, metadata, verr, sW2si, sharingW);
         int subs = din.readInt();
         for (int i=0; i < subs; i++)
         {

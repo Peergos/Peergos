@@ -53,9 +53,8 @@ public class FileAccess extends Metadata
         }
     }
 
-    public static FileAccess deserialize(DataInput din, List<ByteArrayWrapper> fragments) throws IOException
+    public static FileAccess deserialize(DataInput din, List<ByteArrayWrapper> fragments, byte[] metadata) throws IOException
     {
-        byte[] meta = Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE);
         byte[] p2m = Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE);
         int count = din.readInt();
         Map<UserPublicKey, AsymmetricLink> sharingR = new HashMap();
@@ -63,7 +62,7 @@ public class FileAccess extends Metadata
             sharingR.put(new UserPublicKey(Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE)),
                     new AsymmetricLink(Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE)));
         }
-        FileAccess res = new FileAccess(meta, p2m, sharingR, fragments);
+        FileAccess res = new FileAccess(metadata, p2m, sharingR, fragments);
         return res;
     }
 
