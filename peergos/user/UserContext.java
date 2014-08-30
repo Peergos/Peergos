@@ -41,7 +41,6 @@ public class UserContext
 {
     public static final int MAX_USERNAME_SIZE = 1024;
     public static final int MAX_KEY_SIZE = UserPublicKey.RSA_KEY_BITS;
-    public static final int CLEARANCE_SIZE = 1024;
 
     private String username;
     private User us;
@@ -67,35 +66,10 @@ public class UserContext
         return core.addUsername(username, us.getPublicKey(), signedHash, rawStatic);
     }
 
-    public synchronized byte[] serializeStatic()
-    {
-        try {
-            ByteArrayOutputStream bout = new ByteArrayOutputStream();
-            DataOutput dout = new DataOutputStream(bout);
-            dout.writeInt(staticData.size());
-            for (UserPublicKey sharer : staticData.keySet())
-                Serialize.serialize(staticData.get(sharer).toByteArray(), dout);
-            return bout.toByteArray();
-        } catch (IOException e) {throw new IllegalStateException(e.getMessage());}
-    }
-
     public boolean isRegistered()
     {
         String name = core.getUsername(us.getPublicKey());
         return username.equals(name);
-    }
-
-    public boolean addSharingKey(PublicKey pub)
-    {
-        byte[] signedHash = us.hashAndSignMessage(pub.getEncoded());
-        return core.allowSharingKey(username, pub.getEncoded(), signedHash);
-    }
-
-    private boolean addToStaticData(UserPublicKey pub, StaticDataElement root)
-    {
-        staticData.put(pub, root);
-        byte[] rawStatic = serializeStatic();
-        return core.updateStaticData(username, us.hashAndSignMessage(rawStatic), rawStatic);
     }
 
     public boolean sendFollowRequest(String friend)
@@ -150,6 +124,42 @@ public class UserContext
         }
     }
 
+    // returns Map<Owner, File>
+    public Map<String, FileWrapper> getRootFiles() {
+        Map<StaticDataElement, DirAccess> roots = getRoots();
+        Map<String, FileWrapper> res = new HashMap();
+        for (StaticDataElement s: roots.keySet()) {
+            if (s instanceof SharedRootDir)
+                res.put(((SharedRootDir) s).username, new FileWrapper(this, roots.get(s), ((SharedRootDir) s).rootDirKey));
+        }
+        return res;
+    }
+
+    public synchronized byte[] serializeStatic()
+    {
+        try {
+            ByteArrayOutputStream bout = new ByteArrayOutputStream();
+            DataOutput dout = new DataOutputStream(bout);
+            dout.writeInt(staticData.size());
+            for (UserPublicKey sharer : staticData.keySet())
+                Serialize.serialize(staticData.get(sharer).toByteArray(), dout);
+            return bout.toByteArray();
+        } catch (IOException e) {throw new IllegalStateException(e.getMessage());}
+    }
+
+    public boolean addSharingKey(PublicKey pub)
+    {
+        byte[] signedHash = us.hashAndSignMessage(pub.getEncoded());
+        return core.allowSharingKey(username, pub.getEncoded(), signedHash);
+    }
+
+    private boolean addToStaticData(UserPublicKey pub, StaticDataElement root)
+    {
+        staticData.put(pub, root);
+        byte[] rawStatic = serializeStatic();
+        return core.updateStaticData(username, us.hashAndSignMessage(rawStatic), rawStatic);
+    }
+
     private Future uploadFragment(Fragment f, String targetUser, User sharer, byte[] mapKey)
     {
         return dht.put(f.getHash(), f.getData(), targetUser, sharer.getPublicKey(), mapKey, sharer.hashAndSignMessage(ArrayOps.concat(sharer.getPublicKey(), f.getHash())));
@@ -157,7 +167,6 @@ public class UserContext
 
     private boolean uploadChunk(Metadata meta, Fragment[] fragments, String target, User sharer, byte[] mapKey)
     {
-
         // tell core node first to allow fragments
         ByteArrayOutputStream bout = new ByteArrayOutputStream();
         DataOutputStream dout = new DataOutputStream(bout);
@@ -432,8 +441,9 @@ public class UserContext
             SymmetricKey rootRKey = SymmetricKey.random();
             SymmetricKey rootWKey = SymmetricKey.random();
             String name = "/";
+            byte[] rootIV = SymmetricKey.randomIV();
             byte[] rootMapKey = ArrayOps.random(32); // root will be stored under this in the core node
-            DirAccess root = new DirAccess(rootRKey, name.getBytes(), rootWKey);
+            DirAccess root = new DirAccess(rootRKey, new FileProperties(name, rootIV, 0), rootWKey);
 
             // generate file (single chunk)
             Random r = new Random();
@@ -459,7 +469,7 @@ public class UserContext
             for (Fragment f : fragments)
                 hashes.add(new ByteArrayWrapper(f.getHash()));
             FileProperties props = new FileProperties(filename, initVector, raw.length);
-            FileAccess file = new FileAccess(fileKey, props.serialize(), hashes);
+            FileAccess file = new FileAccess(fileKey, props, hashes);
 
             // now write the root to the core nodes
             receiver.addToStaticData(sharer, new SharedRootDir(receiver.username, sharer.getKey(), sharerPriv, new ByteArrayWrapper(rootMapKey), rootRKey));
@@ -479,7 +489,7 @@ public class UserContext
                         FileAccess fileBlob = files.get(fileLoc);
                         // download fragments in chunk
                         Fragment[] retrievedfragments = sender.downloadFragments(fileBlob);
-                        FileProperties fileProps = FileProperties.deserialize(fileBlob.getMetadata(fileLoc.target(rootDirKey)));
+                        FileProperties fileProps = fileBlob.getProps(fileLoc.target(rootDirKey));
 
                         byte[] enc = Erasure.recombine(reorder(fileBlob, retrievedfragments), Chunk.MAX_SIZE, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
                         EncryptedChunk encrypted = new EncryptedChunk(enc);
@@ -515,13 +525,5 @@ public class UserContext
                 res[i] = new byte[received[0].getData().length];
         }
         return res;
-    }
-
-    public static byte[] randomClearanceData()
-    {
-        Random r = new Random();
-        byte[] clearanceData = new byte[CLEARANCE_SIZE];
-        r.nextBytes(clearanceData);
-        return clearanceData;
     }
 }

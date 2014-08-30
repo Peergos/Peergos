@@ -15,33 +15,28 @@ public class FileAccess extends Metadata
     private SortedMap<UserPublicKey, AsymmetricLink> sharingR2parent = new TreeMap();
     private final SymmetricLink parent2meta;
 
-    private final byte[] metadata;
-    public static final int MAX_ELEMENT_SIZE = Integer.MAX_VALUE;
-
     // public data
     private List<ByteArrayWrapper> fragments;
 
-    public FileAccess(Set<UserPublicKey> sharingR, SymmetricKey metaKey, SymmetricKey parentKey, byte[] rawMetadata, List<ByteArrayWrapper> fragments)
+    public FileAccess(Set<UserPublicKey> sharingR, SymmetricKey metaKey, SymmetricKey parentKey, FileProperties metadata, List<ByteArrayWrapper> fragments, byte[] iv)
     {
-        super(TYPE.FILE);
+        super(TYPE.FILE, metaKey.encrypt(metadata.serialize(), iv));
         this.fragments = fragments;
-        this.parent2meta = new SymmetricLink(parentKey, metaKey);
+        this.parent2meta = new SymmetricLink(parentKey, metaKey, iv);
         if (sharingR != null) {
             for (UserPublicKey key: sharingR)
                 sharingR2parent.put(key, new AsymmetricLink(key, parentKey));
         }
-        this.metadata = metaKey.encrypt(rawMetadata, parent2meta.initializationVector());
     }
 
-    public FileAccess(SymmetricKey parentKey, byte[] rawMetadata, List<ByteArrayWrapper> fragments)
+    public FileAccess(SymmetricKey parentKey, FileProperties metadata, List<ByteArrayWrapper> fragments)
     {
-        this(null, SymmetricKey.random(), parentKey, rawMetadata, fragments);
+        this(null, SymmetricKey.random(), parentKey, metadata, fragments, metadata.getIV());
     }
 
     public FileAccess(byte[] m, byte[] p2m, Map<UserPublicKey, AsymmetricLink> sharingR, List<ByteArrayWrapper> fragments)
     {
-        super(TYPE.FILE);
-        metadata = m;
+        super(TYPE.FILE, m);
         parent2meta = new SymmetricLink(p2m);
         sharingR2parent.putAll(sharingR);
         this.fragments = fragments;
@@ -50,7 +45,6 @@ public class FileAccess extends Metadata
     public void serialize(DataOutput dout) throws IOException
     {
         super.serialize(dout);
-        Serialize.serialize(metadata, dout);
         Serialize.serialize(parent2meta.serialize(), dout);
         dout.writeInt(sharingR2parent.size());
         for (UserPublicKey key: sharingR2parent.keySet()) {
@@ -87,8 +81,8 @@ public class FileAccess extends Metadata
         return sharingR2parent.get(sharingKey.getKey()).target(sharingKey);
     }
 
-    public byte[] getMetadata(SymmetricKey parentKey)
+    public FileProperties getProps(SymmetricKey parentKey)
     {
-        return parent2meta.target(parentKey).decrypt(metadata, parent2meta.initializationVector());
+        return FileProperties.deserialize(parent2meta.target(parentKey).decrypt(encryptedMetadata, parent2meta.initializationVector()));
     }
 }

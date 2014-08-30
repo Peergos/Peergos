@@ -24,17 +24,13 @@ public class DirAccess extends Metadata
     private final SymmetricLinkToPrivate subfoldersW2sign;
     private final UserPublicKey verifyW;
 
-    public static final int MAX_ELEMENT_SIZE = Integer.MAX_VALUE;
-    private final byte[] metadata;
-
     public DirAccess(SymmetricKey meta, SymmetricKey parent, SymmetricKey files, SymmetricKey subfolders, Set<UserPublicKey> sharingR,
-                     byte[] rawMetadata, KeyPair signingW, SymmetricKey subfoldersW, Set<UserPublicKey> sharingW)
+                     FileProperties metadata, KeyPair signingW, SymmetricKey subfoldersW, Set<UserPublicKey> sharingW, byte[] iv)
     {
-        super(TYPE.DIR);
-        this.subfolders2files = new SymmetricLink(subfolders, files);
-        this.subfolders2parent = new SymmetricLink(subfolders, parent);
-        this.parent2meta = new SymmetricLink(parent, meta);
-        this.metadata = meta.encrypt(rawMetadata, parent2meta.initializationVector());
+        super(TYPE.DIR, meta.encrypt(metadata.serialize(), iv));
+        this.subfolders2files = new SymmetricLink(subfolders, files, iv);
+        this.subfolders2parent = new SymmetricLink(subfolders, parent, iv);
+        this.parent2meta = new SymmetricLink(parent, meta, iv);
         if (sharingR != null)
             for (UserPublicKey key: sharingR)
                 sharingR2subfoldersR.put(key, new AsymmetricLink(key, subfolders));
@@ -45,20 +41,19 @@ public class DirAccess extends Metadata
                 sharingW2subfoldersW.put(key, new AsymmetricLink(key, subfoldersW));
     }
 
-    public DirAccess(SymmetricKey subfoldersKey, byte[] rawMetadata, SymmetricKey subfoldersKeyW)
+    public DirAccess(SymmetricKey subfoldersKey, FileProperties metadata, SymmetricKey subfoldersKeyW)
     {
-        this(SymmetricKey.random(), SymmetricKey.random(), SymmetricKey.random(), subfoldersKey, null, rawMetadata, SSL.generateKeyPair(), subfoldersKeyW, null);
+        this(SymmetricKey.random(), SymmetricKey.random(), SymmetricKey.random(), subfoldersKey, null, metadata, SSL.generateKeyPair(), subfoldersKeyW, null, metadata.getIV());
     }
 
     public DirAccess(Map<UserPublicKey, AsymmetricLink> sharingR, byte[] s2f, byte[] s2p, byte[] p2m, byte[] metadata,
                      byte[] verr, byte[] sW2si, Map<UserPublicKey, AsymmetricLink> sharingW)
     {
-        super(TYPE.DIR);
+        super(TYPE.DIR, metadata);
         sharingR2subfoldersR.putAll(sharingR);
         subfolders2files = new SymmetricLink(s2f);
         subfolders2parent = new SymmetricLink(s2p);
         parent2meta = new SymmetricLink(p2m);
-        this.metadata = metadata;
         sharingW2subfoldersW.putAll(sharingW);
         this.subfoldersW2sign = new SymmetricLinkToPrivate(sW2si);
         this.verifyW = new UserPublicKey(verr);
@@ -67,7 +62,6 @@ public class DirAccess extends Metadata
     public void serialize(DataOutput dout) throws IOException
     {
         super.serialize(dout);
-        Serialize.serialize(metadata, dout);
         // read access
         Serialize.serialize(parent2meta.serialize(), dout);
         Serialize.serialize(subfolders2parent.serialize(), dout);
@@ -132,6 +126,10 @@ public class DirAccess extends Metadata
             res.addFile(ourSubfolders, link);
         }
         return res;
+    }
+
+    public FileProperties getProps(SymmetricKey ourSubfolders) {
+        return FileProperties.deserialize(parent2meta.target(subfolders2parent.target(ourSubfolders)).decrypt(encryptedMetadata, parent2meta.initializationVector()));
     }
 
     public void addSubFolder(Location location, SymmetricKey ourSubfolders, SymmetricKey targetSubfolders)

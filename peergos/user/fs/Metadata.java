@@ -9,15 +9,21 @@ import java.util.List;
 
 // The user side version of a metadatablob on the core node
 
-public class Metadata
+public abstract class Metadata
 {
+    public static final int MAX_ELEMENT_SIZE = Integer.MAX_VALUE;
     public static enum TYPE {DIR, FILE, FOLLOWER}
-    private final TYPE type;
 
-    public Metadata(TYPE t)
+    private final TYPE type;
+    protected final byte[] encryptedMetadata;
+
+    public Metadata(TYPE t, byte[] encryptedMetadata)
     {
         this.type = t;
+        this.encryptedMetadata = encryptedMetadata;
     }
+
+    public abstract FileProperties getProps(SymmetricKey baseKey);
 
     public List<ByteArrayWrapper> getFragmentHashes() {
         return new ArrayList();
