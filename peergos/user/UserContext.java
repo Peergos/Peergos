@@ -368,6 +368,9 @@ public class UserContext
     }
 
     public static class Test {
+        private static String clusterAddress;
+        public static void setClusterAddress(String address){Test.clusterAddress = address;}
+
         public Test() {
         }
 
@@ -375,9 +378,11 @@ public class UserContext
         public void all() {
             UserContext us=null, alice=null;
             DHTUserAPI dht = null;
+
             try {
-                String coreIP = IP.getMyPublicAddress().getHostAddress();
-                String storageIP = IP.getMyPublicAddress().getHostAddress();
+                String coreIP = clusterAddress;
+                String storageIP = clusterAddress;
+
                 int storagePort = 8000;
                 URL coreURL = new URL("http://" + coreIP + ":" + AbstractCoreNode.PORT + "/");
                 HTTPCoreNode clientCoreNode = new HTTPCoreNode(coreURL);
@@ -387,7 +392,7 @@ public class UserContext
                 User ourKeys = User.random();
                 long t2 = System.nanoTime();
                 System.out.printf("User generation took %d mS\n", (t2 - t1) / 1000000);
-                String ourname = "Bob";
+                String ourname = "Bob_"+ System.currentTimeMillis();
 
                 // create a DHT API
                 dht = new HttpsUserAPI(new InetSocketAddress(InetAddress.getByName(storageIP), storagePort));
@@ -402,7 +407,7 @@ public class UserContext
                 User friendKeys = User.random();
                 t2 = System.nanoTime();
                 System.out.printf("User generation took %d mS\n", (t2 - t1) / 1000000);
-                String friendName = "Alice";
+                String friendName = "Alice_"+ System.currentTimeMillis();
                 alice = new UserContext(friendName, friendKeys, dht, clientCoreNode);
                 alice.register();
 
