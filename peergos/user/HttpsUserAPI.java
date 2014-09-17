@@ -59,6 +59,10 @@ public class HttpsUserAPI extends DHTUserAPI
         }
     }
 
+    public void shutdown() {
+        executor.shutdown();
+    }
+
     @Override
     public Future<Boolean> put(final byte[] key, final byte[] value, final String user, final byte[] sharingKey, final byte[] mapKey, final byte[] proof) {
         Future<Boolean> f = executor.submit(new Callable<Boolean>() {

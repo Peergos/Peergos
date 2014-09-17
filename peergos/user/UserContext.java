@@ -41,7 +41,7 @@ public class UserContext
     private DHTUserAPI dht;
     private AbstractCoreNode core;
     private Map<UserPublicKey, StaticDataElement> staticData = new TreeMap();
-    private ExecutorService executor = Executors.newFixedThreadPool(100);
+    private ExecutorService executor = Executors.newFixedThreadPool(16);
 
 
     public UserContext(String username, User user, DHTUserAPI dht, AbstractCoreNode core)
@@ -50,6 +50,10 @@ public class UserContext
         this.us = user;
         this.dht = dht;
         this.core = core;
+    }
+
+    public void shutdown() {
+        executor.shutdown();
     }
 
     public boolean register()
@@ -369,6 +373,8 @@ public class UserContext
 
         @org.junit.Test
         public void all() {
+            UserContext us=null, alice=null;
+            DHTUserAPI dht = null;
             try {
                 String coreIP = IP.getMyPublicAddress().getHostAddress();
                 String storageIP = IP.getMyPublicAddress().getHostAddress();
@@ -384,10 +390,10 @@ public class UserContext
                 String ourname = "Bob";
 
                 // create a DHT API
-                DHTUserAPI dht = new HttpsUserAPI(new InetSocketAddress(InetAddress.getByName(storageIP), storagePort));
+                dht = new HttpsUserAPI(new InetSocketAddress(InetAddress.getByName(storageIP), storagePort));
 
                 // make and register us
-                UserContext us = new UserContext(ourname, ourKeys, dht, clientCoreNode);
+                us = new UserContext(ourname, ourKeys, dht, clientCoreNode);
                 assertTrue("Not already registered", !us.isRegistered());
                 assertTrue("Register", us.register());
 
@@ -397,7 +403,7 @@ public class UserContext
                 t2 = System.nanoTime();
                 System.out.printf("User generation took %d mS\n", (t2 - t1) / 1000000);
                 String friendName = "Alice";
-                UserContext alice = new UserContext(friendName, friendKeys, dht, clientCoreNode);
+                alice = new UserContext(friendName, friendKeys, dht, clientCoreNode);
                 alice.register();
 
                 // make Alice follow Bob (Alice gives Bob write permission to a folder in Alice's space)
@@ -423,6 +429,10 @@ public class UserContext
                 System.out.printf("File test took %d mS\n", (t2 - t1) / 1000000);
             } catch (Throwable t) {
                 t.printStackTrace();
+            } finally {
+                us.shutdown();
+                alice.shutdown();
+                dht.shutdown();
             }
         }
 

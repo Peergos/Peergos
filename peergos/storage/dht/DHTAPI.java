@@ -11,7 +11,7 @@ import java.util.concurrent.Future;
 public class DHTAPI
 {
     private Router router;
-    private ExecutorService executor = Executors.newFixedThreadPool(100);
+    private ExecutorService executor = Executors.newFixedThreadPool(16);
 
     public DHTAPI(Router router)
     {

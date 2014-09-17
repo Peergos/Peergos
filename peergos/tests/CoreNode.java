@@ -3,7 +3,6 @@ package peergos.tests;
 
 import static org.junit.Assert.*;
 
-import akka.actor.ActorSystem;
 import peergos.crypto.*;
 import peergos.corenode.*;
 import peergos.user.UserContext;
@@ -20,11 +19,11 @@ public class CoreNode
     private static Random random = new Random(666);
 
     public void coreNodeTests(AbstractCoreNode coreNode) throws Exception {
-        ActorSystem system = null;
+        UserContext context = null;
         try {
             User user = User.random();
             String username = "USER";
-            UserContext context = new UserContext(username, user, null, coreNode);
+            context = new UserContext(username, user, null, coreNode);
             assertTrue("Checking for username", !context.isRegistered());
             assertTrue("added user", context.register());
 
@@ -118,7 +117,7 @@ public class CoreNode
             //
             assertTrue("added friend", friendContext.register());
         } finally {
-            system.shutdown();
+            context.shutdown();
         }
     }
 

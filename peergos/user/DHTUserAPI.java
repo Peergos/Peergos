@@ -9,4 +9,6 @@ public abstract class DHTUserAPI
     public abstract Future<Boolean> contains(byte[] key);
 
     public abstract Future<byte[]> get(byte[] key);
+
+    public abstract void shutdown();
 }
