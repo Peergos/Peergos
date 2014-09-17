@@ -368,8 +368,9 @@ public class UserContext
     }
 
     public static class Test {
-        private static String clusterAddress;
-        public static void setClusterAddress(String address){Test.clusterAddress = address;}
+        private static String coreNodeAddress, storageAddress;
+        public static void setCoreNodeAddress(String address){Test.coreNodeAddress = address;}
+        public static void setStorageAddress(String address){Test.storageAddress = address;}
 
         public Test() {
         }
@@ -380,8 +381,8 @@ public class UserContext
             DHTUserAPI dht = null;
 
             try {
-                String coreIP = clusterAddress;
-                String storageIP = clusterAddress;
+                String coreIP = coreNodeAddress;
+                String storageIP = storageAddress;
 
                 int storagePort = 8000;
                 URL coreURL = new URL("http://" + coreIP + ":" + AbstractCoreNode.PORT + "/");

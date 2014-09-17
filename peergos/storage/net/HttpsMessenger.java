@@ -14,6 +14,7 @@ import java.io.*;
 import java.net.*;
 import java.security.*;
 import java.security.cert.CertificateException;
+import java.util.Arrays;
 import java.util.concurrent.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -49,11 +50,14 @@ public class HttpsMessenger
             char[] password = "storage".toCharArray();
             KeyStore ks = SSL.getKeyStore(password);
 
+            System.out.println("Certificate Chains "+ Arrays.asList(ks.getCertificateChain("private")) );
+
+
             KeyManagerFactory kmf = KeyManagerFactory.getInstance("SunX509");
             kmf.init(ks, password);
 
             TrustManagerFactory tmf = TrustManagerFactory.getInstance("SunX509");
-            tmf.init(ks);
+            tmf.init(SSL.getTrustedKeyStore());
 
             // setup the HTTPS context and parameters
             sslContext.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);

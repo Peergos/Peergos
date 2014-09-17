@@ -14,8 +14,17 @@ public class Tests
     public static void main(String[] args) throws IOException
     {
         String clusterAddress = IP.getMyPublicAddress().getHostAddress();
+        String coreNodeAddress, storageAddress;
         if (args.length >0)
-            clusterAddress = args[0];
+            coreNodeAddress = args[0];
+        else
+            coreNodeAddress = clusterAddress;
+
+        if (args.length >1)
+            storageAddress = args[1];
+        else
+            storageAddress = clusterAddress;
+
 
 
 //        testClass(Components.class);
@@ -24,7 +33,8 @@ public class Tests
 //        testClass(Crypto.class);
 //        testClass(UserContext.Test.class);
 
-        UserContext.Test.setClusterAddress(clusterAddress);
+        UserContext.Test.setCoreNodeAddress(coreNodeAddress);
+        UserContext.Test.setStorageAddress(storageAddress);
         testClass(UserContext.Test.class);
 //        testClass(CoreNode.class);
     }

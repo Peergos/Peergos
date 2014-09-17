@@ -203,7 +203,8 @@ public class SSL
             break;
         }
         ks.setCertificateEntry(getCommonName(cert), cert);
-        ks.setKeyEntry("private", myPrivateKey, password, new Certificate[]{cert, dir, rootCert});
+        ks.setCertificateEntry(getCommonName(dir), dir);
+        ks.setKeyEntry("private", myPrivateKey, password, new Certificate[]{cert});
         ks.store(new FileOutputStream(SSL_KEYSTORE_FILENAME), password);
         return ks;
     }
