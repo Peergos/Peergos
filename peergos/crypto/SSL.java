@@ -170,8 +170,9 @@ public class SSL
 
         Certificate[] dirs = SSL.getDirectoryServerCertificates();
         Certificate cert;
+        Certificate dir;
         while (true) {
-            Certificate dir = dirs[new SecureRandom().nextInt() % dirs.length];
+            dir = dirs[new SecureRandom().nextInt() % dirs.length];
 //            String alias = getCommonName(dir);
 //            ks.setCertificateEntry(alias, dir);
 
@@ -202,7 +203,7 @@ public class SSL
             break;
         }
         ks.setCertificateEntry(getCommonName(cert), cert);
-        ks.setKeyEntry("private", myPrivateKey, password, new Certificate[]{cert});
+        ks.setKeyEntry("private", myPrivateKey, password, new Certificate[]{cert, dir, rootCert});
         ks.store(new FileOutputStream(SSL_KEYSTORE_FILENAME), password);
         return ks;
     }
