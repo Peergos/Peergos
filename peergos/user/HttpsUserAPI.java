@@ -1,14 +1,11 @@
 package peergos.user;
 
-import akka.actor.ActorSystem;
 import org.bouncycastle.operator.OperatorCreationException;
 import peergos.crypto.SSL;
 import peergos.storage.dht.Message;
 import peergos.storage.net.HttpsMessenger;
 import peergos.user.fs.Fragment;
 import peergos.util.Serialize;
-import scala.concurrent.Future;
-import static akka.dispatch.Futures.future;
 
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
@@ -21,16 +18,18 @@ import java.net.URL;
 import java.security.*;
 import java.security.cert.CertificateException;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 public class HttpsUserAPI extends DHTUserAPI
 {
     private final URL target;
-    private final ActorSystem system;
+    private final ExecutorService executor = Executors.newFixedThreadPool(100);
 
-    public HttpsUserAPI(InetSocketAddress target, ActorSystem system) throws IOException
+    public HttpsUserAPI(InetSocketAddress target) throws IOException
     {
         this.target = new URL("https", target.getHostString(), target.getPort(), HttpsMessenger.USER_URL);
-        this.system = system;
         init();
     }
 
@@ -62,7 +61,7 @@ public class HttpsUserAPI extends DHTUserAPI
 
     @Override
     public Future<Boolean> put(final byte[] key, final byte[] value, final String user, final byte[] sharingKey, final byte[] mapKey, final byte[] proof) {
-        Future<Boolean> f = future(new Callable<Boolean>() {
+        Future<Boolean> f = executor.submit(new Callable<Boolean>() {
             public Boolean call() {
                 HttpsURLConnection conn = null;
                 try
@@ -96,13 +95,13 @@ public class HttpsUserAPI extends DHTUserAPI
                 }
                 return false;
             }
-        }, system.dispatcher());
+        });
         return f;
     }
 
     @Override
     public Future<Boolean> contains(final byte[] key) {
-        Future<Boolean> f = future(new Callable<Boolean>() {
+        Future<Boolean> f = executor.submit(new Callable<Boolean>() {
             public Boolean call() {
                 HttpsURLConnection conn = null;
                 try
@@ -127,13 +126,13 @@ public class HttpsUserAPI extends DHTUserAPI
                 }
                 return false;
                 }
-        }, system.dispatcher());
+        });
         return f;
     }
 
     @Override
     public Future<byte[]> get(final byte[] key) {
-        Future<byte[]> f = future(new Callable<byte[]>() {
+        Future<byte[]> f = executor.submit(new Callable<byte[]>() {
             public byte[] call() {
                 HttpsURLConnection conn = null;
                 try
@@ -158,7 +157,7 @@ public class HttpsUserAPI extends DHTUserAPI
                 }
                 return null;
                 }
-        }, system.dispatcher());
+        });
         return f;
     }
 }

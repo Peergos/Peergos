@@ -1,6 +1,6 @@
 package peergos.user;
 
-import scala.concurrent.Future;
+import java.util.concurrent.Future;
 
 public abstract class DHTUserAPI
 {

@@ -1,29 +1,26 @@
 package peergos.storage.net;
 
-import akka.actor.ActorRef;
-import static akka.pattern.Patterns.ask;
-
-import akka.actor.ActorSystem;
-import akka.dispatch.OnFailure;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import peergos.storage.dht.*;
 import peergos.user.fs.Fragment;
 import peergos.util.ArrayOps;
 import peergos.util.Serialize;
-import scala.concurrent.Future;
 
 import java.io.*;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 public class HttpUserAPIHandler implements HttpHandler
 {
-    private final ActorRef router;
-    private final ActorSystem system;
+    private final Router router;
+    private ExecutorService executor = Executors.newFixedThreadPool(100);
 
-    public HttpUserAPIHandler(ActorRef r, ActorSystem system)
+    public HttpUserAPIHandler(Router r)
     {
         this.router = r;
-        this.system = system;
     }
 
     @Override
@@ -33,22 +30,25 @@ public class HttpUserAPIHandler implements HttpHandler
         Message m = Message.read(din);
         if (m instanceof Message.PUT) {
             byte[] value = Serialize.deserializeByteArray(din, Fragment.SIZE);
-            Future<Object> fut = ask(router, new MessageMailbox(m), 30000);
-            fut.onSuccess(new DHTAPI.PutHandler(((Message.PUT) m).getKey(), value, new PutSuccess(httpExchange)), system.dispatcher());
-            fut.onFailure(new Failure(httpExchange), system.dispatcher());
+            Future<Object> fut = router.ask(m);
+            OnSuccess success = new DHTAPI.PutHandler(((Message.PUT) m).getKey(), value, new PutSuccess(httpExchange));
+            OnFailure failure = new Failure(httpExchange);
+            FutureWrapper.followWith(fut, success, failure, executor);
         } else if (m instanceof Message.GET){
             int type = din.readInt();
             if (type == 1) // GET
             {
-                Future<Object> fut = ask(router, new MessageMailbox(m), 30000);
-                fut.onSuccess(new DHTAPI.GetHandler(((Message.GET) m).getKey(), new GetSuccess(((Message.GET) m).getKey(), httpExchange)), system.dispatcher());
-                fut.onFailure(new Failure(httpExchange), system.dispatcher());
+                Future<Object> fut = router.ask(m);
+                OnSuccess success = new DHTAPI.GetHandler(((Message.GET) m).getKey(), new GetSuccess(((Message.GET) m).getKey(), httpExchange));
+                OnFailure failure = new Failure(httpExchange);
+                FutureWrapper.followWith(fut, success, failure, executor);
             }
             else if (type == 2) // CONTAINS
             {
-                Future<Object> fut = ask(router, new MessageMailbox(m), 30000);
-                fut.onSuccess(new DHTAPI.GetHandler(((Message.GET) m).getKey(), new ContainsSuccess(httpExchange)), system.dispatcher());
-                fut.onFailure(new Failure(httpExchange), system.dispatcher());
+                Future<Object> fut = router.ask(m);
+                OnSuccess success = new DHTAPI.GetHandler(((Message.GET) m).getKey(), new ContainsSuccess(httpExchange));
+                OnFailure failure = new Failure(httpExchange);
+                FutureWrapper.followWith(fut, success, failure, executor);
             }
         }
     }
@@ -131,7 +131,7 @@ public class HttpUserAPIHandler implements HttpHandler
         }
     }
 
-    private static class Failure extends OnFailure
+    private static class Failure implements OnFailure
     {
         private final HttpExchange exchange;
 
@@ -140,7 +140,7 @@ public class HttpUserAPIHandler implements HttpHandler
             this.exchange = exchange;
         }
 
-        public void onFailure(java.lang.Throwable throwable) throws java.lang.Throwable {
+        public void onFailure(java.lang.Throwable throwable) {
             try {
                 exchange.sendResponseHeaders(200, 0);
                 DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());

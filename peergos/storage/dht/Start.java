@@ -1,29 +1,21 @@
 package peergos.storage.dht;
 
-import akka.actor.ActorRef;
-import akka.actor.ActorSystem;
-import akka.actor.Inbox;
 import peergos.corenode.AbstractCoreNode;
 import peergos.corenode.HTTPCoreNodeServer;
 import peergos.crypto.SSL;
 import peergos.directory.DirectoryServer;
-import peergos.storage.net.HttpsMessenger;
 import peergos.storage.net.IP;
 import peergos.tests.Scripter;
 import peergos.util.Args;
-import scala.concurrent.duration.Duration;
 
 import java.io.File;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 public class Start
 {
-    static ActorSystem system;
-
     public static void main(String[] args) throws IOException
     {
         Args.parse(args);
@@ -76,33 +68,15 @@ public class Start
             SSL.signCertificate(Args.getParameter("csr", "core.csr"), Args.getParameter("rootPassword").toCharArray(), "Core");
         }
         else {
-            if (system == null)
-                system = ActorSystem.create("DHTRouter");
             int port = Args.getInt("port", 8000);
-            ActorRef router = Router.start(Args.getParameter("user", "root"), system, port);
-            final Inbox inbox = Inbox.create(system);
-            inbox.send(router, new HttpsMessenger.INITIALIZE());
-            System.out.println("Sent initialize to "+port);
-            // wait for INITIALIZED or INITERROR
-            Object result = inbox.receive(Duration.create(30, TimeUnit.SECONDS));
-            if (result instanceof HttpsMessenger.INITERROR)
-            {
-                throw new IllegalStateException("Couldn't INIT DHT router!");
-            }
-            if (Args.hasOption("firstNode"))
-                inbox.send(router, new HttpsMessenger.JOIN(null, 0));
-            else
-                inbox.send(router, new HttpsMessenger.JOIN(InetAddress.getByName(Args.getParameter("contactIP")), Args.getInt("contactPort", 8080)));
-            System.out.println("Sent JOIN to "+ port);
-            Object joinResult = inbox.receive(Duration.create(30, TimeUnit.SECONDS));
-            if (joinResult instanceof HttpsMessenger.JOINERROR)
-            {
-                // maybe try again?
-                throw new IllegalStateException("Couldn't concat the DHT!");
-            }
+            String user = Args.getParameter("user", "root");
+            boolean isFirstNode = Args.hasOption("firstNode");
+            InetAddress contactIP = isFirstNode ? null : InetAddress.getByName(Args.getParameter("contactIP"));
+            int contactPort = Args.getInt("contactPort", 8080);
+            Router router = new Router(user, port);
             // router is ready!
             System.out.println(port+" joined dht");
-            DHTAPI api = new DHTAPI(system, router);
+            DHTAPI api = new DHTAPI(router);
             if (Args.hasParameter("script")) {
                 new Scripter(api, Args.getParameter("script")).start();
             }

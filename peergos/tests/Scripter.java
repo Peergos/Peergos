@@ -3,12 +3,9 @@ package peergos.tests;
 import peergos.storage.dht.*;
 import peergos.storage.net.HttpMessenger;
 import peergos.util.*;
-import scala.concurrent.Await;
-import scala.concurrent.Future;
-import scala.concurrent.duration.Duration;
-import scala.concurrent.duration.FiniteDuration;
 
 import java.io.*;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 public class Scripter extends Thread
@@ -34,14 +31,12 @@ public class Scripter extends Thread
         String command;
         try
         {
-            FiniteDuration timeout = Duration.create(30, TimeUnit.SECONDS);
             while ((command = commands.readLine()) != null)
             {
                 final String[] parts = command.split(" ");
                 try {
                     Thread.sleep(Integer.parseInt(parts[0]));
                 } catch (InterruptedException e) {}
-
                 try {
                     if (parts[1].equals("PUT")) {
                         Future<Object> fut = api.put(ArrayOps.hexToBytes(parts[2]), ArrayOps.hexToBytes(parts[3]),
@@ -51,7 +46,7 @@ public class Scripter extends Thread
                             }
                         });
                         System.out.println("Sent Put message..");
-                        Await.result(fut, timeout);
+                        fut.get(30, TimeUnit.SECONDS);
                     } else if (parts[1].equals("GET")) {
                         Future<Object> fut = api.get(ArrayOps.hexToBytes(parts[2]), new GetHandlerCallback() {
                             @Override
@@ -65,7 +60,7 @@ public class Scripter extends Thread
                             }
                         });
                         System.out.println("Sent Get message");
-                        Await.result(fut, timeout);
+                        fut.get(30, TimeUnit.SECONDS);
                     } else if (parts[1].equals("CON")) {
                         Future<Object> fut = api.contains(ArrayOps.hexToBytes(parts[2]), new GetHandlerCallback() {
                             @Override
@@ -74,7 +69,7 @@ public class Scripter extends Thread
                             }
                         });
                         System.out.println("Sent Contains message");
-                        Await.result(fut, timeout);
+                        fut.get(30, TimeUnit.SECONDS);
                     } else if (parts[1].equals("KILL")) {
                         System.exit(0);
                     } else

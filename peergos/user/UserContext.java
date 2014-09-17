@@ -1,26 +1,21 @@
 package peergos.user;
 
-import akka.actor.ActorSystem;
 import peergos.corenode.AbstractCoreNode;
 import peergos.corenode.HTTPCoreNode;
 import peergos.crypto.SymmetricKey;
 import peergos.crypto.SymmetricLocationLink;
 import peergos.crypto.User;
 import peergos.crypto.UserPublicKey;
+import peergos.storage.dht.FutureWrapper;
+import peergos.storage.dht.OnFailure;
+import peergos.storage.dht.OnSuccess;
 import peergos.storage.net.IP;
 import peergos.user.fs.*;
 import peergos.user.fs.erasure.Erasure;
 import peergos.util.ArrayOps;
 import peergos.util.ByteArrayWrapper;
 import peergos.util.Serialize;
-import scala.concurrent.Await;
-import scala.concurrent.ExecutionContext;
-import scala.concurrent.Future;
-import scala.concurrent.duration.Duration;
-import scala.concurrent.duration.FiniteDuration;
-import scala.runtime.AbstractPartialFunction;
 
-import static akka.dispatch.Futures.sequence;
 import static org.junit.Assert.*;
 
 import java.io.*;
@@ -33,9 +28,8 @@ import java.security.KeyPair;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.util.*;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class UserContext
 {
@@ -46,17 +40,16 @@ public class UserContext
     private User us;
     private DHTUserAPI dht;
     private AbstractCoreNode core;
-    private ActorSystem system;
     private Map<UserPublicKey, StaticDataElement> staticData = new TreeMap();
+    private ExecutorService executor = Executors.newFixedThreadPool(100);
 
 
-    public UserContext(String username, User user, DHTUserAPI dht, AbstractCoreNode core, ActorSystem system)
+    public UserContext(String username, User user, DHTUserAPI dht, AbstractCoreNode core)
     {
         this.username = username;
         this.us = user;
         this.dht = dht;
         this.core = core;
-        this.system = system;
     }
 
     public boolean register()
@@ -191,10 +184,9 @@ public class UserContext
                 }
 
             // wait for all fragments to upload
-            Future<Iterable<Object>> futureListOfObjects = sequence(futures, system.dispatcher());
-            FiniteDuration timeout = Duration.create(10 * 60, TimeUnit.SECONDS);
+            Countdown<Object> all = new Countdown<>(futures.size(), futures, executor);
             try {
-                Await.result(futureListOfObjects, timeout);
+                all.await();
             } catch (Exception e) {
                 e.printStackTrace();
                 return false;
@@ -210,7 +202,7 @@ public class UserContext
         List<Future<byte[]>> futs = new ArrayList<Future<byte[]>>(res.length);
         for (int i=0; i < res.length; i++)
             futs.add(dht.get(hashes.get(i).data));
-        Countdown<byte[]> first50 = new Countdown<byte[]>(50, futs, system.dispatcher());
+        Countdown<byte[]> first50 = new Countdown<byte[]>(50, futs, executor);
         first50.await();
         List<Fragment> frags = new ArrayList<Fragment>();
         for (byte[] frag: first50.results)
@@ -337,26 +329,34 @@ public class UserContext
     public static class Countdown<V>
     {
         CountDownLatch left;
+        AtomicInteger failuresAllowed;
+        List<Throwable> errors = Collections.synchronizedList(new ArrayList());
         List<V> results;
 
-        public Countdown(int needed, List<Future<V>> futs, ExecutionContext context)
+        public Countdown(int needed, List<Future<V>> futs, ExecutorService context)
         {
             left = new CountDownLatch(needed);
             results = new CopyOnWriteArrayList<V>();
+            failuresAllowed = new AtomicInteger(futs.size()-needed);
             for (Future<V> fut: futs)
-                fut.onSuccess(new AbstractPartialFunction<V, Object>() {
+                FutureWrapper.followWith(fut, new OnSuccess<V>() {
                     @Override
-                    public boolean isDefinedAt(V v) {
+                    public void onSuccess(V o) {
                         left.countDown();
-                        results.add(v);
-                        return false;
+                        results.add(o);
+                    }
+                }, new OnFailure() {
+                    @Override
+                    public void onFailure(Throwable e) {
+                        failuresAllowed.decrementAndGet();
+                        errors.add(e);
                     }
                 }, context);
         }
 
         public void await()
         {
-            while (left.getCount() > 0)
+            while ((left.getCount() > 0) && (failuresAllowed.get() >= 0))
                 try {
                     left.await();
                 } catch (InterruptedException e) {}
@@ -370,66 +370,57 @@ public class UserContext
         @org.junit.Test
         public void all() {
             try {
-                ActorSystem system = null;
                 String coreIP = IP.getMyPublicAddress().getHostAddress();
                 String storageIP = IP.getMyPublicAddress().getHostAddress();
                 int storagePort = 8000;
-                try {
-                    system = ActorSystem.create("UserRouter");
+                URL coreURL = new URL("http://" + coreIP + ":" + AbstractCoreNode.PORT + "/");
+                HTTPCoreNode clientCoreNode = new HTTPCoreNode(coreURL);
 
-                    URL coreURL = new URL("http://" + coreIP + ":" + AbstractCoreNode.PORT + "/");
-                    HTTPCoreNode clientCoreNode = new HTTPCoreNode(coreURL);
+                // create a new us
+                long t1 = System.nanoTime();
+                User ourKeys = User.random();
+                long t2 = System.nanoTime();
+                System.out.printf("User generation took %d mS\n", (t2 - t1) / 1000000);
+                String ourname = "Bob";
 
-                    // create a new us
-                    long t1 = System.nanoTime();
-                    User ourKeys = User.random();
-                    long t2 = System.nanoTime();
-                    System.out.printf("User generation took %d mS\n", (t2 - t1) / 1000000);
-                    String ourname = "Bob";
+                // create a DHT API
+                DHTUserAPI dht = new HttpsUserAPI(new InetSocketAddress(InetAddress.getByName(storageIP), storagePort));
 
-                    // create a DHT API
-                    DHTUserAPI dht = new HttpsUserAPI(new InetSocketAddress(InetAddress.getByName(storageIP), storagePort), system);
+                // make and register us
+                UserContext us = new UserContext(ourname, ourKeys, dht, clientCoreNode);
+                assertTrue("Not already registered", !us.isRegistered());
+                assertTrue("Register", us.register());
 
-                    // make and register us
-                    UserContext us = new UserContext(ourname, ourKeys, dht, clientCoreNode, system);
-                    assertTrue("Not already registered", !us.isRegistered());
-                    assertTrue("Register", us.register());
+                // make another user
+                t1 = System.nanoTime();
+                User friendKeys = User.random();
+                t2 = System.nanoTime();
+                System.out.printf("User generation took %d mS\n", (t2 - t1) / 1000000);
+                String friendName = "Alice";
+                UserContext alice = new UserContext(friendName, friendKeys, dht, clientCoreNode);
+                alice.register();
 
-                    // make another user
-                    t1 = System.nanoTime();
-                    User friendKeys = User.random();
-                    t2 = System.nanoTime();
-                    System.out.printf("User generation took %d mS\n", (t2 - t1) / 1000000);
-                    String friendName = "Alice";
-                    UserContext alice = new UserContext(friendName, friendKeys, dht, clientCoreNode, system);
-                    alice.register();
+                // make Alice follow Bob (Alice gives Bob write permission to a folder in Alice's space)
+                alice.sendFollowRequest(ourname);
 
-                    // make Alice follow Bob (Alice gives Bob write permission to a folder in Alice's space)
-                    alice.sendFollowRequest(ourname);
+                // get the sharing key alice sent us
+                List<byte[]> reqs = us.getFollowRequests();
+                assertTrue("Got follow Request", reqs.size() == 1);
+                SharedRootDir root = us.decodeFollowRequest(reqs.get(0));
+                User sharer = new User(root.priv, root.pub);
 
-                    // get the sharing key alice sent us
-                    List<byte[]> reqs = us.getFollowRequests();
-                    assertTrue("Got follow Request", reqs.size() == 1);
-                    SharedRootDir root = us.decodeFollowRequest(reqs.get(0));
-                    User sharer = new User(root.priv, root.pub);
-
-                    // store a chunk in alices space using the permitted sharing key (this could be alice or bob at this point)
-                    int frags = 60;
-                    for (int i = 0; i < frags; i++) {
-                        byte[] signature = sharer.hashAndSignMessage(ArrayOps.concat(sharer.getPublicKey(), new byte[10 + i]));
-                        clientCoreNode.registerFragmentStorage(friendName, new InetSocketAddress("localhost", 666), friendName, root.pub.getEncoded(), new byte[10 + i], signature);
-                    }
-                    long quota = clientCoreNode.getQuota(friendName);
-                    System.out.println("Generated quota: " + quota);
-                    t1 = System.nanoTime();
-                    fileTest(alice.username, sharer, root.priv, alice, us);
-                    t2 = System.nanoTime();
-                    System.out.printf("File test took %d mS\n", (t2 - t1) / 1000000);
-
-
-                } finally {
-                    system.shutdown();
+                // store a chunk in alices space using the permitted sharing key (this could be alice or bob at this point)
+                int frags = 60;
+                for (int i = 0; i < frags; i++) {
+                    byte[] signature = sharer.hashAndSignMessage(ArrayOps.concat(sharer.getPublicKey(), new byte[10 + i]));
+                    clientCoreNode.registerFragmentStorage(friendName, new InetSocketAddress("localhost", 666), friendName, root.pub.getEncoded(), new byte[10 + i], signature);
                 }
+                long quota = clientCoreNode.getQuota(friendName);
+                System.out.println("Generated quota: " + quota);
+                t1 = System.nanoTime();
+                fileTest(alice.username, sharer, root.priv, alice, us);
+                t2 = System.nanoTime();
+                System.out.printf("File test took %d mS\n", (t2 - t1) / 1000000);
             } catch (Throwable t) {
                 t.printStackTrace();
             }

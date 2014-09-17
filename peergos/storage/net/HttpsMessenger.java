@@ -1,22 +1,13 @@
 package peergos.storage.net;
 
-import akka.actor.AbstractActor;
-import akka.actor.ActorRef;
-import akka.actor.ActorSystem;
-import akka.actor.Props;
-import akka.japi.Creator;
-import akka.japi.pf.FI;
-import akka.japi.pf.ReceiveBuilder;
 import com.sun.net.httpserver.HttpsConfigurator;
 import com.sun.net.httpserver.HttpsParameters;
 import com.sun.net.httpserver.HttpsServer;
 import peergos.crypto.SSL;
 import peergos.storage.dht.Letter;
 import peergos.storage.dht.Message;
-import peergos.storage.Storage;
 import org.bouncycastle.operator.OperatorCreationException;
-import scala.PartialFunction;
-import scala.runtime.BoxedUnit;
+import peergos.storage.dht.Router;
 
 import javax.net.ssl.*;
 import java.io.*;
@@ -27,7 +18,7 @@ import java.util.concurrent.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-public class HttpsMessenger extends AbstractActor
+public class HttpsMessenger
 {
     public static final String MESSAGE_URL = "/message/";
     public static final String USER_URL = "/user/";
@@ -38,49 +29,15 @@ public class HttpsMessenger extends AbstractActor
     private final Logger LOGGER;
     private final int localPort;
     HttpsServer httpsServer;
-    private PartialFunction<Object, BoxedUnit> ready;
 
-    public HttpsMessenger(int port, Logger LOGGER) throws IOException
+    public HttpsMessenger(int port, Logger LOGGER, Router router) throws IOException
     {
         this.LOGGER = LOGGER;
         this.localPort = port;
-        ready = ReceiveBuilder.match(Letter.class, new FI.UnitApply<Letter>() {
-            @Override
-            public void apply(Letter p) throws Exception {
-                if (p.dest == null)
-                    sender().tell(new JOINED(), self());
-                else
-                    sendMessage(p.m, p.dest, p.destPort);
-            }
-        }).build();
-
-        receive(ReceiveBuilder.match(INITIALIZE.class, new FI.UnitApply<INITIALIZE>() {
-            @Override
-            public void apply(INITIALIZE j) throws Exception {
-                if (init(sender(), context().system()))
-                {
-                    context().become(ready);
-                    sender().tell(new INITIALIZED(), self());
-                }
-                else
-                {
-                    sender().tell(new INITERROR(), self());
-                }
-            }
-        }).build());
+        init(router);
     }
 
-    public static Props props(final int port, final Logger LOGGER)
-    {
-        return Props.create(HttpsMessenger.class, new Creator<HttpsMessenger>() {
-            @Override
-            public HttpsMessenger create() throws Exception {
-                return new HttpsMessenger(port, LOGGER);
-            }
-        });
-    }
-
-    public boolean init(ActorRef router, ActorSystem system) throws IOException {
+    public boolean init(Router router) throws IOException {
         try
         {
             InetAddress us = IP.getMyPublicAddress();
@@ -135,7 +92,7 @@ public class HttpsMessenger extends AbstractActor
             return false;
         }
 
-        httpsServer.createContext(USER_URL, new HttpUserAPIHandler(router, system));
+        httpsServer.createContext(USER_URL, new HttpUserAPIHandler(router));
         httpsServer.setExecutor(Executors.newFixedThreadPool(THREADS));
         httpsServer.start();
 
@@ -210,11 +167,4 @@ public class HttpsMessenger extends AbstractActor
             this.port = port;
         }
     }
-
-    public static class JOINED {}
-    public static class JOINERROR {}
-
-    public static class INITIALIZE {}
-    public static class INITIALIZED {}
-    public static class INITERROR {}
 }

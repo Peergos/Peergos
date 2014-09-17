@@ -22,10 +22,9 @@ public class CoreNode
     public void coreNodeTests(AbstractCoreNode coreNode) throws Exception {
         ActorSystem system = null;
         try {
-            system = ActorSystem.create("UserRouter");
             User user = User.random();
             String username = "USER";
-            UserContext context = new UserContext(username, user, null, coreNode, system);
+            UserContext context = new UserContext(username, user, null, coreNode);
             assertTrue("Checking for username", !context.isRegistered());
             assertTrue("added user", context.register());
 
@@ -112,7 +111,7 @@ public class CoreNode
             //
             User friend = User.random();
             String friendname = "FRIEND";
-            UserContext friendContext = new UserContext(friendname, friend, null, coreNode, system);
+            UserContext friendContext = new UserContext(friendname, friend, null, coreNode);
 
             //
             //add to coreNode

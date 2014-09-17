@@ -1,18 +1,10 @@
 package peergos.storage.net;
 
-import akka.actor.AbstractActor;
-import akka.actor.ActorRef;
-import akka.actor.ActorSystem;
-import akka.actor.Props;
-import akka.japi.Creator;
-import akka.japi.pf.FI;
-import akka.japi.pf.ReceiveBuilder;
 import com.sun.net.httpserver.HttpServer;
 import peergos.storage.Storage;
 import peergos.storage.dht.Letter;
 import peergos.storage.dht.Message;
-import scala.PartialFunction;
-import scala.runtime.BoxedUnit;
+import peergos.storage.dht.Router;
 
 import java.io.*;
 import java.net.*;
@@ -20,7 +12,7 @@ import java.util.concurrent.Executors;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-public class HttpMessenger extends AbstractActor
+public class HttpMessenger
 {
     public static final String MESSAGE_URL = "/message/";
     public static final String USER_URL = "/user/";
@@ -32,62 +24,37 @@ public class HttpMessenger extends AbstractActor
     private final int localPort;
     HttpServer httpServer;
     private final Storage fragments;
-    private PartialFunction<Object, BoxedUnit> ready;
 
-    public HttpMessenger(int port, Storage fragments, Logger LOGGER) throws IOException
+    public HttpMessenger(int port, Storage fragments, Logger LOGGER, Router router) throws IOException
     {
         this.LOGGER = LOGGER;
         this.localPort = port;
         this.fragments = fragments;
-        ready = ReceiveBuilder.match(Letter.class, new FI.UnitApply<Letter>() {
-            @Override
-            public void apply(Letter p) throws Exception {
-                if (p.dest == null)
-                    sender().tell(new HttpsMessenger.JOINED(), self());
-                else
-                    sendMessage(p.m, p.dest, p.destPort+1);
-            }
-        }).build();
-
-        receive(ReceiveBuilder.match(HttpsMessenger.INITIALIZE.class, new FI.UnitApply<HttpsMessenger.INITIALIZE>() {
-            @Override
-            public void apply(HttpsMessenger.INITIALIZE j) throws Exception {
-                if (init(sender(), context().system()))
-                {
-                    context().become(ready);
-                    sender().tell(new HttpsMessenger.INITIALIZED(), self());
-                }
-                else
-                {
-                    sender().tell(new HttpsMessenger.INITERROR(), self());
-                }
-            }
-        }).build());
+        init(router);
     }
 
-    public static Props props(final int port, final Storage fragments, final Logger LOGGER)
-    {
-        return Props.create(HttpMessenger.class, new Creator<HttpMessenger>() {
-            @Override
-            public HttpMessenger create() throws Exception {
-                return new HttpMessenger(port, fragments, LOGGER);
-            }
-        });
-    }
-
-    public boolean init(ActorRef router, ActorSystem system) throws IOException {
+    public boolean init(Router router) throws IOException {
         InetAddress us = IP.getMyPublicAddress();
         InetSocketAddress address = new InetSocketAddress(us, localPort);
         System.out.println("Starting storage server at: " + us.getHostAddress() + ":" + localPort);
         httpServer = HttpServer.create(address, CONNECTION_BACKLOG);
 
         httpServer.createContext(MESSAGE_URL, new HttpMessageHandler(router));
-        httpServer.createContext(USER_URL, new HttpUserAPIHandler(router, system));
+        httpServer.createContext(USER_URL, new HttpUserAPIHandler(router));
         httpServer.createContext("/", new StoragePutHandler(fragments, "/"));
         httpServer.setExecutor(Executors.newFixedThreadPool(THREADS));
         httpServer.start();
 
         return true;
+    }
+
+    public void sendLetter(Letter p) {
+        if (p.dest != null)
+            try {
+                sendMessage(p.m, p.dest, p.destPort + 1);
+            } catch (IOException e) {
+                LOGGER.log(Level.ALL, "Error sending letter", e);
+            }
     }
 
     // need to think about latency of opening all these SSL connections,
