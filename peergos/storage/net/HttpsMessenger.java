@@ -4,7 +4,6 @@ import com.sun.net.httpserver.HttpsConfigurator;
 import com.sun.net.httpserver.HttpsParameters;
 import com.sun.net.httpserver.HttpsServer;
 import peergos.crypto.SSL;
-import peergos.storage.dht.Letter;
 import peergos.storage.dht.Message;
 import org.bouncycastle.operator.OperatorCreationException;
 import peergos.storage.dht.Router;
@@ -13,7 +12,8 @@ import javax.net.ssl.*;
 import java.io.*;
 import java.net.*;
 import java.security.*;
-import java.security.cert.CertificateException;
+import java.security.cert.*;
+import java.util.Arrays;
 import java.util.concurrent.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -48,12 +48,14 @@ public class HttpsMessenger
 
             char[] password = "storage".toCharArray();
             KeyStore ks = SSL.getKeyStore(password);
+            java.security.cert.Certificate[] chain = ks.getCertificateChain("private");
+            System.out.println("***** Certificate chain from storage key("+chain.length+"): "+ Arrays.asList(chain));
 
             KeyManagerFactory kmf = KeyManagerFactory.getInstance("SunX509");
             kmf.init(ks, password);
 
             TrustManagerFactory tmf = TrustManagerFactory.getInstance("SunX509");
-            tmf.init(ks);
+            tmf.init(SSL.getTrustedKeyStore());
 
             // setup the HTTPS context and parameters
             sslContext.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);

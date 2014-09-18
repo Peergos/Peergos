@@ -9,6 +9,7 @@ import peergos.util.Serialize;
 
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.TrustManagerFactory;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -25,6 +26,7 @@ import java.util.concurrent.Future;
 public class HttpsUserAPI extends DHTUserAPI
 {
     private final URL target;
+    private SSLSocketFactory sf;
     private final ExecutorService executor = Executors.newFixedThreadPool(100);
 
     public HttpsUserAPI(InetSocketAddress target) throws IOException
@@ -47,6 +49,7 @@ public class HttpsUserAPI extends DHTUserAPI
             // setup the HTTPS context and parameters
             sslContext.init(null, tmf.getTrustManagers(), null);
             SSLContext.setDefault(sslContext);
+            sf = sslContext.getSocketFactory();
             return true;
         }
         catch (NoSuchAlgorithmException |InvalidKeyException |KeyStoreException |CertificateException |
@@ -72,6 +75,7 @@ public class HttpsUserAPI extends DHTUserAPI
                 {
                     long start = System.nanoTime();
                     conn = (HttpsURLConnection) target.openConnection();
+                    conn.setSSLSocketFactory(sf);
                     conn.setDoInput(true);
                     conn.setDoOutput(true);
                     DataOutputStream dout = new DataOutputStream(conn.getOutputStream());

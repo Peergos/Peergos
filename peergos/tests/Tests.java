@@ -5,6 +5,7 @@ import org.junit.runner.Result;
 import org.junit.runner.notification.Failure;
 import peergos.storage.net.IP;
 import peergos.user.UserContext;
+import peergos.util.Args;
 
 import java.io.IOException;
 
@@ -13,18 +14,15 @@ public class Tests
 
     public static void main(String[] args) throws IOException
     {
-        String clusterAddress = IP.getMyPublicAddress().getHostAddress();
-        if (args.length >0)
-            clusterAddress = args[0];
-
-
+        Args.parse(args);
 //        testClass(Components.class);
 //        testClass(ErasureCodes.class);
 //        testClass(GaloisPolynomial.Test.class);
 //        testClass(Crypto.class);
 //        testClass(UserContext.Test.class);
 
-        UserContext.Test.setClusterAddress(clusterAddress);
+        UserContext.Test.setClusterAddress(Args.getParameter("clusterAddress", IP.getMyPublicAddress().getHostAddress()));
+        UserContext.Test.setCoreAddress(Args.getParameter("coreAddress", IP.getMyPublicAddress().getHostAddress()));
         testClass(UserContext.Test.class);
 //        testClass(CoreNode.class);
     }

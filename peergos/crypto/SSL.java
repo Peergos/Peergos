@@ -164,9 +164,9 @@ public class SSL
 
         // make rootCA a trust source
         X509Certificate rootCert = (X509Certificate) getRootCertificate();
-        KeyStore.Entry root = new KeyStore.TrustedCertificateEntry(rootCert);
-        String rootAlias = getCommonName(rootCert);
-        ks.setEntry(rootAlias, root, null);
+//        KeyStore.Entry root = new KeyStore.TrustedCertificateEntry(rootCert);
+//        String rootAlias = getCommonName(rootCert);
+//        ks.setEntry(rootAlias, root, null);
 
         Certificate[] dirs = SSL.getDirectoryServerCertificates();
         Certificate cert;
@@ -202,7 +202,7 @@ public class SSL
             cert = fact.generateCertificate(new ByteArrayInputStream(bout.toByteArray()));
             break;
         }
-        ks.setCertificateEntry(getCommonName(cert), cert);
+//        ks.setCertificateEntry(getCommonName(cert), cert);
         ks.setKeyEntry("private", myPrivateKey, password, new Certificate[]{cert, dir, rootCert});
         ks.store(new FileOutputStream(SSL_KEYSTORE_FILENAME), password);
         return ks;

@@ -188,7 +188,7 @@ public class UserContext
                 }
 
             // wait for all fragments to upload
-            Countdown<Object> all = new Countdown<>(futures.size(), futures, executor);
+            Countdown<Object> all = new Countdown(futures.size(), futures, executor);
             try {
                 all.await();
             } catch (Exception e) {
@@ -369,7 +369,9 @@ public class UserContext
 
     public static class Test {
         private static String clusterAddress;
+        private static String coreAddress;
         public static void setClusterAddress(String address){Test.clusterAddress = address;}
+        public static void setCoreAddress(String address){Test.coreAddress = address;}
 
         public Test() {
         }
@@ -380,7 +382,7 @@ public class UserContext
             DHTUserAPI dht = null;
 
             try {
-                String coreIP = clusterAddress;
+                String coreIP = coreAddress;
                 String storageIP = clusterAddress;
 
                 int storagePort = 8000;
