@@ -164,9 +164,6 @@ public class SSL
 
         // make rootCA a trust source
         X509Certificate rootCert = (X509Certificate) getRootCertificate();
-//        KeyStore.Entry root = new KeyStore.TrustedCertificateEntry(rootCert);
-//        String rootAlias = getCommonName(rootCert);
-//        ks.setEntry(rootAlias, root, null);
 
         Certificate[] dirs = SSL.getDirectoryServerCertificates();
         Certificate cert;
@@ -202,9 +199,15 @@ public class SSL
             cert = fact.generateCertificate(new ByteArrayInputStream(bout.toByteArray()));
             break;
         }
+        // will throw exception if certificates don't verify by signer public key
+        dir.verify(rootCert.getPublicKey());
+        cert.verify(dir.getPublicKey());
+
+        KeyStore.Entry root = new KeyStore.TrustedCertificateEntry(rootCert);
+        ks.setEntry(getCommonName(rootCert), root, null);
         ks.setCertificateEntry(getCommonName(cert), cert);
         ks.setCertificateEntry(getCommonName(dir), dir);
-        ks.setKeyEntry("private", myPrivateKey, password, new Certificate[]{cert});
+        ks.setKeyEntry(getCommonName(cert), myPrivateKey, password, new Certificate[]{cert, dir, rootCert});
         ks.store(new FileOutputStream(SSL_KEYSTORE_FILENAME), password);
         return ks;
     }
@@ -396,7 +399,7 @@ public class SSL
             X509v3CertificateBuilder certGen = new X509v3CertificateBuilder(
                     new X500Name("CN="+issuerCN), new BigInteger("1"),
                     new Date(System.currentTimeMillis()),
-                    new Date(System.currentTimeMillis() + 30 * 365 * 24 * 60 * 60 * 1000),
+                    new Date(System.currentTimeMillis() + 365 * 24 * 60 * 60 * 1000),
                     csr.getSubject(), keyInfo);
 
             AsymmetricKeyParameter foo = PrivateKeyFactory.createKey(priv.getEncoded());
