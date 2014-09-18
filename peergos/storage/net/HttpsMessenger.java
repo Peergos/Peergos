@@ -51,6 +51,9 @@ public class HttpsMessenger
             java.security.cert.Certificate[] chain = ks.getCertificateChain("private");
             System.out.println("***** Certificate chain from storage key("+chain.length+"): "+ Arrays.asList(chain));
 
+            System.out.println("Certificate Chains "+ Arrays.asList(ks.getCertificateChain("private")) );
+
+
             KeyManagerFactory kmf = KeyManagerFactory.getInstance("SunX509");
             kmf.init(ks, password);
 

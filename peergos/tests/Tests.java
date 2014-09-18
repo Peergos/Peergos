@@ -21,8 +21,8 @@ public class Tests
 //        testClass(Crypto.class);
 //        testClass(UserContext.Test.class);
 
-        UserContext.Test.setClusterAddress(Args.getParameter("clusterAddress", IP.getMyPublicAddress().getHostAddress()));
-        UserContext.Test.setCoreAddress(Args.getParameter("coreAddress", IP.getMyPublicAddress().getHostAddress()));
+        UserContext.Test.setStorageAddress(Args.getParameter("clusterAddress", IP.getMyPublicAddress().getHostAddress()));
+        UserContext.Test.setCoreNodeAddress(Args.getParameter("coreAddress", IP.getMyPublicAddress().getHostAddress()));
         testClass(UserContext.Test.class);
 //        testClass(CoreNode.class);
     }
