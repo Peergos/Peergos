@@ -208,6 +208,9 @@ public class SSL
         ks.setCertificateEntry(getCommonName(cert), cert);
         ks.setCertificateEntry(getCommonName(dir), dir);
         ks.setKeyEntry(getCommonName(cert), myPrivateKey, password, new Certificate[]{cert, dir, rootCert});
+        Certificate[] chain = ks.getCertificateChain(getCommonName(cert));
+        if (chain.length != 3)
+            throw new IllegalStateException("Certificate chain must contain 3 certificates! "+chain.length);
         ks.store(new FileOutputStream(SSL_KEYSTORE_FILENAME), password);
         return ks;
     }
@@ -287,9 +290,8 @@ public class SSL
     public static PKCS10CertificationRequest generateCSR(char[] password, String cn, KeyPair keypair, String outfile)
     {
         try {
-            PrivateKey myPrivateKey = keypair.getPrivate();
             String ipaddress = IP.getMyPublicAddress().getHostAddress();
-            return generateCertificateSignRequest(outfile, password, cn, ipaddress, keypair.getPublic(), myPrivateKey);
+            return generateCertificateSignRequestAndSaveToFile(outfile, password, cn, ipaddress, keypair);
         } catch (Exception e)
         {
             e.printStackTrace();
@@ -297,8 +299,29 @@ public class SSL
         }
     }
 
-    public static PKCS10CertificationRequest generateCertificateSignRequest(String outfile, char[] password,
-                                                                            String commonName, String ipaddress, PublicKey signee, PrivateKey signer)
+    public static PKCS10CertificationRequest generateCertificateSignRequestAndSaveToFile(String outfile, char[] password,
+                                                                            String commonName, String ipaddress, KeyPair keys)
+            throws KeyStoreException, IOException, NoSuchAlgorithmException, CertificateException, InvalidKeyException,
+            NoSuchProviderException, SignatureException, OperatorCreationException, CRMFException
+    {
+        PKCS10CertificationRequest csr = generateCertificateSignRequest(password, commonName, ipaddress, keys);
+        BufferedWriter w = new BufferedWriter(new FileWriter(outfile));
+        String type = "CERTIFICATE REQUEST";
+        byte[] encoding = csr.getEncoded();
+        PemObject pemObject = new PemObject(type, encoding);
+        StringWriter str = new StringWriter();
+        PEMWriter pemWriter = new PEMWriter(str);
+        pemWriter.writeObject(pemObject);
+        pemWriter.close();
+        str.close();
+        w.write(str.toString());
+        w.flush();
+        w.close();
+        return csr;
+    }
+
+    public static PKCS10CertificationRequest generateCertificateSignRequest(char[] password, String commonName,
+                                                                            String ipaddress, KeyPair keys)
             throws KeyStoreException, IOException, NoSuchAlgorithmException, CertificateException, InvalidKeyException,
             NoSuchProviderException, SignatureException, OperatorCreationException, CRMFException
     {
@@ -316,22 +339,10 @@ public class SSL
         GeneralNames subjectAltName = new GeneralNames(new GeneralName(GeneralName.iPAddress, ipaddress));
 
         Extension[] ext = new Extension[] {new Extension(Extension.subjectAlternativeName, false, new DEROctetString(subjectAltName))};
-        PKCS10CertificationRequestBuilder requestBuilder = new JcaPKCS10CertificationRequestBuilder(builder.build(), signee);
+        PKCS10CertificationRequestBuilder requestBuilder = new JcaPKCS10CertificationRequestBuilder(builder.build(), keys.getPublic());
         PKCS10CertificationRequest csr = requestBuilder.addAttribute(PKCSObjectIdentifiers.pkcs_9_at_extensionRequest,
-                new Extensions(ext)).build(new JcaContentSignerBuilder("SHA256withRSA").setProvider("BC").build(signer));
+                new Extensions(ext)).build(new JcaContentSignerBuilder("SHA256withRSA").setProvider("BC").build(keys.getPrivate()));
 
-        BufferedWriter w = new BufferedWriter(new FileWriter(outfile));
-        String type = "CERTIFICATE REQUEST";
-        byte[] encoding = csr.getEncoded();
-        PemObject pemObject = new PemObject(type, encoding);
-        StringWriter str = new StringWriter();
-        PEMWriter pemWriter = new PEMWriter(str);
-        pemWriter.writeObject(pemObject);
-        pemWriter.close();
-        str.close();
-        w.write(str.toString());
-        w.flush();
-        w.close();
         return csr;
     }
 
@@ -396,11 +407,11 @@ public class SSL
             AlgorithmIdentifier digAlgId = new DefaultDigestAlgorithmIdentifierFinder().find(sigAlgId);
 
 
-            X509v3CertificateBuilder certGen = new X509v3CertificateBuilder(
+            X509v3CertificateBuilder certGen = new JcaX509v3CertificateBuilder(
                     new X500Name("CN="+issuerCN), new BigInteger("1"),
                     new Date(System.currentTimeMillis()),
                     new Date(System.currentTimeMillis() + 365 * 24 * 60 * 60 * 1000),
-                    csr.getSubject(), keyInfo);
+                    csr.getSubject(), dirPub);
 
             AsymmetricKeyParameter foo = PrivateKeyFactory.createKey(priv.getEncoded());
             ContentSigner sigGen = new BcRSAContentSignerBuilder(sigAlgId, digAlgId).build(foo);
@@ -489,5 +500,43 @@ public class SSL
             dirs[i] = fact.generateCertificate(new ByteArrayInputStream(DirectoryCertificates.servers[i]));
         }
         return dirs;
+    }
+
+    @org.junit.Test
+    public void test() {
+        try {
+            char[] rootPass = "password".toCharArray();
+            KeyPair rootKeys = generateKeyPair();
+            Certificate root = generateRootCertificate(rootPass, rootKeys);
+
+            char[] dirPass = "password".toCharArray();
+            KeyPair dirKeys = generateKeyPair();
+            String dirCN = "192.168.0.18";
+            String dirIP = "192.168.0.18";
+            PKCS10CertificationRequest dirCSR = generateCertificateSignRequest(dirPass, dirCN, dirIP, dirKeys);
+            Certificate dir = signCertificate(dirCSR, rootKeys.getPrivate(), getCommonName(root));
+
+            char[] userPass = "password".toCharArray();
+            KeyPair userKeys = generateKeyPair();
+            String userCN = "192.168.0.19";
+            String userIP = "192.168.0.19";
+            PKCS10CertificationRequest userCSR = generateCertificateSignRequest(userPass, userCN, userIP, userKeys);
+            Certificate user = signCertificate(userCSR, dirKeys.getPrivate(), getCommonName(dir));
+
+            // will throw exception if certificates don't verify by signer public key
+            dir.verify(root.getPublicKey());
+            user.verify(dir.getPublicKey());
+
+            KeyStore ks = KeyStore.getInstance("PKCS12", "BC");
+            ks.load(null, userPass);
+            ks.setKeyEntry(getCommonName(user), userKeys.getPrivate(), userPass, new Certificate[]{user, dir, root});
+            Certificate[] chain = ks.getCertificateChain(getCommonName(user));
+            if (chain.length != 3)
+                throw new IllegalStateException("Certificate chain must contain 3 certificates! "+chain.length);
+
+        } catch (Exception e)
+        {
+            e.printStackTrace();
+        }
     }
 }
