@@ -1,6 +1,7 @@
 package peergos.directory;
 
 import com.sun.net.httpserver.HttpServer;
+import peergos.crypto.DirectoryCertificates;
 import peergos.crypto.SSL;
 import peergos.storage.net.IP;
 import org.bouncycastle.operator.OperatorCreationException;
@@ -29,6 +30,7 @@ public class DirectoryServer
     public static final int CONNECTION_BACKLOG = 100;
     private final Map<String, Certificate> storageServers = new ConcurrentHashMap();
     private final Map<String, Certificate> coreServers = new ConcurrentHashMap();
+    private final Certificate ourCert;
     private final KeyPair signing;
     private final HttpServer server;
     private final String commonName;
@@ -38,11 +40,17 @@ public class DirectoryServer
     private DirectoryServer(String keyfile, char[] passphrase, int port)
             throws IOException, NoSuchAlgorithmException, InvalidKeySpecException, OperatorCreationException, PKCSException
     {
+        Certificate[] dirs = SSL.getDirectoryServerCertificates();
         signing = SSL.loadKeyPair(keyfile, passphrase);
         //start HTTP server
         InetAddress us = IP.getMyPublicAddress();
         InetSocketAddress address = new InetSocketAddress(us, port);
         commonName = us.getHostAddress();
+        Certificate tmp = null;
+        for (Certificate dir: dirs)
+            if (SSL.getCommonName(dir).equals(commonName))
+                tmp = dir;
+        ourCert = tmp;
         for (Certificate cert: SSL.getCoreServerCertificates())
             coreServers.put(SSL.getCommonName(cert), cert);
         System.out.println("Directory Server listening on: " + us.getHostAddress() + ":" + port);
@@ -59,7 +67,7 @@ public class DirectoryServer
     public Certificate signCertificate(PKCS10CertificationRequest csr)
     {
         System.out.println("Signing certificate for "+SSL.getCommonName(csr));
-        Certificate signed =  SSL.signCertificate(csr, signing.getPrivate(), commonName);
+        Certificate signed =  SSL.signCertificate(csr, signing.getPrivate(), ourCert);
         // TODO don't overwrite existing certificates as this can easily be DOSed, rather require a cert invalidation first
         storageServers.put(SSL.getCommonName(csr), signed);
         return signed;

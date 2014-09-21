@@ -1,18 +1,12 @@
 package peergos.tests;
 
-import peergos.crypto.SSL;
 import peergos.crypto.SymmetricKey;
 import peergos.crypto.UserPublicKey;
 import peergos.crypto.User;
 import peergos.user.fs.Chunk;
 import peergos.user.fs.EncryptedChunk;
-import peergos.storage.net.IP;
 import peergos.util.ArrayOps;
-import org.bouncycastle.pkcs.PKCS10CertificationRequest;
 import org.junit.Test;
-
-import java.security.KeyPair;
-import java.security.cert.Certificate;
 
 import static junit.framework.Assert.assertTrue;
 import static junit.framework.TestCase.assertEquals;
@@ -36,79 +30,6 @@ public class Crypto
         EncryptedChunk coded = new EncryptedChunk(encrypted);
         byte[] original = coded.decrypt(chunk.getKey(), iv);
         assertTrue(java.util.Arrays.equals(raw, original));
-    }
-
-    @Test
-    public void SSLStorageCertificateCreationAndValidation()
-    {
-        try {
-            char[] storagePass = "password".toCharArray();
-            char[] dirpass = "password".toCharArray();
-            KeyPair dirKeys = SSL.loadKeyPair("dir.key", dirpass);
-            Certificate[] dirCerts = SSL.getDirectoryServerCertificates();
-            // pick one
-            Certificate dir = dirCerts[0];
-            KeyPair storageKeys = SSL.generateCSR(storagePass, "localhost", "storage.p12", "storage.csr");
-            PKCS10CertificationRequest csr = SSL.loadCSR("storage.csr");
-            Certificate signed = SSL.signCertificate(csr, dirKeys.getPrivate(), IP.getMyPublicAddress().getHostAddress());
-            // verify storage with dir key
-            signed.verify(dir.getPublicKey());
-            // verify dir with root key
-            dir.verify(SSL.getRootCertificate().getPublicKey());
-        } catch (Exception e)
-        {
-            e.printStackTrace();
-            assertEquals(true, false);
-        }
-    }
-
-    @Test
-    public void SSLDirectoryCertificateValidation()
-    {
-        try {
-            char[] rootpass = "password".toCharArray();
-            char[] dirpass = "password".toCharArray();
-            KeyPair dirKeys = SSL.loadKeyPair("dir.key", dirpass);
-            Certificate[] dirCerts = SSL.getDirectoryServerCertificates();
-            // verify certificate using RootCA and directly using public rootKey
-            for (Certificate cert: dirCerts) {
-                cert.verify(SSL.getRootKeyStore(rootpass).getCertificate("rootCA").getPublicKey());
-                cert.verify(SSL.getRootCertificate().getPublicKey());
-                System.out.println("Verified "+ SSL.getCommonName(cert));
-            }
-            System.out.printf("Verified %s directory server certificate(s) against rootCA\n", dirCerts.length);
-        } catch (Exception e)
-        {
-            e.printStackTrace();
-            assertEquals(true, false);
-        }
-    }
-
-    // overwrites directory server keys
-    public void SSLCertificateGenerationAndSigning()
-    {
-        try {
-            char[] rootpass = "password".toCharArray();
-            char[] dirpass = "password".toCharArray();
-            String privFile = "dir.key";
-            String csrFile = "dir.csr";
-            KeyPair pair = SSL.generateCSR(dirpass, IP.getMyPublicAddress().getHostAddress(), privFile, csrFile);
-            long start = System.nanoTime();
-            Certificate cert = SSL.signCertificate(csrFile, rootpass, "Directory");
-            long end = System.nanoTime();
-            System.out.printf("CSR signing took %d mS\n", (end-start)/1000000);
-            assertEquals(cert.getPublicKey(), pair.getPublic());
-            KeyPair samePair = SSL.loadKeyPair(privFile, dirpass);
-            assertEquals(pair.getPrivate(), samePair.getPrivate());
-            // verify certificate using RootCA and directly using public rootKey
-            cert.verify(SSL.getRootKeyStore(rootpass).getCertificate("rootCA").getPublicKey());
-            cert.verify(SSL.getRootCertificate().getPublicKey());
-
-        } catch (Exception e)
-        {
-            e.printStackTrace();
-            assertEquals(true, false);
-        }
     }
 
     @Test

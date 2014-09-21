@@ -47,7 +47,9 @@ import java.security.cert.Certificate;
 import java.security.interfaces.RSAPrivateCrtKey;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.RSAPublicKeySpec;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 
 public class SSL
 {
@@ -362,7 +364,7 @@ public class SSL
     {
         try {
             PKCS10CertificationRequest csr = loadCSR(csrFile);
-            return signCertificate(rootPassword, csr, type);
+            return signCertificateWithRoot(rootPassword, csr, type);
         } catch (IOException e)
         {
             e.printStackTrace();
@@ -370,12 +372,12 @@ public class SSL
         }
     }
 
-    public static Certificate signCertificate(char[] rootPassword, PKCS10CertificationRequest csr, String type)
+    public static Certificate signCertificateWithRoot(char[] rootPassword, PKCS10CertificationRequest csr, String type)
     {
         try {
             KeyStore ks = getRootKeyStore(rootPassword);
             PrivateKey rootPriv = (PrivateKey) ks.getKey("private", rootPassword);
-            Certificate signed = signCertificate(csr, rootPriv, "Peergos");
+            Certificate signed = signCertificate(csr, rootPriv, getRootCertificate());
             BufferedWriter w = new BufferedWriter(new FileWriter("peergos/crypto/"+type+"Certificates.java"));
             w.write("package peergos.crypto;\n\nimport org.bouncycastle.util.encoders.Base64;\n\n" +
                     "public class "+type+"Certificates {\n    public static final int NUM_SERVERS = 1;\n"+
@@ -393,7 +395,7 @@ public class SSL
         }
     }
 
-    public static Certificate signCertificate(PKCS10CertificationRequest csr, PrivateKey priv, String issuerCN)
+    public static Certificate signCertificate(PKCS10CertificationRequest csr, PrivateKey priv, Certificate issuer)
     {
         try {
             SubjectPublicKeyInfo pkInfo = csr.getSubjectPublicKeyInfo();
@@ -401,14 +403,12 @@ public class SSL
             RSAPublicKeySpec rsaSpec = new RSAPublicKeySpec(rsa.getModulus(), rsa.getExponent());
             KeyFactory kf = KeyFactory.getInstance("RSA");
             PublicKey dirPub = kf.generatePublic(rsaSpec);
-            SubjectPublicKeyInfo keyInfo = SubjectPublicKeyInfo.getInstance(dirPub.getEncoded());
 
             AlgorithmIdentifier sigAlgId = new DefaultSignatureAlgorithmIdentifierFinder().find("SHA256withRSA");
             AlgorithmIdentifier digAlgId = new DefaultDigestAlgorithmIdentifierFinder().find(sigAlgId);
 
-
-            X509v3CertificateBuilder certGen = new JcaX509v3CertificateBuilder(
-                    new X500Name("CN="+issuerCN), new BigInteger("1"),
+            JcaX509v3CertificateBuilder certGen = new JcaX509v3CertificateBuilder(
+                    new X500Name("CN="+getCommonName(issuer)), new BigInteger("1"),
                     new Date(System.currentTimeMillis()),
                     new Date(System.currentTimeMillis() + 365 * 24 * 60 * 60 * 1000),
                     csr.getSubject(), dirPub);
@@ -491,15 +491,16 @@ public class SSL
 
     // Directory server certificates are signed by the root key
     public static Certificate[] getDirectoryServerCertificates()
-            throws KeyStoreException, NoSuchProviderException, NoSuchAlgorithmException, CertificateException, IOException
     {
-        Certificate[] dirs = new Certificate[DirectoryCertificates.NUM_SERVERS];
-        for (int i =0; i < dirs.length; i++)
+        List<Certificate> dirs = new ArrayList();
+        for (int i =0; i < DirectoryCertificates.NUM_SERVERS; i++)
         {
-            CertificateFactory  fact = CertificateFactory.getInstance("X.509", "BC");
-            dirs[i] = fact.generateCertificate(new ByteArrayInputStream(DirectoryCertificates.servers[i]));
+            try {
+                CertificateFactory  fact = CertificateFactory.getInstance("X.509", "BC");
+                dirs.add(fact.generateCertificate(new ByteArrayInputStream(DirectoryCertificates.servers[i])));
+            } catch (Exception e) {e.printStackTrace();}
         }
-        return dirs;
+        return dirs.toArray(new Certificate[0]);
     }
 
     @org.junit.Test
@@ -514,23 +515,25 @@ public class SSL
             String dirCN = "192.168.0.18";
             String dirIP = "192.168.0.18";
             PKCS10CertificationRequest dirCSR = generateCertificateSignRequest(dirPass, dirCN, dirIP, dirKeys);
-            Certificate dir = signCertificate(dirCSR, rootKeys.getPrivate(), getCommonName(root));
+            Certificate dir = signCertificate(dirCSR, rootKeys.getPrivate(), root);
 
             char[] userPass = "password".toCharArray();
             KeyPair userKeys = generateKeyPair();
             String userCN = "192.168.0.19";
             String userIP = "192.168.0.19";
             PKCS10CertificationRequest userCSR = generateCertificateSignRequest(userPass, userCN, userIP, userKeys);
-            Certificate user = signCertificate(userCSR, dirKeys.getPrivate(), getCommonName(dir));
+            Certificate user = signCertificate(userCSR, dirKeys.getPrivate(), dir);
 
             // will throw exception if certificates don't verify by signer public key
             dir.verify(root.getPublicKey());
             user.verify(dir.getPublicKey());
 
+            // save so we can analyse with openssl
             KeyStore ks = KeyStore.getInstance("PKCS12", "BC");
             ks.load(null, userPass);
             ks.setKeyEntry(getCommonName(user), userKeys.getPrivate(), userPass, new Certificate[]{user, dir, root});
             Certificate[] chain = ks.getCertificateChain(getCommonName(user));
+            ks.store(new FileOutputStream("test.p12"), userPass);
             if (chain.length != 3)
                 throw new IllegalStateException("Certificate chain must contain 3 certificates! "+chain.length);
 
