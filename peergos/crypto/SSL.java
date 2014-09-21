@@ -50,6 +50,7 @@ import java.security.spec.RSAPublicKeySpec;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.Random;
 
 public class SSL
 {
@@ -408,7 +409,7 @@ public class SSL
             AlgorithmIdentifier digAlgId = new DefaultDigestAlgorithmIdentifierFinder().find(sigAlgId);
 
             JcaX509v3CertificateBuilder certGen = new JcaX509v3CertificateBuilder(
-                    new X500Name("CN="+getCommonName(issuer)), new BigInteger("1"),
+                    new X500Name("CN="+getCommonName(issuer)), BigInteger.probablePrime(1024, new Random()),
                     new Date(System.currentTimeMillis()),
                     new Date(System.currentTimeMillis() + 365 * 24 * 60 * 60 * 1000),
                     csr.getSubject(), dirPub);
