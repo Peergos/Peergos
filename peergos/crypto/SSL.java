@@ -1,5 +1,6 @@
 package peergos.crypto;
 
+import org.bouncycastle.x509.extension.AuthorityKeyIdentifierStructure;
 import peergos.directory.DirectoryServer;
 import peergos.storage.net.IP;
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
@@ -218,7 +219,7 @@ public class SSL
         return ks;
     }
 
-    public static Certificate generateCertificate(char[] password, String commonName, String ipaddress, PublicKey signee, PrivateKey signer)
+    public static Certificate generateCertificate(String commonName, String ipaddress, PublicKey signee, PrivateKey signer)
             throws KeyStoreException, IOException, NoSuchAlgorithmException, CertificateException, InvalidKeyException,
             NoSuchProviderException, SignatureException, OperatorCreationException
     {
@@ -238,17 +239,19 @@ public class SSL
         X509v3CertificateBuilder certGen = new JcaX509v3CertificateBuilder(builder.build(), sn, from, to, builder.build(), signee);
         GeneralNames subjectAltName = new GeneralNames(new GeneralName(GeneralName.iPAddress, ipaddress));
         certGen.addExtension(new ASN1ObjectIdentifier("2.5.29.17"), false, subjectAltName);
+        // make cert a CA, 1 ensures a 3 certificate chain is possible root -> dir -> storage node
+        certGen.addExtension(X509Extensions.BasicConstraints, true, new BasicConstraints(1));
 
         ContentSigner sigGen = new JcaContentSignerBuilder("SHA256withRSA").build(signer);
         X509CertificateHolder certHolder = certGen.build(sigGen);
         return new JcaX509CertificateConverter().getCertificate(certHolder);
     }
 
-    public static Certificate generateRootCertificate(char[] password, KeyPair keypair)
+    public static Certificate generateRootCertificate(KeyPair keypair)
             throws KeyStoreException, IOException, NoSuchAlgorithmException, CertificateException, InvalidKeyException,
             NoSuchProviderException, SignatureException, OperatorCreationException
     {
-        return generateCertificate(password, "Peergos", IP.getMyPublicAddress().getHostAddress(), keypair.getPublic(), keypair.getPrivate());
+        return generateCertificate("Peergos", IP.getMyPublicAddress().getHostAddress(), keypair.getPublic(), keypair.getPrivate());
     }
 
     public static void generateAndSaveRootCertificate(char[] password)
@@ -258,7 +261,7 @@ public class SSL
             ks.load(null, password);
             KeyPair keypair = generateKeyPair();
             PrivateKey myPrivateKey = keypair.getPrivate();
-            Certificate cert = generateRootCertificate(password, keypair);
+            Certificate cert = generateRootCertificate(keypair);
             BufferedWriter w = new BufferedWriter(new FileWriter("peergos/crypto/RootCertificate.java"));
             w.write("package peergos.crypto;\n\nimport org.bouncycastle.util.encoders.Base64;\n\n" +
                     "public class RootCertificate {\n    public static final byte[] rootCA = Base64.decode(");
@@ -413,6 +416,8 @@ public class SSL
                     new Date(System.currentTimeMillis()),
                     new Date(System.currentTimeMillis() + 365 * 24 * 60 * 60 * 1000),
                     csr.getSubject(), dirPub);
+            certGen.addExtension(X509Extensions.AuthorityKeyIdentifier, false,
+                        new AuthorityKeyIdentifierStructure((X509Certificate)issuer));
 
             AsymmetricKeyParameter foo = PrivateKeyFactory.createKey(priv.getEncoded());
             ContentSigner sigGen = new BcRSAContentSignerBuilder(sigAlgId, digAlgId).build(foo);
@@ -507,9 +512,8 @@ public class SSL
     @org.junit.Test
     public void test() {
         try {
-            char[] rootPass = "password".toCharArray();
             KeyPair rootKeys = generateKeyPair();
-            Certificate root = generateRootCertificate(rootPass, rootKeys);
+            Certificate root = generateRootCertificate(rootKeys);
 
             char[] dirPass = "password".toCharArray();
             KeyPair dirKeys = generateKeyPair();
