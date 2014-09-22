@@ -55,8 +55,6 @@ public class Router
     }
 
     public void init(InetAddress addr, int port) throws IOException {
-        messenger.init(this);
-        userAPI.init(this);
         messenger.sendLetter(new Letter(new Message.JOIN(us), addr, port));
         // wait for response
 

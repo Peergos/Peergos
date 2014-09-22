@@ -553,7 +553,7 @@ public class SSL
 
             if (((X509Certificate)dir).getBasicConstraints() != 0)
                 throw new IllegalStateException("Dir cert must act as a CA!");
-            
+
             ks.store(new FileOutputStream("test.p12"), userPass);
             if (chain.length != 3)
                 throw new IllegalStateException("Certificate chain must contain 3 certificates! "+chain.length);

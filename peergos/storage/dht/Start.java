@@ -74,6 +74,7 @@ public class Start
             InetAddress contactIP = isFirstNode ? null : InetAddress.getByName(Args.getParameter("contactIP"));
             int contactPort = Args.getInt("contactPort", 8080);
             Router router = new Router(user, port);
+            router.init(contactIP, contactPort);
             // router is ready!
             System.out.println(port+" joined dht");
             DHTAPI api = new DHTAPI(router);
