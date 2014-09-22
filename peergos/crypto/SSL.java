@@ -414,7 +414,7 @@ public class SSL
             AlgorithmIdentifier digAlgId = new DefaultDigestAlgorithmIdentifierFinder().find(sigAlgId);
 
             JcaX509v3CertificateBuilder certGen = new JcaX509v3CertificateBuilder(
-                    new X500Name("CN="+getCommonName(issuer)), BigInteger.probablePrime(1024, new Random()),
+                    (X509Certificate)issuer, BigInteger.probablePrime(1024, new Random()),
                     new Date(System.currentTimeMillis()),
                     new Date(System.currentTimeMillis() + 365 * 24 * 60 * 60 * 1000),
                     csr.getSubject(), dirPub);
