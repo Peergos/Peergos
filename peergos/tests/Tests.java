@@ -24,8 +24,8 @@ public class Tests
 
         UserContext.Test.setStorageAddress(Args.getParameter("clusterAddress", IP.getMyPublicAddress().getHostAddress()));
         UserContext.Test.setCoreNodeAddress(Args.getParameter("coreAddress", IP.getMyPublicAddress().getHostAddress()));
-//        testClass(SSL.class);
-        testClass(UserContext.Test.class);
+        testClass(SSL.class);
+//        testClass(UserContext.Test.class);
 //        testClass(CoreNode.class);
     }
 

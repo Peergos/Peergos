@@ -219,7 +219,7 @@ public class SSL
         return ks;
     }
 
-    public static Certificate generateCertificate(String commonName, String ipaddress, PublicKey signee, PrivateKey signer)
+    public static Certificate generateSelfSignedCertificate(String commonName, String ipaddress, PublicKey signee, PrivateKey signer)
             throws KeyStoreException, IOException, NoSuchAlgorithmException, CertificateException, InvalidKeyException,
             NoSuchProviderException, SignatureException, OperatorCreationException
     {
@@ -237,6 +237,8 @@ public class SSL
 
         System.out.println("SAN = " + commonName);
         X509v3CertificateBuilder certGen = new JcaX509v3CertificateBuilder(builder.build(), sn, from, to, builder.build(), signee);
+//        certGen.addExtension(X509Extensions.AuthorityKeyIdentifier, false,
+//                new AuthorityKeyIdentifierStructure((X509Certificate)issuer));
         GeneralNames subjectAltName = new GeneralNames(new GeneralName(GeneralName.iPAddress, ipaddress));
         certGen.addExtension(new ASN1ObjectIdentifier("2.5.29.17"), false, subjectAltName);
         // make cert a CA, 1 ensures a 3 certificate chain is possible root -> dir -> storage node
@@ -251,7 +253,7 @@ public class SSL
             throws KeyStoreException, IOException, NoSuchAlgorithmException, CertificateException, InvalidKeyException,
             NoSuchProviderException, SignatureException, OperatorCreationException
     {
-        return generateCertificate("Peergos", IP.getMyPublicAddress().getHostAddress(), keypair.getPublic(), keypair.getPrivate());
+        return generateSelfSignedCertificate("Peergos", IP.getMyPublicAddress().getHostAddress(), keypair.getPublic(), keypair.getPrivate());
     }
 
     public static void generateAndSaveRootCertificate(char[] password)
@@ -538,6 +540,13 @@ public class SSL
             ks.load(null, userPass);
             ks.setKeyEntry(getCommonName(user), userKeys.getPrivate(), userPass, new Certificate[]{user, dir, root});
             Certificate[] chain = ks.getCertificateChain(getCommonName(user));
+            if (!((X509Certificate)chain[1]).getIssuerX500Principal().equals(((X509Certificate)chain[2]).getSubjectX500Principal()))
+                throw new IllegalStateException("chain error (1-2): "+ ((X509Certificate)chain[1]).getIssuerX500Principal() + " != "
+                        + ((X509Certificate)chain[2]).getSubjectX500Principal());
+            if (!((X509Certificate)chain[0]).getIssuerX500Principal().equals(((X509Certificate)chain[1]).getSubjectX500Principal()))
+                throw new IllegalStateException("chain error (0-1): "+ ((X509Certificate)chain[0]).getIssuerX500Principal() + " != "
+                        + ((X509Certificate)chain[1]).getSubjectX500Principal());
+
             ks.store(new FileOutputStream("test.p12"), userPass);
             if (chain.length != 3)
                 throw new IllegalStateException("Certificate chain must contain 3 certificates! "+chain.length);
