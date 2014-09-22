@@ -50,16 +50,6 @@ public class HttpsMessenger
             char[] password = "storage".toCharArray();
             KeyStore ks = SSL.getKeyStore(password);
 
-            String storageAlias = null;
-            Enumeration<String> en = ks.aliases();
-            while (en.hasMoreElements()) {
-                String alias = en.nextElement();
-                if (ks.isKeyEntry(alias))
-                    storageAlias = alias;
-            }
-            java.security.cert.Certificate[] chain = ks.getCertificateChain(storageAlias);
-            System.out.println("***** Certificate chain from storage key("+chain.length+"): "+ Arrays.asList(chain));
-
             KeyManagerFactory kmf = KeyManagerFactory.getInstance("SunX509");
             kmf.init(ks, password);
 
