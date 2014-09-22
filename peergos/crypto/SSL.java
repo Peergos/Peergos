@@ -383,7 +383,7 @@ public class SSL
         try {
             KeyStore ks = getRootKeyStore(rootPassword);
             PrivateKey rootPriv = (PrivateKey) ks.getKey("private", rootPassword);
-            Certificate signed = signCertificate(csr, rootPriv, getRootCertificate());
+            Certificate signed = signCertificate(csr, rootPriv, getRootCertificate(), true);
             BufferedWriter w = new BufferedWriter(new FileWriter("peergos/crypto/"+type+"Certificates.java"));
             w.write("package peergos.crypto;\n\nimport org.bouncycastle.util.encoders.Base64;\n\n" +
                     "public class "+type+"Certificates {\n    public static final int NUM_SERVERS = 1;\n"+
@@ -401,7 +401,7 @@ public class SSL
         }
     }
 
-    public static Certificate signCertificate(PKCS10CertificationRequest csr, PrivateKey priv, Certificate issuer)
+    public static Certificate signCertificate(PKCS10CertificationRequest csr, PrivateKey priv, Certificate issuer, boolean issuerIsRoot)
     {
         try {
             SubjectPublicKeyInfo pkInfo = csr.getSubjectPublicKeyInfo();
@@ -420,7 +420,8 @@ public class SSL
                     csr.getSubject(), dirPub);
             certGen.addExtension(X509Extensions.AuthorityKeyIdentifier, false,
                         new AuthorityKeyIdentifierStructure((X509Certificate)issuer));
-
+            if (issuerIsRoot)
+                certGen.addExtension(X509Extensions.BasicConstraints, true, new BasicConstraints(0));
             AsymmetricKeyParameter foo = PrivateKeyFactory.createKey(priv.getEncoded());
             ContentSigner sigGen = new BcRSAContentSignerBuilder(sigAlgId, digAlgId).build(foo);
 
@@ -522,14 +523,14 @@ public class SSL
             String dirCN = "192.168.0.18";
             String dirIP = "192.168.0.18";
             PKCS10CertificationRequest dirCSR = generateCertificateSignRequest(dirPass, dirCN, dirIP, dirKeys);
-            Certificate dir = signCertificate(dirCSR, rootKeys.getPrivate(), root);
+            Certificate dir = signCertificate(dirCSR, rootKeys.getPrivate(), root, true);
 
             char[] userPass = "password".toCharArray();
             KeyPair userKeys = generateKeyPair();
             String userCN = "192.168.0.19";
             String userIP = "192.168.0.19";
             PKCS10CertificationRequest userCSR = generateCertificateSignRequest(userPass, userCN, userIP, userKeys);
-            Certificate user = signCertificate(userCSR, dirKeys.getPrivate(), dir);
+            Certificate user = signCertificate(userCSR, dirKeys.getPrivate(), dir, false);
 
             // will throw exception if certificates don't verify by signer public key
             dir.verify(root.getPublicKey());
@@ -547,6 +548,12 @@ public class SSL
                 throw new IllegalStateException("chain error (0-1): "+ ((X509Certificate)chain[0]).getIssuerX500Principal() + " != "
                         + ((X509Certificate)chain[1]).getSubjectX500Principal());
 
+            if (((X509Certificate)root).getBasicConstraints() != 1)
+                throw new IllegalStateException("Root cert must allow an intermediate cert to act as CA!");
+
+            if (((X509Certificate)dir).getBasicConstraints() != 0)
+                throw new IllegalStateException("Dir cert must act as a CA!");
+            
             ks.store(new FileOutputStream("test.p12"), userPass);
             if (chain.length != 3)
                 throw new IllegalStateException("Certificate chain must contain 3 certificates! "+chain.length);

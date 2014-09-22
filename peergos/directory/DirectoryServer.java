@@ -67,7 +67,7 @@ public class DirectoryServer
     public Certificate signCertificate(PKCS10CertificationRequest csr)
     {
         System.out.println("Signing certificate for "+SSL.getCommonName(csr));
-        Certificate signed =  SSL.signCertificate(csr, signing.getPrivate(), ourCert);
+        Certificate signed =  SSL.signCertificate(csr, signing.getPrivate(), ourCert, false);
         // TODO don't overwrite existing certificates as this can easily be DOSed, rather require a cert invalidation first
         storageServers.put(SSL.getCommonName(csr), signed);
         return signed;
