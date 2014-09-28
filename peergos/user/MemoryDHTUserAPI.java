@@ -24,8 +24,6 @@ public class MemoryDHTUserAPI extends DHTUserAPI
 
     public  Future<Boolean> put(byte[] key, byte[] value, final String user, final byte[] sharingKey, final byte[] mapKey, final byte[] proof)
     {
-        ByteArrayWrapper wrapper = new ByteArrayWrapper(key);
-
         chunks.put(new ByteArrayWrapper(mapKey), value);
         return new DummyFuture<Boolean>(true);
     }
@@ -37,8 +35,7 @@ public class MemoryDHTUserAPI extends DHTUserAPI
     }
 
     public  Future<byte[]> get(byte[] key){
-        ByteArrayWrapper keyWrapper = new ByteArrayWrapper(key);
-        return new DummyFuture<byte[]>(chunks.get(keyWrapper));
+        return new DummyFuture<byte[]>(chunks.get(new ByteArrayWrapper(key)));
     }
 
     public  void shutdown(){}
