@@ -20,13 +20,13 @@ public class Location
         this.mapKey = mapKey;
     }
 
-    public void serialise(DataOutputStream dout) throws IOException {
+    public void serialise(DataOutput dout) throws IOException {
         Serialize.serialize(owner, dout);
         Serialize.serialize(subKey.getPublicKey(), dout);
         Serialize.serialize(mapKey.data, dout);
     }
 
-    public static Location deserialise(DataInputStream din) throws IOException {
+    public static Location deserialise(DataInput din) throws IOException {
         String owner = Serialize.deserializeString(din, UserContext.MAX_USERNAME_SIZE);
         UserPublicKey pub = new UserPublicKey(Serialize.deserializeByteArray(din, UserPublicKey.RSA_KEY_BITS));
         ByteArrayWrapper mapKey = new ByteArrayWrapper(Serialize.deserializeByteArray(din, UserPublicKey.HASH_BYTES));

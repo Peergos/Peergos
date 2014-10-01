@@ -83,6 +83,10 @@ public class FileAccess extends Metadata
         return sharingR2parent.get(sharingKey.getKey()).target(sharingKey);
     }
 
+    public ChunkProperties getProps(SymmetricKey baseKey, byte[] iv) {
+        return FileProperties.deserialize(baseKey.decrypt(encryptedMetadata, iv));
+    }
+
     public FileProperties getProps(SymmetricKey parentKey)
     {
         return (FileProperties) getProps(parent2meta.target(parentKey), parent2meta.initializationVector());

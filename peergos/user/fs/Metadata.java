@@ -24,6 +24,11 @@ public class Metadata
         this.encryptedMetadata = encryptedMetadata;
     }
 
+    public Metadata(ChunkProperties props, SymmetricKey baseKey, byte[] iv) {
+        type = TYPE.FOLLOWER;
+        encryptedMetadata = baseKey.encrypt(props.serialize(), iv);
+    }
+
     public Location getNextChunkLocation(SymmetricKey baseKey, byte[] iv) {
         if (iv == null)
             return getProps(baseKey).getNextChunkLocation();
@@ -31,11 +36,13 @@ public class Metadata
     }
 
     public ChunkProperties getProps(SymmetricKey baseKey) {
-        throw new IllegalStateException("Follower metadata requires an initialiation vector to decrypt!");
+        throw new IllegalStateException("Follower metadata requires an initialization vector to decrypt!");
     }
 
     public ChunkProperties getProps(SymmetricKey baseKey, byte[] iv) {
-        return FileProperties.deserialize(baseKey.decrypt(encryptedMetadata, iv));
+        try {
+            return new ChunkProperties(new DataInputStream(new ByteArrayInputStream(baseKey.decrypt(encryptedMetadata, iv))));
+        } catch (IOException e) {e.printStackTrace();return null;}
     }
 
     public List<ByteArrayWrapper> getFragmentHashes() {

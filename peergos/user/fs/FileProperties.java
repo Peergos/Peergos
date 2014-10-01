@@ -1,6 +1,5 @@
 package peergos.user.fs;
 
-import peergos.crypto.SymmetricKey;
 import peergos.user.UserContext;
 import peergos.util.Serialize;
 
@@ -15,6 +14,12 @@ public class FileProperties extends ChunkProperties
         super(iv, next);
         this.name = name;
         this.size = size;
+    }
+
+    public FileProperties(DataInput din) throws IOException {
+        super(din);
+        name = Serialize.deserializeString(din, UserContext.MAX_USERNAME_SIZE);
+        size = din.readLong();
     }
 
     public boolean isPrimary() {
@@ -40,7 +45,7 @@ public class FileProperties extends ChunkProperties
     public static FileProperties deserialize(byte[] data) {
         DataInputStream din = new DataInputStream(new ByteArrayInputStream(data));
         try {
-            return new FileProperties(Serialize.deserializeString(din, UserContext.MAX_USERNAME_SIZE), Serialize.deserializeByteArray(din, SymmetricKey.IV_SIZE), din.readLong(), Location.deserialise(din));
+            return new FileProperties(din);
         } catch (IOException e) {
             e.printStackTrace();
             return null;

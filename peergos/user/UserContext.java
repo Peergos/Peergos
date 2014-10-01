@@ -375,15 +375,21 @@ public class UserContext
 
     public static class Test {
         private static String coreNodeAddress, storageAddress;
-        public static void setCoreNodeAddress(String address){Test.coreNodeAddress = address;}
-        public static void setStorageAddress(String address){Test.storageAddress = address;}
+
+        public static void setCoreNodeAddress(String address) {
+            Test.coreNodeAddress = address;
+        }
+
+        public static void setStorageAddress(String address) {
+            Test.storageAddress = address;
+        }
 
         public Test() {
         }
 
         @org.junit.Test
         public void all() {
-            UserContext us=null, alice=null;
+            UserContext us = null, alice = null;
             DHTUserAPI dht = null;
 
             try {
@@ -399,7 +405,7 @@ public class UserContext
                 User ourKeys = User.random();
                 long t2 = System.nanoTime();
                 System.out.printf("User generation took %d mS\n", (t2 - t1) / 1000000);
-                String ourname = "Bob_"+ System.currentTimeMillis();
+                String ourname = "Bob_" + System.currentTimeMillis();
 
                 // create a DHT API
                 dht = new HttpsUserAPI(new InetSocketAddress(InetAddress.getByName(storageIP), storagePort));
@@ -414,7 +420,7 @@ public class UserContext
                 User friendKeys = User.random();
                 t2 = System.nanoTime();
                 System.out.printf("User generation took %d mS\n", (t2 - t1) / 1000000);
-                String friendName = "Alice_"+ System.currentTimeMillis();
+                String friendName = "Alice_" + System.currentTimeMillis();
                 alice = new UserContext(friendName, friendKeys, dht, clientCoreNode);
                 alice.register();
 
@@ -436,7 +442,7 @@ public class UserContext
                 long quota = clientCoreNode.getQuota(friendName);
                 System.out.println("Generated quota: " + quota);
                 t1 = System.nanoTime();
-                fileTest(alice.username, sharer, root.priv, alice, us);
+                mediumFileTest(alice.username, sharer, root.priv, alice, us);
                 t2 = System.nanoTime();
                 System.out.printf("File test took %d mS\n", (t2 - t1) / 1000000);
             } catch (Throwable t) {
@@ -445,6 +451,102 @@ public class UserContext
                 us.shutdown();
                 alice.shutdown();
                 dht.shutdown();
+            }
+        }
+
+        public void mediumFileTest(String owner, User sharer, PrivateKey sharerPriv, UserContext receiver, UserContext sender) {
+            // create a root dir and a file to it, then retrieve and decrypt the file using the receiver
+            // create root cryptree
+            SymmetricKey rootRKey = SymmetricKey.random();
+            SymmetricKey rootWKey = SymmetricKey.random();
+            String name = "/";
+            byte[] rootIV = SymmetricKey.randomIV();
+            byte[] rootMapKey = ArrayOps.random(32); // root will be stored under this in the core node
+            DirAccess root = new DirAccess(rootRKey, new FileProperties(name, rootIV, 0, null), rootWKey);
+
+            // generate file (two chunks)
+            Random r = new Random();
+            byte[] initVector = new byte[SymmetricKey.IV_SIZE];
+            r.nextBytes(initVector);
+            byte[] raw1 = new byte[Chunk.MAX_SIZE];
+            byte[] raw2 = new byte[Chunk.MAX_SIZE];
+            byte[] template = "Hello secure cloud! Goodbye NSA!".getBytes();
+            byte[] template2 = "Second hi safe cloud! Adios NSA!".getBytes();
+            for (int i = 0; i < raw1.length / 32; i++)
+                System.arraycopy(template, 0, raw1, 32 * i, 32);
+            for (int i = 0; i < raw2.length / 32; i++)
+                System.arraycopy(template2, 0, raw2, 32 * i, 32);
+
+            // add file to root dir
+            String filename = "HiNSA.bin"; // /photos/tree.jpg
+            SymmetricKey fileKey = SymmetricKey.random();
+            byte[] fileMapKey = ArrayOps.random(32); // file metablob will be stored under this in the core node
+            byte[] chunk2MapKey = ArrayOps.random(32); // file metablob will be stored under this in the core node
+            Location fileLocation = new Location(owner, sharer, new ByteArrayWrapper(fileMapKey));
+            Location chunk2Location = new Location(owner, sharer, new ByteArrayWrapper(chunk2MapKey));
+
+            root.addFile(fileLocation, rootRKey, fileKey);
+
+            // 1st chunk
+            Chunk chunk1 = new Chunk(raw1, fileKey);
+            EncryptedChunk encryptedChunk1 = new EncryptedChunk(chunk1.encrypt(initVector));
+            Fragment[] fragments1 = encryptedChunk1.generateFragments();
+            List<ByteArrayWrapper> hashes1 = new ArrayList(fragments1.length);
+            for (Fragment f : fragments1)
+                hashes1.add(new ByteArrayWrapper(f.getHash()));
+            FileProperties props1 = new FileProperties(filename, initVector, raw1.length + raw2.length, chunk2Location);
+            FileAccess file = new FileAccess(fileKey, props1, hashes1);
+
+            // 2nd chunk
+            Chunk chunk2 = new Chunk(raw2, fileKey);
+            EncryptedChunk encryptedChunk2 = new EncryptedChunk(chunk2.encrypt(initVector));
+            Fragment[] fragments2 = encryptedChunk2.generateFragments();
+            List<ByteArrayWrapper> hashes2 = new ArrayList(fragments2.length);
+            for (Fragment f : fragments2)
+                hashes2.add(new ByteArrayWrapper(f.getHash()));
+            ChunkProperties props2 = new ChunkProperties(initVector, null);
+            Metadata meta2 = new Metadata(props2, fileKey, initVector);
+
+            // now write the root to the core nodes
+            receiver.addToStaticData(sharer, new SharedRootDir(receiver.username, sharer.getKey(), sharerPriv, new ByteArrayWrapper(rootMapKey), rootRKey));
+            sender.uploadChunk(root, new Fragment[0], owner, sharer, rootMapKey);
+            // now upload the file meta blob
+            sender.uploadChunk(file, fragments1, owner, sharer, fileMapKey);
+            sender.uploadChunk(meta2, fragments2, owner, sharer, chunk2MapKey);
+
+            // now check the retrieval from zero knowledge
+            Map<StaticDataElement, DirAccess> roots = receiver.getRoots();
+            for (StaticDataElement dirPointer : roots.keySet()) {
+                SymmetricKey rootDirKey = ((SharedRootDir) dirPointer).rootDirKey;
+                DirAccess dir = roots.get(dirPointer);
+                try {
+                    Map<SymmetricLocationLink, Metadata> files = receiver.retrieveMetadata(dir.getFiles(), rootDirKey);
+                    for (SymmetricLocationLink fileLoc : files.keySet()) {
+                        SymmetricKey baseKey = fileLoc.target(rootDirKey);
+                        FileAccess fileBlob = (FileAccess) files.get(fileLoc);
+                        // download fragments in chunk
+                        Fragment[] retrievedfragments1 = sender.downloadFragments(fileBlob);
+                        FileProperties fileProps = fileBlob.getProps(baseKey);
+
+                        byte[] enc1 = Erasure.recombine(reorder(fileBlob, retrievedfragments1), Chunk.MAX_SIZE, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
+                        EncryptedChunk encrypted1 = new EncryptedChunk(enc1);
+                        byte[] original1 = encrypted1.decrypt(baseKey, fileProps.getIV());
+                        // checks
+                        assertTrue("Correct filename", fileProps.name.equals(filename));
+                        assertTrue("Correct file contents", Arrays.equals(original1, raw1));
+
+                        // 2nd chunk
+                        Metadata second = sender.getMetadata(fileBlob.getNextChunkLocation(baseKey, fileProps.getIV()), baseKey);
+                        Fragment[] retrievedfragments2 = sender.downloadFragments(second);
+                        byte[] enc2 = Erasure.recombine(reorder(second, retrievedfragments2), Chunk.MAX_SIZE, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
+                        EncryptedChunk encrypted2 = new EncryptedChunk(enc2);
+                        byte[] original2 = encrypted2.decrypt(baseKey, fileProps.getIV());
+                        assertTrue("Correct file contents (2nd chunk)", Arrays.equals(original2, raw2));
+                    }
+                } catch (IOException e) {
+                    System.err.println("Couldn't get File metadata!");
+                    throw new IllegalStateException(e);
+                }
             }
         }
 
