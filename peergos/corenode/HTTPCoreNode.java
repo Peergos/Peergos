@@ -155,7 +155,7 @@ public class HTTPCoreNode extends AbstractCoreNode
         }
     }
 
-   @Override public boolean followRequest(String target, byte[] encodedSharingPublicKey)
+   @Override public boolean followRequest(String target, byte[] encryptedPermission)
     {
         HttpURLConnection conn = null;
         try
@@ -168,7 +168,7 @@ public class HTTPCoreNode extends AbstractCoreNode
         
             Serialize.serialize("followRequest", dout);
             Serialize.serialize(target, dout);
-            Serialize.serialize(encodedSharingPublicKey, dout);
+            Serialize.serialize(encryptedPermission, dout);
             dout.flush();
 
             DataInputStream din = new DataInputStream(conn.getInputStream());

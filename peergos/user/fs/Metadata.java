@@ -10,9 +10,9 @@ import java.util.List;
 
 // The user side version of a metadatablob on the core node
 
-public abstract class Metadata
+public class Metadata
 {
-    public static final int MAX_ELEMENT_SIZE = Integer.MAX_VALUE;
+    public static final int MAX_ELEMENT_SIZE = Chunk.MAX_SIZE;
     public static enum TYPE {DIR, FILE, FOLLOWER}
 
     private final TYPE type;
@@ -24,13 +24,25 @@ public abstract class Metadata
         this.encryptedMetadata = encryptedMetadata;
     }
 
-    public abstract FileProperties getProps(SymmetricKey baseKey);
+    public Location getNextChunkLocation(SymmetricKey baseKey, byte[] iv) {
+        if (iv == null)
+            return getProps(baseKey).getNextChunkLocation();
+        return getProps(baseKey, iv).getNextChunkLocation();
+    }
+
+    public ChunkProperties getProps(SymmetricKey baseKey) {
+        throw new IllegalStateException("Follower metadata requires an initialiation vector to decrypt!");
+    }
+
+    public ChunkProperties getProps(SymmetricKey baseKey, byte[] iv) {
+        return FileProperties.deserialize(baseKey.decrypt(encryptedMetadata, iv));
+    }
 
     public List<ByteArrayWrapper> getFragmentHashes() {
         return new ArrayList();
     }
 
-    public static Metadata deserialize(DataInput din, SymmetricKey ourKey, List<ByteArrayWrapper> fragments) throws IOException {
+    public static Metadata deserialize(DataInput din, SymmetricKey ourKey) throws IOException {
         int index = din.readByte() & 0xff;
         if (index > TYPE.values().length)
             throw new IllegalStateException("Unknown metadata blob type! " + (index));
@@ -40,9 +52,9 @@ public abstract class Metadata
             case DIR:
                 return DirAccess.deserialize(din, ourKey, meta);
             case FILE:
-                return FileAccess.deserialize(din, fragments, meta);
+                return FileAccess.deserialize(din, meta);
             case FOLLOWER:
-                return null;
+                return new Metadata(t, Serialize.deserializeByteArray(din, Chunk.MAX_SIZE));
             default:
                 return null;
         }

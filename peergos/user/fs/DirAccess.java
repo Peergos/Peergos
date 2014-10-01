@@ -127,8 +127,8 @@ public class DirAccess extends Metadata
         return res;
     }
 
-    public FileProperties getProps(SymmetricKey ourSubfolders) {
-        return FileProperties.deserialize(parent2meta.target(subfolders2parent.target(ourSubfolders)).decrypt(encryptedMetadata, parent2meta.initializationVector()));
+    public ChunkProperties getProps(SymmetricKey ourSubfolders) {
+        return getProps(parent2meta.target(subfolders2parent.target(ourSubfolders)), parent2meta.initializationVector());
     }
 
     public void addSubFolder(Location location, SymmetricKey ourSubfolders, SymmetricKey targetSubfolders)

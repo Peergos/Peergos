@@ -6,20 +6,19 @@ import peergos.util.Serialize;
 
 import java.io.*;
 
-public class FileProperties
+public class FileProperties extends ChunkProperties
 {
     public final String name;
-    private final byte[] iv;
     private final long size;
 
-    public FileProperties(String name, byte[] iv, long size) {
+    public FileProperties(String name, byte[] iv, long size, Location next) {
+        super(iv, next);
         this.name = name;
         this.size = size;
-        this.iv = iv;
     }
 
-    public byte[] getIV() {
-        return iv;
+    public boolean isPrimary() {
+        return true;
     }
 
     public long getSize() {
@@ -30,8 +29,8 @@ public class FileProperties
         ByteArrayOutputStream bout = new ByteArrayOutputStream();
         DataOutputStream dout = new DataOutputStream(bout);
         try {
+            super.serialise(dout);
             Serialize.serialize(name, dout);
-            Serialize.serialize(iv, dout);
             dout.writeLong(size);
             dout.flush();
         } catch (IOException e) {e.printStackTrace();}
@@ -41,7 +40,7 @@ public class FileProperties
     public static FileProperties deserialize(byte[] data) {
         DataInputStream din = new DataInputStream(new ByteArrayInputStream(data));
         try {
-            return new FileProperties(Serialize.deserializeString(din, UserContext.MAX_USERNAME_SIZE), Serialize.deserializeByteArray(din, SymmetricKey.IV_SIZE), din.readLong());
+            return new FileProperties(Serialize.deserializeString(din, UserContext.MAX_USERNAME_SIZE), Serialize.deserializeByteArray(din, SymmetricKey.IV_SIZE), din.readLong(), Location.deserialise(din));
         } catch (IOException e) {
             e.printStackTrace();
             return null;

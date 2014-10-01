@@ -48,13 +48,13 @@ public class SymmetricLocationLink
 
     public SymmetricKey target(SymmetricKey from)
     {
-        byte[] iv = Arrays.copyOfRange(link, 0, SymmetricKey.IV_SIZE);
+        byte[] iv = initializationVector();
         byte[] encoded = from.decrypt(Arrays.copyOfRange(link, SymmetricKey.IV_SIZE, link.length), iv);
         return new SymmetricKey(encoded);
     }
 
     public Location targetLocation(SymmetricKey from) throws IOException {
-        byte[] iv = Arrays.copyOfRange(link, 0, SymmetricKey.IV_SIZE);
+        byte[] iv = initializationVector();
         return Location.decrypt(from, iv, loc);
     }
 }

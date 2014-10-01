@@ -209,14 +209,14 @@ public abstract class AbstractCoreNode
         userData.staticData = clearanceData;
         return true;
     }
-    public synchronized boolean followRequest(String target, byte[] encodedSharingPublicKey)
+    public synchronized boolean followRequest(String target, byte[] encryptedPermission)
     {
         UserData userData = userMap.get(target);
         if (userData == null)
             return false;
         if (userData.followRequests.size() > UserData.MAX_PENDING_FOLLOWERS)
             return false;
-        userData.followRequests.add(new ByteArrayWrapper(encodedSharingPublicKey));
+        userData.followRequests.add(new ByteArrayWrapper(encryptedPermission));
         return true;
     }
 

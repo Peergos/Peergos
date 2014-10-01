@@ -603,12 +603,12 @@ public class SQLiteCoreNode extends AbstractCoreNode
 
     }
 
-    public synchronized boolean followRequest(String target, byte[] encodedSharingPublicKey)
+    public synchronized boolean followRequest(String target, byte[] encryptedPermission)
     {
-        if (! super.followRequest(target, encodedSharingPublicKey))
+        if (! super.followRequest(target, encryptedPermission))
             return false;
 
-        FollowRequestData request = new FollowRequestData(target, encodedSharingPublicKey);
+        FollowRequestData request = new FollowRequestData(target, encryptedPermission);
         return request.insert();
     }
 

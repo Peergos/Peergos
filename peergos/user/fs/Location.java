@@ -20,13 +20,24 @@ public class Location
         this.mapKey = mapKey;
     }
 
+    public void serialise(DataOutputStream dout) throws IOException {
+        Serialize.serialize(owner, dout);
+        Serialize.serialize(subKey.getPublicKey(), dout);
+        Serialize.serialize(mapKey.data, dout);
+    }
+
+    public static Location deserialise(DataInputStream din) throws IOException {
+        String owner = Serialize.deserializeString(din, UserContext.MAX_USERNAME_SIZE);
+        UserPublicKey pub = new UserPublicKey(Serialize.deserializeByteArray(din, UserPublicKey.RSA_KEY_BITS));
+        ByteArrayWrapper mapKey = new ByteArrayWrapper(Serialize.deserializeByteArray(din, UserPublicKey.HASH_BYTES));
+        return new Location(owner, pub, mapKey);
+    }
+
     public byte[] encrypt(SymmetricKey key, byte[] iv) {
         ByteArrayOutputStream bout = new ByteArrayOutputStream();
         try {
             DataOutputStream dout = new DataOutputStream(bout);
-            Serialize.serialize(owner, dout);
-            Serialize.serialize(subKey.getPublicKey(), dout);
-            Serialize.serialize(mapKey.data, dout);
+            serialise(dout);
         } catch (IOException e) {e.printStackTrace();}
         return key.encrypt(bout.toByteArray(), iv);
     }
@@ -35,9 +46,6 @@ public class Location
         byte[] raw = key.decrypt(data, iv);
         ByteArrayInputStream bin = new ByteArrayInputStream(raw);
         DataInputStream din = new DataInputStream(bin);
-        String owner = Serialize.deserializeString(din, UserContext.MAX_USERNAME_SIZE);
-        UserPublicKey pub = new UserPublicKey(Serialize.deserializeByteArray(din, UserPublicKey.RSA_KEY_BITS));
-        ByteArrayWrapper mapKey = new ByteArrayWrapper(Serialize.deserializeByteArray(din, UserPublicKey.HASH_BYTES));
-        return new Location(owner, pub, mapKey);
+        return deserialise(din);
     }
 }

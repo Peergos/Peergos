@@ -9,7 +9,6 @@ import peergos.crypto.UserPublicKey;
 import peergos.storage.dht.FutureWrapper;
 import peergos.storage.dht.OnFailure;
 import peergos.storage.dht.OnSuccess;
-import peergos.storage.net.IP;
 import peergos.user.fs.*;
 import peergos.user.fs.erasure.Erasure;
 import peergos.util.ArrayOps;
@@ -236,23 +235,30 @@ public class UserContext
         ByteArrayWrapper rawMeta = meta.metadata();
         System.out.println("Retrieved dir metadata blob of "+rawMeta.data.length + " bytes.");
         try {
-            return (DirAccess) Metadata.deserialize(new DataInputStream(new ByteArrayInputStream(rawMeta.data)), raw.rootDirKey, null);
+            return (DirAccess) Metadata.deserialize(new DataInputStream(new ByteArrayInputStream(rawMeta.data)), raw.rootDirKey);
         } catch (IOException e) {
             e.printStackTrace();
             return null;
         }
     }
 
-    public Map<SymmetricLocationLink, FileAccess> retrieveFiles(Collection<SymmetricLocationLink> links, SymmetricKey parentFolder) throws IOException {
-        Map<SymmetricLocationLink, FileAccess> res = new HashMap();
+    public Metadata getMetadata(Location loc, SymmetricKey key) throws IOException {
+        AbstractCoreNode.MetadataBlob meta = core.getMetadataBlob(loc.owner, loc.subKey.getPublicKey(), loc.mapKey.data);
+        DataInputStream din = new DataInputStream(new ByteArrayInputStream(meta.metadata().data));
+        return Metadata.deserialize(din, key);
+    }
+
+    public Map<SymmetricLocationLink, Metadata> retrieveMetadata(Collection<SymmetricLocationLink> links, SymmetricKey parentFolder) throws IOException {
+        Map<SymmetricLocationLink, Metadata> res = new HashMap();
         for (SymmetricLocationLink link: links) {
             Location loc = link.targetLocation(parentFolder);
-            AbstractCoreNode.MetadataBlob meta = core.getMetadataBlob(loc.owner, loc.subKey.getPublicKey(), loc.mapKey.data);
-            DataInputStream din = new DataInputStream(new ByteArrayInputStream(meta.metadata().data));
-
-            byte[] fragmentHashesRaw = core.getFragmentHashes(loc.owner, loc.subKey, loc.mapKey.data);
-            List<ByteArrayWrapper> fragmentHashes = ArrayOps.split(fragmentHashesRaw, UserPublicKey.HASH_BYTES);
-            res.put(link, (FileAccess)Metadata.deserialize(din, null, fragmentHashes));
+            Metadata fa = getMetadata(loc, link.target(parentFolder));
+            if (fa instanceof FileAccess) {
+                byte[] fragmentHashesRaw = core.getFragmentHashes(loc.owner, loc.subKey, loc.mapKey.data);
+                List<ByteArrayWrapper> fragmentHashes = ArrayOps.split(fragmentHashesRaw, UserPublicKey.HASH_BYTES);
+                ((FileAccess) fa).setFragments(fragmentHashes);
+            }
+            res.put(link, fa);
         }
         return res;
     }
@@ -450,7 +456,7 @@ public class UserContext
             String name = "/";
             byte[] rootIV = SymmetricKey.randomIV();
             byte[] rootMapKey = ArrayOps.random(32); // root will be stored under this in the core node
-            DirAccess root = new DirAccess(rootRKey, new FileProperties(name, rootIV, 0), rootWKey);
+            DirAccess root = new DirAccess(rootRKey, new FileProperties(name, rootIV, 0, null), rootWKey);
 
             // generate file (single chunk)
             Random r = new Random();
@@ -475,7 +481,7 @@ public class UserContext
             List<ByteArrayWrapper> hashes = new ArrayList(fragments.length);
             for (Fragment f : fragments)
                 hashes.add(new ByteArrayWrapper(f.getHash()));
-            FileProperties props = new FileProperties(filename, initVector, raw.length);
+            FileProperties props = new FileProperties(filename, initVector, raw.length, null);
             FileAccess file = new FileAccess(fileKey, props, hashes);
 
             // now write the root to the core nodes
@@ -491,9 +497,9 @@ public class UserContext
                 SymmetricKey rootDirKey = ((SharedRootDir) dirPointer).rootDirKey;
                 DirAccess dir = roots.get(dirPointer);
                 try {
-                    Map<SymmetricLocationLink, FileAccess> files = receiver.retrieveFiles(dir.getFiles(), rootDirKey);
+                    Map<SymmetricLocationLink, Metadata> files = receiver.retrieveMetadata(dir.getFiles(), rootDirKey);
                     for (SymmetricLocationLink fileLoc : files.keySet()) {
-                        FileAccess fileBlob = files.get(fileLoc);
+                        FileAccess fileBlob = (FileAccess) files.get(fileLoc);
                         // download fragments in chunk
                         Fragment[] retrievedfragments = sender.downloadFragments(fileBlob);
                         FileProperties fileProps = fileBlob.getProps(fileLoc.target(rootDirKey));
