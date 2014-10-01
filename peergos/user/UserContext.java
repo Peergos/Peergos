@@ -434,13 +434,13 @@ public class UserContext
                 User sharer = new User(root.priv, root.pub);
 
                 // store a chunk in alices space using the permitted sharing key (this could be alice or bob at this point)
-                int frags = 60;
+                int frags = 60*2;
                 for (int i = 0; i < frags; i++) {
                     byte[] signature = sharer.hashAndSignMessage(ArrayOps.concat(sharer.getPublicKey(), new byte[10 + i]));
                     clientCoreNode.registerFragmentStorage(friendName, new InetSocketAddress("localhost", 666), friendName, root.pub.getEncoded(), new byte[10 + i], signature);
                 }
                 long quota = clientCoreNode.getQuota(friendName);
-                System.out.println("Generated quota: " + quota);
+                System.out.println("Generated quota: " + quota/1024 + " KiB");
                 t1 = System.nanoTime();
                 mediumFileTest(alice.username, sharer, root.priv, alice, us);
                 t2 = System.nanoTime();

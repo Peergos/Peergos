@@ -28,20 +28,20 @@ public class ChunkProperties
         ByteArrayOutputStream bout = new ByteArrayOutputStream();
         DataOutputStream dout = new DataOutputStream(bout);
         try {
-            if (next == null)
-                dout.writeBoolean(false);
-            else {
-                dout.writeBoolean(true);
-                next.serialise(dout);
-            }
-            dout.flush();
+            serialise(dout);
         } catch (IOException e) {e.printStackTrace();}
         return bout.toByteArray();
     }
 
     public void serialise(DataOutputStream dout) throws IOException {
         Serialize.serialize(iv, dout);
-        next.serialise(dout);
+        if (next == null)
+            dout.writeBoolean(false);
+        else {
+            dout.writeBoolean(true);
+            next.serialise(dout);
+        }
+        dout.flush();
     }
 
     public boolean isPrimary() {
