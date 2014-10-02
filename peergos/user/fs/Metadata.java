@@ -6,17 +6,21 @@ import peergos.util.Serialize;
 
 import java.io.*;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 // The user side version of a metadatablob on the core node
 
 public class Metadata
 {
-    public static final int MAX_ELEMENT_SIZE = Chunk.MAX_SIZE;
+    public static final int MAX_ELEMENT_SIZE = Chunk.MAX_SIZE; //TODO restrict this
     public static enum TYPE {DIR, FILE, FOLLOWER}
 
     private final TYPE type;
     protected final byte[] encryptedMetadata;
+
+    // public data
+    private List<ByteArrayWrapper> fragments;
 
     public Metadata(TYPE t, byte[] encryptedMetadata)
     {
@@ -27,6 +31,14 @@ public class Metadata
     public Metadata(ChunkProperties props, SymmetricKey baseKey, byte[] iv) {
         type = TYPE.FOLLOWER;
         encryptedMetadata = baseKey.encrypt(props.serialize(), iv);
+    }
+
+    public void setFragments(List<ByteArrayWrapper> fragments) {
+        this.fragments = fragments;
+    }
+
+    public List<ByteArrayWrapper> getFragmentHashes() {
+        return Collections.unmodifiableList(fragments);
     }
 
     public Location getNextChunkLocation(SymmetricKey baseKey, byte[] iv) {
@@ -45,10 +57,6 @@ public class Metadata
         } catch (IOException e) {e.printStackTrace();return null;}
     }
 
-    public List<ByteArrayWrapper> getFragmentHashes() {
-        return new ArrayList();
-    }
-
     public static Metadata deserialize(DataInput din, SymmetricKey ourKey) throws IOException {
         int index = din.readByte() & 0xff;
         if (index > TYPE.values().length)
@@ -61,7 +69,7 @@ public class Metadata
             case FILE:
                 return FileAccess.deserialize(din, meta);
             case FOLLOWER:
-                return new Metadata(t, Serialize.deserializeByteArray(din, Chunk.MAX_SIZE));
+                return new Metadata(t, meta);
             default:
                 return null;
         }

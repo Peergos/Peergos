@@ -24,7 +24,7 @@ public class HttpsMessenger
     public static final String MESSAGE_URL = "/message/";
     public static final String USER_URL = "/user/";
 
-    public static final int THREADS = 100;
+    public static final int THREADS = 2;
     public static final int CONNECTION_BACKLOG = 100;
 
     private final Logger LOGGER;

@@ -3,6 +3,7 @@ package peergos.storage;
 import peergos.corenode.AbstractCoreNode;
 import peergos.corenode.HTTPCoreNode;
 import peergos.crypto.SSL;
+import peergos.crypto.UserPublicKey;
 import peergos.util.ArrayOps;
 import peergos.util.ByteArrayWrapper;
 
@@ -58,17 +59,19 @@ public class Storage
         return pending.containsKey(new ByteArrayWrapper(key));
     }
 
-    public boolean accept(ByteArrayWrapper key, int size, String owner, byte[] sharingKey, byte[] mapKey, byte[] proof)
+    public boolean accept(ByteArrayWrapper fragmentHash, int size, String owner, byte[] sharingKey, byte[] mapKey, byte[] proof)
     {
-        if (existing.containsKey(key))
+        if (existing.containsKey(fragmentHash))
             return false; // don't overwrite old data for now (not sure this would ever be a problem with a cryptographic hash..
-        if (!coreAPI.isFragmentAllowed(owner, sharingKey, mapKey, key.data))
+        if (!coreAPI.isFragmentAllowed(owner, sharingKey, mapKey, fragmentHash.data)) {
+            System.out.println("Core node rejected fragment storage");
             return false;
+        }
         boolean res = totalSize.get() + promisedSize.get() + size < maxBytes;
         if (res)
             promisedSize.getAndAdd(size);
-        pending.put(key, size);
-        credentials.put(key, new Credentials(owner, sharingKey, proof));
+        pending.put(fragmentHash, size);
+        credentials.put(fragmentHash, new Credentials(owner, sharingKey, proof));
         return res;
     }
 

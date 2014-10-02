@@ -77,4 +77,19 @@ public class NodeID
     {
         return new Random(System.currentTimeMillis()).nextLong();
     }
+
+    public int hashCode() {
+        return (int)id ^ (int)(id >> 32) ^ port ^ addr.hashCode();
+    }
+
+    public boolean equals(Object o) {
+        if (!(o instanceof NodeID))
+            return false;
+        NodeID other = (NodeID) o;
+        if (id != other.id)
+            return false;
+        if (port != other.port)
+            return false;
+        return addr.getHostAddress().equals(other.addr.getHostAddress());
+    }
 }

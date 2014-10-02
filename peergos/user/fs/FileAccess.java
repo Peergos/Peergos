@@ -15,13 +15,10 @@ public class FileAccess extends Metadata
     private SortedMap<UserPublicKey, AsymmetricLink> sharingR2parent = new TreeMap();
     private final SymmetricLink parent2meta;
 
-    // public data
-    private List<ByteArrayWrapper> fragments;
-
     public FileAccess(Set<UserPublicKey> sharingR, SymmetricKey metaKey, SymmetricKey parentKey, FileProperties metadata, List<ByteArrayWrapper> fragments, byte[] iv)
     {
         super(TYPE.FILE, metaKey.encrypt(metadata.serialize(), iv));
-        this.fragments = fragments;
+        setFragments(fragments);
         this.parent2meta = new SymmetricLink(parentKey, metaKey, iv);
         if (sharingR != null) {
             for (UserPublicKey key: sharingR)
@@ -39,10 +36,6 @@ public class FileAccess extends Metadata
         super(TYPE.FILE, m);
         parent2meta = new SymmetricLink(p2m);
         sharingR2parent.putAll(sharingR);
-    }
-
-    public void setFragments(List<ByteArrayWrapper> fragments) {
-        this.fragments = fragments;
     }
 
     public void serialize(DataOutput dout) throws IOException
@@ -67,10 +60,6 @@ public class FileAccess extends Metadata
         }
         FileAccess res = new FileAccess(metadata, p2m, sharingR);
         return res;
-    }
-
-    public List<ByteArrayWrapper> getFragmentHashes() {
-        return Collections.unmodifiableList(fragments);
     }
 
     public SymmetricKey getMetaKey(SymmetricKey parentKey)

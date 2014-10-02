@@ -1,6 +1,7 @@
 package peergos.corenode;
 
 import peergos.crypto.*;
+import peergos.user.fs.Fragment;
 import peergos.util.ArrayOps;
 import peergos.util.ByteArrayWrapper;
 import peergos.util.Serialize;
@@ -15,7 +16,7 @@ public abstract class AbstractCoreNode
 {
     public static final int PORT = 9999;
     public static final float FRAC_TOLERANCE = 0.001f;
-    private static final long DEFAULT_FRAGMENT_LENGTH = 0x10000;
+    private static final long DEFAULT_FRAGMENT_LENGTH = Fragment.SIZE;
 
     /**
      * Maintains all network metadata in encrypted form, without exposing friendship network.
@@ -344,7 +345,7 @@ public abstract class AbstractCoreNode
                 return false;
         }
 
-        if (! sharingKey.isValidSignature(sharingKeySignedHash, metadataBlob))
+        if (!sharingKey.isValidSignature(sharingKeySignedHash, metadataBlob))
             return false;
 
         return addMetadataBlob(username, sharingKey, mapKey, metadataBlob);

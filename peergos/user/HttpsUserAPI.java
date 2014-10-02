@@ -27,7 +27,7 @@ public class HttpsUserAPI extends DHTUserAPI
 {
     private final URL target;
     private SSLSocketFactory sf;
-    private final ExecutorService executor = Executors.newFixedThreadPool(100);
+    private final ExecutorService executor = Executors.newFixedThreadPool(2);
 
     public HttpsUserAPI(InetSocketAddress target) throws IOException
     {

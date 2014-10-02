@@ -40,7 +40,7 @@ public class UserContext
     private DHTUserAPI dht;
     private AbstractCoreNode core;
     private Map<UserPublicKey, StaticDataElement> staticData = new TreeMap();
-    private ExecutorService executor = Executors.newFixedThreadPool(16);
+    private ExecutorService executor = Executors.newFixedThreadPool(2);
 
 
     public UserContext(String username, User user, DHTUserAPI dht, AbstractCoreNode core)
@@ -173,7 +173,8 @@ public class UserContext
         List<ByteArrayWrapper> allHashes = meta.getFragmentHashes();
         byte[] metaBlob = bout.toByteArray();
         System.out.println("Storing metadata blob of "+metaBlob.length + " bytes.");
-        core.addMetadataBlob(target, sharer.getPublicKey(), mapKey, metaBlob, sharer.hashAndSignMessage(metaBlob));
+        if (!core.addMetadataBlob(target, sharer.getPublicKey(), mapKey, metaBlob, sharer.hashAndSignMessage(metaBlob)))
+            System.out.println("Meta blob store failed.");
         if (fragments.length > 0 ) {
             core.addFragmentHashes(target, sharer.getPublicKey(), mapKey, metaBlob, meta.getFragmentHashes(), sharer.hashAndSignMessage(ArrayOps.concat(mapKey, metaBlob, ArrayOps.concat(allHashes))));
 
@@ -245,7 +246,11 @@ public class UserContext
     public Metadata getMetadata(Location loc, SymmetricKey key) throws IOException {
         AbstractCoreNode.MetadataBlob meta = core.getMetadataBlob(loc.owner, loc.subKey.getPublicKey(), loc.mapKey.data);
         DataInputStream din = new DataInputStream(new ByteArrayInputStream(meta.metadata().data));
-        return Metadata.deserialize(din, key);
+        Metadata m =  Metadata.deserialize(din, key);
+        byte[] fragmentHashesRaw = core.getFragmentHashes(loc.owner, loc.subKey, loc.mapKey.data);
+        List<ByteArrayWrapper> fragmentHashes = ArrayOps.split(fragmentHashesRaw, UserPublicKey.HASH_BYTES);
+        m.setFragments(fragmentHashes);
+        return m;
     }
 
     public Map<SymmetricLocationLink, Metadata> retrieveMetadata(Collection<SymmetricLocationLink> links, SymmetricKey parentFolder) throws IOException {
@@ -434,10 +439,16 @@ public class UserContext
                 User sharer = new User(root.priv, root.pub);
 
                 // store a chunk in alices space using the permitted sharing key (this could be alice or bob at this point)
-                int frags = 60*2;
+                int frags = 120;
                 for (int i = 0; i < frags; i++) {
-                    byte[] signature = sharer.hashAndSignMessage(ArrayOps.concat(sharer.getPublicKey(), new byte[10 + i]));
-                    clientCoreNode.registerFragmentStorage(friendName, new InetSocketAddress("localhost", 666), friendName, root.pub.getEncoded(), new byte[10 + i], signature);
+                    byte[] frag = ArrayOps.random(32);
+                    byte[] message = ArrayOps.concat(sharer.getPublicKey(), frag);
+                    byte[] signature = sharer.hashAndSignMessage(message);
+                    if (!clientCoreNode.registerFragmentStorage(friendName, new InetSocketAddress("localhost", 666), friendName, sharer.getPublicKey(), frag, signature)) {
+                        System.out.println("Failed to register fragment storage!");
+                        UserPublicKey pub = new UserPublicKey(sharer.getPublicKey());
+                        System.out.println(pub.isValidSignature(signature, message));
+                    }
                 }
                 long quota = clientCoreNode.getQuota(friendName);
                 System.out.println("Generated quota: " + quota/1024 + " KiB");
@@ -463,6 +474,7 @@ public class UserContext
             byte[] rootIV = SymmetricKey.randomIV();
             byte[] rootMapKey = ArrayOps.random(32); // root will be stored under this in the core node
             DirAccess root = new DirAccess(rootRKey, new FileProperties(name, rootIV, 0, null), rootWKey);
+            root.setFragments(new ArrayList());
 
             // generate file (two chunks)
             Random r = new Random();
@@ -481,7 +493,7 @@ public class UserContext
             String filename = "HiNSA.bin"; // /photos/tree.jpg
             SymmetricKey fileKey = SymmetricKey.random();
             byte[] fileMapKey = ArrayOps.random(32); // file metablob will be stored under this in the core node
-            byte[] chunk2MapKey = ArrayOps.random(32); // file metablob will be stored under this in the core node
+            byte[] chunk2MapKey = ArrayOps.random(32); // file metablob 2 will be stored under this in the core node
             Location fileLocation = new Location(owner, sharer, new ByteArrayWrapper(fileMapKey));
             Location chunk2Location = new Location(owner, sharer, new ByteArrayWrapper(chunk2MapKey));
 
@@ -506,12 +518,15 @@ public class UserContext
                 hashes2.add(new ByteArrayWrapper(f.getHash()));
             ChunkProperties props2 = new ChunkProperties(initVector, null);
             Metadata meta2 = new Metadata(props2, fileKey, initVector);
+            meta2.setFragments(hashes2);
 
             // now write the root to the core nodes
             receiver.addToStaticData(sharer, new SharedRootDir(receiver.username, sharer.getKey(), sharerPriv, new ByteArrayWrapper(rootMapKey), rootRKey));
             sender.uploadChunk(root, new Fragment[0], owner, sharer, rootMapKey);
-            // now upload the file meta blob
+            // now upload the file meta blobs
+            System.out.printf("Uploading chunk with %d fragments\n", fragments1.length);
             sender.uploadChunk(file, fragments1, owner, sharer, fileMapKey);
+            System.out.printf("Uploading chunk with %d fragments\n", fragments2.length);
             sender.uploadChunk(meta2, fragments2, owner, sharer, chunk2MapKey);
 
             // now check the retrieval from zero knowledge
@@ -525,7 +540,7 @@ public class UserContext
                         SymmetricKey baseKey = fileLoc.target(rootDirKey);
                         FileAccess fileBlob = (FileAccess) files.get(fileLoc);
                         // download fragments in chunk
-                        Fragment[] retrievedfragments1 = sender.downloadFragments(fileBlob);
+                        Fragment[] retrievedfragments1 = receiver.downloadFragments(fileBlob);
                         FileProperties fileProps = fileBlob.getProps(baseKey);
 
                         byte[] enc1 = Erasure.recombine(reorder(fileBlob, retrievedfragments1), Chunk.MAX_SIZE, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
@@ -536,8 +551,8 @@ public class UserContext
                         assertTrue("Correct file contents", Arrays.equals(original1, raw1));
 
                         // 2nd chunk
-                        Metadata second = sender.getMetadata(fileBlob.getNextChunkLocation(baseKey, fileProps.getIV()), baseKey);
-                        Fragment[] retrievedfragments2 = sender.downloadFragments(second);
+                        Metadata second = receiver.getMetadata(fileProps.getNextChunkLocation(), baseKey);
+                        Fragment[] retrievedfragments2 = receiver.downloadFragments(second);
                         byte[] enc2 = Erasure.recombine(reorder(second, retrievedfragments2), Chunk.MAX_SIZE, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
                         EncryptedChunk encrypted2 = new EncryptedChunk(enc2);
                         byte[] original2 = encrypted2.decrypt(baseKey, fileProps.getIV());
@@ -551,7 +566,7 @@ public class UserContext
         }
 
         public void fileTest(String owner, User sharer, PrivateKey sharerPriv, UserContext receiver, UserContext sender) {
-            // create a root dir and a file to it, then retrieve and decrypt the file using the receiver
+            // create a root dir and add a file to it, then retrieve and decrypt the file using the receiver
             // create root cryptree
             SymmetricKey rootRKey = SymmetricKey.random();
             SymmetricKey rootWKey = SymmetricKey.random();

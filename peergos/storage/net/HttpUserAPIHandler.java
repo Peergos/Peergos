@@ -16,7 +16,7 @@ import java.util.concurrent.Future;
 public class HttpUserAPIHandler implements HttpHandler
 {
     private final Router router;
-    private ExecutorService executor = Executors.newFixedThreadPool(100);
+    private ExecutorService executor = Executors.newFixedThreadPool(2);
 
     public HttpUserAPIHandler(Router r)
     {

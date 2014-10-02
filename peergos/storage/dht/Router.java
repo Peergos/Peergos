@@ -36,7 +36,6 @@ public class Router
     private final Random random = new Random(System.currentTimeMillis());
     private HttpMessenger messenger;
     private HttpsMessenger userAPI;
-    private ExecutorService executor = Executors.newFixedThreadPool(100);
     private BlockingQueue queue = new ArrayBlockingQueue(200);
 
 
@@ -75,6 +74,7 @@ public class Router
     }
 
     public Future ask(Message m) {
+        LOGGER.log(Level.ALL, "Asking "+m.name());
         CompletableFuture f = new CompletableFuture(new Callable() {
             @Override
             public Object call() throws Exception {
@@ -116,13 +116,14 @@ public class Router
     {
         NodeID next = getClosest(m);
         m.addNode(us);
-        if (next != us)
+        if (!next.equals(us))
         {
+            LOGGER.log(Level.ALL, "Sending "+m.name() +" to "+next.name());
             m.addNode(getRandomNeighbour());
             messenger.sendLetter(new Letter(m, next.addr, next.port));
         } else {
             //avoid infinite loop of forwarding message to ourselves
-            List<NodeID> hops = new ArrayList();
+            List<NodeID> hops = m.getHops();
             if (hops.size() > 5) {
                 for (NodeID n: hops)
                     System.out.printf(n.toString());
@@ -266,6 +267,7 @@ public class Router
                 forwardMessage(accept);
             } else
             {
+                LOGGER.log(Level.ALL, "Rejected Put request.");
                 // DO NOT reply
             }
         } else if (m instanceof Message.PUT_ACCEPT)
