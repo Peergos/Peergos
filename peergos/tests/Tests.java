@@ -4,6 +4,7 @@ import org.junit.runner.JUnitCore;
 import org.junit.runner.Result;
 import org.junit.runner.notification.Failure;
 import peergos.crypto.SSL;
+import peergos.crypto.User;
 import peergos.storage.net.IP;
 import peergos.user.UserContext;
 import peergos.util.Args;
@@ -20,12 +21,12 @@ public class Tests
 //        testClass(ErasureCodes.class);
 //        testClass(GaloisPolynomial.Test.class);
 //        testClass(Crypto.class);
-//        testClass(UserContext.Test.class);
+//        testClass(SSL.class);
 
         UserContext.Test.setStorageAddress(Args.getParameter("clusterAddress", IP.getMyPublicAddress().getHostAddress()));
         UserContext.Test.setCoreNodeAddress(Args.getParameter("coreAddress", IP.getMyPublicAddress().getHostAddress()));
-//        testClass(SSL.class);
         testClass(UserContext.Test.class);
+//        testClass(User.Test.class);
 //        testClass(CoreNode.class);
     }
 

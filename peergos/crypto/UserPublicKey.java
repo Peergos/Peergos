@@ -18,7 +18,8 @@ public class UserPublicKey implements Comparable<UserPublicKey>
 {
     public static final int RSA_KEY_BITS = 4096;
     public static final int HASH_BYTES = 256/8;
-    public static final String AUTH = "RSA";
+    public static final String KEYS = "RSA";
+    public static final String AUTH = "RSA/ECB/OAEPWithSHA-256AndMGF1Padding";
     public static final String HASH = "SHA-256";
     public static final String SECURE_RANDOM = "SHA1PRNG"; // TODO: need to figure out an implementation using HMAC-SHA-256
 
@@ -88,8 +89,7 @@ public class UserPublicKey implements Comparable<UserPublicKey>
         try {
             Cipher c = Cipher.getInstance(AUTH, "BC");
             c.init(Cipher.DECRYPT_MODE, publicKey);
-            c.update(input);
-            return c.doFinal();
+            return c.doFinal(input);
         } catch (NoSuchAlgorithmException|NoSuchProviderException e)
         {
             e.printStackTrace();
@@ -173,7 +173,7 @@ public class UserPublicKey implements Comparable<UserPublicKey>
     public static PublicKey deserializePublic(byte[] pub)
     {
         try {
-            return KeyFactory.getInstance(AUTH, "BC").generatePublic(new X509EncodedKeySpec(pub));
+            return KeyFactory.getInstance(KEYS, "BC").generatePublic(new X509EncodedKeySpec(pub));
         } catch (NoSuchAlgorithmException|NoSuchProviderException|InvalidKeySpecException e)
         {
             throw new IllegalStateException("Couldn't create public key");

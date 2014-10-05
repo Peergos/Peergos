@@ -1,5 +1,6 @@
 package peergos.crypto;
 
+import peergos.util.ArrayOps;
 import peergos.util.Serialize;
 
 import java.io.ByteArrayInputStream;
@@ -11,8 +12,11 @@ import javax.crypto.*;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
+import java.util.Arrays;
 import java.util.Enumeration;
 import java.util.Set;
+
+import static org.junit.Assert.assertTrue;
 
 public class User extends UserPublicKey
 {
@@ -107,14 +111,16 @@ public class User extends UserPublicKey
     public static User create(byte[] priv, byte[] pub)
     {
         try {
-            PublicKey publicKey = KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(pub));
-            PrivateKey privateKey = KeyFactory.getInstance("RSA").generatePrivate(new PKCS8EncodedKeySpec(priv));;
+            PublicKey publicKey = KeyFactory.getInstance(KEYS).generatePublic(new X509EncodedKeySpec(pub));
+            PrivateKey privateKey = KeyFactory.getInstance(KEYS).generatePrivate(new PKCS8EncodedKeySpec(priv));;
             return new User(privateKey, publicKey);
         } catch (NoSuchAlgorithmException e)
         {
+            e.printStackTrace();
             throw new IllegalStateException("Couldn't create public key");
         } catch (InvalidKeySpecException e)
         {
+            e.printStackTrace();
             throw new IllegalStateException("Couldn't create public key");
         }
     }
@@ -122,7 +128,7 @@ public class User extends UserPublicKey
     public static PrivateKey deserializePrivate(byte[] encoded)
     {
         try {
-            return KeyFactory.getInstance(AUTH, "BC").generatePrivate(new PKCS8EncodedKeySpec(encoded));
+            return KeyFactory.getInstance(KEYS, "BC").generatePrivate(new PKCS8EncodedKeySpec(encoded));
         } catch (NoSuchAlgorithmException|NoSuchProviderException|InvalidKeySpecException e)
         {
             throw new IllegalStateException("Couldn't create private key:" + e.getMessage());
@@ -133,12 +139,12 @@ public class User extends UserPublicKey
     {
         try
         {
-            KeyPairGenerator kpg = KeyPairGenerator.getInstance(AUTH, "BC");
+            KeyPairGenerator kpg = KeyPairGenerator.getInstance(KEYS, "BC");
             kpg.initialize(RSA_KEY_BITS);
             return kpg.genKeyPair();
         } catch (NoSuchAlgorithmException|NoSuchProviderException e)
         {
-            throw new IllegalStateException("No algorithm: "+AUTH);
+            throw new IllegalStateException("No such algorithm: "+KEYS);
         }
     }
 
@@ -153,7 +159,7 @@ public class User extends UserPublicKey
         // username is essentially salt against rainbow table attacks
         byte[] hash = hash(username+password);
         try {
-            KeyPairGenerator kpg = KeyPairGenerator.getInstance(AUTH, "BC");
+            KeyPairGenerator kpg = KeyPairGenerator.getInstance(KEYS, "BC");
             SecureRandom random = SecureRandom.getInstance(SECURE_RANDOM);
             random.setSeed(hash);
             kpg.initialize(RSA_KEY_BITS, random);
@@ -235,6 +241,55 @@ public class User extends UserPublicKey
         {
             e.printStackTrace();
             return false;
+        }
+    }
+
+    public static class Test {
+        int[] hashFailInts = new int[] {0,-80,88,85,53,-56,102,10,-99,-115,-102,38,27,44,-102,97,64,67,-38,-116,-70,-35,75,-81,96,54,95,72,110,-60,55,-83};
+
+        public Test() {}
+
+        @org.junit.Test
+        public void all() {
+            User u = random();
+            byte[] hashFail = new byte[hashFailInts.length];
+            for (int i=0; i < hashFail.length; i++)
+                hashFail[i] = (byte) hashFailInts[i];
+            byte[] sameAsHash = u.unsignMessage(u.signMessage(hashFail));
+            assertTrue("Fails with no padding..", Arrays.equals(hashFail, sameAsHash));
+
+            byte[] raw = new byte[582];
+            System.arraycopy(u.getPublicKey(), 0, raw, 0, 550);
+            byte[] hash = hash(raw);
+            while (hash[0] != 0) {
+                byte[] tmp = ArrayOps.random(32);
+                System.arraycopy(tmp, 0, raw, 550, 32);
+                hash = hash(raw);
+            }
+            InvalidSig made = new InvalidSig(raw, u.signMessage(hash));
+            assertTrue("Invalid signature! hash has leading zero", made.isValid());
+
+            // random signing
+            for (int i=0; i < 100; i++) {
+                byte[] input = ArrayOps.random(64);
+                byte[] sig = u.hashAndSignMessage(input);
+                assertTrue("Valid signature", u.isValidSignature(sig, input));
+            }
+        }
+    }
+
+    public static class InvalidSig {
+        byte[] raw, sig;
+
+        public InvalidSig(byte[] raw, byte[] sig) {
+            this.raw = raw;
+            this.sig = sig;
+        }
+
+        public boolean isValid() {
+            byte[] key = Arrays.copyOfRange(raw, 0, raw.length-32);
+            UserPublicKey pub = new UserPublicKey(key);
+            return pub.isValidSignature(sig, raw);
         }
     }
 }
