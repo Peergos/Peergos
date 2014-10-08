@@ -163,7 +163,8 @@ public class SSL
         }
         ks.load(null, password);
         KeyPair keypair = generateKeyPair();
-        PKCS10CertificationRequest csr = generateCSR(password, IP.getMyPublicAddress().getHostAddress(), keypair, "storage.csr");
+        String ip = IP.getMyPublicAddress().getHostAddress();
+        PKCS10CertificationRequest csr = generateCSR(password, ip, ip, keypair, "storage.csr");
         PrivateKey myPrivateKey = keypair.getPrivate();
 
         // make rootCA a trust source
@@ -237,10 +238,10 @@ public class SSL
 
         System.out.println("SAN = " + commonName);
         X509v3CertificateBuilder certGen = new JcaX509v3CertificateBuilder(builder.build(), sn, from, to, builder.build(), signee);
-//        certGen.addExtension(X509Extensions.AuthorityKeyIdentifier, false,
-//                new AuthorityKeyIdentifierStructure((X509Certificate)issuer));
-        GeneralNames subjectAltName = new GeneralNames(new GeneralName(GeneralName.iPAddress, ipaddress));
-        certGen.addExtension(new ASN1ObjectIdentifier("2.5.29.17"), false, subjectAltName);
+        // root doesn't want an IP, or domain!
+//        GeneralNames subjectAltName = new GeneralNames(new GeneralName(GeneralName.iPAddress, ipaddress));
+//        certGen.addExtension(new ASN1ObjectIdentifier("2.5.29.17"), false, subjectAltName);
+
         // make cert a CA, 1 ensures a 3 certificate chain is possible root -> dir -> storage node
         certGen.addExtension(X509Extensions.BasicConstraints, true, new BasicConstraints(1));
 
@@ -281,12 +282,12 @@ public class SSL
         }
     }
 
-    public static KeyPair generateCSR(char[] passphrase, String commonName, String keyfile, String csrfile) throws IOException
+    public static KeyPair generateCSR(char[] passphrase, String commonName, String ipAddress, String keyfile, String csrfile) throws IOException
     {
         String msg;
         try {
             KeyPair pair = generateAndSaveKeyPair(keyfile, passphrase);
-            generateCSR(passphrase, commonName, loadKeyPair(keyfile, passphrase), csrfile);
+            generateCSR(passphrase, commonName, ipAddress, loadKeyPair(keyfile, passphrase), csrfile);
             return pair;
         } catch (NoSuchAlgorithmException e) {e.printStackTrace(); msg= e.getMessage();}
         catch (InvalidKeySpecException e) {e.printStackTrace();msg= e.getMessage();}
@@ -295,10 +296,9 @@ public class SSL
         throw new IllegalStateException(msg);
     }
 
-    public static PKCS10CertificationRequest generateCSR(char[] password, String cn, KeyPair keypair, String outfile)
+    public static PKCS10CertificationRequest generateCSR(char[] password, String cn, String ipaddress, KeyPair keypair, String outfile)
     {
         try {
-            String ipaddress = IP.getMyPublicAddress().getHostAddress();
             return generateCertificateSignRequestAndSaveToFile(outfile, password, cn, ipaddress, keypair);
         } catch (Exception e)
         {
@@ -329,7 +329,7 @@ public class SSL
     }
 
     public static PKCS10CertificationRequest generateCertificateSignRequest(char[] password, String commonName,
-                                                                            String ipaddress, KeyPair keys)
+                                                                            String ipAddress, KeyPair keys)
             throws KeyStoreException, IOException, NoSuchAlgorithmException, CertificateException, InvalidKeyException,
             NoSuchProviderException, SignatureException, OperatorCreationException, CRMFException
     {
@@ -344,13 +344,15 @@ public class SSL
         builder.addRDN(RFC4519Style.st, "Victoria");
         builder.addRDN(PKCSObjectIdentifiers.pkcs_9_at_emailAddress, "hello.NSA.GCHQ.ASIO@goodluck.com");
 
-        GeneralNames subjectAltName = new GeneralNames(new GeneralName(GeneralName.iPAddress, ipaddress));
-
-        Extension[] ext = new Extension[] {new Extension(Extension.subjectAlternativeName, false, new DEROctetString(subjectAltName))};
         PKCS10CertificationRequestBuilder requestBuilder = new JcaPKCS10CertificationRequestBuilder(builder.build(), keys.getPublic());
-        PKCS10CertificationRequest csr = requestBuilder.addAttribute(PKCSObjectIdentifiers.pkcs_9_at_extensionRequest,
-                new Extensions(ext)).build(new JcaContentSignerBuilder("SHA256withRSA").setProvider("BC").build(keys.getPrivate()));
-
+        if (ipAddress != null) {
+            GeneralNames subjectAltName = new GeneralNames(new GeneralName(GeneralName.iPAddress, ipAddress));
+            Extension[] ext = new Extension[]{new Extension(Extension.subjectAlternativeName, false, new DEROctetString(subjectAltName))};
+            PKCS10CertificationRequest csr = requestBuilder.addAttribute(PKCSObjectIdentifiers.pkcs_9_at_extensionRequest,
+                    new Extensions(ext)).build(new JcaContentSignerBuilder("SHA256withRSA").setProvider("BC").build(keys.getPrivate()));
+            return csr;
+        }
+        PKCS10CertificationRequest csr = requestBuilder.build(new JcaContentSignerBuilder("SHA256withRSA").setProvider("BC").build(keys.getPrivate()));
         return csr;
     }
 
@@ -425,16 +427,31 @@ public class SSL
             AsymmetricKeyParameter foo = PrivateKeyFactory.createKey(priv.getEncoded());
             ContentSigner sigGen = new BcRSAContentSignerBuilder(sigAlgId, digAlgId).build(foo);
 
-            GeneralNames subjectAltName = new GeneralNames(new GeneralName(GeneralName.iPAddress, getCommonName(csr)));
-            X509CertificateHolder holder = certGen.addExtension(Extension.subjectAlternativeName, false, subjectAltName).build(sigGen);
-//                    .addExtension(new ASN1ObjectIdentifier("2.5.29.17"), false, subjectAltName).build(sigGen);
-            Certificate signed = new JcaX509CertificateConverter().setProvider("BC").getCertificate(holder);
-            return signed;
+            String cn = getCommonName(csr);
+            if (isIPAddress(cn)) {
+                GeneralNames subjectAltName = new GeneralNames(new GeneralName(GeneralName.iPAddress, getCommonName(csr)));
+                X509CertificateHolder holder = certGen.addExtension(Extension.subjectAlternativeName, false, subjectAltName).build(sigGen);
+                Certificate signed = new JcaX509CertificateConverter().setProvider("BC").getCertificate(holder);
+                return signed;
+            }
+            X509CertificateHolder holder = certGen.build(sigGen);
+            return new JcaX509CertificateConverter().setProvider("BC").getCertificate(holder);
         } catch (Exception e)
         {
             e.printStackTrace();
             return null;
         }
+    }
+
+    public static boolean isIPAddress(String name) {
+        String[] s = name.split("\\.");
+        if (s.length > 4) // TODO make handle IPV6
+            return false;
+        for (String part: s)
+            try {
+                Integer.parseInt(part);
+            } catch (NumberFormatException e) {return false;}
+        return true;
     }
 
     public static void printCertificate(Certificate cert, BufferedWriter w) throws IOException

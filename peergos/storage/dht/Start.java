@@ -52,8 +52,9 @@ public class Start
         }
         else if (Args.hasOption("dirGen"))
         {
-
-            SSL.generateCSR(Args.getParameter("password").toCharArray(), Args.getParameter("domain", IP.getMyPublicAddress().getHostAddress()), Args.getParameter("keyfile"), "dir.csr");
+            String domain = Args.getParameter("domain", IP.getMyPublicAddress().getHostAddress());
+            String ipAddress = SSL.isIPAddress(domain) ? domain : null;
+            SSL.generateCSR(Args.getParameter("password").toCharArray(), domain, ipAddress, Args.getParameter("keyfile"), "dir.csr");
         }
         else if (Args.hasOption("dirSign"))
         {
@@ -61,7 +62,9 @@ public class Start
         }
         else if (Args.hasOption("coreGen"))
         {
-            SSL.generateCSR(Args.getParameter("password").toCharArray(), Args.getParameter("domain", IP.getMyPublicAddress().getHostAddress()), Args.getParameter("keyfile"), "core.csr");
+            String domain = Args.getParameter("domain", IP.getMyPublicAddress().getHostAddress());
+            String ipAddress = SSL.isIPAddress(domain) ? domain : null;
+            SSL.generateCSR(Args.getParameter("password").toCharArray(), domain, ipAddress, Args.getParameter("keyfile"), "core.csr");
         }
         else if (Args.hasOption("coreSign"))
         {
