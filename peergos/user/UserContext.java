@@ -410,24 +410,25 @@ public class UserContext
                 User ourKeys = User.random();
                 long t2 = System.nanoTime();
                 System.out.printf("User generation took %d mS\n", (t2 - t1) / 1000000);
-                String ourname = "Bob_" + System.currentTimeMillis();
+                String ourname = "Bob";
 
                 // create a DHT API
                 dht = new HttpsUserAPI(new InetSocketAddress(InetAddress.getByName(storageIP), storagePort));
 
                 // make and register us
                 us = new UserContext(ourname, ourKeys, dht, clientCoreNode);
-                assertTrue("Not already registered", !us.isRegistered());
-                assertTrue("Register", us.register());
+                if (!us.isRegistered())
+                    us.register();
 
                 // make another user
                 t1 = System.nanoTime();
                 User friendKeys = User.random();
                 t2 = System.nanoTime();
                 System.out.printf("User generation took %d mS\n", (t2 - t1) / 1000000);
-                String friendName = "Alice_" + System.currentTimeMillis();
+                String friendName = "Alice";
                 alice = new UserContext(friendName, friendKeys, dht, clientCoreNode);
-                alice.register();
+                if (!alice.isRegistered())
+                    alice.register();
 
                 // make Alice follow Bob (Alice gives Bob write permission to a folder in Alice's space)
                 alice.sendFollowRequest(ourname);
@@ -446,8 +447,6 @@ public class UserContext
                     byte[] signature = sharer.hashAndSignMessage(message);
                     if (!clientCoreNode.registerFragmentStorage(friendName, new InetSocketAddress("localhost", 666), friendName, sharer.getPublicKey(), frag, signature)) {
                         System.out.println("Failed to register fragment storage!");
-                        UserPublicKey pub = new UserPublicKey(sharer.getPublicKey());
-                        System.out.println(pub.isValidSignature(signature, message));
                     }
                 }
                 long quota = clientCoreNode.getQuota(friendName);
