@@ -7,6 +7,9 @@ build: server
 
 .PHONY: server
 server: 
+	cp RootCertificate.src peergos/crypto/RootCertificate.java
+	cp DirectoryCertificates.src peergos/crypto/DirectoryCertificates.java
+	cp CoreCertificates.src peergos/crypto/CoreCertificates.java
 	mkdir -p build
 	echo "Name: Peergos Storage Server" > def.manifest
 	echo "Main-Class: peergos.storage.dht.Start" >> def.manifest
