@@ -38,6 +38,8 @@ public class Metadata
     }
 
     public List<ByteArrayWrapper> getFragmentHashes() {
+        if (fragments == null)
+            return Collections.EMPTY_LIST;
         return Collections.unmodifiableList(fragments);
     }
 
