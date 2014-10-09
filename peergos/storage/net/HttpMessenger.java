@@ -34,7 +34,7 @@ public class HttpMessenger
     }
 
     public boolean init(Router router) throws IOException {
-        InetAddress us = IP.getMyPublicAddress();
+        InetAddress us = InetAddress.getByName("localhost");
         InetSocketAddress address = new InetSocketAddress(us, localPort);
         System.out.println("Starting storage server messenger at: " + us.getHostAddress() + ":" + localPort);
         httpServer = HttpServer.create(address, CONNECTION_BACKLOG);

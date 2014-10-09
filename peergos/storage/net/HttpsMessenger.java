@@ -41,7 +41,7 @@ public class HttpsMessenger
     public boolean init(Router router) throws IOException {
         try
         {
-            InetAddress us = IP.getMyPublicAddress();
+            InetAddress us = InetAddress.getByName("localhost");
             InetSocketAddress address = new InetSocketAddress(us, localPort);
             System.out.println("Starting user API server at: " + us.getHostAddress() + ":" + localPort);
             httpsServer = HttpsServer.create(address, CONNECTION_BACKLOG);
