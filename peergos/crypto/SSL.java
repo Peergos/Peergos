@@ -406,6 +406,8 @@ public class SSL
     public static Certificate signCertificate(PKCS10CertificationRequest csr, PrivateKey priv, Certificate issuer, boolean issuerIsRoot)
     {
         try {
+            if (issuer == null)
+                throw new IllegalStateException("Null issuer certificate!");
             SubjectPublicKeyInfo pkInfo = csr.getSubjectPublicKeyInfo();
             RSAKeyParameters rsa = (RSAKeyParameters) PublicKeyFactory.createKey(pkInfo);
             RSAPublicKeySpec rsaSpec = new RSAPublicKeySpec(rsa.getModulus(), rsa.getExponent());

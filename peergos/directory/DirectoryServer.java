@@ -7,6 +7,7 @@ import peergos.storage.net.IP;
 import org.bouncycastle.operator.OperatorCreationException;
 import org.bouncycastle.pkcs.PKCS10CertificationRequest;
 import org.bouncycastle.pkcs.PKCSException;
+import peergos.util.Args;
 
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
@@ -45,7 +46,7 @@ public class DirectoryServer
         //start HTTP server
         InetAddress us = IP.getMyPublicAddress();
         InetSocketAddress address = new InetSocketAddress(us, port);
-        commonName = us.getHostAddress();
+        commonName = Args.getParameter("domain", us.getHostAddress());
         Certificate tmp = null;
         for (Certificate dir: dirs)
             if (SSL.getCommonName(dir).equals(commonName))
