@@ -417,13 +417,14 @@ public class SSL
             AlgorithmIdentifier sigAlgId = new DefaultSignatureAlgorithmIdentifierFinder().find("SHA256withRSA");
             AlgorithmIdentifier digAlgId = new DefaultDigestAlgorithmIdentifierFinder().find(sigAlgId);
 
+            System.out.printf("Signing certificate from %s, with %s..\n", getCommonName(csr), getCommonName(issuer));
             JcaX509v3CertificateBuilder certGen = new JcaX509v3CertificateBuilder(
                     (X509Certificate)issuer, BigInteger.probablePrime(1024, new Random()),
                     new Date(System.currentTimeMillis()),
                     new Date(System.currentTimeMillis() + 365 * 24 * 60 * 60 * 1000),
                     csr.getSubject(), dirPub);
             certGen.addExtension(X509Extensions.AuthorityKeyIdentifier, false,
-                        new AuthorityKeyIdentifierStructure((X509Certificate)issuer));
+                    new AuthorityKeyIdentifierStructure((X509Certificate) issuer));
             if (issuerIsRoot)
                 certGen.addExtension(X509Extensions.BasicConstraints, true, new BasicConstraints(0));
             AsymmetricKeyParameter foo = PrivateKeyFactory.createKey(priv.getEncoded());
