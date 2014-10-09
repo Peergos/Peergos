@@ -57,6 +57,7 @@ public class DirectoryServer
         System.out.println("Directory Server listening on: " + us.getHostAddress() + ":" + port);
         server = HttpServer.create(address, CONNECTION_BACKLOG);
         server.createContext("/dir", new StorageListHandler(this));
+        server.createContext("/myIP", new MyIPHandler(this));
         server.createContext("/dirHuman", new ReadableStorageListHandler(this));
         server.createContext("/sign", new SignRequestHandler(this));
         server.createContext("/registerCore", new SignRequestHandler(this));
