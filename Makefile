@@ -5,6 +5,18 @@ CP_SPACE = `ls lib/*.jar`
 .PHONY: build
 build: server
 
+.PHONY backupcerts
+backupcerts: 
+	cp RootCertificate.src RootCertificate.backup
+	cp DirectoryCertificates.src DirectoryCertificates.backup
+	cp CoreCertificates.src CoreCertificates.backup
+
+.PHONY restorecerts
+restorecerts: 
+	cp RootCertificate.backup RootCertificate.src
+	cp DirectoryCertificates.backup DirectoryCertificates.src
+	cp CoreCertificates.backup CoreCertificates.src
+
 .PHONY: server
 server: 
 	cp RootCertificate.src peergos/crypto/RootCertificate.java
@@ -22,6 +34,9 @@ server:
 
 .PHONY: tests
 tests: 
+	cp RootCertificate.src peergos/crypto/RootCertificate.java
+	cp DirectoryCertificates.src peergos/crypto/DirectoryCertificates.java
+	cp CoreCertificates.src peergos/crypto/CoreCertificates.java
 	mkdir -p build
 	echo "Name: Peergos Tests" > def.manifest
 	echo "Main-Class: peergos.tests.Tests" >> def.manifest
