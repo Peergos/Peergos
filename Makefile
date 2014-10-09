@@ -5,13 +5,13 @@ CP_SPACE = `ls lib/*.jar`
 .PHONY: build
 build: server
 
-.PHONY backupcerts
+.PHONY: backupcerts
 backupcerts: 
 	cp RootCertificate.src RootCertificate.backup
 	cp DirectoryCertificates.src DirectoryCertificates.backup
 	cp CoreCertificates.src CoreCertificates.backup
 
-.PHONY restorecerts
+.PHONY: restorecerts
 restorecerts: 
 	cp RootCertificate.backup RootCertificate.src
 	cp DirectoryCertificates.backup DirectoryCertificates.src
