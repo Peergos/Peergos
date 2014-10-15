@@ -439,7 +439,7 @@ public class UserContext
                 SharedRootDir root = us.decodeFollowRequest(reqs.get(0));
                 User sharer = new User(root.priv, root.pub);
 
-                // store a chunk in alices space using the permitted sharing key (this could be alice or bob at this point)
+                // store a chunk in alice's space using the permitted sharing key (this could be alice or bob at this point)
                 int frags = 120;
                 for (int i = 0; i < frags; i++) {
                     byte[] frag = ArrayOps.random(32);

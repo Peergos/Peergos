@@ -36,7 +36,9 @@ public class IP
                         break;
                     bout.write(buf, 0, r);
                 }
-                return InetAddress.getByName(new String(bout.toByteArray()));
+                String res = new String(bout.toByteArray());
+                System.out.println("myIP service returned "+res);
+                return InetAddress.getByName(res);
             }
         } catch (Exception e) {
             return null;
