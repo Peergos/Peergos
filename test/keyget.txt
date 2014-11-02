@@ -1,2 +1,0 @@
-1000 KEY_PUT myusername 48656c6c6f20576f726c6421
-2000 KEY_GET myusername
