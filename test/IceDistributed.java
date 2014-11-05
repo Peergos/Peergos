@@ -12,6 +12,7 @@ import java.io.*;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 
+import org.ice4j.TransportAddress;
 import org.ice4j.ice.*;
 
 /**
@@ -80,9 +81,12 @@ public class IceDistributed
                     DatagramSocket rtpSocket = rtpPair.getLocalCandidate().getDatagramSocket();
                     DatagramSocket rtcpSocket = rtcpPair.getLocalCandidate().getDatagramSocket();
                     byte[] data = "sent".getBytes();
-                    DatagramPacket p = new DatagramPacket(data, data.length);
+                    TransportAddress target = rtpPair.getRemoteCandidate().getHostAddress();
+                    DatagramPacket p = new DatagramPacket(data, data.length, target.getAddress(), target.getPort());
                     try {
+                        System.out.println("About to send packet..");
                         rtpSocket.send(p);
+                        System.out.println("Receiving packet..");
                         DatagramPacket p2 = new DatagramPacket(new byte[data.length], data.length);
                         rtpSocket.receive(p2);
                         System.out.println("========Received: "+new String(p2.getData()));
