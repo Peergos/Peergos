@@ -3,10 +3,7 @@ package peergos.crypto;
 import peergos.util.ArrayOps;
 import peergos.util.Serialize;
 
-import java.io.ByteArrayInputStream;
-import java.io.DataInput;
-import java.io.DataInputStream;
-import java.io.IOException;
+import java.io.*;
 import java.security.*;
 import javax.crypto.*;
 import java.security.spec.InvalidKeySpecException;
@@ -25,7 +22,7 @@ public class User extends UserPublicKey
     public User(KeyPair pair)
     {
         super(pair.getPublic());
-        privateKey = pair.getPrivate();
+        this.privateKey = pair.getPrivate();
     }
 
     public User(PrivateKey privateKey, PublicKey publicKey)
@@ -290,6 +287,51 @@ public class User extends UserPublicKey
             byte[] key = Arrays.copyOfRange(raw, 0, raw.length-32);
             UserPublicKey pub = new UserPublicKey(key);
             return pub.isValidSignature(sig, raw);
+        }
+    }
+
+
+
+
+
+    public static class KeyPairUtils {
+
+        private KeyPairUtils(){}
+
+        public static void serialize(KeyPair keyPair, OutputStream out) throws IOException {
+            DataOutputStream dout = new DataOutputStream(out);
+            try {
+                byte[] _private = keyPair.getPrivate().getEncoded();
+                byte[] _public = keyPair.getPublic().getEncoded();
+
+                dout.writeInt(_public.length);
+                dout.write(_public);
+                dout.writeInt(_private.length);
+                dout.write(_private);
+                dout.flush();
+            } finally {
+                dout.close();
+            }
+        }
+
+        public static KeyPair deserialize(InputStream in) throws IOException {
+
+            DataInputStream din = new DataInputStream(in);
+            try {
+                int publicLength = din.readInt();
+                byte[] _public = new byte[publicLength];
+                din.readFully(_public);
+                PublicKey publicKey = deserializePublic(_public);
+
+                int privateLength = din.readInt();
+                byte[] _private = new byte[privateLength];
+                din.readFully(_private);
+                PrivateKey privateKey = deserializePrivate(_private);
+
+                return new KeyPair(publicKey, privateKey);
+            } finally {
+                din.close();
+            }
         }
     }
 }
