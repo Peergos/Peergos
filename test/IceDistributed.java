@@ -12,6 +12,7 @@ import java.io.*;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 
+import org.ice4j.StackProperties;
 import org.ice4j.TransportAddress;
 import org.ice4j.ice.*;
 
@@ -39,6 +40,7 @@ public class IceDistributed
      */
     public static void main(String[] args) throws Throwable
     {
+        System.setProperty(StackProperties.REQUIRE_MESSAGE_INTEGRITY, "true");
         final Agent localAgent = createAgent(2020);
         localAgent.setNominationStrategy(
                         NominationStrategy.NOMINATE_HIGHEST_PRIO);
