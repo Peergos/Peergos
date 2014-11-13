@@ -331,7 +331,7 @@ public class Ice
             StunCandidateHarvester stunHarv = new StunCandidateHarvester(
                 new TransportAddress("stun.jitsi.net", 3478, Transport.UDP));
             StunCandidateHarvester stun6Harv = new StunCandidateHarvester(
-                new TransportAddress("stun6.jitsi.net", 3478, Transport.UDP));
+                new TransportAddress("sip.iptel.org", 3478, Transport.UDP));
 
             agent.addCandidateHarvester(stunHarv);
             agent.addCandidateHarvester(stun6Harv);
@@ -339,8 +339,7 @@ public class Ice
             // TURN
             String[] hostnames = new String[]
                                  {
-                                    "stun.jitsi.net",
-                                    "stun6.jitsi.net"
+                                    "stun.jitsi.net"
                                  };
             int port = 3478;
             LongTermCredential longTermCredential

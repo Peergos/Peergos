@@ -40,7 +40,6 @@ public class IceDistributed
      */
     public static void main(String[] args) throws Throwable
     {
-        System.setProperty(StackProperties.REQUIRE_MESSAGE_INTEGRITY, "true");
         final Agent localAgent = createAgent(2020);
         localAgent.setNominationStrategy(
                         NominationStrategy.NOMINATE_HIGHEST_PRIO);
@@ -83,7 +82,8 @@ public class IceDistributed
                     DatagramSocket rtpSocket = rtpPair.getLocalCandidate().getDatagramSocket();
                     DatagramSocket rtcpSocket = rtcpPair.getLocalCandidate().getDatagramSocket();
                     byte[] data = "sent".getBytes();
-                    TransportAddress target = rtpPair.getRemoteCandidate().getHostAddress();
+                    RemoteCandidate rem = rtpPair.getRemoteCandidate();
+                    TransportAddress target = rem.getHostAddress();
                     DatagramPacket p = new DatagramPacket(data, data.length, target.getAddress(), target.getPort());
                     try {
                         System.out.println("About to send packet..");

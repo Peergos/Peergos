@@ -354,11 +354,9 @@ public class StunClientTransaction
      * access point that had not been installed
      *
      */
-    void sendRequest()
-        throws IllegalArgumentException, IOException
+    void sendRequest() throws IllegalArgumentException, IOException
     {
-        logger.fine(
-                "sending STUN " + " tid " + transactionID + " from "
+        System.out.println("sending STUN " + " tid " + transactionID + " from "
                     + localAddress + " to " + requestDestination);
         sendRequest0();
 
