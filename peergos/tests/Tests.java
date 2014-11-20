@@ -9,6 +9,7 @@ import peergos.storage.net.IP;
 import peergos.user.UserContext;
 import peergos.util.Args;
 
+import java.io.File;
 import java.io.IOException;
 
 public class Tests
@@ -25,6 +26,10 @@ public class Tests
 
         UserContext.Test.setStorageAddress(Args.getParameter("clusterAddress", IP.getMyPublicAddress().getHostAddress()));
         UserContext.Test.setCoreNodeAddress(Args.getParameter("coreAddress", IP.getMyPublicAddress().getHostAddress()));
+
+        UserContext.Test.ensureKeyPairForUser("Alice", new File(Args.getParameter("firstKeyPairFile", "cache.1.key")));
+        UserContext.Test.ensureKeyPairForUser("Bob", new File(Args.getParameter("secondKeyPairFile", "cache.2.key")));
+
         testClass(UserContext.Test.class);
 //        testClass(User.Test.class);
 //        testClass(CoreNode.class);

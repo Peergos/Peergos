@@ -298,22 +298,42 @@ public class User extends UserPublicKey
 
         private KeyPairUtils(){}
 
+        public static void serialize(KeyPair keyPair, File f) throws IOException {
+             OutputStream out = new FileOutputStream(f);
+            try
+            {
+                serialize(keyPair, out);
+            } finally {
+                out.close();
+            }
+        }
+
         public static void serialize(KeyPair keyPair, OutputStream out) throws IOException {
             DataOutputStream dout = new DataOutputStream(out);
             try {
-                byte[] _private = keyPair.getPrivate().getEncoded();
                 byte[] _public = keyPair.getPublic().getEncoded();
-
                 dout.writeInt(_public.length);
                 dout.write(_public);
+
+                byte[] _private = keyPair.getPrivate().getEncoded();
                 dout.writeInt(_private.length);
                 dout.write(_private);
+
                 dout.flush();
             } finally {
                 dout.close();
             }
         }
 
+        public static KeyPair deserialize(File f) throws IOException {
+            InputStream in = new FileInputStream(f);
+            try
+            {
+               return deserialize(in);
+            } finally {
+                in.close();
+            }
+        }
         public static KeyPair deserialize(InputStream in) throws IOException {
 
             DataInputStream din = new DataInputStream(in);
