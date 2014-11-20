@@ -92,7 +92,7 @@ public class Start
         if (!Args.hasParameter("script"))
             throw new IllegalStateException("Need a script argument for test mode");
         String script = Args.getParameter("script");
-        Start.main(new String[] {"-directoryServer", "-local"});
+        Start.main(new String[] {"-directoryServer", "-local", "-domain", "localhost"});
 
         Start.main(new String[] {"-coreNode", "-local"});
 
