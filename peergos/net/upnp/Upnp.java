@@ -46,6 +46,7 @@ public class Upnp
         } else {
             System.out.println("SUCCESS!!!!!! BOOYAHHHH!");
             System.out.printf("%s:%d mapped to %s:%d\n", externalIPAddress, port, localAddress, port);
+            d.deletePortMapping(port, "TCP");
         }
     }
 }
