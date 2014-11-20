@@ -380,6 +380,8 @@ public class UserContext
 
     public static class Test {
         private static String coreNodeAddress, storageAddress;
+        private static final Map<String, File> KEY_PAIR_CACHE = new HashMap<>();
+
 
         public static void setCoreNodeAddress(String address) {
             Test.coreNodeAddress = address;
@@ -389,8 +391,17 @@ public class UserContext
             Test.storageAddress = address;
         }
 
-        public Test() {
+        public static void setKeyPairFile(String user, File f) {
+            KEY_PAIR_CACHE.put(user, f);}
+
+        public static void ensureKeyPairForUser(String user, File f) throws IOException {
+            if (! f.exists()) {
+                System.out.println("Generating key pair @ "+ f);
+                User.KeyPairUtils.serialize(User.generateKeyPair(), f);
+                setKeyPairFile(user, f);
+            }
         }
+        public Test() {}
 
         @org.junit.Test
         public void all() {
@@ -407,10 +418,15 @@ public class UserContext
 
                 // create a new us
                 long t1 = System.nanoTime();
-                User ourKeys = User.random();
+
+                String ourname = "Bob";
+
+                User ourKeys = KEY_PAIR_CACHE.containsKey(ourname) ?
+                        new User(User.KeyPairUtils.deserialize(KEY_PAIR_CACHE.get(ourname))) : User.random();
+
                 long t2 = System.nanoTime();
                 System.out.printf("User generation took %d mS\n", (t2 - t1) / 1000000);
-                String ourname = "Bob";
+
 
                 // create a DHT API
                 dht = new HttpsUserAPI(new InetSocketAddress(InetAddress.getByName(storageIP), storagePort));
@@ -422,10 +438,14 @@ public class UserContext
 
                 // make another user
                 t1 = System.nanoTime();
-                User friendKeys = User.random();
+                String friendName = "Alice";
+
+                User friendKeys = KEY_PAIR_CACHE.containsKey(friendName) ?
+                        new User(User.KeyPairUtils.deserialize(KEY_PAIR_CACHE.get(friendName))) : User.random();
+
                 t2 = System.nanoTime();
                 System.out.printf("User generation took %d mS\n", (t2 - t1) / 1000000);
-                String friendName = "Alice";
+
                 alice = new UserContext(friendName, friendKeys, dht, clientCoreNode);
                 if (!alice.isRegistered())
                     alice.register();
