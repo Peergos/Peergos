@@ -345,6 +345,8 @@ public class SSL
         builder.addRDN(PKCSObjectIdentifiers.pkcs_9_at_emailAddress, "hello.NSA.GCHQ.ASIO@goodluck.com");
 
         PKCS10CertificationRequestBuilder requestBuilder = new JcaPKCS10CertificationRequestBuilder(builder.build(), keys.getPublic());
+        if (commonName.equals("localhost"))
+            ipAddress = "127.0.0.1";
         if (ipAddress != null) {
             GeneralNames subjectAltName = new GeneralNames(new GeneralName(GeneralName.iPAddress, ipAddress));
             Extension[] ext = new Extension[]{new Extension(Extension.subjectAlternativeName, false, new DEROctetString(subjectAltName))};
