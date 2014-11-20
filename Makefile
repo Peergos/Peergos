@@ -47,17 +47,17 @@ tests:
 	    -C build peergos
 	rm -f def.manifest
 
-.PHONY: ice
-ice: 
+.PHONY: net
+net: 
 	cp RootCertificate.src peergos/crypto/RootCertificate.java
 	cp DirectoryCertificates.src peergos/crypto/DirectoryCertificates.java
 	cp CoreCertificates.src peergos/crypto/CoreCertificates.java
 	mkdir -p build
-	echo "Name: Peergos Tests" > def.manifest
-	echo "Main-Class: test.IceDistributed" >> def.manifest
+	echo "Name: Peergos Net Tests" > def.manifest
+	echo "Main-Class: peergos.net.upnp.Upnp" >> def.manifest
 	echo "Build-Date: " `date` >> def.manifest
 	echo "Class-Path: " $(CP_SPACE)>> def.manifest
 	javac $(JAVA_BUILD_OPTS) -d build `find peergos -name \*.java` `find test -name \*.java` `find org -name \*.java`
-	jar -cfm Ice.jar def.manifest \
+	jar -cfm Net.jar def.manifest \
 	    -C build peergos -C build test -C build org
 	rm -f def.manifest
