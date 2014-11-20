@@ -2,6 +2,7 @@ package peergos.storage.net;
 
 import peergos.crypto.SSL;
 import peergos.directory.DirectoryServer;
+import peergos.util.Args;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -18,6 +19,8 @@ public class IP
         Certificate[] dirs = SSL.getDirectoryServerCertificates();
         Certificate dir;
         try {
+            if (Args.hasOption("local"))
+                return InetAddress.getByName("localhost");
             while (true) {
                 dir = dirs[new SecureRandom().nextInt() % dirs.length];
                 // synchronously contact a directory server to sign our certificate
@@ -47,6 +50,8 @@ public class IP
 
     public static InetAddress getMyPublicAddress() throws IOException
     {
+        if (Args.hasOption("local"))
+            return InetAddress.getByName("localhost");
         InetAddress us = getMyPublicAddressFromDirectoryServer();
         if (us != null)
             return us;
