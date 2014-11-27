@@ -398,8 +398,8 @@ public class UserContext
             if (! f.exists()) {
                 System.out.println("Generating key pair @ "+ f);
                 User.KeyPairUtils.serialize(User.generateKeyPair(), f);
-                setKeyPairFile(user, f);
             }
+            setKeyPairFile(user, f);
         }
         public Test() {}
 
