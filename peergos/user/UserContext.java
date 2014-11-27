@@ -301,7 +301,7 @@ public class UserContext
         }
     }
 
-    private static class SharedRootDir extends StaticDataElement
+    public static class SharedRootDir extends StaticDataElement
     {
         public final String username;
         public final PublicKey pub;
