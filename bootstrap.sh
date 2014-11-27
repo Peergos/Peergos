@@ -23,6 +23,9 @@ echo signing core node certificate...
 java -jar PeergosServer.jar -coreSign -csr core.csr -rootPassword password
 cp peergos/crypto/CoreCertificates.java CoreCertificates.src
 make server > /dev/null
-#
-# To run unit tests successfully, re-make tests after running this script
-#
+rm -f storage.csr
+rm -f storage.p12
+echo
+echo "***********************************************************************"
+echo To run unit tests successfully, re-make tests after running this script
+echo If you are switching between localhost and peergos.org, run this again.
