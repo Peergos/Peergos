@@ -268,7 +268,7 @@ public class UserContext
         return res;
     }
 
-    private static abstract class StaticDataElement
+    public static abstract class StaticDataElement
     {
         public final int type;
 
@@ -483,6 +483,8 @@ public class UserContext
                 dht.shutdown();
             }
         }
+
+
 
         public void mediumFileTest(String owner, User sharer, PrivateKey sharerPriv, UserContext receiver, UserContext sender) {
             // create a root dir and a file to it, then retrieve and decrypt the file using the receiver
