@@ -4,9 +4,7 @@ import peergos.crypto.*;
 import peergos.util.ByteArrayWrapper;
 import peergos.util.Serialize;
 
-import java.io.DataInput;
-import java.io.DataOutput;
-import java.io.IOException;
+import java.io.*;
 import java.security.KeyPair;
 import java.util.*;
 
@@ -127,8 +125,11 @@ public class DirAccess extends Metadata
         return res;
     }
 
-    public ChunkProperties getProps(SymmetricKey ourSubfolders) {
-        return getProps(parent2meta.target(subfolders2parent.target(ourSubfolders)), parent2meta.initializationVector());
+    public FileProperties getProps(SymmetricKey ourSubfolders) {
+        SymmetricKey baseKey = parent2meta.target(subfolders2parent.target(ourSubfolders));
+        try {
+            return new FileProperties(new DataInputStream(new ByteArrayInputStream(baseKey.decrypt(encryptedMetadata, parent2meta.initializationVector()))));
+        } catch (IOException e) {e.printStackTrace();return null;}
     }
 
     public void addSubFolder(Location location, SymmetricKey ourSubfolders, SymmetricKey targetSubfolders)

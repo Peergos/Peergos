@@ -35,7 +35,7 @@ public class UserContext
     public static final int MAX_USERNAME_SIZE = 1024;
     public static final int MAX_KEY_SIZE = UserPublicKey.RSA_KEY_BITS;
 
-    private String username;
+    public final String username;
     private User us;
     private DHTUserAPI dht;
     private AbstractCoreNode core;
