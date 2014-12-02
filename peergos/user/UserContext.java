@@ -268,7 +268,7 @@ public class UserContext
         return res;
     }
 
-    private static abstract class StaticDataElement
+    public static abstract class StaticDataElement
     {
         public final int type;
 
@@ -301,7 +301,7 @@ public class UserContext
         }
     }
 
-    private static class SharedRootDir extends StaticDataElement
+    public static class SharedRootDir extends StaticDataElement
     {
         public final String username;
         public final PublicKey pub;
@@ -398,8 +398,8 @@ public class UserContext
             if (! f.exists()) {
                 System.out.println("Generating key pair @ "+ f);
                 User.KeyPairUtils.serialize(User.generateKeyPair(), f);
-                setKeyPairFile(user, f);
             }
+            setKeyPairFile(user, f);
         }
         public Test() {}
 
@@ -483,6 +483,8 @@ public class UserContext
                 dht.shutdown();
             }
         }
+
+
 
         public void mediumFileTest(String owner, User sharer, PrivateKey sharerPriv, UserContext receiver, UserContext sender) {
             // create a root dir and a file to it, then retrieve and decrypt the file using the receiver

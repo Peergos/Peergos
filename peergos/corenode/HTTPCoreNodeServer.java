@@ -16,7 +16,7 @@ public class HTTPCoreNodeServer
     private static final int CONNECTION_BACKLOG = 100;
     private static final int HANDLER_THREAD_COUNT= 100;
 
-    private static final int MAX_KEY_LENGTH = 4096;
+    private static final int MAX_KEY_LENGTH = 1024*1024;
     private static final int MAX_BLOB_LENGTH = 4*1024*1024;
 
     class CoreNodeHandler implements HttpHandler 

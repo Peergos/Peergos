@@ -2,6 +2,7 @@ package peergos.user;
 
 
 import org.ibex.nestedvm.util.Seekable;
+import peergos.util.ArrayOps;
 import peergos.util.ByteArrayWrapper;
 
 import java.util.HashMap;
@@ -24,8 +25,9 @@ public class MemoryDHTUserAPI extends DHTUserAPI
 
     public  Future<Boolean> put(byte[] key, byte[] value, final String user, final byte[] sharingKey, final byte[] mapKey, final byte[] proof)
     {
-        chunks.put(new ByteArrayWrapper(mapKey), value);
-        return new DummyFuture<Boolean>(true);
+        chunks.put(new ByteArrayWrapper(key), value);
+            return new DummyFuture<Boolean>(true);
+
     }
 
     public  Future<Boolean> contains(byte[] key)
