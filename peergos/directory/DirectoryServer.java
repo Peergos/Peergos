@@ -11,6 +11,7 @@ import peergos.util.Args;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.security.KeyPair;
 import java.security.NoSuchAlgorithmException;
@@ -42,7 +43,7 @@ public class DirectoryServer
         Certificate[] dirs = SSL.getDirectoryServerCertificates();
         signing = SSL.loadKeyPair(keyfile, passphrase);
         //start HTTP server
-        InetSocketAddress address = IPMappings.getMyPublicAddress(port);
+        InetSocketAddress address = new InetSocketAddress(InetAddress.getLocalHost(), port);
         commonName = Args.getParameter("domain", address.getHostName());
         Certificate tmp = null;
         for (Certificate dir: dirs)
