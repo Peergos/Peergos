@@ -57,7 +57,7 @@ public class IPMappings
 
     public static synchronized InetSocketAddress getMyPublicAddress(int desiredExternalPort) throws IOException
     {
-        if (Args.hasOption("domain"))
+        if (Args.hasParameter("domain"))
             return new InetSocketAddress(InetAddress.getByName(Args.getParameter("domain")), desiredExternalPort);
         if (mappings.containsKey(desiredExternalPort))
             return mappings.get(desiredExternalPort);
