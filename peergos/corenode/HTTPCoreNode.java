@@ -19,6 +19,7 @@ public class HTTPCoreNode extends AbstractCoreNode
 
     public HTTPCoreNode(URL coreNodeURL)
     {
+        System.out.println("Creating HTTP Corenode API at "+coreNodeURL);
         this.coreNodeURL = coreNodeURL;
     }
 

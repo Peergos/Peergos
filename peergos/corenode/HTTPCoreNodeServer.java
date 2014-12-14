@@ -372,7 +372,7 @@ public class HTTPCoreNodeServer
     {
         // eventually will need our own keypair to sign traffic to other core nodes our register ourselves with directory servers
         try {
-            HTTPCoreNodeServer server = new HTTPCoreNodeServer(AbstractCoreNode.getDefault(), new InetSocketAddress("localhost", port));
+            HTTPCoreNodeServer server = new HTTPCoreNodeServer(AbstractCoreNode.getDefault(), new InetSocketAddress(InetAddress.getLocalHost(), port));
             server.start();
         } catch (Exception e)
         {

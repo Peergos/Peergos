@@ -8,6 +8,7 @@ import peergos.util.ArrayOps;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.util.*;
 import java.util.concurrent.*;
@@ -48,7 +49,7 @@ public class Router
         LOGGER.setLevel(Level.ALL);
         storage = new Storage(donor, new File(DATA_DIR), MAX_STORAGE_SIZE, messengerAddress);
         userAPI = new HttpsMessenger(new InetSocketAddress(userAPIAddress.getPort()), LOGGER, this);
-        messenger = new HttpMessenger(messengerAddress, storage, LOGGER, this);
+        messenger = new HttpMessenger(new InetSocketAddress(InetAddress.getLocalHost(), messengerAddress.getPort()), storage, LOGGER, this);
     }
 
     public void init(InetSocketAddress addr) throws IOException {

@@ -411,6 +411,7 @@ public class UserContext
             try {
                 String coreIP = coreNodeAddress;
                 String storageIP = storageAddress;
+                System.out.println("Doing UserContext tests with core address = "+coreIP + " and storage address = "+storageIP);
 
                 int storagePort = 8000;
                 URL coreURL = new URL("http://" + coreIP + ":" + AbstractCoreNode.PORT + "/");
