@@ -1,8 +1,5 @@
 package peergos.storage.dht;
 
-import peergos.storage.net.IP;
-import peergos.util.*;
-
 import java.io.*;
 import java.net.*;
 import java.util.*;
@@ -10,19 +7,17 @@ import java.util.*;
 public class NodeID
 {
     public final long id;
-    public InetAddress addr;
-    public int port;
+    public InetSocketAddress external;
 
-    public NodeID(long id, InetAddress addr, int port)
+    public NodeID(long id, InetSocketAddress local)
     {
         this.id = id;
-        this.addr = addr;
-        this.port = port;
+        this.external = local;
     }
 
-    public NodeID() throws IOException
+    public NodeID(InetSocketAddress external) throws IOException
     {
-        this(generateID(), IP.getMyPublicAddress(), Args.getInt("port", 8080));
+        this(generateID(), external);
     }
 
     public NodeID(DataInput in) throws IOException
@@ -33,8 +28,7 @@ public class NodeID
             len = 4;
         byte[] buf = new byte[len];
         in.readFully(buf);
-        addr = InetAddress.getByAddress(buf);
-        port = in.readInt();
+        external = new InetSocketAddress(InetAddress.getByAddress(buf), in.readInt());
     }
 
     public String name()
@@ -60,17 +54,17 @@ public class NodeID
     public void write(DataOutput out) throws IOException
     {
         out.writeLong(id);
-        if (addr instanceof Inet4Address)
+        if (external.getAddress() instanceof Inet4Address)
             out.writeByte(4);
         else
             out.writeByte(6);
-        out.write(addr.getAddress());
-        out.writeInt(port);
+        out.write(external.getAddress().getAddress());
+        out.writeInt(external.getPort());
     }
 
     public static NodeID newID(NodeID old)
     {
-        return new NodeID(generateID(), old.addr, old.port);
+        return new NodeID(generateID(), old.external);
     }
 
     private static long generateID()
@@ -79,7 +73,7 @@ public class NodeID
     }
 
     public int hashCode() {
-        return (int)id ^ (int)(id >> 32) ^ port ^ addr.hashCode();
+        return (int)id ^ (int)(id >> 32) ^ external.getPort() ^ external.getAddress().hashCode();
     }
 
     public boolean equals(Object o) {
@@ -88,8 +82,8 @@ public class NodeID
         NodeID other = (NodeID) o;
         if (id != other.id)
             return false;
-        if (port != other.port)
+        if (external.getPort() != other.external.getPort())
             return false;
-        return addr.getHostAddress().equals(other.addr.getHostAddress());
+        return external.getHostName().equals(other.external.getHostName());
     }
 }

@@ -13,8 +13,6 @@ import java.io.*;
 import java.net.*;
 import java.security.*;
 import java.security.cert.*;
-import java.util.Arrays;
-import java.util.Enumeration;
 import java.util.concurrent.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -28,23 +26,21 @@ public class HttpsMessenger
     public static final int CONNECTION_BACKLOG = 100;
 
     private final Logger LOGGER;
-    private final int localPort;
+    private final InetSocketAddress local;
     HttpsServer httpsServer;
 
-    public HttpsMessenger(int port, Logger LOGGER, Router router) throws IOException
+    public HttpsMessenger(InetSocketAddress local, Logger LOGGER, Router router) throws IOException
     {
         this.LOGGER = LOGGER;
-        this.localPort = port;
+        this.local = local;
         init(router);
     }
 
     public boolean init(Router router) throws IOException {
         try
         {
-            InetAddress us = IP.getMyPublicAddress();
-            InetSocketAddress address = new InetSocketAddress(us, localPort);
-            System.out.println("Starting user API server at: " + us.getHostAddress() + ":" + localPort);
-            httpsServer = HttpsServer.create(address, CONNECTION_BACKLOG);
+            System.out.println("Starting user API server at: " + local.getHostName() + ":" + local.getPort());
+            httpsServer = HttpsServer.create(local, CONNECTION_BACKLOG);
             SSLContext sslContext = SSLContext.getInstance("TLS");
 
             char[] password = "storage".toCharArray();

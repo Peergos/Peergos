@@ -21,23 +21,21 @@ public class HttpMessenger
     public static final int CONNECTION_BACKLOG = 100;
 
     private final Logger LOGGER;
-    private final int localPort;
+    private final InetSocketAddress local;
     HttpServer httpServer;
     private final Storage fragments;
 
-    public HttpMessenger(int port, Storage fragments, Logger LOGGER, Router router) throws IOException
+    public HttpMessenger(InetSocketAddress local, Storage fragments, Logger LOGGER, Router router) throws IOException
     {
         this.LOGGER = LOGGER;
-        this.localPort = port;
+        this.local = local;
         this.fragments = fragments;
         init(router);
     }
 
     public boolean init(Router router) throws IOException {
-        InetAddress us = IP.getMyPublicAddress();
-        InetSocketAddress address = new InetSocketAddress(us, localPort);
-        System.out.println("Starting storage server messenger at: " + us.getHostAddress() + ":" + localPort);
-        httpServer = HttpServer.create(address, CONNECTION_BACKLOG);
+        System.out.println("Starting storage server messenger listening at: " + local.getHostName() + ":" + local.getPort());
+        httpServer = HttpServer.create(local, CONNECTION_BACKLOG);
 
         httpServer.createContext(MESSAGE_URL, new HttpMessageHandler(router));
         httpServer.createContext(USER_URL, new HttpUserAPIHandler(router));
@@ -51,7 +49,7 @@ public class HttpMessenger
     public void sendLetter(Letter p) {
         if (p.dest != null)
             try {
-                sendMessage(p.m, p.dest, p.destPort + 1);
+                sendMessage(p.m, p.dest);
             } catch (IOException e) {
                 LOGGER.log(Level.ALL, "Error sending letter", e);
             }
@@ -59,13 +57,13 @@ public class HttpMessenger
 
     // need to think about latency of opening all these SSL connections,
     // maybe we could keep open connections to neighbours, and only open to distant nodes in the DHT?
-    public void sendMessage(Message m, InetAddress addr, int port) throws IOException
+    public void sendMessage(Message m, InetSocketAddress addr) throws IOException
     {
         if (Message.LOG)
-            LOGGER.log(Level.ALL, String.format("Sent %s with target %d to %s:%d\n", m.name(), m.getTarget(), addr, port));
+            LOGGER.log(Level.ALL, String.format("Sent %s with target %d to %s:%d\n", m.name(), m.getTarget(), addr.getHostName(), addr.getPort()));
         ByteArrayOutputStream bout = new ByteArrayOutputStream();
         m.write(new DataOutputStream(bout));
-        URL target = new URL("http", addr.getHostAddress(), port, MESSAGE_URL);
+        URL target = new URL("http", addr.getAddress().getHostName(), addr.getPort(), MESSAGE_URL);
         HttpURLConnection conn = (HttpURLConnection) target.openConnection();
         conn.setDoOutput(true);
         conn.setRequestMethod("PUT");
@@ -76,14 +74,14 @@ public class HttpMessenger
         out.flush();
         out.close();
         conn.getResponseCode();
-        LOGGER.log(Level.ALL, String.format("Finished sending %s with target %d to %s:%d\n", m.name(), m.getTarget(), addr, port));
+        LOGGER.log(Level.ALL, String.format("Finished sending %s with target %d to %s:%d\n", m.name(), m.getTarget(), addr.getHostName(), addr.getPort()));
     }
 
-    public static byte[] getFragment(InetAddress addr, int port, String key) throws IOException
+    public static byte[] getFragment(InetSocketAddress addr, String key) throws IOException
     {
         // for now, make a direct connection
-        URL target = new URL("http", addr.getHostAddress(), port, key);
-        System.out.println("getting fragment from " + addr.getHostAddress());
+        URL target = new URL("http", addr.getHostName(), addr.getPort(), key);
+        System.out.println("getting fragment from " + addr);
         URLConnection conn = target.openConnection();
         InputStream in = conn.getInputStream();
         byte[] buf = new byte[2*1024*1024];
@@ -99,10 +97,10 @@ public class HttpMessenger
         return bout.toByteArray();
     }
 
-    public static void putFragment(InetAddress addr, int port, String key, byte[] value) throws IOException
+    public static void putFragment(InetSocketAddress addr, String key, byte[] value) throws IOException
     {
         // for now, make a direct connection
-        URL target = new URL("http", addr.getHostAddress(), port, key+"/");
+        URL target = new URL("http", addr.getHostName(), addr.getPort(), key+"/");
         System.out.println("sending fragment to " + target.toString());
         HttpURLConnection conn = (HttpURLConnection) target.openConnection();
         conn.setDoOutput(true);

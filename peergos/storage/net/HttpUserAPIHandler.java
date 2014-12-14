@@ -95,7 +95,7 @@ public class HttpUserAPIHandler implements HttpHandler
                 exchange.sendResponseHeaders(200, 0);
                 DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());
                 dout.writeInt(1); // success
-                byte[] frag = HttpMessenger.getFragment(offer.getTarget().addr, offer.getTarget().port+1, "/" + ArrayOps.bytesToHex(key));
+                byte[] frag = HttpMessenger.getFragment(offer.getTarget().external, "/" + ArrayOps.bytesToHex(key));
                 Serialize.serialize(frag, dout);
                 dout.flush();
                 dout.close();

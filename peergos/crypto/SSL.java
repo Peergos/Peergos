@@ -2,8 +2,7 @@ package peergos.crypto;
 
 import org.bouncycastle.x509.extension.AuthorityKeyIdentifierStructure;
 import peergos.directory.DirectoryServer;
-import peergos.storage.net.IP;
-import org.bouncycastle.asn1.ASN1ObjectIdentifier;
+import peergos.storage.net.IPMappings;
 import org.bouncycastle.asn1.DEROctetString;
 import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
 import org.bouncycastle.asn1.x500.RDN;
@@ -163,7 +162,7 @@ public class SSL
         }
         ks.load(null, password);
         KeyPair keypair = generateKeyPair();
-        String ip = IP.getMyPublicAddress().getHostAddress();
+        String ip = IPMappings.getMyPublicAddress(IPMappings.STORAGE_PORT).getHostName();
         PKCS10CertificationRequest csr = generateCSR(password, ip, ip, keypair, "storage.csr");
         PrivateKey myPrivateKey = keypair.getPrivate();
 
@@ -254,7 +253,7 @@ public class SSL
             throws KeyStoreException, IOException, NoSuchAlgorithmException, CertificateException, InvalidKeyException,
             NoSuchProviderException, SignatureException, OperatorCreationException
     {
-        return generateSelfSignedCertificate("Peergos", IP.getMyPublicAddress().getHostAddress(), keypair.getPublic(), keypair.getPrivate());
+        return generateSelfSignedCertificate("Peergos", "peergos.secret", keypair.getPublic(), keypair.getPrivate());
     }
 
     public static void generateAndSaveRootCertificate(char[] password)
@@ -347,7 +346,7 @@ public class SSL
         PKCS10CertificationRequestBuilder requestBuilder = new JcaPKCS10CertificationRequestBuilder(builder.build(), keys.getPublic());
         if (commonName.equals("localhost"))
             ipAddress = "127.0.0.1";
-        if (ipAddress != null) {
+        if (ipAddress != null && isIPAddress(ipAddress)) {
             GeneralNames subjectAltName = new GeneralNames(new GeneralName(GeneralName.iPAddress, ipAddress));
             Extension[] ext = new Extension[]{new Extension(Extension.subjectAlternativeName, false, new DEROctetString(subjectAltName))};
             PKCS10CertificationRequest csr = requestBuilder.addAttribute(PKCSObjectIdentifiers.pkcs_9_at_extensionRequest,

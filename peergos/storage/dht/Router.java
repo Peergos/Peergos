@@ -3,13 +3,11 @@ package peergos.storage.dht;
 import peergos.storage.net.HttpMessenger;
 import peergos.storage.net.HttpsMessenger;
 import peergos.storage.Storage;
-import peergos.storage.net.IP;
 import peergos.util.*;
 import peergos.util.ArrayOps;
 
 import java.io.File;
 import java.io.IOException;
-import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.util.*;
 import java.util.concurrent.*;
@@ -39,22 +37,22 @@ public class Router
     private BlockingQueue queue = new ArrayBlockingQueue(200);
 
 
-    public Router(final String donor, final int port) throws IOException
+    public Router(String donor, InetSocketAddress userAPIAddress, InetSocketAddress messengerAddress) throws IOException
     {
         new File("log/").mkdir();
-        us = new NodeID();
-        String name = us.name() + ":" + us.port;
+        us = new NodeID(messengerAddress);
+        String name = us.name() + "_" + us.external.getPort();
         LOGGER = Logger.getLogger(name);
         Handler handler = new FileHandler("log/" + name + ".log", 10 * 1024 * 1024, 7);
         LOGGER.addHandler(handler);
         LOGGER.setLevel(Level.ALL);
-        storage = new Storage(donor, new File(DATA_DIR), MAX_STORAGE_SIZE, new InetSocketAddress(IP.getMyPublicAddress(), port+1));
-        userAPI = new HttpsMessenger(port, LOGGER, this);
-        messenger = new HttpMessenger(port+1, storage, LOGGER, this);
+        storage = new Storage(donor, new File(DATA_DIR), MAX_STORAGE_SIZE, messengerAddress);
+        userAPI = new HttpsMessenger(new InetSocketAddress(userAPIAddress.getPort()), LOGGER, this);
+        messenger = new HttpMessenger(messengerAddress, storage, LOGGER, this);
     }
 
-    public void init(InetAddress addr, int port) throws IOException {
-        messenger.sendLetter(new Letter(new Message.JOIN(us), addr, port));
+    public void init(InetSocketAddress addr) throws IOException {
+        messenger.sendLetter(new Letter(new Message.JOIN(us), addr));
         // wait for response
 
         LOGGER.log(Level.ALL, "Initial Storage server successfully joined DHT.");
@@ -102,7 +100,7 @@ public class Router
         if (Message.LOG)
         {
             if (m.getHops().size() > 0)
-                LOGGER.log(Level.ALL, String.format("Received %s from %s:%d with target %d\n", m.name(), m.getHops().get(0).addr, m.getHops().get(0).port, m.getTarget()));
+                LOGGER.log(Level.ALL, String.format("Received %s from %s with target %d\n", m.name(), m.getHops().get(0).external, m.getTarget()));
             else
                 LOGGER.log(Level.ALL, String.format("Received %s\n", m.name()));
         }
@@ -120,7 +118,7 @@ public class Router
         {
             LOGGER.log(Level.ALL, "Sending "+m.name() +" to "+next.name());
             m.addNode(getRandomNeighbour());
-            messenger.sendLetter(new Letter(m, next.addr, next.port));
+            messenger.sendLetter(new Letter(m, next.external));
         } else {
             //avoid infinite loop of forwarding message to ourselves
             List<NodeID> hops = m.getHops();
@@ -170,7 +168,7 @@ public class Router
         } else
         {
             Node existing = friends.get(n.id);
-            if ((!existing.node.addr.equals(n.addr) || (existing.node.port != n.port)))
+            if (!existing.node.external.equals(n.external))
             {
                 if (!existing.isLost())
                     return; // ignore nodes trying to overtake current node address
@@ -375,13 +373,13 @@ public class Router
         StringBuilder b = new StringBuilder();
         b.append(String.format("Left Neighbours:\n"));
         for (Node n : leftNeighbours.values())
-            b.append(String.format("%s:%d id=%d recentlySeen=%s recentlyContacted=%s d=%d\n", n.node.addr.getHostAddress(), n.node.port, n.node.id, n.wasRecentlySeen(), n.wasRecentlyContacted(), n.node.d(us)));
+            b.append(String.format("%s id=%d recentlySeen=%s recentlyContacted=%s d=%d\n", n.node.external, n.node.id, n.wasRecentlySeen(), n.wasRecentlyContacted(), n.node.d(us)));
         b.append(String.format("Right Neighbours:\n"));
         for (Node n : rightNeighbours.values())
-            b.append(String.format("%s:%d id=%d recentlySeen=%s recentlyContacted=%s d=%d\n", n.node.addr.getHostAddress(), n.node.port, n.node.id, n.wasRecentlySeen(), n.wasRecentlyContacted(), n.node.d(us)));
+            b.append(String.format("%s id=%d recentlySeen=%s recentlyContacted=%s d=%d\n", n.node.external, n.node.id, n.wasRecentlySeen(), n.wasRecentlyContacted(), n.node.d(us)));
         b.append(String.format("\nFriends:"));
         for (Node n : friends.values())
-            b.append(String.format("%s:%d id=%d recentlySeen=%s d=%d\n", n.node.addr.getHostAddress(), n.node.port, n.node.id, n.wasRecentlySeen(), n.node.d(us)));
+            b.append(String.format("%s id=%d recentlySeen=%s d=%d\n", n.node.external, n.node.id, n.wasRecentlySeen(), n.node.d(us)));
         b.append(String.format("\n"));
         LOGGER.log(Level.ALL, b.toString());
     }
@@ -390,7 +388,7 @@ public class Router
     {
         Message echo = new Message.ECHO(target, leftNeighbours.values(), rightNeighbours.values());
         echo.addNode(us);
-        messenger.sendLetter(new Letter(echo, target.addr, target.port));
+        messenger.sendLetter(new Letter(echo, target.external));
     }
 
     private synchronized NodeID getClosest(Message m)

@@ -1,17 +1,15 @@
 package peergos.storage.dht;
 
-import java.net.InetAddress;
+import java.net.InetSocketAddress;
 
 public class Letter
 {
     public final Message m;
-    public final InetAddress dest;
-    public final int destPort;
+    public final InetSocketAddress dest;
 
-    public Letter(Message m, InetAddress dest, int destPort)
+    public Letter(Message m, InetSocketAddress dest)
     {
         this.m = m;
         this.dest = dest;
-        this.destPort = destPort;
     }
 }

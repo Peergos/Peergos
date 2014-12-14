@@ -1,9 +1,8 @@
 package peergos.directory;
 
 import com.sun.net.httpserver.HttpServer;
-import peergos.crypto.DirectoryCertificates;
 import peergos.crypto.SSL;
-import peergos.storage.net.IP;
+import peergos.storage.net.IPMappings;
 import org.bouncycastle.operator.OperatorCreationException;
 import org.bouncycastle.pkcs.PKCS10CertificationRequest;
 import org.bouncycastle.pkcs.PKCSException;
@@ -12,7 +11,6 @@ import peergos.util.Args;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
-import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.security.KeyPair;
 import java.security.NoSuchAlgorithmException;
@@ -44,9 +42,8 @@ public class DirectoryServer
         Certificate[] dirs = SSL.getDirectoryServerCertificates();
         signing = SSL.loadKeyPair(keyfile, passphrase);
         //start HTTP server
-        InetAddress us = IP.getMyPublicAddress();
-        InetSocketAddress address = new InetSocketAddress(us, port);
-        commonName = Args.getParameter("domain", us.getHostAddress());
+        InetSocketAddress address = IPMappings.getMyPublicAddress(port);
+        commonName = Args.getParameter("domain", address.getHostName());
         Certificate tmp = null;
         for (Certificate dir: dirs)
             if (SSL.getCommonName(dir).equals(commonName))
@@ -54,7 +51,7 @@ public class DirectoryServer
         ourCert = tmp;
         for (Certificate cert: SSL.getCoreServerCertificates())
             coreServers.put(SSL.getCommonName(cert), cert);
-        System.out.println("Directory Server listening on: " + us.getHostAddress() + ":" + port);
+        System.out.println("Directory Server listening on: " + address.getHostName() + ":" + port);
         server = HttpServer.create(address, CONNECTION_BACKLOG);
         server.createContext("/dir", new StorageListHandler(this));
         server.createContext("/myIP", new MyIPHandler(this));

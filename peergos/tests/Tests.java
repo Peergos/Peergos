@@ -3,9 +3,6 @@ package peergos.tests;
 import org.junit.runner.JUnitCore;
 import org.junit.runner.Result;
 import org.junit.runner.notification.Failure;
-import peergos.crypto.SSL;
-import peergos.crypto.User;
-import peergos.storage.net.IP;
 import peergos.user.UserContext;
 import peergos.util.Args;
 
@@ -24,8 +21,8 @@ public class Tests
 //        testClass(Crypto.class);
 //        testClass(SSL.class);
 
-        UserContext.Test.setStorageAddress(Args.getParameter("clusterAddress", IP.getMyPublicAddress().getHostAddress()));
-        UserContext.Test.setCoreNodeAddress(Args.getParameter("coreAddress", IP.getMyPublicAddress().getHostAddress()));
+        UserContext.Test.setStorageAddress(Args.getParameter("clusterAddress", "localhost"));
+        UserContext.Test.setCoreNodeAddress(Args.getParameter("coreAddress", "localhost"));
 
         UserContext.Test.ensureKeyPairForUser("Alice", new File(Args.getParameter("firstKeyPairFile", "cache.1.key")));
         UserContext.Test.ensureKeyPairForUser("Bob", new File(Args.getParameter("secondKeyPairFile", "cache.2.key")));

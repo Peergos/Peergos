@@ -143,9 +143,9 @@ public class CoreNode
             try
             {
                 AbstractCoreNode mockCoreNode = AbstractCoreNode.getDefault();
-                InetAddress address = InetAddress.getByName("localhost");
+                InetSocketAddress address = new InetSocketAddress(InetAddress.getByName("localhost"), AbstractCoreNode.PORT);
 
-                server = new HTTPCoreNodeServer(mockCoreNode,address, AbstractCoreNode.PORT);
+                server = new HTTPCoreNodeServer(mockCoreNode,address);
                 server.start();
 
                 URL url = new URL("http://localhost:"+AbstractCoreNode.PORT+"/");

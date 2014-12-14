@@ -2,6 +2,7 @@ package peergos.storage.net;
 
 import peergos.crypto.SSL;
 import peergos.directory.DirectoryServer;
+import peergos.net.upnp.Upnp;
 import peergos.util.Args;
 
 import java.io.ByteArrayOutputStream;
@@ -12,10 +13,14 @@ import java.net.*;
 import java.security.cert.Certificate;
 import java.security.SecureRandom;
 import java.util.Enumeration;
+import java.util.HashMap;
+import java.util.Map;
 
-public class IP
+public class IPMappings
 {
-    public static InetAddress getMyPublicAddressFromDirectoryServer() {
+    public static final int STORAGE_PORT = 8000;
+
+    private static InetAddress getMyPublicAddressFromDirectoryServer() {
         Certificate[] dirs = SSL.getDirectoryServerCertificates();
         Certificate dir;
         try {
@@ -48,34 +53,47 @@ public class IP
         }
     }
 
-    public static InetAddress getMyPublicAddress() throws IOException
+    private static final Map<Integer, InetSocketAddress> mappings = new HashMap();
+
+    public static synchronized InetSocketAddress getMyPublicAddress(int desiredExternalPort) throws IOException
     {
+        if (Args.hasOption("domain"))
+            return new InetSocketAddress(InetAddress.getByName(Args.getParameter("domain")), desiredExternalPort);
+        if (mappings.containsKey(desiredExternalPort))
+            return mappings.get(desiredExternalPort);
         if (Args.hasOption("local"))
-            return InetAddress.getByName("localhost");
+            return new InetSocketAddress(InetAddress.getByName("localhost"), desiredExternalPort);
         InetAddress us = getMyPublicAddressFromDirectoryServer();
-        if (us != null)
-            return us;
-        // try to find our public IP address
+
+        // try to find our public IP address on a NIC
         Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
         while (interfaces.hasMoreElements()){
             NetworkInterface current = interfaces.nextElement();
             if (!current.isUp() || current.isLoopback() || current.isVirtual()) continue;
             Enumeration<InetAddress> addresses = current.getInetAddresses();
-            InetAddress ipv6 = null;
+//            InetAddress ipv6 = null;
             while (addresses.hasMoreElements()){
                 InetAddress current_addr = addresses.nextElement();
                 if (current_addr.isLoopbackAddress()) continue;
                 if (current_addr instanceof Inet6Address)
                 {
-                    ipv6 = current_addr;
+//                    ipv6 = current_addr;
                     continue;
                 }
-//                System.out.println("my public address: "+current_addr.getHostAddress());
-                return current_addr;
+                if (current_addr.equals(us)) {
+                    mappings.put(desiredExternalPort, new InetSocketAddress(us, desiredExternalPort));
+                    return mappings.get(desiredExternalPort);
+                }
             }
-            if (ipv6 != null)
-                return ipv6;
+//            if (ipv6 != null)
+//                return ipv6;
         }
-       throw new IOException("Is server connected to the internet?");
+        // try to open UPNP route to see if our router has a public IP
+        InetSocketAddress externalAddress = Upnp.openUPNPConnection(us, desiredExternalPort);
+        if (externalAddress != null) {
+            mappings.put(externalAddress.getPort(), externalAddress);
+            return externalAddress;
+        }
+       throw new IOException("Couldn't get an externally visible IP address. Are you connected to the internet?");
     }
 }

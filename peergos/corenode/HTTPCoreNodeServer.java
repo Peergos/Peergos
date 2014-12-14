@@ -1,7 +1,7 @@
 package peergos.corenode;
 
 import peergos.crypto.*;
-import peergos.storage.net.IP;
+import peergos.storage.net.IPMappings;
 
 import java.util.*;
 import java.net.*;
@@ -330,15 +330,15 @@ public class HTTPCoreNodeServer
     private final InetSocketAddress address; 
     private final AbstractCoreNode coreNode;
 
-    public HTTPCoreNodeServer(AbstractCoreNode coreNode, InetAddress address, int port) throws IOException
+    public HTTPCoreNodeServer(AbstractCoreNode coreNode, InetSocketAddress address) throws IOException
     {
         this.coreNode = coreNode;
-        this.address = new InetSocketAddress(address, port);
+        this.address = address;
         server = HttpServer.create(this.address, CONNECTION_BACKLOG);
         server.createContext("/", new CoreNodeHandler());
         //server.setExecutor(Executors.newFixedThreadPool(HANDLER_THREAD_COUNT));
         server.setExecutor(null);
-        System.out.printf("Starting core node listening at %s:%d\n", address.getHostAddress(), port);
+        System.out.printf("Starting core node listening at %s:%d\n", address.getHostName(), address.getPort());
     }
 
     public void start() throws IOException
@@ -372,7 +372,7 @@ public class HTTPCoreNodeServer
     {
         // eventually will need our own keypair to sign traffic to other core nodes our register ourselves with directory servers
         try {
-            HTTPCoreNodeServer server = new HTTPCoreNodeServer(AbstractCoreNode.getDefault(), IP.getMyPublicAddress(), port);
+            HTTPCoreNodeServer server = new HTTPCoreNodeServer(AbstractCoreNode.getDefault(), IPMappings.getMyPublicAddress(port));
             server.start();
         } catch (Exception e)
         {

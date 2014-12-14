@@ -4,11 +4,52 @@ import org.bitlet.weupnp.GatewayDevice;
 import org.bitlet.weupnp.GatewayDiscover;
 import org.bitlet.weupnp.PortMappingEntry;
 
+import java.io.IOException;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.util.Random;
 
 public class Upnp
 {
+
+    public static InetSocketAddress openUPNPConnection(InetAddress externalGuess, int externalPort) {
+        try {
+            GatewayDiscover discover = new GatewayDiscover();
+            discover.discover();
+            GatewayDevice d = discover.getValidGateway();
+            if (d == null)
+                return null;
+
+            InetAddress localAddress = d.getLocalAddress();
+            String externalIPAddress = d.getExternalIPAddress();
+            PortMappingEntry portMapping = new PortMappingEntry();
+
+            while (d.getSpecificPortMappingEntry(externalPort,"TCP",portMapping)) {
+                if (d.getLocalAddress().getHostAddress().equals(portMapping.getInternalClient()) && portMapping.getExternalPort() == externalPort) {
+                    System.out.println("Using preexisting UPNP mapping on port "+externalPort);
+                    return new InetSocketAddress(d.getExternalIPAddress(), portMapping.getExternalPort());
+                }
+                System.out.println(d.getLocalAddress().getHostAddress()+"!="+portMapping.getInternalClient());
+                System.err.printf("External port %d is already mapped to internal client %s:%d. Trying another.\n",
+                        portMapping.getExternalPort(),
+                        portMapping.getInternalClient(), portMapping.getInternalPort());
+                externalPort = new Random().nextInt(65536);
+                portMapping = new PortMappingEntry();
+            }
+            if (!d.addPortMapping(externalPort, externalPort, localAddress.getHostAddress(),"TCP","test")) {
+                System.err.println("Port mapping attempt failed");
+                return null;
+            } else {
+                System.out.printf("%s:%d mapped to %s:%d\n", externalIPAddress, externalPort, localAddress, externalPort);
+                return new InetSocketAddress(d.getExternalIPAddress(), externalPort);
+//                d.deletePortMapping(port, "TCP");
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
     public static void main(String[] args) throws Exception {
         GatewayDiscover discover = new GatewayDiscover();
         discover.discover();

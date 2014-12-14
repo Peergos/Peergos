@@ -35,7 +35,7 @@ public class DHTAPI
         {
             PutOffer offer = (PutOffer) obj;
             try {
-                HttpMessenger.putFragment(offer.getTarget().addr, offer.getTarget().port+1, "/" + ArrayOps.bytesToHex(key), value);
+                HttpMessenger.putFragment(offer.getTarget().external, "/" + ArrayOps.bytesToHex(key), value);
                 callback.callback(offer);
             } catch (IOException e)
             {

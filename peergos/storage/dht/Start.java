@@ -4,13 +4,14 @@ import peergos.corenode.AbstractCoreNode;
 import peergos.corenode.HTTPCoreNodeServer;
 import peergos.crypto.SSL;
 import peergos.directory.DirectoryServer;
-import peergos.storage.net.IP;
+import peergos.storage.net.IPMappings;
 import peergos.tests.Scripter;
 import peergos.util.Args;
 
 import java.io.File;
 import java.io.IOException;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -52,7 +53,7 @@ public class Start
         }
         else if (Args.hasOption("dirGen"))
         {
-            String domain = Args.getParameter("domain", IP.getMyPublicAddress().getHostAddress());
+            String domain = Args.getParameter("domain", IPMappings.getMyPublicAddress(DirectoryServer.PORT).getHostName());
             String ipAddress = SSL.isIPAddress(domain) ? domain : null;
             SSL.generateCSR(Args.getParameter("password").toCharArray(), domain, ipAddress, Args.getParameter("keyfile"), "dir.csr");
         }
@@ -62,7 +63,7 @@ public class Start
         }
         else if (Args.hasOption("coreGen"))
         {
-            String domain = Args.getParameter("domain", IP.getMyPublicAddress().getHostAddress());
+            String domain = Args.getParameter("domain", IPMappings.getMyPublicAddress(AbstractCoreNode.PORT).getHostName());
             String ipAddress = SSL.isIPAddress(domain) ? domain : null;
             SSL.generateCSR(Args.getParameter("password").toCharArray(), domain, ipAddress, Args.getParameter("keyfile"), "core.csr");
         }
@@ -72,12 +73,14 @@ public class Start
         }
         else {
             int port = Args.getInt("port", 8000);
+            InetSocketAddress userAPIAddr = IPMappings.getMyPublicAddress(port);
+            InetSocketAddress messengerAddr = IPMappings.getMyPublicAddress(port + 1);
             String user = Args.getParameter("user", "root");
             boolean isFirstNode = Args.hasOption("firstNode");
             InetAddress contactIP = isFirstNode ? null : InetAddress.getByName(Args.getParameter("contactIP"));
             int contactPort = Args.getInt("contactPort", 8080);
-            Router router = new Router(user, port);
-            router.init(contactIP, contactPort);
+            Router router = new Router(user, userAPIAddr, messengerAddr);
+            router.init(new InetSocketAddress(contactIP, contactPort));
             // router is ready!
             System.out.println(port+" joined dht");
             DHTAPI api = new DHTAPI(router);
@@ -104,7 +107,7 @@ public class Start
         Start.main(args);
         if (nodes == 1)
             return;
-        args = new String[]{"-port", "", "-logMessages", "-local", "-contactIP", IP.getMyPublicAddress().getHostAddress(), "-contactPort", args[2]};
+        args = new String[]{"-port", "", "-logMessages", "-local", "-contactIP", "localhost", "-contactPort", args[2]};
         if (nodes > 1)
             for (int i = 0; i < nodes - 2; i++)
             {
