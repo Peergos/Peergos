@@ -380,6 +380,7 @@ public class UserContext
 
     public static class Test {
         private static String coreNodeAddress, storageAddress;
+        private static String username, followerName;
         private static final Map<String, File> KEY_PAIR_CACHE = new HashMap<>();
 
 
@@ -389,6 +390,14 @@ public class UserContext
 
         public static void setStorageAddress(String address) {
             Test.storageAddress = address;
+        }
+
+        public static void setUser(String name) {
+            username = name;
+        }
+
+        public static void setFollower(String name) {
+            followerName = name;
         }
 
         public static void setKeyPairFile(String user, File f) {
@@ -411,6 +420,9 @@ public class UserContext
             try {
                 String coreIP = coreNodeAddress;
                 String storageIP = storageAddress;
+                String ourname = username;
+                String friendName = followerName;
+
                 System.out.println("Doing UserContext tests with core address = "+coreIP + " and storage address = "+storageIP);
 
                 int storagePort = 8000;
@@ -419,8 +431,6 @@ public class UserContext
 
                 // create a new us
                 long t1 = System.nanoTime();
-
-                String ourname = "Bob";
 
                 User ourKeys = KEY_PAIR_CACHE.containsKey(ourname) ?
                         new User(User.KeyPairUtils.deserialize(KEY_PAIR_CACHE.get(ourname))) : User.random();
@@ -439,7 +449,6 @@ public class UserContext
 
                 // make another user
                 t1 = System.nanoTime();
-                String friendName = "Alice";
 
                 User friendKeys = KEY_PAIR_CACHE.containsKey(friendName) ?
                         new User(User.KeyPairUtils.deserialize(KEY_PAIR_CACHE.get(friendName))) : User.random();

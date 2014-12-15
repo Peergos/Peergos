@@ -23,10 +23,15 @@ public class Tests
 
         UserContext.Test.setStorageAddress(Args.getParameter("clusterAddress", "localhost"));
         UserContext.Test.setCoreNodeAddress(Args.getParameter("coreAddress", "localhost"));
+        String user = Args.hasOption("randomise") ? "Bob" + System.currentTimeMillis() : "Bob";
+        String follower = Args.hasOption("randomise") ? "Alice" + System.currentTimeMillis() : "Alice";
+        UserContext.Test.setUser(user);
+        UserContext.Test.setFollower(follower);
 
-        UserContext.Test.ensureKeyPairForUser("Alice", new File(Args.getParameter("firstKeyPairFile", "cache.1.key")));
-        UserContext.Test.ensureKeyPairForUser("Bob", new File(Args.getParameter("secondKeyPairFile", "cache.2.key")));
-
+        if (!Args.hasOption("randomise")) {
+            UserContext.Test.ensureKeyPairForUser("Alice", new File(Args.getParameter("firstKeyPairFile", "cache.1.key")));
+            UserContext.Test.ensureKeyPairForUser("Bob", new File(Args.getParameter("secondKeyPairFile", "cache.2.key")));
+        }
         testClass(UserContext.Test.class);
 //        testClass(User.Test.class);
 //        testClass(CoreNode.class);
