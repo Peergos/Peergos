@@ -28,7 +28,7 @@ public class Router
     private SortedMap<Long, Node> leftNeighbours = new TreeMap();
     private SortedMap<Long, Node> rightNeighbours = new TreeMap();
     private SortedMap<Long, Node> friends = new TreeMap();
-    private final Storage storage;
+    public final Storage storage;
     public Logger LOGGER;
     private final Map<ByteArrayWrapper, peergos.util.CompletableFuture> pendingPuts = new ConcurrentHashMap();
     private final Map<ByteArrayWrapper, peergos.util.CompletableFuture> pendingGets = new ConcurrentHashMap();
@@ -52,6 +52,10 @@ public class Router
         messenger = new HttpMessenger(new InetSocketAddress(InetAddress.getLocalHost(), messengerAddress.getPort()), storage, LOGGER, this);
     }
 
+    public NodeID address() {
+        return us;
+    }
+
     public void init(InetSocketAddress addr) throws IOException {
         messenger.sendLetter(new Letter(new Message.JOIN(us), addr));
         // wait for response
@@ -72,7 +76,7 @@ public class Router
         }
     }
 
-    public Future ask(Message m) {
+    public Future<Object> ask(Message m) {
         LOGGER.log(Level.ALL, "Asking "+m.name());
         peergos.util.CompletableFuture f = new peergos.util.CompletableFuture(new Callable() {
             @Override

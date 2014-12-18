@@ -31,7 +31,7 @@ public class HttpUserAPIHandler implements HttpHandler
         if (m instanceof Message.PUT) {
             byte[] value = Serialize.deserializeByteArray(din, Fragment.SIZE);
             Future<Object> fut = router.ask(m);
-            OnSuccess success = new DHTAPI.PutHandler(((Message.PUT) m).getKey(), value, new PutSuccess(httpExchange));
+            OnSuccess success = new DHTAPI.PutHandler(router, ((Message.PUT) m).getKey(), value, new PutSuccess(httpExchange));
             OnFailure failure = new Failure(httpExchange);
             FutureWrapper.followWith(fut, success, failure, executor);
         } else if (m instanceof Message.GET){
@@ -39,14 +39,14 @@ public class HttpUserAPIHandler implements HttpHandler
             if (type == 1) // GET
             {
                 Future<Object> fut = router.ask(m);
-                OnSuccess success = new DHTAPI.GetHandler(((Message.GET) m).getKey(), new GetSuccess(((Message.GET) m).getKey(), httpExchange));
+                OnSuccess success = new DHTAPI.GetHandler(router, ((Message.GET) m).getKey(), new GetSuccess(((Message.GET) m).getKey(), httpExchange));
                 OnFailure failure = new Failure(httpExchange);
                 FutureWrapper.followWith(fut, success, failure, executor);
             }
             else if (type == 2) // CONTAINS
             {
                 Future<Object> fut = router.ask(m);
-                OnSuccess success = new DHTAPI.GetHandler(((Message.GET) m).getKey(), new ContainsSuccess(httpExchange));
+                OnSuccess success = new DHTAPI.GetHandler(router, ((Message.GET) m).getKey(), new ContainsSuccess(httpExchange));
                 OnFailure failure = new Failure(httpExchange);
                 FutureWrapper.followWith(fut, success, failure, executor);
             }
