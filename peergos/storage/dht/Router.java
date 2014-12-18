@@ -30,8 +30,8 @@ public class Router
     private SortedMap<Long, Node> friends = new TreeMap();
     private final Storage storage;
     public Logger LOGGER;
-    private final Map<ByteArrayWrapper, CompletableFuture> pendingPuts = new ConcurrentHashMap();
-    private final Map<ByteArrayWrapper, CompletableFuture> pendingGets = new ConcurrentHashMap();
+    private final Map<ByteArrayWrapper, peergos.util.CompletableFuture> pendingPuts = new ConcurrentHashMap();
+    private final Map<ByteArrayWrapper, peergos.util.CompletableFuture> pendingGets = new ConcurrentHashMap();
     private final Random random = new Random(System.currentTimeMillis());
     private HttpMessenger messenger;
     private HttpsMessenger userAPI;
@@ -74,7 +74,7 @@ public class Router
 
     public Future ask(Message m) {
         LOGGER.log(Level.ALL, "Asking "+m.name());
-        CompletableFuture f = new CompletableFuture(new Callable() {
+        peergos.util.CompletableFuture f = new peergos.util.CompletableFuture(new Callable() {
             @Override
             public Object call() throws Exception {
                 return null;
@@ -277,7 +277,7 @@ public class Router
             if (pendingPuts.containsKey(key))
             {
                 LOGGER.log(Level.ALL, "handling PUT_ACCEPT");
-                CompletableFuture success = pendingPuts.get(key);
+                peergos.util.CompletableFuture success = pendingPuts.get(key);
                 success.addResult(new PutOffer(target));
                 pendingPuts.remove(key);
             }
@@ -316,7 +316,7 @@ public class Router
             ByteArrayWrapper key = new ByteArrayWrapper(((Message.GET_RESULT) m).getKey());
             if (pendingGets.containsKey(key))
             {
-                CompletableFuture success = pendingGets.get(key);
+                peergos.util.CompletableFuture success = pendingGets.get(key);
                 success.addResult(new GetOffer(m.getHops().get(0), ((Message.GET_RESULT) m).getSize()));
                 pendingGets.remove(key);
             }
