@@ -475,7 +475,7 @@ public class UserContext
                     byte[] frag = ArrayOps.random(32);
                     byte[] message = ArrayOps.concat(sharer.getPublicKey(), frag);
                     byte[] signature = sharer.hashAndSignMessage(message);
-                    if (!clientCoreNode.registerFragmentStorage(friendName, new InetSocketAddress("localhost", 666), friendName, sharer.getPublicKey(), frag, signature)) {
+                    if (!clientCoreNode.registerFragmentStorage(friendName, new InetSocketAddress("localhost" + friendName , 666), friendName, sharer.getPublicKey(), frag, signature)) {
                         System.out.println("Failed to register fragment storage!");
                     }
                 }
