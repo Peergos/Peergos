@@ -471,11 +471,14 @@ public class UserContext
 
                 // store a chunk in alice's space using the permitted sharing key (this could be alice or bob at this point)
                 int frags = 120;
+                int port = (int) System.currentTimeMillis() % (Short.MAX_VALUE -1024) + 1024;
+
+                InetSocketAddress address = new InetSocketAddress("localhost", port);
                 for (int i = 0; i < frags; i++) {
                     byte[] frag = ArrayOps.random(32);
                     byte[] message = ArrayOps.concat(sharer.getPublicKey(), frag);
                     byte[] signature = sharer.hashAndSignMessage(message);
-                    if (!clientCoreNode.registerFragmentStorage(friendName, new InetSocketAddress("localhost" + friendName , 666), friendName, sharer.getPublicKey(), frag, signature)) {
+                    if (!clientCoreNode.registerFragmentStorage(friendName, address, friendName, sharer.getPublicKey(), frag, signature)) {
                         System.out.println("Failed to register fragment storage!");
                     }
                 }
