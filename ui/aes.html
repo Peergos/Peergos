@@ -1,0 +1,93 @@
+<!doctype html>
+<html>
+<head>
+</head>
+    
+<body>
+<h1>AES-256 examples</h1>
+<script type="text/javascript" src="lib/cryptico.min.js"></script>
+<script type="text/javascript" src="lib/scrypt.js"></script>
+<script>
+var aesKey;
+function generate() {
+    console.log("generating..");
+    var scrypt = scrypt_module_factory();
+    var dt = new Date();
+    var time = -(dt.getTime());
+    aesKey = cryptico.generateAESKey();
+    var pubString = wordwrap(scrypt.to_hex(aesKey));
+    
+    dt = new Date();
+    time += (dt.getTime());
+    document.getElementById("status").innerHTML = ('Generated in ' + time + ' ms');
+    document.getElementById("key").value = pubString;
+}
+var encrypted;
+function encrypt() {
+    console.log("encrypting..");
+    encrypted = cryptico.encryptAESCBC(document.getElementById("data").value, aesKey);
+    document.getElementById("encrypted").value = encrypted;
+}
+function decrypt() {
+    console.log("decrypting..");
+    var decrypted = cryptico.decryptAESCBC(document.getElementById("encrypted").value, aesKey);
+    document.getElementById("decrypted").value = decrypted;
+}
+
+var b64map="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+var b64pad="=";
+function hex2b64(h) {
+  var i;
+  var c;
+  var ret = "";
+  for(i = 0; i+3 <= h.length; i+=3) {
+    c = parseInt(h.substring(i,i+3),16);
+    ret += b64map.charAt(c >> 6) + b64map.charAt(c & 63);
+  }
+  if(i+1 == h.length) {
+    c = parseInt(h.substring(i,i+1),16);
+    ret += b64map.charAt(c << 2);
+  }
+  else if(i+2 == h.length) {
+    c = parseInt(h.substring(i,i+2),16);
+    ret += b64map.charAt(c >> 2) + b64map.charAt((c & 3) << 4);
+  }
+  while((ret.length & 3) > 0) ret += b64pad;
+  return ret;
+}
+
+/**
+ * wrap the string in block of width chars. The default value for rsa keys is 64
+ * characters.
+ * @param {string} str the pem encoded string without header and footer
+ * @param {Number} [width=64] - the length the string has to be wrapped at
+ * @returns {string}
+ * @private
+ */
+function wordwrap(str, width) {
+  width = width || 64;
+  if (!str) {
+    return str;
+  }
+  var regex = '(.{1,' + width + '})( +|$\n?)|(.{1,' + width + '})';
+  return str.match(RegExp(regex, 'g')).join('\n');
+};
+</script>
+
+<button id="genButton" onclick="generate();">Generate keys</button>
+
+<p/>
+<textarea id="key" placeholder="AES Key" cols="65" rows="10">AES key</textarea><br/>
+<p/>
+<textarea id="data" placeholder="Data to encrypt" cols="65" rows="5"></textarea><br/>
+<button id="encryptButton" onclick="encrypt();">Encrypt data</button>
+<p/>
+<textarea id="encrypted" placeholder="Encrypted data" cols="65" rows="5"></textarea><br/>
+<button id="decryptButton" onclick="decrypt();">Decrypt data</button>
+<p/>
+<textarea id="decrypted" placeholder="Decrypted data" cols="65" rows="5"></textarea><br/>
+<div id="status"></div>
+
+
+</body>
+</html>
