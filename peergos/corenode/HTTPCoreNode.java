@@ -25,17 +25,25 @@ public class HTTPCoreNode extends AbstractCoreNode
 
     public URL getCoreNodeURL(){return coreNodeURL;}
 
+    public URL buildURL(String method) throws IOException {
+        try {
+            return new URL(coreNodeURL, method);
+        } catch (MalformedURLException mexican) {
+            throw new IOException(mexican);
+        }
+    }
+
     @Override public UserPublicKey getPublicKey(String username) 
     {
         HttpURLConnection conn = null;
         try
         {
-            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn = (HttpURLConnection) buildURL("core/getPublicKey").openConnection();
             conn.setDoInput(true);
             conn.setDoOutput(true);
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-            Serialize.serialize("getPublicKey", dout);
+
             Serialize.serialize(username, dout);
             dout.flush();
 
@@ -56,12 +64,12 @@ public class HTTPCoreNode extends AbstractCoreNode
         HttpURLConnection conn = null;
         try
         {
-            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn = (HttpURLConnection) buildURL("core/updateStaticData").openConnection();
             conn.setDoInput(true);
             conn.setDoOutput(true);
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-            Serialize.serialize("updateStaticData", dout);
+
             Serialize.serialize(username, dout);
             Serialize.serialize(signedHash, dout);
             Serialize.serialize(staticData, dout);
@@ -83,13 +91,13 @@ public class HTTPCoreNode extends AbstractCoreNode
         HttpURLConnection conn = null;
         try
         {
-            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn = (HttpURLConnection) buildURL("core/getStaticData").openConnection();
             conn.setDoInput(true);
             conn.setDoOutput(true);
             DataInputStream din = new DataInputStream(conn.getInputStream());
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-            Serialize.serialize("getStaticData", dout);
+
             Serialize.serialize(username, dout);
             dout.flush();
         
@@ -108,12 +116,12 @@ public class HTTPCoreNode extends AbstractCoreNode
         HttpURLConnection conn = null;
         try
         {
-            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn = (HttpURLConnection) buildURL("core/getUsername").openConnection();
             conn.setDoInput(true);
             conn.setDoOutput(true);
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-            Serialize.serialize("getUsername", dout);
+
             Serialize.serialize(publicKey, dout);
             dout.flush();
 
@@ -133,12 +141,12 @@ public class HTTPCoreNode extends AbstractCoreNode
         HttpURLConnection conn = null;
         try
         {
-            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn = (HttpURLConnection) buildURL("core/addUsername").openConnection();
             conn.setDoInput(true);
             conn.setDoOutput(true);
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
             
-            Serialize.serialize("addUsername", dout);
+
             Serialize.serialize(username, dout);
             Serialize.serialize(encodedUserKey, dout);
             Serialize.serialize(signedHash, dout);
@@ -161,13 +169,13 @@ public class HTTPCoreNode extends AbstractCoreNode
         HttpURLConnection conn = null;
         try
         {
-            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn = (HttpURLConnection) buildURL("core/followRequest").openConnection();
             conn.setDoInput(true);
             conn.setDoOutput(true);
 
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
         
-            Serialize.serialize("followRequest", dout);
+
             Serialize.serialize(target, dout);
             Serialize.serialize(encryptedPermission, dout);
             dout.flush();
@@ -187,13 +195,13 @@ public class HTTPCoreNode extends AbstractCoreNode
         HttpURLConnection conn = null;
         try
         {
-            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn = (HttpURLConnection) buildURL("core/getFollowRequests").openConnection();
             conn.setDoInput(true);
             conn.setDoOutput(true);
 
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-            Serialize.serialize("getFollowRequests", dout);
+
             Serialize.serialize(username, dout);
             dout.flush();
 
@@ -212,12 +220,12 @@ public class HTTPCoreNode extends AbstractCoreNode
         HttpURLConnection conn = null;
         try
         {
-            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn = (HttpURLConnection) buildURL("core/removeFollowRequest").openConnection();
             conn.setDoInput(true);
             conn.setDoOutput(true);
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
             
-            Serialize.serialize("removeFollowRequest", dout);
+
             Serialize.serialize(target, dout);
             Serialize.serialize(data, dout);
             Serialize.serialize(signedHash, dout);
@@ -239,13 +247,13 @@ public class HTTPCoreNode extends AbstractCoreNode
         HttpURLConnection conn = null;
         try
         {
-            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn = (HttpURLConnection) buildURL("core/allowSharingKey").openConnection();
             conn.setDoInput(true);
             conn.setDoOutput(true);
             
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-            Serialize.serialize("allowSharingKey", dout);
+
             Serialize.serialize(username, dout);
             Serialize.serialize(encodedSharingPublicKey, dout);
             Serialize.serialize(signedHash, dout);
@@ -266,13 +274,13 @@ public class HTTPCoreNode extends AbstractCoreNode
         HttpURLConnection conn = null;
         try
         {
-            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn = (HttpURLConnection) buildURL("core/banSharingKey").openConnection();
             conn.setDoInput(true);
             conn.setDoOutput(true);
             
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
             
-            Serialize.serialize("banSharingKey", dout);
+
             Serialize.serialize(username, dout);
             Serialize.serialize(encodedSharingPublicKey, dout);
             Serialize.serialize(signedHash, dout);
@@ -294,13 +302,13 @@ public class HTTPCoreNode extends AbstractCoreNode
         HttpURLConnection conn = null;
         try
         {
-            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn = (HttpURLConnection) buildURL("core/addMetadataBlob").openConnection();
             conn.setDoInput(true);
             conn.setDoOutput(true);
             
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-            Serialize.serialize("addMetadataBlob", dout);
+
             Serialize.serialize(username, dout);
             Serialize.serialize(encodedSharingPublicKey, dout);
             Serialize.serialize(mapKey, dout);
@@ -323,13 +331,13 @@ public class HTTPCoreNode extends AbstractCoreNode
         HttpURLConnection conn = null;
         try
         {
-            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn = (HttpURLConnection) buildURL("core/removeMetadataBlob").openConnection();
             conn.setDoInput(true);
             conn.setDoOutput(true);
             
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
             
-            Serialize.serialize("removeMetadataBlob", dout);
+
             Serialize.serialize(username, dout);
             Serialize.serialize(encodedSharingKey, dout);
             Serialize.serialize(mapKey, dout);
@@ -351,13 +359,13 @@ public class HTTPCoreNode extends AbstractCoreNode
         HttpURLConnection conn = null;
         try
         {
-            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn = (HttpURLConnection) buildURL("core/removeUsername").openConnection();
             conn.setDoInput(true);
             conn.setDoOutput(true);
             
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
             
-            Serialize.serialize("removeUsername", dout);
+
             Serialize.serialize(username, dout);
             Serialize.serialize(userKey, dout);
             Serialize.serialize(signedHash, dout);
@@ -378,13 +386,13 @@ public class HTTPCoreNode extends AbstractCoreNode
         HttpURLConnection conn = null;
         try
         {
-            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn = (HttpURLConnection) buildURL("core/getSharingKeys").openConnection();
             conn.setDoInput(true);
             conn.setDoOutput(true);
             
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
             
-            Serialize.serialize("getSharingKeys", dout);
+
             Serialize.serialize(username, dout);
             dout.flush();
 
@@ -413,13 +421,13 @@ public class HTTPCoreNode extends AbstractCoreNode
         HttpURLConnection conn = null;
         try
         {
-            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn = (HttpURLConnection) buildURL("core/getMetadataBlob").openConnection();
             conn.setDoInput(true);
             conn.setDoOutput(true);
             
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-            Serialize.serialize("getMetadataBlob", dout);
+
             Serialize.serialize(username, dout);
             Serialize.serialize(encodedSharingKey, dout);
             Serialize.serialize(mapKey, dout);
@@ -443,13 +451,13 @@ public class HTTPCoreNode extends AbstractCoreNode
         HttpURLConnection conn = null;
         try
         {
-            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn = (HttpURLConnection) buildURL("core/isFragmentAllowed").openConnection();
             conn.setDoInput(true);
             conn.setDoOutput(true);
 
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-            Serialize.serialize("isFragmentAllowed", dout);
+
             Serialize.serialize(owner, dout);
             Serialize.serialize(encodedSharingKey, dout);
             Serialize.serialize(mapkey, dout);
@@ -472,13 +480,13 @@ public class HTTPCoreNode extends AbstractCoreNode
         HttpURLConnection conn = null;
         try
         {
-            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn = (HttpURLConnection) buildURL("core/registerFragmentStorage").openConnection();
             conn.setDoInput(true);
             conn.setDoOutput(true);
             
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-            Serialize.serialize("registerFragmentStorage", dout);
+
             Serialize.serialize(spaceDonor, dout);
             Serialize.serialize(node.getAddress().getAddress(), dout);
             dout.writeInt(node.getPort());
@@ -504,13 +512,13 @@ public class HTTPCoreNode extends AbstractCoreNode
         HttpURLConnection conn = null;
         try
         {
-            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn = (HttpURLConnection) buildURL("core/getQuota").openConnection();
             conn.setDoInput(true);
             conn.setDoOutput(true);
             
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-            Serialize.serialize("getQuota", dout);
+
             Serialize.serialize(user, dout);
             dout.flush();
             
@@ -529,13 +537,13 @@ public class HTTPCoreNode extends AbstractCoreNode
         HttpURLConnection conn = null;
         try
         {
-            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn = (HttpURLConnection) buildURL("core/getUsage").openConnection();
             conn.setDoInput(true);
             conn.setDoOutput(true);
             
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-            Serialize.serialize("getUsage", dout);
+
             Serialize.serialize(username, dout);
             dout.flush();
 
@@ -555,13 +563,13 @@ public class HTTPCoreNode extends AbstractCoreNode
         HttpURLConnection conn = null;
         try
         {
-            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn = (HttpURLConnection) buildURL("core/addFragmentHashes").openConnection();
             conn.setDoInput(true);
             conn.setDoOutput(true);
             
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-            Serialize.serialize("addFragmentHashes", dout);
+
             Serialize.serialize(username, dout);
             Serialize.serialize(encodedSharingPublicKey, dout);
             Serialize.serialize(mapKey, dout);
@@ -585,13 +593,13 @@ public class HTTPCoreNode extends AbstractCoreNode
         HttpURLConnection conn = null;
         try
         {
-            conn = (HttpURLConnection) coreNodeURL.openConnection();
+            conn = (HttpURLConnection) buildURL("core/getFragmentHashes").openConnection();
             conn.setDoInput(true);
             conn.setDoOutput(true);
 
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-            Serialize.serialize("getFragmentHashes", dout);
+
             Serialize.serialize(username, dout);
             Serialize.serialize(sharingKey.getPublicKey(), dout);
             Serialize.serialize(mapKey, dout);

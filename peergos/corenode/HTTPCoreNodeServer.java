@@ -19,8 +19,14 @@ public class HTTPCoreNodeServer
     private static final int MAX_KEY_LENGTH = 1024*1024;
     private static final int MAX_BLOB_LENGTH = 4*1024*1024;
 
-    class CoreNodeHandler implements HttpHandler 
+    public static class CoreNodeHandler implements HttpHandler
     {
+        private final AbstractCoreNode coreNode;
+
+        public CoreNodeHandler(AbstractCoreNode coreNode) {
+            this.coreNode = coreNode;
+        }
+
         public void handle(HttpExchange exchange) throws IOException 
         {
             DataInputStream din = new DataInputStream(exchange.getRequestBody());
@@ -34,67 +40,67 @@ public class HTTPCoreNodeServer
             {
                 switch (method)
                 {
-                    case "addUsername": 
+                    case "core/addUsername":
                         addUsername(din, dout);
                         break;
-                    case "getPublicKey":
+                    case "core/getPublicKey":
                         getPublicKey(din, dout);
                         break;
-                    case "getStaticData":
+                    case "core/getStaticData":
                         getClearanceData(din, dout);
                         break;
-                    case "updateStaticData":
+                    case "core/updateStaticData":
                         updateClearanceData(din, dout);
                         break;
-                    case "getUsername":
+                    case "core/getUsername":
                         getUsername(din, dout);
                         break;
-                    case "followRequest":
+                    case "core/followRequest":
                         followRequest(din, dout);
                         break;
-                    case "getFollowRequests":
+                    case "core/getFollowRequests":
                         getFollowRequests(din, dout);
                         break;
-                    case "removeFollowRequest":
+                    case "core/removeFollowRequest":
                         removeFollowRequest(din, dout);
                         break;
-                    case "allowSharingKey":
+                    case "core/allowSharingKey":
                         allowSharingKey(din, dout);
                         break;
-                    case "banSharingKey":
+                    case "core/banSharingKey":
                         banSharingKey(din, dout);
                         break;
-                    case "addMetadataBlob":
+                    case "core/addMetadataBlob":
                         addMetadataBlob(din, dout);
                         break;
-                    case "removeMetadataBlob":
+                    case "core/removeMetadataBlob":
                         removeMetadataBlob(din, dout);
                         break;
-                    case "getSharingKeys":
+                    case "core/getSharingKeys":
                         getSharingKeys(din, dout);
                         break;
-                    case "getMetadataBlob":
+                    case "core/getMetadataBlob":
                         getMetadataBlob(din, dout);
                         break;
-                    case "addFragmentHashes":
+                    case "core/addFragmentHashes":
                         addFragmentHashes(din, dout);
                         break;
-                    case "getFragmentHashes":
+                    case "core/getFragmentHashes":
                         getFragmentHashes(din, dout);
                         break;
-                    case "isFragmentAllowed":
+                    case "core/isFragmentAllowed":
                         isFragmentAllowed(din, dout);
                         break;
-                    case "registerFragmentStorage":
+                    case "core/registerFragmentStorage":
                         registerFragmentStorage(din, dout);
                         break;
-                    case "getQuota":
+                    case "core/getQuota":
                         getQuota(din,dout);
                         break;
-                    case "getUsage":
+                    case "core/getUsage":
                         getUsage(din,dout);
                         break;
-                    case "removeUsername":
+                    case "core/removeUsername":
                         removeUsername(din,dout);
                         break;
                     default:
@@ -324,18 +330,22 @@ public class HTTPCoreNodeServer
             dout.writeBoolean(isRemoved);
         }
 
+        public void close() throws IOException{
+            coreNode.close();
+        }
     }
 
     private final HttpServer server;
     private final InetSocketAddress address; 
-    private final AbstractCoreNode coreNode;
+    private final CoreNodeHandler ch;
 
     public HTTPCoreNodeServer(AbstractCoreNode coreNode, InetSocketAddress address) throws IOException
     {
-        this.coreNode = coreNode;
+
         this.address = address;
         server = HttpServer.create(this.address, CONNECTION_BACKLOG);
-        server.createContext("/", new CoreNodeHandler());
+        ch = new CoreNodeHandler(coreNode);
+        server.createContext("/", ch);
         //server.setExecutor(Executors.newFixedThreadPool(HANDLER_THREAD_COUNT));
         server.setExecutor(null);
         System.out.printf("Starting core node listening at %s:%d\n", address.getHostName(), address.getPort());
@@ -351,7 +361,7 @@ public class HTTPCoreNodeServer
     public void close() throws IOException
     {   
         server.stop(5);
-        coreNode.close();
+        ch.close();
     }
     static byte[] deserializeByteArray(DataInputStream din) throws IOException
     {
