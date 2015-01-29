@@ -1,5 +1,5 @@
 CP = `find lib -name "*.jar" -printf %p:`
-JAVA_BUILD_OPTS = -g -source 1.7 -target 1.7 -cp .:$(CP)
+JAVA_BUILD_OPTS = -g -source 1.8 -target 1.8 -cp .:$(CP)
 CP_SPACE = `ls lib/*.jar`
 
 .PHONY: build
