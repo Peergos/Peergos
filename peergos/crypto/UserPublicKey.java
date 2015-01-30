@@ -9,6 +9,10 @@ import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
+import javax.script.Invocable;
+import javax.script.ScriptEngine;
+import javax.script.ScriptEngineManager;
+import javax.script.ScriptException;
 import java.io.*;
 import java.security.*;
 import java.security.spec.InvalidKeySpecException;
@@ -22,6 +26,23 @@ public class UserPublicKey implements Comparable<UserPublicKey>
     public static final String AUTH = "RSA/ECB/OAEPWithSHA-256AndMGF1Padding";
     public static final String HASH = "SHA-256";
     public static final String SECURE_RANDOM = "SHA1PRNG"; // TODO: need to figure out an implementation using HMAC-SHA-256
+
+    private static ScriptEngineManager engineManager = new ScriptEngineManager();
+    public static final ScriptEngine engine = engineManager.getEngineByName("nashorn");
+    public static final Invocable invocable = (Invocable) engine;
+
+    static {
+        try {
+            engine.eval("var navigator = {}, window = {};");
+            engine.eval(new InputStreamReader(UserPublicKey.class.getClassLoader().getResourceAsStream("ui/lib/cryptico.min.js")));
+            engine.eval(new InputStreamReader(UserPublicKey.class.getClassLoader().getResourceAsStream("ui/lib/scrypt.js")));
+            engine.eval(new InputStreamReader(UserPublicKey.class.getClassLoader().getResourceAsStream("ui/lib/jsencrypt.js")));
+            engine.eval(new InputStreamReader(UserPublicKey.class.getClassLoader().getResourceAsStream("ui/helper.js")));
+            engine.eval("Object.freeze(this);");
+        } catch (ScriptException sex) {
+            throw new IllegalStateException(sex);
+        }
+    }
 
     private final PublicKey publicKey;
 
@@ -183,5 +204,11 @@ public class UserPublicKey implements Comparable<UserPublicKey>
     @Override
     public int compareTo(UserPublicKey userPublicKey) {
         return ArrayOps.compare(publicKey.getEncoded(), userPublicKey.publicKey.getEncoded());
+    }
+
+    public static void main(String[] args) throws Exception {
+        Object res = invocable.invokeFunction("generate", "username", "password", 1024);
+//        Object sha = invocable.invokeFunction("SHA256", "somedata".getBytes());
+        System.out.println(res);
     }
 }

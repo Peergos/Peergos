@@ -3522,6 +3522,7 @@ ASN1.prototype.typeName = function () {
     case 3: return "Private_" + tagNumber.toString(16);
     }
 };
+
 ASN1.prototype.reSeemsASCII = /^[ -~]+$/;
 ASN1.prototype.content = function () {
     if (this.tag === undefined)
@@ -3817,9 +3818,7 @@ ASN1.test = function () {
     }
 };
 
-// export globals
-window.ASN1 = ASN1;
-})();/**
+/**
  * Retrieve the hexadecimal value (as a string) of the current ASN.1 element
  * @returns {string}
  * @public
@@ -3830,6 +3829,10 @@ ASN1.prototype.getHexStringValue = function () {
   var length = this.length * 2;
   return hexString.substr(offset, length);
 };
+
+// export globals
+window.ASN1 = ASN1;
+})();
 
 /**
  * Method to parse a pem encoded string containing both a public or private key.

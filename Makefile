@@ -28,7 +28,7 @@ server:
 	echo "Build-Date: " `date` >> def.manifest
 	echo "Class-Path: " $(CP_SPACE)>> def.manifest
 	javac $(JAVA_BUILD_OPTS) -d build `find peergos -name \*.java`
-	jar -cfm PeergosServer.jar def.manifest \
+	jar -cfm PeergosServer.jar def.manifest ui/ \
 	    -C build peergos
 	rm -f def.manifest
 
