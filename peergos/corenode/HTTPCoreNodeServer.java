@@ -33,8 +33,9 @@ public class HTTPCoreNodeServer
             
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
             DataOutputStream dout = new DataOutputStream(bout);
-        
-            String method = deserializeString(din);
+            
+            String path = exchange.getHttpContext().getPath();
+            String method = path.substring(path.indexOf("/"));
             //System.out.println("method "+ method);
             try
             {

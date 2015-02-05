@@ -100,7 +100,7 @@ function wordwrap(str, width) {
   return str.match(RegExp(regex, 'g')).join('\n');
 };
 
-function generate(username, password, bits) {
+function generateKeyPair(username, password, bits) {
     var pbkdf_bytes = scrypt.crypto_scrypt(scrypt.encode_utf8(password), 
 					   scrypt.encode_utf8(username), n, r, p, desiredBytes);
     return cryptico.generateRSAKey(scrypt.to_hex(pbkdf_bytes), bits);
