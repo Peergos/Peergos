@@ -1,5 +1,5 @@
 var desiredBytes = 64;
-var n = 16384;//32768;
+var n = 8192;//16384;//32768;
 var r = 8, p = 1;
 var scrypt = scrypt_module_factory();
 
@@ -107,7 +107,9 @@ function generateKeyPair(username, password, bits) {
 }
 
 function encryptMessageFor(input, pubKey) {
-    consolle.log(input);
+    var encrypt = new JSEncrypt();
+    encrypt.setPublicKey(pubKeyB64);
+    return encrypt.encrypt(inputString);
 }
 
 function unsignMessage(input, pubKey) {

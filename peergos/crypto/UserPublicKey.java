@@ -1,5 +1,6 @@
 package peergos.crypto;
 
+import jdk.nashorn.api.scripting.ScriptObjectMirror;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import peergos.util.ArrayOps;
 import peergos.util.ByteArrayWrapper;
@@ -17,10 +18,11 @@ import java.io.*;
 import java.security.*;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.X509EncodedKeySpec;
+import java.util.Base64;
 
 public class UserPublicKey implements Comparable<UserPublicKey>
 {
-    public static final int RSA_KEY_BITS = 4096;
+    public static final int RSA_KEY_BITS = 1024;//4096;
     public static final int HASH_BYTES = 256/8;
     public static final String KEYS = "RSA";
     public static final String AUTH = "RSA/ECB/OAEPWithSHA-256AndMGF1Padding";
@@ -45,15 +47,18 @@ public class UserPublicKey implements Comparable<UserPublicKey>
     }
 
     private final PublicKey publicKey;
+    private final ScriptObjectMirror jsKey;
 
     public UserPublicKey(PublicKey pub)
     {
         this.publicKey = pub;
+        this.jsKey = null;
     }
 
     public UserPublicKey(byte[] encodedPublicKey)
     {
         publicKey = deserializePublic(encodedPublicKey);
+        this.jsKey = null;
     }
 
     public byte[] getPublicKey()
@@ -207,8 +212,19 @@ public class UserPublicKey implements Comparable<UserPublicKey>
     }
 
     public static void main(String[] args) throws Exception {
-        Object res = invocable.invokeFunction("generate", "username", "password", 1024);
+        String username = "username";
+        String password = "password";
+        User java = User.generateUserCredentials(username, password);
+        byte[] pub = java.getPublicKey();
+        System.out.println(pub.length + "  =>hex  "+ArrayOps.bytesToHex(pub));
+
+        Base64.Encoder encoder = Base64.getEncoder();
+        String b64Pub = encoder.encodeToString(pub);
+        System.out.println("pubb64 =  "+b64Pub);
+
+//        Object res = invocable.invokeFunction("generate", username, password, 1024);
 //        Object sha = invocable.invokeFunction("SHA256", "somedata".getBytes());
+        Object res = invocable.invokeFunction("encryptMessageFor", "If you can read this, we rock!", b64Pub);
         System.out.println(res);
     }
 }

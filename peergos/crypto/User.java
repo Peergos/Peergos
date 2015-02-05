@@ -1,5 +1,15 @@
 package peergos.crypto;
 
+import org.bouncycastle.asn1.ASN1Primitive;
+import org.bouncycastle.asn1.ASN1Sequence;
+import org.bouncycastle.asn1.DERNull;
+import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
+import org.bouncycastle.asn1.pkcs.PrivateKeyInfo;
+import org.bouncycastle.asn1.pkcs.RSAPrivateKey;
+import org.bouncycastle.asn1.pkcs.RSAPrivateKeyStructure;
+import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
+import org.bouncycastle.openssl.PEMException;
+import org.bouncycastle.openssl.jcajce.JcaPEMKeyConverter;
 import peergos.util.ArrayOps;
 import peergos.util.Serialize;
 
@@ -8,8 +18,10 @@ import java.security.*;
 import javax.crypto.*;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.PKCS8EncodedKeySpec;
+import java.security.spec.RSAPrivateKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Enumeration;
 import java.util.Set;
 
@@ -169,6 +181,30 @@ public class User extends UserPublicKey
         {
             throw new IllegalStateException("Couldn't generate key-pair from password - "+e.getMessage());
         }
+    }
+
+    public static byte[] convertPKCS8to1(byte[] v8) throws IOException {
+        PrivateKeyInfo privKeyInfo = new PrivateKeyInfo(ASN1Sequence.getInstance(v8));
+        return privKeyInfo.parsePrivateKey().toASN1Primitive().getEncoded();
+    }
+
+    public static byte[] convertPKCS1to8(byte[] v1) throws IOException {
+        JcaPEMKeyConverter converter = new JcaPEMKeyConverter().setProvider("BC");
+        PrivateKeyInfo privKeyInfo = new PrivateKeyInfo(new AlgorithmIdentifier(PKCSObjectIdentifiers.rsaEncryption, new DERNull()),
+                RSAPrivateKey.getInstance(v1));
+        try {
+            return converter.getPrivateKey(privKeyInfo).getEncoded();
+        } catch (PEMException pex) {throw new IOException(pex);}
+    }
+
+    private static void testFormatInversion() {
+        try {
+            KeyPair pair = generateKeyPair();
+            byte[] v1 = convertPKCS8to1(pair.getPrivate().getEncoded());
+            byte[] v8 = convertPKCS1to8(v1);
+            byte[] same = convertPKCS8to1(v8);
+            assert (Arrays.equals(v1, same));
+        } catch (Exception e) {e.printStackTrace();}
     }
 
     public static void checkAllowedKeySizes()
