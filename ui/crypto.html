@@ -8,6 +8,7 @@
 <script type="text/javascript" src="lib/cryptico.min.js"></script>
 <script type="text/javascript" src="lib/jsencrypt.js"></script>
 <script type="text/javascript" src="lib/scrypt.js"></script>
+<script type="text/javascript" src="lib/base64.js"></script>
 <script type="text/javascript" src="lib/api.js"></script>
 <script>
 function generate() {
@@ -18,53 +19,33 @@ function generate() {
     
     var dt = new Date();
     var time = -(dt.getTime());
-    var pbkdf_bytes = scrypt.crypto_scrypt(scrypt.encode_utf8(password),
+    var /*Uint8Array*/ pbkdf_bytes = scrypt.crypto_scrypt(scrypt.encode_utf8(password),
 					      scrypt.encode_utf8(username),
 					      n, r, p, desiredBytes);
     var keypair = cryptico.generateRSAKey(scrypt.to_hex(pbkdf_bytes), bits);
+    pub = getPublicBaseKeyB64(keypair);
+    priv = getPrivateBaseKeyB64(keypair);
     var pubString = "-----BEGIN PUBLIC KEY-----\n" + wordwrap(getPublicBaseKeyB64(keypair)) + "\n-----END PUBLIC KEY-----";
     var privString = "-----BEGIN RSA PRIVATE KEY-----\n" + wordwrap(getPrivateBaseKeyB64(keypair)) + "\n-----END RSA PRIVATE KEY-----";
 
-    /*var crypt = new JSEncrypt({default_key_size: bits});
-      var async = false;
-      var dt = new Date();
-      var time = -(dt.getTime());
-      if (async) {
-        $('#time-report').text('.');
-        var load = setInterval(function () {
-          var text = document.getElementById("status").innerHTML;
-          document.getElementById("status").innerHTML =+ '.';
-        }, 500);
-        crypt.getKey(function () {
-          clearInterval(load);
-          dt = new Date();
-          time += (dt.getTime());
-          document.getElementById("status").innerHTML = ('Generated in ' + time + ' ms');
-          document.getElementById("private").value = crypt.getPrivateKey();
-          document.getElementById("public").value = crypt.getPublicKey();
-        });
-        return;
-      }
-      crypt.getKey();*/
       dt = new Date();
       time += (dt.getTime());
       document.getElementById("status").innerHTML = ('Generated in ' + time + ' ms');
       document.getElementById("private").value = privString;//crypt.getPrivateKey();
       document.getElementById("public").value = pubString;//crypt.getPublicKey();
 }
-var encrypted;
 function encrypt() {
     console.log("encrypting..");
     var encrypt = new JSEncrypt();
     encrypt.setPublicKey(document.getElementById("public").value);
-    encrypted = encrypt.encrypt(document.getElementById("data").value);
+    var encrypted = encrypt.encrypt(document.getElementById("data").value);
     document.getElementById("encrypted").value = encrypted;
 }
 function decrypt() {
     console.log("decrypting..");
     var decrypt = new JSEncrypt();
     decrypt.setPrivateKey(document.getElementById("private").value);
-    var decrypted = decrypt.decrypt(encrypted);
+    var decrypted = decrypt.decrypt(document.getElementById("encrypted").value);
     document.getElementById("decrypted").value = decrypted;
 }
 </script>

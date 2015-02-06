@@ -100,6 +100,25 @@ function wordwrap(str, width) {
     return str.match(RegExp(regex, 'g')).join('\n');
 };
 
+function hexToBytes(hex) {
+    var arr = new Uint8Array(hex.length);
+    for (var i=0; i < arr.length; i++)
+	arr[i] = intAt(hex, i);
+    return arr;
+}
+
+function bytesToHex(arr) {
+    return scrypt.to_hex(arr);
+}
+
+function base64ToBytes(b64) {
+    return base64DecToArr(b64);
+}
+
+function bytesToBase64(b) {
+    return base64EncArr(b);
+}
+
 function generateKeyPair(username, password, bits) {
     var pbkdf_bytes = scrypt.crypto_scrypt(scrypt.encode_utf8(password), 
             scrypt.encode_utf8(username), n, r, p, desiredBytes);
@@ -108,12 +127,14 @@ function generateKeyPair(username, password, bits) {
 
 function encryptMessageFor(input, pubKey) {
     var encrypt = new JSEncrypt();
-    encrypt.setPublicKey(pubKeyB64);
-    return encrypt.encrypt(inputString);
+    encrypt.setPublicKey(pubKey);
+    return encrypt.encrypt(bytesToBase64(input));
 }
 
-function unsignMessage(input, pubKey) {
-
+function decryptMessage(cipher, privKey) {
+    var decrypt = new JSEncrypt();
+    decrypt.setPrivateKey(privKey);
+    return decrypt.decrypt(cipher);
 }
 
 function get(path, onSuccess, onError) {

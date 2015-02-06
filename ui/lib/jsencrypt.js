@@ -1751,7 +1751,7 @@ function b64tohex(s) {
   var slop;
   for(i = 0; i < s.length; ++i) {
     if(s.charAt(i) == b64pad) break;
-    v = b64map.indexOf(s.charAt(i));
+    var v = b64map.indexOf(s.charAt(i));
     if(v < 0) continue;
     if(k == 0) {
       ret += int2char(v >> 2);
@@ -4223,12 +4223,12 @@ JSEncrypt.prototype.setPublicKey = function (pubkey) {
  */
 JSEncrypt.prototype.decrypt = function (string) {
   // Return the decrypted string.
-  try {
+  //try {
     return this.getKey().decrypt(b64tohex(string));
-  }
-  catch (ex) {
-    return false;
-  }
+  //}
+  //catch (ex) {
+  //  return false;
+  //}
 };
 
 /**
@@ -4241,12 +4241,12 @@ JSEncrypt.prototype.decrypt = function (string) {
  */
 JSEncrypt.prototype.encrypt = function (string) {
   // Return the encrypted string.
-  try {
+  //try {
     return hex2b64(this.getKey().encrypt(string));
-  }
-  catch (ex) {
-    return false;
-  }
+  //}
+  //catch (ex) {
+  //  return false;
+  //}
 };
 
 /**

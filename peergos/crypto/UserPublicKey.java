@@ -39,7 +39,8 @@ public class UserPublicKey implements Comparable<UserPublicKey>
             engine.eval(new InputStreamReader(UserPublicKey.class.getClassLoader().getResourceAsStream("ui/lib/cryptico.min.js")));
             engine.eval(new InputStreamReader(UserPublicKey.class.getClassLoader().getResourceAsStream("ui/lib/scrypt.js")));
             engine.eval(new InputStreamReader(UserPublicKey.class.getClassLoader().getResourceAsStream("ui/lib/jsencrypt.js")));
-            engine.eval(new InputStreamReader(UserPublicKey.class.getClassLoader().getResourceAsStream("ui/helper.js")));
+            engine.eval(new InputStreamReader(UserPublicKey.class.getClassLoader().getResourceAsStream("ui/lib/base64.js")));
+            engine.eval(new InputStreamReader(UserPublicKey.class.getClassLoader().getResourceAsStream("ui/lib/api.js")));
             engine.eval("Object.freeze(this);");
         } catch (ScriptException sex) {
             throw new IllegalStateException(sex);
@@ -212,19 +213,23 @@ public class UserPublicKey implements Comparable<UserPublicKey>
     }
 
     public static void main(String[] args) throws Exception {
-        String username = "username";
-        String password = "password";
-        User java = User.generateUserCredentials(username, password);
-        byte[] pub = java.getPublicKey();
-        System.out.println(pub.length + "  =>hex  "+ArrayOps.bytesToHex(pub));
-
-        Base64.Encoder encoder = Base64.getEncoder();
-        String b64Pub = encoder.encodeToString(pub);
-        System.out.println("pubb64 =  "+b64Pub);
-
-//        Object res = invocable.invokeFunction("generate", username, password, 1024);
 //        Object sha = invocable.invokeFunction("SHA256", "somedata".getBytes());
-        Object res = invocable.invokeFunction("encryptMessageFor", "If you can read this, we rock!", b64Pub);
-        System.out.println(res);
+
+//        KeyPair pair = User.generateKeyPair();
+//        User java = new User(pair);
+//        byte[] jpub = java.getPublicKey();
+//        byte[] jpriv = pair.getPrivate().getEncoded();
+//        Base64.Encoder encoder = Base64.getEncoder();
+//        System.out.println("pubb64 =  "+encoder.encodeToString(jpub));
+
+        String username = "user";
+        String password = "pass";
+        String message = "If you can read this, we rock!";
+        System.out.println("Original: "+message);
+        Object pair = invocable.invokeFunction("generateKeyPair", username, password, 1024);
+        Object cipher = invocable.invokeFunction("encryptMessageFor", message, pair);
+        System.out.println("Cipher: " + cipher);
+        Object clear = invocable.invokeFunction("decryptMessage", cipher, pair);
+        System.out.println("Decrypted: "+clear);
     }
 }
