@@ -125,13 +125,13 @@ function generateKeyPair(username, password, bits) {
     return cryptico.generateRSAKey(scrypt.to_hex(pbkdf_bytes), bits);
 }
 
-function encryptMessageFor(input, pubKey) {
+function encryptMessageForB64(input, pubKey) {
     var encrypt = new JSEncrypt();
     encrypt.setPublicKey(pubKey);
-    return encrypt.encrypt(bytesToBase64(input));
+    return encrypt.encrypt(input);
 }
 
-function decryptMessage(cipher, privKey) {
+function decryptB64Message(cipher, privKey) {
     var decrypt = new JSEncrypt();
     decrypt.setPrivateKey(privKey);
     return decrypt.decrypt(cipher);

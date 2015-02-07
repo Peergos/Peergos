@@ -36,17 +36,13 @@ function generate() {
 }
 function encrypt() {
     console.log("encrypting..");
-    var encrypt = new JSEncrypt();
-    encrypt.setPublicKey(document.getElementById("public").value);
-    var encrypted = encrypt.encrypt(document.getElementById("data").value);
-    document.getElementById("encrypted").value = encrypted;
+    document.getElementById("encrypted").value = encryptMessageForB64(document.getElementById("data").value, 
+        document.getElementById("public").value);
 }
 function decrypt() {
     console.log("decrypting..");
-    var decrypt = new JSEncrypt();
-    decrypt.setPrivateKey(document.getElementById("private").value);
-    var decrypted = decrypt.decrypt(document.getElementById("encrypted").value);
-    document.getElementById("decrypted").value = decrypted;
+    document.getElementById("decrypted").value = decryptB64Message(document.getElementById("encrypted").value, 
+        document.getElementById("private").value);
 }
 </script>
 

@@ -227,9 +227,12 @@ public class UserPublicKey implements Comparable<UserPublicKey>
         String message = "If you can read this, we rock!";
         System.out.println("Original: "+message);
         Object pair = invocable.invokeFunction("generateKeyPair", username, password, 1024);
-        Object cipher = invocable.invokeFunction("encryptMessageFor", message, pair);
+        Object cipher = invocable.invokeFunction("encryptMessageForB64", message, pair);
         System.out.println("Cipher: " + cipher);
-        Object clear = invocable.invokeFunction("decryptMessage", cipher, pair);
+        Object clear = invocable.invokeFunction("decryptB64Message", cipher, pair);
         System.out.println("Decrypted: "+clear);
+
+        byte[] binput = message.getBytes();
+        
     }
 }
