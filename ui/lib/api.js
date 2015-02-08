@@ -141,14 +141,11 @@ function decryptHexToString(cipher, privKey) {
 
 // Uint8Array input and return value
 function encryptUint8ToUint8(input, pubKey) {
-    var hex = encryptStringToHex(bytesToBase64(input), pubKey);
-    print(hex);
-    return hexToBytes(hex);
+    return hexToBytes(encryptStringToHex(bytesToBase64(input), pubKey));
 }
 
 // Uint8Array cipher and return value
 function decryptUint8ToUint8(cipher, privKey) {
-    print(bytesToHex(cipher));
     return base64ToBytes(decryptHexToString(bytesToHex(cipher), privKey));
 }
 
