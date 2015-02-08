@@ -1,6 +1,7 @@
 package peergos.crypto;
 
 import jdk.nashorn.api.scripting.ScriptObjectMirror;
+import jdk.nashorn.api.scripting.ScriptUtils;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import peergos.util.ArrayOps;
 import peergos.util.ByteArrayWrapper;
@@ -227,12 +228,11 @@ public class UserPublicKey implements Comparable<UserPublicKey>
         String message = "If you can read this, we rock!";
         System.out.println("Original: "+message);
         Object pair = invocable.invokeFunction("generateKeyPair", username, password, 1024);
-        Object cipher = invocable.invokeFunction("encryptMessageForB64", message, pair);
-        System.out.println("Cipher: " + cipher);
-        Object clear = invocable.invokeFunction("decryptB64Message", cipher, pair);
-        System.out.println("Decrypted: "+clear);
 
         byte[] binput = message.getBytes();
-        
+        byte[] cipher = (byte[])invocable.invokeFunction("encryptBytesToBytes", binput, pair);
+        System.out.println("Cipher in Java: " + ArrayOps.bytesToHex(cipher));
+        byte[] clearb = (byte[])invocable.invokeFunction("decryptBytesToBytes", cipher, pair);
+        System.out.println("Decrypted: "+new String(clearb));
     }
 }

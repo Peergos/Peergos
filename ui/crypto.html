@@ -36,20 +36,20 @@ function generate() {
 }
 function encrypt() {
     console.log("encrypting..");
-    document.getElementById("encrypted").value = encryptMessageForB64(document.getElementById("data").value, 
+    document.getElementById("encrypted").value = encryptStringToHex(document.getElementById("data").value, 
         document.getElementById("public").value);
 }
 function decrypt() {
     console.log("decrypting..");
-    document.getElementById("decrypted").value = decryptB64Message(document.getElementById("encrypted").value, 
+    document.getElementById("decrypted").value = decryptHexToString(document.getElementById("encrypted").value, 
         document.getElementById("private").value);
 }
 </script>
 
 <label>Username:</label>
-<textarea id="username" size="20">Bob</textarea><br/>
+<textarea id="username" size="20">user</textarea><br/>
 <label>Password:</label>
-<textarea id="password" size="20">password</textarea><br/>
+<textarea id="password" size="20">pass</textarea><br/>
 <select id="bits">
   <option value="1024">1024</option>
   <option value="2048">2048</option>

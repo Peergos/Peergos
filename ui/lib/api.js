@@ -101,9 +101,9 @@ function wordwrap(str, width) {
 };
 
 function hexToBytes(hex) {
-    var arr = new Uint8Array(hex.length);
+    var arr = new Uint8Array(hex.length/2);
     for (var i=0; i < arr.length; i++)
-	arr[i] = intAt(hex, i);
+	arr[i] = ((0xf & intAt(hex, 2*i)) << 4) | (0xf & intAt(hex, 2*i+1));
     return arr;
 }
 
@@ -125,16 +125,41 @@ function generateKeyPair(username, password, bits) {
     return cryptico.generateRSAKey(scrypt.to_hex(pbkdf_bytes), bits);
 }
 
-function encryptMessageForB64(input, pubKey) {
+// string input, return hex string
+function encryptStringToHex(input, pubKey) {
     var encrypt = new JSEncrypt();
     encrypt.setPublicKey(pubKey);
     return encrypt.encrypt(input);
 }
 
-function decryptB64Message(cipher, privKey) {
+// hex string cipher, return string
+function decryptHexToString(cipher, privKey) {
     var decrypt = new JSEncrypt();
     decrypt.setPrivateKey(privKey);
     return decrypt.decrypt(cipher);
+}
+
+// Uint8Array input and return value
+function encryptUint8ToUint8(input, pubKey) {
+    var hex = encryptStringToHex(bytesToBase64(input), pubKey);
+    print(hex);
+    return hexToBytes(hex);
+}
+
+// Uint8Array cipher and return value
+function decryptUint8ToUint8(cipher, privKey) {
+    print(bytesToHex(cipher));
+    return base64ToBytes(decryptHexToString(bytesToHex(cipher), privKey));
+}
+
+// byte[] input and return
+function encryptBytesToBytes(input, pubKey) {
+    return Java.to(encryptUint8ToUint8(input, pubKey), "byte[]");
+}
+
+// byte[] cipher and return
+function decryptBytesToBytes(cipher, privKey) {
+    return Java.to(decryptUint8ToUint8(cipher, privKey), "byte[]");
 }
 
 function get(path, onSuccess, onError) {
