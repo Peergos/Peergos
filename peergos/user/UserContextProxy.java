@@ -95,7 +95,9 @@ public class UserContextProxy implements HttpHandler
 
     public static void createAndStart(InetSocketAddress address, DHTUserAPI dhtApi, AbstractCoreNode coreNode, ExecutorService executorService) throws Exception {
         HttpServer server = HttpServer.create(address, CONNECTION_BACKLOG);
-        server.createContext("/", new UserContextProxy(dhtApi, coreNode));
+        ResourceHandler webUIhandler = new ResourceHandler("ui/");
+        server.createContext("/", webUIhandler);
+        server.createContext("/api", new UserContextProxy(dhtApi, coreNode));
         server.setExecutor(executorService);
         server.start();
     }
@@ -110,7 +112,7 @@ public class UserContextProxy implements HttpHandler
         ExecutorService executorService = Executors.newSingleThreadExecutor();
         try {
             UserContextProxy.createAndStart(address, dhtUserAPI, coreNode, executorService);
-            System.out.println("User-context proxt now running on "+ address);
+            System.out.println("User-context proxy now running on "+ address);
         } catch (Exception e) {
             e.printStackTrace();
             System.out.println("Couldn't start User-context-proxy-server!");
