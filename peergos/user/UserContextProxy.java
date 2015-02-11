@@ -2,15 +2,18 @@ package peergos.user;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
+import com.sun.net.httpserver.HttpServer;
 import peergos.corenode.AbstractCoreNode;
 import peergos.corenode.HTTPCoreNodeServer;
+import peergos.storage.dht.DHTAPI;
+import peergos.util.Args;
 import peergos.util.Serialize;
 
 import java.io.*;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
+import java.util.concurrent.*;
 
 public class UserContextProxy implements HttpHandler
 {
@@ -86,5 +89,31 @@ public class UserContextProxy implements HttpHandler
     static String deserializeString(DataInputStream din) throws IOException
     {
         return Serialize.deserializeString(din, 1024);
+    }
+
+    private static final int CONNECTION_BACKLOG = 100;
+
+    public static void createAndStart(InetSocketAddress address, DHTUserAPI dhtApi, AbstractCoreNode coreNode, ExecutorService executorService) throws Exception {
+        HttpServer server = HttpServer.create(address, CONNECTION_BACKLOG);
+        server.createContext("/", new UserContextProxy(dhtApi, coreNode));
+        server.setExecutor(executorService);
+        server.start();
+    }
+
+    public static void main(String[] args) throws IOException {
+        Args.parse(args);
+        String listenOn = Args.getArg("address", "localhost");
+        int port = Args.getInt("port", 8001);
+        InetSocketAddress address = new InetSocketAddress(listenOn, port);
+        AbstractCoreNode coreNode = AbstractCoreNode.getDefault();
+        DHTUserAPI dhtUserAPI = new MemoryDHTUserAPI();
+        ExecutorService executorService = Executors.newSingleThreadExecutor();
+        try {
+            UserContextProxy.createAndStart(address, dhtUserAPI, coreNode, executorService);
+            System.out.println("User-context proxt now running on "+ address);
+        } catch (Exception e) {
+            e.printStackTrace();
+            System.out.println("Couldn't start User-context-proxy-server!");
+        }
     }
 }

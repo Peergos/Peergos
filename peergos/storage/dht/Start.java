@@ -12,89 +12,119 @@ import java.io.File;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 
 public class Start
 {
+
+    public static final Map<String, String> OPTIONS = new LinkedHashMap();
+    static
+    {
+        OPTIONS.put("help", "Show this help.");
+        OPTIONS.put("firstNode", " This is the first node in the network (don't attempt to concat the network).");
+        OPTIONS.put("logMessages", "Print every received message to the console.");
+    }
+    public static final Map<String, String> PARAMS = new LinkedHashMap();
+    static
+    {
+        PARAMS.put("port", " the I/O port to listen on.");
+        PARAMS.put("contactIP", "name or IP address of contact point to concat the network");
+        PARAMS.put("contactPort", "port of contact point to concat the network");
+        PARAMS.put("test", "number of local nodes to start in test mode");
+        PARAMS.put("script", "script of commands to run during test");
+    }
+
+    public static void printOptions()
+    {
+        System.out.println("\nDefiance RoutingServer help.");
+        System.out.println("\nOptions:");
+        for (String k: OPTIONS.keySet())
+            System.out.println("-"+ k + "\t " + OPTIONS.get(k));
+        System.out.println("\nParameters:");
+        for (String k: PARAMS.keySet())
+            System.out.println("-"+ k + "\t " + PARAMS.get(k));
+    }
     public static void main(String[] args) throws IOException
     {
         Args.parse(args);
-        if (Args.hasOption("help"))
+        if (Args.hasArg("help"))
         {
-            Args.printOptions();
+            printOptions();
             System.exit(0);
         }
-        if (Args.hasOption("firstNode"))
+        if (Args.hasArg("firstNode"))
         {
             new File("log/").mkdirs();
             for (File f : new File("log/").listFiles())
                 f.delete();
         }
-        if (Args.hasParameter("test"))
+        if (Args.hasArg("test"))
         {
             test(Args.getInt("test", 6));
         }
-        else if (Args.hasOption("directoryServer"))
+        else if (Args.hasArg("directoryServer"))
         {
-            String keyfile = Args.getParameter("keyfile", "dir.key");
-            char[] passphrase = Args.getParameter("passphrase", "password").toCharArray();
+            String keyfile = Args.getArg("keyfile", "dir.key");
+            char[] passphrase = Args.getArg("passphrase", "password").toCharArray();
             DirectoryServer.createAndStart(keyfile, passphrase, DirectoryServer.PORT);
         }
-        else if (Args.hasOption("coreNode"))
+        else if (Args.hasArg("coreNode"))
         {
-            String keyfile = Args.getParameter("keyfile", "core.key");
-            char[] passphrase = Args.getParameter("passphrase", "password").toCharArray();
+            String keyfile = Args.getArg("keyfile", "core.key");
+            char[] passphrase = Args.getArg("passphrase", "password").toCharArray();
             HTTPCoreNodeServer.createAndStart(keyfile, passphrase, AbstractCoreNode.PORT);
         }
-        else if (Args.hasOption("rootGen"))
+        else if (Args.hasArg("rootGen"))
         {
-            SSL.generateAndSaveRootCertificate(Args.getParameter("password").toCharArray());
+            SSL.generateAndSaveRootCertificate(Args.getArg("password").toCharArray());
         }
-        else if (Args.hasOption("dirGen"))
+        else if (Args.hasArg("dirGen"))
         {
-            String domain = Args.getParameter("domain", IPMappings.getMyPublicAddress(DirectoryServer.PORT).getHostName());
+            String domain = Args.getArg("domain", IPMappings.getMyPublicAddress(DirectoryServer.PORT).getHostName());
             String ipAddress = SSL.isIPAddress(domain) ? domain : null;
-            SSL.generateCSR(Args.getParameter("password").toCharArray(), domain, ipAddress, Args.getParameter("keyfile"), "dir.csr");
+            SSL.generateCSR(Args.getArg("password").toCharArray(), domain, ipAddress, Args.getArg("keyfile"), "dir.csr");
         }
-        else if (Args.hasOption("dirSign"))
+        else if (Args.hasArg("dirSign"))
         {
-            SSL.signCertificate(Args.getParameter("csr"), Args.getParameter("rootPassword").toCharArray(), "Directory");
+            SSL.signCertificate(Args.getArg("csr"), Args.getArg("rootPassword").toCharArray(), "Directory");
         }
-        else if (Args.hasOption("coreGen"))
+        else if (Args.hasArg("coreGen"))
         {
-            String domain = Args.getParameter("domain", IPMappings.getMyPublicAddress(AbstractCoreNode.PORT).getHostName());
+            String domain = Args.getArg("domain", IPMappings.getMyPublicAddress(AbstractCoreNode.PORT).getHostName());
             String ipAddress = SSL.isIPAddress(domain) ? domain : null;
-            SSL.generateCSR(Args.getParameter("password").toCharArray(), domain, ipAddress, Args.getParameter("keyfile"), "core.csr");
+            SSL.generateCSR(Args.getArg("password").toCharArray(), domain, ipAddress, Args.getArg("keyfile"), "core.csr");
         }
-        else if (Args.hasOption("coreSign"))
+        else if (Args.hasArg("coreSign"))
         {
-            SSL.signCertificate(Args.getParameter("csr", "core.csr"), Args.getParameter("rootPassword").toCharArray(), "Core");
+            SSL.signCertificate(Args.getArg("csr", "core.csr"), Args.getArg("rootPassword").toCharArray(), "Core");
         }
         else {
             int port = Args.getInt("port", 8000);
             InetSocketAddress userAPIAddr = IPMappings.getMyPublicAddress(port);
             InetSocketAddress messengerAddr = IPMappings.getMyPublicAddress(port + 1);
-            String user = Args.getParameter("user", "root");
-            boolean isFirstNode = Args.hasOption("firstNode");
-            InetAddress contactIP = isFirstNode ? null : InetAddress.getByName(Args.getParameter("contactIP"));
+            String user = Args.getArg("user", "root");
+            boolean isFirstNode = Args.hasArg("firstNode");
+            InetAddress contactIP = isFirstNode ? null : InetAddress.getByName(Args.getArg("contactIP"));
             int contactPort = Args.getInt("contactPort", 8080);
             Router router = new Router(user, userAPIAddr, messengerAddr);
             router.init(new InetSocketAddress(contactIP, contactPort));
             // router is ready!
             System.out.println(port+" joined dht");
             DHTAPI api = new DHTAPI(router);
-            if (Args.hasParameter("script")) {
-                new Scripter(api, Args.getParameter("script")).start();
+            if (Args.hasArg("script")) {
+                new Scripter(api, Args.getArg("script")).start();
             }
         }
     }
 
     public static void test(int nodes) throws IOException
     {
-        if (!Args.hasParameter("script"))
+        if (!Args.hasArg("script"))
             throw new IllegalStateException("Need a script argument for test mode");
-        String script = Args.getParameter("script");
+        String script = Args.getArg("script");
         Start.main(new String[] {"-directoryServer", "-local", "-domain", "localhost"});
 
         Start.main(new String[] {"-coreNode", "-local"});

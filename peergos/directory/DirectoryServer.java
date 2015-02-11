@@ -44,7 +44,7 @@ public class DirectoryServer
         signing = SSL.loadKeyPair(keyfile, passphrase);
         //start HTTP server
         InetSocketAddress address = new InetSocketAddress(InetAddress.getLocalHost(), port);
-        commonName = Args.getParameter("domain", address.getHostName());
+        commonName = Args.getArg("domain", address.getHostName());
         Certificate tmp = null;
         for (Certificate dir: dirs)
             if (SSL.getCommonName(dir).equals(commonName))

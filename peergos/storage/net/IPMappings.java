@@ -24,7 +24,7 @@ public class IPMappings
         Certificate[] dirs = SSL.getDirectoryServerCertificates();
         Certificate dir;
         try {
-            if (Args.hasOption("local"))
+            if (Args.hasArg("local"))
                 return InetAddress.getByName("localhost");
             while (true) {
                 dir = dirs[new SecureRandom().nextInt() % dirs.length];
@@ -57,11 +57,11 @@ public class IPMappings
 
     public static synchronized InetSocketAddress getMyPublicAddress(int desiredExternalPort) throws IOException
     {
-        if (Args.hasParameter("domain"))
-            return new InetSocketAddress(InetAddress.getByName(Args.getParameter("domain")), desiredExternalPort);
+        if (Args.hasArg("domain"))
+            return new InetSocketAddress(InetAddress.getByName(Args.getArg("domain")), desiredExternalPort);
         if (mappings.containsKey(desiredExternalPort))
             return mappings.get(desiredExternalPort);
-        if (Args.hasOption("local"))
+        if (Args.hasArg("local"))
             return new InetSocketAddress(InetAddress.getByName("localhost"), desiredExternalPort);
         InetAddress us = getMyPublicAddressFromDirectoryServer();
 
