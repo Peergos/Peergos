@@ -4,39 +4,48 @@ import java.util.*;
 
 public class Args
 {
-    private static Set<String> options = new HashSet();
     private static Map<String, String> params = new HashMap();
 
     public static void parse(String[] args)
     {
-        options.clear();
         params.clear();
-        int i=0;
-        while (i < args.length)
+        for (int i=0; i<args.length; i++)
         {
-            if (!args[i].startsWith("-"))
-                throw new IllegalStateException("Error parsing arg "+args[i]);
-            if (i == args.length-1)
-                options.add(args[i].substring(1));
-            else if (args[i+1].startsWith("-") )
-                options.add(args[i].substring(1));
+            String argName = args[i];
+            if (argName.startsWith("-"))
+                argName = argName.substring(1);
+
+            if ((i == args.length-1) || args[i+1].startsWith("-"))
+                params.put(argName, "true");
             else
-            {
-                params.put(args[i].substring(1), args[i+1]);
-                i++;
-            }
-            i++;
+                params.put(argName, args[++i]);
         }
     }
 
-    public static boolean hasOption(String opt)
+    public static String getArg(String param, String def)
     {
-        return options.contains(opt);
+        if (!params.containsKey(param))
+            return def;
+        return params.get(param);
     }
 
-    public static boolean hasParameter(String param)
+    public static String getArg(String param)
     {
-        return params.keySet().contains(param);
+        if (!params.containsKey(param))
+            throw new IllegalStateException("No parameter: "+param);
+        return params.get(param);
+    }
+
+    public static boolean hasArg(String arg)
+    {
+        return params.containsKey(arg);
+    }
+
+    public static boolean getBoolean(String param, boolean def)
+    {
+        if (!params.containsKey(param))
+            return def;
+        return "true".equals(params.get(param));
     }
 
     public static int getInt(String param, int def)
@@ -46,45 +55,35 @@ public class Args
         return Integer.parseInt(params.get(param));
     }
 
-    public static String getParameter(String param, String def)
-    {
-        if (!params.containsKey(param))
-            return def;
-        return params.get(param);
-    }
-
-    public static String getParameter(String param)
+    public static int getInt(String param)
     {
         if (!params.containsKey(param))
             throw new IllegalStateException("No parameter: "+param);
-        return params.get(param);
+        return Integer.parseInt(params.get(param));
     }
 
-    public static final Map<String, String> OPTIONS = new LinkedHashMap();
-    static
+    public static long getLong(String param)
     {
-        OPTIONS.put("help", "Show this help.");
-        OPTIONS.put("firstNode", " This is the first node in the network (don't attempt to concat the network).");
-        OPTIONS.put("logMessages", "Print every received message to the console.");
-    }
-    public static final Map<String, String> PARAMS = new LinkedHashMap();
-    static
-    {
-        PARAMS.put("port", " the I/O port to listen on.");
-        PARAMS.put("contactIP", "name or IP address of contact point to concat the network");
-        PARAMS.put("contactPort", "port of contact point to concat the network");
-        PARAMS.put("test", "number of local nodes to start in test mode");
-        PARAMS.put("script", "script of commands to run during test");
+        if (!params.containsKey(param))
+            throw new IllegalStateException("No parameter: "+param);
+        return Long.parseLong(params.get(param));
     }
 
-    public static void printOptions()
+    public static double getDouble(String param)
     {
-        System.out.println("\nDefiance RoutingServer help.");
-        System.out.println("\nOptions:");
-        for (String k: OPTIONS.keySet())
-            System.out.println("-"+ k + "\t " + OPTIONS.get(k));
-        System.out.println("\nParameters:");
-        for (String k: PARAMS.keySet())
-            System.out.println("-"+ k + "\t " + PARAMS.get(k));
+        if (!params.containsKey(param))
+            throw new IllegalStateException("No parameter: "+param);
+        return Double.parseDouble(params.get(param));
+    }
+
+    public static String getFirstArg(String[] paramNames, String def)
+    {
+        for (int i=0; i<paramNames.length; i++)
+        {
+            String result = getArg(paramNames[i], null);
+            if (result != null)
+                return result;
+        }
+        return def;
     }
 }

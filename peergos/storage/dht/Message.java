@@ -9,7 +9,7 @@ import java.util.*;
 
 public abstract class Message
 {
-    public static final boolean LOG = Args.hasOption("logMessages");
+    public static final boolean LOG = Args.hasArg("logMessages");
     public static final int KEY_BYTE_LENGTH = 32;
 
     public static enum Type

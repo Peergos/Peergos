@@ -21,16 +21,16 @@ public class Tests
 //        testClass(Crypto.class);
 //        testClass(SSL.class);
 
-        UserContext.Test.setStorageAddress(Args.getParameter("clusterAddress", "localhost"));
-        UserContext.Test.setCoreNodeAddress(Args.getParameter("coreAddress", "localhost"));
-        String user = Args.hasOption("randomise") ? "Bob" + System.currentTimeMillis() : "Bob";
-        String follower = Args.hasOption("randomise") ? "Alice" + System.currentTimeMillis() : "Alice";
+        UserContext.Test.setStorageAddress(Args.getArg("clusterAddress", "localhost"));
+        UserContext.Test.setCoreNodeAddress(Args.getArg("coreAddress", "localhost"));
+        String user = Args.hasArg("randomise") ? "Bob" + System.currentTimeMillis() : "Bob";
+        String follower = Args.hasArg("randomise") ? "Alice" + System.currentTimeMillis() : "Alice";
         UserContext.Test.setUser(user);
         UserContext.Test.setFollower(follower);
 
-        if (!Args.hasOption("randomise")) {
-            UserContext.Test.ensureKeyPairForUser("Alice", new File(Args.getParameter("firstKeyPairFile", "cache.1.key")));
-            UserContext.Test.ensureKeyPairForUser("Bob", new File(Args.getParameter("secondKeyPairFile", "cache.2.key")));
+        if (!Args.hasArg("randomise")) {
+            UserContext.Test.ensureKeyPairForUser("Alice", new File(Args.getArg("firstKeyPairFile", "cache.1.key")));
+            UserContext.Test.ensureKeyPairForUser("Bob", new File(Args.getArg("secondKeyPairFile", "cache.2.key")));
         }
         testClass(UserContext.Test.class);
 //        testClass(User.Test.class);
