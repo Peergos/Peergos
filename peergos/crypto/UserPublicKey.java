@@ -37,10 +37,8 @@ public class UserPublicKey implements Comparable<UserPublicKey>
     static {
         try {
             engine.eval("var navigator = {}, window = {};");
-            engine.eval(new InputStreamReader(UserPublicKey.class.getClassLoader().getResourceAsStream("ui/lib/cryptico.min.js")));
+            engine.eval(new InputStreamReader(UserPublicKey.class.getClassLoader().getResourceAsStream("ui/lib/end-to-end.compiled.js")));
             engine.eval(new InputStreamReader(UserPublicKey.class.getClassLoader().getResourceAsStream("ui/lib/scrypt.js")));
-            engine.eval(new InputStreamReader(UserPublicKey.class.getClassLoader().getResourceAsStream("ui/lib/jsencrypt.js")));
-            engine.eval(new InputStreamReader(UserPublicKey.class.getClassLoader().getResourceAsStream("ui/lib/base64.js")));
             engine.eval(new InputStreamReader(UserPublicKey.class.getClassLoader().getResourceAsStream("ui/lib/api.js")));
             engine.eval("Object.freeze(this);");
         } catch (ScriptException sex) {
@@ -226,10 +224,21 @@ public class UserPublicKey implements Comparable<UserPublicKey>
         String username = "user";
         String password = "pass";
         String message = "If you can read this, we rock!";
-        System.out.println("Original: "+message);
         Object pair = invocable.invokeFunction("generateKeyPair", username, password, 1024);
 
         byte[] binput = message.getBytes();
+        byte[] publicKey = (byte[])invocable.invokeFunction("getPublicKeyBytes", pair);
+        UserPublicKey pub = new UserPublicKey(publicKey);
+        Base64.Encoder encoder = Base64.getEncoder();
+        byte[] jinput = encoder.encodeToString(binput).getBytes();
+        Cipher c = Cipher.getInstance(AUTH, "BC");
+        c.init(Cipher.ENCRYPT_MODE, pub.getKey());
+        c.update(jinput);
+        byte[] jcipher = c.doFinal();
+        System.out.println("Cipher in Java, from Java: " + ArrayOps.bytesToHex(jcipher));
+        byte[] jclearb = (byte[])invocable.invokeFunction("decryptBytesToBytes", jcipher, pair);
+        System.out.println("Decrypted from Java cipher: "+new String(jclearb));
+
         byte[] cipher = (byte[])invocable.invokeFunction("encryptBytesToBytes", binput, pair);
         System.out.println("Cipher in Java: " + ArrayOps.bytesToHex(cipher));
         byte[] clearb = (byte[])invocable.invokeFunction("decryptBytesToBytes", cipher, pair);

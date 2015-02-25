@@ -5,10 +5,9 @@
     
 <body>
 <h1>RSA examples</h1>
-<script type="text/javascript" src="lib/cryptico.min.js"></script>
-<script type="text/javascript" src="lib/jsencrypt.js"></script>
+<script type="text/javascript" src="lib/end-to-end.compiled.js"></script>
+<script type="text/javascript" src="lib/kbpgp-1.0.0.js"></script>
 <script type="text/javascript" src="lib/scrypt.js"></script>
-<script type="text/javascript" src="lib/base64.js"></script>
 <script type="text/javascript" src="lib/api.js"></script>
 <script>
 function generate() {
@@ -17,22 +16,28 @@ function generate() {
     var username = document.getElementById("username").value;
     var password = document.getElementById("password").value;
     
-    var dt = new Date();
-    var time = -(dt.getTime());
-    var /*Uint8Array*/ pbkdf_bytes = scrypt.crypto_scrypt(scrypt.encode_utf8(password),
-					      scrypt.encode_utf8(username),
-					      n, r, p, desiredBytes);
-    var keypair = cryptico.generateRSAKey(scrypt.to_hex(pbkdf_bytes), bits);
-    pub = getPublicBaseKeyB64(keypair);
-    priv = getPrivateBaseKeyB64(keypair);
-    var pubString = "-----BEGIN PUBLIC KEY-----\n" + wordwrap(getPublicBaseKeyB64(keypair)) + "\n-----END PUBLIC KEY-----";
-    var privString = "-----BEGIN RSA PRIVATE KEY-----\n" + wordwrap(getPrivateBaseKeyB64(keypair)) + "\n-----END RSA PRIVATE KEY-----";
+    kbpgp.KeyManager.generate_rsa({"userid":"ian"}, 
+        function(err, keys){
+            console.log(keys);
+            keys.export_pgp_private({passphrase: 'booyeah!'}, function(err, priv) {
+                console.log("private key: " +priv);});
+            keys.export_pgp_public({}, function(err, publ) {
+                console.log("public key: "+ publ);});
+        }
+    );
 
-      dt = new Date();
-      time += (dt.getTime());
-      document.getElementById("status").innerHTML = ('Generated in ' + time + ' ms');
-      document.getElementById("private").value = privString;//crypt.getPrivateKey();
-      document.getElementById("public").value = pubString;//crypt.getPublicKey();
+    //var /*Uint8Array*/ pbkdf_bytes = scrypt.crypto_scrypt(scrypt.encode_utf8(password),
+    //					      scrypt.encode_utf8(username),
+    //					      n, r, p, desiredBytes);
+    //var keypair = cryptico.generateRSAKey(scrypt.to_hex(pbkdf_bytes), bits);
+    //pub = getPublicBaseKeyB64(keypair);
+    //priv = getPrivateBaseKeyB64(keypair);
+    //var pubString = "-----BEGIN PUBLIC KEY-----\n" + wordwrap(getPublicBaseKeyB64(keypair)) + "\n-----END PUBLIC KEY-----";
+    //var privString = "-----BEGIN RSA PRIVATE KEY-----\n" + wordwrap(getPrivateBaseKeyB64(keypair)) + "\n-----END RSA PRIVATE KEY-----";
+
+      //document.getElementById("status").innerHTML = ('Generated in ' + time + ' ms');
+      //document.getElementById("private").value = privString;//crypt.getPrivateKey();
+      //document.getElementById("public").value = pubString;//crypt.getPublicKey();
 }
 function encrypt() {
     console.log("encrypting..");
