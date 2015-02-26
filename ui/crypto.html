@@ -6,7 +6,7 @@
 <body>
 <h1>RSA examples</h1>
 <script type="text/javascript" src="lib/end-to-end.compiled.js"></script>
-<script type="text/javascript" src="lib/kbpgp-1.0.0.js"></script>
+<script type="text/javascript" src="lib/kbpgp-2.0.8.js"></script>
 <script type="text/javascript" src="lib/scrypt.js"></script>
 <script type="text/javascript" src="lib/api.js"></script>
 <script>
@@ -18,11 +18,11 @@ function generate() {
     
     kbpgp.KeyManager.generate_rsa({"userid":"someone"}, 
         function(err, keys){
-            console.log(keys);
-            //keys.export_pgp_public({}, function(err, publ) {
-            //    console.log("public key: "+ publ);});
-            //keys.export_pgp_private({passphrase: 'booyeah!'}, function(err, priv) {
-            //    console.log("private key: " +priv);});
+            keys.sign({}, function(err) {});
+            keys.export_pgp_public({}, function(err, publ) {
+                console.log("public key: "+ publ);});
+            keys.export_pgp_private({passphrase: 'booyeah!'}, function(err, priv) {
+                console.log("private key: " +priv);});
 
             var params = {
                 msg:         "G'day mate!",
