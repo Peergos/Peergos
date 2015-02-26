@@ -16,13 +16,37 @@ function generate() {
     var username = document.getElementById("username").value;
     var password = document.getElementById("password").value;
     
-    kbpgp.KeyManager.generate_rsa({"userid":"ian"}, 
+    kbpgp.KeyManager.generate_rsa({"userid":"someone"}, 
         function(err, keys){
             console.log(keys);
-            keys.export_pgp_private({passphrase: 'booyeah!'}, function(err, priv) {
-                console.log("private key: " +priv);});
-            keys.export_pgp_public({}, function(err, publ) {
-                console.log("public key: "+ publ);});
+            //keys.export_pgp_public({}, function(err, publ) {
+            //    console.log("public key: "+ publ);});
+            //keys.export_pgp_private({passphrase: 'booyeah!'}, function(err, priv) {
+            //    console.log("private key: " +priv);});
+
+            var params = {
+                msg:         "G'day mate!",
+                encrypt_for: keys
+            };
+
+            kbpgp.box(params, function(err, result_string, result_buffer) {
+                console.log(err, result_string, result_buffer);
+                kbpgp.unbox({"keyfetch": keys, "raw": result_buffer}, function(err, literals) {
+                    if (err != null) {
+                        return console.log("Problem: " + err);
+                    } else {
+                        console.log("decrypted message");
+                        console.log(literals[0].toString());
+                        var ds = km = null;
+                        ds = literals[0].get_data_signer();
+                        if (ds) { km = ds.get_key_manager(); }
+                        if (km) {
+                            console.log("Signed by PGP fingerprint");
+                            console.log(km.get_pgp_fingerprint().toString('hex'));
+                        }
+                    }
+                });
+            });
         }
     );
 
