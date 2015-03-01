@@ -8,13 +8,29 @@
 <script type="text/javascript" src="lib/kbpgp-2.0.8.js"></script>
 <script type="text/javascript" src="lib/api.js"></script>
 <script>
+function encryptResult(err, result_string, result_buffer) {
+    console.log(err, result_string, result_buffer);
+    
+}
+
+function genresult(err, user) {
+    if (err)
+        console.log(err)
+    else {
+        console.log(user);
+        //var input = new kbpgp.Buffer("G'day mate!");
+        user.encryptMessageFor("G'day mate!", encryptResult)
+    }
+}
 function generate() {
     console.log("generating..");
     var bits = parseInt(document.getElementById("bits").value);
     var username = document.getElementById("username").value;
     var password = document.getElementById("password").value;
     
-    kbpgp.KeyManager.generate_rsa({"userid":"someone"}, 
+    generateKeyPair("fred", "pass", genresult);
+
+    /*kbpgp.KeyManager.generate_rsa({"userid":"someone"}, 
         function(err, keys){
             keys.sign({}, function(err) {});
             keys.export_pgp_public({}, function(err, publ) {
@@ -46,7 +62,7 @@ function generate() {
                 });
             });
         }
-    );
+    );*/
 
     //var /*Uint8Array*/ pbkdf_bytes = scrypt.crypto_scrypt(scrypt.encode_utf8(password),
     //					      scrypt.encode_utf8(username),

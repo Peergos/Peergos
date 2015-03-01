@@ -6,13 +6,19 @@
 function UserPublicKey(publicKey) {
     this.publicKey = publicKey;
 
-    // KeyPair => Uint8Array
-    this.getPublicKey = function(pair) {
-	return base64ToBytes(getPublicBaseKeyB64(pair));
+    // ((err, publicKeyString) -> ())
+    this.getPublicKey = function(cb) {
+	keys.export_pgp_public({}, cb);
     }
     
-    // Uint8Array => Uint8Array
-    this.encryptMessageFor = function(input) {
+    // (Uint8Array, (err, resString, resBuffer) -> ())
+    this.encryptMessageFor = function(inputString, cb) {
+	var params = {
+	        msg : inputString,
+                //raw: input,
+                encrypt_for: publicKey
+            };
+	kbpgp.box(params, cb);
     }
     
     // Uint8Array => Uint8Array
@@ -27,12 +33,21 @@ function UserPublicKey(publicKey) {
 /////////////////////////////
 // User methods
 // (string, string, int) => KeyPair
-function generateKeyPair(username, password, bits) {
+function generateKeyPair(username, password, cb) {
+    kbpgp.KeyManager.generate_ecc({"userid":"someone"}, 
+				  function(err, keypair) {
+				      if (keypair == null)
+					  cb(err);
+				      else {
+					  keypair.sign({}, function(err) {});
+					  cb(null, new User(keypair));
+				      }
+				  }
+				 );
 }
 
     function User(keyPair) {
 	UserPublicKey.call(this, keyPair);
-	
 	
 	// Uint8Array => Uint8Array
 	this.hashAndSignMessage = function(input) {
@@ -42,8 +57,9 @@ function generateKeyPair(username, password, bits) {
 	this.signMessage = function(input) {
 	}
     
-	// Uint8Array => Uint8Array
-	this.decryptMessage = function(input) {
+	// (Uint8Array, (err, literals) -> ())
+	this.decryptMessage = function(input, cb) {
+	    kbpgp.unbox({"keyfetch": keys, "raw": result_buffer}, cb);
 	}
     }
 
