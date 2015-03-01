@@ -60,6 +60,7 @@ function genresult(err, user) {
     if (err)
         console.log(err)
     else {
+        user.getPublicKey(function(err, pubString) {document.getElementById("public").value = pubString;});
         var input = new kbpgp.Buffer("G'day mate!");
         user.encryptMessageFor(input, encryptResult(user));
     }
@@ -72,52 +73,7 @@ function generate() {
     
     generateKeyPair("fred", "pass", genresult);
 
-    /*kbpgp.KeyManager.generate_rsa({"userid":"someone"}, 
-        function(err, keys){
-            keys.sign({}, function(err) {});
-            keys.export_pgp_public({}, function(err, publ) {
-                console.log("public key: "+ publ);});
-            keys.export_pgp_private({passphrase: 'booyeah!'}, function(err, priv) {
-                console.log("private key: " +priv);});
-
-            var params = {
-                msg:         "G'day mate!",
-                encrypt_for: keys
-            };
-
-            kbpgp.box(params, function(err, result_string, result_buffer) {
-                console.log(err, result_string, result_buffer);
-                kbpgp.unbox({"keyfetch": keys, "raw": result_buffer}, function(err, literals) {
-                    if (err != null) {
-                        return console.log("Problem: " + err);
-                    } else {
-                        console.log("decrypted message");
-                        console.log(literals[0].toString());
-                        var ds = km = null;
-                        ds = literals[0].get_data_signer();
-                        if (ds) { km = ds.get_key_manager(); }
-                        if (km) {
-                            console.log("Signed by PGP fingerprint");
-                            console.log(km.get_pgp_fingerprint().toString('hex'));
-                        }
-                    }
-                });
-            });
-        }
-    );*/
-
-    //var /*Uint8Array*/ pbkdf_bytes = scrypt.crypto_scrypt(scrypt.encode_utf8(password),
-    //					      scrypt.encode_utf8(username),
-    //					      n, r, p, desiredBytes);
-    //var keypair = cryptico.generateRSAKey(scrypt.to_hex(pbkdf_bytes), bits);
-    //pub = getPublicBaseKeyB64(keypair);
-    //priv = getPrivateBaseKeyB64(keypair);
-    //var pubString = "-----BEGIN PUBLIC KEY-----\n" + wordwrap(getPublicBaseKeyB64(keypair)) + "\n-----END PUBLIC KEY-----";
-    //var privString = "-----BEGIN RSA PRIVATE KEY-----\n" + wordwrap(getPrivateBaseKeyB64(keypair)) + "\n-----END RSA PRIVATE KEY-----";
-
-      //document.getElementById("status").innerHTML = ('Generated in ' + time + ' ms');
       //document.getElementById("private").value = privString;//crypt.getPrivateKey();
-      //document.getElementById("public").value = pubString;//crypt.getPublicKey();
 }
 function encrypt() {
     console.log("encrypting..");

@@ -8,7 +8,7 @@ function UserPublicKey(publicKey) {
 
     // ((err, publicKeyString) -> ())
     this.getPublicKey = function(cb) {
-	keys.export_pgp_public({}, cb);
+	publicKey.export_pgp_public({}, cb);
     }
     
     // (Uint8Array, (err, resString, resBuffer) -> ())
@@ -41,7 +41,16 @@ function UserPublicKey(publicKey) {
 // User methods
 // (string, string, int) => KeyPair
 function generateKeyPair(username, password, cb) {
-    kbpgp.KeyManager.generate_ecc({"userid":"someone"}, 
+    var F = kbpgp["const"].openpgp;
+    var args = {userid: username,
+		primary: {
+		    nbits: 4096,
+		    flags: F.certify_keys | F.sign_data | F.auth | F.encrypt_comm | F.encrypt_storage,
+		    expire_in: 0  // never expire
+		},
+		subkeys: []
+	       };
+    kbpgp.KeyManager.generate_ecc(args, 
 				  function(err, keypair) {
 				      if (keypair == null)
 					  cb(err);
