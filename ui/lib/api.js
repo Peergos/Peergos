@@ -59,7 +59,7 @@ function generateKeyPair(username, password, cb) {
     
 	// (Uint8Array, (err, literals) -> ())
 	this.decryptMessage = function(input, cb) {
-	    kbpgp.unbox({"keyfetch": keys, "raw": result_buffer}, cb);
+	    kbpgp.unbox({"keyfetch": this.publicKey, "raw": input}, cb);
 	}
     }
 
