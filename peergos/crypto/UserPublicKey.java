@@ -37,8 +37,7 @@ public class UserPublicKey implements Comparable<UserPublicKey>
     static {
         try {
             engine.eval("var navigator = {}, window = {};");
-            engine.eval(new InputStreamReader(UserPublicKey.class.getClassLoader().getResourceAsStream("ui/lib/end-to-end.compiled.js")));
-            engine.eval(new InputStreamReader(UserPublicKey.class.getClassLoader().getResourceAsStream("ui/lib/scrypt.js")));
+            engine.eval(new InputStreamReader(UserPublicKey.class.getClassLoader().getResourceAsStream("ui/lib/kbpgp-2.0.8.js")));
             engine.eval(new InputStreamReader(UserPublicKey.class.getClassLoader().getResourceAsStream("ui/lib/api.js")));
             engine.eval("Object.freeze(this);");
         } catch (ScriptException sex) {
@@ -47,18 +46,15 @@ public class UserPublicKey implements Comparable<UserPublicKey>
     }
 
     private final PublicKey publicKey;
-    private final ScriptObjectMirror jsKey;
 
     public UserPublicKey(PublicKey pub)
     {
         this.publicKey = pub;
-        this.jsKey = null;
     }
 
     public UserPublicKey(byte[] encodedPublicKey)
     {
         publicKey = deserializePublic(encodedPublicKey);
-        this.jsKey = null;
     }
 
     public byte[] getPublicKey()
