@@ -12,21 +12,28 @@ function UserPublicKey(publicKey) {
     }
     
     // (Uint8Array, (err, resString, resBuffer) -> ())
-    this.encryptMessageFor = function(inputString, cb) {
+    this.encryptMessageFor = function(input, cb) {
 	var params = {
-	        msg : inputString,
-                //raw: input,
+                msg: input,
                 encrypt_for: publicKey
             };
 	kbpgp.box(params, cb);
     }
     
     // Uint8Array => Uint8Array
-    this.unsignMessage = function(input) {
+    this.unsignMessage = function(input, cb) {
+	kbpgp.unbox({"keyfetch": this.publicKey, "raw": input}, cb);
     }
     
+    this.isValidSignature = function(signedHash, raw) {
+	var a = hash(raw);
+	var b = unsignMessage(signedHash);
+	return arraysEqual(a, b);
+    }
+
     // Uint8Array => Uint8Array
     this.hash = function(input) {
+	return kbpgp.hash.SHA256(input);
     }
 }
     
@@ -50,11 +57,17 @@ function generateKeyPair(username, password, cb) {
 	UserPublicKey.call(this, keyPair);
 	
 	// Uint8Array => Uint8Array
-	this.hashAndSignMessage = function(input) {
+	this.hashAndSignMessage = function(input, cb) {
+	    signMessage(hash(input), cb);
 	}
 	
 	// Uint8Array => Uint8Array
-	this.signMessage = function(input) {
+	this.signMessage = function(input, cb) {
+	    var params = {
+	        msg : input,
+                sign_with: this.publicKey
+            };
+	    kbpgp.box(params, cb);
 	}
     
 	// (Uint8Array, (err, literals) -> ())

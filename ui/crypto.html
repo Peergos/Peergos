@@ -8,26 +8,51 @@
 <script type="text/javascript" src="lib/kbpgp-2.0.8.js"></script>
 <script type="text/javascript" src="lib/api.js"></script>
 <script>
-function decryptResult(err, literals) {
+function unsignResult(err, literals) {
     if (err != null) {
         return console.log("Problem: " + err);
     } else {
-        console.log("decrypted message");
-        console.log(literals[0].toString());
+        console.log("Unsigned message" + literals[0].toString());
         var ds = km = null;
         ds = literals[0].get_data_signer();
         if (ds) { km = ds.get_key_manager(); }
         if (km) {
-            console.log("Signed by PGP fingerprint");
-            console.log(km.get_pgp_fingerprint().toString('hex'));
+            console.log("Signed by PGP fingerprint: "+ km.get_pgp_fingerprint().toString('hex'));
         }
     }
+}
+
+function signResult(user) {
+    return function (err, result_string, result_buffer) {
+        console.log("Signature: " + result_buffer);
+        var hash = user.hash(result_buffer);
+        console.log("Hash("+hash.length+"): " + hash);
+        user.unsignMessage(result_buffer, unsignResult);
+    }
+}
+
+function decryptResult(user) {
+    return function(err, literals) {
+        if (err != null) {
+            return console.log("Problem: " + err);
+        } else {
+            console.log("Decrypted message: " + literals[0].toString());
+            var ds = km = null;
+            ds = literals[0].get_data_signer();
+            if (ds) { km = ds.get_key_manager(); }
+            if (km) {
+                console.log("Signed by PGP fingerprint");
+                console.log(km.get_pgp_fingerprint().toString('hex'));
+            }
+            user.signMessage(literals[0], signResult(user));
+        }
+    };
 }
 
 function encryptResult(user) {
     return function (err, result_string, result_buffer) {
         console.log("Cipher Text: " + result_buffer);
-        user.decryptMessage(result_buffer, decryptResult);
+        user.decryptMessage(result_buffer, decryptResult(user));
     }
 }
 
@@ -35,8 +60,8 @@ function genresult(err, user) {
     if (err)
         console.log(err)
     else {
-        //var input = new kbpgp.Buffer("G'day mate!");
-        user.encryptMessageFor("G'day mate!", encryptResult(user));
+        var input = new kbpgp.Buffer("G'day mate!");
+        user.encryptMessageFor(input, encryptResult(user));
     }
 }
 function generate() {
