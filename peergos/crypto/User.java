@@ -141,7 +141,7 @@ public class User extends UserPublicKey
             return kpg.genKeyPair();
         } catch (NoSuchAlgorithmException|NoSuchProviderException|InvalidAlgorithmParameterException e)
         {
-            throw new IllegalStateException("No such algorithm: "+KEYS);
+            throw new IllegalStateException("No such algorithm or curve: "+ECC_CURVE);
         }
     }
 

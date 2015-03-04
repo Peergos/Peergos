@@ -160,6 +160,7 @@ public class UserPublicKey implements Comparable<UserPublicKey>
             return KeyFactory.getInstance(KEYS, "BC").generatePublic(new X509EncodedKeySpec(pub));
         } catch (NoSuchAlgorithmException|NoSuchProviderException|InvalidKeySpecException e)
         {
+            e.printStackTrace();
             throw new IllegalStateException("Couldn't create public key");
         }
     }
