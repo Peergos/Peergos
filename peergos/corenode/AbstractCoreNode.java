@@ -162,7 +162,7 @@ public abstract class AbstractCoreNode
     {
         UserPublicKey key = new UserPublicKey(encodedUserKey);
 
-        if (! key.isValidSignature(signedHash, staticData))
+        if (! key.isValidSignature(signedHash))
             return false;
 
         return addUsername(username, key, new ByteArrayWrapper(staticData));
@@ -190,7 +190,7 @@ public abstract class AbstractCoreNode
             key = userNameToPublicKeyMap.get(username);
         }
 
-        if (key == null || ! key.isValidSignature(signedHash, clearanceData))
+        if (key == null || ! key.isValidSignature(signedHash))
             return false;
 
         return updateClearanceData(username, new ByteArrayWrapper(clearanceData));
@@ -251,7 +251,7 @@ public abstract class AbstractCoreNode
             if (us == null || ! userMap.get(target).followRequests.contains(baw))
                 return false; 
         }
-        if (! us.isValidSignature(signedHash, data))
+        if (! us.isValidSignature(signedHash))
             return false;
 
         return removeFollowRequest(target, new ByteArrayWrapper(data));
@@ -278,7 +278,7 @@ public abstract class AbstractCoreNode
             key = userNameToPublicKeyMap.get(username);
         }
 
-        if (key == null || ! key.isValidSignature(signedHash, encodedSharingPublicKey))
+        if (key == null || ! key.isValidSignature(signedHash))
             return false;
 
         return allowSharingKey(username, new UserPublicKey(encodedSharingPublicKey));
@@ -306,7 +306,7 @@ public abstract class AbstractCoreNode
             key = userNameToPublicKeyMap.get(username);
         }
 
-        if (key == null || ! key.isValidSignature(signedHash,encodedsharingPublicKey))
+        if (key == null || ! key.isValidSignature(signedHash))
             return false;
 
         UserPublicKey sharingPublicKey = new UserPublicKey(encodedsharingPublicKey);
@@ -345,7 +345,7 @@ public abstract class AbstractCoreNode
                 return false;
         }
 
-        if (!sharingKey.isValidSignature(sharingKeySignedHash, metadataBlob))
+        if (!sharingKey.isValidSignature(sharingKeySignedHash))
             return false;
 
         return addMetadataBlob(username, sharingKey, mapKey, metadataBlob);
@@ -393,8 +393,7 @@ public abstract class AbstractCoreNode
             return false;
 
         byte[] allHashes = ArrayOps.concat(fragmentHashes);
-        byte[] concat = ArrayOps.concat(mapKey, metadataBlob, allHashes);
-        if (! sharingKey.isValidSignature(sharingKeySignedHash, concat))
+        if (! sharingKey.isValidSignature(sharingKeySignedHash))
             return false;
 
         return addFragmentHashes(username, sharingKey, mapKey, allHashes);
@@ -456,7 +455,7 @@ public abstract class AbstractCoreNode
                 return false;
         }
 
-        if (! sharingKey.isValidSignature(sharingKeySignedMapKey, mapKey))
+        if (! sharingKey.isValidSignature(sharingKeySignedMapKey))
             return false;
 
         return removeMetadataBlob(username, sharingKey, mapKey);
@@ -486,7 +485,7 @@ public abstract class AbstractCoreNode
     {
         UserPublicKey key = new UserPublicKey(userKey);
 
-        if (! Arrays.equals(key.hash(username),key.unsignMessage(signedHash)))
+        if (! key.verify(signedHash))
             return false;
 
         return removeUsername(username, key);
@@ -597,7 +596,7 @@ public abstract class AbstractCoreNode
     {
         UserPublicKey sharingPublicKey = new UserPublicKey(encodedSharingKey);
         byte[] keyAndHash = ArrayOps.concat(encodedSharingKey, hash);
-        if (!sharingPublicKey.isValidSignature(signedKeyPlusHash, keyAndHash))
+        if (!sharingPublicKey.isValidSignature(signedKeyPlusHash))
             return false;
 
         return registerFragmentStorage(spaceDonor, node, owner, sharingPublicKey, hash);

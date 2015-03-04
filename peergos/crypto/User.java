@@ -7,7 +7,6 @@ import org.bouncycastle.asn1.pkcs.PrivateKeyInfo;
 import org.bouncycastle.asn1.pkcs.RSAPrivateKey;
 import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
 import org.bouncycastle.jce.ECNamedCurveTable;
-import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.jce.spec.ECParameterSpec;
 import org.bouncycastle.openssl.PEMException;
 import org.bouncycastle.openssl.jcajce.JcaPEMKeyConverter;
@@ -47,26 +46,19 @@ public class User extends UserPublicKey
     public byte[] signMessage(byte[] input)
     {
         try {
-            Cipher c = Cipher.getInstance(AUTH, "BC");
-            c.init(Cipher.ENCRYPT_MODE, privateKey);
-            return c.doFinal(input);
-        } catch (NoSuchAlgorithmException|NoSuchProviderException e)
+            Signature dsa = Signature.getInstance(SIG, "BC");
+            dsa.initSign(privateKey);
+            dsa.update(input);
+            return dsa.sign();
+        } catch (NoSuchProviderException|NoSuchAlgorithmException e)
         {
             e.printStackTrace();
             return null;
-        } catch (NoSuchPaddingException e)
+        } catch (SignatureException e)
         {
             e.printStackTrace();
             return null;
         } catch (InvalidKeyException e)
-        {
-            e.printStackTrace();
-            return null;
-        } catch (IllegalBlockSizeException e)
-        {
-            e.printStackTrace();
-            return null;
-        } catch (BadPaddingException e)
         {
             e.printStackTrace();
             return null;
@@ -268,10 +260,14 @@ public class User extends UserPublicKey
 
     public static void main(String[] args) {
         User user = User.generateUserCredentials("Username", "password");
+        System.out.println("PublicKey: " + ArrayOps.bytesToHex(user.getPublicKey()));
         byte[] message = "G'day mate!".getBytes();
         byte[] cipher = user.encryptMessageFor(message);
         System.out.println("Cipher: "+ArrayOps.bytesToHex(cipher));
         byte[] clear = user.decryptMessage(cipher);
         assert (Arrays.equals(message, clear));
+
+        byte[] signed = user.signMessage(message);
+        assert (user.verify(signed));
     }
 }

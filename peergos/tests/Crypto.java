@@ -1,5 +1,6 @@
 package peergos.tests;
 
+import junit.framework.TestCase;
 import peergos.crypto.SymmetricKey;
 import peergos.crypto.UserPublicKey;
 import peergos.crypto.User;
@@ -31,7 +32,6 @@ public class Crypto
         User u = User.random();
         byte[] raw = "This is the raw data.".getBytes();
         byte[] signed = u.signMessage(raw);
-        byte[] unsigned = u.unsignMessage(signed);
         byte[] encrypted = u.encryptMessageFor(raw);
         byte[] decrypted = u.decryptMessage(encrypted);
 //        System.out.println(ArrayOps.bytesToHex(raw));
@@ -42,7 +42,7 @@ public class Crypto
 
         assertEquals("Correct encrypted size", UserPublicKey.RSA_KEY_BITS /8, signed.length);
         assertEquals("Correct encrypted size", UserPublicKey.RSA_KEY_BITS /8, encrypted.length);
-        assertEquals("unsigning is the inverse of signing", ArrayOps.bytesToHex(raw), ArrayOps.bytesToHex(unsigned));
+        assertTrue("verify signature", u.verify(signed));
         assertEquals("decrypt is the inverse of encrypt", ArrayOps.bytesToHex(raw), ArrayOps.bytesToHex(decrypted));
 
         UserPublicKey rem = new UserPublicKey(u.getPublicKey());
@@ -71,10 +71,9 @@ public class Crypto
 
         byte[] raw = "This is some random raw data.".getBytes();
         byte[] signed = u1.signMessage(raw);
-        byte[] unsigned = u2.unsignMessage(signed);
+        assertTrue("Verify signature", u2.verify(signed));
         byte[] encrypted = u1.encryptMessageFor(raw);
         byte[] decrypted = u2.decryptMessage(encrypted);
-        assertEquals("unsigning is the inverse of signing", ArrayOps.bytesToHex(raw), ArrayOps.bytesToHex(unsigned));
         assertEquals("decrypt is the inverse of encrypt", ArrayOps.bytesToHex(raw), ArrayOps.bytesToHex(decrypted));
     }
 }

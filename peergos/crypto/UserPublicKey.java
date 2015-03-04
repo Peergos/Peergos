@@ -1,25 +1,17 @@
 package peergos.crypto;
 
-import jdk.nashorn.api.scripting.ScriptObjectMirror;
-import jdk.nashorn.api.scripting.ScriptUtils;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import peergos.util.ArrayOps;
-import peergos.util.ByteArrayWrapper;
 import peergos.util.Serialize;
 
 import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
-import javax.script.Invocable;
-import javax.script.ScriptEngine;
-import javax.script.ScriptEngineManager;
-import javax.script.ScriptException;
 import java.io.*;
 import java.security.*;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.X509EncodedKeySpec;
-import java.util.Base64;
 
 public class UserPublicKey implements Comparable<UserPublicKey>
 {
@@ -27,6 +19,7 @@ public class UserPublicKey implements Comparable<UserPublicKey>
     public static final int HASH_BYTES = 256/8;
     public static final String ECC_CURVE = "secp384r1";
     public static final String KEYS = "ECDSA";
+    public static final String SIG = "SHA256withECDSA";
     public static final String AUTH = "ECIES";
     public static final String HASH = "SHA-256";
     public static final String SECURE_RANDOM = "SHA1PRNG"; // TODO: need to figure out an implementation using HMAC-SHA-256
@@ -92,33 +85,23 @@ public class UserPublicKey implements Comparable<UserPublicKey>
         }
     }
 
-    public byte[] unsignMessage(byte[] input)
+    public boolean verify(byte[] input)
     {
         try {
-            Cipher c = Cipher.getInstance(AUTH, "BC");
-            c.init(Cipher.DECRYPT_MODE, publicKey);
-            return c.doFinal(input);
+            Signature dsa = Signature.getInstance(SIG, "BC");
+            dsa.initVerify(publicKey);
+            return dsa.verify(input);
         } catch (NoSuchAlgorithmException|NoSuchProviderException e)
         {
             e.printStackTrace();
-            return null;
-        } catch (NoSuchPaddingException e)
+        } catch (SignatureException e)
         {
             e.printStackTrace();
-            return null;
         } catch (InvalidKeyException e)
         {
             e.printStackTrace();
-            return null;
-        } catch (IllegalBlockSizeException e)
-        {
-            e.printStackTrace();
-            return null;
-        } catch (BadPaddingException e)
-        {
-            e.printStackTrace();
-            return null;
         }
+        return false;
     }
 
     public boolean equals(Object o)
@@ -139,16 +122,9 @@ public class UserPublicKey implements Comparable<UserPublicKey>
         return (PublicKey) publicKey;
     }
 
-    public boolean isValidSignature(byte[] signedHash, byte[] raw)
+    public boolean isValidSignature(byte[] signedHash)
     {
-        try
-        {
-            byte[] a = hash(raw);
-            byte[] b = unsignMessage(signedHash);
-            return java.util.Arrays.equals(a,b);
-        } catch (Exception e) {
-            return false;
-        }
+        return verify(signedHash);
     }
 
     static
