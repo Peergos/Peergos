@@ -13,13 +13,6 @@ import static junit.framework.TestCase.assertEquals;
 
 public class Crypto
 {
-    public void cryptoCapabilities()
-    {
-        boolean res = User.testEncryptionCapabilities();
-        User.enumerateAllCryptoAlgorithmsAvailable();
-        assertEquals("Crypto capabilities", true, res);
-    }
-
     @Test
     public void AESEncryption()
     {

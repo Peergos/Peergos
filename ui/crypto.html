@@ -47,7 +47,7 @@ function decryptResult(user) {
             user.signMessage(literals[0], signResult(user));
         }
     };
-}
+       }
 
 function encryptResult(user) {
     return function (err, result_string, result_buffer) {
@@ -94,7 +94,7 @@ function decrypt() {
 <p/>
 <textarea id="public" placeholder="Public Key" cols="65" rows="10"></textarea><br/>
 <p/>
-<textarea id="data" value="G'day mate!" cols="65" rows="5"></textarea><br/>
+<textarea id="data" cols="65" rows="5">G'day mate!</textarea><br/>
 <button id="encryptButton" onclick="encrypt();">Encrypt data</button>
 <p/>
 <textarea id="encrypted" placeholder="Encrypted data" cols="65" rows="5"></textarea><br/>

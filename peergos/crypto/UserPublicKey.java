@@ -25,25 +25,11 @@ public class UserPublicKey implements Comparable<UserPublicKey>
 {
     public static final int RSA_KEY_BITS = 1024;//4096;
     public static final int HASH_BYTES = 256/8;
-    public static final String KEYS = "RSA";
-    public static final String AUTH = "RSA/ECB/OAEPWithSHA-256AndMGF1Padding";
+    public static final String ECC_CURVE = "secp384r1";
+    public static final String KEYS = "ECDSA";
+    public static final String AUTH = "ECIES";
     public static final String HASH = "SHA-256";
     public static final String SECURE_RANDOM = "SHA1PRNG"; // TODO: need to figure out an implementation using HMAC-SHA-256
-
-    private static ScriptEngineManager engineManager = new ScriptEngineManager();
-    public static final ScriptEngine engine = engineManager.getEngineByName("nashorn");
-    public static final Invocable invocable = (Invocable) engine;
-
-    static {
-        try {
-            engine.eval("var navigator = {}, window = {};");
-            engine.eval(new InputStreamReader(UserPublicKey.class.getClassLoader().getResourceAsStream("ui/lib/kbpgp-2.0.8.js")));
-            engine.eval(new InputStreamReader(UserPublicKey.class.getClassLoader().getResourceAsStream("ui/lib/api.js")));
-            engine.eval("Object.freeze(this);");
-        } catch (ScriptException sex) {
-            throw new IllegalStateException(sex);
-        }
-    }
 
     private final PublicKey publicKey;
 
@@ -205,39 +191,5 @@ public class UserPublicKey implements Comparable<UserPublicKey>
     @Override
     public int compareTo(UserPublicKey userPublicKey) {
         return ArrayOps.compare(publicKey.getEncoded(), userPublicKey.publicKey.getEncoded());
-    }
-
-    public static void main(String[] args) throws Exception {
-//        Object sha = invocable.invokeFunction("SHA256", "somedata".getBytes());
-
-//        KeyPair pair = User.generateKeyPair();
-//        User java = new User(pair);
-//        byte[] jpub = java.getPublicKey();
-//        byte[] jpriv = pair.getPrivate().getEncoded();
-//        Base64.Encoder encoder = Base64.getEncoder();
-//        System.out.println("pubb64 =  "+encoder.encodeToString(jpub));
-
-        String username = "user";
-        String password = "pass";
-        String message = "If you can read this, we rock!";
-        Object pair = invocable.invokeFunction("generateKeyPair", username, password, 1024);
-
-        byte[] binput = message.getBytes();
-        byte[] publicKey = (byte[])invocable.invokeFunction("getPublicKeyBytes", pair);
-        UserPublicKey pub = new UserPublicKey(publicKey);
-        Base64.Encoder encoder = Base64.getEncoder();
-        byte[] jinput = encoder.encodeToString(binput).getBytes();
-        Cipher c = Cipher.getInstance(AUTH, "BC");
-        c.init(Cipher.ENCRYPT_MODE, pub.getKey());
-        c.update(jinput);
-        byte[] jcipher = c.doFinal();
-        System.out.println("Cipher in Java, from Java: " + ArrayOps.bytesToHex(jcipher));
-        byte[] jclearb = (byte[])invocable.invokeFunction("decryptBytesToBytes", jcipher, pair);
-        System.out.println("Decrypted from Java cipher: "+new String(jclearb));
-
-        byte[] cipher = (byte[])invocable.invokeFunction("encryptBytesToBytes", binput, pair);
-        System.out.println("Cipher in Java: " + ArrayOps.bytesToHex(cipher));
-        byte[] clearb = (byte[])invocable.invokeFunction("decryptBytesToBytes", cipher, pair);
-        System.out.println("Decrypted: "+new String(clearb));
     }
 }

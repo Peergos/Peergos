@@ -1,13 +1,14 @@
 package peergos.crypto;
 
-import org.bouncycastle.asn1.ASN1Primitive;
 import org.bouncycastle.asn1.ASN1Sequence;
 import org.bouncycastle.asn1.DERNull;
 import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
 import org.bouncycastle.asn1.pkcs.PrivateKeyInfo;
 import org.bouncycastle.asn1.pkcs.RSAPrivateKey;
-import org.bouncycastle.asn1.pkcs.RSAPrivateKeyStructure;
 import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
+import org.bouncycastle.jce.ECNamedCurveTable;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.bouncycastle.jce.spec.ECParameterSpec;
 import org.bouncycastle.openssl.PEMException;
 import org.bouncycastle.openssl.jcajce.JcaPEMKeyConverter;
 import peergos.util.ArrayOps;
@@ -18,14 +19,8 @@ import java.security.*;
 import javax.crypto.*;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.PKCS8EncodedKeySpec;
-import java.security.spec.RSAPrivateKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Arrays;
-import java.util.Base64;
-import java.util.Enumeration;
-import java.util.Set;
-
-import static org.junit.Assert.assertTrue;
 
 public class User extends UserPublicKey
 {
@@ -148,10 +143,11 @@ public class User extends UserPublicKey
     {
         try
         {
-            KeyPairGenerator kpg = KeyPairGenerator.getInstance(KEYS, "BC");
-            kpg.initialize(RSA_KEY_BITS);
+            ECParameterSpec ecSpec = ECNamedCurveTable.getParameterSpec(ECC_CURVE);
+            KeyPairGenerator kpg = KeyPairGenerator.getInstance("ECDSA", "BC");
+            kpg.initialize(ecSpec);
             return kpg.genKeyPair();
-        } catch (NoSuchAlgorithmException|NoSuchProviderException e)
+        } catch (NoSuchAlgorithmException|NoSuchProviderException|InvalidAlgorithmParameterException e)
         {
             throw new IllegalStateException("No such algorithm: "+KEYS);
         }
@@ -171,14 +167,16 @@ public class User extends UserPublicKey
             KeyPairGenerator kpg = KeyPairGenerator.getInstance(KEYS, "BC");
             SecureRandom random = SecureRandom.getInstance(SECURE_RANDOM);
             random.setSeed(hash);
-            kpg.initialize(RSA_KEY_BITS, random);
+            ECParameterSpec ecSpec = ECNamedCurveTable.getParameterSpec(ECC_CURVE);
+            kpg.initialize(ecSpec, random);
             long start = System.nanoTime();
             User u = new User(kpg.generateKeyPair());
             long end = System.nanoTime();
             System.out.printf("User credential generation took %d mS\n", (end-start)/1000000);
             return u;
-        } catch (NoSuchAlgorithmException|NoSuchProviderException e)
+        } catch (NoSuchAlgorithmException|NoSuchProviderException|InvalidAlgorithmParameterException e)
         {
+            e.printStackTrace();
             throw new IllegalStateException("Couldn't generate key-pair from password - "+e.getMessage());
         }
     }
@@ -206,129 +204,6 @@ public class User extends UserPublicKey
             assert (Arrays.equals(v1, same));
         } catch (Exception e) {e.printStackTrace();}
     }
-
-    public static void checkAllowedKeySizes()
-    {
-        try {
-            Set<String> algorithms = Security.getAlgorithms("Cipher");
-            for(String algorithm: algorithms) {
-                int max = Cipher.getMaxAllowedKeyLength(algorithm);
-                System.out.printf("%-22s: %dbit%n", algorithm, max);
-            }
-        } catch (NoSuchAlgorithmException e) {
-//            e.printStackTrace();
-        }
-    }
-
-    public static void enumerateAllCryptoAlgorithmsAvailable()
-    {
-        try {
-            Provider p[] = Security.getProviders();
-            for (int i = 0; i < p.length; i++) {
-                System.out.println(p[i]);
-                for (Enumeration e = p[i].keys(); e.hasMoreElements();)
-                    System.out.println("\t" + e.nextElement());
-            }
-        } catch (Exception e) {
-            System.out.println(e);
-        }
-    }
-
-    public static boolean testEncryptionCapabilities()
-    {
-        checkAllowedKeySizes();
-
-        byte[] input = "Hello encryptor!".getBytes();
-        try
-        {
-            KeyPairGenerator kpg = KeyPairGenerator.getInstance(AUTH, "BC");
-            kpg.initialize(RSA_KEY_BITS);
-            KeyPair kp = kpg.genKeyPair();
-            Key publicKey = kp.getPublic();
-            Key privateKey = kp.getPrivate();
-            Cipher cipher = Cipher.getInstance(AUTH, "BC");
-            cipher.init(Cipher.ENCRYPT_MODE, publicKey);
-
-            byte[] cipherText = cipher.doFinal(input);
-
-            cipher.init(Cipher.DECRYPT_MODE, privateKey);
-            byte[] plainText = cipher.doFinal(cipherText);
-            return true;
-        } catch (NoSuchAlgorithmException|NoSuchProviderException e)
-        {
-            e.printStackTrace();
-            return false;
-        } catch (NoSuchPaddingException e)
-        {
-            e.printStackTrace();
-            return false;
-        } catch (InvalidKeyException e)
-        {
-            e.printStackTrace();
-            return false;
-        }  catch (IllegalBlockSizeException e)
-        {
-            e.printStackTrace();
-            return false;
-        } catch (BadPaddingException e)
-        {
-            e.printStackTrace();
-            return false;
-        }
-    }
-
-    public static class Test {
-        int[] hashFailInts = new int[] {0,-80,88,85,53,-56,102,10,-99,-115,-102,38,27,44,-102,97,64,67,-38,-116,-70,-35,75,-81,96,54,95,72,110,-60,55,-83};
-
-        public Test() {}
-
-        @org.junit.Test
-        public void all() {
-            User u = random();
-            byte[] hashFail = new byte[hashFailInts.length];
-            for (int i=0; i < hashFail.length; i++)
-                hashFail[i] = (byte) hashFailInts[i];
-            byte[] sameAsHash = u.unsignMessage(u.signMessage(hashFail));
-            assertTrue("Fails with no padding..", Arrays.equals(hashFail, sameAsHash));
-
-            byte[] raw = new byte[582];
-            System.arraycopy(u.getPublicKey(), 0, raw, 0, 550);
-            byte[] hash = hash(raw);
-            while (hash[0] != 0) {
-                byte[] tmp = ArrayOps.random(32);
-                System.arraycopy(tmp, 0, raw, 550, 32);
-                hash = hash(raw);
-            }
-            InvalidSig made = new InvalidSig(raw, u.signMessage(hash));
-            assertTrue("Invalid signature! hash has leading zero", made.isValid());
-
-            // random signing
-            for (int i=0; i < 100; i++) {
-                byte[] input = ArrayOps.random(64);
-                byte[] sig = u.hashAndSignMessage(input);
-                assertTrue("Valid signature", u.isValidSignature(sig, input));
-            }
-        }
-    }
-
-    public static class InvalidSig {
-        byte[] raw, sig;
-
-        public InvalidSig(byte[] raw, byte[] sig) {
-            this.raw = raw;
-            this.sig = sig;
-        }
-
-        public boolean isValid() {
-            byte[] key = Arrays.copyOfRange(raw, 0, raw.length-32);
-            UserPublicKey pub = new UserPublicKey(key);
-            return pub.isValidSignature(sig, raw);
-        }
-    }
-
-
-
-
 
     public static class KeyPairUtils {
 
@@ -389,5 +264,14 @@ public class User extends UserPublicKey
                 din.close();
             }
         }
+    }
+
+    public static void main(String[] args) {
+        User user = User.generateUserCredentials("Username", "password");
+        byte[] message = "G'day mate!".getBytes();
+        byte[] cipher = user.encryptMessageFor(message);
+        System.out.println("Cipher: "+ArrayOps.bytesToHex(cipher));
+        byte[] clear = user.decryptMessage(cipher);
+        assert (Arrays.equals(message, clear));
     }
 }

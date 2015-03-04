@@ -106,6 +106,7 @@ function randomIV() {
 }
 
 function SymmetricKey() {
+    
 
     // (Uint8Array, Uint8Array) => Uint8Array
     this.encrypt = function(data, initVector) {
