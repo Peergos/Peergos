@@ -39,7 +39,7 @@ public class UserContext
     private User us;
     private DHTUserAPI dht;
     private AbstractCoreNode core;
-    private Map<UserPublicKey, StaticDataElement> staticData = new TreeMap();
+    private Map<UserPublicKey, StaticDataElement> staticData = new TreeMap<>();
     private ExecutorService executor = Executors.newFixedThreadPool(2);
 
 
