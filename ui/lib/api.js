@@ -43,12 +43,21 @@ function UserPublicKey(publicKey) {
 function generateKeyPair(username, password, cb) {
     var F = kbpgp["const"].openpgp;
     var args = {userid: username,
+		ecc: true,
 		primary: {
-		    nbits: 4096,
+		    nbits: 384,
 		    flags: F.certify_keys | F.sign_data | F.auth | F.encrypt_comm | F.encrypt_storage,
 		    expire_in: 0  // never expire
 		},
-		subkeys: []
+		subkeys: [{
+		    nbits: 256,
+		    flags: F.sign_data,
+		    expire_in: 86400 * 365 * 8 // 8 years
+		}, {
+		    nbits: 256,
+		    flags: F.encrypt_comm | F.encrypt_storage,
+		    expire_in: 86400 * 365 * 8
+		}]
 	       };
     kbpgp.KeyManager.generate_ecc(args, 
 				  function(err, keypair) {

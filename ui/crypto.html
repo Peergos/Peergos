@@ -4,7 +4,7 @@
 </head>
     
 <body>
-<h1>RSA examples</h1>
+<h1>Crypto examples</h1>
 <script type="text/javascript" src="lib/kbpgp-2.0.8.js"></script>
 <script type="text/javascript" src="lib/api.js"></script>
 <script>
@@ -67,13 +67,10 @@ function genresult(err, user) {
 }
 function generate() {
     console.log("generating..");
-    var bits = parseInt(document.getElementById("bits").value);
     var username = document.getElementById("username").value;
     var password = document.getElementById("password").value;
     
     generateKeyPair("fred", "pass", genresult);
-
-      //document.getElementById("private").value = privString;//crypt.getPrivateKey();
 }
 function encrypt() {
     console.log("encrypting..");
@@ -91,38 +88,13 @@ function decrypt() {
 <textarea id="username" size="20">user</textarea><br/>
 <label>Password:</label>
 <textarea id="password" size="20">pass</textarea><br/>
-<select id="bits">
-  <option value="1024">1024</option>
-  <option value="2048">2048</option>
-  <option value="4096">4096</option>
-</select>
 <br/>
 <button id="genButton" onclick="generate();">Generate keys</button>
 
 <p/>
-<textarea id="public" placeholder="Public Key" cols="65" rows="10">-----BEGIN PUBLIC KEY-----
-MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDlOJu6TyygqxfWT7eLtGDwajtN
-FOb9I5XRb6khyfD1Yt3YiCgQWMNW649887VGJiGr/L5i2osbl8C9+WJTeucF+S76
-xFxdU6jE0NQ+Z+zEdhUTooNRaY5nZiu5PgDB0ED/ZKBUSLKL7eibMxZtMlUDHjm4
-gwQco1KRMDSmXSMkDwIDAQAB
------END PUBLIC KEY-----</textarea><br/>
-<textarea id="private" placeholder="Private Key" cols="65" rows="15">-----BEGIN RSA PRIVATE KEY-----
-MIICXQIBAAKBgQDlOJu6TyygqxfWT7eLtGDwajtNFOb9I5XRb6khyfD1Yt3YiCgQ
-WMNW649887VGJiGr/L5i2osbl8C9+WJTeucF+S76xFxdU6jE0NQ+Z+zEdhUTooNR
-aY5nZiu5PgDB0ED/ZKBUSLKL7eibMxZtMlUDHjm4gwQco1KRMDSmXSMkDwIDAQAB
-AoGAfY9LpnuWK5Bs50UVep5c93SJdUi82u7yMx4iHFMc/Z2hfenfYEzu+57fI4fv
-xTQ//5DbzRR/XKb8ulNv6+CHyPF31xk7YOBfkGI8qjLoq06V+FyBfDSwL8KbLyeH
-m7KUZnLNQbk8yGLzB3iYKkRHlmUanQGaNMIJziWOkN+N9dECQQD0ONYRNZeuM8zd
-8XJTSdcIX4a3gy3GGCJxOzv16XHxD03GW6UNLmfPwenKu+cdrQeaqEixrCejXdAF
-z/7+BSMpAkEA8EaSOeP5Xr3ZrbiKzi6TGMwHMvC7HdJxaBJbVRfApFrE0/mPwmP5
-rN7QwjrMY+0+AbXcm8mRQyQ1+IGEembsdwJBAN6az8Rv7QnD/YBvi52POIlRSSIM
-V7SwWvSK4WSMnGb1ZBbhgdg57DXaspcwHsFV7hByQ5BvMtIduHcT14ECfcECQATe
-aTgjFnqE/lQ22Rk0eGaYO80cc643BXVGafNfd9fcvwBMnk0iGX0XRsOozVt5Azil
-psLBYuApa66NcVHJpCECQQDTjI2AQhFc1yRnCU/YgDnSpJVm1nASoRUnU8Jfm3Oz
-uku7JUXcVpt08DFSceCEX9unCuMcT72rAQlLpdZir876
------END RSA PRIVATE KEY-----</textarea><br/>
+<textarea id="public" placeholder="Public Key" cols="65" rows="10"></textarea><br/>
 <p/>
-<textarea id="data" placeholder="Data to encrypt" cols="65" rows="5"></textarea><br/>
+<textarea id="data" value="G'day mate!" cols="65" rows="5"></textarea><br/>
 <button id="encryptButton" onclick="encrypt();">Encrypt data</button>
 <p/>
 <textarea id="encrypted" placeholder="Encrypted data" cols="65" rows="5"></textarea><br/>
