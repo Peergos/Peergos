@@ -5,7 +5,10 @@
     
 <body>
 <h1>Crypto examples</h1>
-<script type="text/javascript" src="lib/kbpgp-2.0.8.js"></script>
+<script type="text/javascript" src="lib/scrypt.js"></script>
+<script type="text/javascript" src="lib/jquery-2.1.3.min.js"></script>
+<script type="text/javascript" src="lib/blake2s.js"></script>
+<script type="text/javascript" src="lib/nacl.js"></script>
 <script type="text/javascript" src="lib/api.js"></script>
 <script>
 function unsignResult(err, literals) {
@@ -56,14 +59,15 @@ function encryptResult(user) {
     }
 }
 
-function genresult(err, user) {
-    if (err)
-        console.log(err)
-    else {
-        user.getPublicKey(function(err, pubString) {document.getElementById("public").value = pubString;});
-        var input = new kbpgp.Buffer("G'day mate!");
-        user.encryptMessageFor(input, encryptResult(user));
-    }
+function genresult(pair) {
+    document.getElementById("public").value = nacl.util.encodeBase64(pair.publicKey);
+    document.getElementById("private").value = nacl.util.encodeBase64(pair.secretKey);
+    var input = nacl.util.decodeUTF8(document.getElementById("data").value);
+    var nonce = nacl.randomBytes(24);
+    var cipher = nacl.box(input, nonce, pair.publicKey, pair.secretKey);
+    document.getElementById("encrypted").value = nacl.util.encodeBase64(cipher);
+    var clear = nacl.box.open(cipher, nonce, pair.publicKey, pair.secretKey);
+    document.getElementById("decrypted").value = nacl.util.encodeUTF8(clear);
 }
 function generate() {
     console.log("generating..");
@@ -93,6 +97,8 @@ function decrypt() {
 
 <p/>
 <textarea id="public" placeholder="Public Key" cols="65" rows="10"></textarea><br/>
+<p/>
+<textarea id="private" placeholder="Private Key" cols="65" rows="10"></textarea><br/>
 <p/>
 <textarea id="data" cols="65" rows="5">G'day mate!</textarea><br/>
 <button id="encryptButton" onclick="encrypt();">Encrypt data</button>

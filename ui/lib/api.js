@@ -39,36 +39,14 @@ function UserPublicKey(publicKey) {
     
 /////////////////////////////
 // User methods
-// (string, string, int) => KeyPair
+// (string, string, (keypair) -> ())
 function generateKeyPair(username, password, cb) {
-    var F = kbpgp["const"].openpgp;
-    var args = {userid: username,
-		ecc: true,
-		primary: {
-		    nbits: 384,
-		    flags: F.certify_keys | F.sign_data | F.auth | F.encrypt_comm | F.encrypt_storage,
-		    expire_in: 0  // never expire
-		},
-		subkeys: [{
-		    nbits: 256,
-		    flags: F.sign_data,
-		    expire_in: 86400 * 365 * 8 // 8 years
-		}, {
-		    nbits: 256,
-		    flags: F.encrypt_comm | F.encrypt_storage,
-		    expire_in: 86400 * 365 * 8
-		}]
-	       };
-    kbpgp.KeyManager.generate_ecc(args, 
-				  function(err, keypair) {
-				      if (keypair == null)
-					  cb(err);
-				      else {
-					  keypair.sign({}, function(err) {});
-					  cb(null, new User(keypair));
-				      }
-				  }
-				 );
+    var hash = new BLAKE2s(32)
+    hash.update(nacl.util.decodeUTF8(password))
+    salt = nacl.util.decodeUTF8(username)
+    scrypt(hash.digest(), salt, 17, 8, 32, 1000, function(keyBytes) {
+		return cb(nacl.box.keyPair.fromSecretKey(nacl.util.decodeBase64(keyBytes)))
+	}, 'base64');
 }
 
     function User(keyPair) {
