@@ -3,26 +3,27 @@
 
 /////////////////////////////
 // UserPublicKey methods
-function UserPublicKey(publicKey) {
-    this.publicKey = publicKey;
+function UserPublicKey(publicSignKey, publicBoxKey) {
+    this.pSignKey = publicSignKey // 32 bytes
+    this.pBoxKey = publicBoxKey; // 32 bytes
 
     // ((err, publicKeyString) -> ())
-    this.getPublicKey = function(cb) {
-	publicKey.export_pgp_public({}, cb);
+    this.getPublicKeys = function() {
+	var tmp = new Uint8Array(this.pSignKey.length + this.pBoxKey.length);
+	tmp.set(this.pSignKey, 0);
+	tmp.set(this.pBoxKey, this.pSignKey.length);
+	return tmp;
     }
     
-    // (Uint8Array, (err, resString, resBuffer) -> ())
-    this.encryptMessageFor = function(input, cb) {
-	var params = {
-                msg: input,
-                encrypt_for: publicKey
-            };
-	kbpgp.box(params, cb);
+    // (Uint8Array, User, (nonce, cipher) -> ())
+    this.encryptMessageFor = function(input, us, cb) {
+	var nonce = nacl.randomBytes(24);
+	cb(nonce, nacl.box(input, nonce, this.pBoxKey, us.sBoxKey));
     }
     
-    // Uint8Array => Uint8Array
-    this.unsignMessage = function(input, cb) {
-	kbpgp.unbox({"keyfetch": this.publicKey, "raw": input}, cb);
+    // Uint8Array => boolean
+    this.unsignMessage = function(sig) {
+	return nacl.sign.open(sig, this.pSignKey);
     }
     
     this.isValidSignature = function(signedHash, raw) {
@@ -33,67 +34,85 @@ function UserPublicKey(publicKey) {
 
     // Uint8Array => Uint8Array
     this.hash = function(input) {
-	return kbpgp.hash.SHA256(input);
+	var hasher = new BLAKE2s(32);
+	hasher.update(input);
+	return hasher.digest();
     }
 }
     
 /////////////////////////////
 // User methods
-// (string, string, (keypair) -> ())
-function generateKeyPair(username, password, cb) {
+// (string, string, (User -> ())
+function generateKeyPairs(username, password, cb) {
     var hash = new BLAKE2s(32)
     hash.update(nacl.util.decodeUTF8(password))
     salt = nacl.util.decodeUTF8(username)
     scrypt(hash.digest(), salt, 17, 8, 32, 1000, function(keyBytes) {
-		return cb(nacl.box.keyPair.fromSecretKey(nacl.util.decodeBase64(keyBytes)))
-	}, 'base64');
+	var signBytes = nacl.util.decodeBase64(keyBytes);
+	var hash2 = new BLAKE2s(32)
+	hash2.update(signBytes);
+	var boxBytes = hash2.digest();
+	return cb(new User(nacl.sign.keyPair.fromSeed(signBytes), nacl.box.keyPair.fromSecretKey(new Uint8Array(boxBytes))));
+    }, 'base64');
 }
 
-    function User(keyPair) {
-	UserPublicKey.call(this, keyPair);
-	
-	// Uint8Array => Uint8Array
-	this.hashAndSignMessage = function(input, cb) {
-	    signMessage(hash(input), cb);
-	}
-	
-	// Uint8Array => Uint8Array
-	this.signMessage = function(input, cb) {
-	    var params = {
-	        msg : input,
-                sign_with: this.publicKey
-            };
-	    kbpgp.box(params, cb);
-	}
+function User(signKeyPair, boxKeyPair) {
+    UserPublicKey.call(this, signKeyPair.publicKey, boxKeyPair.publicKey);
+    this.sSignKey = signKeyPair.secretKey; // 64 bytes
+    this.sBoxKey = boxKeyPair.secretKey; // 32 bytes
     
-	// (Uint8Array, (err, literals) -> ())
-	this.decryptMessage = function(input, cb) {
-	    kbpgp.unbox({"keyfetch": this.publicKey, "raw": input}, cb);
-	}
+    // (Uint8Array, (nonce, sig) => ())
+    this.hashAndSignMessage = function(input, cb) {
+	signMessage(this.hash(input), cb);
     }
+    
+    // (Uint8Array, (nonce, sig) => ())
+    this.signMessage = function(input) {
+	return nacl.sign(input, this.sSignKey);
+    }
+    
+    // (Uint8Array, (err, literals) -> ())
+    this.decryptMessage = function(cipher, nonce, them, cb) {
+	cb(nacl.box.open(cipher, nonce, them.pBoxKey, this.sBoxKey));
+    }
+
+    this.getSecretKeys = function() {
+	var tmp = new Uint8Array(this.sSignKey.length + this.sBoxKey.length);
+	tmp.set(this.sSignKey, 0);
+	tmp.set(this.sBoxKey, this.sSignKey.length);
+	return tmp;
+    }
+}
 
 /////////////////////////////
 // SymmetricKey methods
 
 // () => Uint8Array
 function randomSymmetricKey() {
+    return SymmetricKey(nacl.randomBytes(32));
 }
 
 // () => Uint8Array
 function randomIV() {
+    return nacl.randomBytes(24);
 }
 
-function SymmetricKey() {
-    
+function SymmetricKey(key) {
+    this.key = key;
 
-    // (Uint8Array, Uint8Array) => Uint8Array
-    this.encrypt = function(data, initVector) {
+    // (Uint8Array, Uint8Array[24]) => Uint8Array
+    this.encrypt = function(data, nonce) {
+	return nacl.secretbox(data, nonce, this.key);
     }
 
     // (Uint8Array, Uint8Array) => Uint8Array
-    this.decrypt = function(data, initVector) {
+    this.decrypt = function(cipher, nonce) {
+	return nacl.secretbox.open(data, nonce, this.key);
     }
 }
+
+/////////////////////////////
+// Util methods
 
 // byte[] input and return
 function encryptBytesToBytes(input, pubKey) {

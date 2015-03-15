@@ -59,22 +59,32 @@ function encryptResult(user) {
     }
 }
 
-function genresult(pair) {
-    document.getElementById("public").value = nacl.util.encodeBase64(pair.publicKey);
-    document.getElementById("private").value = nacl.util.encodeBase64(pair.secretKey);
+function genresult(user) {
+    document.user = user;
+    document.getElementById("public").value = nacl.util.encodeBase64(user.getPublicKeys());
+    document.getElementById("private").value = nacl.util.encodeBase64(user.getSecretKeys());
     var input = nacl.util.decodeUTF8(document.getElementById("data").value);
-    var nonce = nacl.randomBytes(24);
-    var cipher = nacl.box(input, nonce, pair.publicKey, pair.secretKey);
-    document.getElementById("encrypted").value = nacl.util.encodeBase64(cipher);
-    var clear = nacl.box.open(cipher, nonce, pair.publicKey, pair.secretKey);
-    document.getElementById("decrypted").value = nacl.util.encodeUTF8(clear);
+    user.encryptMessageFor(input, user, function(nonce, cipher) {
+        document.getElementById("encrypted").value = nacl.util.encodeBase64(cipher);
+        user.decryptMessage(cipher, nonce, user, function(clear) {
+            document.getElementById("decrypted").value = nacl.util.encodeUTF8(clear);
+        });
+    });
 }
 function generate() {
     console.log("generating..");
     var username = document.getElementById("username").value;
     var password = document.getElementById("password").value;
     
-    generateKeyPair("fred", "pass", genresult);
+    generateKeyPairs("fred", "pass", genresult);
+}
+function sign() {
+    var input = nacl.util.decodeUTF8(document.getElementById("data").value);
+    document.getElementById("signature").value = nacl.util.encodeBase64(document.user.signMessage(input));
+}
+function verify() {
+    var input = nacl.util.decodeBase64(document.getElementById("signature").value);
+    document.getElementById("verify").value = nacl.util.encodeUTF8(document.user.unsignMessage(input));
 }
 function encrypt() {
     console.log("encrypting..");
@@ -87,28 +97,37 @@ function decrypt() {
         document.getElementById("private").value);
 }
 </script>
+<div style="float:left;padding:20px">
+  <label>Username:</label>
+  <textarea id="username" size="20">user</textarea>
+  <label>Password:</label>
+  <textarea id="password" size="20">pass</textarea>
+  <div style="clear:both;"></div>
+  <button id="genButton" onclick="generate();" style="margin:20px;padding:10px;">Generate keys</button>
+</div>
 
-<label>Username:</label>
-<textarea id="username" size="20">user</textarea><br/>
-<label>Password:</label>
-<textarea id="password" size="20">pass</textarea><br/>
-<br/>
-<button id="genButton" onclick="generate();">Generate keys</button>
+<div style="float:right;padding:20px">
+  <textarea id="public" placeholder="Public Keys" cols="65" rows="2"></textarea>
+  <textarea id="private" placeholder="Private Keys" cols="65" rows="2"></textarea>
+</div>
+<div style="clear:both;"></div>
+<div style="float:left; padding:20px;">
+  <textarea id="data" cols="65" rows="5">G'day mate!</textarea><br/>
+  <button id="encryptButton" onclick="encrypt();">Encrypt data</button>
+  <p/>
+  <textarea id="encrypted" placeholder="Encrypted data" cols="65" rows="5"></textarea><br/>
+  <button id="decryptButton" onclick="decrypt();">Decrypt data</button>
+  <p/>
+  <textarea id="decrypted" placeholder="Decrypted data" cols="65" rows="5"></textarea><br/>
+</div>
 
-<p/>
-<textarea id="public" placeholder="Public Key" cols="65" rows="10"></textarea><br/>
-<p/>
-<textarea id="private" placeholder="Private Key" cols="65" rows="10"></textarea><br/>
-<p/>
-<textarea id="data" cols="65" rows="5">G'day mate!</textarea><br/>
-<button id="encryptButton" onclick="encrypt();">Encrypt data</button>
-<p/>
-<textarea id="encrypted" placeholder="Encrypted data" cols="65" rows="5"></textarea><br/>
-<button id="decryptButton" onclick="decrypt();">Decrypt data</button>
-<p/>
-<textarea id="decrypted" placeholder="Decrypted data" cols="65" rows="5"></textarea><br/>
-<div id="status"></div>
-
-
+<div style="float:right;padding:20px">
+  <button id="signButton" onclick="sign();">Sign data</button>
+  <p/>
+  <textarea id="signature" placeholder="Signature" cols="65" rows="2"></textarea><br/>
+  <button id="verifyButton" onclick="verify();">Unsign data</button>
+  <p/>
+  <textarea id="verify" placeholder="Unsigned" cols="25" rows="2"></textarea><br/>
+</div>
 </body>
 </html>
