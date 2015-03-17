@@ -24,25 +24,22 @@ public class UserPublicKey implements Comparable<UserPublicKey>
     public static final String HASH = "SHA-256";
     public static final String SECURE_RANDOM = "SHA1PRNG"; // TODO: need to figure out an implementation using HMAC-SHA-256
 
-    private final PublicKey publicKey;
+    private final byte[] publicSigningKey, publicBoxingKey;
 
-    public UserPublicKey(PublicKey pub)
+    public UserPublicKey(byte[] publicSigningKey, byte[] publicBoxingKey)
     {
-        this.publicKey = pub;
-    }
-
-    public UserPublicKey(byte[] encodedPublicKey)
-    {
-        publicKey = deserializePublic(encodedPublicKey);
+        this.publicSigningKey = publicSigningKey;
+        this.publicBoxingKey = publicBoxingKey;
     }
 
     public byte[] getPublicKey()
     {
-        return publicKey.getEncoded();
+        return ArrayOps.concat(publicSigningKey, publicBoxingKey);
     }
 
-    public byte[] encryptMessageFor(byte[] input)
+    public byte[] encryptMessageFor(byte[] input, byte[] ourSecretSigningKey)
     {
+        TweetNacl.crypto_box();
         try {
             Cipher c = Cipher.getInstance(AUTH, "BC");
             c.init(Cipher.ENCRYPT_MODE, publicKey);
