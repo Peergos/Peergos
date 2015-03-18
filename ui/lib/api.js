@@ -1,10 +1,13 @@
+if (typeof module !== "undefined")
+    var nacl = require("./nacl");
+
 // API for the User interface to use
 /////////////////////////////
 
 /////////////////////////////
 // UserPublicKey methods
 function UserPublicKey(publicSignKey, publicBoxKey) {
-    this.pSignKey = publicSignKey // 32 bytes
+    this.pSignKey = publicSignKey; // 32 bytes
     this.pBoxKey = publicBoxKey; // 32 bytes
 
     // ((err, publicKeyString) -> ())
@@ -106,7 +109,7 @@ function SymmetricKey(key) {
 
     // (Uint8Array, Uint8Array) => Uint8Array
     this.decrypt = function(cipher, nonce) {
-	return nacl.secretbox.open(data, nonce, this.key);
+	return nacl.secretbox.open(cipher, nonce, this.key);
     }
 }
 
@@ -381,3 +384,13 @@ function prepare(arrays) {
     } 
     return prepared;
 }
+
+
+//module.exports.encryptStringToHex = encryptStringToHex;
+//module.exports.decryptHexToString = decryptHexToString;
+
+if (typeof module !== "undefined"){
+    module.exports.randomSymmetricKey = randomSymmetricKey;
+    module.exports.SymmetricKey = SymmetricKey;
+}
+ 
