@@ -5,7 +5,9 @@ Fundamental aim: Release a P2P secure file storage, sharing and asynchronous com
 
 Launch 1 - Alpha 1 (Basic File storage and sharing) 20/5/2015
 -------------------------------------------------------------
-- [ ] Web UI: crypto + indexedDB (50 hours)
+- [X] UserPublicKey and User implemented in JS using curve25519 and ed25519
+- [ ] User context helper functions implemented in JS (10 hours)
+- [ ] Web UI: (34)
 - [ ] Monitor external IP (of machine or router) and update network) (8)
 - [ ] quota tolerance (2)
 - [ ] Core node persistence (8)
@@ -14,7 +16,7 @@ Launch 1 - Alpha 1 (Basic File storage and sharing) 20/5/2015
 
 Launch 2 - Alpha 2 (KeyMail + file storage and sharing) 21/10/2015
 ------------------------------------------------------------------
-- [ ] generalise keypair type (8)
+- [ ] version keypair type (2)
 - [ ] chaining of directory metadata blocks (to support arbitrarily large directories)
 - [ ] benchmarks, scalability tests (16)
 - [ ] more efficient small file storage (32)
