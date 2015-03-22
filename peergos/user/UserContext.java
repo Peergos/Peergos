@@ -33,7 +33,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class UserContext
 {
     public static final int MAX_USERNAME_SIZE = 1024;
-    public static final int MAX_KEY_SIZE = 64;
+    public static final int MAX_KEY_SIZE = 96;
 
     public final String username;
     private User us;
@@ -113,8 +113,10 @@ public class UserContext
 
     public SharedRootDir decodeFollowRequest(byte[] data)
     {
-        UserPublicKey tmp = new UserPublicKey(Arrays.copyOfRange(data, 0, 32));
-        byte[] decrypted = us.decryptMessage(data, tmp.publicBoxingKey);
+        byte[] keys = new byte[64];
+        System.arraycopy(data, 0, keys, 32, 32); // signing key is not used
+        UserPublicKey tmp = new UserPublicKey(keys);
+        byte[] decrypted = us.decryptMessage(Arrays.copyOfRange(data, 32, data.length), tmp.publicBoxingKey);
         try {
             SharedRootDir root = (SharedRootDir) StaticDataElement.deserialize(new DataInputStream(new ByteArrayInputStream(decrypted)));
             return root;

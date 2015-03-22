@@ -51,9 +51,9 @@ public class User extends UserPublicKey
     {
         byte[] nonce = Arrays.copyOfRange(cipher, cipher.length - TweetNacl.Box.nonceLength, cipher.length);
         cipher = Arrays.copyOfRange(cipher, 0, cipher.length - TweetNacl.Box.nonceLength);
-        byte[] rawText = new byte[cipher.length - PADDING_LENGTH];
+        byte[] rawText = new byte[cipher.length];
         TweetNacl.crypto_box_open(rawText, cipher, cipher.length, nonce, theirPublicBoxingKey, secretBoxingKey);
-        return rawText;
+        return Arrays.copyOfRange(rawText, 32, rawText.length);
     }
 
     public static User deserialize(byte[] input) {

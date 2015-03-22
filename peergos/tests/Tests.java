@@ -61,6 +61,8 @@ public class Tests
             contextTests(dht, core);
         } catch (SQLException e) {
             e.printStackTrace();
+        } finally {
+            new File("testDB.sqlite").delete();
         }
     }
 
@@ -82,9 +84,9 @@ public class Tests
 
         bob.sendFollowRequest(alicesName);
 
-        List<byte[]> reqs = bob.getFollowRequests();
+        List<byte[]> reqs = alice.getFollowRequests();
         assert(reqs.size() == 1);
-        UserContext.SharedRootDir root = bob.decodeFollowRequest(reqs.get(0));
+        UserContext.SharedRootDir root = alice.decodeFollowRequest(reqs.get(0));
         User sharer = root.owner;
     }
 }
