@@ -585,7 +585,7 @@ public class SQLiteCoreNode extends AbstractCoreNode
         if (! super.addUsername(username, key, clearanceData))
             return false;
 
-        UserData user = new UserData(username, key.getPublicKey()); 
+        UserData user = new UserData(username, key.getPublicKeys());
         return user.insert();
     }
 
@@ -594,7 +594,7 @@ public class SQLiteCoreNode extends AbstractCoreNode
         if (! super.removeUsername(username, key))
             return false;
 
-        UserData user = new UserData(username, key.getPublicKey());
+        UserData user = new UserData(username, key.getPublicKeys());
         RowData[] rs = user.select();
         if (rs == null || rs.length ==0)
             return false;
@@ -626,7 +626,7 @@ public class SQLiteCoreNode extends AbstractCoreNode
         if (! super.allowSharingKey(username, sharingPublicKey))
             return false;
 
-        SharingKeyData request = new SharingKeyData(username, sharingPublicKey.getPublicKey());
+        SharingKeyData request = new SharingKeyData(username, sharingPublicKey.getPublicKeys());
         return request.insert();
     }
 
@@ -637,7 +637,7 @@ public class SQLiteCoreNode extends AbstractCoreNode
         if (! super.banSharingKey(username, sharingPublicKey))
             return false;
 
-        SharingKeyData request = new SharingKeyData(username, sharingPublicKey.getPublicKey());
+        SharingKeyData request = new SharingKeyData(username, sharingPublicKey.getPublicKeys());
         return request.delete();
     }
 
@@ -646,7 +646,7 @@ public class SQLiteCoreNode extends AbstractCoreNode
         if (! super.addMetadataBlob(username, sharingKey, mapKey, metadataBlob))
             return false;
 
-        int sharingKeyID = SharingKeyData.getID(username, sharingKey.getPublicKey());
+        int sharingKeyID = SharingKeyData.getID(username, sharingKey.getPublicKeys());
         if (sharingKeyID <0)
             return false;
 
@@ -659,7 +659,7 @@ public class SQLiteCoreNode extends AbstractCoreNode
         if (! super.removeMetadataBlob(username, sharingKey, mapKey))
             return false;
 
-        int sharingKeyID = SharingKeyData.getID(username, sharingKey.getPublicKey());
+        int sharingKeyID = SharingKeyData.getID(username, sharingKey.getPublicKeys());
         if (sharingKeyID <0)
             return false;
         return FragmentData.deleteOne(username, sharingKeyID, new String(Base64.encode(mapKey)));

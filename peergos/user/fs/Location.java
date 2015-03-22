@@ -22,13 +22,13 @@ public class Location
 
     public void serialise(DataOutput dout) throws IOException {
         Serialize.serialize(owner, dout);
-        Serialize.serialize(subKey.getPublicKey(), dout);
+        Serialize.serialize(subKey.getPublicKeys(), dout);
         Serialize.serialize(mapKey.data, dout);
     }
 
     public static Location deserialise(DataInput din) throws IOException {
         String owner = Serialize.deserializeString(din, UserContext.MAX_USERNAME_SIZE);
-        UserPublicKey pub = new UserPublicKey(Serialize.deserializeByteArray(din, UserPublicKey.RSA_KEY_BITS));
+        UserPublicKey pub = new UserPublicKey(Serialize.deserializeByteArray(din, UserPublicKey.SIZE));
         ByteArrayWrapper mapKey = new ByteArrayWrapper(Serialize.deserializeByteArray(din, UserPublicKey.HASH_BYTES));
         return new Location(owner, pub, mapKey);
     }

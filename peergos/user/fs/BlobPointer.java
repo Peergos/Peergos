@@ -27,7 +27,7 @@ public class BlobPointer
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
             DataOutputStream dout = new DataOutputStream(bout);
             Serialize.serialize(owner, dout);
-            Serialize.serialize(writingRoot.getPublicKey(), dout);
+            Serialize.serialize(writingRoot.getPublicKeys(), dout);
             Serialize.serialize(mapkey.data, dout);
             dout.flush();
             return bout.toByteArray();

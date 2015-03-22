@@ -601,7 +601,7 @@ public class HTTPCoreNode extends AbstractCoreNode
 
 
             Serialize.serialize(username, dout);
-            Serialize.serialize(sharingKey.getPublicKey(), dout);
+            Serialize.serialize(sharingKey.getPublicKeys(), dout);
             Serialize.serialize(mapKey, dout);
             dout.flush();
 

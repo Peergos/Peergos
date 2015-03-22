@@ -33,7 +33,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class UserContext
 {
     public static final int MAX_USERNAME_SIZE = 1024;
-    public static final int MAX_KEY_SIZE = UserPublicKey.RSA_KEY_BITS;
+    public static final int MAX_KEY_SIZE = 64;
 
     public final String username;
     private User us;
@@ -59,12 +59,12 @@ public class UserContext
     {
         byte[] rawStatic = serializeStatic();
         byte[] signedHash = us.hashAndSignMessage(rawStatic);
-        return core.addUsername(username, us.getPublicKey(), signedHash, rawStatic);
+        return core.addUsername(username, us.getPublicKeys(), signedHash, rawStatic);
     }
 
     public boolean isRegistered()
     {
-        String name = core.getUsername(us.getPublicKey());
+        String name = core.getUsername(us.getPublicKeys());
         return username.equals(name);
     }
 
@@ -74,19 +74,21 @@ public class UserContext
         UserPublicKey friendKey = core.getPublicKey(friend);
 
         // create sharing keypair and give it write access
-        KeyPair sharing = User.generateKeyPair();
-        addSharingKey(sharing.getPublic());
+        User sharing = User.random();
+        addSharingKey(sharing);
         ByteArrayWrapper rootMapKey = new ByteArrayWrapper(ArrayOps.random(32));
 
         // add a note to our static data so we know who we sent the private key to
-        SharedRootDir friendRoot = new SharedRootDir(friend, sharing.getPublic(), sharing.getPrivate(), rootMapKey, SymmetricKey.random());
-        addToStaticData(new UserPublicKey(sharing.getPublic()), friendRoot);
+        SharedRootDir friendRoot = new SharedRootDir(friend, sharing, rootMapKey, SymmetricKey.random());
+        addToStaticData(sharing, friendRoot);
 
         // send details to allow friend to share with us (i.e. we follow them)
         byte[] raw = friendRoot.toByteArray();
 
-        byte[] payload = friendKey.encryptMessageFor(raw);
-        return core.followRequest(friend, payload);
+        // create a tmp keypair whose public key we can append to the request without leaking information
+        User tmp = User.random();
+        byte[] payload = friendKey.encryptMessageFor(raw, tmp.secretBoxingKey);
+        return core.followRequest(friend, ArrayOps.concat(tmp.publicBoxingKey, payload));
     }
 
 
@@ -109,7 +111,8 @@ public class UserContext
 
     public SharedRootDir decodeFollowRequest(byte[] data)
     {
-        byte[] decrypted = us.decryptMessage(data);
+        UserPublicKey tmp = new UserPublicKey(Arrays.copyOfRange(data, 0, 32));
+        byte[] decrypted = us.decryptMessage(data, tmp.publicBoxingKey);
         try {
             SharedRootDir root = (SharedRootDir) StaticDataElement.deserialize(new DataInputStream(new ByteArrayInputStream(decrypted)));
             return root;
@@ -143,10 +146,10 @@ public class UserContext
         } catch (IOException e) {throw new IllegalStateException(e.getMessage());}
     }
 
-    public boolean addSharingKey(PublicKey pub)
+    public boolean addSharingKey(UserPublicKey pub)
     {
-        byte[] signedHash = us.hashAndSignMessage(pub.getEncoded());
-        return core.allowSharingKey(username, pub.getEncoded(), signedHash);
+        byte[] signedHash = us.hashAndSignMessage(pub.getPublicKeys());
+        return core.allowSharingKey(username, pub.getPublicKeys(), signedHash);
     }
 
     private boolean addToStaticData(UserPublicKey pub, StaticDataElement root)
@@ -158,7 +161,7 @@ public class UserContext
 
     private Future uploadFragment(Fragment f, String targetUser, User sharer, byte[] mapKey)
     {
-        return dht.put(f.getHash(), f.getData(), targetUser, sharer.getPublicKey(), mapKey, sharer.hashAndSignMessage(ArrayOps.concat(sharer.getPublicKey(), f.getHash())));
+        return dht.put(f.getHash(), f.getData(), targetUser, sharer.getPublicKeys(), mapKey, sharer.hashAndSignMessage(ArrayOps.concat(sharer.getPublicKeys(), f.getHash())));
     }
 
     private boolean uploadChunk(Metadata meta, Fragment[] fragments, String target, User sharer, byte[] mapKey)
@@ -173,10 +176,10 @@ public class UserContext
         List<ByteArrayWrapper> allHashes = meta.getFragmentHashes();
         byte[] metaBlob = bout.toByteArray();
         System.out.println("Storing metadata blob of "+metaBlob.length + " bytes.");
-        if (!core.addMetadataBlob(target, sharer.getPublicKey(), mapKey, metaBlob, sharer.hashAndSignMessage(metaBlob)))
+        if (!core.addMetadataBlob(target, sharer.getPublicKeys(), mapKey, metaBlob, sharer.hashAndSignMessage(metaBlob)))
             System.out.println("Meta blob store failed.");
         if (fragments.length > 0 ) {
-            core.addFragmentHashes(target, sharer.getPublicKey(), mapKey, metaBlob, meta.getFragmentHashes(), sharer.hashAndSignMessage(ArrayOps.concat(mapKey, metaBlob, ArrayOps.concat(allHashes))));
+            core.addFragmentHashes(target, sharer.getPublicKeys(), mapKey, metaBlob, meta.getFragmentHashes(), sharer.hashAndSignMessage(ArrayOps.concat(mapKey, metaBlob, ArrayOps.concat(allHashes))));
 
             // now upload fragments to DHT
             List<Future<Object>> futures = new ArrayList();
@@ -231,8 +234,8 @@ public class UserContext
     private DirAccess recreateDir(SharedRootDir raw)
     {
         ByteArrayWrapper mapKey = raw.mapKey;
-        PublicKey pub = raw.pub;
-        AbstractCoreNode.MetadataBlob meta = core.getMetadataBlob(username, pub.getEncoded(), mapKey.data);
+        User owner = raw.owner;
+        AbstractCoreNode.MetadataBlob meta = core.getMetadataBlob(username, owner.getPublicKeys(), mapKey.data);
         ByteArrayWrapper rawMeta = meta.metadata();
         System.out.println("Retrieved dir metadata blob of "+rawMeta.data.length + " bytes.");
         try {
@@ -244,7 +247,7 @@ public class UserContext
     }
 
     public Metadata getMetadata(Location loc, SymmetricKey key) throws IOException {
-        AbstractCoreNode.MetadataBlob meta = core.getMetadataBlob(loc.owner, loc.subKey.getPublicKey(), loc.mapKey.data);
+        AbstractCoreNode.MetadataBlob meta = core.getMetadataBlob(loc.owner, loc.subKey.getPublicKeys(), loc.mapKey.data);
         DataInputStream din = new DataInputStream(new ByteArrayInputStream(meta.metadata().data));
         Metadata m =  Metadata.deserialize(din, key);
         byte[] fragmentHashesRaw = core.getFragmentHashes(loc.owner, loc.subKey, loc.mapKey.data);
@@ -304,17 +307,15 @@ public class UserContext
     public static class SharedRootDir extends StaticDataElement
     {
         public final String username;
-        public final PublicKey pub;
-        public final PrivateKey priv;
+        public final User owner;
         public final ByteArrayWrapper mapKey;
         public final SymmetricKey rootDirKey;
 
-        public SharedRootDir(String username, PublicKey pub, PrivateKey priv, ByteArrayWrapper mapKey, SymmetricKey rootDirKey)
+        public SharedRootDir(String username, User owner, ByteArrayWrapper mapKey, SymmetricKey rootDirKey)
         {
             super(1);
             this.username = username;
-            this.pub = pub;
-            this.priv = priv;
+            this.owner = owner;
             this.mapKey = mapKey;
             this.rootDirKey = rootDirKey;
         }
@@ -322,11 +323,10 @@ public class UserContext
         public static SharedRootDir deserialize(DataInput din) throws IOException
         {
             String username = Serialize.deserializeString(din, MAX_USERNAME_SIZE);
-            byte[] pubBytes = Serialize.deserializeByteArray(din, MAX_KEY_SIZE);
             byte[] privBytes = Serialize.deserializeByteArray(din, MAX_KEY_SIZE);
             ByteArrayWrapper mapKey = new ByteArrayWrapper(Serialize.deserializeByteArray(din, MAX_KEY_SIZE));
             byte[] secretRootDirKey = Serialize.deserializeByteArray(din, MAX_KEY_SIZE);
-            return new SharedRootDir(username, UserPublicKey.deserializePublic(pubBytes), User.deserializePrivate(privBytes), mapKey, new SymmetricKey(secretRootDirKey));
+            return new SharedRootDir(username, User.deserialize(privBytes), mapKey, new SymmetricKey(secretRootDirKey));
         }
 
         @Override
@@ -334,8 +334,7 @@ public class UserContext
             super.serialize(dout);
             // TODO encrypt this
             Serialize.serialize(username, dout);
-            Serialize.serialize(pub.getEncoded(), dout);
-            Serialize.serialize(priv.getEncoded(), dout);
+            Serialize.serialize(owner.getPrivateKeys(), dout);
             Serialize.serialize(mapKey.data, dout);
             Serialize.serialize(rootDirKey.getKey().getEncoded(), dout);
         }
@@ -381,8 +380,6 @@ public class UserContext
     public static class Test {
         private static String coreNodeAddress, storageAddress;
         private static String username, followerName;
-        private static final Map<String, File> KEY_PAIR_CACHE = new HashMap<>();
-
 
         public static void setCoreNodeAddress(String address) {
             Test.coreNodeAddress = address;
@@ -400,16 +397,6 @@ public class UserContext
             followerName = name;
         }
 
-        public static void setKeyPairFile(String user, File f) {
-            KEY_PAIR_CACHE.put(user, f);}
-
-        public static void ensureKeyPairForUser(String user, File f) throws IOException {
-            if (! f.exists()) {
-                System.out.println("Generating key pair @ "+ f);
-                User.KeyPairUtils.serialize(User.generateKeyPair(), f);
-            }
-            setKeyPairFile(user, f);
-        }
         public Test() {}
 
         @org.junit.Test
@@ -432,12 +419,10 @@ public class UserContext
                 // create a new us
                 long t1 = System.nanoTime();
 
-                User ourKeys = KEY_PAIR_CACHE.containsKey(ourname) ?
-                        new User(User.KeyPairUtils.deserialize(KEY_PAIR_CACHE.get(ourname))) : User.random();
+                User ourKeys = User.random();
 
                 long t2 = System.nanoTime();
                 System.out.printf("User generation took %d mS\n", (t2 - t1) / 1000000);
-
 
                 // create a DHT API
                 dht = new HttpsUserAPI(new InetSocketAddress(InetAddress.getByName(storageIP), storagePort));
@@ -450,8 +435,7 @@ public class UserContext
                 // make another user
                 t1 = System.nanoTime();
 
-                User friendKeys = KEY_PAIR_CACHE.containsKey(friendName) ?
-                        new User(User.KeyPairUtils.deserialize(KEY_PAIR_CACHE.get(friendName))) : User.random();
+                User friendKeys = User.random();
 
                 t2 = System.nanoTime();
                 System.out.printf("User generation took %d mS\n", (t2 - t1) / 1000000);
@@ -467,7 +451,7 @@ public class UserContext
                 List<byte[]> reqs = us.getFollowRequests();
                 assertTrue("Got follow Request", reqs.size() == 1);
                 SharedRootDir root = us.decodeFollowRequest(reqs.get(0));
-                User sharer = new User(root.priv, root.pub);
+                User sharer = root.owner;
 
                 // store a chunk in alice's space using the permitted sharing key (this could be alice or bob at this point)
                 int frags = 120;
@@ -476,16 +460,16 @@ public class UserContext
                 InetSocketAddress address = new InetSocketAddress("localhost", port);
                 for (int i = 0; i < frags; i++) {
                     byte[] frag = ArrayOps.random(32);
-                    byte[] message = ArrayOps.concat(sharer.getPublicKey(), frag);
+                    byte[] message = ArrayOps.concat(sharer.getPublicKeys(), frag);
                     byte[] signature = sharer.hashAndSignMessage(message);
-                    if (!clientCoreNode.registerFragmentStorage(friendName, address, friendName, sharer.getPublicKey(), frag, signature)) {
+                    if (!clientCoreNode.registerFragmentStorage(friendName, address, friendName, sharer.getPublicKeys(), frag, signature)) {
                         System.out.println("Failed to register fragment storage!");
                     }
                 }
                 long quota = clientCoreNode.getQuota(friendName);
                 System.out.println("Generated quota: " + quota/1024 + " KiB");
                 t1 = System.nanoTime();
-                mediumFileTest(alice.username, sharer, root.priv, alice, us);
+                mediumFileTest(alice.username, sharer, alice, us);
                 t2 = System.nanoTime();
                 System.out.printf("File test took %d mS\n", (t2 - t1) / 1000000);
             } catch (Throwable t) {
@@ -499,7 +483,7 @@ public class UserContext
 
 
 
-        public void mediumFileTest(String owner, User sharer, PrivateKey sharerPriv, UserContext receiver, UserContext sender) {
+        public void mediumFileTest(String owner, User sharer, UserContext receiver, UserContext sender) {
             // create a root dir and a file to it, then retrieve and decrypt the file using the receiver
             // create root cryptree
             SymmetricKey rootRKey = SymmetricKey.random();
@@ -507,7 +491,7 @@ public class UserContext
             String name = "/";
             byte[] rootIV = SymmetricKey.randomIV();
             byte[] rootMapKey = ArrayOps.random(32); // root will be stored under this in the core node
-            DirAccess root = new DirAccess(rootRKey, new FileProperties(name, rootIV, 0, null), rootWKey);
+            DirAccess root = new DirAccess(sharer, rootRKey, new FileProperties(name, rootIV, 0, null), rootWKey);
             root.setFragments(new ArrayList());
 
             // generate file (two chunks)
@@ -541,7 +525,7 @@ public class UserContext
             for (Fragment f : fragments1)
                 hashes1.add(new ByteArrayWrapper(f.getHash()));
             FileProperties props1 = new FileProperties(filename, initVector, raw1.length + raw2.length, chunk2Location);
-            FileAccess file = new FileAccess(fileKey, props1, hashes1);
+            FileAccess file = new FileAccess(sharer, fileKey, props1, hashes1);
 
             // 2nd chunk
             Chunk chunk2 = new Chunk(raw2, fileKey);
@@ -555,7 +539,7 @@ public class UserContext
             meta2.setFragments(hashes2);
 
             // now write the root to the core nodes
-            receiver.addToStaticData(sharer, new SharedRootDir(receiver.username, sharer.getKey(), sharerPriv, new ByteArrayWrapper(rootMapKey), rootRKey));
+            receiver.addToStaticData(sharer, new SharedRootDir(receiver.username, sharer, new ByteArrayWrapper(rootMapKey), rootRKey));
             sender.uploadChunk(root, new Fragment[0], owner, sharer, rootMapKey);
             // now upload the file meta blobs
             System.out.printf("Uploading chunk with %d fragments\n", fragments1.length);
@@ -607,7 +591,7 @@ public class UserContext
             String name = "/";
             byte[] rootIV = SymmetricKey.randomIV();
             byte[] rootMapKey = ArrayOps.random(32); // root will be stored under this in the core node
-            DirAccess root = new DirAccess(rootRKey, new FileProperties(name, rootIV, 0, null), rootWKey);
+            DirAccess root = new DirAccess(sharer, rootRKey, new FileProperties(name, rootIV, 0, null), rootWKey);
 
             // generate file (single chunk)
             Random r = new Random();
@@ -633,10 +617,10 @@ public class UserContext
             for (Fragment f : fragments)
                 hashes.add(new ByteArrayWrapper(f.getHash()));
             FileProperties props = new FileProperties(filename, initVector, raw.length, null);
-            FileAccess file = new FileAccess(fileKey, props, hashes);
+            FileAccess file = new FileAccess(sharer, fileKey, props, hashes);
 
             // now write the root to the core nodes
-            receiver.addToStaticData(sharer, new SharedRootDir(receiver.username, sharer.getKey(), sharerPriv, new ByteArrayWrapper(rootMapKey), rootRKey));
+            receiver.addToStaticData(sharer, new SharedRootDir(receiver.username, sharer, new ByteArrayWrapper(rootMapKey), rootRKey));
             sender.uploadChunk(root, new Fragment[0], owner, sharer, rootMapKey);
             // now upload the file meta blob
             sender.uploadChunk(file, fragments, owner, sharer, fileMapKey);

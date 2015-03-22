@@ -1,7 +1,6 @@
 package peergos.user.fs;
 
 import peergos.crypto.*;
-import peergos.util.ByteArrayWrapper;
 import peergos.util.Serialize;
 
 import java.io.*;
@@ -22,8 +21,8 @@ public class DirAccess extends Metadata
     private final SymmetricLinkToPrivate subfoldersW2sign;
     private final UserPublicKey verifyW;
 
-    public DirAccess(SymmetricKey meta, SymmetricKey parent, SymmetricKey files, SymmetricKey subfolders, Set<UserPublicKey> sharingR,
-                     FileProperties metadata, KeyPair signingW, SymmetricKey subfoldersW, Set<UserPublicKey> sharingW, byte[] iv)
+    public DirAccess(User owner, SymmetricKey meta, SymmetricKey parent, SymmetricKey files, SymmetricKey subfolders, Set<UserPublicKey> sharingR,
+                     FileProperties metadata, User signingW, SymmetricKey subfoldersW, Set<UserPublicKey> sharingW, byte[] iv)
     {
         super(TYPE.DIR, meta.encrypt(metadata.serialize(), iv));
         this.subfolders2files = new SymmetricLink(subfolders, files, iv);
@@ -31,17 +30,18 @@ public class DirAccess extends Metadata
         this.parent2meta = new SymmetricLink(parent, meta, iv);
         if (sharingR != null)
             for (UserPublicKey key: sharingR)
-                sharingR2subfoldersR.put(key, new AsymmetricLink(key, subfolders));
-        subfoldersW2sign = new SymmetricLinkToPrivate(subfoldersW, signingW.getPrivate());
-        verifyW = new UserPublicKey(signingW.getPublic());
+                sharingR2subfoldersR.put(key, new AsymmetricLink(owner, key, subfolders));
+        subfoldersW2sign = new SymmetricLinkToPrivate(subfoldersW, signingW);
+        verifyW = signingW.toUserPublicKey();
         if (sharingW != null)
             for (UserPublicKey key: sharingW)
-                sharingW2subfoldersW.put(key, new AsymmetricLink(key, subfoldersW));
+                sharingW2subfoldersW.put(key, new AsymmetricLink(owner, key, subfoldersW));
     }
 
-    public DirAccess(SymmetricKey subfoldersKey, FileProperties metadata, SymmetricKey subfoldersKeyW)
+    public DirAccess(User owner, SymmetricKey subfoldersKey, FileProperties metadata, SymmetricKey subfoldersKeyW)
     {
-        this(SymmetricKey.random(), SymmetricKey.random(), SymmetricKey.random(), subfoldersKey, null, metadata, SSL.generateKeyPair(), subfoldersKeyW, null, metadata.getIV());
+        this(owner, SymmetricKey.random(), SymmetricKey.random(), SymmetricKey.random(), subfoldersKey, null, metadata,
+                User.random(), subfoldersKeyW, null, metadata.getIV());
     }
 
     public DirAccess(Map<UserPublicKey, AsymmetricLink> sharingR, byte[] s2f, byte[] s2p, byte[] p2m, byte[] metadata,
@@ -66,15 +66,15 @@ public class DirAccess extends Metadata
         Serialize.serialize(subfolders2files.serialize(), dout);
         dout.writeInt(sharingR2subfoldersR.size());
         for (UserPublicKey key: sharingR2subfoldersR.keySet()) {
-            Serialize.serialize(key.getPublicKey(), dout);
+            Serialize.serialize(key.getPublicKeys(), dout);
             Serialize.serialize(sharingR2subfoldersR.get(key).serialize(), dout);
         }
         // write access
-        Serialize.serialize(verifyW.getPublicKey(), dout);
+        Serialize.serialize(verifyW.getPublicKeys(), dout);
         Serialize.serialize(subfoldersW2sign.serialize(), dout);
         dout.writeInt(sharingW2subfoldersW.size());
         for (UserPublicKey key: sharingW2subfoldersW.keySet()) {
-            Serialize.serialize(key.getPublicKey(), dout);
+            Serialize.serialize(key.getPublicKeys(), dout);
             Serialize.serialize(sharingW2subfoldersW.get(key).serialize(), dout);
         }
         // read subtree
@@ -152,9 +152,9 @@ public class DirAccess extends Metadata
         files.put(toTargetParent.targetLocation(ourSubfolders), toTargetParent);
     }
 
-    public void addRSharingKey(UserPublicKey key, SymmetricKey subfoldersKey)
+    public void addRSharingKey(User owner, UserPublicKey key, SymmetricKey subfoldersKey)
     {
-        sharingR2subfoldersR.put(key, new AsymmetricLink(key, subfoldersKey));
+        sharingR2subfoldersR.put(key, new AsymmetricLink(owner, key, subfoldersKey));
     }
 
     public Collection<SymmetricLocationLink> getFiles()
@@ -172,8 +172,8 @@ public class DirAccess extends Metadata
         return subfolders2files.target(subfoldersKey);
     }
 
-    public SymmetricKey getRSubfoldersKey(User sharingKey)
+    public SymmetricKey getRSubfoldersKey(UserPublicKey owner, User sharingKey)
     {
-        return sharingR2subfoldersR.get(sharingKey).target(sharingKey);
+        return sharingR2subfoldersR.get(sharingKey).target(sharingKey, owner);
     }
 }

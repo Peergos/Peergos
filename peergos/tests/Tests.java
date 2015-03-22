@@ -28,10 +28,6 @@ public class Tests
         UserContext.Test.setUser(user);
         UserContext.Test.setFollower(follower);
 
-        if (!Args.hasArg("randomise")) {
-            UserContext.Test.ensureKeyPairForUser("Alice", new File(Args.getArg("firstKeyPairFile", "cache.1.key")));
-            UserContext.Test.ensureKeyPairForUser("Bob", new File(Args.getArg("secondKeyPairFile", "cache.2.key")));
-        }
         testClass(UserContext.Test.class);
 //        testClass(User.Test.class);
 //        testClass(CoreNode.class);

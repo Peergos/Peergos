@@ -139,7 +139,7 @@ public class HTTPCoreNodeServer
             UserPublicKey k = coreNode.getPublicKey(username);
             if (k == null)
                 return;
-            byte[] b = k.getPublicKey();
+            byte[] b = k.getPublicKeys();
             dout.writeInt(b.length);
             dout.write(b);
         }
@@ -245,7 +245,7 @@ public class HTTPCoreNodeServer
             Iterator<UserPublicKey> it = coreNode.getSharingKeys(username);
             while (it.hasNext())
             {
-                byte[] b = it.next().getPublicKey();
+                byte[] b = it.next().getPublicKeys();
                 dout.writeInt(b.length);
                 dout.write(b);
             }

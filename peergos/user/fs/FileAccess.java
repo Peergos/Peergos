@@ -15,20 +15,20 @@ public class FileAccess extends Metadata
     private SortedMap<UserPublicKey, AsymmetricLink> sharingR2parent = new TreeMap();
     private final SymmetricLink parent2meta;
 
-    public FileAccess(Set<UserPublicKey> sharingR, SymmetricKey metaKey, SymmetricKey parentKey, FileProperties metadata, List<ByteArrayWrapper> fragments, byte[] iv)
+    public FileAccess(UserPublicKey owner, Set<User> sharingR, SymmetricKey metaKey, SymmetricKey parentKey, FileProperties metadata, List<ByteArrayWrapper> fragments, byte[] iv)
     {
         super(TYPE.FILE, metaKey.encrypt(metadata.serialize(), iv));
         setFragments(fragments);
         this.parent2meta = new SymmetricLink(parentKey, metaKey, iv);
         if (sharingR != null) {
-            for (UserPublicKey key: sharingR)
-                sharingR2parent.put(key, new AsymmetricLink(key, parentKey));
+            for (User key: sharingR)
+                sharingR2parent.put(new UserPublicKey(key.getPublicKeys()), new AsymmetricLink(key, owner,  parentKey));
         }
     }
 
-    public FileAccess(SymmetricKey parentKey, FileProperties metadata, List<ByteArrayWrapper> fragments)
+    public FileAccess(UserPublicKey owner, SymmetricKey parentKey, FileProperties metadata, List<ByteArrayWrapper> fragments)
     {
-        this(null, SymmetricKey.random(), parentKey, metadata, fragments, metadata.getIV());
+        this(owner, null, SymmetricKey.random(), parentKey, metadata, fragments, metadata.getIV());
     }
 
     public FileAccess(byte[] m, byte[] p2m, Map<UserPublicKey, AsymmetricLink> sharingR)
@@ -44,7 +44,7 @@ public class FileAccess extends Metadata
         Serialize.serialize(parent2meta.serialize(), dout);
         dout.writeInt(sharingR2parent.size());
         for (UserPublicKey key: sharingR2parent.keySet()) {
-            Serialize.serialize(key.getPublicKey(), dout);
+            Serialize.serialize(key.getPublicKeys(), dout);
             Serialize.serialize(sharingR2parent.get(key).serialize(), dout);
         }
     }
@@ -67,9 +67,9 @@ public class FileAccess extends Metadata
         return parent2meta.target(parentKey);
     }
 
-    public SymmetricKey getParentKey(User sharingKey)
+    public SymmetricKey getParentKey(User sharingKey, UserPublicKey owner)
     {
-        return sharingR2parent.get(sharingKey.getKey()).target(sharingKey);
+        return sharingR2parent.get(sharingKey.toUserPublicKey()).target(sharingKey, owner);
     }
 
     public ChunkProperties getProps(SymmetricKey baseKey, byte[] iv) {

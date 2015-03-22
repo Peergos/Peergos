@@ -31,7 +31,7 @@ public class CoreNode
             //add sharing key to this user
             //
             User follower = User.random();
-            assertTrue("follow user", context.addSharingKey(follower.getKey()));
+            assertTrue("follow user", context.addSharingKey(follower));
 
             //
             //retrieve sharing key
@@ -40,7 +40,7 @@ public class CoreNode
             Iterator<UserPublicKey> sharingKeys = coreNode.getSharingKeys(username);
             while (sharingKeys.hasNext()) {
                 UserPublicKey next = sharingKeys.next();
-                if (Arrays.equals(next.getKey().getEncoded(), follower.getKey().getEncoded()))
+                if (Arrays.equals(next.getPublicKeys(), follower.getPublicKeys()))
                     retrievedSharingKey = true;
             }
             assertTrue("retrieved sharing key ", retrievedSharingKey);
@@ -49,27 +49,27 @@ public class CoreNode
             //
             byte[] fragmentData = new byte[500];
             random.nextBytes(fragmentData);
-            byte[] cipherText = follower.encryptMessageFor(fragmentData);
+            byte[] cipherText = follower.encryptMessageFor(fragmentData, follower.secretBoxingKey);
 
             //
             //add fragment
             //
             byte[] mapKey = new byte[10];
-            boolean addedFragment = coreNode.addMetadataBlob(username, follower.getPublicKey(), mapKey, cipherText, follower.hashAndSignMessage(cipherText));
+            boolean addedFragment = coreNode.addMetadataBlob(username, follower.getPublicKeys(), mapKey, cipherText, follower.hashAndSignMessage(cipherText));
             assertTrue("added fragment", !addedFragment);
 
             // add storage allowance
 
             int frags = 10;
             for (int i = 0; i < frags; i++) {
-                byte[] signature = follower.hashAndSignMessage(ArrayOps.concat(follower.getPublicKey(), new byte[10 + i]));
-                coreNode.registerFragmentStorage(username, new InetSocketAddress("localhost", 666), username, follower.getPublicKey(), new byte[10 + i], signature);
+                byte[] signature = follower.hashAndSignMessage(ArrayOps.concat(follower.getPublicKeys(), new byte[10 + i]));
+                coreNode.registerFragmentStorage(username, new InetSocketAddress("localhost", 666), username, follower.getPublicKeys(), new byte[10 + i], signature);
             }
             long quota = coreNode.getQuota(username);
             assertTrue("quota after registering fragment", quota == coreNode.fragmentLength() * frags);
 
             // try again adding fragment
-            addedFragment = coreNode.addMetadataBlob(username, follower.getPublicKey(), mapKey, cipherText, follower.hashAndSignMessage(cipherText));
+            addedFragment = coreNode.addMetadataBlob(username, follower.getPublicKeys(), mapKey, cipherText, follower.hashAndSignMessage(cipherText));
             assertTrue("added fragment", addedFragment);
 
 
@@ -81,7 +81,7 @@ public class CoreNode
             byte[] generatedHashes = new byte[UserPublicKey.HASH_BYTES *10];
             random.nextBytes(generatedHashes);
             byte[] signedHash = follower.hashAndSignMessage(ArrayOps.concat(mapKey, cipherText, generatedHashes)); 
-            boolean addedHashes = coreNode.addFragmentHashes(username, follower.getPublicKey(), mapKey, cipherText, ArrayOps.split(generatedHashes, UserPublicKey.HASH_BYTES), signedHash);
+            boolean addedHashes = coreNode.addFragmentHashes(username, follower.getPublicKeys(), mapKey, cipherText, ArrayOps.split(generatedHashes, UserPublicKey.HASH_BYTES), signedHash);
             assertTrue("added hashes to metadatablob", addedHashes);
 
 
@@ -89,19 +89,19 @@ public class CoreNode
             // is fragment allowed?
             //
             byte[] queryHash = Arrays.copyOfRange(generatedHashes,0, UserPublicKey.HASH_BYTES);
-            boolean isFragmentAllowed = coreNode.isFragmentAllowed(username, follower.getPublicKey(), mapKey, queryHash);
+            boolean isFragmentAllowed = coreNode.isFragmentAllowed(username, follower.getPublicKeys(), mapKey, queryHash);
             assertTrue("fragment is allowed ", isFragmentAllowed);
 
             // non valid hash
             queryHash = Arrays.copyOfRange(generatedHashes,3, UserPublicKey.HASH_BYTES +3);
-            isFragmentAllowed = coreNode.isFragmentAllowed(username, follower.getPublicKey(), mapKey, queryHash);
+            isFragmentAllowed = coreNode.isFragmentAllowed(username, follower.getPublicKeys(), mapKey, queryHash);
 
             assertFalse("fragment is not allowed ", isFragmentAllowed);
 
             //
             // retrieve metadata blob with hashes
             //
-            AbstractCoreNode.MetadataBlob blob = coreNode.getMetadataBlob(username, follower.getPublicKey(), mapKey);
+            AbstractCoreNode.MetadataBlob blob = coreNode.getMetadataBlob(username, follower.getPublicKeys(), mapKey);
             assertTrue("retrieved blob equality", new ByteArrayWrapper(cipherText).equals(blob.metadata()));
             assertTrue("retrieved blob hashes equality", Arrays.equals(generatedHashes, blob.fragmentHashes()));
 

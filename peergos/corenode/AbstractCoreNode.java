@@ -162,7 +162,7 @@ public abstract class AbstractCoreNode
     {
         UserPublicKey key = new UserPublicKey(encodedUserKey);
 
-        if (! key.isValidSignature(signedHash))
+        if (! key.isValidSignature(signedHash, UserPublicKey.hash(username.getBytes())))
             return false;
 
         return addUsername(username, key, new ByteArrayWrapper(staticData));
@@ -190,7 +190,7 @@ public abstract class AbstractCoreNode
             key = userNameToPublicKeyMap.get(username);
         }
 
-        if (key == null || ! key.isValidSignature(signedHash))
+        if (key == null || ! key.isValidSignature(signedHash, UserPublicKey.hash(clearanceData)))
             return false;
 
         return updateClearanceData(username, new ByteArrayWrapper(clearanceData));
@@ -251,7 +251,7 @@ public abstract class AbstractCoreNode
             if (us == null || ! userMap.get(target).followRequests.contains(baw))
                 return false; 
         }
-        if (! us.isValidSignature(signedHash))
+        if (! us.isValidSignature(signedHash, UserPublicKey.hash(data)))
             return false;
 
         return removeFollowRequest(target, new ByteArrayWrapper(data));
@@ -278,7 +278,7 @@ public abstract class AbstractCoreNode
             key = userNameToPublicKeyMap.get(username);
         }
 
-        if (key == null || ! key.isValidSignature(signedHash))
+        if (key == null || ! key.isValidSignature(signedHash, UserPublicKey.hash(encodedSharingPublicKey)))
             return false;
 
         return allowSharingKey(username, new UserPublicKey(encodedSharingPublicKey));
@@ -306,7 +306,7 @@ public abstract class AbstractCoreNode
             key = userNameToPublicKeyMap.get(username);
         }
 
-        if (key == null || ! key.isValidSignature(signedHash))
+        if (key == null || ! key.isValidSignature(signedHash, UserPublicKey.hash(encodedsharingPublicKey)))
             return false;
 
         UserPublicKey sharingPublicKey = new UserPublicKey(encodedsharingPublicKey);
@@ -345,7 +345,7 @@ public abstract class AbstractCoreNode
                 return false;
         }
 
-        if (!sharingKey.isValidSignature(sharingKeySignedHash))
+        if (!sharingKey.isValidSignature(sharingKeySignedHash, UserPublicKey.hash(ArrayOps.concat(mapKey, metadataBlob))))
             return false;
 
         return addMetadataBlob(username, sharingKey, mapKey, metadataBlob);
@@ -393,7 +393,7 @@ public abstract class AbstractCoreNode
             return false;
 
         byte[] allHashes = ArrayOps.concat(fragmentHashes);
-        if (! sharingKey.isValidSignature(sharingKeySignedHash))
+        if (! sharingKey.isValidSignature(sharingKeySignedHash, ArrayOps.concat(mapKey, metadataBlob, allHashes)))
             return false;
 
         return addFragmentHashes(username, sharingKey, mapKey, allHashes);
@@ -455,7 +455,7 @@ public abstract class AbstractCoreNode
                 return false;
         }
 
-        if (! sharingKey.isValidSignature(sharingKeySignedMapKey))
+        if (! sharingKey.isValidSignature(sharingKeySignedMapKey, ArrayOps.concat(encodedSharingKey, mapKey)))
             return false;
 
         return removeMetadataBlob(username, sharingKey, mapKey);
@@ -484,8 +484,11 @@ public abstract class AbstractCoreNode
     public boolean removeUsername(String username, byte[] userKey, byte[] signedHash)
     {
         UserPublicKey key = new UserPublicKey(userKey);
+        String current = userPublicKeyToNameMap.get(key);
+        if (current == null || !current.equals(username))
+            return false;
 
-        if (! key.verify(signedHash))
+        if (! key.isValidSignature(signedHash, UserPublicKey.hash(username)))
             return false;
 
         return removeUsername(username, key);
@@ -596,7 +599,7 @@ public abstract class AbstractCoreNode
     {
         UserPublicKey sharingPublicKey = new UserPublicKey(encodedSharingKey);
         byte[] keyAndHash = ArrayOps.concat(encodedSharingKey, hash);
-        if (!sharingPublicKey.isValidSignature(signedKeyPlusHash))
+        if (!sharingPublicKey.isValidSignature(signedKeyPlusHash, ArrayOps.concat(encodedSharingKey, hash)))
             return false;
 
         return registerFragmentStorage(spaceDonor, node, owner, sharingPublicKey, hash);

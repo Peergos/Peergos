@@ -4,27 +4,20 @@ import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import peergos.util.ArrayOps;
 import peergos.util.Serialize;
 
-import javax.crypto.BadPaddingException;
-import javax.crypto.Cipher;
-import javax.crypto.IllegalBlockSizeException;
-import javax.crypto.NoSuchPaddingException;
 import java.io.*;
 import java.security.*;
-import java.security.spec.InvalidKeySpecException;
-import java.security.spec.X509EncodedKeySpec;
+import java.util.Arrays;
+import java.util.Random;
 
 public class UserPublicKey implements Comparable<UserPublicKey>
 {
-    public static final int RSA_KEY_BITS = 1024;//4096;
-    public static final int HASH_BYTES = 256/8;
-    public static final String ECC_CURVE = "secp384r1";
-    public static final String KEYS = "ECDSA";
-    public static final String SIG = "SHA256withECDSA";
-    public static final String AUTH = "ECIES";
     public static final String HASH = "SHA-256";
-    public static final String SECURE_RANDOM = "SHA1PRNG"; // TODO: need to figure out an implementation using HMAC-SHA-256
+    public static final int HASH_BYTES = 32;
+    public static final int SIZE = 64;
+    public static final int PADDING_LENGTH = 32;
+    private static final Random rnd = new Random();
 
-    private final byte[] publicSigningKey, publicBoxingKey;
+    public final byte[] publicSigningKey, publicBoxingKey;
 
     public UserPublicKey(byte[] publicSigningKey, byte[] publicBoxingKey)
     {
@@ -32,73 +25,36 @@ public class UserPublicKey implements Comparable<UserPublicKey>
         this.publicBoxingKey = publicBoxingKey;
     }
 
-    public byte[] getPublicKey()
+    public UserPublicKey(byte[] keys) {
+        this(Arrays.copyOfRange(keys, 0, 32), Arrays.copyOfRange(keys, 32, 64));
+    }
+
+    public byte[] getPublicKeys()
     {
         return ArrayOps.concat(publicSigningKey, publicBoxingKey);
     }
 
-    public byte[] encryptMessageFor(byte[] input, byte[] ourSecretSigningKey)
+    public byte[] encryptMessageFor(byte[] input, byte[] ourSecretBoxingKey)
     {
-        TweetNacl.crypto_box();
-        try {
-            Cipher c = Cipher.getInstance(AUTH, "BC");
-            c.init(Cipher.ENCRYPT_MODE, publicKey);
-            SymmetricKey sym = SymmetricKey.random();
-            byte[] rawSym = sym.getKey().getEncoded();
-            byte[] iv = SymmetricKey.randomIV();
-            c.update(rawSym);
-            byte[] encryptedSym = c.doFinal();
-            byte[] content = sym.encrypt(input, iv);
-            ByteArrayOutputStream bout = new ByteArrayOutputStream();
-            DataOutput dout = new DataOutputStream(bout);
-            Serialize.serialize(encryptedSym, dout);
-            Serialize.serialize(iv, dout);
-            Serialize.serialize(content, dout);
-            return bout.toByteArray();
-        } catch (NoSuchAlgorithmException|NoSuchProviderException e)
-        {
-            e.printStackTrace();
-            return null;
-        } catch (NoSuchPaddingException e)
-        {
-            e.printStackTrace();
-            return null;
-        } catch (InvalidKeyException e)
-        {
-            e.printStackTrace();
-            return null;
-        } catch (IllegalBlockSizeException e)
-        {
-            e.printStackTrace();
-            return null;
-        } catch (BadPaddingException e)
-        {
-            e.printStackTrace();
-            return null;
-        } catch (IOException e)
-        {
-            e.printStackTrace();
-            return null;
-        }
+        byte[] cipherText = new byte[PADDING_LENGTH + input.length];
+        byte[] paddedMessage = new byte[PADDING_LENGTH + input.length];
+        System.arraycopy(input, 0, paddedMessage, PADDING_LENGTH, input.length);
+        byte[] nonce = createNonce();
+        TweetNacl.crypto_box(cipherText, paddedMessage, paddedMessage.length, nonce, publicBoxingKey, ourSecretBoxingKey);
+        return ArrayOps.concat(cipherText, nonce);
     }
 
-    public boolean verify(byte[] input)
+    public byte[] createNonce() {
+        byte[] nonce = new byte[TweetNacl.Box.nonceLength];
+        rnd.nextBytes(nonce);
+        return nonce;
+    }
+
+    public byte[] unsignMessage(byte[] signed)
     {
-        try {
-            Signature dsa = Signature.getInstance(SIG, "BC");
-            dsa.initVerify(publicKey);
-            return dsa.verify(input);
-        } catch (NoSuchAlgorithmException|NoSuchProviderException e)
-        {
-            e.printStackTrace();
-        } catch (SignatureException e)
-        {
-            e.printStackTrace();
-        } catch (InvalidKeyException e)
-        {
-            e.printStackTrace();
-        }
-        return false;
+        byte[] message = new byte[signed.length - TweetNacl.Signature.signatureLength];
+        TweetNacl.crypto_sign_open(message, 0, signed, signed.length, publicSigningKey);
+        return message;
     }
 
     public boolean equals(Object o)
@@ -106,27 +62,17 @@ public class UserPublicKey implements Comparable<UserPublicKey>
         if (! (o instanceof UserPublicKey))
             return false;
 
-        return this.publicKey.equals(((UserPublicKey) o).publicKey);
+        return Arrays.equals(publicBoxingKey, ((UserPublicKey) o).publicBoxingKey) && Arrays.equals(publicSigningKey, ((UserPublicKey) o).publicSigningKey);
     }
 
     public int hashCode()
     {
-        return publicKey.hashCode();
+        return Arrays.hashCode(publicBoxingKey) ^ Arrays.hashCode(publicSigningKey);
     }
 
-    public PublicKey getKey()
+    public boolean isValidSignature(byte[] signed, byte[] raw)
     {
-        return (PublicKey) publicKey;
-    }
-
-    public boolean isValidSignature(byte[] signedHash)
-    {
-        return verify(signedHash);
-    }
-
-    static
-    {
-        Security.addProvider(new BouncyCastleProvider());
+        return Arrays.equals(unsignMessage(signed), raw);
     }
 
     public static byte[] hash(String password)
@@ -151,19 +97,11 @@ public class UserPublicKey implements Comparable<UserPublicKey>
         }
     }
 
-    public static PublicKey deserializePublic(byte[] pub)
-    {
-        try {
-            return KeyFactory.getInstance(KEYS, "BC").generatePublic(new X509EncodedKeySpec(pub));
-        } catch (NoSuchAlgorithmException|NoSuchProviderException|InvalidKeySpecException e)
-        {
-            e.printStackTrace();
-            throw new IllegalStateException("Couldn't create public key");
-        }
-    }
-
     @Override
     public int compareTo(UserPublicKey userPublicKey) {
-        return ArrayOps.compare(publicKey.getEncoded(), userPublicKey.publicKey.getEncoded());
+        int signing = ArrayOps.compare(publicSigningKey, userPublicKey.publicSigningKey);
+        if (signing != 0)
+            return signing;
+        return ArrayOps.compare(publicBoxingKey, userPublicKey.publicBoxingKey);
     }
 }

@@ -4,9 +4,9 @@ public class AsymmetricLink
 {
     private final byte[] link;
 
-    public AsymmetricLink(UserPublicKey from, SymmetricKey target)
+    public AsymmetricLink(User from, UserPublicKey to, SymmetricKey target)
     {
-        link = from.encryptMessageFor(target.getKey().getEncoded());
+        link = to.encryptMessageFor(target.getKey().getEncoded(), from.secretBoxingKey);
     }
 
     public AsymmetricLink(byte[] link)
@@ -19,8 +19,8 @@ public class AsymmetricLink
         return link;
     }
 
-    public SymmetricKey target(User from)
+    public SymmetricKey target(User to, UserPublicKey from)
     {
-        return new SymmetricKey(from.decryptMessage(link));
+        return new SymmetricKey(to.decryptMessage(link, from.publicBoxingKey));
     }
 }

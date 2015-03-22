@@ -2,20 +2,18 @@ package peergos.crypto;
 
 import peergos.util.ArrayOps;
 
-import java.security.PrivateKey;
-import java.security.PublicKey;
 import java.util.Arrays;
 
 public class SymmetricLinkToPrivate
 {
     final byte[] link;
 
-    public SymmetricLinkToPrivate(SymmetricKey from, PrivateKey to, byte[] iv)
+    public SymmetricLinkToPrivate(SymmetricKey from, User to, byte[] iv)
     {
-        link = ArrayOps.concat(iv, from.encrypt(to.getEncoded(), iv));
+        link = ArrayOps.concat(iv, from.encrypt(to.getPrivateKeys(), iv));
     }
 
-    public SymmetricLinkToPrivate(SymmetricKey from, PrivateKey to)
+    public SymmetricLinkToPrivate(SymmetricKey from, User to)
     {
         this(from, to, SymmetricKey.randomIV());
     }
@@ -30,10 +28,10 @@ public class SymmetricLinkToPrivate
         return link;
     }
 
-    public User target(SymmetricKey from, PublicKey pub)
+    public User target(SymmetricKey from)
     {
         byte[] iv = Arrays.copyOfRange(link, 0, SymmetricKey.IV_SIZE);
         byte[] encoded = from.decrypt(Arrays.copyOfRange(link, SymmetricKey.IV_SIZE, link.length), iv);
-        return User.create(encoded, pub.getEncoded());
+        return User.deserialize(encoded);
     }
 }
