@@ -162,7 +162,7 @@ public abstract class AbstractCoreNode
     {
         UserPublicKey key = new UserPublicKey(encodedUserKey);
 
-        if (! key.isValidSignature(signedHash, UserPublicKey.hash(username.getBytes())))
+        if (! key.isValidSignature(signedHash, UserPublicKey.hash(ArrayOps.concat(username.getBytes(), encodedUserKey, staticData))))
             return false;
 
         return addUsername(username, key, new ByteArrayWrapper(staticData));

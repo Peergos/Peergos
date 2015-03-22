@@ -52,9 +52,9 @@ public class UserPublicKey implements Comparable<UserPublicKey>
 
     public byte[] unsignMessage(byte[] signed)
     {
-        byte[] message = new byte[signed.length - TweetNacl.Signature.signatureLength];
+        byte[] message = new byte[signed.length];
         TweetNacl.crypto_sign_open(message, 0, signed, signed.length, publicSigningKey);
-        return message;
+        return Arrays.copyOfRange(message, 64, message.length);
     }
 
     public boolean equals(Object o)

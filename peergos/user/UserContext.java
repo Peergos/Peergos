@@ -58,7 +58,7 @@ public class UserContext
     public boolean register()
     {
         byte[] rawStatic = serializeStatic();
-        byte[] signedHash = us.hashAndSignMessage(rawStatic);
+        byte[] signedHash = us.hashAndSignMessage(ArrayOps.concat(username.getBytes(), us.getPublicKeys(), rawStatic));
         return core.addUsername(username, us.getPublicKeys(), signedHash, rawStatic);
     }
 
@@ -72,6 +72,8 @@ public class UserContext
     {
         // check friend is a registered user
         UserPublicKey friendKey = core.getPublicKey(friend);
+        if (friendKey == null)
+            throw new IllegalStateException("User isn't registered! "+friend);
 
         // create sharing keypair and give it write access
         User sharing = User.random();
