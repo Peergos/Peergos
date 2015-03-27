@@ -43,7 +43,7 @@ tests:
 	echo "Build-Date: " `date` >> def.manifest
 	echo "Class-Path: " $(CP_SPACE)>> def.manifest
 	javac $(JAVA_BUILD_OPTS) -d build `find peergos -name \*.java`
-	jar -cfm PeergosTests.jar def.manifest \
+	jar -cfm PeergosTests.jar def.manifest ui/ \
 	    -C build peergos
 	rm -f def.manifest
 

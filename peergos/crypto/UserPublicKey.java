@@ -1,8 +1,6 @@
 package peergos.crypto;
 
-import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import peergos.util.ArrayOps;
-import peergos.util.Serialize;
 
 import java.io.*;
 import java.security.*;
@@ -40,12 +38,12 @@ public class UserPublicKey implements Comparable<UserPublicKey>
         byte[] paddedMessage = new byte[PADDING_LENGTH + input.length];
         System.arraycopy(input, 0, paddedMessage, PADDING_LENGTH, input.length);
         byte[] nonce = createNonce();
-        TweetNacl.crypto_box(cipherText, paddedMessage, paddedMessage.length, nonce, publicBoxingKey, ourSecretBoxingKey);
+        OurTweetNaCl.crypto_box(cipherText, paddedMessage, paddedMessage.length, nonce, publicBoxingKey, ourSecretBoxingKey);
         return ArrayOps.concat(cipherText, nonce);
     }
 
     public byte[] createNonce() {
-        byte[] nonce = new byte[TweetNacl.Box.nonceLength];
+        byte[] nonce = new byte[OurTweetNaCl.crypto_box_curve25519xsalsa20poly1305_tweet_NONCEBYTES];
         rnd.nextBytes(nonce);
         return nonce;
     }
@@ -53,7 +51,7 @@ public class UserPublicKey implements Comparable<UserPublicKey>
     public byte[] unsignMessage(byte[] signed)
     {
         byte[] message = new byte[signed.length];
-        TweetNacl.crypto_sign_open(message, 0, signed, signed.length, publicSigningKey);
+        OurTweetNaCl.crypto_sign_open(message, signed, signed.length, publicSigningKey);
         return Arrays.copyOfRange(message, 64, message.length);
     }
 

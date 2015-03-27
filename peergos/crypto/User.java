@@ -1,7 +1,6 @@
 package peergos.crypto;
 
 import peergos.util.ArrayOps;
-import peergos.util.Serialize;
 
 import java.util.Arrays;
 import java.util.Random;
@@ -30,7 +29,7 @@ public class User extends UserPublicKey
 
     public static byte[] getPublicBoxingKey(byte[] secretBoxingKey) {
         byte[] pub = new byte[32];
-        TweetNacl.crypto_scalarmult_base(pub, secretBoxingKey);
+        OurTweetNaCl.crypto_scalarmult_base(pub, secretBoxingKey);
         return pub;
     }
 
@@ -42,17 +41,17 @@ public class User extends UserPublicKey
 
     public byte[] signMessage(byte[] message)
     {
-        byte[] signedMessage = new byte[message.length + TweetNacl.Signature.signatureLength];
-        TweetNacl.crypto_sign(signedMessage, 0, message, message.length, secretSigningKey);
+        byte[] signedMessage = new byte[message.length + OurTweetNaCl.crypto_sign_ed25519_tweet_BYTES];
+        OurTweetNaCl.crypto_sign(signedMessage, message, message.length, secretSigningKey);
         return signedMessage;
     }
 
     public byte[] decryptMessage(byte[] cipher, byte[] theirPublicBoxingKey)
     {
-        byte[] nonce = Arrays.copyOfRange(cipher, cipher.length - TweetNacl.Box.nonceLength, cipher.length);
-        cipher = Arrays.copyOfRange(cipher, 0, cipher.length - TweetNacl.Box.nonceLength);
+        byte[] nonce = Arrays.copyOfRange(cipher, cipher.length - OurTweetNaCl.crypto_box_curve25519xsalsa20poly1305_tweet_NONCEBYTES, cipher.length);
+        cipher = Arrays.copyOfRange(cipher, 0, cipher.length - OurTweetNaCl.crypto_box_curve25519xsalsa20poly1305_tweet_NONCEBYTES);
         byte[] rawText = new byte[cipher.length];
-        TweetNacl.crypto_box_open(rawText, cipher, cipher.length, nonce, theirPublicBoxingKey, secretBoxingKey);
+        OurTweetNaCl.crypto_box_open(rawText, cipher, cipher.length, nonce, theirPublicBoxingKey, secretBoxingKey);
         return Arrays.copyOfRange(rawText, 32, rawText.length);
     }
 
@@ -77,10 +76,11 @@ public class User extends UserPublicKey
         byte[] secretSigningKey = new byte[64];
         Random r = new Random(Arrays.hashCode(hash));
         r.nextBytes(secretSigningKey); // only 32 are used
-        TweetNacl.crypto_sign_keypair(publicSigningKey, secretSigningKey, true);
+        OurTweetNaCl.crypto_sign_keypair(publicSigningKey, secretSigningKey, true);
         byte[] publicBoxingKey = new byte[32];
         byte[] secretBoxingKey = new byte[32];
-        TweetNacl.crypto_box_keypair(publicBoxingKey, secretBoxingKey);
+        System.arraycopy(secretSigningKey, 32, secretBoxingKey, 0, 32);
+        OurTweetNaCl.crypto_box_keypair(publicBoxingKey, secretBoxingKey, true);
         return new User(secretSigningKey, secretBoxingKey, publicSigningKey, publicBoxingKey);
     }
 

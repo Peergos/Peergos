@@ -2,6 +2,8 @@ package peergos.crypto;
 
 // Copyright (c) 2014 Tom Zhou<iwebpp@gmail.com>
 
+import peergos.util.ArrayOps;
+
 import java.io.UnsupportedEncodingException;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicLong;
@@ -298,7 +300,7 @@ public final class TweetNacl {
         public static KeyPair keyPair() {
             KeyPair kp = new KeyPair();
 
-            crypto_box_keypair(kp.getPublicKey(), kp.getSecretKey());
+            crypto_box_keypair(kp.getPublicKey(), kp.getSecretKey(), false);
             return kp;
         }
 
@@ -1085,9 +1087,10 @@ public final class TweetNacl {
         if (d < 32) return -1;
 
         crypto_stream_xor(c,m,d,n,k);
+        System.out.println("c1 " + ArrayOps.bytesToHex(c));
         crypto_onetimeauth(c,16,c.length-16, c,32,c.length-32, d - 32, c);
-
-        ///for (i = 0; i < 16; i ++) c[i] = 0;
+        System.out.println("c2 " + ArrayOps.bytesToHex(c));
+        for (i = 0; i < 16; i ++) c[i] = 0;
 
         return 0;
     }
@@ -1385,9 +1388,10 @@ public final class TweetNacl {
         return crypto_scalarmult(q,n,_9);
     }
 
-    public static int crypto_box_keypair(byte [] y, byte [] x)
+    public static int crypto_box_keypair(byte [] y, byte [] x, boolean seeded)
     {
-        randombytes(x,32);
+        if (!seeded)
+            randombytes(x,32);
         return crypto_scalarmult_base(y,x);
     }
 
@@ -1395,7 +1399,6 @@ public final class TweetNacl {
     {
         byte[] s = new byte[32];
         crypto_scalarmult(s,x,y);
-
         ///String dbgt = "";
         ///for (int dbg = 0; dbg < s.length; dbg ++) dbgt += " "+s[dbg];
         ///L/og.d(TAG, "crypto_box_beforenm -> "+dbgt);

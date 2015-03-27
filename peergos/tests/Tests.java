@@ -53,6 +53,10 @@ public class Tests
         }
     }
 
+    public static void JavaJavascriptCompatibilityTests() {
+
+    }
+
     public static void localTests() {
         System.out.println("Doing local tests..");
         try {

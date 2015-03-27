@@ -20,7 +20,7 @@ function UserPublicKey(publicSignKey, publicBoxKey) {
     
     // (Uint8Array, User, (nonce, cipher) -> ())
     this.encryptMessageFor = function(input, us, cb) {
-	var nonce = nacl.randomBytes(24);
+	var nonce = createNonce();
 	cb(nonce, nacl.box(input, nonce, this.pBoxKey, us.sBoxKey));
     }
     
@@ -42,7 +42,11 @@ function UserPublicKey(publicSignKey, publicBoxKey) {
 	return hasher.digest();
     }
 }
-    
+
+function createNonce(){
+    return window.nacl.randomBytes(24);
+}
+
 /////////////////////////////
 // User methods
 // (string, string, (User -> ())
@@ -86,6 +90,10 @@ function User(signKeyPair, boxKeyPair) {
     }
 }
 
+function toKeyPair(pub, sec) {
+    return {publicKey:pub, secretKey:sec};
+}
+
 /////////////////////////////
 // SymmetricKey methods
 
@@ -124,6 +132,10 @@ function encryptBytesToBytes(input, pubKey) {
 // byte[] cipher and return
 function decryptBytesToBytes(cipher, privKey) {
     return Java.to(decryptUint8ToUint8(cipher, privKey), "byte[]");
+}
+
+function uint8ArrayToByteArray(arr) {
+    return Java.to(arr, "byte[]");
 }
 
 function get(path, onSuccess, onError) {
