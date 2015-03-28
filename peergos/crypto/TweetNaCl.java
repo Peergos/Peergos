@@ -1,50 +1,26 @@
 package peergos.crypto;
 
-import peergos.util.ArrayOps;
-
 import java.util.Random;
-
-public class OurTweetNaCl {
+/* Ported from the original C by Ian Preston and Chris Boddy
+ * Released under GPL 2
+ */
+public class TweetNaCl {
 
     public static final int crypto_auth_hmacsha512256_tweet_BYTES = 32;
     public static final int crypto_auth_hmacsha512256_tweet_KEYBYTES = 32;
-    public static final int crypto_box_curve25519xsalsa20poly1305_tweet_PUBLICKEYBYTES = 32;
-    public static final int crypto_box_curve25519xsalsa20poly1305_tweet_SECRETKEYBYTES = 32;
-    public static final int crypto_box_curve25519xsalsa20poly1305_tweet_BEFORENMBYTES = 32;
-    public static final int crypto_box_curve25519xsalsa20poly1305_tweet_NONCEBYTES = 24;
-    public static final int crypto_box_curve25519xsalsa20poly1305_tweet_ZEROBYTES = 32;
-    public static final int crypto_box_curve25519xsalsa20poly1305_tweet_BOXZEROBYTES = 16;
-    public static final int crypto_core_salsa20_tweet_OUTPUTBYTES = 64;
-    public static final int crypto_core_salsa20_tweet_INPUTBYTES = 16;
-    public static final int crypto_core_salsa20_tweet_KEYBYTES = 32;
-    public static final int crypto_core_salsa20_tweet_CONSTBYTES = 16;
-    public static final int crypto_core_hsalsa20_tweet_OUTPUTBYTES = 32;
-    public static final int crypto_core_hsalsa20_tweet_INPUTBYTES = 16;
-    public static final int crypto_core_hsalsa20_tweet_KEYBYTES = 32;
-    public static final int crypto_core_hsalsa20_tweet_CONSTBYTES = 16;
-    public static final int crypto_hashblocks_sha512_tweet_STATEBYTES = 64;
-    public static final int crypto_hashblocks_sha512_tweet_BLOCKBYTES = 128;
-    public static final int crypto_hashblocks_sha256_tweet_STATEBYTES = 32;
-    public static final int crypto_hashblocks_sha256_tweet_BLOCKBYTES = 64;
-    public static final int crypto_hash_sha512_tweet_BYTES = 64;
-    public static final int crypto_hash_sha256_tweet_BYTES = 32;
-    public static final int crypto_onetimeauth_poly1305_tweet_BYTES = 16;
-    public static final int crypto_onetimeauth_poly1305_tweet_KEYBYTES = 32;
-    public static final int crypto_scalarmult_curve25519_tweet_BYTES = 32;
-    public static final int crypto_scalarmult_curve25519_tweet_SCALARBYTES = 32;
-    public static final int crypto_secretbox_xsalsa20poly1305_tweet_KEYBYTES = 32;
-    public static final int crypto_secretbox_xsalsa20poly1305_tweet_NONCEBYTES = 24;
-    public static final int crypto_secretbox_xsalsa20poly1305_tweet_ZEROBYTES = 32;
-    public static final int crypto_secretbox_xsalsa20poly1305_tweet_BOXZEROBYTES = 16;
-    public static final int crypto_sign_ed25519_tweet_BYTES = 64;
-    public static final int crypto_sign_ed25519_tweet_PUBLICKEYBYTES = 32;
-    public static final int crypto_sign_ed25519_tweet_SECRETKEYBYTES = 64;
-    public static final int crypto_stream_xsalsa20_tweet_KEYBYTES = 32;
-    public static final int crypto_stream_xsalsa20_tweet_NONCEBYTES = 24;
-    public static final int crypto_stream_salsa20_tweet_KEYBYTES = 32;
-    public static final int crypto_stream_salsa20_tweet_NONCEBYTES = 8;
-    public static final int crypto_verify_16_tweet_BYTES = 16;
-    public static final int crypto_verify_32_tweet_BYTES = 32;
+    public static final int BOX_PUBLIC_KEY_BYTES = 32;
+    public static final int BOX_SECRET_KEY_BYTES = 32;
+    public static final int BOX_SHARED_KEY_BYTES = 32;
+    public static final int BOX_NONCE_BYTES = 24;
+    public static final int BOX_OVERHEAD_BYTES = 16;
+    public static final int SIGNATURE_SIZE_BYTES = 64;
+    public static final int SIGN_PUBLIC_KEY_BYTES = 32;
+    public static final int SIGN_SECRET_KEY_BYTES = 64;
+    public static final int SIGN_KEYPAIR_SEED_BYTES = 32;
+    public static final int SECRETBOX_KEY_BYTES = 32;
+    public static final int SECRETBOX_NONCE_BYTES = 24;
+    public static final int SECRETBOX_OVERHEAD_BYTES = 16;
+    public static final int HASH_SIZE_BYTES = 64; // SHA-512
 
     static byte[] _0 = new byte[16], _9 = new byte[32];
     static {
@@ -60,7 +36,7 @@ public class OurTweetNaCl {
             Y = new long[]{0x6658, 0x6666, 0x6666, 0x6666, 0x6666, 0x6666, 0x6666, 0x6666, 0x6666, 0x6666, 0x6666, 0x6666, 0x6666, 0x6666, 0x6666, 0x6666},
             I = new long[]{0xa0b0, 0x4a0e, 0x1b27, 0xc4ee, 0xe478, 0xad2f, 0x1806, 0x2f43, 0xd7a7, 0x3dfb, 0x0099, 0x2b4d, 0xdf0b, 0x4fc1, 0x2480, 0x2b83};
 
-    static int L32(int x,int c) { return (x << c) | ((x&0xffffffff) >>> (32 - c)); }
+    static int L32(int x,int c) { return (x << c) | (x >>> (32 - c)); }
 
     static int ld32(byte[] x, int off)
     {
@@ -622,7 +598,7 @@ public class OurTweetNaCl {
         byte[] h = new byte[64],x = new byte[256];
         long b = n;
 
-        for (int i=0;i < 64;++i)h[i] = iv[i];
+        System.arraycopy(iv, 0, h, 0, 64);
 
         crypto_hashblocks(h,m,n);
         mOff += n;

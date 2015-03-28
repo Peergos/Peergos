@@ -41,6 +41,18 @@ public class JSUserPublicKey extends UserPublicKey
                     "" +
                     "function box(input, nonce, pubBox, secretBox) {" +
                     "    return window.nacl.box(input, nonce, pubBox, secretBox);" +
+                    "}" +
+                    "" +
+                    "function unbox(cipher, nonce, pubBox, secretBox) {" +
+                    "    return window.nacl.box.open(cipher, nonce, pubBox, secretBox);" +
+                    "}" +
+                    "" +
+                    "function unsign(signature, publicSigningKey) {" +
+                    "    return window.nacl.sign.open(signature, publicSigningKey);" +
+                    "}" +
+                    "" +
+                    "function sign(message, secretSigningKey) {" +
+                    "    return window.nacl.sign(message, secretSigningKey);" +
                     "}");
             engine.eval(new InputStreamReader(JSUserPublicKey.class.getClassLoader().getResourceAsStream("ui/lib/scrypt.js")));
             engine.eval(new InputStreamReader(JSUserPublicKey.class.getClassLoader().getResourceAsStream("ui/lib/blake2s.js")));
@@ -87,17 +99,36 @@ public class JSUserPublicKey extends UserPublicKey
 
     public byte[] unsignMessage(byte[] signed)
     {
-        byte[] message = new byte[signed.length];
-        OurTweetNaCl.crypto_sign_open(message, signed, signed.length, publicSigningKey);
-        return Arrays.copyOfRange(message, 64, message.length);
+        byte[] res = null;
+        try {
+            res = (byte[]) invocable.invokeFunction("toByteArray", invocable.invokeFunction("unsign",
+                    invocable.invokeFunction("fromByteArray", signed),
+                    invocable.invokeFunction("fromByteArray", publicSigningKey)));
+        } catch (Exception e) {e.printStackTrace();}
+        return res;
     }
 
     public static void main(String[] args) {
         User juser = User.generateUserCredentials("Freddy", "password");
-        JSUserPublicKey jsuser = new JSUserPublicKey(juser.publicSigningKey, juser.publicBoxingKey);
+        JSUser jsuser = new JSUser(juser.secretSigningKey, juser.secretBoxingKey, juser.publicSigningKey, juser.publicBoxingKey);
         byte[] message = "G'day mate!".getBytes();
+        // box and unbox
         byte[] res = jsuser.encryptMessageFor(message, juser.secretBoxingKey);
         byte[] clear = juser.decryptMessage(res, jsuser.publicBoxingKey);
-        System.out.println("Clear: " + new String(clear));
+        assert Arrays.equals(clear, message);
+
+        byte[] res2 = juser.encryptMessageFor(message, juser.secretBoxingKey);
+        byte[] clear2 = jsuser.decryptMessage(res2, jsuser.publicBoxingKey);
+        assert Arrays.equals(clear2, message);
+
+        // sign and unsign
+        byte[] sig = juser.signMessage(message);
+        byte[] unsigned = jsuser.unsignMessage(sig);
+        assert Arrays.equals(unsigned, message);
+
+        byte[] sig2 = jsuser.signMessage(message);
+        assert Arrays.equals(sig, sig2);
+        byte[] unsigned2 = juser.unsignMessage(sig2);
+        assert Arrays.equals(unsigned2, message);
     }
 }

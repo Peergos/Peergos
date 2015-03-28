@@ -38,12 +38,12 @@ public class UserPublicKey implements Comparable<UserPublicKey>
         byte[] paddedMessage = new byte[PADDING_LENGTH + input.length];
         System.arraycopy(input, 0, paddedMessage, PADDING_LENGTH, input.length);
         byte[] nonce = createNonce();
-        OurTweetNaCl.crypto_box(cipherText, paddedMessage, paddedMessage.length, nonce, publicBoxingKey, ourSecretBoxingKey);
+        TweetNaCl.crypto_box(cipherText, paddedMessage, paddedMessage.length, nonce, publicBoxingKey, ourSecretBoxingKey);
         return ArrayOps.concat(Arrays.copyOfRange(cipherText, 16, cipherText.length), nonce);
     }
 
     public byte[] createNonce() {
-        byte[] nonce = new byte[OurTweetNaCl.crypto_box_curve25519xsalsa20poly1305_tweet_NONCEBYTES];
+        byte[] nonce = new byte[TweetNaCl.BOX_NONCE_BYTES];
         rnd.nextBytes(nonce);
         return nonce;
     }
@@ -51,7 +51,7 @@ public class UserPublicKey implements Comparable<UserPublicKey>
     public byte[] unsignMessage(byte[] signed)
     {
         byte[] message = new byte[signed.length];
-        OurTweetNaCl.crypto_sign_open(message, signed, signed.length, publicSigningKey);
+        TweetNaCl.crypto_sign_open(message, signed, signed.length, publicSigningKey);
         return Arrays.copyOfRange(message, 64, message.length);
     }
 
