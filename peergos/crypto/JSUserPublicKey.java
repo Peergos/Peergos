@@ -96,6 +96,8 @@ public class JSUserPublicKey extends UserPublicKey
         User juser = User.generateUserCredentials("Freddy", "password");
         JSUserPublicKey jsuser = new JSUserPublicKey(juser.publicSigningKey, juser.publicBoxingKey);
         byte[] message = "G'day mate!".getBytes();
-        Object res = jsuser.encryptMessageFor(message, juser.secretBoxingKey);
+        byte[] res = jsuser.encryptMessageFor(message, juser.secretBoxingKey);
+        byte[] clear = juser.decryptMessage(res, jsuser.publicBoxingKey);
+        System.out.println("Clear: " + new String(clear));
     }
 }

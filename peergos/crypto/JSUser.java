@@ -12,9 +12,9 @@ public class JSUser extends JSUserPublicKey
         super(publicSigningKey, publicBoxingKey);
         this.secretSigningKey = secretSigningKey;
         this.secretBoxingKey = secretBoxingKey;
-        try {
-            ourKeys = invocable.invokeFunction("User", publicSigningKey, publicBoxingKey);
-        } catch (Exception e) {e.printStackTrace();}
+//        try {
+//            ourKeys = invocable.invokeFunction("User", publicSigningKey, publicBoxingKey);
+//        } catch (Exception e) {e.printStackTrace();}
     }
 
     public byte[] signMessage(byte[] message)

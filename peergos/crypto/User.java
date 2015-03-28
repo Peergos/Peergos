@@ -49,7 +49,7 @@ public class User extends UserPublicKey
     public byte[] decryptMessage(byte[] cipher, byte[] theirPublicBoxingKey)
     {
         byte[] nonce = Arrays.copyOfRange(cipher, cipher.length - OurTweetNaCl.crypto_box_curve25519xsalsa20poly1305_tweet_NONCEBYTES, cipher.length);
-        cipher = Arrays.copyOfRange(cipher, 0, cipher.length - OurTweetNaCl.crypto_box_curve25519xsalsa20poly1305_tweet_NONCEBYTES);
+        cipher = ArrayOps.concat(new byte[16], Arrays.copyOfRange(cipher, 0, cipher.length - OurTweetNaCl.crypto_box_curve25519xsalsa20poly1305_tweet_NONCEBYTES));
         byte[] rawText = new byte[cipher.length];
         OurTweetNaCl.crypto_box_open(rawText, cipher, cipher.length, nonce, theirPublicBoxingKey, secretBoxingKey);
         return Arrays.copyOfRange(rawText, 32, rawText.length);

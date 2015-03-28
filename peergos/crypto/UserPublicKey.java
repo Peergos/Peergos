@@ -39,7 +39,7 @@ public class UserPublicKey implements Comparable<UserPublicKey>
         System.arraycopy(input, 0, paddedMessage, PADDING_LENGTH, input.length);
         byte[] nonce = createNonce();
         OurTweetNaCl.crypto_box(cipherText, paddedMessage, paddedMessage.length, nonce, publicBoxingKey, ourSecretBoxingKey);
-        return ArrayOps.concat(cipherText, nonce);
+        return ArrayOps.concat(Arrays.copyOfRange(cipherText, 16, cipherText.length), nonce);
     }
 
     public byte[] createNonce() {
