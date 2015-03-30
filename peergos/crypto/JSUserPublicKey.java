@@ -56,6 +56,17 @@ public class JSUserPublicKey extends UserPublicKey
                     "" +
                     "function sign(message, secretSigningKey) {" +
                     "    return window.nacl.sign(message, secretSigningKey);" +
+                    "}" +
+                    "" +
+                    "function sign_keypair(seed) {" +
+                    "    var pk = new Uint8Array(32);\n" +
+                    "    var sk = new Uint8Array(64);\n" +
+                    "    for (var i = 0; i < 32; i++) sk[i] = seed[i];\n" +
+                    "    window.nacl.lowlevel.crypto_sign_keypair(pk, sk, true);" +
+                    "    var both = new Uint8Array(96);" +
+                    "    for (var i = 0; i < 32; i++) both[i] = pk[i];" +
+                    "    for (var i = 0; i < 64; i++) both[32+i] = sk[i];" +
+                    "    return both;" +
                     "}");
             engine.eval(new InputStreamReader(JSUserPublicKey.class.getClassLoader().getResourceAsStream("ui/lib/scrypt.js")));
             engine.eval(new InputStreamReader(JSUserPublicKey.class.getClassLoader().getResourceAsStream("ui/lib/blake2s.js")));
@@ -109,8 +120,28 @@ public class JSUserPublicKey extends UserPublicKey
         } catch (Exception e) {throw new RuntimeException(e);}
     }
 
-    public static void main(String[] args) {
-        User juser = User.generateUserCredentials("Freddy", "password");
+    public static void main(String[] args) throws Exception {
+        byte[] secretBoxingKey = getRandomValues(32);
+        byte[] publicBoxingKey = new byte[32];
+        TweetNaCl.crypto_scalarmult_base(publicBoxingKey, secretBoxingKey);
+        byte[] secretSigningKey = new byte[64];
+        byte[] publicSigningKey = new byte[32];
+        byte[] signSeed = getRandomValues(32);
+        System.arraycopy(signSeed, 0, secretSigningKey, 0, 32);
+        TweetNaCl.crypto_sign_keypair(publicSigningKey, secretSigningKey, true);
+        // verify sign keygen
+        byte[] jsSignPair = (byte[]) invocable.invokeFunction("toByteArray", invocable.invokeFunction("sign_keypair",
+                invocable.invokeFunction("fromByteArray", signSeed)));
+        byte[] jsSecretSignKey = Arrays.copyOfRange(jsSignPair, 32, 96);
+        byte[] jsPublicSignKey = Arrays.copyOfRange(jsSignPair, 0, 32);
+        if (!Arrays.equals(secretSigningKey, jsSecretSignKey)) {
+            throw new IllegalStateException("Signing key generation invalid, different secret keys!");
+        }
+        if (!Arrays.equals(publicSigningKey, jsPublicSignKey)) {
+            throw new IllegalStateException("Signing key generation invalid, different public keys!");
+        }
+
+        User juser = new User(secretSigningKey, publicSigningKey, secretBoxingKey, publicSigningKey);
         JSUser jsuser = new JSUser(juser.secretSigningKey, juser.secretBoxingKey, juser.publicSigningKey, juser.publicBoxingKey);
         byte[] message = "G'day mate!".getBytes();
 
@@ -139,6 +170,8 @@ public class JSUserPublicKey extends UserPublicKey
         byte[] unsigned = juser.unsignMessage(sig);
         if (!Arrays.equals(unsigned, message))
             throw new IllegalStateException("J: Unsigned message != original! ");
+//        for (int i=0; i < 64; i++)
+//            System.out.printf((secretSigningKey[i]&0xff) + ", ");
         byte[] unsigned2 = jsuser.unsignMessage(sig);
         if (!Arrays.equals(unsigned2, message))
             throw new IllegalStateException("JS: Unsigned message != original! ");
