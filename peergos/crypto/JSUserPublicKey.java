@@ -126,7 +126,7 @@ public class JSUserPublicKey extends UserPublicKey
         TweetNaCl.crypto_scalarmult_base(publicBoxingKey, secretBoxingKey);
         byte[] secretSigningKey = new byte[64];
         byte[] publicSigningKey = new byte[32];
-        byte[] signSeed = getRandomValues(32);
+        byte[] signSeed = new byte[32];//getRandomValues(32);
         System.arraycopy(signSeed, 0, secretSigningKey, 0, 32);
         TweetNaCl.crypto_sign_keypair(publicSigningKey, secretSigningKey, true);
         // verify sign keygen

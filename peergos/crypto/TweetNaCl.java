@@ -1,10 +1,9 @@
 package peergos.crypto;
 
-import peergos.util.ArrayOps;
-
 import java.util.Arrays;
 import java.util.Random;
 /* Ported from the original C by Ian Preston and Chris Boddy
+ * crypto_hash() is ported from TweetNaCl.js
  * Released under GPL 2
  */
 public class TweetNaCl {
@@ -34,7 +33,7 @@ public class TweetNaCl {
 
         if (!isSeeded)
             randombytes(sk, 32);
-        crypto_hashJS(d, sk, 32);
+        crypto_hash(d, sk, 32);
         d[0] &= 248;
         d[31] &= 127;
         d[31] |= 64;
@@ -557,7 +556,7 @@ public class TweetNaCl {
         return crypto_box_open_afternm(m, c, d, n, k);
     }
 
-    private static int crypto_hashJS(byte[] out,byte[] m, int n) {
+    private static int crypto_hash(byte[] out, byte[] m, int n) {
         int[] hh = new int[8], hl = new int[8];
         byte[] x = new byte[256];
         int i, b = n;
@@ -1127,7 +1126,7 @@ public class TweetNaCl {
         long[] x = new long[64];
         long[][] /*gf*/ p/*[4]*/ = new long[4][GF_LEN];
 
-        crypto_hashJS(d, sk, 32);
+        crypto_hash(d, sk, 32);
         d[0] &= 248;
         d[31] &= 127;
         d[31] |= 64;
@@ -1135,13 +1134,13 @@ public class TweetNaCl {
 //        smlen[0] = n+64;
         for (int i=0;i < n;++i)sm[64 + i] = m[i];
         for (int i=0;i < 32;++i)sm[32 + i] = d[32 + i];
-        crypto_hashJS(r, Arrays.copyOfRange(sm, 32, sm.length), n + 32);
+        crypto_hash(r, Arrays.copyOfRange(sm, 32, sm.length), n + 32);
         reduce(r);
         scalarbase(p, r, 0);
         pack(sm, p);
 
         for (int i=0;i < 32;++i)sm[i+32] = sk[i+32];
-        crypto_hashJS(h, sm, n + 64);
+        crypto_hash(h, sm, n + 64);
         reduce(h);
 
         for (int i=0;i < 64;++i) x[i] = 0;
@@ -1202,7 +1201,7 @@ public class TweetNaCl {
 
         for (i=0;i < n;++i) m[i] = sm[i];
         for (i=0;i < 32;++i) m[i+32] = pk[i];
-        crypto_hashJS(h, m, n);
+        crypto_hash(h, m, n);
         reduce(h);
         scalarmult(p, q, h, 0);
 
