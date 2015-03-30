@@ -16,25 +16,28 @@ public class JSUserPublicKey extends UserPublicKey
     public static final Invocable invocable = (Invocable) engine;
 
     public static Random prng = new Random(0); // only used in testing so let's make it deterministic
-    public static void getRandomValues(byte[] in) {
+    public static byte[] getRandomValues(int len) {
+        byte[] in = new byte[len];
         prng.nextBytes(in);
+        return in;
     }
 
     static {
         try {
             engine.eval("var navigator = {}, window = {}; window.crypto = {};\n window.crypto.getRandomValues = " +
                     "function (arr){\n" +
-                    "    var jarr = Java.to(arr, 'byte[]');" +
-                    "    Java.type('peergos.crypto.JSUserPublicKey').getRandomValues(jarr);\n" +
+                    "    var jarr = Java.type('peergos.crypto.JSUserPublicKey').getRandomValues(arr.length);\n" +
                     "    for (var i=0; i < arr.length; i++) arr[i] = jarr[i];\n" +
                     "}\n" +
                     "" +
                     "function toByteArray(arr) {\n" +
-                    "    return Java.to(arr, 'byte[]');\n" +
+                    "    var jarr = new (Java.type('byte[]'))(arr.length);" +
+                    "    for (var i=0; i < jarr.length; i++) jarr[i] = arr[i];" +
+                    "    return jarr;\n" +
                     "}\n" +
                     "" +
                     "function fromByteArray(arr) {\n" +
-                    "    var res = Uint8Array(arr.length);" +
+                    "    var res = new Uint8Array(arr.length);" +
                     "    for (var i=0; i < arr.length; i++) res[i] = arr[i];" +
                     "    return res;\n" +
                     "}\n" +
@@ -85,7 +88,7 @@ public class JSUserPublicKey extends UserPublicKey
                     invocable.invokeFunction("fromByteArray", nonce),
                     invocable.invokeFunction("fromByteArray", publicBoxingKey),
                     invocable.invokeFunction("fromByteArray", ourSecretBoxingKey)));
-        } catch (Exception e) {e.printStackTrace();}
+        } catch (Exception e) {throw new RuntimeException(e);}
         return ArrayOps.concat(res, nonce);
     }
 
@@ -93,42 +96,51 @@ public class JSUserPublicKey extends UserPublicKey
         try {
             Object nonce = invocable.invokeFunction("createNonce");
             return (byte[]) invocable.invokeFunction("toByteArray", nonce);
-        } catch (Exception e) {e.printStackTrace();}
-        return new byte[0];
+        } catch (Exception e) {throw new RuntimeException(e);}
     }
 
     public byte[] unsignMessage(byte[] signed)
     {
-        byte[] res = null;
         try {
-            res = (byte[]) invocable.invokeFunction("toByteArray", invocable.invokeFunction("unsign",
+            Object res = invocable.invokeFunction("unsign",
                     invocable.invokeFunction("fromByteArray", signed),
-                    invocable.invokeFunction("fromByteArray", publicSigningKey)));
-        } catch (Exception e) {e.printStackTrace();}
-        return res;
+                    invocable.invokeFunction("fromByteArray", publicSigningKey));
+            return (byte[]) invocable.invokeFunction("toByteArray", res);
+        } catch (Exception e) {throw new RuntimeException(e);}
     }
 
     public static void main(String[] args) {
         User juser = User.generateUserCredentials("Freddy", "password");
         JSUser jsuser = new JSUser(juser.secretSigningKey, juser.secretBoxingKey, juser.publicSigningKey, juser.publicBoxingKey);
         byte[] message = "G'day mate!".getBytes();
-        // box and unbox
-        byte[] res = jsuser.encryptMessageFor(message, juser.secretBoxingKey);
-        byte[] clear = juser.decryptMessage(res, jsuser.publicBoxingKey);
-        assert Arrays.equals(clear, message);
 
-        byte[] res2 = juser.encryptMessageFor(message, juser.secretBoxingKey);
-        byte[] clear2 = jsuser.decryptMessage(res2, jsuser.publicBoxingKey);
-        assert Arrays.equals(clear2, message);
+        // box
+        byte[] cipher = jsuser.encryptMessageFor(message, juser.secretBoxingKey);
+        byte[] cipher2 = juser.encryptMessageFor(message, juser.secretBoxingKey);
+
+        // unbox
+        byte[] clear = juser.decryptMessage(cipher, jsuser.publicBoxingKey);
+        if (!Arrays.equals(clear, message)) {
+            throw new IllegalStateException("JS -> J, Decrypted message != original: "+new String(clear) + " != "+new String(message));
+        }
+        byte[] clear2 = jsuser.decryptMessage(cipher2, jsuser.publicBoxingKey);
+        if (!Arrays.equals(clear2, message))
+            throw new IllegalStateException("J -> JS, Decrypted message != original: "+new String(clear2) + " != "+new String(message));
 
         // sign and unsign
         byte[] sig = juser.signMessage(message);
-        byte[] unsigned = jsuser.unsignMessage(sig);
-        assert Arrays.equals(unsigned, message);
-
         byte[] sig2 = jsuser.signMessage(message);
-        assert Arrays.equals(sig, sig2);
-        byte[] unsigned2 = juser.unsignMessage(sig2);
-        assert Arrays.equals(unsigned2, message);
+        if (!Arrays.equals(sig, sig2)) {
+            System.out.println("J : "+ArrayOps.bytesToHex(sig));
+            System.out.println("JS: "+ArrayOps.bytesToHex(sig2));
+            throw new IllegalStateException("Signatures not equal! " + ArrayOps.bytesToHex(sig) + " != " + ArrayOps.bytesToHex(sig2));
+        }
+
+        byte[] unsigned = juser.unsignMessage(sig);
+        if (!Arrays.equals(unsigned, message))
+            throw new IllegalStateException("J: Unsigned message != original! ");
+        byte[] unsigned2 = jsuser.unsignMessage(sig);
+        if (!Arrays.equals(unsigned2, message))
+            throw new IllegalStateException("JS: Unsigned message != original! ");
     }
 }

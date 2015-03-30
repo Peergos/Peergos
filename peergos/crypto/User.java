@@ -41,18 +41,14 @@ public class User extends UserPublicKey
 
     public byte[] signMessage(byte[] message)
     {
-        byte[] signedMessage = new byte[message.length + TweetNaCl.SIGNATURE_SIZE_BYTES];
-        TweetNaCl.crypto_sign(signedMessage, message, message.length, secretSigningKey);
-        return signedMessage;
+        return TweetNaCl.crypto_sign(message, secretSigningKey);
     }
 
     public byte[] decryptMessage(byte[] cipher, byte[] theirPublicBoxingKey)
     {
         byte[] nonce = Arrays.copyOfRange(cipher, cipher.length - TweetNaCl.BOX_NONCE_BYTES, cipher.length);
-        cipher = ArrayOps.concat(new byte[16], Arrays.copyOfRange(cipher, 0, cipher.length - TweetNaCl.BOX_NONCE_BYTES));
-        byte[] rawText = new byte[cipher.length];
-        TweetNaCl.crypto_box_open(rawText, cipher, cipher.length, nonce, theirPublicBoxingKey, secretBoxingKey);
-        return Arrays.copyOfRange(rawText, 32, rawText.length);
+        cipher = Arrays.copyOfRange(cipher, 0, cipher.length - TweetNaCl.BOX_NONCE_BYTES);
+        return TweetNaCl.crypto_box_open(cipher, nonce, theirPublicBoxingKey, secretBoxingKey);
     }
 
     public static User deserialize(byte[] input) {

@@ -1975,6 +1975,7 @@ function crypto_sign(sm, m, n, sk) {
   var p = [gf(), gf(), gf(), gf()];
 
   crypto_hash(d, sk, 32);
+
   d[0] &= 248;
   d[31] &= 127;
   d[31] |= 64;

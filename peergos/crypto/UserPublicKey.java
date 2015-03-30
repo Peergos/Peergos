@@ -34,12 +34,8 @@ public class UserPublicKey implements Comparable<UserPublicKey>
 
     public byte[] encryptMessageFor(byte[] input, byte[] ourSecretBoxingKey)
     {
-        byte[] cipherText = new byte[PADDING_LENGTH + input.length];
-        byte[] paddedMessage = new byte[PADDING_LENGTH + input.length];
-        System.arraycopy(input, 0, paddedMessage, PADDING_LENGTH, input.length);
         byte[] nonce = createNonce();
-        TweetNaCl.crypto_box(cipherText, paddedMessage, paddedMessage.length, nonce, publicBoxingKey, ourSecretBoxingKey);
-        return ArrayOps.concat(Arrays.copyOfRange(cipherText, 16, cipherText.length), nonce);
+        return ArrayOps.concat(TweetNaCl.crypto_box(input, nonce, publicBoxingKey, ourSecretBoxingKey), nonce);
     }
 
     public byte[] createNonce() {
@@ -50,9 +46,7 @@ public class UserPublicKey implements Comparable<UserPublicKey>
 
     public byte[] unsignMessage(byte[] signed)
     {
-        byte[] message = new byte[signed.length];
-        TweetNaCl.crypto_sign_open(message, signed, signed.length, publicSigningKey);
-        return Arrays.copyOfRange(message, 64, message.length);
+        return TweetNaCl.crypto_sign_open(signed, publicSigningKey);
     }
 
     public boolean equals(Object o)
