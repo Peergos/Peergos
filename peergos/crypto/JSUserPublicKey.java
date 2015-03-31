@@ -116,6 +116,8 @@ public class JSUserPublicKey extends UserPublicKey
             Object res = invocable.invokeFunction("unsign",
                     invocable.invokeFunction("fromByteArray", signed),
                     invocable.invokeFunction("fromByteArray", publicSigningKey));
+            if (res == null)
+                throw new IllegalStateException("Invalid signature: unsign returned null.");
             return (byte[]) invocable.invokeFunction("toByteArray", res);
         } catch (Exception e) {throw new RuntimeException(e);}
     }
@@ -134,12 +136,12 @@ public class JSUserPublicKey extends UserPublicKey
                 invocable.invokeFunction("fromByteArray", signSeed)));
         byte[] jsSecretSignKey = Arrays.copyOfRange(jsSignPair, 32, 96);
         byte[] jsPublicSignKey = Arrays.copyOfRange(jsSignPair, 0, 32);
-        if (!Arrays.equals(secretSigningKey, jsSecretSignKey)) {
+        if (!Arrays.equals(secretSigningKey, jsSecretSignKey))
             throw new IllegalStateException("Signing key generation invalid, different secret keys!");
-        }
-        if (!Arrays.equals(publicSigningKey, jsPublicSignKey)) {
+        if (!Arrays.equals(publicSigningKey, jsPublicSignKey))
             throw new IllegalStateException("Signing key generation invalid, different public keys!");
-        }
+        if (!Arrays.equals(publicSigningKey, Arrays.copyOfRange(secretSigningKey, 32, 64)))
+            throw new IllegalStateException("Signing public key != second half of secret key!");
 
         User juser = new User(secretSigningKey, publicSigningKey, secretBoxingKey, publicSigningKey);
         JSUser jsuser = new JSUser(juser.secretSigningKey, juser.secretBoxingKey, juser.publicSigningKey, juser.publicBoxingKey);
@@ -170,8 +172,8 @@ public class JSUserPublicKey extends UserPublicKey
         byte[] unsigned = juser.unsignMessage(sig);
         if (!Arrays.equals(unsigned, message))
             throw new IllegalStateException("J: Unsigned message != original! ");
-//        for (int i=0; i < 64; i++)
-//            System.out.printf((secretSigningKey[i]&0xff) + ", ");
+//        for (int i=0; i < sig.length; i++)
+//            System.out.printf((sig[i]&0xff) + ", ");
         byte[] unsigned2 = jsuser.unsignMessage(sig);
         if (!Arrays.equals(unsigned2, message))
             throw new IllegalStateException("JS: Unsigned message != original! ");
