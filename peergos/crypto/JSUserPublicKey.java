@@ -78,13 +78,9 @@ public class JSUserPublicKey extends UserPublicKey
         }
     }
 
-    Object ourKeys;
 
     public JSUserPublicKey(byte[] publicSigningKey, byte[] publicBoxingKey) {
         super(publicSigningKey, publicBoxingKey);
-        try {
-            ourKeys = invocable.invokeFunction("UserPublicKey", publicSigningKey, publicBoxingKey);
-        } catch (Exception e) {e.printStackTrace();}
     }
 
     public byte[] encryptMessageFor(byte[] input, byte[] ourSecretBoxingKey)
@@ -143,7 +139,7 @@ public class JSUserPublicKey extends UserPublicKey
         if (!Arrays.equals(publicSigningKey, Arrays.copyOfRange(secretSigningKey, 32, 64)))
             throw new IllegalStateException("Signing public key != second half of secret key!");
 
-        User juser = new User(secretSigningKey, publicSigningKey, secretBoxingKey, publicSigningKey);
+        User juser = new User(secretSigningKey, secretBoxingKey, publicSigningKey, publicBoxingKey);
         JSUser jsuser = new JSUser(juser.secretSigningKey, juser.secretBoxingKey, juser.publicSigningKey, juser.publicBoxingKey);
         byte[] message = "G'day mate!".getBytes();
 
@@ -174,8 +170,9 @@ public class JSUserPublicKey extends UserPublicKey
             throw new IllegalStateException("J: Unsigned message != original! ");
 //        for (int i=0; i < sig.length; i++)
 //            System.out.printf((sig[i]&0xff) + ", ");
-        byte[] unsigned2 = jsuser.unsignMessage(sig);
+        byte[] unsigned2 = jsuser.unsignMessage(sig2);
         if (!Arrays.equals(unsigned2, message))
             throw new IllegalStateException("JS: Unsigned message != original! ");
+        System.out.println("Passed all tests!");
     }
 }
