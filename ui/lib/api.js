@@ -19,9 +19,9 @@ function UserPublicKey(publicSignKey, publicBoxKey) {
     }
     
     // (Uint8Array, User, (nonce, cipher) -> ())
-    this.encryptMessageFor = function(input, us, cb) {
+    this.encryptMessageFor = function(input, us) {
 	var nonce = createNonce();
-	cb(nonce, nacl.box(input, nonce, this.pBoxKey, us.sBoxKey));
+	return nacl.box(input, nonce, this.pBoxKey, us.sBoxKey).concat(nonce);
     }
     
     // Uint8Array => boolean
@@ -78,8 +78,8 @@ function User(signKeyPair, boxKeyPair) {
     }
     
     // (Uint8Array, (err, literals) -> ())
-    this.decryptMessage = function(cipher, nonce, them, cb) {
-	cb(nacl.box.open(cipher, nonce, them.pBoxKey, this.sBoxKey));
+    this.decryptMessage = function(cipher, nonce, them) {
+	return nacl.box.open(cipher, nonce, them.pBoxKey, this.sBoxKey);
     }
 
     this.getSecretKeys = function() {
@@ -396,7 +396,6 @@ function prepare(arrays) {
     } 
     return prepared;
 }
-
 
 //module.exports.encryptStringToHex = encryptStringToHex;
 //module.exports.decryptHexToString = decryptHexToString;
