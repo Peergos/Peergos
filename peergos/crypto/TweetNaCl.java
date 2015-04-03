@@ -1,5 +1,7 @@
 package peergos.crypto;
 
+import test.*;
+
 import java.util.Arrays;
 import java.util.Random;
 /* Ported from the original C by Ian Preston and Chris Boddy
@@ -102,7 +104,7 @@ public class TweetNaCl {
 
     private static int L32(int x,int c) { return (x << c) | (x >>> (32 - c)); }
 
-    private static int ld32(byte[] x, int off)
+    public static int ld32(byte[] x, int off)
     {
         int u = x[off + 3] & 0xff;
         u = (u<<8)|(x[off + 2] & 0xff);
@@ -198,10 +200,10 @@ public class TweetNaCl {
         int mOff = 0;
         while (b >= 64) {
             crypto_core_salsa20(x,z,k,sigma);
-            for (i=0;i < 64; ++i) c[i] = (byte)((m != null ? m[i]:0)^ x[i]);
+            for (i=0;i < 64; ++i) c[cOff + i] = (byte)((m != null ? m[mOff + i]:0)^ x[i]);
             u = 1;
             for (i = 8;i < 16;++i) {
-                u += (int) z[i];
+                u += 0xff & z[i];
                 z[i] = (byte)u;
                 u >>= 8;
             }
@@ -211,7 +213,7 @@ public class TweetNaCl {
         }
         if (b != 0) {
             crypto_core_salsa20(x,z,k,sigma);
-            for (i=0;i < b; i++) c[i] = (byte)((m != null ? m[i]:0)^ x[i]);
+            for (i=0;i < b; i++) c[cOff + i] = (byte)((m != null ? m[mOff + i]:0)^ x[i]);
         }
         return 0;
     }
@@ -1215,7 +1217,7 @@ public class TweetNaCl {
             return -1;
         }
 
-        for (i=0;i < n;++i)m[i] = sm[i + 64];
+        for (i=0;i < n;++i)m[64 + i] = sm[i + 64];
 //        mlen[0] = n;
         return 0;
     }
