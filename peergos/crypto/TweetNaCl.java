@@ -88,6 +88,23 @@ public class TweetNaCl {
         return Arrays.copyOfRange(rawText, 32, rawText.length);
     }
 
+    public static byte[] secretbox(byte[] mesage, byte[] nonce, byte[] key) {
+        byte[] m = new byte[SECRETBOX_INTERNAL_OVERHEAD_BYTES + mesage.length];
+        byte[] c = new byte[m.length];
+        System.arraycopy(mesage, 0, m, SECRETBOX_INTERNAL_OVERHEAD_BYTES, mesage.length);
+        crypto_secretbox(c, m, m.length, nonce, key);
+        return Arrays.copyOfRange(c, SECRETBOX_OVERHEAD_BYTES, c.length);
+    }
+
+    public static byte[] secretbox_open(byte[] cipher, byte[] nonce, byte[] key) {
+        byte[] c = new byte[SECRETBOX_OVERHEAD_BYTES + cipher.length];
+        byte[] m = new byte[c.length];
+        System.arraycopy(cipher, 0, c, SECRETBOX_OVERHEAD_BYTES, cipher.length);
+        if (c.length < 32) throw new IllegalStateException("Cipher too small!");
+        if (crypto_secretbox_open(m, c, c.length, nonce, key) != 0) throw new IllegalStateException("Invalid encryption!");
+        return Arrays.copyOfRange(m, SECRETBOX_INTERNAL_OVERHEAD_BYTES, m.length);
+    }
+
     private static byte[] _0 = new byte[16], _9 = new byte[32];
     static {
         _9[0] = 9;
