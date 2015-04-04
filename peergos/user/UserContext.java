@@ -23,9 +23,7 @@ import java.io.DataOutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.URL;
-import java.security.KeyPair;
 import java.security.PrivateKey;
-import java.security.PublicKey;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -340,7 +338,7 @@ public class UserContext
             Serialize.serialize(username, dout);
             Serialize.serialize(owner.getPrivateKeys(), dout);
             Serialize.serialize(mapKey.data, dout);
-            Serialize.serialize(rootDirKey.getKey().getEncoded(), dout);
+            Serialize.serialize(rootDirKey.getKey(), dout);
         }
     }
 
@@ -493,15 +491,15 @@ public class UserContext
             SymmetricKey rootRKey = SymmetricKey.random();
             SymmetricKey rootWKey = SymmetricKey.random();
             String name = "/";
-            byte[] rootIV = SymmetricKey.randomIV();
+            byte[] rootIV = SymmetricKey.createNonce();
             byte[] rootMapKey = ArrayOps.random(32); // root will be stored under this in the core node
             DirAccess root = new DirAccess(sharer, rootRKey, new FileProperties(name, rootIV, 0, null), rootWKey);
             root.setFragments(new ArrayList());
 
             // generate file (two chunks)
             Random r = new Random();
-            byte[] initVector = new byte[SymmetricKey.IV_SIZE];
-            r.nextBytes(initVector);
+            byte[] nonce = new byte[SymmetricKey.NONCE_BYTES];
+            r.nextBytes(nonce);
             byte[] raw1 = new byte[Chunk.MAX_SIZE];
             byte[] raw2 = new byte[Chunk.MAX_SIZE];
             byte[] template = "Hello secure cloud! Goodbye NSA!".getBytes();
@@ -523,23 +521,23 @@ public class UserContext
 
             // 1st chunk
             Chunk chunk1 = new Chunk(raw1, fileKey);
-            EncryptedChunk encryptedChunk1 = new EncryptedChunk(chunk1.encrypt(initVector));
+            EncryptedChunk encryptedChunk1 = new EncryptedChunk(chunk1.encrypt(nonce));
             Fragment[] fragments1 = encryptedChunk1.generateFragments();
             List<ByteArrayWrapper> hashes1 = new ArrayList(fragments1.length);
             for (Fragment f : fragments1)
                 hashes1.add(new ByteArrayWrapper(f.getHash()));
-            FileProperties props1 = new FileProperties(filename, initVector, raw1.length + raw2.length, chunk2Location);
+            FileProperties props1 = new FileProperties(filename, nonce, raw1.length + raw2.length, chunk2Location);
             FileAccess file = new FileAccess(sharer, fileKey, props1, hashes1);
 
             // 2nd chunk
             Chunk chunk2 = new Chunk(raw2, fileKey);
-            EncryptedChunk encryptedChunk2 = new EncryptedChunk(chunk2.encrypt(initVector));
+            EncryptedChunk encryptedChunk2 = new EncryptedChunk(chunk2.encrypt(nonce));
             Fragment[] fragments2 = encryptedChunk2.generateFragments();
             List<ByteArrayWrapper> hashes2 = new ArrayList(fragments2.length);
             for (Fragment f : fragments2)
                 hashes2.add(new ByteArrayWrapper(f.getHash()));
-            ChunkProperties props2 = new ChunkProperties(initVector, null);
-            Metadata meta2 = new Metadata(props2, fileKey, initVector);
+            ChunkProperties props2 = new ChunkProperties(nonce, null);
+            Metadata meta2 = new Metadata(props2, fileKey, nonce);
             meta2.setFragments(hashes2);
 
             // now write the root to the core nodes
@@ -593,14 +591,14 @@ public class UserContext
             SymmetricKey rootRKey = SymmetricKey.random();
             SymmetricKey rootWKey = SymmetricKey.random();
             String name = "/";
-            byte[] rootIV = SymmetricKey.randomIV();
+            byte[] rootIV = SymmetricKey.createNonce();
             byte[] rootMapKey = ArrayOps.random(32); // root will be stored under this in the core node
             DirAccess root = new DirAccess(sharer, rootRKey, new FileProperties(name, rootIV, 0, null), rootWKey);
 
             // generate file (single chunk)
             Random r = new Random();
-            byte[] initVector = new byte[SymmetricKey.IV_SIZE];
-            r.nextBytes(initVector);
+            byte[] nonce = new byte[SymmetricKey.NONCE_BYTES];
+            r.nextBytes(nonce);
             byte[] raw = new byte[Chunk.MAX_SIZE];
             byte[] template = "Hello secure cloud! Goodbye NSA!".getBytes();
             for (int i = 0; i < raw.length / 32; i++)
@@ -615,12 +613,12 @@ public class UserContext
             root.addFile(fileLocation, rootRKey, fileKey);
 
             Chunk chunk = new Chunk(raw, fileKey);
-            EncryptedChunk encryptedChunk = new EncryptedChunk(chunk.encrypt(initVector));
+            EncryptedChunk encryptedChunk = new EncryptedChunk(chunk.encrypt(nonce));
             Fragment[] fragments = encryptedChunk.generateFragments();
             List<ByteArrayWrapper> hashes = new ArrayList(fragments.length);
             for (Fragment f : fragments)
                 hashes.add(new ByteArrayWrapper(f.getHash()));
-            FileProperties props = new FileProperties(filename, initVector, raw.length, null);
+            FileProperties props = new FileProperties(filename, nonce, raw.length, null);
             FileAccess file = new FileAccess(sharer, fileKey, props, hashes);
 
             // now write the root to the core nodes

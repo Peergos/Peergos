@@ -7,16 +7,16 @@ import java.io.*;
 
 public class ChunkProperties
 {
-    private final byte[] iv;
+    private final byte[] nonce;
     private final Location next;
 
-    public ChunkProperties(byte[] iv, Location next) {
-        this.iv = iv;
+    public ChunkProperties(byte[] nonce, Location next) {
+        this.nonce = nonce;
         this.next = next;
     }
 
     public ChunkProperties(DataInput din) throws IOException {
-        iv = Serialize.deserializeByteArray(din, SymmetricKey.IV_SIZE);
+        nonce = Serialize.deserializeByteArray(din, SymmetricKey.NONCE_BYTES);
         boolean hasNext = din.readBoolean();
         if (hasNext)
             next = Location.deserialise(din);
@@ -34,7 +34,7 @@ public class ChunkProperties
     }
 
     public void serialise(DataOutputStream dout) throws IOException {
-        Serialize.serialize(iv, dout);
+        Serialize.serialize(nonce, dout);
         if (next == null)
             dout.writeBoolean(false);
         else {
@@ -49,7 +49,7 @@ public class ChunkProperties
     }
 
     public byte[] getIV() {
-        return iv;
+        return nonce;
     }
 
     public Location getNextChunkLocation() {

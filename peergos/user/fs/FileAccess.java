@@ -78,6 +78,6 @@ public class FileAccess extends Metadata
 
     public FileProperties getProps(SymmetricKey parentKey)
     {
-        return (FileProperties) getProps(parent2meta.target(parentKey), parent2meta.initializationVector());
+        return (FileProperties) getProps(parent2meta.target(parentKey), parent2meta.getNonce());
     }
 }

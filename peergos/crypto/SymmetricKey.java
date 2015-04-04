@@ -1,102 +1,60 @@
 package peergos.crypto;
 
-import org.bouncycastle.asn1.nist.NISTObjectIdentifiers;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
-import javax.crypto.*;
-import javax.crypto.spec.IvParameterSpec;
-import javax.crypto.spec.SecretKeySpec;
 import java.security.*;
 
 public class SymmetricKey
 {
-    public static final String ALGORITHM = "AES";
-    //    public static final String MODE = "AES/ECB/NoPadding"; // INSECURE, don't use ECB
-//    public static final String MODE = "AES/CBC/NoPadding";
-    public static final String MODE = "AES/CFB/NoPadding";
-    public static final String TYPE = NISTObjectIdentifiers.id_aes256_CFB.getId();
-    public static final int IV_SIZE = 16;
+    public static final int KEY_BYTES = 32;
+    public static final int NONCE_BYTES = 24;
 
-    private final SecretKey key;
-
-    public SymmetricKey(SecretKey key)
-    {
-        this.key = key;
-    }
+    private final byte[] secretKey;
 
     public SymmetricKey(byte[] encoded)
     {
-        this.key = new SecretKeySpec(encoded, ALGORITHM);
+        this.secretKey = encoded;
     }
 
-    public SecretKey getKey()
+    public byte[] getKey()
     {
-        return key;
+        return secretKey;
     }
 
     public byte[] encrypt(byte[] data, byte[] initVector)
     {
-        return encrypt(key, data, initVector);
+        return encrypt(secretKey, data, initVector);
     }
 
     public byte[] decrypt(byte[] data, byte[] initVector)
     {
-        return decrypt(key, data, initVector);
+        return decrypt(secretKey, data, initVector);
     }
 
-    public static byte[] encrypt(SecretKey key, byte[] data, byte[] initVector)
+    public static byte[] encrypt(byte[] key, byte[] data, byte[] nonce)
     {
-        try {
-            Cipher cipher = Cipher.getInstance(TYPE, "BC");
-            IvParameterSpec ivSpec = new IvParameterSpec(initVector);
-            cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(key.getEncoded(), ALGORITHM), ivSpec);
-            return cipher.doFinal(data);
-        } catch (NoSuchAlgorithmException |NoSuchProviderException |NoSuchPaddingException |IllegalBlockSizeException |
-                BadPaddingException |InvalidKeyException |InvalidAlgorithmParameterException e)
-        {
-            e.printStackTrace();
-            throw new IllegalStateException("Couldn't encrypt chunk: "+e.getMessage());
-        }
+        return TweetNaCl.secretbox(data, nonce, key);
     }
 
-    public static byte[] decrypt(SecretKey key, byte[] data, byte[] initVector)
+    public static byte[] decrypt(byte[] key, byte[] cipher, byte[] nonce)
     {
-        try {
-            Cipher cipher = Cipher.getInstance(MODE, "BC");
-            IvParameterSpec ivSpec = new IvParameterSpec(initVector);
-            cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(key.getEncoded(), ALGORITHM), ivSpec);
-            return cipher.doFinal(data);
-        } catch (NoSuchAlgorithmException |NoSuchProviderException |NoSuchPaddingException |IllegalBlockSizeException |
-                BadPaddingException |InvalidKeyException |InvalidAlgorithmParameterException e)
-        {
-            e.printStackTrace();
-            throw new IllegalStateException("Couldn't encrypt chunk: "+e.getMessage());
-        }
+        return TweetNaCl.secretbox_open(cipher, nonce, key);
     }
 
-    private static SecureRandom random = new SecureRandom();
+    private static SecureRandom csprng = new SecureRandom();
 
-    public static byte[] randomIV()
+    public static byte[] createNonce()
     {
-        byte[] res = new byte[IV_SIZE];
-        random.nextBytes(res);
+        byte[] res = new byte[NONCE_BYTES];
+        csprng.nextBytes(res);
         return res;
     }
 
     public static SymmetricKey random()
     {
-        try {
-//            SecureRandom random = SecureRandom.getInstance(User.SECURE_RANDOM);
-//            KeyGenerator kgen = KeyGenerator.getInstance(ALGORITHM, "BC");
-//            int keySize = 256;
-//            kgen.init(keySize, random);
-//            SecretKey key = kgen.generateKey();
-            SecretKey key = KeyGenerator.getInstance(TYPE, "BC").generateKey();
-            return new SymmetricKey(key);
-        } catch (NoSuchAlgorithmException|NoSuchProviderException e) {
-            e.printStackTrace();
-            throw new IllegalStateException(e.getMessage());
-        }
+        byte[] key = new byte[KEY_BYTES];
+        csprng.nextBytes(key);
+        return new SymmetricKey(key);
     }
 
     static

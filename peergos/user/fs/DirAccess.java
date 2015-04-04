@@ -4,7 +4,6 @@ import peergos.crypto.*;
 import peergos.util.Serialize;
 
 import java.io.*;
-import java.security.KeyPair;
 import java.util.*;
 
 public class DirAccess extends Metadata
@@ -128,7 +127,7 @@ public class DirAccess extends Metadata
     public FileProperties getProps(SymmetricKey ourSubfolders) {
         SymmetricKey baseKey = parent2meta.target(subfolders2parent.target(ourSubfolders));
         try {
-            return new FileProperties(new DataInputStream(new ByteArrayInputStream(baseKey.decrypt(encryptedMetadata, parent2meta.initializationVector()))));
+            return new FileProperties(new DataInputStream(new ByteArrayInputStream(baseKey.decrypt(encryptedMetadata, parent2meta.getNonce()))));
         } catch (IOException e) {e.printStackTrace();return null;}
     }
 

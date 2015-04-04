@@ -6,7 +6,7 @@ public class AsymmetricLink
 
     public AsymmetricLink(User from, UserPublicKey to, SymmetricKey target)
     {
-        link = to.encryptMessageFor(target.getKey().getEncoded(), from.secretBoxingKey);
+        link = to.encryptMessageFor(target.getKey(), from.secretBoxingKey);
     }
 
     public AsymmetricLink(byte[] link)

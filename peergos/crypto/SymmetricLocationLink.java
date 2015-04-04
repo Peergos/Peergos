@@ -15,12 +15,12 @@ public class SymmetricLocationLink
     public SymmetricLocationLink(SymmetricKey from, SymmetricKey to, Location loc, byte[] iv)
     {
         this.loc = loc.encrypt(from, iv);
-        link = ArrayOps.concat(iv, from.encrypt(to.getKey().getEncoded(), iv));
+        link = ArrayOps.concat(iv, from.encrypt(to.getKey(), iv));
     }
 
     public SymmetricLocationLink(SymmetricKey from, SymmetricKey to, Location loc)
     {
-        this(from, to, loc, SymmetricKey.randomIV());
+        this(from, to, loc, SymmetricKey.createNonce());
     }
 
     public SymmetricLocationLink(byte[] raw) throws IOException
@@ -41,20 +41,20 @@ public class SymmetricLocationLink
         return bout.toByteArray();
     }
 
-    public byte[] initializationVector()
+    public byte[] getNonce()
     {
-        return Arrays.copyOfRange(link, 0, SymmetricKey.IV_SIZE);
+        return Arrays.copyOfRange(link, 0, SymmetricKey.NONCE_BYTES);
     }
 
     public SymmetricKey target(SymmetricKey from)
     {
-        byte[] iv = initializationVector();
-        byte[] encoded = from.decrypt(Arrays.copyOfRange(link, SymmetricKey.IV_SIZE, link.length), iv);
+        byte[] iv = getNonce();
+        byte[] encoded = from.decrypt(Arrays.copyOfRange(link, SymmetricKey.NONCE_BYTES, link.length), iv);
         return new SymmetricKey(encoded);
     }
 
     public Location targetLocation(SymmetricKey from) throws IOException {
-        byte[] iv = initializationVector();
+        byte[] iv = getNonce();
         return Location.decrypt(from, iv, loc);
     }
 }

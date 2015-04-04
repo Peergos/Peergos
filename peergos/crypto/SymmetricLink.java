@@ -10,12 +10,12 @@ public class SymmetricLink
 
     public SymmetricLink(SymmetricKey from, SymmetricKey to, byte[] iv)
     {
-        link = ArrayOps.concat(iv, from.encrypt(to.getKey().getEncoded(), iv));
+        link = ArrayOps.concat(iv, from.encrypt(to.getKey(), iv));
     }
 
     public SymmetricLink(SymmetricKey from, SymmetricKey to)
     {
-        this(from, to, SymmetricKey.randomIV());
+        this(from, to, SymmetricKey.createNonce());
     }
 
     public SymmetricLink(byte[] link)
@@ -28,15 +28,15 @@ public class SymmetricLink
         return link;
     }
 
-    public byte[] initializationVector()
+    public byte[] getNonce()
     {
-        return Arrays.copyOfRange(link, 0, SymmetricKey.IV_SIZE);
+        return Arrays.copyOfRange(link, 0, SymmetricKey.NONCE_BYTES);
     }
 
     public SymmetricKey target(SymmetricKey from)
     {
-        byte[] iv = Arrays.copyOfRange(link, 0, SymmetricKey.IV_SIZE);
-        byte[] encoded = from.decrypt(Arrays.copyOfRange(link, SymmetricKey.IV_SIZE, link.length), iv);
+        byte[] iv = Arrays.copyOfRange(link, 0, SymmetricKey.NONCE_BYTES);
+        byte[] encoded = from.decrypt(Arrays.copyOfRange(link, SymmetricKey.NONCE_BYTES, link.length), iv);
         return new SymmetricKey(encoded);
     }
 }

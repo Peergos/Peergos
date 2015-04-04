@@ -15,7 +15,7 @@ public class SymmetricLinkToPrivate
 
     public SymmetricLinkToPrivate(SymmetricKey from, User to)
     {
-        this(from, to, SymmetricKey.randomIV());
+        this(from, to, SymmetricKey.createNonce());
     }
 
     public SymmetricLinkToPrivate(byte[] link)
@@ -30,8 +30,8 @@ public class SymmetricLinkToPrivate
 
     public User target(SymmetricKey from)
     {
-        byte[] iv = Arrays.copyOfRange(link, 0, SymmetricKey.IV_SIZE);
-        byte[] encoded = from.decrypt(Arrays.copyOfRange(link, SymmetricKey.IV_SIZE, link.length), iv);
+        byte[] nonce = Arrays.copyOfRange(link, 0, SymmetricKey.NONCE_BYTES);
+        byte[] encoded = from.decrypt(Arrays.copyOfRange(link, SymmetricKey.NONCE_BYTES, link.length), nonce);
         return User.deserialize(encoded);
     }
 }
