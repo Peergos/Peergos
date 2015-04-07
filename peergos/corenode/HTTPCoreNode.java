@@ -136,7 +136,7 @@ public class HTTPCoreNode extends AbstractCoreNode
         }
     }
 
-    @Override public boolean addUsername(String username, byte[] encodedUserKey, byte[] signedHash, byte[] staticData)
+    @Override public boolean addUsername(String username, byte[] encodedUserKey, byte[] signed, byte[] staticData)
     {
         HttpURLConnection conn = null;
         try
@@ -149,7 +149,7 @@ public class HTTPCoreNode extends AbstractCoreNode
 
             Serialize.serialize(username, dout);
             Serialize.serialize(encodedUserKey, dout);
-            Serialize.serialize(signedHash, dout);
+            Serialize.serialize(signed, dout);
             Serialize.serialize(staticData, dout);
             dout.flush();
             
@@ -475,7 +475,7 @@ public class HTTPCoreNode extends AbstractCoreNode
         }
     }
 
-    @Override public boolean registerFragmentStorage(String spaceDonor, InetSocketAddress node, String owner, byte[] encodedSharingKey, byte[] hash, byte[] signedKeyPlusHash)
+    @Override public boolean registerFragmentStorage(String spaceDonor, InetSocketAddress node, String owner, byte[] signedKeyPlusHash)
     {
         HttpURLConnection conn = null;
         try
@@ -491,8 +491,6 @@ public class HTTPCoreNode extends AbstractCoreNode
             Serialize.serialize(node.getAddress().getAddress(), dout);
             dout.writeInt(node.getPort());
             Serialize.serialize(owner, dout);
-            Serialize.serialize(encodedSharingKey, dout);
-            Serialize.serialize(hash, dout);
             Serialize.serialize(signedKeyPlusHash, dout);
             dout.flush();
 

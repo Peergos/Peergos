@@ -155,14 +155,14 @@ public abstract class AbstractCoreNode
 
     /*
      * @param userKey X509 encoded public key
-     * @param signedHash the SHA hash of bytes in the username, signed with the user private key 
+     * @param signature of bytes in the username, with the user private key
      * @param username the username that is being claimed
      */
-    public boolean addUsername(String username, byte[] encodedUserKey, byte[] signedHash, byte[] staticData)
+    public boolean addUsername(String username, byte[] encodedUserKey, byte[] signed, byte[] staticData)
     {
         UserPublicKey key = new UserPublicKey(encodedUserKey);
 
-        if (! key.isValidSignature(signedHash, UserPublicKey.hash(ArrayOps.concat(username.getBytes(), encodedUserKey, staticData))))
+        if (! key.isValidSignature(signed, ArrayOps.concat(username.getBytes(), encodedUserKey, staticData)))
             return false;
 
         return addUsername(username, key, new ByteArrayWrapper(staticData));
@@ -345,7 +345,7 @@ public abstract class AbstractCoreNode
                 return false;
         }
 
-        if (!sharingKey.isValidSignature(sharingKeySignedHash, UserPublicKey.hash(ArrayOps.concat(mapKey, metadataBlob))))
+        if (!sharingKey.isValidSignature(sharingKeySignedHash, ArrayOps.concat(mapKey, metadataBlob)))
             return false;
 
         return addMetadataBlob(username, sharingKey, mapKey, metadataBlob);
@@ -595,11 +595,12 @@ public abstract class AbstractCoreNode
         return blob.containsHash(hash);
     }
 
-    public boolean registerFragmentStorage(String spaceDonor, InetSocketAddress node, String owner, byte[] encodedSharingKey, byte[] hash, byte[] signedKeyPlusHash)
+    public boolean registerFragmentStorage(String spaceDonor, InetSocketAddress node, String owner, byte[] signedKeyPlusHash)
     {
+        byte[] encodedSharingKey = Arrays.copyOfRange(signedKeyPlusHash, TweetNaCl.SIGNATURE_SIZE_BYTES, TweetNaCl.SIGNATURE_SIZE_BYTES + UserPublicKey.SIZE);
+        byte[] hash = Arrays.copyOfRange(signedKeyPlusHash, TweetNaCl.SIGNATURE_SIZE_BYTES + UserPublicKey.SIZE, signedKeyPlusHash.length);
         UserPublicKey sharingPublicKey = new UserPublicKey(encodedSharingKey);
-        byte[] keyAndHash = ArrayOps.concat(encodedSharingKey, hash);
-        if (!sharingPublicKey.isValidSignature(signedKeyPlusHash, ArrayOps.concat(encodedSharingKey, hash)))
+        if (!sharingPublicKey.isValidSignature(signedKeyPlusHash, Arrays.copyOfRange(signedKeyPlusHash, TweetNaCl.SIGNATURE_SIZE_BYTES, signedKeyPlusHash.length)))
             return false;
 
         return registerFragmentStorage(spaceDonor, node, owner, sharingPublicKey, hash);

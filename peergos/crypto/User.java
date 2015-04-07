@@ -33,12 +33,6 @@ public class User extends UserPublicKey
         return pub;
     }
 
-    public byte[] hashAndSignMessage(byte[] input)
-    {
-        byte[] hash = hash(input);
-        return signMessage(hash);
-    }
-
     public byte[] signMessage(byte[] message)
     {
         return TweetNaCl.crypto_sign(message, secretSigningKey);

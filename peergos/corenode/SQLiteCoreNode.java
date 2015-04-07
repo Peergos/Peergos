@@ -675,9 +675,9 @@ public class SQLiteCoreNode extends AbstractCoreNode
         return super.getMetadataBlob(username, encodedSharingKey, mapkey);
     }
 
-    public boolean registerFragmentStorage(String spaceDonor, InetSocketAddress node, String owner, byte[] encodedSharingKey, byte[] hash, byte[] signedKeyPlusHash)
+    public boolean registerFragmentStorage(String spaceDonor, InetSocketAddress node, String owner, byte[] signedKeyPlusHash)
     {
-        if (! super.registerFragmentStorage(spaceDonor, node, owner, encodedSharingKey, hash, signedKeyPlusHash))
+        if (! super.registerFragmentStorage(spaceDonor, node, owner, signedKeyPlusHash))
             return false;
         return true; 
 

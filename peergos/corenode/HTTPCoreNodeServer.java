@@ -301,11 +301,9 @@ public class HTTPCoreNodeServer
             InetAddress node = InetAddress.getByAddress(address);
             int port = din.readInt();
             String owner = deserializeString(din);
-            byte[] encodedSharingKey = deserializeByteArray(din);
-            byte[] hash = deserializeByteArray(din);
-            byte[] signedStuff = deserializeByteArray(din);
+            byte[] signedKeyPlusHash = deserializeByteArray(din);
             
-            boolean isRegistered = coreNode.registerFragmentStorage(recipient, new InetSocketAddress(node, port), owner, encodedSharingKey, hash, signedStuff);
+            boolean isRegistered = coreNode.registerFragmentStorage(recipient, new InetSocketAddress(node, port), owner, signedKeyPlusHash);
             dout.writeBoolean(isRegistered);
         }
 

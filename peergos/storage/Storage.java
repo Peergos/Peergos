@@ -92,7 +92,7 @@ public class Storage
             return false;
         }
         Credentials cred = credentials.remove(key);
-        coreAPI.registerFragmentStorage(donor, us, cred.owner, cred.sharingKey, key.data, cred.proof);
+        coreAPI.registerFragmentStorage(donor, us, cred.owner, cred.proof);
         return true;
     }
 

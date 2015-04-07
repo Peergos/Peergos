@@ -55,21 +55,21 @@ public class CoreNode
             //add fragment
             //
             byte[] mapKey = new byte[10];
-            boolean addedFragment = coreNode.addMetadataBlob(username, follower.getPublicKeys(), mapKey, cipherText, follower.hashAndSignMessage(cipherText));
+            boolean addedFragment = coreNode.addMetadataBlob(username, follower.getPublicKeys(), mapKey, cipherText, follower.signMessage(cipherText));
             assertTrue("added fragment", !addedFragment);
 
             // add storage allowance
 
             int frags = 10;
             for (int i = 0; i < frags; i++) {
-                byte[] signature = follower.hashAndSignMessage(ArrayOps.concat(follower.getPublicKeys(), new byte[10 + i]));
-                coreNode.registerFragmentStorage(username, new InetSocketAddress("localhost", 666), username, follower.getPublicKeys(), new byte[10 + i], signature);
+                byte[] signed = follower.signMessage(ArrayOps.concat(follower.getPublicKeys(), new byte[10 + i]));
+                coreNode.registerFragmentStorage(username, new InetSocketAddress("localhost", 666), username, signed);
             }
             long quota = coreNode.getQuota(username);
             assertTrue("quota after registering fragment", quota == coreNode.fragmentLength() * frags);
 
             // try again adding fragment
-            addedFragment = coreNode.addMetadataBlob(username, follower.getPublicKeys(), mapKey, cipherText, follower.hashAndSignMessage(cipherText));
+            addedFragment = coreNode.addMetadataBlob(username, follower.getPublicKeys(), mapKey, cipherText, follower.signMessage(cipherText));
             assertTrue("added fragment", addedFragment);
 
 
@@ -80,8 +80,8 @@ public class CoreNode
 
             byte[] generatedHashes = new byte[UserPublicKey.HASH_BYTES *10];
             random.nextBytes(generatedHashes);
-            byte[] signedHash = follower.hashAndSignMessage(ArrayOps.concat(mapKey, cipherText, generatedHashes)); 
-            boolean addedHashes = coreNode.addFragmentHashes(username, follower.getPublicKeys(), mapKey, cipherText, ArrayOps.split(generatedHashes, UserPublicKey.HASH_BYTES), signedHash);
+            byte[] signed = follower.signMessage(ArrayOps.concat(mapKey, cipherText, generatedHashes));
+            boolean addedHashes = coreNode.addFragmentHashes(username, follower.getPublicKeys(), mapKey, cipherText, ArrayOps.split(generatedHashes, UserPublicKey.HASH_BYTES), signed);
             assertTrue("added hashes to metadatablob", addedHashes);
 
 

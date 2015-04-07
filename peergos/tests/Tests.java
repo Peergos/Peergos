@@ -9,12 +9,13 @@ import peergos.crypto.User;
 import peergos.user.DHTUserAPI;
 import peergos.user.MemoryDHTUserAPI;
 import peergos.user.UserContext;
-import peergos.util.Args;
+import peergos.util.*;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.*;
 import java.sql.SQLException;
-import java.util.List;
+import java.util.*;
 
 public class Tests
 {
@@ -92,5 +93,25 @@ public class Tests
         assert(reqs.size() == 1);
         UserContext.SharedRootDir root = alice.decodeFollowRequest(reqs.get(0));
         User sharer = root.owner;
+
+        // store a chunk in alice's space using the permitted sharing key (this could be alice or bob at this point)
+        int frags = 120;
+        int port = new Random(0).nextInt(Short.MAX_VALUE-1024) + 1024;
+
+        InetSocketAddress address = new InetSocketAddress("localhost", port);
+        for (int i = 0; i < frags; i++) {
+            byte[] frag = ArrayOps.random(32);
+            byte[] message = ArrayOps.concat(sharer.getPublicKeys(), frag);
+            byte[] signed = sharer.signMessage(message);
+            if (!core.registerFragmentStorage(ourname, address, ourname, signed)) {
+                System.out.println("Failed to register fragment storage!");
+            }
+        }
+        long quota = core.getQuota(ourname);
+        System.out.println("Generated quota: " + quota/1024 + " KiB");
+        long t1 = System.nanoTime();
+        UserContext.Test.mediumFileTest(alice.username, sharer, alice, bob);
+        long t2 = System.nanoTime();
+        System.out.printf("File test took %d mS\n", (t2 - t1) / 1000000);
     }
 }

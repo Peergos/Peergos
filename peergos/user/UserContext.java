@@ -56,8 +56,8 @@ public class UserContext
     public boolean register()
     {
         byte[] rawStatic = serializeStatic();
-        byte[] signedHash = us.hashAndSignMessage(ArrayOps.concat(username.getBytes(), us.getPublicKeys(), rawStatic));
-        return core.addUsername(username, us.getPublicKeys(), signedHash, rawStatic);
+        byte[] signed = us.signMessage(ArrayOps.concat(username.getBytes(), us.getPublicKeys(), rawStatic));
+        return core.addUsername(username, us.getPublicKeys(), signed, rawStatic);
     }
 
     public boolean isRegistered()
@@ -150,20 +150,20 @@ public class UserContext
 
     public boolean addSharingKey(UserPublicKey pub)
     {
-        byte[] signedHash = us.hashAndSignMessage(pub.getPublicKeys());
-        return core.allowSharingKey(username, pub.getPublicKeys(), signedHash);
+        byte[] signed = us.signMessage(pub.getPublicKeys());
+        return core.allowSharingKey(username, pub.getPublicKeys(), signed);
     }
 
     private boolean addToStaticData(UserPublicKey pub, StaticDataElement root)
     {
         staticData.put(pub, root);
         byte[] rawStatic = serializeStatic();
-        return core.updateStaticData(username, us.hashAndSignMessage(rawStatic), rawStatic);
+        return core.updateStaticData(username, us.signMessage(rawStatic), rawStatic);
     }
 
     private Future uploadFragment(Fragment f, String targetUser, User sharer, byte[] mapKey)
     {
-        return dht.put(f.getHash(), f.getData(), targetUser, sharer.getPublicKeys(), mapKey, sharer.hashAndSignMessage(ArrayOps.concat(sharer.getPublicKeys(), f.getHash())));
+        return dht.put(f.getHash(), f.getData(), targetUser, sharer.getPublicKeys(), mapKey, sharer.signMessage(ArrayOps.concat(sharer.getPublicKeys(), f.getHash())));
     }
 
     private boolean uploadChunk(Metadata meta, Fragment[] fragments, String target, User sharer, byte[] mapKey)
@@ -178,10 +178,10 @@ public class UserContext
         List<ByteArrayWrapper> allHashes = meta.getFragmentHashes();
         byte[] metaBlob = bout.toByteArray();
         System.out.println("Storing metadata blob of "+metaBlob.length + " bytes.");
-        if (!core.addMetadataBlob(target, sharer.getPublicKeys(), mapKey, metaBlob, sharer.hashAndSignMessage(metaBlob)))
+        if (!core.addMetadataBlob(target, sharer.getPublicKeys(), mapKey, metaBlob, sharer.signMessage(metaBlob)))
             System.out.println("Meta blob store failed.");
         if (fragments.length > 0 ) {
-            core.addFragmentHashes(target, sharer.getPublicKeys(), mapKey, metaBlob, meta.getFragmentHashes(), sharer.hashAndSignMessage(ArrayOps.concat(mapKey, metaBlob, ArrayOps.concat(allHashes))));
+            core.addFragmentHashes(target, sharer.getPublicKeys(), mapKey, metaBlob, meta.getFragmentHashes(), sharer.signMessage(ArrayOps.concat(mapKey, metaBlob, ArrayOps.concat(allHashes))));
 
             // now upload fragments to DHT
             List<Future<Object>> futures = new ArrayList();
@@ -463,8 +463,8 @@ public class UserContext
                 for (int i = 0; i < frags; i++) {
                     byte[] frag = ArrayOps.random(32);
                     byte[] message = ArrayOps.concat(sharer.getPublicKeys(), frag);
-                    byte[] signature = sharer.hashAndSignMessage(message);
-                    if (!clientCoreNode.registerFragmentStorage(friendName, address, friendName, sharer.getPublicKeys(), frag, signature)) {
+                    byte[] signed = sharer.signMessage(message);
+                    if (!clientCoreNode.registerFragmentStorage(friendName, address, friendName, signed)) {
                         System.out.println("Failed to register fragment storage!");
                     }
                 }
@@ -485,7 +485,7 @@ public class UserContext
 
 
 
-        public void mediumFileTest(String owner, User sharer, UserContext receiver, UserContext sender) {
+        public static void mediumFileTest(String owner, User sharer, UserContext receiver, UserContext sender) {
             // create a root dir and a file to it, then retrieve and decrypt the file using the receiver
             // create root cryptree
             SymmetricKey rootRKey = SymmetricKey.random();
