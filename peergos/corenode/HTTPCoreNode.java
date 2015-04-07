@@ -242,7 +242,7 @@ public class HTTPCoreNode extends AbstractCoreNode
         }
     }
    
-   @Override public boolean allowSharingKey(String username, byte[] encodedSharingPublicKey, byte[] signedHash)
+   @Override public boolean allowSharingKey(String username, byte[] signedSharingPublicKey)
     {
         HttpURLConnection conn = null;
         try
@@ -255,8 +255,7 @@ public class HTTPCoreNode extends AbstractCoreNode
 
 
             Serialize.serialize(username, dout);
-            Serialize.serialize(encodedSharingPublicKey, dout);
-            Serialize.serialize(signedHash, dout);
+            Serialize.serialize(signedSharingPublicKey, dout);
             dout.flush();
 
             DataInputStream din = new DataInputStream(conn.getInputStream());

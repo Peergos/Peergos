@@ -1,8 +1,6 @@
 package peergos.user.fs;
 
-import peergos.crypto.SymmetricKey;
-import peergos.crypto.User;
-import peergos.crypto.UserPublicKey;
+import peergos.crypto.*;
 
 import javax.crypto.*;
 import java.security.*;

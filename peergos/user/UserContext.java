@@ -151,7 +151,7 @@ public class UserContext
     public boolean addSharingKey(UserPublicKey pub)
     {
         byte[] signed = us.signMessage(pub.getPublicKeys());
-        return core.allowSharingKey(username, pub.getPublicKeys(), signed);
+        return core.allowSharingKey(username, signed);
     }
 
     private boolean addToStaticData(UserPublicKey pub, StaticDataElement root)
@@ -178,7 +178,7 @@ public class UserContext
         List<ByteArrayWrapper> allHashes = meta.getFragmentHashes();
         byte[] metaBlob = bout.toByteArray();
         System.out.println("Storing metadata blob of "+metaBlob.length + " bytes.");
-        if (!core.addMetadataBlob(target, sharer.getPublicKeys(), mapKey, metaBlob, sharer.signMessage(metaBlob)))
+        if (!core.addMetadataBlob(target, sharer.getPublicKeys(), mapKey, metaBlob, sharer.signMessage(ArrayOps.concat(mapKey, metaBlob))))
             System.out.println("Meta blob store failed.");
         if (fragments.length > 0 ) {
             core.addFragmentHashes(target, sharer.getPublicKeys(), mapKey, metaBlob, meta.getFragmentHashes(), sharer.signMessage(ArrayOps.concat(mapKey, metaBlob, ArrayOps.concat(allHashes))));

@@ -270,15 +270,16 @@ public abstract class AbstractCoreNode
      * @param signedHash the SHA hash of userBencodedKey, signed with the user private key 
      * @param encodedFriendName the bytes of the friendname sined with userKey 
      */
-    public boolean allowSharingKey(String username, byte[] encodedSharingPublicKey, byte[] signedHash)
+    public boolean allowSharingKey(String username, byte[] signedSharingPublicKey)
     {
         UserPublicKey key = null; 
         synchronized(this)
         {
             key = userNameToPublicKeyMap.get(username);
         }
+        byte[] encodedSharingPublicKey = Arrays.copyOfRange(signedSharingPublicKey, TweetNaCl.SIGNATURE_SIZE_BYTES, signedSharingPublicKey.length);
 
-        if (key == null || ! key.isValidSignature(signedHash, UserPublicKey.hash(encodedSharingPublicKey)))
+        if (key == null || ! key.isValidSignature(signedSharingPublicKey, encodedSharingPublicKey))
             return false;
 
         return allowSharingKey(username, new UserPublicKey(encodedSharingPublicKey));

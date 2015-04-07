@@ -54,10 +54,6 @@ public class Tests
         }
     }
 
-    public static void JavaJavascriptCompatibilityTests() {
-
-    }
-
     public static void localTests() {
         System.out.println("Doing local tests..");
         try {
@@ -110,7 +106,7 @@ public class Tests
         long quota = core.getQuota(ourname);
         System.out.println("Generated quota: " + quota/1024 + " KiB");
         long t1 = System.nanoTime();
-        UserContext.Test.mediumFileTest(alice.username, sharer, alice, bob);
+        UserContext.Test.mediumFileTest(bob.username, sharer, bob, alice);
         long t2 = System.nanoTime();
         System.out.printf("File test took %d mS\n", (t2 - t1) / 1000000);
     }

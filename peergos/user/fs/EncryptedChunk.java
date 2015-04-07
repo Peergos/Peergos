@@ -1,7 +1,6 @@
 package peergos.user.fs;
 
-import peergos.crypto.SymmetricKey;
-import peergos.crypto.User;
+import peergos.crypto.*;
 import peergos.user.fs.erasure.Erasure;
 
 public class EncryptedChunk
@@ -13,8 +12,8 @@ public class EncryptedChunk
 
     public EncryptedChunk(byte[] encrypted)
     {
-        if (encrypted.length > Chunk.MAX_SIZE)
-            throw new IllegalArgumentException("Encrypted chunk size ("+encrypted.length+") must be smaller than " + Chunk.MAX_SIZE);
+        if (encrypted.length > Chunk.MAX_SIZE + TweetNaCl.SECRETBOX_OVERHEAD_BYTES)
+            throw new IllegalArgumentException("Encrypted chunk size ("+encrypted.length+") must be at most " + (Chunk.MAX_SIZE + TweetNaCl.SECRETBOX_OVERHEAD_BYTES));
         this.encrypted = encrypted;
         hash = User.hash(encrypted);
     }

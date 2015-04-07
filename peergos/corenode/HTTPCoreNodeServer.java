@@ -180,10 +180,9 @@ public class HTTPCoreNodeServer
         void allowSharingKey(DataInputStream din, DataOutputStream dout) throws IOException
         {
             String username = deserializeString(din);
-            byte[] encodedSharingPublicKey = deserializeByteArray(din);
-            byte[] signedHash = deserializeByteArray(din);
+            byte[] signedSharingPublicKey = deserializeByteArray(din);
 
-            boolean isAllowed = coreNode.allowSharingKey(username, encodedSharingPublicKey, signedHash);
+            boolean isAllowed = coreNode.allowSharingKey(username, signedSharingPublicKey);
             dout.writeBoolean(isAllowed);
         }
 
