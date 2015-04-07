@@ -28,7 +28,7 @@ public class FileAccess extends Metadata
 
     public FileAccess(UserPublicKey owner, SymmetricKey parentKey, FileProperties metadata, List<ByteArrayWrapper> fragments)
     {
-        this(owner, null, SymmetricKey.random(), parentKey, metadata, fragments, metadata.getIV());
+        this(owner, null, SymmetricKey.random(), parentKey, metadata, fragments, metadata.getNonce());
     }
 
     public FileAccess(byte[] m, byte[] p2m, Map<UserPublicKey, AsymmetricLink> sharingR)

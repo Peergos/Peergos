@@ -1,6 +1,6 @@
 package peergos.user.fs;
 
-import peergos.crypto.SymmetricKey;
+import peergos.crypto.*;
 import peergos.util.Serialize;
 
 import java.io.*;
@@ -8,15 +8,18 @@ import java.io.*;
 public class ChunkProperties
 {
     private final byte[] nonce;
+    private final byte[] auth;
     private final Location next;
 
-    public ChunkProperties(byte[] nonce, Location next) {
+    public ChunkProperties(byte[] nonce, byte[] auth, Location next) {
         this.nonce = nonce;
+        this.auth = auth;
         this.next = next;
     }
 
     public ChunkProperties(DataInput din) throws IOException {
         nonce = Serialize.deserializeByteArray(din, SymmetricKey.NONCE_BYTES);
+        auth = Serialize.deserializeByteArray(din, TweetNaCl.SECRETBOX_OVERHEAD_BYTES);
         boolean hasNext = din.readBoolean();
         if (hasNext)
             next = Location.deserialise(din);
@@ -35,6 +38,7 @@ public class ChunkProperties
 
     public void serialise(DataOutputStream dout) throws IOException {
         Serialize.serialize(nonce, dout);
+        Serialize.serialize(auth, dout);
         if (next == null)
             dout.writeBoolean(false);
         else {
@@ -48,8 +52,12 @@ public class ChunkProperties
         return false;
     }
 
-    public byte[] getIV() {
+    public byte[] getNonce() {
         return nonce;
+    }
+
+    public byte[] getAuth() {
+        return auth;
     }
 
     public Location getNextChunkLocation() {

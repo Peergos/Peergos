@@ -40,7 +40,7 @@ public class DirAccess extends Metadata
     public DirAccess(User owner, SymmetricKey subfoldersKey, FileProperties metadata, SymmetricKey subfoldersKeyW)
     {
         this(owner, SymmetricKey.random(), SymmetricKey.random(), SymmetricKey.random(), subfoldersKey, null, metadata,
-                User.random(), subfoldersKeyW, null, metadata.getIV());
+                User.random(), subfoldersKeyW, null, metadata.getNonce());
     }
 
     public DirAccess(Map<UserPublicKey, AsymmetricLink> sharingR, byte[] s2f, byte[] s2p, byte[] p2m, byte[] metadata,

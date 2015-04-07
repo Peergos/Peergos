@@ -60,10 +60,11 @@ public class Tests
             DHTUserAPI dht = new MemoryDHTUserAPI();
             AbstractCoreNode core = new SQLiteCoreNode("testDB.sqlite");
             contextTests(dht, core);
-        } catch (SQLException e) {
+        } catch (Exception e) {
             e.printStackTrace();
         } finally {
             new File("testDB.sqlite").delete();
+            System.exit(-1);
         }
     }
 
