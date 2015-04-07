@@ -6,8 +6,7 @@ import com.sun.net.httpserver.HttpServer;
 import peergos.corenode.AbstractCoreNode;
 import peergos.corenode.HTTPCoreNodeServer;
 import peergos.storage.dht.DHTAPI;
-import peergos.util.Args;
-import peergos.util.Serialize;
+import peergos.util.*;
 
 import java.io.*;
 import java.net.InetAddress;
@@ -56,9 +55,9 @@ public class UserContextProxy implements HttpHandler
 
             } else if (path.startsWith("dht/get")) {
                 byte[] key = Serialize.deserializeByteArray(din, 1024);
-                Future<byte[]> fut = dht.get(key);
+                Future<ByteArrayWrapper> fut = dht.get(key);
                 try {
-                    byte[] response = fut.get(100, TimeUnit.SECONDS);
+                    byte[] response = fut.get(100, TimeUnit.SECONDS).data;
                     dout.write(response);
                 } catch (InterruptedException | TimeoutException | ExecutionException ex) {
                     dout.writeBoolean(false);

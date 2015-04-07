@@ -5,7 +5,7 @@ import peergos.crypto.SSL;
 import peergos.storage.dht.Message;
 import peergos.storage.net.HttpsMessenger;
 import peergos.user.fs.Fragment;
-import peergos.util.Serialize;
+import peergos.util.*;
 
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
@@ -139,9 +139,9 @@ public class HttpsUserAPI extends DHTUserAPI
     }
 
     @Override
-    public Future<byte[]> get(final byte[] key) {
-        Future<byte[]> f = executor.submit(new Callable<byte[]>() {
-            public byte[] call() {
+    public Future<ByteArrayWrapper> get(final byte[] key) {
+        Future<ByteArrayWrapper> f = executor.submit(new Callable<ByteArrayWrapper>() {
+            public ByteArrayWrapper call() {
                 HttpsURLConnection conn = null;
                 try
                 {
@@ -156,7 +156,7 @@ public class HttpsUserAPI extends DHTUserAPI
 
                     DataInputStream din = new DataInputStream(conn.getInputStream());
                     int success = din.readInt();
-                    return Serialize.deserializeByteArray(din, Fragment.SIZE);
+                    return new ByteArrayWrapper(Serialize.deserializeByteArray(din, Fragment.SIZE));
                 } catch (IOException ioe) {
                     ioe.printStackTrace();
                 } finally {

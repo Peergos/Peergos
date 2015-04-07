@@ -1,5 +1,7 @@
 package peergos.user;
 
+import peergos.util.*;
+
 import java.util.concurrent.Future;
 
 public abstract class DHTUserAPI
@@ -8,7 +10,7 @@ public abstract class DHTUserAPI
 
     public abstract Future<Boolean> contains(byte[] key);
 
-    public abstract Future<byte[]> get(byte[] key);
+    public abstract Future<ByteArrayWrapper> get(byte[] key);
 
     public abstract void shutdown();
 }

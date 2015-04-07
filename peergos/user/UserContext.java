@@ -7,8 +7,6 @@ import peergos.crypto.SymmetricLocationLink;
 import peergos.crypto.User;
 import peergos.crypto.UserPublicKey;
 import peergos.storage.dht.FutureWrapper;
-import peergos.storage.dht.OnFailure;
-import peergos.storage.dht.OnSuccess;
 import peergos.user.fs.*;
 import peergos.user.fs.erasure.Erasure;
 import peergos.util.ArrayOps;
@@ -208,14 +206,14 @@ public class UserContext
     {
         List<ByteArrayWrapper> hashes = meta.getFragmentHashes();
         Fragment[] res = new Fragment[hashes.size()];
-        List<Future<byte[]>> futs = new ArrayList<Future<byte[]>>(res.length);
+        List<Future<ByteArrayWrapper>> futs = new ArrayList<>(res.length);
         for (int i=0; i < res.length; i++)
             futs.add(dht.get(hashes.get(i).data));
-        Countdown<byte[]> first50 = new Countdown<byte[]>(50, futs, executor);
+        Countdown<ByteArrayWrapper> first50 = new Countdown<>(50, futs, executor);
         first50.await();
-        List<Fragment> frags = new ArrayList<Fragment>();
-        for (byte[] frag: first50.results)
-            frags.add(new Fragment(frag));
+        List<Fragment> frags = new ArrayList<>();
+        for (ByteArrayWrapper frag: first50.results)
+            frags.add(new Fragment(frag.data));
         return frags.toArray(new Fragment[frags.size()]);
     }
 
@@ -346,27 +344,20 @@ public class UserContext
     {
         CountDownLatch left;
         AtomicInteger failuresAllowed;
-        List<Throwable> errors = Collections.synchronizedList(new ArrayList());
-        List<V> results;
+        List<Throwable> errors = Collections.synchronizedList(new ArrayList<>());
+        Set<V> results = new ConcurrentSkipListSet<>();
 
         public Countdown(int needed, List<Future<V>> futs, ExecutorService context)
         {
             left = new CountDownLatch(needed);
-            results = new CopyOnWriteArrayList<V>();
             failuresAllowed = new AtomicInteger(futs.size()-needed);
             for (Future<V> fut: futs)
-                FutureWrapper.followWith(fut, new OnSuccess<V>() {
-                    @Override
-                    public void onSuccess(V o) {
-                        left.countDown();
-                        results.add(o);
-                    }
-                }, new OnFailure() {
-                    @Override
-                    public void onFailure(Throwable e) {
-                        failuresAllowed.decrementAndGet();
-                        errors.add(e);
-                    }
+                FutureWrapper.followWith(fut, o -> {
+                    results.add((V)o);
+                    left.countDown();
+                }, e -> {
+                    failuresAllowed.decrementAndGet();
+                    errors.add(e);
                 }, context);
         }
 
