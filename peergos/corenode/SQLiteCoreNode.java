@@ -17,7 +17,7 @@ public class SQLiteCoreNode extends AbstractCoreNode
     private static final String CREATE_FOLLOW_REQUESTS_TABLE = "create table followrequests (id integer primary key autoincrement, name text not null, publickey text not null);";
     private static final String CREATE_SHARING_KEYS_TABLE = "create table sharingkeys (id integer primary key autoincrement, name text not null, publickey text not null);";
     private static final String CREATE_FRAGMENTS_TABLE = "create table fragments (id integer primary key autoincrement, sharingkeyid not null, mapkey text not null, fragmentdata text not null);";
-    private static final String CREATE_STORAGE_TABLE = "create table storage (id integer primary key autoincrement, address text not null, port integer not null, text owner not null, fraction double not null);";
+    private static final String CREATE_STORAGE_TABLE = "create table storage (id integer primary key autoincrement, address text not null, port integer not null, owner text not null, fraction double not null);";
     private static final String CREATE_FRAGMENTHASHES_TABLE = "create table fragmenthashes (id integer primary key autoincrement, storageid integer not null, hash text not null);";
 
     private static final Map<String,String> TABLES = new HashMap<String,String>();
@@ -320,7 +320,7 @@ public class SQLiteCoreNode extends AbstractCoreNode
             PreparedStatement stmt = null;
             try
             {
-                stmt = conn.prepareStatement("insert into storage(address, port, owner, fraction) VALUE(?, ?, ?, ?);");
+                stmt = conn.prepareStatement("insert into storage(address, port, owner, fraction) VALUES(?, ?, ?, ?);");
                 stmt.setString(1,address);
                 stmt.setInt(2,port);
                 stmt.setString(3,owner);
