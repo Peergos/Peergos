@@ -10,6 +10,7 @@ java -jar PeergosTests.jar -local
 ```
 
 ###Single machine, two process, persistent testing
+First download the unlimited strength jurisdiction policy jars from Oracle.
 Start a local 5 node cluster with
 ```bash
 make server
@@ -28,10 +29,11 @@ Start a 5 node cluster on machineA with
 ```bash
 make server
 ./bootstrap $machineA_IP
+make tests
 java -jar PeergosServer.jar -test 5 -script testscripts/empty.txt
 ```
 
-On machineB, run
+On machineB, copy the jar from machineA and run
 ```bash
 java -jar PeergosTests.jar -clusterAddress $machineA_IP -coreAddress $machineA_IP
 ```
