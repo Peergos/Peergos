@@ -33,7 +33,7 @@ public class DirectoryServer
     private final Certificate ourCert;
     private final KeyPair signing;
     private final HttpServer server;
-    private final String commonName;
+
     private byte[] cachedServerList = null;
     private byte[] cachedCoreServerList = null;
 
@@ -43,11 +43,13 @@ public class DirectoryServer
         Certificate[] dirs = SSL.getDirectoryServerCertificates();
         signing = SSL.loadKeyPair(keyfile, passphrase);
         //start HTTP server
-        InetSocketAddress address = new InetSocketAddress(InetAddress.getLocalHost(), port);
-        commonName = Args.getArg("domain", address.getHostName());
+
+        String hostname = Args.getArg("domain", "localhost");
+        InetSocketAddress address = new InetSocketAddress(hostname, port);
+
         Certificate tmp = null;
         for (Certificate dir: dirs)
-            if (SSL.getCommonName(dir).equals(commonName))
+            if (SSL.getCommonName(dir).equals(hostname))
                 tmp = dir;
         ourCert = tmp;
         for (Certificate cert: SSL.getCoreServerCertificates())

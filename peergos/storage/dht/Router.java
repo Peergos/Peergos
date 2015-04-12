@@ -49,7 +49,9 @@ public class Router
         LOGGER.setLevel(Level.ALL);
         storage = new Storage(donor, new File(DATA_DIR), MAX_STORAGE_SIZE, messengerAddress);
         userAPI = new HttpsMessenger(new InetSocketAddress(userAPIAddress.getPort()), LOGGER, this);
-        messenger = new HttpMessenger(new InetSocketAddress(InetAddress.getLocalHost(), messengerAddress.getPort()), storage, LOGGER, this);
+        String hostname = Args.getArg("domain", "localhost");
+        InetAddress localHost = InetAddress.getByName(hostname);
+        messenger = new HttpMessenger(new InetSocketAddress(localHost, messengerAddress.getPort()), storage, LOGGER, this);
     }
 
     public NodeID address() {

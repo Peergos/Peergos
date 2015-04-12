@@ -7,6 +7,7 @@ import java.net.*;
 import java.io.*;
 
 import com.sun.net.httpserver.*;
+import peergos.util.Args;
 import peergos.util.ArrayOps;
 import peergos.util.Serialize;
 
@@ -379,7 +380,9 @@ public class HTTPCoreNodeServer
     {
         // eventually will need our own keypair to sign traffic to other core nodes our register ourselves with directory servers
         try {
-            HTTPCoreNodeServer server = new HTTPCoreNodeServer(AbstractCoreNode.getDefault(), new InetSocketAddress(InetAddress.getLocalHost(), port));
+            String hostname = Args.getArg("domain", "localhost");
+            InetSocketAddress address = new InetSocketAddress(hostname, port);
+            HTTPCoreNodeServer server = new HTTPCoreNodeServer(AbstractCoreNode.getDefault(), address);
             server.start();
         } catch (Exception e)
         {
