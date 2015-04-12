@@ -34,11 +34,11 @@ public class HTTPCoreNodeServer
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
             DataOutputStream dout = new DataOutputStream(bout);
             
-            String path = exchange.getHttpContext().getPath();
-            String method = path.substring(path.indexOf("/"));
-            //System.out.println("method "+ method);
-            try
-            {
+            String path = exchange.getRequestURI().getPath();
+            String method = path.substring(path.indexOf("/")+1);
+            //System.out.println("method "+ method +" from path "+ path);
+
+            try {
                 switch (method)
                 {
                     case "core/addUsername":

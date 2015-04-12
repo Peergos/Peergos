@@ -448,8 +448,9 @@ public class UserContext
 
                 // store a chunk in alice's space using the permitted sharing key (this could be alice or bob at this point)
                 int frags = 120;
-                int port = (int) System.currentTimeMillis() % (Short.MAX_VALUE -1024) + 1024;
-
+//                int port = (int) System.currentTimeMillis() % (Short.MAX_VALUE -1024) + 1024;
+                int extra = (int)(System.currentTimeMillis() % (Short.MAX_VALUE - 1024));
+                int port = 1024 + extra;
                 InetSocketAddress address = new InetSocketAddress("localhost", port);
                 for (int i = 0; i < frags; i++) {
                     byte[] frag = ArrayOps.random(32);
