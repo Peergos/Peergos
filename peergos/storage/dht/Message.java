@@ -190,9 +190,9 @@ public abstract class Message
             len = in.readInt();
             target = ArrayOps.getLong(key, 0);
             user = Serialize.deserializeString(in, UserContext.MAX_USERNAME_SIZE);
-            sharingKey = Serialize.deserializeByteArray(in, UserContext.MAX_KEY_SIZE);
-            mapKey = Serialize.deserializeByteArray(in, UserContext.MAX_KEY_SIZE);
-            proof = Serialize.deserializeByteArray(in, UserContext.MAX_KEY_SIZE);
+            sharingKey = Serialize.deserializeByteArray(in, 64);
+            mapKey = Serialize.deserializeByteArray(in, 32);
+            proof = Serialize.deserializeByteArray(in, 4096);
         }
 
         public long getTarget()
