@@ -163,6 +163,7 @@ public class SSL
         ks.load(null, password);
         KeyPair keypair = generateKeyPair();
         String ip = IPMappings.getMyPublicAddress(IPMappings.STORAGE_PORT).getHostName();
+        System.out.println("Generating an SSL certificate for "+ip);
         PKCS10CertificationRequest csr = generateCSR(password, ip, ip, keypair, "storage.csr");
         PrivateKey myPrivateKey = keypair.getPrivate();
 
@@ -347,6 +348,7 @@ public class SSL
         if (commonName.equals("localhost"))
             ipAddress = "127.0.0.1";
         if (ipAddress != null && isIPAddress(ipAddress)) {
+            System.out.println("Adding SAN to SSL certificate");
             GeneralNames subjectAltName = new GeneralNames(new GeneralName(GeneralName.iPAddress, ipAddress));
             Extension[] ext = new Extension[]{new Extension(Extension.subjectAlternativeName, false, new DEROctetString(subjectAltName))};
             PKCS10CertificationRequest csr = requestBuilder.addAttribute(PKCSObjectIdentifiers.pkcs_9_at_extensionRequest,
@@ -373,7 +375,9 @@ public class SSL
     {
         try {
             PKCS10CertificationRequest csr = loadCSR(csrFile);
-            return signCertificateWithRoot(rootPassword, csr, type);
+            Certificate cert = signCertificateWithRoot(rootPassword, csr, type);
+            new File(csrFile).delete();
+            return cert;
         } catch (IOException e)
         {
             e.printStackTrace();
