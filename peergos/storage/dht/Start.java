@@ -103,8 +103,10 @@ public class Start
         }
         else {
             int port = Args.getInt("port", 8000);
-            InetSocketAddress userAPIAddr = IPMappings.getMyPublicAddress(port);
-            InetSocketAddress messengerAddr = IPMappings.getMyPublicAddress(port + 1);
+            String domain = Args.getArg("domain", "localhost");
+            InetSocketAddress userAPIAddr = new InetSocketAddress(domain, port);
+            InetSocketAddress messengerAddr = new InetSocketAddress(domain, port+1);
+
             String user = Args.getArg("user", "root");
             boolean isFirstNode = Args.hasArg("firstNode");
             InetAddress contactIP = isFirstNode ? null : InetAddress.getByName(Args.getArg("contactIP"));
@@ -125,19 +127,25 @@ public class Start
         if (!Args.hasArg("script"))
             throw new IllegalStateException("Need a script argument for test mode");
         String script = Args.getArg("script");
-        Start.main(new String[] {"-directoryServer", "-local", "-domain", "localhost"});
+        String domain = Args.getArg("domain", "localhost");
+        Start.main(new String[] {"-directoryServer", "-local", "-domain", domain});
 
-        Start.main(new String[] {"-coreNode", "-local"});
+
+        if (domain.equals("localhost"))
+            Start.main(new String[] {"-coreNode", "-local"});
+        else
+            Start.main(new String[] {"-coreNode", "-domain", domain});
+
 
         String[] args;
         if (nodes > 1 )
-            args = new String[]{"-firstNode", "-port", "8000", "-logMessages", "-local"};//, "-script", script};
+            args = new String[]{"-firstNode", "-port", "8000", "-logMessages", "-domain", domain};//, "-script", script};
         else
-            args = new String[]{"-firstNode", "-port", "8000", "-logMessages", "-local", "-script", script};
+            args = new String[]{"-firstNode", "-port", "8000", "-logMessages", "-domain", domain, "-script", script};
         Start.main(args);
         if (nodes == 1)
             return;
-        args = new String[]{"-port", "", "-logMessages", "-local", "-contactIP", "localhost", "-contactPort", args[2]};
+        args = new String[]{"-port", "", "-logMessages", "-local", "-contactIP", domain, "-contactPort", args[2], "-domain", domain};
         if (nodes > 1)
             for (int i = 0; i < nodes - 2; i++)
             {

@@ -32,6 +32,7 @@ public class HttpsUserAPI extends DHTUserAPI
     public HttpsUserAPI(InetSocketAddress target) throws IOException
     {
         this.target = new URL("https", target.getHostString(), target.getPort(), HttpsMessenger.USER_URL);
+        System.out.println("Creating HTTPSUserAPI with target "+ target);
         init();
     }
 

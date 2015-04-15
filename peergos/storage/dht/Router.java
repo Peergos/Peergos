@@ -48,10 +48,14 @@ public class Router
         LOGGER.addHandler(handler);
         LOGGER.setLevel(Level.ALL);
         storage = new Storage(donor, new File(DATA_DIR), MAX_STORAGE_SIZE, messengerAddress);
-        userAPI = new HttpsMessenger(new InetSocketAddress(userAPIAddress.getPort()), LOGGER, this);
+
         String hostname = Args.getArg("domain", "localhost");
-        InetAddress localHost = InetAddress.getByName(hostname);
-        messenger = new HttpMessenger(new InetSocketAddress(localHost, messengerAddress.getPort()), storage, LOGGER, this);
+
+        InetSocketAddress httpsMessengerAddress = new InetSocketAddress(hostname, userAPIAddress.getPort());
+        userAPI = new HttpsMessenger(httpsMessengerAddress, LOGGER, this);
+
+        InetSocketAddress local = new InetSocketAddress(hostname, messengerAddress.getPort());
+        messenger = new HttpMessenger(local, storage, LOGGER, this);
     }
 
     public NodeID address() {
