@@ -3,39 +3,26 @@ Testing
 
 These are in increasing order of difficulty and each assumes nothing but fresh git clone.
 
-###Single machine, single process, in-memory testing
+###Java - Single machine, single process, in-memory testing
 ```bash
 make tests
 java -jar PeergosTests.jar -local
 ```
 
-###Single machine, two process, persistent testing
-First download the unlimited strength jurisdiction policy jars from Oracle.
-Start a local 5 node cluster with
-```bash
-make server
-./bootstrap.sh localhost
-java -jar PeergosServer.jar -test 5 -script testscripts/empty.txt
-```
-
-In another terminal, run
+###Javascript - Single machine, single process, in-memory testing
 ```bash
 make tests
-java -jar PeergosTests.jar
+java -jar PeergosTests.jar -localJS
 ```
 
-###Two machine, persistent testing
-Start a 5 node cluster on machineA with
+###Single machine, persistent testing
+Start a 5 node cluster with
 ```bash
-make server
-./bootstrap $machineA_IP
+./bootstrap $machine_IP
 make tests
-java -jar PeergosServer.jar -test 5 -script testscripts/empty.txt
-```
-
-On machineB, copy the jar from machineA and run
-```bash
-java -jar PeergosTests.jar -clusterAddress $machineA_IP -coreAddress $machineA_IP
+make server
+java -jar PeergosServer.jar -test 5 -script testscripts/empty.txt -domain $machine_IP
+java -jar PeergosTests.jar -clusterAddress $machine_IP -coreAddress $machine_IP
 ```
 
 ###Distributed test
