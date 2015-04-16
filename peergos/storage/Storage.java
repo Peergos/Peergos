@@ -70,6 +70,8 @@ public class Storage
         boolean res = totalSize.get() + promisedSize.get() + size < maxBytes;
         if (res)
             promisedSize.getAndAdd(size);
+        else
+            System.out.println("Storage rejecting fragment store: Not within size limits");
         pending.put(fragmentHash, size);
         credentials.put(fragmentHash, new Credentials(owner, sharingKey, proof));
         return res;

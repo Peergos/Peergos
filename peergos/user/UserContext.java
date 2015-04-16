@@ -490,8 +490,9 @@ public class UserContext
 
             // generate file (two chunks)
             Random r = new Random();
-            byte[] nonce = new byte[SymmetricKey.NONCE_BYTES];
-            r.nextBytes(nonce);
+            byte[] nonce1 = new byte[SymmetricKey.NONCE_BYTES];
+            byte[] nonce2 = new byte[SymmetricKey.NONCE_BYTES];
+            r.nextBytes(nonce1);
             byte[] raw1 = new byte[Chunk.MAX_SIZE];
             byte[] raw2 = new byte[Chunk.MAX_SIZE];
             byte[] template = "Hello secure cloud! Goodbye NSA!".getBytes();
@@ -513,23 +514,23 @@ public class UserContext
 
             // 1st chunk
             Chunk chunk1 = new Chunk(raw1, fileKey);
-            EncryptedChunk encryptedChunk1 = new EncryptedChunk(chunk1.encrypt(nonce));
+            EncryptedChunk encryptedChunk1 = new EncryptedChunk(chunk1.encrypt(nonce1));
             Fragment[] fragments1 = encryptedChunk1.generateFragments();
             List<ByteArrayWrapper> hashes1 = new ArrayList(fragments1.length);
             for (Fragment f : fragments1)
                 hashes1.add(new ByteArrayWrapper(f.getHash()));
-            FileProperties props1 = new FileProperties(filename, nonce, encryptedChunk1.getAuth(), raw1.length + raw2.length, chunk2Location);
+            FileProperties props1 = new FileProperties(filename, nonce1, encryptedChunk1.getAuth(), raw1.length + raw2.length, chunk2Location);
             FileAccess file = new FileAccess(sharer, fileKey, props1, hashes1);
 
             // 2nd chunk
             Chunk chunk2 = new Chunk(raw2, fileKey);
-            EncryptedChunk encryptedChunk2 = new EncryptedChunk(chunk2.encrypt(nonce));
+            EncryptedChunk encryptedChunk2 = new EncryptedChunk(chunk2.encrypt(nonce2));
             Fragment[] fragments2 = encryptedChunk2.generateFragments();
             List<ByteArrayWrapper> hashes2 = new ArrayList(fragments2.length);
             for (Fragment f : fragments2)
                 hashes2.add(new ByteArrayWrapper(f.getHash()));
-            ChunkProperties props2 = new ChunkProperties(nonce, encryptedChunk2.getAuth(), null);
-            Metadata meta2 = new Metadata(props2, fileKey, nonce);
+            ChunkProperties props2 = new ChunkProperties(nonce2, encryptedChunk2.getAuth(), null);
+            Metadata meta2 = new Metadata(props2, fileKey, nonce2);
             meta2.setFragments(hashes2);
 
             // now write the root to the core nodes
