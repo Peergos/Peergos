@@ -568,7 +568,7 @@ public class UserContext
                         byte[] enc2 = Erasure.recombine(reorder(second, retrievedfragments2), Chunk.MAX_SIZE, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
                         ChunkProperties cprops = second.getProps(baseKey);
                         EncryptedChunk encrypted2 = new EncryptedChunk(ArrayOps.concat(cprops.getAuth(), enc2));
-                        byte[] original2 = encrypted2.decrypt(baseKey, fileProps.getChunkNonce());
+                        byte[] original2 = encrypted2.decrypt(baseKey, cprops.getChunkNonce());
                         assertTrue("Correct file contents (2nd chunk)", Arrays.equals(original2, raw2));
                     }
                 } catch (IOException e) {

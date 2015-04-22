@@ -62,8 +62,9 @@ public class Tests
             contextTests(dht, core);
         } catch (Throwable e) {
             e.printStackTrace();
-        } finally {
             System.exit(-1);
+        } finally {
+            System.exit(0);
         }
     }
 
