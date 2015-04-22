@@ -43,7 +43,7 @@ public class SymmetricKey
 
     private static SecureRandom csprng = new SecureRandom();
 
-    public static byte[] createNonce()
+    public byte[] createNonce()
     {
         byte[] res = new byte[NONCE_BYTES];
         csprng.nextBytes(res);

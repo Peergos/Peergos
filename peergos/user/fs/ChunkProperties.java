@@ -7,18 +7,18 @@ import java.io.*;
 
 public class ChunkProperties
 {
-    private final byte[] nonce;
+    private final byte[] chunkNonce;
     private final byte[] auth;
     private final Location next;
 
-    public ChunkProperties(byte[] nonce, byte[] auth, Location next) {
-        this.nonce = nonce;
+    public ChunkProperties(byte[] chunkNonce, byte[] auth, Location next) {
+        this.chunkNonce = chunkNonce;
         this.auth = auth;
         this.next = next;
     }
 
     public ChunkProperties(DataInput din) throws IOException {
-        nonce = Serialize.deserializeByteArray(din, SymmetricKey.NONCE_BYTES);
+        chunkNonce = Serialize.deserializeByteArray(din, SymmetricKey.NONCE_BYTES);
         auth = Serialize.deserializeByteArray(din, TweetNaCl.SECRETBOX_OVERHEAD_BYTES);
         boolean hasNext = din.readBoolean();
         if (hasNext)
@@ -37,7 +37,7 @@ public class ChunkProperties
     }
 
     public void serialise(DataOutputStream dout) throws IOException {
-        Serialize.serialize(nonce, dout);
+        Serialize.serialize(chunkNonce, dout);
         Serialize.serialize(auth, dout);
         if (next == null)
             dout.writeBoolean(false);
@@ -52,8 +52,8 @@ public class ChunkProperties
         return false;
     }
 
-    public byte[] getNonce() {
-        return nonce;
+    public byte[] getChunkNonce() {
+        return chunkNonce;
     }
 
     public byte[] getAuth() {

@@ -1,8 +1,7 @@
 package peergos.user.fs;
 
 import peergos.crypto.SymmetricKey;
-import peergos.util.ByteArrayWrapper;
-import peergos.util.Serialize;
+import peergos.util.*;
 
 import java.io.*;
 import java.util.ArrayList;
@@ -17,20 +16,23 @@ public class Metadata
     public static enum TYPE {DIR, FILE, FOLLOWER}
 
     private final TYPE type;
+    private final byte[] metaNonce;
     protected final byte[] encryptedMetadata;
 
     // public data
     private List<ByteArrayWrapper> fragments;
 
-    public Metadata(TYPE t, byte[] encryptedMetadata)
+    public Metadata(TYPE t, byte[] encryptedMetadata, byte[] metaNonce)
     {
         this.type = t;
         this.encryptedMetadata = encryptedMetadata;
+        this.metaNonce = metaNonce;
     }
 
-    public Metadata(ChunkProperties props, SymmetricKey baseKey, byte[] iv) {
+    public Metadata(ChunkProperties props, SymmetricKey baseKey, byte[] metaNonce) {
         type = TYPE.FOLLOWER;
-        encryptedMetadata = baseKey.encrypt(props.serialize(), iv);
+        encryptedMetadata = baseKey.encrypt(props.serialize(), metaNonce);
+        this.metaNonce = metaNonce;
     }
 
     public void setFragments(List<ByteArrayWrapper> fragments) {
@@ -64,6 +66,7 @@ public class Metadata
         if (index > TYPE.values().length)
             throw new IllegalStateException("Unknown metadata blob type! " + (index));
         TYPE t = TYPE.values()[index];
+        byte[] metaNonce = Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE);
         byte[] meta = Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE);
         switch (t) {
             case DIR:
@@ -71,7 +74,7 @@ public class Metadata
             case FILE:
                 return FileAccess.deserialize(din, meta);
             case FOLLOWER:
-                return new Metadata(t, meta);
+                return new Metadata(t, meta, metaNonce);
             default:
                 return null;
         }

@@ -21,12 +21,12 @@ public class DirAccess extends Metadata
     private final UserPublicKey verifyW;
 
     public DirAccess(User owner, SymmetricKey meta, SymmetricKey parent, SymmetricKey files, SymmetricKey subfolders, Set<UserPublicKey> sharingR,
-                     FileProperties metadata, User signingW, SymmetricKey subfoldersW, Set<UserPublicKey> sharingW, byte[] iv)
+                     FileProperties metadata, User signingW, SymmetricKey subfoldersW, Set<UserPublicKey> sharingW, byte[] metaNonce)
     {
-        super(TYPE.DIR, meta.encrypt(metadata.serialize(), iv));
-        this.subfolders2files = new SymmetricLink(subfolders, files, iv);
-        this.subfolders2parent = new SymmetricLink(subfolders, parent, iv);
-        this.parent2meta = new SymmetricLink(parent, meta, iv);
+        super(TYPE.DIR, meta.encrypt(metadata.serialize(), metaNonce), metaNonce);
+        this.subfolders2files = new SymmetricLink(subfolders, files, subfolders.createNonce());
+        this.subfolders2parent = new SymmetricLink(subfolders, parent, subfolders.createNonce());
+        this.parent2meta = new SymmetricLink(parent, meta, parent.createNonce());
         if (sharingR != null)
             for (UserPublicKey key: sharingR)
                 sharingR2subfoldersR.put(key, new AsymmetricLink(owner, key, subfolders));
@@ -37,16 +37,17 @@ public class DirAccess extends Metadata
                 sharingW2subfoldersW.put(key, new AsymmetricLink(owner, key, subfoldersW));
     }
 
-    public DirAccess(User owner, SymmetricKey subfoldersKey, FileProperties metadata, SymmetricKey subfoldersKeyW)
+    public static DirAccess create(User owner, SymmetricKey subfoldersKey, FileProperties metadata, SymmetricKey subfoldersKeyW)
     {
-        this(owner, SymmetricKey.random(), SymmetricKey.random(), SymmetricKey.random(), subfoldersKey, null, metadata,
-                User.random(), subfoldersKeyW, null, metadata.getNonce());
+        SymmetricKey metaKey = SymmetricKey.random();
+        return new DirAccess(owner, metaKey, SymmetricKey.random(), SymmetricKey.random(), subfoldersKey, null, metadata,
+                User.random(), subfoldersKeyW, null, metaKey.createNonce());
     }
 
     public DirAccess(Map<UserPublicKey, AsymmetricLink> sharingR, byte[] s2f, byte[] s2p, byte[] p2m, byte[] metadata,
                      byte[] verr, byte[] sW2si, Map<UserPublicKey, AsymmetricLink> sharingW)
     {
-        super(TYPE.DIR, metadata);
+        super(TYPE.DIR, Arrays.copyOfRange(metadata, SymmetricKey.NONCE_BYTES, metadata.length), Arrays.copyOfRange(metadata, 0, SymmetricKey.NONCE_BYTES));
         sharingR2subfoldersR.putAll(sharingR);
         subfolders2files = new SymmetricLink(s2f);
         subfolders2parent = new SymmetricLink(s2p);

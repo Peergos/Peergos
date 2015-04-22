@@ -1,6 +1,5 @@
 package peergos.user.fs;
 
-import peergos.crypto.*;
 import peergos.user.UserContext;
 import peergos.util.Serialize;
 
@@ -11,8 +10,8 @@ public class FileProperties extends ChunkProperties
     public final String name;
     private final long size;
 
-    public FileProperties(String name, byte[] iv, byte[] auth, long size, Location next) {
-        super(iv, auth, next);
+    public FileProperties(String name, byte[] chunkNonce, byte[] auth, long size, Location next) {
+        super(chunkNonce, auth, next);
         this.name = name;
         this.size = size;
     }

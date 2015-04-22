@@ -353,7 +353,7 @@ public class UserContext
             failuresAllowed = new AtomicInteger(futs.size()-needed);
             for (Future<V> fut: futs)
                 FutureWrapper.followWith(fut, o -> {
-                    results.add((V)o);
+                    results.add((V) o);
                     left.countDown();
                 }, e -> {
                     failuresAllowed.decrementAndGet();
@@ -483,15 +483,13 @@ public class UserContext
             SymmetricKey rootRKey = SymmetricKey.random();
             SymmetricKey rootWKey = SymmetricKey.random();
             String name = "/";
-            byte[] rootIV = SymmetricKey.createNonce();
             byte[] rootMapKey = ArrayOps.random(32); // root will be stored under this in the core node
-            DirAccess root = new DirAccess(sharer, rootRKey, new FileProperties(name, rootIV, new byte[0], 0, null), rootWKey);
+            DirAccess root = DirAccess.create(sharer, rootRKey, new FileProperties(name, new byte[0], new byte[0], 0, null), rootWKey);
             root.setFragments(new ArrayList());
 
             // generate file (two chunks)
             Random r = new Random();
             byte[] nonce1 = new byte[SymmetricKey.NONCE_BYTES];
-            byte[] nonce2 = new byte[SymmetricKey.NONCE_BYTES];
             r.nextBytes(nonce1);
             byte[] raw1 = new byte[Chunk.MAX_SIZE];
             byte[] raw2 = new byte[Chunk.MAX_SIZE];
@@ -516,17 +514,18 @@ public class UserContext
             Chunk chunk1 = new Chunk(raw1, fileKey);
             EncryptedChunk encryptedChunk1 = new EncryptedChunk(chunk1.encrypt(nonce1));
             Fragment[] fragments1 = encryptedChunk1.generateFragments();
-            List<ByteArrayWrapper> hashes1 = new ArrayList(fragments1.length);
+            List<ByteArrayWrapper> hashes1 = new ArrayList<>(fragments1.length);
             for (Fragment f : fragments1)
                 hashes1.add(new ByteArrayWrapper(f.getHash()));
             FileProperties props1 = new FileProperties(filename, nonce1, encryptedChunk1.getAuth(), raw1.length + raw2.length, chunk2Location);
-            FileAccess file = new FileAccess(sharer, fileKey, props1, hashes1);
+            FileAccess file = FileAccess.create(sharer, fileKey, props1, hashes1);
 
             // 2nd chunk
             Chunk chunk2 = new Chunk(raw2, fileKey);
+            byte[] nonce2 = new byte[SymmetricKey.NONCE_BYTES];
             EncryptedChunk encryptedChunk2 = new EncryptedChunk(chunk2.encrypt(nonce2));
             Fragment[] fragments2 = encryptedChunk2.generateFragments();
-            List<ByteArrayWrapper> hashes2 = new ArrayList(fragments2.length);
+            List<ByteArrayWrapper> hashes2 = new ArrayList<>(fragments2.length);
             for (Fragment f : fragments2)
                 hashes2.add(new ByteArrayWrapper(f.getHash()));
             ChunkProperties props2 = new ChunkProperties(nonce2, encryptedChunk2.getAuth(), null);
@@ -558,7 +557,7 @@ public class UserContext
 
                         byte[] enc1 = Erasure.recombine(reorder(fileBlob, retrievedfragments1), Chunk.MAX_SIZE, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
                         EncryptedChunk encrypted1 = new EncryptedChunk(ArrayOps.concat(fileProps.getAuth(), enc1));
-                        byte[] original1 = encrypted1.decrypt(baseKey, fileProps.getNonce());
+                        byte[] original1 = encrypted1.decrypt(baseKey, fileProps.getChunkNonce());
                         // checks
                         assertTrue("Correct filename", fileProps.name.equals(filename));
                         assertTrue("Correct file contents", Arrays.equals(original1, raw1));
@@ -567,8 +566,9 @@ public class UserContext
                         Metadata second = receiver.getMetadata(fileProps.getNextChunkLocation(), baseKey);
                         Fragment[] retrievedfragments2 = receiver.downloadFragments(second);
                         byte[] enc2 = Erasure.recombine(reorder(second, retrievedfragments2), Chunk.MAX_SIZE, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
-                        EncryptedChunk encrypted2 = new EncryptedChunk(ArrayOps.concat(second.getProps(baseKey, fileProps.getNonce()).getAuth(), enc2));
-                        byte[] original2 = encrypted2.decrypt(baseKey, fileProps.getNonce());
+                        ChunkProperties cprops = second.getProps(baseKey, fileProps.getChunkNonce());
+                        EncryptedChunk encrypted2 = new EncryptedChunk(ArrayOps.concat(cprops.getAuth(), enc2));
+                        byte[] original2 = encrypted2.decrypt(baseKey, fileProps.getChunkNonce());
                         assertTrue("Correct file contents (2nd chunk)", Arrays.equals(original2, raw2));
                     }
                 } catch (IOException e) {
@@ -584,9 +584,8 @@ public class UserContext
             SymmetricKey rootRKey = SymmetricKey.random();
             SymmetricKey rootWKey = SymmetricKey.random();
             String name = "/";
-            byte[] rootIV = SymmetricKey.createNonce();
             byte[] rootMapKey = ArrayOps.random(32); // root will be stored under this in the core node
-            DirAccess root = new DirAccess(sharer, rootRKey, new FileProperties(name, rootIV, new byte[0], 0, null), rootWKey);
+            DirAccess root = DirAccess.create(sharer, rootRKey, new FileProperties(name, new byte[0], new byte[0], 0, null), rootWKey);
 
             // generate file (single chunk)
             Random r = new Random();
@@ -612,7 +611,7 @@ public class UserContext
             for (Fragment f : fragments)
                 hashes.add(new ByteArrayWrapper(f.getHash()));
             FileProperties props = new FileProperties(filename, nonce, encryptedChunk.getAuth(), raw.length, null);
-            FileAccess file = new FileAccess(sharer, fileKey, props, hashes);
+            FileAccess file = FileAccess.create(sharer, fileKey, props, hashes);
 
             // now write the root to the core nodes
             receiver.addToStaticData(sharer, new SharedRootDir(receiver.username, sharer, new ByteArrayWrapper(rootMapKey), rootRKey));
@@ -636,7 +635,7 @@ public class UserContext
 
                         byte[] enc = Erasure.recombine(reorder(fileBlob, retrievedfragments), Chunk.MAX_SIZE, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
                         EncryptedChunk encrypted = new EncryptedChunk(enc);
-                        byte[] original = encrypted.decrypt(fileLoc.target(rootDirKey), fileProps.getNonce());
+                        byte[] original = encrypted.decrypt(fileLoc.target(rootDirKey), fileProps.getChunkNonce());
                         // checks
                         assertTrue("Correct filename", fileProps.name.equals(filename));
                         assertTrue("Correct file contents", Arrays.equals(original, raw));

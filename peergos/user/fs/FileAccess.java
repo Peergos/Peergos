@@ -15,25 +15,26 @@ public class FileAccess extends Metadata
     private SortedMap<UserPublicKey, AsymmetricLink> sharingR2parent = new TreeMap();
     private final SymmetricLink parent2meta;
 
-    public FileAccess(UserPublicKey owner, Set<User> sharingR, SymmetricKey metaKey, SymmetricKey parentKey, FileProperties metadata, List<ByteArrayWrapper> fragments, byte[] iv)
+    public FileAccess(UserPublicKey owner, Set<User> sharingR, SymmetricKey metaKey, SymmetricKey parentKey, FileProperties metadata, List<ByteArrayWrapper> fragments, byte[] metaNonce)
     {
-        super(TYPE.FILE, metaKey.encrypt(metadata.serialize(), iv));
+        super(TYPE.FILE, metaKey.encrypt(metadata.serialize(), metaNonce), metaNonce);
         setFragments(fragments);
-        this.parent2meta = new SymmetricLink(parentKey, metaKey, iv);
+        this.parent2meta = new SymmetricLink(parentKey, metaKey, parentKey.createNonce());
         if (sharingR != null) {
             for (User key: sharingR)
                 sharingR2parent.put(new UserPublicKey(key.getPublicKeys()), new AsymmetricLink(key, owner,  parentKey));
         }
     }
 
-    public FileAccess(UserPublicKey owner, SymmetricKey parentKey, FileProperties metadata, List<ByteArrayWrapper> fragments)
+    public static FileAccess create(UserPublicKey owner, SymmetricKey parentKey, FileProperties metadata, List<ByteArrayWrapper> fragments)
     {
-        this(owner, null, SymmetricKey.random(), parentKey, metadata, fragments, metadata.getNonce());
+        SymmetricKey metaKey = SymmetricKey.random();
+        return new FileAccess(owner, null, metaKey, parentKey, metadata, fragments, metaKey.createNonce());
     }
 
     public FileAccess(byte[] m, byte[] p2m, Map<UserPublicKey, AsymmetricLink> sharingR)
     {
-        super(TYPE.FILE, m);
+        super(TYPE.FILE, Arrays.copyOfRange(m, TweetNaCl.SECRETBOX_NONCE_BYTES, m.length), Arrays.copyOfRange(m, 0, TweetNaCl.SECRETBOX_NONCE_BYTES));
         parent2meta = new SymmetricLink(p2m);
         sharingR2parent.putAll(sharingR);
     }

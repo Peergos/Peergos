@@ -15,7 +15,7 @@ public class SymmetricLinkToPrivate
 
     public SymmetricLinkToPrivate(SymmetricKey from, User to)
     {
-        this(from, to, SymmetricKey.createNonce());
+        this(from, to, from.createNonce());
     }
 
     public SymmetricLinkToPrivate(byte[] link)

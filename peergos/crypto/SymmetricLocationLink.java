@@ -20,7 +20,7 @@ public class SymmetricLocationLink
 
     public SymmetricLocationLink(SymmetricKey from, SymmetricKey to, Location loc)
     {
-        this(from, to, loc, SymmetricKey.createNonce());
+        this(from, to, loc, from.createNonce());
     }
 
     public SymmetricLocationLink(byte[] raw) throws IOException

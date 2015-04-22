@@ -70,9 +70,7 @@ public class DHTAPI
         {
             GetOffer offer = (GetOffer) obj;
             if (offer.getTarget().external.equals(router.address().external))
-                try {
-                    offer.target = new NodeID(offer.target.id, new InetSocketAddress(InetAddress.getLocalHost(), offer.target.external.getPort()));
-                } catch (UnknownHostException e) {}
+                offer.target = new NodeID(offer.target.id, offer.getTarget().external);
 
             callback.callback(offer);
         }
