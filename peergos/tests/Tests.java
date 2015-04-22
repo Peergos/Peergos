@@ -60,7 +60,7 @@ public class Tests
             DHTUserAPI dht = new MemoryDHTUserAPI();
             AbstractCoreNode core = new SQLiteCoreNode(":memory:");
             contextTests(dht, core);
-        } catch (Exception e) {
+        } catch (Throwable e) {
             e.printStackTrace();
         } finally {
             System.exit(-1);

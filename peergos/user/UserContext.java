@@ -566,7 +566,7 @@ public class UserContext
                         Metadata second = receiver.getMetadata(fileProps.getNextChunkLocation(), baseKey);
                         Fragment[] retrievedfragments2 = receiver.downloadFragments(second);
                         byte[] enc2 = Erasure.recombine(reorder(second, retrievedfragments2), Chunk.MAX_SIZE, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
-                        ChunkProperties cprops = second.getProps(baseKey, fileProps.getChunkNonce());
+                        ChunkProperties cprops = second.getProps(baseKey);
                         EncryptedChunk encrypted2 = new EncryptedChunk(ArrayOps.concat(cprops.getAuth(), enc2));
                         byte[] original2 = encrypted2.decrypt(baseKey, fileProps.getChunkNonce());
                         assertTrue("Correct file contents (2nd chunk)", Arrays.equals(original2, raw2));

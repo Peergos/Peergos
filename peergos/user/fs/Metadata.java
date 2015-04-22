@@ -35,6 +35,10 @@ public class Metadata
         this.metaNonce = metaNonce;
     }
 
+    protected byte[] getMetaNonce() {
+        return metaNonce;
+    }
+
     public void setFragments(List<ByteArrayWrapper> fragments) {
         this.fragments = fragments;
     }
@@ -52,12 +56,12 @@ public class Metadata
     }
 
     public ChunkProperties getProps(SymmetricKey baseKey) {
-        throw new IllegalStateException("Follower metadata requires an initialization vector to decrypt!");
+        return getProps(baseKey, metaNonce);
     }
 
-    public ChunkProperties getProps(SymmetricKey baseKey, byte[] iv) {
+    public ChunkProperties getProps(SymmetricKey baseKey, byte[] metaNonce) {
         try {
-            return new ChunkProperties(new DataInputStream(new ByteArrayInputStream(baseKey.decrypt(encryptedMetadata, iv))));
+            return new ChunkProperties(new DataInputStream(new ByteArrayInputStream(baseKey.decrypt(encryptedMetadata, metaNonce))));
         } catch (IOException e) {e.printStackTrace();return null;}
     }
 
@@ -70,9 +74,9 @@ public class Metadata
         byte[] meta = Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE);
         switch (t) {
             case DIR:
-                return DirAccess.deserialize(din, ourKey, meta);
+                return DirAccess.deserialize(din, ourKey, ArrayOps.concat(metaNonce, meta));
             case FILE:
-                return FileAccess.deserialize(din, meta);
+                return FileAccess.deserialize(din, ArrayOps.concat(metaNonce, meta));
             case FOLLOWER:
                 return new Metadata(t, meta, metaNonce);
             default:

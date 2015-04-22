@@ -96,7 +96,7 @@ public class DirAccess extends Metadata
         byte[] s2p = Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE);
         byte[] s2f = Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE);
         int readSharingKeys = din.readInt();
-        Map<UserPublicKey, AsymmetricLink> sharingR = new HashMap();
+        Map<UserPublicKey, AsymmetricLink> sharingR = new HashMap<>();
         for (int i=0; i < readSharingKeys; i++)
             sharingR.put(new UserPublicKey(Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE)),
                     new AsymmetricLink(Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE)));
@@ -104,7 +104,7 @@ public class DirAccess extends Metadata
         byte[] sW2si = Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE);
         byte[] sW2sW = null;
         int writeSharingKeys = din.readInt();
-        Map<UserPublicKey, AsymmetricLink> sharingW = new HashMap();
+        Map<UserPublicKey, AsymmetricLink> sharingW = new HashMap<>();
         for (int i=0; i < writeSharingKeys; i++) {
             sharingW.put(new UserPublicKey(Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE)),
                     new AsymmetricLink(Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE)));

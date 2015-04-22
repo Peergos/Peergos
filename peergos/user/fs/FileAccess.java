@@ -34,7 +34,7 @@ public class FileAccess extends Metadata
 
     public FileAccess(byte[] m, byte[] p2m, Map<UserPublicKey, AsymmetricLink> sharingR)
     {
-        super(TYPE.FILE, Arrays.copyOfRange(m, TweetNaCl.SECRETBOX_NONCE_BYTES, m.length), Arrays.copyOfRange(m, 0, TweetNaCl.SECRETBOX_NONCE_BYTES));
+        super(TYPE.FILE, Arrays.copyOfRange(m, SymmetricKey.NONCE_BYTES, m.length), Arrays.copyOfRange(m, 0, SymmetricKey.NONCE_BYTES));
         parent2meta = new SymmetricLink(p2m);
         sharingR2parent.putAll(sharingR);
     }
@@ -73,12 +73,12 @@ public class FileAccess extends Metadata
         return sharingR2parent.get(sharingKey.toUserPublicKey()).target(sharingKey, owner);
     }
 
-    public ChunkProperties getProps(SymmetricKey baseKey, byte[] iv) {
-        return FileProperties.deserialize(baseKey.decrypt(encryptedMetadata, iv));
+    public ChunkProperties getProps(SymmetricKey baseKey, byte[] metaNonce) {
+        return FileProperties.deserialize(baseKey.decrypt(encryptedMetadata, metaNonce));
     }
 
     public FileProperties getProps(SymmetricKey parentKey)
     {
-        return (FileProperties) getProps(parent2meta.target(parentKey), parent2meta.getNonce());
+        return (FileProperties) getProps(parent2meta.target(parentKey), getMetaNonce());
     }
 }
