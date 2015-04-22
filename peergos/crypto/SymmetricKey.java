@@ -21,14 +21,14 @@ public class SymmetricKey
         return secretKey;
     }
 
-    public byte[] encrypt(byte[] data, byte[] initVector)
+    public byte[] encrypt(byte[] data, byte[] nonce)
     {
-        return encrypt(secretKey, data, initVector);
+        return encrypt(secretKey, data, nonce);
     }
 
-    public byte[] decrypt(byte[] data, byte[] initVector)
+    public byte[] decrypt(byte[] data, byte[] nonce)
     {
-        return decrypt(secretKey, data, initVector);
+        return decrypt(secretKey, data, nonce);
     }
 
     public static byte[] encrypt(byte[] key, byte[] data, byte[] nonce)

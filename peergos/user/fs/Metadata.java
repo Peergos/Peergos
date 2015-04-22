@@ -83,6 +83,7 @@ public class Metadata
     public void serialize(DataOutput dout) throws IOException
     {
         dout.writeByte(type.ordinal());
+        Serialize.serialize(metaNonce, dout);
         Serialize.serialize(encryptedMetadata, dout);
     }
 }
