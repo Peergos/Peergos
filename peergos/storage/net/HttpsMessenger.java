@@ -7,6 +7,7 @@ import peergos.crypto.SSL;
 import peergos.storage.dht.Message;
 import org.bouncycastle.operator.OperatorCreationException;
 import peergos.storage.dht.Router;
+import peergos.user.fs.erasure.ErasureHandler;
 
 import javax.net.ssl.*;
 import java.io.*;
@@ -21,6 +22,8 @@ public class HttpsMessenger
 {
     public static final String MESSAGE_URL = "/message/";
     public static final String USER_URL = "/user/";
+    public static final String ERASURE_URL = "/erasure/";
+
 
     public static final int THREADS = 2;
     public static final int CONNECTION_BACKLOG = 100;
@@ -90,6 +93,7 @@ public class HttpsMessenger
         }
 
         httpsServer.createContext(USER_URL, new HttpUserAPIHandler(router));
+        httpsServer.createContext(ERASURE_URL, ErasureHandler.getInstance());
         httpsServer.setExecutor(Executors.newFixedThreadPool(THREADS));
         httpsServer.start();
 

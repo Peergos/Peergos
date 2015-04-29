@@ -23,10 +23,11 @@ public class GaloisField256 extends GaloisField
             exp[i] = exp[i-255];
         log[exp[255]] = 255;
         // check
-        for (int i=0; i < 256; i++) {
-            assert (log[exp[i]] == i);
-            assert (exp[log[i]] == i);
-        }
+
+//        for (int i=0; i < 256; i++) {
+//            assert (log[exp[i]] == i);
+//            assert (exp[log[i]] == i);
+//        }
 
 //        System.out.printf("Exp: ");
 //        ErasureCodes.print(exp);
