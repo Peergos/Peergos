@@ -5,6 +5,7 @@ import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 
 
+import org.junit.After;
 import peergos.user.fs.Chunk;
 import peergos.user.fs.EncryptedChunk;
 import peergos.user.fs.Fragment;
@@ -131,15 +132,22 @@ public class ErasureHandler implements HttpHandler {
 
     public static class Test {
 
+        private HttpServer httpServer;
+
         public Test(){}
 
         @Before public void init() throws IOException {
             InetAddress localhost = InetAddress.getByName("localhost");
             int port = 8800;
 
-            HttpServer httpServer = HttpServer.create(new InetSocketAddress(localhost, port), 10);
+            httpServer = HttpServer.create(new InetSocketAddress(localhost, port), 10);
             httpServer.createContext("/erasure/", ErasureHandler.getInstance());
             httpServer.start();
+        }
+
+        @After public void finish() throws IOException {
+            int delay = 0;
+            httpServer.stop(delay);
         }
 
         @org.junit.Test public void test() throws IOException {
