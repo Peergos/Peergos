@@ -3,9 +3,8 @@ package peergos.user.fs.erasure;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
-import com.sun.net.httpserver.HttpsServer;
 
-import peergos.storage.Storage;
+
 import peergos.user.fs.Chunk;
 import peergos.user.fs.EncryptedChunk;
 import peergos.user.fs.Fragment;
@@ -16,13 +15,12 @@ import java.net.*;
 import java.util.Random;
 
 import org.junit.Before;
-import org.junit.Test;
 import static org.junit.Assert.*;
 
 public class ErasureHandler implements HttpHandler {
 
     public static final int MAX_SPLIT_LENGTH = Chunk.MAX_SIZE;
-    public static final int MAX_RECOMBINE_LENGTH = 0x1000;
+    public static final int MAX_RECOMBINE_LENGTH = Chunk.MAX_SIZE;
 
     private ErasureHandler(){}
 
@@ -124,6 +122,7 @@ public class ErasureHandler implements HttpHandler {
         byte[] bytes = bout.toByteArray();
         httpExchange.sendResponseHeaders(200, bytes.length);
         httpExchange.getResponseBody().write(bytes);
+        httpExchange.close();
     }
 
     private static final ErasureHandler INSTANCE = new ErasureHandler();
@@ -143,28 +142,47 @@ public class ErasureHandler implements HttpHandler {
             httpServer.start();
         }
 
-        @org.junit.Test public void erasureTest() throws IOException {
+        @org.junit.Test public void test() throws IOException {
             Random random = new Random();
             byte[] input = new byte[Chunk.MAX_SIZE];
             random.nextBytes(input);
 
-            URL url = new URL("http://localhost:8800/erasure/split");
-            URLConnection conn = url.openConnection();
-            conn.setDoOutput(true);
-            try (DataOutputStream dout = new DataOutputStream(conn.getOutputStream())) {
+            URL splitUrl = new URL("http://localhost:8800/erasure/split");
+            URLConnection splitConn = splitUrl.openConnection();
+            splitConn.setDoOutput(true);
+            try (DataOutputStream dout = new DataOutputStream(splitConn.getOutputStream())) {
                 Serialize.serialize(input, dout);
                 dout.flush();
             }
 
-            try (DataInputStream din = new DataInputStream(conn.getInputStream())) {
+            byte[][] hashes = null;
+            try (DataInputStream din = new DataInputStream(splitConn.getInputStream())) {
                 int nHashes = din.readInt();
                 assertTrue("hash hashes", nHashes > 0);
-                byte[][] hashes = new byte[nHashes][];
+                hashes = new byte[nHashes][];
                 for (int iHash = 0; iHash < nHashes; iHash++) {
                     hashes[iHash] = Serialize.deserializeByteArray(din, Fragment.SIZE);
                     assertEquals(hashes[iHash].length, Fragment.SIZE);
                 }
             }
+
+            URL recombineUrl = new URL("http://localhost:8800/erasure/recombine");
+            URLConnection recombineConn= recombineUrl.openConnection();
+            recombineConn.setDoOutput(true);
+
+            try (DataOutputStream dout = new DataOutputStream(recombineConn.getOutputStream())) {
+                dout.writeInt(hashes.length);
+                for (byte[] hash: hashes)
+                    Serialize.serialize(hash, dout);
+                dout.flush();
+            }
+
+            byte[] result = null;
+            try(DataInputStream din = new DataInputStream(recombineConn.getInputStream())) {
+                result = Serialize.deserializeByteArray(din, input.length);
+            }
+
+            assertArrayEquals(result, input);
         }
     }
 

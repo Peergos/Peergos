@@ -9,6 +9,7 @@ import peergos.crypto.User;
 import peergos.user.DHTUserAPI;
 import peergos.user.MemoryDHTUserAPI;
 import peergos.user.UserContext;
+import peergos.user.fs.erasure.ErasureHandler;
 import peergos.util.*;
 
 import java.io.File;
@@ -28,6 +29,8 @@ public class Tests
 //        testClass(GaloisPolynomial.Test.class);
 //        testClass(Crypto.class);
 //        testClass(SSL.class);
+        testClass(ErasureHandler.Test.class);
+
         if (Args.hasArg("local")) {
             localTests();
             return;
