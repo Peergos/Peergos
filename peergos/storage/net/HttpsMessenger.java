@@ -23,7 +23,8 @@ public class HttpsMessenger
     public static final String MESSAGE_URL = "/message/";
     public static final String USER_URL = "/user/";
     public static final String ERASURE_URL = "/erasure/";
-
+    public static final String UI_URL = "/";
+    public static final String UI_DIR = "ui/";
 
     public static final int THREADS = 2;
     public static final int CONNECTION_BACKLOG = 100;
@@ -94,6 +95,7 @@ public class HttpsMessenger
 
         httpsServer.createContext(USER_URL, new HttpUserAPIHandler(router));
         httpsServer.createContext(ERASURE_URL, ErasureHandler.getInstance());
+        httpsServer.createContext(UI_URL, new StaticHandler(UI_DIR));
         httpsServer.setExecutor(Executors.newFixedThreadPool(THREADS));
         httpsServer.start();
 
