@@ -21,7 +21,7 @@ function UserPublicKey(publicSignKey, publicBoxKey) {
     // (Uint8Array, User, (nonce, cipher) -> ())
     this.encryptMessageFor = function(input, us) {
 	var nonce = createNonce();
-	return nacl.box(input, nonce, this.pBoxKey, us.sBoxKey).concat(nonce);
+	return concat(nacl.box(input, nonce, this.pBoxKey, us.sBoxKey), nonce);
     }
     
     // Uint8Array => boolean
@@ -78,7 +78,9 @@ function User(signKeyPair, boxKeyPair) {
     }
     
     // (Uint8Array, (err, literals) -> ())
-    this.decryptMessage = function(cipher, nonce, them) {
+    this.decryptMessage = function(cipher, them) {
+	var nonce = slice(cipher, cipher.length-24, cipher.length);
+	cipher = slice(cipher, 0, cipher.length-24);
 	return nacl.box.open(cipher, nonce, them.pBoxKey, this.sBoxKey);
     }
 
@@ -136,6 +138,22 @@ function decryptBytesToBytes(cipher, privKey) {
 
 function uint8ArrayToByteArray(arr) {
     return Java.to(arr, "byte[]");
+}
+
+function slice(arr, start, end) {
+    var r = new Uint8Array(end-start);
+    for (var i=start; i < end; i++)
+	r[i-start] = arr[i];
+    return r;
+}
+
+function concat(a, b) {
+    var r = new Uint8Array(a.length+b.length);
+    for (var i=0; i < a.length; i++)
+	r[i] = a[i];
+    for (var i=0; i < b.length; i++)
+	r[a.length+i] = b[i];
+    return r;
 }
 
 function get(path, onSuccess, onError) {

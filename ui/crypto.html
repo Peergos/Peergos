@@ -12,54 +12,6 @@
 <script type="text/javascript" src="lib/api.js"></script>
 <script type="text/javascript" src="lib/cryptree.js"></script>
 <script>
-function unsignResult(err, literals) {
-    if (err != null) {
-        return console.log("Problem: " + err);
-    } else {
-        console.log("Unsigned message" + literals[0].toString());
-        var ds = km = null;
-        ds = literals[0].get_data_signer();
-        if (ds) { km = ds.get_key_manager(); }
-        if (km) {
-            console.log("Signed by PGP fingerprint: "+ km.get_pgp_fingerprint().toString('hex'));
-        }
-    }
-}
-
-function signResult(user) {
-    return function (err, result_string, result_buffer) {
-        console.log("Signature: " + result_buffer);
-        var hash = user.hash(result_buffer);
-        console.log("Hash("+hash.length+"): " + hash);
-        user.unsignMessage(result_buffer, unsignResult);
-    }
-}
-
-function decryptResult(user) {
-    return function(err, literals) {
-        if (err != null) {
-            return console.log("Problem: " + err);
-        } else {
-            console.log("Decrypted message: " + literals[0].toString());
-            var ds = km = null;
-            ds = literals[0].get_data_signer();
-            if (ds) { km = ds.get_key_manager(); }
-            if (km) {
-                console.log("Signed by PGP fingerprint");
-                console.log(km.get_pgp_fingerprint().toString('hex'));
-            }
-            user.signMessage(literals[0], signResult(user));
-        }
-    };
-       }
-
-function encryptResult(user) {
-    return function (err, result_string, result_buffer) {
-        console.log("Cipher Text: " + result_buffer);
-        user.decryptMessage(result_buffer, decryptResult(user));
-    }
-}
-
 function genresult(user) {
     document.user = user;
     document.getElementById("public").value = nacl.util.encodeBase64(user.getPublicKeys());
@@ -89,13 +41,11 @@ function verify() {
 }
 function encrypt() {
     console.log("encrypting..");
-    document.getElementById("encrypted").value = encryptStringToHex(document.getElementById("data").value, 
-        document.getElementById("public").value);
+    document.getElementById("encrypted").value = nacl.util.encodeBase64(document.user.encryptMessageFor(nacl.util.decodeUTF8(document.getElementById("data").value), document.user));
 }
 function decrypt() {
     console.log("decrypting..");
-    document.getElementById("decrypted").value = decryptHexToString(document.getElementById("encrypted").value, 
-        document.getElementById("private").value);
+    document.getElementById("decrypted").value = nacl.util.encodeUTF8(document.user.decryptMessage(nacl.util.decodeBase64(document.getElementById("encrypted").value), document.user));
 }
 </script>
 <div style="float:left;padding:20px">
