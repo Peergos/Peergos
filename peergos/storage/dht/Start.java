@@ -65,6 +65,11 @@ public class Start
         {
             test(Args.getInt("test", 6));
         }
+        else if (Args.hasArg("localJS"))
+        {
+            Args.parse(new String[]{"-script", "testscripts/empty.txt", "-domain", "localhost"});
+            test(1);
+        }
         else if (Args.hasArg("directoryServer"))
         {
             String keyfile = Args.getArg("keyfile", "dir.key");
