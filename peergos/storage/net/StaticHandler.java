@@ -36,6 +36,10 @@ public class StaticHandler implements HttpHandler
                 new FileInputStream(HttpsMessenger.UI_DIR+path)
                 : ClassLoader.getSystemClassLoader().getResourceAsStream(HttpsMessenger.UI_DIR+path));
 
+        if (path.endsWith(".js"))
+            httpExchange.getResponseHeaders().set("Content-Type", "text/javascript");
+        else if (path.endsWith(".html"))
+            httpExchange.getResponseHeaders().set("Content-Type", "text/html");
         httpExchange.sendResponseHeaders(200, res.length);
         httpExchange.getResponseBody().write(res);
         httpExchange.getResponseBody().close();
