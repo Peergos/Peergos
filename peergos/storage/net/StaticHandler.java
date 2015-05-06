@@ -11,22 +11,30 @@ import java.util.zip.*;
 public class StaticHandler implements HttpHandler
 {
     private static Map<String, byte[]> data = new HashMap<>();
+    private final boolean caching;
 
-    public StaticHandler(String pathToRoot) throws IOException {
+    public StaticHandler(String pathToRoot, boolean caching) throws IOException {
+        this.caching = caching;
         List<String> files = getResources(pathToRoot);
-        for(String s: files) {
-            data.put(s.substring(pathToRoot.length()), readResource(ClassLoader.getSystemClassLoader().getResourceAsStream(s)));
-        }
+        if (caching)
+            for(String s: files) {
+                data.put(s.substring(pathToRoot.length()), readResource(ClassLoader.getSystemClassLoader().getResourceAsStream(s)));
+            }
     }
 
     @Override
     public void handle(HttpExchange httpExchange) throws IOException {
         String path = httpExchange.getRequestURI().getPath();
         path = path.substring(1);
-        if (!data.containsKey(path))
-            httpExchange.sendResponseHeaders(404, 0);
+        if (path.length() == 0)
+            path = "index.html";
+        if (caching)
+            if (!data.containsKey(path))
+                httpExchange.sendResponseHeaders(404, 0);
 
-        byte[] res = data.get(path);
+        byte[] res = caching ? data.get(path) : readResource(new File(HttpsMessenger.UI_DIR+path).exists() ?
+                new FileInputStream(HttpsMessenger.UI_DIR+path)
+                : ClassLoader.getSystemClassLoader().getResourceAsStream(HttpsMessenger.UI_DIR+path));
 
         httpExchange.sendResponseHeaders(200, res.length);
         httpExchange.getResponseBody().write(res);

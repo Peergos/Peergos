@@ -95,7 +95,7 @@ public class HttpsMessenger
 
         httpsServer.createContext(USER_URL, new HttpUserAPIHandler(router));
         httpsServer.createContext(ERASURE_URL, ErasureHandler.getInstance());
-        httpsServer.createContext(UI_URL, new StaticHandler(UI_DIR));
+        httpsServer.createContext(UI_URL, new StaticHandler(UI_DIR, false));
         httpsServer.setExecutor(Executors.newFixedThreadPool(THREADS));
         httpsServer.start();
 
