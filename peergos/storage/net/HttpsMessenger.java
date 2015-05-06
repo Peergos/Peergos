@@ -26,7 +26,7 @@ public class HttpsMessenger
     public static final String UI_URL = "/";
     public static final String UI_DIR = "ui/";
 
-    public static final int THREADS = 2;
+    public static final int THREADS = 200;
     public static final int CONNECTION_BACKLOG = 100;
 
     private final Logger LOGGER;
