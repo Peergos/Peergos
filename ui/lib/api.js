@@ -92,6 +92,10 @@ function User(signKeyPair, boxKeyPair) {
     }
 }
 
+function userFromEncodedKeys(publicKeys, secretKeys) {
+    return new User(toKeyPair(slice(publicKeys, 0, 32), slice(secretKeys, 0, 64)), toKeyPair(slice(publicKeys, 32, 64), slice(secretKeys, 64, 96)));
+}
+
 function toKeyPair(pub, sec) {
     return {publicKey:pub, secretKey:sec};
 }

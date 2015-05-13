@@ -33,19 +33,29 @@ function generate() {
 }
 function sign() {
     var input = nacl.util.decodeUTF8(document.getElementById("data").value);
-    document.getElementById("signature").value = nacl.util.encodeBase64(document.user.signMessage(input));
+    var user = getUser();
+    document.getElementById("signature").value = nacl.util.encodeBase64(user.signMessage(input));
 }
 function verify() {
     var input = nacl.util.decodeBase64(document.getElementById("signature").value);
-    document.getElementById("verify").value = nacl.util.encodeUTF8(document.user.unsignMessage(input));
+    var user = getUser();
+    document.getElementById("verify").value = nacl.util.encodeUTF8(user.unsignMessage(input));
 }
 function encrypt() {
     console.log("encrypting..");
-    document.getElementById("encrypted").value = nacl.util.encodeBase64(document.user.encryptMessageFor(nacl.util.decodeUTF8(document.getElementById("data").value), document.user));
+    var user = getUser();
+    document.getElementById("encrypted").value = nacl.util.encodeBase64(user.encryptMessageFor(nacl.util.decodeUTF8(document.getElementById("data").value), user));
 }
 function decrypt() {
     console.log("decrypting..");
-    document.getElementById("decrypted").value = nacl.util.encodeUTF8(document.user.decryptMessage(nacl.util.decodeBase64(document.getElementById("encrypted").value), document.user));
+    var user = getUser();
+    document.getElementById("decrypted").value = nacl.util.encodeUTF8(user.decryptMessage(nacl.util.decodeBase64(document.getElementById("encrypted").value), user));
+}
+
+function getUser() {
+    var publicKeys = nacl.util.decodeBase64(document.getElementById("public").value);
+    var secretKeys = nacl.util.decodeBase64(document.getElementById("private").value);
+    return userFromEncodedKeys(publicKeys, secretKeys);
 }
 </script>
 <div style="float:left;padding:20px">
@@ -58,8 +68,8 @@ function decrypt() {
 </div>
 
 <div style="float:right;padding:20px">
-  <textarea id="public" placeholder="Public Keys" cols="65" rows="2"></textarea>
-  <textarea id="private" placeholder="Private Keys" cols="65" rows="2"></textarea>
+  <textarea id="public" placeholder="Public Keys" cols="65" rows="2">trjNzR1ypUiv85bhBxdESvc9ZTLscj9uCp1C6XUjN6ePD3c6sPoITTYXk2lu5UN0AZchC1pUQ6hlzv5fUrbiWA==</textarea>
+  <textarea id="private" placeholder="Private Keys" cols="65" rows="2">uaebyiEsp+9LAkNOZUQMmwd5GMQxOfCdZr02ok08Hn+2uM3NHXKlSK/zluEHF0RK9z1lMuxyP24KnULpdSM3p1LpL6tiCxTFoE/8yxVKmRB/Yy5Hs/8n4tmoNXWdI0j3</textarea>
 </div>
 <div style="clear:both;"></div>
 <div style="float:left; padding:20px;">
