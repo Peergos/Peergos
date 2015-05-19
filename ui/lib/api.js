@@ -152,8 +152,13 @@ function uint8ArrayToByteArray(arr) {
 
 function slice(arr, start, end) {
     var r = new Uint8Array(end-start);
-    for (var i=start; i < end; i++)
-	r[i-start] = arr[i];
+    if (arr instanceof ByteBuffer) {
+	for (var i=start; i < end; i++)
+	    r[i-start] = arr.raw[i];
+    } else {
+	for (var i=start; i < end; i++)
+	    r[i-start] = arr[i];
+    }
     return r;
 }
 
