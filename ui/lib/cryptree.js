@@ -1,10 +1,46 @@
+ByteBuffer.prototype.writeArray = function(arr) {
+    this.writeUnsignedInt(arr.length);
+    this.write(arr);
+}
+
+ByteBuffer.prototype.readArray = function(arr) {
+    var len = this.readUnsignedInt();
+    return this.read(len);
+}
+
 function SharedRootDir(username, owner, mapKey, rootDirKey) {
     this.username = username; //String
     this.owner = owner; //User
     this.mapKey = mapKey; //ByteArrayWrapper
     this.rootDirKey = rootDirKey; //SymmetricKey
 
-    function serialize() {
-	return new Blob([username, ], {type:"/application/octet-stream"});
+    this.serialize = function() {
+	var bout = new ByteBuffer(4+2*username.length+96+32+32);
+	bout.writeArray(string2arraybuffer(username));
+	bout.writeArray(owner.getSecretKeys());
+	bout.writeArray(mapKey);
+	bout.writeArray(rootDirKey.key);
+	return bout.toArray();
     }
+}
+
+SharedRootDir.deserialize = function(buf) {
+    var bin = new ByteBuffer(buf);
+    var name = "";
+    var ua = bin.readArray();
+    for (var i = 0; i < ua.length; i++)
+        name += String.fromCharCode(ua.readUnsignedByte());
+    var secKeys = bin.readArray();
+    var mapKey = bin.readArray();
+    var rootDirKeySecret = bin.readArray();
+    return new SharedRootDir(name, User.fromSecretKeys(secKeys), mapKey, new SymmetricKey(rootDirKeySecret));
+}
+
+function string2arraybuffer(str) {
+  var buf = new ArrayBuffer(str.length);
+  var bufView = new Uint8Array(buf);
+  for (var i=0, strLen=str.length; i<strLen; i++) {
+    bufView[i] = str.charCodeAt(i);
+  }
+  return bufView;
 }

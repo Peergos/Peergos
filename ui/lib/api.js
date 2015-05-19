@@ -92,8 +92,16 @@ function User(signKeyPair, boxKeyPair) {
     }
 }
 
-function userFromEncodedKeys(publicKeys, secretKeys) {
+User.fromEncodedKeys = function(publicKeys, secretKeys) {
     return new User(toKeyPair(slice(publicKeys, 0, 32), slice(secretKeys, 0, 64)), toKeyPair(slice(publicKeys, 32, 64), slice(secretKeys, 64, 96)));
+}
+
+User.fromSecretKeys = function(secretKeys) {
+    var publicBoxKey = new Uint8Array(32);
+    nacl.lowlevel.crypto_scalarmult_base(publicBoxKey, slice(secretKeys, 64, 96))
+    return User.fromEncodedKeys(concat(slice(secretKeys, 32, 64), 
+				publicBoxKey), 
+				secretKeys);
 }
 
 function toKeyPair(pub, sec) {
@@ -102,11 +110,6 @@ function toKeyPair(pub, sec) {
 
 /////////////////////////////
 // SymmetricKey methods
-
-// () => Uint8Array
-function randomSymmetricKey() {
-    return SymmetricKey(nacl.randomBytes(32));
-}
 
 // () => Uint8Array
 function randomIV() {
@@ -125,6 +128,9 @@ function SymmetricKey(key) {
     this.decrypt = function(cipher, nonce) {
 	return nacl.secretbox.open(cipher, nonce, this.key);
     }
+}
+SymmetricKey.random = function() {
+    return new SymmetricKey(nacl.randomBytes(32));
 }
 
 /////////////////////////////

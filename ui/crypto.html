@@ -10,6 +10,7 @@
 <script type="text/javascript" src="lib/blake2s.js"></script>
 <script type="text/javascript" src="lib/nacl.js"></script>
 <script type="text/javascript" src="lib/api.js"></script>
+<script type="text/javascript" src="lib/byte-buffer.js"></script>
 <script type="text/javascript" src="lib/cryptree.js"></script>
 <script>
 function genresult(user) {
@@ -55,7 +56,7 @@ function decrypt() {
 function getUser() {
     var publicKeys = nacl.util.decodeBase64(document.getElementById("public").value);
     var secretKeys = nacl.util.decodeBase64(document.getElementById("private").value);
-    return userFromEncodedKeys(publicKeys, secretKeys);
+    return User.fromEncodedKeys(publicKeys, secretKeys);
 }
 </script>
 <div style="float:left;padding:20px">
