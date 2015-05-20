@@ -15,7 +15,7 @@ function SharedRootDir(username, owner, mapKey, rootDirKey) {
     this.rootDirKey = rootDirKey; //SymmetricKey
 
     this.serialize = function() {
-	var bout = new ByteBuffer(4+2*username.length+96+32+32);
+	var bout = new ByteBuffer(username.length+96 + 32 + 32 + 16);
 	bout.writeArray(string2arraybuffer(username));
 	bout.writeArray(owner.getSecretKeys());
 	bout.writeArray(mapKey);
@@ -51,6 +51,33 @@ function SymmetricLink(link) {
 }
 SymmetricLink.fromPair = function(from, to, nonce) {
     return new SymmetricLink(concat(nonce, from.encrypt(to.key, nonce)));
+}
+
+// String, UserPublicKey, Uint8Array
+function Location(owner, subKey, mapKey) {
+    this.owner = owner;
+    this.subKey = subKey;
+    this.mapKey = mapKey;
+
+    this.serialize = function() {
+	var bout = new ByteBuffer(username.length + 64 + 32 + 12);
+	bout.writeArray(string2arraybuffer(username));
+	bout.writeArray(subKey.getPublicKeys());
+	bout.writeArray(mapKey);
+	return bout.toArray();
+    }
+
+    this.encrypt = function(key, nonce) {
+	return key.encrypt(serialize(), nonce);
+    }
+}
+
+function Metadata(type, metaNonce, encryptedMetadata) {
+    this.type = type;
+    this.metaNonce = metaNonce;
+    this.encryptedMetadata = encryptedMetadata;
+
+    
 }
 
 
