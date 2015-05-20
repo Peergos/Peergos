@@ -36,6 +36,24 @@ SharedRootDir.deserialize = function(buf) {
     return new SharedRootDir(name, User.fromSecretKeys(secKeys), mapKey, new SymmetricKey(rootDirKeySecret));
 }
 
+function SymmetricLink(link) {
+    this.link = slice(link, SymmetricKey.NONCE_BYTES, link.length);
+    this.nonce = slice(link, 0, SymmetricKey.NONCE_BYTES);
+
+    this.serialize = function() {
+	return concat(nonce, link);
+    }
+
+    this.target = function(from) {
+	var encoded = from.decrypt(link, nonce);
+	return new SymmetricKey(encoded);
+    }
+}
+SymmetricLink.fromPair = function(from, to, nonce) {
+    return new SymmetricLink(concat(nonce, from.encrypt(to.key, nonce)));
+}
+
+
 function string2arraybuffer(str) {
   var buf = new ArrayBuffer(str.length);
   var bufView = new Uint8Array(buf);

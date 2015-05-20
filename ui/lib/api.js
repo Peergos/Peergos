@@ -129,6 +129,7 @@ function SymmetricKey(key) {
 	return nacl.secretbox.open(cipher, nonce, this.key);
     }
 }
+SymmetricKey.NONCE_BYTES = 24;
 SymmetricKey.random = function() {
     return new SymmetricKey(nacl.randomBytes(32));
 }

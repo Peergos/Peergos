@@ -14,11 +14,6 @@ public class SymmetricLink
         nonce = iv;
     }
 
-    public SymmetricLink(SymmetricKey from, SymmetricKey to)
-    {
-        this(from, to, from.createNonce());
-    }
-
     public SymmetricLink(byte[] link)
     {
         this.link = Arrays.copyOfRange(link, SymmetricKey.NONCE_BYTES, link.length);
@@ -37,7 +32,7 @@ public class SymmetricLink
 
     public SymmetricKey target(SymmetricKey from)
     {
-        byte[] encoded = from.decrypt(Arrays.copyOfRange(link, SymmetricKey.NONCE_BYTES, link.length), nonce);
+        byte[] encoded = from.decrypt(link, nonce);
         return new SymmetricKey(encoded);
     }
 }
