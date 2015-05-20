@@ -73,13 +73,33 @@ function Location(owner, subKey, mapKey) {
 }
 
 function Metadata(type, metaNonce, encryptedMetadata) {
-    this.type = type;
+    this.type = type; // 0=DIR, 1=FILE, 2=FOLLOWER
     this.metaNonce = metaNonce;
     this.encryptedMetadata = encryptedMetadata;
-
+    this.fragments = [];
     
+    this.serialize = function() {
+	var bout = new ByteBuffer(1 + encryptedMetadata.length + metaNonce.length + 8);
+	bout.writeUnsignedByte(type);
+	bout.writeArray(metaNonce);
+	bout.writeArray(encryptedMetadata);
+	return bout.toArray();
+    }
 }
-
+Metadata.deserialize = function(buf, ourKey /*SymmetricKey*/) {
+    var type = buf.readUnsignedByte();
+    var metaNonce = buf.readArray();
+    var encryptedMetadata = buf.readArray();
+    switch(type) {
+    case 0:
+	return DirAccess.deserialize(buf, ourKey, concat(metaNonce, encryptedMetadata));
+    case 1:
+	return FileAccess.deserialize(buf, concat(metaNonce, encryptedMetadata));
+    case 2:
+	return new Metadata(type, metaNonce, encryptedMetadata);
+    default: throw new Error("Unknown Metadata type: "+type);
+    }
+}
 
 function string2arraybuffer(str) {
   var buf = new ArrayBuffer(str.length);
