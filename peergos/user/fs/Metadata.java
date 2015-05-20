@@ -30,9 +30,7 @@ public class Metadata
     }
 
     public Metadata(ChunkProperties props, SymmetricKey baseKey, byte[] metaNonce) {
-        type = TYPE.FOLLOWER;
-        encryptedMetadata = baseKey.encrypt(props.serialize(), metaNonce);
-        this.metaNonce = metaNonce;
+        this(TYPE.FOLLOWER, baseKey.encrypt(props.serialize(), metaNonce), metaNonce);
     }
 
     protected byte[] getMetaNonce() {

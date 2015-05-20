@@ -5,56 +5,64 @@ import peergos.util.Serialize;
 
 import java.io.*;
 import java.util.*;
+import java.util.stream.*;
 
 public class DirAccess extends Metadata
 {
     // read permissions
-    private SortedMap<UserPublicKey, AsymmetricLink> sharingR2subfoldersR = new TreeMap(); // optional
+    private SortedMap<UserPublicKey, AsymmetricLink> sharingR2subfoldersR; // optional
     private final SymmetricLink subfolders2files;
     private final Map<Location, SymmetricLocationLink> subfolders = new HashMap(); // encrypted locations
     private final Map<Location, SymmetricLocationLink> files = new HashMap();
     private final SymmetricLink subfolders2parent;
     private final SymmetricLink parent2meta;
     // write permissions => able to create files and subfolders
-    private SortedMap<UserPublicKey, AsymmetricLink> sharingW2subfoldersW = new TreeMap(); // optional
+    private SortedMap<UserPublicKey, AsymmetricLink> sharingW2subfoldersW; // optional
     private final SymmetricLinkToPrivate subfoldersW2sign;
     private final UserPublicKey verifyW;
 
-    public DirAccess(User owner, SymmetricKey meta, SymmetricKey parent, SymmetricKey files, SymmetricKey subfolders, Set<UserPublicKey> sharingR,
-                     FileProperties metadata, User signingW, SymmetricKey subfoldersW, Set<UserPublicKey> sharingW, byte[] metaNonce)
+    public DirAccess(SortedMap<UserPublicKey, AsymmetricLink> sharingR, byte[] s2f, byte[] s2p, byte[] p2m, byte[] metadata,
+                     byte[] verr, byte[] sW2si, SortedMap<UserPublicKey, AsymmetricLink> sharingW)
     {
-        super(TYPE.DIR, meta.encrypt(metadata.serialize(), metaNonce), metaNonce);
-        this.subfolders2files = new SymmetricLink(subfolders, files, subfolders.createNonce());
-        this.subfolders2parent = new SymmetricLink(subfolders, parent, subfolders.createNonce());
-        this.parent2meta = new SymmetricLink(parent, meta, parent.createNonce());
-        if (sharingR != null)
-            for (UserPublicKey key: sharingR)
-                sharingR2subfoldersR.put(key, new AsymmetricLink(owner, key, subfolders));
-        subfoldersW2sign = new SymmetricLinkToPrivate(subfoldersW, signingW);
-        verifyW = signingW.toUserPublicKey();
-        if (sharingW != null)
-            for (UserPublicKey key: sharingW)
-                sharingW2subfoldersW.put(key, new AsymmetricLink(owner, key, subfoldersW));
+        this(sharingR, new SymmetricLink(s2f), new SymmetricLink(s2p), new SymmetricLink(p2m), metadata, new UserPublicKey(verr), new SymmetricLinkToPrivate(sW2si), sharingW);
+    }
+
+    public DirAccess(SortedMap<UserPublicKey, AsymmetricLink> sharingR, SymmetricLink s2f, SymmetricLink s2p, SymmetricLink p2m, byte[] metadata,
+                     UserPublicKey verr, SymmetricLinkToPrivate sW2si, SortedMap<UserPublicKey, AsymmetricLink> sharingW)
+    {
+        super(TYPE.DIR, Arrays.copyOfRange(metadata, SymmetricKey.NONCE_BYTES, metadata.length), Arrays.copyOfRange(metadata, 0, SymmetricKey.NONCE_BYTES));
+        sharingR2subfoldersR = sharingR;
+        subfolders2files = s2f;
+        subfolders2parent = s2p;
+        parent2meta = p2m;
+        sharingW2subfoldersW = sharingW;
+        this.subfoldersW2sign = sW2si;
+        this.verifyW = verr;
+    }
+
+    public static DirAccess create(User owner, SymmetricKey meta, SymmetricKey parent, SymmetricKey files, SymmetricKey subfolders, Set<UserPublicKey> sharingR,
+                                   FileProperties metadata, User signingW, SymmetricKey subfoldersW, Set<UserPublicKey> sharingW, byte[] metaNonce)
+    {
+        TreeMap<UserPublicKey, AsymmetricLink> collect = sharingR.stream()
+                .collect(Collectors.toMap(x -> (UserPublicKey) x, x -> new AsymmetricLink(owner, (UserPublicKey) x, subfolders), (a, b) -> a, () -> new TreeMap<>()));
+        TreeMap<UserPublicKey, AsymmetricLink> collect2 = sharingW.stream()
+                .collect(Collectors.toMap(x -> (UserPublicKey) x, x -> new AsymmetricLink(owner, (UserPublicKey) x, subfoldersW), (a, b) -> a, () -> new TreeMap<>()));
+        return new DirAccess(collect,
+                new SymmetricLink(subfolders, files, subfolders.createNonce()),
+                new SymmetricLink(subfolders, parent, subfolders.createNonce()),
+                new SymmetricLink(parent, meta, parent.createNonce()),
+                meta.encrypt(metadata.serialize(), metaNonce),
+                signingW.toUserPublicKey(),
+                new SymmetricLinkToPrivate(subfoldersW, signingW),
+                collect2
+        );
     }
 
     public static DirAccess create(User owner, SymmetricKey subfoldersKey, FileProperties metadata, SymmetricKey subfoldersKeyW)
     {
         SymmetricKey metaKey = SymmetricKey.random();
-        return new DirAccess(owner, metaKey, SymmetricKey.random(), SymmetricKey.random(), subfoldersKey, null, metadata,
+        return create(owner, metaKey, SymmetricKey.random(), SymmetricKey.random(), subfoldersKey, null, metadata,
                 User.random(), subfoldersKeyW, null, metaKey.createNonce());
-    }
-
-    public DirAccess(Map<UserPublicKey, AsymmetricLink> sharingR, byte[] s2f, byte[] s2p, byte[] p2m, byte[] metadata,
-                     byte[] verr, byte[] sW2si, Map<UserPublicKey, AsymmetricLink> sharingW)
-    {
-        super(TYPE.DIR, Arrays.copyOfRange(metadata, SymmetricKey.NONCE_BYTES, metadata.length), Arrays.copyOfRange(metadata, 0, SymmetricKey.NONCE_BYTES));
-        sharingR2subfoldersR.putAll(sharingR);
-        subfolders2files = new SymmetricLink(s2f);
-        subfolders2parent = new SymmetricLink(s2p);
-        parent2meta = new SymmetricLink(p2m);
-        sharingW2subfoldersW.putAll(sharingW);
-        this.subfoldersW2sign = new SymmetricLinkToPrivate(sW2si);
-        this.verifyW = new UserPublicKey(verr);
     }
 
     public void serialize(DataOutput dout) throws IOException
@@ -96,7 +104,7 @@ public class DirAccess extends Metadata
         byte[] s2p = Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE);
         byte[] s2f = Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE);
         int readSharingKeys = din.readInt();
-        Map<UserPublicKey, AsymmetricLink> sharingR = new HashMap<>();
+        SortedMap<UserPublicKey, AsymmetricLink> sharingR = new TreeMap<>();
         for (int i=0; i < readSharingKeys; i++)
             sharingR.put(new UserPublicKey(Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE)),
                     new AsymmetricLink(Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE)));
@@ -104,7 +112,7 @@ public class DirAccess extends Metadata
         byte[] sW2si = Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE);
         byte[] sW2sW = null;
         int writeSharingKeys = din.readInt();
-        Map<UserPublicKey, AsymmetricLink> sharingW = new HashMap<>();
+        SortedMap<UserPublicKey, AsymmetricLink> sharingW = new TreeMap<>();
         for (int i=0; i < writeSharingKeys; i++) {
             sharingW.put(new UserPublicKey(Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE)),
                     new AsymmetricLink(Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE)));
