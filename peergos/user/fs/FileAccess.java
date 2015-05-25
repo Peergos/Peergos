@@ -1,8 +1,7 @@
 package peergos.user.fs;
 
 import peergos.crypto.*;
-import peergos.util.ByteArrayWrapper;
-import peergos.util.Serialize;
+import peergos.util.*;
 
 import java.io.DataInput;
 import java.io.DataOutput;
@@ -10,54 +9,63 @@ import java.io.IOException;
 import java.util.*;
 import java.util.stream.*;
 
-public class FileAccess extends Metadata
+public class FileAccess
 {
+    public static int MAX_ELEMENT_SIZE = 1024;
+
     // read permissions
     private SortedMap<UserPublicKey, AsymmetricLink> sharingR2parent;
     private final SymmetricLink parent2meta;
+    private final byte[] fileProperties;
+    private final FileRetriever retriever;
 
-    public static FileAccess create(UserPublicKey owner, Set<User> sharingR, SymmetricKey metaKey, SymmetricKey parentKey, FileProperties metadata,
-                      List<ByteArrayWrapper> fragments, byte[] metaNonce)
+    public FileAccess(byte[] p2m, SortedMap<UserPublicKey, AsymmetricLink> sharingR, byte[] fileProperties, FileRetriever retriever)
+    {
+        this(new SymmetricLink(p2m), sharingR, fileProperties, retriever);
+    }
+
+    public FileAccess(FileAccess copy) {
+        this(copy.parent2meta, copy.sharingR2parent, copy.fileProperties, copy.retriever);
+    }
+
+    public FileAccess(SymmetricLink p2m, SortedMap<UserPublicKey, AsymmetricLink> sharingR2parent, byte[] fileProperties, FileRetriever retriever) {
+        this.parent2meta = p2m;
+        this.sharingR2parent = sharingR2parent;
+        this.fileProperties = fileProperties;
+        this.retriever = retriever;
+    }
+
+    public static FileAccess create(UserPublicKey owner, Set<User> sharingR, SymmetricKey metaKey, SymmetricKey parentKey,
+                                    FileProperties fileProperties, FileRetriever retriever)
     {
         SortedMap<UserPublicKey, AsymmetricLink> collect = sharingR.stream()
                 .collect(Collectors.toMap(x -> new UserPublicKey(x.getPublicKeys()), x -> new AsymmetricLink(x,
                         owner, parentKey), (a, b) -> a, () -> new TreeMap<>()));
-        return new FileAccess(metaKey.encrypt(metadata.serialize(), metaNonce), metaNonce, new SymmetricLink(parentKey, metaKey, parentKey.createNonce()),
-                collect);
+        byte[] nonce = metaKey.createNonce();
+        return new FileAccess(new SymmetricLink(parentKey, metaKey, parentKey.createNonce()), collect,
+                ArrayOps.concat(nonce, metaKey.encrypt(fileProperties.serialize(), nonce)), retriever);
     }
 
-    public FileAccess(byte[] m, byte[] p2m, SortedMap<UserPublicKey, AsymmetricLink> sharingR)
-    {
-        this(Arrays.copyOfRange(m, SymmetricKey.NONCE_BYTES, m.length), Arrays.copyOfRange(m, 0, SymmetricKey.NONCE_BYTES),
-                new SymmetricLink(p2m), sharingR);
-    }
-
-    public FileAccess(byte[] meta, byte[] nonce, SymmetricLink p2m, SortedMap<UserPublicKey, AsymmetricLink> sharingR2parent) {
-        super(TYPE.FILE, meta, nonce);
-        this.parent2meta = p2m;
-        this.sharingR2parent = sharingR2parent;
-    }
-
-    public static FileAccess create(UserPublicKey owner, SymmetricKey parentKey, FileProperties metadata, List<ByteArrayWrapper> fragments)
+    public static FileAccess create(UserPublicKey owner, SymmetricKey parentKey, FileProperties fileMetadata, FileRetriever retriever)
     {
         SymmetricKey metaKey = SymmetricKey.random();
-        FileAccess fa = create(owner, null, metaKey, parentKey, metadata, fragments, metaKey.createNonce());
-        fa.setFragments(fragments);
+        FileAccess fa = create(owner, Collections.EMPTY_SET, metaKey, parentKey, fileMetadata, retriever);
         return fa;
     }
 
     public void serialize(DataOutput dout) throws IOException
     {
-        super.serialize(dout);
         Serialize.serialize(parent2meta.serialize(), dout);
         dout.writeInt(sharingR2parent.size());
         for (UserPublicKey key: sharingR2parent.keySet()) {
             Serialize.serialize(key.getPublicKeys(), dout);
             Serialize.serialize(sharingR2parent.get(key).serialize(), dout);
         }
+        Serialize.serialize(fileProperties, dout);
+        retriever.serialize(dout);
     }
 
-    public static FileAccess deserialize(DataInput din, byte[] metadata) throws IOException
+    public static FileAccess deserialize(DataInput din) throws IOException
     {
         byte[] p2m = Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE);
         int count = din.readInt();
@@ -66,7 +74,9 @@ public class FileAccess extends Metadata
             sharingR.put(new UserPublicKey(Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE)),
                     new AsymmetricLink(Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE)));
         }
-        FileAccess res = new FileAccess(metadata, p2m, sharingR);
+        byte[] fileProperties = Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE);
+        FileRetriever retreiver = FileRetriever.deserialize(din);
+        FileAccess res = new FileAccess(p2m, sharingR, fileProperties, retreiver);
         return res;
     }
 
@@ -80,12 +90,14 @@ public class FileAccess extends Metadata
         return sharingR2parent.get(sharingKey.toUserPublicKey()).target(sharingKey, owner);
     }
 
-    public ChunkProperties getProps(SymmetricKey baseKey, byte[] metaNonce) {
-        return FileProperties.deserialize(baseKey.decrypt(encryptedMetadata, metaNonce));
+    public FileRetriever getRetriever() {
+        return retriever;
     }
 
-    public FileProperties getProps(SymmetricKey parentKey)
+    public FileProperties getFileProperties(SymmetricKey parentKey) throws IOException
     {
-        return (FileProperties) getProps(parent2meta.target(parentKey), getMetaNonce());
+        byte[] nonce = Arrays.copyOfRange(fileProperties, 0, TweetNaCl.SECRETBOX_NONCE_BYTES);
+        byte[] cipher = Arrays.copyOfRange(fileProperties, TweetNaCl.SECRETBOX_NONCE_BYTES, fileProperties.length);
+        return FileProperties.deserialize(parent2meta.target(parentKey).decrypt(cipher, nonce));
     }
 }

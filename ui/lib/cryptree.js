@@ -101,6 +101,10 @@ Metadata.deserialize = function(buf, ourKey /*SymmetricKey*/) {
     }
 }
 
+function DirAccess() {
+    
+}
+
 function string2arraybuffer(str) {
   var buf = new ArrayBuffer(str.length);
   var bufView = new Uint8Array(buf);
