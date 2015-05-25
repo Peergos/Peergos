@@ -50,8 +50,7 @@ public class FileAccess
     public static FileAccess create(UserPublicKey owner, SymmetricKey parentKey, FileProperties fileMetadata, Optional<FileRetriever> retriever)
     {
         SymmetricKey metaKey = SymmetricKey.random();
-        FileAccess fa = create(owner, Collections.EMPTY_SET, metaKey, parentKey, fileMetadata, retriever);
-        return fa;
+        return create(owner, Collections.EMPTY_SET, metaKey, parentKey, fileMetadata, retriever);
     }
 
     public Type getType() {
@@ -77,7 +76,7 @@ public class FileAccess
     {
         byte[] p2m = Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE);
         int count = din.readInt();
-        SortedMap<UserPublicKey, AsymmetricLink> sharingR = new TreeMap();
+        SortedMap<UserPublicKey, AsymmetricLink> sharingR = new TreeMap<>();
         for (int i=0; i < count; i++) {
             sharingR.put(new UserPublicKey(Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE)),
                     new AsymmetricLink(Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE)));
@@ -86,6 +85,7 @@ public class FileAccess
         boolean hasRetriever = din.readBoolean();
         Optional<FileRetriever> retreiver = hasRetriever ? Optional.of(FileRetriever.deserialize(din)) : Optional.empty();
         FileAccess base = new FileAccess(p2m, sharingR, fileProperties, retreiver);
+
         Type type = Type.values()[din.readByte() & 0xff];
         if (type == Type.Dir)
             return DirAccess.deserialize(base, din);
@@ -110,6 +110,6 @@ public class FileAccess
     {
         byte[] nonce = Arrays.copyOfRange(fileProperties, 0, TweetNaCl.SECRETBOX_NONCE_BYTES);
         byte[] cipher = Arrays.copyOfRange(fileProperties, TweetNaCl.SECRETBOX_NONCE_BYTES, fileProperties.length);
-        return FileProperties.deserialize(parent2meta.target(parentKey).decrypt(cipher, nonce));
+        return FileProperties.deserialize(getMetaKey(parentKey).decrypt(cipher, nonce));
     }
 }

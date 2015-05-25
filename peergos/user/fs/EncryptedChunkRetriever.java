@@ -72,7 +72,7 @@ public class EncryptedChunkRetriever implements FileRetriever {
         byte[] chunkNonce = Serialize.deserializeByteArray(din, SymmetricKey.NONCE_BYTES);
         byte[] chunkAuth = Serialize.deserializeByteArray(din, TweetNaCl.SECRETBOX_OVERHEAD_BYTES);
         List<ByteArrayWrapper> fragmentHashes =
-                ArrayOps.split(Serialize.deserializeByteArray(din, EncryptedChunk.ERASURE_ORIGINAL * Fragment.SIZE), Fragment.SIZE);
+                ArrayOps.split(Serialize.deserializeByteArray(din, EncryptedChunk.ERASURE_ORIGINAL * Fragment.SIZE), UserPublicKey.HASH_BYTES);
         boolean hasNext = din.readBoolean();
         Optional<Location> next = hasNext ? Optional.of(Location.deserialise(din)) : Optional.empty();
         return new EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, next);

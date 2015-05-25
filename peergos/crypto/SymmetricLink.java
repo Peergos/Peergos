@@ -10,7 +10,7 @@ public class SymmetricLink
 
     public SymmetricLink(SymmetricKey from, SymmetricKey to, byte[] iv)
     {
-        link = ArrayOps.concat(iv, from.encrypt(to.getKey(), iv));
+        link = from.encrypt(to.getKey(), iv);
         nonce = iv;
     }
 

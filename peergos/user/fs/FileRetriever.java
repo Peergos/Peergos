@@ -25,6 +25,7 @@ public interface FileRetriever
         }
 
         public void serialize(DataOutput dout) throws IOException {
+            dout.write(Type.Simple.ordinal());
             dout.writeUTF(source.getPath());
         }
 

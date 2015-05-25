@@ -1,7 +1,7 @@
 package peergos.user.fs;
 
 import peergos.crypto.*;
-import peergos.util.Serialize;
+import peergos.util.*;
 
 import java.io.*;
 import java.util.*;
@@ -41,7 +41,7 @@ public class DirAccess extends FileAccess
                 new SymmetricLink(subfolders, files, subfolders.createNonce()),
                 new SymmetricLink(subfolders, parent, subfolders.createNonce()),
                 new SymmetricLink(parent, meta, parent.createNonce()),
-                meta.encrypt(metadata.serialize(), metaNonce)
+                ArrayOps.concat(metaNonce, meta.encrypt(metadata.serialize(), metaNonce))
         );
     }
 

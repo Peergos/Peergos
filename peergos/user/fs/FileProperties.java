@@ -15,11 +15,6 @@ public class FileProperties
         this.size = size;
     }
 
-    public FileProperties(DataInput din) throws IOException {
-        name = Serialize.deserializeString(din, UserContext.MAX_USERNAME_SIZE);
-        size = din.readLong();
-    }
-
     public long getSize() {
         return size;
     }
