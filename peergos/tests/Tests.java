@@ -61,7 +61,7 @@ public class Tests
         System.out.println("Doing local tests..");
         try {
             DHTUserAPI dht = new MemoryDHTUserAPI();
-            AbstractCoreNode core = new SQLiteCoreNode(":memory:");
+            AbstractCoreNode core = SQLiteCoreNode.build(":memory:");
             contextTests(dht, core);
         } catch (Throwable e) {
             e.printStackTrace();
