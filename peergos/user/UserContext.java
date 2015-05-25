@@ -489,14 +489,7 @@ public class UserContext
 
                         byte[] original = new byte[(int) fileProps.getSize()];
                         InputStream in = fileBlob.getRetriever().getFile(receiver, baseKey);
-                        int read = 0;
-                        while (read < original.length) {
-                            int c = in.read(original);
-                            if (c >= 0)
-                                read += c;
-                            else
-                                throw new IOException("End of chunk stream reached prematurely!");
-                        }
+                        new DataInputStream(in).readFully(original);
                         // checks
                         assertTrue("Correct filename", fileProps.name.equals(filename));
                         assertTrue("Correct file contents", Arrays.equals(original, ArrayOps.concat(raw1, raw2)));
