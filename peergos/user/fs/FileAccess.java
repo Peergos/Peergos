@@ -11,6 +11,7 @@ import java.util.stream.*;
 
 public class FileAccess
 {
+    enum Type {File, Dir}
     public static int MAX_ELEMENT_SIZE = 1024;
 
     // read permissions
@@ -53,6 +54,10 @@ public class FileAccess
         return fa;
     }
 
+    public Type getType() {
+        return Type.File;
+    }
+
     public void serialize(DataOutput dout) throws IOException
     {
         Serialize.serialize(parent2meta.serialize(), dout);
@@ -63,6 +68,7 @@ public class FileAccess
         }
         Serialize.serialize(fileProperties, dout);
         retriever.serialize(dout);
+        dout.write(getType().ordinal());
     }
 
     public static FileAccess deserialize(DataInput din) throws IOException
@@ -76,8 +82,11 @@ public class FileAccess
         }
         byte[] fileProperties = Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE);
         FileRetriever retreiver = FileRetriever.deserialize(din);
-        FileAccess res = new FileAccess(p2m, sharingR, fileProperties, retreiver);
-        return res;
+        FileAccess base = new FileAccess(p2m, sharingR, fileProperties, retreiver);
+        Type type = Type.values()[din.readByte() & 0xff];
+        if (type == Type.Dir)
+            return DirAccess.deserialize(base, din);
+        return base;
     }
 
     public SymmetricKey getMetaKey(SymmetricKey parentKey)

@@ -8,7 +8,6 @@ import peergos.crypto.User;
 import peergos.crypto.UserPublicKey;
 import peergos.storage.dht.FutureWrapper;
 import peergos.user.fs.*;
-import peergos.user.fs.erasure.Erasure;
 import peergos.util.ArrayOps;
 import peergos.util.ByteArrayWrapper;
 import peergos.util.Serialize;
@@ -21,7 +20,6 @@ import java.io.DataOutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.URL;
-import java.security.PrivateKey;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -197,7 +195,7 @@ public class UserContext
         return true;
     }
 
-    private Fragment[] downloadFragments(List<ByteArrayWrapper> hashes)
+    public Fragment[] downloadFragments(List<ByteArrayWrapper> hashes)
     {
         Fragment[] res = new Fragment[hashes.size()];
         List<Future<ByteArrayWrapper>> futs = new ArrayList<>(res.length);
@@ -328,7 +326,8 @@ public class UserContext
             followerName = name;
         }
 
-        public Test() {}
+        public Test() {
+        }
 
         @org.junit.Test
         public void all() {
@@ -341,7 +340,7 @@ public class UserContext
                 String ourname = username;
                 String friendName = followerName;
 
-                System.out.println("Doing UserContext tests with core address = "+coreIP + " and storage address = "+storageIP);
+                System.out.println("Doing UserContext tests with core address = " + coreIP + " and storage address = " + storageIP);
 
                 int storagePort = 8000;
                 URL coreURL = new URL("http://" + coreIP + ":" + AbstractCoreNode.PORT + "/");
@@ -381,13 +380,13 @@ public class UserContext
                 // get the sharing key alice sent us
                 List<byte[]> reqs = us.getFollowRequests();
                 assertTrue("Got follow Request", reqs.size() == 1);
-                SharedRootDir root = us.decodeFollowRequest(reqs.get(0));
+                FilePointer root = us.decodeFollowRequest(reqs.get(0));
                 User sharer = root.writer;
 
                 // store a chunk in alice's space using the permitted sharing key (this could be alice or bob at this point)
                 int frags = 120;
 //                int port = (int) System.currentTimeMillis() % (Short.MAX_VALUE -1024) + 1024;
-                int extra = (int)(System.currentTimeMillis() % (Short.MAX_VALUE - 1024));
+                int extra = (int) (System.currentTimeMillis() % (Short.MAX_VALUE - 1024));
                 int port = 1024 + extra;
                 InetSocketAddress address = new InetSocketAddress("localhost", port);
                 for (int i = 0; i < frags; i++) {
@@ -399,7 +398,7 @@ public class UserContext
                     }
                 }
                 long quota = clientCoreNode.getQuota(friendName);
-                System.out.println("Generated quota: " + quota/1024 + " KiB");
+                System.out.println("Generated quota: " + quota / 1024 + " KiB");
                 t1 = System.nanoTime();
                 mediumFileTest(alice.username, sharer, alice, us);
                 t2 = System.nanoTime();
@@ -413,15 +412,13 @@ public class UserContext
             }
         }
 
-        public static void mediumFileTest(String owner, User sharer, UserContext receiver, UserContext sender) {
+        public static void mediumFileTest(String owner, User sharer, UserContext receiver, UserContext sender) throws IOException {
             // create a root dir and a file to it, then retrieve and decrypt the file using the receiver
             // create root cryptree
             SymmetricKey rootRKey = SymmetricKey.random();
-            SymmetricKey rootWKey = SymmetricKey.random();
             String name = "/";
             byte[] rootMapKey = ArrayOps.random(32); // root will be stored under this in the core node
-            DirAccess root = DirAccess.create(sharer, rootRKey, new FileProperties(name, 0), rootWKey);
-            root.setFragments(new ArrayList());
+            DirAccess root = DirAccess.create(sharer, rootRKey, new FileProperties(name, 0));
 
             // generate file (two chunks)
             Random r = new Random();
@@ -453,8 +450,9 @@ public class UserContext
             List<ByteArrayWrapper> hashes1 = new ArrayList<>(fragments1.length);
             for (Fragment f : fragments1)
                 hashes1.add(new ByteArrayWrapper(f.getHash()));
-            FileProperties props1 = new FileProperties(filename, nonce1, encryptedChunk1.getAuth(), raw1.length + raw2.length, chunk2Location);
-            FileAccess file = FileAccess.create(sharer, fileKey, props1, hashes1);
+            FileProperties props1 = new FileProperties(filename, raw1.length + raw2.length);
+            FileRetriever ret = new EncryptedChunkRetriever(nonce1, encryptedChunk1.getAuth(), hashes1);
+            FileAccess file = FileAccess.create(sharer, fileKey, props1, ret);
 
             // 2nd chunk
             Chunk chunk2 = new Chunk(raw2, fileKey);
@@ -464,12 +462,11 @@ public class UserContext
             List<ByteArrayWrapper> hashes2 = new ArrayList<>(fragments2.length);
             for (Fragment f : fragments2)
                 hashes2.add(new ByteArrayWrapper(f.getHash()));
-            ChunkProperties props2 = new ChunkProperties(nonce2, encryptedChunk2.getAuth(), null);
-            Metadata meta2 = new Metadata(props2, fileKey, nonce2);
-            meta2.setFragments(hashes2);
+            FileRetriever ret2 = new EncryptedChunkRetriever(nonce2, encryptedChunk2.getAuth(), hashes2);
+            FileAccess meta2 = FileAccess.create(sharer, fileKey, , ret2);
 
             // now write the root to the core nodes
-            receiver.addToStaticData(sharer, new SharedRootDir(receiver.username, sharer, new ByteArrayWrapper(rootMapKey), rootRKey));
+            receiver.addToStaticData(sharer, new FilePointer(receiver.username, sharer, new ByteArrayWrapper(rootMapKey), rootRKey));
             sender.uploadChunk(root, new Fragment[0], owner, sharer, rootMapKey);
             // now upload the file meta blobs
             System.out.printf("Uploading chunk with %d fragments\n", fragments1.length);
@@ -478,103 +475,31 @@ public class UserContext
             sender.uploadChunk(meta2, fragments2, owner, sharer, chunk2MapKey);
 
             // now check the retrieval from zero knowledge
-            Map<FilePointer, DirAccess> roots = receiver.getRoots();
+            Map<FilePointer, FileAccess> roots = receiver.getRoots();
             for (FilePointer dirPointer : roots.keySet()) {
-                SymmetricKey rootDirKey = ((SharedRootDir) dirPointer).rootDirKey;
-                DirAccess dir = roots.get(dirPointer);
-                try {
-                    Map<SymmetricLocationLink, Metadata> files = receiver.retrieveMetadata(dir.getFiles(), rootDirKey);
-                    for (SymmetricLocationLink fileLoc : files.keySet()) {
-                        SymmetricKey baseKey = fileLoc.target(rootDirKey);
-                        FileAccess fileBlob = (FileAccess) files.get(fileLoc);
-                        // download fragments in chunk
-                        Fragment[] retrievedfragments1 = receiver.downloadFragments(fileBlob);
-                        FileProperties fileProps = fileBlob.getProps(baseKey);
-
-                        byte[] enc1 = Erasure.recombine(reorder(fileBlob, retrievedfragments1), Chunk.MAX_SIZE, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
-                        EncryptedChunk encrypted1 = new EncryptedChunk(ArrayOps.concat(fileProps.getAuth(), enc1));
-                        byte[] original1 = encrypted1.decrypt(baseKey, fileProps.getChunkNonce());
-                        // checks
-                        assertTrue("Correct filename", fileProps.name.equals(filename));
-                        assertTrue("Correct file contents", Arrays.equals(original1, raw1));
-
-                        // 2nd chunk
-                        Metadata second = receiver.getMetadata(fileProps.getNextChunkLocation(), baseKey);
-                        Fragment[] retrievedfragments2 = receiver.downloadFragments(second);
-                        byte[] enc2 = Erasure.recombine(reorder(second, retrievedfragments2), Chunk.MAX_SIZE, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
-                        ChunkProperties cprops = second.getProps(baseKey);
-                        EncryptedChunk encrypted2 = new EncryptedChunk(ArrayOps.concat(cprops.getChunkAuth(), enc2));
-                        byte[] original2 = encrypted2.decrypt(baseKey, cprops.getChunkNonce());
-                        assertTrue("Correct file contents (2nd chunk)", Arrays.equals(original2, raw2));
-                    }
-                } catch (IOException e) {
-                    System.err.println("Couldn't get File metadata!");
-                    throw new IllegalStateException(e);
-                }
-            }
-        }
-
-        public void fileTest(String owner, User sharer, PrivateKey sharerPriv, UserContext receiver, UserContext sender) {
-            // create a root dir and add a file to it, then retrieve and decrypt the file using the receiver
-            // create root cryptree
-            SymmetricKey rootRKey = SymmetricKey.random();
-            SymmetricKey rootWKey = SymmetricKey.random();
-            String name = "/";
-            byte[] rootMapKey = ArrayOps.random(32); // root will be stored under this in the core node
-            DirAccess root = DirAccess.create(sharer, rootRKey, new FileProperties(name, new byte[0], new byte[0], 0, null), rootWKey);
-
-            // generate file (single chunk)
-            Random r = new Random();
-            byte[] nonce = new byte[SymmetricKey.NONCE_BYTES];
-            r.nextBytes(nonce);
-            byte[] raw = new byte[Chunk.MAX_SIZE];
-            byte[] template = "Hello secure cloud! Goodbye NSA!".getBytes();
-            for (int i = 0; i < raw.length / 32; i++)
-                System.arraycopy(template, 0, raw, 32 * i, 32);
-
-            // add file to root dir
-            String filename = "tree.jpg"; // /photos/tree.jpg
-            SymmetricKey fileKey = SymmetricKey.random();
-            byte[] fileMapKey = ArrayOps.random(32); // file metablob will be stored under this in the core node
-            Location fileLocation = new Location(owner, sharer, new ByteArrayWrapper(fileMapKey));
-
-            root.addFile(fileLocation, rootRKey, fileKey);
-
-            Chunk chunk = new Chunk(raw, fileKey);
-            EncryptedChunk encryptedChunk = new EncryptedChunk(chunk.encrypt(nonce));
-            Fragment[] fragments = encryptedChunk.generateFragments();
-            List<ByteArrayWrapper> hashes = new ArrayList(fragments.length);
-            for (Fragment f : fragments)
-                hashes.add(new ByteArrayWrapper(f.getHash()));
-            FileProperties props = new FileProperties(filename, nonce, encryptedChunk.getAuth(), raw.length, null);
-            FileAccess file = FileAccess.create(sharer, fileKey, props, hashes);
-
-            // now write the root to the core nodes
-            receiver.addToStaticData(sharer, new SharedRootDir(receiver.username, sharer, new ByteArrayWrapper(rootMapKey), rootRKey));
-            sender.uploadChunk(root, new Fragment[0], owner, sharer, rootMapKey);
-            // now upload the file meta blob
-            sender.uploadChunk(file, fragments, owner, sharer, fileMapKey);
-
-
-            // now check the retrieval from zero knowledge
-            Map<FilePointer, DirAccess> roots = receiver.getRoots();
-            for (FilePointer dirPointer : roots.keySet()) {
-                SymmetricKey rootDirKey = ((SharedRootDir) dirPointer).rootDirKey;
-                DirAccess dir = roots.get(dirPointer);
+                SymmetricKey rootDirKey = dirPointer.rootDirKey;
+                DirAccess dir = (DirAccess) roots.get(dirPointer);
                 try {
                     Map<SymmetricLocationLink, FileAccess> files = receiver.retrieveMetadata(dir.getFiles(), rootDirKey);
                     for (SymmetricLocationLink fileLoc : files.keySet()) {
+                        SymmetricKey baseKey = fileLoc.target(rootDirKey);
                         FileAccess fileBlob = files.get(fileLoc);
                         // download fragments in chunk
-                        Fragment[] retrievedfragments = sender.downloadFragments(fileBlob);
-                        FileProperties fileProps = fileBlob.getFileProperties(fileLoc.target(rootDirKey));
+                        FileProperties fileProps = fileBlob.getFileProperties(baseKey);
 
-                        byte[] enc = Erasure.recombine(reorder(fileBlob, retrievedfragments), Chunk.MAX_SIZE, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
-                        EncryptedChunk encrypted = new EncryptedChunk(enc);
-                        byte[] original = encrypted.decrypt(fileLoc.target(rootDirKey), fileProps.getChunkNonce());
+                        byte[] original = new byte[(int) fileProps.getSize()];
+                        InputStream in = fileBlob.getRetriever().getFile(receiver, baseKey);
+                        int read = 0;
+                        while (read < original.length) {
+                            int c = in.read(original);
+                            if (c >= 0)
+                                read += c;
+                            else
+                                throw new IOException("End of chunk stream reached prematurely!");
+                        }
                         // checks
                         assertTrue("Correct filename", fileProps.name.equals(filename));
-                        assertTrue("Correct file contents", Arrays.equals(original, raw));
+                        assertTrue("Correct file contents", Arrays.equals(original, ArrayOps.concat(raw1, raw2)));
                     }
                 } catch (IOException e) {
                     System.err.println("Couldn't get File metadata!");
@@ -582,26 +507,5 @@ public class UserContext
                 }
             }
         }
-    }
-
-    public static byte[][] reorder(FileAccess meta, Fragment[] received)
-    {
-        List<ByteArrayWrapper> hashes = meta.getFragmentHashes();
-        byte[][] originalHashes = new byte[hashes.size()][];
-        for (int i=0; i < originalHashes.length; i++)
-            originalHashes[i] = hashes.get(i).data;
-        byte[][] res = new byte[originalHashes.length][];
-        for (int i=0; i < res.length; i++)
-        {
-            for (int j=0; j < received.length; j++)
-                if (Arrays.equals(originalHashes[i], received[j].getHash()))
-                {
-                    res[i] = received[j].getData();
-                    break;
-                }
-            if (res[i] == null)
-                res[i] = new byte[received[0].getData().length];
-        }
-        return res;
     }
 }

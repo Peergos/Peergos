@@ -51,6 +51,10 @@ public class DirAccess extends FileAccess
         return create(owner, metaKey, SymmetricKey.random(), SymmetricKey.random(), subfoldersKey, Collections.EMPTY_SET, metadata, metaKey.createNonce());
     }
 
+    public Type getType() {
+        return Type.Dir;
+    }
+
     public void serialize(DataOutput dout) throws IOException
     {
         super.serialize(dout);
@@ -75,9 +79,8 @@ public class DirAccess extends FileAccess
         }
     }
 
-    public static DirAccess deserialize(DataInput din) throws IOException
+    public static DirAccess deserialize(FileAccess base, DataInput din) throws IOException
     {
-        FileAccess base = FileAccess.deserialize(din);
         byte[] s2p = Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE);
         byte[] s2f = Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE);
         int readSharingKeys = din.readInt();
