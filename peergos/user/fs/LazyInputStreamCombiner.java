@@ -8,35 +8,33 @@ import java.util.*;
 
 public class LazyInputStreamCombiner extends InputStream
 {
-    private final List<EncryptedChunkRetriever> streams;
     private final UserContext context;
     private final SymmetricKey dataKey;
-    int index = 0;
     private InputStream current;
+    private Optional<Location> next;
 
-    public LazyInputStreamCombiner(List<EncryptedChunkRetriever> streams, UserContext context, SymmetricKey dataKey) {
-        this.streams = streams;
+    public LazyInputStreamCombiner(EncryptedChunkRetriever stream, UserContext context, SymmetricKey dataKey) throws IOException {
+        current = stream.getChunkInputStream(context, dataKey);
+        next = stream.getNext();
         this.context = context;
         this.dataKey = dataKey;
     }
 
     private InputStream getNextStream() throws IOException {
-        return streams.get(index++).getFile(context, dataKey);
+        if (next.isPresent()) {
+            EncryptedChunkRetriever nextRet = (EncryptedChunkRetriever) context.getMetadata(next.get()).getRetriever();
+            next = nextRet.getNext();
+            return nextRet.getChunkInputStream(context, dataKey);
+        }
+        throw new EOFException();
     }
 
     @Override
     public int read() throws IOException {
-        while (index < streams.size()) {
-            try {
-                return current.read();
-            } catch (IOException e) {
-                if (index < streams.size())
-                    current = getNextStream();
-                else break;
-            } catch (NullPointerException e) {
-                current = getNextStream();
-            }
-        }
-        return -1;
+        int r = current.read();
+        if (r >= 0)
+            return r;
+        current = getNextStream();
+        return current.read();
     }
 }

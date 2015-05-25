@@ -7,7 +7,7 @@ import java.io.*;
 
 public interface FileRetriever
 {
-    enum Type {Simple, EncryptedChunk, EncryptedFile}
+    enum Type {Simple, EncryptedChunk}
 
     InputStream getFile(UserContext context, SymmetricKey dataKey) throws IOException;
 
@@ -40,8 +40,6 @@ public interface FileRetriever
                 return Simple.deserialize(din);
             case EncryptedChunk:
                 return EncryptedChunkRetriever.deserialize(din);
-            case EncryptedFile:
-                return EncryptedFileRetriever.deserialize(din);
             default:
                 throw new IllegalStateException("Unknown FileRetriever type: "+type);
         }

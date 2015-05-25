@@ -12,21 +12,30 @@ public class EncryptedChunkRetriever implements FileRetriever {
     private final byte[] chunkNonce;
     private final byte[] chunkAuth;
     private final List<ByteArrayWrapper> fragmentHashes;
+    private final Optional<Location> nextChunk;
 
-    public EncryptedChunkRetriever(byte[] chunkNonce, byte[] chunkAuth, List<ByteArrayWrapper> fragmentHashes) {
+    public EncryptedChunkRetriever(byte[] chunkNonce, byte[] chunkAuth, List<ByteArrayWrapper> fragmentHashes, Optional<Location> nextChunk) {
         this.chunkNonce = chunkNonce;
         this.chunkAuth = chunkAuth;
         this.fragmentHashes = fragmentHashes;
+        this.nextChunk = nextChunk;
     }
 
     @Override
     public InputStream getFile(UserContext context, SymmetricKey dataKey) throws IOException {
-        // for now download all at once
+        return new LazyInputStreamCombiner(this, context, dataKey);
+    }
+
+    public InputStream getChunkInputStream(UserContext context, SymmetricKey dataKey) throws IOException {
         Fragment[] retrievedfragments1 = context.downloadFragments(fragmentHashes);
         byte[] enc1 = Erasure.recombine(reorder(fragmentHashes, retrievedfragments1), Chunk.MAX_SIZE, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
         EncryptedChunk encrypted1 = new EncryptedChunk(ArrayOps.concat(chunkAuth, enc1));
         byte[] original = encrypted1.decrypt(dataKey, chunkNonce);
         return new ByteArrayInputStream(original);
+    }
+
+    public Optional<Location> getNext() {
+        return nextChunk;
     }
 
     public static byte[][] reorder(List<ByteArrayWrapper> hashes, Fragment[] received)
@@ -54,6 +63,9 @@ public class EncryptedChunkRetriever implements FileRetriever {
         Serialize.serialize(chunkNonce, dout);
         Serialize.serialize(chunkAuth, dout);
         Serialize.serialize(ArrayOps.concat(fragmentHashes), dout);
+        dout.writeBoolean(nextChunk.isPresent());
+        if (nextChunk.isPresent())
+            nextChunk.get().serialise(dout);
     }
 
     public static EncryptedChunkRetriever deserialize(DataInput din) throws IOException {
@@ -61,6 +73,8 @@ public class EncryptedChunkRetriever implements FileRetriever {
         byte[] chunkAuth = Serialize.deserializeByteArray(din, TweetNaCl.SECRETBOX_OVERHEAD_BYTES);
         List<ByteArrayWrapper> fragmentHashes =
                 ArrayOps.split(Serialize.deserializeByteArray(din, EncryptedChunk.ERASURE_ORIGINAL * Fragment.SIZE), Fragment.SIZE);
-        return new EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes);
+        boolean hasNext = din.readBoolean();
+        Optional<Location> next = hasNext ? Optional.of(Location.deserialise(din)) : Optional.empty();
+        return new EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, next);
     }
 }

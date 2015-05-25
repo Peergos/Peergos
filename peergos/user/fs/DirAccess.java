@@ -26,7 +26,7 @@ public class DirAccess extends FileAccess
 
     public DirAccess(SortedMap<UserPublicKey, AsymmetricLink> sharingR, SymmetricLink s2f, SymmetricLink s2p, SymmetricLink p2m, byte[] metadata)
     {
-        super(p2m, Collections.<UserPublicKey, AsymmetricLink>emptySortedMap(), metadata, null);
+        super(p2m, Collections.<UserPublicKey, AsymmetricLink>emptySortedMap(), metadata, Optional.empty());
         sharingR2subfoldersR = sharingR;
         subfolders2files = s2f;
         subfolders2parent = s2p;

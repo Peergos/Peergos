@@ -18,9 +18,9 @@ public class FileAccess
     private SortedMap<UserPublicKey, AsymmetricLink> sharingR2parent;
     private final SymmetricLink parent2meta;
     private final byte[] fileProperties;
-    private final FileRetriever retriever;
+    private final Optional<FileRetriever> retriever;
 
-    public FileAccess(byte[] p2m, SortedMap<UserPublicKey, AsymmetricLink> sharingR, byte[] fileProperties, FileRetriever retriever)
+    public FileAccess(byte[] p2m, SortedMap<UserPublicKey, AsymmetricLink> sharingR, byte[] fileProperties, Optional<FileRetriever> retriever)
     {
         this(new SymmetricLink(p2m), sharingR, fileProperties, retriever);
     }
@@ -29,7 +29,7 @@ public class FileAccess
         this(copy.parent2meta, copy.sharingR2parent, copy.fileProperties, copy.retriever);
     }
 
-    public FileAccess(SymmetricLink p2m, SortedMap<UserPublicKey, AsymmetricLink> sharingR2parent, byte[] fileProperties, FileRetriever retriever) {
+    public FileAccess(SymmetricLink p2m, SortedMap<UserPublicKey, AsymmetricLink> sharingR2parent, byte[] fileProperties, Optional<FileRetriever> retriever) {
         this.parent2meta = p2m;
         this.sharingR2parent = sharingR2parent;
         this.fileProperties = fileProperties;
@@ -37,7 +37,7 @@ public class FileAccess
     }
 
     public static FileAccess create(UserPublicKey owner, Set<User> sharingR, SymmetricKey metaKey, SymmetricKey parentKey,
-                                    FileProperties fileProperties, FileRetriever retriever)
+                                    FileProperties fileProperties, Optional<FileRetriever> retriever)
     {
         SortedMap<UserPublicKey, AsymmetricLink> collect = sharingR.stream()
                 .collect(Collectors.toMap(x -> new UserPublicKey(x.getPublicKeys()), x -> new AsymmetricLink(x,
@@ -47,7 +47,7 @@ public class FileAccess
                 ArrayOps.concat(nonce, metaKey.encrypt(fileProperties.serialize(), nonce)), retriever);
     }
 
-    public static FileAccess create(UserPublicKey owner, SymmetricKey parentKey, FileProperties fileMetadata, FileRetriever retriever)
+    public static FileAccess create(UserPublicKey owner, SymmetricKey parentKey, FileProperties fileMetadata, Optional<FileRetriever> retriever)
     {
         SymmetricKey metaKey = SymmetricKey.random();
         FileAccess fa = create(owner, Collections.EMPTY_SET, metaKey, parentKey, fileMetadata, retriever);
@@ -67,7 +67,9 @@ public class FileAccess
             Serialize.serialize(sharingR2parent.get(key).serialize(), dout);
         }
         Serialize.serialize(fileProperties, dout);
-        retriever.serialize(dout);
+        dout.writeBoolean(retriever.isPresent());
+        if (retriever.isPresent())
+            retriever.get().serialize(dout);
         dout.write(getType().ordinal());
     }
 
@@ -81,7 +83,8 @@ public class FileAccess
                     new AsymmetricLink(Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE)));
         }
         byte[] fileProperties = Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE);
-        FileRetriever retreiver = FileRetriever.deserialize(din);
+        boolean hasRetriever = din.readBoolean();
+        Optional<FileRetriever> retreiver = hasRetriever ? Optional.of(FileRetriever.deserialize(din)) : Optional.empty();
         FileAccess base = new FileAccess(p2m, sharingR, fileProperties, retreiver);
         Type type = Type.values()[din.readByte() & 0xff];
         if (type == Type.Dir)
@@ -100,7 +103,7 @@ public class FileAccess
     }
 
     public FileRetriever getRetriever() {
-        return retriever;
+        return retriever.get();
     }
 
     public FileProperties getFileProperties(SymmetricKey parentKey) throws IOException

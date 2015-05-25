@@ -451,7 +451,7 @@ public class UserContext
             for (Fragment f : fragments1)
                 hashes1.add(new ByteArrayWrapper(f.getHash()));
             FileProperties props1 = new FileProperties(filename, raw1.length + raw2.length);
-            FileRetriever ret = new EncryptedChunkRetriever(nonce1, encryptedChunk1.getAuth(), hashes1);
+            Optional<FileRetriever> ret = Optional.of(new EncryptedChunkRetriever(nonce1, encryptedChunk1.getAuth(), hashes1, Optional.of(chunk2Location)));
             FileAccess file = FileAccess.create(sharer, fileKey, props1, ret);
 
             // 2nd chunk
@@ -462,8 +462,8 @@ public class UserContext
             List<ByteArrayWrapper> hashes2 = new ArrayList<>(fragments2.length);
             for (Fragment f : fragments2)
                 hashes2.add(new ByteArrayWrapper(f.getHash()));
-            FileRetriever ret2 = new EncryptedChunkRetriever(nonce2, encryptedChunk2.getAuth(), hashes2);
-            FileAccess meta2 = FileAccess.create(sharer, fileKey, , ret2);
+            Optional<FileRetriever> ret2 = Optional.of(new EncryptedChunkRetriever(nonce2, encryptedChunk2.getAuth(), hashes2, Optional.empty()));
+            FileAccess meta2 = FileAccess.create(sharer, fileKey, new FileProperties("", raw2.length), ret2);
 
             // now write the root to the core nodes
             receiver.addToStaticData(sharer, new FilePointer(receiver.username, sharer, new ByteArrayWrapper(rootMapKey), rootRKey));
