@@ -12,10 +12,8 @@ import peergos.user.UserContext;
 import peergos.user.fs.erasure.ErasureHandler;
 import peergos.util.*;
 
-import java.io.File;
 import java.io.IOException;
 import java.net.*;
-import java.sql.SQLException;
 import java.util.*;
 
 public class Tests
@@ -71,7 +69,7 @@ public class Tests
         }
     }
 
-    public static void contextTests(DHTUserAPI dht, AbstractCoreNode core) {
+    public static void contextTests(DHTUserAPI dht, AbstractCoreNode core) throws IOException {
         String ourname = "Bob";
         User us = User.generateUserCredentials(ourname, "password");
         UserContext bob = new UserContext(ourname, us, dht, core);
@@ -91,8 +89,8 @@ public class Tests
 
         List<byte[]> reqs = alice.getFollowRequests();
         assert(reqs.size() == 1);
-        UserContext.SharedRootDir root = alice.decodeFollowRequest(reqs.get(0));
-        User sharer = root.owner;
+        UserContext.FilePointer root = alice.decodeFollowRequest(reqs.get(0));
+        User sharer = root.writer;
 
         // store a chunk in alice's space using the permitted sharing key (this could be alice or bob at this point)
         int frags = 120;

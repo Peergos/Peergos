@@ -13,25 +13,14 @@ public class FileWrapper
 {
     private UserContext context;
     private SymmetricKey baseKey;
-    private Metadata first;
+    private FileAccess first;
     private FileProperties props;
 
-    public FileWrapper(UserContext context, Metadata first, SymmetricKey baseKey) {
+    public FileWrapper(UserContext context, FileAccess first, SymmetricKey baseKey) throws IOException {
         this.context = context;
         this.first = first;
         this.baseKey = baseKey;
-        this.props = (FileProperties) first.getProps(baseKey);
-    }
-
-    private List<Metadata> getAllChunkMetadata(SymmetricKey baseKey) throws IOException {
-        Location next = first.getNextChunkLocation(baseKey, null);
-        List<Metadata> res = new ArrayList();
-        res.add(first);
-        while (next != null) {
-            Metadata meta = context.getMetadata(next, baseKey);
-            res.add(meta);
-        }
-        return res;
+        this.props = first.getFileProperties(baseKey);
     }
 
     public boolean isDir() {
@@ -46,7 +35,7 @@ public class FileWrapper
         if (!isDir())
             return new ArrayList(0);
         DirAccess meta = (DirAccess)first;
-        Map<SymmetricLocationLink, Metadata> files = context.retrieveMetadata(meta.getFiles(), baseKey);
+        Map<SymmetricLocationLink, FileAccess> files = context.retrieveMetadata(meta.getFiles(), baseKey);
         List<FileWrapper> res = new ArrayList(files.size());
         for (SymmetricLocationLink loc: files.keySet()) {
             res.add(new FileWrapper(context, files.get(loc), loc.target(baseKey)));

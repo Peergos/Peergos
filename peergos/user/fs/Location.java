@@ -11,18 +11,18 @@ import java.io.*;
 public class Location
 {
     public final String owner;
-    public final UserPublicKey subKey;
+    public final UserPublicKey writerKey;
     public final ByteArrayWrapper mapKey;
 
     public Location(String owner, UserPublicKey subKey, ByteArrayWrapper mapKey) {
         this.owner = owner;
-        this. subKey = subKey;
+        this.writerKey = subKey;
         this.mapKey = mapKey;
     }
 
     public void serialise(DataOutput dout) throws IOException {
         Serialize.serialize(owner, dout);
-        Serialize.serialize(subKey.getPublicKeys(), dout);
+        Serialize.serialize(writerKey.getPublicKeys(), dout);
         Serialize.serialize(mapKey.data, dout);
     }
 
