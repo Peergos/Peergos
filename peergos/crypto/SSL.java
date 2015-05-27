@@ -173,36 +173,40 @@ public class SSL
         Certificate[] dirs = SSL.getDirectoryServerCertificates();
         Certificate cert;
         Certificate dir;
+        boolean tryLocal = false;
         while (true) {
-            dir = dirs[new SecureRandom().nextInt() % dirs.length];
+            try {
+                dir = dirs[new SecureRandom().nextInt() % dirs.length];
 //            String alias = getCommonName(dir);
 //            ks.setCertificateEntry(alias, dir);
 
-            // synchronously contact a directory server to sign our certificate
-            String address = SSL.getCommonName(dir);
-            URL target = new URL("http", address, DirectoryServer.PORT, "/sign");
-            System.out.println("sending CSR to " + target.toString());
-            HttpURLConnection conn = (HttpURLConnection) target.openConnection();
-            conn.setDoOutput(true);
-            conn.setRequestMethod("PUT");
-            OutputStream out = conn.getOutputStream();
-            byte[] raw = csr.getEncoded();
-            out.write(raw);
-            out.close();
+                // synchronously contact a directory server to sign our certificate
+                String address = tryLocal ? "localhost" : SSL.getCommonName(dir);
+                URL target = new URL("http", address, DirectoryServer.PORT, "/sign");
+                System.out.println("sending CSR to " + target.toString());
+                HttpURLConnection conn = (HttpURLConnection) target.openConnection();
+                conn.setDoOutput(true);
+                conn.setRequestMethod("PUT");
+                OutputStream out = conn.getOutputStream();
+                byte[] raw = csr.getEncoded();
+                out.write(raw);
+                out.close();
 
-            InputStream in = conn.getInputStream();
-            byte[] buf = new byte[4*1024];
-            ByteArrayOutputStream bout = new ByteArrayOutputStream();
-            while (true)
-            {
-                int r = in.read(buf);
-                if (r < 0)
-                    break;
-                bout.write(buf, 0, r);
+                InputStream in = conn.getInputStream();
+                byte[] buf = new byte[4 * 1024];
+                ByteArrayOutputStream bout = new ByteArrayOutputStream();
+                while (true) {
+                    int r = in.read(buf);
+                    if (r < 0)
+                        break;
+                    bout.write(buf, 0, r);
+                }
+                CertificateFactory fact = CertificateFactory.getInstance("X.509", "BC");
+                cert = fact.generateCertificate(new ByteArrayInputStream(bout.toByteArray()));
+                break;
+            } catch (IOException e) {
+                tryLocal = true;
             }
-            CertificateFactory  fact = CertificateFactory.getInstance("X.509", "BC");
-            cert = fact.generateCertificate(new ByteArrayInputStream(bout.toByteArray()));
-            break;
         }
         // will throw exception if certificates don't verify by signer public key
         dir.verify(rootCert.getPublicKey());
