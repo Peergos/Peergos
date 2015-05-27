@@ -265,174 +265,200 @@ function DHTClient() {
 function CoreNodeClient() {
         //String -> fn- >fn -> void
         this.getPublicKey = function(username, onSuccess, onError) {
-            post("core/getPublicKey", username, onSuccess, onError);
+            var buffer = new  ByteBuffer(0);
+            buffer.writeString(username);
+            post("core/getPublicKey", buffer, onSuccess, onError);
         };
         
         //String -> Uint8Array -> Uint8Array -> fn -> fn -> void
         this.updateStaticData = function(username, signedHash, staticData, onSuccess, onError) {
-            var prepared = prepare([toUint8Array(username), signedHash, staticData]);
-            post("core/updateStaticData", prepared, onSuccess, onError); 
+            var buffer = new ByteBuffer(0);
+            buffer.writeString(username);
+            buffer.writeArray(signedHash);
+            buffer.writeArray(staticData);
+            post("core/updateStaticData", buffer, onSuccess, onError); 
         };
 
         //String -> fn- >fn -> void
         this.getStaticData = function(username, onSuccess, onError) {
-            var prepared = prepare([toUint8Array(username)]);
-            post("core/getStaticData", prepared, onSuccess, onError);
+            var buffer = new ByteBuffer(0);
+            buffer.writeString(username);
+            post("core/getStaticData", buffer, onSuccess, onError);
         };
 
         //Uint8Array -> fn -> fn -> void
         this.getUsername = function(publicKey, onSuccess, onError) {
-            post("core/getUsername", publicKey, onSuccess, onError);
+            var buffer = new ByteBuffer(0);
+            buffer.writeArray(publicKey);
+            post("core/getUsername", buffer, onSuccess, onError);
         };
 
         
         //String -> Uint8Array -> Uint8Array -> fn -> fn -> void
         this.addUsername = function(username, encodedUserKey, signedHash, staticData) {
-            var prepared = prepare([toUint8Array(username), encodedUserKey, signedHash, staticData]);
-            post("core/addUsername", prepared, onSuccess, onError);
+            var buffer = new ByteBuffer(0);
+            buffer.writeString(username);
+            buffer.writeArray(encodedUserKey);
+            buffer.writeArray(signedHash);
+            buffer.writeArray(staticData);
+            post("core/addUsername", buffer, onSuccess, onError);
         };
 
         //String -> Uint8Array -> fn -> fn -> void
         this.followRequest = function( target,  encryptedPermission, onSuccess, onError) {
-             var prepared = prepare([ target,  encryptedPermission]);
-             post("core/followRequest", prepared, onSuccess, onError);
+            var buffer = new ByteBuffer(0);
+            buffer.writeString(target);
+            buffer.writeArray(encryptedPermission);
+             post("core/followRequest", buffer, onSuccess, onError);
         };
 
         //String -> Uint8Array -> fn -> fn -> void
         this.getFollowRequests = function( username, onSuccess, onError) {
-             var prepared = prepare([toUint8Array(username)]);
-             post("core/getFollowRequests", prepared, onSuccess, onError);
+            var buffer = new ByteBuffer(0);
+            buffer.writeString(username);
+            post("core/getFollowRequests", buffer, onSuccess, onError);
         };
 
         //String -> Uint8Array -> Uint8Array -> fn -> fn -> void
         this.removeFollowRequest = function( target,  data,  signedHash, onSuccess, onError) {
-             var prepared = prepare([ toUint8Array(target),  data,  signedHash]);
-             post("core/removeFollowRequest", prepared, onSuccess, onError);
+            var buffer = new ByteBuffer(0);
+            buffer.writeString(target);
+            buffer.writeArray(data);
+            buffer.writeArray(signedHash);
+             post("core/removeFollowRequest", buffer, onSuccess, onError);
         };
 
         //String -> Uint8Array -> Uint8Array -> fn -> fn -> void
         this.allowSharingKey = function( username,  encodedSharingPublicKey,  signedHash, onSuccess, onError) {
-            var prepared = prepare([ toUint8Array(username),  encodedSharingPublicKey,  signedHash]);
-            post("core/allowSharingKey", prepared, onSuccess, onError);
+            var buffer = new ByteBuffer(0);
+            buffer.writeString(username);
+            buffer.writeArray(encodedSharingKey);
+            buffer.writeArray(signedHash); 
+            post("core/allowSharingKey", buffer, onSuccess, onError);
         };
 
         //String -> Uint8Array -> Uint8Array -> fn -> fn -> void
         this.banSharingKey = function( username,  encodedSharingPublicKey,  signedHash, onSuccess, onError) {
-            var prepared = prepare([ toUint8Array(username),  encodedSharingPublicKey,  signedHash]);
-            post("core/banSharingKey", prepared, onSuccess, onError);
-};
+            var buffer = new ByteBuffer(0);
+            buffer.writeString(username);
+            buffer.writeArray(encodedSharingPublicKey);
+            buffer.writeArray(signedHash); 
+            post("core/banSharingKey", buffer, onSuccess, onError);
+        };
 
         //String -> Uint8Array -> Uint8Array -> Uint8Array  -> Uint8Array -> fn -> fn -> void
         this.addMetadataBlob = function( username,  encodedSharingPublicKey,  mapKey,  metadataBlob,  sharingKeySignedHash, onSuccess, onError) {
-             var prepared = prepare([ toUint8Array(username),  encodedSharingPublicKey,  mapKey,  metadataBlob,  sharingKeySignedHash]);
-             post("core/addMetadataBlob", prepared, onSuccess, onError);
+            var buffer = new ByteBuffer(0);
+            buffer.writeString(username);
+            buffer.writeArray(encodedSharingPublicKey);
+            buffer.writeArray(mapKey);
+            buffer.writeArray(metadataBlob);
+            buffer.writeArray(sharingKeySignedHash);
+            post("core/addMetadataBlob", buffer, onSuccess, onError);
         };
 
         //String -> Uint8Array -> Uint8Array  -> Uint8Array -> fn -> fn -> void
         this.removeMetadataBlob = function( username,  encodedSharingKey,  mapKey,  sharingKeySignedMapKey, onSuccess, onError) {
-            var prepared = prepare([ toUint8Array(username),  encodedSharingKey,  mapKey,  sharingKeySignedMapKey]);
-            post("core/removeMetadataBlob", prepared, onSuccess, onError);
+            var buffer = new ByteBuffer(0);
+            buffer.writeString(username);
+            buffer.writeArray(encodedSharingKey);
+            buffer.writeArray(mapKey);
+            buffer.writeArray(sharingKeySignedMapKey);
+            post("core/removeMetadataBlob", buffer, onSuccess, onError);
         };
 
         //String  -> Uint8Array  -> Uint8Array -> fn -> fn -> void
         this.removeUsername = function( username,  userKey,  signedHash, onSuccess, onError) {
-            var prepared = prepare([ toUint8Array(username),  userKey,  signedHash]);
-            post("core/removeUsername", prepared, onSuccess, onError);
+            var buffer = new ByteBuffer(0);
+            buffer.writeString(username);
+            buffer.writeArray(userKey);
+            buffer.writeArray(signedHash);
+            post("core/removeUsername", buffer, onSuccess, onError);
         };
 
         //String -> fn -> fn -> void
         this.getSharingKeys = function( username, onSuccess, onError) {
-            var prepared = prepare([ toUint8Array(username)]);
-            post("core/getSharingKeys", prepared, onSuccess, onError);
+            var buffer = new ByteBuffer(0);
+            buffer.writeString(username);
+            post("core/getSharingKeys", buffer, onSuccess, onError);
         };
 
         //String  -> Uint8Array  -> fn -> fn -> void
         this.getMetadataBlob = function( username,  encodedSharingKey,  mapKey, onSuccess, onError) {
-            var prepared = prepare([ toUint8Array(username),  encodedSharingKey,  mapKey]);
-            post("core/getMetadataBlob", prepared, onSuccess, onError);
+            var buffer = new ByteBuffer(0);
+            buffer.writeString(username);
+            buffer.writeArray(encodedSharingKey);
+            buffer.writeArray(mapKey);
+            post("core/getMetadataBlob", buffer, onSuccess, onError);
         };
 
         //String  -> Uint8Array  -> Uint8Array -> fn -> fn -> void
         this.isFragmentAllowed = function( owner,  encodedSharingKey,  mapkey,  hash, onSuccess, onError) {
-            var prepared = prepare([ toUint8Array(owner),  encodedSharingKey,  mapkey,  hash]);
-            post("core/isFragmentAllowed", prepared, onSuccess, onError);
+            var buffer = new ByteBuffer(0);
+            buffer.writeString(owner);
+            buffer.writeArray(encodedSharingKey);
+            buffer.writeArray(mapKey);
+            buffer.writeArray(hash);
+            post("core/isFragmentAllowed", buffer, onSuccess, onError);
         };
 
 
         //String -> fn -> fn -> void
-        this.getQuota = function( user, onSuccess, onError) {
-            var prepared = prepare([ toUint8Array(user)]);
-            post("core/getQuota", prepared, onSuccess, onError);
+        this.getQuota = function(username, onSuccess, onError) {
+            var buffer = new ByteBuffer(0);
+            buffer.writeString(username);
+            post("core/getQuota", buffer, onSuccess, onError);
         };
 
         //String -> fn -> fn -> void
         this.getUsage = function(username, onSuccess, onError) {
-            var prepared = prepare([toUint8Array(username)]);
-            post("core/getUsage", prepared, onSuccess, onError);
+            var buffer = new ByteBuffer(0);
+            buffer.writeString(username);
+            post("core/getUsage", buffer, onSuccess, onError);
         };
 
 
         //String  -> Uint8Array  -> Uint8Array -> fn -> fn -> void
         this.getFragmentHashes = function( username, sharingKey, mapKey, onSuccess, onError) {
-            var prepared = prepare([ toUint8Array(username), sharingKey, mapKey]);
-            post("core/getFragmentHashes", prepared, onSuccess, onError);
+            var buffer = new ByteBuffer(0);
+            buffer.writeString(username);
+            buffer.writeArray(sharingKey);
+            buffer.writeArray(mapKey);
+            post("core/getFragmentHashes", buffer, onSuccess, onError);
         };
 
         //String  -> Uint8Array  -> Uint8Array -> Uint8Array -> [Uint8Array] -> Uint8Array -> fn -> fn -> void
         this.addFragmentHashes = function(username, encodedSharingPublicKey, mapKey, metadataBlob, allHashes, sharingKeySignedHash) {
-                var prepared1 = prepare([toUint8Array(username), encodedSharingPublicKey, mapKey, metadatablob]);
-                var prepared2 = prepare(allHashes);
-                var prepared3 = prepare([sharingKeySignedHash]);
-                
-                var comb = new Uint8Array(prepared1.length + prepared2.length + prepared3.length);
-                var current = 0;
-                comb.set(prepared1, current);
-                current += prepared1.length;
-                comb.set(prepared2, current);
-                current += prepared2.length;
-                comb.set(prepared3, current);
+                var buffer = new ByteBuffer(0);
+                buffer.writeString(username);
+                buffer.writeArray(encodedShaaringPublicKey);
+                buffer.writeArray(mapKey);
+                buffer.writeArray(metadataBlob);
 
-                post("core/addFragmentHashes", comb, onSuccess, onError);
+                buffer.writeInt(allHashes.length);
+                for (var iHash=0; iHash  <  allHashes.length; iHash++) 
+                        buffer.writeArray(allHashes[iHash]);
 
+                buffer.writeArray(sharingKeySignedHash);
+            
+                post("core/addFragmentHashes", buffer, onSuccess, onError);
         };
 
         //String -> Uint8Array -> -> String -> Uint8Array -> Uint8Array -> Uint8Array -> fn -> fn -> void
         this.registerFragmentStorage = function(spaceDonor, nodeAddress,  owner,  encodedSharingKey,  hash,  signedKeyPlusHash, onSuccess, onError) {
-                var prepared = prepare([toUint8Array(spaceDonor), nodeAddress, toUint8Array(owner), encodedSharingKey, hash, signedKeyPlusHash]);
-                post("core/registerFragmentStorage", comb, onSuccess, onError);
+                var buffer = new ByteBuffer(0);
+                buffer.writeString(spaceDonor);
+                buffer.writeArray(nodeAddress);
+                buffer.writeString(owner);
+                buffer.writeArray(encodedSharingKey);
+                buffer.writeArray(hash);
+                buffer.writeArray(signedKeyPlusHash);
+                post("core/registerFragmentStorage", buffer, onSuccess, onError);
         };
-}
+};
 function UserContext() {
 
 }
-
-//String -> Uint8Array
-function toUint8Array(string) {
-        var array = new Uint8Array(string.length);
-        for (var i=0; i < string.length; i++) 
-                array[i] = string.charCodeAt(i);
-        return array;
-}
-function prepare(arrays) {
-    var length = 0;
-    for (var i=0; i < arrays.length; i++)
-            length += arrays[i].length;
-    
-    var lengths = arrays.length * 4;
-    var prepared = new Uint8Array(length + lengths);
-    var current = 0;
-    for (var i=0; i < arrays.length; i++){
-        writeInt(prepared, current, arrays[i].length);
-        current +=4;
-        var arr = arrays[i];
-        prepared.set(arr, current);
-        current += arr.length;
-    } 
-    return prepared;
-}
-
-//module.exports.encryptStringToHex = encryptStringToHex;
-//module.exports.decryptHexToString = decryptHexToString;
 
 if (typeof module !== "undefined"){
     module.exports.randomSymmetricKey = randomSymmetricKey;
