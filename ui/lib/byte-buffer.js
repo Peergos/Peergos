@@ -627,3 +627,13 @@ module.exports = {
 },{}]},{},[1])
 (1)
 });
+
+ByteBuffer.prototype.writeArray = function(arr) {
+    this.writeUnsignedInt(arr.length);
+    this.write(arr);
+}
+
+ByteBuffer.prototype.readArray = function(arr) {
+    var len = this.readUnsignedInt();
+    return this.read(len);
+}

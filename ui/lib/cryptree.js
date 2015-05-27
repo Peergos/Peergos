@@ -1,13 +1,3 @@
-ByteBuffer.prototype.writeArray = function(arr) {
-    this.writeUnsignedInt(arr.length);
-    this.write(arr);
-}
-
-ByteBuffer.prototype.readArray = function(arr) {
-    var len = this.readUnsignedInt();
-    return this.read(len);
-}
-
 function SharedRootDir(username, owner, mapKey, rootDirKey) {
     this.username = username; //String
     this.owner = owner; //User
