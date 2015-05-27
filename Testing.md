@@ -11,6 +11,7 @@ java -jar PeergosTests.jar -local
 
 ###Javascript - Single machine, single process, in-memory testing
 ```bash
+./bootstrap.sh localhost
 make tests
 java -jar PeergosTests.jar -localJS
 ```
