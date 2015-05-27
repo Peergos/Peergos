@@ -1,4 +1,4 @@
-function SharedRootDir(username, owner, mapKey, rootDirKey) {
+function FilePointer(username, owner, mapKey, rootDirKey) {
     this.username = username; //String
     this.owner = owner; //User
     this.mapKey = mapKey; //ByteArrayWrapper
@@ -14,7 +14,7 @@ function SharedRootDir(username, owner, mapKey, rootDirKey) {
     }
 }
 
-SharedRootDir.deserialize = function(buf) {
+FilePointer.deserialize = function(buf) {
     var bin = new ByteBuffer(buf);
     var name = "";
     var ua = bin.readArray();
@@ -62,21 +62,30 @@ function Location(owner, subKey, mapKey) {
     }
 }
 
-function Metadata(type, metaNonce, encryptedMetadata) {
-    this.type = type; // 0=DIR, 1=FILE, 2=FOLLOWER
-    this.metaNonce = metaNonce;
-    this.encryptedMetadata = encryptedMetadata;
-    this.fragments = [];
+function FileAccess(type, sharingR2Parent, parent2meta, properties, retriever) {
+    this.type = type; // 0=FILE, 1=DIR
+    this.sharingR2Parent = sharingR2Parent;
+    this.parent2meta = parent2meta;
+    this.properties = properties;
+    this.retriever = retriever;
     
     this.serialize = function() {
-	var bout = new ByteBuffer(1 + encryptedMetadata.length + metaNonce.length + 8);
+	var bout = new ByteBuffer(32);
 	bout.writeUnsignedByte(type);
-	bout.writeArray(metaNonce);
-	bout.writeArray(encryptedMetadata);
+	bout.writeArray(parent2meta.serialize());
+
+	bout.writeArray(properties);
+	bout.writeByte(retriever != null ? 1 : 0);
+	if (retriever != null)
+	    retriever.serialize(bout);
+	bout.writeByte(type);
 	return bout.toArray();
     }
 }
-Metadata.deserialize = function(buf, ourKey /*SymmetricKey*/) {
+FileData.deserialize = function(buf, ourKey /*SymmetricKey*/) {
+    var p2m = buf.readArray();
+    var count = buf.readInt();
+    
     var type = buf.readUnsignedByte();
     var metaNonce = buf.readArray();
     var encryptedMetadata = buf.readArray();
