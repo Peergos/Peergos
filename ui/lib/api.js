@@ -243,22 +243,28 @@ function DHTClient() {
     //
     this.put = function(keyData, valueData, username, sharingKeyData, mapKeyData, proofData, onSuccess, onError) {
             var arrays = [keyData, valueData, username, sharingKeyData, mapKeyData, proofData];
-            var prepared  = prepare(arrays);
-            post("dht/put", prepared, onSuccess, onError);
+            var buffer = new ByteBuffer(0);
+            for (var iArray=0; iArray < arrays.length; iArray++) 
+                buffer.writeArray(arrays[iArray]);
+            post("dht/put", buffer, onSuccess, onError);
 
     };
     //
     //get
     //
     this.get = function(keyData, onSuccess, onError) { 
-        post("dht/get", prepared([keyData]), onSuccess, onError); 
+        var buffer = new ByteBuffer(0);
+        buffer.writeArray(keyData);
+        post("dht/get", buffer, onSuccess, onError); 
     };
     
     //
     //contains
     //
     this.contains = function(keyData, onSuccess, onError) {
-            post("dht/contains", prepared([keyData]), onSuccess, onError); 
+        var buffer = new ByteBuffer(0);
+        buffer.writeArray(keyData);
+        post("dht/contains", buffer, onSuccess, onError); 
     };
 }
 
