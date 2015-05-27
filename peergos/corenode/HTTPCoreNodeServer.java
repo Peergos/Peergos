@@ -18,6 +18,7 @@ public class HTTPCoreNodeServer
 
     private static final int MAX_KEY_LENGTH = 1024*1024;
     private static final int MAX_BLOB_LENGTH = 4*1024*1024;
+    public static final String CORE_URL = "/core/";
 
     public static class CoreNodeHandler implements HttpHandler
     {
@@ -41,67 +42,67 @@ public class HTTPCoreNodeServer
             try {
                 switch (method)
                 {
-                    case "core/addUsername":
+                    case "addUsername":
                         addUsername(din, dout);
                         break;
-                    case "core/getPublicKey":
+                    case "getPublicKey":
                         getPublicKey(din, dout);
                         break;
-                    case "core/getStaticData":
+                    case "getStaticData":
                         getClearanceData(din, dout);
                         break;
-                    case "core/updateStaticData":
+                    case "updateStaticData":
                         updateClearanceData(din, dout);
                         break;
-                    case "core/getUsername":
+                    case "getUsername":
                         getUsername(din, dout);
                         break;
-                    case "core/followRequest":
+                    case "followRequest":
                         followRequest(din, dout);
                         break;
-                    case "core/getFollowRequests":
+                    case "getFollowRequests":
                         getFollowRequests(din, dout);
                         break;
-                    case "core/removeFollowRequest":
+                    case "removeFollowRequest":
                         removeFollowRequest(din, dout);
                         break;
-                    case "core/allowSharingKey":
+                    case "allowSharingKey":
                         allowSharingKey(din, dout);
                         break;
-                    case "core/banSharingKey":
+                    case "banSharingKey":
                         banSharingKey(din, dout);
                         break;
-                    case "core/addMetadataBlob":
+                    case "addMetadataBlob":
                         addMetadataBlob(din, dout);
                         break;
-                    case "core/removeMetadataBlob":
+                    case "removeMetadataBlob":
                         removeMetadataBlob(din, dout);
                         break;
-                    case "core/getSharingKeys":
+                    case "getSharingKeys":
                         getSharingKeys(din, dout);
                         break;
-                    case "core/getMetadataBlob":
+                    case "getMetadataBlob":
                         getMetadataBlob(din, dout);
                         break;
-                    case "core/addFragmentHashes":
+                    case "addFragmentHashes":
                         addFragmentHashes(din, dout);
                         break;
-                    case "core/getFragmentHashes":
+                    case "getFragmentHashes":
                         getFragmentHashes(din, dout);
                         break;
-                    case "core/isFragmentAllowed":
+                    case "isFragmentAllowed":
                         isFragmentAllowed(din, dout);
                         break;
-                    case "core/registerFragmentStorage":
+                    case "registerFragmentStorage":
                         registerFragmentStorage(din, dout);
                         break;
-                    case "core/getQuota":
+                    case "getQuota":
                         getQuota(din,dout);
                         break;
-                    case "core/getUsage":
+                    case "getUsage":
                         getUsage(din,dout);
                         break;
-                    case "core/removeUsername":
+                    case "removeUsername":
                         removeUsername(din,dout);
                         break;
                     default:
@@ -343,7 +344,7 @@ public class HTTPCoreNodeServer
         this.address = address;
         server = HttpServer.create(this.address, CONNECTION_BACKLOG);
         ch = new CoreNodeHandler(coreNode);
-        server.createContext("/", ch);
+        server.createContext(CORE_URL, ch);
         //server.setExecutor(Executors.newFixedThreadPool(HANDLER_THREAD_COUNT));
         server.setExecutor(null);
         System.out.printf("Starting core node listening at %s:%d\n", address.getHostName(), address.getPort());

@@ -3,6 +3,8 @@ package peergos.storage.net;
 import com.sun.net.httpserver.HttpsConfigurator;
 import com.sun.net.httpserver.HttpsParameters;
 import com.sun.net.httpserver.HttpsServer;
+import peergos.corenode.AbstractCoreNode;
+import peergos.corenode.HTTPCoreNodeServer;
 import peergos.crypto.SSL;
 import peergos.storage.dht.Message;
 import org.bouncycastle.operator.OperatorCreationException;
@@ -31,12 +33,14 @@ public class HttpsMessenger
 
     private final Logger LOGGER;
     private final InetSocketAddress local;
+    private final AbstractCoreNode coreNode;
     HttpsServer httpsServer;
 
-    public HttpsMessenger(InetSocketAddress local, Logger LOGGER, Router router) throws IOException
+    public HttpsMessenger(InetSocketAddress local, Logger LOGGER, Router router, AbstractCoreNode coreNode) throws IOException
     {
         this.LOGGER = LOGGER;
         this.local = local;
+        this.coreNode = coreNode;
         init(router);
     }
 
@@ -96,6 +100,7 @@ public class HttpsMessenger
         httpsServer.createContext(USER_URL, new HttpUserAPIHandler(router));
         httpsServer.createContext(ERASURE_URL, ErasureHandler.getInstance());
         httpsServer.createContext(UI_URL, new StaticHandler(UI_DIR, false));
+        httpsServer.createContext(HTTPCoreNodeServer.CORE_URL, new HTTPCoreNodeServer.CoreNodeHandler(coreNode));
         httpsServer.setExecutor(Executors.newFixedThreadPool(THREADS));
         httpsServer.start();
 

@@ -242,12 +242,11 @@ function DHTClient() {
     //put
     //
     this.put = function(keyData, valueData, username, sharingKeyData, mapKeyData, proofData, onSuccess, onError) {
-            var arrays = [keyData, valueData, username, sharingKeyData, mapKeyData, proofData];
-            var buffer = new ByteBuffer(0);
-            for (var iArray=0; iArray < arrays.length; iArray++) 
-                buffer.writeArray(arrays[iArray]);
-            post("dht/put", buffer, onSuccess, onError);
-
+        var arrays = [keyData, valueData, username, sharingKeyData, mapKeyData, proofData];
+        var buffer = new ByteBuffer(0);
+        for (var iArray=0; iArray < arrays.length; iArray++) 
+            buffer.writeArray(arrays[iArray]);
+        post("dht/put", buffer, onSuccess, onError);
     };
     //
     //get

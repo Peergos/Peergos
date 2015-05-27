@@ -52,7 +52,7 @@ public class Router
         String hostname = Args.getArg("domain", "localhost");
 
         InetSocketAddress httpsMessengerAddress = new InetSocketAddress(hostname, userAPIAddress.getPort());
-        userAPI = new HttpsMessenger(httpsMessengerAddress, LOGGER, this);
+        userAPI = new HttpsMessenger(httpsMessengerAddress, LOGGER, this, storage.coreAPI);
 
         InetSocketAddress local = new InetSocketAddress(hostname, messengerAddress.getPort());
         messenger = new HttpMessenger(local, storage, LOGGER, this);

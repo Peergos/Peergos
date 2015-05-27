@@ -23,7 +23,7 @@ public class Storage
     private final Map<ByteArrayWrapper, Integer> pending = new ConcurrentHashMap();
     private final Map<ByteArrayWrapper, Integer> existing = new ConcurrentHashMap();
     private final Map<ByteArrayWrapper, Credentials> credentials = new ConcurrentHashMap();
-    private AbstractCoreNode coreAPI = new HTTPCoreNode(new URL("http://"+ SSL.getCommonName(SSL.getCoreServerCertificates()[0])+":"+AbstractCoreNode.PORT+"/"));
+    public AbstractCoreNode coreAPI = new HTTPCoreNode(new URL("http://"+ SSL.getCommonName(SSL.getCoreServerCertificates()[0])+":"+AbstractCoreNode.PORT+"/"));
     private final InetSocketAddress us;
     private final String donor;
 
