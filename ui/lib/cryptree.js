@@ -85,7 +85,11 @@ function FileAccess(type, sharingR2Parent, parent2meta, properties, retriever) {
 FileData.deserialize = function(buf, ourKey /*SymmetricKey*/) {
     var p2m = buf.readArray();
     var count = buf.readInt();
-    
+    var sharingR2Parent = {};
+    for (var i=0; i < count; i++) {
+	var pub = buf.readArray();
+	var asymLink = buf.readArray();
+    }
     var type = buf.readUnsignedByte();
     var metaNonce = buf.readArray();
     var encryptedMetadata = buf.readArray();
