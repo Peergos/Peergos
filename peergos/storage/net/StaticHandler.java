@@ -32,9 +32,9 @@ public class StaticHandler implements HttpHandler
             if (!data.containsKey(path))
                 httpExchange.sendResponseHeaders(404, 0);
 
-        byte[] res = caching ? data.get(path) : readResource(new File(HttpsMessenger.UI_DIR+path).exists() ?
-                new FileInputStream(HttpsMessenger.UI_DIR+path)
-                : ClassLoader.getSystemClassLoader().getResourceAsStream(HttpsMessenger.UI_DIR+path));
+        byte[] res = caching ? data.get(path) : readResource(new File(HttpsUserService.UI_DIR+path).exists() ?
+                new FileInputStream(HttpsUserService.UI_DIR+path)
+                : ClassLoader.getSystemClassLoader().getResourceAsStream(HttpsUserService.UI_DIR+path));
 
         if (path.endsWith(".js"))
             httpExchange.getResponseHeaders().set("Content-Type", "text/javascript");

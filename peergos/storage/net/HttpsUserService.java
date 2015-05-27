@@ -20,7 +20,7 @@ import java.util.concurrent.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-public class HttpsMessenger
+public class HttpsUserService
 {
     public static final String MESSAGE_URL = "/message/";
     public static final String USER_URL = "/user/";
@@ -36,7 +36,7 @@ public class HttpsMessenger
     private final AbstractCoreNode coreNode;
     HttpsServer httpsServer;
 
-    public HttpsMessenger(InetSocketAddress local, Logger LOGGER, Router router, AbstractCoreNode coreNode) throws IOException
+    public HttpsUserService(InetSocketAddress local, Logger LOGGER, Router router, AbstractCoreNode coreNode) throws IOException
     {
         this.LOGGER = LOGGER;
         this.local = local;

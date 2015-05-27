@@ -1,14 +1,13 @@
 package peergos.storage.dht;
 
 import peergos.storage.net.HttpMessenger;
-import peergos.storage.net.HttpsMessenger;
+import peergos.storage.net.HttpsUserService;
 import peergos.storage.Storage;
 import peergos.util.*;
 import peergos.util.ArrayOps;
 
 import java.io.File;
 import java.io.IOException;
-import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.util.*;
 import java.util.concurrent.*;
@@ -34,7 +33,7 @@ public class Router
     private final Map<ByteArrayWrapper, peergos.util.CompletableFuture> pendingGets = new ConcurrentHashMap();
     private final Random random = new Random(System.currentTimeMillis());
     private HttpMessenger messenger;
-    private HttpsMessenger userAPI;
+    private HttpsUserService userAPI;
     private BlockingQueue queue = new ArrayBlockingQueue(200);
 
 
@@ -52,7 +51,7 @@ public class Router
         String hostname = Args.getArg("domain", "localhost");
 
         InetSocketAddress httpsMessengerAddress = new InetSocketAddress(hostname, userAPIAddress.getPort());
-        userAPI = new HttpsMessenger(httpsMessengerAddress, LOGGER, this, storage.coreAPI);
+        userAPI = new HttpsUserService(httpsMessengerAddress, LOGGER, this, storage.coreAPI);
 
         InetSocketAddress local = new InetSocketAddress(hostname, messengerAddress.getPort());
         messenger = new HttpMessenger(local, storage, LOGGER, this);
