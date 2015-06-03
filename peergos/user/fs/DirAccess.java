@@ -12,9 +12,9 @@ public class DirAccess extends FileAccess
     // read permissions
     private SortedMap<UserPublicKey, AsymmetricLink> sharingR2subfoldersR; // optional
     private final SymmetricLink subfolders2files;
+    private final SymmetricLink subfolders2parent;
     private final List<SymmetricLocationLink> subfolders = new ArrayList<>(); // encrypted locations
     private final List<SymmetricLocationLink> files = new ArrayList<>();
-    private final SymmetricLink subfolders2parent;
 
     public DirAccess(FileAccess base, SortedMap<UserPublicKey, AsymmetricLink> sharingR, byte[] s2f, byte[] s2p)
     {

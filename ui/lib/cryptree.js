@@ -49,7 +49,7 @@ function Location(owner, subKey, mapKey) {
     this.subKey = subKey;
     this.mapKey = mapKey;
 
-    this.serialize = function() {
+    this.serialize = function(bout) {
 	var bout = new ByteBuffer(username.length + 64 + 32 + 12);
 	bout.writeArray(string2arraybuffer(username));
 	bout.writeArray(subKey.getPublicKeys());
@@ -62,25 +62,26 @@ function Location(owner, subKey, mapKey) {
     }
 }
 
-function FileAccess(type, sharingR2Parent, parent2meta, properties, retriever) {
-    this.type = type; // 0=FILE, 1=DIR
-    this.sharingR2Parent = sharingR2Parent;
+function FileAccess(parent2meta, properties, retriever) {
     this.parent2meta = parent2meta;
     this.properties = properties;
     this.retriever = retriever;
     
-    this.serialize = function() {
-	var bout = new ByteBuffer(32);
+    this.serialize = function(bout) {
 	bout.writeArray(parent2meta.serialize());
 	bout.writeArray(properties);
 	bout.writeByte(retriever != null ? 1 : 0);
 	if (retriever != null)
 	    retriever.serialize(bout);
-	bout.writeByte(type);
-	return bout.toArray();
+	bout.writeByte(this.getType());
+    }
+
+    // 0=FILE, 1=DIR
+    this.getType = function() {
+	return 0;
     }
 }
-FileData.deserialize = function(buf, ourKey /*SymmetricKey*/) {
+FileAccess.deserialize = function(buf, ourKey /*SymmetricKey*/) {
     var p2m = buf.readArray();
     var type = buf.readUnsignedByte();
     var metaNonce = buf.readArray();
@@ -95,8 +96,27 @@ FileData.deserialize = function(buf, ourKey /*SymmetricKey*/) {
     }
 }
 
-function DirAccess() {
-    
+function DirAccess(subfolders2files, subfolders2parent, subfolders, files, parent2meta, properties, retriever) {
+    FileAccess.call(this, parent2meta, properties, retriever);
+    this.subfolders2files = subfolders2files;
+    this.subfolders2parent = subfolders2parent;
+    this.subfolders = subfolders;
+    this.files = files;
+
+    this.superSerialize = this.serialize;
+    this.serialize = function(bout) {
+	superSerialize(bout);
+	bout.writeArray(subfolders2parent);
+	bout.writeArray(subfolders2files);
+	bout.write
+	console.log("here");
+    }
+
+    // 0=FILE, 1=DIR
+    this.getType = function() {
+	return 1;
+    }
+
 }
 
 function string2arraybuffer(str) {
