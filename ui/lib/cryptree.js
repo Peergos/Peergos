@@ -71,9 +71,7 @@ function FileAccess(type, sharingR2Parent, parent2meta, properties, retriever) {
     
     this.serialize = function() {
 	var bout = new ByteBuffer(32);
-	bout.writeUnsignedByte(type);
 	bout.writeArray(parent2meta.serialize());
-
 	bout.writeArray(properties);
 	bout.writeByte(retriever != null ? 1 : 0);
 	if (retriever != null)
@@ -84,15 +82,8 @@ function FileAccess(type, sharingR2Parent, parent2meta, properties, retriever) {
 }
 FileData.deserialize = function(buf, ourKey /*SymmetricKey*/) {
     var p2m = buf.readArray();
-    var count = buf.readInt();
-    var sharingR2Parent = {};
-    for (var i=0; i < count; i++) {
-	var pub = buf.readArray();
-	var asymLink = buf.readArray();
-    }
     var type = buf.readUnsignedByte();
     var metaNonce = buf.readArray();
-    var encryptedMetadata = buf.readArray();
     switch(type) {
     case 0:
 	return DirAccess.deserialize(buf, ourKey, concat(metaNonce, encryptedMetadata));

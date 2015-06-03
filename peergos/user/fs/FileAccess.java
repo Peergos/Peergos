@@ -34,7 +34,7 @@ public class FileAccess
         this.retriever = retriever;
     }
 
-    public static FileAccess create(UserPublicKey owner, Set<User> sharingR, SymmetricKey metaKey, SymmetricKey parentKey,
+    public static FileAccess create(SymmetricKey metaKey, SymmetricKey parentKey,
                                     FileProperties fileProperties, Optional<FileRetriever> retriever)
     {
         byte[] nonce = metaKey.createNonce();
@@ -42,10 +42,10 @@ public class FileAccess
                 ArrayOps.concat(nonce, metaKey.encrypt(fileProperties.serialize(), nonce)), retriever);
     }
 
-    public static FileAccess create(UserPublicKey owner, SymmetricKey parentKey, FileProperties fileMetadata, Optional<FileRetriever> retriever)
+    public static FileAccess create(SymmetricKey parentKey, FileProperties fileMetadata, Optional<FileRetriever> retriever)
     {
         SymmetricKey metaKey = SymmetricKey.random();
-        return create(owner, Collections.EMPTY_SET, metaKey, parentKey, fileMetadata, retriever);
+        return create(metaKey, parentKey, fileMetadata, retriever);
     }
 
     public Type getType() {
