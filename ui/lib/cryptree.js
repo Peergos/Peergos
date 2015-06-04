@@ -43,6 +43,10 @@ SymmetricLink.fromPair = function(from, to, nonce) {
     return new SymmetricLink(concat(nonce, from.encrypt(to.key, nonce)));
 }
 
+function AsymmetricLink() {
+    
+}
+
 // String, UserPublicKey, Uint8Array
 function Location(owner, subKey, mapKey) {
     this.owner = owner;
@@ -83,15 +87,15 @@ function FileAccess(parent2meta, properties, retriever) {
 }
 FileAccess.deserialize = function(buf, ourKey /*SymmetricKey*/) {
     var p2m = buf.readArray();
+    var properties = buf.readArray();
+    var hasRetreiver = buf.readUnsignedByte();
+    var retriever =  (hasRetreiver == 1) ? FileRetriever.deserialize(buf) : null;
     var type = buf.readUnsignedByte();
-    var metaNonce = buf.readArray();
     switch(type) {
     case 0:
-	return DirAccess.deserialize(buf, ourKey, concat(metaNonce, encryptedMetadata));
-    case 1:
 	return FileAccess.deserialize(buf, concat(metaNonce, encryptedMetadata));
-    case 2:
-	return new Metadata(type, metaNonce, encryptedMetadata);
+    case 1:
+	return DirAccess.deserialize(buf, ourKey, concat(metaNonce, encryptedMetadata));
     default: throw new Error("Unknown Metadata type: "+type);
     }
 }
@@ -108,15 +112,58 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
 	superSerialize(bout);
 	bout.writeArray(subfolders2parent);
 	bout.writeArray(subfolders2files);
-	bout.write
-	console.log("here");
+	bout.writeUnsignedInt(0);
+	bout.writeUnsignedInt(subfolders.length)
+	for (var i=0; i < subfolders.length; i++)
+	    bout.writeArray(subfolders[i].serialize());
+	bout.writeUnsignedInt(files.length)
+	for (var i=0; i < files.length; i++)
+	    bout.writeArray(files[i].serialize());
     }
 
     // 0=FILE, 1=DIR
     this.getType = function() {
 	return 1;
     }
+}
 
+DirAccess.deserialize = function(base, bin) {
+    var s2p = bin.readArray();
+    var s2f = bin.readArray();
+    var nSharingKeys = bin.readUnsignedInt();
+    var files = [], subfolders = [];
+    var nsubfolders = bin.readUnsignedInt();
+    for (var i=0; i < nsubfolders; i++)
+	nsubfolders[i] = new AsymmetricLink(bin.readArray());
+    var nfiles = bin.readUnsignedInt();
+    for (var i=0; i < nfiles; i++)
+	nfiles[i] = new AsymmetricLink(bin.readArray());
+    return new DirAccess(s2f, s2p, subfolders, files, base.parent2meta, base.properties, base.retriever);
+}
+
+function FileRetriever() {
+}
+FileRetriever.deserialize = function(bin) {
+    var type = bin.readUnsignedByte();
+    switch (type) {
+	case 0:
+	throw new Exception("Simple FileRetriever not implemented!");
+	case 1:
+	return EncryptedChunkRetriever.deserialize(bin);
+	default:
+	throw new Exception("Unknown FileRetriever type: "+type);
+    }
+}
+
+function EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChunk) {
+    this.chunkNonce = chunkNonce;
+    this.chunkAuth = chunkAuth;
+    this.fragmentHashes = fragmentHashes;
+    this.nextChunk = nextChunk;
+    
+}
+EncryptedChunkRetriever.deserialize = function(bin) {
+    //TODO
 }
 
 function string2arraybuffer(str) {
