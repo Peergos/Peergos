@@ -6,9 +6,7 @@ import org.junit.runner.notification.Failure;
 import peergos.corenode.AbstractCoreNode;
 import peergos.corenode.SQLiteCoreNode;
 import peergos.crypto.User;
-import peergos.user.DHTUserAPI;
-import peergos.user.MemoryDHTUserAPI;
-import peergos.user.UserContext;
+import peergos.user.*;
 import peergos.user.fs.erasure.ErasureHandler;
 import peergos.util.*;
 
@@ -89,7 +87,7 @@ public class Tests
 
         List<byte[]> reqs = alice.getFollowRequests();
         assert(reqs.size() == 1);
-        UserContext.FilePointer root = alice.decodeFollowRequest(reqs.get(0));
+        WritableFilePointer root = alice.decodeFollowRequest(reqs.get(0));
         User sharer = root.writer;
 
         // store a chunk in alice's space using the permitted sharing key (this could be alice or bob at this point)

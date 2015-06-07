@@ -1,6 +1,6 @@
-function FilePointer(owner, writer, mapKey, baseKey) {
-    this.owner = owner; //Public Key
-    this.writer = writer; //Public Key
+function WritableFilePointer(owner, writer, mapKey, baseKey) {
+    this.owner = owner; //UserPublicKey
+    this.writer = writer; //User
     this.mapKey = mapKey; //ByteArrayWrapper
     this.baseKey = baseKey; //SymmetricKey
 
@@ -14,7 +14,7 @@ function FilePointer(owner, writer, mapKey, baseKey) {
     }
 }
 
-FilePointer.deserialize = function(buf) {
+WritableFilePointer.deserialize = function(buf) {
     var bin = new ByteBuffer(buf);
     var name = "";
     var ua = bin.readArray();
@@ -43,7 +43,7 @@ SymmetricLink.fromPair = function(from, to, nonce) {
     return new SymmetricLink(concat(nonce, from.encrypt(to.key, nonce)));
 }
 
-// String, UserPublicKey, Uint8Array
+// UserPublicKey, UserPublicKey, Uint8Array
 function Location(owner, subKey, mapKey) {
     this.owner = owner;
     this.subKey = subKey;

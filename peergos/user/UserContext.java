@@ -1,7 +1,6 @@
 package peergos.user;
 
 import peergos.corenode.AbstractCoreNode;
-import peergos.corenode.HTTPCoreNode;
 import peergos.crypto.SymmetricKey;
 import peergos.crypto.SymmetricLocationLink;
 import peergos.crypto.User;
@@ -17,9 +16,6 @@ import static org.junit.Assert.*;
 import java.io.*;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
-import java.net.URL;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -33,7 +29,7 @@ public class UserContext
     private User us;
     private DHTUserAPI dht;
     private AbstractCoreNode core;
-    private Map<UserPublicKey, FilePointer> staticData = new TreeMap<>();
+    private Map<UserPublicKey, WritableFilePointer> staticData = new TreeMap<>();
     private ExecutorService executor = Executors.newFixedThreadPool(2);
 
 
@@ -75,7 +71,7 @@ public class UserContext
         ByteArrayWrapper rootMapKey = new ByteArrayWrapper(ArrayOps.random(32));
 
         // add a note to our static data so we know who we sent the private key to
-        FilePointer friendRoot = new FilePointer(us, sharing, rootMapKey, SymmetricKey.random());
+        WritableFilePointer friendRoot = new WritableFilePointer(us, sharing, rootMapKey, SymmetricKey.random());
         addToStaticData(sharing, friendRoot);
 
         // send details to allow friend to share with us (i.e. we follow them)
@@ -104,14 +100,14 @@ public class UserContext
         }
     }
 
-    public FilePointer decodeFollowRequest(byte[] data)
+    public WritableFilePointer decodeFollowRequest(byte[] data)
     {
         byte[] keys = new byte[64];
         System.arraycopy(data, 0, keys, 32, 32); // signing key is not used
         UserPublicKey tmp = new UserPublicKey(keys);
         byte[] decrypted = us.decryptMessage(Arrays.copyOfRange(data, 32, data.length), tmp.publicBoxingKey);
         try {
-            return FilePointer.deserialize(new DataInputStream(new ByteArrayInputStream(decrypted)));
+            return WritableFilePointer.deserialize(new DataInputStream(new ByteArrayInputStream(decrypted)));
         } catch (IOException e)
         {
             e.printStackTrace();
@@ -137,7 +133,7 @@ public class UserContext
         return core.allowSharingKey(us, signed);
     }
 
-    private boolean addToStaticData(UserPublicKey pub, FilePointer root)
+    private boolean addToStaticData(UserPublicKey pub, WritableFilePointer root)
     {
         staticData.put(pub, root);
         byte[] rawStatic = serializeStatic();
@@ -198,11 +194,11 @@ public class UserContext
         return frags.toArray(new Fragment[frags.size()]);
     }
 
-    public Map<FilePointer, FileAccess> getRoots() throws IOException
+    public Map<WritableFilePointer, FileAccess> getRoots() throws IOException
     {
-        Map<FilePointer, FileAccess> res = new HashMap<>();
+        Map<WritableFilePointer, FileAccess> res = new HashMap<>();
         for (UserPublicKey pub: staticData.keySet()) {
-            FilePointer root = staticData.get(pub);
+            WritableFilePointer root = staticData.get(pub);
             FileAccess dir = getMetadata(new Location(root.owner, root.writer, root.mapKey));
             if (dir != null)
                 res.put(root, dir);
@@ -224,45 +220,6 @@ public class UserContext
             res.put(link, fa);
         }
         return res;
-    }
-
-    public static class FilePointer
-    {
-        public final UserPublicKey owner;
-        public final User writer;
-        public final ByteArrayWrapper mapKey;
-        public final SymmetricKey rootDirKey;
-
-        public FilePointer(UserPublicKey owner, User writer, ByteArrayWrapper mapKey, SymmetricKey rootDirKey)
-        {
-            this.owner = owner;
-            this.writer = writer;
-            this.mapKey = mapKey;
-            this.rootDirKey = rootDirKey;
-        }
-
-        public static FilePointer deserialize(DataInput din) throws IOException
-        {
-            byte[] owner = Serialize.deserializeByteArray(din, MAX_KEY_SIZE);
-            byte[] privBytes = Serialize.deserializeByteArray(din, MAX_KEY_SIZE);
-            ByteArrayWrapper mapKey = new ByteArrayWrapper(Serialize.deserializeByteArray(din, MAX_KEY_SIZE));
-            byte[] secretRootDirKey = Serialize.deserializeByteArray(din, MAX_KEY_SIZE);
-            return new FilePointer(new UserPublicKey(owner), User.deserialize(privBytes), mapKey, new SymmetricKey(secretRootDirKey));
-        }
-
-        public byte[] toByteArray() throws IOException {
-            ByteArrayOutputStream bout = new ByteArrayOutputStream();
-            serialize(new DataOutputStream(bout));
-            return bout.toByteArray();
-        }
-
-        public void serialize(DataOutput dout) throws IOException {
-            // TODO encrypt this
-            Serialize.serialize(owner.getPublicKeys(), dout);
-            Serialize.serialize(writer.getPrivateKeys(), dout);
-            Serialize.serialize(mapKey.data, dout);
-            Serialize.serialize(rootDirKey.getKey(), dout);
-        }
     }
 
     public static class Countdown<V>
@@ -371,7 +328,7 @@ public class UserContext
             FileAccess meta2 = FileAccess.create(fileKey, new FileProperties("", raw2.length), ret2);
 
             // now write the root to the core nodes
-            receiver.addToStaticData(sharer, new FilePointer(receiver.us, sharer, new ByteArrayWrapper(rootMapKey), rootRKey));
+            receiver.addToStaticData(sharer, new WritableFilePointer(receiver.us, sharer, new ByteArrayWrapper(rootMapKey), rootRKey));
             sender.uploadChunk(root, new Fragment[0], owner, sharer, rootMapKey);
             // now upload the file meta blobs
             System.out.printf("Uploading chunk with %d fragments\n", fragments1.length);
@@ -380,8 +337,8 @@ public class UserContext
             sender.uploadChunk(meta2, fragments2, owner, sharer, chunk2MapKey);
 
             // now check the retrieval from zero knowledge
-            Map<FilePointer, FileAccess> roots = receiver.getRoots();
-            for (FilePointer dirPointer : roots.keySet()) {
+            Map<WritableFilePointer, FileAccess> roots = receiver.getRoots();
+            for (WritableFilePointer dirPointer : roots.keySet()) {
                 SymmetricKey rootDirKey = dirPointer.rootDirKey;
                 DirAccess dir = (DirAccess) roots.get(dirPointer);
                 try {
