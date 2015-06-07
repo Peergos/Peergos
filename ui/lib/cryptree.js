@@ -179,9 +179,48 @@ function EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChun
     this.fragmentHashes = fragmentHashes;
     this.nextChunk = nextChunk;
     
+    this.getFile = function(context, dataKey) {
+	return new LazyInputStreamCombiner(this, context, dataKey);
+    }
+
+    this.getChunkInputStream = function(context, dataKey) {
+	var fragments = context.downloadFragments(fragmentHashes);
+	// reorder(fragments, fragmentHashes);
+	var cipherText = Erasure.recombine(fragments, Chunk.MAX_SIZE, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
+	var fullEncryptedChunk = new EncryptedChunk(concat(chunkAuth, cipherText));
+        var original = fullEncryptedChunk.decrypt(dataKey, chunkNonce);
+	return new ByteBuffer(original);
+    }
+
+    this.serialize = function(buf) {
+	buf.writeUnsignedByte(1); // This class
+	buf.writeArray(chunkNonce);
+	buf.writeArray(chunkAuth);
+	buf.writeArray(concat(fragmentHashes));
+	buf.writeUnsignedByte(nextChunk != null ? 1 : 0);
+	if (nextChunk != null)
+	    nextChunk.serialize(buf);
+    }
 }
-EncryptedChunkRetriever.deserialize = function(bin) {
-    //TODO
+EncryptedChunkRetriever.deserialize = function(buf) {
+    var chunkNonce = buf.readArray();
+    var chunkAuth = buf.readArray();
+    var concatFragmentHashes = buf.readArray();
+    var fragmentHashes = split(concatFragmentHashes, UserPublicKey.HASH_BYTES);
+    var hasNext = buf.readUnsignedByte();
+    var nextChunk = null;
+    if (hasNext == 1)
+	nextChunk = Location.deserialize(buf);
+    return new EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChunk);
+}
+
+function LazyInputStreamCombiner() {
+    
+}
+
+var Erasure = {};
+Erasure.recombine = function(fragments, truncateTo, originalBlobs, allowedFailures) {
+    
 }
 
 function string2arraybuffer(str) {
