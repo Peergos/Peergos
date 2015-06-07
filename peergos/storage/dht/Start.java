@@ -112,7 +112,7 @@ public class Start
             InetSocketAddress userAPIAddr = new InetSocketAddress(domain, port);
             InetSocketAddress messengerAddr = new InetSocketAddress(domain, port+1);
 
-            String user = Args.getArg("user", "0000000000000000000000000000000000");
+            String user = Args.getArg("user", "00000000000000000000000000000000000000000000000000000000000000000000");
             boolean isFirstNode = Args.hasArg("firstNode");
             InetAddress contactIP = isFirstNode ? null : InetAddress.getByName(Args.getArg("contactIP"));
             int contactPort = Args.getInt("contactPort", 8080);

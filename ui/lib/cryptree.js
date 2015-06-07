@@ -61,8 +61,15 @@ function Location(owner, subKey, mapKey) {
 	return key.encrypt(serialize(), nonce);
     }
 }
-Location.decrypt  = function(from, nonce, loc) {
-    
+Location.deserialize = function(buf) {
+    var owner = buf.readArray();
+    var writer = buf.readArray();
+    var mapKey = buf.readArray();
+    return new Location(new UserPublicKey(owner), new UserPublicKey(writer), mapKey);
+}
+Location.decrypt = function(from, nonce, loc) {
+    var raw = from.decrypt(loc, nonce);
+    return Location.deserialize(new ByteBuffer(raw));
 }
 
 function SymmetricLocationLink(buf) {

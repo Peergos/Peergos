@@ -26,13 +26,6 @@ public class Location
         Serialize.serialize(mapKey.data, dout);
     }
 
-    public static Location deserialise(DataInput din) throws IOException {
-        UserPublicKey owner = new UserPublicKey(Serialize.deserializeByteArray(din, UserPublicKey.SIZE));
-        UserPublicKey pub = new UserPublicKey(Serialize.deserializeByteArray(din, UserPublicKey.SIZE));
-        ByteArrayWrapper mapKey = new ByteArrayWrapper(Serialize.deserializeByteArray(din, UserPublicKey.HASH_BYTES));
-        return new Location(owner, pub, mapKey);
-    }
-
     public byte[] encrypt(SymmetricKey key, byte[] iv) {
         ByteArrayOutputStream bout = new ByteArrayOutputStream();
         try {
@@ -40,6 +33,13 @@ public class Location
             serialise(dout);
         } catch (IOException e) {e.printStackTrace();}
         return key.encrypt(bout.toByteArray(), iv);
+    }
+
+    public static Location deserialise(DataInput din) throws IOException {
+        UserPublicKey owner = new UserPublicKey(Serialize.deserializeByteArray(din, UserPublicKey.SIZE));
+        UserPublicKey pub = new UserPublicKey(Serialize.deserializeByteArray(din, UserPublicKey.SIZE));
+        ByteArrayWrapper mapKey = new ByteArrayWrapper(Serialize.deserializeByteArray(din, UserPublicKey.HASH_BYTES));
+        return new Location(owner, pub, mapKey);
     }
 
     public static Location decrypt(SymmetricKey key, byte[] iv, byte[] data) throws IOException {
