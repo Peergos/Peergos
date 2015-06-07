@@ -62,11 +62,11 @@ public class UserContext
         return username.equals(name);
     }
 
-    public boolean sendFollowRequest(String friend) throws IOException
+    public boolean sendFollowRequest(UserPublicKey friend) throws IOException
     {
         // check friend is a registered user
-        UserPublicKey friendKey = core.getPublicKey(friend);
-        if (friendKey == null)
+        String friendUsername = core.getUsername(friend.getPublicKeys());
+        if (friendUsername == null)
             throw new IllegalStateException("User isn't registered! "+friend);
 
         // create sharing keypair and give it write access
@@ -75,7 +75,7 @@ public class UserContext
         ByteArrayWrapper rootMapKey = new ByteArrayWrapper(ArrayOps.random(32));
 
         // add a note to our static data so we know who we sent the private key to
-        FilePointer friendRoot = new FilePointer(friend, sharing, rootMapKey, SymmetricKey.random());
+        FilePointer friendRoot = new FilePointer(us, sharing, rootMapKey, SymmetricKey.random());
         addToStaticData(sharing, friendRoot);
 
         // send details to allow friend to share with us (i.e. we follow them)
@@ -83,14 +83,13 @@ public class UserContext
 
         // create a tmp keypair whose public key we can append to the request without leaking information
         User tmp = User.random();
-        byte[] payload = friendKey.encryptMessageFor(raw, tmp.secretBoxingKey);
+        byte[] payload = friend.encryptMessageFor(raw, tmp.secretBoxingKey);
         return core.followRequest(friend, ArrayOps.concat(tmp.publicBoxingKey, payload));
     }
 
-
     public List<byte[]> getFollowRequests()
     {
-        byte[] raw = core.getFollowRequests(username);
+        byte[] raw = core.getFollowRequests(us);
         List<byte[]> requests = new ArrayList();
         DataInput din = new DataInputStream(new ByteArrayInputStream(raw));
         try {
@@ -120,16 +119,6 @@ public class UserContext
         }
     }
 
-    // returns Map<Owner, File>
-    public Map<String, FileWrapper> getRootFiles() throws IOException {
-        Map<FilePointer, FileAccess> roots = getRoots();
-        Map<String, FileWrapper> res = new HashMap();
-        for (FilePointer s: roots.keySet()) {
-            res.put(s.owner, new FileWrapper(this, roots.get(s), s.rootDirKey));
-        }
-        return res;
-    }
-
     public synchronized byte[] serializeStatic()
     {
         try {
@@ -145,7 +134,7 @@ public class UserContext
     public boolean addSharingKey(UserPublicKey pub)
     {
         byte[] signed = us.signMessage(pub.getPublicKeys());
-        return core.allowSharingKey(username, signed);
+        return core.allowSharingKey(us, signed);
     }
 
     private boolean addToStaticData(UserPublicKey pub, FilePointer root)
@@ -155,12 +144,12 @@ public class UserContext
         return core.updateStaticData(username, us.signMessage(rawStatic), rawStatic);
     }
 
-    private Future uploadFragment(Fragment f, String targetUser, User sharer, byte[] mapKey)
+    private Future uploadFragment(Fragment f, UserPublicKey targetUser, User sharer, byte[] mapKey)
     {
-        return dht.put(f.getHash(), f.getData(), targetUser, sharer.getPublicKeys(), mapKey, sharer.signMessage(ArrayOps.concat(sharer.getPublicKeys(), f.getHash())));
+        return dht.put(f.getHash(), f.getData(), targetUser.getPublicKeys(), sharer.getPublicKeys(), mapKey, sharer.signMessage(ArrayOps.concat(sharer.getPublicKeys(), f.getHash())));
     }
 
-    private boolean uploadChunk(FileAccess meta, Fragment[] fragments, String target, User sharer, byte[] mapKey)
+    private boolean uploadChunk(FileAccess meta, Fragment[] fragments, UserPublicKey target, User sharer, byte[] mapKey)
     {
         // tell core node first to allow fragments
         ByteArrayOutputStream bout = new ByteArrayOutputStream();
@@ -239,26 +228,26 @@ public class UserContext
 
     public static class FilePointer
     {
-        public final String owner;
+        public final UserPublicKey owner;
         public final User writer;
         public final ByteArrayWrapper mapKey;
         public final SymmetricKey rootDirKey;
 
-        public FilePointer(String username, User owner, ByteArrayWrapper mapKey, SymmetricKey rootDirKey)
+        public FilePointer(UserPublicKey owner, User writer, ByteArrayWrapper mapKey, SymmetricKey rootDirKey)
         {
-            this.owner = username;
-            this.writer = owner;
+            this.owner = owner;
+            this.writer = writer;
             this.mapKey = mapKey;
             this.rootDirKey = rootDirKey;
         }
 
         public static FilePointer deserialize(DataInput din) throws IOException
         {
-            String username = Serialize.deserializeString(din, MAX_USERNAME_SIZE);
+            byte[] owner = Serialize.deserializeByteArray(din, MAX_KEY_SIZE);
             byte[] privBytes = Serialize.deserializeByteArray(din, MAX_KEY_SIZE);
             ByteArrayWrapper mapKey = new ByteArrayWrapper(Serialize.deserializeByteArray(din, MAX_KEY_SIZE));
             byte[] secretRootDirKey = Serialize.deserializeByteArray(din, MAX_KEY_SIZE);
-            return new FilePointer(username, User.deserialize(privBytes), mapKey, new SymmetricKey(secretRootDirKey));
+            return new FilePointer(new UserPublicKey(owner), User.deserialize(privBytes), mapKey, new SymmetricKey(secretRootDirKey));
         }
 
         public byte[] toByteArray() throws IOException {
@@ -269,7 +258,7 @@ public class UserContext
 
         public void serialize(DataOutput dout) throws IOException {
             // TODO encrypt this
-            Serialize.serialize(owner, dout);
+            Serialize.serialize(owner.getPublicKeys(), dout);
             Serialize.serialize(writer.getPrivateKeys(), dout);
             Serialize.serialize(mapKey.data, dout);
             Serialize.serialize(rootDirKey.getKey(), dout);
@@ -328,7 +317,7 @@ public class UserContext
 
         public Test() {}
 
-        public static void mediumFileTest(String owner, User sharer, UserContext receiver, UserContext sender) throws IOException {
+        public static void mediumFileTest(UserPublicKey owner, User sharer, UserContext receiver, UserContext sender) throws IOException {
             // create a root dir and a file to it, then retrieve and decrypt the file using the receiver
             // create root cryptree
             SymmetricKey rootRKey = SymmetricKey.random();
@@ -382,7 +371,7 @@ public class UserContext
             FileAccess meta2 = FileAccess.create(fileKey, new FileProperties("", raw2.length), ret2);
 
             // now write the root to the core nodes
-            receiver.addToStaticData(sharer, new FilePointer(receiver.username, sharer, new ByteArrayWrapper(rootMapKey), rootRKey));
+            receiver.addToStaticData(sharer, new FilePointer(receiver.us, sharer, new ByteArrayWrapper(rootMapKey), rootRKey));
             sender.uploadChunk(root, new Fragment[0], owner, sharer, rootMapKey);
             // now upload the file meta blobs
             System.out.printf("Uploading chunk with %d fragments\n", fragments1.length);

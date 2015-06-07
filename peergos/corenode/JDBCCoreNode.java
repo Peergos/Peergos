@@ -1,6 +1,6 @@
 package peergos.corenode;
 
-import peergos.crypto.UserPublicKey;
+import peergos.crypto.*;
 import peergos.util.ByteArrayWrapper;
 
 import java.net.InetSocketAddress;
@@ -181,9 +181,9 @@ public abstract class JDBCCoreNode extends AbstractCoreNode {
 
     private class FollowRequestData extends RowData
     {
-        FollowRequestData(String name, byte[] publicKey)
+        FollowRequestData(UserPublicKey owner, byte[] publicKey)
         {
-            super(name, publicKey);
+            super(owner.toString(), publicKey);
         }
         FollowRequestData(String name, String d)
         {
@@ -219,14 +219,15 @@ public abstract class JDBCCoreNode extends AbstractCoreNode {
         static final String DATA_NAME = "publickey";
     }
 
-    private int getSharingKeyId(String name, byte[] sharingKey)
+    private int getSharingKeyId(UserPublicKey owner, byte[] sharingKey)
     {
+        String ownerString = owner.toString();
         String b64sharingKey= new String(Base64.getEncoder().encode(sharingKey));
 
         PreparedStatement stmt = null;
         try
         {
-            String s = "select id from sharingkeys where name = '"+ name + "' and publickey = '"+ b64sharingKey+"';";
+            String s = "select id from sharingkeys where name = '"+ ownerString + "' and publickey = '"+ b64sharingKey+"';";
             //System.out.println(s);
             stmt = conn.prepareStatement(s);
             ResultSet rs = stmt.executeQuery();
@@ -302,10 +303,11 @@ public abstract class JDBCCoreNode extends AbstractCoreNode {
 
     private class StorageNodeData
     {
-        final String address, owner;
+        final String address;
+        final UserPublicKey owner;
         final int port;
         final double fraction;
-        StorageNodeData(String address, int port, String owner, double fraction)
+        StorageNodeData(String address, int port, UserPublicKey owner, double fraction)
         {
             this.address = address;
             this.port = port;
@@ -321,7 +323,7 @@ public abstract class JDBCCoreNode extends AbstractCoreNode {
                 stmt = conn.prepareStatement("insert into storage(address, port, owner, fraction) VALUES(?, ?, ?, ?);");
                 stmt.setString(1,address);
                 stmt.setInt(2,port);
-                stmt.setString(3,owner);
+                stmt.setString(3,new String(Base64.getEncoder().encode(owner.getPublicKeys())));
                 stmt.setDouble(4, fraction);
                 stmt.executeUpdate();
                 conn.commit();
@@ -360,10 +362,10 @@ public abstract class JDBCCoreNode extends AbstractCoreNode {
                 {
                     String address = rs.getString("address");
                     int port = rs.getInt("port");
-                    String owner = rs.getString("owner");
+                    byte[] owner = rs.getBytes("owner");
                     double fraction = rs.getDouble("fraction");
 
-                    list.add(new StorageNodeData(address, port, owner, fraction));
+                    list.add(new StorageNodeData(address, port, new UserPublicKey(owner), fraction));
                 }
                 return list.toArray(new StorageNodeData[0]);
             } catch (SQLException sqe) {
@@ -483,9 +485,10 @@ public abstract class JDBCCoreNode extends AbstractCoreNode {
         }
     }
 
-    public boolean deleteOneFragmentData(String name, int sharingKeyID, String b64mapkey)
+    public boolean deleteOneFragmentData(UserPublicKey owner, int sharingKeyID, String b64mapkey)
     {
-        return JDBCCoreNode.this.delete("fragenthashes", "name = " + name + " and sharingKeyID = " + sharingKeyID + " and mapkey = " + b64mapkey);
+        String ownerString = new String(Base64.getEncoder().encode(owner.getPublicKeys()));
+        return JDBCCoreNode.this.delete("fragenthashes", "name = " + ownerString + " and sharingKeyID = " + sharingKeyID + " and mapkey = " + b64mapkey);
     }
 
     public boolean deleteFragmentData(String deleteString)
@@ -590,7 +593,7 @@ public abstract class JDBCCoreNode extends AbstractCoreNode {
 
     }
 
-    public synchronized boolean followRequest(String target, byte[] encryptedPermission)
+    public synchronized boolean followRequest(UserPublicKey target, byte[] encryptedPermission)
     {
         if (! super.followRequest(target, encryptedPermission))
             return false;
@@ -599,7 +602,7 @@ public abstract class JDBCCoreNode extends AbstractCoreNode {
         return request.insert();
     }
 
-    protected synchronized boolean removeFollowRequest(String target, ByteArrayWrapper baw)
+    protected synchronized boolean removeFollowRequest(UserPublicKey target, ByteArrayWrapper baw)
     {
         if (! super.removeFollowRequest(target, baw))
             return false;
@@ -608,12 +611,12 @@ public abstract class JDBCCoreNode extends AbstractCoreNode {
         return request.delete();
     }
 
-    protected synchronized boolean allowSharingKey(String username, UserPublicKey sharingPublicKey)
+    protected synchronized boolean allowSharingKey(UserPublicKey owner, UserPublicKey sharingPublicKey)
     {
-        if (! super.allowSharingKey(username, sharingPublicKey))
+        if (! super.allowSharingKey(owner, sharingPublicKey))
             return false;
 
-        SharingKeyData request = new SharingKeyData(username, sharingPublicKey.getPublicKeys());
+        SharingKeyData request = new SharingKeyData(owner.toString(), sharingPublicKey.getPublicKeys());
         return request.insert();
     }
 
@@ -628,12 +631,12 @@ public abstract class JDBCCoreNode extends AbstractCoreNode {
         return request.delete();
     }
 
-    protected synchronized boolean addMetadataBlob(String username, UserPublicKey sharingKey, byte[] mapKey, byte[] metadataBlob)
+    protected synchronized boolean addMetadataBlob(UserPublicKey owner, UserPublicKey sharingKey, byte[] mapKey, byte[] metadataBlob)
     {
-        if (! super.addMetadataBlob(username, sharingKey, mapKey, metadataBlob))
+        if (! super.addMetadataBlob(owner, sharingKey, mapKey, metadataBlob))
             return false;
 
-        int sharingKeyID = getSharingKeyId(username, sharingKey.getPublicKeys());
+        int sharingKeyID = getSharingKeyId(owner, sharingKey.getPublicKeys());
         if (sharingKeyID <0)
             return false;
 
@@ -641,15 +644,15 @@ public abstract class JDBCCoreNode extends AbstractCoreNode {
         return fragment.insert();
     }
 
-    protected synchronized boolean removeMetadataBlob(String username, UserPublicKey sharingKey, byte[] mapKey)
+    protected synchronized boolean removeMetadataBlob(UserPublicKey owner, UserPublicKey sharingKey, byte[] mapKey)
     {
-        if (! super.removeMetadataBlob(username, sharingKey, mapKey))
+        if (! super.removeMetadataBlob(owner, sharingKey, mapKey))
             return false;
 
-        int sharingKeyID = getSharingKeyId(username, sharingKey.getPublicKeys());
+        int sharingKeyID = getSharingKeyId(owner, sharingKey.getPublicKeys());
         if (sharingKeyID <0)
             return false;
-        return deleteOneFragmentData(username, sharingKeyID, new String(Base64.getEncoder().encode(mapKey)));
+        return deleteOneFragmentData(owner, sharingKeyID, new String(Base64.getEncoder().encode(mapKey)));
     }
 
     public Iterator<UserPublicKey> getSharingKeys(String username)
@@ -662,7 +665,7 @@ public abstract class JDBCCoreNode extends AbstractCoreNode {
         return super.getMetadataBlob(username, encodedSharingKey, mapkey);
     }
 
-    public boolean registerFragmentStorage(String spaceDonor, InetSocketAddress node, String owner, byte[] signedKeyPlusHash)
+    public boolean registerFragmentStorage(UserPublicKey spaceDonor, InetSocketAddress node, UserPublicKey owner, byte[] signedKeyPlusHash)
     {
         if (! super.registerFragmentStorage(spaceDonor, node, owner, signedKeyPlusHash))
             return false;
@@ -677,8 +680,8 @@ public abstract class JDBCCoreNode extends AbstractCoreNode {
     {
         if (! super.addStorageNodeState(state))
             return false;
-        Map<String,Float> map = state.fractions();
-        for (Map.Entry<String,Float> entry: map.entrySet())
+        Map<UserPublicKey,Float> map = state.fractions();
+        for (Map.Entry<UserPublicKey,Float> entry: map.entrySet())
         {
             StorageNodeData s = new StorageNodeData(state.address().getAddress().toString(), state.address().getPort(), entry.getKey(), (double) entry.getValue());
             if (! s.insert())
@@ -687,19 +690,19 @@ public abstract class JDBCCoreNode extends AbstractCoreNode {
         return true;
     }
 
-    protected synchronized boolean addFragmentHashes(String username, UserPublicKey sharingKey, byte[] mapKey, byte[] allHashes)
+    protected synchronized boolean addFragmentHashes(UserPublicKey username, UserPublicKey sharingKey, byte[] mapKey, byte[] allHashes)
     {
         if (! super.addFragmentHashes(username, sharingKey, mapKey, allHashes))
             return false;
         //TODO
         return false;
     }
-    public long getQuota(String user)
+    public long getQuota(UserPublicKey user)
     {
         return super.getQuota(user);
     }
 
-    public long getUsage(String username)
+    public long getUsage(UserPublicKey username)
     {
         return super.getUsage(username);
     }

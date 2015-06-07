@@ -1,5 +1,6 @@
 package peergos.storage.dht;
 
+import peergos.crypto.*;
 import peergos.storage.net.HttpMessenger;
 import peergos.storage.net.HttpsUserService;
 import peergos.storage.Storage;
@@ -37,7 +38,7 @@ public class Router
     private BlockingQueue queue = new ArrayBlockingQueue(200);
 
 
-    public Router(String donor, InetSocketAddress userAPIAddress, InetSocketAddress messengerAddress) throws IOException
+    public Router(UserPublicKey donor, InetSocketAddress userAPIAddress, InetSocketAddress messengerAddress) throws IOException
     {
         new File("log/").mkdir();
         us = new NodeID(messengerAddress);
@@ -268,7 +269,7 @@ public class Router
         } else if (m instanceof Message.PUT)
         {
             Message.PUT put = (Message.PUT) m;
-            if (storage.accept(new ByteArrayWrapper(put.getKey()), put.getSize(), put.getOwner(), put.getSharingKey(), put.getMapKey(), put.getProof()))
+            if (storage.accept(new ByteArrayWrapper(put.getKey()), put.getSize(), new UserPublicKey(put.getOwner()), put.getSharingKey(), put.getMapKey(), put.getProof()))
             {
                 // send PUT accept message
                 Message accept = new Message.PUT_ACCEPT((Message.PUT) m);

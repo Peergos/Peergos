@@ -157,16 +157,16 @@ public class HTTPCoreNodeServer
 
         void followRequest(DataInputStream din, DataOutputStream dout) throws IOException
         {
-            String target = deserializeString(din);
+            byte[] target = deserializeByteArray(din);
             byte[] encodedSharingPublicKey = deserializeByteArray(din);
 
-            boolean followRequested = coreNode.followRequest(target, encodedSharingPublicKey);
+            boolean followRequested = coreNode.followRequest(new UserPublicKey(target), encodedSharingPublicKey);
             dout.writeBoolean(followRequested);
         }
         void getFollowRequests(DataInputStream din, DataOutputStream dout) throws IOException
         {
-            String username = deserializeString(din);
-            byte[] res = coreNode.getFollowRequests(username);
+            byte[] ownerPublicKey = deserializeByteArray(din);
+            byte[] res = coreNode.getFollowRequests(new UserPublicKey(ownerPublicKey));
             Serialize.serialize(res, dout);
         }
         void removeFollowRequest(DataInputStream din, DataOutputStream dout) throws IOException
@@ -181,10 +181,10 @@ public class HTTPCoreNodeServer
 
         void allowSharingKey(DataInputStream din, DataOutputStream dout) throws IOException
         {
-            String username = deserializeString(din);
+            byte[] owner = deserializeByteArray(din);
             byte[] signedSharingPublicKey = deserializeByteArray(din);
 
-            boolean isAllowed = coreNode.allowSharingKey(username, signedSharingPublicKey);
+            boolean isAllowed = coreNode.allowSharingKey(new UserPublicKey(owner), signedSharingPublicKey);
             dout.writeBoolean(isAllowed);
         }
 
@@ -200,13 +200,13 @@ public class HTTPCoreNodeServer
 
         void addMetadataBlob(DataInputStream din, DataOutputStream dout) throws IOException
         {
-            String username = deserializeString(din);
+            byte[] encodedOwnerPublicKey = deserializeByteArray(din);
             byte[] encodedSharingPublicKey = deserializeByteArray(din);
             byte[] mapKey = deserializeByteArray(din);
             byte[] metaDataBlob = deserializeByteArray(din);
             byte[] signedHash = deserializeByteArray(din);
-            System.out.println("Add " + username + ", " + ArrayOps.bytesToHex(mapKey) +" ==> "+metaDataBlob.length + " bytes.");
-            boolean isAdded = coreNode.addMetadataBlob(username, encodedSharingPublicKey, mapKey, metaDataBlob, signedHash);
+            System.out.println("Add " + ArrayOps.bytesToHex(encodedOwnerPublicKey) + ", " + ArrayOps.bytesToHex(mapKey) +" ==> "+metaDataBlob.length + " bytes.");
+            boolean isAdded = coreNode.addMetadataBlob(new UserPublicKey(encodedOwnerPublicKey), encodedSharingPublicKey, mapKey, metaDataBlob, signedHash);
             dout.writeBoolean(isAdded);
         }
         
@@ -232,12 +232,12 @@ public class HTTPCoreNodeServer
 
         void removeMetadataBlob(DataInputStream din, DataOutputStream dout) throws IOException
         {
-            String username = deserializeString(din);
+            byte[] ownerPublicKey = deserializeByteArray(din);
             byte[] encodedSharingKey = deserializeByteArray(din);
             byte[] mapKey = deserializeByteArray(din);
             byte[] sharingKeySignedHash = deserializeByteArray(din);
 
-            boolean isRemoved = coreNode.removeMetadataBlob(username, encodedSharingKey, mapKey, sharingKeySignedHash);
+            boolean isRemoved = coreNode.removeMetadataBlob(new UserPublicKey(ownerPublicKey), encodedSharingKey, mapKey, sharingKeySignedHash);
             dout.writeBoolean(isRemoved);
         }
         void getSharingKeys(DataInputStream din, DataOutputStream dout) throws IOException
@@ -287,37 +287,37 @@ public class HTTPCoreNodeServer
         }
         void isFragmentAllowed(DataInputStream din, DataOutputStream dout) throws IOException
         {
-            String owner = deserializeString(din);
+            byte[] owner = deserializeByteArray(din);
             byte[] sharingKey =deserializeByteArray(din);
             byte[] mapKey =deserializeByteArray(din);
             byte[] hash =deserializeByteArray(din);
-            boolean isAllowed = coreNode.isFragmentAllowed(owner, sharingKey, mapKey, hash);
+            boolean isAllowed = coreNode.isFragmentAllowed(new UserPublicKey(owner), sharingKey, mapKey, hash);
             dout.writeBoolean(isAllowed);
         }
 
         void registerFragmentStorage(DataInputStream din, DataOutputStream dout) throws IOException
         {
-            String recipient = deserializeString(din);
+            byte[] recipientPublicKey = deserializeByteArray(din);
             byte[] address = deserializeByteArray(din);
             InetAddress node = InetAddress.getByAddress(address);
             int port = din.readInt();
-            String owner = deserializeString(din);
+            byte[] owner = deserializeByteArray(din);
             byte[] signedKeyPlusHash = deserializeByteArray(din);
             
-            boolean isRegistered = coreNode.registerFragmentStorage(recipient, new InetSocketAddress(node, port), owner, signedKeyPlusHash);
+            boolean isRegistered = coreNode.registerFragmentStorage(new UserPublicKey(recipientPublicKey), new InetSocketAddress(node, port), new UserPublicKey(owner), signedKeyPlusHash);
             dout.writeBoolean(isRegistered);
         }
 
         void getQuota(DataInputStream din, DataOutputStream dout) throws IOException
         {
-            String username = deserializeString(din);
-            long quota = coreNode.getQuota(username);
+            byte[] userPublicKey = deserializeByteArray(din);
+            long quota = coreNode.getQuota(new UserPublicKey(userPublicKey));
             dout.writeLong(quota);
         }
         void getUsage(DataInputStream din, DataOutputStream dout) throws IOException
         {
-            String username = deserializeString(din);
-            long usage = coreNode.getUsage(username);
+            byte[] userPublicKey = deserializeByteArray(din);
+            long usage = coreNode.getUsage(new UserPublicKey(userPublicKey));
             dout.writeLong(usage);
         }
         void removeUsername(DataInputStream din, DataOutputStream dout) throws IOException

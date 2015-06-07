@@ -70,21 +70,21 @@ public abstract class AbstractCoreNode
     static class StorageNodeState
     {
         private final Set<ByteArrayWrapper> fragmentHashesOnThisNode;
-        private final String owner;
-        private final Map<String, Float> storageFraction;
+        private final UserPublicKey owner;
+        private final Map<UserPublicKey, Float> storageFraction;
         private final InetSocketAddress address;
-        StorageNodeState(String owner, InetSocketAddress address, Map<String, Float> fractions)
+        StorageNodeState(UserPublicKey owner, InetSocketAddress address, Map<UserPublicKey, Float> fractions)
         {
             this.owner = owner;
             this.address = address;
-            this.storageFraction = new HashMap<String,Float>(fractions);
+            this.storageFraction = new HashMap<UserPublicKey,Float>(fractions);
             this.fragmentHashesOnThisNode = new HashSet();
         }
 
         public InetSocketAddress address(){return address;}
-        public Map<String,Float> fractions()
+        public Map<UserPublicKey,Float> fractions()
         {
-            return new HashMap<String,Float>(storageFraction);
+            return new HashMap<UserPublicKey, Float>(storageFraction);
         }
         public long getSize()
         {
@@ -111,7 +111,7 @@ public abstract class AbstractCoreNode
         }
     } 
 
-    private final Map<String, UserData> userMap;
+    private final Map<UserPublicKey, UserData> userMap;
     private final Map<String, UserPublicKey> userNameToPublicKeyMap;
     private final Map<UserPublicKey, String> userPublicKeyToNameMap;
 
@@ -125,16 +125,16 @@ public abstract class AbstractCoreNode
     // 2. calculate how much storage space a Storage node has available to which other users
     //
     private final Map<InetSocketAddress, StorageNodeState> storageStates;
-    private final Map<String, Set<StorageNodeState> > userStorageFactories;
+    private final Map<UserPublicKey, Set<StorageNodeState> > userStorageFactories;
 
     public AbstractCoreNode()
     {
-        this.userMap = new HashMap<String, UserData>();
+        this.userMap = new HashMap<UserPublicKey, UserData>();
         this.userNameToPublicKeyMap = new HashMap<String, UserPublicKey>();
         this.userPublicKeyToNameMap = new HashMap<UserPublicKey, String>();
 
         this.storageStates = new HashMap<InetSocketAddress, StorageNodeState>();
-        this.userStorageFactories =new HashMap<String, Set<StorageNodeState> > ();
+        this.userStorageFactories =new HashMap<UserPublicKey, Set<StorageNodeState> > ();
     }
 
     public static long fragmentLength(){return DEFAULT_FRAGMENT_LENGTH;}
@@ -177,8 +177,8 @@ public abstract class AbstractCoreNode
 
         userNameToPublicKeyMap.put(username, key); 
         userPublicKeyToNameMap.put(key, username); 
-        userMap.put(username, new UserData(clearanceData));
-        userStorageFactories.put(username, new HashSet());
+        userMap.put(key, new UserData(clearanceData));
+        userStorageFactories.put(key, new HashSet());
         return true;
     }
 
@@ -210,7 +210,7 @@ public abstract class AbstractCoreNode
         userData.staticData = clearanceData;
         return true;
     }
-    public synchronized boolean followRequest(String target, byte[] encryptedPermission)
+    public synchronized boolean followRequest(UserPublicKey target, byte[] encryptedPermission)
     {
         UserData userData = userMap.get(target);
         if (userData == null)
@@ -221,7 +221,7 @@ public abstract class AbstractCoreNode
         return true;
     }
 
-    public synchronized byte[] getFollowRequests(String username)
+    public synchronized byte[] getFollowRequests(UserPublicKey username)
     {
         UserData userData = userMap.get(username);
         if (userData == null)
@@ -254,10 +254,10 @@ public abstract class AbstractCoreNode
         if (! us.isValidSignature(signedHash, UserPublicKey.hash(data)))
             return false;
 
-        return removeFollowRequest(target, new ByteArrayWrapper(data));
+        return removeFollowRequest(us, new ByteArrayWrapper(data));
     }
 
-    protected synchronized boolean removeFollowRequest(String target,ByteArrayWrapper baw)
+    protected synchronized boolean removeFollowRequest(UserPublicKey target, ByteArrayWrapper baw)
     {
         UserData userData = userMap.get(target);
         if (userData == null)
@@ -270,24 +270,19 @@ public abstract class AbstractCoreNode
      * @param signedHash the SHA hash of userBencodedKey, signed with the user private key 
      * @param encodedFriendName the bytes of the friendname sined with userKey 
      */
-    public boolean allowSharingKey(String username, byte[] signedSharingPublicKey)
+    public boolean allowSharingKey(UserPublicKey owner, byte[] signedSharingPublicKey)
     {
-        UserPublicKey key = null; 
-        synchronized(this)
-        {
-            key = userNameToPublicKeyMap.get(username);
-        }
         byte[] encodedSharingPublicKey = Arrays.copyOfRange(signedSharingPublicKey, TweetNaCl.SIGNATURE_SIZE_BYTES, signedSharingPublicKey.length);
 
-        if (key == null || ! key.isValidSignature(signedSharingPublicKey, encodedSharingPublicKey))
+        if (owner == null || ! owner.isValidSignature(signedSharingPublicKey, encodedSharingPublicKey))
             return false;
 
-        return allowSharingKey(username, new UserPublicKey(encodedSharingPublicKey));
+        return allowSharingKey(owner, new UserPublicKey(encodedSharingPublicKey));
     }
 
-    protected synchronized boolean allowSharingKey(String username, UserPublicKey sharingPublicKey)
+    protected synchronized boolean allowSharingKey(UserPublicKey owner, UserPublicKey sharingPublicKey)
     {
-        UserData userData = userMap.get(username);
+        UserData userData = userMap.get(owner);
         if (userData == null)
             return false;
         if (userData.followers.contains(sharingPublicKey))
@@ -329,37 +324,29 @@ public abstract class AbstractCoreNode
      */ 
 
     //public boolean addMetadataBlob(byte[] userKey, byte[] signedHash, byte[] encodedFragmentData)
-    public boolean addMetadataBlob(String username, byte[] encodedSharingPublicKey, byte[] mapKey, byte[] metadataBlob, byte[] sharingKeySignedHash)
+    public boolean addMetadataBlob(UserPublicKey owner, byte[] encodedSharingPublicKey, byte[] mapKey, byte[] metadataBlob, byte[] sharingKeySignedHash)
     {
-        UserPublicKey userKey = null;
-        synchronized(this)
-        {
-            userKey = userNameToPublicKeyMap.get(username);
-        }
-        if (userKey == null)
-            return false;
-
         UserPublicKey sharingKey = new UserPublicKey(encodedSharingPublicKey);
         synchronized(this)
         {
-            if (!userMap.get(username).followers.contains(sharingKey))
+            if (!userMap.get(owner).followers.contains(sharingKey))
                 return false;
         }
 
         if (!sharingKey.isValidSignature(sharingKeySignedHash, ArrayOps.concat(mapKey, metadataBlob)))
             return false;
 
-        return addMetadataBlob(username, sharingKey, mapKey, metadataBlob);
+        return addMetadataBlob(owner, sharingKey, mapKey, metadataBlob);
     }
 
-    protected synchronized boolean addMetadataBlob(String username, UserPublicKey sharingKey, byte[] mapKey, byte[] metadataBlob)
+    protected synchronized boolean addMetadataBlob(UserPublicKey owner, UserPublicKey sharingKey, byte[] mapKey, byte[] metadataBlob)
     {
-        UserData userData = userMap.get(username);
+        UserData userData = userMap.get(owner);
 
         if (userData == null)
             return false;
 
-        if (remainingStorage(username) < fragmentLength())
+        if (remainingStorage(owner) < fragmentLength())
             return false;
 
         Map<ByteArrayWrapper, MetadataBlob> fragments = userData.metadata.get(sharingKey);
@@ -390,23 +377,23 @@ public abstract class AbstractCoreNode
             if (!userMap.get(username).followers.contains(sharingKey))
                 return false;
         }
-        if (remainingStorage(username) < fragmentLength())
+        if (remainingStorage(userKey) < fragmentLength())
             return false;
 
         byte[] allHashes = ArrayOps.concat(fragmentHashes);
         if (! sharingKey.isValidSignature(sharingKeySignedHash, ArrayOps.concat(mapKey, metadataBlob, allHashes)))
             return false;
 
-        return addFragmentHashes(username, sharingKey, mapKey, allHashes);
+        return addFragmentHashes(userKey, sharingKey, mapKey, allHashes);
     }
 
-    protected synchronized boolean addFragmentHashes(String username, UserPublicKey sharingKey, byte[] mapKey, byte[] allHashes)
+    protected synchronized boolean addFragmentHashes(UserPublicKey owner, UserPublicKey sharingKey, byte[] mapKey, byte[] allHashes)
     {
-        if (!userMap.get(username).followers.contains(sharingKey))
+        if (!userMap.get(owner).followers.contains(sharingKey))
             return false;
-        if (remainingStorage(username) < fragmentLength())
+        if (remainingStorage(owner) < fragmentLength())
             return false;
-        UserData userData = userMap.get(username);
+        UserData userData = userMap.get(owner);
         if (userData == null)
             return false;
 
@@ -442,29 +429,25 @@ public abstract class AbstractCoreNode
 
 
     // should delete fragments from dht as well (once that call exists)
-    public boolean removeMetadataBlob(String username, byte[] encodedSharingKey, byte[] mapKey, byte[] sharingKeySignedMapKey)
+    public boolean removeMetadataBlob(UserPublicKey owner, byte[] encodedSharingKey, byte[] mapKey, byte[] sharingKeySignedMapKey)
     {
-        UserPublicKey userKey;
         UserPublicKey sharingKey = new UserPublicKey(encodedSharingKey);
 
         synchronized(this)
         {
-            userKey = userNameToPublicKeyMap.get(username);
-            if (userKey == null)
-                return false;
-            if (! userMap.get(username).followers.contains(sharingKey))
+            if (! userMap.get(owner).followers.contains(sharingKey))
                 return false;
         }
 
         if (! sharingKey.isValidSignature(sharingKeySignedMapKey, ArrayOps.concat(encodedSharingKey, mapKey)))
             return false;
 
-        return removeMetadataBlob(username, sharingKey, mapKey);
+        return removeMetadataBlob(owner, sharingKey, mapKey);
     }
 
-    protected synchronized boolean removeMetadataBlob(String username, UserPublicKey sharingKey, byte[] mapKey)
+    protected synchronized boolean removeMetadataBlob(UserPublicKey owner, UserPublicKey sharingKey, byte[] mapKey)
     {
-        UserData userData = userMap.get(username);
+        UserData userData = userMap.get(owner);
 
         if (userData == null)
             return false;
@@ -518,13 +501,15 @@ public abstract class AbstractCoreNode
 
     } 
 
-    public synchronized MetadataBlob getMetadataBlob(String username, byte[] encodedSharingKey, byte[] mapkey)
-    {
+    public synchronized MetadataBlob getMetadataBlob(String username, byte[] encodedSharingKey, byte[] mapkey) {
         UserPublicKey userKey = userNameToPublicKeyMap.get(username);
         if (userKey == null)
             return null;
+        return getMetadataBlob(userKey, encodedSharingKey, mapkey);
+    }
 
-        UserData userData = userMap.get(username);
+    public synchronized MetadataBlob getMetadataBlob(UserPublicKey owner, byte[] encodedSharingKey, byte[] mapkey) {
+        UserData userData = userMap.get(owner);
         Map<ByteArrayWrapper, MetadataBlob> sharedFragments = userData.metadata.get(new UserPublicKey(encodedSharingKey));
 
         ByteArrayWrapper key = new ByteArrayWrapper(mapkey);
@@ -533,13 +518,13 @@ public abstract class AbstractCoreNode
         return sharedFragments.get(key);
     }
 
-    protected boolean addStorageNodeState(String owner, InetSocketAddress address)
+    protected boolean addStorageNodeState(UserPublicKey owner, InetSocketAddress address)
     {
-        Map<String, Float> fracs = new HashMap<String, Float>();
+        Map<UserPublicKey, Float> fracs = new HashMap<>();
         fracs.put(owner, 1.f);
         return addStorageNodeState(owner, address, fracs);
     }
-    protected boolean addStorageNodeState(String owner, InetSocketAddress address, Map<String, Float> fracs)
+    protected boolean addStorageNodeState(UserPublicKey owner, InetSocketAddress address, Map<UserPublicKey, Float> fracs)
     {
         //
         // validate map entries
@@ -561,18 +546,18 @@ public abstract class AbstractCoreNode
     protected synchronized boolean addStorageNodeState(StorageNodeState state)
     {
 
-        if (! userNameToPublicKeyMap.containsKey(state.owner))
+        if (! userPublicKeyToNameMap.containsKey(state.owner))
             return false;
         if (storageStates.containsKey(state.address))
             return false;
 
-        for (String user: state.storageFraction.keySet())
-            if (! userNameToPublicKeyMap.containsKey(user))
+        for (UserPublicKey user: state.storageFraction.keySet())
+            if (! userPublicKeyToNameMap.containsKey(user))
                 return false;
 
         storageStates.put(state.address, state);
 
-        for (String user: state.storageFraction.keySet())
+        for (UserPublicKey user: state.storageFraction.keySet())
         {
             if (userStorageFactories.get(user) == null)
                 userStorageFactories.put(user, new HashSet<StorageNodeState>());
@@ -582,7 +567,7 @@ public abstract class AbstractCoreNode
         return true;
     }
 
-    public synchronized boolean isFragmentAllowed(String owner, byte[] encodedSharingKey, byte[] mapkey, byte[] hash)
+    public synchronized boolean isFragmentAllowed(UserPublicKey owner, byte[] encodedSharingKey, byte[] mapkey, byte[] hash)
     {
         UserData userData = userMap.get(owner);
         UserPublicKey sharingPublicKey = new UserPublicKey(encodedSharingKey);
@@ -596,7 +581,7 @@ public abstract class AbstractCoreNode
         return blob.containsHash(hash);
     }
 
-    public boolean registerFragmentStorage(String spaceDonor, InetSocketAddress node, String owner, byte[] signedKeyPlusHash)
+    public boolean registerFragmentStorage(UserPublicKey spaceDonor, InetSocketAddress node, UserPublicKey owner, byte[] signedKeyPlusHash)
     {
         byte[] encodedSharingKey = Arrays.copyOfRange(signedKeyPlusHash, TweetNaCl.SIGNATURE_SIZE_BYTES, TweetNaCl.SIGNATURE_SIZE_BYTES + UserPublicKey.SIZE);
         byte[] hash = Arrays.copyOfRange(signedKeyPlusHash, TweetNaCl.SIGNATURE_SIZE_BYTES + UserPublicKey.SIZE, signedKeyPlusHash.length);
@@ -607,7 +592,7 @@ public abstract class AbstractCoreNode
         return registerFragmentStorage(spaceDonor, node, owner, sharingPublicKey, hash);
     }
 
-    protected synchronized boolean registerFragmentStorage(String spaceDonor, InetSocketAddress node, String owner, UserPublicKey sharingKey, byte[] hash)
+    protected synchronized boolean registerFragmentStorage(UserPublicKey spaceDonor, InetSocketAddress node, UserPublicKey owner, UserPublicKey sharingKey, byte[] hash)
     {
         if (!userStorageFactories.containsKey(spaceDonor))
             return false;
@@ -625,9 +610,9 @@ public abstract class AbstractCoreNode
 
     }
 
-    public synchronized long getQuota(String user)
+    public synchronized long getQuota(UserPublicKey user)
     {
-        if (! userNameToPublicKeyMap.containsKey(user))
+        if (! userPublicKeyToNameMap.containsKey(user))
             return -1l;
 
         Set<StorageNodeState> storageStates = userStorageFactories.get(user);
@@ -641,14 +626,10 @@ public abstract class AbstractCoreNode
         return quota;    
     }
 
-    public synchronized long getUsage(String username)
+    public synchronized long getUsage(UserPublicKey userKey)
     {
-        UserPublicKey userKey = userNameToPublicKeyMap.get(username);
-        if (userKey == null)
-            return -1l;
-
         long usage = 0l;
-        for (Map<ByteArrayWrapper, MetadataBlob> fragmentsMap: userMap.get(username).metadata.values())
+        for (Map<ByteArrayWrapper, MetadataBlob> fragmentsMap: userMap.get(userKey).metadata.values())
             for (MetadataBlob blob: fragmentsMap.values())
                 if (blob.fragmentHashes != null)
                     usage += blob.fragmentHashes.length/UserPublicKey.HASH_BYTES * fragmentLength();
@@ -658,7 +639,7 @@ public abstract class AbstractCoreNode
 
 
 
-    private synchronized long remainingStorage(String user)
+    private synchronized long remainingStorage(UserPublicKey user)
     {
         long quota = getQuota(user);
         long usage = getUsage(user);

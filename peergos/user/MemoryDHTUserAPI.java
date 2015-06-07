@@ -1,11 +1,8 @@
 package peergos.user;
 
 
-import org.ibex.nestedvm.util.Seekable;
-import peergos.util.ArrayOps;
 import peergos.util.ByteArrayWrapper;
 
-import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.*;
 
@@ -23,7 +20,7 @@ public class MemoryDHTUserAPI extends DHTUserAPI
 
     private final Map<ByteArrayWrapper, byte[]> chunks = new ConcurrentHashMap<>();
 
-    public  Future<Boolean> put(byte[] key, byte[] value, final String user, final byte[] sharingKey, final byte[] mapKey, final byte[] proof)
+    public  Future<Boolean> put(byte[] key, byte[] value, final byte[] owner, final byte[] sharingKey, final byte[] mapKey, final byte[] proof)
     {
         chunks.put(new ByteArrayWrapper(key), value);
             return new DummyFuture<>(true);

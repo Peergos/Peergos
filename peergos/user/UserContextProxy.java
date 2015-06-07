@@ -39,12 +39,12 @@ public class UserContextProxy implements HttpHandler
             if (path.startsWith("dht/put")) {
                 byte[] key = Serialize.deserializeByteArray(din, 1024);
                 byte[] value = Serialize.deserializeByteArray(din, 1024*1024);
-                String user =Serialize.deserializeString(din, 1024);
+                byte[] owner =Serialize.deserializeByteArray(din, 1024);
                 byte[] sharingKey = Serialize.deserializeByteArray(din, 8192);
                 byte[] mapKey = Serialize.deserializeByteArray(din, 8192);
                 byte[] proof = Serialize.deserializeByteArray(din, 8192);
 
-                Future<Boolean> fut = dht.put(key, value, user, sharingKey, mapKey, proof);
+                Future<Boolean> fut = dht.put(key, value, owner, sharingKey, mapKey, proof);
                 try {
                     Boolean response = fut.get(100, TimeUnit.SECONDS);
                     dout.writeBoolean(response);

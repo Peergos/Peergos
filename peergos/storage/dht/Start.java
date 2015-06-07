@@ -2,11 +2,11 @@ package peergos.storage.dht;
 
 import peergos.corenode.AbstractCoreNode;
 import peergos.corenode.HTTPCoreNodeServer;
-import peergos.crypto.SSL;
+import peergos.crypto.*;
 import peergos.directory.DirectoryServer;
 import peergos.storage.net.IPMappings;
 import peergos.tests.Scripter;
-import peergos.util.Args;
+import peergos.util.*;
 
 import java.io.File;
 import java.io.IOException;
@@ -112,11 +112,12 @@ public class Start
             InetSocketAddress userAPIAddr = new InetSocketAddress(domain, port);
             InetSocketAddress messengerAddr = new InetSocketAddress(domain, port+1);
 
-            String user = Args.getArg("user", "root");
+            String user = Args.getArg("user", "0000000000000000000000000000000000");
             boolean isFirstNode = Args.hasArg("firstNode");
             InetAddress contactIP = isFirstNode ? null : InetAddress.getByName(Args.getArg("contactIP"));
             int contactPort = Args.getInt("contactPort", 8080);
-            Router router = new Router(user, userAPIAddr, messengerAddr);
+            UserPublicKey donor = new UserPublicKey(ArrayOps.hexToBytes(user));
+            Router router = new Router(donor, userAPIAddr, messengerAddr);
             router.init(new InetSocketAddress(contactIP, contactPort));
             // router is ready!
             System.out.println(port+" joined dht");

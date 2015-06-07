@@ -55,7 +55,7 @@ public class CoreNode
             //add fragment
             //
             byte[] mapKey = new byte[10];
-            boolean addedFragment = coreNode.addMetadataBlob(username, follower.getPublicKeys(), mapKey, cipherText, follower.signMessage(cipherText));
+            boolean addedFragment = coreNode.addMetadataBlob(user, follower.getPublicKeys(), mapKey, cipherText, follower.signMessage(cipherText));
             assertTrue("added fragment", !addedFragment);
 
             // add storage allowance
@@ -63,13 +63,13 @@ public class CoreNode
             int frags = 10;
             for (int i = 0; i < frags; i++) {
                 byte[] signed = follower.signMessage(ArrayOps.concat(follower.getPublicKeys(), new byte[10 + i]));
-                coreNode.registerFragmentStorage(username, new InetSocketAddress("localhost", 666), username, signed);
+                coreNode.registerFragmentStorage(user, new InetSocketAddress("localhost", 666), user, signed);
             }
-            long quota = coreNode.getQuota(username);
+            long quota = coreNode.getQuota(user);
             assertTrue("quota after registering fragment", quota == coreNode.fragmentLength() * frags);
 
             // try again adding fragment
-            addedFragment = coreNode.addMetadataBlob(username, follower.getPublicKeys(), mapKey, cipherText, follower.signMessage(cipherText));
+            addedFragment = coreNode.addMetadataBlob(user, follower.getPublicKeys(), mapKey, cipherText, follower.signMessage(cipherText));
             assertTrue("added fragment", addedFragment);
 
 
@@ -89,12 +89,12 @@ public class CoreNode
             // is fragment allowed?
             //
             byte[] queryHash = Arrays.copyOfRange(generatedHashes,0, UserPublicKey.HASH_BYTES);
-            boolean isFragmentAllowed = coreNode.isFragmentAllowed(username, follower.getPublicKeys(), mapKey, queryHash);
+            boolean isFragmentAllowed = coreNode.isFragmentAllowed(user, follower.getPublicKeys(), mapKey, queryHash);
             assertTrue("fragment is allowed ", isFragmentAllowed);
 
             // non valid hash
             queryHash = Arrays.copyOfRange(generatedHashes,3, UserPublicKey.HASH_BYTES +3);
-            isFragmentAllowed = coreNode.isFragmentAllowed(username, follower.getPublicKeys(), mapKey, queryHash);
+            isFragmentAllowed = coreNode.isFragmentAllowed(user, follower.getPublicKeys(), mapKey, queryHash);
 
             assertFalse("fragment is not allowed ", isFragmentAllowed);
 

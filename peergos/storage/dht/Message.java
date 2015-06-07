@@ -1,5 +1,6 @@
 package peergos.storage.dht;
 
+import peergos.crypto.*;
 import peergos.user.UserContext;
 import peergos.util.*;
 import peergos.util.ArrayOps;
@@ -165,18 +166,18 @@ public abstract class Message
         private final long target;
         private final byte[] key;
         private final int len;
-        private final String user;
+        private final byte[] owner;
         private final byte[] sharingKey;
         private final byte[] mapKey;
         private final byte[] proof;
 
-        public PUT(byte[] key, int len, String user, byte[] sharingKey, byte[] mapKey, byte[] proof)
+        public PUT(byte[] key, int len, byte[] owner, byte[] sharingKey, byte[] mapKey, byte[] proof)
         {
             super(Type.PUT);
             this.key = key;
             target = ArrayOps.getLong(key, 0);
             this.len = len;
-            this.user = user;
+            this.owner = owner;
             this.sharingKey = sharingKey;
             this.mapKey = mapKey;
             this.proof = proof;
@@ -189,7 +190,7 @@ public abstract class Message
             in.readFully(key);
             len = in.readInt();
             target = ArrayOps.getLong(key, 0);
-            user = Serialize.deserializeString(in, UserContext.MAX_USERNAME_SIZE);
+            owner = Serialize.deserializeByteArray(in, UserPublicKey.SIZE);
             sharingKey = Serialize.deserializeByteArray(in, 64);
             mapKey = Serialize.deserializeByteArray(in, 32);
             proof = Serialize.deserializeByteArray(in, 4096);
@@ -205,13 +206,13 @@ public abstract class Message
             super.write(out);
             out.write(key);
             out.writeInt(len);
-            Serialize.serialize(user, out);
+            Serialize.serialize(owner, out);
             Serialize.serialize(sharingKey, out);
             Serialize.serialize(mapKey, out);
             Serialize.serialize(proof, out);
         }
 
-        public String getOwner() {return user;}
+        public byte[] getOwner() {return owner;}
 
         public byte[] getSharingKey() {return sharingKey;}
 

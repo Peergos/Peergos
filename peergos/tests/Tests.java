@@ -85,7 +85,7 @@ public class Tests
             if (!alice.register())
                 throw new IllegalStateException("Couldn't register user!");
 
-        bob.sendFollowRequest(alicesName);
+        boolean followed = bob.sendFollowRequest(them);
 
         List<byte[]> reqs = alice.getFollowRequests();
         assert(reqs.size() == 1);
@@ -101,14 +101,14 @@ public class Tests
             byte[] frag = ArrayOps.random(32);
             byte[] message = ArrayOps.concat(sharer.getPublicKeys(), frag);
             byte[] signed = sharer.signMessage(message);
-            if (!core.registerFragmentStorage(ourname, address, ourname, signed)) {
+            if (!core.registerFragmentStorage(us, address, us, signed)) {
                 System.out.println("Failed to register fragment storage!");
             }
         }
-        long quota = core.getQuota(ourname);
+        long quota = core.getQuota(us);
         System.out.println("Generated quota: " + quota/1024 + " KiB");
         long t1 = System.nanoTime();
-        UserContext.Test.mediumFileTest(bob.username, sharer, bob, alice);
+        UserContext.Test.mediumFileTest(us, sharer, bob, alice);
         long t2 = System.nanoTime();
         System.out.printf("File test took %d mS\n", (t2 - t1) / 1000000);
     }

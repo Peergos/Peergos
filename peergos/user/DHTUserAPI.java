@@ -6,7 +6,7 @@ import java.util.concurrent.Future;
 
 public abstract class DHTUserAPI
 {
-    public abstract Future<Boolean> put(byte[] key, byte[] value, final String user, final byte[] sharingKey, final byte[] mapKey, final byte[] proof);
+    public abstract Future<Boolean> put(byte[] key, byte[] value, final byte[] ownerKey, final byte[] sharingKey, final byte[] mapKey, final byte[] proof);
 
     public abstract Future<Boolean> contains(byte[] key);
 

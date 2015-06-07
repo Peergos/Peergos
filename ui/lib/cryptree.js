@@ -1,11 +1,11 @@
-function FilePointer(username, owner, mapKey, rootDirKey) {
-    this.username = username; //String
-    this.owner = owner; //User
+function FilePointer(owner, writer, mapKey, baseKey) {
+    this.owner = owner; //Public Key
+    this.writer = writer; //Public Key
     this.mapKey = mapKey; //ByteArrayWrapper
-    this.rootDirKey = rootDirKey; //SymmetricKey
+    this.baseKey = baseKey; //SymmetricKey
 
     this.serialize = function() {
-	var bout = new ByteBuffer(username.length+96 + 32 + 32 + 16);
+	var bout = new ByteBuffer();
 	bout.writeArray(string2arraybuffer(username));
 	bout.writeArray(owner.getSecretKeys());
 	bout.writeArray(mapKey);
@@ -43,10 +43,6 @@ SymmetricLink.fromPair = function(from, to, nonce) {
     return new SymmetricLink(concat(nonce, from.encrypt(to.key, nonce)));
 }
 
-function AsymmetricLink() {
-    
-}
-
 // String, UserPublicKey, Uint8Array
 function Location(owner, subKey, mapKey) {
     this.owner = owner;
@@ -63,6 +59,21 @@ function Location(owner, subKey, mapKey) {
 
     this.encrypt = function(key, nonce) {
 	return key.encrypt(serialize(), nonce);
+    }
+}
+Location.decrypt  = function(from, nonce, loc) {
+    
+}
+
+function SymmetricLocationLink(buf) {
+    this.link = buf.readArray();
+    this.loc = buf.readArray();
+
+    // SymmetricKey -> Location
+    this.targetLocation = function(from) {
+	var nonce = slice(link, 0, SymmetricKey.NONCE_BYTES);
+	var rest = slice(link, SymmetricKey.NONCE_BYTES, link.length);
+	return Location.decrypt(from, nonce, loc);
     }
 }
 
@@ -134,10 +145,10 @@ DirAccess.deserialize = function(base, bin) {
     var files = [], subfolders = [];
     var nsubfolders = bin.readUnsignedInt();
     for (var i=0; i < nsubfolders; i++)
-	nsubfolders[i] = new AsymmetricLink(bin.readArray());
+	nsubfolders[i] = new SymmetricLocationLink(bin.readArray());
     var nfiles = bin.readUnsignedInt();
     for (var i=0; i < nfiles; i++)
-	nfiles[i] = new AsymmetricLink(bin.readArray());
+	nfiles[i] = new SymmetricLocationLink(bin.readArray());
     return new DirAccess(s2f, s2p, subfolders, files, base.parent2meta, base.properties, base.retriever);
 }
 

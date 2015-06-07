@@ -10,24 +10,24 @@ import java.io.*;
 
 public class Location
 {
-    public final String owner;
+    public final UserPublicKey owner;
     public final UserPublicKey writerKey;
     public final ByteArrayWrapper mapKey;
 
-    public Location(String owner, UserPublicKey subKey, ByteArrayWrapper mapKey) {
+    public Location(UserPublicKey owner, UserPublicKey subKey, ByteArrayWrapper mapKey) {
         this.owner = owner;
         this.writerKey = subKey;
         this.mapKey = mapKey;
     }
 
     public void serialise(DataOutput dout) throws IOException {
-        Serialize.serialize(owner, dout);
+        Serialize.serialize(owner.getPublicKeys(), dout);
         Serialize.serialize(writerKey.getPublicKeys(), dout);
         Serialize.serialize(mapKey.data, dout);
     }
 
     public static Location deserialise(DataInput din) throws IOException {
-        String owner = Serialize.deserializeString(din, UserContext.MAX_USERNAME_SIZE);
+        UserPublicKey owner = new UserPublicKey(Serialize.deserializeByteArray(din, UserPublicKey.SIZE));
         UserPublicKey pub = new UserPublicKey(Serialize.deserializeByteArray(din, UserPublicKey.SIZE));
         ByteArrayWrapper mapKey = new ByteArrayWrapper(Serialize.deserializeByteArray(din, UserPublicKey.HASH_BYTES));
         return new Location(owner, pub, mapKey);

@@ -77,10 +77,10 @@ public class DHTAPI
     }
 
     // 256 bit key / 32 byte
-    public Future<Object> put(byte[] key, byte[] value, String user, byte[] sharingKey, byte[] mapKey, byte[] proof, PutHandlerCallback onComplete, OnFailure onError)
+    public Future<Object> put(byte[] key, byte[] value, byte[] owner, byte[] sharingKey, byte[] mapKey, byte[] proof, PutHandlerCallback onComplete, OnFailure onError)
     {
         assert(key.length == 32);
-        Future<Object> fut = router.ask(new Message.PUT(key, value.length, user, sharingKey, mapKey, proof));
+        Future<Object> fut = router.ask(new Message.PUT(key, value.length, owner, sharingKey, mapKey, proof));
         OnSuccess success = new PutHandler(router, key, value, onComplete);
         FutureWrapper.followWith(fut, success, onError, executor);
         return fut;
@@ -104,9 +104,9 @@ public class DHTAPI
         return fut;
     }
 
-    public Future<Object> put(byte[] key, byte[] value, String user, byte[] sharingKey, byte[] mapKey, byte[] proof, PutHandlerCallback onComplete)
+    public Future<Object> put(byte[] key, byte[] value, byte[] owner, byte[] sharingKey, byte[] mapKey, byte[] proof, PutHandlerCallback onComplete)
     {
-        return put(key, value, user, sharingKey, mapKey, proof, onComplete, new ErrorHandler());
+        return put(key, value, owner, sharingKey, mapKey, proof, onComplete, new ErrorHandler());
     }
 
     public Future<Object> contains(byte[] key, GetHandlerCallback onComplete)

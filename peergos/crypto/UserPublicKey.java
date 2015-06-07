@@ -4,8 +4,7 @@ import peergos.util.ArrayOps;
 
 import java.io.*;
 import java.security.*;
-import java.util.Arrays;
-import java.util.Random;
+import java.util.*;
 
 public class UserPublicKey implements Comparable<UserPublicKey>
 {
@@ -95,5 +94,13 @@ public class UserPublicKey implements Comparable<UserPublicKey>
         if (signing != 0)
             return signing;
         return ArrayOps.compare(publicBoxingKey, userPublicKey.publicBoxingKey);
+    }
+
+    public String toString() {
+        return new String(Base64.getEncoder().encode(getPublicKeys()));
+    }
+
+    public static UserPublicKey fromString(String b64) {
+        return new UserPublicKey(Base64.getDecoder().decode(b64));
     }
 }

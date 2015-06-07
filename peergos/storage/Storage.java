@@ -25,9 +25,9 @@ public class Storage
     private final Map<ByteArrayWrapper, Credentials> credentials = new ConcurrentHashMap();
     public AbstractCoreNode coreAPI = new HTTPCoreNode(new URL("http://"+ SSL.getCommonName(SSL.getCoreServerCertificates()[0])+":"+AbstractCoreNode.PORT+"/"));
     private final InetSocketAddress us;
-    private final String donor;
+    private final UserPublicKey donor;
 
-    public Storage(String donor, File root, long maxBytes, InetSocketAddress us) throws IOException
+    public Storage(UserPublicKey donor, File root, long maxBytes, InetSocketAddress us) throws IOException
     {
         this.root = root;
         this.maxBytes = maxBytes;
@@ -59,7 +59,7 @@ public class Storage
         return pending.containsKey(new ByteArrayWrapper(key));
     }
 
-    public boolean accept(ByteArrayWrapper fragmentHash, int size, String owner, byte[] sharingKey, byte[] mapKey, byte[] proof)
+    public boolean accept(ByteArrayWrapper fragmentHash, int size, UserPublicKey owner, byte[] sharingKey, byte[] mapKey, byte[] proof)
     {
         if (existing.containsKey(fragmentHash))
             return false; // don't overwrite old data for now (not sure this would ever be a problem with a cryptographic hash..
@@ -73,7 +73,7 @@ public class Storage
         else
             System.out.println("Storage rejecting fragment store: Not within size limits");
         pending.put(fragmentHash, size);
-        credentials.put(fragmentHash, new Credentials(owner, sharingKey, proof));
+        credentials.put(fragmentHash, new Credentials(owner.getPublicKeys(), sharingKey, proof));
         return res;
     }
 
@@ -94,7 +94,7 @@ public class Storage
             return false;
         }
         Credentials cred = credentials.remove(key);
-        coreAPI.registerFragmentStorage(donor, us, cred.owner, cred.proof);
+        coreAPI.registerFragmentStorage(donor, us, new UserPublicKey(cred.owner), cred.proof);
         return true;
     }
 
@@ -157,11 +157,11 @@ public class Storage
 
     public static class Credentials
     {
-        public String owner;
+        public byte[] owner;
         public byte[] sharingKey;
         public byte[] proof;
 
-        Credentials(String owner, byte[] sharingKey, byte[] proof)
+        Credentials(byte[] owner, byte[] sharingKey, byte[] proof)
         {
             this.owner = owner;
             this.sharingKey = sharingKey;
