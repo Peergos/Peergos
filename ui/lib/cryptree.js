@@ -185,7 +185,7 @@ function EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChun
 
     this.getChunkInputStream = function(context, dataKey) {
 	var fragments = context.downloadFragments(fragmentHashes);
-	// reorder(fragments, fragmentHashes);
+	Erasure.reorder(fragments, fragmentHashes);
 	var cipherText = Erasure.recombine(fragments, Chunk.MAX_SIZE, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
 	var fullEncryptedChunk = new EncryptedChunk(concat(chunkAuth, cipherText));
         var original = fullEncryptedChunk.decrypt(dataKey, chunkNonce);
@@ -214,12 +214,39 @@ EncryptedChunkRetriever.deserialize = function(buf) {
     return new EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChunk);
 }
 
-function LazyInputStreamCombiner() {
-    
+function LazyInputStreamCombiner(context, dataKey, current, next) {
+    this.context = context;
+    this.dataKey = dataKey;
+    this.current = current;
+    this.next = next;
+
+    this.getNextStream = function() {
+        if (next != null) {
+            var nextRet = context.getMetadata(next.get()).getRetriever();
+            next = nextRet.getNext();
+            return nextRet.getChunkInputStream(context, dataKey);
+        }
+        throw new EOFException();
+    }
+
+    this.readByte = function() {
+        try {
+	    return current.readByte();
+	} catch (Exception e) {}
+        current = getNextStream();
+        return current.readByte();
+    }
 }
 
 var Erasure = {};
 Erasure.recombine = function(fragments, truncateTo, originalBlobs, allowedFailures) {
+    var buf = new ByteBuffer();
+    // assume we have all fragments in original order for now
+    for (var i=0; i < originalBlobs; i++)
+	buf.write(fragments[i]);
+    return buf;
+}
+Erasure.reorder = function(fragments, hashes) {
     
 }
 

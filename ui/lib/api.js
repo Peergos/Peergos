@@ -463,6 +463,13 @@ function CoreNodeClient() {
 };
 function UserContext() {
 
+    this.downloadFragments = function(hashes) {
+	
+    }
+
+    this.getMetadata = function(location) {
+
+    }
 }
 
 if (typeof module !== "undefined"){
