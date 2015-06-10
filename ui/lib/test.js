@@ -9,22 +9,22 @@ function mediumFileTest(owner, sharer, receiver, sender) {
     
     // generate file (two chunks)
     var nonce1 = window.nacl.randomBytes(SymmetricKey.NONCE_BYTES);
-    var raw1 = new byte[Chunk.MAX_SIZE];
-    var raw2 = new byte[Chunk.MAX_SIZE];
+    var raw1 = new ByteBuffer();
+    var raw2 = new ByteBuffer();
     var template = "Hello secure cloud! Goodbye NSA!".getBytes();
     var template2 = "Second hi safe cloud! Adios NSA!".getBytes();
     for (var i = 0; i < raw1.length / 32; i++)
-        System.arraycopy(template, 0, raw1, 32 * i, 32);
+        raw1.write(template);
     for (var i = 0; i < raw2.length / 32; i++)
-        System.arraycopy(template2, 0, raw2, 32 * i, 32);
+        raw2.write(template2);
     
     // add file to root dir
     var filename = "HiNSA.bin"; // /photos/tree.jpg
     var fileKey = SymmetricKey.random();
     var fileMapKey = window.nacl.randomBytes(32); // file metablob will be stored under this in the core node
     var chunk2MapKey = window.nacl.randomBytes(32); // file metablob 2 will be stored under this in the core node
-    var fileLocation = new Location(owner, sharer, new ByteArrayWrapper(fileMapKey));
-    var chunk2Location = new Location(owner, sharer, new ByteArrayWrapper(chunk2MapKey));
+    var fileLocation = new Location(owner, sharer, new ByteBuffer(fileMapKey));
+    var chunk2Location = new Location(owner, sharer, new ByteBuffer(chunk2MapKey));
     
     root.addFile(fileLocation, rootRKey, fileKey);
     
@@ -33,26 +33,26 @@ function mediumFileTest(owner, sharer, receiver, sender) {
     var encryptedChunk1 = new EncryptedChunk(chunk1.encrypt(nonce1));
     var fragments1 = encryptedChunk1.generateFragments();
     var hashes1 = [];
-    foreach (f in fragments1)
+    for (f in fragments1)
         hashes1.push(new ByteBuffer(f.getHash()));
     var props1 = new FileProperties(filename, raw1.length + raw2.length);
-    var ret = new EncryptedChunkRetriever(nonce1, encryptedChunk1.getAuth(), hashes1, Optional.of(chunk2Location));
+    var ret = new EncryptedChunkRetriever(nonce1, encryptedChunk1.getAuth(), hashes1, chunk2Location);
     var file = FileAccess.create(fileKey, props1, ret);
 
     // 2nd chunk
     var chunk2 = new Chunk(raw2, fileKey);
-    var nonce2 = new byte[SymmetricKey.NONCE_BYTES];
+    var nonce2 = window.nacl.randomBytes(SymmetricKey.NONCE_BYTES);
     var encryptedChunk2 = new EncryptedChunk(chunk2.encrypt(nonce2));
     var fragments2 = encryptedChunk2.generateFragments();
     var hashes2 = [];
-    foreach (f in fragments2)
+    for (f in fragments2)
         hashes2.push(new ByteBuffer(f.getHash()));
-    var ret2 = Optional.of(new EncryptedChunkRetriever(nonce2, encryptedChunk2.getAuth(), hashes2, Optional.empty()));
+    var ret2 = new EncryptedChunkRetriever(nonce2, encryptedChunk2.getAuth(), hashes2, null);
     var meta2 = FileAccess.create(fileKey, new FileProperties("", raw2.length), ret2);
     
     // now write the root to the core nodes
     receiver.addToStaticData(sharer, new WritableFilePointer(receiver.us, sharer, new ByteBuffer(rootMapKey), rootRKey));
-    sender.uploadChunk(root, new Fragment[0], owner, sharer, rootMapKey);
+    sender.uploadChunk(root, [], owner, sharer, rootMapKey);
     // now upload the file meta blobs
     console.log("Uploading chunk with %d fragments\n", fragments1.length);
     sender.uploadChunk(file, fragments1, owner, sharer, fileMapKey);
@@ -71,14 +71,13 @@ function mediumFileTest(owner, sharer, receiver, sender) {
             // download fragments in chunk
             var fileProps = fileBlob.getFileProperties(baseKey);
 	    
-            
             var buf = fileBlob.getRetriever().getFile(receiver, baseKey);
             var original = buf.read(fileProps.getSize());
 	    
             // checks
             if (!fileProps.name.equals(filename))
 		throw new Exception("Correct filename");
-            if (! Arrays.equals(original, ArrayOps.concat(raw1, raw2)))
+            if (! Arrays.equals(original, concat(raw1, raw2)))
 		throw new Exception("Correct file contents");
         }
     }
@@ -86,44 +85,48 @@ function mediumFileTest(owner, sharer, receiver, sender) {
 
 function contextTests(dht, core) {
     var ourname = "Bob";
-    var us = User.generateUserCredentials(ourname, "password");
-    var bob = new UserContext(ourname, us, dht, core);
-    
-    var alicesName = "Alice";
-    var them = User.generateUserCredentials(alicesName, "password");
-    var alice = new UserContext(alicesName, them, dht, core);
-    
-    if (!bob.isRegistered())
-        if (!bob.register())
-            throw new Exception("Couldn't register user!");
-    if (!alice.isRegistered())
-        if (!alice.register())
-            throw new Exception("Couldn't register user!");
-    
-    var followed = bob.sendFollowRequest(them);
-    
-    var reqs = alice.getFollowRequests();
-    //assert(reqs.size() == 1);
-    var /*WritableFilePointer*/ root = alice.decodeFollowRequest(reqs.get(0));
-    var /*User*/ sharer = root.writer;
-    
-    // store a chunk in alice's space using the permitted sharing key (this could be alice or bob at this point)
-    var frags = 120;
-    var port = 25 + 1024;
-
-    var address = "localhost:"+ port;
-    for (var i = 0; i < frags; i++) {
-        var frag = window.nacl.randomBytes(32);
-        var message = concat(sharer.getPublicKeys(), frag);
-        var signed = sharer.signMessage(message);
-        if (!core.registerFragmentStorage(us, address, us, signed)) {
-            console.log("Failed to register fragment storage!");
-        }
-    }
-    var quota = core.getQuota(us);
-    console.log("Generated quota: " + quota/1024 + " KiB");
-    var t1 = System.nanoTime();
-    mediumFileTest(us, sharer, bob, alice);
-    var t2 = System.nanoTime();
-    console.log("File test took %d mS\n", (t2 - t1) / 1000000);
+    generateKeyPairs(ourname, "password", function(us) {
+	var bob = new UserContext(ourname, us, dht, core);
+	
+	var alicesName = "Alice";
+	generateKeyPairs(alicesName, "password", function(them) {
+	    var alice = new UserContext(alicesName, them, dht, core);
+	    
+	    if (!bob.isRegistered())
+		if (!bob.register())
+		    throw new Exception("Couldn't register user!");
+	    if (!alice.isRegistered())
+		if (!alice.register())
+		    throw new Exception("Couldn't register user!");
+	    
+	    var followed = bob.sendFollowRequest(them);
+	    
+	    var reqs = alice.getFollowRequests();
+	    //assert(reqs.size() == 1);
+	    var /*WritableFilePointer*/ root = alice.decodeFollowRequest(reqs.get(0));
+	    var /*User*/ sharer = root.writer;
+	    
+	    // store a chunk in alice's space using the permitted sharing key (this could be alice or bob at this point)
+	    var frags = 120;
+	    var port = 25 + 1024;
+	
+	    var address = "localhost:"+ port;
+	    for (var i = 0; i < frags; i++) {
+		var frag = window.nacl.randomBytes(32);
+		var message = concat(sharer.getPublicKeys(), frag);
+		var signed = sharer.signMessage(message);
+		if (!core.registerFragmentStorage(us, address, us, signed)) {
+		    console.log("Failed to register fragment storage!");
+		}
+	    }
+	    var quota = core.getQuota(us);
+	    console.log("Generated quota: " + quota/1024 + " KiB");
+	    var t1 = Date.now();
+	    mediumFileTest(us, sharer, bob, alice);
+	    var t2 = Date.now();
+	    console.log("File test took %d mS\n", (t2 - t1) / 1000000);
+	});
+    });
 }
+
+contextTests(new DHTClient(), new CoreNodeClient());
