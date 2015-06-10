@@ -232,7 +232,7 @@ function LazyInputStreamCombiner(context, dataKey, current, next) {
     this.readByte = function() {
         try {
 	    return current.readByte();
-	} catch (Exception e) {}
+	} catch (e) {}
         current = getNextStream();
         return current.readByte();
     }

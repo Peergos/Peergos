@@ -1,4 +1,5 @@
-function mediumFileTest(UserPublicKey owner, User sharer, UserContext receiver, UserContext sender) {
+// UserPublicKey, User, UserCOntext, UserContext -> ()
+function mediumFileTest(owner, sharer, receiver, sender) {
     // create a root dir and a file to it, then retrieve and decrypt the file using the receiver
     // create root cryptree
     var rootRKey = SymmetricKey.random();
@@ -31,11 +32,11 @@ function mediumFileTest(UserPublicKey owner, User sharer, UserContext receiver, 
     var chunk1 = new Chunk(raw1, fileKey);
     var encryptedChunk1 = new EncryptedChunk(chunk1.encrypt(nonce1));
     var fragments1 = encryptedChunk1.generateFragments();
-    var hashes1 = new ArrayList<>(fragments1.length);
-    for (Fragment f : fragments1)
-        hashes1.add(new ByteArrayWrapper(f.getHash()));
+    var hashes1 = [];
+    foreach (f in fragments1)
+        hashes1.push(new ByteBuffer(f.getHash()));
     var props1 = new FileProperties(filename, raw1.length + raw2.length);
-    var ret = Optional.of(new EncryptedChunkRetriever(nonce1, encryptedChunk1.getAuth(), hashes1, Optional.of(chunk2Location)));
+    var ret = new EncryptedChunkRetriever(nonce1, encryptedChunk1.getAuth(), hashes1, Optional.of(chunk2Location));
     var file = FileAccess.create(fileKey, props1, ret);
 
     // 2nd chunk
@@ -43,14 +44,14 @@ function mediumFileTest(UserPublicKey owner, User sharer, UserContext receiver, 
     var nonce2 = new byte[SymmetricKey.NONCE_BYTES];
     var encryptedChunk2 = new EncryptedChunk(chunk2.encrypt(nonce2));
     var fragments2 = encryptedChunk2.generateFragments();
-    var hashes2 = new ArrayList<>(fragments2.length);
-    for (Fragment f : fragments2)
-        hashes2.add(new ByteArrayWrapper(f.getHash()));
+    var hashes2 = [];
+    foreach (f in fragments2)
+        hashes2.push(new ByteBuffer(f.getHash()));
     var ret2 = Optional.of(new EncryptedChunkRetriever(nonce2, encryptedChunk2.getAuth(), hashes2, Optional.empty()));
     var meta2 = FileAccess.create(fileKey, new FileProperties("", raw2.length), ret2);
     
     // now write the root to the core nodes
-    receiver.addToStaticData(sharer, new WritableFilePointer(receiver.us, sharer, new ByteArrayWrapper(rootMapKey), rootRKey));
+    receiver.addToStaticData(sharer, new WritableFilePointer(receiver.us, sharer, new ByteBuffer(rootMapKey), rootRKey));
     sender.uploadChunk(root, new Fragment[0], owner, sharer, rootMapKey);
     // now upload the file meta blobs
     console.log("Uploading chunk with %d fragments\n", fragments1.length);
@@ -60,11 +61,11 @@ function mediumFileTest(UserPublicKey owner, User sharer, UserContext receiver, 
     
     // now check the retrieval from zero knowledge
     var /*Map<WritableFilePointer, FileAccess>*/ roots = receiver.getRoots();
-    for (WritableFilePointer dirPointer : roots.keySet()) {
+    for (dirPointer in roots) {
         var rootDirKey = dirPointer.rootDirKey;
-        var dir = (DirAccess) roots.get(dirPointer);
+        var dir = roots.get(dirPointer);
         var /*Map<SymmetricLocationLink, FileAccess>*/ files = receiver.retrieveMetadata(dir.getFiles(), rootDirKey);
-        for (SymmetricLocationLink fileLoc : files.keySet()) {
+        for (fileLoc in files) {
             var baseKey = fileLoc.target(rootDirKey);
             var fileBlob = files.get(fileLoc);
             // download fragments in chunk
