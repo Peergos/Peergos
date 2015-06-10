@@ -36,6 +36,8 @@ public class HTTPCoreNodeServer
             DataOutputStream dout = new DataOutputStream(bout);
             
             String path = exchange.getRequestURI().getPath();
+            if (path.startsWith("/"))
+                path = path.substring(1);
             String method = path.substring(path.lastIndexOf("/")+1);
             //System.out.println("method "+ method +" from path "+ path);
 
