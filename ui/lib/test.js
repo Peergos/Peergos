@@ -1,0 +1,84 @@
+function mediumFileTest(UserPublicKey owner, User sharer, UserContext receiver, UserContext sender) {
+    // create a root dir and a file to it, then retrieve and decrypt the file using the receiver
+    // create root cryptree
+    var rootRKey = SymmetricKey.random();
+    var name = "/";
+    var rootMapKey = window.nacl.randomBytes(32); // root will be stored under this in the core node
+    var root = DirAccess.create(sharer, rootRKey, new FileProperties(name, 0));
+    
+    // generate file (two chunks)
+    var nonce1 = window.nacl.randomBytes(SymmetricKey.NONCE_BYTES);
+    var raw1 = new byte[Chunk.MAX_SIZE];
+    var raw2 = new byte[Chunk.MAX_SIZE];
+    var template = "Hello secure cloud! Goodbye NSA!".getBytes();
+    var template2 = "Second hi safe cloud! Adios NSA!".getBytes();
+    for (var i = 0; i < raw1.length / 32; i++)
+        System.arraycopy(template, 0, raw1, 32 * i, 32);
+    for (var i = 0; i < raw2.length / 32; i++)
+        System.arraycopy(template2, 0, raw2, 32 * i, 32);
+    
+    // add file to root dir
+    var filename = "HiNSA.bin"; // /photos/tree.jpg
+    var fileKey = SymmetricKey.random();
+    var fileMapKey = window.nacl.randomBytes(32); // file metablob will be stored under this in the core node
+    var chunk2MapKey = window.nacl.randomBytes(32); // file metablob 2 will be stored under this in the core node
+    var fileLocation = new Location(owner, sharer, new ByteArrayWrapper(fileMapKey));
+    var chunk2Location = new Location(owner, sharer, new ByteArrayWrapper(chunk2MapKey));
+    
+    root.addFile(fileLocation, rootRKey, fileKey);
+    
+    // 1st chunk
+    var chunk1 = new Chunk(raw1, fileKey);
+    var encryptedChunk1 = new EncryptedChunk(chunk1.encrypt(nonce1));
+    var fragments1 = encryptedChunk1.generateFragments();
+    var hashes1 = new ArrayList<>(fragments1.length);
+    for (Fragment f : fragments1)
+        hashes1.add(new ByteArrayWrapper(f.getHash()));
+    var props1 = new FileProperties(filename, raw1.length + raw2.length);
+    var ret = Optional.of(new EncryptedChunkRetriever(nonce1, encryptedChunk1.getAuth(), hashes1, Optional.of(chunk2Location)));
+    var file = FileAccess.create(fileKey, props1, ret);
+
+    // 2nd chunk
+    var chunk2 = new Chunk(raw2, fileKey);
+    var nonce2 = new byte[SymmetricKey.NONCE_BYTES];
+    var encryptedChunk2 = new EncryptedChunk(chunk2.encrypt(nonce2));
+    var fragments2 = encryptedChunk2.generateFragments();
+    var hashes2 = new ArrayList<>(fragments2.length);
+    for (Fragment f : fragments2)
+        hashes2.add(new ByteArrayWrapper(f.getHash()));
+    var ret2 = Optional.of(new EncryptedChunkRetriever(nonce2, encryptedChunk2.getAuth(), hashes2, Optional.empty()));
+    var meta2 = FileAccess.create(fileKey, new FileProperties("", raw2.length), ret2);
+    
+    // now write the root to the core nodes
+    receiver.addToStaticData(sharer, new WritableFilePointer(receiver.us, sharer, new ByteArrayWrapper(rootMapKey), rootRKey));
+    sender.uploadChunk(root, new Fragment[0], owner, sharer, rootMapKey);
+    // now upload the file meta blobs
+    console.log("Uploading chunk with %d fragments\n", fragments1.length);
+    sender.uploadChunk(file, fragments1, owner, sharer, fileMapKey);
+    console.log("Uploading chunk with %d fragments\n", fragments2.length);
+    sender.uploadChunk(meta2, fragments2, owner, sharer, chunk2MapKey);
+    
+    // now check the retrieval from zero knowledge
+    var /*Map<WritableFilePointer, FileAccess>*/ roots = receiver.getRoots();
+    for (WritableFilePointer dirPointer : roots.keySet()) {
+        var rootDirKey = dirPointer.rootDirKey;
+        var dir = (DirAccess) roots.get(dirPointer);
+        var /*Map<SymmetricLocationLink, FileAccess>*/ files = receiver.retrieveMetadata(dir.getFiles(), rootDirKey);
+        for (SymmetricLocationLink fileLoc : files.keySet()) {
+            var baseKey = fileLoc.target(rootDirKey);
+            var fileBlob = files.get(fileLoc);
+            // download fragments in chunk
+            var fileProps = fileBlob.getFileProperties(baseKey);
+	    
+            
+            var buf = fileBlob.getRetriever().getFile(receiver, baseKey);
+            var original = buf.read(fileProps.getSize());
+	    
+            // checks
+            if (!fileProps.name.equals(filename))
+		throw new Exception("Correct filename");
+            if (! Arrays.equals(original, ArrayOps.concat(raw1, raw2)))
+		throw new Exception("Correct file contents");
+        }
+    }
+}
