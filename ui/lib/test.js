@@ -1,3 +1,16 @@
+// overwrite this function to speed up scrypt for testing purposes
+function generateKeyPairs(username, password, cb) {
+    var hash = new BLAKE2s(32)
+    hash.update(nacl.util.decodeUTF8(password))
+    salt = nacl.util.decodeUTF8(username)
+    scrypt(hash.digest(), salt, 1, 8, 64, 1000, function(keyBytes) {
+	var bothBytes = nacl.util.decodeBase64(keyBytes);
+	var signBytes = bothBytes.subarray(0, 32);
+	var boxBytes = bothBytes.subarray(32, 64);
+	return cb(new User(nacl.sign.keyPair.fromSeed(signBytes), nacl.box.keyPair.fromSecretKey(new Uint8Array(boxBytes))));
+    }, 'base64');
+}
+
 // UserPublicKey, User, UserCOntext, UserContext -> ()
 function mediumFileTest(owner, sharer, receiver, sender) {
     // create a root dir and a file to it, then retrieve and decrypt the file using the receiver
@@ -9,8 +22,8 @@ function mediumFileTest(owner, sharer, receiver, sender) {
     
     // generate file (two chunks)
     var nonce1 = window.nacl.randomBytes(SymmetricKey.NONCE_BYTES);
-    var raw1 = new ByteBuffer();
-    var raw2 = new ByteBuffer();
+    var raw1 = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+    var raw2 = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
     var template = "Hello secure cloud! Goodbye NSA!".getBytes();
     var template2 = "Second hi safe cloud! Adios NSA!".getBytes();
     for (var i = 0; i < raw1.length / 32; i++)
@@ -92,39 +105,60 @@ function contextTests(dht, core) {
 	generateKeyPairs(alicesName, "password", function(them) {
 	    var alice = new UserContext(alicesName, them, dht, core);
 	    
-	    if (!bob.isRegistered())
-		if (!bob.register())
-		    throw new Exception("Couldn't register user!");
-	    if (!alice.isRegistered())
-		if (!alice.register())
-		    throw new Exception("Couldn't register user!");
-	    
-	    var followed = bob.sendFollowRequest(them);
-	    
-	    var reqs = alice.getFollowRequests();
-	    //assert(reqs.size() == 1);
-	    var /*WritableFilePointer*/ root = alice.decodeFollowRequest(reqs.get(0));
-	    var /*User*/ sharer = root.writer;
-	    
-	    // store a chunk in alice's space using the permitted sharing key (this could be alice or bob at this point)
-	    var frags = 120;
-	    var port = 25 + 1024;
-	
-	    var address = "localhost:"+ port;
-	    for (var i = 0; i < frags; i++) {
-		var frag = window.nacl.randomBytes(32);
-		var message = concat(sharer.getPublicKeys(), frag);
-		var signed = sharer.signMessage(message);
-		if (!core.registerFragmentStorage(us, address, us, signed)) {
-		    console.log("Failed to register fragment storage!");
+	    bob.isRegistered(function(registered) {
+		function bothRegistered() {
+		    var followed = bob.sendFollowRequest(them);
+		    
+		    var reqs = alice.getFollowRequests();
+		    //assert(reqs.size() == 1);
+		    var /*WritableFilePointer*/ root = alice.decodeFollowRequest(reqs.get(0));
+		    var /*User*/ sharer = root.writer;
+		    
+		    // store a chunk in alice's space using the permitted sharing key (this could be alice or bob at this point)
+		    var frags = 120;
+		    var port = 25 + 1024;
+		    
+		    var address = "localhost:"+ port;
+		    for (var i = 0; i < frags; i++) {
+			var frag = window.nacl.randomBytes(32);
+			var message = concat(sharer.getPublicKeys(), frag);
+			var signed = sharer.signMessage(message);
+			if (!core.registerFragmentStorage(us, address, us, signed)) {
+			    console.log("Failed to register fragment storage!");
+			}
+		    }
+		    var quota = core.getQuota(us);
+		    console.log("Generated quota: " + quota/1024 + " KiB");
+		    var t1 = Date.now();
+		    mediumFileTest(us, sharer, bob, alice);
+		    var t2 = Date.now();
+		    console.log("File test took %d mS\n", (t2 - t1) / 1000000);
 		}
-	    }
-	    var quota = core.getQuota(us);
-	    console.log("Generated quota: " + quota/1024 + " KiB");
-	    var t1 = Date.now();
-	    mediumFileTest(us, sharer, bob, alice);
-	    var t2 = Date.now();
-	    console.log("File test took %d mS\n", (t2 - t1) / 1000000);
+
+		function bobRegistered() {
+		    alice.isRegistered(function(aregistered) {
+			if (!aregistered)
+			    alice.register(function(aliceRegistered){
+				if (!aliceRegistered)
+				    throw new Exception("Couldn't register user!");
+				bothRegistered();
+			    });
+			else
+			    bothRegistered();
+		    });
+			if (!alice.register())
+			    throw new Exception("Couldn't register user!");
+		}
+
+		if (!registered)
+		    bob.register(function(bobIsRegistered) {
+			if (!bobIsRegistered)
+			    throw new Exception("Couldn't register user!");
+			bobRegistered();
+		    });
+		else
+		    bobRegistered();
+	    });
 	});
     });
 }

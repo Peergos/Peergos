@@ -243,7 +243,7 @@ function DHTClient() {
     //
     this.put = function(keyData, valueData, username, sharingKeyData, mapKeyData, proofData, onSuccess, onError) {
         var arrays = [keyData, valueData, username, sharingKeyData, mapKeyData, proofData];
-        var buffer = new ByteBuffer(0);
+        var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
         for (var iArray=0; iArray < arrays.length; iArray++) 
             buffer.writeArray(arrays[iArray]);
         post("dht/put", buffer, onSuccess, onError);
@@ -252,7 +252,7 @@ function DHTClient() {
     //get
     //
     this.get = function(keyData, onSuccess, onError) { 
-        var buffer = new ByteBuffer(0);
+        var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
         buffer.writeArray(keyData);
         post("dht/get", buffer, onSuccess, onError); 
     };
@@ -261,7 +261,7 @@ function DHTClient() {
     //contains
     //
     this.contains = function(keyData, onSuccess, onError) {
-        var buffer = new ByteBuffer(0);
+        var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
         buffer.writeArray(keyData);
         post("dht/contains", buffer, onSuccess, onError); 
     };
@@ -270,14 +270,14 @@ function DHTClient() {
 function CoreNodeClient() {
         //String -> fn- >fn -> void
         this.getPublicKey = function(username, onSuccess, onError) {
-            var buffer = new  ByteBuffer(0);
+            var buffer = new  ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
             buffer.writeString(username);
             post("core/getPublicKey", buffer, onSuccess, onError);
         };
         
         //String -> Uint8Array -> Uint8Array -> fn -> fn -> void
         this.updateStaticData = function(username, signedHash, staticData, onSuccess, onError) {
-            var buffer = new ByteBuffer(0);
+            var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
             buffer.writeString(username);
             buffer.writeArray(signedHash);
             buffer.writeArray(staticData);
@@ -286,14 +286,14 @@ function CoreNodeClient() {
 
         //String -> fn- >fn -> void
         this.getStaticData = function(username, onSuccess, onError) {
-            var buffer = new ByteBuffer(0);
+            var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
             buffer.writeString(username);
             post("core/getStaticData", buffer, onSuccess, onError);
         };
 
         //Uint8Array -> fn -> fn -> void
         this.getUsername = function(publicKey, onSuccess, onError) {
-            var buffer = new ByteBuffer(0);
+            var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
             buffer.writeArray(publicKey);
             post("core/getUsername", buffer, onSuccess, onError);
         };
@@ -301,7 +301,7 @@ function CoreNodeClient() {
         
         //String -> Uint8Array -> Uint8Array -> fn -> fn -> void
         this.addUsername = function(username, encodedUserKey, signedHash, staticData) {
-            var buffer = new ByteBuffer(0);
+            var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
             buffer.writeString(username);
             buffer.writeArray(encodedUserKey);
             buffer.writeArray(signedHash);
@@ -311,7 +311,7 @@ function CoreNodeClient() {
 
         //String -> Uint8Array -> fn -> fn -> void
         this.followRequest = function( target,  encryptedPermission, onSuccess, onError) {
-            var buffer = new ByteBuffer(0);
+            var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
             buffer.writeString(target);
             buffer.writeArray(encryptedPermission);
              post("core/followRequest", buffer, onSuccess, onError);
@@ -319,14 +319,14 @@ function CoreNodeClient() {
 
         //String -> Uint8Array -> fn -> fn -> void
         this.getFollowRequests = function( username, onSuccess, onError) {
-            var buffer = new ByteBuffer(0);
+            var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
             buffer.writeString(username);
             post("core/getFollowRequests", buffer, onSuccess, onError);
         };
 
         //String -> Uint8Array -> Uint8Array -> fn -> fn -> void
         this.removeFollowRequest = function( target,  data,  signedHash, onSuccess, onError) {
-            var buffer = new ByteBuffer(0);
+            var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
             buffer.writeString(target);
             buffer.writeArray(data);
             buffer.writeArray(signedHash);
@@ -335,7 +335,7 @@ function CoreNodeClient() {
 
         //String -> Uint8Array -> Uint8Array -> fn -> fn -> void
         this.allowSharingKey = function( username,  encodedSharingPublicKey,  signedHash, onSuccess, onError) {
-            var buffer = new ByteBuffer(0);
+            var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
             buffer.writeString(username);
             buffer.writeArray(encodedSharingKey);
             buffer.writeArray(signedHash); 
@@ -344,7 +344,7 @@ function CoreNodeClient() {
 
         //String -> Uint8Array -> Uint8Array -> fn -> fn -> void
         this.banSharingKey = function( username,  encodedSharingPublicKey,  signedHash, onSuccess, onError) {
-            var buffer = new ByteBuffer(0);
+            var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
             buffer.writeString(username);
             buffer.writeArray(encodedSharingPublicKey);
             buffer.writeArray(signedHash); 
@@ -353,7 +353,7 @@ function CoreNodeClient() {
 
         //String -> Uint8Array -> Uint8Array -> Uint8Array  -> Uint8Array -> fn -> fn -> void
         this.addMetadataBlob = function( username,  encodedSharingPublicKey,  mapKey,  metadataBlob,  sharingKeySignedHash, onSuccess, onError) {
-            var buffer = new ByteBuffer(0);
+            var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
             buffer.writeString(username);
             buffer.writeArray(encodedSharingPublicKey);
             buffer.writeArray(mapKey);
@@ -364,7 +364,7 @@ function CoreNodeClient() {
 
         //String -> Uint8Array -> Uint8Array  -> Uint8Array -> fn -> fn -> void
         this.removeMetadataBlob = function( username,  encodedSharingKey,  mapKey,  sharingKeySignedMapKey, onSuccess, onError) {
-            var buffer = new ByteBuffer(0);
+            var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
             buffer.writeString(username);
             buffer.writeArray(encodedSharingKey);
             buffer.writeArray(mapKey);
@@ -374,7 +374,7 @@ function CoreNodeClient() {
 
         //String  -> Uint8Array  -> Uint8Array -> fn -> fn -> void
         this.removeUsername = function( username,  userKey,  signedHash, onSuccess, onError) {
-            var buffer = new ByteBuffer(0);
+            var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
             buffer.writeString(username);
             buffer.writeArray(userKey);
             buffer.writeArray(signedHash);
@@ -383,14 +383,14 @@ function CoreNodeClient() {
 
         //String -> fn -> fn -> void
         this.getSharingKeys = function( username, onSuccess, onError) {
-            var buffer = new ByteBuffer(0);
+            var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
             buffer.writeString(username);
             post("core/getSharingKeys", buffer, onSuccess, onError);
         };
 
         //String  -> Uint8Array  -> fn -> fn -> void
         this.getMetadataBlob = function( username,  encodedSharingKey,  mapKey, onSuccess, onError) {
-            var buffer = new ByteBuffer(0);
+            var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
             buffer.writeString(username);
             buffer.writeArray(encodedSharingKey);
             buffer.writeArray(mapKey);
@@ -399,7 +399,7 @@ function CoreNodeClient() {
 
         //String  -> Uint8Array  -> Uint8Array -> fn -> fn -> void
         this.isFragmentAllowed = function( owner,  encodedSharingKey,  mapkey,  hash, onSuccess, onError) {
-            var buffer = new ByteBuffer(0);
+            var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
             buffer.writeString(owner);
             buffer.writeArray(encodedSharingKey);
             buffer.writeArray(mapKey);
@@ -410,14 +410,14 @@ function CoreNodeClient() {
 
         //String -> fn -> fn -> void
         this.getQuota = function(username, onSuccess, onError) {
-            var buffer = new ByteBuffer(0);
+            var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
             buffer.writeString(username);
             post("core/getQuota", buffer, onSuccess, onError);
         };
 
         //String -> fn -> fn -> void
         this.getUsage = function(username, onSuccess, onError) {
-            var buffer = new ByteBuffer(0);
+            var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
             buffer.writeString(username);
             post("core/getUsage", buffer, onSuccess, onError);
         };
@@ -425,7 +425,7 @@ function CoreNodeClient() {
 
         //String  -> Uint8Array  -> Uint8Array -> fn -> fn -> void
         this.getFragmentHashes = function( username, sharingKey, mapKey, onSuccess, onError) {
-            var buffer = new ByteBuffer(0);
+            var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
             buffer.writeString(username);
             buffer.writeArray(sharingKey);
             buffer.writeArray(mapKey);
@@ -434,7 +434,7 @@ function CoreNodeClient() {
 
         //String  -> Uint8Array  -> Uint8Array -> Uint8Array -> [Uint8Array] -> Uint8Array -> fn -> fn -> void
         this.addFragmentHashes = function(username, encodedSharingPublicKey, mapKey, metadataBlob, allHashes, sharingKeySignedHash) {
-                var buffer = new ByteBuffer(0);
+                var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
                 buffer.writeString(username);
                 buffer.writeArray(encodedShaaringPublicKey);
                 buffer.writeArray(mapKey);
@@ -451,7 +451,7 @@ function CoreNodeClient() {
 
         //String -> Uint8Array -> -> String -> Uint8Array -> Uint8Array -> Uint8Array -> fn -> fn -> void
         this.registerFragmentStorage = function(spaceDonor, nodeAddress,  owner,  encodedSharingKey,  hash,  signedKeyPlusHash, onSuccess, onError) {
-                var buffer = new ByteBuffer(0);
+                var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
                 buffer.writeString(spaceDonor);
                 buffer.writeArray(nodeAddress);
                 buffer.writeString(owner);
@@ -464,9 +464,15 @@ function CoreNodeClient() {
 
 function UserContext(username, user, dhtClient,  corenodeClient) {
     this.username  = username;
-    this.user =  user;
+    this.user = user;
     this.dhtClient = dhtClient;
     this.corenodeClient = corenodeClient;
+
+    this.isRegistered = function(cb) {
+	corenodeClient.getUsername(user.getPublicKeys(), function(res){
+            cb(username == res);
+	});
+    }
 
     this.downloadFragments = function(hashes) {
         var result = {}; 
