@@ -461,10 +461,45 @@ function CoreNodeClient() {
                 post("core/registerFragmentStorage", buffer, onSuccess, onError);
         };
 };
-function UserContext() {
+
+function UserContext(username, user, dhtClient,  corenodeClient) {
+    this.username  = username;
+    this.user =  user;
+    this.dhtClient = dhtClient;
+    this.corenodeClient = corenodeClient;
 
     this.downloadFragments = function(hashes) {
-	
+        var result = {}; 
+        result.fragments = [];
+        result.nSuccess = 0;
+        result.nError = 0;
+        
+        var completion  = function() {
+            if (this.nSuccess + this.nError < this.fragments.length)
+                return;
+            console.log("Completed");
+            if (this.nError  > 0)
+                throw "found "+ nError +" errors.";
+            return this.fragments; 
+        }.bind(result);
+
+        var success = function(fragmentData, index) {
+            this.fragments.index = fragmentData;
+            this.nSuccess += 1;         
+            completion();
+        }.bind(result);
+
+        var error = function(index) {
+            this.nError +=1;
+            completion(fragments);
+        }.bind(result);
+
+
+        for (var iHash=0; iHash < hashes.length; iHash++) {
+            var hash = hashes[iHash];
+            var onSuccess = onSuccess()  
+            dhtClient.get(hash) 
+        }
     }
 
     this.getMetadata = function(location) {
