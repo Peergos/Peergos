@@ -300,7 +300,7 @@ function CoreNodeClient() {
 
         
         //String -> Uint8Array -> Uint8Array -> fn -> fn -> void
-        this.addUsername = function(username, encodedUserKey, signedHash, staticData) {
+        this.addUsername = function(username, encodedUserKey, signedHash, staticData, onSuccess, onError) {
             var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
             buffer.writeString(username);
             buffer.writeArray(encodedUserKey);
@@ -467,11 +467,26 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
     this.user = user;
     this.dhtClient = dhtClient;
     this.corenodeClient = corenodeClient;
+    this.staticData = []; // array of map entry pairs
 
     this.isRegistered = function(cb) {
 	corenodeClient.getUsername(user.getPublicKeys(), function(res){
             cb(username == res);
 	});
+    }
+
+    this.serializeStatic = function() {
+        var buf = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+        buf.writeUnsignedInt(this.staticData.length);
+        for (var i = 0; i < this.staticData.length; i++)
+            buf.writeArray(this.staticData[i][1].toByteArray());
+        return buf.toArray();
+    }
+
+    this.register = function(cb) {
+	var rawStatic = this.serializeStatic();
+        var signed = user.signMessage(concat(nacl.util.decodeUTF8(username), user.getPublicKeys(), rawStatic));
+        return corenodeClient.addUsername(username, user.getPublicKeys(), signed, rawStatic, cb)
     }
 
     this.downloadFragments = function(hashes) {
