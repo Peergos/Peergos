@@ -107,53 +107,56 @@ function contextTests(dht, core) {
 	    
 	    bob.isRegistered(function(registered) {
 		function bothRegistered() {
-		    var followed = bob.sendFollowRequest(them);
+		    console.log("both registered");
+		    bob.sendFollowRequest(them, function(followed) {
 		    
-		    var reqs = alice.getFollowRequests();
-		    //assert(reqs.size() == 1);
-		    var /*WritableFilePointer*/ root = alice.decodeFollowRequest(reqs.get(0));
-		    var /*User*/ sharer = root.writer;
-		    
-		    // store a chunk in alice's space using the permitted sharing key (this could be alice or bob at this point)
-		    var frags = 120;
-		    var port = 25 + 1024;
-		    
-		    var address = "localhost:"+ port;
-		    for (var i = 0; i < frags; i++) {
-			var frag = window.nacl.randomBytes(32);
-			var message = concat(sharer.getPublicKeys(), frag);
-			var signed = sharer.signMessage(message);
-			if (!core.registerFragmentStorage(us, address, us, signed)) {
-			    console.log("Failed to register fragment storage!");
+			var reqs = alice.getFollowRequests();
+			//assert(reqs.size() == 1);
+			var /*WritableFilePointer*/ root = alice.decodeFollowRequest(reqs.get(0));
+			var /*User*/ sharer = root.writer;
+			
+			// store a chunk in alice's space using the permitted sharing key (this could be alice or bob at this point)
+			var frags = 120;
+			var port = 25 + 1024;
+			
+			var address = "localhost:"+ port;
+			for (var i = 0; i < frags; i++) {
+			    var frag = window.nacl.randomBytes(32);
+			    var message = concat(sharer.getPublicKeys(), frag);
+			    var signed = sharer.signMessage(message);
+			    if (!core.registerFragmentStorage(us, address, us, signed)) {
+				console.log("Failed to register fragment storage!");
+			    }
 			}
-		    }
-		    var quota = core.getQuota(us);
-		    console.log("Generated quota: " + quota/1024 + " KiB");
-		    var t1 = Date.now();
-		    mediumFileTest(us, sharer, bob, alice);
-		    var t2 = Date.now();
-		    console.log("File test took %d mS\n", (t2 - t1) / 1000000);
+			var quota = core.getQuota(us);
+			console.log("Generated quota: " + quota/1024 + " KiB");
+			var t1 = Date.now();
+			mediumFileTest(us, sharer, bob, alice);
+			var t2 = Date.now();
+			console.log("File test took %d mS\n", (t2 - t1) / 1000000);
+		    });
 		}
 
 		function bobRegistered() {
+		    console.log("bob registered");
 		    alice.isRegistered(function(aregistered) {
 			if (!aregistered)
 			    alice.register(function(aliceRegistered){
 				if (!aliceRegistered)
-				    throw new Exception("Couldn't register user!");
+				    throw "Couldn't register user!";
 				bothRegistered();
 			    });
 			else
 			    bothRegistered();
 		    });
 			if (!alice.register())
-			    throw new Exception("Couldn't register user!");
+			    throw "Couldn't register user!";
 		}
 
 		if (!registered)
 		    bob.register(function(bobIsRegistered) {
 			if (!bobIsRegistered)
-			    throw new Exception("Couldn't register user!");
+			    throw "Couldn't register user!";
 			bobRegistered();
 		    });
 		else

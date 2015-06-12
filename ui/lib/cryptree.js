@@ -5,11 +5,11 @@ function WritableFilePointer(owner, writer, mapKey, baseKey) {
     this.baseKey = baseKey; //SymmetricKey
 
     this.serialize = function() {
-	var bout = new ByteBuffer();
+	var bout = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
 	bout.writeArray(string2arraybuffer(username));
 	bout.writeArray(owner.getSecretKeys());
 	bout.writeArray(mapKey);
-	bout.writeArray(rootDirKey.key);
+	bout.writeArray(baseKey.key);
 	return bout.toArray();
     }
 }
@@ -50,7 +50,7 @@ function Location(owner, subKey, mapKey) {
     this.mapKey = mapKey;
 
     this.serialize = function(bout) {
-	var bout = new ByteBuffer(username.length + 64 + 32 + 12);
+	var bout = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
 	bout.writeArray(string2arraybuffer(username));
 	bout.writeArray(subKey.getPublicKeys());
 	bout.writeArray(mapKey);
@@ -240,7 +240,7 @@ function LazyInputStreamCombiner(context, dataKey, current, next) {
 
 var Erasure = {};
 Erasure.recombine = function(fragments, truncateTo, originalBlobs, allowedFailures) {
-    var buf = new ByteBuffer();
+    var buf = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
     // assume we have all fragments in original order for now
     for (var i=0; i < originalBlobs; i++)
 	buf.write(fragments[i]);

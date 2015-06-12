@@ -104,6 +104,11 @@ User.fromSecretKeys = function(secretKeys) {
 				secretKeys);
 }
 
+User.random = function() {
+    var secretKeys = window.nacl.randomBytes(96);
+    return User.fromSecretKeys(secretKeys);
+}
+
 function toKeyPair(pub, sec) {
     return {publicKey:pub, secretKey:sec};
 }
@@ -274,6 +279,7 @@ function CoreNodeClient() {
         //String -> fn- >fn -> void
         this.getPublicKey = function(username, onSuccess, onError) {
             var buffer = new  ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+	    buffer.writeUnsignedInt(username.length);
             buffer.writeString(username);
             post("core/getPublicKey", new Uint8Array(buffer.toArray()), onSuccess, onError);
         };
@@ -281,6 +287,7 @@ function CoreNodeClient() {
         //String -> Uint8Array -> Uint8Array -> fn -> fn -> void
         this.updateStaticData = function(username, signedHash, staticData, onSuccess, onError) {
             var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+	    buffer.writeUnsignedInt(username.length);
             buffer.writeString(username);
             buffer.writeArray(signedHash);
             buffer.writeArray(staticData);
@@ -316,6 +323,7 @@ function CoreNodeClient() {
         //String -> Uint8Array -> fn -> fn -> void
         this.followRequest = function( target,  encryptedPermission, onSuccess, onError) {
             var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+	    buffer.writeUnsignedInt(target.length);
             buffer.writeString(target);
             buffer.writeArray(encryptedPermission);
              post("core/followRequest", new Uint8Array(buffer.toArray()), onSuccess, onError);
@@ -338,11 +346,10 @@ function CoreNodeClient() {
         };
 
         //String -> Uint8Array -> Uint8Array -> fn -> fn -> void
-        this.allowSharingKey = function( username,  encodedSharingPublicKey,  signedHash, onSuccess, onError) {
+        this.allowSharingKey = function(owner, signedWriter, onSuccess, onError) {
             var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
-            buffer.writeString(username);
-            buffer.writeArray(encodedSharingKey);
-            buffer.writeArray(signedHash); 
+            buffer.writeArray(owner);
+            buffer.writeArray(signedWriter); 
             post("core/allowSharingKey", new Uint8Array(buffer.toArray()), onSuccess, onError);
         };
 
@@ -483,14 +490,48 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
         var buf = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
         buf.writeUnsignedInt(this.staticData.length);
         for (var i = 0; i < this.staticData.length; i++)
-            buf.writeArray(this.staticData[i][1].toByteArray());
+            buf.writeArray(this.staticData[i][1].serialize());
         return buf.toArray();
     }
 
-    this.register = function(cb) {
+    this.register = function(onSuccess, onError) {
+	console.log("registering "+username);
 	var rawStatic = this.serializeStatic();
         var signed = user.signMessage(concat(nacl.util.decodeUTF8(username), user.getPublicKeys(), rawStatic));
-        return corenodeClient.addUsername(username, user.getPublicKeys(), signed, rawStatic, cb)
+        return corenodeClient.addUsername(username, user.getPublicKeys(), signed, rawStatic, onSuccess, onError)
+    }
+
+    this.sendFollowRequest = function(targetUser, onSuccess, onError) {
+	// create sharing keypair and give it write access
+        var sharing = User.random();
+	var that = this;
+        this.addSharingKey(sharing,  function() {
+            var rootMapKey = new ByteBuffer(window.nacl.randomBytes(32));
+	    
+            // add a note to our static data so we know who we sent the private key to
+            var friendRoot = new WritableFilePointer(user, sharing, rootMapKey, SymmetricKey.random());
+            that.addToStaticData(sharing, friendRoot, function() {
+	    
+		// send details to allow friend to share with us (i.e. we follow them)
+		var raw = friendRoot.serialize();
+		
+		// create a tmp keypair whose public key we can append to the request without leaking information
+		var tmp = User.random();
+		var payload = targetUser.encryptMessageFor(new Uint8Array(raw), tmp);
+		corenodeClient.followRequest(targetUser, concat(tmp.pBoxKey, payload), onSuccess, onError);
+	    });
+	}, onError);
+    }
+
+    this.addSharingKey = function(pub, onSuccess) {
+	var signed = user.signMessage(pub.getPublicKeys());
+        corenodeClient.allowSharingKey(user.getPublicKeys(), signed, onSuccess);
+    }
+
+    this.addToStaticData = function(writer, root, onSuccess) {
+	this.staticData.push([writer, root]);
+        var rawStatic = new Uint8Array(this.serializeStatic());
+        corenodeClient.updateStaticData(username, user.signMessage(rawStatic), rawStatic, onSuccess);
     }
 
     this.downloadFragments = function(hashes) {
