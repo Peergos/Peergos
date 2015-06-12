@@ -163,12 +163,15 @@ function slice(arr, start, end) {
     return r;
 }
 
-function concat(a, b) {
+function concat(a, b, c) {
     var r = new Uint8Array(a.length+b.length);
     for (var i=0; i < a.length; i++)
 	r[i] = a[i];
     for (var i=0; i < b.length; i++)
 	r[a.length+i] = b[i];
+    if (c != null)
+	for (var i=0; i < c.length; i++)
+	    r[a.length+b.length+i] = c[i];
     return r;
 }
 
@@ -302,6 +305,7 @@ function CoreNodeClient() {
         //String -> Uint8Array -> Uint8Array -> fn -> fn -> void
         this.addUsername = function(username, encodedUserKey, signedHash, staticData, onSuccess, onError) {
             var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+	    buffer.writeUnsignedInt(username.length);
             buffer.writeString(username);
             buffer.writeArray(encodedUserKey);
             buffer.writeArray(signedHash);
