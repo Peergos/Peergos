@@ -320,11 +320,10 @@ function CoreNodeClient() {
             post("core/addUsername", new Uint8Array(buffer.toArray()), onSuccess, onError);
         };
 
-        //String -> Uint8Array -> fn -> fn -> void
+        //Uint8Array -> Uint8Array -> fn -> fn -> void
         this.followRequest = function( target,  encryptedPermission, onSuccess, onError) {
             var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
-	    buffer.writeUnsignedInt(target.length);
-            buffer.writeString(target);
+            buffer.writeArray(target);
             buffer.writeArray(encryptedPermission);
              post("core/followRequest", new Uint8Array(buffer.toArray()), onSuccess, onError);
         };
@@ -518,7 +517,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 		// create a tmp keypair whose public key we can append to the request without leaking information
 		var tmp = User.random();
 		var payload = targetUser.encryptMessageFor(new Uint8Array(raw), tmp);
-		corenodeClient.followRequest(targetUser, concat(tmp.pBoxKey, payload), onSuccess, onError);
+		corenodeClient.followRequest(targetUser.getPublicKeys(), concat(tmp.pBoxKey, payload), onSuccess, onError);
 	    });
 	}, onError);
     }
