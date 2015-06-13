@@ -6,8 +6,8 @@ function WritableFilePointer(owner, writer, mapKey, baseKey) {
 
     this.serialize = function() {
 	var bout = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
-	bout.writeArray(string2arraybuffer(username));
-	bout.writeArray(owner.getSecretKeys());
+	bout.writeArray(owner.getPublicKeys());
+	bout.writeArray(writer.getSecretKeys());
 	bout.writeArray(mapKey);
 	bout.writeArray(baseKey.key);
 	return bout.toArray();

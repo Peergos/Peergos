@@ -339,8 +339,10 @@ function CoreNodeClient() {
 		     var size = buf.readUnsignedInt();
 		     var n = buf.readUnsignedInt();
 		     var arr = [];
-		     for (var i=0; i < n; i++)
-			 arr.push(new Uint8Array(buf.readArray()));
+		     for (var i=0; i < n; i++) {
+			 var t = buf.readArray();
+			 arr.push(new Uint8Array(t.toArray()));
+		     }
 		     onSuccess(arr);}, onError);
         };
 
@@ -544,6 +546,10 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 
     this.getFollowRequests = function(onSuccess, onError) {
 	corenodeClient.getFollowRequests(user.getPublicKeys(), onSuccess, onError);
+    }
+
+    this.decodeFollowRequest(raw) {
+	
     }
 
     this.downloadFragments = function(hashes) {
