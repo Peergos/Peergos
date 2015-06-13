@@ -43,6 +43,12 @@ function UserPublicKey(publicSignKey, publicBoxKey) {
     }
 }
 
+UserPublicKey.fromPublicKeys = function(both) {
+    var pSign = slice(both, 0, 32);
+    var pBox = slice(both, 32, 64);
+    return new UserPublicKey(pSign, pBox);
+}
+
 function createNonce(){
     return window.nacl.randomBytes(24);
 }
@@ -548,8 +554,16 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 	corenodeClient.getFollowRequests(user.getPublicKeys(), onSuccess, onError);
     }
 
-    this.decodeFollowRequest(raw) {
-	
+    this.decodeFollowRequest = function(raw) {
+	var pBoxKey = new Uint8Array(32);
+	for (var i=0; i < 32; i++)
+            pBoxKey[i] = raw[i]; // signing key is not used
+        var tmp = new UserPublicKey(null, pBoxKey);
+	var buf = new ByteBuffer(raw);
+	buf.read(32);
+	var cipher = buf.read(raw.length - 32);
+        var decrypted = user.decryptMessage(cipher.toArray(), tmp);
+        return WritableFilePointer.deserialize(new Uint8Array(decrypted)); // somehow not creating a new uint8array keeps the extra 32 bytes...
     }
 
     this.downloadFragments = function(hashes) {

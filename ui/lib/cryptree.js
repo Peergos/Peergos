@@ -16,14 +16,11 @@ function WritableFilePointer(owner, writer, mapKey, baseKey) {
 
 WritableFilePointer.deserialize = function(buf) {
     var bin = new ByteBuffer(buf);
-    var name = "";
-    var ua = bin.readArray();
-    for (var i = 0; i < ua.length; i++)
-        name += String.fromCharCode(ua.readUnsignedByte());
-    var secKeys = bin.readArray();
+    var owner = bin.readArray();
+    var writerSecretKeys = bin.readArray();
     var mapKey = bin.readArray();
     var rootDirKeySecret = bin.readArray();
-    return new SharedRootDir(name, User.fromSecretKeys(secKeys), mapKey, new SymmetricKey(rootDirKeySecret));
+    return new WritableFilePointer(UserPublicKey.fromPublicKeys(owner), User.fromSecretKeys(writerSecretKeys), mapKey, new SymmetricKey(rootDirKeySecret));
 }
 
 function SymmetricLink(link) {
