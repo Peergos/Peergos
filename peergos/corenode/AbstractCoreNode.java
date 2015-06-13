@@ -221,11 +221,11 @@ public abstract class AbstractCoreNode
         return true;
     }
 
-    public synchronized byte[] getFollowRequests(UserPublicKey username)
+    public synchronized byte[] getFollowRequests(UserPublicKey user)
     {
-        UserData userData = userMap.get(username);
+        UserData userData = userMap.get(user);
         if (userData == null)
-            return null;
+            return new byte[4];
 
         ByteArrayOutputStream bout  =new ByteArrayOutputStream();
         DataOutput dout = new DataOutputStream(bout);

@@ -109,31 +109,33 @@ function contextTests(dht, core) {
 		function bothRegistered() {
 		    console.log("both registered");
 		    bob.sendFollowRequest(them, function(followed) {
-		    
-			var reqs = alice.getFollowRequests();
-			//assert(reqs.size() == 1);
-			var /*WritableFilePointer*/ root = alice.decodeFollowRequest(reqs.get(0));
-			var /*User*/ sharer = root.writer;
+			if (!followed)
+			    throw "Follow request rejected!";
+			alice.getFollowRequests(function (reqs) {
+			    //assert(reqs.size() == 1);
+			    var /*WritableFilePointer*/ root = alice.decodeFollowRequest(reqs.get(0));
+			    var /*User*/ sharer = root.writer;
 			
-			// store a chunk in alice's space using the permitted sharing key (this could be alice or bob at this point)
-			var frags = 120;
-			var port = 25 + 1024;
+			    // store a chunk in alice's space using the permitted sharing key (this could be alice or bob at this point)
+			    var frags = 120;
+			    var port = 25 + 1024;
 			
-			var address = "localhost:"+ port;
-			for (var i = 0; i < frags; i++) {
-			    var frag = window.nacl.randomBytes(32);
-			    var message = concat(sharer.getPublicKeys(), frag);
-			    var signed = sharer.signMessage(message);
-			    if (!core.registerFragmentStorage(us, address, us, signed)) {
-				console.log("Failed to register fragment storage!");
+			    var address = "localhost:"+ port;
+			    for (var i = 0; i < frags; i++) {
+				var frag = window.nacl.randomBytes(32);
+				var message = concat(sharer.getPublicKeys(), frag);
+				var signed = sharer.signMessage(message);
+				if (!core.registerFragmentStorage(us, address, us, signed)) {
+				    console.log("Failed to register fragment storage!");
+				}
 			    }
-			}
-			var quota = core.getQuota(us);
-			console.log("Generated quota: " + quota/1024 + " KiB");
-			var t1 = Date.now();
-			mediumFileTest(us, sharer, bob, alice);
-			var t2 = Date.now();
-			console.log("File test took %d mS\n", (t2 - t1) / 1000000);
+			    var quota = core.getQuota(us);
+			    console.log("Generated quota: " + quota/1024 + " KiB");
+			    var t1 = Date.now();
+			    mediumFileTest(us, sharer, bob, alice);
+			    var t2 = Date.now();
+			    console.log("File test took %d mS\n", (t2 - t1) / 1000000);
+			});
 		    });
 		}
 

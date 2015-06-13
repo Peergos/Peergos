@@ -169,7 +169,7 @@ function slice(arr, start, end) {
 }
 
 function concat(a, b, c) {
-    var r = new Uint8Array(a.length+b.length);
+    var r = new Uint8Array(a.length+b.length+(c != null ? c.length : 0));
     for (var i=0; i < a.length; i++)
 	r[i] = a[i];
     for (var i=0; i < b.length; i++)
@@ -310,12 +310,12 @@ function CoreNodeClient() {
 
         
         //String -> Uint8Array -> Uint8Array -> fn -> fn -> void
-        this.addUsername = function(username, encodedUserKey, signedHash, staticData, onSuccess, onError) {
+        this.addUsername = function(username, encodedUserKey, signed, staticData, onSuccess, onError) {
             var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
 	    buffer.writeUnsignedInt(username.length);
             buffer.writeString(username);
             buffer.writeArray(encodedUserKey);
-            buffer.writeArray(signedHash);
+            buffer.writeArray(signed);
             buffer.writeArray(staticData);
             post("core/addUsername", new Uint8Array(buffer.toArray()), onSuccess, onError);
         };
@@ -329,18 +329,18 @@ function CoreNodeClient() {
         };
 
         //String -> Uint8Array -> fn -> fn -> void
-        this.getFollowRequests = function( username, onSuccess, onError) {
+        this.getFollowRequests = function( user, onSuccess, onError) {
             var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
-            buffer.writeString(username);
+            buffer.writeArray(user);
             post("core/getFollowRequests", new Uint8Array(buffer.toArray()), onSuccess, onError);
         };
 
         //String -> Uint8Array -> Uint8Array -> fn -> fn -> void
-        this.removeFollowRequest = function( target,  data,  signedHash, onSuccess, onError) {
+        this.removeFollowRequest = function( target,  data,  signed, onSuccess, onError) {
             var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
             buffer.writeString(target);
             buffer.writeArray(data);
-            buffer.writeArray(signedHash);
+            buffer.writeArray(signed);
              post("core/removeFollowRequest", new Uint8Array(buffer.toArray()), onSuccess, onError);
         };
 
@@ -531,6 +531,10 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 	this.staticData.push([writer, root]);
         var rawStatic = new Uint8Array(this.serializeStatic());
         corenodeClient.updateStaticData(username, user.signMessage(rawStatic), rawStatic, onSuccess);
+    }
+
+    this.getFollowRequests = function(onSuccess, onError) {
+	corenodeClient.getFollowRequests(user.getPublicKeys(), onSuccess, onError);
     }
 
     this.downloadFragments = function(hashes) {
