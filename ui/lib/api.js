@@ -203,6 +203,7 @@ function post(path, data, onSuccess, onError) {
 
     var request = new XMLHttpRequest();
     request.open("POST" , path);
+    request.responseType = 'arraybuffer';
 
     request.onreadystatechange=function()
     {
@@ -332,7 +333,15 @@ function CoreNodeClient() {
         this.getFollowRequests = function( user, onSuccess, onError) {
             var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
             buffer.writeArray(user);
-            post("core/getFollowRequests", new Uint8Array(buffer.toArray()), onSuccess, onError);
+            post("core/getFollowRequests", new Uint8Array(buffer.toArray()), 
+		 function(res) {
+		     var buf = new ByteBuffer(res);
+		     var size = buf.readUnsignedInt();
+		     var n = buf.readUnsignedInt();
+		     var arr = [];
+		     for (var i=0; i < n; i++)
+			 arr.push(new Uint8Array(buf.readArray()));
+		     onSuccess(arr);}, onError);
         };
 
         //String -> Uint8Array -> Uint8Array -> fn -> fn -> void

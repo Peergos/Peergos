@@ -113,7 +113,7 @@ function contextTests(dht, core) {
 			    throw "Follow request rejected!";
 			alice.getFollowRequests(function (reqs) {
 			    //assert(reqs.size() == 1);
-			    var /*WritableFilePointer*/ root = alice.decodeFollowRequest(reqs.get(0));
+			    var /*WritableFilePointer*/ root = alice.decodeFollowRequest(reqs[0]);
 			    var /*User*/ sharer = root.writer;
 			
 			    // store a chunk in alice's space using the permitted sharing key (this could be alice or bob at this point)
