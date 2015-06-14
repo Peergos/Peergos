@@ -119,9 +119,7 @@ function contextTests(dht, core) {
 			    // store a chunk in alice's space using the permitted sharing key (this could be alice or bob at this point)
 			    var frags = 120;
 			    var port = 25 + 1024;
-			
 			    var address = [127, 0, 0, 1];
-			    var port = 8000;
 			    for (var i = 0; i < frags; i++) {
 				var frag = window.nacl.randomBytes(32);
 				var message = concat(sharer.getPublicKeys(), frag);

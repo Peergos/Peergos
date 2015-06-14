@@ -438,7 +438,13 @@ function CoreNodeClient() {
     this.getQuota = function(user, onSuccess, onError) {
         var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
         buffer.writeArray(user.getPublicKeys());
-        post("core/getQuota", new Uint8Array(buffer.toArray()), onSuccess, onError);
+        post("core/getQuota", new Uint8Array(buffer.toArray()), 
+	     function(res) {
+		 var buf = new ByteBuffer(new Uint8Array(res));
+		 var quota = buf.readUnsignedInt() << 32;
+		 quota += buf.readUnsignedInt();
+		 onSuccess(quota);}, 
+	     onError);
     };
     
     //String -> fn -> fn -> void
