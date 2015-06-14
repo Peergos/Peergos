@@ -120,21 +120,24 @@ function contextTests(dht, core) {
 			    var frags = 120;
 			    var port = 25 + 1024;
 			
-			    var address = "localhost:"+ port;
+			    var address = [127, 0, 0, 1];
+			    var port = 8000;
 			    for (var i = 0; i < frags; i++) {
 				var frag = window.nacl.randomBytes(32);
 				var message = concat(sharer.getPublicKeys(), frag);
 				var signed = sharer.signMessage(message);
-				if (!core.registerFragmentStorage(us, address, us, signed)) {
-				    console.log("Failed to register fragment storage!");
-				}
+				core.registerFragmentStorage(us, address, port, us, signed, function(res) {
+				    if (!res)
+					console.log("Failed to register fragment storage!");
+				});
 			    }
-			    var quota = core.getQuota(us);
-			    console.log("Generated quota: " + quota/1024 + " KiB");
-			    var t1 = Date.now();
-			    mediumFileTest(us, sharer, bob, alice);
-			    var t2 = Date.now();
-			    console.log("File test took %d mS\n", (t2 - t1) / 1000000);
+			    core.getQuota(us, function(quota) {
+				console.log("Generated quota: " + quota/1024 + " KiB");
+				var t1 = Date.now();
+				mediumFileTest(us, sharer, bob, alice);
+				var t2 = Date.now();
+				console.log("File test took %d mS\n", (t2 - t1) / 1000000);
+			    });
 			});
 		    });
 		}
