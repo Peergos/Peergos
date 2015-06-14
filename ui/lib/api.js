@@ -159,6 +159,28 @@ function FileProperties(name, size) {
     }
 }
 
+function Fragment() {
+
+}
+Fragment.SIZE = 128*1024;
+
+function EncryptedChunk() {
+
+}
+EncryptedChunk.ERASURE_ORIGINAL = 40;
+EncryptedChunk.ERASURE_ALLOWED_FAILURES = 10;
+
+function Chunk(data, key) {
+    this.data = data;
+    this.key = key;
+
+    this.encrypt = function(nonce) {
+	return key.encrypt(new Uint8Array(data.toArray()), nonce);
+    }
+}
+Chunk.MAX_SIZE = Fragment.SIZE*EncryptedChunk.ERASURE_ORIGINAL
+
+
 /////////////////////////////
 // Util methods
 

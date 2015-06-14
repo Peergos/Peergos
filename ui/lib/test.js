@@ -26,9 +26,9 @@ function mediumFileTest(owner, sharer, receiver, sender) {
     var raw2 = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
     var template = nacl.util.decodeUTF8("Hello secure cloud! Goodbye NSA!");
     var template2 = nacl.util.decodeUTF8("Second hi safe cloud! Adios NSA!");
-    for (var i = 0; i < raw1.length / 32; i++)
+    for (var i = 0; i < Chunk.MAX_SIZE / 32; i++)
         raw1.write(template);
-    for (var i = 0; i < raw2.length / 32; i++)
+    for (var i = 0; i < Chunk.MAX_SIZE / 32; i++)
         raw2.write(template2);
     
     // add file to root dir

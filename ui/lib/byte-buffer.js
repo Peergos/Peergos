@@ -291,7 +291,7 @@ ByteBuffer = (function() {
     available = this.available;
     if (view.byteLength > available) {
       if (this._implicitGrowth) {
-        this.append(view.byteLength - available);
+        this.append(Math.max(view.byteLength - available, this.length));
       } else {
         throw new Error('Cannot write ' + sequence + ' using ' + view.byteLength + ' byte(s), ' + this.available + ' available');
       }

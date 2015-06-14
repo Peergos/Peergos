@@ -12,7 +12,6 @@ public class EncryptedChunk
     public static final int ERASURE_ALLOWED_FAILURES = 10;
     private final byte[] auth;
     private final byte[] encrypted;
-    private final byte[] hash;
 
     public EncryptedChunk(byte[] encrypted)
     {
@@ -20,7 +19,6 @@ public class EncryptedChunk
             throw new IllegalArgumentException("Encrypted chunk size ("+encrypted.length+") must be at most " + (Chunk.MAX_SIZE + TweetNaCl.SECRETBOX_OVERHEAD_BYTES));
         this.auth = Arrays.copyOfRange(encrypted, 0, TweetNaCl.SECRETBOX_OVERHEAD_BYTES);
         this.encrypted = Arrays.copyOfRange(encrypted, TweetNaCl.SECRETBOX_OVERHEAD_BYTES, encrypted.length);
-        hash = User.hash(encrypted);
     }
 
     public EncryptedChunk(byte[][] fragments, int originalSize)
