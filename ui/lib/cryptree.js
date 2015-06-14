@@ -51,11 +51,11 @@ function Location(owner, subKey, mapKey) {
 	bout.writeArray(string2arraybuffer(username));
 	bout.writeArray(subKey.getPublicKeys());
 	bout.writeArray(mapKey);
-	return bout.toArray();
+	return new Uint8Array(bout.toArray());
     }
 
     this.encrypt = function(key, nonce) {
-	return key.encrypt(serialize(), nonce);
+	return key.encrypt(this.serialize(), nonce);
     }
 }
 Location.deserialize = function(buf) {
@@ -134,6 +134,17 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
 	bout.writeUnsignedInt(files.length)
 	for (var i=0; i < files.length; i++)
 	    bout.writeArray(files[i].serialize());
+    }
+
+    // Location, SymmetricKey, SymmetricKey
+    this.addFile = function(location, ourSubfolders, targetParent) {
+	var nonce = ourSubfolders.createNonce();
+	var loc = location.encrypt(ourSubfolders, nonce);
+        var link = concat(nonce, ourSubfolders.encrypt(targetParent.key, nonce));
+	var buf = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+	buf.writeArray(link);
+	buf.writeArray(loc);
+	files.push(new SymmetricLocationLink(new ByteBuffer(buf)));
     }
 
     // 0=FILE, 1=DIR

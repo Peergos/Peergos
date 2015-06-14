@@ -14,6 +14,7 @@ public class SymmetricLocationLink
 
     public SymmetricLocationLink(SymmetricKey from, SymmetricKey to, Location loc, byte[] iv)
     {
+        // TODO only do one encryption, and thus don't use nonce twice!
         this.loc = loc.encrypt(from, iv);
         link = ArrayOps.concat(iv, from.encrypt(to.getKey(), iv));
     }
