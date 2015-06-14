@@ -156,6 +156,20 @@ DirAccess.deserialize = function(base, bin) {
     return new DirAccess(s2f, s2p, subfolders, files, base.parent2meta, base.properties, base.retriever);
 }
 
+// User, SymmetricKey, FileProperties
+DirAccess.create = function(owner, subfoldersKey, metadata) {
+    var metaKey = SymmetricKey.random();
+    var parentKey = SymmetricKey.random();
+    var filesKey = SymmetricKey.random();
+    var metaNonce = metaKey.createNonce();
+    return new DirAccess(new SymmetricLink(subfoldersKey, filesKey, subfoldersKey.createNonce()),
+			 new SymmetricLink(subfoldersKey, parentKey, subfoldersKey.createNonce()),
+			 [], [],
+			 new SymmetricLink(parentKey, metaKey, parentKey.createNonce()),
+			 concat(metaNonce, metaKey.encrypt(metadata.serialize(), metaNonce))
+			);
+}
+
 function FileRetriever() {
 }
 FileRetriever.deserialize = function(bin) {

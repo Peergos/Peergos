@@ -122,11 +122,6 @@ function toKeyPair(pub, sec) {
 /////////////////////////////
 // SymmetricKey methods
 
-// () => Uint8Array
-function randomIV() {
-    return nacl.randomBytes(24);
-}
-
 function SymmetricKey(key) {
     this.key = key;
 
@@ -139,10 +134,29 @@ function SymmetricKey(key) {
     this.decrypt = function(cipher, nonce) {
 	return nacl.secretbox.open(cipher, nonce, this.key);
     }
+
+    // () => Uint8Array
+    this.createNonce = function() {
+    return nacl.randomBytes(24);
+}
 }
 SymmetricKey.NONCE_BYTES = 24;
 SymmetricKey.random = function() {
     return new SymmetricKey(nacl.randomBytes(32));
+}
+
+function FileProperties(name, size) {
+    this.name = name;
+    this.size = size;
+
+    this.serialize = function() {
+	var buf = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+	buf.writeUnsignedInt(name.length);
+	buf.writeString(name);
+	buf.writeUnsignedInt(size >> 32);
+	buf.writeUnsignedInt(size & 0xffffffff);
+	return new Uint8Array(buf.toArray());
+    }
 }
 
 /////////////////////////////
