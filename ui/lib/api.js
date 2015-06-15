@@ -167,6 +167,10 @@ function Fragment(data) {
     this.getHash = function() {
 	return nacl.hash(data); // SHA-512
     }
+
+    this.getData = function() {
+	return data;
+    }
 }
 Fragment.SIZE = 128*1024;
 
@@ -230,6 +234,17 @@ function slice(arr, start, end) {
 }
 
 function concat(a, b, c) {
+    if (a instanceof Array) {
+	var size = 0;
+	for (var i=0; i < a.length; i++)
+	    size += a[i].length;
+	var r = new Uint8Array(size);
+	var index = 0;
+	for (var i=0; i < a.length; i++)
+	    for (var j=0; j < a[i].length; j++)
+		r[index++] = a[i][j];
+	return r;
+    }
     var r = new Uint8Array(a.length+b.length+(c != null ? c.length : 0));
     for (var i=0; i < a.length; i++)
 	r[i] = a[i];
@@ -360,29 +375,29 @@ function DHTClient() {
     //
     //put
     //
-    this.put = function(keyData, valueData, username, sharingKeyData, mapKeyData, proofData, onSuccess, onError) {
+    this.put = function(keyData, valueData, username, sharingKeyData, mapKeyData, proofData) {
         var arrays = [keyData, valueData, username, sharingKeyData, mapKeyData, proofData];
         var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
         for (var iArray=0; iArray < arrays.length; iArray++) 
             buffer.writeArray(arrays[iArray]);
-        post("dht/put", buffer, onSuccess, onError);
+        return postProm("dht/put", buffer);
     };
     //
     //get
     //
-    this.get = function(keyData, onSuccess, onError) { 
+    this.get = function(keyData) { 
         var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
         buffer.writeArray(keyData);
-        post("dht/get", buffer, onSuccess, onError); 
+        return postProm("dht/get", buffer); 
     };
     
     //
     //contains
     //
-    this.contains = function(keyData, onSuccess, onError) {
+    this.contains = function(keyData) {
         var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
         buffer.writeArray(keyData);
-        post("dht/contains", buffer, onSuccess, onError); 
+        return postProm("dht/contains", buffer); 
     };
 }
 
@@ -484,14 +499,14 @@ function CoreNodeClient() {
     };
 
     //String -> Uint8Array -> Uint8Array -> Uint8Array  -> Uint8Array -> fn -> fn -> void
-    this.addMetadataBlob = function( username,  encodedSharingPublicKey,  mapKey,  metadataBlob,  sharingKeySignedHash, onSuccess, onError) {
+    this.addMetadataBlob = function( username,  encodedSharingPublicKey,  mapKey,  metadataBlob,  sharingKeySignedHash) {
         var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
         buffer.writeString(username);
         buffer.writeArray(encodedSharingPublicKey);
         buffer.writeArray(mapKey);
         buffer.writeArray(metadataBlob);
         buffer.writeArray(sharingKeySignedHash);
-        post("core/addMetadataBlob", new Uint8Array(buffer.toArray()), onSuccess, onError);
+        return postProm("core/addMetadataBlob", new Uint8Array(buffer.toArray()));
     };
     
     //String -> Uint8Array -> Uint8Array  -> Uint8Array -> fn -> fn -> void
@@ -671,6 +686,35 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 	var cipher = buf.read(raw.length - 32);
         var decrypted = user.decryptMessage(cipher.toArray(), tmp);
         return WritableFilePointer.deserialize(new Uint8Array(decrypted)); // somehow not creating a new uint8array keeps the extra 32 bytes...
+    }
+    
+    this.uploadFragment = function(f, targetUser, sharer, mapKey) {
+	return dhtClient.put(f.getHash(), f.getData(), targetUser.getPublicKeys(), sharer.getPublicKeys(), mapKey, sharer.signMessage(concat(sharer.getPublicKeys(), f.getHash())));
+    }
+
+    this.uploadChunk = function(metadata, fragments, owner, sharer, mapKey) {
+	var buf = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+	var that = this;
+        metadata.serialize(buf);
+        var metaBlob = buf.toArray();
+        console.log("Storing metadata blob of " + metaBlob.length + " bytes.");
+        return corenodeClient.addMetadataBlob(owner, sharer.getPublicKeys(), mapKey, metaBlob, sharer.signMessage(concat(mapKey, metaBlob)))
+	    .then(function(added) {
+		if (!added) {
+		    console.log("Meta blob store failed.");
+		}
+	    }).then(function() {
+		if (fragments.length == 0 )
+		    return Promise.resolve(true);
+		
+		// now upload fragments to DHT
+		var futures = [];
+		for (var i=0; i < fragments.length; i++)
+		    futures[i] = that.uploadFragment(fragments[i], owner, sharer, mapKey);
+		
+		// wait for all fragments to upload
+		return Promise.all(futures);
+            });
     }
 
     this.downloadFragments = function(hashes) {

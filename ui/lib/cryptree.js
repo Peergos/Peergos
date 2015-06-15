@@ -28,7 +28,7 @@ function SymmetricLink(link) {
     this.nonce = slice(link, 0, SymmetricKey.NONCE_BYTES);
 
     this.serialize = function() {
-	return concat(nonce, link);
+	return concat(this.nonce, this.link);
     }
 
     this.target = function(from) {
@@ -75,9 +75,16 @@ function SymmetricLocationLink(buf) {
 
     // SymmetricKey -> Location
     this.targetLocation = function(from) {
-	var nonce = slice(link, 0, SymmetricKey.NONCE_BYTES);
-	var rest = slice(link, SymmetricKey.NONCE_BYTES, link.length);
-	return Location.decrypt(from, nonce, loc);
+	var nonce = slice(this.link, 0, SymmetricKey.NONCE_BYTES);
+	var rest = slice(this.link, SymmetricKey.NONCE_BYTES, this.link.length);
+	return Location.decrypt(from, nonce, this.loc);
+    }
+
+    this.serialize = function() {
+	var buf = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+	buf.writeArray(this.link);
+	buf.writeArray(this.loc);
+	return buf.toArray();
     }
 }
 
@@ -131,9 +138,9 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
 
     this.superSerialize = this.serialize;
     this.serialize = function(bout) {
-	superSerialize(bout);
-	bout.writeArray(subfolders2parent);
-	bout.writeArray(subfolders2files);
+	this.superSerialize(bout);
+	bout.writeArray(subfolders2parent.serialize());
+	bout.writeArray(subfolders2files.serialize());
 	bout.writeUnsignedInt(0);
 	bout.writeUnsignedInt(subfolders.length)
 	for (var i=0; i < subfolders.length; i++)

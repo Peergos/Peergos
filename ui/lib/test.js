@@ -68,35 +68,39 @@ function mediumFileTest(owner, sharer, receiver, sender) {
     
     // now write the root to the core nodes
     receiver.addToStaticData(sharer, new WritableFilePointer(receiver.user, sharer, new ByteBuffer(rootMapKey), rootRKey));
-    sender.uploadChunk(root, [], owner, sharer, rootMapKey);
-    // now upload the file meta blobs
-    console.log("Uploading chunk with %d fragments\n", fragments1.length);
-    sender.uploadChunk(file, fragments1, owner, sharer, fileMapKey);
-    console.log("Uploading chunk with %d fragments\n", fragments2.length);
-    sender.uploadChunk(meta2, fragments2, owner, sharer, chunk2MapKey);
+    sender.uploadChunk(root, [], owner, sharer, rootMapKey)
+    .then(function() {
+	// now upload the file meta blobs
+	console.log("Uploading chunk with %d fragments\n", fragments1.length);
+	return sender.uploadChunk(file, fragments1, owner, sharer, fileMapKey);
+    }).then(function() {
+	console.log("Uploading chunk with %d fragments\n", fragments2.length);
+	return sender.uploadChunk(meta2, fragments2, owner, sharer, chunk2MapKey);
+    }).then(function() {
     
-    // now check the retrieval from zero knowledge
-    var /*Map<WritableFilePointer, FileAccess>*/ roots = receiver.getRoots();
-    for (dirPointer in roots) {
-        var rootDirKey = dirPointer.rootDirKey;
-        var dir = roots.get(dirPointer);
-        var /*Map<SymmetricLocationLink, FileAccess>*/ files = receiver.retrieveMetadata(dir.getFiles(), rootDirKey);
-        for (fileLoc in files) {
-            var baseKey = fileLoc.target(rootDirKey);
-            var fileBlob = files.get(fileLoc);
-            // download fragments in chunk
-            var fileProps = fileBlob.getFileProperties(baseKey);
-	    
-            var buf = fileBlob.getRetriever().getFile(receiver, baseKey);
-            var original = buf.read(fileProps.getSize());
-	    
-            // checks
-            if (!fileProps.name.equals(filename))
-		throw new Exception("Correct filename");
-            if (! Arrays.equals(original, concat(raw1, raw2)))
-		throw new Exception("Correct file contents");
-        }
-    }
+	// now check the retrieval from zero knowledge
+	var /*Map<WritableFilePointer, FileAccess>*/ roots = receiver.getRoots();
+	for (dirPointer in roots) {
+            var rootDirKey = dirPointer.rootDirKey;
+            var dir = roots.get(dirPointer);
+            var /*Map<SymmetricLocationLink, FileAccess>*/ files = receiver.retrieveMetadata(dir.getFiles(), rootDirKey);
+            for (fileLoc in files) {
+		var baseKey = fileLoc.target(rootDirKey);
+		var fileBlob = files.get(fileLoc);
+		// download fragments in chunk
+		var fileProps = fileBlob.getFileProperties(baseKey);
+		
+		var buf = fileBlob.getRetriever().getFile(receiver, baseKey);
+		var original = buf.read(fileProps.getSize());
+		
+		// checks
+		if (!fileProps.name.equals(filename))
+		    throw new Exception("Correct filename");
+		if (! Arrays.equals(original, concat(raw1, raw2)))
+		    throw new Exception("Correct file contents");
+            }
+	}
+    });
 }
 
 function contextTests(dht, core) {
@@ -105,73 +109,74 @@ function contextTests(dht, core) {
 	return Promise.resolve(new UserContext(ourname, us, dht, core));
     }).then(function(bob) {
 	var alicesName = "Alice";
-	return generateKeyPairs(alicesName, "password");
-    }).then(function(them) {
-	var alice = new UserContext(alicesName, them, dht, core);
-	
-	bob.isRegistered().then(function(registered) {
-	    if (!registered)
-		return bob.register();
-	    else
-		return Promise.resolve(true);
-	}).then(function(bobIsRegistered) {
-	    if (!bobIsRegistered)
-		reject(Error("Couldn't register user!"));
-	    else
-		return Promise.resolve(true);
-	}).then(function() {
-	    console.log("bob registered");
-	    return alice.isRegistered();
-	}).then(function(aregistered) {
-	    if (!aregistered)
-		return alice.register();
-	    else
-		return Promise.resolve(true);
-	}).then(function(aliceRegistered){
-	    if (!aliceRegistered)
-		reject(Error("Couldn't register user!"));
-	    else
-		return Promise.resolve(true);
-	}).then(function() {
-	    console.log("both registered");
-	    return bob.sendFollowRequest(them);
-	}).then(function(followed) {
-	    if (!followed)
-		reject(Error("Follow request rejected!"));
-	    else
-		return Promise.resolve(true);
-	}).then (function() {
-	    return alice.getFollowRequests();
-	}).then(function (reqs) {
-	    //assert(reqs.size() == 1);
-	    var /*WritableFilePointer*/ root = alice.decodeFollowRequest(reqs[0]);
-	    var /*User*/ sharer = root.writer;
-	    
-	    // store a chunk in alice's space using the permitted sharing key (this could be alice or bob at this point)
-	    var frags = 120;
-	    var port = 25 + 1024;
-	    var address = [127, 0, 0, 1];
-	    for (var i = 0; i < frags; i++) {
-		var frag = window.nacl.randomBytes(32);
-		var message = concat(sharer.getPublicKeys(), frag);
-		var signed = sharer.signMessage(message);
-		core.registerFragmentStorage(us, address, port, us, signed, function(res) {
-		    if (!res)
-			console.log("Failed to register fragment storage!");
+	return generateKeyPairs(alicesName, "password")
+	    .then(function(them) {
+		return Promise.resolve(new UserContext(alicesName, them, dht, core));
+	    }).then(function(alice) {
+		bob.isRegistered().then(function(registered) {
+		    if (!registered)
+			return bob.register();
+		    else
+			return Promise.resolve(true);
+		}).then(function(bobIsRegistered) {
+		    if (!bobIsRegistered)
+			reject(Error("Couldn't register user!"));
+		    else
+			return Promise.resolve(true);
+		}).then(function() {
+		    console.log("bob registered");
+		    return alice.isRegistered();
+		}).then(function(aregistered) {
+		    if (!aregistered)
+			return alice.register();
+		    else
+			return Promise.resolve(true);
+		}).then(function(aliceRegistered){
+		    if (!aliceRegistered)
+			reject(Error("Couldn't register user!"));
+		    else
+			return Promise.resolve(true);
+		}).then(function() {
+		    console.log("both registered");
+		    return bob.sendFollowRequest(alice.user);
+		}).then(function(followed) {
+		    if (!followed)
+			reject(Error("Follow request rejected!"));
+		    else
+			return Promise.resolve(true);
+		}).then (function() {
+		    return alice.getFollowRequests();
+		}).then(function (reqs) {
+		    //assert(reqs.size() == 1);
+		    var /*WritableFilePointer*/ root = alice.decodeFollowRequest(reqs[0]);
+		    var /*User*/ sharer = root.writer;
+		    
+		    // store a chunk in alice's space using the permitted sharing key (this could be alice or bob at this point)
+		    var frags = 120;
+		    var port = 25 + 1024;
+		    var address = [127, 0, 0, 1];
+		    for (var i = 0; i < frags; i++) {
+			var frag = window.nacl.randomBytes(32);
+			var message = concat(sharer.getPublicKeys(), frag);
+			var signed = sharer.signMessage(message);
+			core.registerFragmentStorage(bob.user, address, port, bob.user, signed, function(res) {
+			    if (!res)
+				console.log("Failed to register fragment storage!");
+			});
+		    }
+		    return core.getQuota(bob.user).then(function(quota){
+			console.log("Generated quota: " + quota/1024 + " KiB");
+			return Promise.resolve(true);
+		    }).then(function() {
+			return Promise.resolve(sharer);
+		    });
+		}).then(function(sharer) {
+		    var t1 = Date.now();
+		    mediumFileTest(bob.user, sharer, bob, alice);
+		    var t2 = Date.now();
+		    console.log("File test took %d mS\n", (t2 - t1) / 1000000);
 		});
-	    }
-	    return core.getQuota(us).then(function(quota){
-		console.log("Generated quota: " + quota/1024 + " KiB");
-		return Promise.resolve(true);
-	    }).then(function() {
-		return Promise.resolve(sharer);
 	    });
-	}).then(function(sharer) {
-	    var t1 = Date.now();
-	    mediumFileTest(us, sharer, bob, alice);
-	    var t2 = Date.now();
-	    console.log("File test took %d mS\n", (t2 - t1) / 1000000);
-	});
     });
 }
 
