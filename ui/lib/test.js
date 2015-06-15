@@ -46,8 +46,8 @@ function mediumFileTest(owner, sharer, receiver, sender) {
     var encryptedChunk1 = new EncryptedChunk(chunk1.encrypt(nonce1));
     var fragments1 = encryptedChunk1.generateFragments();
     var hashes1 = [];
-    for (f in fragments1)
-        hashes1.push(new ByteBuffer(f.getHash()));
+    for (var f in fragments1)
+        hashes1.push(new ByteBuffer(fragments1[f].getHash()));
     var props1 = new FileProperties(filename, raw1.length + raw2.length);
     var ret = new EncryptedChunkRetriever(nonce1, encryptedChunk1.getAuth(), hashes1, chunk2Location);
     var file = FileAccess.create(fileKey, props1, ret);
@@ -58,13 +58,13 @@ function mediumFileTest(owner, sharer, receiver, sender) {
     var encryptedChunk2 = new EncryptedChunk(chunk2.encrypt(nonce2));
     var fragments2 = encryptedChunk2.generateFragments();
     var hashes2 = [];
-    for (f in fragments2)
-        hashes2.push(new ByteBuffer(f.getHash()));
+    for (var f in fragments2)
+        hashes2.push(new ByteBuffer(fragments2[f].getHash()));
     var ret2 = new EncryptedChunkRetriever(nonce2, encryptedChunk2.getAuth(), hashes2, null);
     var meta2 = FileAccess.create(fileKey, new FileProperties("", raw2.length), ret2);
     
     // now write the root to the core nodes
-    receiver.addToStaticData(sharer, new WritableFilePointer(receiver.us, sharer, new ByteBuffer(rootMapKey), rootRKey));
+    receiver.addToStaticData(sharer, new WritableFilePointer(receiver.user, sharer, new ByteBuffer(rootMapKey), rootRKey));
     sender.uploadChunk(root, [], owner, sharer, rootMapKey);
     // now upload the file meta blobs
     console.log("Uploading chunk with %d fragments\n", fragments1.length);

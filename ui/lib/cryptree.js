@@ -115,6 +115,13 @@ FileAccess.deserialize = function(buf, ourKey /*SymmetricKey*/) {
     }
 }
 
+FileAccess.create = function(parentKey, props, retriever) {
+    var metaKey = SymmetricKey.random();
+    var nonce = metaKey.createNonce();
+    return new FileAccess(new SymmetricLink(parentKey, metaKey, parentKey.createNonce()),
+                concat(nonce, metaKey.encrypt(props.serialize(), nonce)), retriever);
+}
+
 function DirAccess(subfolders2files, subfolders2parent, subfolders, files, parent2meta, properties, retriever) {
     FileAccess.call(this, parent2meta, properties, retriever);
     this.subfolders2files = subfolders2files;
@@ -270,6 +277,14 @@ Erasure.recombine = function(fragments, truncateTo, originalBlobs, allowedFailur
 }
 Erasure.reorder = function(fragments, hashes) {
     
+}
+Erasure.split = function(input, originalBlobs, allowedFailures) {
+    //TO DO port erasure code implementation and Galois groups
+    var size = (input.length/originalBlobs)|0;
+    var bfrags = [];
+    for (var i=0; i < input.length/size; i++)
+	bfrags.push(slice(input, i*size, Math.min(input.length, (i+1)*size)));
+    return bfrags;
 }
 
 function string2arraybuffer(str) {

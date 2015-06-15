@@ -159,13 +159,29 @@ function FileProperties(name, size) {
     }
 }
 
-function Fragment() {
-
+function Fragment(data) {
+    this.data = data;
+    this.getHash = function() {
+	return nacl.hash(data); // SHA-512
+    }
 }
 Fragment.SIZE = 128*1024;
 
-function EncryptedChunk() {
+function EncryptedChunk(encrypted) {
+    this.auth = slice(encrypted, 0, window.nacl.secretbox.overheadLength);
+    this.cipher = slice(encrypted, window.nacl.secretbox.overheadLength, encrypted.length);
 
+    this.generateFragments = function() {
+	var bfrags = Erasure.split(this.cipher, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
+        var frags = [];
+        for (var i=0; i < bfrags.length; i++)
+            frags[i] = new Fragment(bfrags[i]);
+        return frags;
+    }
+
+    this.getAuth = function() {
+	return this.auth;
+    }
 }
 EncryptedChunk.ERASURE_ORIGINAL = 40;
 EncryptedChunk.ERASURE_ALLOWED_FAILURES = 10;
