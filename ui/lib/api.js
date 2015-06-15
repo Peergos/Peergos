@@ -380,7 +380,7 @@ function DHTClient() {
         var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
         for (var iArray=0; iArray < arrays.length; iArray++) 
             buffer.writeArray(arrays[iArray]);
-        return postProm("dht/put", buffer);
+        return postProm("dht/put", new Uint8Array(buffer.toArray()));
     };
     //
     //get
@@ -388,7 +388,7 @@ function DHTClient() {
     this.get = function(keyData) { 
         var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
         buffer.writeArray(keyData);
-        return postProm("dht/get", buffer); 
+        return postProm("dht/get", new Uint8Array(buffer.toArray())); 
     };
     
     //
@@ -397,7 +397,7 @@ function DHTClient() {
     this.contains = function(keyData) {
         var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
         buffer.writeArray(keyData);
-        return postProm("dht/contains", buffer); 
+        return postProm("dht/contains", new Uint8Array(buffer.toArray())); 
     };
 }
 
