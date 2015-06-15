@@ -30,7 +30,7 @@ function generate() {
     var username = document.getElementById("username").value;
     var password = document.getElementById("password").value;
     
-    generateKeyPairs("fred", "pass", genresult);
+    generateKeyPairs("fred", "pass").then(genresult);
 }
 function sign() {
     var input = nacl.util.decodeUTF8(document.getElementById("data").value);
