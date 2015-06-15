@@ -498,10 +498,10 @@ function CoreNodeClient() {
         return postProm("core/banSharingKey", new Uint8Array(buffer.toArray()));
     };
 
-    //String -> Uint8Array -> Uint8Array -> Uint8Array  -> Uint8Array -> fn -> fn -> void
-    this.addMetadataBlob = function( username,  encodedSharingPublicKey,  mapKey,  metadataBlob,  sharingKeySignedHash) {
+    //Uint8Array -> Uint8Array -> Uint8Array -> Uint8Array  -> Uint8Array -> fn -> fn -> void
+    this.addMetadataBlob = function( owner,  encodedSharingPublicKey,  mapKey,  metadataBlob,  sharingKeySignedHash) {
         var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
-        buffer.writeString(username);
+        buffer.writeArray(owner);
         buffer.writeArray(encodedSharingPublicKey);
         buffer.writeArray(mapKey);
         buffer.writeArray(metadataBlob);
@@ -698,7 +698,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
         metadata.serialize(buf);
         var metaBlob = buf.toArray();
         console.log("Storing metadata blob of " + metaBlob.length + " bytes.");
-        return corenodeClient.addMetadataBlob(owner, sharer.getPublicKeys(), mapKey, metaBlob, sharer.signMessage(concat(mapKey, metaBlob)))
+        return corenodeClient.addMetadataBlob(owner.getPublicKeys(), sharer.getPublicKeys(), mapKey, metaBlob, sharer.signMessage(concat(mapKey, metaBlob)))
 	    .then(function(added) {
 		if (!added) {
 		    console.log("Meta blob store failed.");
