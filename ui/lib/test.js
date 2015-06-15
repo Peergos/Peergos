@@ -105,65 +105,68 @@ function contextTests(dht, core) {
 	generateKeyPairs(alicesName, "password", function(them) {
 	    var alice = new UserContext(alicesName, them, dht, core);
 	    
-	    bob.isRegistered(function(registered) {
-		function bothRegistered() {
-		    console.log("both registered");
-		    bob.sendFollowRequest(them, function(followed) {
-			if (!followed)
-			    throw "Follow request rejected!";
-			alice.getFollowRequests(function (reqs) {
-			    //assert(reqs.size() == 1);
-			    var /*WritableFilePointer*/ root = alice.decodeFollowRequest(reqs[0]);
-			    var /*User*/ sharer = root.writer;
-			
-			    // store a chunk in alice's space using the permitted sharing key (this could be alice or bob at this point)
-			    var frags = 120;
-			    var port = 25 + 1024;
-			    var address = [127, 0, 0, 1];
-			    for (var i = 0; i < frags; i++) {
-				var frag = window.nacl.randomBytes(32);
-				var message = concat(sharer.getPublicKeys(), frag);
-				var signed = sharer.signMessage(message);
-				core.registerFragmentStorage(us, address, port, us, signed, function(res) {
-				    if (!res)
-					console.log("Failed to register fragment storage!");
-				});
-			    }
-			    core.getQuota(us, function(quota) {
-				console.log("Generated quota: " + quota/1024 + " KiB");
-				var t1 = Date.now();
-				mediumFileTest(us, sharer, bob, alice);
-				var t2 = Date.now();
-				console.log("File test took %d mS\n", (t2 - t1) / 1000000);
-			    });
-			});
-		    });
-		}
-
-		function bobRegistered() {
-		    console.log("bob registered");
-		    alice.isRegistered(function(aregistered) {
-			if (!aregistered)
-			    alice.register(function(aliceRegistered){
-				if (!aliceRegistered)
-				    throw "Couldn't register user!";
-				bothRegistered();
-			    });
-			else
-			    bothRegistered();
-		    });
-			if (!alice.register())
-			    throw "Couldn't register user!";
-		}
-
+	    bob.isRegistered().then(function(registered) {
 		if (!registered)
-		    bob.register(function(bobIsRegistered) {
-			if (!bobIsRegistered)
-			    throw "Couldn't register user!";
-			bobRegistered();
-		    });
+		    return bob.register();
 		else
-		    bobRegistered();
+		    return Promise.resolve(true);
+	    }).then(function(bobIsRegistered) {
+		if (!bobIsRegistered)
+		    reject(Error("Couldn't register user!"));
+		else
+		    return Promise.resolve(true);
+	    }).then(function() {
+		console.log("bob registered");
+		return alice.isRegistered();
+	    }).then(function(aregistered) {
+		if (!aregistered)
+		    return alice.register();
+		else
+		    return Promise.resolve(true);
+	    }).then(function(aliceRegistered){
+		if (!aliceRegistered)
+		    reject(Error("Couldn't register user!"));
+		else
+		    return Promise.resolve(true);
+	    }).then(function() {
+		console.log("both registered");
+		return bob.sendFollowRequest(them);
+	    }).then(function(followed) {
+		if (!followed)
+		    reject(Error("Follow request rejected!"));
+		else
+		    return Promise.resolve(true);
+	    }).then (function() {
+		return alice.getFollowRequests();
+	    }).then(function (reqs) {
+		//assert(reqs.size() == 1);
+		var /*WritableFilePointer*/ root = alice.decodeFollowRequest(reqs[0]);
+		var /*User*/ sharer = root.writer;
+		
+		// store a chunk in alice's space using the permitted sharing key (this could be alice or bob at this point)
+		var frags = 120;
+		var port = 25 + 1024;
+		var address = [127, 0, 0, 1];
+		for (var i = 0; i < frags; i++) {
+		    var frag = window.nacl.randomBytes(32);
+		    var message = concat(sharer.getPublicKeys(), frag);
+		    var signed = sharer.signMessage(message);
+		    core.registerFragmentStorage(us, address, port, us, signed, function(res) {
+			if (!res)
+			    console.log("Failed to register fragment storage!");
+		    });
+		}
+		return core.getQuota(us).then(function(quota){
+		    console.log("Generated quota: " + quota/1024 + " KiB");
+		    return Promise.resolve(true);
+		}).then(function() {
+		    return Promise.resolve(sharer);
+		});
+	    }).then(function(sharer) {
+		var t1 = Date.now();
+		mediumFileTest(us, sharer, bob, alice);
+		var t2 = Date.now();
+		console.log("File test took %d mS\n", (t2 - t1) / 1000000);
 	    });
 	});
     });

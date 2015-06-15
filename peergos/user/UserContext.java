@@ -160,7 +160,7 @@ public class UserContext
             System.out.println("Meta blob store failed.");
         if (fragments.length > 0 ) {
             // now upload fragments to DHT
-            List<Future<Object>> futures = new ArrayList();
+            List<Future<Object>> futures = new ArrayList<>();
             for (Fragment f : fragments)
                 try {
                     futures.add(uploadFragment(f, target, sharer, mapKey));

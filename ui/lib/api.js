@@ -257,6 +257,30 @@ function get(path, onSuccess, onError) {
     request.send();
 }
 
+function getProm(url) {
+    return new Promise(function(resolve, reject) {
+	var req = new XMLHttpRequest();
+	req.open('GET', url);
+	
+	req.onload = function() {
+	    // This is called even on 404 etc
+	    // so check the status
+	    if (req.status == 200) {
+		resolve(req.response);
+	    }
+	    else {
+		reject(Error(req.statusText));
+	    }
+	};
+	
+	req.onerror = function() {
+	    reject(Error("Network Error"));
+	};
+	
+	req.send();
+    });
+}
+
 function post(path, data, onSuccess, onError) {
 
     var request = new XMLHttpRequest();
@@ -275,6 +299,31 @@ function post(path, data, onSuccess, onError) {
     }
 
     request.send(data);
+}
+
+function postProm(url, data) {
+    return new Promise(function(resolve, reject) {
+	var req = new XMLHttpRequest();
+	req.open('POST', url);
+	req.responseType = 'arraybuffer';
+	
+	req.onload = function() {
+	    // This is called even on 404 etc
+	    // so check the status
+	    if (req.status == 200) {
+		resolve(req.response);
+	    }
+	    else {
+		reject(Error(req.statusText));
+	    }
+	};
+	
+	req.onerror = function() {
+	    reject(Error("Network Error"));
+	};
+	
+	req.send(data);
+    });
 }
 
 //Java is Big-endian
@@ -344,13 +393,13 @@ function CoreNodeClient() {
     };
     
     //String -> Uint8Array -> Uint8Array -> fn -> fn -> void
-    this.updateStaticData = function(username, signedHash, staticData, onSuccess, onError) {
+    this.updateStaticData = function(username, signedHash, staticData) {
         var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
 	buffer.writeUnsignedInt(username.length);
         buffer.writeString(username);
         buffer.writeArray(signedHash);
         buffer.writeArray(staticData);
-        post("core/updateStaticData", new Uint8Array(buffer.toArray()), onSuccess, onError); 
+        return postProm("core/updateStaticData", new Uint8Array(buffer.toArray())); 
     };
     
     //String -> fn- >fn -> void
@@ -361,47 +410,48 @@ function CoreNodeClient() {
     };
     
     //Uint8Array -> fn -> fn -> void
-    this.getUsername = function(publicKey, onSuccess, onError) {
+    this.getUsername = function(publicKey) {
         var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
         buffer.writeArray(publicKey);
-        post("core/getUsername", new Uint8Array(buffer.toArray()), onSuccess, onError);
+        return postProm("core/getUsername", new Uint8Array(buffer.toArray()));
     };
     
     
     //String -> Uint8Array -> Uint8Array -> fn -> fn -> void
-    this.addUsername = function(username, encodedUserKey, signed, staticData, onSuccess, onError) {
+    this.addUsername = function(username, encodedUserKey, signed, staticData) {
         var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
 	buffer.writeUnsignedInt(username.length);
         buffer.writeString(username);
         buffer.writeArray(encodedUserKey);
         buffer.writeArray(signed);
         buffer.writeArray(staticData);
-        post("core/addUsername", new Uint8Array(buffer.toArray()), onSuccess, onError);
+        return postProm("core/addUsername", new Uint8Array(buffer.toArray()));
     };
     
     //Uint8Array -> Uint8Array -> fn -> fn -> void
-    this.followRequest = function( target,  encryptedPermission, onSuccess, onError) {
+    this.followRequest = function( target,  encryptedPermission) {
         var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
         buffer.writeArray(target);
         buffer.writeArray(encryptedPermission);
-        post("core/followRequest", new Uint8Array(buffer.toArray()), onSuccess, onError);
+        return postProm("core/followRequest", new Uint8Array(buffer.toArray()));
     };
     
     //String -> Uint8Array -> fn -> fn -> void
-    this.getFollowRequests = function( user, onSuccess, onError) {
+    this.getFollowRequests = function( user) {
         var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
         buffer.writeArray(user);
-        post("core/getFollowRequests", new Uint8Array(buffer.toArray()), 
-	     function(res) {
-		 var buf = new ByteBuffer(res);
-		 var size = buf.readUnsignedInt();
-		 var n = buf.readUnsignedInt();
-		 var arr = [];
-		 for (var i=0; i < n; i++) {
-		     var t = buf.readArray();
-		     arr.push(new Uint8Array(t.toArray()));
-		 }
-		 onSuccess(arr);}, onError);
+        return postProm("core/getFollowRequests", new Uint8Array(buffer.toArray()))
+	    .then(function(res) {
+		var buf = new ByteBuffer(res);
+		var size = buf.readUnsignedInt();
+		var n = buf.readUnsignedInt();
+		var arr = [];
+		for (var i=0; i < n; i++) {
+		    var t = buf.readArray();
+		    arr.push(new Uint8Array(t.toArray()));
+		}
+		return Promise.resolve(arr);
+	    });
     };
     
     //String -> Uint8Array -> Uint8Array -> fn -> fn -> void
@@ -414,20 +464,20 @@ function CoreNodeClient() {
     };
 
     //String -> Uint8Array -> Uint8Array -> fn -> fn -> void
-    this.allowSharingKey = function(owner, signedWriter, onSuccess, onError) {
+    this.allowSharingKey = function(owner, signedWriter) {
         var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
         buffer.writeArray(owner);
         buffer.writeArray(signedWriter); 
-        post("core/allowSharingKey", new Uint8Array(buffer.toArray()), onSuccess, onError);
+        return postProm("core/allowSharingKey", new Uint8Array(buffer.toArray()));
     };
     
     //String -> Uint8Array -> Uint8Array -> fn -> fn -> void
-    this.banSharingKey = function( username,  encodedSharingPublicKey,  signedHash, onSuccess, onError) {
+    this.banSharingKey = function(username,  encodedSharingPublicKey,  signedHash) {
         var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
         buffer.writeString(username);
         buffer.writeArray(encodedSharingPublicKey);
         buffer.writeArray(signedHash); 
-        post("core/banSharingKey", new Uint8Array(buffer.toArray()), onSuccess, onError);
+        return postProm("core/banSharingKey", new Uint8Array(buffer.toArray()));
     };
 
     //String -> Uint8Array -> Uint8Array -> Uint8Array  -> Uint8Array -> fn -> fn -> void
@@ -487,16 +537,16 @@ function CoreNodeClient() {
     };
     
     //String -> fn -> fn -> void
-    this.getQuota = function(user, onSuccess, onError) {
+    this.getQuota = function(user) {
         var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
         buffer.writeArray(user.getPublicKeys());
-        post("core/getQuota", new Uint8Array(buffer.toArray()), 
-	     function(res) {
-		 var buf = new ByteBuffer(new Uint8Array(res));
-		 var quota = buf.readUnsignedInt() << 32;
-		 quota += buf.readUnsignedInt();
-		 onSuccess(quota);}, 
-	     onError);
+        return postProm("core/getQuota", new Uint8Array(buffer.toArray()))
+	    .then(function(res) {
+		var buf = new ByteBuffer(new Uint8Array(res));
+		var quota = buf.readUnsignedInt() << 32;
+		quota += buf.readUnsignedInt();
+		return Promise.resolve(quota);
+	    });
     };
     
     //String -> fn -> fn -> void
@@ -551,9 +601,9 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
     this.corenodeClient = corenodeClient;
     this.staticData = []; // array of map entry pairs
 
-    this.isRegistered = function(cb) {
-	corenodeClient.getUsername(user.getPublicKeys(), function(res){
-            cb(username == res);
+    this.isRegistered = function() {
+	return corenodeClient.getUsername(user.getPublicKeys()).then(function(res){
+            return Promise.resolve(username == res);
 	});
     }
 
@@ -565,48 +615,47 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
         return buf.toArray();
     }
 
-    this.register = function(onSuccess, onError) {
+    this.register = function() {
 	console.log("registering "+username);
 	var rawStatic = this.serializeStatic();
         var signed = user.signMessage(concat(nacl.util.decodeUTF8(username), user.getPublicKeys(), rawStatic));
-        return corenodeClient.addUsername(username, user.getPublicKeys(), signed, rawStatic, onSuccess, onError)
+        return corenodeClient.addUsername(username, user.getPublicKeys(), signed, rawStatic)
     }
 
-    this.sendFollowRequest = function(targetUser, onSuccess, onError) {
+    this.sendFollowRequest = function(targetUser) {
 	// create sharing keypair and give it write access
         var sharing = User.random();
+	var rootMapKey = new ByteBuffer(window.nacl.randomBytes(32));
+	
+        // add a note to our static data so we know who we sent the private key to
+        var friendRoot = new WritableFilePointer(user, sharing, rootMapKey, SymmetricKey.random());
 	var that = this;
-        this.addSharingKey(sharing,  function() {
-            var rootMapKey = new ByteBuffer(window.nacl.randomBytes(32));
+        return this.addSharingKey(sharing).then(function() {
+            return that.addToStaticData(sharing, friendRoot);
+	}).then(function() {	    
+	    // send details to allow friend to share with us (i.e. we follow them)
+	    var raw = friendRoot.serialize();
 	    
-            // add a note to our static data so we know who we sent the private key to
-            var friendRoot = new WritableFilePointer(user, sharing, rootMapKey, SymmetricKey.random());
-            that.addToStaticData(sharing, friendRoot, function() {
-	    
-		// send details to allow friend to share with us (i.e. we follow them)
-		var raw = friendRoot.serialize();
-		
-		// create a tmp keypair whose public key we can append to the request without leaking information
-		var tmp = User.random();
-		var payload = targetUser.encryptMessageFor(new Uint8Array(raw), tmp);
-		corenodeClient.followRequest(targetUser.getPublicKeys(), concat(tmp.pBoxKey, payload), onSuccess, onError);
-	    });
-	}, onError);
+	    // create a tmp keypair whose public key we can append to the request without leaking information
+	    var tmp = User.random();
+	    var payload = targetUser.encryptMessageFor(new Uint8Array(raw), tmp);
+	    return corenodeClient.followRequest(targetUser.getPublicKeys(), concat(tmp.pBoxKey, payload));
+	});
     }
 
-    this.addSharingKey = function(pub, onSuccess) {
+    this.addSharingKey = function(pub) {
 	var signed = user.signMessage(pub.getPublicKeys());
-        corenodeClient.allowSharingKey(user.getPublicKeys(), signed, onSuccess);
+        return corenodeClient.allowSharingKey(user.getPublicKeys(), signed);
     }
 
-    this.addToStaticData = function(writer, root, onSuccess) {
+    this.addToStaticData = function(writer, root) {
 	this.staticData.push([writer, root]);
         var rawStatic = new Uint8Array(this.serializeStatic());
-        corenodeClient.updateStaticData(username, user.signMessage(rawStatic), rawStatic, onSuccess);
+        return corenodeClient.updateStaticData(username, user.signMessage(rawStatic), rawStatic);
     }
 
-    this.getFollowRequests = function(onSuccess, onError) {
-	corenodeClient.getFollowRequests(user.getPublicKeys(), onSuccess, onError);
+    this.getFollowRequests = function() {
+	return corenodeClient.getFollowRequests(user.getPublicKeys());
     }
 
     this.decodeFollowRequest = function(raw) {
