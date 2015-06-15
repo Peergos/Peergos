@@ -3,12 +3,15 @@ function generateKeyPairs(username, password, cb) {
     var hash = new BLAKE2s(32)
     hash.update(nacl.util.decodeUTF8(password))
     salt = nacl.util.decodeUTF8(username)
-    scrypt(hash.digest(), salt, 1, 8, 64, 1000, function(keyBytes) {
-	var bothBytes = nacl.util.decodeBase64(keyBytes);
-	var signBytes = bothBytes.subarray(0, 32);
-	var boxBytes = bothBytes.subarray(32, 64);
-	return cb(new User(nacl.sign.keyPair.fromSeed(signBytes), nacl.box.keyPair.fromSecretKey(new Uint8Array(boxBytes))));
-    }, 'base64');
+    
+    return new Promise(function(resolve, reject) {
+	scrypt(hash.digest(), salt, 1, 8, 64, 1000, function(keyBytes) {
+	    var bothBytes = nacl.util.decodeBase64(keyBytes);
+	    var signBytes = bothBytes.subarray(0, 32);
+	    var boxBytes = bothBytes.subarray(32, 64);
+	    resolve(new User(nacl.sign.keyPair.fromSeed(signBytes), nacl.box.keyPair.fromSecretKey(new Uint8Array(boxBytes))));
+	}, 'base64');
+    });
 }
 
 // UserPublicKey, User, UserCOntext, UserContext -> ()
@@ -98,76 +101,76 @@ function mediumFileTest(owner, sharer, receiver, sender) {
 
 function contextTests(dht, core) {
     var ourname = "Bob";
-    generateKeyPairs(ourname, "password", function(us) {
-	var bob = new UserContext(ourname, us, dht, core);
-	
+    generateKeyPairs(ourname, "password").then(function(us) {
+	return Promise.resolve(new UserContext(ourname, us, dht, core));
+    }).then(function(bob) {
 	var alicesName = "Alice";
-	generateKeyPairs(alicesName, "password", function(them) {
-	    var alice = new UserContext(alicesName, them, dht, core);
+	return generateKeyPairs(alicesName, "password");
+    }).then(function(them) {
+	var alice = new UserContext(alicesName, them, dht, core);
+	
+	bob.isRegistered().then(function(registered) {
+	    if (!registered)
+		return bob.register();
+	    else
+		return Promise.resolve(true);
+	}).then(function(bobIsRegistered) {
+	    if (!bobIsRegistered)
+		reject(Error("Couldn't register user!"));
+	    else
+		return Promise.resolve(true);
+	}).then(function() {
+	    console.log("bob registered");
+	    return alice.isRegistered();
+	}).then(function(aregistered) {
+	    if (!aregistered)
+		return alice.register();
+	    else
+		return Promise.resolve(true);
+	}).then(function(aliceRegistered){
+	    if (!aliceRegistered)
+		reject(Error("Couldn't register user!"));
+	    else
+		return Promise.resolve(true);
+	}).then(function() {
+	    console.log("both registered");
+	    return bob.sendFollowRequest(them);
+	}).then(function(followed) {
+	    if (!followed)
+		reject(Error("Follow request rejected!"));
+	    else
+		return Promise.resolve(true);
+	}).then (function() {
+	    return alice.getFollowRequests();
+	}).then(function (reqs) {
+	    //assert(reqs.size() == 1);
+	    var /*WritableFilePointer*/ root = alice.decodeFollowRequest(reqs[0]);
+	    var /*User*/ sharer = root.writer;
 	    
-	    bob.isRegistered().then(function(registered) {
-		if (!registered)
-		    return bob.register();
-		else
-		    return Promise.resolve(true);
-	    }).then(function(bobIsRegistered) {
-		if (!bobIsRegistered)
-		    reject(Error("Couldn't register user!"));
-		else
-		    return Promise.resolve(true);
-	    }).then(function() {
-		console.log("bob registered");
-		return alice.isRegistered();
-	    }).then(function(aregistered) {
-		if (!aregistered)
-		    return alice.register();
-		else
-		    return Promise.resolve(true);
-	    }).then(function(aliceRegistered){
-		if (!aliceRegistered)
-		    reject(Error("Couldn't register user!"));
-		else
-		    return Promise.resolve(true);
-	    }).then(function() {
-		console.log("both registered");
-		return bob.sendFollowRequest(them);
-	    }).then(function(followed) {
-		if (!followed)
-		    reject(Error("Follow request rejected!"));
-		else
-		    return Promise.resolve(true);
-	    }).then (function() {
-		return alice.getFollowRequests();
-	    }).then(function (reqs) {
-		//assert(reqs.size() == 1);
-		var /*WritableFilePointer*/ root = alice.decodeFollowRequest(reqs[0]);
-		var /*User*/ sharer = root.writer;
-		
-		// store a chunk in alice's space using the permitted sharing key (this could be alice or bob at this point)
-		var frags = 120;
-		var port = 25 + 1024;
-		var address = [127, 0, 0, 1];
-		for (var i = 0; i < frags; i++) {
-		    var frag = window.nacl.randomBytes(32);
-		    var message = concat(sharer.getPublicKeys(), frag);
-		    var signed = sharer.signMessage(message);
-		    core.registerFragmentStorage(us, address, port, us, signed, function(res) {
-			if (!res)
-			    console.log("Failed to register fragment storage!");
-		    });
-		}
-		return core.getQuota(us).then(function(quota){
-		    console.log("Generated quota: " + quota/1024 + " KiB");
-		    return Promise.resolve(true);
-		}).then(function() {
-		    return Promise.resolve(sharer);
+	    // store a chunk in alice's space using the permitted sharing key (this could be alice or bob at this point)
+	    var frags = 120;
+	    var port = 25 + 1024;
+	    var address = [127, 0, 0, 1];
+	    for (var i = 0; i < frags; i++) {
+		var frag = window.nacl.randomBytes(32);
+		var message = concat(sharer.getPublicKeys(), frag);
+		var signed = sharer.signMessage(message);
+		core.registerFragmentStorage(us, address, port, us, signed, function(res) {
+		    if (!res)
+			console.log("Failed to register fragment storage!");
 		});
-	    }).then(function(sharer) {
-		var t1 = Date.now();
-		mediumFileTest(us, sharer, bob, alice);
-		var t2 = Date.now();
-		console.log("File test took %d mS\n", (t2 - t1) / 1000000);
+	    }
+	    return core.getQuota(us).then(function(quota){
+		console.log("Generated quota: " + quota/1024 + " KiB");
+		return Promise.resolve(true);
+	    }).then(function() {
+		return Promise.resolve(sharer);
 	    });
+	}).then(function(sharer) {
+	    var t1 = Date.now();
+	    mediumFileTest(us, sharer, bob, alice);
+	    var t2 = Date.now();
+	    console.log("File test took %d mS\n", (t2 - t1) / 1000000);
 	});
     });
 }
