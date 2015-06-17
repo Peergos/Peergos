@@ -186,8 +186,7 @@ public abstract class Message
         public PUT(DataInput in) throws IOException
         {
             super(Type.PUT, in);
-            key = new byte[KEY_BYTE_LENGTH];
-            in.readFully(key);
+            key = Serialize.deserializeByteArray(in, 64);
             len = in.readInt();
             target = ArrayOps.getLong(key, 0);
             owner = Serialize.deserializeByteArray(in, UserPublicKey.SIZE);
@@ -204,7 +203,7 @@ public abstract class Message
         public void write(DataOutput out) throws IOException
         {
             super.write(out);
-            out.write(key);
+            Serialize.serialize(key, out);
             out.writeInt(len);
             Serialize.serialize(owner, out);
             Serialize.serialize(sharingKey, out);
@@ -300,8 +299,7 @@ public abstract class Message
         public GET(DataInput in) throws IOException
         {
             super(Type.GET, in);
-            key = new byte[KEY_BYTE_LENGTH];
-            in.readFully(key);
+            key = Serialize.deserializeByteArray(in, 64);
             target = ArrayOps.getLong(key, 0);
         }
 
@@ -313,7 +311,7 @@ public abstract class Message
         public void write(DataOutput out) throws IOException
         {
             super.write(out);
-            out.write(key);
+            Serialize.serialize(key, out);
         }
 
         public byte[] getKey()

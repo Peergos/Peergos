@@ -23,7 +23,7 @@ import java.util.logging.Logger;
 public class HttpsUserService
 {
     public static final String MESSAGE_URL = "/message/";
-    public static final String USER_URL = "/user/";
+    public static final String DHT_URL = "/dht/";
     public static final String ERASURE_URL = "/erasure/";
     public static final String UI_URL = "/";
     public static final String UI_DIR = "ui/";
@@ -97,7 +97,7 @@ public class HttpsUserService
             return false;
         }
 
-        httpsServer.createContext(USER_URL, new HttpUserAPIHandler(router));
+        httpsServer.createContext(DHT_URL, new DHTUserAPIHandler(router));
         httpsServer.createContext(ERASURE_URL, ErasureHandler.getInstance());
         httpsServer.createContext(UI_URL, new StaticHandler(UI_DIR, false));
         httpsServer.createContext(HTTPCoreNodeServer.CORE_URL, new HTTPCoreNodeServer.CoreNodeHandler(coreNode));

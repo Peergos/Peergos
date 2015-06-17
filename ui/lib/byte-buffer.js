@@ -47,6 +47,7 @@ ByteBuffer = (function() {
       buffer = new ArrayBuffer(source);
     }
     this.buffer = buffer;
+    this._maxIndex = source.length != null ? source.length : 0;
   }
 
   ByteBuffer.prototype._sanitizeIndex = function() {
@@ -225,6 +226,7 @@ ByteBuffer = (function() {
       }
       this._view[method](this._index, value, order);
       this._index += bytes;
+      this._maxIndex += bytes;
       return this;
     };
   };
@@ -274,6 +276,7 @@ ByteBuffer = (function() {
     }
     value = new self(this._buffer.slice(this._index, this._index + bytes), this.order);
     this._index += bytes;
+    value._maxIndex = bytes;
     return value;
   };
 
@@ -298,6 +301,7 @@ ByteBuffer = (function() {
     }
     this._raw.set(view, this._index);
     this._index += view.byteLength;
+    this._maxIndex += view.byteLength;
     return this;
   };
 
@@ -510,7 +514,7 @@ ByteBuffer = (function() {
   };
 
   ByteBuffer.prototype.toArray = function() {
-    return Array.prototype.slice.call(this._raw, 0);
+    return Array.prototype.slice.call(this._raw, 0, this._maxIndex);
   };
 
   ByteBuffer.prototype.toString = function() {

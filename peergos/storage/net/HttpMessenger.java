@@ -15,7 +15,6 @@ import java.util.logging.Logger;
 public class HttpMessenger
 {
     public static final String MESSAGE_URL = "/message/";
-    public static final String USER_URL = "/user/";
 
     public static final int THREADS = 2;
     public static final int CONNECTION_BACKLOG = 100;
@@ -38,7 +37,7 @@ public class HttpMessenger
         httpServer = HttpServer.create(local, CONNECTION_BACKLOG);
 
         httpServer.createContext(MESSAGE_URL, new HttpMessageHandler(router));
-        httpServer.createContext(USER_URL, new HttpUserAPIHandler(router));
+        httpServer.createContext(HttpsUserService.DHT_URL, new DHTAPIHandler(router));
         httpServer.createContext("/", new StoragePutHandler(fragments, "/"));
         httpServer.setExecutor(Executors.newFixedThreadPool(THREADS));
         httpServer.start();

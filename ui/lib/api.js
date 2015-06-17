@@ -222,6 +222,8 @@ function uint8ArrayToByteArray(arr) {
 }
 
 function slice(arr, start, end) {
+    if (end < start)
+	throw "negative slice size! "+start + " -> " + end;
     var r = new Uint8Array(end-start);
     if (arr instanceof ByteBuffer) {
 	for (var i=start; i < end; i++)
@@ -375,9 +377,10 @@ function DHTClient() {
     //
     //put
     //
-    this.put = function(keyData, valueData, username, sharingKeyData, mapKeyData, proofData) {
-        var arrays = [keyData, valueData, username, sharingKeyData, mapKeyData, proofData];
+    this.put = function(keyData, valueData, owner, sharingKeyData, mapKeyData, proofData) {
+        var arrays = [keyData, valueData, owner, sharingKeyData, mapKeyData, proofData];
         var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+	buffer.writeUnsignedInt(0); // PUT Message
         for (var iArray=0; iArray < arrays.length; iArray++) 
             buffer.writeArray(arrays[iArray]);
         return postProm("dht/put", new Uint8Array(buffer.toArray()));

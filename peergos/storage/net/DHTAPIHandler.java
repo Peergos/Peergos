@@ -13,12 +13,12 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
-public class HttpUserAPIHandler implements HttpHandler
+public class DHTAPIHandler implements HttpHandler
 {
     private final Router router;
     private ExecutorService executor = Executors.newFixedThreadPool(2);
 
-    public HttpUserAPIHandler(Router r)
+    public DHTAPIHandler(Router r)
     {
         this.router = r;
     }
