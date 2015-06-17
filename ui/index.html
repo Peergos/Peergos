@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Filesystem</title>
+    <link rel="stylesheet" href="css/bootstrap.min.css" />
+    <link rel="stylesheet" href="css/bootstrap-theme.min.css" />
+    <script src="scripts/react.js"></script>
+    <script src="scripts/JSXTransformer.js"></script>
+    <script src="scripts/jquery.min.js"></script>
+    <script src="scripts/marked.min.js"></script>
+    <script src="scripts/bootstrap.min.js"></script>
+    <script src="scripts/bootstrap-contextmenu.js"></script>
+  </head>
+  <body>
+                <nav class="navbar navbar-inverse navbar-fixed-top" role="navigation">
+                        <div class="navbar-header">
+                                <button type="button" class="navbar-toggle" data-toggle="collapse" data-target="#example-navbar-collapse">
+                                        <span class="sr-only">Toggle navigation</span>
+                                        <span class="icon-bar"></span>
+                                        <span class="icon-bar"></span>
+                                        <span class="icon-bar"></span>
+                                </button>
+                        </div>
+                        <div class="collapse navbar-collapse" id="example-navbar-collapse">
+                                <ul class="nav navbar-nav">
+                                        <li id="backButton"><a><span class="glyphicon glyphicon-arrow-left"/></a></li>
+                                        <li id="parentButton"><a><span class="glyphicon glyphicon-arrow-up"/></a></li>
+                                        <li id="forwardButton"><a><span class="glyphicon glyphicon-arrow-right"/></a></li>
+                                        <li id="uploadButton"><a><span class="glyphicon glyphicon-upload"/></a></li>
+                                        <li id="mkdirButton"><a><span class="glyphicon glyphicon-folder-open"/></a></li>
+                                        <li id="alternateViewButton"><a><span id="altViewSpan" class="glyphicon glyphicon-th-large"/></a></li>
+                                        <li><a id="pathSpan"><span class="glyphicon glyphicon-chevron-right"/></a></li>
+                                </ul>
+
+                                <div id="login-form" class="navbar-form navbar-right">
+                                        <div  class="form-group">
+                                                <input placeholder="Email" id="login-user-input" class="form-control" type="text">
+                                        </div>
+                                                <div class="form-group">
+                                                        <input placeholder="Password" id="login-password-input" class="form-control" type="password">
+                                                </div>
+                                                <button id="loginButton" class="btn btn-success" >Sign in</button>
+                                </div>
+                        </div>
+                </nav>
+
+    <h1>&nbsp;</h1>
+    <div id="content"></div>
+    <input type="file" id="uploadInput" style="display:none;" />
+    <script type="text/jsx;harmony=true" src="scripts/filesystem.js"></script>
+  </body>
+</html>
