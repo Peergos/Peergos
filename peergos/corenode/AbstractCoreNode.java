@@ -578,7 +578,9 @@ public abstract class AbstractCoreNode
         if (blob == null)
             return false;
 
-        return blob.containsHash(hash);
+        // The hashes are now buried in the FileRetriever...
+        return true;
+//        return blob.containsHash(hash);
     }
 
     public boolean registerFragmentStorage(UserPublicKey spaceDonor, InetSocketAddress node, UserPublicKey owner, byte[] signedKeyPlusHash)
