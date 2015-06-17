@@ -647,10 +647,9 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 	
         // add a note to our static data so we know who we sent the private key to
         var friendRoot = new WritableFilePointer(user, sharing, rootMapKey, SymmetricKey.random());
-	var that = this;
         return this.addSharingKey(sharing).then(function() {
-            return that.addToStaticData(sharing, friendRoot);
-	}).then(function() {	    
+            return this.addToStaticData(sharing, friendRoot);
+	}.bind(this)).then(function() {	    
 	    // send details to allow friend to share with us (i.e. we follow them)
 	    var raw = friendRoot.serialize();
 	    
@@ -694,7 +693,6 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 
     this.uploadChunk = function(metadata, fragments, owner, sharer, mapKey) {
 	var buf = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
-	var that = this;
         metadata.serialize(buf);
         var metaBlob = buf.toArray();
         console.log("Storing metadata blob of " + metaBlob.length + " bytes.");
@@ -710,11 +708,11 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 		// now upload fragments to DHT
 		var futures = [];
 		for (var i=0; i < fragments.length; i++)
-		    futures[i] = that.uploadFragment(fragments[i], owner, sharer, mapKey);
+		    futures[i] = this.uploadFragment(fragments[i], owner, sharer, mapKey);
 		
 		// wait for all fragments to upload
 		return Promise.all(futures);
-            });
+            }.bind(this));
     }
 
     this.downloadFragments = function(hashes) {
