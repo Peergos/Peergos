@@ -173,11 +173,11 @@ public class HTTPCoreNodeServer
         }
         void removeFollowRequest(DataInputStream din, DataOutputStream dout) throws IOException
         {
-            String target = deserializeString(din);
+            byte[] owner = deserializeByteArray(din);
             byte[] encodedSharingPublicKey = deserializeByteArray(din);
             byte[] hash = deserializeByteArray(din);
 
-            boolean isRemoved = coreNode.removeFollowRequest(target, encodedSharingPublicKey, hash);
+            boolean isRemoved = coreNode.removeFollowRequest(new UserPublicKey(owner), encodedSharingPublicKey, hash);
             dout.writeBoolean(isRemoved);
         }
 
@@ -192,10 +192,10 @@ public class HTTPCoreNodeServer
 
         void banSharingKey(DataInputStream din, DataOutputStream dout) throws IOException
         {
-            String username = deserializeString(din);
+            byte[] owner = deserializeByteArray(din);
             byte[] encodedSharingPublicKey = deserializeByteArray(din);
             byte[] signedHash = deserializeByteArray(din);
-            boolean isBanned = coreNode.banSharingKey(username, encodedSharingPublicKey, signedHash);
+            boolean isBanned = coreNode.banSharingKey(new UserPublicKey(owner), encodedSharingPublicKey, signedHash);
 
             dout.writeBoolean(isBanned);
         }
@@ -214,18 +214,18 @@ public class HTTPCoreNodeServer
         
         void updateClearanceData(DataInputStream din, DataOutputStream dout) throws IOException
         {
-            String username = deserializeString(din);
+            byte[] owner = deserializeByteArray(din);
             byte[] signedHash = deserializeByteArray(din);
             byte[] clearanceData = deserializeByteArray(din);
 
-            boolean isUpdated = coreNode.updateStaticData(username, signedHash, clearanceData);
+            boolean isUpdated = coreNode.updateStaticData(new UserPublicKey(owner), signedHash, clearanceData);
             dout.writeBoolean(isUpdated);
         }
         
         void getClearanceData(DataInputStream din, DataOutputStream dout) throws IOException
         {
-            String username = deserializeString(din);
-            byte[] userClearanceData = coreNode.getStaticData(username);
+            byte[] owner = deserializeByteArray(din);
+            byte[] userClearanceData = coreNode.getStaticData(new UserPublicKey(owner));
             if (userClearanceData == null)
                 dout.writeInt(0);
             else
@@ -244,8 +244,8 @@ public class HTTPCoreNodeServer
         }
         void getSharingKeys(DataInputStream din, DataOutputStream dout) throws IOException
         {
-            String username = deserializeString(din);
-            Iterator<UserPublicKey> it = coreNode.getSharingKeys(username);
+            byte[] owner = deserializeByteArray(din);
+            Iterator<UserPublicKey> it = coreNode.getSharingKeys(new UserPublicKey(owner));
             while (it.hasNext())
             {
                 byte[] b = it.next().getPublicKeys();
@@ -271,21 +271,21 @@ public class HTTPCoreNodeServer
         }
         void addFragmentHashes(DataInputStream din, DataOutputStream dout) throws IOException
         {
-            String owner = deserializeString(din);
+            byte[] owner = deserializeByteArray(din);
             byte[] sharingKey = deserializeByteArray(din);
             byte[] mapKey = deserializeByteArray(din);
             byte[] metadataBlob = deserializeByteArray(din);
             byte[] allHashes = deserializeByteArray(din);
             byte[] sharingKeySignedHash = deserializeByteArray(din);
-            boolean isAllowed = coreNode.addFragmentHashes(owner, sharingKey, mapKey, metadataBlob, ArrayOps.split(allHashes, UserPublicKey.HASH_BYTES), sharingKeySignedHash);
+            boolean isAllowed = coreNode.addFragmentHashes(new UserPublicKey(owner), sharingKey, mapKey, metadataBlob, ArrayOps.split(allHashes, UserPublicKey.HASH_BYTES), sharingKeySignedHash);
             dout.writeBoolean(isAllowed);
         }
         void getFragmentHashes(DataInputStream din, DataOutputStream dout) throws IOException
         {
-            String owner = deserializeString(din);
+            byte[] owner = deserializeByteArray(din);
             byte[] sharingKey = deserializeByteArray(din);
             byte[] mapKey = deserializeByteArray(din);
-            Serialize.serialize(coreNode.getFragmentHashes(owner, new UserPublicKey(sharingKey), mapKey), dout);
+            Serialize.serialize(coreNode.getFragmentHashes(new UserPublicKey(owner), new UserPublicKey(sharingKey), mapKey), dout);
         }
         void isFragmentAllowed(DataInputStream din, DataOutputStream dout) throws IOException
         {

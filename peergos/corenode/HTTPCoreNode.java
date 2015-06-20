@@ -59,7 +59,7 @@ public class HTTPCoreNode extends AbstractCoreNode
         }
     }
 
-    @Override public boolean updateStaticData(String username, byte[] signedHash, byte[] staticData)
+    @Override public boolean updateStaticData(UserPublicKey owner, byte[] signedHash, byte[] staticData)
     {
         HttpURLConnection conn = null;
         try
@@ -70,7 +70,7 @@ public class HTTPCoreNode extends AbstractCoreNode
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
 
-            Serialize.serialize(username, dout);
+            Serialize.serialize(owner.getPublicKeys(), dout);
             Serialize.serialize(signedHash, dout);
             Serialize.serialize(staticData, dout);
             dout.flush();
@@ -86,7 +86,7 @@ public class HTTPCoreNode extends AbstractCoreNode
         }
     }
     
-    @Override public synchronized byte[] getStaticData(String username)
+    @Override public synchronized byte[] getStaticData(UserPublicKey owner)
     {
         HttpURLConnection conn = null;
         try
@@ -98,7 +98,7 @@ public class HTTPCoreNode extends AbstractCoreNode
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
 
-            Serialize.serialize(username, dout);
+            Serialize.serialize(owner.getPublicKeys(), dout);
             dout.flush();
         
             return deserializeByteArray(din); 
@@ -214,7 +214,7 @@ public class HTTPCoreNode extends AbstractCoreNode
                 conn.disconnect();
         }
     }
-   @Override public boolean removeFollowRequest(String target, byte[] data, byte[] signedHash)
+   @Override public boolean removeFollowRequest(UserPublicKey owner, byte[] data, byte[] signedHash)
     {
         HttpURLConnection conn = null;
         try
@@ -225,7 +225,7 @@ public class HTTPCoreNode extends AbstractCoreNode
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
             
 
-            Serialize.serialize(target, dout);
+            Serialize.serialize(owner.getPublicKeys(), dout);
             Serialize.serialize(data, dout);
             Serialize.serialize(signedHash, dout);
             dout.flush();
@@ -267,7 +267,7 @@ public class HTTPCoreNode extends AbstractCoreNode
                 conn.disconnect();
         }
     }
-   @Override public boolean banSharingKey(String username, byte[] encodedSharingPublicKey, byte[] signedHash)
+   @Override public boolean banSharingKey(UserPublicKey owner, byte[] encodedSharingPublicKey, byte[] signedHash)
     {
         HttpURLConnection conn = null;
         try
@@ -279,7 +279,7 @@ public class HTTPCoreNode extends AbstractCoreNode
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
             
 
-            Serialize.serialize(username, dout);
+            Serialize.serialize(owner.getPublicKeys(), dout);
             Serialize.serialize(encodedSharingPublicKey, dout);
             Serialize.serialize(signedHash, dout);
             dout.flush();
@@ -379,7 +379,7 @@ public class HTTPCoreNode extends AbstractCoreNode
                 conn.disconnect();
         }
     }
-   @Override public Iterator<UserPublicKey> getSharingKeys(String username)
+   @Override public Iterator<UserPublicKey> getSharingKeys(UserPublicKey owner)
     {
         HttpURLConnection conn = null;
         try
@@ -391,7 +391,7 @@ public class HTTPCoreNode extends AbstractCoreNode
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
             
 
-            Serialize.serialize(username, dout);
+            Serialize.serialize(owner.getPublicKeys(), dout);
             dout.flush();
 
             ArrayList<UserPublicKey> sharingKeys = new ArrayList<UserPublicKey>();
@@ -528,7 +528,7 @@ public class HTTPCoreNode extends AbstractCoreNode
                 conn.disconnect();
         }
     }
-   @Override public long getUsage(UserPublicKey user)
+   @Override public long getUsage(UserPublicKey owner)
     {
         HttpURLConnection conn = null;
         try
@@ -540,7 +540,7 @@ public class HTTPCoreNode extends AbstractCoreNode
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
 
-            Serialize.serialize(user.getPublicKeys(), dout);
+            Serialize.serialize(owner.getPublicKeys(), dout);
             dout.flush();
 
             DataInputStream din = new DataInputStream(conn.getInputStream());
@@ -554,7 +554,7 @@ public class HTTPCoreNode extends AbstractCoreNode
         }
     }
 
-   @Override public boolean addFragmentHashes(String username, byte[] encodedSharingPublicKey, byte[] mapKey, byte[] metadataBlob, List<ByteArrayWrapper> allHashes, byte[] sharingKeySignedHash)
+   @Override public boolean addFragmentHashes(UserPublicKey owner, byte[] encodedSharingPublicKey, byte[] mapKey, byte[] metadataBlob, List<ByteArrayWrapper> allHashes, byte[] sharingKeySignedHash)
    {
         HttpURLConnection conn = null;
         try
@@ -566,7 +566,7 @@ public class HTTPCoreNode extends AbstractCoreNode
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
 
-            Serialize.serialize(username, dout);
+            Serialize.serialize(owner.getPublicKeys(), dout);
             Serialize.serialize(encodedSharingPublicKey, dout);
             Serialize.serialize(mapKey, dout);
             Serialize.serialize(metadataBlob, dout);
@@ -584,7 +584,7 @@ public class HTTPCoreNode extends AbstractCoreNode
                 conn.disconnect();
         }
    }
-    @Override public byte[] getFragmentHashes(String username, UserPublicKey sharingKey, byte[] mapKey)
+    @Override public byte[] getFragmentHashes(UserPublicKey owner, UserPublicKey sharingKey, byte[] mapKey)
     {
         HttpURLConnection conn = null;
         try
@@ -596,7 +596,7 @@ public class HTTPCoreNode extends AbstractCoreNode
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
 
-            Serialize.serialize(username, dout);
+            Serialize.serialize(owner.getPublicKeys(), dout);
             Serialize.serialize(sharingKey.getPublicKeys(), dout);
             Serialize.serialize(mapKey, dout);
             dout.flush();

@@ -178,33 +178,27 @@ public abstract class AbstractCoreNode
         userNameToPublicKeyMap.put(username, key); 
         userPublicKeyToNameMap.put(key, username); 
         userMap.put(key, new UserData(clearanceData));
-        userStorageFactories.put(key, new HashSet());
+        userStorageFactories.put(key, new HashSet<>());
         return true;
     }
 
-    public boolean updateStaticData(String username, byte[] signedHash, byte[] clearanceData)
+    public boolean updateStaticData(UserPublicKey owner, byte[] signedHash, byte[] clearanceData)
     {
-        UserPublicKey key = null; 
-        synchronized(this)
-        {
-            key = userNameToPublicKeyMap.get(username);
-        }
-
-        if (key == null || ! key.isValidSignature(signedHash, UserPublicKey.hash(clearanceData)))
+        if (! owner.isValidSignature(signedHash, UserPublicKey.hash(clearanceData)))
             return false;
 
-        return updateClearanceData(username, new ByteArrayWrapper(clearanceData));
+        return updateClearanceData(owner, new ByteArrayWrapper(clearanceData));
     }
 
-    public synchronized byte[] getStaticData(String username)
+    public synchronized byte[] getStaticData(UserPublicKey owner)
     {
-        UserData userData = userMap.get(username);
+        UserData userData = userMap.get(owner);
         return userData != null ? Arrays.copyOf(userData.staticData.data, userData.staticData.data.length) : null;
     }
 
-    protected synchronized boolean updateClearanceData(String username, ByteArrayWrapper clearanceData)
+    protected synchronized boolean updateClearanceData(UserPublicKey owner, ByteArrayWrapper clearanceData)
     {
-        UserData userData = userMap.get(username);
+        UserData userData = userMap.get(owner);
         if (userData == null)
             return false;
         userData.staticData = clearanceData;
@@ -221,9 +215,9 @@ public abstract class AbstractCoreNode
         return true;
     }
 
-    public synchronized byte[] getFollowRequests(UserPublicKey user)
+    public synchronized byte[] getFollowRequests(UserPublicKey owner)
     {
-        UserData userData = userMap.get(user);
+        UserData userData = userMap.get(owner);
         if (userData == null)
             return new byte[4];
 
@@ -240,15 +234,15 @@ public abstract class AbstractCoreNode
         }
     }
 
-    public boolean removeFollowRequest(String target, byte[] data, byte[] signedHash)
+    public boolean removeFollowRequest(UserPublicKey owner, byte[] data, byte[] signedHash)
     {
         UserPublicKey us = null;
         ByteArrayWrapper baw = new ByteArrayWrapper(data);
         synchronized(this)
 
         {
-            us = userNameToPublicKeyMap.get(target);
-            if (us == null || ! userMap.get(target).followRequests.contains(baw))
+            us = userNameToPublicKeyMap.get(owner);
+            if (us == null || ! userMap.get(owner).followRequests.contains(baw))
                 return false; 
         }
         if (! us.isValidSignature(signedHash, UserPublicKey.hash(data)))
@@ -294,24 +288,18 @@ public abstract class AbstractCoreNode
         return true;
     }
 
-    public boolean banSharingKey(String username, byte[] encodedsharingPublicKey, byte[] signedHash)
+    public boolean banSharingKey(UserPublicKey owner, byte[] encodedsharingPublicKey, byte[] signedHash)
     {
-        UserPublicKey key = null;
-        synchronized(this)
-        {
-            key = userNameToPublicKeyMap.get(username);
-        }
-
-        if (key == null || ! key.isValidSignature(signedHash, UserPublicKey.hash(encodedsharingPublicKey)))
+        if (! owner.isValidSignature(signedHash, UserPublicKey.hash(encodedsharingPublicKey)))
             return false;
 
         UserPublicKey sharingPublicKey = new UserPublicKey(encodedsharingPublicKey);
-        return banSharingKey(username, sharingPublicKey);
+        return banSharingKey(owner, sharingPublicKey);
     }
 
-    protected synchronized boolean banSharingKey(String username, UserPublicKey sharingPublicKey)
+    protected synchronized boolean banSharingKey(UserPublicKey owner, UserPublicKey sharingPublicKey)
     {
-        UserData userData = userMap.get(username);
+        UserData userData = userMap.get(owner);
         if (userData == null)
             return false; 
         return userData.followers.remove(sharingPublicKey);
@@ -361,30 +349,22 @@ public abstract class AbstractCoreNode
         return true;
     }
 
-    public boolean addFragmentHashes(String username, byte[] encodedSharingPublicKey, byte[] mapKey, byte[] metadataBlob, List<ByteArrayWrapper> fragmentHashes, byte[] sharingKeySignedHash)
+    public boolean addFragmentHashes(UserPublicKey owner, byte[] encodedSharingPublicKey, byte[] mapKey, byte[] metadataBlob, List<ByteArrayWrapper> fragmentHashes, byte[] sharingKeySignedHash)
     {
-        UserPublicKey userKey = null;
-        synchronized(this)
-        {
-            userKey = userNameToPublicKeyMap.get(username);
-        }
-        if (userKey == null)
-            return false;
-
         UserPublicKey sharingKey = new UserPublicKey(encodedSharingPublicKey);
         synchronized(this)
         {
-            if (!userMap.get(username).followers.contains(sharingKey))
+            if (!userMap.get(owner).followers.contains(sharingKey))
                 return false;
         }
-        if (remainingStorage(userKey) < fragmentLength())
+        if (remainingStorage(owner) < fragmentLength())
             return false;
 
         byte[] allHashes = ArrayOps.concat(fragmentHashes);
         if (! sharingKey.isValidSignature(sharingKeySignedHash, ArrayOps.concat(mapKey, metadataBlob, allHashes)))
             return false;
 
-        return addFragmentHashes(userKey, sharingKey, mapKey, allHashes);
+        return addFragmentHashes(owner, sharingKey, mapKey, allHashes);
     }
 
     protected synchronized boolean addFragmentHashes(UserPublicKey owner, UserPublicKey sharingKey, byte[] mapKey, byte[] allHashes)
@@ -410,10 +390,10 @@ public abstract class AbstractCoreNode
         return true;
     }
 
-    public synchronized byte[] getFragmentHashes(String username, UserPublicKey sharingKey, byte[] mapKey) {
-        if (!userMap.get(username).followers.contains(sharingKey))
+    public synchronized byte[] getFragmentHashes(UserPublicKey owner, UserPublicKey sharingKey, byte[] mapKey) {
+        if (!userMap.get(owner).followers.contains(sharingKey))
             return null;
-        UserData userData = userMap.get(username);
+        UserData userData = userMap.get(owner);
         if (userData == null)
             return null;
         Map<ByteArrayWrapper, MetadataBlob> fragments = userData.metadata.get(sharingKey);
@@ -489,14 +469,9 @@ public abstract class AbstractCoreNode
      * @param userKey X509 encoded key of user that wishes to share a fragment 
      * @param signedHash the SHA hash of userKey, signed with the user private key 
      */
-    public synchronized Iterator<UserPublicKey> getSharingKeys(String username)
+    public synchronized Iterator<UserPublicKey> getSharingKeys(UserPublicKey owner)
     {
-        UserPublicKey userKey = userNameToPublicKeyMap.get(username);
-
-        if (userKey == null)
-            return null;
-
-        UserData userData = userMap.get(username);
+        UserData userData = userMap.get(owner);
         return Collections.unmodifiableCollection(userData.metadata.keySet()).iterator();
 
     } 
@@ -628,10 +603,10 @@ public abstract class AbstractCoreNode
         return quota;    
     }
 
-    public synchronized long getUsage(UserPublicKey userKey)
+    public synchronized long getUsage(UserPublicKey owner)
     {
         long usage = 0l;
-        for (Map<ByteArrayWrapper, MetadataBlob> fragmentsMap: userMap.get(userKey).metadata.values())
+        for (Map<ByteArrayWrapper, MetadataBlob> fragmentsMap: userMap.get(owner).metadata.values())
             for (MetadataBlob blob: fragmentsMap.values())
                 if (blob.fragmentHashes != null)
                     usage += blob.fragmentHashes.length/UserPublicKey.HASH_BYTES * fragmentLength();

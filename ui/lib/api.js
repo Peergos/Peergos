@@ -413,20 +413,19 @@ function CoreNodeClient() {
         return postProm("core/getPublicKey", new Uint8Array(buffer.toArray()));
     };
     
-    //String -> Uint8Array -> Uint8Array -> fn -> fn -> void
-    this.updateStaticData = function(username, signedHash, staticData) {
+    //UserPublicKey -> Uint8Array -> Uint8Array -> fn -> fn -> void
+    this.updateStaticData = function(owner, signedHash, staticData) {
         var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
-	buffer.writeUnsignedInt(username.length);
-        buffer.writeString(username);
+        buffer.writeArray(owner.getPublicKeys());
         buffer.writeArray(signedHash);
         buffer.writeArray(staticData);
         return postProm("core/updateStaticData", new Uint8Array(buffer.toArray())); 
     };
     
     //String -> fn- >fn -> void
-    this.getStaticData = function(username) {
+    this.getStaticData = function(owner) {
         var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
-        buffer.writeString(username);
+        buffer.writeArray(owner);
         return postProm("core/getStaticData", new Uint8Array(buffer.toArray()));
     };
     
@@ -671,7 +670,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
     this.addToStaticData = function(writer, root) {
 	this.staticData.push([writer, root]);
         var rawStatic = new Uint8Array(this.serializeStatic());
-        return corenodeClient.updateStaticData(username, user.signMessage(rawStatic), rawStatic);
+        return corenodeClient.updateStaticData(user, user.signMessage(rawStatic), rawStatic);
     }
 
     this.getFollowRequests = function() {
@@ -716,6 +715,10 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 		// wait for all fragments to upload
 		return Promise.all(futures);
             }.bind(this));
+    }
+
+    this.getRoots = function() {
+	throw "Unimplemented!";
     }
 
     this.downloadFragments = function(hashes) {

@@ -622,12 +622,12 @@ public abstract class JDBCCoreNode extends AbstractCoreNode {
 
 
 
-    protected synchronized boolean banSharingKey(String username, UserPublicKey sharingPublicKey)
+    protected synchronized boolean banSharingKey(UserPublicKey owner, UserPublicKey sharingPublicKey)
     {
-        if (! super.banSharingKey(username, sharingPublicKey))
+        if (! super.banSharingKey(owner, sharingPublicKey))
             return false;
 
-        SharingKeyData request = new SharingKeyData(username, sharingPublicKey.getPublicKeys());
+        SharingKeyData request = new SharingKeyData(owner.toString(), sharingPublicKey.getPublicKeys());
         return request.delete();
     }
 
@@ -655,9 +655,9 @@ public abstract class JDBCCoreNode extends AbstractCoreNode {
         return deleteOneFragmentData(owner, sharingKeyID, new String(Base64.getEncoder().encode(mapKey)));
     }
 
-    public Iterator<UserPublicKey> getSharingKeys(String username)
+    public Iterator<UserPublicKey> getSharingKeys(UserPublicKey owner)
     {
-        return super.getSharingKeys(username);
+        return super.getSharingKeys(owner);
     }
 
     public MetadataBlob getMetadataBlob(String username, byte[] encodedSharingKey, byte[] mapkey)
@@ -702,9 +702,9 @@ public abstract class JDBCCoreNode extends AbstractCoreNode {
         return super.getQuota(user);
     }
 
-    public long getUsage(UserPublicKey username)
+    public long getUsage(UserPublicKey owner)
     {
-        return super.getUsage(username);
+        return super.getUsage(owner);
     }
 
     public synchronized void close()

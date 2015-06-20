@@ -37,7 +37,7 @@ public class CoreNode
             //retrieve sharing key
             //
             boolean retrievedSharingKey = false;
-            Iterator<UserPublicKey> sharingKeys = coreNode.getSharingKeys(username);
+            Iterator<UserPublicKey> sharingKeys = coreNode.getSharingKeys(user);
             while (sharingKeys.hasNext()) {
                 UserPublicKey next = sharingKeys.next();
                 if (Arrays.equals(next.getPublicKeys(), follower.getPublicKeys()))
@@ -81,7 +81,7 @@ public class CoreNode
             byte[] generatedHashes = new byte[UserPublicKey.HASH_BYTES *10];
             random.nextBytes(generatedHashes);
             byte[] signed = follower.signMessage(ArrayOps.concat(mapKey, cipherText, generatedHashes));
-            boolean addedHashes = coreNode.addFragmentHashes(username, follower.getPublicKeys(), mapKey, cipherText, ArrayOps.split(generatedHashes, UserPublicKey.HASH_BYTES), signed);
+            boolean addedHashes = coreNode.addFragmentHashes(user, follower.getPublicKeys(), mapKey, cipherText, ArrayOps.split(generatedHashes, UserPublicKey.HASH_BYTES), signed);
             assertTrue("added hashes to metadatablob", addedHashes);
 
 

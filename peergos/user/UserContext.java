@@ -137,7 +137,7 @@ public class UserContext
     {
         staticData.put(pub, root);
         byte[] rawStatic = serializeStatic();
-        return core.updateStaticData(username, us.signMessage(rawStatic), rawStatic);
+        return core.updateStaticData(us, us.signMessage(rawStatic), rawStatic);
     }
 
     private Future uploadFragment(Fragment f, UserPublicKey targetUser, User sharer, byte[] mapKey)
