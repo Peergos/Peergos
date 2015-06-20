@@ -425,7 +425,7 @@ function CoreNodeClient() {
     //String -> fn- >fn -> void
     this.getStaticData = function(owner) {
         var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
-        buffer.writeArray(owner);
+        buffer.writeArray(owner.getPublicKeys());
         return postProm("core/getStaticData", new Uint8Array(buffer.toArray()));
     };
     
@@ -718,7 +718,17 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
     }
 
     this.getRoots = function() {
-	throw "Unimplemented!";
+	return corenodeClient.getStaticData(user).then(function(raw) {
+	    var buf = new ByteBuffer(raw);
+	    var count = buf.readUnsignedInt();
+	    var res = [];
+	    for (var i=0; i < count; i++) {
+		var pointer = WritableFilePointer.deserialize(buf);
+		res.push(pointer);
+	    }
+	    // down download the metadata blobs for these pointers
+	    throw "Unimplemented";
+	});
     }
 
     this.downloadFragments = function(hashes) {
