@@ -414,11 +414,10 @@ function CoreNodeClient() {
     };
     
     //UserPublicKey -> Uint8Array -> Uint8Array -> fn -> fn -> void
-    this.updateStaticData = function(owner, signedHash, staticData) {
+    this.updateStaticData = function(owner, signedStaticData) {
         var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
         buffer.writeArray(owner.getPublicKeys());
-        buffer.writeArray(signedHash);
-        buffer.writeArray(staticData);
+        buffer.writeArray(signedStaticData);
         return postProm("core/updateStaticData", new Uint8Array(buffer.toArray())); 
     };
     
@@ -670,7 +669,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
     this.addToStaticData = function(writer, root) {
 	this.staticData.push([writer, root]);
         var rawStatic = new Uint8Array(this.serializeStatic());
-        return corenodeClient.updateStaticData(user, user.signMessage(rawStatic), rawStatic);
+        return corenodeClient.updateStaticData(user, user.signMessage(rawStatic));
     }
 
     this.getFollowRequests = function() {
@@ -720,10 +719,11 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
     this.getRoots = function() {
 	return corenodeClient.getStaticData(user).then(function(raw) {
 	    var buf = new ByteBuffer(raw);
+	    var len = buf.readUnsignedInt();
 	    var count = buf.readUnsignedInt();
 	    var res = [];
 	    for (var i=0; i < count; i++) {
-		var pointer = WritableFilePointer.deserialize(buf);
+		var pointer = WritableFilePointer.deserialize(buf.readArray());
 		res.push(pointer);
 	    }
 	    // down download the metadata blobs for these pointers

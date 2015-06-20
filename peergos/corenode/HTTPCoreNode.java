@@ -59,7 +59,7 @@ public class HTTPCoreNode extends AbstractCoreNode
         }
     }
 
-    @Override public boolean updateStaticData(UserPublicKey owner, byte[] signedHash, byte[] staticData)
+    @Override public boolean updateStaticData(UserPublicKey owner, byte[] signedStaticData)
     {
         HttpURLConnection conn = null;
         try
@@ -71,8 +71,7 @@ public class HTTPCoreNode extends AbstractCoreNode
 
 
             Serialize.serialize(owner.getPublicKeys(), dout);
-            Serialize.serialize(signedHash, dout);
-            Serialize.serialize(staticData, dout);
+            Serialize.serialize(signedStaticData, dout);
             dout.flush();
 
             DataInputStream din = new DataInputStream(conn.getInputStream());
@@ -94,13 +93,12 @@ public class HTTPCoreNode extends AbstractCoreNode
             conn = (HttpURLConnection) buildURL("core/getStaticData").openConnection();
             conn.setDoInput(true);
             conn.setDoOutput(true);
-            DataInputStream din = new DataInputStream(conn.getInputStream());
+
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
-
-
             Serialize.serialize(owner.getPublicKeys(), dout);
             dout.flush();
-        
+
+            DataInputStream din = new DataInputStream(conn.getInputStream());
             return deserializeByteArray(din); 
         } catch (IOException ioe) {
             ioe.printStackTrace();

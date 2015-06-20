@@ -215,10 +215,9 @@ public class HTTPCoreNodeServer
         void updateClearanceData(DataInputStream din, DataOutputStream dout) throws IOException
         {
             byte[] owner = deserializeByteArray(din);
-            byte[] signedHash = deserializeByteArray(din);
-            byte[] clearanceData = deserializeByteArray(din);
+            byte[] signedStaticData = deserializeByteArray(din);
 
-            boolean isUpdated = coreNode.updateStaticData(new UserPublicKey(owner), signedHash, clearanceData);
+            boolean isUpdated = coreNode.updateStaticData(new UserPublicKey(owner), signedStaticData);
             dout.writeBoolean(isUpdated);
         }
         

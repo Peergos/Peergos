@@ -182,18 +182,15 @@ public abstract class AbstractCoreNode
         return true;
     }
 
-    public boolean updateStaticData(UserPublicKey owner, byte[] signedHash, byte[] clearanceData)
+    public boolean updateStaticData(UserPublicKey owner, byte[] signedStaticData)
     {
-        if (! owner.isValidSignature(signedHash, UserPublicKey.hash(clearanceData)))
-            return false;
-
-        return updateClearanceData(owner, new ByteArrayWrapper(clearanceData));
+        return updateClearanceData(owner, new ByteArrayWrapper(owner.unsignMessage(signedStaticData)));
     }
 
     public synchronized byte[] getStaticData(UserPublicKey owner)
     {
         UserData userData = userMap.get(owner);
-        return userData != null ? Arrays.copyOf(userData.staticData.data, userData.staticData.data.length) : null;
+        return userData != null ? Arrays.copyOf(userData.staticData.data, userData.staticData.data.length) : new byte[0];
     }
 
     protected synchronized boolean updateClearanceData(UserPublicKey owner, ByteArrayWrapper clearanceData)
