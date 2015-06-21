@@ -41,15 +41,15 @@ SymmetricLink.fromPair = function(from, to, nonce) {
 }
 
 // UserPublicKey, UserPublicKey, Uint8Array
-function Location(owner, subKey, mapKey) {
+function Location(owner, writer, mapKey) {
     this.owner = owner;
-    this.subKey = subKey;
+    this.writer = writer;
     this.mapKey = mapKey;
 
     this.serialize = function(bout) {
 	var bout = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
-	bout.writeArray(string2arraybuffer(username));
-	bout.writeArray(subKey.getPublicKeys());
+	bout.writeArray(owner.getPublicKeys());
+	bout.writeArray(writer.getPublicKeys());
 	bout.writeArray(mapKey);
 	return new Uint8Array(bout.toArray());
     }
@@ -62,11 +62,11 @@ Location.deserialize = function(buf) {
     var owner = buf.readArray();
     var writer = buf.readArray();
     var mapKey = buf.readArray();
-    return new Location(new UserPublicKey(owner), new UserPublicKey(writer), mapKey);
+    return new Location(UserPublicKey.fromPublicKeys(owner), UserPublicKey.fromPublicKeys(writer), mapKey);
 }
 Location.decrypt = function(from, nonce, loc) {
     var raw = from.decrypt(loc, nonce);
-    return Location.deserialize(new ByteBuffer(raw));
+    return Location.deserialize(new ByteBuffer(new Uint8Array(raw)));
 }
 
 function SymmetricLocationLink(buf) {
@@ -77,7 +77,7 @@ function SymmetricLocationLink(buf) {
     this.targetLocation = function(from) {
 	var nonce = slice(this.link, 0, SymmetricKey.NONCE_BYTES);
 	var rest = slice(this.link, SymmetricKey.NONCE_BYTES, this.link.length);
-	return Location.decrypt(from, nonce, this.loc);
+	return Location.decrypt(from, nonce, new Uint8Array(this.loc.toArray()));
     }
 
     this.serialize = function() {
@@ -107,7 +107,7 @@ function FileAccess(parent2meta, properties, retriever) {
 	return 0;
     }
 }
-FileAccess.deserialize = function(buf, ourKey /*SymmetricKey*/) {
+FileAccess.deserialize = function(buf) {
     var p2m = buf.readArray();
     var properties = buf.readArray();
     var hasRetreiver = buf.readUnsignedByte();
@@ -249,6 +249,14 @@ EncryptedChunkRetriever.deserialize = function(buf) {
     if (hasNext == 1)
 	nextChunk = Location.deserialize(buf);
     return new EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChunk);
+}
+
+function split(arr, size) {
+    var length = arr.byteLength/size;
+    var res = [];
+    for (var i=0; i < length; i++)
+	res[i] = slice(arr, i*size, (i+1)*size);
+    return res;
 }
 
 function LazyInputStreamCombiner(context, dataKey, current, next) {

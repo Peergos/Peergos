@@ -89,7 +89,7 @@ function mediumFileTest(owner, sharer, receiver, sender) {
 	    if (dir == null)
 		continue;
 	    /*[[SymmetricLocationLink, FileAccess]]*/
-	    return receiver.retrieveMetadata(dir.files, rootDirKey);
+	    return receiver.retrieveAllMetadata(dir.files, rootDirKey);
 	}
     }).then(function(files) {
 	for (fileLoc in files) {

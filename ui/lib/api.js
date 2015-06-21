@@ -28,25 +28,18 @@ function UserPublicKey(publicSignKey, publicBoxKey) {
     this.unsignMessage = function(sig) {
 	return nacl.sign.open(sig, this.pSignKey);
     }
-    
-    this.isValidSignature = function(signedHash, raw) {
-	var a = hash(raw);
-	var b = unsignMessage(signedHash);
-	return arraysEqual(a, b);
-    }
-
-    // Uint8Array => Uint8Array
-    this.hash = function(input) {
-	var hasher = new BLAKE2s(32);
-	hasher.update(input);
-	return hasher.digest();
-    }
 }
 
 UserPublicKey.fromPublicKeys = function(both) {
     var pSign = slice(both, 0, 32);
     var pBox = slice(both, 32, 64);
     return new UserPublicKey(pSign, pBox);
+}
+
+UserPublicKey.HASH_BYTES = 32;
+// Uint8Array => Uint8Array
+UserPublicKey.hash = function(arr) {
+    return sha256(arr);
 }
 
 function createNonce(){
@@ -126,7 +119,7 @@ function toKeyPair(pub, sec) {
 // SymmetricKey methods
 
 function SymmetricKey(key) {
-    this.key = key;
+    this.key = key instanceof ByteBuffer ? new Uint8Array(key.toArray()) : key;
 
     // (Uint8Array, Uint8Array[24]) => Uint8Array
     this.encrypt = function(data, nonce) {
@@ -165,7 +158,7 @@ function FileProperties(name, size) {
 function Fragment(data) {
     this.data = data;
     this.getHash = function() {
-	return nacl.hash(data); // SHA-512
+	return UserPublicKey.hash(data);
     }
 
     this.getData = function() {
@@ -741,6 +734,22 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 		    }
 		return Promise.resolve(entryPoints);
 	    });
+	});
+    }
+// [SymmetricLocationLink], SymmetricKey
+    this.retrieveAllMetadata = function(links, baseKey) {
+	var proms = [];
+	for (var i=0; i < links.length; i++) {
+	    var loc = links[i].targetLocation(baseKey);
+	    proms[i] = corenodeClient.getMetadataBlob(loc.owner, loc.writer, loc.mapKey);
+	}
+	return Promise.all(proms).then(function(rawBlobs) {
+	    var accesses = [];
+	    for (var i=0; i < rawBlobs.length; i++) {
+		var unwrapped = new ByteBuffer(rawBlobs[i]).readArray();
+		accesses[i] = FileAccess.deserialize(new ByteBuffer(unwrapped));
+	    }
+	    return Promise.resolve(accesses);
 	});
     }
 
