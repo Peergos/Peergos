@@ -32,7 +32,7 @@ function SymmetricLink(link) {
     }
 
     this.target = function(from) {
-	var encoded = from.decrypt(link, nonce);
+	var encoded = from.decrypt(this.link, this.nonce);
 	return new SymmetricKey(encoded);
     }
 }
@@ -113,6 +113,16 @@ function FileAccess(parent2meta, properties, retriever) {
     this.getType = function() {
 	return 0;
     }
+
+    this.getMetaKey = function(parentKey) {
+	return parent2meta.target(parentKey);
+    }
+
+    this.getFileProperties = function(parentKey) {
+	var nonce = slice(this.properties, 0, SymmetricKey.NONCE_BYTES);
+	var cipher = slice(this.properties, SymmetricKey.NONCE_BYTES, this.properties.length);
+	return FileProperties.deserialize(this.getMetaKey(parentKey).decrypt(cipher, nonce));
+    }
 }
 FileAccess.deserialize = function(buf) {
     var p2m = buf.readArray();
@@ -120,7 +130,7 @@ FileAccess.deserialize = function(buf) {
     var hasRetreiver = buf.readUnsignedByte();
     var retriever =  (hasRetreiver == 1) ? FileRetriever.deserialize(buf) : null;
     var type = buf.readUnsignedByte();
-    var fileAccess = new FileAccess(p2m, properties, retriever);
+    var fileAccess = new FileAccess(new SymmetricLink(p2m), properties, retriever);
     switch(type) {
     case 0:
 	return fileAccess;
@@ -133,7 +143,7 @@ FileAccess.deserialize = function(buf) {
 FileAccess.create = function(parentKey, props, retriever) {
     var metaKey = SymmetricKey.random();
     var nonce = metaKey.createNonce();
-    return new FileAccess(new SymmetricLink(parentKey, metaKey, parentKey.createNonce()),
+    return new FileAccess(SymmetricLink.fromPair(parentKey, metaKey, parentKey.createNonce()),
                 concat(nonce, metaKey.encrypt(props.serialize(), nonce)), retriever);
 }
 
@@ -195,10 +205,10 @@ DirAccess.create = function(owner, subfoldersKey, metadata) {
     var parentKey = SymmetricKey.random();
     var filesKey = SymmetricKey.random();
     var metaNonce = metaKey.createNonce();
-    return new DirAccess(new SymmetricLink(subfoldersKey, filesKey, subfoldersKey.createNonce()),
-			 new SymmetricLink(subfoldersKey, parentKey, subfoldersKey.createNonce()),
+    return new DirAccess(SymmetricLink.fromPair(subfoldersKey, filesKey, subfoldersKey.createNonce()),
+			 SymmetricLink.fromPair(subfoldersKey, parentKey, subfoldersKey.createNonce()),
 			 [], [],
-			 new SymmetricLink(parentKey, metaKey, parentKey.createNonce()),
+			 SymmetricLink.fromPair(parentKey, metaKey, parentKey.createNonce()),
 			 concat(metaNonce, metaKey.encrypt(metadata.serialize(), metaNonce))
 			);
 }
@@ -225,6 +235,10 @@ function EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChun
     
     this.getFile = function(context, dataKey) {
 	return new LazyInputStreamCombiner(this, context, dataKey);
+    }
+
+    this.getNext = function() {
+	return nextChunk;
     }
 
     this.getChunkInputStream = function(context, dataKey) {
@@ -266,11 +280,11 @@ function split(arr, size) {
     return res;
 }
 
-function LazyInputStreamCombiner(context, dataKey, current, next) {
+function LazyInputStreamCombiner(stream, context, dataKey) {
     this.context = context;
     this.dataKey = dataKey;
-    this.current = current;
-    this.next = next;
+    this.current = stream.getChunkInputStream(context, dataKey);
+    this.next = stream.getNext();
 
     this.getNextStream = function() {
         if (next != null) {
@@ -278,15 +292,22 @@ function LazyInputStreamCombiner(context, dataKey, current, next) {
             next = nextRet.getNext();
             return nextRet.getChunkInputStream(context, dataKey);
         }
-        throw new EOFException();
+        throw "EOFException";
     }
 
     this.readByte = function() {
         try {
 	    return current.readByte();
 	} catch (e) {}
-        current = getNextStream();
+        current = this.getNextStream();
         return current.readByte();
+    }
+
+    this.read = function(len) {
+	var res = new Uint8Array(len);
+	for (var i=0; i < len; i++)
+	    res[i] = this.readByte();
+	return res;
     }
 }
 

@@ -32,6 +32,8 @@ function mediumFileTest(owner, sharer, receiver, sender) {
         raw1.write(template);
     for (var i = 0; i < Chunk.MAX_SIZE / 32; i++)
         raw2.write(template2);
+    raw1 = new Uint8Array(raw1.toArray());
+    raw2 = new Uint8Array(raw2.toArray());
     
     // add file to root dir
     var filename = "HiNSA.bin"; // /photos/tree.jpg
@@ -95,14 +97,14 @@ function mediumFileTest(owner, sharer, receiver, sender) {
 		    // download fragments in chunk
 		    var fileProps = fileBlob.getFileProperties(baseKey);
 		    
-		    var buf = fileBlob.getRetriever().getFile(receiver, baseKey);
-		    var original = buf.read(fileProps.getSize());
+		    var buf = fileBlob.retriever.getFile(receiver, baseKey);
+		    var original = buf.read(fileProps.getSize()[0]);
 		    
 		    // checks
-		    if (!fileProps.name.equals(filename))
-			throw new Exception("Correct filename");
+		    if (fileProps.name != filename)
+			throw "Incorrect filename!";
 		    if (! Arrays.equals(original, concat(raw1, raw2)))
-			throw new Exception("Correct file contents");
+			throw "Incorrect file contents!";
 		}
 		return Promise.resolve(true);
 	    });

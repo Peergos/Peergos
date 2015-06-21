@@ -140,18 +140,31 @@ SymmetricKey.random = function() {
     return new SymmetricKey(nacl.randomBytes(32));
 }
 
-function FileProperties(name, size) {
+function FileProperties(name, sizeLo, sizeHi) {
     this.name = name;
-    this.size = size;
+    this.sizeLo = sizeLo;
+    this.sizeHi = sizeHi;
 
     this.serialize = function() {
 	var buf = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
 	buf.writeUnsignedInt(name.length);
 	buf.writeString(name);
-	buf.writeUnsignedInt(size >> 32);
-	buf.writeUnsignedInt(size & 0xffffffff);
+	buf.writeUnsignedInt(sizeLo);
+	buf.writeUnsignedInt(sizeHi);
 	return new Uint8Array(buf.toArray());
     }
+
+    this.getSize = function() {
+	return [sizeLo, sizeHi];
+    }
+}
+
+FileProperties.deserialize = function(buf) {
+    buf = new ByteBuffer(slice(buf, 0, buf.length));
+    var nameBytes = buf.readArray();
+    var sizeLo = buf.readUnsignedInt();
+    var sizeHi = buf.readUnsignedInt();
+    return new FileProperties(nacl.util.encodeUTF8(nameBytes), sizeLo, sizeHi);
 }
 
 function Fragment(data) {
@@ -190,7 +203,7 @@ function Chunk(data, key) {
     this.key = key;
 
     this.encrypt = function(nonce) {
-	return key.encrypt(new Uint8Array(data.toArray()), nonce);
+	return key.encrypt(data, nonce);
     }
 }
 Chunk.MAX_SIZE = Fragment.SIZE*EncryptedChunk.ERASURE_ORIGINAL
