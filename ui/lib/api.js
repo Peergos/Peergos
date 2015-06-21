@@ -50,12 +50,11 @@ function createNonce(){
 // User methods
 // (string, string, (User -> ())
 function generateKeyPairs(username, password, cb) {
-    var hash = new BLAKE2s(32)
-    hash.update(nacl.util.decodeUTF8(password))
-    salt = nacl.util.decodeUTF8(username)
+    var hash = UserPublicKey.hash(nacl.util.decodeUTF8(password));
+    var salt = nacl.util.decodeUTF8(username)
     
     return new Promise(function(resolve, reject) {
-	scrypt(hash.digest(), salt, 17, 8, 64, 1000, function(keyBytes) {
+	scrypt(hash, salt, 17, 8, 64, 1000, function(keyBytes) {
 	    var bothBytes = nacl.util.decodeBase64(keyBytes);
 	    var signBytes = bothBytes.subarray(0, 32);
 	    var boxBytes = bothBytes.subarray(32, 64);

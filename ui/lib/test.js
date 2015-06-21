@@ -1,11 +1,10 @@
 // overwrite this function to speed up scrypt for testing purposes
 function generateKeyPairs(username, password, cb) {
-    var hash = new BLAKE2s(32)
-    hash.update(nacl.util.decodeUTF8(password))
+    var hash = UserPublicKey.hash(nacl.util.decodeUTF8(password));
     salt = nacl.util.decodeUTF8(username)
     
     return new Promise(function(resolve, reject) {
-	scrypt(hash.digest(), salt, 1, 8, 64, 1000, function(keyBytes) {
+	scrypt(hash, salt, 1, 8, 64, 1000, function(keyBytes) {
 	    var bothBytes = nacl.util.decodeBase64(keyBytes);
 	    var signBytes = bothBytes.subarray(0, 32);
 	    var boxBytes = bothBytes.subarray(32, 64);
