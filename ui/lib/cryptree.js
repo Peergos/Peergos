@@ -159,7 +159,7 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
 	var buf = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
 	buf.writeArray(link);
 	buf.writeArray(loc);
-	files.push(new SymmetricLocationLink(new ByteBuffer(buf)));
+	this.files.push(new SymmetricLocationLink(new ByteBuffer(buf)));
     }
 
     // 0=FILE, 1=DIR
@@ -175,10 +175,10 @@ DirAccess.deserialize = function(base, bin) {
     var files = [], subfolders = [];
     var nsubfolders = bin.readUnsignedInt();
     for (var i=0; i < nsubfolders; i++)
-	nsubfolders[i] = new SymmetricLocationLink(bin.readArray());
+	subfolders[i] = new SymmetricLocationLink(bin.readArray());
     var nfiles = bin.readUnsignedInt();
     for (var i=0; i < nfiles; i++)
-	nfiles[i] = new SymmetricLocationLink(bin.readArray());
+	files[i] = new SymmetricLocationLink(bin.readArray());
     return new DirAccess(s2f, s2p, subfolders, files, base.parent2meta, base.properties, base.retriever);
 }
 
