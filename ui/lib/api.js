@@ -746,7 +746,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 	    var accesses = [];
 	    for (var i=0; i < rawBlobs.length; i++) {
 		var unwrapped = new ByteBuffer(rawBlobs[i]).readArray();
-		accesses[i] = FileAccess.deserialize(new ByteBuffer(unwrapped));
+		accesses[i] = [links[i], FileAccess.deserialize(new ByteBuffer(unwrapped))];
 	    }
 	    return Promise.resolve(accesses);
 	});

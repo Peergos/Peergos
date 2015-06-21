@@ -80,6 +80,13 @@ function SymmetricLocationLink(buf) {
 	return Location.decrypt(from, nonce, new Uint8Array(this.loc.toArray()));
     }
 
+    this.target = function(from) {
+	var nonce = slice(this.link, 0, SymmetricKey.NONCE_BYTES);
+	var rest = slice(this.link, SymmetricKey.NONCE_BYTES, this.link.length);
+	var encoded = from.decrypt(rest, nonce);
+	return new SymmetricKey(encoded);
+    }
+
     this.serialize = function() {
 	var buf = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
 	buf.writeArray(this.link);

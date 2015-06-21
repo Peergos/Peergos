@@ -88,25 +88,25 @@ function mediumFileTest(owner, sharer, receiver, sender) {
 	    if (dir == null)
 		continue;
 	    /*[[SymmetricLocationLink, FileAccess]]*/
-	    return receiver.retrieveAllMetadata(dir.files, rootDirKey);
+	    return receiver.retrieveAllMetadata(dir.files, rootDirKey).then(function(files) {
+		for (var i=0; i < files.length; i++) {
+		    var baseKey = files[i][0].target(rootDirKey);
+		    var fileBlob = files[i][1];
+		    // download fragments in chunk
+		    var fileProps = fileBlob.getFileProperties(baseKey);
+		    
+		    var buf = fileBlob.getRetriever().getFile(receiver, baseKey);
+		    var original = buf.read(fileProps.getSize());
+		    
+		    // checks
+		    if (!fileProps.name.equals(filename))
+			throw new Exception("Correct filename");
+		    if (! Arrays.equals(original, concat(raw1, raw2)))
+			throw new Exception("Correct file contents");
+		}
+		return Promise.resolve(true);
+	    });
 	}
-    }).then(function(files) {
-	for (fileLoc in files) {
-	    var baseKey = fileLoc.target(rootDirKey);
-	    var fileBlob = files.get(fileLoc);
-	    // download fragments in chunk
-	    var fileProps = fileBlob.getFileProperties(baseKey);
-	    
-	    var buf = fileBlob.getRetriever().getFile(receiver, baseKey);
-	    var original = buf.read(fileProps.getSize());
-	    
-	    // checks
-	    if (!fileProps.name.equals(filename))
-		throw new Exception("Correct filename");
-	    if (! Arrays.equals(original, concat(raw1, raw2)))
-		throw new Exception("Correct file contents");
-	}
-	return Promise.resolve(true);
     });
 }
 
