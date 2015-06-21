@@ -68,7 +68,7 @@ function mediumFileTest(owner, sharer, receiver, sender) {
     
     // now write the root to the core nodes
     receiver.addToStaticData(sharer, new WritableFilePointer(receiver.user, sharer, new ByteBuffer(rootMapKey), rootRKey));
-    sender.uploadChunk(root, [], owner, sharer, rootMapKey)
+    return sender.uploadChunk(root, [], owner, sharer, rootMapKey)
     .then(function() {
 	// now upload the file meta blobs
 	console.log("Uploading chunk with %d fragments\n", fragments1.length);
@@ -80,29 +80,34 @@ function mediumFileTest(owner, sharer, receiver, sender) {
     
 	// now check the retrieval from zero knowledge
 	/*[[WritableFilePointer, FileAccess]]*/
-	receiver.getRoots().then(function(roots) {
-	    for (var i=0; i < roots.length; i++) {
-		var dirPointer = roots[i][0];
-		var rootDirKey = dirPointer.rootDirKey;
-		var dir = roots[i][1];
-		var /*Map<SymmetricLocationLink, FileAccess>*/ files = receiver.retrieveMetadata(dir.getFiles(), rootDirKey);
-		for (fileLoc in files) {
-		    var baseKey = fileLoc.target(rootDirKey);
-		    var fileBlob = files.get(fileLoc);
-		    // download fragments in chunk
-		    var fileProps = fileBlob.getFileProperties(baseKey);
-		    
-		    var buf = fileBlob.getRetriever().getFile(receiver, baseKey);
-		    var original = buf.read(fileProps.getSize());
-		    
-		    // checks
-		    if (!fileProps.name.equals(filename))
-			throw new Exception("Correct filename");
-		    if (! Arrays.equals(original, concat(raw1, raw2)))
-			throw new Exception("Correct file contents");
-		}
-	    }
-	});
+	return receiver.getRoots();
+    }).then(function(roots) {
+	for (var i=0; i < roots.length; i++) {
+	    var dirPointer = roots[i][0];
+	    var rootDirKey = dirPointer.baseKey;
+	    var dir = roots[i][1];
+	    if (dir == null)
+		continue;
+	    /*[[SymmetricLocationLink, FileAccess]]*/
+	    return receiver.retrieveMetadata(dir.files, rootDirKey);
+	}
+    }).then(function(files) {
+	for (fileLoc in files) {
+	    var baseKey = fileLoc.target(rootDirKey);
+	    var fileBlob = files.get(fileLoc);
+	    // download fragments in chunk
+	    var fileProps = fileBlob.getFileProperties(baseKey);
+	    
+	    var buf = fileBlob.getRetriever().getFile(receiver, baseKey);
+	    var original = buf.read(fileProps.getSize());
+	    
+	    // checks
+	    if (!fileProps.name.equals(filename))
+		throw new Exception("Correct filename");
+	    if (! Arrays.equals(original, concat(raw1, raw2)))
+		throw new Exception("Correct file contents");
+	}
+	return Promise.resolve(true);
     });
 }
 
@@ -175,9 +180,10 @@ function contextTests(dht, core) {
 		    });
 		}).then(function(sharer) {
 		    var t1 = Date.now();
-		    mediumFileTest(bob.user, sharer, bob, alice);
-		    var t2 = Date.now();
-		    console.log("File test took %d mS\n", (t2 - t1) / 1000000);
+		    mediumFileTest(bob.user, sharer, bob, alice).then(function() {
+			var t2 = Date.now();
+			console.log("File test took %d mS\n", (t2 - t1) / 1000000);
+		    });
 		});
 	    });
     });

@@ -737,7 +737,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 			var unwrapped = new ByteBuffer(result[i]).readArray();
 			entryPoints.push([res[i], FileAccess.deserialize(new ByteBuffer(unwrapped))]);
 		    } else
-			entryPoints.push([res[i]], null);
+			entryPoints.push([res[i], null]);
 		    }
 		return Promise.resolve(entryPoints);
 	    });
