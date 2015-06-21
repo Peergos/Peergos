@@ -46,7 +46,7 @@ function Location(owner, writer, mapKey) {
     this.writer = writer;
     this.mapKey = mapKey;
 
-    this.serialize = function(bout) {
+    this.serialize = function() {
 	var bout = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
 	bout.writeArray(owner.getPublicKeys());
 	bout.writeArray(writer.getPublicKeys());
@@ -116,7 +116,7 @@ FileAccess.deserialize = function(buf) {
     var fileAccess = new FileAccess(p2m, properties, retriever);
     switch(type) {
     case 0:
-	return fileaccess;
+	return fileAccess;
     case 1:
 	return DirAccess.deserialize(fileAccess, buf);
     default: throw new Error("Unknown Metadata type: "+type);
@@ -236,7 +236,7 @@ function EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChun
 	buf.writeArray(concat(fragmentHashes));
 	buf.writeUnsignedByte(nextChunk != null ? 1 : 0);
 	if (nextChunk != null)
-	    nextChunk.serialize(buf);
+	    buf.write(nextChunk.serialize());
     }
 }
 EncryptedChunkRetriever.deserialize = function(buf) {
