@@ -43,4 +43,9 @@ public class ByteArrayWrapper implements Comparable<ByteArrayWrapper>
                 return (0xff & data[i]) - (0xff & o.data[i]);
         return 0;
     }
+
+    @Override
+    public String toString() {
+        return ArrayOps.bytesToHex(data);
+    }
 }

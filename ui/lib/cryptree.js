@@ -113,11 +113,12 @@ FileAccess.deserialize = function(buf, ourKey /*SymmetricKey*/) {
     var hasRetreiver = buf.readUnsignedByte();
     var retriever =  (hasRetreiver == 1) ? FileRetriever.deserialize(buf) : null;
     var type = buf.readUnsignedByte();
+    var fileAccess = new FileAccess(p2m, properties, retriever);
     switch(type) {
     case 0:
-	return FileAccess.deserialize(buf, concat(metaNonce, encryptedMetadata));
+	return fileaccess;
     case 1:
-	return DirAccess.deserialize(buf, ourKey, concat(metaNonce, encryptedMetadata));
+	return DirAccess.deserialize(fileAccess, buf);
     default: throw new Error("Unknown Metadata type: "+type);
     }
 }

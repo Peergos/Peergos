@@ -79,27 +79,30 @@ function mediumFileTest(owner, sharer, receiver, sender) {
     }).then(function() {
     
 	// now check the retrieval from zero knowledge
-	var /*Map<WritableFilePointer, FileAccess>*/ roots = receiver.getRoots();
-	for (dirPointer in roots) {
-            var rootDirKey = dirPointer.rootDirKey;
-            var dir = roots.get(dirPointer);
-            var /*Map<SymmetricLocationLink, FileAccess>*/ files = receiver.retrieveMetadata(dir.getFiles(), rootDirKey);
-            for (fileLoc in files) {
-		var baseKey = fileLoc.target(rootDirKey);
-		var fileBlob = files.get(fileLoc);
-		// download fragments in chunk
-		var fileProps = fileBlob.getFileProperties(baseKey);
-		
-		var buf = fileBlob.getRetriever().getFile(receiver, baseKey);
-		var original = buf.read(fileProps.getSize());
-		
-		// checks
-		if (!fileProps.name.equals(filename))
-		    throw new Exception("Correct filename");
-		if (! Arrays.equals(original, concat(raw1, raw2)))
-		    throw new Exception("Correct file contents");
-            }
-	}
+	/*[[WritableFilePointer, FileAccess]]*/
+	receiver.getRoots().then(function(roots) {
+	    for (var i=0; i < roots.length; i++) {
+		var dirPointer = roots[i][0];
+		var rootDirKey = dirPointer.rootDirKey;
+		var dir = roots[i][1];
+		var /*Map<SymmetricLocationLink, FileAccess>*/ files = receiver.retrieveMetadata(dir.getFiles(), rootDirKey);
+		for (fileLoc in files) {
+		    var baseKey = fileLoc.target(rootDirKey);
+		    var fileBlob = files.get(fileLoc);
+		    // download fragments in chunk
+		    var fileProps = fileBlob.getFileProperties(baseKey);
+		    
+		    var buf = fileBlob.getRetriever().getFile(receiver, baseKey);
+		    var original = buf.read(fileProps.getSize());
+		    
+		    // checks
+		    if (!fileProps.name.equals(filename))
+			throw new Exception("Correct filename");
+		    if (! Arrays.equals(original, concat(raw1, raw2)))
+			throw new Exception("Correct file contents");
+		}
+	    }
+	});
     });
 }
 

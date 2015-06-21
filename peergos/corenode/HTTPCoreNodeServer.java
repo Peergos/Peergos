@@ -207,7 +207,6 @@ public class HTTPCoreNodeServer
             byte[] mapKey = deserializeByteArray(din);
             byte[] metaDataBlob = deserializeByteArray(din);
             byte[] signedHash = deserializeByteArray(din);
-            System.out.println("Add " + ArrayOps.bytesToHex(encodedOwnerPublicKey) + ", " + ArrayOps.bytesToHex(mapKey) +" ==> "+metaDataBlob.length + " bytes.");
             boolean isAdded = coreNode.addMetadataBlob(new UserPublicKey(encodedOwnerPublicKey), encodedSharingPublicKey, mapKey, metaDataBlob, signedHash);
             dout.writeBoolean(isAdded);
         }
@@ -257,11 +256,16 @@ public class HTTPCoreNodeServer
 
         void getMetadataBlob(DataInputStream din, DataOutputStream dout) throws IOException
         {
-            String username = deserializeString(din);
+            UserPublicKey owner = new UserPublicKey(deserializeByteArray(din));
             byte[] encodedSharingKey = deserializeByteArray(din);
             byte[] mapKey = deserializeByteArray(din);
-            AbstractCoreNode.MetadataBlob b = coreNode.getMetadataBlob(username, encodedSharingKey, mapKey);
-            System.out.println(username + ", " + ArrayOps.bytesToHex(mapKey) + "  => " + b);
+            AbstractCoreNode.MetadataBlob b = coreNode.getMetadataBlob(owner, encodedSharingKey, mapKey);
+            if (b == null)
+            {
+                Serialize.serialize(new byte[0], dout);
+                Serialize.serialize(new byte[0], dout);
+                return;
+            }
             Serialize.serialize(b.metadata.data, dout);
             if (b.fragmentHashes != null)
                 Serialize.serialize(b.fragmentHashes, dout);

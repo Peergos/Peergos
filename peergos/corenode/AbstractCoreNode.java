@@ -312,6 +312,8 @@ public abstract class AbstractCoreNode
     public boolean addMetadataBlob(UserPublicKey owner, byte[] encodedSharingPublicKey, byte[] mapKey, byte[] metadataBlob, byte[] sharingKeySignedHash)
     {
         UserPublicKey sharingKey = new UserPublicKey(encodedSharingPublicKey);
+        System.out.printf("Adding metadata blob at owner:%s writer:%s mapKey:%s\n",
+                ArrayOps.bytesToHex(owner.getPublicKeys()), ArrayOps.bytesToHex(encodedSharingPublicKey), ArrayOps.bytesToHex(mapKey));
         synchronized(this)
         {
             if (!userMap.get(owner).followers.contains(sharingKey))
@@ -480,11 +482,12 @@ public abstract class AbstractCoreNode
         return getMetadataBlob(userKey, encodedSharingKey, mapkey);
     }
 
-    public synchronized MetadataBlob getMetadataBlob(UserPublicKey owner, byte[] encodedSharingKey, byte[] mapkey) {
+    public synchronized MetadataBlob getMetadataBlob(UserPublicKey owner, byte[] encodedSharingKey, byte[] mapKey) {
         UserData userData = userMap.get(owner);
         Map<ByteArrayWrapper, MetadataBlob> sharedFragments = userData.metadata.get(new UserPublicKey(encodedSharingKey));
-
-        ByteArrayWrapper key = new ByteArrayWrapper(mapkey);
+        System.out.printf("Getting metadata blob at owner:%s writer:%s mapKey:%s\n",
+                ArrayOps.bytesToHex(owner.getPublicKeys()), ArrayOps.bytesToHex(encodedSharingKey), ArrayOps.bytesToHex(mapKey));
+        ByteArrayWrapper key = new ByteArrayWrapper(mapKey);
         if ((sharedFragments == null) || (!sharedFragments.containsKey(key)))
             return null;
         return sharedFragments.get(key);

@@ -537,10 +537,10 @@ function CoreNodeClient() {
     };
     
     //String  -> Uint8Array  -> fn -> fn -> void
-    this.getMetadataBlob = function( username,  encodedSharingKey,  mapKey) {
+    this.getMetadataBlob = function( owner,  encodedSharingKey,  mapKey) {
         var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
-        buffer.writeString(username);
-        buffer.writeArray(encodedSharingKey);
+        buffer.writeArray(owner.getPublicKeys());
+        buffer.writeArray(encodedSharingKey.getPublicKeys());
         buffer.writeArray(mapKey);
         return postProm("core/getMetadataBlob", new Uint8Array(buffer.toArray()));
     };
@@ -727,7 +727,20 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 		res.push(pointer);
 	    }
 	    // down download the metadata blobs for these pointers
-	    throw "Unimplemented";
+	    var proms = [];
+	    for (var i=0; i < res.length; i++)
+		proms[i] = corenodeClient.getMetadataBlob(res[i].owner, res[i].writer, res[i].mapKey);
+	    return Promise.all(proms).then(function(result) {
+		var entryPoints = [];
+		for (var i=0; i < result.length; i++) {
+		    if (result[i].byteLength > 8) {
+			var unwrapped = new ByteBuffer(result[i]).readArray();
+			entryPoints.push([res[i], FileAccess.deserialize(new ByteBuffer(unwrapped))]);
+		    } else
+			entryPoints.push([res[i]], null);
+		    }
+		return Promise.resolve(entryPoints);
+	    });
 	});
     }
 

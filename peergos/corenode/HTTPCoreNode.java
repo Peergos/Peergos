@@ -412,7 +412,7 @@ public class HTTPCoreNode extends AbstractCoreNode
                 conn.disconnect();
         }
     }
-   @Override public MetadataBlob getMetadataBlob(String username, byte[] encodedSharingKey, byte[] mapKey)
+   @Override public MetadataBlob getMetadataBlob(UserPublicKey owner, byte[] encodedSharingKey, byte[] mapKey)
     {
         HttpURLConnection conn = null;
         try
@@ -424,7 +424,7 @@ public class HTTPCoreNode extends AbstractCoreNode
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
 
-            Serialize.serialize(username, dout);
+            Serialize.serialize(owner.getPublicKeys(), dout);
             Serialize.serialize(encodedSharingKey, dout);
             Serialize.serialize(mapKey, dout);
             dout.flush();
