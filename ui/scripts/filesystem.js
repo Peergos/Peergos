@@ -281,24 +281,33 @@ var Browser = React.createClass({
             var username = document.getElementById("login-user-input").value;
             var password = document.getElementById("login-password-input").value;
             var ctx = null;
-            generateKeyPairs(username, password).then(function(user) {
+            return generateKeyPairs(username, password).then(function(user) {
                 var dht = new DHTClient();
                 var corenode = new CoreNodeClient();
                 ctx = new UserContext(username, user, dht, corenode);    
-                if  (! ctx.isRegistered()) {
-                        console.log("Now registering  user "+ user);
+                return  ctx.isRegistered();
+            }).then(function(registered) {
+                if  (! registered) {
+                        console.log("Now registering  user "+ username);
                         return ctx.register();
                 }
                 else   
                         return Promise.resolve(true);
             }).then(function(isRegistered) {
                 if  (! isRegistered) 
-                        reject(Error("Could not register user "+ user));
+                        reject(Error("Could not register user "+ username));
                 console.log("Verified user "+ username +" is logged in "+ ctx+".");
                 userContext = ctx;  
-            }.bind(ctx)).then(function() {
+            }).then(function() {
+                    console.log("adding root entry");
+                    return userContext.createEntryDirectory("test");
+            }).then(function() {
                 hideLogin();   
-            })
+                return userContext.getRoots()
+            }).then(function(roots) {
+                    console.log("Got "+  roots.length +" roots.");
+            });
+            
     },
 
     componentDidMount: function() {

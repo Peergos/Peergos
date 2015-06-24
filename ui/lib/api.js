@@ -652,6 +652,22 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
         return corenodeClient.addUsername(username, user.getPublicKeys(), signed, rawStatic)
     }
 
+    this.createEntryDirectory  =  function(directoryName) {
+        var sharing = User.random();
+	    var rootMapKey = new ByteBuffer(window.nacl.randomBytes(32));
+    	
+        // add a note to our static data so we know who we sent the private key to
+        var friendRoot = new WritableFilePointer(this.user, sharing, rootMapKey, SymmetricKey.random());
+        return this.addSharingKey(sharing).then(function() {
+            return this.addToStaticData(sharing, friendRoot);
+        }.bind(this)).then(function() {
+            var rootRKey = SymmetricKey.random();
+            var rootMapKey = window.nacl.randomBytes(32); // root will be stored under this in the core node
+            var root = DirAccess.create(sharing, rootRKey, new FileProperties(directoryName, 0));
+            return this.uploadChunk(root, [], this.user, sharing, rootMapKey);
+        }.bind(this));
+    }
+
     this.sendFollowRequest = function(targetUser) {
 	// create sharing keypair and give it write access
         var sharing = User.random();
