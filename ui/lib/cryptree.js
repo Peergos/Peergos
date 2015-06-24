@@ -234,7 +234,9 @@ function EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChun
     this.nextChunk = nextChunk;
     
     this.getFile = function(context, dataKey) {
-	return new LazyInputStreamCombiner(this, context, dataKey);
+	return this.getChunkInputStream(context, dataKey).then(function(chunk) {
+	    return Promise.resolve(new LazyInputStreamCombiner(this, context, dataKey, chunk));
+	});
     }
 
     this.getNext = function() {
@@ -242,12 +244,14 @@ function EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChun
     }
 
     this.getChunkInputStream = function(context, dataKey) {
-	var fragments = context.downloadFragments(fragmentHashes);
-	Erasure.reorder(fragments, fragmentHashes);
-	var cipherText = Erasure.recombine(fragments, Chunk.MAX_SIZE, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
-	var fullEncryptedChunk = new EncryptedChunk(concat(chunkAuth, cipherText));
-        var original = fullEncryptedChunk.decrypt(dataKey, chunkNonce);
-	return new ByteBuffer(original);
+	var fragmentsProm = context.downloadFragments(fragmentHashes);
+	return fragmentsProm.then(function(fragments) {
+	    Erasure.reorder(fragments, fragmentHashes);
+	    var cipherText = Erasure.recombine(fragments, Chunk.MAX_SIZE, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
+	    var fullEncryptedChunk = new EncryptedChunk(concat(chunkAuth, cipherText));
+            var original = fullEncryptedChunk.decrypt(dataKey, chunkNonce);
+	    return Promise.resolve(new ByteBuffer(original));
+	});
     }
 
     this.serialize = function(buf) {
@@ -280,27 +284,29 @@ function split(arr, size) {
     return res;
 }
 
-function LazyInputStreamCombiner(stream, context, dataKey) {
+function LazyInputStreamCombiner(stream, context, dataKey, chunk) {
     this.context = context;
     this.dataKey = dataKey;
-    this.current = stream.getChunkInputStream(context, dataKey);
+    this.current = chunk;
     this.next = stream.getNext();
 
     this.getNextStream = function() {
-        if (next != null) {
-            var nextRet = context.getMetadata(next.get()).getRetriever();
-            next = nextRet.getNext();
-            return nextRet.getChunkInputStream(context, dataKey);
-        }
+        if (this.next != null) {
+            return context.getMetadata(this.next).then(function(meta) {
+		var nextRet = meta.getRetriever();
+		this.next = nextRet.getNext();
+		return nextRet.getChunkInputStream(context, dataKey);
+            });
+	}
         throw "EOFException";
     }
 
     this.readByte = function() {
         try {
-	    return current.readByte();
+	    return this.current.readByte();
 	} catch (e) {}
-        current = this.getNextStream();
-        return current.readByte();
+        this.current = this.getNextStream();
+        return this.current.readByte();
     }
 
     this.read = function(len) {

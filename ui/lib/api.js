@@ -395,6 +395,7 @@ function DHTClient() {
     //
     this.get = function(keyData) { 
         var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+	buffer.writeUnsignedInt(1); // GET Message
         buffer.writeArray(keyData);
         return postProm("dht/get", new Uint8Array(buffer.toArray())); 
     };
@@ -404,6 +405,7 @@ function DHTClient() {
     //
     this.contains = function(keyData) {
         var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+	buffer.writeUnsignedInt(2); // CONTAINS Message
         buffer.writeArray(keyData);
         return postProm("dht/contains", new Uint8Array(buffer.toArray())); 
     };
@@ -765,42 +767,30 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 	});
     }
 
-    this.downloadFragments = function(hashes) {
-        var result = {}; 
-        result.fragments = [];
-        result.nSuccess = 0;
-        result.nError = 0;
-        
-        var completion  = function() {
-            if (this.nSuccess + this.nError < this.fragments.length)
-                return;
-            console.log("Completed");
-            if (this.nError  > 0)
-                throw "found "+ nError +" errors.";
-            return this.fragments; 
-        }.bind(result);
-
-        var success = function(fragmentData, index) {
-            this.fragments.index = fragmentData;
-            this.nSuccess += 1;         
-            completion();
-        }.bind(result);
-
-        var error = function(index) {
-            this.nError +=1;
-            completion(fragments);
-        }.bind(result);
-
-
-        for (var iHash=0; iHash < hashes.length; iHash++) {
-            var hash = hashes[iHash];
-            var onSuccess = onSuccess()  
-            dhtClient.get(hash) 
-        }
+    this.getMetadata = function(loc) {
+	return corenodeClient.getMetadataBlob(loc.owner, loc.writer, loc.mapKey);
     }
 
-    this.getMetadata = function(location) {
-
+    this.downloadFragments = function(hashes, nRequired) {
+        var result = {}; 
+        result.fragments = [];
+        result.nError = 0;
+        
+	var proms = [];
+	for (var i=0; i < hashes.length; i++)
+	    proms.push(dhtClient.get(hashes[i]).then(function(val) {
+		result.fragments.push(val);
+		console.log("Got Fragment.");
+	    }).catch(function() {
+		result.nError++;
+	    }));
+	
+	return Promise.all(proms).then(function (all) {
+	    console.log("All done.");
+	    if (result.fragments.length < nRequired)
+		throw "Not enough fragments!";
+	    return Promise.resolve(result.fragments);
+	});
     }
 }
 
