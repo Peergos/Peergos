@@ -249,7 +249,7 @@ function concat(a, b, c) {
 	var index = 0;
 	for (var i=0; i < a.length; i++)
 	    for (var j=0; j < a[i].length; j++)
-		r[index++] = a[i][j];
+		r[index++] = a[i].readUnsignedByte();
 	return r;
     }
     var r = new Uint8Array(a.length+b.length+(c != null ? c.length : 0));
@@ -388,7 +388,11 @@ function DHTClient() {
 	buffer.writeUnsignedInt(0); // PUT Message
         for (var iArray=0; iArray < arrays.length; iArray++) 
             buffer.writeArray(arrays[iArray]);
-        return postProm("dht/put", new Uint8Array(buffer.toArray()));
+        return postProm("dht/put", new Uint8Array(buffer.toArray())).then(function(resBuf){
+	    var res = new ByteBuffer(resBuf).readUnsignedInt();
+	    if (res == 1) return Promise.resolve(true);
+	    return Promise.reject("Fragment upload failed");
+	});
     };
     //
     //get

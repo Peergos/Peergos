@@ -326,7 +326,7 @@ Erasure.recombine = function(fragments, truncateTo, originalBlobs, allowedFailur
     return buf;
 }
 Erasure.reorder = function(fragments, hashes) {
-    
+    return fragments;
 }
 Erasure.split = function(input, originalBlobs, allowedFailures) {
     //TO DO port erasure code implementation and Galois groups
