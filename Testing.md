@@ -13,7 +13,7 @@ java -jar PeergosTests.jar -local
 ```bash
 ./bootstrap.sh localhost
 make tests
-java -jar PeergosTests.jar -localJS
+java -jar PeergosTests.jar -local
 ```
 
 ###Single machine, persistent testing
