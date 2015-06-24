@@ -1,3 +1,4 @@
+userContext =  null;
 
 var File = React.createClass({
 
@@ -199,7 +200,7 @@ var Browser = React.createClass({
             hideLogin();
             }.bind(this),
             error: function(xhr, status, err) {
-                    console.error(this.props.url, status, err.toString());
+                    console.log(err +" "+ status);
             }.bind(this)
             });
     },
@@ -277,22 +278,27 @@ var Browser = React.createClass({
     },
 
     login: function() {
-            var user = document.getElementById("login-user-input").value;
+            var username = document.getElementById("login-user-input").value;
             var password = document.getElementById("login-password-input").value;
-            var json = JSON.stringify({"username": user, "password": password});
-            console.log("post data "+ json);
-            $.ajax({
-                    url: "/login",
-                    type: "POST",
-                    dataType: 'json',
-                    data: json,
-                    cache: false,
-                    success: this.reloadFilesFromServer,
-                    error: function(xhr, status, err) {
-                            console.error(this.props.url, status, err.toString());
-                            alert("Failed authentication.");
-                    }.bind(this)
-            });
+            var ctx = null;
+            generateKeyPairs(username, password).then(function(user) {
+                var dht = new DHTClient();
+                var corenode = new CoreNodeClient();
+                ctx = new UserContext(username, user, dht, corenode);    
+                if  (! ctx.isRegistered()) {
+                        console.log("Now registering  user "+ user);
+                        return ctx.register();
+                }
+                else   
+                        return Promise.resolve(true);
+            }).then(function(isRegistered) {
+                if  (! isRegistered) 
+                        reject(Error("Could not register user "+ user));
+                console.log("Verified user "+ username +" is logged in "+ ctx+".");
+                userContext = ctx;  
+            }.bind(ctx)).then(function() {
+                hideLogin();   
+            })
     },
 
     componentDidMount: function() {
