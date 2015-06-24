@@ -182,27 +182,15 @@ var Browser = React.createClass({
         },
 
     loadFilesFromServer: function(path) {
-            $.ajax({
-                    url: buildGetChildrenUrl(path),
-            dataType: 'json',
-            cache: false,
-            success: function(data) {
-                    var files = data.children.sort(this.state.sort);
-                    var paths = this.state.paths; 
-                    if (paths[paths.length-1] != path)
-                    paths = paths.concat([path]) 
+            //TODO THIS
+            /*
+            updateNavbarPath(this.currentPath());
                     this.setState(
                             {files: files, 
                                     paths: paths,
                             sort: this.state.sort,
                             gridView: this.state.gridView});
-            updateNavbarPath(this.currentPath());
-            hideLogin();
-            }.bind(this),
-            error: function(xhr, status, err) {
-                    console.log(err +" "+ status);
-            }.bind(this)
-            });
+            */
     },
 
     reloadFilesFromServer: function() {this.loadFilesFromServer(this.currentPath())},
@@ -303,7 +291,7 @@ var Browser = React.createClass({
                     return userContext.createEntryDirectory("test");
             }).then(function() {
                 hideLogin();   
-                return userContext.getRoots()
+                return userContext.getRoots();
             }).then(function(roots) {
                     console.log("Got "+  roots.length +" roots.");
             });
