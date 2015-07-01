@@ -196,6 +196,9 @@ function EncryptedChunk(encrypted) {
     }
 
     this.decrypt = function(key, nonce) {
+	console.log("auth " + nacl.util.encodeBase64(slice(this.auth, 0, this.auth.length)));	
+	console.log("cipher "+nacl.util.encodeBase64(slice(this.cipher, 0, 20)));
+	console.log("nonce "+nacl.util.encodeBase64(nonce));
 	return key.decrypt(concat(this.auth, this.cipher), nonce);
     }
 }
@@ -207,7 +210,11 @@ function Chunk(data, key) {
     this.key = key;
 
     this.encrypt = function(nonce) {
-	return key.encrypt(data, nonce);
+	var res = key.encrypt(data, nonce);
+	console.log("auth " + nacl.util.encodeBase64(slice(res, 0, 16)));	
+	console.log("cipher "+nacl.util.encodeBase64(slice(res, 16, 36)));
+	console.log("nonce "+nacl.util.encodeBase64(nonce));
+	return res;
     }
 }
 Chunk.MAX_SIZE = Fragment.SIZE*EncryptedChunk.ERASURE_ORIGINAL

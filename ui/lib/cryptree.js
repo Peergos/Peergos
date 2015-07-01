@@ -248,7 +248,7 @@ function EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChun
 	return fragmentsProm.then(function(fragments) {
 	    Erasure.reorder(fragments, fragmentHashes);
 	    var cipherText = Erasure.recombine(fragments, Chunk.MAX_SIZE, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
-	    var fullEncryptedChunk = new EncryptedChunk(concat(chunkAuth, cipherText));
+	    var fullEncryptedChunk = new EncryptedChunk(concat(chunkAuth, cipherText.toArray()));
             var original = fullEncryptedChunk.decrypt(dataKey, chunkNonce);
 	    return Promise.resolve(new ByteBuffer(original));
 	});
