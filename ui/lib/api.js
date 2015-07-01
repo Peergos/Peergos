@@ -194,6 +194,10 @@ function EncryptedChunk(encrypted) {
     this.getAuth = function() {
 	return this.auth;
     }
+
+    this.decrypt = function(key, nonce) {
+	return key.decrypt(concat(this.auth, this.cipher), nonce);
+    }
 }
 EncryptedChunk.ERASURE_ORIGINAL = 40;
 EncryptedChunk.ERASURE_ALLOWED_FAILURES = 10;
@@ -401,7 +405,13 @@ function DHTClient() {
         var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
 	buffer.writeUnsignedInt(1); // GET Message
         buffer.writeArray(keyData);
-        return postProm("dht/get", new Uint8Array(buffer.toArray())); 
+        return postProm("dht/get", new Uint8Array(buffer.toArray())).then(function(res) {
+	    var buf = new ByteBuffer(res);
+	    var success = buf.readUnsignedInt();
+	    if (success == 1)
+		return Promise.resolve(buf.readArray());
+	    return Promise.reject("Fragment download failed");
+	}); 
     };
     
     //

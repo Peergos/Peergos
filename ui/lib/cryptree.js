@@ -265,9 +265,9 @@ function EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChun
     }
 }
 EncryptedChunkRetriever.deserialize = function(buf) {
-    var chunkNonce = buf.readArray();
-    var chunkAuth = buf.readArray();
-    var concatFragmentHashes = buf.readArray();
+    var chunkNonce = new Uint8Array(buf.readArray().toArray());
+    var chunkAuth = new Uint8Array(buf.readArray().toArray());
+    var concatFragmentHashes = new Uint8Array(buf.readArray().toArray());
     var fragmentHashes = split(concatFragmentHashes, UserPublicKey.HASH_BYTES);
     var hasNext = buf.readUnsignedByte();
     var nextChunk = null;
