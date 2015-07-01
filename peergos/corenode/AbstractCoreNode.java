@@ -316,6 +316,7 @@ public abstract class AbstractCoreNode
                 ArrayOps.bytesToHex(owner.getPublicKeys()), ArrayOps.bytesToHex(encodedSharingPublicKey), ArrayOps.bytesToHex(mapKey));
         synchronized(this)
         {
+            System.out.println("owner "+ owner);
             if (!userMap.get(owner).followers.contains(sharingKey))
                 return false;
         }

@@ -772,6 +772,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 	    var res = [];
 	    for (var i=0; i < count; i++) {
 		var pointer = WritableFilePointer.deserialize(buf.readArray());
+            console.log("pointer "+ nacl.util.encodeBase64(pointer));
 		res.push(pointer);
 	    }
 	    // down download the metadata blobs for these pointers
