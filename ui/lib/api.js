@@ -164,7 +164,7 @@ FileProperties.deserialize = function(buf) {
     var nameBytes = buf.readArray();
     var sizeLo = buf.readUnsignedInt();
     var sizeHi = buf.readUnsignedInt();
-    return new FileProperties(nacl.util.encodeUTF8(nameBytes), sizeLo, sizeHi);
+    return new FileProperties(nacl.util.encodeUTF8(nameBytes.toArray()), sizeLo, sizeHi);
 }
 
 function Fragment(data) {

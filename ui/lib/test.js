@@ -36,7 +36,7 @@ function mediumFileTest(owner, sharer, receiver, sender) {
     raw2 = new Uint8Array(raw2.toArray());
     
     // add file to root dir
-    var filename = "HiNSA.bin"; // /photos/tree.jpg
+    var filename = "HiNSA.bin";
     var fileKey = SymmetricKey.random();
     var fileMapKey = window.nacl.randomBytes(32); // file metablob will be stored under this in the core node
     var chunk2MapKey = window.nacl.randomBytes(32); // file metablob 2 will be stored under this in the core node
