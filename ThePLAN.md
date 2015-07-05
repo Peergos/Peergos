@@ -3,18 +3,24 @@ The Peergos Plan
 Fundamental aim: Release a P2P secure file storage, sharing and asynchronous commmunication platform.
 ---------------------
 
-Launch 1 - Alpha 1 (Basic File storage and sharing) 20/5/2015
+Launch 1 - Alpha 1 (Basic File storage and sharing) 9/8/2015
 -------------------------------------------------------------
 - [X] UserPublicKey and User implemented in JS using curve25519 and ed25519
-- [ ] API for server side erasure codes (2 hours)
-- [ ] Cryptree in JS (StaticDataElement, crypto links, Metadata, DirAccess, FileAccess, ChunkProperties, FileProperties, EncryptedChunk) (4)
-- [ ] User context helper functions implemented in JS (2)
-- [ ] Web UI: (16)
-- [ ] Core node persistence (8)
-- [ ] Directory node persistence (8)
-- [ ] Monitor external IP (of machine or router) and update network (8)
+- [X] Cryptree in JS (StaticDataElement, crypto links, Metadata, DirAccess, FileAccess, ChunkProperties, FileProperties, EncryptedChunk) (4)
+- [X] User context helper functions implemented in JS (2)
+- [ ] UI: display directory contents (2)
+- [ ] UI: create directories (1)
+- [ ] UI: download file (4)
+- [ ] UI: upload file (2)
+- [ ] Parent symmetric location link (2)
+- [ ] UI: friends page (2)
+- [ ] UI: rename file/dir (2)
+- [ ] UI: pending follow requests page (1)
+- [ ] UI: share file with a friend (Read only) (1)
+- [X] Core node persistence (4)
+- [ ] Directory node persistence (2)
 - [ ] quota tolerance (2)
-
+- [ ] JS erasure codes (8)
 
 Launch 2 - Alpha 2 (KeyMail + file storage and sharing) 21/10/2015
 ------------------------------------------------------------------
