@@ -303,19 +303,37 @@ function LazyInputStreamCombiner(stream, context, dataKey, chunk) {
         throw "EOFException";
     }
 
+    this.bytesReady = function() {
+	return this.current._maxIndex-this.current._index;
+    }
+
     this.readByte = function() {
         try {
 	    return this.current.readByte();
 	} catch (e) {}
-        this.current = this.getNextStream();
-        return this.current.readByte();
+	const lazy = this;
+        this.getNextStream().then(function(res){
+	    lazy.current = res;
+            return lazy.current.readByte();
+	});
     }
 
-    this.read = function(len) {
-	var res = new Uint8Array(len);
-	for (var i=0; i < len; i++)
-	    res[i] = this.readByte();
-	return res;
+    this.read = function(len, res, offset) {
+	const lazy = this;
+	if (res == null) {
+	    res = new Uint8Array(len);
+	    offset = 0;
+	}
+	const available = lazy.bytesReady();
+	const toRead = Math.min(available, len);
+	for (var i=0; i < toRead; i++)
+	    res[offset + i] = lazy.readByte();
+	if (available >= len)
+	    return Promise.resolve(res);
+	return this.getNextStream().then(function(chunk){
+	    lazy.current = chunk;
+	    return lazy.read(len-toRead, res, offset + toRead);
+	});
     }
 }
 

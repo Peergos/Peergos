@@ -268,6 +268,16 @@ function concat(a, b, c) {
     return r;
 }
 
+function arraysEqual(a, b) {
+    if (a.length != b.length)
+	return false;
+
+    for (var i=0; i < a.length; i++)
+	if (a[i] != b[i])
+	    return false;
+    return true;
+}
+
 function get(path, onSuccess, onError) {
 
     var request = new XMLHttpRequest();

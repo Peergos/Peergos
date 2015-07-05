@@ -98,13 +98,14 @@ function mediumFileTest(owner, sharer, receiver, sender) {
 		    var fileProps = fileBlob.getFileProperties(baseKey);
 		    
 		    return fileBlob.retriever.getFile(receiver, baseKey).then(function(buf) {
-			var original = buf.read(fileProps.getSize()[0]);
-		    
-			// checks
-			if (fileProps.name != filename)
-			    throw "Incorrect filename!";
-			if (! Arrays.equals(original, concat(raw1, raw2)))
-			    throw "Incorrect file contents!";
+			buf.read(fileProps.getSize()[0]).then(function(original) {
+			    
+			    // checks
+			    if (fileProps.name != filename)
+				throw "Incorrect filename!";
+			    if (! arraysEqual(original, concat(raw1, raw2)))
+				throw "Incorrect file contents!";
+			});
 		    });
 		}
 	    });
