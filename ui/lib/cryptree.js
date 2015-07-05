@@ -234,8 +234,9 @@ function EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChun
     this.nextChunk = nextChunk;
     
     this.getFile = function(context, dataKey) {
+	const stream = this;
 	return this.getChunkInputStream(context, dataKey).then(function(chunk) {
-	    return Promise.resolve(new LazyInputStreamCombiner(this, context, dataKey, chunk));
+	    return Promise.resolve(new LazyInputStreamCombiner(stream, context, dataKey, chunk));
 	});
     }
 
@@ -292,9 +293,10 @@ function LazyInputStreamCombiner(stream, context, dataKey, chunk) {
 
     this.getNextStream = function() {
         if (this.next != null) {
+	    const lazy = this;
             return context.getMetadata(this.next).then(function(meta) {
-		var nextRet = meta.getRetriever();
-		this.next = nextRet.getNext();
+		var nextRet = meta.retriever;
+		lazy.next = nextRet.getNext();
 		return nextRet.getChunkInputStream(context, dataKey);
             });
 	}

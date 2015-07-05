@@ -183,7 +183,6 @@ Fragment.SIZE = 128*1024;
 function EncryptedChunk(encrypted) {
     this.auth = slice(encrypted, 0, window.nacl.secretbox.overheadLength);
     this.cipher = slice(encrypted, window.nacl.secretbox.overheadLength, encrypted.length);
-    console.log("cipher length "+ encrypted.length);
 
     this.generateFragments = function() {
 	var bfrags = Erasure.split(this.cipher, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
@@ -800,7 +799,10 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
     }
 
     this.getMetadata = function(loc) {
-	return corenodeClient.getMetadataBlob(loc.owner, loc.writer, loc.mapKey);
+	return corenodeClient.getMetadataBlob(loc.owner, loc.writer, loc.mapKey).then(function(buf) {
+	    var unwrapped = new ByteBuffer(buf).readArray();
+	    return FileAccess.deserialize(new ByteBuffer(unwrapped));
+	});
     }
 
     this.downloadFragments = function(hashes, nRequired) {
