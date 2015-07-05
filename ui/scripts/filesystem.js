@@ -284,7 +284,7 @@ var Browser = React.createClass({
             }).then(function(isRegistered) {
                 if  (! isRegistered) 
                         reject(Error("Could not register user "+ username));
-                console.log("Verified user "+ username +" is logged in "+ ctx+".");
+                console.log("Verified user "+ username +" is registered");
                 userContext = ctx;  
             }).then(function() {
                     console.log("adding root entry");

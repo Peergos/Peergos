@@ -674,18 +674,17 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
     }
 
     this.createEntryDirectory  =  function(directoryName) {
-        var sharing = User.random();
-	    var rootMapKey = new ByteBuffer(window.nacl.randomBytes(32));
-    	
+        var writer = User.random();
+	var rootMapKey = window.nacl.randomBytes(32); // root will be stored under this in the core node
+    	var rootRKey = SymmetricKey.random();
+
         // add a note to our static data so we know who we sent the private key to
-        var friendRoot = new WritableFilePointer(this.user, sharing, rootMapKey, SymmetricKey.random());
-        return this.addSharingKey(sharing).then(function() {
-            return this.addToStaticData(sharing, friendRoot);
+        var rootPointer = new WritableFilePointer(this.user, writer, rootMapKey, rootRKey);
+        return this.addSharingKey(writer).then(function() {
+            return this.addToStaticData(writer, rootPointer);
         }.bind(this)).then(function() {
-            var rootRKey = SymmetricKey.random();
-            var rootMapKey = window.nacl.randomBytes(32); // root will be stored under this in the core node
-            var root = DirAccess.create(sharing, rootRKey, new FileProperties(directoryName, 0));
-            return this.uploadChunk(root, [], this.user, sharing, rootMapKey);
+            var root = DirAccess.create(writer, rootRKey, new FileProperties(directoryName, 0));
+            return this.uploadChunk(root, [], this.user, writer, rootMapKey);
         }.bind(this));
     }
 

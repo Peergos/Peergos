@@ -40,6 +40,8 @@ public class StaticHandler implements HttpHandler
             httpExchange.getResponseHeaders().set("Content-Type", "text/javascript");
         else if (path.endsWith(".html"))
             httpExchange.getResponseHeaders().set("Content-Type", "text/html");
+        else if (path.endsWith(".css"))
+            httpExchange.getResponseHeaders().set("Content-Type", "text/css");
         httpExchange.sendResponseHeaders(200, res.length);
         httpExchange.getResponseBody().write(res);
         httpExchange.getResponseBody().close();
