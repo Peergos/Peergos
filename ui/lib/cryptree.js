@@ -251,7 +251,7 @@ function EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChun
 	    var cipherText = Erasure.recombine(fragments, Chunk.MAX_SIZE, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
 	    var fullEncryptedChunk = new EncryptedChunk(concat(chunkAuth, cipherText.toArray()));
             var original = fullEncryptedChunk.decrypt(dataKey, chunkNonce);
-	    return Promise.resolve(new ByteBuffer(original));
+	    return Promise.resolve(original);
 	});
     }
 
@@ -289,6 +289,7 @@ function LazyInputStreamCombiner(stream, context, dataKey, chunk) {
     this.context = context;
     this.dataKey = dataKey;
     this.current = chunk;
+    this.index = 0;
     this.next = stream.getNext();
 
     this.getNextStream = function() {
@@ -304,15 +305,16 @@ function LazyInputStreamCombiner(stream, context, dataKey, chunk) {
     }
 
     this.bytesReady = function() {
-	return this.current._maxIndex-this.current._index;
+	return this.current.length - this.index;
     }
 
     this.readByte = function() {
         try {
-	    return this.current.readByte();
+	    return this.current[this.index++];
 	} catch (e) {}
 	const lazy = this;
         this.getNextStream().then(function(res){
+	    lazy.index = 0;
 	    lazy.current = res;
             return lazy.current.readByte();
 	});
@@ -331,6 +333,7 @@ function LazyInputStreamCombiner(stream, context, dataKey, chunk) {
 	if (available >= len)
 	    return Promise.resolve(res);
 	return this.getNextStream().then(function(chunk){
+	    lazy.index = 0;
 	    lazy.current = chunk;
 	    return lazy.read(len-toRead, res, offset + toRead);
 	});
