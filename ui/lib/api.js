@@ -169,6 +169,7 @@ FileProperties.deserialize = function(buf) {
 
 function Fragment(data) {
     this.data = data;
+
     this.getHash = function() {
 	return UserPublicKey.hash(data);
     }
@@ -182,6 +183,7 @@ Fragment.SIZE = 128*1024;
 function EncryptedChunk(encrypted) {
     this.auth = slice(encrypted, 0, window.nacl.secretbox.overheadLength);
     this.cipher = slice(encrypted, window.nacl.secretbox.overheadLength, encrypted.length);
+    console.log("cipher length "+ encrypted.length);
 
     this.generateFragments = function() {
 	var bfrags = Erasure.split(this.cipher, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
@@ -196,9 +198,6 @@ function EncryptedChunk(encrypted) {
     }
 
     this.decrypt = function(key, nonce) {
-	console.log("auth " + nacl.util.encodeBase64(slice(this.auth, 0, this.auth.length)));	
-	console.log("cipher "+nacl.util.encodeBase64(slice(this.cipher, 0, 20)));
-	console.log("nonce "+nacl.util.encodeBase64(nonce));
 	return key.decrypt(concat(this.auth, this.cipher), nonce);
     }
 }
@@ -210,11 +209,7 @@ function Chunk(data, key) {
     this.key = key;
 
     this.encrypt = function(nonce) {
-	var res = key.encrypt(data, nonce);
-	console.log("auth " + nacl.util.encodeBase64(slice(res, 0, 16)));	
-	console.log("cipher "+nacl.util.encodeBase64(slice(res, 16, 36)));
-	console.log("nonce "+nacl.util.encodeBase64(nonce));
-	return res;
+	return key.encrypt(data, nonce);
     }
 }
 Chunk.MAX_SIZE = Fragment.SIZE*EncryptedChunk.ERASURE_ORIGINAL
@@ -816,7 +811,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 	var proms = [];
 	for (var i=0; i < hashes.length; i++)
 	    proms.push(dhtClient.get(hashes[i]).then(function(val) {
-		result.fragments.push(val);
+		result.fragments.push(val.toArray());
 		console.log("Got Fragment.");
 	    }).catch(function() {
 		result.nError++;

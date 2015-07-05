@@ -246,7 +246,7 @@ function EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChun
     this.getChunkInputStream = function(context, dataKey) {
 	var fragmentsProm = context.downloadFragments(fragmentHashes);
 	return fragmentsProm.then(function(fragments) {
-	    Erasure.reorder(fragments, fragmentHashes);
+	    fragments = Erasure.reorder(fragments, fragmentHashes);
 	    var cipherText = Erasure.recombine(fragments, Chunk.MAX_SIZE, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
 	    var fullEncryptedChunk = new EncryptedChunk(concat(chunkAuth, cipherText.toArray()));
             var original = fullEncryptedChunk.decrypt(dataKey, chunkNonce);
@@ -326,7 +326,16 @@ Erasure.recombine = function(fragments, truncateTo, originalBlobs, allowedFailur
     return buf;
 }
 Erasure.reorder = function(fragments, hashes) {
-    return fragments;
+    var hashMap = new Map(); //ba dum che
+    for (var i=0; i < hashes.length; i++)
+	hashMap.set(nacl.util.encodeBase64(hashes[i]), i); // Seems Map can't handle array contents equality
+    var res = [];
+    for (var i=0; i < fragments.length; i++) {
+	var hash = nacl.util.encodeBase64(UserPublicKey.hash(fragments[i]));
+	var index = hashMap.get(hash);
+	res[index] = fragments[i];
+    }
+    return res;
 }
 Erasure.split = function(input, originalBlobs, allowedFailures) {
     //TO DO port erasure code implementation and Galois groups
