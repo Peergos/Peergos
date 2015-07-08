@@ -432,7 +432,6 @@ var Browser = React.createClass({
                                 {contextMenu}
                                 </div>)
         }
->>>>>>> half way through daignosing why  the  diraccess from getRoots  is null.
 });
 
 React.render(
