@@ -1,15 +1,16 @@
 package peergos.storage.dht;
 
+import peergos.corenode.*;
 import peergos.crypto.*;
+import peergos.storage.*;
 import peergos.storage.net.HttpMessenger;
 import peergos.storage.net.HttpsUserService;
-import peergos.storage.Storage;
 import peergos.util.*;
 import peergos.util.ArrayOps;
 
 import java.io.File;
 import java.io.IOException;
-import java.net.InetSocketAddress;
+import java.net.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.logging.FileHandler;
@@ -30,11 +31,10 @@ public class Router
     private SortedMap<Long, Node> friends = new TreeMap();
     public final Storage storage;
     public Logger LOGGER;
-    private final Map<ByteArrayWrapper, peergos.util.CompletableFuture> pendingPuts = new ConcurrentHashMap();
-    private final Map<ByteArrayWrapper, peergos.util.CompletableFuture> pendingGets = new ConcurrentHashMap();
+    private final Map<ByteArrayWrapper, peergos.util.CompletableFuture> pendingPuts = new ConcurrentHashMap<>();
+    private final Map<ByteArrayWrapper, peergos.util.CompletableFuture> pendingGets = new ConcurrentHashMap<>();
     private final Random random = new Random(System.currentTimeMillis());
     private HttpMessenger messenger;
-    private HttpsUserService userAPI;
     private BlockingQueue queue = new ArrayBlockingQueue(200);
 
 
@@ -47,12 +47,14 @@ public class Router
         Handler handler = new FileHandler("log/" + name + ".log", 10 * 1024 * 1024, 7);
         LOGGER.addHandler(handler);
         LOGGER.setLevel(Level.ALL);
-        storage = new Storage(donor, new File(DATA_DIR), MAX_STORAGE_SIZE, messengerAddress);
+        storage = new DiskStorage(donor, new File(DATA_DIR), MAX_STORAGE_SIZE, messengerAddress);
 
         String hostname = Args.getArg("domain", "localhost");
 
         InetSocketAddress httpsMessengerAddress = new InetSocketAddress(hostname, userAPIAddress.getPort());
-        userAPI = new HttpsUserService(httpsMessengerAddress, LOGGER, this, storage.coreAPI);
+        AbstractCoreNode core = new HTTPCoreNode(new URL("http://"+ SSL.getCommonName(SSL.getCoreServerCertificates()[0])+":"+AbstractCoreNode.PORT+"/"));
+        // start the User Service
+        new HttpsUserService(httpsMessengerAddress, LOGGER, this, core);
 
         InetSocketAddress local = new InetSocketAddress(hostname, messengerAddress.getPort());
         messenger = new HttpMessenger(local, storage, LOGGER, this);

@@ -1,7 +1,7 @@
 package peergos.storage.net;
 
 import com.sun.net.httpserver.HttpServer;
-import peergos.storage.Storage;
+import peergos.storage.*;
 import peergos.storage.dht.Letter;
 import peergos.storage.dht.Message;
 import peergos.storage.dht.Router;

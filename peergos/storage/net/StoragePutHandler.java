@@ -1,7 +1,7 @@
 package peergos.storage.net;
 
 import com.sun.net.httpserver.HttpExchange;
-import peergos.storage.Storage;
+import peergos.storage.*;
 import peergos.util.ArrayOps;
 import peergos.util.ByteArrayWrapper;
 

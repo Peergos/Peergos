@@ -105,6 +105,8 @@ function mediumFileShareTest(owner, sharer, receiver, sender) {
 				throw "Incorrect filename!";
 			    if (! arraysEqual(original, concat(raw1, raw2)))
 				throw "Incorrect file contents!";
+			    console.log("Medium file share test passed!");
+			    return Promise.resolve(true);
 			});
 		    });
 		}
@@ -241,5 +243,5 @@ function singleUserTests(dht, core) {
     });
 }
 
-//twoUserTests(new DHTClient(), new CoreNodeClient());
-singleUserTests(new DHTClient(), new CoreNodeClient());
+twoUserTests(new DHTClient(), new CoreNodeClient());
+//singleUserTests(new DHTClient(), new CoreNodeClient());
