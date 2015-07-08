@@ -276,24 +276,25 @@ var Browser = React.createClass({
                 return  ctx.isRegistered();
             }).then(function(registered) {
                 if  (! registered) {
-                        console.log("Now registering  user "+ username);
-                        return ctx.register();
+                    console.log("Now registering  user "+ username);
+                    return ctx.register();
                 }
                 else   
-                        return Promise.resolve(true);
+                    return Promise.resolve(true);
             }).then(function(isRegistered) {
                 if  (! isRegistered) 
-                        reject(Error("Could not register user "+ username));
+                    reject(Error("Could not register user "+ username));
                 console.log("Verified user "+ username +" is registered");
-                userContext = ctx;  
-            }).then(function() {
-                    console.log("adding root entry");
-                    return userContext.createEntryDirectory("test");
-            }).then(function() {
+                userContext = ctx; 
+		return Promise.resolve(true);
+            }).then(function(res) {
+                console.log("adding root entry");
+                return userContext.createEntryDirectory("test");
+            }).then(function(res) {
                 hideLogin();   
                 return userContext.getRoots();
             }).then(function(roots) {
-                    console.log("Got "+  roots.length +" roots.");
+                console.log("Got "+  roots.length +" roots.");
             });
             
     },
