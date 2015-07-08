@@ -334,9 +334,6 @@ public abstract class AbstractCoreNode
         if (userData == null)
             return false;
 
-        if (remainingStorage(owner) < fragmentLength())
-            return false;
-
         Map<ByteArrayWrapper, MetadataBlob> fragments = userData.metadata.get(sharingKey);
         if (fragments == null)
             return false;

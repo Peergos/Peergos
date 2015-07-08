@@ -14,7 +14,7 @@ function generateKeyPairs(username, password, cb) {
 }
 
 // UserPublicKey, User, UserCOntext, UserContext -> ()
-function mediumFileTest(owner, sharer, receiver, sender) {
+function mediumFileShareTest(owner, sharer, receiver, sender) {
     // create a root dir and a file to it, then retrieve and decrypt the file using the receiver
     // create root cryptree
     var rootRKey = SymmetricKey.random();
@@ -113,7 +113,7 @@ function mediumFileTest(owner, sharer, receiver, sender) {
     });
 }
 
-function contextTests(dht, core) {
+function twoUserTests(dht, core) {
     var ourname = "Bob";
     generateKeyPairs(ourname, "password").then(function(us) {
 	return Promise.resolve(new UserContext(ourname, us, dht, core));
@@ -182,7 +182,7 @@ function contextTests(dht, core) {
 		    });
 		}).then(function(sharer) {
 		    var t1 = Date.now();
-		    mediumFileTest(bob.user, sharer, bob, alice).then(function() {
+		    mediumFileShareTest(bob.user, sharer, bob, alice).then(function() {
 			var t2 = Date.now();
 			console.log("File test took %d mS\n", (t2 - t1) / 1000000);
 		    });
@@ -191,4 +191,55 @@ function contextTests(dht, core) {
     });
 }
 
-contextTests(new DHTClient(), new CoreNodeClient());
+function rootDirCreation(context) {
+    // create a root dir, then retrieve and decrypt the dir using the receiver
+    const writer = User.random();
+    var rootRKey = SymmetricKey.random();
+    var name = "/";
+    var rootMapKey = window.nacl.randomBytes(32); // root will be stored under this in the core node
+    var root = DirAccess.create(writer, rootRKey, new FileProperties(name, 0));
+
+    // now write the root to the core nodes
+    context.addToStaticData(writer, new WritableFilePointer(context.user, writer, new ByteBuffer(rootMapKey), rootRKey));
+    return context.addSharingKey(writer).then(function(res) {
+	context.uploadChunk(root, [], context.user, writer, rootMapKey)
+	    .then(function(res) {
+		// now check the retrieval from zero knowledge
+		/*[[WritableFilePointer, FileAccess]]*/
+		return context.getRoots();
+	    }).then(function(roots) {
+		for (var i=0; i < roots.length; i++) {
+		    var dirPointer = roots[i][0];
+		    var rootDirKey = dirPointer.baseKey;
+		    var dir = roots[i][1];
+		    if (dir == null)
+			continue;
+		    console.log("Found entry dir");
+		}
+	    });
+    });
+}
+
+function singleUserTests(dht, core) {
+    var ourname = "Bob";
+    generateKeyPairs(ourname, "password").then(function(us) {
+	return Promise.resolve(new UserContext(ourname, us, dht, core));
+    }).then(function(bob) {
+	bob.isRegistered().then(function(registered) {
+	    if (!registered)
+		return bob.register();
+	    else
+		return Promise.resolve(true);
+	}).then(function(bobIsRegistered) {
+	    if (!bobIsRegistered)
+		reject(Error("Couldn't register user!"));
+	    else
+		return Promise.resolve(true);
+	}).then(function(registered) {
+	    rootDirCreation(bob);
+	});
+    });
+}
+
+//twoUserTests(new DHTClient(), new CoreNodeClient());
+singleUserTests(new DHTClient(), new CoreNodeClient());

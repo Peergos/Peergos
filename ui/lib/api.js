@@ -539,7 +539,9 @@ function CoreNodeClient() {
         buffer.writeArray(mapKey);
         buffer.writeArray(metadataBlob);
         buffer.writeArray(sharingKeySignedHash);
-        return postProm("core/addMetadataBlob", new Uint8Array(buffer.toArray()));
+        return postProm("core/addMetadataBlob", new Uint8Array(buffer.toArray())).then(function(res) {
+	    return Promise.resolve(new ByteBuffer(res).readByte() == 1);
+	});
     };
     
     //String -> Uint8Array -> Uint8Array  -> Uint8Array -> fn -> fn -> void
@@ -675,12 +677,12 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 
     this.createEntryDirectory = function(directoryName) {
         var writer = User.random();
-	var rootMapKey = new ByteBuffer(window.nacl.randomBytes(32)); // root will be stored under this in the core node
+	var rootMapKey = window.nacl.randomBytes(32); // root will be stored under this in the core node
     	var rootRKey = SymmetricKey.random();
 
         // add a note to our static data so we know who we sent the private key to
 	// and authorise the writer key
-        var rootPointer = new WritableFilePointer(this.user, writer, rootMapKey, rootRKey);
+        var rootPointer = new WritableFilePointer(this.user, writer, new ByteBuffer(rootMapKey), rootRKey);
         return this.addSharingKey(writer).then(function(res) {
             return this.addToStaticData(writer, rootPointer);
         }.bind(this)).then(function(res) {
@@ -767,7 +769,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
     this.getRoots = function() {
 	return corenodeClient.getStaticData(user).then(function(raw) {
 	    var buf = new ByteBuffer(raw);
-	    var len = buf.readUnsignedInt();
+	    var totalStaticLength = buf.readUnsignedInt();
 	    var count = buf.readUnsignedInt();
 	    var res = [];
 	    for (var i=0; i < count; i++) {
