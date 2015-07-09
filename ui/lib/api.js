@@ -206,13 +206,45 @@ EncryptedChunk.ERASURE_ALLOWED_FAILURES = 10;
 function Chunk(data, key) {
     this.data = data;
     this.key = key;
+    this.nonce = window.nacl.randomBytes(SymmetricKey.NONCE_BYTES);
+    this.mapKey = window.nacl.randomBytes(32);
 
-    this.encrypt = function(nonce) {
-	return key.encrypt(data, nonce);
+    this.encrypt = function() {
+	return new EncryptedChunk(key.encrypt(data, this.nonce));
     }
 }
 Chunk.MAX_SIZE = Fragment.SIZE*EncryptedChunk.ERASURE_ORIGINAL
 
+
+function File(name, contents, key) {
+    this.props = new FileProperties(name, contents.length);
+    this.chunks = [];
+    if (key == null) key = SymmetricKey.random();
+    for (var i=0; i < contents.length; i+= Chunk.MAX_SIZE)
+	this.chunks.push(new Chunk(slice(contents, i, Math.min(contents.length, i + Chunk.MAX_SIZE)), key));
+
+    this.upload = function(context, owner, writer) {
+	var proms = [];
+	const chunk0 = this.chunks[0];
+	const that = this;
+	for (var i=0; i < this.chunks.length; i++)
+	    proms.push(new Promise(function(resolve, reject) {
+		const chunk = that.chunks[i];
+		const encryptedChunk = chunk.encrypt();
+		const fragments = encryptedChunk.generateFragments();
+		console.log("Uploading chunk with %d fragments\n", fragments.length);
+		var hashes = [];
+		for (var f in fragments)
+		    hashes.push(new ByteBuffer(fragments[f].getHash()));
+		const retriever = new EncryptedChunkRetriever(chunk.nonce, encryptedChunk.getAuth(), hashes, i+1 < that.chunks.length ? new Location(owner, writer, that.chunks[i+1].mapKey) : null);
+		const metaBlob = FileAccess.create(chunk.key, that.props, retriever);
+		resolve(context.uploadChunk(metaBlob, fragments, owner, writer, chunk.mapKey));
+	    }));
+	return Promise.all(proms).then(function(res){
+	    return Promise.resolve(new Location(owner, writer, chunk0.mapKey));
+	});
+    }
+}
 
 /////////////////////////////
 // Util methods

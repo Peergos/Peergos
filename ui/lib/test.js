@@ -23,7 +23,6 @@ function mediumFileShareTest(owner, sharer, receiver, sender) {
     var root = DirAccess.create(sharer, rootRKey, new FileProperties(name, 0));
     
     // generate file (two chunks)
-    var nonce1 = window.nacl.randomBytes(SymmetricKey.NONCE_BYTES);
     var raw1 = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
     var raw2 = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
     var template = nacl.util.decodeUTF8("Hello secure cloud! Goodbye NSA!");
@@ -38,45 +37,13 @@ function mediumFileShareTest(owner, sharer, receiver, sender) {
     // add file to root dir
     var filename = "HiNSA.bin";
     var fileKey = SymmetricKey.random();
-    var fileMapKey = window.nacl.randomBytes(32); // file metablob will be stored under this in the core node
-    var chunk2MapKey = window.nacl.randomBytes(32); // file metablob 2 will be stored under this in the core node
-    var fileLocation = new Location(owner, sharer, new ByteBuffer(fileMapKey));
-    var chunk2Location = new Location(owner, sharer, new ByteBuffer(chunk2MapKey));
-    
-    root.addFile(fileLocation, rootRKey, fileKey);
-    
-    // 1st chunk
-    var chunk1 = new Chunk(raw1, fileKey);
-    var encryptedChunk1 = new EncryptedChunk(chunk1.encrypt(nonce1));
-    var fragments1 = encryptedChunk1.generateFragments();
-    var hashes1 = [];
-    for (var f in fragments1)
-        hashes1.push(new ByteBuffer(fragments1[f].getHash()));
-    var props1 = new FileProperties(filename, raw1.length + raw2.length);
-    var ret = new EncryptedChunkRetriever(nonce1, encryptedChunk1.getAuth(), hashes1, chunk2Location);
-    var file = FileAccess.create(fileKey, props1, ret);
-
-    // 2nd chunk
-    var chunk2 = new Chunk(raw2, fileKey);
-    var nonce2 = window.nacl.randomBytes(SymmetricKey.NONCE_BYTES);
-    var encryptedChunk2 = new EncryptedChunk(chunk2.encrypt(nonce2));
-    var fragments2 = encryptedChunk2.generateFragments();
-    var hashes2 = [];
-    for (var f in fragments2)
-        hashes2.push(new ByteBuffer(fragments2[f].getHash()));
-    var ret2 = new EncryptedChunkRetriever(nonce2, encryptedChunk2.getAuth(), hashes2, null);
-    var meta2 = FileAccess.create(fileKey, new FileProperties("", raw2.length), ret2);
-    
-    // now write the root to the core nodes
-    receiver.addToStaticData(sharer, new WritableFilePointer(receiver.user, sharer, new ByteBuffer(rootMapKey), rootRKey));
-    return sender.uploadChunk(root, [], owner, sharer, rootMapKey)
-    .then(function() {
-	// now upload the file meta blobs
-	console.log("Uploading chunk with %d fragments\n", fragments1.length);
-	return sender.uploadChunk(file, fragments1, owner, sharer, fileMapKey);
-    }).then(function() {
-	console.log("Uploading chunk with %d fragments\n", fragments2.length);
-	return sender.uploadChunk(meta2, fragments2, owner, sharer, chunk2MapKey);
+    const file = new File(filename, concat(raw1, raw2), fileKey);
+    return file.upload(sender, owner, sharer).then(function(fileLocation) {
+	root.addFile(fileLocation, rootRKey, fileKey);
+	
+	// now write the root to the core nodes
+	receiver.addToStaticData(sharer, new WritableFilePointer(receiver.user, sharer, new ByteBuffer(rootMapKey), rootRKey));
+	return sender.uploadChunk(root, [], owner, sharer, rootMapKey);
     }).then(function() {
     
 	// now check the retrieval from zero knowledge
@@ -98,7 +65,7 @@ function mediumFileShareTest(owner, sharer, receiver, sender) {
 		    var fileProps = fileBlob.getFileProperties(baseKey);
 		    
 		    return fileBlob.retriever.getFile(receiver, baseKey).then(function(buf) {
-			buf.read(fileProps.getSize()[0]).then(function(original) {
+			return buf.read(fileProps.getSize()[0]).then(function(original) {
 			    
 			    // checks
 			    if (fileProps.name != filename)
