@@ -183,20 +183,31 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
     this.getType = function() {
 	return 1;
     }
+
+    this.getParentKey = function(subfoldersKey) {
+	    return this.subfolders2parent.target(subfoldersKey);
+    }
+    
+    this.getFilesKey = function(subfoldersKey) {
+	    return this.subfolders2files.target(subfoldersKey);
+    }
 }
 
 DirAccess.deserialize = function(base, bin) {
-    var s2p = bin.readArray();
-    var s2f = bin.readArray();
+    var s2p = bin.readArray().toArray();
+    var s2f = bin.readArray().toArray();
+
     var nSharingKeys = bin.readUnsignedInt();
     var files = [], subfolders = [];
     var nsubfolders = bin.readUnsignedInt();
     for (var i=0; i < nsubfolders; i++)
-	subfolders[i] = new SymmetricLocationLink(bin.readArray());
+	subfolders[i] = new SymmetricLocationLink(bin.readArray().toArray());
     var nfiles = bin.readUnsignedInt();
     for (var i=0; i < nfiles; i++)
-	files[i] = new SymmetricLocationLink(bin.readArray());
-    return new DirAccess(s2f, s2p, subfolders, files, base.parent2meta, base.properties, base.retriever);
+	files[i] = new SymmetricLocationLink(bin.readArray().toArray());
+    return new DirAccess(new SymmetricLink(s2f), 
+                         new SymmetricLink(s2p), 
+                         subfolders, files, base.parent2meta, base.properties, base.retriever);
 }
 
 // User, SymmetricKey, FileProperties

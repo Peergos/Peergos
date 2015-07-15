@@ -193,10 +193,18 @@ var Browser = React.createClass({
                         var dirPointer = roots[i][0];
                         var rootDirKey = dirPointer.baseKey;
                         var dir = roots[i][1];
-                        console.log("Found roots["+i+"][1] with dir  "+ dir+ ".");
                         if (dir == null)
                                 continue;
-                        /*[[SymmetricLocationLink, FileAccess]]*/
+		                const parentKey = dir.getParentKey(rootDirKey);
+                        const props = dir.getFileProperties(parentKey);
+                        var name  = props.name;
+                        console.log("Found root-dir with name "+ name + ".");
+                   }
+                });
+                        
+
+                        /*
+                        //[[SymmetricLocationLink, FileAccess]]
                         return userContext.retrieveAllMetadata(dir.files, rootDirKey).then(function(files) {
                                 for (var i=0; i < files.length; i++) {
                                         var baseKey = files[i][0].target(rootDirKey);
@@ -204,10 +212,9 @@ var Browser = React.createClass({
                                         // download fragments in chunk
                                         var fileProps = fileBlob.getFileProperties(baseKey);
                                         console.log("found "+ JSON.stringify(fileProps));
-                                }
+                          ``      }
                         });
-                   }
-                });
+                        */
         },
 
         reloadFilesFromServer: function() {this.loadFilesFromServer(this.currentPath())},
