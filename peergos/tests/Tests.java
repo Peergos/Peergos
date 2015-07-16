@@ -87,8 +87,8 @@ public class Tests
 
         List<byte[]> reqs = alice.getFollowRequests();
         assert(reqs.size() == 1);
-        WritableFilePointer root = alice.decodeFollowRequest(reqs.get(0));
-        User sharer = root.writer;
+        EntryPoint rootEntry = alice.decodeFollowRequest(reqs.get(0));
+        User sharer = (User)rootEntry.pointer.writer;
 
         // store a chunk in alice's space using the permitted sharing key (this could be alice or bob at this point)
         int frags = 120;

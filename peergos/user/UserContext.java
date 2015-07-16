@@ -29,7 +29,7 @@ public class UserContext
     private User us;
     private DHTUserAPI dht;
     private AbstractCoreNode core;
-    private Map<UserPublicKey, WritableFilePointer> staticData = new TreeMap<>();
+    private Map<UserPublicKey, EntryPoint> staticData = new TreeMap<>();
     private ExecutorService executor = Executors.newFixedThreadPool(2);
 
 
@@ -71,15 +71,17 @@ public class UserContext
         ByteArrayWrapper rootMapKey = new ByteArrayWrapper(ArrayOps.random(32));
 
         // add a note to our static data so we know who we sent the private key to
-        WritableFilePointer friendRoot = new WritableFilePointer(us, sharing, rootMapKey, SymmetricKey.random());
-        addToStaticData(sharing, friendRoot);
+        ReadableFilePointer friendRoot = new ReadableFilePointer(us, sharing, rootMapKey, SymmetricKey.random());
+        SortedSet<String> writers = new TreeSet<>();
+        writers.add(core.getUsername(friend.getPublicKeys()));
+        EntryPoint entry = new EntryPoint(friendRoot, username, new TreeSet<>(), writers);
+        addToStaticData(entry);
 
         // send details to allow friend to share with us (i.e. we follow them)
-        byte[] raw = friendRoot.toByteArray();
 
         // create a tmp keypair whose public key we can append to the request without leaking information
         User tmp = User.random();
-        byte[] payload = friend.encryptMessageFor(raw, tmp.secretBoxingKey);
+        byte[] payload = entry.serializeAndEncrypt(tmp,  friend);
         return core.followRequest(friend, ArrayOps.concat(tmp.publicBoxingKey, payload));
     }
 
@@ -100,14 +102,13 @@ public class UserContext
         }
     }
 
-    public WritableFilePointer decodeFollowRequest(byte[] data)
+    public EntryPoint decodeFollowRequest(byte[] data)
     {
         byte[] keys = new byte[64];
         System.arraycopy(data, 0, keys, 32, 32); // signing key is not used
         UserPublicKey tmp = new UserPublicKey(keys);
-        byte[] decrypted = us.decryptMessage(Arrays.copyOfRange(data, 32, data.length), tmp.publicBoxingKey);
         try {
-            return WritableFilePointer.deserialize(new DataInputStream(new ByteArrayInputStream(decrypted)));
+            return EntryPoint.decryptAndDeserialize(Arrays.copyOfRange(data, 32, data.length), us, tmp);
         } catch (IOException e)
         {
             e.printStackTrace();
@@ -122,7 +123,7 @@ public class UserContext
             DataOutput dout = new DataOutputStream(bout);
             dout.writeInt(staticData.size());
             for (UserPublicKey sharer : staticData.keySet())
-                Serialize.serialize(staticData.get(sharer).toByteArray(), dout);
+                Serialize.serialize(staticData.get(sharer).serializeAndEncrypt(us, us), dout);
             return bout.toByteArray();
         } catch (IOException e) {throw new IllegalStateException(e.getMessage());}
     }
@@ -133,9 +134,9 @@ public class UserContext
         return core.allowSharingKey(us, signed);
     }
 
-    private boolean addToStaticData(UserPublicKey pub, WritableFilePointer root)
+    private boolean addToStaticData(EntryPoint entry)
     {
-        staticData.put(pub, root);
+        staticData.put(entry.pointer.writer, entry);
         byte[] rawStatic = serializeStatic();
         return core.updateStaticData(us, us.signMessage(rawStatic));
     }
@@ -194,12 +195,12 @@ public class UserContext
         return frags.toArray(new Fragment[frags.size()]);
     }
 
-    public Map<WritableFilePointer, FileAccess> getRoots() throws IOException
+    public Map<EntryPoint, FileAccess> getRoots() throws IOException
     {
-        Map<WritableFilePointer, FileAccess> res = new HashMap<>();
+        Map<EntryPoint, FileAccess> res = new HashMap<>();
         for (UserPublicKey pub: staticData.keySet()) {
-            WritableFilePointer root = staticData.get(pub);
-            FileAccess dir = getMetadata(new Location(root.owner, root.writer, root.mapKey));
+            EntryPoint root = staticData.get(pub);
+            FileAccess dir = getMetadata(new Location(root.pointer.owner, root.pointer.writer, root.pointer.mapKey));
             if (dir != null)
                 res.put(root, dir);
         }
@@ -328,7 +329,8 @@ public class UserContext
             FileAccess meta2 = FileAccess.create(fileKey, new FileProperties("", raw2.length), ret2);
 
             // now write the root to the core nodes
-            receiver.addToStaticData(sharer, new WritableFilePointer(receiver.us, sharer, new ByteArrayWrapper(rootMapKey), rootRKey));
+            EntryPoint rootEntry = new EntryPoint(new ReadableFilePointer(receiver.us, sharer, new ByteArrayWrapper(rootMapKey), rootRKey), receiver.username, new TreeSet<>(), new TreeSet<>());
+            receiver.addToStaticData(rootEntry);
             sender.uploadChunk(root, new Fragment[0], owner, sharer, rootMapKey);
             // now upload the file meta blobs
             System.out.printf("Uploading chunk with %d fragments\n", fragments1.length);
@@ -337,9 +339,9 @@ public class UserContext
             sender.uploadChunk(meta2, fragments2, owner, sharer, chunk2MapKey);
 
             // now check the retrieval from zero knowledge
-            Map<WritableFilePointer, FileAccess> roots = receiver.getRoots();
-            for (WritableFilePointer dirPointer : roots.keySet()) {
-                SymmetricKey rootDirKey = dirPointer.rootDirKey;
+            Map<EntryPoint, FileAccess> roots = receiver.getRoots();
+            for (EntryPoint dirPointer : roots.keySet()) {
+                SymmetricKey rootDirKey = dirPointer.pointer.rootDirKey;
                 DirAccess dir = (DirAccess) roots.get(dirPointer);
                 try {
                     Map<SymmetricLocationLink, FileAccess> files = receiver.retrieveMetadata(dir.getFiles(), rootDirKey);
@@ -353,6 +355,7 @@ public class UserContext
                         InputStream in = fileBlob.getRetriever().getFile(receiver, baseKey);
                         new DataInputStream(in).readFully(original);
                         // checks
+                        System.out.println("Retrieved file with name: "+fileProps.name);
                         assertTrue("Correct filename", fileProps.name.equals(filename));
                         assertTrue("Correct file contents", Arrays.equals(original, ArrayOps.concat(raw1, raw2)));
                     }
