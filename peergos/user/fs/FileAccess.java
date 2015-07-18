@@ -18,34 +18,38 @@ public class FileAccess
     private final SymmetricLink parent2meta;
     private final byte[] fileProperties;
     private final Optional<FileRetriever> retriever;
-
-    public FileAccess(byte[] p2m, byte[] fileProperties, Optional<FileRetriever> retriever)
+    private final SymmetricLocationLink parentLocationLink;
+    
+    public FileAccess(byte[] p2m, byte[] fileProperties, Optional<FileRetriever> retriever,SymmetricLocationLink parent)
     {
-        this(new SymmetricLink(p2m), fileProperties, retriever);
+        this(new SymmetricLink(p2m), fileProperties, retriever, parent);
     }
 
     public FileAccess(FileAccess copy) {
-        this(copy.parent2meta, copy.fileProperties, copy.retriever);
+        this(copy.parent2meta, copy.fileProperties, copy.retriever, copy.parentLocationLink);
     }
 
-    public FileAccess(SymmetricLink p2m, byte[] fileProperties, Optional<FileRetriever> retriever) {
+    public FileAccess(SymmetricLink p2m, byte[] fileProperties, Optional<FileRetriever> retriever, SymmetricLocationLink parentLocationLink) {
         this.parent2meta = p2m;
         this.fileProperties = fileProperties;
         this.retriever = retriever;
+        this.parentLocationLink = parentLocationLink;
     }
 
     public static FileAccess create(SymmetricKey metaKey, SymmetricKey parentKey,
-                                    FileProperties fileProperties, Optional<FileRetriever> retriever)
+                                    FileProperties fileProperties, Optional<FileRetriever> retriever, Location location)
     {
+        SymmetricLocationLink parentLocationLink = new SymmetricLocationLink(parentKey, metaKey, location);//key todo using the parentKey
+        
         byte[] nonce = metaKey.createNonce();
         return new FileAccess(new SymmetricLink(parentKey, metaKey, parentKey.createNonce()),
-                ArrayOps.concat(nonce, metaKey.encrypt(fileProperties.serialize(), nonce)), retriever);
+                ArrayOps.concat(nonce, metaKey.encrypt(fileProperties.serialize(), nonce)), retriever, parentLocationLink);
     }
 
-    public static FileAccess create(SymmetricKey parentKey, FileProperties fileMetadata, Optional<FileRetriever> retriever)
+    public static FileAccess create(SymmetricKey parentKey, FileProperties fileMetadata, Optional<FileRetriever> retriever, Location location)
     {
         SymmetricKey metaKey = SymmetricKey.random();
-        return create(metaKey, parentKey, fileMetadata, retriever);
+        return create(metaKey, parentKey, fileMetadata, retriever, location);
     }
 
     public Type getType() {
@@ -59,6 +63,12 @@ public class FileAccess
         dout.writeBoolean(retriever.isPresent());
         if (retriever.isPresent())
             retriever.get().serialize(dout);
+        if(parentLocationLink != null){
+            dout.writeBoolean(true);        
+        	Serialize.serialize(parentLocationLink.serialize(), dout);
+        }else{
+            dout.writeBoolean(false);                	
+        }
         dout.write(getType().ordinal());
     }
 
@@ -68,8 +78,10 @@ public class FileAccess
         byte[] fileProperties = Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE);
         boolean hasRetriever = din.readBoolean();
         Optional<FileRetriever> retreiver = hasRetriever ? Optional.of(FileRetriever.deserialize(din)) : Optional.empty();
-        FileAccess base = new FileAccess(p2m, fileProperties, retreiver);
-
+        boolean hasParent = din.readBoolean();
+        SymmetricLocationLink parent = hasParent ? new SymmetricLocationLink(Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE)) : null;
+        FileAccess base = new FileAccess(p2m, fileProperties, retreiver, parent);
+        
         Type type = Type.values()[din.readByte() & 0xff];
         if (type == Type.Dir)
             return DirAccess.deserialize(base, din);
@@ -85,6 +97,10 @@ public class FileAccess
         return retriever.get();
     }
 
+    public SymmetricLocationLink getParent() {
+        return parentLocationLink;
+    }
+    
     public FileProperties getFileProperties(SymmetricKey parentKey) throws IOException
     {
         byte[] nonce = Arrays.copyOfRange(fileProperties, 0, TweetNaCl.SECRETBOX_NONCE_BYTES);

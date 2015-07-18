@@ -24,17 +24,19 @@ public class DirAccess extends FileAccess
         subfolders2parent = new SymmetricLink(s2p);
     }
 
-    public DirAccess(SortedMap<UserPublicKey, AsymmetricLink> sharingR, SymmetricLink s2f, SymmetricLink s2p, SymmetricLink p2m, byte[] metadata)
+    public DirAccess(SortedMap<UserPublicKey, AsymmetricLink> sharingR, SymmetricLink s2f, SymmetricLink s2p, SymmetricLink p2m, byte[] metadata, SymmetricLocationLink parentLocationLink)
     {
-        super(p2m, metadata, Optional.empty());
+        super(p2m, metadata, Optional.empty(), parentLocationLink);
         sharingR2subfoldersR = sharingR;
         subfolders2files = s2f;
         subfolders2parent = s2p;
     }
 
     public static DirAccess create(User owner, SymmetricKey meta, SymmetricKey parent, SymmetricKey files, SymmetricKey subfolders, Set<UserPublicKey> sharingR,
-                                   FileProperties metadata, byte[] metaNonce)
+                                   FileProperties metadata, byte[] metaNonce, Location location, SymmetricKey rootParentKey)
     {
+    	SymmetricLocationLink parentLocationLink = location != null ?  new SymmetricLocationLink(parent, rootParentKey, location) : null;
+    	
         TreeMap<UserPublicKey, AsymmetricLink> collect = sharingR.stream()
                 .collect(Collectors.toMap(x -> (UserPublicKey) x, x -> new AsymmetricLink(owner, (UserPublicKey) x, subfolders), (a, b) -> a, () -> new TreeMap<>()));
         return new DirAccess(collect,
@@ -42,13 +44,18 @@ public class DirAccess extends FileAccess
                 new SymmetricLink(subfolders, parent, subfolders.createNonce()),
                 new SymmetricLink(parent, meta, parent.createNonce()),
                 ArrayOps.concat(metaNonce, meta.encrypt(metadata.serialize(), metaNonce))
-        );
+                , parentLocationLink);
     }
 
-    public static DirAccess create(User owner, SymmetricKey subfoldersKey, FileProperties metadata)
+    public static DirAccess createRoot(User owner, SymmetricKey subfoldersKey, FileProperties metadata)
+    {
+        return create(owner, subfoldersKey, metadata, null, null);
+    }
+    
+    public static DirAccess create(User owner, SymmetricKey subfoldersKey, FileProperties metadata, Location location, SymmetricKey rootParentKey)
     {
         SymmetricKey metaKey = SymmetricKey.random();
-        return create(owner, metaKey, SymmetricKey.random(), SymmetricKey.random(), subfoldersKey, Collections.EMPTY_SET, metadata, metaKey.createNonce());
+        return create(owner, metaKey, SymmetricKey.random(), SymmetricKey.random(), subfoldersKey, Collections.EMPTY_SET, metadata, metaKey.createNonce(), location, rootParentKey);
     }
 
     public Type getType() {
@@ -134,6 +141,11 @@ public class DirAccess extends FileAccess
         return files;
     }
 
+    public Collection<SymmetricLocationLink> getSubfolders()
+    {
+        return subfolders;
+    }
+    
     public SymmetricKey getRParentKey(SymmetricKey subfoldersKey)
     {
         return subfolders2parent.target(subfoldersKey);

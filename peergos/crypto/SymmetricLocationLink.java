@@ -31,6 +31,11 @@ public class SymmetricLocationLink
         this.loc = Serialize.deserializeByteArray(din, Integer.MAX_VALUE);
     }
 
+    private SymmetricLocationLink(byte[] link, byte[] loc){
+    	this.link = link;
+    	this.loc = loc;
+    }
+    
     public byte[] serialize()
     {
         ByteArrayOutputStream bout = new ByteArrayOutputStream();
@@ -40,6 +45,13 @@ public class SymmetricLocationLink
             Serialize.serialize(loc, dout);
         } catch (IOException e) {e.printStackTrace();}
         return bout.toByteArray();
+    }
+    
+    public static SymmetricLocationLink deserialize(DataInput din) throws IOException
+    {
+        byte[] link = Serialize.deserializeByteArray(din, Integer.MAX_VALUE);
+        byte[] loc = Serialize.deserializeByteArray(din, Integer.MAX_VALUE);
+        return new SymmetricLocationLink(link, loc);
     }
 
     public byte[] getNonce()

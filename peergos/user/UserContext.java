@@ -10,12 +10,9 @@ import peergos.user.fs.*;
 import peergos.util.ArrayOps;
 import peergos.util.ByteArrayWrapper;
 import peergos.util.Serialize;
-
 import static org.junit.Assert.*;
 
 import java.io.*;
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -281,7 +278,7 @@ public class UserContext
             SymmetricKey rootRKey = SymmetricKey.random();
             String name = "/";
             byte[] rootMapKey = ArrayOps.random(32); // root will be stored under this in the core node
-            DirAccess root = DirAccess.create(sharer, rootRKey, new FileProperties(name, 0));
+            DirAccess root = DirAccess.createRoot(sharer, rootRKey, new FileProperties(name, 0));
 
             // generate file (two chunks)
             Random r = new Random();
@@ -315,7 +312,8 @@ public class UserContext
                 hashes1.add(new ByteArrayWrapper(f.getHash()));
             FileProperties props1 = new FileProperties(filename, raw1.length + raw2.length);
             Optional<FileRetriever> ret = Optional.of(new EncryptedChunkRetriever(nonce1, encryptedChunk1.getAuth(), hashes1, Optional.of(chunk2Location)));
-            FileAccess file = FileAccess.create(fileKey, props1, ret);
+            Location rootDirLocation = new Location(receiver.us, sharer, new ByteArrayWrapper(rootMapKey));
+            FileAccess file = FileAccess.create(fileKey, props1, ret, rootDirLocation);
 
             // 2nd chunk
             Chunk chunk2 = new Chunk(raw2, fileKey);
@@ -326,8 +324,19 @@ public class UserContext
             for (Fragment f : fragments2)
                 hashes2.add(new ByteArrayWrapper(f.getHash()));
             Optional<FileRetriever> ret2 = Optional.of(new EncryptedChunkRetriever(nonce2, encryptedChunk2.getAuth(), hashes2, Optional.empty()));
-            FileAccess meta2 = FileAccess.create(fileKey, new FileProperties("", raw2.length), ret2);
+            FileAccess meta2 = FileAccess.create(fileKey, new FileProperties("", raw2.length), ret2, rootDirLocation);
 
+            //now create a sub folder
+            SymmetricKey subfolderkey = SymmetricKey.random();
+            SymmetricKey rootParentKey = root.getRParentKey(rootRKey);
+            String subDirName = "subdir";
+            DirAccess subfolder = DirAccess.create(sharer, subfolderkey, new FileProperties(subDirName, 0), rootDirLocation, rootParentKey);
+            
+            byte[] subDirMapKey = ArrayOps.random(32); 
+            Location subDirLocation = new Location(receiver.us, sharer, new ByteArrayWrapper(subDirMapKey));
+            root.addSubFolder(new SymmetricLocationLink(rootRKey, subfolderkey, subDirLocation));
+            
+            
             // now write the root to the core nodes
             EntryPoint rootEntry = new EntryPoint(new ReadableFilePointer(receiver.us, sharer, new ByteArrayWrapper(rootMapKey), rootRKey), receiver.username, new TreeSet<>(), new TreeSet<>());
             receiver.addToStaticData(rootEntry);
@@ -337,7 +346,9 @@ public class UserContext
             sender.uploadChunk(file, fragments1, owner, sharer, fileMapKey);
             System.out.printf("Uploading chunk with %d fragments\n", fragments2.length);
             sender.uploadChunk(meta2, fragments2, owner, sharer, chunk2MapKey);
-
+            
+            sender.uploadChunk(subfolder, new Fragment[0], owner, sharer, subDirMapKey);
+            
             // now check the retrieval from zero knowledge
             Map<EntryPoint, FileAccess> roots = receiver.getRoots();
             for (EntryPoint dirPointer : roots.keySet()) {
@@ -358,6 +369,25 @@ public class UserContext
                         System.out.println("Retrieved file with name: "+fileProps.name);
                         assertTrue("Correct filename", fileProps.name.equals(filename));
                         assertTrue("Correct file contents", Arrays.equals(original, ArrayOps.concat(raw1, raw2)));
+                    }
+                    DirAccess subDir = null;
+                    SymmetricKey parentKey = null;
+                    Map<SymmetricLocationLink, FileAccess> subFolders = receiver.retrieveMetadata(dir.getSubfolders(), rootDirKey);
+                    for (SymmetricLocationLink fileLoc : subFolders.keySet()) {
+                        SymmetricKey baseKey = fileLoc.target(rootDirKey);
+                    	subDir = (DirAccess)subFolders.get(fileLoc);
+                        parentKey = subDir.getRParentKey(baseKey);
+                        FileProperties fileProps = subDir.getFileProperties(parentKey);
+                        assertTrue("Correct directory name", fileProps.name.equals(subDirName));
+                    }
+                    ArrayList<SymmetricLocationLink> dirs = new ArrayList<>();
+                    dirs.add(subDir.getParent());
+                    Map<SymmetricLocationLink, FileAccess> parentFolder = receiver.retrieveMetadata(dirs, parentKey);
+                    for (SymmetricLocationLink fileLoc : parentFolder.keySet()) {
+                        SymmetricKey baseKey = fileLoc.target(parentKey);
+                    	subDir = (DirAccess)parentFolder.get(fileLoc);
+                        FileProperties fileProps = subDir.getFileProperties(baseKey);
+                        assertTrue("Parent directory name", fileProps.name.equals(name));
                     }
                 } catch (IOException e) {
                     System.err.println("Couldn't get File metadata!");
