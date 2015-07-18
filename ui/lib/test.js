@@ -42,12 +42,12 @@ function mediumFileShareTest(owner, sharer, receiver, sender) {
 	root.addFile(fileLocation, rootRKey, fileKey);
 	
 	// now write the root to the core nodes
-	receiver.addToStaticData(sharer, new WritableFilePointer(receiver.user, sharer, new ByteBuffer(rootMapKey), rootRKey));
+	receiver.addToStaticData(sharer, new ReadableFilePointer(receiver.user, sharer, new ByteBuffer(rootMapKey), rootRKey));
 	return sender.uploadChunk(root, [], owner, sharer, rootMapKey);
     }).then(function() {
     
 	// now check the retrieval from zero knowledge
-	/*[[WritableFilePointer, FileAccess]]*/
+	/*[[ReadableFilePointer, FileAccess]]*/
 	return receiver.getRoots();
     }).then(function(roots) {
 	for (var i=0; i < roots.length; i++) {
@@ -127,7 +127,7 @@ function twoUserTests(dht, core) {
 		    return alice.getFollowRequests();
 		}).then(function (reqs) {
 		    //assert(reqs.size() == 1);
-		    var /*WritableFilePointer*/ root = alice.decodeFollowRequest(reqs[0]);
+		    var /*ReadableFilePointer*/ root = alice.decodeFollowRequest(reqs[0]);
 		    var /*User*/ sharer = root.writer;
 		    
 		    // store a chunk in alice's space using the permitted sharing key (this could be alice or bob at this point)
@@ -169,12 +169,12 @@ function rootDirCreation(context) {
     var root = DirAccess.create(writer, rootRKey, new FileProperties(name, 0));
 
     // now write the root to the core nodes
-    context.addToStaticData(writer, new WritableFilePointer(context.user, writer, new ByteBuffer(rootMapKey), rootRKey));
+    context.addToStaticData(writer, new ReadableFilePointer(context.user, writer, new ByteBuffer(rootMapKey), rootRKey));
     return context.addSharingKey(writer).then(function(res) {
 	context.uploadChunk(root, [], context.user, writer, rootMapKey)
 	    .then(function(res) {
 		// now check the retrieval from zero knowledge
-		/*[[WritableFilePointer, FileAccess]]*/
+		/*[[ReadableFilePointer, FileAccess]]*/
 		return context.getRoots();
 	    }).then(function(roots) {
 		for (var i=0; i < roots.length; i++) {

@@ -714,7 +714,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 
         // add a note to our static data so we know who we sent the private key to
 	// and authorise the writer key
-        var rootPointer = new WritableFilePointer(this.user, writer, new ByteBuffer(rootMapKey), rootRKey);
+        var rootPointer = new ReadableFilePointer(this.user, writer, new ByteBuffer(rootMapKey), rootRKey);
         return this.addSharingKey(writer).then(function(res) {
             return this.addToStaticData(writer, rootPointer);
         }.bind(this)).then(function(res) {
@@ -729,7 +729,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 	var rootMapKey = new ByteBuffer(window.nacl.randomBytes(32));
 	
         // add a note to our static data so we know who we sent the private key to
-        var friendRoot = new WritableFilePointer(user, sharing, rootMapKey, SymmetricKey.random());
+        var friendRoot = new ReadableFilePointer(user, sharing, rootMapKey, SymmetricKey.random());
         return this.addSharingKey(sharing).then(function(res) {
             return this.addToStaticData(sharing, friendRoot);
 	}.bind(this)).then(function(res) {	    
@@ -767,7 +767,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 	buf.read(32);
 	var cipher = buf.read(raw.length - 32);
         var decrypted = user.decryptMessage(cipher.toArray(), tmp);
-        return WritableFilePointer.deserialize(new Uint8Array(decrypted)); // somehow not creating a new uint8array keeps the extra 32 bytes...
+        return ReadableFilePointer.deserialize(new Uint8Array(decrypted)); // somehow not creating a new uint8array keeps the extra 32 bytes...
     }
     
     this.uploadFragment = function(f, targetUser, sharer, mapKey) {
@@ -805,7 +805,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 	    var count = buf.readUnsignedInt();
 	    var res = [];
 	    for (var i=0; i < count; i++) {
-		var pointer = WritableFilePointer.deserialize(buf.readArray());
+		var pointer = ReadableFilePointer.deserialize(buf.readArray());
             console.log("pointer "+ nacl.util.encodeBase64(pointer));
 		res.push(pointer);
 	    }

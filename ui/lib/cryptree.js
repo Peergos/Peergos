@@ -1,26 +1,36 @@
-function WritableFilePointer(owner, writer, mapKey, baseKey) {
+function ReadableFilePointer(owner, writer, mapKey, baseKey) {
     this.owner = owner; //UserPublicKey
-    this.writer = writer; //User
+    this.writer = writer; //User / UserPublicKey
     this.mapKey = mapKey; //ByteArrayWrapper
     this.baseKey = baseKey; //SymmetricKey
 
     this.serialize = function() {
 	var bout = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
 	bout.writeArray(owner.getPublicKeys());
-	bout.writeArray(writer.getSecretKeys());
+	if (writer instanceof User)
+	    bout.writeArray(writer.getSecretKeys());
+	else
+	    bout.writeArray(writer.getPublicKeys());
 	bout.writeArray(mapKey);
 	bout.writeArray(baseKey.key);
 	return bout.toArray();
     }
+
+    this.isWritable = function() {
+        return this.writer instanceof User;
+    }
 }
 
-WritableFilePointer.deserialize = function(buf) {
-    var bin = new ByteBuffer(buf);
-    var owner = bin.readArray();
-    var writerSecretKeys = bin.readArray();
-    var mapKey = bin.readArray();
-    var rootDirKeySecret = bin.readArray();
-    return new WritableFilePointer(UserPublicKey.fromPublicKeys(owner), User.fromSecretKeys(writerSecretKeys), mapKey, new SymmetricKey(rootDirKeySecret));
+ReadableFilePointer.deserialize = function(buf) {
+    const bin = new ByteBuffer(buf);
+    const owner = bin.readArray();
+    const writerRaw = bin.readArray();
+    const mapKey = bin.readArray();
+    const rootDirKeySecret = bin.readArray();
+    const writer = writerRaw.length == window.nacl.box.secretKeyLength + window.nacl.sign.secretKeyLength ?
+    User.fromSecretKeys(writerRaw) :
+     UserPublicKey.fromPublicKeys(writerRaw);
+    return new ReadableFilePointer(UserPublicKey.fromPublicKeys(owner), writer, mapKey, new SymmetricKey(rootDirKeySecret));
 }
 
 function SymmetricLink(link) {
@@ -69,7 +79,8 @@ Location.decrypt = function(from, nonce, loc) {
     return Location.deserialize(new ByteBuffer(new Uint8Array(raw)));
 }
 
-function SymmetricLocationLink(buf) {
+function SymmetricLocationLink(arr) {
+    const buf = new ByteBuffer(arr);
     this.link = buf.readArray();
     this.loc = buf.readArray();
 
