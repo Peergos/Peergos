@@ -639,5 +639,7 @@ ByteBuffer.prototype.writeArray = function(arr) {
 
 ByteBuffer.prototype.readArray = function() {
     var len = this.readUnsignedInt();
+    if (len == 0)
+        return new ByteBuffer(new Uint8Array(0));
     return this.read(len);
 }

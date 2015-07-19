@@ -496,7 +496,10 @@ function CoreNodeClient() {
     this.getUsername = function(publicKey) {
         var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
         buffer.writeArray(publicKey);
-        return postProm("core/getUsername", new Uint8Array(buffer.toArray()));
+        return postProm("core/getUsername", new Uint8Array(buffer.toArray())).then(function(res) {
+            const rawName = new Uint8Array(new ByteBuffer(new Uint8Array(res)).readArray().toArray());
+            return Promise.resolve(nacl.util.encodeUTF8(rawName));
+        });
     };
     
     
@@ -696,7 +699,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
         var buf = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
         buf.writeUnsignedInt(this.staticData.length);
         for (var i = 0; i < this.staticData.length; i++)
-            buf.writeArray(this.staticData[i][1].serialize());
+            buf.writeArray(this.staticData[i][1].serializeAndEncrypt(this.user, this.user));
         return buf.toArray();
     }
 
@@ -724,32 +727,34 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
     }
 
     this.sendFollowRequest = function(targetUser) {
-	// create sharing keypair and give it write access
+	    // create sharing keypair and give it write access
         var sharing = User.random();
-	var rootMapKey = new ByteBuffer(window.nacl.randomBytes(32));
+        var rootMapKey = new ByteBuffer(window.nacl.randomBytes(32));
 	
         // add a note to our static data so we know who we sent the private key to
         var friendRoot = new ReadableFilePointer(user, sharing, rootMapKey, SymmetricKey.random());
         return this.addSharingKey(sharing).then(function(res) {
-            return this.addToStaticData(sharing, friendRoot);
-	}.bind(this)).then(function(res) {	    
-	    // send details to allow friend to share with us (i.e. we follow them)
-	    var raw = friendRoot.serialize();
-	    
-	    // create a tmp keypair whose public key we can append to the request without leaking information
-	    var tmp = User.random();
-	    var payload = targetUser.encryptMessageFor(new Uint8Array(raw), tmp);
-	    return corenodeClient.followRequest(targetUser.getPublicKeys(), concat(tmp.pBoxKey, payload));
-	});
-    }
+            return this.corenodeClient.getUsername(targetUser.getPublicKeys()).then(function(name) {
+                const entry = new EntryPoint(friendRoot, this.username, [], [name]);
+                return this.addToStaticData(entry).then(function(res) {
+                                                  	    // send details to allow friend to share with us (i.e. we follow them)
+
+                                                  	    // create a tmp keypair whose public key we can append to the request without leaking information
+                                                  	    var tmp = User.random();
+                                                  	    var payload = entry.serializeAndEncrypt(tmp, targetUser);
+                                                  	    return corenodeClient.followRequest(targetUser.getPublicKeys(), concat(tmp.pBoxKey, payload));
+                                                  	});
+            }.bind(this));
+	}.bind(this));
+    }.bind(this);
 
     this.addSharingKey = function(pub) {
 	var signed = user.signMessage(pub.getPublicKeys());
         return corenodeClient.allowSharingKey(user.getPublicKeys(), signed);
     }
 
-    this.addToStaticData = function(writer, root) {
-	this.staticData.push([writer, root]);
+    this.addToStaticData = function(entry) {
+	this.staticData.push([entry.pointer.writer, entry]);
         var rawStatic = new Uint8Array(this.serializeStatic());
         return corenodeClient.updateStaticData(user, user.signMessage(rawStatic));
     }
@@ -759,15 +764,14 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
     }
 
     this.decodeFollowRequest = function(raw) {
-	var pBoxKey = new Uint8Array(32);
-	for (var i=0; i < 32; i++)
+	    var pBoxKey = new Uint8Array(32);
+	    for (var i=0; i < 32; i++)
             pBoxKey[i] = raw[i]; // signing key is not used
         var tmp = new UserPublicKey(null, pBoxKey);
-	var buf = new ByteBuffer(raw);
-	buf.read(32);
-	var cipher = buf.read(raw.length - 32);
-        var decrypted = user.decryptMessage(cipher.toArray(), tmp);
-        return ReadableFilePointer.deserialize(new Uint8Array(decrypted)); // somehow not creating a new uint8array keeps the extra 32 bytes...
+	    var buf = new ByteBuffer(raw);
+	    buf.read(32);
+	    var cipher = new Uint8Array(buf.read(raw.length - 32).toArray());
+        return EntryPoint.decryptAndDeserialize(cipher, user, tmp);
     }
     
     this.uploadFragment = function(f, targetUser, sharer, mapKey) {
@@ -799,20 +803,20 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
     }
 
     this.getRoots = function() {
+    const context = this;
 	return corenodeClient.getStaticData(user).then(function(raw) {
 	    var buf = new ByteBuffer(raw);
 	    var totalStaticLength = buf.readUnsignedInt();
 	    var count = buf.readUnsignedInt();
 	    var res = [];
 	    for (var i=0; i < count; i++) {
-		var pointer = ReadableFilePointer.deserialize(buf.readArray());
-            console.log("pointer "+ nacl.util.encodeBase64(pointer));
-		res.push(pointer);
+		var entry = EntryPoint.decryptAndDeserialize(buf.readArray(), context.user, context.user);
+		res.push(entry);
 	    }
-	    // down download the metadata blobs for these pointers
+	    // download the metadata blobs for these entry points
 	    var proms = [];
 	    for (var i=0; i < res.length; i++)
-		proms[i] = corenodeClient.getMetadataBlob(res[i].owner, res[i].writer, res[i].mapKey);
+		proms[i] = corenodeClient.getMetadataBlob(res[i].pointer.owner, res[i].pointer.writer, res[i].pointer.mapKey);
 	    return Promise.all(proms).then(function(result) {
 		var entryPoints = [];
 		for (var i=0; i < result.length; i++) {

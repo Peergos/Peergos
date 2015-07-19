@@ -13,7 +13,7 @@ function ReadableFilePointer(owner, writer, mapKey, baseKey) {
 	    bout.writeArray(writer.getPublicKeys());
 	bout.writeArray(mapKey);
 	bout.writeArray(baseKey.key);
-	return bout.toArray();
+	return new Uint8Array(bout.toArray());
     }
 
     this.isWritable = function() {
@@ -21,8 +21,8 @@ function ReadableFilePointer(owner, writer, mapKey, baseKey) {
     }
 }
 
-ReadableFilePointer.deserialize = function(buf) {
-    const bin = new ByteBuffer(buf);
+ReadableFilePointer.deserialize = function(arr) {
+    const bin = new ByteBuffer(arr);
     const owner = bin.readArray();
     const writerRaw = bin.readArray();
     const mapKey = bin.readArray();
@@ -31,6 +31,54 @@ ReadableFilePointer.deserialize = function(buf) {
     User.fromSecretKeys(writerRaw) :
      UserPublicKey.fromPublicKeys(writerRaw);
     return new ReadableFilePointer(UserPublicKey.fromPublicKeys(owner), writer, mapKey, new SymmetricKey(rootDirKeySecret));
+}
+
+// ReadableFilePinter, String, [String], [String]
+function EntryPoint(pointer, owner, readers, writers) {
+    this.pointer = pointer;
+    this.owner = owner;
+    this.readers = readers;
+    this.writers = writers;
+
+    // User, UserPublicKey
+    this.serializeAndEncrypt = function(user, target) {
+        return target.encryptMessageFor(this.serialize(), user);
+    }
+
+    this.serialize = function() {
+        const dout = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+        dout.writeArray(this.pointer.serialize());
+        dout.writeUnsignedInt(this.owner.length);
+        dout.writeString(this.owner);
+        dout.writeUnsignedInt(this.readers.length);
+        for (var i = 0; i < this.readers.length; i++) {
+            dout.writeUnsignedInt(this.readers[i].length);
+            dout.writetring(this.readers[i]);
+        }
+        dout.writeInt(this.writers.length);
+        for (var i=0; i < this.writers.length; i++) {
+            dout.writeUnsignedInt(this.writers[i].length);
+            dout.writeString(this.writers[i]);
+        }
+        return new Uint8Array(dout.toArray());
+    }
+}
+
+// byte[], User, UserPublicKey
+EntryPoint.decryptAndDeserialize = function(input, user, from) {
+    const raw = new Uint8Array(user.decryptMessage(input, from));
+    const din = new ByteBuffer(raw);
+    const pointer = ReadableFilePointer.deserialize(din.readArray());
+    const owner = nacl.util.encodeUTF8(din.readArray().toArray());
+    const nReaders = din.readInt();
+    const readers = [];
+    for (var i=0; i < nReaders; i++)
+        readers.push(nacl.util.encodeUTF8(din.readArray().toArray()));
+    const nWriters = din.readInt();
+    const writers = [];
+    for (var i=0; i < nWriters; i++)
+        writers.push(nacl.util.encodeUTF8(din.readArray().toArray()));
+    return new EntryPoint(pointer, owner, readers, writers);
 }
 
 function SymmetricLink(link) {

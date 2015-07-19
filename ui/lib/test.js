@@ -42,7 +42,8 @@ function mediumFileShareTest(owner, sharer, receiver, sender) {
 	root.addFile(fileLocation, rootRKey, fileKey);
 	
 	// now write the root to the core nodes
-	receiver.addToStaticData(sharer, new ReadableFilePointer(receiver.user, sharer, new ByteBuffer(rootMapKey), rootRKey));
+	const rootEntry = new EntryPoint(new ReadableFilePointer(receiver.user, sharer, new ByteBuffer(rootMapKey), rootRKey), receiver.username, [], []);
+	receiver.addToStaticData(rootEntry);
 	return sender.uploadChunk(root, [], owner, sharer, rootMapKey);
     }).then(function() {
     
@@ -52,7 +53,7 @@ function mediumFileShareTest(owner, sharer, receiver, sender) {
     }).then(function(roots) {
 	for (var i=0; i < roots.length; i++) {
 	    var dirPointer = roots[i][0];
-	    var rootDirKey = dirPointer.baseKey;
+	    var rootDirKey = dirPointer.pointer.baseKey;
 	    var dir = roots[i][1];
 	    if (dir == null)
 		continue;
@@ -128,7 +129,7 @@ function twoUserTests(dht, core) {
 		}).then(function (reqs) {
 		    //assert(reqs.size() == 1);
 		    var /*ReadableFilePointer*/ root = alice.decodeFollowRequest(reqs[0]);
-		    var /*User*/ sharer = root.writer;
+		    var /*User*/ sharer = root.pointer.writer;
 		    
 		    // store a chunk in alice's space using the permitted sharing key (this could be alice or bob at this point)
 		    var frags = 120;

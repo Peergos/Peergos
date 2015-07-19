@@ -194,9 +194,18 @@ public class UserContext
 
     public Map<EntryPoint, FileAccess> getRoots() throws IOException
     {
+        byte[] staticData = core.getStaticData(us);
+        DataInput din = new DataInputStream(new ByteArrayInputStream(staticData));
+        int entries = din.readInt();
+        this.staticData = new HashMap<>();
+        for (int i=0; i < entries; i++) {
+            EntryPoint entry = EntryPoint.decryptAndDeserialize(Serialize.deserializeByteArray(din, EntryPoint.MAX_SIZE), us, us);
+            this.staticData.put(entry.pointer.writer, entry);
+        }
+
         Map<EntryPoint, FileAccess> res = new HashMap<>();
-        for (UserPublicKey pub: staticData.keySet()) {
-            EntryPoint root = staticData.get(pub);
+        for (UserPublicKey pub: this.staticData.keySet()) {
+            EntryPoint root = this.staticData.get(pub);
             FileAccess dir = getMetadata(new Location(root.pointer.owner, root.pointer.writer, root.pointer.mapKey));
             if (dir != null)
                 res.put(root, dir);
