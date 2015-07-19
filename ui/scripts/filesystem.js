@@ -191,7 +191,7 @@ var Browser = React.createClass({
                 console.log("Found "+ roots.length +"  roots here.");
                 for (var i=0; i < roots.length; i++) {
                         var dirPointer = roots[i][0];
-                        var rootDirKey = dirPointer.baseKey;
+                        var rootDirKey = dirPointer.pointer.baseKey;
                         var dir = roots[i][1];
                         if (dir == null)
                                 continue;

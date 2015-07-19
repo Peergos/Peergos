@@ -717,9 +717,10 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 
         // add a note to our static data so we know who we sent the private key to
 	// and authorise the writer key
-        var rootPointer = new ReadableFilePointer(this.user, writer, new ByteBuffer(rootMapKey), rootRKey);
+        const rootPointer = new ReadableFilePointer(this.user, writer, new ByteBuffer(rootMapKey), rootRKey);
+        const entry = new EntryPoint(rootPointer, this.username, [], []);
         return this.addSharingKey(writer).then(function(res) {
-            return this.addToStaticData(writer, rootPointer);
+            return this.addToStaticData(entry);
         }.bind(this)).then(function(res) {
             var root = DirAccess.create(writer, rootRKey, new FileProperties(directoryName, 0));
             return this.uploadChunk(root, [], this.user, writer, rootMapKey);
