@@ -3,19 +3,19 @@ function ReadableFilePointer(owner, writer, mapKey, baseKey) {
     this.writer = writer; //User / UserPublicKey
     this.mapKey = mapKey; //ByteArrayWrapper
     this.baseKey = baseKey; //SymmetricKey
-
+    
     this.serialize = function() {
-	var bout = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
-	bout.writeArray(owner.getPublicKeys());
-	if (writer instanceof User)
-	    bout.writeArray(writer.getSecretKeys());
-	else
-	    bout.writeArray(writer.getPublicKeys());
-	bout.writeArray(mapKey);
-	bout.writeArray(baseKey.key);
-	return new Uint8Array(bout.toArray());
+        var bout = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+        bout.writeArray(owner.getPublicKeys());
+        if (writer instanceof User)
+            bout.writeArray(writer.getSecretKeys());
+        else
+            bout.writeArray(writer.getPublicKeys());
+        bout.writeArray(mapKey);
+        bout.writeArray(baseKey.key);
+        return new Uint8Array(bout.toArray());
     }
-
+    
     this.isWritable = function() {
         return this.writer instanceof User;
     }
@@ -29,7 +29,7 @@ ReadableFilePointer.deserialize = function(arr) {
     const rootDirKeySecret = bin.readArray();
     const writer = writerRaw.length == window.nacl.box.secretKeyLength + window.nacl.sign.secretKeyLength ?
     User.fromSecretKeys(writerRaw) :
-     UserPublicKey.fromPublicKeys(writerRaw);
+    UserPublicKey.fromPublicKeys(writerRaw);
     return new ReadableFilePointer(UserPublicKey.fromPublicKeys(owner), writer, mapKey, new SymmetricKey(rootDirKeySecret));
 }
 
@@ -39,7 +39,7 @@ function EntryPoint(pointer, owner, readers, writers) {
     this.owner = owner;
     this.readers = readers;
     this.writers = writers;
-
+    
     // User, UserPublicKey
     this.serializeAndEncrypt = function(user, target) {
         return target.encryptMessageFor(this.serialize(), user);
@@ -86,12 +86,12 @@ function SymmetricLink(link) {
     this.nonce = slice(link, 0, SymmetricKey.NONCE_BYTES);
 
     this.serialize = function() {
-	return concat(this.nonce, this.link);
+    return concat(this.nonce, this.link);
     }
 
     this.target = function(from) {
-	var encoded = from.decrypt(this.link, this.nonce);
-	return new SymmetricKey(encoded);
+    var encoded = from.decrypt(this.link, this.nonce);
+    return new SymmetricKey(encoded);
     }
 }
 SymmetricLink.fromPair = function(from, to, nonce) {
@@ -105,15 +105,15 @@ function Location(owner, writer, mapKey) {
     this.mapKey = mapKey;
 
     this.serialize = function() {
-	var bout = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
-	bout.writeArray(owner.getPublicKeys());
-	bout.writeArray(writer.getPublicKeys());
-	bout.writeArray(mapKey);
-	return new Uint8Array(bout.toArray());
+        var bout = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+        bout.writeArray(owner.getPublicKeys());
+        bout.writeArray(writer.getPublicKeys());
+        bout.writeArray(mapKey);
+        return new Uint8Array(bout.toArray());
     }
 
     this.encrypt = function(key, nonce) {
-	return key.encrypt(this.serialize(), nonce);
+        return key.encrypt(this.serialize(), nonce);
     }
 }
 Location.deserialize = function(buf) {
@@ -134,53 +134,57 @@ function SymmetricLocationLink(arr) {
 
     // SymmetricKey -> Location
     this.targetLocation = function(from) {
-	var nonce = slice(this.link, 0, SymmetricKey.NONCE_BYTES);
-	var rest = slice(this.link, SymmetricKey.NONCE_BYTES, this.link.length);
-	return Location.decrypt(from, nonce, new Uint8Array(this.loc.toArray()));
+        var nonce = slice(this.link, 0, SymmetricKey.NONCE_BYTES);
+        var rest = slice(this.link, SymmetricKey.NONCE_BYTES, this.link.length);
+        return Location.decrypt(from, nonce, new Uint8Array(this.loc.toArray()));
     }
 
     this.target = function(from) {
-	var nonce = slice(this.link, 0, SymmetricKey.NONCE_BYTES);
-	var rest = slice(this.link, SymmetricKey.NONCE_BYTES, this.link.length);
-	var encoded = from.decrypt(rest, nonce);
-	return new SymmetricKey(encoded);
+        var nonce = slice(this.link, 0, SymmetricKey.NONCE_BYTES);
+        var rest = slice(this.link, SymmetricKey.NONCE_BYTES, this.link.length);
+        var encoded = from.decrypt(rest, nonce);
+        return new SymmetricKey(encoded);
     }
 
     this.serialize = function() {
-	var buf = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
-	buf.writeArray(this.link);
-	buf.writeArray(this.loc);
-	return buf.toArray();
+        var buf = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+        buf.writeArray(this.link);
+        buf.writeArray(this.loc);
+        return buf.toArray();
     }
 }
 
-function FileAccess(parent2meta, properties, retriever) {
+function FileAccess(parent2meta, properties, retriever, parentLink) {
     this.parent2meta = parent2meta;
     this.properties = properties;
     this.retriever = retriever;
-    
+    this.parentLink = parentLink;
+
     this.serialize = function(bout) {
-	bout.writeArray(parent2meta.serialize());
-	bout.writeArray(properties);
-	bout.writeByte(retriever != null ? 1 : 0);
-	if (retriever != null)
-	    retriever.serialize(bout);
-	bout.writeByte(this.getType());
+        bout.writeArray(parent2meta.serialize());
+        bout.writeArray(properties);
+        bout.writeByte(retriever != null ? 1 : 0);
+        if (retriever != null)
+            retriever.serialize(bout);
+        bout.writeByte(parentLink != null ? 1: 0);
+        if (parentLink != null)
+            bout.writeArray(this.parentLink.serialize());
+        bout.writeByte(this.getType());
     }
 
     // 0=FILE, 1=DIR
     this.getType = function() {
-	return 0;
+        return 0;
     }
 
     this.getMetaKey = function(parentKey) {
-	return parent2meta.target(parentKey);
+        return parent2meta.target(parentKey);
     }
 
     this.getFileProperties = function(parentKey) {
-	var nonce = slice(this.properties, 0, SymmetricKey.NONCE_BYTES);
-	var cipher = slice(this.properties, SymmetricKey.NONCE_BYTES, this.properties.length);
-	return FileProperties.deserialize(this.getMetaKey(parentKey).decrypt(cipher, nonce));
+        var nonce = slice(this.properties, 0, SymmetricKey.NONCE_BYTES);
+        var cipher = slice(this.properties, SymmetricKey.NONCE_BYTES, this.properties.length);
+        return FileProperties.deserialize(this.getMetaKey(parentKey).decrypt(cipher, nonce));
     }
 }
 FileAccess.deserialize = function(buf) {
@@ -188,14 +192,16 @@ FileAccess.deserialize = function(buf) {
     var properties = buf.readArray();
     var hasRetreiver = buf.readUnsignedByte();
     var retriever =  (hasRetreiver == 1) ? FileRetriever.deserialize(buf) : null;
+    var hasParent = buf.readUnsignedByte();
+    var parentLink =  (hasParent == 1) ? new SymmetricLocationLink(buf.readArray()) : null;
     var type = buf.readUnsignedByte();
-    var fileAccess = new FileAccess(new SymmetricLink(p2m), properties, retriever);
+    var fileAccess = new FileAccess(new SymmetricLink(p2m), properties, retriever, parentLink);
     switch(type) {
-    case 0:
-	return fileAccess;
-    case 1:
-	return DirAccess.deserialize(fileAccess, buf);
-    default: throw new Error("Unknown Metadata type: "+type);
+        case 0:
+            return fileAccess;
+        case 1:
+            return DirAccess.deserialize(fileAccess, buf);
+        default: throw new Error("Unknown Metadata type: "+type);
     }
 }
 
@@ -215,40 +221,40 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
 
     this.superSerialize = this.serialize;
     this.serialize = function(bout) {
-	this.superSerialize(bout);
-	bout.writeArray(subfolders2parent.serialize());
-	bout.writeArray(subfolders2files.serialize());
-	bout.writeUnsignedInt(0);
-	bout.writeUnsignedInt(subfolders.length)
-	for (var i=0; i < subfolders.length; i++)
-	    bout.writeArray(subfolders[i].serialize());
-	bout.writeUnsignedInt(files.length)
-	for (var i=0; i < files.length; i++)
-	    bout.writeArray(files[i].serialize());
+        this.superSerialize(bout);
+        bout.writeArray(subfolders2parent.serialize());
+        bout.writeArray(subfolders2files.serialize());
+        bout.writeUnsignedInt(0);
+        bout.writeUnsignedInt(subfolders.length)
+        for (var i=0; i < subfolders.length; i++)
+            bout.writeArray(subfolders[i].serialize());
+        bout.writeUnsignedInt(files.length)
+        for (var i=0; i < files.length; i++)
+            bout.writeArray(files[i].serialize());
     }
 
     // Location, SymmetricKey, SymmetricKey
     this.addFile = function(location, ourSubfolders, targetParent) {
-	var nonce = ourSubfolders.createNonce();
-	var loc = location.encrypt(ourSubfolders, nonce);
+        var nonce = ourSubfolders.createNonce();
+        var loc = location.encrypt(ourSubfolders, nonce);
         var link = concat(nonce, ourSubfolders.encrypt(targetParent.key, nonce));
-	var buf = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
-	buf.writeArray(link);
-	buf.writeArray(loc);
-	this.files.push(new SymmetricLocationLink(new ByteBuffer(buf)));
+        var buf = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+        buf.writeArray(link);
+        buf.writeArray(loc);
+        this.files.push(new SymmetricLocationLink(new ByteBuffer(buf)));
     }
 
     // 0=FILE, 1=DIR
     this.getType = function() {
-	return 1;
+        return 1;
     }
 
     this.getParentKey = function(subfoldersKey) {
-	    return this.subfolders2parent.target(subfoldersKey);
+        return this.subfolders2parent.target(subfoldersKey);
     }
-    
+
     this.getFilesKey = function(subfoldersKey) {
-	    return this.subfolders2files.target(subfoldersKey);
+        return this.subfolders2files.target(subfoldersKey);
     }
 }
 
@@ -260,12 +266,12 @@ DirAccess.deserialize = function(base, bin) {
     var files = [], subfolders = [];
     var nsubfolders = bin.readUnsignedInt();
     for (var i=0; i < nsubfolders; i++)
-	subfolders[i] = new SymmetricLocationLink(bin.readArray().toArray());
+        subfolders[i] = new SymmetricLocationLink(bin.readArray().toArray());
     var nfiles = bin.readUnsignedInt();
     for (var i=0; i < nfiles; i++)
-	files[i] = new SymmetricLocationLink(bin.readArray().toArray());
-    return new DirAccess(new SymmetricLink(s2f), 
-                         new SymmetricLink(s2p), 
+        files[i] = new SymmetricLocationLink(bin.readArray().toArray());
+    return new DirAccess(new SymmetricLink(s2f),
+                         new SymmetricLink(s2p),
                          subfolders, files, base.parent2meta, base.properties, base.retriever);
 }
 
@@ -276,11 +282,11 @@ DirAccess.create = function(owner, subfoldersKey, metadata) {
     var filesKey = SymmetricKey.random();
     var metaNonce = metaKey.createNonce();
     return new DirAccess(SymmetricLink.fromPair(subfoldersKey, filesKey, subfoldersKey.createNonce()),
-			 SymmetricLink.fromPair(subfoldersKey, parentKey, subfoldersKey.createNonce()),
-			 [], [],
-			 SymmetricLink.fromPair(parentKey, metaKey, parentKey.createNonce()),
-			 concat(metaNonce, metaKey.encrypt(metadata.serialize(), metaNonce))
-			);
+             SymmetricLink.fromPair(subfoldersKey, parentKey, subfoldersKey.createNonce()),
+             [], [],
+             SymmetricLink.fromPair(parentKey, metaKey, parentKey.createNonce()),
+             concat(metaNonce, metaKey.encrypt(metadata.serialize(), metaNonce))
+            );
 }
 
 function FileRetriever() {
@@ -288,12 +294,12 @@ function FileRetriever() {
 FileRetriever.deserialize = function(bin) {
     var type = bin.readUnsignedByte();
     switch (type) {
-	case 0:
-	throw new Exception("Simple FileRetriever not implemented!");
-	case 1:
-	return EncryptedChunkRetriever.deserialize(bin);
-	default:
-	throw new Exception("Unknown FileRetriever type: "+type);
+    case 0:
+    throw new Exception("Simple FileRetriever not implemented!");
+    case 1:
+    return EncryptedChunkRetriever.deserialize(bin);
+    default:
+    throw new Exception("Unknown FileRetriever type: "+type);
     }
 }
 
@@ -302,37 +308,37 @@ function EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChun
     this.chunkAuth = chunkAuth;
     this.fragmentHashes = fragmentHashes;
     this.nextChunk = nextChunk;
-    
+
     this.getFile = function(context, dataKey) {
-	const stream = this;
-	return this.getChunkInputStream(context, dataKey).then(function(chunk) {
-	    return Promise.resolve(new LazyInputStreamCombiner(stream, context, dataKey, chunk));
-	});
+        const stream = this;
+        return this.getChunkInputStream(context, dataKey).then(function(chunk) {
+            return Promise.resolve(new LazyInputStreamCombiner(stream, context, dataKey, chunk));
+        });
     }
 
     this.getNext = function() {
-	return nextChunk;
+        return nextChunk;
     }
 
     this.getChunkInputStream = function(context, dataKey) {
-	var fragmentsProm = context.downloadFragments(fragmentHashes);
-	return fragmentsProm.then(function(fragments) {
-	    fragments = Erasure.reorder(fragments, fragmentHashes);
-	    var cipherText = Erasure.recombine(fragments, Chunk.MAX_SIZE, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
-	    var fullEncryptedChunk = new EncryptedChunk(concat(chunkAuth, cipherText.toArray()));
+        var fragmentsProm = context.downloadFragments(fragmentHashes);
+        return fragmentsProm.then(function(fragments) {
+            fragments = Erasure.reorder(fragments, fragmentHashes);
+            var cipherText = Erasure.recombine(fragments, Chunk.MAX_SIZE, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
+            var fullEncryptedChunk = new EncryptedChunk(concat(chunkAuth, cipherText.toArray()));
             var original = fullEncryptedChunk.decrypt(dataKey, chunkNonce);
-	    return Promise.resolve(original);
-	});
+            return Promise.resolve(original);
+        });
     }
 
     this.serialize = function(buf) {
-	buf.writeUnsignedByte(1); // This class
-	buf.writeArray(chunkNonce);
-	buf.writeArray(chunkAuth);
-	buf.writeArray(concat(fragmentHashes));
-	buf.writeUnsignedByte(nextChunk != null ? 1 : 0);
-	if (nextChunk != null)
-	    buf.write(nextChunk.serialize());
+        buf.writeUnsignedByte(1); // This class
+        buf.writeArray(chunkNonce);
+        buf.writeArray(chunkAuth);
+        buf.writeArray(concat(fragmentHashes));
+        buf.writeUnsignedByte(nextChunk != null ? 1 : 0);
+        if (nextChunk != null)
+            buf.write(nextChunk.serialize());
     }
 }
 EncryptedChunkRetriever.deserialize = function(buf) {
@@ -343,7 +349,7 @@ EncryptedChunkRetriever.deserialize = function(buf) {
     var hasNext = buf.readUnsignedByte();
     var nextChunk = null;
     if (hasNext == 1)
-	nextChunk = Location.deserialize(buf);
+        nextChunk = Location.deserialize(buf);
     return new EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChunk);
 }
 
@@ -351,7 +357,7 @@ function split(arr, size) {
     var length = arr.byteLength/size;
     var res = [];
     for (var i=0; i < length; i++)
-	res[i] = slice(arr, i*size, (i+1)*size);
+    res[i] = slice(arr, i*size, (i+1)*size);
     return res;
 }
 
@@ -364,49 +370,49 @@ function LazyInputStreamCombiner(stream, context, dataKey, chunk) {
 
     this.getNextStream = function() {
         if (this.next != null) {
-	    const lazy = this;
+            const lazy = this;
             return context.getMetadata(this.next).then(function(meta) {
-		var nextRet = meta.retriever;
-		lazy.next = nextRet.getNext();
-		return nextRet.getChunkInputStream(context, dataKey);
+                var nextRet = meta.retriever;
+                lazy.next = nextRet.getNext();
+                return nextRet.getChunkInputStream(context, dataKey);
             });
-	}
+        }
         throw "EOFException";
     }
 
     this.bytesReady = function() {
-	return this.current.length - this.index;
+        return this.current.length - this.index;
     }
 
     this.readByte = function() {
         try {
-	    return this.current[this.index++];
-	} catch (e) {}
-	const lazy = this;
+            return this.current[this.index++];
+        } catch (e) {}
+        const lazy = this;
         this.getNextStream().then(function(res){
-	    lazy.index = 0;
-	    lazy.current = res;
+            lazy.index = 0;
+            lazy.current = res;
             return lazy.current.readByte();
-	});
+        });
     }
 
     this.read = function(len, res, offset) {
-	const lazy = this;
-	if (res == null) {
-	    res = new Uint8Array(len);
-	    offset = 0;
-	}
-	const available = lazy.bytesReady();
-	const toRead = Math.min(available, len);
-	for (var i=0; i < toRead; i++)
-	    res[offset + i] = lazy.readByte();
-	if (available >= len)
-	    return Promise.resolve(res);
-	return this.getNextStream().then(function(chunk){
-	    lazy.index = 0;
-	    lazy.current = chunk;
-	    return lazy.read(len-toRead, res, offset + toRead);
-	});
+        const lazy = this;
+        if (res == null) {
+            res = new Uint8Array(len);
+            offset = 0;
+        }
+        const available = lazy.bytesReady();
+        const toRead = Math.min(available, len);
+        for (var i=0; i < toRead; i++)
+            res[offset + i] = lazy.readByte();
+        if (available >= len)
+            return Promise.resolve(res);
+        return this.getNextStream().then(function(chunk){
+            lazy.index = 0;
+            lazy.current = chunk;
+            return lazy.read(len-toRead, res, offset + toRead);
+        });
     }
 }
 
@@ -415,18 +421,18 @@ Erasure.recombine = function(fragments, truncateTo, originalBlobs, allowedFailur
     var buf = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
     // assume we have all fragments in original order for now
     for (var i=0; i < originalBlobs; i++)
-	buf.write(fragments[i]);
+    buf.write(fragments[i]);
     return buf;
 }
 Erasure.reorder = function(fragments, hashes) {
     var hashMap = new Map(); //ba dum che
     for (var i=0; i < hashes.length; i++)
-	hashMap.set(nacl.util.encodeBase64(hashes[i]), i); // Seems Map can't handle array contents equality
+        hashMap.set(nacl.util.encodeBase64(hashes[i]), i); // Seems Map can't handle array contents equality
     var res = [];
     for (var i=0; i < fragments.length; i++) {
-	var hash = nacl.util.encodeBase64(UserPublicKey.hash(fragments[i]));
-	var index = hashMap.get(hash);
-	res[index] = fragments[i];
+        var hash = nacl.util.encodeBase64(UserPublicKey.hash(fragments[i]));
+        var index = hashMap.get(hash);
+        res[index] = fragments[i];
     }
     return res;
 }
@@ -435,15 +441,15 @@ Erasure.split = function(input, originalBlobs, allowedFailures) {
     var size = (input.length/originalBlobs)|0;
     var bfrags = [];
     for (var i=0; i < input.length/size; i++)
-	bfrags.push(slice(input, i*size, Math.min(input.length, (i+1)*size)));
+        bfrags.push(slice(input, i*size, Math.min(input.length, (i+1)*size)));
     return bfrags;
 }
 
 function string2arraybuffer(str) {
-  var buf = new ArrayBuffer(str.length);
-  var bufView = new Uint8Array(buf);
-  for (var i=0, strLen=str.length; i<strLen; i++) {
-    bufView[i] = str.charCodeAt(i);
-  }
-  return bufView;
+    var buf = new ArrayBuffer(str.length);
+    var bufView = new Uint8Array(buf);
+    for (var i=0, strLen=str.length; i<strLen; i++) {
+        bufView[i] = str.charCodeAt(i);
+    }
+    return bufView;
 }
