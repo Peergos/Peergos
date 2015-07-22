@@ -897,6 +897,12 @@ ReadableFilePointer.deserialize = function(arr) {
     return new ReadableFilePointer(UserPublicKey.fromPublicKeys(owner), writer, mapKey, new SymmetricKey(rootDirKeySecret));
 }
 
+//ReadableFilePointer, FileAccess
+function RetrievedFilePointer(pointer, access) {
+    this.pointer  = pointer;
+    this.filePointer = filePointer;
+}
+
 // ReadableFilePinter, String, [String], [String]
 function EntryPoint(pointer, owner, readers, writers) {
     this.pointer = pointer;
@@ -1113,7 +1119,7 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
         return 1;
     }
 
-    // returns Map<ReadableFilePointer, FileAccess>
+    // returns [RetrievedFilePointer]
     this.getChildren = function(context, baseKey) {
         const prom1 = context.retrieveAllMetadata(this.subfolders, baseKey);
         const prom2 = context.retrieveAllMetadata(this.files, this.subfolders2files.target(baseKey));
@@ -1121,7 +1127,10 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
             const res = mapArr[0];
             for (var i=0; i < mapArr[1].length; i++)
                 res.push(mapArr[1][i]);
-            return Promise.resolve(res);
+            const retrievedFilePointers = res.map(function(entry) {
+               return new RetrievedFilePointer(entry[0],  entry[1]); 
+            })
+            return Promise.resolve(retrievedFilePointers);
         })
     }
 
