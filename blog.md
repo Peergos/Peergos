@@ -1,8 +1,8 @@
 ---
-layout: default
+layout: page
+title: Blog
+permalink: /blog/
 ---
-
-Front Page.
 
 <div class="posts">
   {% for post in site.posts %}
