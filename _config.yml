@@ -9,7 +9,7 @@ name: Peergos
 description: Control your data!
 
 # URL of your avatar or profile pic (you could use your GitHub profile pic)
-avatar: http://peergos.org/images/PeergosLogo.png
+avatar: {{ site.baseurl }}/images/PeergosLogo.png
 
 #
 # Flags below are optional
