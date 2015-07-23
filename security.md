@@ -13,10 +13,10 @@ Peergos hides the contents of files, but also the friendship graph. If a user sh
 Thread Model
 ------------
 
-1. Peergos is designed to be secure against passive network adversaries. Despite all the encrypted data being publicly accessible, no one but the intended recipients can deduce any data or friendship graphs. 
+1. Peergos is designed to be secure against passive network adversaries, even ones with state level computational resources. Despite all the encrypted data being publicly accessible, no one but the intended recipients can deduce any data or friendship graphs. 
 
 2. Peergos does not defend against a compromised user's machine. 
 
-3. For users willing to trust our SSL certificate, they can access Peergos through our web interface over https. The more paranoid user can download and run the server locally and browse to localhost.
+3. Users willing to trust our SSL certificate, can access Peergos through our web interface over https. The more paranoid user can download and run the server locally and browse to localhost.
 
 4. Peergos should be secure against attackers with read access to a users machine which is not synchronous with them have the web user interface open in a browser. 
