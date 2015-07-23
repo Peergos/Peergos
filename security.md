@@ -8,7 +8,7 @@ Peergos encrypts files locally on your device and your keys never leave your dev
 
 The underlying encryption uses <a href="http://tweetnacl.cr.yp.to/">Tweetnacl</a> for both symmetric and asymmetric encryption. 
 
-Peergos hides the contents of files, but also the friendship graph. If a user share a file with another user, the network shouldn't be able to decude this relationship. 
+Peergos hides the contents of files, but also the friendship graph. If a user shares a file with another user, the network shouldn't be able to deduce this relationship. 
 
 Thread Model
 ------------
