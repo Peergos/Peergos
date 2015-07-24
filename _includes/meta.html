@@ -4,8 +4,10 @@
     <meta name='viewport' content='width=device-width, initial-scale=1.0, maximum-scale=1.0'>
     <script type="text/javascript">
       var host = "peergos.org";
-      if ((host == window.location.host) && (window.location.protocol != "https:"))
+      if ((host == window.location.host) && (window.location.protocol != "https:")) {
+          console.log("Protocol: "+window.location.protocol);
           window.location.protocol = "https:";
+      }
     </script>
     <link rel="shortcut icon" href="{{ site.baseurl }}/images/favicon.ico">
     <link rel="canonical" href=" { { site.url } }{ { page.url } }" />
