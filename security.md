@@ -10,7 +10,7 @@ The underlying encryption uses <a href="http://tweetnacl.cr.yp.to/">Tweetnacl</a
 
 Peergos hides the contents of files, but also the friendship graph. If a user shares a file with another user, the network shouldn't be able to deduce this relationship. 
 
-Thread Model
+Threat Model
 ------------
 
 1. Peergos is designed to be secure against passive network adversaries, even ones with state level computational resources. Despite all the encrypted data being publicly accessible, no one but the intended recipients can deduce any data or friendship graphs. 
