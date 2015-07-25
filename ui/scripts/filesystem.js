@@ -1,7 +1,17 @@
 userContext =  null;
 
-var File = React.createClass({
 
+//entrypoint.owner //top level name 
+//ReadableFilePointer.owner
+//
+//get dir children
+//get entry point readers/writers/owner
+//get parent of dir
+//
+//get file content
+//get 
+var File = React.createClass({
+        
         glyphClass: function() {
                 var className = "glyphicon "; 
                 className += this.props.isdir ? "glyphicon-folder-open" : "glyphicon-file";
@@ -10,7 +20,9 @@ var File = React.createClass({
 
         renderGrid: function() {
                 var glyphClass = this.glyphClass();
-                return (<div ref={this.props.path} className="col-xs-6 col-md-3">
+                console.log("rendering grid file with props "+ this.props.name);
+
+                return (<div className="col-xs-6 col-md-3">
                                 <a id={this.props.id} onClick={this.props.onClick}>
                                 <span style={{fontSize:"3.5em"}} className={glyphClass}/>
                                 </a>
@@ -28,56 +40,13 @@ var File = React.createClass({
                                 var selected  =  evt.target.text.trim();
                                 console.log("on item "+ selected);
                                 if  (selected  == "Rename") {
-                                        this.onRename();
+                                        alert("rename " + selected);
                                 } else if (selected  == "Remove")  {
-                                        this.onRemove();
+                                        alert("remove " + selected);
                                 }  else 
                                         console.log("no  action defined for context menu item "+ selected);    
                         }.bind(this)
                 });
-        },
-
-
-        remove: function() {
-                $.ajax({
-                        url: buildRemoveUrl(this.props.path),
-                        dataType: 'json',
-                        cache: false,
-                        success: function() {
-                                this.props.browser.reloadFilesFromServer();
-                        }.bind(this),
-                        error: function(xhr, status, err) {
-                                console.error(this.props.url, status, err.toString());
-                        }.bind(this)
-                });
-        },
-
-        rename: function(updatedName) {
-                $.ajax({
-                        url: buildRenameUrl(this.props.path,  updatedName),
-                        dataType: 'json',
-                        cache: false,
-                        success: function() {
-                                this.props.browser.reloadFilesFromServer();
-                        }.bind(this),
-                        error: function(xhr, status, err) {
-                                console.error(this.props.url, status, err.toString());
-                        }.bind(this)
-                });
-        },
-
-        onRemove: function() {
-                var type = this.props.isdir ? "folder" : "file";
-                var remove = confirm("Remove "+type +" '"+ this.props.path +"' ?");
-                if (remove)     
-                        this.remove();
-        },
-
-        onRename: function() {
-                var type = this.props.isdir ? "folder" : "file";
-                var updatedName = prompt("Enter new name for "+type +" "+this.props.name);
-                if (updatedName != null) 
-                        this.rename(updatedName);
         },
 
         renderList: function() {
@@ -96,9 +65,9 @@ var File = React.createClass({
         render: function() {
                 return this.props.gridView ? this.renderGrid() : this.renderList();
         }
+
 });
 
-//File.id = function(name) {return name.match(/([a-z]|[0-9])/g).join("");}
 
 File.id = function() {return (Math.pow(2,31) * Math.random())|0; }
 
@@ -175,29 +144,166 @@ function updateNavbarPath(path) {
 
 var Browser = React.createClass({
         getInitialState: function() {
-                return {paths : ["."],
-                        files: [],
+                return {files: [],
+                        gridView: true,
                         sort: File.pathSort,
-                        gridView: true};
+                        retrievedFilePointerPath: []
+                };
         },
+            
+    
+        loadFilesFromServer: function() {
+                console.log("Loading files with  user context "+ userContext +" with type "+ typeof(userContext));
+                if (typeof(userContext) == "undefined" || userContext == null)
+                        return;
+                const isEmpty =  this.state.retrievedFilePointerPath.length == 0;
+               
+                var roots = null; 
+                if (isEmpty) {
+                    userContext.getRoots().then(function(roots) {
+                        const files = roots.map(function(root) {
+                            const entryPoint = root[0];
+                            const fileAccess = root[1];
 
-        loadFilesFromServer: function(path) {
-                console.log("Loading files with  user context "+ userContext);
+                            const filePointer = entryPoint.pointer;
+                            const rootDirKey = entryPoint.pointer.baseKey;
+		                    const parentKey = fileAccess.getParentKey(rootDirKey);
+
+                            const retrievedFilePointer = RetrievedFilePointer(filePointer, fileAccess);
+                            
+                            const props = fileAccess.getFileProperties(parentKey);
+                            const name  = props.name;
+                            const size = props.getSize();
+                            const isDir = fileAccess.isDirectory();
+                            const id = File.id();
+                            console.log("name "+ name + " with size "+ size); 
+                            const onClick = isDir ? function() {
+                                //TODO
+                                console.log("clicked on file "+ name); 
+                            } :  function() {
+                                console.log("clicked on dir "+ name); 
+                                this.addToPath(retrievedFilePointer);
+                            }.bind(this);
+
+                            return (<File id={id} gridView={this.state.gridView} onClick={onClick} name={name} isdir={isDir} size={size} browser={this}/>)
+                        }.bind(this));
+
+                      this.setState({
+                        files: files, 
+                        sort: this.state.sort,  
+                        gridView: this.state.gridView, 
+                        retrievedFilePointerPath: [] 
+                      }); 
+                    }.bind(this));
+
+                    /*
+                    for (var i=0; i < roots.length; i++) {
+                        const entryPoint = roots[i][0];
+                        const rootDirKey = entryPoint.pointer.baseKey;
+                        const fileAccess = roots[i][1];
+                        const props = fileAccess.getFileProperties(parentKey);
+                        const name  = props.name;
+                        const length  = props.length();
+                        const id  =  File.id(name);
+
+                    }
+                    */
+                }
+
+                /*
+                 * Browser {
+                 *  [retrievedFilePointer] 
+                 * }
+                 * <File {dir/file-access}}
+                 *if user context null bomb out
+                 *
+                 *if retrievedFilePointerPath is empty 
+                 *      get roots
+                 *      retrievedFilePointerPath = [entry-point -> rfp] 
+                 *      files <- subfiles/subfolders 
+                 *
+                 *else
+                 *      get children of last elem in  retrievedFilePointerPath 
+                 *      files <- subfiles/subfolders
+                 *
+                 *
+                //
                 if (userContext == null)
                         return;
-                console.log("Loading files of path "+ path);
+
+                if (entryPoint ==  null) {
+                    //get roots
+                    userContext.getRoots().then(function(roots) {
+                    const files = []
+                    for (var i=0; i < roots.length; i++) {
+                        const entryPoint = roots[i][0];
+                        const rootDirKey = entryPoint.pointer.baseKey;
+                        const fileAccess = roots[i][1];
+                        const props = fileAccess.getFileProperties(parentKey);
+                        const name  = props.name;
+                        const length  = props.length();
+                        const id  =  File.id(name);
+                        
+                        var onClick = isdir ? function(event){
+                                this.updatePath();
+                        }.bind(this) :
+                                function(event) {
+                                        this.getContent(f.path);
+                                }.bind(this);
+
+                                        <File id={id} gridView={this.state.gridView{ }}>
+                                        )
+                    }
+                }
+
+
+
 
                 return userContext.getRoots().then(function(roots) {
                 console.log("Found "+ roots.length +"  roots here.");
                 for (var i=0; i < roots.length; i++) {
-                        var dirPointer = roots[i][0];
-                        var rootDirKey = dirPointer.pointer.baseKey;
-                        var dir = roots[i][1];
-                        if (dir == null)
+                        //roots : [[entry-point, fileaccess]]
+                        const entryPoint = roots[i][0];
+                        const rootDirKey = entryPoint.pointer.baseKey;
+                        const fileAccess = roots[i][1];
+                        const isDir = fileAccess.isDir();
+                        if (fileAccess == null)
                                 continue;
-		                const parentKey = dir.getParentKey(rootDirKey);
-                        const props = dir.getFileProperties(parentKey);
-                        var name  = props.name;
+		                const parentKey = fileAccess.getParentKey(rootDirKey);
+                        const props = fileAccess.getFileProperties(parentKey);
+                        const name  = props.name;
+                        const length  = props.length();
+
+                        //if  dir-access
+                        //
+                        // to get  children
+                        fileAccess.getChildren(userContext, rootDirKey);
+                        //
+                        // fileAccess.files
+                        // fileAccess.subfolders
+                        //
+                        //const subfolderlink  = subfolders[i]
+                        //const subfolder_baseKey = subfolderlink.target(rootDirKey);
+                        //const subfolder_metadatablob_location_0 = subfolderlink.targetLocation(rootDirKey);
+                        //
+                        //const subfiles_fileaccesses  =  userContext.retrieveMetadata(fileAccess.files, fileAccess.subfolders2files.target(rootDirKey));
+                        //const subfolder_diraccesses  =  userContext.retrieveMetadata(fileAccess.subfolders, rootDirKey);
+                        //
+                        //
+                        //const subfolder_readableFilePointer = new ReadableFilePointer(
+                        // subfolder_metadatablob_location_0.owner,
+                        // subfolder_metadatablob_location_0.writer,
+                        // subfolder_metadatablob_location_0.mapKey,
+                        // subfolder_baseKey
+                        //);
+                        //
+                        //
+                        //
+                        //
+                        //
+                        //
+                        //
+                        //
                         console.log("Found root-dir with name "+ name + ".");
                    }
                 });
@@ -212,7 +318,7 @@ var Browser = React.createClass({
                                         // download fragments in chunk
                                         var fileProps = fileBlob.getFileProperties(baseKey);
                                         console.log("found "+ JSON.stringify(fileProps));
-                          ``      }
+                                }
                         });
                         */
         },
@@ -220,7 +326,10 @@ var Browser = React.createClass({
         reloadFilesFromServer: function() {this.loadFilesFromServer(this.currentPath())},
 
         currentPath : function() {
-                return this.state.paths[this.state.paths.length-1]
+                return this.state.retrievedFilePointerPath.map(function(e) {
+                    //TODO
+                    return "TODO"; 
+                }).join("/");
         },
 
         onBack : function() {
@@ -247,10 +356,12 @@ var Browser = React.createClass({
         alternateView: function() {
                 var updatedView = !  this.state.gridView;
 
-                this.setState({files: this.state.files, 
+                this.setState({
+                        files: this.state.files, 
                         sort: this.state.sort,  
-                        paths: this.state.paths, 
-                        gridView: updatedView});
+                        retrievedFilePointerPath: this.retrievedFilePointerPath,
+                        gridView: updatedView
+                });
         },
 
 
@@ -367,6 +478,22 @@ var Browser = React.createClass({
         updatePath: function(path) {
                 this.loadFilesFromServer(path);
         },
+
+        addToPath: function(retrievedFilePointer) {
+                const path= this.state.retrievedFilePointerPath.slice();//copy
+                path.push(retrievedFilePointer);
+                this.setState({
+                        files: this.state.files, 
+                        sort: this.state.sort,  
+                        gridView: this.state.gridView, 
+                        retrievedFilePointerPath: path
+                });
+        },
+
+        updateDir: function(entryPoint, dirAccess) {
+                this.loadFilesFromServer(path);
+        },
+
         getContent: function(path) {
                 var url = buildGetContentUrl(path);
                 location.href=url;
@@ -390,16 +517,7 @@ var Browser = React.createClass({
         },
 
         render: function() {
-                var files = this.state.files.map(function(f) {
-                        var id  =  File.id(f.name);
-                        var onClick = f.isdir ? function(event){
-                                this.updatePath(f.path);
-                        }.bind(this) :
-                                function(event) {
-                                        this.getContent(f.path);
-                                }.bind(this)
-                                return (<File id={id} gridView={this.state.gridView} onClick={onClick} path={f.path} name={f.name} isdir={f.isdir} size={f.size} time={f.time} browser={this}/>)
-                }.bind(this));
+                var files = this.state.files; 
 
                 var gridGlyph = "glyphicon glyphicon-th-large";
                 var listGlyph = "glyphicon glyphicon-list";

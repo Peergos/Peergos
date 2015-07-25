@@ -899,8 +899,8 @@ ReadableFilePointer.deserialize = function(arr) {
 
 //ReadableFilePointer, FileAccess
 function RetrievedFilePointer(pointer, access) {
-    this.pointer  = pointer;
-    this.filePointer = filePointer;
+    this.filePointer = pointer;
+    this.fileAccess = access;
 }
 
 // ReadableFilePinter, String, [String], [String]
@@ -1046,7 +1046,10 @@ function FileAccess(parent2meta, properties, retriever, parentLink) {
     this.getType = function() {
         return 0;
     }
-
+    
+    this.isDirectory =  function() {
+            return this.getType() == 1;
+    }
     this.getMetaKey = function(parentKey) {
         return parent2meta.target(parentKey);
     }
