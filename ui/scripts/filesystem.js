@@ -20,7 +20,6 @@ var File = React.createClass({
 
         renderGrid: function() {
                 var glyphClass = this.glyphClass();
-                console.log("rendering grid file with props "+ this.props.name);
 
                 return (<div className="col-xs-6 col-md-3">
                                 <a id={this.props.id} onClick={this.props.onClick}>
@@ -50,19 +49,22 @@ var File = React.createClass({
         },
 
         renderList: function() {
-                var dateString =  new Date(this.props.time*1000).toGMTString()
-                        var glyphClass = this.glyphClass();
+                //var dateString =  new Date(this.props.time*1000).toGMTString()
+                var glyphClass = this.glyphClass();
                 var spanStyle = {fontSize:"1.5em"}; 
-                return (<tr id={this.props.id} ref={this.props.path}>
+                
+                console.log("rendering list file with props "+ this.props.name);
+                return (<tr id={this.props.id}>
                                 <td>
                                 <a onClick={this.props.onClick}><span style={{fontSize:"1.5em", paddingRight:"10px"}} className={glyphClass}/>{this.props.name}</a>
                                 </td>
                                 <td>{File.sizeString(this.props.size)}</td>
-                                <td>{dateString}</td>
                                 </tr>);
         },
 
         render: function() {
+                console.log("rendering with grid? "+ this.props.gridView);
+
                 return this.props.gridView ? this.renderGrid() : this.renderList();
         }
 
@@ -178,14 +180,19 @@ var Browser = React.createClass({
                             const id = File.id();
                             console.log("name "+ name + " with size "+ size); 
                             const onClick = isDir ? function() {
-                                //TODO
-                                console.log("clicked on file "+ name); 
-                            } :  function() {
                                 console.log("clicked on dir "+ name); 
                                 this.addToPath(retrievedFilePointer);
+                            }.bind(this) :  function() {
+                                //TODO
+                                console.log("clicked on file "+ name); 
                             }.bind(this);
-
-                            return (<File id={id} gridView={this.state.gridView} onClick={onClick} name={name} isdir={isDir} size={size} browser={this}/>)
+                        
+                            return {
+                                    onClick: onClick,
+                                    name: name,
+                                    isDir: isDir,
+                                    size:size
+                            }
                         }.bind(this));
 
                       this.setState({
@@ -423,13 +430,10 @@ var Browser = React.createClass({
                         userContext = ctx;  
                 }).then(function() {
                         console.log("adding root entry");
-                        return userContext.createEntryDirectory("test");
+                        var milliseconds = (new Date).getTime();
+                        return userContext.createEntryDirectory("test_"+milliseconds);
                 }).then(function() {
                         hideLogin();   
-                        return userContext.getRoots();
-                }).then(function(roots) {
-                        console.log("Got "+  roots.length +" roots.");
-                        console.log("Got "+  JSON.stringify(roots[0])+" roots.");
                 }).then(this.loadFilesFromServer);
 
         },
@@ -517,16 +521,18 @@ var Browser = React.createClass({
         },
 
         render: function() {
-                var files = this.state.files; 
+                const files = this.state.files.map(function(f) {
+                            return (<File id={File.id()} gridView={this.state.gridView} onClick={f.onClick} name={f.name} isdir={f.isDir} size={f.size} browser={this}/>)
+                }.bind(this)); 
 
-                var gridGlyph = "glyphicon glyphicon-th-large";
-                var listGlyph = "glyphicon glyphicon-list";
-                var element = document.getElementById("altViewSpan");
-                var className = this.state.gridView ? listGlyph : gridGlyph;
+                const gridGlyph = "glyphicon glyphicon-th-large";
+                const listGlyph = "glyphicon glyphicon-list";
+                const element = document.getElementById("altViewSpan");
+                const className = this.state.gridView ? listGlyph : gridGlyph;
                 element.className = className;
 
-                var layout = null;
-                var  contextMenu = (<div id="context-menu">
+                const layout = null;
+                const  contextMenu = (<div id="context-menu">
                                 <ul className="dropdown-menu" role="menu">
                                 <li><a tabIndex="-1">Rename</a></li>
                                 <li className="divider"></li>
@@ -541,14 +547,13 @@ var Browser = React.createClass({
                                         {contextMenu}
                                         </div>)
 
-                                var sortGlyph = "glyphicon glyphicon-sort";
+                                const sortGlyph = "glyphicon glyphicon-sort";
 
                 return (<div>
                                 <table className="table table-responsive table-striped table-hover">
                                 <thead><tr>
                                 <th><button onClick={this.pathSort} className="btn btn-default"><span className={sortGlyph}/>Path</button></th>
                                 <th><button onClick={this.sizeSort} className="btn btn-default"><span className={sortGlyph}/>Size</button></th>
-                                <th><button onClick={this.timeSort} className="btn btn-default"><span className={sortGlyph}/>Last modified time</button></th>
                                 </tr></thead>
                                 <tbody>
                                 {files}
