@@ -23,16 +23,16 @@ function mediumFileShareTest(owner, sharer, receiver, sender) {
     var root = DirAccess.create(sharer, rootRKey, new FileProperties(name, 0));
     
     // generate file (two chunks)
-    var raw1 = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
-    var raw2 = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+    var raw1 = new ByteArrayOutputStream();
+    var raw2 = new ByteArrayOutputStream();
     var template = nacl.util.decodeUTF8("Hello secure cloud! Goodbye NSA!");
     var template2 = nacl.util.decodeUTF8("Second hi safe cloud! Adios NSA!");
     for (var i = 0; i < Chunk.MAX_SIZE / 32; i++)
         raw1.write(template);
     for (var i = 0; i < Chunk.MAX_SIZE / 32; i++)
         raw2.write(template2);
-    raw1 = new Uint8Array(raw1.toArray());
-    raw2 = new Uint8Array(raw2.toArray());
+    raw1 = new Uint8Array(raw1.toByteArray());
+    raw2 = new Uint8Array(raw2.toByteArray());
     
     // add file to root dir
     var filename = "HiNSA.bin";
@@ -42,7 +42,7 @@ function mediumFileShareTest(owner, sharer, receiver, sender) {
 	root.addFile(fileLocation, rootRKey, fileKey);
 	
 	// now write the root to the core nodes
-	const rootEntry = new EntryPoint(new ReadableFilePointer(receiver.user, sharer, new ByteBuffer(rootMapKey), rootRKey), receiver.username, [], []);
+	const rootEntry = new EntryPoint(new ReadableFilePointer(receiver.user, sharer, rootMapKey, rootRKey), receiver.username, [], []);
 	receiver.addToStaticData(rootEntry);
 	return sender.uploadChunk(root, [], owner, sharer, rootMapKey);
     }).then(function() {
@@ -58,7 +58,7 @@ function mediumFileShareTest(owner, sharer, receiver, sender) {
 	    if (dir == null)
 		continue;
 	    /*[[SymmetricLocationLink, FileAccess]]*/
-	    return receiver.retrieveAllMetadata(dir.files, rootDirKey).then(function(files) {
+	    dir.getChildren(receiver, rootDirKey).then(function(files) {
 		for (var i=0; i < files.length; i++) {
 		    var baseKey = files[i][0].target(rootDirKey);
 		    var fileBlob = files[i][1];
@@ -136,19 +136,19 @@ function twoUserTests(dht, core) {
 		    var port = 25 + 1024;
 		    var address = [127, 0, 0, 1];
 		    for (var i = 0; i < frags; i++) {
-			var frag = window.nacl.randomBytes(32);
-			var message = concat(sharer.getPublicKeys(), frag);
-			var signed = sharer.signMessage(message);
-			core.registerFragmentStorage(bob.user, address, port, bob.user, signed, function(res) {
-			    if (!res)
-				console.log("Failed to register fragment storage!");
-			});
+				var frag = window.nacl.randomBytes(32);
+				var message = concat(sharer.getPublicKeys(), frag);
+				var signed = sharer.signMessage(message);
+				core.registerFragmentStorage(bob.user, address, port, bob.user, signed, function(res) {
+				    if (!res)
+					console.log("Failed to register fragment storage!");
+				});
 		    }
 		    return core.getQuota(bob.user).then(function(quota){
-			console.log("Generated quota: " + quota/1024 + " KiB");
-			return Promise.resolve(true);
+				console.log("Generated quota: " + quota/1024 + " KiB");
+				return Promise.resolve(true);
 		    }).then(function() {
-			return Promise.resolve(sharer);
+				return Promise.resolve(sharer);
 		    });
 		}).then(function(sharer) {
 		    var t1 = Date.now();
@@ -170,7 +170,7 @@ function rootDirCreation(context) {
     var root = DirAccess.create(writer, rootRKey, new FileProperties(name, 0));
 
     // now write the root to the core nodes
-    context.addToStaticData(writer, new ReadableFilePointer(context.user, writer, new ByteBuffer(rootMapKey), rootRKey));
+    context.addToStaticData(writer, new ReadableFilePointer(context.user, writer, rootMapKey, rootRKey));
     return context.addSharingKey(writer).then(function(res) {
 	context.uploadChunk(root, [], context.user, writer, rootMapKey)
 	    .then(function(res) {

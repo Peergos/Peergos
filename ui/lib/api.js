@@ -118,7 +118,7 @@ function toKeyPair(pub, sec) {
 // SymmetricKey methods
 
 function SymmetricKey(key) {
-    this.key = key instanceof ByteBuffer ? new Uint8Array(key.toArray()) : key;
+    this.key = key;
 
     // (Uint8Array, Uint8Array[24]) => Uint8Array
     this.encrypt = function(data, nonce) {
@@ -145,11 +145,11 @@ function FileProperties(name, size) {
     this.size = size;
 
     this.serialize = function() {
-        var buf = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
-        buf.writeUnsignedInt(name.length);
+        var buf = new ByteArrayOutputStream();
+        buf.writeInt(name.length);
         buf.writeString(name);
         buf.writeDouble(size);
-        return new Uint8Array(buf.toArray());
+        return buf.toByteArray();
     }
 
     this.getSize = function() {
@@ -157,11 +157,11 @@ function FileProperties(name, size) {
     }
 }
 
-FileProperties.deserialize = function(buf) {
-    buf = new ByteBuffer(slice(buf, 0, buf.length));
-    var nameBytes = buf.readArray();
+FileProperties.deserialize = function(raw) {
+    const buf = new ByteArrayInputStream(raw);
+    var name = buf.readString();
     var size = buf.readDouble();
-    return new FileProperties(nacl.util.encodeUTF8(nameBytes.toArray()), size);
+    return new FileProperties(name, size);
 }
 
 function Fragment(data) {
@@ -232,7 +232,7 @@ function File(name, contents, key) {
                 console.log("Uploading chunk with %d fragments\n", fragments.length);
                 var hashes = [];
                 for (var f in fragments)
-                    hashes.push(new ByteBuffer(fragments[f].getHash()));
+                    hashes.push(fragments[f].getHash());
                 const retriever = new EncryptedChunkRetriever(chunk.nonce, encryptedChunk.getAuth(), hashes, i+1 < that.chunks.length ? new Location(owner, writer, that.chunks[i+1].mapKey) : null);
                 const metaBlob = FileAccess.create(chunk.key, that.props, retriever);
                 resolve(context.uploadChunk(metaBlob, fragments, owner, writer, chunk.mapKey));
@@ -264,13 +264,8 @@ function slice(arr, start, end) {
     if (end < start)
         throw "negative slice size! "+start + " -> " + end;
     var r = new Uint8Array(end-start);
-    if (arr instanceof ByteBuffer) {
-        for (var i=start; i < end; i++)
-            r[i-start] = arr.raw[i];
-    } else {
-        for (var i=start; i < end; i++)
-            r[i-start] = arr[i];
-    }
+    for (var i=start; i < end; i++)
+        r[i-start] = arr[i];
     return r;
 }
 
@@ -283,7 +278,7 @@ function concat(a, b, c) {
         var index = 0;
         for (var i=0; i < a.length; i++)
             for (var j=0; j < a[i].length; j++)
-                r[index++] = a[i].readUnsignedByte();
+                r[index++] = a[i][j];
         return r;
     }
     var r = new Uint8Array(a.length+b.length+(c != null ? c.length : 0));
@@ -335,7 +330,7 @@ function getProm(url) {
         // This is called even on 404 etc
         // so check the status
         if (req.status == 200) {
-        resolve(req.response);
+        resolve(new Uint8Array(req.response));
         }
         else {
         reject(Error(req.statusText));
@@ -380,7 +375,7 @@ function postProm(url, data) {
         // This is called even on 404 etc
         // so check the status
         if (req.status == 200) {
-        resolve(req.response);
+        resolve(new Uint8Array(req.response));
         }
         else {
         reject(Error(req.statusText));
@@ -417,12 +412,12 @@ function DHTClient() {
     //
     this.put = function(keyData, valueData, owner, sharingKeyData, mapKeyData, proofData) {
         var arrays = [keyData, valueData, owner, sharingKeyData, mapKeyData, proofData];
-        var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
-        buffer.writeUnsignedInt(0); // PUT Message
+        var buffer = new ByteArrayOutputStream();
+        buffer.writeInt(0); // PUT Message
         for (var iArray=0; iArray < arrays.length; iArray++) 
             buffer.writeArray(arrays[iArray]);
-        return postProm("dht/put", new Uint8Array(buffer.toArray())).then(function(resBuf){
-            var res = new ByteBuffer(resBuf).readUnsignedInt();
+        return postProm("dht/put", buffer.toByteArray()).then(function(resBuf){
+            var res = new ByteArrayInputStream(resBuf).readInt();
             if (res == 1) return Promise.resolve(true);
             return Promise.reject("Fragment upload failed");
         });
@@ -431,12 +426,12 @@ function DHTClient() {
     //get
     //
     this.get = function(keyData) { 
-        var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
-        buffer.writeUnsignedInt(1); // GET Message
+        var buffer = new ByteArrayOutputStream();
+        buffer.writeInt(1); // GET Message
         buffer.writeArray(keyData);
-        return postProm("dht/get", new Uint8Array(buffer.toArray())).then(function(res) {
-            var buf = new ByteBuffer(res);
-            var success = buf.readUnsignedInt();
+        return postProm("dht/get", buffer.toByteArray()).then(function(res) {
+            var buf = new ByteArrayInputStream(res);
+            var success = buf.readInt();
             if (success == 1)
                 return Promise.resolve(buf.readArray());
             return Promise.reject("Fragment download failed");
@@ -447,79 +442,78 @@ function DHTClient() {
     //contains
     //
     this.contains = function(keyData) {
-        var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
-        buffer.writeUnsignedInt(2); // CONTAINS Message
+        var buffer = new ByteArrayOutputStream();
+        buffer.writeInt(2); // CONTAINS Message
         buffer.writeArray(keyData);
-        return postProm("dht/contains", new Uint8Array(buffer.toArray())); 
+        return postProm("dht/contains", buffer.toByteArray()); 
     };
 }
 
 function CoreNodeClient() {
     //String -> fn- >fn -> void
     this.getPublicKey = function(username) {
-        var buffer = new  ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
-        buffer.writeUnsignedInt(username.length);
+        var buffer = new ByteArrayOutputStream();
+        buffer.writeInt(username.length);
         buffer.writeString(username);
-        return postProm("core/getPublicKey", new Uint8Array(buffer.toArray()));
+        return postProm("core/getPublicKey", buffer.toByteArray());
     };
     
     //UserPublicKey -> Uint8Array -> Uint8Array -> fn -> fn -> void
     this.updateStaticData = function(owner, signedStaticData) {
-        var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+        var buffer = new ByteArrayOutputStream();
         buffer.writeArray(owner.getPublicKeys());
         buffer.writeArray(signedStaticData);
-        return postProm("core/updateStaticData", new Uint8Array(buffer.toArray())); 
+        return postProm("core/updateStaticData", buffer.toByteArray()); 
     };
     
     //String -> fn- >fn -> void
     this.getStaticData = function(owner) {
-        var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+        var buffer = new ByteArrayOutputStream();
         buffer.writeArray(owner.getPublicKeys());
-        return postProm("core/getStaticData", new Uint8Array(buffer.toArray()));
+        return postProm("core/getStaticData", buffer.toByteArray());
     };
     
     //Uint8Array -> fn -> fn -> void
     this.getUsername = function(publicKey) {
-        var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+        var buffer = new ByteArrayOutputStream();
         buffer.writeArray(publicKey);
-        return postProm("core/getUsername", new Uint8Array(buffer.toArray())).then(function(res) {
-            const rawName = new Uint8Array(new ByteBuffer(new Uint8Array(res)).readArray().toArray());
-            return Promise.resolve(nacl.util.encodeUTF8(rawName));
+        return postProm("core/getUsername", buffer.toByteArray()).then(function(res) {
+            const name = new ByteArrayInputStream(res).readString();
+            return Promise.resolve(name);
         });
     };
     
     
     //String -> Uint8Array -> Uint8Array -> fn -> fn -> void
     this.addUsername = function(username, encodedUserKey, signed, staticData) {
-        var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
-        buffer.writeUnsignedInt(username.length);
+        var buffer = new ByteArrayOutputStream();
         buffer.writeString(username);
         buffer.writeArray(encodedUserKey);
         buffer.writeArray(signed);
         buffer.writeArray(staticData);
-        return postProm("core/addUsername", new Uint8Array(buffer.toArray()));
+        return postProm("core/addUsername", buffer.toByteArray());
     };
     
     //Uint8Array -> Uint8Array -> fn -> fn -> void
     this.followRequest = function( target,  encryptedPermission) {
-        var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+        var buffer = new ByteArrayOutputStream();
         buffer.writeArray(target);
         buffer.writeArray(encryptedPermission);
-        return postProm("core/followRequest", new Uint8Array(buffer.toArray()));
+        return postProm("core/followRequest", buffer.toByteArray());
     };
     
     //String -> Uint8Array -> fn -> fn -> void
     this.getFollowRequests = function( user) {
-        var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+        var buffer = new ByteArrayOutputStream();
         buffer.writeArray(user);
-        return postProm("core/getFollowRequests", new Uint8Array(buffer.toArray())).then(function(res) {
-            var buf = new ByteBuffer(res);
-            var size = buf.readUnsignedInt();
-            var n = buf.readUnsignedInt();
+        return postProm("core/getFollowRequests", buffer.toByteArray()).then(function(res) {
+            var buf = new ByteArrayInputStream(res);
+            var size = buf.readInt();
+            var n = buf.readInt();
             var arr = [];
             for (var i=0; i < n; i++) {
                 var t = buf.readArray();
-                arr.push(new Uint8Array(t.toArray()));
+                arr.push(t);
             }
             return Promise.resolve(arr);
         });
@@ -527,119 +521,119 @@ function CoreNodeClient() {
     
     //String -> Uint8Array -> Uint8Array -> fn -> fn -> void
     this.removeFollowRequest = function( target,  data,  signed) {
-        var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+        var buffer = new ByteArrayOutputStream();
         buffer.writeString(target);
         buffer.writeArray(data);
         buffer.writeArray(signed);
-        return postProm("core/removeFollowRequest", new Uint8Array(buffer.toArray()));
+        return postProm("core/removeFollowRequest", buffer.toByteArray());
     };
 
     //String -> Uint8Array -> Uint8Array -> fn -> fn -> void
     this.allowSharingKey = function(owner, signedWriter) {
-        var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+        var buffer = new ByteArrayOutputStream();
         buffer.writeArray(owner);
         buffer.writeArray(signedWriter); 
-        return postProm("core/allowSharingKey", new Uint8Array(buffer.toArray()));
+        return postProm("core/allowSharingKey", buffer.toByteArray());
     };
     
     //String -> Uint8Array -> Uint8Array -> fn -> fn -> void
     this.banSharingKey = function(username,  encodedSharingPublicKey,  signedHash) {
-        var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+        var buffer = new ByteArrayOutputStream();
         buffer.writeString(username);
         buffer.writeArray(encodedSharingPublicKey);
         buffer.writeArray(signedHash); 
-        return postProm("core/banSharingKey", new Uint8Array(buffer.toArray()));
+        return postProm("core/banSharingKey", buffer.toByteArray());
     };
 
     //Uint8Array -> Uint8Array -> Uint8Array -> Uint8Array  -> Uint8Array -> fn -> fn -> void
     this.addMetadataBlob = function( owner,  encodedSharingPublicKey,  mapKey,  metadataBlob,  sharingKeySignedHash) {
-        var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+        var buffer = new ByteArrayOutputStream();
         buffer.writeArray(owner);
         buffer.writeArray(encodedSharingPublicKey);
         buffer.writeArray(mapKey);
         buffer.writeArray(metadataBlob);
         buffer.writeArray(sharingKeySignedHash);
-        return postProm("core/addMetadataBlob", new Uint8Array(buffer.toArray())).then(function(res) {
-            return Promise.resolve(new ByteBuffer(res).readByte() == 1);
+        return postProm("core/addMetadataBlob", buffer.toByteArray()).then(function(res) {
+            return Promise.resolve(new ByteArrayInputStream(res).readByte() == 1);
         });
     };
     
     //String -> Uint8Array -> Uint8Array  -> Uint8Array -> fn -> fn -> void
     this.removeMetadataBlob = function( username,  encodedSharingKey,  mapKey,  sharingKeySignedMapKey) {
-        var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+        var buffer = new ByteArrayOutputStream();
         buffer.writeString(username);
         buffer.writeArray(encodedSharingKey);
         buffer.writeArray(mapKey);
         buffer.writeArray(sharingKeySignedMapKey);
-        return postProm("core/removeMetadataBlob", new Uint8Array(buffer.toArray()));
+        return postProm("core/removeMetadataBlob", buffer.toByteArray());
     };
 
     //String  -> Uint8Array  -> Uint8Array -> fn -> fn -> void
     this.removeUsername = function( username,  userKey,  signedHash) {
-        var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+        var buffer = new ByteArrayOutputStream();
         buffer.writeString(username);
         buffer.writeArray(userKey);
         buffer.writeArray(signedHash);
-        return post("core/removeUsername", new Uint8Array(buffer.toArray()));
+        return post("core/removeUsername", buffer.toByteArray());
     };
 
     //String -> fn -> fn -> void
     this.getSharingKeys = function( username) {
-        var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+        var buffer = new ByteArrayOutputStream();
         buffer.writeString(username);
-        return postProm("core/getSharingKeys", new Uint8Array(buffer.toArray()));
+        return postProm("core/getSharingKeys", buffer.toByteArray());
     };
     
     //String  -> Uint8Array  -> fn -> fn -> void
     this.getMetadataBlob = function( owner,  encodedSharingKey,  mapKey) {
-        var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+        var buffer = new ByteArrayOutputStream();
         buffer.writeArray(owner.getPublicKeys());
         buffer.writeArray(encodedSharingKey.getPublicKeys());
         buffer.writeArray(mapKey);
-        return postProm("core/getMetadataBlob", new Uint8Array(buffer.toArray()));
+        return postProm("core/getMetadataBlob", buffer.toByteArray());
     };
     
     //String  -> Uint8Array  -> Uint8Array -> fn -> fn -> void
     this.isFragmentAllowed = function( owner,  encodedSharingKey,  mapkey,  hash) {
-        var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+        var buffer = new ByteArrayOutputStream();
         buffer.writeString(owner);
         buffer.writeArray(encodedSharingKey);
         buffer.writeArray(mapKey);
         buffer.writeArray(hash);
-        return postProm("core/isFragmentAllowed", new Uint8Array(buffer.toArray()));
+        return postProm("core/isFragmentAllowed", buffer.toByteArray());
     };
     
     //String -> fn -> fn -> void
     this.getQuota = function(user) {
-        var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+        var buffer = new ByteArrayOutputStream();
         buffer.writeArray(user.getPublicKeys());
-        return postProm("core/getQuota", new Uint8Array(buffer.toArray())).then(function(res) {
-            var buf = new ByteBuffer(new Uint8Array(res));
-            var quota = buf.readUnsignedInt() << 32;
-            quota += buf.readUnsignedInt();
+        return postProm("core/getQuota", buffer.toByteArray()).then(function(res) {
+            var buf = new ByteArrayInputStream(res);
+            var quota = buf.readInt() << 32;
+            quota += buf.readInt();
             return Promise.resolve(quota);
         });
     };
     
     //String -> fn -> fn -> void
     this.getUsage = function(username) {
-        var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+        var buffer = new ByteArrayOutputStream();
         buffer.writeString(username);
-        return postProm("core/getUsage", new Uint8Array(buffer.toArray()));
+        return postProm("core/getUsage", buffer.toByteArray());
     };
     
     //String  -> Uint8Array  -> Uint8Array -> fn -> fn -> void
     this.getFragmentHashes = function( username, sharingKey, mapKey) {
-        var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+        var buffer = new ByteArrayOutputStream();
         buffer.writeString(username);
         buffer.writeArray(sharingKey);
         buffer.writeArray(mapKey);
-        return postProm("core/getFragmentHashes", new Uint8Array(buffer.toArray()));
+        return postProm("core/getFragmentHashes", buffer.toByteArray());
     };
 
     //String  -> Uint8Array  -> Uint8Array -> Uint8Array -> [Uint8Array] -> Uint8Array -> fn -> fn -> void
     this.addFragmentHashes = function(username, encodedSharingPublicKey, mapKey, metadataBlob, allHashes, sharingKeySignedHash) {
-        var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+        var buffer = new ByteArrayOutputStream();
         buffer.writeString(username);
         buffer.writeArray(encodedShaaringPublicKey);
         buffer.writeArray(mapKey);
@@ -651,18 +645,18 @@ function CoreNodeClient() {
 
         buffer.writeArray(sharingKeySignedHash);
         
-        return postProm("core/addFragmentHashes", new Uint8Array(buffer.toArray()));
+        return postProm("core/addFragmentHashes", buffer.toByteArray());
     };
 
     
     this.registerFragmentStorage = function(spaceDonor, address, port, owner, signedKeyPlusHash) {
-        var buffer = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+        var buffer = new ByteArrayOutputStream();
         buffer.writeArray(spaceDonor.getPublicKeys());
         buffer.writeArray(address);
         buffer.writeInt(port);
         buffer.writeArray(owner.getPublicKeys());
         buffer.writeArray(signedKeyPlusHash);
-        return postProm("core/registerFragmentStorage", new Uint8Array(buffer.toArray()));
+        return postProm("core/registerFragmentStorage", buffer.toByteArray());
     };
 };
 
@@ -680,11 +674,11 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
     }
 
     this.serializeStatic = function() {
-        var buf = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
-        buf.writeUnsignedInt(this.staticData.length);
+        var buf = new ByteArrayOutputStream();
+        buf.writeInt(this.staticData.length);
         for (var i = 0; i < this.staticData.length; i++)
             buf.writeArray(this.staticData[i][1].serializeAndEncrypt(this.user, this.user));
-        return buf.toArray();
+        return buf.toByteArray();
     }
 
     this.register = function() {
@@ -701,7 +695,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 
         // add a note to our static data so we know who we sent the private key to
         // and authorise the writer key
-        const rootPointer = new ReadableFilePointer(this.user, writer, new ByteBuffer(rootMapKey), rootRKey);
+        const rootPointer = new ReadableFilePointer(this.user, writer, rootMapKey, rootRKey);
         const entry = new EntryPoint(rootPointer, this.username, [], []);
         return this.addSharingKey(writer).then(function(res) {
             return this.addToStaticData(entry);
@@ -714,7 +708,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
     this.sendFollowRequest = function(targetUser) {
         // create sharing keypair and give it write access
         var sharing = User.random();
-        var rootMapKey = new ByteBuffer(window.nacl.randomBytes(32));
+        var rootMapKey = window.nacl.randomBytes(32);
 
         // add a note to our static data so we know who we sent the private key to
         var friendRoot = new ReadableFilePointer(user, sharing, rootMapKey, SymmetricKey.random());
@@ -753,9 +747,9 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
         for (var i=0; i < 32; i++)
             pBoxKey[i] = raw[i]; // signing key is not used
         var tmp = new UserPublicKey(null, pBoxKey);
-        var buf = new ByteBuffer(raw);
+        var buf = new ByteArrayInputStream(raw);
         buf.read(32);
-        var cipher = new Uint8Array(buf.read(raw.length - 32).toArray());
+        var cipher = new Uint8Array(buf.read(raw.length - 32));
         return EntryPoint.decryptAndDeserialize(cipher, user, tmp);
     }
     
@@ -764,9 +758,9 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
     }
 
     this.uploadChunk = function(metadata, fragments, owner, sharer, mapKey) {
-        var buf = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+        var buf = new ByteArrayOutputStream();
         metadata.serialize(buf);
-        var metaBlob = buf.toArray();
+        var metaBlob = buf.toByteArray();
         console.log("Storing metadata blob of " + metaBlob.length + " bytes.");
         return corenodeClient.addMetadataBlob(owner.getPublicKeys(), sharer.getPublicKeys(), mapKey, metaBlob, sharer.signMessage(concat(mapKey, metaBlob)))
         .then(function(added) {
@@ -790,9 +784,9 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
     this.getRoots = function() {
         const context = this;
         return corenodeClient.getStaticData(user).then(function(raw) {
-            var buf = new ByteBuffer(raw);
-            var totalStaticLength = buf.readUnsignedInt();
-            var count = buf.readUnsignedInt();
+            var buf = new ByteArrayInputStream(raw);
+            var totalStaticLength = buf.readInt();
+            var count = buf.readInt();
             var res = [];
             for (var i=0; i < count; i++) {
                 var entry = EntryPoint.decryptAndDeserialize(buf.readArray(), context.user, context.user);
@@ -806,8 +800,8 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
                 var entryPoints = [];
                 for (var i=0; i < result.length; i++) {
                     if (result[i].byteLength > 8) {
-                        var unwrapped = new ByteBuffer(result[i]).readArray();
-                        entryPoints.push([res[i], FileAccess.deserialize(new ByteBuffer(unwrapped))]);
+                        var unwrapped = new ByteArrayInputStream(result[i]).readArray();
+                        entryPoints.push([res[i], FileAccess.deserialize(unwrapped)]);
                     } else
                         entryPoints.push([res[i], null]);
                 }
@@ -825,8 +819,8 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
         return Promise.all(proms).then(function(rawBlobs) {
             var accesses = [];
             for (var i=0; i < rawBlobs.length; i++) {
-                var unwrapped = new ByteBuffer(rawBlobs[i]).readArray();
-                accesses[i] = [links[i], FileAccess.deserialize(new ByteBuffer(unwrapped))];
+                var unwrapped = new ByteArrayInputStream(rawBlobs[i]).readArray();
+                accesses[i] = [links[i], FileAccess.deserialize(unwrapped)];
             }
             return Promise.resolve(accesses);
         });
@@ -834,8 +828,8 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 
     this.getMetadata = function(loc) {
         return corenodeClient.getMetadataBlob(loc.owner, loc.writer, loc.mapKey).then(function(buf) {
-            var unwrapped = new ByteBuffer(buf).readArray();
-            return FileAccess.deserialize(new ByteBuffer(unwrapped));
+            var unwrapped = new ByteArrayInputStream(buf).readArray();
+            return FileAccess.deserialize(unwrapped);
         });
     }
 
@@ -847,7 +841,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
         var proms = [];
         for (var i=0; i < hashes.length; i++)
             proms.push(dhtClient.get(hashes[i]).then(function(val) {
-                result.fragments.push(val.toArray());
+                result.fragments.push(val);
                 console.log("Got Fragment.");
             }).catch(function() {
                 result.nError++;
@@ -869,7 +863,7 @@ function ReadableFilePointer(owner, writer, mapKey, baseKey) {
     this.baseKey = baseKey; //SymmetricKey
 
     this.serialize = function() {
-        var bout = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+        var bout = new ByteArrayOutputStream();
         bout.writeArray(owner.getPublicKeys());
         if (writer instanceof User)
             bout.writeArray(writer.getSecretKeys());
@@ -877,7 +871,7 @@ function ReadableFilePointer(owner, writer, mapKey, baseKey) {
             bout.writeArray(writer.getPublicKeys());
         bout.writeArray(mapKey);
         bout.writeArray(baseKey.key);
-        return new Uint8Array(bout.toArray());
+        return bout.toByteArray();
     }
 
     this.isWritable = function() {
@@ -886,7 +880,7 @@ function ReadableFilePointer(owner, writer, mapKey, baseKey) {
 }
 
 ReadableFilePointer.deserialize = function(arr) {
-    const bin = new ByteBuffer(arr);
+    const bin = new ByteArrayInputStream(arr);
     const owner = bin.readArray();
     const writerRaw = bin.readArray();
     const mapKey = bin.readArray();
@@ -916,38 +910,35 @@ function EntryPoint(pointer, owner, readers, writers) {
     }
 
     this.serialize = function() {
-        const dout = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+        const dout = new ByteArrayOutputStream();
         dout.writeArray(this.pointer.serialize());
-        dout.writeUnsignedInt(this.owner.length);
         dout.writeString(this.owner);
-        dout.writeUnsignedInt(this.readers.length);
+        dout.writeInt(this.readers.length);
         for (var i = 0; i < this.readers.length; i++) {
-            dout.writeUnsignedInt(this.readers[i].length);
             dout.writetring(this.readers[i]);
         }
         dout.writeInt(this.writers.length);
         for (var i=0; i < this.writers.length; i++) {
-            dout.writeUnsignedInt(this.writers[i].length);
             dout.writeString(this.writers[i]);
         }
-        return new Uint8Array(dout.toArray());
+        return dout.toByteArray();
     }
 }
 
 // byte[], User, UserPublicKey
 EntryPoint.decryptAndDeserialize = function(input, user, from) {
     const raw = new Uint8Array(user.decryptMessage(input, from));
-    const din = new ByteBuffer(raw);
+    const din = new ByteArrayInputStream(raw);
     const pointer = ReadableFilePointer.deserialize(din.readArray());
-    const owner = nacl.util.encodeUTF8(din.readArray().toArray());
+    const owner = din.readString();
     const nReaders = din.readInt();
     const readers = [];
     for (var i=0; i < nReaders; i++)
-        readers.push(nacl.util.encodeUTF8(din.readArray().toArray()));
+        readers.push(din.readString());
     const nWriters = din.readInt();
     const writers = [];
     for (var i=0; i < nWriters; i++)
-        writers.push(nacl.util.encodeUTF8(din.readArray().toArray()));
+        writers.push(din.readString());
     return new EntryPoint(pointer, owner, readers, writers);
 }
 
@@ -975,18 +966,19 @@ function Location(owner, writer, mapKey) {
     this.mapKey = mapKey;
 
     this.serialize = function() {
-        var bout = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+        var bout = new ByteArrayOutputStream();
         bout.writeArray(owner.getPublicKeys());
         bout.writeArray(writer.getPublicKeys());
         bout.writeArray(mapKey);
-        return new Uint8Array(bout.toArray());
+        return bout.toByteArray();
     }
 
     this.encrypt = function(key, nonce) {
         return key.encrypt(this.serialize(), nonce);
     }
 }
-Location.deserialize = function(buf) {
+Location.deserialize = function(raw) {
+    const buf = new ByteArrayInputStream(raw);
     var owner = buf.readArray();
     var writer = buf.readArray();
     var mapKey = buf.readArray();
@@ -994,19 +986,18 @@ Location.deserialize = function(buf) {
 }
 Location.decrypt = function(from, nonce, loc) {
     var raw = from.decrypt(loc, nonce);
-    return Location.deserialize(new ByteBuffer(new Uint8Array(raw)));
+    return Location.deserialize(raw);
 }
 
 function SymmetricLocationLink(arr) {
-    const buf = new ByteBuffer(arr);
+    const buf = new ByteArrayInputStream(arr);
     this.link = buf.readArray();
     this.loc = buf.readArray();
 
     // SymmetricKey -> Location
     this.targetLocation = function(from) {
         var nonce = slice(this.link, 0, SymmetricKey.NONCE_BYTES);
-        var rest = slice(this.link, SymmetricKey.NONCE_BYTES, this.link.length);
-        return Location.decrypt(from, nonce, new Uint8Array(this.loc.toArray()));
+        return Location.decrypt(from, nonce, this.loc);
     }
 
     this.target = function(from) {
@@ -1017,10 +1008,10 @@ function SymmetricLocationLink(arr) {
     }
 
     this.serialize = function() {
-        var buf = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+        var buf = new ByteArrayOutputStream();
         buf.writeArray(this.link);
         buf.writeArray(this.loc);
-        return buf.toArray();
+        return buf.toByteArray();
     }
 }
 
@@ -1060,14 +1051,15 @@ function FileAccess(parent2meta, properties, retriever, parentLink) {
         return FileProperties.deserialize(this.getMetaKey(parentKey).decrypt(cipher, nonce));
     }
 }
-FileAccess.deserialize = function(buf) {
+FileAccess.deserialize = function(raw) {
+    const buf = new ByteArrayInputStream(raw);
     var p2m = buf.readArray();
     var properties = buf.readArray();
-    var hasRetreiver = buf.readUnsignedByte();
+    var hasRetreiver = buf.readByte();
     var retriever =  (hasRetreiver == 1) ? FileRetriever.deserialize(buf) : null;
-    var hasParent = buf.readUnsignedByte();
+    var hasParent = buf.readByte();
     var parentLink =  (hasParent == 1) ? new SymmetricLocationLink(buf.readArray()) : null;
-    var type = buf.readUnsignedByte();
+    var type = buf.readByte();
     var fileAccess = new FileAccess(new SymmetricLink(p2m), properties, retriever, parentLink);
     switch(type) {
         case 0:
@@ -1097,24 +1089,25 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
         this.superSerialize(bout);
         bout.writeArray(subfolders2parent.serialize());
         bout.writeArray(subfolders2files.serialize());
-        bout.writeUnsignedInt(0);
-        bout.writeUnsignedInt(subfolders.length)
+        bout.writeInt(0);
+        bout.writeInt(subfolders.length)
         for (var i=0; i < subfolders.length; i++)
             bout.writeArray(subfolders[i].serialize());
-        bout.writeUnsignedInt(files.length)
+        bout.writeInt(files.length)
         for (var i=0; i < files.length; i++)
             bout.writeArray(files[i].serialize());
     }
 
     // Location, SymmetricKey, SymmetricKey
     this.addFile = function(location, ourSubfolders, targetParent) {
-        var nonce = ourSubfolders.createNonce();
-        var loc = location.encrypt(ourSubfolders, nonce);
-        var link = concat(nonce, ourSubfolders.encrypt(targetParent.key, nonce));
-        var buf = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+        const filesKey = subfolders2files.target(ourSubfolders);
+        var nonce = filesKey.createNonce();
+        var loc = location.encrypt(filesKey, nonce);
+        var link = concat(nonce, filesKey.encrypt(targetParent.key, nonce));
+        var buf = new ByteArrayOutputStream();
         buf.writeArray(link);
         buf.writeArray(loc);
-        this.files.push(new SymmetricLocationLink(new ByteBuffer(buf)));
+        this.files.push(new SymmetricLocationLink(buf.toByteArray()));
     }
 
     // 0=FILE, 1=DIR
@@ -1174,17 +1167,17 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
 }
 
 DirAccess.deserialize = function(base, bin) {
-    var s2p = bin.readArray().toArray();
-    var s2f = bin.readArray().toArray();
+    var s2p = bin.readArray();
+    var s2f = bin.readArray();
 
-    var nSharingKeys = bin.readUnsignedInt();
+    var nSharingKeys = bin.readInt();
     var files = [], subfolders = [];
-    var nsubfolders = bin.readUnsignedInt();
+    var nsubfolders = bin.readInt();
     for (var i=0; i < nsubfolders; i++)
-        subfolders[i] = new SymmetricLocationLink(bin.readArray().toArray());
-    var nfiles = bin.readUnsignedInt();
+        subfolders[i] = new SymmetricLocationLink(bin.readArray());
+    var nfiles = bin.readInt();
     for (var i=0; i < nfiles; i++)
-        files[i] = new SymmetricLocationLink(bin.readArray().toArray());
+        files[i] = new SymmetricLocationLink(bin.readArray());
     return new DirAccess(new SymmetricLink(s2f),
                          new SymmetricLink(s2p),
                          subfolders, files, base.parent2meta, base.properties, base.retriever);
@@ -1208,7 +1201,7 @@ DirAccess.create = function(owner, subfoldersKey, metadata) {
 function FileRetriever() {
 }
 FileRetriever.deserialize = function(bin) {
-    var type = bin.readUnsignedByte();
+    var type = bin.readByte();
     switch (type) {
     case 0:
     throw new Exception("Simple FileRetriever not implemented!");
@@ -1241,28 +1234,28 @@ function EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChun
         return fragmentsProm.then(function(fragments) {
             fragments = Erasure.reorder(fragments, fragmentHashes);
             var cipherText = Erasure.recombine(fragments, Chunk.MAX_SIZE, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
-            var fullEncryptedChunk = new EncryptedChunk(concat(chunkAuth, cipherText.toArray()));
+            var fullEncryptedChunk = new EncryptedChunk(concat(chunkAuth, cipherText));
             var original = fullEncryptedChunk.decrypt(dataKey, chunkNonce);
             return Promise.resolve(original);
         });
     }
 
     this.serialize = function(buf) {
-        buf.writeUnsignedByte(1); // This class
+        buf.writeByte(1); // This class
         buf.writeArray(chunkNonce);
         buf.writeArray(chunkAuth);
         buf.writeArray(concat(fragmentHashes));
-        buf.writeUnsignedByte(nextChunk != null ? 1 : 0);
+        buf.writeByte(nextChunk != null ? 1 : 0);
         if (nextChunk != null)
             buf.write(nextChunk.serialize());
     }
 }
 EncryptedChunkRetriever.deserialize = function(buf) {
-    var chunkNonce = new Uint8Array(buf.readArray().toArray());
-    var chunkAuth = new Uint8Array(buf.readArray().toArray());
-    var concatFragmentHashes = new Uint8Array(buf.readArray().toArray());
+    var chunkNonce = buf.readArray();
+    var chunkAuth = buf.readArray();
+    var concatFragmentHashes = buf.readArray();
     var fragmentHashes = split(concatFragmentHashes, UserPublicKey.HASH_BYTES);
-    var hasNext = buf.readUnsignedByte();
+    var hasNext = buf.readByte();
     var nextChunk = null;
     if (hasNext == 1)
         nextChunk = Location.deserialize(buf);
@@ -1334,11 +1327,11 @@ function LazyInputStreamCombiner(stream, context, dataKey, chunk) {
 
 var Erasure = {};
 Erasure.recombine = function(fragments, truncateTo, originalBlobs, allowedFailures) {
-    var buf = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+    var buf = new ByteArrayOutputStream();
     // assume we have all fragments in original order for now
     for (var i=0; i < originalBlobs; i++)
-    buf.write(fragments[i]);
-    return buf;
+	buf.write(fragments[i]);
+    return buf.toByteArray();
 }
 Erasure.reorder = function(fragments, hashes) {
     var hashMap = new Map(); //ba dum che
