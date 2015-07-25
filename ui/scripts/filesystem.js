@@ -194,10 +194,10 @@ var Browser = React.createClass({
                             const fileAccess = root[1];
 
                             const filePointer = entryPoint.pointer;
-                            const rootDirKey = entryPoint.pointer.baseKey;
+                            const rootDirKey = filePointer.baseKey;
 		                    const parentKey = fileAccess.getParentKey(rootDirKey);
 
-                            const retrievedFilePointer = RetrievedFilePointer(filePointer, fileAccess);
+                            const retrievedFilePointer = new RetrievedFilePointer(filePointer, fileAccess);
                             
                             const props = fileAccess.getFileProperties(parentKey);
                             const name  = props.name;
@@ -216,7 +216,8 @@ var Browser = React.createClass({
                                     onClick: onClick,
                                     name: name,
                                     isDir: isDir,
-                                    size:size
+                                    size: size,
+                                    filePointer: retrievedFilePointer
                             }
                         }.bind(this));
 
@@ -227,21 +228,39 @@ var Browser = React.createClass({
                         retrievedFilePointerPath: [] 
                       }); 
                     }.bind(this));
+                } 
+                else {
+                    const lastRetrievedFilePointer =  this.state.retrievedFilePointerPath.slice(-1)[0];
+                    const filePointer = lastRetrievedFilePointer.filePointer;
+                    const rootDirKey = filePointer.baseKey;
 
-                    /*
-                    for (var i=0; i < roots.length; i++) {
-                        const entryPoint = roots[i][0];
-                        const rootDirKey = entryPoint.pointer.baseKey;
-                        const fileAccess = roots[i][1];
-                        const props = fileAccess.getFileProperties(parentKey);
-                        const name  = props.name;
-                        const length  = props.length();
-                        const id  =  File.id(name);
+                    const fileAccess = lastRetrievedFilePointer.fileAccess;
+                    const parentKey = fileAccess.getParentKey(rootDirKey);
+                    const files = fileAccess.getChildren(userContext, rootDirKey).map(function(retrievedFilePointer) {
 
-                    }
-                    */
+                    const props = retrievedFilePointer.fileAccess.getFileProperties(parentKey);
+                    const name  = props.name;
+                    const size = props.getSize();
+                    const isDir = fileAccess.isDirectory();
+                    const id = File.id();
+                            
+                    return {
+                                    onClick: onClick,
+                                    name: name,
+                                    isDir: isDir,
+                                    size: size,
+                                    filePointer: retrievedFilePointer
+                        }
+                    });
+                      
+                    this.setState({
+                        files: files, 
+                        sort: this.state.sort,  
+                        gridView: this.state.gridView, 
+                        retrievedFilePointerPath: [] 
+                      }); 
+
                 }
-
                 /*
                  * Browser {
                  *  [retrievedFilePointer] 
@@ -464,6 +483,18 @@ var Browser = React.createClass({
                         console.log("adding root entry");
                         var milliseconds = (new Date).getTime();
                         return userContext.createEntryDirectory("test_"+milliseconds);
+                }).then(function() {
+                    return userContext.getRoots();
+                }).then(function(roots) {
+		            for (var i=0; i < roots.length; i++) {
+           		    var dirPointer = roots[i][0];
+		            var rootDirKey = dirPointer.pointer.baseKey;
+        		    var dir = roots[i][1];
+		            if (dir == null)
+            			continue;
+                        var milliseconds = (new Date).getTime();
+                    dir.mkdir("subfolder_test"+milliseconds, userContext, dirPointer.pointer.writer, rootDirKey);
+		            }
                 }).then(function() {
                         hideLogin();   
                 }).then(this.loadFilesFromServer);

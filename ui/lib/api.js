@@ -1144,6 +1144,29 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
     this.getFilesKey = function(subfoldersKey) {
         return this.subfolders2files.target(subfoldersKey);
     }
+
+    //String, UserContext, User -> 
+    this.mkdir  = function(name, userContext, writer, baseKey) {
+        const dirReadKey = SymmetricKey.random();
+        const dirMapKey = window.nacl.randomBytes(32); // root will be stored under this in the core node
+        const dir = DirAccess.create(null, dirReadKey, new FileProperties(name, 0));
+	    return userContext.uploadChunk(dir, [], userContext.user, writer, dirMapKey)
+                .then(function(success) {
+                    if (success) {
+                        dir.addSubdir(new Location(userContext.user, writer, dirMapKey), baseKey, dirReadKey);
+                    }
+                });
+    }
+
+    this.addSubdir = function(location, ourSubfolders, targetBaseKey) {
+        var nonce = ourSubfolders.createNonce();
+        var loc = location.encrypt(ourSubfolders, nonce);
+        var link = concat(nonce, ourSubfolders.encrypt(targetBaseKey.key, nonce));
+        var buf = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+        buf.writeArray(link);
+        buf.writeArray(loc);
+        this.subfolders.push(new SymmetricLocationLink(new ByteBuffer(buf)));
+    }
 }
 
 DirAccess.deserialize = function(base, bin) {
@@ -1164,6 +1187,7 @@ DirAccess.deserialize = function(base, bin) {
 }
 
 // User, SymmetricKey, FileProperties
+//TODO remove owner arg.
 DirAccess.create = function(owner, subfoldersKey, metadata) {
     var metaKey = SymmetricKey.random();
     var parentKey = SymmetricKey.random();
