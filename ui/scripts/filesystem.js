@@ -42,6 +42,8 @@ var File = React.createClass({
                                         alert("rename " + selected);
                                 } else if (selected  == "Remove")  {
                                         alert("remove " + selected);
+                                } else if (selected  == "Open")  {
+                                        openItem(this);
                                 }  else 
                                         console.log("no  action defined for context menu item "+ selected);    
                         }.bind(this)
@@ -91,7 +93,28 @@ File.sizeString =  function(sizeBytes){
         }
         return "" + (count|0) +" "+ File.sizes[iUnit].unit;   
 }
+var url;
+var ae = document.createElement("a");
+document.body.appendChild(ae);
+ae.style = "display: none"; 
 
+function openItem(props) {
+    //var path =  props.path;
+    var name = "something"; //props.name;
+    
+    
+    if(url != null){
+        window.URL.revokeObjectURL(url);
+    }
+    var data = new Uint8Array(2);
+    data[0] = 64;
+    data[1] = 70;
+    var blob =  new Blob([data], {type: "octet/stream"});		
+    url = window.URL.createObjectURL(blob);
+    ae.href = url;
+    ae.download = name;
+    ae.click();
+}
 function buildGetChildrenUrl(path) {
         return  "children?path="+path;
 }
@@ -143,6 +166,9 @@ function updateNavbarPath(path) {
         var elem  = document.getElementById("pathSpan");
         elem.innerHTML = '<span class="glyphicon glyphicon-chevron-right"/>' +path;
 }
+function readFileCallback(data, name){    
+    console.log("in upload name=" + name);
+}
 
 var Browser = React.createClass({
         getInitialState: function() {
@@ -183,8 +209,7 @@ var Browser = React.createClass({
                                 console.log("clicked on dir "+ name); 
                                 this.addToPath(retrievedFilePointer);
                             }.bind(this) :  function() {
-                                //TODO
-                                console.log("clicked on file "+ name); 
+                                openItem(this);
                             }.bind(this);
                         
                             return {
@@ -378,7 +403,13 @@ var Browser = React.createClass({
                         var readFile = evt.target.files[0];
                         var name = readFile.name;
                         console.log(readFile);
+                        var filereader = new FileReader();
+                        filereader.file_name = readFile.name;
+                        filereader.onload = function(){readFileCallback(this.result, this.file_name)};
+                        filereader.readAsArrayBuffer(readFile);
 
+                        
+                                /*
                         var formData = new FormData();
                         formData.append("file", readFile, name);
 
@@ -397,9 +428,10 @@ var Browser = React.createClass({
                                         console.log(request.status);
                         }.bind(this);
                         xhr.send(formData);
+                                 */
                 }.bind(this)
         },
-
+                                
         loginOnEnter: function(event) {
                 if (event.keyCode === 13) {
                         this.login();
@@ -530,10 +562,17 @@ var Browser = React.createClass({
                 const element = document.getElementById("altViewSpan");
                 const className = this.state.gridView ? listGlyph : gridGlyph;
                 element.className = className;
-
-                const layout = null;
-                const  contextMenu = (<div id="context-menu">
+                var layout = null;
+                var  contextMenu = this.props.isdir ? (<div id="context-menu">
                                 <ul className="dropdown-menu" role="menu">
+                                <li><a tabIndex="-1">Rename</a></li>
+                                <li className="divider"></li>
+                                <li><a tabIndex="-1">Remove</a></li>
+                                </ul>
+                                </div>) : (<div id="context-menu">
+                                <ul className="dropdown-menu" role="menu">
+                                <li><a tabIndex="-1">Open</a></li>
+                                <li className="divider"></li>
                                 <li><a tabIndex="-1">Rename</a></li>
                                 <li className="divider"></li>
                                 <li><a tabIndex="-1">Remove</a></li>
