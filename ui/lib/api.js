@@ -1146,15 +1146,19 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
     }
 
     //String, UserContext, User -> 
-    this.mkdir  = function(name, userContext, writer, baseKey) {
+    this.mkdir  = function(name, userContext, writer, ourMapKey, baseKey) {
         const dirReadKey = SymmetricKey.random();
         const dirMapKey = window.nacl.randomBytes(32); // root will be stored under this in the core node
         const dir = DirAccess.create(null, dirReadKey, new FileProperties(name, 0));
+	const that = this;
 	    return userContext.uploadChunk(dir, [], userContext.user, writer, dirMapKey)
                 .then(function(success) {
                     if (success) {
-                        dir.addSubdir(new Location(userContext.user, writer, dirMapKey), baseKey, dirReadKey);
+                        that.addSubdir(new Location(userContext.user, writer, dirMapKey), baseKey, dirReadKey);
+			// now upload the changed metadata blob for dir
+			return userContext.uploadChunk(that, [], userContext.user, writer, ourMapKey);
                     }
+		    return Promise.resolve(false);
                 });
     }
 

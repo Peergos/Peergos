@@ -1,6 +1,5 @@
 userContext =  null;
 
-
 //entrypoint.owner //top level name 
 //ReadableFilePointer.owner
 //
@@ -236,30 +235,33 @@ var Browser = React.createClass({
 
                     const fileAccess = lastRetrievedFilePointer.fileAccess;
                     const parentKey = fileAccess.getParentKey(rootDirKey);
-                    const files = fileAccess.getChildren(userContext, rootDirKey).map(function(retrievedFilePointer) {
+                    fileAccess.getChildren(userContext, rootDirKey).then(
+                        function(children) {
+                            console.log("here with  "+ children.length  +" children.");
+                            const files = children.map(function(retrievedFilePointer) {
 
-                    const props = retrievedFilePointer.fileAccess.getFileProperties(parentKey);
-                    const name  = props.name;
-                    const size = props.getSize();
-                    const isDir = fileAccess.isDirectory();
-                    const id = File.id();
-                            
-                    return {
+                            const props = retrievedFilePointer.fileAccess.getFileProperties(parentKey);
+                            const name  = props.name;
+                            const size = props.getSize();
+                            const isDir = fileAccess.isDirectory();
+                            const id = File.id();
+                                    
+                            return {
                                     onClick: onClick,
                                     name: name,
                                     isDir: isDir,
                                     size: size,
                                     filePointer: retrievedFilePointer
-                        }
-                    });
+                            }
+                        });
                       
-                    this.setState({
-                        files: files, 
-                        sort: this.state.sort,  
-                        gridView: this.state.gridView, 
-                        retrievedFilePointerPath: [] 
-                      }); 
-
+                        this.setState({
+                                files: files, 
+                                sort: this.state.sort,  
+                                gridView: this.state.gridView, 
+                                retrievedFilePointerPath: this.state.retrievedFilePointerPath 
+                            }); 
+                        }.bind(this));
                 }
                 /*
                  * Browser {
@@ -410,7 +412,7 @@ var Browser = React.createClass({
                 this.setState({
                         files: this.state.files, 
                         sort: this.state.sort,  
-                        retrievedFilePointerPath: this.retrievedFilePointerPath,
+                        retrievedFilePointerPath: this.state.retrievedFilePointerPath,
                         gridView: updatedView
                 });
         },
@@ -418,36 +420,17 @@ var Browser = React.createClass({
 
         uploadFile: function() {
                 return function (evt) {
-                        var path = this.currentPath();
                         var readFile = evt.target.files[0];
                         var name = readFile.name;
                         console.log(readFile);
                         var filereader = new FileReader();
                         filereader.file_name = readFile.name;
-                        filereader.onload = function(){readFileCallback(this.result, this.file_name)};
+                        filereader.onload = function(){
+                                readFileCallback(this.result, this.file_name)
+                        };
                         filereader.readAsArrayBuffer(readFile);
 
-                        
-                                /*
-                        var formData = new FormData();
-                        formData.append("file", readFile, name);
-
-                        var xhr = new XMLHttpRequest();
-                        xhr.open('POST', buildUploadUrl(path, name) , true);
-                        xhr.onreadystatechange=function()
-                        {
-                                if (xhr.readyState != 4)
-                                        return;
-
-                                if (xhr.status == 200){ 
-                                        alert("Successfully uploaded file "+ name +" to "+ path); 
-                                        this.reloadFilesFromServer();
-                                }
-                                else
-                                        console.log(request.status);
-                        }.bind(this);
-                        xhr.send(formData);
-                                 */
+                        //TODO        
                 }.bind(this)
         },
                                 
@@ -480,9 +463,13 @@ var Browser = React.createClass({
                         console.log("Verified user "+ username +" is registered");
                         userContext = ctx;  
                 }).then(function() {
-                        console.log("adding root entry");
+                        console.log("adding root entries");
                         var milliseconds = (new Date).getTime();
-                        return userContext.createEntryDirectory("test_"+milliseconds);
+                        return Promise.all(
+                            [1,2,3,4,5].map(function(num) {
+                                return userContext.createEntryDirectory("test_"+milliseconds+"_"+num);
+                            })
+                        );
                 }).then(function() {
                     return userContext.getRoots();
                 }).then(function(roots) {
@@ -492,8 +479,8 @@ var Browser = React.createClass({
         		    var dir = roots[i][1];
 		            if (dir == null)
             			continue;
-                        var milliseconds = (new Date).getTime();
-                    dir.mkdir("subfolder_test"+milliseconds, userContext, dirPointer.pointer.writer, rootDirKey);
+                var milliseconds = (new Date).getTime();
+				dir.mkdir("subfolder_test"+milliseconds, userContext, dirPointer.pointer.writer, dirPointer.pointer.mapKey, rootDirKey);
 		            }
                 }).then(function() {
                         hideLogin();   
@@ -554,7 +541,9 @@ var Browser = React.createClass({
                         sort: this.state.sort,  
                         gridView: this.state.gridView, 
                         retrievedFilePointerPath: path
-                });
+                },
+                this.loadFilesFromServer
+                );
         },
 
         updateDir: function(entryPoint, dirAccess) {
