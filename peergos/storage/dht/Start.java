@@ -70,6 +70,11 @@ public class Start
             Args.parse(new String[]{"-script", "testscripts/empty.txt", "-domain", "localhost"});
             test(1);
         }
+        else if (Args.hasArg("demo"))
+        {
+            Args.parse(new String[]{"-script", "testscripts/empty.txt", "-domain", "peergos.net"});
+            test(1);
+        }
         else if (Args.hasArg("directoryServer"))
         {
             String keyfile = Args.getArg("keyfile", "dir.key");
