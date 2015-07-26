@@ -137,7 +137,7 @@ public class Start
         String domain = Args.getArg("domain", "localhost");
         Start.main(new String[] {"-directoryServer", "-domain", domain});
         Start.main(new String[] {"-coreNode", "-domain", domain});
-        Start.main(new String[]{"-firstNode", "-port", "80", "-logMessages", "-domain", domain});
+        Start.main(new String[]{"-firstNode", "-port", "443", "-logMessages", "-domain", domain});
     }
 
     public static void test(int nodes) throws IOException
