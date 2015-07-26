@@ -31,13 +31,11 @@ function mediumFileShareTest(owner, sharer, receiver, sender) {
         raw1.write(template);
     for (var i = 0; i < Chunk.MAX_SIZE / 32; i++)
         raw2.write(template2);
-    raw1 = new Uint8Array(raw1.toByteArray());
-    raw2 = new Uint8Array(raw2.toByteArray());
     
     // add file to root dir
     var filename = "HiNSA.bin";
     var fileKey = SymmetricKey.random();
-    const file = new File(filename, concat(raw1, raw2), fileKey);
+    const file = new File(filename, concat(raw1.toByteArray(), raw2.toByteArray()), fileKey);
     return file.upload(sender, owner, sharer).then(function(fileLocation) {
 	root.addFile(fileLocation, rootRKey, fileKey);
 	
@@ -57,11 +55,12 @@ function mediumFileShareTest(owner, sharer, receiver, sender) {
 	    var dir = roots[i][1];
 	    if (dir == null)
 		continue;
+	    const rootFilesKey = dir.subfolders2files.target(rootDirKey);
 	    /*[[SymmetricLocationLink, FileAccess]]*/
 	    dir.getChildren(receiver, rootDirKey).then(function(files) {
 		for (var i=0; i < files.length; i++) {
-		    var baseKey = files[i][0].target(rootDirKey);
-		    var fileBlob = files[i][1];
+		    var fileBlob = files[i].fileAccess;
+		    var baseKey = files[i].filePointer.target(rootFilesKey);
 		    // download fragments in chunk
 		    var fileProps = fileBlob.getFileProperties(baseKey);
 		    
@@ -71,7 +70,7 @@ function mediumFileShareTest(owner, sharer, receiver, sender) {
 			    // checks
 			    if (fileProps.name != filename)
 				throw "Incorrect filename!";
-			    if (! arraysEqual(original, concat(raw1, raw2)))
+			    if (! arraysEqual(original, concat(raw1.toByteArray(), raw2.toByteArray())))
 				throw "Incorrect file contents!";
 			    console.log("Medium file share test passed! Found file "+fileProps.name);
 			    return Promise.resolve(true);

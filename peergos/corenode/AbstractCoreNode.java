@@ -24,6 +24,8 @@ public abstract class AbstractCoreNode
 
     public static class MetadataBlob
     {
+        static final MetadataBlob EMPTY = new MetadataBlob(new ByteArrayWrapper(new byte[0]), new byte[0]);
+
         ByteArrayWrapper metadata;
         byte[] fragmentHashes;
 
@@ -482,6 +484,11 @@ public abstract class AbstractCoreNode
 
     public synchronized MetadataBlob getMetadataBlob(UserPublicKey owner, byte[] encodedSharingKey, byte[] mapKey) {
         UserData userData = userMap.get(owner);
+        if (userData == null) {
+            System.out.printf("Returning EMPTY metadata blob from owner:%s writer:%s mapKey:%s\n",
+                ArrayOps.bytesToHex(owner.getPublicKeys()), ArrayOps.bytesToHex(encodedSharingKey), ArrayOps.bytesToHex(mapKey));
+            return MetadataBlob.EMPTY;
+        }
         Map<ByteArrayWrapper, MetadataBlob> sharedFragments = userData.metadata.get(new UserPublicKey(encodedSharingKey));
         System.out.printf("Getting metadata blob at owner:%s writer:%s mapKey:%s\n",
                 ArrayOps.bytesToHex(owner.getPublicKeys()), ArrayOps.bytesToHex(encodedSharingKey), ArrayOps.bytesToHex(mapKey));

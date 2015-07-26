@@ -118,6 +118,8 @@ function toKeyPair(pub, sec) {
 // SymmetricKey methods
 
 function SymmetricKey(key) {
+    if (key.length != nacl.secretbox.keyLength)
+	throw "Invalid symmetric key: "+key;
     this.key = key;
 
     // (Uint8Array, Uint8Array[24]) => Uint8Array
@@ -977,7 +979,7 @@ function Location(owner, writer, mapKey) {
     }
 }
 Location.deserialize = function(raw) {
-    const buf = new ByteArrayInputStream(raw);
+    const buf = raw instanceof ByteArrayInputStream ? raw : new ByteArrayInputStream(raw);
     var owner = buf.readArray();
     var writer = buf.readArray();
     var mapKey = buf.readArray();
