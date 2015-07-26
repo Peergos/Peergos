@@ -34,8 +34,10 @@ public class HttpMessenger
 
     public boolean init(Router router) throws IOException {
         System.out.println("Starting storage server messenger listening at: " + local.getHostName() + ":" + local.getPort());
-        httpServer = HttpServer.create(local, CONNECTION_BACKLOG);
-
+        if (local.getHostName().contains("local"))
+            httpServer = HttpServer.create(local, CONNECTION_BACKLOG);
+        else
+            httpServer = HttpServer.create(new InetSocketAddress(InetAddress.getLocalHost(), local.getPort()), CONNECTION_BACKLOG);
         httpServer.createContext(MESSAGE_URL, new HttpMessageHandler(router));
         httpServer.createContext(HttpsUserService.DHT_URL, new DHTAPIHandler(router));
         httpServer.createContext("/", new StoragePutHandler(fragments, "/"));

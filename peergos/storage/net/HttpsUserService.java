@@ -48,7 +48,10 @@ public class HttpsUserService
         try
         {
             System.out.println("Starting user API server at: " + local.getHostName() + ":" + local.getPort());
-            httpsServer = HttpsServer.create(local, CONNECTION_BACKLOG);
+            if (local.getHostName().contains("local"))
+                httpsServer = HttpsServer.create(local, CONNECTION_BACKLOG);
+            else
+                httpsServer = HttpsServer.create(new InetSocketAddress(InetAddress.getLocalHost(), local.getPort()), CONNECTION_BACKLOG);
             SSLContext sslContext = SSLContext.getInstance("TLS");
 
             char[] password = "storage".toCharArray();

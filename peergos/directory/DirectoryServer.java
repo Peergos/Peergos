@@ -55,7 +55,10 @@ public class DirectoryServer
         for (Certificate cert: SSL.getCoreServerCertificates())
             coreServers.put(SSL.getCommonName(cert), cert);
         System.out.println("Directory Server listening on: " + address.getHostName() + ":" + port);
-        server = HttpServer.create(address, CONNECTION_BACKLOG);
+        if (address.getHostName().contains("local"))
+            server = HttpServer.create(address, CONNECTION_BACKLOG);
+        else
+            server = HttpServer.create(new InetSocketAddress(InetAddress.getLocalHost(), port), CONNECTION_BACKLOG);
         server.createContext("/dir", new StorageListHandler(this));
         server.createContext("/myIP", new MyIPHandler(this));
         server.createContext("/dirHuman", new ReadableStorageListHandler(this));

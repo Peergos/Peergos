@@ -347,7 +347,10 @@ public class HTTPCoreNodeServer
     {
 
         this.address = address;
-        server = HttpServer.create(this.address, CONNECTION_BACKLOG);
+        if (address.getHostName().contains("local"))
+            server = HttpServer.create(address, CONNECTION_BACKLOG);
+        else
+            server = HttpServer.create(new InetSocketAddress(InetAddress.getLocalHost(), address.getPort()), CONNECTION_BACKLOG);
         ch = new CoreNodeHandler(coreNode);
         server.createContext(CORE_URL, ch);
         //server.setExecutor(Executors.newFixedThreadPool(HANDLER_THREAD_COUNT));

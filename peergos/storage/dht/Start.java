@@ -72,8 +72,8 @@ public class Start
         }
         else if (Args.hasArg("demo"))
         {
-            Args.parse(new String[]{"-script", "testscripts/empty.txt", "-domain", "peergos.net"});
-            test(1);
+            Args.parse(new String[]{"-domain", "peergos.net"});
+            demo();
         }
         else if (Args.hasArg("directoryServer"))
         {
@@ -131,6 +131,13 @@ public class Start
                 new Scripter(api, Args.getArg("script")).start();
             }
         }
+    }
+
+    public static void demo() throws IOException{
+        String domain = Args.getArg("domain", "localhost");
+        Start.main(new String[] {"-directoryServer", "-domain", domain});
+        Start.main(new String[] {"-coreNode", "-domain", domain});
+        Start.main(new String[]{"-firstNode", "-port", "80", "-logMessages", "-domain", domain});
     }
 
     public static void test(int nodes) throws IOException
