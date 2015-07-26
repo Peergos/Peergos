@@ -146,7 +146,6 @@ function FileProperties(name, size) {
 
     this.serialize = function() {
         var buf = new ByteArrayOutputStream();
-        buf.writeInt(name.length);
         buf.writeString(name);
         buf.writeDouble(size);
         return buf.toByteArray();
