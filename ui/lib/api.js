@@ -1159,10 +1159,10 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
         var nonce = ourSubfolders.createNonce();
         var loc = location.encrypt(ourSubfolders, nonce);
         var link = concat(nonce, ourSubfolders.encrypt(targetBaseKey.key, nonce));
-        var buf = new ByteBuffer(0, ByteBuffer.BIG_ENDIAN, true);
+        var buf = new ByteArrayOutputStream();
         buf.writeArray(link);
         buf.writeArray(loc);
-        this.subfolders.push(new SymmetricLocationLink(new ByteBuffer(buf)));
+        this.subfolders.push(new SymmetricLocationLink(buf.toByteArray()));
     }
 }
 
