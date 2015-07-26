@@ -234,26 +234,26 @@ var Browser = React.createClass({
                     const rootDirKey = filePointer.baseKey;
 
                     const fileAccess = lastRetrievedFilePointer.fileAccess;
-                    const parentKey = fileAccess.getParentKey(rootDirKey);
                     fileAccess.getChildren(userContext, rootDirKey).then(
                         function(children) {
                             console.log("here with  "+ children.length  +" children.");
                             const files = children.map(function(retrievedFilePointer) {
-
-                            const props = retrievedFilePointer.fileAccess.getFileProperties(parentKey);
-                            const name  = props.name;
-                            const size = props.getSize();
-                            const isDir = fileAccess.isDirectory();
-                            const id = File.id();
-                                    
-                            return {
+				var baseKey = retrievedFilePointer.filePointer.target(rootDirKey);
+				const parentKey = retrievedFilePointer.fileAccess.getParentKey(baseKey);
+				const props = retrievedFilePointer.fileAccess.getFileProperties(parentKey);
+				const name  = props.name;
+				const size = props.getSize();
+				const isDir = retrievedFilePointer.fileAccess.isDirectory();
+				const id = File.id();
+                                const onClick = function(ev) {};
+				return {
                                     onClick: onClick,
                                     name: name,
                                     isDir: isDir,
                                     size: size,
                                     filePointer: retrievedFilePointer
-                            }
-                        });
+				}
+                            });
                       
                         this.setState({
                                 files: files, 
