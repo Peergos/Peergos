@@ -466,7 +466,7 @@ var Browser = React.createClass({
                         console.log("adding root entries");
                         var milliseconds = (new Date).getTime();
                         return Promise.all(
-                            [1,2,3,4,5].map(function(num) {
+                            [1].map(function(num) {
                                 return userContext.createEntryDirectory("test_"+milliseconds+"_"+num);
                             })
                         );
@@ -479,8 +479,8 @@ var Browser = React.createClass({
         		    var dir = roots[i][1];
 		            if (dir == null)
             			continue;
-                var milliseconds = (new Date).getTime();
-				dir.mkdir("subfolder_test"+milliseconds, userContext, dirPointer.pointer.writer, dirPointer.pointer.mapKey, rootDirKey);
+				var milliseconds = (new Date).getTime();
+				return dir.mkdir("subfolder_test"+milliseconds, userContext, dirPointer.pointer.writer, dirPointer.pointer.mapKey, rootDirKey);
 		            }
                 }).then(function() {
                         hideLogin();   

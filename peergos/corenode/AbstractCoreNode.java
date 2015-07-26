@@ -341,8 +341,11 @@ public abstract class AbstractCoreNode
             return false;
 
         ByteArrayWrapper keyW = new ByteArrayWrapper(mapKey);
-        if (fragments.containsKey(keyW))
-            return false;
+        if (fragments.containsKey(keyW)) {
+            // for now just overwrite it. This is vulnerable to replay attacks so eventually we'll need to sign the
+            // previous value as well, or some kind of version cas
+            // TODO return false;
+        }
 
         fragments.put(keyW, new MetadataBlob(new ByteArrayWrapper(metadataBlob), null));
         return true;
