@@ -1057,6 +1057,19 @@ function FileAccess(parent2meta, properties, retriever, parentLink) {
         var cipher = slice(this.properties, SymmetricKey.NONCE_BYTES, this.properties.length);
         return FileProperties.deserialize(this.getMetaKey(parentKey).decrypt(cipher, nonce));
     }
+
+    this.rename = function(writableFilePointer, newProps, context) {
+	if (this.isDirectory()) {
+	    const parentKey = subfolders2Parent.target(writableFilePointer.baseKey);
+	    const metaKey = this.getMetaKey(parentKey);
+	    const nonce = metaKey.createNonce();
+	    
+	} else {
+	    const metaKey = this.getMetaKey(writableFilePointer.baseKey);
+	    const nonce = metaKey.createNonce();
+	    const fa = new FileAccess(this.parent2meta, concat(nonce, metaKey.encrypt(newProps.serialize(), nonce)), this.retriever, this.parentLink);
+	}
+    }
 }
 FileAccess.deserialize = function(raw) {
     const buf = new ByteArrayInputStream(raw);

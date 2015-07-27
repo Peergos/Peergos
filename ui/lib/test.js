@@ -60,7 +60,7 @@ function mediumFileShareTest(owner, sharer, receiver, sender) {
 	    dir.getChildren(receiver, rootDirKey).then(function(files) {
 		for (var i=0; i < files.length; i++) {
 		    var fileBlob = files[i].fileAccess;
-		    var baseKey = files[i].filePointer.target(rootFilesKey);
+		    var baseKey = files[i].filePointer.baseKey;
 		    // download fragments in chunk
 		    var fileProps = fileBlob.getFileProperties(baseKey);
 		    
