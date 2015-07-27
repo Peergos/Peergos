@@ -234,8 +234,8 @@ var Browser = React.createClass({
                     fileAccess.getChildren(userContext, rootDirKey).then(function(children) {
                             console.log("here with  "+ children.length  +" children.");
                             const files = children.map(function(retrievedFilePointer) {
-            			    	var baseKey = retrievedFilePointer.filePointer.target(rootDirKey);
-			                	const parentKey = retrievedFilePointer.fileAccess.getParentKey(baseKey);
+            			    	var baseKey = retrievedFilePointer.filePointer.baseKey;
+			                const parentKey = retrievedFilePointer.fileAccess.getParentKey(baseKey);
             	    			const props = retrievedFilePointer.fileAccess.getFileProperties(parentKey);
 			                	const name  = props.name;
                 				const size = props.getSize();

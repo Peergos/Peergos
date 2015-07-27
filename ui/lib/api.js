@@ -1018,7 +1018,7 @@ function SymmetricLocationLink(arr) {
     this.toReadableFilePointer = function(baseKey) {
        const loc =  this.targetLocation(baseKey);
        const key = this.target(baseKey);
-       return new ReadableFilePointer();
+       return new ReadableFilePointer(loc.owner, loc.writer, loc.mapKey, key);
     }
 }
 
