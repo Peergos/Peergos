@@ -208,9 +208,9 @@ var Browser = React.createClass({
                                 console.log("clicked on dir "+ name); 
                                 this.addToPath(retrievedFilePointer);
                             }.bind(this) :  function() {
+                                console.log("clicked on non-dir "+ name); 
                                 openItem(this);
-                            }.bind(this);
-                        
+                            }.bind(this); 
                             return {
                                     onClick: onClick,
                                     name: name,
@@ -234,28 +234,35 @@ var Browser = React.createClass({
                     const rootDirKey = filePointer.baseKey;
 
                     const fileAccess = lastRetrievedFilePointer.fileAccess;
-                    fileAccess.getChildren(userContext, rootDirKey).then(
-                        function(children) {
+                    fileAccess.getChildren(userContext, rootDirKey).then(function(children) {
                             console.log("here with  "+ children.length  +" children.");
                             const files = children.map(function(retrievedFilePointer) {
-				var baseKey = retrievedFilePointer.filePointer.target(rootDirKey);
-				const parentKey = retrievedFilePointer.fileAccess.getParentKey(baseKey);
-				const props = retrievedFilePointer.fileAccess.getFileProperties(parentKey);
-				const name  = props.name;
-				const size = props.getSize();
-				const isDir = retrievedFilePointer.fileAccess.isDirectory();
-				const id = File.id();
-                                const onClick = function(ev) {};
-				return {
-                                    onClick: onClick,
-                                    name: name,
-                                    isDir: isDir,
-                                    size: size,
-                                    filePointer: retrievedFilePointer
-				}
-                            });
-                      
-                        this.setState({
+            			    	var baseKey = retrievedFilePointer.filePointer.target(rootDirKey);
+			                	const parentKey = retrievedFilePointer.fileAccess.getParentKey(baseKey);
+            	    			const props = retrievedFilePointer.fileAccess.getFileProperties(parentKey);
+			                	const name  = props.name;
+                				const size = props.getSize();
+	    	            		const isDir = retrievedFilePointer.fileAccess.isDirectory();
+                				const id = File.id();
+                                const onClick = isDir ? function() {
+                                    console.log("clicked on dir "+ name); 
+                                    this.addToPath(retrievedFilePointer);
+                                }.bind(this) :  function() {
+                                    console.log("clicked on non-dir "+ name); 
+                                    openItem(this);
+                              }.bind(this);
+
+                  			  return {
+                                       onClick: onClick,
+                                       name: name,
+                                       isDir: isDir,
+                                       size: size,
+                                       filePointer: retrievedFilePointer
+			            	    }
+                            }.bind(this));
+
+                            console.log("setting-state :::");
+                            this.setState({
                                 files: files, 
                                 sort: this.state.sort,  
                                 gridView: this.state.gridView, 
@@ -556,8 +563,12 @@ var Browser = React.createClass({
         },
 
         mkdir: function() {
+                if (userContext == null) {
+                    alert("Please sign in first!");
+                    return;
+                }
 
-                var newFolderName = prompt("Enter new folder name");
+                const newFolderName = prompt("Enter new folder name");
                 if (newFolderName == null)
                         return;
                 
@@ -566,6 +577,16 @@ var Browser = React.createClass({
                     //create new root-dir
                     console.log("creating new entry-point "+ newFolderName);
                     return userContext.createEntryDirectory(newFolderName)
+                        .then(this.loadFilesFromServer);
+                }
+                else {
+                    console.log("creating new sub-dir "+ newFolderName);
+                    const lastRetrievedFilePointer =  this.state.retrievedFilePointerPath.slice(-1)[0];
+		            const dirPointer = lastRetrievedFilePointer.filePointer;
+		            const dirAccess = lastRetrievedFilePointer.fileAccess;
+		            var rootDirKey = lastRetrievedFilePointer.filePointer.baseKey;
+				    return dirAccess.mkdir(newFolderName, userContext, dirPointer.writer, dirPointer.mapKey, rootDirKey)
+
                         .then(this.loadFilesFromServer);
                 }
 
