@@ -821,7 +821,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
             var accesses = [];
             for (var i=0; i < rawBlobs.length; i++) {
                 var unwrapped = new ByteArrayInputStream(rawBlobs[i]).readArray();
-                accesses[i] = [links[i], FileAccess.deserialize(unwrapped)];
+                accesses[i] = [links[i].toReadableFilePointer(baseKey), FileAccess.deserialize(unwrapped)];
             }
             return Promise.resolve(accesses);
         });
@@ -1013,6 +1013,12 @@ function SymmetricLocationLink(arr) {
         buf.writeArray(this.link);
         buf.writeArray(this.loc);
         return buf.toByteArray();
+    }
+
+    this.toReadableFilePointer = function(baseKey) {
+       const loc =  this.targetLocation(baseKey);
+       const key = this.target(baseKey);
+       return new ReadableFilePointer();
     }
 }
 

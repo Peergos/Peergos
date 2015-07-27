@@ -165,9 +165,6 @@ function updateNavbarPath(path) {
         var elem  = document.getElementById("pathSpan");
         elem.innerHTML = '<span class="glyphicon glyphicon-chevron-right"/>' +path;
 }
-function readFileCallback(data, name){    
-    console.log("in upload name=" + name);
-}
 
 var Browser = React.createClass({
         getInitialState: function() {
@@ -402,10 +399,18 @@ var Browser = React.createClass({
         },
 
         onUpload: function() {
+                if (userContext == null) {
+                            alert("Please sign in first!");
+                            return false;
+                }
                 $('#uploadInput').click();
         },
 
         onParent: function() {
+                if (userContext == null) {
+                            alert("Please sign in first!");
+                            return false;
+                }
                 var onSuccess = function(data) {
                         var parentPath = data.path;
                         this.updatePath(parentPath);
@@ -427,13 +432,20 @@ var Browser = React.createClass({
 
         uploadFile: function() {
                 return function (evt) {
+                        if (userContext == null) {
+                            alert("Please sign in first!");
+                            return false;
+                        }
                         var readFile = evt.target.files[0];
                         var name = readFile.name;
                         console.log(readFile);
                         var filereader = new FileReader();
                         filereader.file_name = readFile.name;
+                        const  browser = this;
                         filereader.onload = function(){
-                                readFileCallback(this.result, this.file_name)
+                                const data = this.result;
+                                const filename = this.file_name;
+                                console.log("in upload name=" + filename);
                         };
                         filereader.readAsArrayBuffer(readFile);
 
