@@ -560,16 +560,15 @@ var Browser = React.createClass({
                 var newFolderName = prompt("Enter new folder name");
                 if (newFolderName == null)
                         return;
+                
+                const isEmpty =  this.state.retrievedFilePointerPath.length == 0;
+                if (isEmpty) {
+                    //create new root-dir
+                    console.log("creating new entry-point "+ newFolderName);
+                    return userContext.createEntryDirectory(newFolderName)
+                        .then(this.loadFilesFromServer);
+                }
 
-                $.ajax({
-                        url: buildMkdirUrl(this.currentPath(),newFolderName),
-                        dataType: 'json',
-                        cache: false,
-                        success: this.reloadFilesFromServer,
-                        error: function(xhr, status, err) {
-                                console.error(this.props.url, status, err.toString());
-                        }.bind(this)
-                });
         },
 
         render: function() {
