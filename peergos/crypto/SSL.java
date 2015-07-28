@@ -494,8 +494,6 @@ public class SSL
 
     public static String getCommonName(Certificate cert)
     {
-        if (Args.hasArg("demomode"))
-            return "localhost";
         try {
             X500Name x500name = new JcaX509CertificateHolder((X509Certificate) cert).getSubject();
             RDN cn = x500name.getRDNs(BCStyle.CN)[0];

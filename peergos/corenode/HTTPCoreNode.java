@@ -5,6 +5,7 @@ import peergos.crypto.*;
 import peergos.user.UserContext;
 import peergos.util.*;
 
+import java.sql.*;
 import java.util.*;
 import java.net.*;
 import java.io.*;
@@ -15,9 +16,18 @@ public class HTTPCoreNode extends AbstractCoreNode
 {
     private final URL coreNodeURL;
 
+    public static AbstractCoreNode getInstance() throws IOException {
+        if (Args.hasArg("demomode")) {
+            try {
+                return SQLiteCoreNode.build(":memory:");
+            } catch (SQLException e) {throw new RuntimeException(e);}
+        }
+        return new HTTPCoreNode(new URL("http://"+ SSL.getCommonName(SSL.getCoreServerCertificates()[0])+":"+AbstractCoreNode.PORT+"/"));
+    }
+
     public HTTPCoreNode(URL coreNodeURL)
     {
-        System.out.println("Creating HTTP Corenode API at "+coreNodeURL);
+        System.out.println("Creating HTTP Corenode API at " + coreNodeURL);
         this.coreNodeURL = coreNodeURL;
     }
 

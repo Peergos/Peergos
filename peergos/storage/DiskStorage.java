@@ -23,7 +23,7 @@ public class DiskStorage implements Storage
     private final Map<ByteArrayWrapper, Integer> pending = new ConcurrentHashMap();
     private final Map<ByteArrayWrapper, Integer> existing = new ConcurrentHashMap();
     private final Map<ByteArrayWrapper, Credentials> credentials = new ConcurrentHashMap();
-    public AbstractCoreNode coreAPI = new HTTPCoreNode(new URL("http://"+ SSL.getCommonName(SSL.getCoreServerCertificates()[0])+":"+AbstractCoreNode.PORT+"/"));
+    public AbstractCoreNode coreAPI = HTTPCoreNode.getInstance();
     private final InetSocketAddress us;
     private final UserPublicKey donor;
 

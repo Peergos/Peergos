@@ -52,7 +52,7 @@ public class Router
         String hostname = Args.getArg("domain", "localhost");
 
         InetSocketAddress httpsMessengerAddress = new InetSocketAddress(hostname, userAPIAddress.getPort());
-        AbstractCoreNode core = new HTTPCoreNode(new URL("http://"+ SSL.getCommonName(SSL.getCoreServerCertificates()[0])+":"+AbstractCoreNode.PORT+"/"));
+        AbstractCoreNode core = HTTPCoreNode.getInstance();
         // start the User Service
         new HttpsUserService(httpsMessengerAddress, LOGGER, this, core);
 
