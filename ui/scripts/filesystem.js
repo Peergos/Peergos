@@ -538,13 +538,17 @@ var Browser = React.createClass({
                         console.log("Verified user "+ username +" is registered");
                         userContext = ctx;  
                 }).then(function() {
-                        console.log("adding root entries");
-                        var milliseconds = (new Date).getTime();
-                        return Promise.all(
-                            [1].map(function(num) {
-                                return userContext.createEntryDirectory("test_"+milliseconds+"_"+num);
-                            })
-                        );
+                    return userContext.getRoots();
+                }).then(function(roots) {
+		    if (roots.length > 0)
+			return Promise.resolve(true);
+                    console.log("adding root entries");
+                    var milliseconds = (new Date).getTime();
+                    return Promise.all(
+                        [1].map(function(num) {
+                            return userContext.createEntryDirectory("test_"+milliseconds+"_"+num);
+                        })
+                    );
                 }).then(function() {
                     return userContext.getRoots();
                 }).then(function(roots) {
