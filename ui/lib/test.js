@@ -35,7 +35,7 @@ function mediumFileShareTest(owner, sharer, receiver, sender) {
     // add file to root dir
     var filename = "HiNSA.bin";
     var fileKey = SymmetricKey.random();
-    const file = new File(filename, concat(raw1.toByteArray(), raw2.toByteArray()), fileKey);
+    const file = new FileUploader(filename, concat(raw1.toByteArray(), raw2.toByteArray()), fileKey);
     return file.upload(sender, owner, sharer).then(function(fileLocation) {
 	root.addFile(fileLocation, rootRKey, fileKey);
 	

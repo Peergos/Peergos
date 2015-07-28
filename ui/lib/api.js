@@ -214,7 +214,7 @@ function Chunk(data, key) {
 Chunk.MAX_SIZE = Fragment.SIZE*EncryptedChunk.ERASURE_ORIGINAL
 
 
-function File(name, contents, key) {
+function FileUploader(name, contents, key) {
     this.props = new FileProperties(name, contents.length);
     this.chunks = [];
     if (key == null) key = SymmetricKey.random();

@@ -273,7 +273,12 @@ var Browser = React.createClass({
                             console.log("here with  "+ children.length  +" children.");
                             const files = children.map(function(retrievedFilePointer) {
             			    	var baseKey = retrievedFilePointer.filePointer.baseKey;
-			                    const parentKey = retrievedFilePointer.fileAccess.getParentKey(baseKey);
+			                    var parentKey;
+                                if (retrievedFilePointer.fileAccess.isDirectory())
+                                        parentKey = retrievedFilePointer.fileAccess.getParentKey(baseKey);
+                                else 
+                                        parentKey = baseKey;
+
             	    			const props = retrievedFilePointer.fileAccess.getFileProperties(parentKey);
 			                	const name  = props.name;
                 				const size = props.getSize();
@@ -478,27 +483,24 @@ var Browser = React.createClass({
                         var name = readFile.name;
                         var filereader = new FileReader();
                         filereader.file_name = readFile.name;
-                        const  browser = this;
+                        const browser = this;
                         filereader.onload = function(){
                             const data = new Uint8Array(this.result);
                             const filename = this.file_name;
                             console.log("upload file-name " + filename +" with data-length "+ data.length);
                                 
+            
+                            const fileKey = SymmetricKey.random();
+                            const rootRKey = browser.lastRetrievedFilePointer().filePointer.baseKey;
+                            const owner = browser.lastRetrievedFilePointer().filePointer.owner;
+                            const dirMapKey = browser.lastRetrievedFilePointer().filePointer.mapKey;
+                            const writer = browser.entryPoint().filePointer.writer;
+                            const dirAccess =  browser.lastRetrievedFilePointer().fileAccess;
 
-                            const fileKey = null;
-                            const rootRKey =  null;
-                            const user = null;
-                            const sharer = null;
-                            const rootMapKey = null;
-                            const root =  null;
-
-                            const file = new File(filename, data, fileKey);
-                            return file.upload(sender, owner, sharer).then(function(fileLocation) {
-                                root.addFile(fileLocation, rootRKey, fileKey);
-                                // now write the root to the core nodes
-                                const rootEntry = new EntryPoint(new ReadableFilePointer(receiver.user, sharer, rootMapKey, rootRKey), receiver.username, [], []);
-                                receiver.addToStaticData(rootEntry);
-                                return sender.uploadChunk(root, [], owner, sharer, rootMapKey);
+                            const file = new FileUploader(filename, data, fileKey);
+                            return file.upload(userContext, owner, writer).then(function(fileLocation) {
+                                dirAccess.addFile(fileLocation, rootRKey, fileKey);
+                                return userContext.uploadChunk(dirAccess, [], owner, writer, dirMapKey);
                             }).then(function() {
                                 browser.loadFilesFromServer();
                             });
