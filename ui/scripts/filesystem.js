@@ -1,14 +1,5 @@
 userContext =  null;
 
-//entrypoint.owner //top level name 
-//ReadableFilePointer.owner
-//
-//get dir children
-//get entry point readers/writers/owner
-//get parent of dir
-//
-//get file content
-//get 
 var File = React.createClass({
         
         glyphClass: function() {
@@ -48,7 +39,14 @@ var File = React.createClass({
                         }.bind(this)
                 });
         },
-
+        rename: function() {
+                const newName= prompt("Specify updated name for "+ this.props.name);
+                if (newName == null)
+                        return;
+                //TODO
+                //rename
+                this.browser.loadFilesFromServer();
+        },
         renderList: function() {
                 //var dateString =  new Date(this.props.time*1000).toGMTString()
                 var glyphClass = this.glyphClass();
@@ -175,7 +173,13 @@ var Browser = React.createClass({
                 };
         },
             
-    
+        entryPointWriterKey: function() {
+            if (this.state.retrievedFilePointerPath.length == 0)
+                    throw "No entry-point!";
+            const entryPointRetrievedFilePointer = this.state.retrievedFilePointerPath[0];
+            return entryPointRetrievedFilePointer.filePointer.writer;
+        },
+
         loadFilesFromServer: function() {
                 console.log("Loading files with  user context "+ userContext +" with type "+ typeof(userContext));
                 if (typeof(userContext) == "undefined" || userContext == null)
@@ -438,19 +442,35 @@ var Browser = React.createClass({
                         }
                         var readFile = evt.target.files[0];
                         var name = readFile.name;
-                        console.log(readFile);
                         var filereader = new FileReader();
                         filereader.file_name = readFile.name;
                         const  browser = this;
                         filereader.onload = function(){
-                                const data = this.result;
-                                const filename = this.file_name;
-                                console.log("in upload name=" + filename);
+                            const data = new Uint8Array(this.result);
+                            const filename = this.file_name;
+                            console.log("upload file-name " + filename +" with data-length "+ data.length);
+                                
+
+                            const fileKey = null;
+                            const rootRKey =  null;
+                            const user = null;
+                            const sharer = null;
+                            const rootMapKey = null;
+                            const root =  null;
+
+                            const file = new File(filename, data, fileKey);
+                            return file.upload(sender, owner, sharer).then(function(fileLocation) {
+                                root.addFile(fileLocation, rootRKey, fileKey);
+                                // now write the root to the core nodes
+                                const rootEntry = new EntryPoint(new ReadableFilePointer(receiver.user, sharer, rootMapKey, rootRKey), receiver.username, [], []);
+                                receiver.addToStaticData(rootEntry);
+                                return sender.uploadChunk(root, [], owner, sharer, rootMapKey);
+                            }).then(function() {
+                                browser.loadFilesFromServer();
+                            });
                         };
                         filereader.readAsArrayBuffer(readFile);
-
-                        //TODO        
-                }.bind(this)
+                }.bind(this);
         },
                                 
         loginOnEnter: function(event) {
@@ -596,9 +616,8 @@ var Browser = React.createClass({
                     const lastRetrievedFilePointer =  this.state.retrievedFilePointerPath.slice(-1)[0];
 		            const dirPointer = lastRetrievedFilePointer.filePointer;
 		            const dirAccess = lastRetrievedFilePointer.fileAccess;
-		            var rootDirKey = lastRetrievedFilePointer.filePointer.baseKey;
-				    return dirAccess.mkdir(newFolderName, userContext, dirPointer.writer, dirPointer.mapKey, rootDirKey)
-
+		            var rootDirKey = dirPointer.baseKey;
+				    return dirAccess.mkdir(newFolderName, userContext, this.entryPointWriterKey(), dirPointer.mapKey, rootDirKey)
                         .then(this.loadFilesFromServer);
                 }
 
@@ -606,7 +625,7 @@ var Browser = React.createClass({
 
         render: function() {
                 const files = this.state.files.map(function(f) {
-                            return (<File id={File.id()} gridView={this.state.gridView} onClick={f.onClick} name={f.name} isdir={f.isDir} size={f.size} browser={this}/>)
+                            return (<File id={File.id()} gridView={this.state.gridView} onClick={f.onClick} name={f.name} isdir={f.isDir} size={f.size} browser={this} readableFilePointer={f.filePointer}/>)
                 }.bind(this)); 
 
                 const gridGlyph = "glyphicon glyphicon-th-large";

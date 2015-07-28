@@ -1167,6 +1167,8 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
 
     //String, UserContext, User -> 
     this.mkdir  = function(name, userContext, writer, ourMapKey, baseKey) {
+        if (!(writer instanceof User))
+            throw "Can't modify a directory without write permission (writer must be a User)!";    
         const dirReadKey = SymmetricKey.random();
         const dirMapKey = window.nacl.randomBytes(32); // root will be stored under this in the core node
         const dir = DirAccess.create(null, dirReadKey, new FileProperties(name, 0));
