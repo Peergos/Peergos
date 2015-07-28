@@ -18,12 +18,7 @@ public class HTTPCoreNode extends AbstractCoreNode
     public HTTPCoreNode(URL coreNodeURL)
     {
         System.out.println("Creating HTTP Corenode API at "+coreNodeURL);
-        if (Args.hasArg("demomode"))
-            try {
-                this.coreNodeURL = new URL("http://localhost:9999");
-            } catch (MalformedURLException e) {e.printStackTrace(); throw new RuntimeException(e);}
-        else
-            this.coreNodeURL = coreNodeURL;
+        this.coreNodeURL = coreNodeURL;
     }
 
     public URL getCoreNodeURL(){return coreNodeURL;}

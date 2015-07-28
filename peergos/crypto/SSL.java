@@ -36,6 +36,7 @@ import org.bouncycastle.pkcs.PKCSException;
 import org.bouncycastle.pkcs.jcajce.JcaPKCS10CertificationRequestBuilder;
 import org.bouncycastle.util.encoders.Base64;
 import org.bouncycastle.util.io.pem.PemObject;
+import peergos.util.*;
 
 import java.io.*;
 import java.math.BigInteger;
@@ -493,6 +494,8 @@ public class SSL
 
     public static String getCommonName(Certificate cert)
     {
+        if (Args.hasArg("demomode"))
+            return "localhost";
         try {
             X500Name x500name = new JcaX509CertificateHolder((X509Certificate) cert).getSubject();
             RDN cn = x500name.getRDNs(BCStyle.CN)[0];
