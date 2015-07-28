@@ -29,7 +29,7 @@ var File = React.createClass({
                                 var selected  =  evt.target.text.trim();
                                 console.log("on item "+ selected);
                                 if  (selected  == "Rename") {
-                                        alert("rename " + selected);
+                                       this.rename(); 
                                 } else if (selected  == "Remove")  {
                                         alert("remove " + selected);
                                 } else if (selected  == "Open")  {
@@ -39,14 +39,40 @@ var File = React.createClass({
                         }.bind(this)
                 });
         },
+
         rename: function() {
-                const newName= prompt("Specify updated name for "+ this.props.name);
+                const newName = prompt("Specify updated name for "+ this.props.name);
                 if (newName == null)
                         return;
-                //TODO
-                //rename
-                this.browser.loadFilesFromServer();
+                //get current props
+                const filePointer = this.props.retrievedFilePointer.filePointer;
+                const baseKey = filePointer.baseKey;
+                const dirAccess = this.props.retrievedFilePointer.fileAccess;
+                const parentKey = dirAccess.getParentKey(baseKey);
+                const currentProps = dirAccess.getFileProperties(parentKey);
+                const newProps = new FileProperties(newName, currentProps.size);
+                dirAccess.rename(this.writerFilePointer(), newProps, userContext);
+                //now reload the view
+                this.props.browser.loadFilesFromServer();
         },
+    
+        writerFilePointer: function() {
+                var  entryPointFilePointer;
+                try  {
+                    entryPointFilePointer = this.props.browser.entryPoint().filePointer;
+                } catch(err)  {
+                    return this.props.retrievedFilePointer.filePointer;
+                }
+
+                const current = this.props.retrievedFilePointer.filePointer;
+
+                return new ReadableFilePointer(
+                                current.owner,
+                                entryPointFilePointer.writer,
+                                current.mapKey,
+                                current.baseKey);
+        },
+
         renderList: function() {
                 //var dateString =  new Date(this.props.time*1000).toGMTString()
                 var glyphClass = this.glyphClass();
@@ -173,11 +199,20 @@ var Browser = React.createClass({
                 };
         },
             
-        entryPointWriterKey: function() {
+        entryPoint: function() {
             if (this.state.retrievedFilePointerPath.length == 0)
                     throw "No entry-point!";
-            const entryPointRetrievedFilePointer = this.state.retrievedFilePointerPath[0];
-            return entryPointRetrievedFilePointer.filePointer.writer;
+            return this.state.retrievedFilePointerPath[0];
+        },
+
+        entryPointWriterKey: function() {
+            return this.entryPoint().filePointer.writer;
+        },
+
+        lastRetrievedFilePointer: function() {
+            if (this.state.retrievedFilePointerPath.length == 0)
+                    throw "No retrived file-pointers!";
+            return this.state.retrievedFilePointerPath.slice(-1)[0];
         },
 
         loadFilesFromServer: function() {
@@ -230,16 +265,15 @@ var Browser = React.createClass({
                     }.bind(this));
                 } 
                 else {
-                    const lastRetrievedFilePointer =  this.state.retrievedFilePointerPath.slice(-1)[0];
-                    const filePointer = lastRetrievedFilePointer.filePointer;
+                    const filePointer = this.lastRetrievedFilePointer().filePointer;
+                    const fileAccess = this.lastRetrievedFilePointer().fileAccess;
                     const rootDirKey = filePointer.baseKey;
 
-                    const fileAccess = lastRetrievedFilePointer.fileAccess;
                     fileAccess.getChildren(userContext, rootDirKey).then(function(children) {
                             console.log("here with  "+ children.length  +" children.");
                             const files = children.map(function(retrievedFilePointer) {
             			    	var baseKey = retrievedFilePointer.filePointer.baseKey;
-			                const parentKey = retrievedFilePointer.fileAccess.getParentKey(baseKey);
+			                    const parentKey = retrievedFilePointer.fileAccess.getParentKey(baseKey);
             	    			const props = retrievedFilePointer.fileAccess.getFileProperties(parentKey);
 			                	const name  = props.name;
                 				const size = props.getSize();
@@ -625,7 +659,7 @@ var Browser = React.createClass({
 
         render: function() {
                 const files = this.state.files.map(function(f) {
-                            return (<File id={File.id()} gridView={this.state.gridView} onClick={f.onClick} name={f.name} isdir={f.isDir} size={f.size} browser={this} readableFilePointer={f.filePointer}/>)
+                            return (<File id={File.id()} gridView={this.state.gridView} onClick={f.onClick} name={f.name} isdir={f.isDir} size={f.size} browser={this} retrievedFilePointer={f.filePointer}/>)
                 }.bind(this)); 
 
                 const gridGlyph = "glyphicon glyphicon-th-large";

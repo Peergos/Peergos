@@ -1061,17 +1061,18 @@ function FileAccess(parent2meta, properties, retriever, parentLink) {
     this.rename = function(writableFilePointer, newProps, context) {
 	if (!writableFilePointer.isWritable())
 	    throw "Need a writable pointer!";
+    var metaKey;
 	if (this.isDirectory()) {
-	    const parentKey = subfolders2Parent.target(writableFilePointer.baseKey);
-	    const metaKey = this.getMetaKey(parentKey);
+	    const parentKey = this.subfolders2parent.target(writableFilePointer.baseKey);
+	    metaKey = this.getMetaKey(parentKey);
 	    const metaNonce = metaKey.createNonce();
-	    const dira = new DirAccess(this.subfolders2files, this.subfolders2Parent,
+	    const dira = new DirAccess(this.subfolders2files, this.subfolders2parent,
 				       this.subfolders, this.files, this.parent2meta,
 				       concat(metaNonce, metaKey.encrypt(newProps.serialize(), metaNonce))
 				      );
 	    return context.uploadChunk(dira, [], writableFilePointer.owner, writableFilePointer.writer, writableFilePointer.mapKey);
 	} else {
-	    const metaKey = this.getMetaKey(writableFilePointer.baseKey);
+	    metaKey = this.getMetaKey(writableFilePointer.baseKey);
 	    const nonce = metaKey.createNonce();
 	    const fa = new FileAccess(this.parent2meta, concat(nonce, metaKey.encrypt(newProps.serialize(), nonce)), this.retriever, this.parentLink);
 	    return context.uploadChunk(fa, [], writableFilePointer.owner, writableFilePointer.writer, writableFilePointer.mapKey);
