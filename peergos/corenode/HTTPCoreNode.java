@@ -3,9 +3,7 @@ package peergos.corenode;
 
 import peergos.crypto.*;
 import peergos.user.UserContext;
-import peergos.util.ArrayOps;
-import peergos.util.ByteArrayWrapper;
-import peergos.util.Serialize;
+import peergos.util.*;
 
 import java.util.*;
 import java.net.*;
@@ -20,7 +18,12 @@ public class HTTPCoreNode extends AbstractCoreNode
     public HTTPCoreNode(URL coreNodeURL)
     {
         System.out.println("Creating HTTP Corenode API at "+coreNodeURL);
-        this.coreNodeURL = coreNodeURL;
+        if (Args.hasArg("demo"))
+            try {
+                this.coreNodeURL = new URL("http://localhost:9999");
+            } catch (MalformedURLException e) {e.printStackTrace(); throw new RuntimeException(e);}
+        else
+            this.coreNodeURL = coreNodeURL;
     }
 
     public URL getCoreNodeURL(){return coreNodeURL;}
