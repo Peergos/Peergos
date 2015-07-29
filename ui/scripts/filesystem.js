@@ -33,7 +33,7 @@ var File = React.createClass({
                                 } else if (selected  == "Remove")  {
                                         alert("remove " + selected);
                                 } else if (selected  == "Open")  {
-                                        openItem(this);
+                                        this.props.onClick();
                                 }  else 
                                         console.log("no  action defined for context menu item "+ selected);    
                         }.bind(this)
@@ -121,17 +121,11 @@ var ae = document.createElement("a");
 document.body.appendChild(ae);
 ae.style = "display: none"; 
 
-function openItem(props) {
-    //var path =  props.path;
-    var name = "something"; //props.name;
-    
-    
+function openItem(name, data) {
     if(url != null){
         window.URL.revokeObjectURL(url);
     }
-    var data = new Uint8Array(2);
-    data[0] = 64;
-    data[1] = 70;
+    
     var blob =  new Blob([data], {type: "octet/stream"});		
     url = window.URL.createObjectURL(blob);
     ae.href = url;
@@ -244,9 +238,19 @@ var Browser = React.createClass({
                                 console.log("clicked on dir "+ name); 
                                 this.addToPath(retrievedFilePointer);
                             }.bind(this) :  function() {
-                                console.log("clicked on non-dir "+ name); 
-                                openItem(this);
-                            }.bind(this); 
+                                    //download the chunksandreconstruct the original bytes
+                                    //get the data
+                                    console.log("clicked on file "+ name); 
+                                    const baseKey = retrievedFilePointer.filePointer.baseKey;
+		                            //const props = retrievedFilePointer.fileAccess.getFileProperties(baseKey);
+                                    retrievedFilePointer.fileAccess.retriever.getFile(userContext, baseKey).then(function(buf) {
+                                        console.log("reading "+ name + " with size "+ size);
+			                            return buf.read(size).then(function(originalData) {
+                                            //call openItem
+                                            openItem(name, originalData);
+                                        });
+                                    });
+                            };
                             return {
                                     onClick: onClick,
                                     name: name,
@@ -281,15 +285,25 @@ var Browser = React.createClass({
 
             	    			const props = retrievedFilePointer.fileAccess.getFileProperties(parentKey);
 			                	const name  = props.name;
-                				const size = props.getSize();
+                				const size = props.size;
 	    	            		const isDir = retrievedFilePointer.fileAccess.isDirectory();
                 				const id = File.id();
                                 const onClick = isDir ? function() {
                                     console.log("clicked on dir "+ name); 
                                     this.addToPath(retrievedFilePointer);
                                 }.bind(this) :  function() {
-                                    console.log("clicked on non-dir "+ name); 
-                                    openItem(this);
+                                    //download the chunksandreconstruct the original bytes
+                                    //get the data
+                                    console.log("clicked on file "+ name); 
+                                    const baseKey = retrievedFilePointer.filePointer.baseKey;
+		                            //const props = retrievedFilePointer.fileAccess.getFileProperties(baseKey);
+                                    retrievedFilePointer.fileAccess.retriever.getFile(userContext, baseKey).then(function(buf) {
+                                        console.log("reading "+ name + " with size "+ size);
+			                            return buf.read(size).then(function(originalData) {
+                                            //call openItem
+                                            openItem(name, originalData);
+                                        });
+                                    });
                               }.bind(this);
 
                   			  return {
