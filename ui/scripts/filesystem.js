@@ -446,13 +446,18 @@ var Browser = React.createClass({
                 }).join("/");
         },
 
-        onBack : function() {
-                if (this.state.paths.length <2) {
+        onParent: function() {
+                if (this.state.retrievedFilePointerPath.length ==0) {
                         alert("Cannot go back from "+ this.currentPath());
                         return;
                 }
-                this.state.paths = this.state.paths.slice(0,-1);
-                this.loadFilesFromServer(this.currentPath());
+                this.state.retrievedFilePointerPath = this.state.retrievedFilePointerPath.slice(0,-1);
+                this.loadFilesFromServer();
+        },
+
+        onBack : function() {
+                //TODO something more appropriate
+                this.onParent();
         },
 
         onUpload: function() {
@@ -463,17 +468,6 @@ var Browser = React.createClass({
                 $('#uploadInput').click();
         },
 
-        onParent: function() {
-                if (userContext == null) {
-                            alert("Please sign in first!");
-                            return false;
-                }
-                var onSuccess = function(data) {
-                        var parentPath = data.path;
-                        this.updatePath(parentPath);
-                }.bind(this);
-                getParent(this.currentPath(), onSuccess);
-        },
 
         alternateView: function() {
                 var updatedView = !  this.state.gridView;
