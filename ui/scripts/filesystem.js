@@ -314,7 +314,7 @@ var Browser = React.createClass({
         },
 
         onParent: function() {
-                if (this.state.retrievedFilePointerPath.length ==0) {
+                if (this.state.retrievedFilePointerPath.length == 0) {
                         alert("Cannot go back from "+ this.currentPath());
                         return;
                 }
@@ -517,7 +517,7 @@ var Browser = React.createClass({
                 }
                 else {
                     console.log("creating new sub-dir "+ newFolderName);
-                    const lastRetrievedFilePointer =  this.state.retrievedFilePointerPath.slice(-1)[0];
+                    const lastRetrievedFilePointer =  this.lastRetrievedFilePointer();
 		            const dirPointer = lastRetrievedFilePointer.filePointer;
 		            const dirAccess = lastRetrievedFilePointer.fileAccess;
 		            var rootDirKey = dirPointer.baseKey;

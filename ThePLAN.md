@@ -52,3 +52,10 @@ Launch 4 - Beta
 
 - [ ] anonymising circuit construction ala Tor for sharing API (or just use Tor)
 
+
+### UI todo
+
+* tooltips on navbar icons
+* replace alerts with modals
+* impl. back and forward buttons
+* metadata context-menu option
