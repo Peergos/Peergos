@@ -18,6 +18,7 @@ public class HTTPCoreNode extends AbstractCoreNode
 
     public static AbstractCoreNode getInstance() throws IOException {
         if (Args.hasArg("demomode")) {
+            System.out.println("Using demo-mode core node..");
             try {
                 return SQLiteCoreNode.build(":memory:");
             } catch (SQLException e) {throw new RuntimeException(e);}
