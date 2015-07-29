@@ -209,6 +209,14 @@ var Browser = React.createClass({
             return this.state.retrievedFilePointerPath.slice(-1)[0];
         },
 
+        currentPath : function() {
+                return  "/"+ this.state.retrievedFilePointerPath.map(function(e) {
+                    const parentKey = e.fileAccess.getParentKey(e.filePointer.baseKey);
+                    const props = e.fileAccess.getFileProperties(parentKey);
+                    return props.name;
+                }).join("/");
+        },
+
         loadFilesFromServer: function() {
                 console.log("Loading files with  user context "+ userContext +" with type "+ typeof(userContext));
                 if (typeof(userContext) == "undefined" || userContext == null)
@@ -265,7 +273,7 @@ var Browser = React.createClass({
                         sort: this.state.sort,  
                         gridView: this.state.gridView, 
                         retrievedFilePointerPath: [] 
-                      }); 
+                      }, updateNavbarPath(this.currentPath())); 
                     }.bind(this));
                 } 
                 else {
@@ -321,129 +329,11 @@ var Browser = React.createClass({
                                 sort: this.state.sort,  
                                 gridView: this.state.gridView, 
                                 retrievedFilePointerPath: this.state.retrievedFilePointerPath 
-                            }); 
+                            }, function() {
+                                    updateNavbarPath(this.currentPath());
+                            }.bind(this)); 
                         }.bind(this));
                 }
-                /*
-                 * Browser {
-                 *  [retrievedFilePointer] 
-                 * }
-                 * <File {dir/file-access}}
-                 *if user context null bomb out
-                 *
-                 *if retrievedFilePointerPath is empty 
-                 *      get roots
-                 *      retrievedFilePointerPath = [entry-point -> rfp] 
-                 *      files <- subfiles/subfolders 
-                 *
-                 *else
-                 *      get children of last elem in  retrievedFilePointerPath 
-                 *      files <- subfiles/subfolders
-                 *
-                 *
-                //
-                if (userContext == null)
-                        return;
-
-                if (entryPoint ==  null) {
-                    //get roots
-                    userContext.getRoots().then(function(roots) {
-                    const files = []
-                    for (var i=0; i < roots.length; i++) {
-                        const entryPoint = roots[i][0];
-                        const rootDirKey = entryPoint.pointer.baseKey;
-                        const fileAccess = roots[i][1];
-                        const props = fileAccess.getFileProperties(parentKey);
-                        const name  = props.name;
-                        const length  = props.length();
-                        const id  =  File.id(name);
-                        
-                        var onClick = isdir ? function(event){
-                                this.updatePath();
-                        }.bind(this) :
-                                function(event) {
-                                        this.getContent(f.path);
-                                }.bind(this);
-
-                                        <File id={id} gridView={this.state.gridView{ }}>
-                                        )
-                    }
-                }
-
-
-
-
-                return userContext.getRoots().then(function(roots) {
-                console.log("Found "+ roots.length +"  roots here.");
-                for (var i=0; i < roots.length; i++) {
-                        //roots : [[entry-point, fileaccess]]
-                        const entryPoint = roots[i][0];
-                        const rootDirKey = entryPoint.pointer.baseKey;
-                        const fileAccess = roots[i][1];
-                        const isDir = fileAccess.isDir();
-                        if (fileAccess == null)
-                                continue;
-		                const parentKey = fileAccess.getParentKey(rootDirKey);
-                        const props = fileAccess.getFileProperties(parentKey);
-                        const name  = props.name;
-                        const length  = props.length();
-
-                        //if  dir-access
-                        //
-                        // to get  children
-                        fileAccess.getChildren(userContext, rootDirKey);
-                        //
-                        // fileAccess.files
-                        // fileAccess.subfolders
-                        //
-                        //const subfolderlink  = subfolders[i]
-                        //const subfolder_baseKey = subfolderlink.target(rootDirKey);
-                        //const subfolder_metadatablob_location_0 = subfolderlink.targetLocation(rootDirKey);
-                        //
-                        //const subfiles_fileaccesses  =  userContext.retrieveMetadata(fileAccess.files, fileAccess.subfolders2files.target(rootDirKey));
-                        //const subfolder_diraccesses  =  userContext.retrieveMetadata(fileAccess.subfolders, rootDirKey);
-                        //
-                        //
-                        //const subfolder_readableFilePointer = new ReadableFilePointer(
-                        // subfolder_metadatablob_location_0.owner,
-                        // subfolder_metadatablob_location_0.writer,
-                        // subfolder_metadatablob_location_0.mapKey,
-                        // subfolder_baseKey
-                        //);
-                        //
-                        //
-                        //
-                        //
-                        //
-                        //
-                        //
-                        //
-                        console.log("Found root-dir with name "+ name + ".");
-                   }
-                });
-                        
-
-                        /*
-                        //[[SymmetricLocationLink, FileAccess]]
-                        return userContext.retrieveAllMetadata(dir.files, rootDirKey).then(function(files) {
-                                for (var i=0; i < files.length; i++) {
-                                        var baseKey = files[i][0].target(rootDirKey);
-                                        var fileBlob = files[i][1];
-                                        // download fragments in chunk
-                                        var fileProps = fileBlob.getFileProperties(baseKey);
-                                        console.log("found "+ JSON.stringify(fileProps));
-                                }
-                        });
-                        */
-        },
-
-        reloadFilesFromServer: function() {this.loadFilesFromServer(this.currentPath())},
-
-        currentPath : function() {
-                return this.state.retrievedFilePointerPath.map(function(e) {
-                    //TODO
-                    return "TODO"; 
-                }).join("/");
         },
 
         onParent: function() {
@@ -550,8 +440,8 @@ var Browser = React.createClass({
                 }).then(function() {
                     return userContext.getRoots();
                 }).then(function(roots) {
-		    if (roots.length > 0)
-			return Promise.resolve(true);
+		            if (roots.length > 0)
+            			return Promise.resolve(true);
                     console.log("adding root entries");
                     var milliseconds = (new Date).getTime();
                     return Promise.all(
@@ -560,26 +450,13 @@ var Browser = React.createClass({
                         })
                     );
                 }).then(function() {
-                    return userContext.getRoots();
-                }).then(function(roots) {
-		            for (var i=0; i < roots.length; i++) {
-           		    var dirPointer = roots[i][0];
-		            var rootDirKey = dirPointer.pointer.baseKey;
-        		    var dir = roots[i][1];
-		            if (dir == null)
-            			continue;
-				var milliseconds = (new Date).getTime();
-				return dir.mkdir("subfolder_test"+milliseconds, userContext, dirPointer.pointer.writer, dirPointer.pointer.mapKey, rootDirKey);
-		            }
-                }).then(function() {
                         hideLogin();   
                 }).then(this.loadFilesFromServer);
 
         },
 
         componentDidMount: function() {
-                var path = this.currentPath();
-                this.loadFilesFromServer(path);
+                this.loadFilesFromServer();
                 var backButton = document.getElementById("backButton");
                 backButton.onclick = this.onBack;
                 var uploadButton = document.getElementById("uploadButton");
