@@ -35,6 +35,8 @@ function mediumFileShareTest(owner, sharer, receiver, sender) {
     } else {
 	for (var i = 0; i < Chunk.MAX_SIZE / 32 / 2; i++)
             raw.write(template);
+	for (var i = 0; i < 13; i++)
+	    raw.writeByte(i);
     }
     
     // add file to root dir

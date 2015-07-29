@@ -1321,6 +1321,8 @@ function split(arr, size) {
 }
 
 function LazyInputStreamCombiner(stream, context, dataKey, chunk) {
+    if (!chunk)
+	throw "Invalid current chunk!";
     this.context = context;
     this.dataKey = dataKey;
     this.current = chunk;
@@ -1398,6 +1400,8 @@ Erasure.reorder = function(fragments, hashes) {
 Erasure.split = function(input, originalBlobs, allowedFailures) {
     //TO DO port erasure code implementation and Galois groups
     var size = (input.length/originalBlobs)|0;
+    if (size*originalBlobs != input.length)
+	size++;
     var bfrags = [];
     for (var i=0; i < input.length/size; i++)
         bfrags.push(slice(input, i*size, Math.min(input.length, (i+1)*size)));
