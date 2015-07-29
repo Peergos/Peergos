@@ -504,8 +504,10 @@ var Browser = React.createClass({
                             const dirMapKey = browser.lastRetrievedFilePointer().filePointer.mapKey;
                             const writer = browser.entryPoint().filePointer.writer;
                             const dirAccess =  browser.lastRetrievedFilePointer().fileAccess;
+			    const parentLocation = new Location(owner, writer, dirMapKey);
+			    const dirParentKey = dirAccess.getParentKey(rootRKey);
 
-                            const file = new FileUploader(filename, data, fileKey);
+                            const file = new FileUploader(filename, data, fileKey, parentLocation, dirParentKey);
                             return file.upload(userContext, owner, writer).then(function(fileLocation) {
                                 dirAccess.addFile(fileLocation, rootRKey, fileKey);
                                 return userContext.uploadChunk(dirAccess, [], owner, writer, dirMapKey);
