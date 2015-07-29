@@ -16,12 +16,21 @@ public class HTTPCoreNode extends AbstractCoreNode
 {
     private final URL coreNodeURL;
 
+    private static final AbstractCoreNode memory;
+    static {
+        AbstractCoreNode instance = null;
+        try {
+            instance = SQLiteCoreNode.build(":memory:");
+        } catch (SQLException s) {
+            s.printStackTrace();
+        }
+        memory = instance;
+    }
+
     public static AbstractCoreNode getInstance() throws IOException {
         if (Args.hasArg("demomode")) {
             System.out.println("Using demo-mode core node..");
-            try {
-                return SQLiteCoreNode.build(":memory:");
-            } catch (SQLException e) {throw new RuntimeException(e);}
+            return memory;
         }
         return new HTTPCoreNode(new URL("http://"+ SSL.getCommonName(SSL.getCoreServerCertificates()[0])+":"+AbstractCoreNode.PORT+"/"));
     }
