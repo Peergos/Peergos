@@ -136,29 +136,6 @@ function buildGetChildrenUrl(path) {
         return  "children?path="+path;
 }
 
-function buildGetParentUrl(path) {
-        return  "parent?path="+path;
-}
-
-function buildRenameUrl(path, name) {
-        return  "rename?path="+path+"&name="+name;
-}
-
-function buildRemoveUrl(path) {
-        return  "remove?path="+path;
-}
-function buildGetContentUrl(path) {
-        return "content?path="+path;
-}
-
-function buildUploadUrl(path, name) {
-        return "upload?path="+path+"&name="+name;
-}
-
-function buildMkdirUrl(path, name) {
-        return "mkdir?path="+path+"&name="+name;
-}
-
 function hideLogin() {
         document.getElementById("login-form").style.display= "none";
 }
