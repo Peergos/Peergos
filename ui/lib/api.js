@@ -214,7 +214,7 @@ function Chunk(data, key) {
 Chunk.MAX_SIZE = Fragment.SIZE*EncryptedChunk.ERASURE_ORIGINAL
 
 
-function FileUploader(name, contents, key) {
+function FileUploader(name, contents, key, parentLocation, parentparentKey) {
     this.props = new FileProperties(name, contents.length);
     this.chunks = [];
     if (key == null) key = SymmetricKey.random();
@@ -235,7 +235,7 @@ function FileUploader(name, contents, key) {
                 for (var f in fragments)
                     hashes.push(fragments[f].getHash());
                 const retriever = new EncryptedChunkRetriever(chunk.nonce, encryptedChunk.getAuth(), hashes, i+1 < that.chunks.length ? new Location(owner, writer, that.chunks[i+1].mapKey) : null);
-                const metaBlob = FileAccess.create(chunk.key, that.props, retriever);
+                const metaBlob = FileAccess.create(chunk.key, that.props, retriever, parentLocation, parentparentKey);
                 resolve(context.uploadChunk(metaBlob, fragments, owner, writer, chunk.mapKey));
             }));
         return Promise.all(proms).then(function(res){
@@ -1021,6 +1021,16 @@ function SymmetricLocationLink(arr) {
        return new ReadableFilePointer(loc.owner, loc.writer, loc.mapKey, key);
     }
 }
+SymmetricLocationLink.create = function(fromKey, toKey, location) {
+    var nonce = fromKey.createNonce();
+    var loc = location.encrypt(fromKey, nonce);
+    var link = concat(nonce, fromKey.encrypt(toKey.key, nonce));
+    var buf = new ByteArrayOutputStream();
+    buf.writeArray(link);
+    buf.writeArray(loc);
+    return new SymmetricLocationLink(buf.toByteArray());
+}
+
 
 function FileAccess(parent2meta, properties, retriever, parentLink) {
     this.parent2meta = parent2meta;
@@ -1056,6 +1066,16 @@ function FileAccess(parent2meta, properties, retriever, parentLink) {
         var nonce = slice(this.properties, 0, SymmetricKey.NONCE_BYTES);
         var cipher = slice(this.properties, SymmetricKey.NONCE_BYTES, this.properties.length);
         return FileProperties.deserialize(this.getMetaKey(parentKey).decrypt(cipher, nonce));
+    }
+
+    this.getParent = function(parentKey, context) {
+	return context.retrieveAllMetadata([this.parentLink], parentKey).then(
+	    function(res) {
+		const retrievedFilePointer = res.map(function(entry) {
+		    return new RetrievedFilePointer(entry[0],  entry[1]); 
+		})[0];
+		return Promise.resolve(retrievedFilePointer);
+            })
     }
 
     this.rename = function(writableFilePointer, newProps, context) {
@@ -1098,11 +1118,11 @@ FileAccess.deserialize = function(raw) {
     }
 }
 
-FileAccess.create = function(parentKey, props, retriever) {
+FileAccess.create = function(parentKey, props, retriever, parentLocation, parentparentKey) {
     var metaKey = SymmetricKey.random();
     var nonce = metaKey.createNonce();
     return new FileAccess(SymmetricLink.fromPair(parentKey, metaKey, parentKey.createNonce()),
-                concat(nonce, metaKey.encrypt(props.serialize(), nonce)), retriever);
+                concat(nonce, metaKey.encrypt(props.serialize(), nonce)), retriever, SymmetricLocationLink.create(parentKey, parentparentKey, parentLocation));
 }
 
 function DirAccess(subfolders2files, subfolders2parent, subfolders, files, parent2meta, properties, retriever) {
@@ -1135,7 +1155,7 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
         var buf = new ByteArrayOutputStream();
         buf.writeArray(link);
         buf.writeArray(loc);
-        this.files.push(new SymmetricLocationLink(buf.toByteArray()));
+        this.files.push(SymmetricLocationLink.create(filesKey, targetParent, location));
     }
 
     // 0=FILE, 1=DIR

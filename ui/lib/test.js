@@ -35,7 +35,7 @@ function mediumFileShareTest(owner, sharer, receiver, sender) {
     // add file to root dir
     var filename = "HiNSA.bin";
     var fileKey = SymmetricKey.random();
-    const file = new FileUploader(filename, concat(raw1.toByteArray(), raw2.toByteArray()), fileKey);
+    const file = new FileUploader(filename, concat(raw1.toByteArray(), raw2.toByteArray()), fileKey, new Location(owner, sharer, rootMapKey), root.getParentKey(rootRKey));
     return file.upload(sender, owner, sharer).then(function(fileLocation) {
 	root.addFile(fileLocation, rootRKey, fileKey);
 	
@@ -61,19 +61,24 @@ function mediumFileShareTest(owner, sharer, receiver, sender) {
 		for (var i=0; i < files.length; i++) {
 		    var fileBlob = files[i].fileAccess;
 		    var baseKey = files[i].filePointer.baseKey;
-		    // download fragments in chunk
-		    var fileProps = fileBlob.getFileProperties(baseKey);
-		    
-		    return fileBlob.retriever.getFile(receiver, baseKey).then(function(buf) {
-			return buf.read(fileProps.getSize()).then(function(original) {
+		    // test parent link navigation
+		    fileBlob.getParent(baseKey, receiver).then(function(parent){
+			parent.fileAccess.getChildren(receiver, rootDirKey).then(function(files){
+			    // download fragments in chunk
+			    var fileProps = fileBlob.getFileProperties(baseKey);
 			    
-			    // checks
-			    if (fileProps.name != filename)
-				throw "Incorrect filename!";
-			    if (! arraysEqual(original, concat(raw1.toByteArray(), raw2.toByteArray())))
-				throw "Incorrect file contents!";
-			    console.log("Medium file share test passed! Found file "+fileProps.name);
-			    return Promise.resolve(true);
+			    return fileBlob.retriever.getFile(receiver, baseKey).then(function(buf) {
+				return buf.read(fileProps.getSize()).then(function(original) {
+				    
+				    // checks
+				    if (fileProps.name != filename)
+					throw "Incorrect filename!";
+				    if (! arraysEqual(original, concat(raw1.toByteArray(), raw2.toByteArray())))
+					throw "Incorrect file contents!";
+				    console.log("Medium file share test passed! Found file "+fileProps.name);
+				    return Promise.resolve(true);
+				});
+			    });
 			});
 		    });
 		}
