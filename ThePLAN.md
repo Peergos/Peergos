@@ -59,3 +59,8 @@ Launch 4 - Beta
 * replace alerts with modals
 * impl. back and forward buttons
 * metadata context-menu option
+* close mobile navbar on login
+* modal popup on login fail
+* display username once logged in
+* directions  to login / create dir etc.
+* move userContext  and retrievedFPP to sessionStorage
