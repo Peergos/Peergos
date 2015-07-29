@@ -23,19 +23,24 @@ function mediumFileShareTest(owner, sharer, receiver, sender) {
     var root = DirAccess.create(sharer, rootRKey, new FileProperties(name, 0));
     
     // generate file (two chunks)
-    var raw1 = new ByteArrayOutputStream();
-    var raw2 = new ByteArrayOutputStream();
-    var template = nacl.util.decodeUTF8("Hello secure cloud! Goodbye NSA!");
-    var template2 = nacl.util.decodeUTF8("Second hi safe cloud! Adios NSA!");
-    for (var i = 0; i < Chunk.MAX_SIZE / 32; i++)
-        raw1.write(template);
-    for (var i = 0; i < Chunk.MAX_SIZE / 32; i++)
-        raw2.write(template2);
+    const raw = new ByteArrayOutputStream();
+    const template = nacl.util.decodeUTF8("Hello secure cloud! Goodbye NSA!");
+    const template2 = nacl.util.decodeUTF8("Second hi safe cloud! Adios NSA!");
+    const twoChunks = false;
+    if (twoChunks) {
+	for (var i = 0; i < Chunk.MAX_SIZE / 32; i++)
+            raw.write(template);
+	for (var i = 0; i < Chunk.MAX_SIZE / 32; i++)
+            raw.write(template2);
+    } else {
+	for (var i = 0; i < Chunk.MAX_SIZE / 32 / 2; i++)
+            raw.write(template);
+    }
     
     // add file to root dir
     var filename = "HiNSA.bin";
     var fileKey = SymmetricKey.random();
-    const file = new FileUploader(filename, concat(raw1.toByteArray(), raw2.toByteArray()), fileKey, new Location(owner, sharer, rootMapKey), root.getParentKey(rootRKey));
+    const file = new FileUploader(filename, raw.toByteArray(), fileKey, new Location(owner, sharer, rootMapKey), root.getParentKey(rootRKey));
     return file.upload(sender, owner, sharer).then(function(fileLocation) {
 	root.addFile(fileLocation, rootRKey, fileKey);
 	
@@ -73,7 +78,7 @@ function mediumFileShareTest(owner, sharer, receiver, sender) {
 				    // checks
 				    if (fileProps.name != filename)
 					throw "Incorrect filename!";
-				    if (! arraysEqual(original, concat(raw1.toByteArray(), raw2.toByteArray())))
+				    if (! arraysEqual(original, raw.toByteArray()))
 					throw "Incorrect file contents!";
 				    console.log("Medium file share test passed! Found file "+fileProps.name);
 				    return Promise.resolve(true);
