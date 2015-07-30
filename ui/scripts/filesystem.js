@@ -146,6 +146,9 @@ function buildGetChildrenUrl(path) {
 function hideLogin() {
         document.getElementById("login-form").style.display= "none";
 }
+function showUsername() {
+        document.getElementById("login-form").style.display= "none";
+}
 
 function showLogin() {
         $('#login-form').style.display= "block";
@@ -434,7 +437,8 @@ var Browser = React.createClass({
                         })
                     );
                 }).then(function() {
-                        hideLogin();   
+                    const displayName = userContext.username;
+                    $("#login-form").html("<button class=\"btn btn-default\">"+displayName+"</button>");
                 }).then(this.loadFilesFromServer);
 
         },
