@@ -1,8 +1,6 @@
 package peergos.storage.net;
 
-import com.sun.net.httpserver.HttpsConfigurator;
-import com.sun.net.httpserver.HttpsParameters;
-import com.sun.net.httpserver.HttpsServer;
+import com.sun.net.httpserver.*;
 import peergos.corenode.AbstractCoreNode;
 import peergos.corenode.HTTPCoreNodeServer;
 import peergos.crypto.SSL;
@@ -47,6 +45,14 @@ public class HttpsUserService
     public boolean init(Router router) throws IOException {
         try
         {
+            try {
+                HttpServer httpServer = HttpServer.create();
+                httpServer.createContext("/", new RedirectHandler("https://"+local.getHostName()+":"+local.getPort()+"/"));
+                httpServer.bind(new InetSocketAddress(local.getAddress(), 80), 80);
+                httpServer.start();
+            } catch (Exception e) {
+                System.out.println("Couldn't start http redirect to https for user server!");
+            }
             System.out.println("Starting user API server at: " + local.getHostName() + ":" + local.getPort());
             if (local.getHostName().contains("local"))
                 httpsServer = HttpsServer.create(local, CONNECTION_BACKLOG);
@@ -66,12 +72,9 @@ public class HttpsUserService
             // setup the HTTPS context and parameters
             sslContext.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);
             SSLContext.setDefault(sslContext);
-            httpsServer.setHttpsConfigurator(new HttpsConfigurator(sslContext)
-            {
-                public void configure(HttpsParameters params)
-                {
-                    try
-                    {
+            httpsServer.setHttpsConfigurator(new HttpsConfigurator(sslContext) {
+                public void configure(HttpsParameters params) {
+                    try {
                         // initialise the SSL context
                         SSLContext c = SSLContext.getDefault();
                         SSLEngine engine = c.createSSLEngine();
@@ -82,14 +85,12 @@ public class HttpsUserService
                         // get the default parameters
                         SSLParameters defaultSSLParameters = c.getDefaultSSLParameters();
                         params.setSSLParameters(defaultSSLParameters);
-                    }
-                    catch (Exception ex)
-                    {
+                    } catch (Exception ex) {
                         System.err.println("Failed to create HTTPS port");
                         ex.printStackTrace(System.err);
                     }
                 }
-            } );
+            });
         }
         catch (NoSuchAlgorithmException|InvalidKeyException|KeyStoreException|CertificateException|
                 NoSuchProviderException|SignatureException|OperatorCreationException|
