@@ -48,7 +48,7 @@ public class HttpsUserService
             try {
                 HttpServer httpServer = HttpServer.create();
                 httpServer.createContext("/", new RedirectHandler("https://"+local.getHostName()+":"+local.getPort()+"/"));
-                httpServer.bind(new InetSocketAddress(local.getAddress(), 80), 80);
+                httpServer.bind(new InetSocketAddress(InetAddress.getLocalHost(), 80), CONNECTION_BACKLOG);
                 httpServer.start();
             } catch (Exception e) {
                 e.printStackTrace();
