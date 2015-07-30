@@ -1,3 +1,10 @@
+
+$(document).ready(function(){
+    //init. tooltips
+    $('[data-toggle="tooltip"]').tooltip();   
+});
+
+
 userContext =  null;
 
 var File = React.createClass({
