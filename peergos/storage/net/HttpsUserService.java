@@ -51,6 +51,7 @@ public class HttpsUserService
                 httpServer.bind(new InetSocketAddress(local.getAddress(), 80), 80);
                 httpServer.start();
             } catch (Exception e) {
+                e.printStackTrace();
                 System.out.println("Couldn't start http redirect to https for user server!");
             }
             System.out.println("Starting user API server at: " + local.getHostName() + ":" + local.getPort());
