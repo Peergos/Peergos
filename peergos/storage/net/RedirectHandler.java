@@ -15,6 +15,7 @@ public class RedirectHandler implements HttpHandler
     @Override
     public void handle(HttpExchange exchange) throws IOException {
         exchange.getResponseHeaders().add("Location", target);
-        exchange.sendResponseHeaders(302, 0);
+        exchange.sendResponseHeaders(301, 0);
+        exchange.close();
     }
 }
