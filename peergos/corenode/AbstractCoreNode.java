@@ -6,6 +6,7 @@ import peergos.util.ArrayOps;
 import peergos.util.ByteArrayWrapper;
 import peergos.util.Serialize;
 
+import java.sql.*;
 import java.util.*;
 import java.net.*;
 import java.io.*;
@@ -17,6 +18,17 @@ public abstract class AbstractCoreNode
     public static final int PORT = 9999;
     public static final float FRAC_TOLERANCE = 0.001f;
     private static final long DEFAULT_FRAGMENT_LENGTH = Fragment.SIZE;
+
+    private static AbstractCoreNode memory;
+    public synchronized static AbstractCoreNode getMemoryCoreNode() {
+        if (memory != null)
+            try {
+                memory = SQLiteCoreNode.build(":memory:");
+            } catch (SQLException s) {
+                s.printStackTrace();
+            }
+        return memory;
+    }
 
     /**
      * Maintains all network metadata in encrypted form, without exposing friendship network.

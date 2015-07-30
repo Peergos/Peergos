@@ -136,7 +136,12 @@ public class Start
     public static void demo() throws IOException{
         String domain = Args.getArg("domain", "localhost");
         Start.main(new String[] {"-directoryServer", "-domain", domain});
-        Start.main(new String[]{"-firstNode", "-port", "443", "-logMessages", "-domain", domain, "-demomode"});
+        if (domain.equals("localhost"))
+            Start.main(new String[] {"-coreNode", "-local"});
+        else
+            Start.main(new String[] {"-coreNode", "-domain", domain});
+
+        Start.main(new String[]{"-firstNode", "-port", "443", "-logMessages", "-domain", domain});
     }
 
     public static void test(int nodes) throws IOException
