@@ -821,9 +821,13 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
             var accesses = [];
             for (var i=0; i < rawBlobs.length; i++) {
                 var unwrapped = new ByteArrayInputStream(rawBlobs[i]).readArray();
-                accesses[i] = [links[i].toReadableFilePointer(baseKey), FileAccess.deserialize(unwrapped)];
+                accesses[i] = [links[i].toReadableFilePointer(baseKey), unwrapped.length > 0 ? FileAccess.deserialize(unwrapped) : null];
             }
-            return Promise.resolve(accesses);
+	    const res = [];
+	    for (var i=0; i < accesses.length; i++)
+		if (accesses[i][1] != null)
+		    res.push(accesses[i]);
+            return Promise.resolve(res);
         });
     }
 
@@ -903,14 +907,20 @@ function RetrievedFilePointer(pointer, access) {
 	if (!this.fileAccess.isDirectory())
 	    return this.fileAccess.removeFragments(context).then(function() {
 		context.corenodeClient.removeMetadataBlob(this.filePointer.owner, this.filePointer.writer, this.filePointer.mapKey);
-	    }.bind(this));
+	    }.bind(this)).then(function() {
+		// remove from parent
+		
+	    });
 	return this.fileAccess.getChildren(context, this.filePointer.baseKey).then(function(files) {
 	    const proms = [];
 	    for (var i=0; i < files.length; i++)
 		proms.push(files[i].remove(context));
 	    return Promise.all(proms).then(function() {
 		return context.corenodeClient.removeMetadataBlob(this.filePointer.owner, this.filePointer.writer, this.filePointer.mapKey);
-	    }.bind(this));
+	    }.bind(this)).then(function() {
+		// remove from parent
+		
+	    });;
 	}.bind(this));
     }.bind(this);
 }

@@ -330,7 +330,6 @@ public abstract class AbstractCoreNode
                 ArrayOps.bytesToHex(owner.getPublicKeys()), ArrayOps.bytesToHex(encodedSharingPublicKey), ArrayOps.bytesToHex(mapKey));
         synchronized(this)
         {
-            System.out.println("owner "+ owner);
             if (!userMap.get(owner).followers.contains(sharingKey))
                 return false;
         }
@@ -425,7 +424,6 @@ public abstract class AbstractCoreNode
     // should delete fragments from dht as well (once that call exists)
     public boolean removeMetadataBlob(UserPublicKey owner, byte[] encodedSharingKey, byte[] mapKey, byte[] sharingKeySignedMapKey)
     {
-        System.out.println("Removing metadata blob");
         UserPublicKey sharingKey = new UserPublicKey(encodedSharingKey);
 
         synchronized(this)
@@ -434,7 +432,7 @@ public abstract class AbstractCoreNode
                 return false;
         }
 
-        if (! sharingKey.isValidSignature(sharingKeySignedMapKey, ArrayOps.concat(encodedSharingKey, mapKey)))
+        if (! sharingKey.isValidSignature(sharingKeySignedMapKey, mapKey))
             return false;
 
         return removeMetadataBlob(owner, sharingKey, mapKey);
@@ -450,6 +448,8 @@ public abstract class AbstractCoreNode
         if (fragments == null)
             return false;
 
+        System.out.printf("Removing metadata blob at owner:%s writer:%s mapKey:%s\n",
+                ArrayOps.bytesToHex(owner.getPublicKeys()), ArrayOps.bytesToHex(sharingKey.getPublicKeys()), ArrayOps.bytesToHex(mapKey));
         return fragments.remove(new ByteArrayWrapper(mapKey)) != null;
     }
 
