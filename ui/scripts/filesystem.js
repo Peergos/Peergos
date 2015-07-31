@@ -38,7 +38,7 @@ var File = React.createClass({
                                 if  (selected  == "Rename") {
                                        this.rename(); 
                                 } else if (selected  == "Remove")  {
-                                        alert("remove " + selected);
+				       this.remove();
                                 } else if (selected  == "Open")  {
                                         this.props.onClick();
                                 }  else 
@@ -46,6 +46,12 @@ var File = React.createClass({
                         }.bind(this)
                 });
         },
+
+        remove: function() {
+	    new RetrievedFilePointer(this.writerFilePointer(), this.props.retrievedFilePointer.fileAccess).remove(userContext).then(function(){
+		this.props.browser.loadFilesFromServer();
+	    }.bind(this));
+	},
 
         rename: function() {
                 const newName = prompt("Specify updated name for "+ this.props.name);
@@ -58,9 +64,10 @@ var File = React.createClass({
                 const parentKey = dirAccess.getParentKey(baseKey);
                 const currentProps = dirAccess.getFileProperties(parentKey);
                 const newProps = new FileProperties(newName, currentProps.size);
-                dirAccess.rename(this.writerFilePointer(), newProps, userContext);
-                //now reload the view
-                this.props.browser.loadFilesFromServer();
+                dirAccess.rename(this.writerFilePointer(), newProps, userContext).then(function() {
+                    //now reload the view
+                    this.props.browser.loadFilesFromServer();
+		}.bind(this));
         },
     
         writerFilePointer: function() {

@@ -560,12 +560,12 @@ function CoreNodeClient() {
     };
     
     //String -> Uint8Array -> Uint8Array  -> Uint8Array -> fn -> fn -> void
-    this.removeMetadataBlob = function( username,  encodedSharingKey,  mapKey,  sharingKeySignedMapKey) {
+    this.removeMetadataBlob = function( owner,  writer,  mapKey) {
         var buffer = new ByteArrayOutputStream();
-        buffer.writeString(username);
-        buffer.writeArray(encodedSharingKey);
+        buffer.writeArray(owner.getPublicKeys());
+        buffer.writeArray(writer.getPublicKeys());
         buffer.writeArray(mapKey);
-        buffer.writeArray(sharingKeySignedMapKey);
+        buffer.writeArray(writer.signMessage(mapKey));
         return postProm("core/removeMetadataBlob", buffer.toByteArray());
     };
 
@@ -896,6 +896,23 @@ ReadableFilePointer.deserialize = function(arr) {
 function RetrievedFilePointer(pointer, access) {
     this.filePointer = pointer;
     this.fileAccess = access;
+
+    this.remove = function(context) {
+	if (!this.filePointer.isWritable())
+	    return Promise.resolve(false);
+	if (!this.fileAccess.isDirectory())
+	    return this.fileAccess.removeFragments(context).then(function() {
+		context.corenodeClient.removeMetadataBlob(this.filePointer.owner, this.filePointer.writer, this.filePointer.mapKey);
+	    }.bind(this));
+	return this.fileAccess.getChildren(context, this.filePointer.baseKey).then(function(files) {
+	    const proms = [];
+	    for (var i=0; i < files.length; i++)
+		proms.push(files[i].remove(context));
+	    return Promise.all(proms).then(function() {
+		return context.corenodeClient.removeMetadataBlob(this.filePointer.owner, this.filePointer.writer, this.filePointer.mapKey);
+	    }.bind(this));
+	}.bind(this));
+    }.bind(this);
 }
 
 // ReadableFilePinter, String, [String], [String]
@@ -1060,6 +1077,13 @@ function FileAccess(parent2meta, properties, retriever, parentLink) {
     }
     this.getMetaKey = function(parentKey) {
         return parent2meta.target(parentKey);
+    }
+
+    this.removeFragments = function(context) {
+	if (this.isDirectory())
+	    return Promise.resolve(true);
+	// TODO delete fragments
+	return Promise.resolve(true);
     }
 
     this.getFileProperties = function(parentKey) {

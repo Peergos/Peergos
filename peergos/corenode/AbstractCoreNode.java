@@ -425,6 +425,7 @@ public abstract class AbstractCoreNode
     // should delete fragments from dht as well (once that call exists)
     public boolean removeMetadataBlob(UserPublicKey owner, byte[] encodedSharingKey, byte[] mapKey, byte[] sharingKeySignedMapKey)
     {
+        System.out.println("Removing metadata blob");
         UserPublicKey sharingKey = new UserPublicKey(encodedSharingKey);
 
         synchronized(this)
