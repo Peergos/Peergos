@@ -901,7 +901,7 @@ function RetrievedFilePointer(pointer, access) {
     this.filePointer = pointer;
     this.fileAccess = access;
 
-    this.remove = function(context) {
+    this.remove = function(context, parentRetrievedFilePointer) {
 	if (!this.filePointer.isWritable())
 	    return Promise.resolve(false);
 	if (!this.fileAccess.isDirectory())
@@ -909,18 +909,20 @@ function RetrievedFilePointer(pointer, access) {
 		context.corenodeClient.removeMetadataBlob(this.filePointer.owner, this.filePointer.writer, this.filePointer.mapKey);
 	    }.bind(this)).then(function() {
 		// remove from parent
-		
-	    });
+		if (parentRetrievedFilePointer != null)
+		    parentRetrievedFilePointer.fileAccess.removeChild(this, parentRetrievedFilePointer.filePointer, context);
+	    }.bind(this));
 	return this.fileAccess.getChildren(context, this.filePointer.baseKey).then(function(files) {
 	    const proms = [];
 	    for (var i=0; i < files.length; i++)
-		proms.push(files[i].remove(context));
+		proms.push(files[i].remove(context, null));
 	    return Promise.all(proms).then(function() {
 		return context.corenodeClient.removeMetadataBlob(this.filePointer.owner, this.filePointer.writer, this.filePointer.mapKey);
 	    }.bind(this)).then(function() {
 		// remove from parent
-		
-	    });;
+		if (parentRetrievedFilePointer != null)
+		    parentRetrievedFilePointer.fileAccess.removeChild(this, parentRetrievedFilePointer.filePointer, context);
+	    });
 	}.bind(this));
     }.bind(this);
 }
@@ -1190,6 +1192,38 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
         buf.writeArray(link);
         buf.writeArray(loc);
         this.files.push(SymmetricLocationLink.create(filesKey, targetParent, location));
+    }
+
+    this.removeChild = function(childRetrievedPointer, readablePointer, context) {
+	if (childRetrievedPointer.fileAccess.isDirectory()) {
+	    const newsubfolders = [];
+	    for (var i=0; i < subfolders.length; i++) {
+		const target = subfolders[i].targetLocation(readablePointer.baseKey);
+		var keep = true;
+		if (arraysEqual(target.mapKey, childRetrievedPointer.filePointer.mapKey))
+		    if (arraysEqual(target.writer.getPublicKeys(), childRetrievedPointer.filePointer.writer.getPublicKeys()))
+			if (arraysEqual(target.owner.getPublicKeys(), childRetrievedPointer.filePointer.owner.getPublicKeys()))
+			    keep = false;
+		if (keep)
+		    newsubfolders.push(subfolders[i]);
+	    }
+	    this.subfolders = newsubfolders;
+	} else {
+	    const newfiles = [];
+	    const filesKey = subfolders2files.target(readablePointer.baseKey)
+	    for (var i=0; i < files.length; i++) {
+		const target = files[i].targetLocation(filesKey);
+		var keep = true;
+		if (arraysEqual(target.mapKey, childRetrievedPointer.filePointer.mapKey))
+		    if (arraysEqual(target.writer.getPublicKeys(), childRetrievedPointer.filePointer.writer.getPublicKeys()))
+			if (arraysEqual(target.owner.getPublicKeys(), childRetrievedPointer.filePointer.owner.getPublicKeys()))
+			    keep = false;
+		if (keep)
+		    newfiles.push(files[i]);
+	    }
+	    this.files = newfiles;
+	}
+	return context.uploadChunk(this, [], readablePointer.owner, readablePointer.writer, readablePointer.mapKey);
     }
 
     // 0=FILE, 1=DIR
