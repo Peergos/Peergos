@@ -8,13 +8,13 @@ Launch 1 - Alpha 1 (Basic File storage and sharing) 9/8/2015
 - [X] UserPublicKey and User implemented in JS using curve25519 and ed25519
 - [X] Cryptree in JS (StaticDataElement, crypto links, Metadata, DirAccess, FileAccess, ChunkProperties, FileProperties, EncryptedChunk) (4)
 - [X] User context helper functions implemented in JS (2)
-- [ ] UI: display directory contents (2)
-- [ ] UI: create directories (1)
-- [ ] UI: download file (4)
-- [ ] UI: upload file (2)
-- [ ] Parent symmetric location link (2)
+- [X] UI: display directory contents (2)
+- [X] UI: create directories (1)
+- [X] UI: download file (4)
+- [X] UI: upload file (2)
+- [X] Parent symmetric location link (2)
 - [ ] UI: friends page (2)
-- [ ] UI: rename file/dir (2)
+- [X] UI: rename file/dir (2)
 - [ ] UI: pending follow requests page (1)
 - [ ] UI: share file with a friend (Read only) (1)
 - [X] Core node persistence (4)
@@ -25,6 +25,7 @@ Launch 1 - Alpha 1 (Basic File storage and sharing) 9/8/2015
 Launch 2 - Alpha 2 (KeyMail + file storage and sharing) 21/10/2015
 ------------------------------------------------------------------
 - [ ] version keypair type (2)
+- [ ] type property added to symmetrickey
 - [ ] chaining of directory metadata blocks (to support arbitrarily large directories)
 - [ ] benchmarks, scalability tests (16)
 - [ ] more efficient small file storage (32)
