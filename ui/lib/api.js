@@ -485,14 +485,14 @@ function CoreNodeClient() {
     };
     
     
-    //String -> Uint8Array -> Uint8Array -> fn -> fn -> void
+    //String -> Uint8Array -> Uint8Array -> fn -> fn ->  boolean 
     this.addUsername = function(username, encodedUserKey, signed, staticData) {
         var buffer = new ByteArrayOutputStream();
         buffer.writeString(username);
         buffer.writeArray(encodedUserKey);
         buffer.writeArray(signed);
         buffer.writeArray(staticData);
-        return postProm("core/addUsername", buffer.toByteArray());
+        return postProm("core/addUsername", buffer.toByteArray())[0];
     };
     
     //Uint8Array -> Uint8Array -> fn -> fn -> void
@@ -686,7 +686,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
         console.log("registering "+username);
         var rawStatic = this.serializeStatic();
         var signed = user.signMessage(concat(nacl.util.decodeUTF8(username), user.getPublicKeys(), rawStatic));
-        return corenodeClient.addUsername(username, user.getPublicKeys(), signed, rawStatic)
+        return corenodeClient.addUsername(username, user.getPublicKeys(), signed, rawStatic);
     }
 
     this.createEntryDirectory = function(directoryName) {

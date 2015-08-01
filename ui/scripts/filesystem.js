@@ -7,12 +7,14 @@ $(document).ready(function(){
 
 userContext =  null;
 
-requireSignedIn = function(callback) {
-    if (userContext == null)  { 
-        $('#modal-title').html('Who is this?')
-        $('#modal-body').html('<p>Please sign in to continue.</p>')
+populateModalAndShow = function(title, content) {
+        $('#modal-title').html(title);
+        $('#modal-body').html(content);
         $('#modal').modal("show");   
-    }
+}
+requireSignedIn = function(callback) {
+    if (userContext == null)  
+        populateModalAndShow('Who is this?','<p>Please sign in to continue.</p>');
     else
         callback();
 }
@@ -150,7 +152,7 @@ File.pathSort = function(left, right){return left.path.localeCompare(right.path)
 
 File.sizes = [{count : 1, unit:"bytes"}, {count : 1024, unit: "kB"}, {count: 1048576 , unit : "MB"}, {count: 1073741824, unit:"GB" } ]
 
-File.sizeString =  function(sizeBytes){
+File.sizeString =  function(sizeBytes) {
         var iUnit=0;
         var count=0;
         for (iUnit=0; iUnit < File.sizes.length;iUnit++) {
@@ -159,35 +161,6 @@ File.sizeString =  function(sizeBytes){
                         break;
         }
         return "" + (count|0) +" "+ File.sizes[iUnit].unit;   
-}
-
-
-
-
-
-
-
-function hideLogin() {
-        document.getElementById("login-form").style.display= "none";
-}
-function showUsername() {
-        document.getElementById("login-form").style.display= "none";
-}
-
-function showLogin() {
-        $('#login-form').style.display= "block";
-}
-
-function getParent(path, onSuccess) {
-        $.ajax({
-                url: buildGetParentUrl(path),
-                dataType: 'json',
-                cache: false,
-                success: onSuccess,
-                error: function(xhr, status, err) {
-                        console.error(this.props.url, status, err.toString());
-                }.bind(this)
-        });
 }
 
 function updateNavbarPath(path) {
@@ -383,7 +356,26 @@ var Browser = React.createClass({
 
         login: function() {
                 var username = document.getElementById("login-user-input").value;
-                var password = document.getElementById("login-password-input").value;
+                const passwordInput = document.getElementById("login-password-input");
+                const password = passwordInput.value;
+
+                const onVerified  = function() {
+                    return userContext.getRoots().then(function(roots) {
+		            if (roots.length > 0)
+            			return Promise.resolve(true);
+                    console.log("adding root entries");
+                    var milliseconds = (new Date).getTime();
+                    return Promise.all(
+                        [1].map(function(num) {
+                            return userContext.createEntryDirectory("test_"+milliseconds+"_"+num);
+                        })
+                    );
+                    }).then(function() {
+                        const displayName = userContext.username;
+                        $("#login-form").html("<button class=\"btn btn-default\">"+displayName+"</button>");
+                    }).then(this.loadFilesFromServer);
+                }.bind(this);
+
                 var ctx = null;
                 return generateKeyPairs(username, password).then(function(user) {
                         var dht = new DHTClient();
@@ -399,26 +391,15 @@ var Browser = React.createClass({
                                 return Promise.resolve(true);
                 }).then(function(isRegistered) {
                         if  (! isRegistered) 
-                                reject(Error("Could not register user "+ username));
+                                reject();
                         console.log("Verified user "+ username +" is registered");
                         userContext = ctx;  
-                }).then(function() {
-                    return userContext.getRoots();
-                }).then(function(roots) {
-		            if (roots.length > 0)
-            			return Promise.resolve(true);
-                    console.log("adding root entries");
-                    var milliseconds = (new Date).getTime();
-                    return Promise.all(
-                        [1].map(function(num) {
-                            return userContext.createEntryDirectory("test_"+milliseconds+"_"+num);
-                        })
-                    );
-                }).then(function() {
-                    const displayName = userContext.username;
-                    $("#login-form").html("<button class=\"btn btn-default\">"+displayName+"</button>");
-                }).then(this.loadFilesFromServer);
-
+                }).then(onVerified, 
+                        function() {
+                                //failed to authenticate user
+                                passwordInput.value='';
+                                populateModalAndShow("Authentication Failure", "Invalid credentials.");
+                });
         },
 
         componentDidMount: function() {
