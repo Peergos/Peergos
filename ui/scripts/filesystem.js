@@ -60,11 +60,14 @@ var File = React.createClass({
                 //get current props
                 const filePointer = this.props.retrievedFilePointer.filePointer;
                 const baseKey = filePointer.baseKey;
-                const dirAccess = this.props.retrievedFilePointer.fileAccess;
-                const parentKey = dirAccess.getParentKey(baseKey);
-                const currentProps = dirAccess.getFileProperties(parentKey);
+                const fileAccess = this.props.retrievedFilePointer.fileAccess;
+
+                const key = fileAccess.isDirectory() ? fileAccess.getParentKey(baseKey) : baseKey; 
+                const currentProps = fileAccess.getFileProperties(key);
+
                 const newProps = new FileProperties(newName, currentProps.size);
-                dirAccess.rename(this.writerFilePointer(), newProps, userContext).then(function() {
+
+                fileAccess.rename(this.writerFilePointer(), newProps, userContext).then(function() {
                     //now reload the view
                     this.props.browser.loadFilesFromServer();
 		}.bind(this));
