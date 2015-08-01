@@ -7,6 +7,30 @@ $(document).ready(function(){
 
 userContext =  null;
 
+requireSignedIn = function(callback) {
+    if (userContext == null) 
+        $('#signInModal').modal("show");   
+    else
+        callback();
+}
+
+var url;
+var ae = document.createElement("a");
+document.body.appendChild(ae);
+ae.style = "display: none"; 
+
+function openItem(name, data) {
+    if(url != null){
+        window.URL.revokeObjectURL(url);
+    }
+    
+    var blob =  new Blob([data], {type: "octet/stream"});		
+    url = window.URL.createObjectURL(blob);
+    ae.href = url;
+    ae.download = name;
+    ae.click();
+}
+
 var File = React.createClass({
         
         glyphClass: function() {
@@ -133,25 +157,12 @@ File.sizeString =  function(sizeBytes){
         }
         return "" + (count|0) +" "+ File.sizes[iUnit].unit;   
 }
-var url;
-var ae = document.createElement("a");
-document.body.appendChild(ae);
-ae.style = "display: none"; 
 
-function openItem(name, data) {
-    if(url != null){
-        window.URL.revokeObjectURL(url);
-    }
-    
-    var blob =  new Blob([data], {type: "octet/stream"});		
-    url = window.URL.createObjectURL(blob);
-    ae.href = url;
-    ae.download = name;
-    ae.click();
-}
-function buildGetChildrenUrl(path) {
-        return  "children?path="+path;
-}
+
+
+
+
+
 
 function hideLogin() {
         document.getElementById("login-form").style.display= "none";
@@ -334,27 +345,28 @@ var Browser = React.createClass({
         },
 
         onParent: function() {
-                if (this.state.retrievedFilePointerPath.length == 0) {
-                        alert("Cannot go back from "+ this.currentPath());
-                        return;
-                }
-                this.state.retrievedFilePointerPath = this.state.retrievedFilePointerPath.slice(0,-1);
-                this.loadFilesFromServer();
+                    requireSignedIn(function()  {
+                    if (this.state.retrievedFilePointerPath.length == 0) {
+                            alert("Cannot go back from "+ this.currentPath());
+                            return;
+                    }
+                    this.state.retrievedFilePointerPath = this.state.retrievedFilePointerPath.slice(0,-1);
+                    this.loadFilesFromServer();
+                }.bind(this));
         },
 
         onBack : function() {
-                //TODO something more appropriate
-                this.onParent();
+                requireSignedIn(function()  {
+                    //TODO something more appropriate
+                    this.onParent();
+                }.bind(this));
         },
 
         onUpload: function() {
-                if (userContext == null) {
-                            alert("Please sign in first!");
-                            return false;
-                }
+                requireSignedIn(function()  {
                 $('#uploadInput').click();
+                });
         },
-
 
         alternateView: function() {
                 var updatedView = !  this.state.gridView;
@@ -520,32 +532,28 @@ var Browser = React.createClass({
         },
 
         mkdir: function() {
-                if (userContext == null) {
-                    alert("Please sign in first!");
-                    return;
-                }
-
-                const newFolderName = prompt("Enter new folder name");
-                if (newFolderName == null)
+                requireSignedIn(function()  {
+                    const newFolderName = prompt("Enter new folder name");
+                    if (newFolderName == null)
                         return;
                 
-                const isEmpty =  this.state.retrievedFilePointerPath.length == 0;
-                if (isEmpty) {
-                    //create new root-dir
-                    console.log("creating new entry-point "+ newFolderName);
-                    return userContext.createEntryDirectory(newFolderName)
-                        .then(this.loadFilesFromServer);
-                }
-                else {
-                    console.log("creating new sub-dir "+ newFolderName);
-                    const lastRetrievedFilePointer =  this.lastRetrievedFilePointer();
-		            const dirPointer = lastRetrievedFilePointer.filePointer;
-		            const dirAccess = lastRetrievedFilePointer.fileAccess;
-		            var rootDirKey = dirPointer.baseKey;
-				    return dirAccess.mkdir(newFolderName, userContext, this.entryPointWriterKey(), dirPointer.mapKey, rootDirKey)
-                        .then(this.loadFilesFromServer);
-                }
-
+                    const isEmpty =  this.state.retrievedFilePointerPath.length == 0;
+                    if (isEmpty) {
+                        //create new root-dir
+                        console.log("creating new entry-point "+ newFolderName);
+                        return userContext.createEntryDirectory(newFolderName)
+                            .then(this.loadFilesFromServer);
+                    }
+                    else {
+                        console.log("creating new sub-dir "+ newFolderName);
+                        const lastRetrievedFilePointer =  this.lastRetrievedFilePointer();
+		                const dirPointer = lastRetrievedFilePointer.filePointer;
+		                const dirAccess = lastRetrievedFilePointer.fileAccess;
+    		            var rootDirKey = dirPointer.baseKey;
+	    			    return dirAccess.mkdir(newFolderName, userContext, this.entryPointWriterKey(), dirPointer.mapKey, rootDirKey)
+                            .then(this.loadFilesFromServer);
+                    }
+                }.bind(this));
         },
 
         render: function() {

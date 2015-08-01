@@ -57,10 +57,12 @@ Launch 4 - Beta
 ### UI todo
 
 * replace alerts with modals
+    onParent
+    signin
+    login fail
 * impl. back and forward buttons
 * metadata context-menu option
 * close mobile navbar on login
-* modal popup on login fail
-* display username once logged in
 * directions  to login / create dir etc.
-* move userContext  and retrievedFPP to sessionStorage
+* move userContext  and retrievedFPP to sessionStorage (won't do: insecure)
+* signout
