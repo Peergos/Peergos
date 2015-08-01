@@ -234,17 +234,12 @@ var Browser = React.createClass({
                 const callback = function(children) {
                             const files = children.map(function(retrievedFilePointer) {
             			    	var baseKey = retrievedFilePointer.filePointer.baseKey;
-			                    var parentKey;
-                                if (retrievedFilePointer.fileAccess.isDirectory())
-                                        parentKey = retrievedFilePointer.fileAccess.getParentKey(baseKey);
-                                else 
-                                        parentKey = baseKey;
-
-            	    			const props = retrievedFilePointer.fileAccess.getFileProperties(parentKey);
+                                const fileAccess =  retrievedFilePointer.fileAccess;
+			                    const parentKey =  fileAccess.isDirectory() ? fileAccess.getParentKey(baseKey) : baseKey;
+            	    			const props = fileAccess.getFileProperties(parentKey);
+	    	            		const isDir = fileAccess.isDirectory();
 			                	const name  = props.name;
                 				const size = props.size;
-	    	            		const isDir = retrievedFilePointer.fileAccess.isDirectory();
-                				const id = File.id();
                                 const onClick = isDir ? function() {
                                     this.addToPath(retrievedFilePointer);
                                 }.bind(this) :  function() {
