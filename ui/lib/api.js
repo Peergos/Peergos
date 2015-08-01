@@ -492,7 +492,10 @@ function CoreNodeClient() {
         buffer.writeArray(encodedUserKey);
         buffer.writeArray(signed);
         buffer.writeArray(staticData);
-        return postProm("core/addUsername", buffer.toByteArray())[0];
+        return postProm("core/addUsername", buffer.toByteArray()).then(
+	    function(res){
+		return Promise.resolve(res[0]);
+	    });
     };
     
     //Uint8Array -> Uint8Array -> fn -> fn -> void
