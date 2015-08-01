@@ -8,8 +8,11 @@ $(document).ready(function(){
 userContext =  null;
 
 requireSignedIn = function(callback) {
-    if (userContext == null) 
-        $('#signInModal').modal("show");   
+    if (userContext == null)  { 
+        $('#modal-title').html('Who is this?')
+        $('#modal-body').html('<p>Please sign in to continue.</p>')
+        $('#modal').modal("show");   
+    }
     else
         callback();
 }
