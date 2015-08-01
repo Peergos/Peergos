@@ -13,14 +13,17 @@ Launch 1 - Alpha 1 (Basic File storage and sharing) 9/8/2015
 - [X] UI: download file (4)
 - [X] UI: upload file (2)
 - [X] Parent symmetric location link (2)
-- [ ] UI: friends page (2)
 - [X] UI: rename file/dir (2)
+- [X] Core node persistence (4)
+- [ ] JS erasure codes (8)
+- [ ] UI: show paths as /owner/path_from_owners_root
+- [ ] UI: ensure user has a single root directory
+- [ ] UI: follow a user
 - [ ] UI: pending follow requests page (1)
 - [ ] UI: share file with a friend (Read only) (1)
-- [X] Core node persistence (4)
+- [ ] UI: make path clickable (with box around each folder, and current folder highlighted
 - [ ] Directory node persistence (2)
 - [ ] quota tolerance (2)
-- [ ] JS erasure codes (8)
 
 Launch 2 - Alpha 2 (KeyMail + file storage and sharing) 21/10/2015
 ------------------------------------------------------------------
