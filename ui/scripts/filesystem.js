@@ -229,71 +229,9 @@ var Browser = React.createClass({
         },
 
         loadFilesFromServer: function() {
-                console.log("Loading files with  user context "+ userContext +" with type "+ typeof(userContext));
                 if (typeof(userContext) == "undefined" || userContext == null)
                         return;
-                const isEmpty =  this.state.retrievedFilePointerPath.length == 0;
-               
-                var roots = null; 
-                if (isEmpty) {
-                    userContext.getRoots().then(function(roots) {
-                        const files = roots.map(function(root) {
-                            const entryPoint = root[0];
-                            const fileAccess = root[1];
-
-                            const filePointer = entryPoint.pointer;
-                            const rootDirKey = filePointer.baseKey;
-		                    const parentKey = fileAccess.getParentKey(rootDirKey);
-
-                            const retrievedFilePointer = new RetrievedFilePointer(filePointer, fileAccess);
-                            
-                            const props = fileAccess.getFileProperties(parentKey);
-                            const name  = props.name;
-                            const size = props.getSize();
-                            const isDir = fileAccess.isDirectory();
-                            const id = File.id();
-                            console.log("name "+ name + " with size "+ size); 
-                            const onClick = isDir ? function() {
-                                console.log("clicked on dir "+ name); 
-                                this.addToPath(retrievedFilePointer);
-                            }.bind(this) :  function() {
-                                    //download the chunksandreconstruct the original bytes
-                                    //get the data
-                                    console.log("clicked on file "+ name); 
-                                    const baseKey = retrievedFilePointer.filePointer.baseKey;
-		                            //const props = retrievedFilePointer.fileAccess.getFileProperties(baseKey);
-                                    retrievedFilePointer.fileAccess.retriever.getFile(userContext, baseKey).then(function(buf) {
-                                        console.log("reading "+ name + " with size "+ size);
-			                            return buf.read(size).then(function(originalData) {
-                                            //call openItem
-                                            openItem(name, originalData);
-                                        });
-                                    });
-                            };
-                            return {
-                                    onClick: onClick,
-                                    name: name,
-                                    isDir: isDir,
-                                    size: size,
-                                    filePointer: retrievedFilePointer
-                            }
-                        }.bind(this));
-
-                      this.setState({
-                        files: files, 
-                        sort: this.state.sort,  
-                        gridView: this.state.gridView, 
-                        retrievedFilePointerPath: [] 
-                      }, updateNavbarPath(this.currentPath())); 
-                    }.bind(this));
-                } 
-                else {
-                    const filePointer = this.lastRetrievedFilePointer().filePointer;
-                    const fileAccess = this.lastRetrievedFilePointer().fileAccess;
-                    const rootDirKey = filePointer.baseKey;
-
-                    fileAccess.getChildren(userContext, rootDirKey).then(function(children) {
-                            console.log("here with  "+ children.length  +" children.");
+                const callback = function(children) {
                             const files = children.map(function(retrievedFilePointer) {
             			    	var baseKey = retrievedFilePointer.filePointer.baseKey;
 			                    var parentKey;
@@ -308,18 +246,14 @@ var Browser = React.createClass({
 	    	            		const isDir = retrievedFilePointer.fileAccess.isDirectory();
                 				const id = File.id();
                                 const onClick = isDir ? function() {
-                                    console.log("clicked on dir "+ name); 
                                     this.addToPath(retrievedFilePointer);
                                 }.bind(this) :  function() {
-                                    //download the chunksandreconstruct the original bytes
+                                    //download the chunks and reconstruct the original bytes
                                     //get the data
-                                    console.log("clicked on file "+ name); 
                                     const baseKey = retrievedFilePointer.filePointer.baseKey;
-		                            //const props = retrievedFilePointer.fileAccess.getFileProperties(baseKey);
                                     retrievedFilePointer.fileAccess.retriever.getFile(userContext, baseKey).then(function(buf) {
                                         console.log("reading "+ name + " with size "+ size);
 			                            return buf.read(size).then(function(originalData) {
-                                            //call openItem
                                             openItem(name, originalData);
                                         });
                                     });
@@ -334,7 +268,6 @@ var Browser = React.createClass({
 			            	    }
                             }.bind(this));
 
-                            console.log("setting-state :::");
                             this.setState({
                                 files: files, 
                                 sort: this.state.sort,  
@@ -343,10 +276,35 @@ var Browser = React.createClass({
                             }, function() {
                                     updateNavbarPath(this.currentPath());
                             }.bind(this)); 
-                        }.bind(this));
-                }
-        },
+                }.bind(this);
 
+                const isEmpty =  this.state.retrievedFilePointerPath.length == 0;
+                if (isEmpty) {
+                    userContext.getRoots().then(function(roots) {
+                        const children = roots.map(function(root) {
+                            const entryPoint = root[0];
+                            const fileAccess = root[1];
+
+                            const filePointer = entryPoint.pointer;
+                            const rootDirKey = filePointer.baseKey;
+		                    const parentKey = fileAccess.getParentKey(rootDirKey);
+
+                            return new RetrievedFilePointer(filePointer, fileAccess);
+                        });
+
+                        callback(children);
+                    }.bind(this));
+                }
+                else {
+                    const filePointer = this.lastRetrievedFilePointer().filePointer;
+                    const fileAccess = this.lastRetrievedFilePointer().fileAccess;
+                    const rootDirKey = filePointer.baseKey;
+
+                    fileAccess.getChildren(userContext, rootDirKey).then(function(children) {
+                            callback(children);
+                    }.bind(this));
+                }    
+        },
         onParent: function() {
                     requireSignedIn(function()  {
                     if (this.state.retrievedFilePointerPath.length == 0) {
