@@ -21,18 +21,15 @@ public class GaloisField256 extends GaloisField
         }
         for (int i=255; i < 512; i++)
             exp[i] = exp[i-255];
-        log[exp[255]] = 255;
+        //log[exp[255]] = 255;
         // check
 
-//        for (int i=0; i < 256; i++) {
-//            assert (log[exp[i]] == i);
-//            assert (exp[log[i]] == i);
-//        }
-
-//        System.out.printf("Exp: ");
-//        ErasureCodes.print(exp);
-//        System.out.printf("Log: ");
-//        ErasureCodes.print(log);
+        for (int i=0; i < 255; i++) {
+            if (log[exp[i]] != i)
+                throw new IllegalStateException(String.format("log[exp[%d]] != %d, exp[%d] = %d, log[%d] = %d", i, i, i, exp[i], exp[i], log[exp[i]]));
+            if (i > 0 && exp[log[i]] != i)
+                throw new IllegalStateException("exp[log["+i+"]] != "+ i);
+        }
     }
 
     public int size()
@@ -64,5 +61,9 @@ public class GaloisField256 extends GaloisField
         if (x==0)
             return 0;
         return exp[log[x]+255-log[y]];
+    }
+
+    public static void main(String[] a) {
+
     }
 }
