@@ -161,9 +161,9 @@ public class Start
 
         String[] args;
         if (nodes > 1 )
-            args = new String[]{"-firstNode", "-port", "8000", "-logMessages", "-domain", domain};//, "-script", script};
+            args = new String[]{"-firstNode", "-port", "8000", "-logMessages", "-domain", domain, "-publicserver"};//, "-script", script};
         else
-            args = new String[]{"-firstNode", "-port", "8000", "-logMessages", "-domain", domain, "-script", script};
+            args = new String[]{"-firstNode", "-port", "8000", "-logMessages", "-domain", domain, "-script", script, "-publicserver"};
         Start.main(args);
         if (nodes == 1)
             return;
