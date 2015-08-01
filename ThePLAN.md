@@ -22,6 +22,7 @@ Launch 1 - Alpha 1 (Basic File storage and sharing) 9/8/2015
 - [ ] UI: pending follow requests page (1)
 - [ ] UI: share file with a friend (Read only) (1)
 - [ ] UI: make path clickable (with box around each folder, and current folder highlighted
+- [ ] UI: logout button
 - [ ] Directory node persistence (2)
 - [ ] quota tolerance (2)
 
