@@ -2,6 +2,15 @@
 $(document).ready(function(){
     //init. tooltips
     $('[data-toggle="tooltip"]').tooltip();   
+    /*
+    $.toaster(
+        {
+                priority: "info",
+                title : "title",
+                message:  "message"        
+        });
+    }
+    */
 });
 
 
@@ -332,6 +341,7 @@ var Browser = React.createClass({
                             const dirMapKey = browser.lastRetrievedFilePointer().filePointer.mapKey;
                             const writer = browser.entryPoint().filePointer.writer;
                             const dirAccess =  browser.lastRetrievedFilePointer().fileAccess;
+                            const currentPath =  browser.currentPath();
 			    const parentLocation = new Location(owner, writer, dirMapKey);
 			    const dirParentKey = dirAccess.getParentKey(rootRKey);
 
@@ -340,6 +350,14 @@ var Browser = React.createClass({
                                 dirAccess.addFile(fileLocation, rootRKey, fileKey);
                                 return userContext.uploadChunk(dirAccess, [], owner, writer, dirMapKey);
                             }).then(function() {
+                                
+                                $.toaster(
+                                {
+                                    priority: "success",
+                                    title : "Upload complete",
+                                    message: filename  +" uploaded to  "+ currentPath,
+                                    settings: {"timeout":  5000} 
+                                });
                                 browser.loadFilesFromServer();
                             });
                         };

@@ -68,6 +68,6 @@ Launch 4 - Beta
 * move userContext  and retrievedFPP to sessionStorage (won't do: insecure)
 * animation for long runnning upload/download operations
 * upload/download completion message
-* signout
 * bug: context menu in mobile-chrome
 * bug: mobile FF munging file upload name
+* nautilus clickable current path
