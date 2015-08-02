@@ -355,8 +355,10 @@ var Browser = React.createClass({
         },
 
         login: function() {
-                var username = document.getElementById("login-user-input").value;
+                const usernameInput = document.getElementById("login-user-input");
                 const passwordInput = document.getElementById("login-password-input");
+
+                const username = usernameInput.value;
                 const password = passwordInput.value;
 
                 const onVerified  = function() {
@@ -372,8 +374,12 @@ var Browser = React.createClass({
                     );
                     }).then(function() {
                         const displayName = userContext.username;
-                        $("#login-form").html("<button class=\"btn btn-default\">"+displayName+"</button>");
-                    }).then(this.loadFilesFromServer);
+                        usernameInput.value = "";
+                        passwordInput.value="";
+                        $("#logout").html("<button id=\"logoutButton\" class=\"btn btn-default\">"+displayName+"</button>");
+                        $("#logoutButton").click(this.logout);
+                        $("#login-form").css("display","none");
+                    }.bind(this)).then(this.loadFilesFromServer);
                 }.bind(this);
 
                 var ctx = null;
@@ -400,6 +406,18 @@ var Browser = React.createClass({
                                 passwordInput.value='';
                                 populateModalAndShow("Authentication Failure", "Invalid credentials.");
                 });
+        },
+
+        logout: function(evt) {
+            console.log("User logging out.");
+            requireSignedIn(function() {
+                userContext = null;
+                this.setState(this.getInitialState(),
+                function() {
+                        $("#login-form").css("display","block");
+                        $("#logout").html("");
+                });
+            }.bind(this));
         },
 
         componentDidMount: function() {
