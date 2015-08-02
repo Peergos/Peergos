@@ -1448,11 +1448,11 @@ function LazyInputStreamCombiner(stream, context, dataKey, chunk) {
     }
 }
 
-Galois = function(){
+const GF = new (function(){
     this.size = 256;
-    this.exp = new Uint8Array(2*this.size);
-    this.log = new Uint8Array(this.size);
-    this.exp[0] = 1;
+    this.expa = new Uint8Array(2*this.size);
+    this.loga = new Uint8Array(this.size);
+    this.expa[0] = 1;
     var x = 1;
     for (var i=1; i < 255; i++)
     {
@@ -1460,11 +1460,11 @@ Galois = function(){
         // field generator polynomial is p(x) = x^8 + x^4 + x^3 + x^2 + 1
         if ((x & this.size) != 0)
             x ^= (this.size | 0x1D); // x^8 = x^4 + x^3 + x^2 + 1  ==> 0001_1101
-        this.exp[i] = x;
-        this.log[x] = i;
+        this.expa[i] = x;
+        this.loga[x] = i;
     }
     for (var i=255; i < 512; i++)
-        this.exp[i] = this.exp[i-255];
+        this.expa[i] = this.expa[i-255];
 
     this.mask = function()
     {
@@ -1480,7 +1480,7 @@ Galois = function(){
     {
         if ((x==0) || (y==0))
             return 0;
-        return this.exp[this.log[x]+this.log[y]];
+        return this.expa[this.loga[x]+this.loga[y]];
     }
 
     this.div = function(x, y)
@@ -1489,18 +1489,210 @@ Galois = function(){
             throw new IllegalStateException("Divided by zero! Blackhole created.. ");
         if (x==0)
             return 0;
-        return this.exp[this.log[x]+255-this.log[y]];
+        return this.expa[this.loga[x]+255-this.loga[y]];
+    }
+})();
+
+// Uint8Array, GaloisField
+GaloisPolynomial = function(coefficients, f) {
+    this.coefficients = coefficients;
+    this.f= f;
+
+    if (this.coefficients.length > this.f.size)
+        throw "Polynomial order must be less than or equal to the degree of the Galois field. " + this.coefficients.length + " !> " + this.f.size;
+
+    this.order = function()
+    {
+        return this.coefficients.length;
+    }
+
+    this.eval = function(x)
+    {
+        var y = this.coefficients[0];
+        for (var i=1; i < this.coefficients.length; i++)
+            y = this.f.mul(y, x) ^ this.coefficients[i];
+        return y;
+    }
+
+    // Uint8 -> GaloisPolynomial
+    this.scale = function(x)
+    {
+        const res = new Uint8Array(this.coefficients.length);
+        for (var i=0; i < res.length; i++)
+            res[i] = this.f.mul(x, this.coefficients[i]);
+        return new GaloisPolynomial(res, this.f);
+    }
+
+    // GaloisPolynomial -> GaloisPolynomial
+    this.add = function(other)
+    {
+        const res = new Uint8Array(Math.max(this.order(), other.order()));
+        for (var i=0; i < this.order(); i++)
+            res[i + res.length - this.order()] = this.coefficients[i];
+        for (var i=0; i < other.order(); i++)
+            res[i + res.length - other.order()] ^= other.coefficients[i];
+        return new GaloisPolynomial(res, this.f);
+    }
+
+    // GaloisPolynomial -> GaloisPolynomial
+    this.mul = function(other)
+    {
+        const res = new Uint8Array(this.order() + other.order() - 1);
+        for (var i=0; i < this.order(); i++)
+            for (var j=0; j < other.order(); j++)
+                res[i+j] ^= this.f.mul(this.coefficients[i], other.coefficients[j]);
+        return new GaloisPolynomial(res, this.f);
+    }
+
+    // Uint8 -> GaloisPolynomial
+    this.append = function(x)
+    {
+        const res = new Uint8Array(this.coefficients.length+1);
+	for (var i=0; i < this.coefficients.length; i++)
+	    res[i] = this.coefficients[i];
+        res[res.length-1] = x;
+        return new GaloisPolynomial(res, this.f);
     }
 }
 
-const Erasure = {};
-Erasure.recombine = function(fragments, truncateTo, originalBlobs, allowedFailures) {
-    var buf = new ByteArrayOutputStream();
-    // assume we have all fragments in original order for now
-    for (var i=0; i < originalBlobs; i++)
-	buf.write(fragments[i]);
-    return buf.toByteArray();
+// (int, GaloisField) -> GaloisPolynomial
+GaloisPolynomial.generator = function(nECSymbols, f)
+{
+    const one = new Uint8Array(1);
+    one[0] = 1;
+    var g = new GaloisPolynomial(one, f);
+    for (var i=0; i < nECSymbols; i++) {
+	var multiplicand = new Uint8Array(2);
+	multiplicand[0] = 1;
+	multiplicand[0] = f.exp(i);
+	
+        g = g.mul(new GaloisPolynomial(multiplicand, f));
+    }
+    return g;
 }
+
+// (Uint8Array, int, GaloisField) -> Uint8Array
+GaloisPolynomial.encode = function(input, nEC, f)
+{
+    const gen = GaloisPolynomial.generator(nEC, f);
+    const res = new Uint8Array(input.length + nEC);
+    for (var i=0; i < input.length; i++)
+	res[i] = input[i];
+    for (var i=0; i < input.length; i++)
+    {
+        const c = res[i];
+        if (c != 0)
+            for (var j=0; j < gen.order(); j++)
+                res[i+j] ^= f.mul(gen.coefficients[j], c);
+    }
+    for (var i=0; i < input.length; i++)
+	res[i] = input[i];
+    return res;
+}
+
+// -> Uint8Array
+GaloisPolynomial.syndromes = function(input, nEC, f)
+{
+    const res = new Uint8Array(nEC);
+    const poly = new GaloisPolynomial(input, f);
+    for (var i=0; i < nEC; i++)
+        res[i] = poly.eval(f.exp(i));
+    return res;
+}
+
+// (Uint8Array, Uint8Array, Int[], GaloisField) -> ()
+GaloisPolynomial.correctErrata = function(input, synd, pos, f)
+{
+    if (pos.length == 0)
+        return;
+    const one = new Uint8Array(1);
+    one[0] = 1;
+    var q = new GaloisPolynomial(one, f);
+    for (var j=0; j < pos.length; j++)
+    {
+	var i = pos[j];
+        const x = f.exp(input.length - 1 - i);
+        q = q.mul(GaloisPolynomial.create([x, 1], f));
+    }
+    var t = new Uint8Array(pos.size());
+    for (var i=0; i < t.length; i++)
+        t[i] = synd[t.length-1-i];
+    var p = new GaloisPolynomial(t, f).mul(q);
+    t = new Uint8Array(pos.size());
+    for (var i=0; i < t.length; i++)
+	t[i] = p.coefficients[i + p.order()-t.length];
+    p = new GaloisPolynomial(t, f);
+    t = new int[(q.order()- (q.order() & 1))/2];
+    for (var i=q.order() & 1; i < q.order(); i+= 2)
+        t[i/2] = q.coefficients[i];
+    const qprime = new GaloisPolynomial(t,f);
+    for (var j=0; j < pos.length; j++)
+    {
+	const i = pos[j];
+        const x = f.exp(i + f.size() - input.length);
+        const y = p.eval(x);
+        const z = qprime.eval(f.mul(x, x));
+        input[i] ^= f.div(y, f.mul(x, z));
+    }
+}
+
+// (Int[], int, GaloisField) -> Int[]
+GaloisPolynomial.findErrors = function(synd, nmess, f)
+{
+    const errPoly = GaloisPolynomial.create([1], f);
+    const oldPoly = GaloisPolynomial.create([1], f);
+    for (var i=0; i < synd.length; i++)
+    {
+        oldPoly = oldPoly.append(0);
+        var delta = synd[i];
+        for (var j=1; j < errPoly.order(); j++)
+            delta ^= f.mul(errPoly.coefficients[errPoly.order() - 1 - j], synd[i - j]);
+        if (delta != 0)
+        {
+            if (oldPoly.order() > errPoly.order())
+            {
+                var newPoly = oldPoly.scale(delta);
+                oldPoly = errPoly.scale(f.div(1, delta));
+                errPoly = newPoly;
+            }
+            errPoly = errPoly.add(oldPoly.scale(delta));
+        }
+    }
+    const errs = errPoly.order()-1;
+    if (2*errs > synd.length)
+        throw "Too many errors to correct! ("+errs+")";
+    const errorPos = [];
+    for (var i=0; i < nmess; i++)
+        if (errPoly.eval(f.exp(f.size() - 1 - i)) == 0)
+            errorPos.push(nmess - 1 - i);
+    if (errorPos.length != errs)
+        throw "couldn't find error positions! ("+errorPos.size()+"!="+errs+") ( missing fragments)";
+    return errorPos;
+}
+
+// (Uint8Array, int, GaloisField) -> Uint8Array
+GaloisPolynomial.decode = function(message, nec, f)
+{
+    const out = slice(message, 0, message.length);
+    const synd = GaloisPolynomial.syndromes(out, nec, f);
+    var max = 0;
+    for (var j=0; j < synd.length; j++)
+        if (synd[j] > max)
+            max = synd[j];
+        if (max == 0)
+            return out;
+    const errPos = GaloisPolynomial.findErrors(synd, out.length, f);
+    GaloisPolynomial.correctErrata(out, synd, errPos, f);
+    return out;
+}
+GaloisPolynomial.create = function(coeffs, f) {
+    const c = new Uint8Array(coeffs.length);
+    for (var i=0; i < coeffs.length; i++)
+	c[i] = coeffs[i];
+    return new GaloisPolynomial(c, f);
+}
+
+const Erasure = {};
 Erasure.reorder = function(fragments, hashes) {
     var hashMap = new Map(); //ba dum che
     for (var i=0; i < hashes.length; i++)
@@ -1513,6 +1705,8 @@ Erasure.reorder = function(fragments, hashes) {
     }
     return res;
 }
+var doErasure = true;
+if (!doErasure) {
 Erasure.split = function(input, originalBlobs, allowedFailures) {
     //TO DO port erasure code implementation and Galois groups
     var size = (input.length/originalBlobs)|0;
@@ -1522,6 +1716,67 @@ Erasure.split = function(input, originalBlobs, allowedFailures) {
     for (var i=0; i < input.length/size; i++)
         bfrags.push(slice(input, i*size, Math.min(input.length, (i+1)*size)));
     return bfrags;
+}
+Erasure.recombine = function(fragments, truncateTo, originalBlobs, allowedFailures) {
+    var buf = new ByteArrayOutputStream();
+    // assume we have all fragments in original order for now
+    for (var i=0; i < originalBlobs; i++)
+	buf.write(fragments[i]);
+    return buf.toByteArray();
+}
+} else {
+// (Uint8Array, int, int)-> Uint8Array
+Erasure.split = function(ints, originalBlobs, allowedFailures)
+{
+    const n = originalBlobs + allowedFailures*2;
+    const bouts = [];
+    for (var i=0; i < n; i++)
+        bouts.push(new ByteArrayOutputStream());
+    const encodeSize = ((GF.size/n)|0)*n;
+    const inputSize = encodeSize*originalBlobs/n;
+    const nec = encodeSize-inputSize;
+    const symbolSize = inputSize/originalBlobs;
+    if (symbolSize * originalBlobs != inputSize)
+        throw "Bad alignment of bytes in chunking. "+inputSize+" != "+symbolSize+" * "+ originalBlobs;
+    
+    for (var i=0; i < ints.length; i += inputSize)
+    {
+        const copy = slice(ints, i, i + inputSize);
+        const encoded = GaloisPolynomial.encode(copy, nec, GF);
+        for (var j=0; j < n; j++)
+        {
+            bouts[j].write(encoded, j*symbolSize, symbolSize);
+        }
+    }
+    
+    const res = [];
+    for (var i=0; i < n; i++)
+        res.push(bouts[i].toByteArray());
+    return res;
+}
+
+// (Uint8Array[], int, int, int) -> Uint8Array
+Erasure.recombine = function(encoded, truncateTo, originalBlobs, allowedFailures)
+{
+    const n = originalBlobs + allowedFailures*2;
+    const encodeSize = ((GF.size/n)|0)*n;
+    const inputSize = encodeSize*originalBlobs/n;
+    const nec = encodeSize-inputSize;
+    const symbolSize = inputSize/originalBlobs;
+    const tbSize = encoded[0].length;
+    
+    const res = new ByteArrayOutputStream();
+    for (var i=0; i < tbSize; i += symbolSize)
+    {
+        var bout = new ByteArrayOutputStream();
+        // take a symbol from each stream
+        for (var j=0; j < n; j++)
+            bout.write(encoded[j], i, symbolSize);
+        var decodedInts = GaloisPolynomial.decode(bout.toByteArray(), nec, GF);
+        res.write(decodedInts, 0, inputSize);
+    }
+    return slice(res.toByteArray(), 0, truncateTo);
+}
 }
 
 function string2arraybuffer(str) {
