@@ -1639,8 +1639,8 @@ GaloisPolynomial.correctErrata = function(input, synd, pos, f)
 // (Int[], int, GaloisField) -> Int[]
 GaloisPolynomial.findErrors = function(synd, nmess, f)
 {
-    const errPoly = GaloisPolynomial.create([1], f);
-    const oldPoly = GaloisPolynomial.create([1], f);
+    var errPoly = GaloisPolynomial.create([1], f);
+    var oldPoly = GaloisPolynomial.create([1], f);
     for (var i=0; i < synd.length; i++)
     {
         oldPoly = oldPoly.append(0);
