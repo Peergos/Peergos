@@ -398,7 +398,7 @@ var Browser = React.createClass({
                         usernameInput.value = "";
                         passwordInput.value="";
                         $("#logout").html("<button id=\"logoutButton\" class=\"btn btn-default\">"+
-"<span data-toggle=\"tooltip\" data-placement=\"bottom\" title=\"Go back\" class=\"glyphicon glyphicon-off\"/>  " +
+"<span data-toggle=\"tooltip\" data-placement=\"bottom\" title=\"Log out\" class=\"glyphicon glyphicon-off\"/>  " +
                                         displayName+
                                         "</button>");
                         $("#logoutButton").click(this.logout);
