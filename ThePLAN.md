@@ -61,12 +61,13 @@ Launch 4 - Beta
 ### UI todo
 
 * replace alerts with modals
-    onParent
-    signin
-    login fail
 * impl. back and forward buttons
 * metadata context-menu option
 * close mobile navbar on login
 * directions  to login / create dir etc.
 * move userContext  and retrievedFPP to sessionStorage (won't do: insecure)
+* animation for long runnning upload/download operations
+* upload/download completion message
 * signout
+* bug: context menu in mobile-chrome
+* bug: mobile FF munging file upload name
