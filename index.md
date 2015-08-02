@@ -5,7 +5,7 @@ layout: default
 #### An end-to-end encrypted, peer-to-peer file storage, sharing and communication network. 
 
 
-Peergos is designed to give you back control over your data. It is open source, self hostable file storage. All your files are encrypted locally and your private keys never leave your machine. 
+Peergos is designed to give you back control over your data. It is an open source, secure, self hostable file storage and sharing platform. All your files are encrypted locally and your private keys never leave your machine. 
 
 
 <p>
