@@ -1448,7 +1448,52 @@ function LazyInputStreamCombiner(stream, context, dataKey, chunk) {
     }
 }
 
-var Erasure = {};
+Galois = function(){
+    this.size = 256;
+    this.exp = new Uint8Array(2*this.size);
+    this.log = new Uint8Array(this.size);
+    this.exp[0] = 1;
+    var x = 1;
+    for (var i=1; i < 255; i++)
+    {
+        x <<= 1;
+        // field generator polynomial is p(x) = x^8 + x^4 + x^3 + x^2 + 1
+        if ((x & this.size) != 0)
+            x ^= (this.size | 0x1D); // x^8 = x^4 + x^3 + x^2 + 1  ==> 0001_1101
+        this.exp[i] = x;
+        this.log[x] = i;
+    }
+    for (var i=255; i < 512; i++)
+        this.exp[i] = this.exp[i-255];
+
+    this.mask = function()
+    {
+        return this.size-1;
+    }
+
+    this.exp = function(y)
+    {
+        return this.exp[y];
+    }
+
+    this.mul = function(x, y)
+    {
+        if ((x==0) || (y==0))
+            return 0;
+        return this.exp[this.log[x]+this.log[y]];
+    }
+
+    this.div = function(x, y)
+    {
+        if (y==0)
+            throw new IllegalStateException("Divided by zero! Blackhole created.. ");
+        if (x==0)
+            return 0;
+        return this.exp[this.log[x]+255-this.log[y]];
+    }
+}
+
+const Erasure = {};
 Erasure.recombine = function(fragments, truncateTo, originalBlobs, allowedFailures) {
     var buf = new ByteArrayOutputStream();
     // assume we have all fragments in original order for now

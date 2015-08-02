@@ -49,10 +49,14 @@ ByteArrayOutputStream = function() {
 	    this.arr[this.index++] = a[i];
     }
 
-    this.write = function(array) {
-	this.ensureFree(array.length);
-	for (var i=0; i < array.length; i++)
-	    this.arr[this.index++] = array[i];
+    this.write = function(array, start, len) {
+	if (start == null)
+	    start = 0;
+	if (len == null)
+	    len = array.length;
+	this.ensureFree(len);
+	for (var i=0; i < len; i++)
+	    this.arr[this.index++] = array[start + i];
     }
 
     this.writeString = function(s) {
