@@ -2,15 +2,6 @@
 $(document).ready(function(){
     //init. tooltips
     $('[data-toggle="tooltip"]').tooltip();   
-    /*
-    $.toaster(
-        {
-                priority: "info",
-                title : "title",
-                message:  "message"        
-        });
-    }
-    */
 });
 
 
@@ -228,6 +219,12 @@ var Browser = React.createClass({
                                     //download the chunks and reconstruct the original bytes
                                     //get the data
                                     const baseKey = retrievedFilePointer.filePointer.baseKey;
+                                    $.toaster(
+                                    {
+                                        priority: "info",
+                                        message: "Downloading file "+ name, 
+                                        settings: {"timeout":  5000} 
+                                    });
                                     retrievedFilePointer.fileAccess.retriever.getFile(userContext, baseKey).then(function(buf) {
                                         console.log("reading "+ name + " with size "+ size);
 			                            return buf.read(size).then(function(originalData) {
@@ -330,6 +327,7 @@ var Browser = React.createClass({
                         filereader.file_name = readFile.name;
                         const browser = this;
                         filereader.onload = function(){
+
                             const data = new Uint8Array(this.result);
                             const filename = this.file_name;
                             console.log("upload file-name " + filename +" with data-length "+ data.length);
@@ -354,13 +352,18 @@ var Browser = React.createClass({
                                 $.toaster(
                                 {
                                     priority: "success",
-                                    title : "Upload complete",
-                                    message: filename  +" uploaded to  "+ currentPath,
+                                    message: "File "+ filename  +" uploaded to  "+ currentPath,
                                     settings: {"timeout":  5000} 
                                 });
                                 browser.loadFilesFromServer();
                             });
                         };
+                            $.toaster(
+                            {
+                                priority: "info",
+                                message: "Uploading file  "+ name,
+                                settings: {"timeout":  10000} 
+                            });
                         filereader.readAsArrayBuffer(readFile);
                 }.bind(this);
         },
