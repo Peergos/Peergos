@@ -1673,17 +1673,16 @@ GaloisPolynomial.findErrors = function(synd, nmess, f)
 // (Uint8Array, int, GaloisField) -> Uint8Array
 GaloisPolynomial.decode = function(message, nec, f)
 {
-    const out = slice(message, 0, message.length);
-    const synd = GaloisPolynomial.syndromes(out, nec, f);
+    const synd = GaloisPolynomial.syndromes(message, nec, f);
     var max = 0;
     for (var j=0; j < synd.length; j++)
         if (synd[j] > max)
             max = synd[j];
-        if (max == 0)
-            return out;
-    const errPos = GaloisPolynomial.findErrors(synd, out.length, f);
-    GaloisPolynomial.correctErrata(out, synd, errPos, f);
-    return out;
+    if (max == 0)
+        return message;
+    const errPos = GaloisPolynomial.findErrors(synd, message.length, f);
+    GaloisPolynomial.correctErrata(message, synd, errPos, f);
+    return message;
 }
 GaloisPolynomial.create = function(coeffs, f) {
     const c = new Uint8Array(coeffs.length);
@@ -1766,13 +1765,14 @@ Erasure.recombine = function(encoded, truncateTo, originalBlobs, allowedFailures
     const tbSize = encoded[0].length;
     
     const res = new ByteArrayOutputStream();
+    const bout = new ByteArrayOutputStream(n*symbolSize);
     for (var i=0; i < tbSize; i += symbolSize)
     {
-        var bout = new ByteArrayOutputStream();
         // take a symbol from each stream
         for (var j=0; j < n; j++)
             bout.write(encoded[j], i, symbolSize);
         var decodedInts = GaloisPolynomial.decode(bout.toByteArray(), nec, GF);
+	bout.reset();
         res.write(decodedInts, 0, inputSize);
     }
     return slice(res.toByteArray(), 0, truncateTo);

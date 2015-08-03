@@ -1,9 +1,15 @@
-ByteArrayOutputStream = function() {
-    this.arr = new Uint8Array(64);
+ByteArrayOutputStream = function(size) {
+    if (size == null)
+	size = 64;
+    this.arr = new Uint8Array(size);
     this.index = 0;
 
     this.free = function() {
 	return this.arr.length - this.index;
+    }
+
+    this.reset = function() {
+	this.index = 0;
     }
 
     this.resize = function(size) {
