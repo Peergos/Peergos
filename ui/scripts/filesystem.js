@@ -36,6 +36,107 @@ function openItem(name, data) {
     ae.click();
 }
 
+var SignUp = React.createClass({
+    getInitialState : function() {
+            return {
+            usernameClass : "",
+            usernameMsg : "",
+            passwordClass : "",
+            passwordMsg :  "" 
+            }
+    },
+    componentDidMount: function() {
+        var submit = function() {
+            const username = document.getElementById("signup-user-input").value;
+            const pw1 = document.getElementById("signup-password-input").value;
+            const pw2 = document.getElementById("signup-verify-password-input").value;
+            const email = document.getElementById("signup-email-user-input").value;
+            //TODO: email
+            if (pw1.length < 8) {
+                   this.setState({
+                        usernameClass : "",
+                        usernameMsg : "",
+                        passwordClass : "has-error has-feedback",
+                        passwordMsg : "Password must be 8 characters long!"
+                   }); 
+                   return;
+            }
+            if (pw1 != pw2) {
+                   this.setState({
+                        usernameClass : "",
+                        usernameMsg : "",
+                        passwordClass : "has-error has-feedback",
+                        passwordMsg : "Entered passwords do not match!"
+                   }); 
+                   return;
+
+            }
+
+            var ctx = null;
+            return generateKeyPairs(username, pw1).then(function(user) {
+                    const dht = new DHTClient();
+                    const corenode = new CoreNodeClient();
+                    ctx = new UserContext(username, user, dht, corenode);    
+                    return  ctx.isRegistered();
+                }).then(function(registered) {
+                        if  (! registered) {
+                                console.log("Now registering  user "+ username);
+                                return ctx.register();
+                        }
+                        this.setState({
+                                    usernameClass : "has-error has-feedback",
+                                    usernameMsg : "Username is already registered!",
+                                    passwordClass : "",
+                                    passwordMsg : ""
+                              });
+                        return reject();
+                }.bind(this)).then(function(isRegistered) {
+                        if  (! isRegistered) { 
+                                reject();
+
+                                this.setState({
+                                    usernameClass : "has-error has-feedback",
+                                    usernameMsg : "Failed to register username",
+                                    passwordClass : "",
+                                    passwordMsg : ""
+                              });
+                        }
+                        console.log("Verified user "+ username +" is registered");
+                        populateModalAndShow("Success", "You have registered the username "+  username);
+                });
+        }.bind(this);
+
+        document.getElementById("signupSubmitButton").onclick = submit; 
+    }, 
+    render: function() {
+                const  usernameClass = "form-group "+ this.state.usernameClass;
+                const usernameMsg = this.state.usernameMsg;
+                const usernameLabel = usernameMsg == "" ? (<div/>) : (<label>{usernameMsg}</label>)
+
+                const passwordClass = "form-group " + this.state.passwordClass;
+                const pwMsg = this.state.passwordMsg;
+                const passwordLabel = pwMsg == "" ? (<div/>) : (<label>{pwMsg}</label>)
+
+                return (<div>
+                        <div className={usernameClass}>
+                            {usernameLabel}
+                            <input placeholder="Username" id="signup-user-input" className="form-control" type="text"/>
+                        </div>
+                        <div className={passwordClass}>
+                            {passwordLabel}
+                            <input placeholder="Password" id="signup-password-input" className="form-control" type="password"/>
+                            <input placeholder="Verify password" id="signup-verify-password-input" className="form-control" type="password"/>
+                        </div>
+                        <div  className="form-group">
+                            <input placeholder="Email address (Optional)" id="signup-email-user-input" className="form-control" type="text"/>
+                        </div>
+
+                    <button id="signupSubmitButton" className="btn btn-success">Create account</button>
+                    </div>
+                   );
+    }
+});
+
 var File = React.createClass({
         
         glyphClass: function() {
@@ -375,6 +476,15 @@ var Browser = React.createClass({
                 }
         },
 
+        signup: function() {
+            $('#modal-title').html("Sign up");
+            React.render(
+                <SignUp/>, 
+                document.getElementById('modal-body')
+            );
+            $('#modal').modal("show");   
+        },
+
         login: function() {
                 const usernameInput = document.getElementById("login-user-input");
                 const passwordInput = document.getElementById("login-password-input");
@@ -398,7 +508,7 @@ var Browser = React.createClass({
                         usernameInput.value = "";
                         passwordInput.value="";
                         $("#logout").html("<button id=\"logoutButton\" class=\"btn btn-default\">"+
-"<span data-toggle=\"tooltip\" data-placement=\"bottom\" title=\"Log out\" class=\"glyphicon glyphicon-off\"/>  " +
+"<span class=\"glyphicon glyphicon-off\"/>  " +
                                         displayName+
                                         "</button>");
                         $("#logoutButton").click(this.logout);
@@ -460,6 +570,8 @@ var Browser = React.createClass({
                 alternateViewButton.onclick = this.alternateView; 
                 var loginButton = document.getElementById("loginButton");
                 loginButton.onclick = this.login; 
+                var signupButton = document.getElementById("signupButton");
+                signupButton.onclick = this.signup; 
                 var passwordInput= document.getElementById("login-password-input");
                 passwordInput.onkeypress=this.loginOnEnter;
         },
@@ -585,6 +697,7 @@ var Browser = React.createClass({
                                 </div>)
         }
 });
+
 
 React.render(
                 <Browser/>,
