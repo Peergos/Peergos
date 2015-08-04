@@ -1494,79 +1494,80 @@ const GF = new (function(){
 })();
 
 // Uint8Array, GaloisField
-GaloisPolynomial = function(coefficients, f) {
-    this.coefficients = coefficients;
-    this.f= f;
+GaloisPolynomial = {};
 
-    if (this.coefficients.length > this.f.size)
-        throw "Polynomial order must be less than or equal to the degree of the Galois field. " + this.coefficients.length + " !> " + this.f.size;
+GaloisPolynomial.check = function(coefficients, f) {
+    if (coefficients.length > f.size)
+        throw "Polynomial order must be less than or equal to the degree of the Galois field. " + coefficients.length + " !> " + f.size;
+}
 
-    this.order = function()
+    GaloisPolynomial.order = function(coefficients)
     {
-        return this.coefficients.length;
+        return coefficients.length;
     }
 
-    this.eval = function(x)
+    GaloisPolynomial.evalu = function(f, coefficients, x)
     {
-        var y = this.coefficients[0];
-        for (var i=1; i < this.coefficients.length; i++)
-            y = this.f.mul(y, x) ^ this.coefficients[i];
+        var y = coefficients[0];
+        for (var i=1; i < coefficients.length; i++)
+            y = f.mul(y, x) ^ coefficients[i];
         return y;
     }
 
     // Uint8 -> GaloisPolynomial
-    this.scale = function(x)
+    GaloisPolynomial.scale = function(f, coefficients, x)
     {
-        const res = new Uint8Array(this.coefficients.length);
+        const res = new Uint8Array(coefficients.length);
         for (var i=0; i < res.length; i++)
-            res[i] = this.f.mul(x, this.coefficients[i]);
-        return new GaloisPolynomial(res, this.f);
+            res[i] = f.mul(x, coefficients[i]);
+        return res;
     }
 
     // GaloisPolynomial -> GaloisPolynomial
-    this.add = function(other)
+    GaloisPolynomial.add = function(f, coefficients, other)
     {
-        const res = new Uint8Array(Math.max(this.order(), other.order()));
-        for (var i=0; i < this.order(); i++)
-            res[i + res.length - this.order()] = this.coefficients[i];
+	const order = GaloisPolynomial.order(coefficients);
+        const res = new Uint8Array(Math.max(order, GaloisPolynomial.order(other)));
+        for (var i=0; i < order; i++)
+            res[i + res.length - order] = coefficients[i];
         for (var i=0; i < other.order(); i++)
             res[i + res.length - other.order()] ^= other.coefficients[i];
-        return new GaloisPolynomial(res, this.f);
+        return res;
     }
 
     // GaloisPolynomial -> GaloisPolynomial
-    this.mul = function(other)
+    GaloisPolynomial.mul = function(f, coefficients, other)
     {
-        const res = new Uint8Array(this.order() + other.order() - 1);
-        for (var i=0; i < this.order(); i++)
-            for (var j=0; j < other.order(); j++)
-                res[i+j] ^= this.f.mul(this.coefficients[i], other.coefficients[j]);
-        return new GaloisPolynomial(res, this.f);
+	const order = GaloisPolynomial.order(coefficients);
+        const res = new Uint8Array(order + GaloisPolynomial.order(other) - 1);
+        for (var i=0; i < order; i++)
+            for (var j=0; j < GaloisPolynomial.order(other); j++)
+                res[i+j] ^= f.mul(coefficients[i], other[j]);
+        return res;
     }
 
     // Uint8 -> GaloisPolynomial
-    this.append = function(x)
+    GaloisPolynomial.append = function(coefficients, x)
     {
-        const res = new Uint8Array(this.coefficients.length+1);
-	for (var i=0; i < this.coefficients.length; i++)
-	    res[i] = this.coefficients[i];
+        const res = new Uint8Array(coefficients.length+1);
+	for (var i=0; i < coefficients.length; i++)
+	    res[i] = coefficients[i];
         res[res.length-1] = x;
-        return new GaloisPolynomial(res, this.f);
+        return res;
     }
-}
 
 // (int, GaloisField) -> GaloisPolynomial
 GaloisPolynomial.generator = function(nECSymbols, f)
 {
     const one = new Uint8Array(1);
     one[0] = 1;
-    var g = new GaloisPolynomial(one, f);
+    var g = one;
     for (var i=0; i < nECSymbols; i++) {
 	var multiplicand = new Uint8Array(2);
 	multiplicand[0] = 1;
 	multiplicand[0] = f.exp(i);
 	
-        g = g.mul(new GaloisPolynomial(multiplicand, f));
+        g = GaloisPolynomial.mul(f, g, multiplicand);
     }
     return g;
 }
@@ -1582,8 +1583,8 @@ GaloisPolynomial.encode = function(input, nEC, f)
     {
         const c = res[i];
         if (c != 0)
-            for (var j=0; j < gen.order(); j++)
-                res[i+j] ^= f.mul(gen.coefficients[j], c);
+            for (var j=0; j < GaloisPolynomial.order(gen); j++)
+                res[i+j] ^= f.mul(gen[j], c);
     }
     for (var i=0; i < input.length; i++)
 	res[i] = input[i];
@@ -1594,9 +1595,9 @@ GaloisPolynomial.encode = function(input, nEC, f)
 GaloisPolynomial.syndromes = function(input, nEC, f)
 {
     const res = new Uint8Array(nEC);
-    const poly = new GaloisPolynomial(input, f);
+    const poly = input;
     for (var i=0; i < nEC; i++)
-        res[i] = poly.eval(f.exp(i));
+        res[i] = GaloisPolynomial.evalu(f, poly, f.exp(i));
     return res;
 }
 
@@ -1607,31 +1608,32 @@ GaloisPolynomial.correctErrata = function(input, synd, pos, f)
         return;
     const one = new Uint8Array(1);
     one[0] = 1;
-    var q = new GaloisPolynomial(one, f);
+    var q = one;
     for (var j=0; j < pos.length; j++)
     {
 	var i = pos[j];
         const x = f.exp(input.length - 1 - i);
-        q = q.mul(GaloisPolynomial.create([x, 1], f));
+        q = GaloisPolynomial.mul(f, q, GaloisPolynomial.create([x, 1], f));
     }
     var t = new Uint8Array(pos.size());
     for (var i=0; i < t.length; i++)
         t[i] = synd[t.length-1-i];
-    var p = new GaloisPolynomial(t, f).mul(q);
+    var p = GaloisPolynomial.mul(f, t, q);
     t = new Uint8Array(pos.size());
     for (var i=0; i < t.length; i++)
-	t[i] = p.coefficients[i + p.order()-t.length];
-    p = new GaloisPolynomial(t, f);
-    t = new int[(q.order()- (q.order() & 1))/2];
-    for (var i=q.order() & 1; i < q.order(); i+= 2)
+	t[i] = p[i + p.order()-t.length];
+    p = t;
+    const qorder = GaloisPolynomial.order(q);
+    t = new Uint8Array((qorder- (qorder & 1))/2);
+    for (var i=qorder & 1; i < qorder; i+= 2)
         t[i/2] = q.coefficients[i];
-    const qprime = new GaloisPolynomial(t,f);
+    const qprime = t;
     for (var j=0; j < pos.length; j++)
     {
 	const i = pos[j];
         const x = f.exp(i + f.size() - input.length);
-        const y = p.eval(x);
-        const z = qprime.eval(f.mul(x, x));
+        const y = GaloisPolynomial.evalu(f, p, x);
+        const z = GaloisPolynomial.evalu(f, qprime, f.mul(x, x));
         input[i] ^= f.div(y, f.mul(x, z));
     }
 }
@@ -1645,25 +1647,25 @@ GaloisPolynomial.findErrors = function(synd, nmess, f)
     {
         oldPoly = oldPoly.append(0);
         var delta = synd[i];
-        for (var j=1; j < errPoly.order(); j++)
-            delta ^= f.mul(errPoly.coefficients[errPoly.order() - 1 - j], synd[i - j]);
+        for (var j=1; j < GaloisPolynomial.order(errPoly); j++)
+            delta ^= f.mul(errPoly[GaloisPolynomial.order(errPoly) - 1 - j], synd[i - j]);
         if (delta != 0)
         {
-            if (oldPoly.order() > errPoly.order())
+            if (GaloisPolynomial.order(oldPoly) > GaloisPolynomial.order(errPoly))
             {
-                var newPoly = oldPoly.scale(delta);
-                oldPoly = errPoly.scale(f.div(1, delta));
+                var newPoly = GaloisPolynomial.scale(f, oldPoly, delta);
+                oldPoly = GaloisPolynomial.scale(f, errPoly, f.div(1, delta));
                 errPoly = newPoly;
             }
-            errPoly = errPoly.add(oldPoly.scale(delta));
+            errPoly = GaloisPolynomial.add(f, errPoly, GaloisPolynomial.scale(f, oldPoly, delta));
         }
     }
-    const errs = errPoly.order()-1;
+    const errs = GaloisPolynomial.order(errPoly)-1;
     if (2*errs > synd.length)
         throw "Too many errors to correct! ("+errs+")";
     const errorPos = [];
     for (var i=0; i < nmess; i++)
-        if (errPoly.eval(f.exp(f.size() - 1 - i)) == 0)
+        if (GaloisPolynomial.evalu(f, errPoly, f.exp(f.size() - 1 - i)) == 0)
             errorPos.push(nmess - 1 - i);
     if (errorPos.length != errs)
         throw "couldn't find error positions! ("+errorPos.size()+"!="+errs+") ( missing fragments)";
@@ -1688,7 +1690,7 @@ GaloisPolynomial.create = function(coeffs, f) {
     const c = new Uint8Array(coeffs.length);
     for (var i=0; i < coeffs.length; i++)
 	c[i] = coeffs[i];
-    return new GaloisPolynomial(c, f);
+    return c;
 }
 
 const Erasure = {};

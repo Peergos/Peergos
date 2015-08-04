@@ -244,4 +244,4 @@ testErasure = function() {
     console.log("Erasure encode took "+ (t2-t1) + " mS"); 
     console.log("Erasure decode took "+ (t3-t2) + " mS"); 
 }
-testErasure();
+//testErasure();
