@@ -524,16 +524,12 @@ var Browser = React.createClass({
                         return  ctx.isRegistered();
                 }).then(function(registered) {
                         if  (! registered) {
-                                console.log("Now registering  user "+ username);
-                                return ctx.register();
+                                console.log("User is "+ username + " is not  verified");
+                                populateModalAndShow("Authentication Failure", "Invalid credentials.");
+                                return reject();
                         }
                         else   
-                                return Promise.resolve(true);
-                }).then(function(isRegistered) {
-                        if  (! isRegistered) 
-                                reject();
-                        console.log("Verified user "+ username +" is registered");
-                        userContext = ctx;  
+                            userContext = ctx;  
                 }).then(onVerified, 
                         function() {
                                 //failed to authenticate user
