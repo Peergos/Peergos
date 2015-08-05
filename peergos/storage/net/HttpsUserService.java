@@ -57,12 +57,12 @@ public class HttpsUserService
                 System.out.println("Couldn't start http redirect to https for user server!");
             }
             System.out.println("Starting user API server at: " + local.getHostName() + ":" + local.getPort());
-            if (!local.getHostName().contains("local"))
-                httpsServer = HttpsServer.create(local, CONNECTION_BACKLOG);
-            else if (Args.hasArg("publicserver")) {
+            if (Args.hasArg("publicserver")) {
                 System.out.println("Starting user server on all interfaces.");
                 httpsServer = HttpsServer.create(new InetSocketAddress(InetAddress.getByName("::"), local.getPort()), CONNECTION_BACKLOG);
-            } else {
+            } else if (!local.getHostName().contains("local"))
+                httpsServer = HttpsServer.create(local, CONNECTION_BACKLOG);
+            else {
                 System.out.println("Starting user server on localhost only.");
                 httpsServer = HttpsServer.create(new InetSocketAddress(InetAddress.getLocalHost(), local.getPort()), CONNECTION_BACKLOG);
             }

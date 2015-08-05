@@ -141,7 +141,7 @@ public class Start
         else
             Start.main(new String[] {"-coreNode", "-domain", domain});
 
-        Start.main(new String[]{"-firstNode", "-port", "443", "-logMessages", "-domain", domain});
+        Start.main(new String[]{"-firstNode", "-port", "443", "-logMessages", "-domain", domain, "-publicserver"});
     }
 
     public static void test(int nodes) throws IOException
