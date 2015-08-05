@@ -224,6 +224,7 @@ function FileUploader(name, contents, key, parentLocation, parentparentKey) {
     this.upload = function(context, owner, writer) {
         var proms = [];
         const chunk0 = this.chunks[0];
+console.log(new ReadableFilePointer(owner, writer, chunk0.mapKey, chunk0.key).toLink());
         const that = this;
         for (var i=0; i < this.chunks.length; i++)
             proms.push(new Promise(function(resolve, reject) {
@@ -369,7 +370,7 @@ function post(path, data, onSuccess, onError) {
 function postProm(url, data) {
     return new Promise(function(resolve, reject) {
     var req = new XMLHttpRequest();
-    req.open('POST', url);
+    req.open('POST', window.location.origin + "/" + url);
     req.responseType = 'arraybuffer';
 
     req.onload = function() {
@@ -885,6 +886,18 @@ function ReadableFilePointer(owner, writer, mapKey, baseKey) {
     this.isWritable = function() {
         return this.writer instanceof User;
     }
+
+    this.toLink = function() {
+	return "/public/" + bytesToHex(owner.getPublicKeys()) + "/" + bytesToHex(writer.getPublicKeys()) + "/" + bytesToHex(mapKey) + "/" + bytesToHex(baseKey.key);
+    }
+}
+ReadableFilePointer.fromLink = function(keysString) {
+    const split = keysString.split("/");
+    const owner = UserPublicKey.fromPublicKeys(hexToBytes(split[0]));
+    const writer = UserPublicKey.fromPublicKeys(hexToBytes(split[1]));
+    const mapKey = hexToBytes(split[2]);
+    const baseKey = new SymmetricKey(hexToBytes(split[3]));
+    return new ReadableFilePointer(owner, writer, mapKey, baseKey);
 }
 
 ReadableFilePointer.deserialize = function(arr) {
@@ -1790,6 +1803,27 @@ function string2arraybuffer(str) {
     return bufView;
 }
 
+function bytesToHex(p) {
+    /** @const */
+    var enc = '0123456789abcdef'.split('');
+    
+    var len = p.length,
+    arr = [],
+    i = 0;
+    
+    for (; i < len; i++) {
+        arr.push(enc[(p[i]>>>4) & 15]);
+        arr.push(enc[(p[i]>>>0) & 15]);
+    }
+    return arr.join('');
+}
+
+function hexToBytes(hex) {
+    var result = new Uint8Array(hex.length/2);
+    for (var i=0; i + 1 < 2*result.length; i+= 2)
+        result[i/2] = parseInt(hex.substring(i, i+2), 16);
+    return result;
+}
 
 if (typeof module !== "undefined"){
     module.exports.randomSymmetricKey = randomSymmetricKey;

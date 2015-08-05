@@ -3,22 +3,22 @@
         <head>
                 <meta name="viewport" content="width=device-width, initial-scale=1">
                 <title>Filesystem</title>
-                <link rel="stylesheet" href="css/bootstrap.min.css" />
-                <link rel="stylesheet" href="css/bootstrap-theme.min.css" />
+                <link rel="stylesheet" href="../../../../css/bootstrap.min.css" />
+                <link rel="stylesheet" href="../../../../css/bootstrap-theme.min.css" />
 
-                <script type="text/javascript" src="lib/scrypt.js"></script>
-                <script type="text/javascript" src="lib/nacl.js"></script>
-                <script type="text/javascript" src="lib/sha256.min.js"></script>
-                <script type="text/javascript" src="lib/api.js"></script>
-                <script type="text/javascript" src="lib/buffer.js"></script>
+                <script type="text/javascript" src="../../../../lib/scrypt.js"></script>
+                <script type="text/javascript" src="../../../../lib/nacl.js"></script>
+                <script type="text/javascript" src="../../../../lib/sha256.min.js"></script>
+                <script type="text/javascript" src="../../../../lib/api.js"></script>
+                <script type="text/javascript" src="../../../../lib/buffer.js"></script>
 
-                <script src="scripts/react.js"></script>
-                <script src="scripts/JSXTransformer.js"></script>
-                <script src="scripts/jquery.min.js"></script>
-                <script src="scripts/marked.min.js"></script>
-                <script src="scripts/bootstrap.min.js"></script>
-                <script src="scripts/bootstrap-contextmenu.js"></script>
-                <script src="scripts/jquery.toaster.js"></script>
+                <script src="../../../../scripts/react.js"></script>
+                <script src="../../../../scripts/JSXTransformer.js"></script>
+                <script src="../../../../scripts/jquery.min.js"></script>
+                <script src="../../../../scripts/marked.min.js"></script>
+                <script src="../../../../scripts/bootstrap.min.js"></script>
+                <script src="../../../../scripts/bootstrap-contextmenu.js"></script>
+                <script src="../../../../scripts/jquery.toaster.js"></script>
         </head>
         <body>
                 <nav class="navbar navbar-inverse navbar-fixed-top" role="navigation">
@@ -78,6 +78,31 @@
                 </div>
 
                 <input type="file" id="uploadInput" style="display:none;" />
-                <script type="text/jsx;harmony=true" src="scripts/filesystem.js"></script>
+                <script type="text/jsx;harmony=true" src="../../../../scripts/filesystem.js"></script>
+		<script>
+		  var keysString = window.location.pathname.substring(8);
+		  console.log(keysString);
+		  const filePointer = ReadableFilePointer.fromLink(keysString);
+		  const baseKey = filePointer.baseKey;
+		  console.log(filePointer);
+		  const corenodeClient = new CoreNodeClient();
+		  const context = new UserContext(null, null, new DHTClient(), corenodeClient);
+		  corenodeClient.getMetadataBlob(filePointer.owner, filePointer.writer, filePointer.mapKey).then(function(raw) {
+		     
+		     var unwrapped = new ByteArrayInputStream(raw).readArray();
+		     if (unwrapped.length == 0)
+		        return alert("File not found");
+		     const fa = FileAccess.deserialize(unwrapped);
+		     const props = fa.getFileProperties(baseKey);
+		     const name = props.name;
+		     const size = props.size;
+		     fa.retriever.getFile(context, baseKey).then(function(buf) {
+                        console.log("reading "+ name);
+		        return buf.read(size).then(function(originalData) {
+                           openItem(name, originalData);
+                        });
+                     });
+		  });
+		</script>
         </body>
 </html>
