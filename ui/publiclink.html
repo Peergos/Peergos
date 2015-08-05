@@ -96,6 +96,12 @@
 		     const props = fa.getFileProperties(baseKey);
 		     const name = props.name;
 		     const size = props.size;
+		     $.toaster(
+                        {
+                           priority: "info",
+                           message: "Downloading file "+ name, 
+                           settings: {"timeout":  5000} 
+                     });
 		     fa.retriever.getFile(context, baseKey).then(function(buf) {
                         console.log("reading "+ name);
 		        return buf.read(size).then(function(originalData) {
