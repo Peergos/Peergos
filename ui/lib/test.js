@@ -236,12 +236,13 @@ testErasure = function() {
     const t1 = Date.now();
     var bfrags = Erasure.split(original, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
     const t2 = Date.now();
+    console.log("Erasure encode took "+ (t2-t1) + " mS"); 
+
     var decoded = Erasure.recombine(bfrags, Chunk.MAX_SIZE, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
     const t3 = Date.now();
     if (!arraysEqual(original, decoded))
 	throw "Decoded contents different from original!";
 
-    console.log("Erasure encode took "+ (t2-t1) + " mS"); 
     console.log("Erasure decode took "+ (t3-t2) + " mS"); 
 }
-//testErasure();
+testErasure();

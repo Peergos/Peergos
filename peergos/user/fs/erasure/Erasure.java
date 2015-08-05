@@ -12,6 +12,7 @@ public class Erasure {
 
     public static byte[][] split(byte[] input, GaloisField f, int originalBlobs, int allowedFailures)
     {
+        long t1 = System.currentTimeMillis();
         int[] ints = convert(input, f);
 
         int n = originalBlobs + allowedFailures*2;
@@ -38,6 +39,8 @@ public class Erasure {
         byte[][] res = new byte[n][];
         for (int i=0; i < n; i++)
             res[i] = bouts[i].toByteArray();
+        long t2 = System.currentTimeMillis();
+        System.out.println("Erasure encoding took "+(t2-t1)+ " mS");
         return res;
     }
 
@@ -48,6 +51,7 @@ public class Erasure {
 
     public static byte[] recombine(GaloisField f, byte[][] encoded, int truncateTo, int originalBlobs, int allowedFailures)
     {
+        long t1 = System.currentTimeMillis();
         int n = originalBlobs + allowedFailures*2;
         int encodeSize = (f.size()/n)*n;
         int inputSize = encodeSize*originalBlobs/n;
@@ -66,6 +70,8 @@ public class Erasure {
             byte[] raw = convert(decodedInts, f);
             res.write(raw, 0, inputSize);
         }
+        long t2 = System.currentTimeMillis();
+        System.out.println("Erasure decoding took "+(t2-t1) + " mS");
         return Arrays.copyOfRange(res.toByteArray(), 0, truncateTo);
     }
 

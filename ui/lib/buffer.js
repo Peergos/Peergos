@@ -70,10 +70,7 @@ ByteArrayOutputStream = function(size) {
     }
 
     this.toByteArray = function() {
-	const res = new Uint8Array(this.index);
-	for (var i=0; i < this.index; i++)
-	    res[i] = this.arr[i];
-	return res;
+	return this.arr.subarray(0, this.index);
     }
 }
 

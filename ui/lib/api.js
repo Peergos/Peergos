@@ -1715,7 +1715,7 @@ Erasure.split = function(input, originalBlobs, allowedFailures) {
 	size++;
     var bfrags = [];
     for (var i=0; i < input.length/size; i++)
-        bfrags.push(slice(input, i*size, Math.min(input.length, (i+1)*size)));
+        bfrags.push(input.subarray(i*size, Math.min(input.length, (i+1)*size)));
     return bfrags;
 }
 Erasure.recombine = function(fragments, truncateTo, originalBlobs, allowedFailures) {
