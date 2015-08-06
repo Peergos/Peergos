@@ -174,6 +174,7 @@ var File = React.createClass({
                                         this.props.onClick();
                                 } else if (selected  == "Create public link" && ! this.props.isdir) {
                                         //public link
+				        populateModalAndShow("Public link", window.location.origin + this.props.retrievedFilePointer.filePointer.toLink());
                                         console.log("creating public link for "+ thos.props.name);
                                 }else 
                                         console.log("no  action defined for context menu item "+ selected);    
