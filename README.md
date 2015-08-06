@@ -5,7 +5,7 @@ Peergos is a peer-to-peer encrypted filesystem with secure sharing of files desi
 
 The name Peergos comes from the Greek word Πύργος (Pyrgos), which means stronghold or tower, but phonetically spelt with the nice connection to being peer-to-peer. 
 
-We would very much appreciate any help, be it code, testing, bugs, or advice. 
+There is a single machine demo running at [https://demo.peergos.net](https://demo.peergos.net). We would very much appreciate any help, be it code, testing, bugs, or advice. 
 
 Project aims
 ------------
