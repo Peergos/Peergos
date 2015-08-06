@@ -503,12 +503,11 @@ var Browser = React.createClass({
             			return Promise.resolve(true);
                     console.log("adding root entries");
                     var milliseconds = (new Date).getTime();
-                    return Promise.all(
-                        [1].map(function(num) {
-                            return userContext.createEntryDirectory("test_"+milliseconds+"_"+num);
-                        })
-                    );
-                    }).then(function() {
+                    
+                    return userContext.createEntryDirectory(userContext.username).then(function() {
+			return userContext.createEntryDirectory("friends");
+                    });
+		}).then(function() {
                         const displayName = userContext.username;
                         usernameInput.value = "";
                         passwordInput.value="";
