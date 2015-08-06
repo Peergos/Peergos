@@ -3,30 +3,11 @@ The Peergos Plan
 Fundamental aim: Release a P2P secure file storage, sharing and asynchronous commmunication platform.
 ---------------------
 
-Launch 1 - Alpha 1 (Basic File storage and sharing) 9/8/2015
+Launch 1 - Private Alpha (Basic File storage and sharing) 9/8/2015
 -------------------------------------------------------------
-- [X] UserPublicKey and User implemented in JS using curve25519 and ed25519
-- [X] Cryptree in JS (StaticDataElement, crypto links, Metadata, DirAccess, FileAccess, ChunkProperties, FileProperties, EncryptedChunk) (4)
-- [X] User context helper functions implemented in JS (2)
-- [X] UI: display directory contents (2)
-- [X] UI: create directories (1)
-- [X] UI: download file (4)
-- [X] UI: upload file (2)
-- [X] Parent symmetric location link (2)
-- [X] UI: rename file/dir (2)
-- [X] Core node persistence (4)
-- [ ] JS erasure codes (8)
-- [ ] UI: show paths as /owner/path_from_owners_root
-- [ ] UI: ensure user has a single root directory
-- [ ] UI: follow a user
-- [ ] UI: pending follow requests page (1)
-- [ ] UI: share file with a friend (Read only) (1)
-- [ ] UI: make path clickable (with box around each folder, and current folder highlighted
-- [X] UI: logout button
-- [ ] Directory node persistence (2)
-- [ ] quota tolerance (2)
+See Issues.
 
-Launch 2 - Alpha 2 (KeyMail + file storage and sharing) 21/10/2015
+Launch 2 - Public Alpha (KeyMail + file storage and sharing) 21/10/2015
 ------------------------------------------------------------------
 - [ ] version keypair type (2)
 - [ ] type property added to symmetrickey
@@ -60,7 +41,6 @@ Launch 4 - Beta
 
 ### UI todo
 
-* replace alerts with modals
 * impl. back and forward buttons
 * metadata context-menu option
 * close mobile navbar on login
@@ -68,4 +48,3 @@ Launch 4 - Beta
 * move userContext  and retrievedFPP to sessionStorage (won't do: insecure)
 * bug: context menu in mobile-chrome
 * bug: mobile FF munging file upload name
-* nautilus clickable current path
