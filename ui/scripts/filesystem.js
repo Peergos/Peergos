@@ -103,7 +103,8 @@ var SignUp = React.createClass({
                         }
                         console.log("Verified user "+ username +" is registered");
                         populateModalAndShow("Success", "You have registered the username "+  username);
-                });
+                        this.props.browser.login(username, pw1);
+                }.bind(this));
         }.bind(this);
 
         document.getElementById("signupSubmitButton").onclick = submit; 
@@ -482,18 +483,18 @@ var Browser = React.createClass({
         signup: function() {
             $('#modal-title').html("Sign up");
             React.render(
-                <SignUp/>, 
+                <SignUp browser={this}/>, 
                 document.getElementById('modal-body')
             );
             $('#modal').modal("show");   
         },
 
-        login: function() {
+        login: function(usernameArg, passwordArg) {
                 const usernameInput = document.getElementById("login-user-input");
                 const passwordInput = document.getElementById("login-password-input");
 
-                const username = usernameInput.value;
-                const password = passwordInput.value;
+                const username = typeof(usernameArg) != "undefined" ? usernameArg : usernameInput.value;
+                const password = typeof(passwordArg) != "undefined" ? passwordArg : passwordInput.value;
 
                 const onVerified  = function() {
                     return userContext.getRoots().then(function(roots) {
