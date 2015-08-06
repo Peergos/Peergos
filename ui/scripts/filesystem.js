@@ -52,7 +52,7 @@ var SignUp = React.createClass({
             const pw2 = document.getElementById("signup-verify-password-input").value;
             const email = document.getElementById("signup-email-user-input").value;
             //TODO: email
-            if (pw1.length < 8) {
+            if (pw1.length < 0) {
                    this.setState({
                         usernameClass : "",
                         usernameMsg : "",
@@ -168,10 +168,13 @@ var File = React.createClass({
                                 if  (selected  == "Rename") {
                                        this.rename(); 
                                 } else if (selected  == "Remove")  {
-				       this.remove();
+				                        this.remove();
                                 } else if (selected  == "Open")  {
                                         this.props.onClick();
-                                }  else 
+                                } else if (selected  == "Create public link" && ! this.props.isdir) {
+                                        //public link
+                                        console.log("creating public link for "+ thos.props.name);
+                                }else 
                                         console.log("no  action defined for context menu item "+ selected);    
                         }.bind(this)
                 });
@@ -654,19 +657,15 @@ var Browser = React.createClass({
                 const className = this.state.gridView ? listGlyph : gridGlyph;
                 element.className = className;
                 var layout = null;
-                var  contextMenu = this.props.isdir ? (<div id="context-menu">
-                                <ul className="dropdown-menu" role="menu">
-                                <li><a tabIndex="-1">Rename</a></li>
-                                <li className="divider"></li>
-                                <li><a tabIndex="-1">Remove</a></li>
-                                </ul>
-                                </div>) : (<div id="context-menu">
+                var  contextMenu = (<div id="context-menu">
                                 <ul className="dropdown-menu" role="menu">
                                 <li><a tabIndex="-1">Open</a></li>
                                 <li className="divider"></li>
                                 <li><a tabIndex="-1">Rename</a></li>
                                 <li className="divider"></li>
                                 <li><a tabIndex="-1">Remove</a></li>
+                                <li className="divider"></li>
+                                <li><a tabIndex="-1">Create public link</a></li>
                                 </ul>
                                 </div>);
 
