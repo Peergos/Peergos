@@ -496,8 +496,8 @@ var Browser = React.createClass({
                 const usernameInput = document.getElementById("login-user-input");
                 const passwordInput = document.getElementById("login-password-input");
 
-                const username = typeof(usernameArg) != "undefined" ? usernameArg : usernameInput.value;
-                const password = typeof(passwordArg) != "undefined" ? passwordArg : passwordInput.value;
+                const username = typeof(usernameArg) == "string" ? usernameArg : usernameInput.value;
+                const password = typeof(passwordArg) == "string" ? passwordArg : passwordInput.value;
 
                 const onVerified  = function() {
                     return userContext.getRoots().then(function(roots) {
