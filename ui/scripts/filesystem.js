@@ -506,8 +506,8 @@ var Browser = React.createClass({
                     console.log("adding root entries");
                     var milliseconds = (new Date).getTime();
                     
-                    return userContext.createEntryDirectory(userContext.username).then(function() {
-			return userContext.createEntryDirectory("friends");
+                    return userContext.createEntryDirectory(userContext.username).then(function(root) {
+			return root.fileAccess.mkdir("shared", userContext, root.filePointer.writer, root.filePointer.mapKey, root.filePointer.baseKey);
                     });
 		}).then(function() {
                         const displayName = userContext.username;

@@ -698,7 +698,6 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
         var rootMapKey = window.nacl.randomBytes(32); // root will be stored under this in the core node
         var rootRKey = SymmetricKey.random();
 
-        // add a note to our static data so we know who we sent the private key to
         // and authorise the writer key
         const rootPointer = new ReadableFilePointer(this.user, writer, rootMapKey, rootRKey);
         const entry = new EntryPoint(rootPointer, this.username, [], []);
@@ -706,7 +705,11 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
             return this.addToStaticData(entry);
         }.bind(this)).then(function(res) {
             var root = DirAccess.create(writer, rootRKey, new FileProperties(directoryName, 0));
-            return this.uploadChunk(root, [], this.user, writer, rootMapKey);
+            return this.uploadChunk(root, [], this.user, writer, rootMapKey).then(function(res) {
+		if (res)
+		    return Promise.resolve(new RetrievedFilePointer(rootPointer, root));
+		return Promise.reject();
+	    });
         }.bind(this));
     }
 
