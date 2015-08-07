@@ -72,7 +72,7 @@ public class Start
         }
         else if (Args.hasArg("demo"))
         {
-            Args.parse(new String[]{"-domain", "peergos.net"});
+            Args.parse(new String[]{"-domain", "demo.peergos.net"});
             demo();
         }
         else if (Args.hasArg("directoryServer"))
