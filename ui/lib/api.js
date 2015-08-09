@@ -1722,79 +1722,75 @@ Erasure.reorder = function(fragments, hashes) {
     }
     return res;
 }
-var doErasure = false;
-if (!doErasure) {
-Erasure.split = function(input, originalBlobs, allowedFailures) {
-    //TO DO port erasure code implementation and Galois groups
-    var size = (input.length/originalBlobs)|0;
-    if (size*originalBlobs != input.length)
-	size++;
-    var bfrags = [];
-    for (var i=0; i < input.length/size; i++)
-        bfrags.push(input.subarray(i*size, Math.min(input.length, (i+1)*size)));
-    return bfrags;
-}
-Erasure.recombine = function(fragments, truncateTo, originalBlobs, allowedFailures) {
-    var buf = new ByteArrayOutputStream();
-    // assume we have all fragments in original order for now
-    for (var i=0; i < originalBlobs; i++)
-	buf.write(fragments[i]);
-    return buf.toByteArray();
-}
-} else {
+doErasure = false;
 // (Uint8Array, int, int)-> Uint8Array
-Erasure.split = function(ints, originalBlobs, allowedFailures)
-{
-    const n = originalBlobs + allowedFailures*2;
-    const bouts = [];
-    for (var i=0; i < n; i++)
-        bouts.push(new ByteArrayOutputStream());
-    const encodeSize = ((GF.size/n)|0)*n;
-    const inputSize = encodeSize*originalBlobs/n;
-    const nec = encodeSize-inputSize;
-    const symbolSize = inputSize/originalBlobs;
-    if (symbolSize * originalBlobs != inputSize)
-        throw "Bad alignment of bytes in chunking. "+inputSize+" != "+symbolSize+" * "+ originalBlobs;
-    
-    for (var i=0; i < ints.length; i += inputSize)
-    {
-        const copy = slice(ints, i, i + inputSize);
-        const encoded = GaloisPolynomial.encode(copy, nec, GF);
-        for (var j=0; j < n; j++)
-        {
-            bouts[j].write(encoded, j*symbolSize, symbolSize);
-        }
+Erasure.split = function(input, originalBlobs, allowedFailures) {
+    if (!doErasure) {
+	//TO DO port erasure code implementation and Galois groups
+	var size = (input.length/originalBlobs)|0;
+	if (size*originalBlobs != input.length)
+	    size++;
+	var bfrags = [];
+	for (var i=0; i < input.length/size; i++)
+            bfrags.push(input.subarray(i*size, Math.min(input.length, (i+1)*size)));
+	return bfrags;
+    } else {
+	const n = originalBlobs + allowedFailures*2;
+	const bouts = [];
+	for (var i=0; i < n; i++)
+            bouts.push(new ByteArrayOutputStream());
+	const encodeSize = ((GF.size/n)|0)*n;
+	const inputSize = encodeSize*originalBlobs/n;
+	const nec = encodeSize-inputSize;
+	const symbolSize = inputSize/originalBlobs;
+	if (symbolSize * originalBlobs != inputSize)
+            throw "Bad alignment of bytes in chunking. "+inputSize+" != "+symbolSize+" * "+ originalBlobs;
+	
+	for (var i=0; i < input.length; i += inputSize)
+	{
+            const copy = slice(input, i, i + inputSize);
+            const encoded = GaloisPolynomial.encode(copy, nec, GF);
+            for (var j=0; j < n; j++)
+            {
+		bouts[j].write(encoded, j*symbolSize, symbolSize);
+            }
+	}
+	
+	const res = [];
+	for (var i=0; i < n; i++)
+            res.push(bouts[i].toByteArray());
+	return res;
     }
-    
-    const res = [];
-    for (var i=0; i < n; i++)
-        res.push(bouts[i].toByteArray());
-    return res;
 }
-
 // (Uint8Array[], int, int, int) -> Uint8Array
-Erasure.recombine = function(encoded, truncateTo, originalBlobs, allowedFailures)
-{
-    const n = originalBlobs + allowedFailures*2;
-    const encodeSize = ((GF.size/n)|0)*n;
-    const inputSize = encodeSize*originalBlobs/n;
-    const nec = encodeSize-inputSize;
-    const symbolSize = inputSize/originalBlobs;
-    const tbSize = encoded[0].length;
-    
-    const res = new ByteArrayOutputStream();
-    const bout = new ByteArrayOutputStream(n*symbolSize);
-    for (var i=0; i < tbSize; i += symbolSize)
-    {
-        // take a symbol from each stream
-        for (var j=0; j < n; j++)
-            bout.write(encoded[j], i, symbolSize);
-        var decodedInts = GaloisPolynomial.decode(bout.toByteArray(), nec, GF);
-	bout.reset();
-        res.write(decodedInts, 0, inputSize);
+Erasure.recombine = function(fragments, truncateTo, originalBlobs, allowedFailures) {
+    if (!doErasure) {
+	var buf = new ByteArrayOutputStream();
+	// assume we have all fragments in original order for now
+	for (var i=0; i < originalBlobs; i++)
+	    buf.write(fragments[i]);
+	return buf.toByteArray();
+    } else {
+	const n = originalBlobs + allowedFailures*2;
+	const encodeSize = ((GF.size/n)|0)*n;
+	const inputSize = encodeSize*originalBlobs/n;
+	const nec = encodeSize-inputSize;
+	const symbolSize = inputSize/originalBlobs;
+	const tbSize = fragments[0].length;
+	
+	const res = new ByteArrayOutputStream();
+	const bout = new ByteArrayOutputStream(n*symbolSize);
+	for (var i=0; i < tbSize; i += symbolSize)
+	{
+            // take a symbol from each stream
+            for (var j=0; j < n; j++)
+		bout.write(fragments[j], i, symbolSize);
+            var decodedInts = GaloisPolynomial.decode(bout.toByteArray(), nec, GF);
+	    bout.reset();
+            res.write(decodedInts, 0, inputSize);
+	}
+	return slice(res.toByteArray(), 0, truncateTo);
     }
-    return slice(res.toByteArray(), 0, truncateTo);
-}
 }
 
 function string2arraybuffer(str) {

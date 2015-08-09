@@ -245,4 +245,5 @@ testErasure = function() {
 
     console.log("Erasure decode took "+ (t3-t2) + " mS"); 
 }
+doErasure = true;
 testErasure();
