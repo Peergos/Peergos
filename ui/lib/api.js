@@ -1722,7 +1722,7 @@ Erasure.reorder = function(fragments, hashes) {
     }
     return res;
 }
-var doErasure = true;
+var doErasure = false;
 if (!doErasure) {
 Erasure.split = function(input, originalBlobs, allowedFailures) {
     //TO DO port erasure code implementation and Galois groups
