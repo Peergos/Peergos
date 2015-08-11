@@ -713,7 +713,33 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
         }.bind(this));
     }
 
+    // UserPublicKey, RetrievedFilePointer
+    this.sendFriendRequest = function(targetUser, sharingFolder) {
+        return this.corenodeClient.getUsername(targetUser.getPublicKeys()).then(function(name) {	    
+
+            var rootMapKey = window.nacl.randomBytes(32);
+            var friendRoot = new ReadableFilePointer(user, sharingFolder.filePointer.writer, rootMapKey, SymmetricKey.random());
+	    // create subdirectory in sharing folder with friend's name
+	    return sharingFolder.fileAccess.mkdir(name, this, friendRoot.writer, sharingFolder.filePointer.mapKey, friendRoot.baseKey).then(function(res) {
+		
+		// add a note to our static data so we know who we sent the private key to
+		const entry = new EntryPoint(friendRoot, this.username, [], [name]);
+		return this.addToStaticData(entry).then(function(res) {
+                    // send details to allow friend to follow us		
+                    // create a tmp keypair whose public key we can append to the request without leaking information
+                    var tmp = User.random();
+                    var payload = entry.serializeAndEncrypt(tmp, targetUser);
+                    return corenodeClient.followRequest(targetUser.getPublicKeys(), concat(tmp.pBoxKey, payload));
+		});
+            }.bind(this));
+        }.bind(this));
+    }.bind(this);
+
     this.sendFollowRequest = function(targetUser) {
+	return this.sendWriteAccess(targetUser);
+    }
+
+    this.sendWriteAccess = function(targetUser) {
         // create sharing keypair and give it write access
         var sharing = User.random();
         var rootMapKey = window.nacl.randomBytes(32);
@@ -1489,7 +1515,7 @@ const GF = new (function(){
 
     this.exp = function(y)
     {
-        return this.exp[y];
+        return this.expa[y];
     }
 
     this.mul = function(x, y)
@@ -1546,8 +1572,8 @@ GaloisPolynomial.check = function(coefficients, f) {
         const res = new Uint8Array(Math.max(order, GaloisPolynomial.order(other)));
         for (var i=0; i < order; i++)
             res[i + res.length - order] = coefficients[i];
-        for (var i=0; i < other.order(); i++)
-            res[i + res.length - other.order()] ^= other.coefficients[i];
+        for (var i=0; i < GaloisPolynomial.order(other); i++)
+            res[i + res.length - GaloisPolynomial.order(other)] ^= other[i];
         return res;
     }
 
@@ -1647,7 +1673,7 @@ GaloisPolynomial.correctErrata = function(input, synd, pos, f)
     for (var j=0; j < pos.length; j++)
     {
 	const i = pos[j];
-        const x = f.exp(i + f.size() - input.length);
+        const x = f.exp(i + f.size - input.length);
         const y = GaloisPolynomial.evalu(f, p, x);
         const z = GaloisPolynomial.evalu(f, qprime, f.mul(x, x));
         input[i] ^= f.div(y, f.mul(x, z));
@@ -1661,7 +1687,7 @@ GaloisPolynomial.findErrors = function(synd, nmess, f)
     var oldPoly = GaloisPolynomial.create([1], f);
     for (var i=0; i < synd.length; i++)
     {
-        oldPoly = oldPoly.append(0);
+        oldPoly = GaloisPolynomial.append(oldPoly, 0);
         var delta = synd[i];
         for (var j=1; j < GaloisPolynomial.order(errPoly); j++)
             delta ^= f.mul(errPoly[GaloisPolynomial.order(errPoly) - 1 - j], synd[i - j]);
@@ -1681,10 +1707,10 @@ GaloisPolynomial.findErrors = function(synd, nmess, f)
         throw "Too many errors to correct! ("+errs+")";
     const errorPos = [];
     for (var i=0; i < nmess; i++)
-        if (GaloisPolynomial.evalu(f, errPoly, f.exp(f.size() - 1 - i)) == 0)
+        if (GaloisPolynomial.evalu(f, errPoly, f.exp(f.size - 1 - i)) == 0)
             errorPos.push(nmess - 1 - i);
     if (errorPos.length != errs)
-        throw "couldn't find error positions! ("+errorPos.size()+"!="+errs+") ( missing fragments)";
+        throw "couldn't find error positions! ("+errorPos.length+"!="+errs+") ( missing fragments)";
     return errorPos;
 }
 
