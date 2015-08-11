@@ -410,6 +410,13 @@ var Browser = React.createClass({
                 $('#uploadInput').click();
                 });
         },
+        
+        onUser: function() {
+                requireSignedIn(function()  {
+                $('#userOptionsButton').click();
+                });
+
+        },
 
         alternateView: function() {
                 var updatedView = !  this.state.gridView;
@@ -562,6 +569,8 @@ var Browser = React.createClass({
                 backButton.onclick = this.onBack;
                 var uploadButton = document.getElementById("uploadButton");
                 uploadButton.onclick = this.onUpload;
+                var userOptionsButton = document.getElementById("userOptionsButton");
+                userOptionsButton.onclick = this.onUser;
                 var parentButton = document.getElementById("parentButton");
                 parentButton.onclick = this.onParent;
                 var uploadInput = document.getElementById("uploadInput"); 
