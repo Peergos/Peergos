@@ -36,6 +36,28 @@ function openItem(name, data) {
     ae.click();
 }
 
+var userOptions = React.createClass({
+        /**
+         *
+         *  send friend request
+         *
+         *  view pending friend requests
+         *
+         *  accept / deny friend request
+         *
+         *  share folder/file with friend
+         *
+         *  show shares
+         *
+         */
+    getInitialState : function() {
+    },
+    componentDidMount: function() {
+    },
+    render: function() {
+    }
+}
+
 var SignUp = React.createClass({
     getInitialState : function() {
             return {
