@@ -333,7 +333,7 @@ var Browser = React.createClass({
                                         message: "Downloading file "+ name, 
                                         settings: {"timeout":  5000} 
                                     });
-                                    retrievedFilePointer.fileAccess.retriever.getFile(userContext, baseKey).then(function(buf) {
+                                    retrievedFilePointer.fileAccess.retriever.getFile(userContext, baseKey, size).then(function(buf) {
                                         console.log("reading "+ name + " with size "+ size);
 			                            return buf.read(size).then(function(originalData) {
                                             openItem(name, originalData);

@@ -1383,9 +1383,9 @@ function EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChun
     this.fragmentHashes = fragmentHashes;
     this.nextChunk = nextChunk;
 
-    this.getFile = function(context, dataKey) {
+    this.getFile = function(context, dataKey, len) {
         const stream = this;
-        return this.getChunkInputStream(context, dataKey).then(function(chunk) {
+        return this.getChunkInputStream(context, dataKey, len).then(function(chunk) {
             return Promise.resolve(new LazyInputStreamCombiner(stream, context, dataKey, chunk));
         });
     }
@@ -1394,11 +1394,13 @@ function EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChun
         return nextChunk;
     }
 
-    this.getChunkInputStream = function(context, dataKey) {
+    this.getChunkInputStream = function(context, dataKey, len) {
         var fragmentsProm = context.downloadFragments(fragmentHashes);
         return fragmentsProm.then(function(fragments) {
             fragments = reorder(fragments, fragmentHashes);
-            var cipherText = erasure.recombine(fragments, Chunk.MAX_SIZE, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
+            var cipherText = erasure.recombine(fragments, len != 0 ? len : Chunk.MAX_SIZE, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
+	    if (len != 0)
+		cipherText = cipherText.subarray(0, len);
             var fullEncryptedChunk = new EncryptedChunk(concat(chunkAuth, cipherText));
             var original = fullEncryptedChunk.decrypt(dataKey, chunkNonce);
             return Promise.resolve(original);
@@ -1444,13 +1446,13 @@ function LazyInputStreamCombiner(stream, context, dataKey, chunk) {
     this.index = 0;
     this.next = stream.getNext();
 
-    this.getNextStream = function() {
+    this.getNextStream = function(len) {
         if (this.next != null) {
             const lazy = this;
             return context.getMetadata(this.next).then(function(meta) {
                 var nextRet = meta.retriever;
                 lazy.next = nextRet.getNext();
-                return nextRet.getChunkInputStream(context, dataKey);
+                return nextRet.getChunkInputStream(context, dataKey, len);
             });
         }
         throw "EOFException";
@@ -1484,7 +1486,7 @@ function LazyInputStreamCombiner(stream, context, dataKey, chunk) {
             res[offset + i] = lazy.readByte();
         if (available >= len)
             return Promise.resolve(res);
-        return this.getNextStream().then(function(chunk){
+        return this.getNextStream((len-toRead) % Chunk.MAX_SIZE).then(function(chunk){
             lazy.index = 0;
             lazy.current = chunk;
             return lazy.read(len-toRead, res, offset + toRead);
