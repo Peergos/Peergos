@@ -33,12 +33,11 @@ testErasure = function(original) {
 }
 
 testChunkErasure = function() {
-    const raw = new ByteArrayOutputStream();
-    const template = nacl.util.decodeUTF8("Hello secure cloud! Goodbye NSA!");
-    for (var i = 0; i < Chunk.MAX_SIZE / 32; i++)
-        raw.write(template);
+    const raw = new Uint8Array(5*1024*1024);
+    for (var i = 0; i < raw; i++)
+        raw[i] = i & 0xff;
 
-    testErasure(raw.toByteArray());
+    testErasure(raw);
 }
 
 testSmallFileErasure = function() {
@@ -49,4 +48,5 @@ testSmallFileErasure = function() {
     testErasure(raw);
 }
 
-testSmallFileErasure();
+//testSmallFileErasure();
+testChunkErasure();

@@ -238,8 +238,11 @@ var GaloisPolynomial = function(coefficients, f) {
 }
 
 // (int, GaloisField) -> GaloisPolynomial
+var generators = {};
 GaloisPolynomial.generator = function(nECSymbols, f)
 {
+    if (generators[nECSymbols] != null)
+	return generators[nECSymbols];
     const one = new Uint8Array(1);
     one[0] = 1;
     var g = new GaloisPolynomial(one, f);
@@ -250,6 +253,7 @@ GaloisPolynomial.generator = function(nECSymbols, f)
 	
         g = g.mul(new GaloisPolynomial(multiplicand, f));
     }
+    generators[nECSymbols] = g;
     return g;
 }
 
@@ -381,7 +385,7 @@ GaloisPolynomial.create = function(coeffs, f) {
         var n = originalBlobs + allowedFailures*2;
         var bouts = [];
         for (var i=0; i < n; i++)
-            bouts.push(new ByteArrayOutputStream());
+            bouts.push(new ByteArrayOutputStream((symbolSize*ints.length/inputSize)|0));
         var encodeSize = ((f.size/n)|0)*n;
         var inputSize = encodeSize*originalBlobs/n;
         var nec = encodeSize-inputSize;
