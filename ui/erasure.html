@@ -5,27 +5,10 @@
 <div id="encode"></div>
 </br>
 <div id="decode"></div>
+</br>
+<div id="error"></div>
+<script src="scripts/api.js"></script>
 <script src="scripts/erasure.js"></script>
-<script>
-if (typeof module !== "undefined")
-    var erasure = require("./erasure");
-
-var testErasure = function() {
-    var original = new Uint8Array(5*1024*1024);
-    for (var i=0; i < original.length; i++)
-       original[i] = i & 0xFF;
-
-    var t1 = Date.now();
-    var bfrags = erasure.split(original, 40, 10);
-    var t2 = Date.now();
-    document.getElementById("encode").innerHTML = "Encode took "+(t2-t1)+"mS to generate "+bfrags.length + " fragments";
-    var decoded = erasure.recombine(bfrags, 5*1024*1024, 40, 10);
-    var t3 = Date.now();
-    document.getElementById("decode").innerHTML = "Decode took "+(t3-t2)+"mS";
-    if (!arraysEqual(original, decoded))
-	throw "Decoded contents different from original!";
-}
-testErasure();
-</script>
+<script src="scripts/test.js"></script>
 </body>
 </html>

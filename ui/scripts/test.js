@@ -1,5 +1,5 @@
 // overwrite this function to speed up scrypt for testing purposes
-function fastgenerateKeyPairs(username, password, cb) {
+function generateKeyPairs(username, password, cb) {
     var hash = UserPublicKey.hash(nacl.util.decodeUTF8(password));
     salt = nacl.util.decodeUTF8(username)
     
@@ -13,25 +13,40 @@ function fastgenerateKeyPairs(username, password, cb) {
     });
 }
 
-testErasure = function() {
+testErasure = function(original) {
+    const t1 = Date.now();
+    var bfrags = erasure.split(original, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
+    const t2 = Date.now();
+    console.log("Erasure encode took "+ (t2-t1) + " mS");
+    if (document.getElementById("encode") != null)
+	document.getElementById("encode").innerHTML = "Encode took "+(t2-t1)+"mS to generate "+bfrags.length + " fragments";
+    var decoded = erasure.recombine(bfrags, Chunk.MAX_SIZE, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
+    if (decoded.length > original.length)
+	decoded = decoded.subarray(0, original.length);
+    const t3 = Date.now();
+    
+    if (!arraysEqual(original, decoded))
+	throw "Decoded contents different from original!";
+    if (document.getElementById("decode") != null)
+	document.getElementById("decode").innerHTML = "Decode took "+(t3-t2)+"mS";
+    console.log("Erasure decode took "+ (t3-t2) + " mS"); 
+}
+
+testChunkErasure = function() {
     const raw = new ByteArrayOutputStream();
     const template = nacl.util.decodeUTF8("Hello secure cloud! Goodbye NSA!");
     for (var i = 0; i < Chunk.MAX_SIZE / 32; i++)
         raw.write(template);
 
-    const original = raw.toByteArray();
-
-    const t1 = Date.now();
-    var bfrags = Erasure.split(original, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
-    const t2 = Date.now();
-    console.log("Erasure encode took "+ (t2-t1) + " mS"); 
-
-    var decoded = Erasure.recombine(bfrags, Chunk.MAX_SIZE, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
-    const t3 = Date.now();
-    if (!arraysEqual(original, decoded))
-	throw "Decoded contents different from original!";
-
-    console.log("Erasure decode took "+ (t3-t2) + " mS"); 
+    testErasure(raw.toByteArray());
 }
-//doErasure = true;
-//testErasure();
+
+testSmallFileErasure = function() {
+    const size = 10*1024 + 17;
+    const raw = new Uint8Array(size);
+    for (var i=0; i < raw.length; i++)
+	raw[i] = i & 0xff;
+    testErasure(raw);
+}
+
+testSmallFileErasure();
