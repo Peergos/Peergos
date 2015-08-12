@@ -56,7 +56,7 @@ var userOptions = React.createClass({
     },
     render: function() {
     }
-}
+});
 
 var SignUp = React.createClass({
     getInitialState : function() {
