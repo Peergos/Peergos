@@ -1,5 +1,7 @@
 if (typeof module !== "undefined")
     var nacl = require("./nacl");
+if (typeof module !== "undefined")
+    var erasure = require("./erasure");
 
 // API for the User interface to use
 /////////////////////////////
@@ -183,7 +185,7 @@ function EncryptedChunk(encrypted) {
     this.cipher = slice(encrypted, window.nacl.secretbox.overheadLength, encrypted.length);
 
     this.generateFragments = function() {
-        var bfrags = Erasure.split(this.cipher, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
+        var bfrags = erasure.split(this.cipher, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
         var frags = [];
         for (var i=0; i < bfrags.length; i++)
             frags[i] = new Fragment(bfrags[i]);
@@ -1395,8 +1397,8 @@ function EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChun
     this.getChunkInputStream = function(context, dataKey) {
         var fragmentsProm = context.downloadFragments(fragmentHashes);
         return fragmentsProm.then(function(fragments) {
-            fragments = Erasure.reorder(fragments, fragmentHashes);
-            var cipherText = Erasure.recombine(fragments, Chunk.MAX_SIZE, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
+            fragments = reorder(fragments, fragmentHashes);
+            var cipherText = erasure.recombine(fragments, Chunk.MAX_SIZE, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
             var fullEncryptedChunk = new EncryptedChunk(concat(chunkAuth, cipherText));
             var original = fullEncryptedChunk.decrypt(dataKey, chunkNonce);
             return Promise.resolve(original);
@@ -1735,8 +1737,7 @@ GaloisPolynomial.create = function(coeffs, f) {
     return c;
 }
 
-const Erasure = {};
-Erasure.reorder = function(fragments, hashes) {
+function reorder(fragments, hashes) {
     var hashMap = new Map(); //ba dum che
     for (var i=0; i < hashes.length; i++)
         hashMap.set(nacl.util.encodeBase64(hashes[i]), i); // Seems Map can't handle array contents equality
@@ -1747,76 +1748,6 @@ Erasure.reorder = function(fragments, hashes) {
         res[index] = fragments[i];
     }
     return res;
-}
-doErasure = false;
-// (Uint8Array, int, int)-> Uint8Array
-Erasure.split = function(input, originalBlobs, allowedFailures) {
-    if (!doErasure) {
-	//TO DO port erasure code implementation and Galois groups
-	var size = (input.length/originalBlobs)|0;
-	if (size*originalBlobs != input.length)
-	    size++;
-	var bfrags = [];
-	for (var i=0; i < input.length/size; i++)
-            bfrags.push(input.subarray(i*size, Math.min(input.length, (i+1)*size)));
-	return bfrags;
-    } else {
-	const n = originalBlobs + allowedFailures*2;
-	const bouts = [];
-	for (var i=0; i < n; i++)
-            bouts.push(new ByteArrayOutputStream());
-	const encodeSize = ((GF.size/n)|0)*n;
-	const inputSize = encodeSize*originalBlobs/n;
-	const nec = encodeSize-inputSize;
-	const symbolSize = inputSize/originalBlobs;
-	if (symbolSize * originalBlobs != inputSize)
-            throw "Bad alignment of bytes in chunking. "+inputSize+" != "+symbolSize+" * "+ originalBlobs;
-	
-	for (var i=0; i < input.length; i += inputSize)
-	{
-            const copy = slice(input, i, i + inputSize);
-            const encoded = GaloisPolynomial.encode(copy, nec, GF);
-            for (var j=0; j < n; j++)
-            {
-		bouts[j].write(encoded, j*symbolSize, symbolSize);
-            }
-	}
-	
-	const res = [];
-	for (var i=0; i < n; i++)
-            res.push(bouts[i].toByteArray());
-	return res;
-    }
-}
-// (Uint8Array[], int, int, int) -> Uint8Array
-Erasure.recombine = function(fragments, truncateTo, originalBlobs, allowedFailures) {
-    if (!doErasure) {
-	var buf = new ByteArrayOutputStream();
-	// assume we have all fragments in original order for now
-	for (var i=0; i < originalBlobs; i++)
-	    buf.write(fragments[i]);
-	return buf.toByteArray();
-    } else {
-	const n = originalBlobs + allowedFailures*2;
-	const encodeSize = ((GF.size/n)|0)*n;
-	const inputSize = encodeSize*originalBlobs/n;
-	const nec = encodeSize-inputSize;
-	const symbolSize = inputSize/originalBlobs;
-	const tbSize = fragments[0].length;
-	
-	const res = new ByteArrayOutputStream();
-	const bout = new ByteArrayOutputStream(n*symbolSize);
-	for (var i=0; i < tbSize; i += symbolSize)
-	{
-            // take a symbol from each stream
-            for (var j=0; j < n; j++)
-		bout.write(fragments[j], i, symbolSize);
-            var decodedInts = GaloisPolynomial.decode(bout.toByteArray(), nec, GF);
-	    bout.reset();
-            res.write(decodedInts, 0, inputSize);
-	}
-	return slice(res.toByteArray(), 0, truncateTo);
-    }
 }
 
 function string2arraybuffer(str) {
