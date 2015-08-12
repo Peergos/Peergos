@@ -123,12 +123,15 @@ var SignUp = React.createClass({
                                     passwordMsg : ""
                               });
                         }
-                        console.log("Verified user "+ username +" is registered");
-                        populateModalAndShow("Success", "You have registered the username "+  username);
-                        this.props.browser.login(username, pw1);
+                        return ctx.createEntryDirectory(username);
+                }).then(function(root) {
+			            return root.fileAccess.mkdir("shared", ctx, root.filePointer.writer, root.filePointer.mapKey, root.filePointer.baseKey);
+		        }.bind(this)).then(function() {
+                    console.log("Verified user "+ username +" is registered");
+                    populateModalAndShow("Success", "You have registered the username "+  username);
+                    this.props.browser.login(username, pw1);
                 }.bind(this));
         }.bind(this);
-
         document.getElementById("signupSubmitButton").onclick = submit; 
     }, 
     render: function() {
@@ -324,7 +327,7 @@ var Browser = React.createClass({
         },
 
         currentPath : function() {
-                return  "/"+ this.state.retrievedFilePointerPath.map(function(e) {
+                return  "/" + userContext.username+"/"+ this.state.retrievedFilePointerPath.map(function(e) {
                     const parentKey = e.fileAccess.getParentKey(e.filePointer.baseKey);
                     const props = e.fileAccess.getFileProperties(parentKey);
                     return props.name;
@@ -529,16 +532,6 @@ var Browser = React.createClass({
                 const password = typeof(passwordArg) == "string" ? passwordArg : passwordInput.value;
 
                 const onVerified  = function() {
-                    return userContext.getRoots().then(function(roots) {
-		            if (roots.length > 0)
-            			return Promise.resolve(true);
-                    console.log("adding root entries");
-                    var milliseconds = (new Date).getTime();
-                    
-                    return userContext.createEntryDirectory(userContext.username).then(function(root) {
-			return root.fileAccess.mkdir("shared", userContext, root.filePointer.writer, root.filePointer.mapKey, root.filePointer.baseKey);
-                    });
-		}).then(function() {
                         const displayName = userContext.username;
                         usernameInput.value = "";
                         passwordInput.value="";
@@ -548,8 +541,8 @@ var Browser = React.createClass({
                                         "</button>");
                         $("#logoutButton").click(this.logout);
                         $("#login-form").css("display","none");
-                    }.bind(this)).then(this.loadFilesFromServer);
-                }.bind(this);
+                        this.loadFilesFromServer();
+                    }.bind(this);
 
                 var ctx = null;
                 return generateKeyPairs(username, password).then(function(user) {
