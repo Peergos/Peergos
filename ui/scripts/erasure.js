@@ -167,7 +167,7 @@ var Galois = function(){
     this.div = function(x, y)
     {
         if (y==0)
-            throw new IllegalStateException("Divided by zero! Blackhole created.. ");
+            throw "Divided by zero! Blackhole created.. ";
         if (x==0)
             return 0;
         return this.exp[this.log[x]+255-this.log[y]];
@@ -300,22 +300,22 @@ GaloisPolynomial.correctErrata = function(input, synd, pos, f)
         const x = f.get_exp(input.length - 1 - i);
         q = q.mul(GaloisPolynomial.create([x, 1], f));
     }
-    var t = new Uint8Array(pos.size());
+    var t = new Uint8Array(pos.length);
     for (var i=0; i < t.length; i++)
         t[i] = synd[t.length-1-i];
     var p = new GaloisPolynomial(t, f).mul(q);
-    t = new Uint8Array(pos.size());
+    t = new Uint8Array(pos.length);
     for (var i=0; i < t.length; i++)
 	t[i] = p.coefficients[i + p.order()-t.length];
     p = new GaloisPolynomial(t, f);
-    t = new int[(q.order()- (q.order() & 1))/2];
+    t = new Uint8Array((q.order()- (q.order() & 1))/2);
     for (var i=q.order() & 1; i < q.order(); i+= 2)
         t[i/2] = q.coefficients[i];
     const qprime = new GaloisPolynomial(t,f);
     for (var j=0; j < pos.length; j++)
     {
 	const i = pos[j];
-        const x = f.get_exp(i + f.size() - input.length);
+        const x = f.get_exp(i + f.size - input.length);
         const y = p.eval(x);
         const z = qprime.eval(f.mul(x, x));
         input[i] ^= f.div(y, f.mul(x, z));
