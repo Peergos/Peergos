@@ -310,14 +310,14 @@ GaloisPolynomial.correctErrata = function(input, synd, pos, f)
     p = new GaloisPolynomial(t, f);
     t = new Uint8Array((q.order()- (q.order() & 1))/2);
     for (var i=q.order() & 1; i < q.order(); i+= 2)
-        t[i/2] = q.coefficients[i];
+        t[(i/2)|0] = q.coefficients[i];
     const qprime = new GaloisPolynomial(t,f);
     for (var j=0; j < pos.length; j++)
     {
-	const i = pos[j];
-        const x = f.get_exp(i + f.size - input.length);
-        const y = p.eval(x);
-        const z = qprime.eval(f.mul(x, x));
+	var i = pos[j];
+        var x = f.get_exp(i + f.size - input.length);
+        var y = p.eval(x);
+        var z = qprime.eval(f.mul(x, x));
         input[i] ^= f.div(y, f.mul(x, z));
     }
 }
