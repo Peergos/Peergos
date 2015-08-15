@@ -291,13 +291,13 @@ GaloisPolynomial.correctErrata = function(input, synd, pos, f)
 {
     if (pos.length == 0)
         return;
-    const one = new Uint8Array(1);
+    var one = new Uint8Array(1);
     one[0] = 1;
     var q = new GaloisPolynomial(one, f);
     for (var j=0; j < pos.length; j++)
     {
 	var i = pos[j];
-        const x = f.get_exp(input.length - 1 - i);
+        var x = f.get_exp(input.length - 1 - i);
         q = q.mul(GaloisPolynomial.create([x, 1], f));
     }
     var t = new Uint8Array(pos.length);
@@ -311,7 +311,7 @@ GaloisPolynomial.correctErrata = function(input, synd, pos, f)
     t = new Uint8Array((q.order()- (q.order() & 1))/2);
     for (var i=q.order() & 1; i < q.order(); i+= 2)
         t[(i/2)|0] = q.coefficients[i];
-    const qprime = new GaloisPolynomial(t,f);
+    var qprime = new GaloisPolynomial(t,f);
     for (var j=0; j < pos.length; j++)
     {
 	var i = pos[j];
@@ -344,10 +344,10 @@ GaloisPolynomial.findErrors = function(synd, nmess, f)
             errPoly = errPoly.add(oldPoly.scale(delta));
         }
     }
-    const errs = errPoly.order()-1;
+    var errs = errPoly.order()-1;
     if (2*errs > synd.length)
         throw "Too many errors to correct! ("+errs+")";
-    const errorPos = [];
+    var errorPos = [];
     for (var i=0; i < nmess; i++)
         if (errPoly.eval(f.get_exp(f.size - 1 - i)) == 0)
             errorPos.push(nmess - 1 - i);
