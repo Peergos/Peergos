@@ -64,11 +64,16 @@ public class GaloisPolynomial
         return new GaloisPolynomial(res, f);
     }
 
+    private static Map<Integer, GaloisPolynomial> memoized = new HashMap<>();
+
     private static GaloisPolynomial generator(int nECSymbols, GaloisField f)
     {
+        if (memoized.containsKey(nECSymbols))
+            return memoized.get(nECSymbols);
         GaloisPolynomial g = new GaloisPolynomial(new int[] {1}, f);
         for (int i=0; i < nECSymbols; i++)
             g = g.mul(new GaloisPolynomial(new int[]{1, f.exp(i)}, f));
+        memoized.put(nECSymbols, g);
         return g;
     }
 

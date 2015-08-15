@@ -150,7 +150,12 @@ public class ErasureHandler implements HttpHandler {
             httpServer.stop(delay);
         }
 
-        @org.junit.Test public void test() throws IOException {
+        @org.junit.Test public void testAll() throws IOException {
+            for (int i=0; i < 12; i++)
+                test(i);
+        }
+
+        public void test(int errors) throws IOException {
             Random random = new Random();
             byte[] input = new byte[Chunk.MAX_SIZE];
             random.nextBytes(input);
@@ -163,14 +168,14 @@ public class ErasureHandler implements HttpHandler {
                 dout.flush();
             }
 
-            byte[][] hashes = null;
+            byte[][] fragments;
             try (DataInputStream din = new DataInputStream(splitConn.getInputStream())) {
                 int nHashes = din.readInt();
                 assertTrue("hash hashes", nHashes > 0);
-                hashes = new byte[nHashes][];
+                fragments = new byte[nHashes][];
                 for (int iHash = 0; iHash < nHashes; iHash++) {
-                    hashes[iHash] = Serialize.deserializeByteArray(din, Fragment.SIZE);
-                    assertEquals(hashes[iHash].length, Fragment.SIZE);
+                    fragments[iHash] = Serialize.deserializeByteArray(din, Fragment.SIZE);
+                    assertEquals(fragments[iHash].length, Fragment.SIZE);
                 }
             }
 
@@ -178,14 +183,17 @@ public class ErasureHandler implements HttpHandler {
             URLConnection recombineConn= recombineUrl.openConnection();
             recombineConn.setDoOutput(true);
 
+            for (int i=0; i < errors; i++)
+                fragments[i] = new byte[fragments[i].length];
+
             try (DataOutputStream dout = new DataOutputStream(recombineConn.getOutputStream())) {
-                dout.writeInt(hashes.length);
-                for (byte[] hash: hashes)
-                    Serialize.serialize(hash, dout);
+                dout.writeInt(fragments.length);
+                for (byte[] fragment: fragments)
+                    Serialize.serialize(fragment, dout);
                 dout.flush();
             }
 
-            byte[] result = null;
+            byte[] result;
             try(DataInputStream din = new DataInputStream(recombineConn.getInputStream())) {
                 result = Serialize.deserializeByteArray(din, input.length);
             }
