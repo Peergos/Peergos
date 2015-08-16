@@ -338,27 +338,23 @@ var Browser = React.createClass({
                 if (typeof(userContext) == "undefined" || userContext == null)
                         return;
                 const callback = function(children) {
-                            const files = children.map(function(retrievedFilePointer) {
-            			    	var baseKey = retrievedFilePointer.filePointer.baseKey;
-                                const fileAccess =  retrievedFilePointer.fileAccess;
-			                    const parentKey =  fileAccess.isDirectory() ? fileAccess.getParentKey(baseKey) : baseKey;
-            	    			const props = fileAccess.getFileProperties(parentKey);
-	    	            		const isDir = fileAccess.isDirectory();
-			                	const name  = props.name;
-                				const size = props.size;
+                            const files = children.map(function(treenode) {
+            	    		const props = treenode.getFileProperties();
+	    	            	const isDir = treenode.isDirectory();
+			        const name  = props.name;
+                		const size = props.size;
                                 const onClick = isDir ? function() {
-                                    this.addToPath(retrievedFilePointer);
+                                    this.addToPath(treenode);
                                 }.bind(this) :  function() {
                                     //download the chunks and reconstruct the original bytes
                                     //get the data
-                                    const baseKey = retrievedFilePointer.filePointer.baseKey;
                                     $.toaster(
                                     {
                                         priority: "info",
                                         message: "Downloading file "+ name, 
                                         settings: {"timeout":  5000} 
                                     });
-                                    retrievedFilePointer.fileAccess.retriever.getFile(userContext, baseKey, size).then(function(buf) {
+                                    treenode.getInputStream(userContext, size).then(function(buf) {
                                         console.log("reading "+ name + " with size "+ size);
 			                            return buf.read(size).then(function(originalData) {
                                             openItem(name, originalData);
@@ -387,28 +383,15 @@ var Browser = React.createClass({
 
                 const isEmpty =  this.state.retrievedFilePointerPath.length == 0;
                 if (isEmpty) {
-                    userContext.getRoots().then(function(roots) {
-                        const children = roots.map(function(root) {
-                            const entryPoint = root[0];
-                            const fileAccess = root[1];
-
-                            const filePointer = entryPoint.pointer;
-                            const rootDirKey = filePointer.baseKey;
-		                    const parentKey = fileAccess.getParentKey(rootDirKey);
-
-                            return new RetrievedFilePointer(filePointer, fileAccess);
-                        });
-
-                        callback(children);
+                    userContext.getTreeRoot().then(function(globalRoot) {
+			globalRoot.getChildren().then(function(children) {
+			    callback(children);
+			});
                     }.bind(this));
                 }
                 else {
-                    const filePointer = this.lastRetrievedFilePointer().filePointer;
-                    const fileAccess = this.lastRetrievedFilePointer().fileAccess;
-                    const rootDirKey = filePointer.baseKey;
-
-                    fileAccess.getChildren(userContext, rootDirKey).then(function(children) {
-                            callback(children);
+		    this.lastRetrievedFilePointer().getChildren(userContext).then(function(children) {
+                        callback(children);
                     }.bind(this));
                 }    
         },

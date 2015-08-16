@@ -845,6 +845,23 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
             });
         });
     }
+
+    this.getTreeRoot = function() {
+	return this.getRoots().then(function(roots){
+	    var entrypoints = roots.map(function(x) {return new FileTreeNode(new RetrievedFilePointer(x[0].pointer, x[1]), x[0].owner, x[0].readers, x[0].writers);});
+	    console.log(entrypoints);
+	    var globalRoot = FileTreeNode.ROOT;
+	    var proms = [];
+	    for (var i=0; i < entrypoints.length; i++) {
+		var current = entrypoints[i];
+		//proms.push();
+	    }
+	    return Promise.all(proms).then(function(res) {
+		return Promise.resolve(globalRoot);
+	    });
+	});
+    }
+
 // [SymmetricLocationLink], SymmetricKey
     this.retrieveAllMetadata = function(links, baseKey) {
         var proms = [];
@@ -942,6 +959,61 @@ ReadableFilePointer.deserialize = function(arr) {
     UserPublicKey.fromPublicKeys(writerRaw);
     return new ReadableFilePointer(UserPublicKey.fromPublicKeys(owner), writer, mapKey, new SymmetricKey(rootDirKeySecret));
 }
+
+// RetrievedFilePointer
+function FileTreeNode(pointer, ownername, readers, writers) {
+    var pointer = pointer; // O/W/M/K + FileAccess
+    var children = [];
+    var owner = ownername;
+    var readers = readers;
+    var writers = writers;
+
+    this.addChild = function(name, child) {
+	if (children[name] != null)
+	    throw "Child already exists with name: "+name;
+	children[name] = child;
+    }
+
+    this.getParent = function(context) {
+	if (pointer == null)
+	    return null;
+	var parentRFP = pointer.fileAccess.getParent(pointer.filePointer.baseKey, context);
+	if (parentRFP == null)
+	    return FileTreeNode.ROOT;
+	return new FileTreeNode(parentRFP, owner, [], []);
+    }
+
+    this.getChildren = function(context) {
+	if (this == FileTreeNode.ROOT)
+	    return Promise.resolve(children);
+	if (children.length == 0)
+	    return retrieveChildren(context);
+	return Promise.resolve(children);
+    }
+
+    var retrieveChildren = function(context) {
+	const filePointer = pointer.filePointer;
+        const fileAccess = pointer.fileAccess;
+        const rootDirKey = filePointer.baseKey;
+
+        return fileAccess.getChildren(userContext, rootDirKey)
+    }
+
+    this.isDirectory = function() {
+	return pointer.fileAccess.isDirectory();
+    }
+
+    this.getInputStream = function(context, size) {
+	const baseKey = pointer.filePointer.baseKey;
+	return pointer.fileAccess.retriever.getFile(context, baseKey, size)
+    }
+
+    this.getFileProperties = function() {
+	const parentKey =  this.isDirectory() ? pointer.fileAccess.getParentKey(pointer.filePointer.baseKey) : pointer.filePointer.baseKey
+	return pointer.fileAccess.getFileProperties(parentKey);
+    }
+}
+FileTreeNode.ROOT = new FileTreeNode(null, null, [], []);
 
 //ReadableFilePointer, FileAccess
 function RetrievedFilePointer(pointer, access) {
