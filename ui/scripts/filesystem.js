@@ -327,9 +327,8 @@ var Browser = React.createClass({
         },
 
         currentPath : function() {
-                return  "/" + userContext.username+"/"+ this.state.retrievedFilePointerPath.map(function(e) {
-                    const parentKey = e.fileAccess.getParentKey(e.filePointer.baseKey);
-                    const props = e.fileAccess.getFileProperties(parentKey);
+                return  "/"+ this.state.retrievedFilePointerPath.map(function(e) {
+                    const props = e.getFileProperties();
                     return props.name;
                 }).join("/");
         },
@@ -338,13 +337,13 @@ var Browser = React.createClass({
                 if (typeof(userContext) == "undefined" || userContext == null)
                         return;
                 const callback = function(children) {
-                            const files = children.map(function(treenode) {
-            	    		const props = treenode.getFileProperties();
-	    	            	const isDir = treenode.isDirectory();
+                            const files = children.map(function(treeNode) {
+            	    		const props = treeNode.getFileProperties();
+	    	            	const isDir = treeNode.isDirectory();
 			        const name  = props.name;
                 		const size = props.size;
                                 const onClick = isDir ? function() {
-                                    this.addToPath(treenode);
+                                    this.addToPath(treeNode);
                                 }.bind(this) :  function() {
                                     //download the chunks and reconstruct the original bytes
                                     //get the data
@@ -354,7 +353,7 @@ var Browser = React.createClass({
                                         message: "Downloading file "+ name, 
                                         settings: {"timeout":  5000} 
                                     });
-                                    treenode.getInputStream(userContext, size).then(function(buf) {
+                                    treeNode.getInputStream(userContext, size).then(function(buf) {
                                         console.log("reading "+ name + " with size "+ size);
 			                            return buf.read(size).then(function(originalData) {
                                             openItem(name, originalData);
@@ -367,7 +366,7 @@ var Browser = React.createClass({
                                        name: name,
                                        isDir: isDir,
                                        size: size,
-                                       filePointer: retrievedFilePointer
+                                       filePointer: treeNode
 			            	    }
                             }.bind(this));
 
@@ -455,22 +454,9 @@ var Browser = React.createClass({
                             const filename = this.file_name;
                             console.log("upload file-name " + filename +" with data-length "+ data.length);
                                 
-            
-                            const fileKey = SymmetricKey.random();
-                            const rootRKey = browser.lastRetrievedFilePointer().filePointer.baseKey;
-                            const owner = browser.lastRetrievedFilePointer().filePointer.owner;
-                            const dirMapKey = browser.lastRetrievedFilePointer().filePointer.mapKey;
-                            const writer = browser.entryPoint().filePointer.writer;
-                            const dirAccess =  browser.lastRetrievedFilePointer().fileAccess;
                             const currentPath =  browser.currentPath();
-			    const parentLocation = new Location(owner, writer, dirMapKey);
-			    const dirParentKey = dirAccess.getParentKey(rootRKey);
 
-                            const file = new FileUploader(filename, data, fileKey, parentLocation, dirParentKey);
-                            return file.upload(userContext, owner, writer).then(function(fileLocation) {
-                                dirAccess.addFile(fileLocation, rootRKey, fileKey);
-                                return userContext.uploadChunk(dirAccess, [], owner, writer, dirMapKey);
-                            }).then(function() {
+                            return browser.lastRetrievedFilePointer().uploadFile(filename, data, userContext).then(function() {
                                 
                                 $.toaster(
                                 {

@@ -852,15 +852,23 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 	    console.log(entrypoints);
 	    var globalRoot = FileTreeNode.ROOT;
 	    var proms = [];
+	    var getAncestors = function(treeNode, context) {
+		return treeNode.getParent(context).then(function(parent) {
+		    if (parent == null)
+			return Promise.resolve(true);
+		    parent.addChild(treeNode);
+		    return getAncestors(parent, context);
+		});
+	    }
 	    for (var i=0; i < entrypoints.length; i++) {
 		var current = entrypoints[i];
-		//proms.push();
+		proms.push(getAncestors(current));
 	    }
 	    return Promise.all(proms).then(function(res) {
 		return Promise.resolve(globalRoot);
 	    });
-	});
-    }
+	}.bind(this));
+    }.bind(this);
 
 // [SymmetricLocationLink], SymmetricKey
     this.retrieveAllMetadata = function(links, baseKey) {
@@ -964,31 +972,39 @@ ReadableFilePointer.deserialize = function(arr) {
 function FileTreeNode(pointer, ownername, readers, writers) {
     var pointer = pointer; // O/W/M/K + FileAccess
     var children = [];
+    var childrenByName = {};
     var owner = ownername;
     var readers = readers;
     var writers = writers;
 
-    this.addChild = function(name, child) {
-	if (children[name] != null)
-	    throw "Child already exists with name: "+name;
-	children[name] = child;
+    this.addChild = function(child) {
+	var name = child.getFileProperties().name;
+	if (childrenByName[name] != null) {
+	    if (pointer != null) {
+		throw "Child already exists with name: "+name;
+	    } else
+		return;
+	}
+	children.push(child);
+	childrenByName[name] = child;
     }
 
     this.getParent = function(context) {
 	if (pointer == null)
-	    return null;
-	var parentRFP = pointer.fileAccess.getParent(pointer.filePointer.baseKey, context);
-	if (parentRFP == null)
-	    return FileTreeNode.ROOT;
-	return new FileTreeNode(parentRFP, owner, [], []);
+	    return Promise.resolve(null);
+	return pointer.fileAccess.getParent(pointer.filePointer.baseKey, context).then(function(parentRFP) {
+	    if (parentRFP == null)
+		return Promise.resolve(FileTreeNode.ROOT);
+	    return Promsie.resolve(new FileTreeNode(parentRFP, owner, [], []));
+	});
     }
 
     this.getChildren = function(context) {
 	if (this == FileTreeNode.ROOT)
 	    return Promise.resolve(children);
-	if (children.length == 0)
-	    return retrieveChildren(context);
-	return Promise.resolve(children);
+	return retrieveChildren(context).then(function(childrenRFPs){
+	    return Promise.resolve(childrenRFPs.map(function(x) {return new FileTreeNode(x, owner, readers, writers);}));
+	});
     }
 
     var retrieveChildren = function(context) {
@@ -1001,6 +1017,23 @@ function FileTreeNode(pointer, ownername, readers, writers) {
 
     this.isDirectory = function() {
 	return pointer.fileAccess.isDirectory();
+    }
+
+    this.uploadFile = function(filename, data, context) {
+	const fileKey = SymmetricKey.random();
+        const rootRKey = pointer.filePointer.baseKey;
+        const owner = pointer.filePointer.owner;
+        const dirMapKey = pointer.filePointer.mapKey;
+        const writer = pointer.filePointer.writer;
+        const dirAccess = pointer.fileAccess;
+	const parentLocation = new Location(owner, writer, dirMapKey);
+	const dirParentKey = dirAccess.getParentKey(rootRKey);
+	
+        const file = new FileUploader(filename, data, fileKey, parentLocation, dirParentKey);
+        return file.upload(context, owner, writer).then(function(fileLocation) {
+            dirAccess.addFile(fileLocation, rootRKey, fileKey);
+            return userContext.uploadChunk(dirAccess, [], owner, writer, dirMapKey);
+        })
     }
 
     this.getInputStream = function(context, size) {
@@ -1224,6 +1257,8 @@ function FileAccess(parent2meta, properties, retriever, parentLink) {
     }
 
     this.getParent = function(parentKey, context) {
+	if (this.parentLink == null)
+	    return Promise.resolve(null);
 	return context.retrieveAllMetadata([this.parentLink], parentKey).then(
 	    function(res) {
 		const retrievedFilePointer = res.map(function(entry) {
