@@ -1015,12 +1015,12 @@ function FileTreeNode(pointer, ownername, readers, writers) {
         return fileAccess.getChildren(userContext, rootDirKey)
     }
 
-    var getEntryPointWriterKey = function(context) {
+    this.getEntryPointWriterKey = function(context) {
 	return this.getParent(context).then(function(parent) {
 	    if (parent == FileTreeNode.ROOT)
 		return Promise.resolve(pointer.filePointer.writer);
 	    return parent.getEntryPointWriterKey(context);
-	});
+	}.bind(this));
     }.bind(this);
 
     this.isDirectory = function() {
@@ -1038,10 +1038,12 @@ function FileTreeNode(pointer, ownername, readers, writers) {
 	const dirParentKey = dirAccess.getParentKey(rootRKey);
 	
         const file = new FileUploader(filename, data, fileKey, parentLocation, dirParentKey);
-        return file.upload(context, owner, writer).then(function(fileLocation) {
-            dirAccess.addFile(fileLocation, rootRKey, fileKey);
-            return userContext.uploadChunk(dirAccess, [], owner, writer, dirMapKey);
-        })
+	return this.getEntryPointWriterKey(context).then(function(entryWriter) {
+            return file.upload(context, owner, entryWriter).then(function(fileLocation) {
+		dirAccess.addFile(fileLocation, rootRKey, fileKey);
+		return userContext.uploadChunk(dirAccess, [], owner, entryWriter, dirMapKey);
+            });
+	});
     }
 
     this.mkdir = function(newFolderName, context) {
@@ -1050,7 +1052,7 @@ function FileTreeNode(pointer, ownername, readers, writers) {
 	const dirPointer = pointer.filePointer;
 	const dirAccess = pointer.fileAccess;
     	var rootDirKey = dirPointer.baseKey;
-	return getEntryPointWriterKey(context).then(function(entryWriter) {
+	return this.getEntryPointWriterKey(context).then(function(entryWriter) {
 	    return dirAccess.mkdir(newFolderName, context, entryWriter, dirPointer.mapKey, rootDirKey);
 	});
     }
