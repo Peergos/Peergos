@@ -1015,6 +1015,14 @@ function FileTreeNode(pointer, ownername, readers, writers) {
         return fileAccess.getChildren(userContext, rootDirKey)
     }
 
+    var getEntryPointWriterKey = function(context) {
+	return this.getParent(context).then(function(parent) {
+	    if (parent == FileTreeNode.ROOT)
+		return Promise.resolve(pointer.filePointer.writer);
+	    return parent.getEntryPointWriterKey(context);
+	});
+    }.bind(this);
+
     this.isDirectory = function() {
 	return pointer.fileAccess.isDirectory();
     }
@@ -1034,6 +1042,17 @@ function FileTreeNode(pointer, ownername, readers, writers) {
             dirAccess.addFile(fileLocation, rootRKey, fileKey);
             return userContext.uploadChunk(dirAccess, [], owner, writer, dirMapKey);
         })
+    }
+
+    this.mkdir = function(newFolderName, context) {
+	if (!this.isDirectory())
+	    return Promise.resolve(false);
+	const dirPointer = pointer.filePointer;
+	const dirAccess = pointer.fileAccess;
+    	var rootDirKey = dirPointer.baseKey;
+	return getEntryPointWriterKey(context).then(function(entryWriter) {
+	    return dirAccess.mkdir(newFolderName, context, entryWriter, dirPointer.mapKey, rootDirKey);
+	});
     }
 
     this.getInputStream = function(context, size) {

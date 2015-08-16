@@ -633,10 +633,7 @@ var Browser = React.createClass({
                     else {
                         console.log("creating new sub-dir "+ newFolderName);
                         const lastRetrievedFilePointer =  this.lastRetrievedFilePointer();
-		                const dirPointer = lastRetrievedFilePointer.filePointer;
-		                const dirAccess = lastRetrievedFilePointer.fileAccess;
-    		            var rootDirKey = dirPointer.baseKey;
-	    			    return dirAccess.mkdir(newFolderName, userContext, this.entryPointWriterKey(), dirPointer.mapKey, rootDirKey)
+	    		return lastRetrievedFilePointer.mkdir(newFolderName, userContext)
                             .then(this.loadFilesFromServer);
                     }
                 }.bind(this));
