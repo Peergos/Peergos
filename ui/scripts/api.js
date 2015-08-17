@@ -968,7 +968,7 @@ ReadableFilePointer.deserialize = function(arr) {
     return new ReadableFilePointer(UserPublicKey.fromPublicKeys(owner), writer, mapKey, new SymmetricKey(rootDirKeySecret));
 }
 
-// RetrievedFilePointer
+// RetrievedFilePointer, string, [string], [string]
 function FileTreeNode(pointer, ownername, readers, writers) {
     var pointer = pointer; // O/W/M/K + FileAccess
     var children = [];
@@ -989,13 +989,20 @@ function FileTreeNode(pointer, ownername, readers, writers) {
 	childrenByName[name] = child;
     }
 
+    this.isWritable = function() {
+	return pointer.filePointer.writer instanceof User;
+    }
+
     this.getParent = function(context) {
 	if (pointer == null)
 	    return Promise.resolve(null);
-	return pointer.fileAccess.getParent(pointer.filePointer.baseKey, context).then(function(parentRFP) {
+	var parentKey = pointer.filePointer.baseKey;
+	if (this.isDirectory())
+	    parentKey = pointer.fileAccess.getParentKey(parentKey);
+	return pointer.fileAccess.getParent(parentKey, context).then(function(parentRFP) {
 	    if (parentRFP == null)
 		return Promise.resolve(FileTreeNode.ROOT);
-	    return Promsie.resolve(new FileTreeNode(parentRFP, owner, [], []));
+	    return Promise.resolve(new FileTreeNode(parentRFP, owner, [], []));
 	});
     }
 
@@ -1336,8 +1343,8 @@ FileAccess.create = function(parentKey, props, retriever, parentLocation, parent
                 concat(nonce, metaKey.encrypt(props.serialize(), nonce)), retriever, SymmetricLocationLink.create(parentKey, parentparentKey, parentLocation));
 }
 
-function DirAccess(subfolders2files, subfolders2parent, subfolders, files, parent2meta, properties, retriever) {
-    FileAccess.call(this, parent2meta, properties, retriever);
+function DirAccess(subfolders2files, subfolders2parent, subfolders, files, parent2meta, properties, retriever, parentLink) {
+    FileAccess.call(this, parent2meta, properties, retriever, parentLink);
     this.subfolders2files = subfolders2files;
     this.subfolders2parent = subfolders2parent;
     this.subfolders = subfolders;
@@ -1435,7 +1442,9 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
             throw "Can't modify a directory without write permission (writer must be a User)!";    
         const dirReadKey = SymmetricKey.random();
         const dirMapKey = window.nacl.randomBytes(32); // root will be stored under this in the core node
-        const dir = DirAccess.create(null, dirReadKey, new FileProperties(name, 0));
+	const ourParentKey = this.getParentKey(baseKey);
+	const ourLocation = new Location(userContext.user, writer, ourMapKey);
+        const dir = DirAccess.create(null, dirReadKey, new FileProperties(name, 0), ourLocation, ourParentKey);
 	const that = this;
 	    return userContext.uploadChunk(dir, [], userContext.user, writer, dirMapKey)
                 .then(function(success) {
@@ -1449,13 +1458,7 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
     }
 
     this.addSubdir = function(location, ourSubfolders, targetBaseKey) {
-        var nonce = ourSubfolders.createNonce();
-        var loc = location.encrypt(ourSubfolders, nonce);
-        var link = concat(nonce, ourSubfolders.encrypt(targetBaseKey.key, nonce));
-        var buf = new ByteArrayOutputStream();
-        buf.writeArray(link);
-        buf.writeArray(loc);
-        this.subfolders.push(new SymmetricLocationLink(buf.toByteArray()));
+        this.subfolders.push(SymmetricLocationLink.create(ourSubfolders, targetBaseKey, location));
     }
 }
 
@@ -1473,22 +1476,25 @@ DirAccess.deserialize = function(base, bin) {
         files[i] = new SymmetricLocationLink(bin.readArray());
     return new DirAccess(new SymmetricLink(s2f),
                          new SymmetricLink(s2p),
-                         subfolders, files, base.parent2meta, base.properties, base.retriever);
+                         subfolders, files, base.parent2meta, base.properties, base.retriever, base.parentLink);
 }
 
 // User, SymmetricKey, FileProperties
 //TODO remove owner arg.
-DirAccess.create = function(owner, subfoldersKey, metadata) {
+DirAccess.create = function(owner, subfoldersKey, metadata, parentLocation, parentParentKey) {
     var metaKey = SymmetricKey.random();
     var parentKey = SymmetricKey.random();
     var filesKey = SymmetricKey.random();
     var metaNonce = metaKey.createNonce();
+    var parentLink = parentLocation == null ? null : SymmetricLocationLink.create(parentKey, parentParentKey, parentLocation);
     return new DirAccess(SymmetricLink.fromPair(subfoldersKey, filesKey, subfoldersKey.createNonce()),
-             SymmetricLink.fromPair(subfoldersKey, parentKey, subfoldersKey.createNonce()),
-             [], [],
-             SymmetricLink.fromPair(parentKey, metaKey, parentKey.createNonce()),
-             concat(metaNonce, metaKey.encrypt(metadata.serialize(), metaNonce))
-            );
+			 SymmetricLink.fromPair(subfoldersKey, parentKey, subfoldersKey.createNonce()),
+			 [], [],
+			 SymmetricLink.fromPair(parentKey, metaKey, parentKey.createNonce()),
+			 concat(metaNonce, metaKey.encrypt(metadata.serialize(), metaNonce)),
+			 null,
+			 parentLink
+			);
 }
 
 function FileRetriever() {
