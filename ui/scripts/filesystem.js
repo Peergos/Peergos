@@ -226,23 +226,6 @@ var File = React.createClass({
 		}.bind(this));
         },
     
-        writerFilePointer: function() {
-                var  entryPointFilePointer;
-                try  {
-                    entryPointFilePointer = this.props.browser.entryPoint().filePointer;
-                } catch(err)  {
-                    return this.props.retrievedFilePointer.filePointer;
-                }
-
-                const current = this.props.retrievedFilePointer.filePointer;
-
-                return new ReadableFilePointer(
-                                current.owner,
-                                entryPointFilePointer.writer,
-                                current.mapKey,
-                                current.baseKey);
-        },
-
         renderList: function() {
                 //var dateString =  new Date(this.props.time*1000).toGMTString()
                 var glyphClass = this.glyphClass();
