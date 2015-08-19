@@ -848,12 +848,12 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 
     this.getTreeRoot = function() {
 	return this.getRoots().then(function(roots){
-	    var entrypoints = roots.map(function(x) {return new FileTreeNode(new RetrievedFilePointer(x[0].pointer, x[1]), x[0].owner, x[0].readers, x[0].writers);});
+	    var entrypoints = roots.map(function(x) {return new FileTreeNode(new RetrievedFilePointer(x[0].pointer, x[1]), x[0].owner, x[0].readers, x[0].writers, x[0].pointer.writer);});
 	    console.log(entrypoints);
 	    var globalRoot = FileTreeNode.ROOT;
 	    var proms = [];
 	    var getAncestors = function(treeNode, context) {
-		return treeNode.getParent(context).then(function(parent) {
+		return treeNode.retrieveParent(context).then(function(parent) {
 		    if (parent == null)
 			return Promise.resolve(true);
 		    parent.addChild(treeNode);
@@ -969,13 +969,14 @@ ReadableFilePointer.deserialize = function(arr) {
 }
 
 // RetrievedFilePointer, string, [string], [string]
-function FileTreeNode(pointer, ownername, readers, writers) {
+function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
     var pointer = pointer; // O/W/M/K + FileAccess
     var children = [];
     var childrenByName = {};
     var owner = ownername;
     var readers = readers;
     var writers = writers;
+    var entryWriterKey = entryWriterKey;
 
     this.addChild = function(child) {
 	var name = child.getFileProperties().name;
@@ -993,7 +994,7 @@ function FileTreeNode(pointer, ownername, readers, writers) {
 	return pointer.filePointer.writer instanceof User;
     }
 
-    this.getParent = function(context) {
+    this.retrieveParent = function(context) {
 	if (pointer == null)
 	    return Promise.resolve(null);
 	var parentKey = pointer.filePointer.baseKey;
@@ -1002,7 +1003,7 @@ function FileTreeNode(pointer, ownername, readers, writers) {
 	return pointer.fileAccess.getParent(parentKey, context).then(function(parentRFP) {
 	    if (parentRFP == null)
 		return Promise.resolve(FileTreeNode.ROOT);
-	    return Promise.resolve(new FileTreeNode(parentRFP, owner, [], []));
+	    return Promise.resolve(new FileTreeNode(parentRFP, owner, [], [], entryWriterKey));
 	});
     }
 
@@ -1010,7 +1011,7 @@ function FileTreeNode(pointer, ownername, readers, writers) {
 	if (this == FileTreeNode.ROOT)
 	    return Promise.resolve(children);
 	return retrieveChildren(context).then(function(childrenRFPs){
-	    return Promise.resolve(childrenRFPs.map(function(x) {return new FileTreeNode(x, owner, readers, writers);}));
+	    return Promise.resolve(childrenRFPs.map(function(x) {return new FileTreeNode(x, owner, readers, writers, entryWriterKey);}));
 	});
     }
 
@@ -1021,14 +1022,6 @@ function FileTreeNode(pointer, ownername, readers, writers) {
 
         return fileAccess.getChildren(userContext, rootDirKey)
     }
-
-    this.getEntryPointWriterKey = function(context) {
-	return this.getParent(context).then(function(parent) {
-	    if (parent == FileTreeNode.ROOT)
-		return Promise.resolve(pointer.filePointer.writer);
-	    return parent.getEntryPointWriterKey(context);
-	}.bind(this));
-    }.bind(this);
 
     this.isDirectory = function() {
 	return pointer.fileAccess.isDirectory();
@@ -1045,11 +1038,9 @@ function FileTreeNode(pointer, ownername, readers, writers) {
 	const dirParentKey = dirAccess.getParentKey(rootRKey);
 	
         const file = new FileUploader(filename, data, fileKey, parentLocation, dirParentKey);
-	return this.getEntryPointWriterKey(context).then(function(entryWriter) {
-            return file.upload(context, owner, entryWriter).then(function(fileLocation) {
-		dirAccess.addFile(fileLocation, rootRKey, fileKey);
-		return userContext.uploadChunk(dirAccess, [], owner, entryWriter, dirMapKey);
-            });
+        return file.upload(context, owner, entryWriterKey).then(function(fileLocation) {
+	    dirAccess.addFile(fileLocation, rootRKey, fileKey);
+	    return userContext.uploadChunk(dirAccess, [], owner, entryWriterKey, dirMapKey);
 	});
     }
 
@@ -1059,9 +1050,32 @@ function FileTreeNode(pointer, ownername, readers, writers) {
 	const dirPointer = pointer.filePointer;
 	const dirAccess = pointer.fileAccess;
     	var rootDirKey = dirPointer.baseKey;
-	return this.getEntryPointWriterKey(context).then(function(entryWriter) {
-	    return dirAccess.mkdir(newFolderName, context, entryWriter, dirPointer.mapKey, rootDirKey);
-	});
+	return dirAccess.mkdir(newFolderName, context, entryWriterKey, dirPointer.mapKey, rootDirKey);
+    }
+
+    this.rename = function(newName, context) {
+	//get current props
+        const filePointer = pointer.filePointer;
+        const baseKey = filePointer.baseKey;
+        const fileAccess = pointer.fileAccess;
+	
+        const key = this.isDirectory() ? fileAccess.getParentKey(baseKey) : baseKey; 
+        const currentProps = fileAccess.getFileProperties(key);
+	
+        const newProps = new FileProperties(newName, currentProps.size);
+	
+        return fileAccess.rename(writableFilePointer(), newProps, context);
+    }
+
+    var writableFilePointer = function() {
+	const filePointer = pointer.filePointer;
+	const fileAccess = pointer.fileAccess;
+	const baseKey = filePointer.baseKey;
+	return new ReadableFilePointer(filePointer.owner, entryWriterKey, filePointer.mapKey, baseKey);
+    }.bind(this);
+
+    this.remove = function(context) {
+	return new RetrievedFilePointer(writableFilePointer(), pointer.fileAccess).remove(context);
     }
 
     this.getInputStream = function(context, size) {
@@ -1074,7 +1088,7 @@ function FileTreeNode(pointer, ownername, readers, writers) {
 	return pointer.fileAccess.getFileProperties(parentKey);
     }
 }
-FileTreeNode.ROOT = new FileTreeNode(null, null, [], []);
+FileTreeNode.ROOT = new FileTreeNode(null, null, [], [], null);
 
 //ReadableFilePointer, FileAccess
 function RetrievedFilePointer(pointer, access) {

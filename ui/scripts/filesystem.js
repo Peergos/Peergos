@@ -210,7 +210,7 @@ var File = React.createClass({
         },
 
         remove: function() {
-	    new RetrievedFilePointer(this.writerFilePointer(), this.props.retrievedFilePointer.fileAccess).remove(userContext).then(function(){
+	    return this.props.retrievedFilePointer.remove(userContext).then(function(){
 		this.props.browser.loadFilesFromServer();
 	    }.bind(this));
 	},
@@ -219,17 +219,8 @@ var File = React.createClass({
                 const newName = prompt("Specify updated name for "+ this.props.name);
                 if (newName == null)
                         return;
-                //get current props
-                const filePointer = this.props.retrievedFilePointer.filePointer;
-                const baseKey = filePointer.baseKey;
-                const fileAccess = this.props.retrievedFilePointer.fileAccess;
 
-                const key = fileAccess.isDirectory() ? fileAccess.getParentKey(baseKey) : baseKey; 
-                const currentProps = fileAccess.getFileProperties(key);
-
-                const newProps = new FileProperties(newName, currentProps.size);
-
-                fileAccess.rename(this.writerFilePointer(), newProps, userContext).then(function() {
+                const filePointer = this.props.retrievedFilePointer.rename(newName, userContext).then(function() {
                     //now reload the view
                     this.props.browser.loadFilesFromServer();
 		}.bind(this));
