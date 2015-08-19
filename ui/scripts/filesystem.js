@@ -287,11 +287,6 @@ File.sizeString =  function(sizeBytes) {
         return "" + (count|0) +" "+ File.sizes[iUnit].unit;   
 }
 
-function updateNavbarPath(path) {
-        var elem  = document.getElementById("pathSpan");
-        elem.innerHTML = '<span class="glyphicon glyphicon-chevron-right"/>' +path;
-}
-
 var Browser = React.createClass({
         getInitialState: function() {
                 return {files: [],
@@ -367,7 +362,7 @@ var Browser = React.createClass({
                                 gridView: this.state.gridView, 
                                 retrievedFilePointerPath: this.state.retrievedFilePointerPath 
                             }, function() {
-                                    updateNavbarPath(this.currentPath());
+                                    this.updateNavbarPath(this.currentPath());
                             }.bind(this)); 
                 }.bind(this);
 
@@ -384,6 +379,28 @@ var Browser = React.createClass({
                         callback(children);
                     }.bind(this));
                 }    
+        },
+
+        pathAsButtons: function(){
+                 return this.state.retrievedFilePointerPath.map(function(e) {
+                    const props = e.getFileProperties();
+                    const name = props.name;
+                    const index = this.state.retrievedFilePointerPath.indexOf(e);
+                    const path = this.state.retrievedFilePointerPath.slice(0, index+1);
+                    const onClick = function() {
+                        this.state.retrievedFilePointerPath = path;
+                        this.loadFilesFromServer();
+                    }.bind(this);
+                    return (<button className="btn btn-default" onClick={onClick}>{name}</button>)
+                }.bind(this));
+        },
+
+        updateNavbarPath: function(path){
+            const buttons = this.pathAsButtons();
+            const elem = (<div> 
+                            {buttons}
+                            </div>)
+            React.render(elem, document.getElementById("pathSpan"));
         },
         onParent: function() {
                     requireSignedIn(function()  {
