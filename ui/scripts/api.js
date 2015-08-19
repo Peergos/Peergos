@@ -1090,6 +1090,10 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 }
 FileTreeNode.ROOT = new FileTreeNode(null, null, [], [], null);
 
+function logout() {
+    FileTreeNode.ROOT = new FileTreeNode(null, null, [], [], null);
+}
+
 //ReadableFilePointer, FileAccess
 function RetrievedFilePointer(pointer, access) {
     this.filePointer = pointer;
