@@ -391,7 +391,9 @@ var Browser = React.createClass({
                         this.state.retrievedFilePointerPath = path;
                         this.loadFilesFromServer();
                     }.bind(this);
-                    return (<button className="btn btn-default" onClick={onClick}>{name}</button>)
+                    const className = index == this.state.retrievedFilePointerPath.length -1 ? "btn-primary" : "btn-default";
+
+                    return (<button className={"btn "+className} onClick={onClick}>{name}</button>)
                 }.bind(this));
         },
 
@@ -549,6 +551,7 @@ var Browser = React.createClass({
                 userContext = null;
                 this.setState(this.getInitialState(),
                 function() {
+                        this.updateNavbarPath((<div/>));
                         $("#login-form").css("display","block");
                         $("#logout").html("");
                 });
