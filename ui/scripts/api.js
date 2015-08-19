@@ -715,6 +715,14 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
         }.bind(this));
     }
 
+    this.getSharingFolder = function() {
+	//TODO
+    }
+
+    this.getFriends = function() {
+	//TODO
+    }
+
     // UserPublicKey, RetrievedFilePointer
     this.sendFriendRequest = function(targetUser, sharingFolder) {
         return this.corenodeClient.getUsername(targetUser.getPublicKeys()).then(function(name) {	    

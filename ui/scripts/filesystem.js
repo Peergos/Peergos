@@ -532,6 +532,7 @@ var Browser = React.createClass({
             console.log("User logging out.");
             requireSignedIn(function() {
                 userContext = null;
+		logout();
                 this.setState(this.getInitialState(),
                 function() {
                         this.updateNavbarPath((<div/>));
