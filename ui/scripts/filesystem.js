@@ -398,13 +398,6 @@ var Browser = React.createClass({
                 }.bind(this));
         },
 
-        onBack : function() {
-                requireSignedIn(function()  {
-                    //TODO something more appropriate
-                    this.onParent();
-                }.bind(this));
-        },
-
         onUpload: function() {
                 requireSignedIn(function()  {
                 $('#uploadInput').click();
@@ -544,14 +537,10 @@ var Browser = React.createClass({
 
         componentDidMount: function() {
                 this.loadFilesFromServer();
-                var backButton = document.getElementById("backButton");
-                backButton.onclick = this.onBack;
                 var uploadButton = document.getElementById("uploadButton");
                 uploadButton.onclick = this.onUpload;
                 var userOptionsButton = document.getElementById("userOptionsButton");
                 userOptionsButton.onclick = this.onUser;
-                var parentButton = document.getElementById("parentButton");
-                parentButton.onclick = this.onParent;
                 var uploadInput = document.getElementById("uploadInput"); 
                 uploadInput.addEventListener("change", this.uploadFile(), false);
                 var mkdirButton = document.getElementById("mkdirButton"); 
