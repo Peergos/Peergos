@@ -1,20 +1,19 @@
 package peergos.storage;
 
-import peergos.crypto.*;
-import peergos.util.*;
+import java.io.*;
 
 public interface Storage
 {
 
-    boolean isWaitingFor(byte[] key);
+    long remainingSpace();
 
-    boolean accept(ByteArrayWrapper fragmentHash, int size, UserPublicKey owner, byte[] sharingKey, byte[] mapKey, byte[] proof);
+    boolean put(String key, byte[] value) throws IOException;
 
-    boolean put(ByteArrayWrapper key, byte[] value);
+    boolean remove(String key) throws IOException;
 
-    byte[] get(ByteArrayWrapper key);
+    byte[] get(String key) throws IOException;
 
-    boolean contains(ByteArrayWrapper key);
+    boolean contains(String key) throws IOException;
 
-    int sizeOf(ByteArrayWrapper key);
+    int sizeOf(String key);
 }

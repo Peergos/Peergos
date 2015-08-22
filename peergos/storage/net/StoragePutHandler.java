@@ -12,7 +12,7 @@ import java.io.InputStream;
 public class StoragePutHandler extends StorageGetHandler
 {
 
-    public StoragePutHandler(Storage storage, String url)
+    public StoragePutHandler(StorageWrapper storage, String url)
     {
         super(storage, url);
     }

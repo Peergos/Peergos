@@ -10,10 +10,10 @@ import java.io.IOException;
 
 public class StorageGetHandler implements HttpHandler
 {
-    protected final Storage storage;
+    protected final StorageWrapper storage;
     protected final String uri;
 
-    public StorageGetHandler(Storage storage, String url)
+    public StorageGetHandler(StorageWrapper storage, String url)
     {
         this.storage = storage;
         this.uri = url;

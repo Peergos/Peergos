@@ -29,7 +29,7 @@ public class Router
     private SortedMap<Long, Node> leftNeighbours = new TreeMap();
     private SortedMap<Long, Node> rightNeighbours = new TreeMap();
     private SortedMap<Long, Node> friends = new TreeMap();
-    public final Storage storage;
+    public final StorageWrapper storage;
     public Logger LOGGER;
     private final Map<ByteArrayWrapper, peergos.util.CompletableFuture> pendingPuts = new ConcurrentHashMap<>();
     private final Map<ByteArrayWrapper, peergos.util.CompletableFuture> pendingGets = new ConcurrentHashMap<>();
@@ -47,7 +47,7 @@ public class Router
         Handler handler = new FileHandler("log/" + name + ".log", 10 * 1024 * 1024, 7);
         LOGGER.addHandler(handler);
         LOGGER.setLevel(Level.ALL);
-        storage = new DiskStorage(donor, new File(DATA_DIR), MAX_STORAGE_SIZE, messengerAddress);
+        storage = new StorageWrapper(new DiskStorage(new File(DATA_DIR), MAX_STORAGE_SIZE), donor, messengerAddress);
 
         String hostname = Args.getArg("domain", "localhost");
 

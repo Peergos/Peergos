@@ -22,9 +22,9 @@ public class HttpMessenger
     private final Logger LOGGER;
     private final InetSocketAddress local;
     HttpServer httpServer;
-    private final Storage fragments;
+    private final StorageWrapper fragments;
 
-    public HttpMessenger(InetSocketAddress local, Storage fragments, Logger LOGGER, Router router) throws IOException
+    public HttpMessenger(InetSocketAddress local, StorageWrapper fragments, Logger LOGGER, Router router) throws IOException
     {
         this.LOGGER = LOGGER;
         this.local = local;
