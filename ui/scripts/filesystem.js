@@ -36,7 +36,7 @@ function openItem(name, data) {
     ae.click();
 }
 
-var userOptions = React.createClass({
+const UserOptions = React.createClass({
         /**
          *
          *  send friend request
@@ -50,11 +50,37 @@ var userOptions = React.createClass({
          *  show shares
          *
          */
+        /*
     getInitialState : function() {
+            return {}
     },
     componentDidMount: function() {
+
     },
+    */
+    submitFriendRequest: function(targetUsername) {
+            //TODO
+        const  sharingDirectory =  this.props.browser.lastRetrievedFilePointer();
+        
+        new CoreNodeClient().getPublicKey(targetUsername)
+                .then(function(targetPublicKeyData) {
+                    const targetPublicKey = UserPublicKey.fromPublicKeys(targetPublicKeyData);
+                    console.log("Got public key for user "+  targetUsername);
+                    return userContext.sendFriendRequest(targetPublicKey, sharingDirectory);
+                }).then(function() {
+                    populateModalAndShow("Success!", "<p>Friend request sent!</p>")
+                });
+    },
+    
     render: function() {
+            return (
+                    <div>
+                            <div  className="form-group">
+                                <input placeholder="Friend name" id="friend-name-input" className="form-control" type="text"/>
+                            </div>
+                            <button className="btn btn-success" onClick={this.submitFriendRequest}>Submit friend request</button>
+                    </div>)
+
     }
 });
 
@@ -406,9 +432,14 @@ var Browser = React.createClass({
         
         onUser: function() {
                 requireSignedIn(function()  {
-                $('#userOptionsButton').click();
-                });
 
+                $('#modal-title').html("User options");
+                React.render(
+                    <UserOptions browser={this}/>, 
+                    document.getElementById('modal-body')
+                );
+                $('#modal').modal("show");   
+            }.bind(this));
         },
 
         alternateView: function() {
@@ -531,7 +562,7 @@ var Browser = React.createClass({
                         this.updateNavbarPath((<div/>));
                         $("#login-form").css("display","block");
                         $("#logout").html("");
-                });
+                }.bind(this));
             }.bind(this));
         },
 
@@ -553,6 +584,7 @@ var Browser = React.createClass({
                 signupButton.onclick = this.signup; 
                 var passwordInput= document.getElementById("login-password-input");
                 passwordInput.onkeypress=this.loginOnEnter;
+
         },
 
         updateSort: function(sort) {
