@@ -31,7 +31,7 @@ function UserPublicKey(publicSignKey, publicBoxKey) {
         return nacl.sign.open(sig, this.pSignKey);
     }
 }
-
+//Uint8Array => UserPublicKey
 UserPublicKey.fromPublicKeys = function(both) {
     var pSign = slice(both, 0, 32);
     var pBox = slice(both, 32, 64);
