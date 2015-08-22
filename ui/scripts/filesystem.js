@@ -19,6 +19,16 @@ requireSignedIn = function(callback) {
         callback();
 }
 
+startInProgess = function() {
+    var element = document.getElementById("inProgress");
+    element.className += " pong-loader"; 
+}
+
+clearInProgress = function() {
+    var element = document.getElementById("inProgress");
+    element.className = element.className.replace(/pong-loader/, "");
+}
+
 var url;
 var ae = document.createElement("a");
 document.body.appendChild(ae);
@@ -348,12 +358,13 @@ var Browser = React.createClass({
                                         message: "Downloading file "+ name, 
                                         settings: {"timeout":  5000} 
                                     });
+                                    startInProgess();
                                     treeNode.getInputStream(userContext, size).then(function(buf) {
                                         console.log("reading "+ name + " with size "+ size);
 			                            return buf.read(size).then(function(originalData) {
                                             openItem(name, originalData);
                                         });
-                                    });
+                                    }).then(clearInProgress);
                               }.bind(this);
 
                   			  return {
@@ -475,16 +486,19 @@ var Browser = React.createClass({
 
                             return browser.lastRetrievedFilePointer().uploadFile(filename, data, userContext).then(function() {
                                 
-                                $.toaster(
+                            clearInProgress();
+                            $.toaster(
                                 {
                                     priority: "success",
                                     message: "File "+ filename  +" uploaded to  "+ currentPath,
                                     settings: {"timeout":  5000} 
                                 });
-                                browser.loadFilesFromServer();
+                            browser.loadFilesFromServer();
                             });
                         };
-                            $.toaster(
+                        
+                        startInProgess(); 
+                        $.toaster(
                             {
                                 priority: "info",
                                 message: "Uploading file  "+ name,
@@ -638,18 +652,20 @@ var Browser = React.createClass({
                     const newFolderName = prompt("Enter new folder name");
                     if (newFolderName == null)
                         return;
-                
+                    startInProgess(); 
                     const isEmpty =  this.state.retrievedFilePointerPath.length == 0;
                     if (isEmpty) {
                         //create new root-dir
                         console.log("creating new entry-point "+ newFolderName);
                         return userContext.createEntryDirectory(newFolderName)
+                            .then(clearInProgress)
                             .then(this.loadFilesFromServer);
                     }
                     else {
                         console.log("creating new sub-dir "+ newFolderName);
                         const lastRetrievedFilePointer =  this.lastRetrievedFilePointer();
 	    		return lastRetrievedFilePointer.mkdir(newFolderName, userContext)
+                            .then(clearInProgress)
                             .then(this.loadFilesFromServer);
                     }
                 }.bind(this));
