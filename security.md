@@ -19,4 +19,4 @@ Threat Model
 
 3. Users willing to trust our SSL certificate, can access Peergos through our web interface over https. The more paranoid user can download and run the server locally and browse to localhost.
 
-4. Peergos should be secure against attackers with read access to a users machine which is not synchronous with them have the web user interface open in a browser. 
+4. Peergos should be secure against attackers with read access to a users machine which is not synchronous with the web user interface being open in a browser. 
