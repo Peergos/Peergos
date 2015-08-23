@@ -888,7 +888,9 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
             for (var i=0; i < count; i++) {
                 var entry = EntryPoint.decryptAndDeserialize(buf.readArray(), context.user, context.user);
                 res.push(entry);
+		this.addToStaticData(entry);
             }
+
             // download the metadata blobs for these entry points
             var proms = [];
             for (var i=0; i < res.length; i++)
@@ -903,9 +905,9 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
                         entryPoints.push([res[i], null]);
                 }
                 return Promise.resolve(entryPoints);
-            });
-        });
-    }
+            }.bind(this));
+        }.bind(this));
+    }.bind(this);
 
     this.getTreeRoot = function() {
 	return Promise.resolve(this.rootNode);
