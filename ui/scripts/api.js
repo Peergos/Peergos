@@ -782,7 +782,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 	    sharing.mkdir(targetUsername, this).then(function(friendRoot) {
 		
 		// add a note to our static data so we know who we sent the read access to
-		const entry = new EntryPoint(friendRoot, this.username, [], [name]);
+		const entry = new EntryPoint(friendRoot.readOnly(), this.username, [targetUsername], []);
 		return this.addToStaticData(entry).then(function(res) {
                     // send details to allow friend to follow us, and optionally let us follow them		
                     // create a tmp keypair whose public key we can prepend to the request without leaking information
@@ -1004,6 +1004,13 @@ function ReadableFilePointer(owner, writer, mapKey, baseKey) {
         return bout.toByteArray();
     }
 
+    this.readOnly = function() {
+	if (!this.isWritable())
+	    return this;
+	var publicWriter = UserPublicKey.fromPublicKeys(this.writer.getPublicKeys());
+	return new ReadableFilePointer(this.owner, publicWriter, this.mapKey, this.baseKey);
+    }
+
     this.isWritable = function() {
         return this.writer instanceof User;
     }
@@ -1208,7 +1215,7 @@ function EntryPoint(pointer, owner, readers, writers) {
         dout.writeString(this.owner);
         dout.writeInt(this.readers.length);
         for (var i = 0; i < this.readers.length; i++) {
-            dout.writetring(this.readers[i]);
+            dout.writeString(this.readers[i]);
         }
         dout.writeInt(this.writers.length);
         for (var i=0; i < this.writers.length; i++) {
