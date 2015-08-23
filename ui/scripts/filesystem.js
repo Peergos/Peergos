@@ -69,17 +69,10 @@ const UserOptions = React.createClass({
     },
     */
     submitFriendRequest: function(targetUsername) {
-            //TODO
-        const  sharingDirectory =  this.props.browser.lastRetrievedFilePointer();
-        
-        new CoreNodeClient().getPublicKey(targetUsername)
-                .then(function(targetPublicKeyData) {
-                    const targetPublicKey = UserPublicKey.fromPublicKeys(targetPublicKeyData);
-                    console.log("Got public key for user "+  targetUsername);
-                    return userContext.sendFriendRequest(targetPublicKey, sharingDirectory);
-                }).then(function() {
-                    populateModalAndShow("Success!", "<p>Friend request sent!</p>")
-                });
+        return userContext.sendInitialFollowRequest(document.getElementById("friend-name-input").value).then(function(res) {
+	    if (res)
+		populateModalAndShow("Success!", "<p>Friend request sent!</p>")
+        });
     },
     
     render: function() {

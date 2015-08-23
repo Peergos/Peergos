@@ -471,9 +471,12 @@ function CoreNodeClient() {
     //String -> fn- >fn -> void
     this.getPublicKey = function(username) {
         var buffer = new ByteArrayOutputStream();
-        buffer.writeInt(username.length);
         buffer.writeString(username);
-        return postProm("core/getPublicKey", buffer.toByteArray());
+        return postProm("core/getPublicKey", buffer.toByteArray()).then(function(raw) {
+	    var arr = new ByteArrayInputStream(raw).readArray();
+	    var res = arr.length = 0 ? null : UserPublicKey.fromPublicKeys(arr);
+	    return Promise.resolve(res);
+	});
     };
     
     //UserPublicKey -> Uint8Array -> Uint8Array -> fn -> fn -> void
@@ -520,7 +523,9 @@ function CoreNodeClient() {
         var buffer = new ByteArrayOutputStream();
         buffer.writeArray(target);
         buffer.writeArray(encryptedPermission);
-        return postProm("core/followRequest", buffer.toByteArray());
+        return postProm("core/followRequest", buffer.toByteArray()).then(function(res){
+	    return Promise.resolve(res[0]==1);
+	});
     };
     
     //String -> Uint8Array -> fn -> fn -> void
@@ -688,12 +693,27 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
     this.corenodeClient = corenodeClient;
     this.staticData = []; // array of map entry pairs
     this.rootNode = null;
+    this.sharingFolder = null;
 
     this.init = function() {
 	var context = this;
 	return createFileTree().then(function (rootNode) {
 	    context.rootNode = rootNode;
-	    return Promise.resolve(true);
+	    return rootNode.getChildren(context).then(function (children) {
+		for (var i=0; i < children.length; i++) {
+		    if (children[i].getFileProperties().name == context.username)
+			return children[i].getChildren().then(function(ourdirs) {
+			    for (var j=0; j < ourdirs.length; j++) {
+				if (ourdirs[j].getFileProperties().name == "shared") {
+				    context.sharingFolder = ourdirs[j];
+				    return Promise.resolve(true);
+				}
+			    }
+			    return Promise.reject("Couldn't find shared folder!");
+			});
+		}
+		return Promise.reject("No root directory found!");
+	    });
 	});
     }.bind(this);
 
@@ -739,22 +759,27 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
     }
 
     this.getSharingFolder = function() {
-	//TODO
-    }
+	return this.sharingFolder;
+    }.bind(this);
 
     this.getFriends = function() {
 	//TODO
     }
 
+    this.sendInitialFollowRequest = function(targetUsername) {
+	return this.sendFollowRequest(targetUsername, SymmetricKey.random());
+    }
+
+    // FollowRequest, boolean, boolean
+    this.sendReplyFollowRequest = function(intialRequest, accept, reciprocate) {
+	// TODO
+    }
+
     // string, RetrievedFilePointer, SymmetricKey
     this.sendFollowRequest = function(targetUsername, requestedKey) {
-	var sharingFolder = this.getSharingFolder();
-        return this.corenodeClient.getPublicKey(targetUser.getPublicKeys()).then(function(targetUser) {	    
-
-            var rootMapKey = window.nacl.randomBytes(32);
-            var friendRoot = new ReadableFilePointer(user, sharingFolder.filePointer.writer, rootMapKey, SymmetricKey.random());
-	    // create subdirectory in sharing folder with friend's name
-	    return sharingFolder.fileAccess.mkdir(targetUsername, this, friendRoot.writer, sharingFolder.filePointer.mapKey, friendRoot.baseKey).then(function(res) {
+	var sharing = this.getSharingFolder();
+        return this.corenodeClient.getPublicKey(targetUsername).then(function(targetUser) {
+	    sharing.mkdir(targetUsername, this).then(function(friendRoot) {
 		
 		// add a note to our static data so we know who we sent the read access to
 		const entry = new EntryPoint(friendRoot, this.username, [], [name]);
@@ -767,7 +792,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 		    buf.writeArray(requestedKey != null ? requestedKey.key : new Uint8Array(0));
 		    var plaintext = buf.toByteArray();
                     var payload = targetUser.encryptMessageFor(plaintext, tmp);
-
+		    
                     return corenodeClient.followRequest(targetUser.getPublicKeys(), concat(tmp.pBoxKey, payload));
 		});
             }.bind(this));
@@ -902,7 +927,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 	    }
 	    for (var i=0; i < entrypoints.length; i++) {
 		var current = entrypoints[i];
-		proms.push(getAncestors(current));
+		proms.push(getAncestors(current, this));
 	    }
 	    return Promise.all(proms).then(function(res) {
 		return Promise.resolve(globalRoot);
@@ -1522,7 +1547,9 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
                     if (success) {
                         that.addSubdir(new Location(userContext.user, writer, dirMapKey), baseKey, dirReadKey);
 			// now upload the changed metadata blob for dir
-			return userContext.uploadChunk(that, [], userContext.user, writer, ourMapKey);
+			return userContext.uploadChunk(that, [], userContext.user, writer, ourMapKey).then(function(res) {
+			    return Promise.resolve(new ReadableFilePointer(userContext.user, writer, dirMapKey, dirReadKey));
+			});
                     }
 		    return Promise.resolve(false);
                 });
