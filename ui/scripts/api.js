@@ -144,19 +144,31 @@ SymmetricKey.random = function() {
     return new SymmetricKey(nacl.randomBytes(32));
 }
 
-function FileProperties(name, size) {
+function FileProperties(name, size, modified, attr) {
     this.name = name;
     this.size = size;
+    this.modified = modified;
+    this.attr = attr; //  | HIDDEN
 
     this.serialize = function() {
         var buf = new ByteArrayOutputStream();
         buf.writeString(name);
         buf.writeDouble(size);
+	buf.writeDouble(modified);
+	buf.writeByte(attr);
         return buf.toByteArray();
     }
 
     this.getSize = function() {
         return size;
+    }
+
+    this.getModified = function() {
+	return new Date(modified);
+    }
+
+    this.isHidden = function() {
+	return 
     }
 }
 
@@ -164,7 +176,9 @@ FileProperties.deserialize = function(raw) {
     const buf = new ByteArrayInputStream(raw);
     var name = buf.readString();
     var size = buf.readDouble();
-    return new FileProperties(name, size);
+    var modified = buf.readDouble();
+    var attr = buf.readByte();
+    return new FileProperties(name, size, modified, attr);
 }
 
 function Fragment(data) {
@@ -217,7 +231,7 @@ Chunk.MAX_SIZE = Fragment.SIZE*EncryptedChunk.ERASURE_ORIGINAL
 
 
 function FileUploader(name, contents, key, parentLocation, parentparentKey) {
-    this.props = new FileProperties(name, contents.length);
+    this.props = new FileProperties(name, contents.length, Date.now(), 0);
     this.chunks = [];
     if (key == null) key = SymmetricKey.random();
     for (var i=0; i < contents.length; i+= Chunk.MAX_SIZE)
@@ -715,7 +729,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
         return this.addSharingKey(writer).then(function(res) {
             return this.addToStaticData(entry);
         }.bind(this)).then(function(res) {
-            var root = DirAccess.create(writer, rootRKey, new FileProperties(directoryName, 0));
+            var root = DirAccess.create(writer, rootRKey, new FileProperties(directoryName, 0, Date.now(), 0));
             return this.uploadChunk(root, [], this.user, writer, rootMapKey).then(function(res) {
 		if (res)
 		    return Promise.resolve(new RetrievedFilePointer(rootPointer, root));
@@ -750,7 +764,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
                     var tmp = User.random();
 		    var buf = new ByteArrayOutputStream();
 		    buf.writeArray(entry.serialize());
-		    buf.writeArray(requestedKey.key);
+		    buf.writeArray(requestedKey != null ? requestedKey.key : new Uint8Array(0));
 		    var plaintext = buf.toByteArray();
                     var payload = targetUser.encryptMessageFor(plaintext, tmp);
 
@@ -1088,7 +1102,7 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
         const key = this.isDirectory() ? fileAccess.getParentKey(baseKey) : baseKey; 
         const currentProps = fileAccess.getFileProperties(key);
 	
-        const newProps = new FileProperties(newName, currentProps.size);
+        const newProps = new FileProperties(newName, currentProps.size, currentProps.modified, currentProps.attr);
 	
         return fileAccess.rename(writableFilePointer(), newProps, context);
     }
@@ -1501,7 +1515,7 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
         const dirMapKey = window.nacl.randomBytes(32); // root will be stored under this in the core node
 	const ourParentKey = this.getParentKey(baseKey);
 	const ourLocation = new Location(userContext.user, writer, ourMapKey);
-        const dir = DirAccess.create(null, dirReadKey, new FileProperties(name, 0), ourLocation, ourParentKey);
+        const dir = DirAccess.create(null, dirReadKey, new FileProperties(name, 0, Date.now(), 0), ourLocation, ourParentKey);
 	const that = this;
 	    return userContext.uploadChunk(dir, [], userContext.user, writer, dirMapKey)
                 .then(function(success) {
