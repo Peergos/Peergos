@@ -779,7 +779,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
     this.sendFollowRequest = function(targetUsername, requestedKey) {
 	var sharing = this.getSharingFolder();
         return this.corenodeClient.getPublicKey(targetUsername).then(function(targetUser) {
-	    sharing.mkdir(targetUsername, this).then(function(friendRoot) {
+	    return sharing.mkdir(targetUsername, this).then(function(friendRoot) {
 		
 		// add a note to our static data so we know who we sent the read access to
 		const entry = new EntryPoint(friendRoot.readOnly(), this.username, [targetUsername], []);
@@ -918,12 +918,17 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 	    var globalRoot = FileTreeNode.ROOT;
 	    var proms = [];
 	    var getAncestors = function(treeNode, context) {
-		return treeNode.retrieveParent(context).then(function(parent) {
-		    if (parent == null)
-			return Promise.resolve(true);
-		    parent.addChild(treeNode);
-		    return getAncestors(parent, context);
-		});
+		try {
+		    return treeNode.retrieveParent(context).then(function(parent) {
+			if (parent == null)
+			    return Promise.resolve(true);
+			parent.addChild(treeNode);
+			return getAncestors(parent, context);
+		    });
+		} catch (e) {
+		    console.log(e);
+		    return Promise.resolve(null);
+		}
 	    }
 	    for (var i=0; i < entrypoints.length; i++) {
 		var current = entrypoints[i];
