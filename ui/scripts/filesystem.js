@@ -388,11 +388,13 @@ var Browser = React.createClass({
 
                 const isEmpty =  this.state.retrievedFilePointerPath.length == 0;
                 if (isEmpty) {
-                    userContext.getTreeRoot().then(function(globalRoot) {
-			globalRoot.getChildren().then(function(children) {
-			    callback(children);
-			});
-                    }.bind(this));
+                    userContext.init().then(function(inited){
+			userContext.getTreeRoot().then(function(globalRoot) {
+			    globalRoot.getChildren().then(function(children) {
+				callback(children);
+			    });
+			}.bind(this));
+		    });
                 }
                 else {
 		    this.lastRetrievedFilePointer().getChildren(userContext).then(function(children) {

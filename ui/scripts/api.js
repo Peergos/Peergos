@@ -673,6 +673,15 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
     this.dhtClient = dhtClient;
     this.corenodeClient = corenodeClient;
     this.staticData = []; // array of map entry pairs
+    this.rootNode = null;
+
+    this.init = function() {
+	var context = this;
+	return createFileTree().then(function (rootNode) {
+	    context.rootNode = rootNode;
+	    return Promise.resolve(true);
+	});
+    }.bind(this);
 
     this.isRegistered = function() {
         return corenodeClient.getUsername(user.getPublicKeys()).then(function(res){
@@ -723,31 +732,33 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 	//TODO
     }
 
-    // UserPublicKey, RetrievedFilePointer
-    this.sendFriendRequest = function(targetUser, sharingFolder) {
-        return this.corenodeClient.getUsername(targetUser.getPublicKeys()).then(function(name) {	    
+    // string, RetrievedFilePointer, SymmetricKey
+    this.sendFollowRequest = function(targetUsername, requestedKey) {
+	var sharingFolder = this.getSharingFolder();
+        return this.corenodeClient.getPublicKey(targetUser.getPublicKeys()).then(function(targetUser) {	    
 
             var rootMapKey = window.nacl.randomBytes(32);
             var friendRoot = new ReadableFilePointer(user, sharingFolder.filePointer.writer, rootMapKey, SymmetricKey.random());
 	    // create subdirectory in sharing folder with friend's name
-	    return sharingFolder.fileAccess.mkdir(name, this, friendRoot.writer, sharingFolder.filePointer.mapKey, friendRoot.baseKey).then(function(res) {
+	    return sharingFolder.fileAccess.mkdir(targetUsername, this, friendRoot.writer, sharingFolder.filePointer.mapKey, friendRoot.baseKey).then(function(res) {
 		
-		// add a note to our static data so we know who we sent the private key to
+		// add a note to our static data so we know who we sent the read access to
 		const entry = new EntryPoint(friendRoot, this.username, [], [name]);
 		return this.addToStaticData(entry).then(function(res) {
-                    // send details to allow friend to follow us		
-                    // create a tmp keypair whose public key we can append to the request without leaking information
+                    // send details to allow friend to follow us, and optionally let us follow them		
+                    // create a tmp keypair whose public key we can prepend to the request without leaking information
                     var tmp = User.random();
-                    var payload = entry.serializeAndEncrypt(tmp, targetUser);
+		    var buf = new ByteArrayOutputStream();
+		    buf.writeArray(entry.serialize());
+		    buf.writeArray(requestedKey.key);
+		    var plaintext = buf.toByteArray();
+                    var payload = targetUser.encryptMessageFor(plaintext, tmp);
+
                     return corenodeClient.followRequest(targetUser.getPublicKeys(), concat(tmp.pBoxKey, payload));
 		});
             }.bind(this));
         }.bind(this));
     }.bind(this);
-
-    this.sendFollowRequest = function(targetUser) {
-	return this.sendWriteAccess(targetUser);
-    }
 
     this.sendWriteAccess = function(targetUser) {
         // create sharing keypair and give it write access
@@ -760,8 +771,6 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
             return this.corenodeClient.getUsername(targetUser.getPublicKeys()).then(function(name) {
                 const entry = new EntryPoint(friendRoot, this.username, [], [name]);
                 return this.addToStaticData(entry).then(function(res) {
-                    // send details to allow friend to share with us (i.e. we follow them)
-
                     // create a tmp keypair whose public key we can append to the request without leaking information
                     var tmp = User.random();
                     var payload = entry.serializeAndEncrypt(tmp, targetUser);
@@ -794,7 +803,12 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
         var buf = new ByteArrayInputStream(raw);
         buf.read(32);
         var cipher = new Uint8Array(buf.read(raw.length - 32));
-        return EntryPoint.decryptAndDeserialize(cipher, user, tmp);
+	var plaintext = user.decryptMessage(cipher, tmp);
+	var input = new ByteArrayInputStream(plaintext);
+	var rawEntry = input.readArray();
+	var rawKey = input.readArray();
+        return new FollowRequest(rawEntry.length > 0 ? EntryPoint.deserialize(rawEntry) : null, 
+				 rawKey.length > 0 ? new SymmetricKey(rawKey) : null);
     }
     
     this.uploadFragment = function(f, targetUser, sharer, mapKey) {
@@ -855,6 +869,10 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
     }
 
     this.getTreeRoot = function() {
+	return Promise.resolve(this.rootNode);
+    }
+
+    var createFileTree = function() {
 	return this.getRoots().then(function(roots){
 	    var entrypoints = roots.map(function(x) {return new FileTreeNode(new RetrievedFilePointer(x[0].pointer, x[1]), x[0].owner, x[0].readers, x[0].writers, x[0].pointer.writer);});
 	    console.log(entrypoints);
@@ -1176,6 +1194,19 @@ EntryPoint.decryptAndDeserialize = function(input, user, from) {
     for (var i=0; i < nWriters; i++)
         writers.push(din.readString());
     return new EntryPoint(pointer, owner, readers, writers);
+}
+
+function FollowRequest(entry, key) {
+    this.entry = entry;
+    this.key = key;
+
+    this.isAccepted = function() {
+	return entry != null;
+    }
+
+    this.isReciprocated = function() {
+	return key != null;
+    }
 }
 
 function SymmetricLink(link) {
