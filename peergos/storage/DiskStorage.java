@@ -36,11 +36,14 @@ public class DiskStorage implements Storage
     public boolean put(String key, byte[] value) throws IOException
     {
         new Fragment(key).write(value);
+        remainingSpace.getAndAdd(-value.length);
         return true;
     }
 
     public boolean remove(String key) throws IOException {
-        return new File(root, key).delete();
+        File file = new File(root, key);
+        remainingSpace.getAndAdd(file.length());
+        return file.delete();
     }
 
     public byte[] get(String key)

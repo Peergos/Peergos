@@ -41,11 +41,11 @@ public class StorageWrapper
             System.out.println("Core node rejected fragment storage");
             return false;
         }
-        boolean res = storage.remainingSpace() - promisedSize.get() < size;
+        boolean res = storage.remainingSpace() - promisedSize.get() > size;
         if (res)
             promisedSize.getAndAdd(size);
         else
-            System.out.println("Storage rejecting fragment store: Not within size limits");
+            System.out.println("Storage rejecting fragment store: Not within size limits: remaining="+storage.remainingSpace() + ", promised="+promisedSize.get() + ", size="+size);
         pending.put(fragmentHash, size);
         credentials.put(fragmentHash, new Credentials(owner.getPublicKeys(), sharingKey, proof));
         return res;
@@ -64,6 +64,7 @@ public class StorageWrapper
             e.printStackTrace();
             return false;
         }
+        promisedSize.getAndAdd(-value.length);
         Credentials cred = credentials.remove(key);
         coreAPI.registerFragmentStorage(donor, us, new UserPublicKey(cred.owner), cred.proof);
         return true;

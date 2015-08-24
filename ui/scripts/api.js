@@ -242,7 +242,7 @@ function FileUploader(name, contents, key, parentLocation, parentparentKey) {
         const chunk0 = this.chunks[0];
 console.log(new ReadableFilePointer(owner, writer, chunk0.mapKey, chunk0.key).toLink());
         const that = this;
-        for (var i=0; i < this.chunks.length; i++)
+        for (var i=0; i < this.chunks.length; i++) {
             proms.push(new Promise(function(resolve, reject) {
                 const chunk = that.chunks[i];
                 const encryptedChunk = chunk.encrypt();
@@ -255,6 +255,7 @@ console.log(new ReadableFilePointer(owner, writer, chunk0.mapKey, chunk0.key).to
                 const metaBlob = FileAccess.create(chunk.key, that.props, retriever, parentLocation, parentparentKey);
                 resolve(context.uploadChunk(metaBlob, fragments, owner, writer, chunk.mapKey));
             }));
+	}
         return Promise.all(proms).then(function(res){
             return Promise.resolve(new Location(owner, writer, chunk0.mapKey));
         });
