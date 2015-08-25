@@ -25,44 +25,70 @@ function arraysEqual(a, b) {
 
 testErasure = function(original, errors) {
     const t1 = Date.now();
-    var bfrags = erasure.split(original, 40, 10);
-    const t2 = Date.now();
-    console.log("Erasure encode took "+ (t2-t1) + " mS");
-    if (document.getElementById("encode") != null)
-	document.getElementById("encode").innerHTML = "Encode took "+(t2-t1)+"mS to generate "+bfrags.length + " fragments";
-    for (var i=0; i < errors; i++)
-	bfrags[i] = new Uint8Array(bfrags[i].length);
-    var decoded = erasure.recombine(bfrags, 5*1024*1024, 40, 10);
-    if (decoded.length > original.length)
-	decoded = decoded.subarray(0, original.length);
-    const t3 = Date.now();
-    
-    if (!arraysEqual(original, decoded))
-	throw "Decoded contents different from original!";
-    if (document.getElementById("decode") != null)
-	document.getElementById("decode").innerHTML += "Decode with "+errors+" errors suceeded in "+(t3-t2)+"mS</br>";
-    console.log("Erasure decode took "+ (t3-t2) + " mS");
-    return Promise.resolve(true);
+    var blob = new Blob(["var window = {};importScripts('https://localhost:8000/scripts/erasure.js');"
+			 +"self.addEventListener('message', function(e) {"
+			 +"var data = e.data;"
+			 +"switch (data.cmd) {"
+			 +"  case 'encode':"
+			 +"    var bfrags = window.erasure.split(data.original, 40, 10);"
+			 +"    self.postMessage({cmd:data.cmd,bfrags:bfrags,start:data.start});"
+			 +"    break;"
+			 +"  case 'decode':"
+			 +"    var decoded = window.erasure.recombine(data.bfrags, 5*1024*1024, 40, 10);"
+			 +"    self.postMessage({cmd:data.cmd,decoded:decoded,start:data.start});"
+			 +"    self.close();"
+			 +"    break;"
+			 +"  default:"
+			 +"    self.postMessage('Unknown command: ' + data.cmd);"
+			 +"};"
+			 +"}, false);"]);
+    // Obtain a blob URL reference to our worker 'file'.
+    var blobURL = window.URL.createObjectURL(blob);
+    var worker = new Worker(blobURL);
+    var prom = new Promise(function(resolve, reject){
+	worker.onmessage = function(e) {
+	    var data = e.data;
+	    switch (data.cmd) {
+	    case 'encode':
+		var bfrags = data.bfrags;
+		const t2 = Date.now();
+		console.log("Erasure encode took "+ (t2-data.start) + " mS");
+		if (document.getElementById("encode") != null)
+		    document.getElementById("encode").innerHTML = "Encode took "+(t2-data.start)+"mS to generate "+bfrags.length + " fragments";
+		for (var i=0; i < errors; i++)
+		    bfrags[i] = new Uint8Array(bfrags[i].length);
+		worker.postMessage({cmd:'decode',bfrags:bfrags,start:t2});
+		break;
+	    case 'decode':
+		var decoded = data.decoded;
+		if (decoded.length > original.length)
+		    decoded = decoded.subarray(0, original.length);
+		const t3 = Date.now();
+		if (!arraysEqual(original, decoded))
+		    throw "Decoded contents different from original!";
+		if (document.getElementById("decode") != null)
+		    document.getElementById("decode").innerHTML += "Decode with "+errors+" errors suceeded in "+(t3-data.start)+"mS</br>";
+		console.log("Erasure decode took "+ (t3-data.start) + " mS");
+		resolve(true);
+		break;
+	    }
+	};
+	worker.postMessage({cmd:'encode',original:original,start:t1});
+    });
+    return prom;
+}
+
+recurse = function(raw, err) {
+    if (err < 11)
+	return testErasure(raw, err).then(function(){recurse(raw, err+1);});
 }
 
 testChunkErasure = function() {
     const raw = new Uint8Array(5*1024*1024);
     for (var i = 0; i < raw.length; i++)
         raw[i] = i & 0xff;
-
-    // create a worker to do the erasure coding
-    var blob = new Blob(["onmessage = function(e) { postMessage(e.data); }"]);    
-    // Obtain a blob URL reference to our worker 'file'.
-    var blobURL = window.URL.createObjectURL(blob);
-    var worker = new Worker(blobURL);
-    worker.onmessage = function(e) {
-	console.log(e.data);
-	testErasure(e.data.input, e.data.errors);
-	var nerrors = e.data.errors+1;
-	if (nerrors < 12)
-	    this.postMessage({errors:nerrors,input:e.data.input});
-    };
-    worker.postMessage({errors:0,input:raw});
+    
+    recurse(raw, 0);
 }
 
 testSmallFileErasure = function() {
