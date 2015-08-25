@@ -181,6 +181,26 @@ FileProperties.deserialize = function(raw) {
     return new FileProperties(name, size, modified, attr);
 }
 
+function asyncErasureEncode(original, originalBlobs, allowedFailures) {
+    var blob = new Blob(["var window = {};importScripts('https://localhost:8000/scripts/erasure.js');"
+			 +"self.addEventListener('message', function(e) {"
+			 +"var data = e.data;"
+			 +"var bfrags = window.erasure.split(data, "+originalBlobs+", "+allowedFailures+");"
+			 +"self.postMessage(bfrags);"
+			 +"self.close();"
+			 +"}, false);"]);
+    var blobURL = window.URL.createObjectURL(blob);
+    var worker = new Worker(blobURL);
+    var prom = new Promise(function(resolve, reject){
+	worker.onmessage = function(e) {
+	    var bfrags = e.data;
+	    resolve(bfrags);
+	};
+	worker.postMessage(original);
+    });
+    return prom;
+}
+
 function Fragment(data) {
     this.data = data;
 
@@ -199,11 +219,12 @@ function EncryptedChunk(encrypted) {
     this.cipher = slice(encrypted, window.nacl.secretbox.overheadLength, encrypted.length);
 
     this.generateFragments = function() {
-        var bfrags = erasure.split(this.cipher, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
-        var frags = [];
-        for (var i=0; i < bfrags.length; i++)
-            frags[i] = new Fragment(bfrags[i]);
-        return frags;
+        return asyncErasureEncode(this.cipher, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES).then(function(bfrags) {
+            var frags = [];
+            for (var i=0; i < bfrags.length; i++)
+		frags[i] = new Fragment(bfrags[i]);
+	    return Promise.resolve(frags);
+	});
     }
 
     this.getAuth = function() {
@@ -246,14 +267,15 @@ console.log(new ReadableFilePointer(owner, writer, chunk0.mapKey, chunk0.key).to
             proms.push(new Promise(function(resolve, reject) {
                 const chunk = that.chunks[i];
                 const encryptedChunk = chunk.encrypt();
-                const fragments = encryptedChunk.generateFragments();
-                console.log("Uploading chunk with %d fragments\n", fragments.length);
-                var hashes = [];
-                for (var f in fragments)
-                    hashes.push(fragments[f].getHash());
-                const retriever = new EncryptedChunkRetriever(chunk.nonce, encryptedChunk.getAuth(), hashes, i+1 < that.chunks.length ? new Location(owner, writer, that.chunks[i+1].mapKey) : null);
-                const metaBlob = FileAccess.create(chunk.key, that.props, retriever, parentLocation, parentparentKey);
-                resolve(context.uploadChunk(metaBlob, fragments, owner, writer, chunk.mapKey));
+                encryptedChunk.generateFragments().then(function(fragments){
+                    console.log("Uploading chunk with %d fragments\n", fragments.length);
+                    var hashes = [];
+                    for (var f in fragments)
+			hashes.push(fragments[f].getHash());
+                    const retriever = new EncryptedChunkRetriever(chunk.nonce, encryptedChunk.getAuth(), hashes, i+1 < that.chunks.length ? new Location(owner, writer, that.chunks[i+1].mapKey) : null);
+                    const metaBlob = FileAccess.create(chunk.key, that.props, retriever, parentLocation, parentparentKey);
+                    resolve(context.uploadChunk(metaBlob, fragments, owner, writer, chunk.mapKey));
+		});
             }));
 	}
         return Promise.all(proms).then(function(res){
