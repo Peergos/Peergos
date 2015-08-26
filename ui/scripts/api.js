@@ -788,6 +788,9 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
     // FollowRequest, boolean, boolean
     this.sendReplyFollowRequest = function(intialRequest, accept, reciprocate) {
 	// TODO
+
+	// remove original request
+	
     }
 
     // string, RetrievedFilePointer, SymmetricKey
@@ -846,10 +849,12 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
     }
 
     this.getFollowRequests = function() {
-        return corenodeClient.getFollowRequests(user.getPublicKeys());
-    }
+        return corenodeClient.getFollowRequests(user.getPublicKeys()).then(function(reqs){
+	    return Promise.resolve(reqs.map(decodeFollowRequest));
+	});
+    }.bind(this);
 
-    this.decodeFollowRequest = function(raw) {
+    var decodeFollowRequest = function(raw) {
         var pBoxKey = new Uint8Array(32);
         for (var i=0; i < 32; i++)
             pBoxKey[i] = raw[i]; // signing key is not used
