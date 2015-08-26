@@ -525,7 +525,7 @@ var Browser = React.createClass({
 
                 const username = typeof(usernameArg) == "string" ? usernameArg : usernameInput.value;
                 const password = typeof(passwordArg) == "string" ? passwordArg : passwordInput.value;
-
+                startInProgess();
                 const onVerified  = function() {
                         const displayName = userContext.username;
                         usernameInput.value = "";
@@ -537,6 +537,7 @@ var Browser = React.createClass({
                         $("#logoutButton").click(this.logout);
                         $("#login-form").css("display","none");
                         this.loadFilesFromServer();
+                        clearInProgress();
                     }.bind(this);
 
                 var ctx = null;
@@ -558,6 +559,7 @@ var Browser = React.createClass({
                                 //failed to authenticate user
                                 passwordInput.value='';
                                 populateModalAndShow("Authentication Failure", "Invalid credentials.");
+                                clearInProgress();
                 });
         },
 
