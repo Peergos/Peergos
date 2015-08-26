@@ -667,6 +667,21 @@ var Browser = React.createClass({
         },
 
         render: function() {
+                if (userContext == null) 
+                        return (<div className="container form-signin">
+                                        <div id="login-form">
+                                        <h2>Please log in</h2>
+                                        <div  className="form-group">
+                                                <input placeholder="Username" id="login-user-input" className="form-control" type="text"/>
+                                        </div>
+                                        <div className="form-group">
+                                                <input placeholder="Password" id="login-password-input" className="form-control" type="password"/>
+                                        </div>
+                                        <button id="loginButton" className="btn btn-large btn-block btn-success" >Login</button>
+                                        <button id="signupButton" className="btn btn-large btn-block btn-primary" >Sign up</button>
+                                        </div>
+                                </div>);
+
                 const files = this.state.files.map(function(f) {
                             return (<File id={File.id()} gridView={this.state.gridView} onClick={f.onClick} name={f.name} isdir={f.isDir} size={f.size} browser={this} retrievedFilePointer={f.filePointer}/>)
                 }.bind(this)); 
