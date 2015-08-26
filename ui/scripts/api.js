@@ -251,25 +251,23 @@ function FileUploader(name, contents, key, parentLocation, parentparentKey) {
         this.chunks.push(new Chunk(slice(contents, i, Math.min(contents.length, i + Chunk.MAX_SIZE)), key));
 
     this.upload = function(context, owner, writer) {
-        var proms = [];
         const chunk0 = this.chunks[0];
 console.log(new ReadableFilePointer(owner, writer, chunk0.mapKey, chunk0.key).toLink());
         const that = this;
-        for (var i=0; i < this.chunks.length; i++) {
-            proms.push(new Promise(function(resolve, reject) {
-                const chunk = that.chunks[i];
+	var proms = this.chunks.map(function(current, index, arr) {
+	    new Promise(function(resolve, reject) {
+                const chunk = current;
                 const encryptedChunk = chunk.encrypt();
                 encryptedChunk.generateFragments().then(function(fragments){
                     console.log("Uploading chunk with %d fragments\n", fragments.length);
                     var hashes = [];
                     for (var f in fragments)
 			hashes.push(fragments[f].getHash());
-                    const retriever = new EncryptedChunkRetriever(chunk.nonce, encryptedChunk.getAuth(), hashes, i+1 < that.chunks.length ? new Location(owner, writer, that.chunks[i+1].mapKey) : null);
+                    const retriever = new EncryptedChunkRetriever(chunk.nonce, encryptedChunk.getAuth(), hashes, index+1 < arr.length ? new Location(owner, writer, arr[index+1].mapKey) : null);
                     const metaBlob = FileAccess.create(chunk.key, that.props, retriever, parentLocation, parentparentKey);
                     resolve(context.uploadChunk(metaBlob, fragments, owner, writer, chunk.mapKey));
 		});
-            }));
-	}
+	})});
         return Promise.all(proms).then(function(res){
             return Promise.resolve(new Location(owner, writer, chunk0.mapKey));
         });
@@ -1685,7 +1683,7 @@ function EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChun
         buf.writeArray(chunkAuth);
         buf.writeArray(concat(fragmentHashes));
         buf.writeByte(nextChunk != null ? 1 : 0);
-        if (nextChunk != null)
+        if (this.nextChunk != null)
             buf.write(nextChunk.serialize());
     }
 }
