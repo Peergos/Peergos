@@ -776,9 +776,15 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
     this.getSharingFolder = function() {
 	return this.sharingFolder;
     }.bind(this);
-
-    this.getFriends = function() {
-	//TODO
+    
+    this.getFriendRoots = function() {
+	return rootNode.getChildren(context).then(function (children) {
+	    var friendRoots = [];
+	    for (var i=0; i < children.length; i++)
+		if (children[i].owner != this.username)
+		    friendRoots.push(children[i]);
+	    return Promise.resolve(friendRoots);
+	});
     }
 
     this.sendInitialFollowRequest = function(targetUsername) {
