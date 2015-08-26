@@ -1272,6 +1272,20 @@ EntryPoint.decryptAndDeserialize = function(input, user, from) {
         writers.push(din.readString());
     return new EntryPoint(pointer, owner, readers, writers);
 }
+EntryPoint.deserialize = function(raw) {
+    const din = new ByteArrayInputStream(raw);
+    const pointer = ReadableFilePointer.deserialize(din.readArray());
+    const owner = din.readString();
+    const nReaders = din.readInt();
+    const readers = [];
+    for (var i=0; i < nReaders; i++)
+        readers.push(din.readString());
+    const nWriters = din.readInt();
+    const writers = [];
+    for (var i=0; i < nWriters; i++)
+        writers.push(din.readString());
+    return new EntryPoint(pointer, owner, readers, writers);
+}
 
 function FollowRequest(entry, key) {
     this.entry = entry;
