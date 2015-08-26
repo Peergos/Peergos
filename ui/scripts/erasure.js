@@ -1,3 +1,5 @@
+if (typeof window == 'undefined')
+    var window = {}; // for web workers
 (function(exports){
     "use strict";
    
@@ -433,3 +435,11 @@ GaloisPolynomial.create = function(coeffs, f) {
         return res.toByteArray().subarray(0, truncateTo);
     }
 }(typeof module !== 'undefined' && module.exports ? module.exports : (window.erasure = window.erasure || {})));
+
+// WebWorker methods
+self.addEventListener('message', function(e) {
+    var data = e.data;
+    var bfrags = window.erasure.split(data.original, data.originalBlobs, data.allowedFailures);
+    self.postMessage(bfrags);
+    self.close();
+}, false);

@@ -182,21 +182,13 @@ FileProperties.deserialize = function(raw) {
 }
 
 function asyncErasureEncode(original, originalBlobs, allowedFailures) {
-    var blob = new Blob(["var window = {};importScripts('https://localhost:8000/scripts/erasure.js');"
-			 +"self.addEventListener('message', function(e) {"
-			 +"var data = e.data;"
-			 +"var bfrags = window.erasure.split(data, "+originalBlobs+", "+allowedFailures+");"
-			 +"self.postMessage(bfrags);"
-			 +"self.close();"
-			 +"}, false);"]);
-    var blobURL = window.URL.createObjectURL(blob);
-    var worker = new Worker(blobURL);
+    var worker = new Worker("scripts/erasure.js");
     var prom = new Promise(function(resolve, reject){
 	worker.onmessage = function(e) {
 	    var bfrags = e.data;
 	    resolve(bfrags);
 	};
-	worker.postMessage(original);
+	worker.postMessage({original:original, originalBlobs:EncryptedChunk.ERASURE_ORIGINAL, allowedFailures:EncryptedChunk.ERASURE_ALLOWED_FAILURES});
     });
     return prom;
 }
