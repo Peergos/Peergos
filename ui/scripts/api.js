@@ -776,7 +776,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
     }.bind(this);
     
     this.getFriendRoots = function() {
-	return rootNode.getChildren(context).then(function (children) {
+	return this.rootNode.getChildren(this).then(function (children) {
 	    var friendRoots = [];
 	    for (var i=0; i < children.length; i++)
 		if (children[i].owner != this.username)
@@ -1287,6 +1287,7 @@ EntryPoint.deserialize = function(raw) {
     return new EntryPoint(pointer, owner, readers, writers);
 }
 
+//EntryPoint, SymmetricKey 
 function FollowRequest(entry, key) {
     this.entry = entry;
     this.key = key;

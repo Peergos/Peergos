@@ -75,6 +75,23 @@ const UserOptions = React.createClass({
         });
     },
     
+    getFriendRoots: function()  {
+        return userContext.getFriendRoots().then(function(roots) {
+            console.log("friend-roots "+ roots);
+        });
+    }, 
+
+    populatePendingRequests: function()  {
+        return userContext.getFollowRequests(userContext.username).then(function(requests) {
+            const requesterNames = requests.map(function(request) {
+                    return  "<li>"+request.entry.owner+"</li>";
+            }); 
+            const html = "<ul>"+requesterNames.join() +"</ul>";
+            console.log("pending "+ html);
+            $("#pendingRequests").html(html)
+        });
+    }, 
+
     render: function() {
             return (
                     <div>
@@ -82,7 +99,14 @@ const UserOptions = React.createClass({
                                 <input placeholder="Friend name" id="friend-name-input" className="form-control" type="text"/>
                             </div>
                             <button className="btn btn-success" onClick={this.submitFriendRequest}>Submit friend request</button>
+                            <div id="pendingRequests">
+                            </div>
                     </div>)
+
+    },
+    
+    componentDidMount: function() {
+            this.populatePendingRequests();
 
     }
 });
