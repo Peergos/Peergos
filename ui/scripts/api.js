@@ -255,7 +255,7 @@ function FileUploader(name, contents, key, parentLocation, parentparentKey) {
 console.log(new ReadableFilePointer(owner, writer, chunk0.mapKey, chunk0.key).toLink());
         const that = this;
 	var proms = this.chunks.map(function(current, index, arr) {
-	    new Promise(function(resolve, reject) {
+	    return new Promise(function(resolve, reject) {
                 const chunk = current;
                 const encryptedChunk = chunk.encrypt();
                 encryptedChunk.generateFragments().then(function(fragments){
@@ -1667,6 +1667,7 @@ function EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChun
     this.chunkAuth = chunkAuth;
     this.fragmentHashes = fragmentHashes;
     this.nextChunk = nextChunk;
+    console.log("Made Chunk retriever with nextChunk: " + nextChunk);
 
     this.getFile = function(context, dataKey, len) {
         const stream = this;
@@ -1676,7 +1677,7 @@ function EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChun
     }
 
     this.getNext = function() {
-        return nextChunk;
+        return this.nextChunk;
     }
 
     this.getChunkInputStream = function(context, dataKey, len) {
@@ -1697,9 +1698,9 @@ function EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChun
         buf.writeArray(chunkNonce);
         buf.writeArray(chunkAuth);
         buf.writeArray(concat(fragmentHashes));
-        buf.writeByte(nextChunk != null ? 1 : 0);
+        buf.writeByte(this.nextChunk != null ? 1 : 0);
         if (this.nextChunk != null)
-            buf.write(nextChunk.serialize());
+            buf.write(this.nextChunk.serialize());
     }
 }
 EncryptedChunkRetriever.deserialize = function(buf) {
@@ -1732,6 +1733,7 @@ function LazyInputStreamCombiner(stream, context, dataKey, chunk) {
     this.next = stream.getNext();
 
     this.getNextStream = function(len) {
+	console.log("GetNextStream " + len);
         if (this.next != null) {
             const lazy = this;
             return context.getMetadata(this.next).then(function(meta) {
@@ -1760,6 +1762,7 @@ function LazyInputStreamCombiner(stream, context, dataKey, chunk) {
     }
 
     this.read = function(len, res, offset) {
+	console.log("READ: "+len + ", "+offset);
         const lazy = this;
         if (res == null) {
             res = new Uint8Array(len);
@@ -1771,7 +1774,8 @@ function LazyInputStreamCombiner(stream, context, dataKey, chunk) {
             res[offset + i] = lazy.readByte();
         if (available >= len)
             return Promise.resolve(res);
-        return this.getNextStream((len-toRead) % Chunk.MAX_SIZE).then(function(chunk){
+	var nextSize = len - toRead > Chunk.MAX_SIZE ? Chunk.MAX_SIZE : (len-toRead) % Chunk.MAX_SIZE;
+        return this.getNextStream(nextSize).then(function(chunk){
             lazy.index = 0;
             lazy.current = chunk;
             return lazy.read(len-toRead, res, offset + toRead);
