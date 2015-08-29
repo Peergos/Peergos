@@ -68,6 +68,8 @@ const UserOptions = React.createClass({
 
     },
     */
+    
+
     submitFriendRequest: function(targetUsername) {
         return userContext.sendInitialFollowRequest(document.getElementById("friend-name-input").value).then(function(res) {
 	    if (res)
@@ -81,33 +83,46 @@ const UserOptions = React.createClass({
         });
     }, 
 
-    populatePendingRequests: function()  {
-        return userContext.getFollowRequests(userContext.username).then(function(requests) {
-            const requesterNames = requests.map(function(request) {
-                    return  "<li>"+request.entry.owner+"</li>";
-            }); 
-            const html = "<ul>"+requesterNames.join() +"</ul>";
-            console.log("pending "+ html);
-            $("#pendingRequests").html(html)
-        });
-    }, 
+    populatePendingTable: function()  {
+            userContext.getFollowRequests(userContext.username).then(function(pending) {
+                return pending.map(function(request) {
+                    return (<tr><td>{request.entry.owner}</td></tr>);
+                });
+            }).then(function(rows) {
+                    const PendingTable = React.createClass({
+                            render: function() {
+                                return (<div>
+                                        <h2>Pending Requests</h2>
+                                        <table className="table table-responsive table-striped table-hover">
+                                            <thead></thead>
+                                            <tbody>
+                                            {rows}
+                                            </tbody>
+                                        </table>
+                                        </div>);
+                            }
+                    });
+                    React.render(   
+                        <PendingTable/>,
+                        document.getElementById("pendingRequestTable")
+                    );
+            });
+    },
 
     render: function() {
-            return (
-                    <div>
+
+            return (<div>
+                            <h2>Submit Follow Request</h2>
                             <div  className="form-group">
                                 <input placeholder="Friend name" id="friend-name-input" className="form-control" type="text"/>
                             </div>
                             <button className="btn btn-success" onClick={this.submitFriendRequest}>Submit follow request</button>
-                            <div id="pendingRequests">
-                            </div>
+                            <div id="pendingRequestTable"></div>
                     </div>)
-
     },
-    
-    componentDidMount: function() {
-            this.populatePendingRequests();
 
+    componentDidMount: function() {
+            this.populatePendingTable();
     }
 });
 
