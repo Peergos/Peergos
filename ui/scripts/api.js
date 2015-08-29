@@ -761,7 +761,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
         return this.addSharingKey(writer).then(function(res) {
             return this.addToStaticData(entry);
         }.bind(this)).then(function(res) {
-            var root = DirAccess.create(writer, rootRKey, new FileProperties(directoryName, 0, Date.now(), 0));
+            var root = DirAccess.create(rootRKey, new FileProperties(directoryName, 0, Date.now(), 0));
             return this.uploadChunk(root, [], this.user, writer, rootMapKey).then(function(res) {
 		if (res)
 		    return Promise.resolve(new RetrievedFilePointer(rootPointer, root));
@@ -1622,7 +1622,7 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
         const dirMapKey = window.nacl.randomBytes(32); // root will be stored under this in the core node
 	const ourParentKey = this.getParentKey(baseKey);
 	const ourLocation = new Location(userContext.user, writer, ourMapKey);
-        const dir = DirAccess.create(null, dirReadKey, new FileProperties(name, 0, Date.now(), 0), ourLocation, ourParentKey);
+        const dir = DirAccess.create(dirReadKey, new FileProperties(name, 0, Date.now(), 0), ourLocation, ourParentKey);
 	const that = this;
 	    return userContext.uploadChunk(dir, [], userContext.user, writer, dirMapKey)
                 .then(function(success) {
@@ -1660,8 +1660,7 @@ DirAccess.deserialize = function(base, bin) {
 }
 
 // User, SymmetricKey, FileProperties
-//TODO remove owner arg.
-DirAccess.create = function(owner, subfoldersKey, metadata, parentLocation, parentParentKey) {
+DirAccess.create = function(subfoldersKey, metadata, parentLocation, parentParentKey) {
     var metaKey = SymmetricKey.random();
     var parentKey = SymmetricKey.random();
     var filesKey = SymmetricKey.random();
