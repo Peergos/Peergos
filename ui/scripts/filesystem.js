@@ -71,7 +71,7 @@ const UserOptions = React.createClass({
     submitFriendRequest: function(targetUsername) {
         return userContext.sendInitialFollowRequest(document.getElementById("friend-name-input").value).then(function(res) {
 	    if (res)
-		populateModalAndShow("Success!", "<p>Friend request sent!</p>")
+		populateModalAndShow("Success!", "<p>Follow request sent!</p>")
         });
     },
     
@@ -98,7 +98,7 @@ const UserOptions = React.createClass({
                             <div  className="form-group">
                                 <input placeholder="Friend name" id="friend-name-input" className="form-control" type="text"/>
                             </div>
-                            <button className="btn btn-success" onClick={this.submitFriendRequest}>Submit friend request</button>
+                            <button className="btn btn-success" onClick={this.submitFriendRequest}>Submit follow request</button>
                             <div id="pendingRequests">
                             </div>
                     </div>)
