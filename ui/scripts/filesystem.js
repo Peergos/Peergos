@@ -86,7 +86,13 @@ const UserOptions = React.createClass({
     populatePendingTable: function()  {
             userContext.getFollowRequests(userContext.username).then(function(pending) {
                 return pending.map(function(request) {
-                    return (<tr><td>{request.entry.owner}</td></tr>);
+                    const deny  =  function() {};
+                    const allow = function() {};
+                    return (<tr>
+                                    <td>{request.entry.owner}</td>
+                                    <td><button className="btn btn-info" onClick={allow}>allow</button></td>
+                                    <td><button className="btn btn-danger" onClick={deny}>deny</button></td>
+                            </tr>);
                 });
             }).then(function(rows) {
                     const PendingTable = React.createClass({
@@ -95,6 +101,9 @@ const UserOptions = React.createClass({
                                         <h2>Pending Requests</h2>
                                         <table className="table table-responsive table-striped table-hover">
                                             <thead></thead>
+                                                <th>User</th>
+                                                <th></th>
+                                                <th></th>
                                             <tbody>
                                             {rows}
                                             </tbody>
