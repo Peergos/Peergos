@@ -174,10 +174,9 @@ public class HTTPCoreNodeServer
         void removeFollowRequest(DataInputStream din, DataOutputStream dout) throws IOException
         {
             byte[] owner = deserializeByteArray(din);
-            byte[] encodedSharingPublicKey = deserializeByteArray(din);
-            byte[] hash = deserializeByteArray(din);
+            byte[] signedFollowRequest = deserializeByteArray(din);
 
-            boolean isRemoved = coreNode.removeFollowRequest(new UserPublicKey(owner), encodedSharingPublicKey, hash);
+            boolean isRemoved = coreNode.removeFollowRequest(new UserPublicKey(owner), signedFollowRequest);
             dout.writeBoolean(isRemoved);
         }
 

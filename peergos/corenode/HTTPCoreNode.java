@@ -215,7 +215,7 @@ public class HTTPCoreNode extends AbstractCoreNode
                 conn.disconnect();
         }
     }
-   @Override public boolean removeFollowRequest(UserPublicKey owner, byte[] data, byte[] signedHash)
+   @Override public boolean removeFollowRequest(UserPublicKey owner, byte[] signedRequest)
     {
         HttpURLConnection conn = null;
         try
@@ -227,8 +227,7 @@ public class HTTPCoreNode extends AbstractCoreNode
             
 
             Serialize.serialize(owner.getPublicKeys(), dout);
-            Serialize.serialize(data, dout);
-            Serialize.serialize(signedHash, dout);
+            Serialize.serialize(signedRequest, dout);
             dout.flush();
 
             DataInputStream din = new DataInputStream(conn.getInputStream());

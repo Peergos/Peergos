@@ -245,7 +245,7 @@ public abstract class AbstractCoreNode
         }
     }
 
-    public boolean removeFollowRequest(UserPublicKey owner, byte[] data, byte[] signedHash)
+    public boolean removeFollowRequest(UserPublicKey owner, byte[] data)
     {
         UserPublicKey us = null;
         ByteArrayWrapper baw = new ByteArrayWrapper(data);
@@ -256,10 +256,9 @@ public abstract class AbstractCoreNode
             if (us == null || ! userMap.get(owner).followRequests.contains(baw))
                 return false; 
         }
-        if (! us.isValidSignature(signedHash, UserPublicKey.hash(data)))
-            return false;
+        byte[] unsigned = us.unsignMessage(data);
 
-        return removeFollowRequest(us, new ByteArrayWrapper(data));
+        return removeFollowRequest(us, new ByteArrayWrapper(unsigned));
     }
 
     protected synchronized boolean removeFollowRequest(UserPublicKey target, ByteArrayWrapper baw)

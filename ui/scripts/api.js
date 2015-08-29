@@ -559,11 +559,10 @@ function CoreNodeClient() {
     };
     
     //String -> Uint8Array -> Uint8Array -> fn -> fn -> void
-    this.removeFollowRequest = function( target,  data,  signed) {
+    this.removeFollowRequest = function( target,  signedRequest) {
         var buffer = new ByteArrayOutputStream();
         buffer.writeString(target);
-        buffer.writeArray(data);
-        buffer.writeArray(signed);
+        buffer.writeArray(signedRequest);
         return postProm("core/removeFollowRequest", buffer.toByteArray());
     };
 
@@ -791,10 +790,39 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 
     // FollowRequest, boolean, boolean
     this.sendReplyFollowRequest = function(intialRequest, accept, reciprocate) {
-	// TODO
+	var theirUsername = initialRequest.entry.owner;
+	// if accept, create directory to share with them, note in entry points (they follow us)
+	if (!accept) {
+	    // send a null entry and null key (full rejection)
+	    //TODO
+	    return Promise.resolve(true);
+	}
+	return this.getSharingFolder().mkdir(theirUsername, this, initialRequest.key).then(function(friendRoot) {
+	    // add a note to our static data so we know who we sent the read access to
+	    const entry = new EntryPoint(friendRoot.readOnly(), this.username, [targetUsername], []);
+	    return this.addToStaticData(entry).then(function(res) {
+		// create a tmp keypair whose public key we can prepend to the request without leaking information
+                var tmp = User.random();
+		var buf = new ByteArrayOutputStream();
+		buf.writeArray(entry.serialize());
+		if (! reciprocate) {
+		    buf.writeArray(new Uint8Array(0)); // tell them we're not reciprocating
+		    var plaintext = buf.toByteArray();
+                    var payload = targetUser.encryptMessageFor(plaintext, tmp);
 
-	// remove original request
-	
+                    return corenodeClient.followRequest(initialRequest.entry.pointer.owner.getPublicKeys(), concat(tmp.pBoxKey, payload));
+		}
+		// if reciprocate, add entry point to their shared dirctory (we follow them)
+		buf.writeArray(initialRequest.key.key); // tell them we are reciprocating
+		var plaintext = buf.toByteArray();
+                var payload = targetUser.encryptMessageFor(plaintext, tmp);
+		
+                return corenodeClient.followRequest(initialRequest.entry.pointer.owner.getPublicKeys(), concat(tmp.pBoxKey, payload));
+	    }).then(function(res) {
+		// remove original request
+		return corenodeClient.removefollowRequest(this.user.getPublicKeys(), this.user.signMessage(initialRequest.rawCipher));
+	    });
+	});
     }
 
     // string, RetrievedFilePointer, SymmetricKey
@@ -871,7 +899,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 	var rawEntry = input.readArray();
 	var rawKey = input.readArray();
         return new FollowRequest(rawEntry.length > 0 ? EntryPoint.deserialize(rawEntry) : null, 
-				 rawKey.length > 0 ? new SymmetricKey(rawKey) : null);
+				 rawKey.length > 0 ? new SymmetricKey(rawKey) : null, raw);
     }
     
     this.uploadFragment = function(f, targetUser, sharer, mapKey) {
@@ -1147,13 +1175,13 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 	});
     }
 
-    this.mkdir = function(newFolderName, context) {
+    this.mkdir = function(newFolderName, context, requestedBaseSymmetricKey) {
 	if (!this.isDirectory())
 	    return Promise.resolve(false);
 	const dirPointer = pointer.filePointer;
 	const dirAccess = pointer.fileAccess;
     	var rootDirKey = dirPointer.baseKey;
-	return dirAccess.mkdir(newFolderName, context, entryWriterKey, dirPointer.mapKey, rootDirKey);
+	return dirAccess.mkdir(newFolderName, context, entryWriterKey, dirPointer.mapKey, rootDirKey, requestedBaseSymmetricKey);
     }
 
     this.rename = function(newName, context) {
@@ -1288,9 +1316,10 @@ EntryPoint.deserialize = function(raw) {
 }
 
 //EntryPoint, SymmetricKey 
-function FollowRequest(entry, key) {
+function FollowRequest(entry, key, rawCipher) {
     this.entry = entry;
     this.key = key;
+    this.rawCipher = rawCipher;
 
     this.isAccepted = function() {
 	return entry != null;
@@ -1586,10 +1615,10 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
     }
 
     //String, UserContext, User -> 
-    this.mkdir  = function(name, userContext, writer, ourMapKey, baseKey) {
+    this.mkdir  = function(name, userContext, writer, ourMapKey, baseKey, optionalBaseKey) {
         if (!(writer instanceof User))
             throw "Can't modify a directory without write permission (writer must be a User)!";    
-        const dirReadKey = SymmetricKey.random();
+        const dirReadKey = optionalBaseKey != null ? optionalBaseKey : SymmetricKey.random();
         const dirMapKey = window.nacl.randomBytes(32); // root will be stored under this in the core node
 	const ourParentKey = this.getParentKey(baseKey);
 	const ourLocation = new Location(userContext.user, writer, ourMapKey);
@@ -1667,7 +1696,6 @@ function EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChun
     this.chunkAuth = chunkAuth;
     this.fragmentHashes = fragmentHashes;
     this.nextChunk = nextChunk;
-    console.log("Made Chunk retriever with nextChunk: " + nextChunk);
 
     this.getFile = function(context, dataKey, len) {
         const stream = this;
@@ -1733,7 +1761,6 @@ function LazyInputStreamCombiner(stream, context, dataKey, chunk) {
     this.next = stream.getNext();
 
     this.getNextStream = function(len) {
-	console.log("GetNextStream " + len);
         if (this.next != null) {
             const lazy = this;
             return context.getMetadata(this.next).then(function(meta) {
@@ -1762,7 +1789,6 @@ function LazyInputStreamCombiner(stream, context, dataKey, chunk) {
     }
 
     this.read = function(len, res, offset) {
-	console.log("READ: "+len + ", "+offset);
         const lazy = this;
         if (res == null) {
             res = new Uint8Array(len);
