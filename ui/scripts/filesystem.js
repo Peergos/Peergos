@@ -98,7 +98,7 @@ const UserOptions = React.createClass({
                     const PendingTable = React.createClass({
                             render: function() {
                                 return (<div>
-                                        <h2>Pending Requests</h2>
+                                        <h2>Pending Follow Requests</h2>
                                         <table className="table table-responsive table-striped table-hover">
                                             <thead></thead>
                                                 <th>User</th>
