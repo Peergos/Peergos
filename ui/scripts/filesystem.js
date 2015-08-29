@@ -148,6 +148,7 @@ var SignUp = React.createClass({
             }
 
             var ctx = null;
+            startInProgess();
             return generateKeyPairs(username, pw1).then(function(user) {
                     const dht = new DHTClient();
                     const corenode = new CoreNodeClient();
@@ -158,6 +159,7 @@ var SignUp = React.createClass({
                                 console.log("Now registering  user "+ username);
                                 return ctx.register();
                         }
+                        clearInProgress();
                         this.setState({
                                     usernameClass : "has-error has-feedback",
                                     usernameMsg : "Username is already registered!",
@@ -167,6 +169,7 @@ var SignUp = React.createClass({
                         return reject();
                 }.bind(this)).then(function(isRegistered) {
                         if  (! isRegistered) { 
+                                clearInProgress();
                                 reject();
 
                                 this.setState({
@@ -182,6 +185,7 @@ var SignUp = React.createClass({
 		        }.bind(this)).then(function() {
                     console.log("Verified user "+ username +" is registered");
                     populateModalAndShow("Success", "You have registered the username "+  username);
+                    clearInProgress();
                     this.props.browser.login(username, pw1);
                 }.bind(this));
         }.bind(this);
