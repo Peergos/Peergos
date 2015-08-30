@@ -1179,9 +1179,7 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
     this.retrieveParent = function(context) {
 	if (pointer == null)
 	    return Promise.resolve(null);
-	var parentKey = pointer.filePointer.baseKey;
-	if (this.isDirectory())
-	    parentKey = pointer.fileAccess.getParentKey(parentKey);
+	var parentKey = getParentKey();
 	return pointer.fileAccess.getParent(parentKey, context).then(function(parentRFP) {
 	    if (parentRFP == null)
 		return Promise.resolve(FileTreeNode.ROOT);
@@ -1189,12 +1187,28 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 	});
     }
 
+    var getParentKey = function() {
+	var parentKey = pointer.filePointer.baseKey;
+	if (this.isDirectory())
+	    try {
+		parentKey = pointer.fileAccess.getParentKey(parentKey);
+	    } catch (e) {
+		// if we don't have read access to this folder, then we must just have the parent key already
+	    }
+	return parentKey;
+    }.bind(this);
+
     this.getChildren = function(context) {
 	if (this == FileTreeNode.ROOT)
 	    return Promise.resolve(children);
-	return retrieveChildren(context).then(function(childrenRFPs){
-	    return Promise.resolve(childrenRFPs.map(function(x) {return new FileTreeNode(x, owner, readers, writers, entryWriterKey);}));
-	});
+	try {
+	    return retrieveChildren(context).then(function(childrenRFPs){
+		return Promise.resolve(childrenRFPs.map(function(x) {return new FileTreeNode(x, owner, readers, writers, entryWriterKey);}));
+	    });
+	} catch (e) {
+	    // directories we don't have read access to have children populated during tree creation
+	    return Promise.resolve(children);
+	}
     }
 
     var retrieveChildren = function(context) {
@@ -1270,9 +1284,11 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
     }
 
     this.getFileProperties = function() {
-	const parentKey =  this.isDirectory() ? pointer.fileAccess.getParentKey(pointer.filePointer.baseKey) : pointer.filePointer.baseKey
+	if (pointer == null)
+	    return new FileProperties("/", 0, 0, 0);
+	const parentKey = getParentKey();
 	return pointer.fileAccess.getFileProperties(parentKey);
-    }
+    }.bind(this);
 }
 FileTreeNode.ROOT = new FileTreeNode(null, null, [], [], null);
 
