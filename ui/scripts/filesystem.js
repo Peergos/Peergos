@@ -4,6 +4,9 @@ $(document).ready(function(){
     $('[data-toggle="tooltip"]').tooltip();   
 });
 
+$('#modal').on('hide.bs.modal', function () {
+           $('#modal').removeData();
+});
 
 userContext =  null;
 
@@ -97,8 +100,11 @@ const UserOptions = React.createClass({
                                         settings: {"timeout":  5000} 
                         });
                         clearInProgress();
-                    });
-                };
+                        this.populatePendingTable();
+                        this.populateFollowersTable();
+                        this.populateFollowingTable();
+                    }.bind(this));
+                }.bind(this);
 
                 return pending.map(function(request) {
                     const pendingName = request.entry.name;
