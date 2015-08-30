@@ -97,10 +97,24 @@ const UserOptions = React.createClass({
                             return reply(request, true, true);
                     };
                     const allow = function() {
+                            startInProgess();
                             return reply(request, true, false).then(function(isAllowed) {
                                     console.log("accepted follow request from "+ request.entry.owner +" ? "+ isAllowed);
-                            });
-                    };
+                                    
+                                    const msg = isAllowed ? "Successfully accepted follow request from " : "Failed to accept follow request from ";
+                                    $.toaster(
+                                    {
+
+                                        priority: "info",
+                                        message: msg + request.entry.owner, 
+                                        settings: {"timeout":  5000} 
+                                    });
+                                    //trigger re-draw
+                            }).then(function() {
+                                    this.populatePendingTable();
+                                    clearInProgress(); 
+                            }.bind(this));
+                    }.bind(this);
 
                     const deny  =  function() {
                             return reply(request, false, false);
@@ -111,12 +125,11 @@ const UserOptions = React.createClass({
                                     <td><button className="btn btn-info" onClick={allow}>allow</button></td>
                                     <td><button className="btn btn-danger" onClick={deny}>deny</button></td>
                             </tr>);
-                });
-            }).then(function(rows) {
+                }.bind(this));
+            }.bind(this)).then(function(rows) {
                     const PendingTable = React.createClass({
                             render: function() {
                                 return (<div>
-                                        <h2>Pending Follow Requests</h2>
                                         <table className="table table-responsive table-striped table-hover">
                                             <thead></thead>
                                                 <th>User</th>
@@ -145,7 +158,12 @@ const UserOptions = React.createClass({
                                 <input placeholder="Friend name" id="friend-name-input" className="form-control" type="text"/>
                             </div>
                             <button className="btn btn-success" onClick={this.submitFriendRequest}>Submit follow request</button>
+                            <h2>Pending Follow Requests</h2>
                             <div id="pendingRequestTable"></div>
+                            <h2>Followers</h2>
+                            <div id="followersList"></div>
+                            <h2>Following</h2>
+                            <div id="followingList"></div>
                     </div>)
     },
 
