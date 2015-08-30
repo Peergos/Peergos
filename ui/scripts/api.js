@@ -810,6 +810,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 	return this.getSharingFolder().mkdir(theirUsername, this, initialRequest.key).then(function(friendRoot) {
 	    // add a note to our static data so we know who we sent the read access to
 	    const entry = new EntryPoint(friendRoot.readOnly(), this.username, [theirUsername], []);
+            const targetUser = initialRequest.entry.pointer.owner;
 	    return this.addToStaticData(entry).then(function(res) {
 		// create a tmp keypair whose public key we can prepend to the request without leaking information
                 var tmp = User.random();
@@ -818,7 +819,6 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 		if (! reciprocate) {
 		    buf.writeArray(new Uint8Array(0)); // tell them we're not reciprocating
 		    var plaintext = buf.toByteArray();
-                    const targetUser = initialRequest.entry.pointer.owner;
                     var payload = targetUser.encryptMessageFor(plaintext, tmp);
 
                     return corenodeClient.followRequest(initialRequest.entry.pointer.owner.getPublicKeys(), concat(tmp.pBoxKey, payload));
