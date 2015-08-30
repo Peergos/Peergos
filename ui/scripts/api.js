@@ -1188,7 +1188,7 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
         return fileAccess.getChildren(userContext, rootDirKey)
     }
 
-    this.getOwner() {
+    this.getOwner = function() {
 	return owner;
     }
 
