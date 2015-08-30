@@ -936,7 +936,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 			var ourDirForThem = followerRoots[freq.entry.owner];
 			var ourKeyForThem = ourDirForThem.getKey().key;
 			var keyFromResponse = freq.key;
-			if (keyFromResponse == null || !arraysEqual(keyFromResponse, ourKeyForThemkey))
+			if (keyFromResponse == null || !arraysEqual(keyFromResponse, ourKeyForThem))
 			    ourDirForThem.remove(that);
 			// add entry point to 
 			that.addToStaticData(freq.entry).then(function(res) {
