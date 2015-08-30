@@ -783,22 +783,27 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
     }
 
     this.getFollowers = function() {
-	return this.getSharingFolder().getChildren(this).then(function(friendFolders){
-	    return Promise.resolve(friendFolders.map(function(froot){return froot.getOwner()}));
-	});
-    }
+	return this.getFollowRequests().then(function() {
+	    return this.getSharingFolder().getChildren(this).then(function(friendFolders){
+		return Promise.resolve(friendFolders.map(function(froot){return froot.getFileProperties().name;}));
+	    });
+	}.bind(this));
+    }.bind(this);
+
+    this.getFollowing = function() {
+	var that = this;
+	return this.getFollowRequests().then(function() {
+	    return this.getFriendRoots().then(function(friendRoots) {
+		return Promise.resolve(friendRoots.map(function(froot){return froot.getOwner()}).filter(function(name){return name != that.username;}));
+	    });
+	}.bind(this));
+    }.bind(this)
 
     this.getFollowerRoots = function() {
 	return this.getSharingFolder().getChildren(this).then(function(friendFolders){
 	    var res = {};
 	    friendFolders.map(function(froot){return res[froot.getFileProperties().name] = froot;});
 	    return Promise.resolve(res);
-	});
-    }
-
-    this.getFollowing = function() {
-	return this.getFriendRoots().then(function(friendRoots) {
-	    return Promise.resolve(friendRoots.map(function(froot){return froot.owner}));
 	});
     }
 
@@ -912,6 +917,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 			var keyFromResponse = freq.key;
 			if (keyFromResponse == null || !arraysEqual(keyFromResponse, ourKeyForThemkey))
 			    ourDirForThem.remove(that);
+			corenodeClient.removeFollowRequest(that.user.getPublicKeys(), that.user.signMessage(freq.rawCipher));
 			return false;
 		    }
 		    return followerRoots[freq.entry.owner] == null;
@@ -1272,6 +1278,8 @@ function logout() {
 function RetrievedFilePointer(pointer, access) {
     this.filePointer = pointer;
     this.fileAccess = access;
+    if (access == null)
+	throw "Null fileAccess!";
 
     this.remove = function(context, parentRetrievedFilePointer) {
 	if (!this.filePointer.isWritable())
