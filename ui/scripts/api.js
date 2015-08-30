@@ -854,26 +854,45 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
     // string, RetrievedFilePointer, SymmetricKey
     this.sendFollowRequest = function(targetUsername, requestedKey) {
 	var sharing = this.getSharingFolder();
-        return this.corenodeClient.getPublicKey(targetUsername).then(function(targetUser) {
-	    return sharing.mkdir(targetUsername, this).then(function(friendRoot) {
-		
-		// add a note to our static data so we know who we sent the read access to
-		const entry = new EntryPoint(friendRoot.readOnly(), this.username, [targetUsername], []);
-		return this.addToStaticData(entry).then(function(res) {
-                    // send details to allow friend to follow us, and optionally let us follow them		
-                    // create a tmp keypair whose public key we can prepend to the request without leaking information
-                    var tmp = User.random();
-		    var buf = new ByteArrayOutputStream();
-		    buf.writeArray(entry.serialize());
-		    buf.writeArray(requestedKey != null ? requestedKey.key : new Uint8Array(0));
-		    var plaintext = buf.toByteArray();
-                    var payload = targetUser.encryptMessageFor(plaintext, tmp);
-		    
-                    return corenodeClient.followRequest(targetUser.getPublicKeys(), concat(tmp.pBoxKey, payload));
+	var that = this;
+	return sharing.getChildren(this).then(function(children) {
+	    var alreadyFollowed = false;
+	    for (var i=0; i < children.length; i++)
+		if (children[i].getFileProperties().name == targetUsername)
+		    alreadyFollowed = true;
+	    if (alreadyFollowed)
+		return Promise.resolve(false);
+	    // check for them not reciprocating
+	    return that.getFollowing().then(function(following) {
+		var alreadyFollowed = false;
+		for (var i=0; i < following.length; i++)
+		    if (following[i] == targetUsername)
+			alreadyFollowed = true;
+		if (alreadyFollowed)
+		    return Promise.resolve(false);
+
+		return that.corenodeClient.getPublicKey(targetUsername).then(function(targetUser) {
+		    return sharing.mkdir(targetUsername, that).then(function(friendRoot) {
+			
+			// add a note to our static data so we know who we sent the read access to
+			const entry = new EntryPoint(friendRoot.readOnly(), that.username, [targetUsername], []);
+			return that.addToStaticData(entry).then(function(res) {
+			    // send details to allow friend to follow us, and optionally let us follow them		
+			    // create a tmp keypair whose public key we can prepend to the request without leaking information
+			    var tmp = User.random();
+			    var buf = new ByteArrayOutputStream();
+			    buf.writeArray(entry.serialize());
+			    buf.writeArray(requestedKey != null ? requestedKey.key : new Uint8Array(0));
+			    var plaintext = buf.toByteArray();
+			    var payload = targetUser.encryptMessageFor(plaintext, tmp);
+			    
+			    return corenodeClient.followRequest(targetUser.getPublicKeys(), concat(tmp.pBoxKey, payload));
+			});
+		    });
 		});
-            }.bind(this));
-        }.bind(this));
-    }.bind(this);
+            });
+	});
+    };
 
     this.sendWriteAccess = function(targetUser) {
         // create sharing keypair and give it write access
