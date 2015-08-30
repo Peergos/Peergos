@@ -784,7 +784,15 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 
     this.getFollowers = function() {
 	return this.getSharingFolder().getChildren(this).then(function(friendFolders){
-	    return Promise.resolve(friendsFolders.map(function(froot){return froot.owner}));
+	    return Promise.resolve(friendsFolders.map(function(froot){return froot.getOwner()}));
+	});
+    }
+
+    this.getFollowerRoots = function() {
+	return this.getSharingFolder().getChildren(this).then(function(friendFolders){
+	    var res = {};
+	    friendFolders.map(function(froot){return res[froot.owner] = froot;});
+	    return Promise.resolve(res);
 	});
     }
 
@@ -892,10 +900,25 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
     }
 
     this.getFollowRequests = function() {
+	var that = this;
         return corenodeClient.getFollowRequests(user.getPublicKeys()).then(function(reqs){
-	    return Promise.resolve(reqs.map(decodeFollowRequest));
+	    var all = reqs.map(decodeFollowRequest);
+	    return that.getFollowerRoots().then(function(followerRoots) {
+		var initialRequests = all.filter(function(freq){
+		    if (followerRoots[freq.entry.owner] != null) {
+			// delete our folder if they didn't reciprocate
+			var ourDirForThem = followerRoots[freq.entry.owner];
+			var ourKeyForThem = ourDirForThem.pointer.key.key;
+			var keyFromResponse = freg.key;
+			if (!arraysEqual(keyFromResponse.key, ourKeyForThemkey))
+			    ourDirForThem.remove(that);
+		    }
+		    return followerRoots[freq.entry.owner] == null;
+		});
+		return Promise.resolve(initialRequests);
+	    });
 	});
-    }.bind(this);
+    };
 
     var decodeFollowRequest = function(raw) {
         var pBoxKey = new Uint8Array(32);
@@ -1163,6 +1186,10 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
         const rootDirKey = filePointer.baseKey;
 
         return fileAccess.getChildren(userContext, rootDirKey)
+    }
+
+    this.getOwner() {
+	return owner;
     }
 
     this.isDirectory = function() {
