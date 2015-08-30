@@ -84,41 +84,51 @@ const UserOptions = React.createClass({
     }, 
 
     populatePendingTable: function()  {
-            userContext.getFollowRequests(userContext.username).then(function(pending) {
+            userContext.getFollowRequests().then(function(pending) {
 
-                const reply =  function(request,  accept, reciprocate) {
-                            return userContext.sendReplyFollowRequest(request, accept, reciprocate);
+                const reply = function(request,  accept, reciprocate, consoleMsg, onSuccessMsg, onErrorMsg) {
+                    startInProgess();
+                    return userContext.sendReplyFollowRequest(request, accept, reciprocate).then(function(result) {
+                        console.log(consoleMsg +" ? "+ result);
+                        const  msg = result ? onSuccessMsg : onErrorMsg;
+                        $.toaster({
+                                        priority: "info",
+                                        message: msg, 
+                                        settings: {"timeout":  5000} 
+                        });
+                        clearInProgress();
+                    });
                 };
 
                 return pending.map(function(request) {
-
+                    const pendingName = request.entry.name;
                     const allowAndFollowBack = function() {
 
-                            return reply(request, true, true);
+                        return reply(request, 
+                            true, 
+                            true, 
+                            "accepted and reciprocated follow request from "+ pendingName,
+                            "successfully accepted and reciprocated follow request from "+ pendingName, 
+                            "failed to accept and reciprocate follow request from "+ pendingName);
                     };
                     const allow = function() {
-                            startInProgess();
-                            return reply(request, true, false).then(function(isAllowed) {
-                                    console.log("accepted follow request from "+ request.entry.owner +" ? "+ isAllowed);
-                                    
-                                    const msg = isAllowed ? "Successfully accepted follow request from " : "Failed to accept follow request from ";
-                                    $.toaster(
-                                    {
-
-                                        priority: "info",
-                                        message: msg + request.entry.owner, 
-                                        settings: {"timeout":  5000} 
-                                    });
-                                    //trigger re-draw
-                            }).then(function() {
-                                    this.populatePendingTable();
-                                    clearInProgress(); 
-                            }.bind(this));
-                    }.bind(this);
+                        return reply(request, 
+                            true, 
+                            false, 
+                            "accepted follow request from "+ pendingName,
+                            "successfully accepted follow request from "+ pendingName, 
+                            "failed to accept follow request from "+ pendingName);
+                    };
 
                     const deny  =  function() {
-                            return reply(request, false, false);
+                        return reply(request, 
+                            false, 
+                            false, 
+                            "denied follow request from "+ pendingName,
+                            "denied follow request from "+ pendingName, 
+                            "failed to deny follow request from "+ pendingName);
                     };
+
                     return (<tr>
                                     <td>{request.entry.owner}</td>
                                     <td><button className="btn btn-success" onClick={allowAndFollowBack}>allow and follow back</button></td>
