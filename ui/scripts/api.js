@@ -778,11 +778,19 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
     
     this.getFriendRoots = function() {
 	return this.rootNode.getChildren(this).then(function (children) {
-	    var friendRoots = [];
-	    for (var i=0; i < children.length; i++)
-		if (children[i].owner != this.username)
-		    friendRoots.push(children[i]);
-	    return Promise.resolve(friendRoots);
+	    return Promise.resolve(children.filter(function(froot){return froot.owner != this.username}));
+	});
+    }
+
+    this.getFollowers = function() {
+	return this.getSharingFolder().getChildren(this).then(function(friendFolders){
+	    return Promise.resolve(friendsFolders.map(function(froot){return froot.owner}));
+	);
+    }
+
+    this.getFollowing = function() {
+	return this.getFriendRoots().then(function(friendRoots) {
+	    return Promise.resolve(friendRoots.map(function(froot){return froot.owner}));
 	});
     }
 
