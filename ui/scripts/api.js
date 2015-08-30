@@ -836,12 +836,14 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 
                     return corenodeClient.followRequest(initialRequest.entry.pointer.owner.getPublicKeys(), concat(tmp.pBoxKey, payload));
 		}
-		// if reciprocate, add entry point to their shared dirctory (we follow them)
-		buf.writeArray(initialRequest.key.key); // tell them we are reciprocating
-		var plaintext = buf.toByteArray();
-                var payload = targetUser.encryptMessageFor(plaintext, tmp);
-		
-                return corenodeClient.followRequest(initialRequest.entry.pointer.owner.getPublicKeys(), concat(tmp.pBoxKey, payload));
+		// if reciprocate, add entry point to their shared dirctory (we follow them) and them 
+		return this.addToStaticData(initialRequest.entry).then(function(res) {
+		    buf.writeArray(initialRequest.key.key); // tell them we are reciprocating
+		    var plaintext = buf.toByteArray();
+                    var payload = targetUser.encryptMessageFor(plaintext, tmp);
+		    
+                    return corenodeClient.followRequest(initialRequest.entry.pointer.owner.getPublicKeys(), concat(tmp.pBoxKey, payload));
+		});
 	    }.bind(this)).then(function(res) {
 		// remove original request
 		return corenodeClient.removeFollowRequest(this.user.getPublicKeys(), this.user.signMessage(initialRequest.rawCipher));
@@ -917,7 +919,10 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 			var keyFromResponse = freq.key;
 			if (keyFromResponse == null || !arraysEqual(keyFromResponse, ourKeyForThemkey))
 			    ourDirForThem.remove(that);
-			corenodeClient.removeFollowRequest(that.user.getPublicKeys(), that.user.signMessage(freq.rawCipher));
+			// add entry point to 
+			that.addToStaticData(freq.entry).then(function(res) {
+			    corenodeClient.removeFollowRequest(that.user.getPublicKeys(), that.user.signMessage(freq.rawCipher));
+			});
 			return false;
 		    }
 		    return followerRoots[freq.entry.owner] == null;
@@ -987,15 +992,16 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
             // download the metadata blobs for these entry points
             var proms = [];
             for (var i=0; i < res.length; i++)
-            proms[i] = corenodeClient.getMetadataBlob(res[i].pointer.owner, res[i].pointer.writer, res[i].pointer.mapKey);
+		proms[i] = corenodeClient.getMetadataBlob(res[i].pointer.owner, res[i].pointer.writer, res[i].pointer.mapKey);
             return Promise.all(proms).then(function(result) {
                 var entryPoints = [];
                 for (var i=0; i < result.length; i++) {
                     if (result[i].byteLength > 8) {
                         var unwrapped = new ByteArrayInputStream(result[i]).readArray();
                         entryPoints.push([res[i], FileAccess.deserialize(unwrapped)]);
-                    } else
-                        entryPoints.push([res[i], null]);
+                    } else {
+                        // these point to removed directories
+		    }
                 }
                 return Promise.resolve(entryPoints);
             }.bind(this));
