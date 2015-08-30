@@ -85,11 +85,29 @@ const UserOptions = React.createClass({
 
     populatePendingTable: function()  {
             userContext.getFollowRequests(userContext.username).then(function(pending) {
+
+                const reply =  function(request,  accept, reciprocate) {
+                            return userContext.sendReplyFollowRequest(request, accept, reciprocate);
+                };
+
                 return pending.map(function(request) {
-                    const deny  =  function() {};
-                    const allow = function() {};
+
+                    const allowAndFollowBack = function() {
+
+                            return reply(request, true, true);
+                    };
+                    const allow = function() {
+                            return reply(request, true, false).then(function(isAllowed) {
+                                    console.log("accepted follow request from "+ request.entry.owner +" ? "+ isAllowed);
+                            });
+                    };
+
+                    const deny  =  function() {
+                            return reply(request, false, false);
+                    };
                     return (<tr>
                                     <td>{request.entry.owner}</td>
+                                    <td><button className="btn btn-success" onClick={allowAndFollowBack}>allow and follow back</button></td>
                                     <td><button className="btn btn-info" onClick={allow}>allow</button></td>
                                     <td><button className="btn btn-danger" onClick={deny}>deny</button></td>
                             </tr>);
@@ -102,6 +120,7 @@ const UserOptions = React.createClass({
                                         <table className="table table-responsive table-striped table-hover">
                                             <thead></thead>
                                                 <th>User</th>
+                                                <th></th>
                                                 <th></th>
                                                 <th></th>
                                             <tbody>

@@ -247,18 +247,15 @@ public abstract class AbstractCoreNode
 
     public boolean removeFollowRequest(UserPublicKey owner, byte[] data)
     {
-        UserPublicKey us = null;
-        ByteArrayWrapper baw = new ByteArrayWrapper(data);
+        byte[] unsigned = owner.unsignMessage(data);
+        ByteArrayWrapper baw = new ByteArrayWrapper(unsigned);
         synchronized(this)
-
         {
-            us = userNameToPublicKeyMap.get(owner);
-            if (us == null || ! userMap.get(owner).followRequests.contains(baw))
+            if (owner == null || ! userMap.get(owner).followRequests.contains(baw))
                 return false; 
         }
-        byte[] unsigned = us.unsignMessage(data);
 
-        return removeFollowRequest(us, new ByteArrayWrapper(unsigned));
+        return removeFollowRequest(owner, baw);
     }
 
     protected synchronized boolean removeFollowRequest(UserPublicKey target, ByteArrayWrapper baw)

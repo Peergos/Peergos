@@ -558,12 +558,14 @@ function CoreNodeClient() {
         });
     };
     
-    //String -> Uint8Array -> Uint8Array -> fn -> fn -> void
+    //Uint8Array -> Uint8Array -> Uint8Array -> fn -> fn -> void
     this.removeFollowRequest = function( target,  signedRequest) {
         var buffer = new ByteArrayOutputStream();
-        buffer.writeString(target);
+        buffer.writeArray(target);
         buffer.writeArray(signedRequest);
-        return postProm("core/removeFollowRequest", buffer.toByteArray());
+        return postProm("core/removeFollowRequest", buffer.toByteArray()).then(function(res) {
+            return Promise.resolve(new ByteArrayInputStream(res).readByte() == 1);
+        });
     };
 
     //String -> Uint8Array -> Uint8Array -> fn -> fn -> void
@@ -789,7 +791,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
     }
 
     // FollowRequest, boolean, boolean
-    this.sendReplyFollowRequest = function(intialRequest, accept, reciprocate) {
+    this.sendReplyFollowRequest = function(initialRequest, accept, reciprocate) {
 	var theirUsername = initialRequest.entry.owner;
 	// if accept, create directory to share with them, note in entry points (they follow us)
 	if (!accept) {
@@ -799,7 +801,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 	}
 	return this.getSharingFolder().mkdir(theirUsername, this, initialRequest.key).then(function(friendRoot) {
 	    // add a note to our static data so we know who we sent the read access to
-	    const entry = new EntryPoint(friendRoot.readOnly(), this.username, [targetUsername], []);
+	    const entry = new EntryPoint(friendRoot.readOnly(), this.username, [theirUsername], []);
 	    return this.addToStaticData(entry).then(function(res) {
 		// create a tmp keypair whose public key we can prepend to the request without leaking information
                 var tmp = User.random();
@@ -808,6 +810,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 		if (! reciprocate) {
 		    buf.writeArray(new Uint8Array(0)); // tell them we're not reciprocating
 		    var plaintext = buf.toByteArray();
+                    const targetUser = initialRequest.entry.pointer.owner;
                     var payload = targetUser.encryptMessageFor(plaintext, tmp);
 
                     return corenodeClient.followRequest(initialRequest.entry.pointer.owner.getPublicKeys(), concat(tmp.pBoxKey, payload));
@@ -818,11 +821,11 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
                 var payload = targetUser.encryptMessageFor(plaintext, tmp);
 		
                 return corenodeClient.followRequest(initialRequest.entry.pointer.owner.getPublicKeys(), concat(tmp.pBoxKey, payload));
-	    }).then(function(res) {
+	    }.bind(this)).then(function(res) {
 		// remove original request
-		return corenodeClient.removefollowRequest(this.user.getPublicKeys(), this.user.signMessage(initialRequest.rawCipher));
-	    });
-	});
+		return corenodeClient.removeFollowRequest(this.user.getPublicKeys(), this.user.signMessage(initialRequest.rawCipher));
+	    }.bind(this));
+	}.bind(this));
     }
 
     // string, RetrievedFilePointer, SymmetricKey
