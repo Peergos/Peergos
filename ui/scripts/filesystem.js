@@ -150,6 +150,37 @@ const UserOptions = React.createClass({
             });
     },
 
+    tableBuilder: function(header, names) {
+            const rows = names.map(function(name) {
+                        return (<tr><td>{name}</td></tr>);
+            });
+            return React.createClass({
+                    render: function() {
+                        return (<div>
+                                    <table className="table table-responsive table-striped table-hover">
+                                        <thead></thead>
+                                        <th>{header}</th>
+                                        <tbody>
+                                            {rows}
+                                        </tbody>
+                                    </table>
+                               </div>);
+                    }
+            });
+    },
+
+    populateFollowersTable: function()  {
+            userContext.getFollowers().then(function(names) {
+                const Anon = this.tableBuilder("Follower", names);
+                React.render(<Anon/>, document.getElementById("followersList"));
+            }.bind(this));
+    },
+    populateFollowingTable: function()  {
+            userContext.getFollowing().then(function(names) {
+                const Anon = this.tableBuilder("Following", names);
+                React.render(<Anon/>, document.getElementById("followingList"));
+            }.bind(this));
+    },
     render: function() {
 
             return (<div>
@@ -169,6 +200,8 @@ const UserOptions = React.createClass({
 
     componentDidMount: function() {
             this.populatePendingTable();
+            this.populateFollowersTable();
+            this.populateFollowingTable();
     }
 });
 

@@ -1,4 +1,4 @@
-if (typeof module !== "undefined")
+                        if (typeof module !== "undefined")
     var nacl = require("./nacl");
 if (typeof module !== "undefined")
     var erasure = require("./erasure");
@@ -784,7 +784,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 
     this.getFollowers = function() {
 	return this.getSharingFolder().getChildren(this).then(function(friendFolders){
-	    return Promise.resolve(friendsFolders.map(function(froot){return froot.getOwner()}));
+	    return Promise.resolve(friendFolders.map(function(froot){return froot.getOwner()}));
 	});
     }
 
