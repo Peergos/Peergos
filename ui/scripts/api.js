@@ -791,7 +791,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
     this.getFollowerRoots = function() {
 	return this.getSharingFolder().getChildren(this).then(function(friendFolders){
 	    var res = {};
-	    friendFolders.map(function(froot){return res[froot.getOwner()] = froot;});
+	    friendFolders.map(function(froot){return res[froot.getFileProperties().name] = froot;});
 	    return Promise.resolve(res);
 	});
     }
@@ -908,10 +908,11 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 		    if (followerRoots[freq.entry.owner] != null) {
 			// delete our folder if they didn't reciprocate
 			var ourDirForThem = followerRoots[freq.entry.owner];
-			var ourKeyForThem = ourDirForThem.pointer.key.key;
-			var keyFromResponse = freg.key;
-			if (!arraysEqual(keyFromResponse.key, ourKeyForThemkey))
+			var ourKeyForThem = ourDirForThem.getKey().key;
+			var keyFromResponse = freq.key;
+			if (!arraysEqual(keyFromResponse, ourKeyForThemkey))
 			    ourDirForThem.remove(that);
+			return false;
 		    }
 		    return followerRoots[freq.entry.owner] == null;
 		});
@@ -1157,6 +1158,10 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 
     this.isWritable = function() {
 	return pointer.filePointer.writer instanceof User;
+    }
+
+    this.getKey = function() {
+	return pointer.filePointer.baseKey;
     }
 
     this.retrieveParent = function(context) {
