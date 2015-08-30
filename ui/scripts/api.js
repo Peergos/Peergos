@@ -910,7 +910,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 			var ourDirForThem = followerRoots[freq.entry.owner];
 			var ourKeyForThem = ourDirForThem.getKey().key;
 			var keyFromResponse = freq.key;
-			if (!arraysEqual(keyFromResponse, ourKeyForThemkey))
+			if (keyFromResponse == null || !arraysEqual(keyFromResponse, ourKeyForThemkey))
 			    ourDirForThem.remove(that);
 			return false;
 		    }
