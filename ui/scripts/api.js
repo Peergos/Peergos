@@ -785,7 +785,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
     this.getFollowers = function() {
 	return this.getSharingFolder().getChildren(this).then(function(friendFolders){
 	    return Promise.resolve(friendsFolders.map(function(froot){return froot.owner}));
-	);
+	});
     }
 
     this.getFollowing = function() {
