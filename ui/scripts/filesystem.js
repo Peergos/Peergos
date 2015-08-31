@@ -100,6 +100,7 @@ const UserOptions = React.createClass({
                                         settings: {"timeout":  5000} 
                         });
                         clearInProgress();
+			this.props.browser.loadFilesFromServer();
                         this.populatePendingTable();
                         this.populateFollowersTable();
                         this.populateFollowingTable();
