@@ -33,8 +33,14 @@ public class HttpsUserService
 
     static {
         // disable weak algorithms
-        Security.setProperty("jdk.tls.disabledAlgorithms", "SSLv3, RC4, MD2, MD4, MD5, SHA1, DSA, RSA keySize < 2048, EC keySize < 160");
+        System.out.println("Initial security properties:");
+        System.out.println("jdk.tls.disabledAlgorithms: "+Security.getProperty("jdk.tls.disabledAlgorithms"));
+        System.out.println("jdk.certpath.disabledAlgorithms: "+Security.getProperty("jdk.certpath.disabledAlgorithms"));
+        Security.setProperty("jdk.tls.disabledAlgorithms", "SSLv3, RC4, MD2, MD4, MD5, SHA1, DSA, DH, RSA keySize < 2048, EC keySize < 160");
         Security.setProperty("jdk.certpath.disabledAlgorithms", "RC4, MD2, MD4, MD5, SHA1, DSA, RSA keySize < 2048, EC keySize < 160");
+        System.out.println("Updated security properties:");
+        System.out.println("jdk.tls.disabledAlgorithms: "+Security.getProperty("jdk.tls.disabledAlgorithms"));
+        System.out.println("jdk.certpath.disabledAlgorithms: "+Security.getProperty("jdk.certpath.disabledAlgorithms"));
         Security.setProperty("jdk.tls.ephemeralDHKeySize", "2048");
     }
 
