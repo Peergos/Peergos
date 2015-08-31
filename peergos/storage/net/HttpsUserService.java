@@ -33,9 +33,9 @@ public class HttpsUserService
 
     static {
         // disable weak algorithms and set up perfect forward secrecy
-        System.setProperty("jdk.tls.disabledAlgorithms", "RC4, MD2, MD5, SHA1, DSA, RSA keySize < 2048, EC keySize < 160");
-        System.setProperty("jdk.certpath.disabledAlgorithms", "MD2, MD4, MD5, SHA1, DSA, RSA keySize < 2048, EC keySize < 160");
-        System.setProperty("jdk.tls.ephemeralDHKeySize", "2048");
+        Security.setProperty("jdk.tls.disabledAlgorithms", "RC4, MD2, MD4, MD5, SHA1, DSA, RSA keySize < 2048, EC keySize < 160");
+        Security.setProperty("jdk.certpath.disabledAlgorithms", "RC4, MD2, MD4, MD5, SHA1, DSA, RSA keySize < 2048, EC keySize < 160");
+        Security.setProperty("jdk.tls.ephemeralDHKeySize", "2048");
     }
 
     private final Logger LOGGER;
