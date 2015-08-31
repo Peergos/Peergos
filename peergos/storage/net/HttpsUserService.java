@@ -100,9 +100,6 @@ public class HttpsUserService
             sslContext.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);
             // set up perfect forward secrecy
             sslContext.getSupportedSSLParameters().setCipherSuites(new String[]{
-                    "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA",
-                    "TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA",
-                    "TLS_DHE_RSA_WITH_AES_128_CBC_SHA",
                     "TLS_DHE_RSA_WITH_AES_128_GCM_SHA256",
                     "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
                     "TLS_DHE_RSA_WITH_AES_256_GCM_SHA384",
