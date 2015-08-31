@@ -32,8 +32,8 @@ public class HttpsUserService
     public static final int CONNECTION_BACKLOG = 100;
 
     static {
-        // disable weak algorithms and set up perfect forward secrecy
-        Security.setProperty("jdk.tls.disabledAlgorithms", "RC4, MD2, MD4, MD5, SHA1, DSA, RSA keySize < 2048, EC keySize < 160");
+        // disable weak algorithms
+        Security.setProperty("jdk.tls.disabledAlgorithms", "SSLv3, RC4, MD2, MD4, MD5, SHA1, DSA, RSA keySize < 2048, EC keySize < 160");
         Security.setProperty("jdk.certpath.disabledAlgorithms", "RC4, MD2, MD4, MD5, SHA1, DSA, RSA keySize < 2048, EC keySize < 160");
         Security.setProperty("jdk.tls.ephemeralDHKeySize", "2048");
     }
@@ -86,6 +86,7 @@ public class HttpsUserService
 
             // setup the HTTPS context and parameters
             sslContext.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);
+            // set up perfect forward secrecy
             sslContext.getSupportedSSLParameters().setCipherSuites(new String[]{
                     "TLS_DHE_RSA_WITH_AES_128_GCM_SHA256",
                     "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
