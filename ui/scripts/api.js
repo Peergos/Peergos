@@ -710,6 +710,8 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
     this.sharingFolder = null;
 
     this.init = function() {
+	FileTreeNode.ROOT.clear();
+	this.staticData = [];
 	var context = this;
 	return createFileTree().then(function (rootNode) {
 	    context.rootNode = rootNode;
@@ -813,6 +815,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 
     // FollowRequest, boolean, boolean
     this.sendReplyFollowRequest = function(initialRequest, accept, reciprocate) {
+	var context = this;
 	var theirUsername = initialRequest.entry.owner;
 	// if accept, create directory to share with them, note in entry points (they follow us)
 	if (!accept) {
@@ -820,11 +823,11 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 	    //TODO
 	    return Promise.resolve(true);
 	}
-	return this.getSharingFolder().mkdir(theirUsername, this, initialRequest.key).then(function(friendRoot) {
+	return context.getSharingFolder().mkdir(theirUsername, context, initialRequest.key).then(function(friendRoot) {
 	    // add a note to our static data so we know who we sent the read access to
-	    const entry = new EntryPoint(friendRoot.readOnly(), this.username, [theirUsername], []);
+	    const entry = new EntryPoint(friendRoot.readOnly(), context.username, [theirUsername], []);
             const targetUser = initialRequest.entry.pointer.owner;
-	    return this.addToStaticData(entry).then(function(res) {
+	    return context.addToStaticData(entry).then(function(res) {
 		// create a tmp keypair whose public key we can prepend to the request without leaking information
                 var tmp = User.random();
 		var buf = new ByteArrayOutputStream();
@@ -837,18 +840,18 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
                     return corenodeClient.followRequest(initialRequest.entry.pointer.owner.getPublicKeys(), concat(tmp.pBoxKey, payload));
 		}
 		// if reciprocate, add entry point to their shared dirctory (we follow them) and them 
-		return this.addToStaticData(initialRequest.entry).then(function(res) {
-		    buf.writeArray(initialRequest.key.key); // tell them we are reciprocating
-		    var plaintext = buf.toByteArray();
-                    var payload = targetUser.encryptMessageFor(plaintext, tmp);
-		    
-                    return corenodeClient.followRequest(initialRequest.entry.pointer.owner.getPublicKeys(), concat(tmp.pBoxKey, payload));
+		buf.writeArray(initialRequest.entry.pointer.baseKey.key); // tell them we are reciprocating
+		var plaintext = buf.toByteArray();
+                var payload = targetUser.encryptMessageFor(plaintext, tmp);
+		
+                return corenodeClient.followRequest(initialRequest.entry.pointer.owner.getPublicKeys(), concat(tmp.pBoxKey, payload)).then(function(res) {
+		    return context.addToStaticData(initialRequest.entry);
 		});
-	    }.bind(this)).then(function(res) {
+	    }).then(function(res) {
 		// remove original request
-		return corenodeClient.removeFollowRequest(this.user.getPublicKeys(), this.user.signMessage(initialRequest.rawCipher));
-	    }.bind(this));
-	}.bind(this));
+		return corenodeClient.removeFollowRequest(context.user.getPublicKeys(), context.user.signMessage(initialRequest.rawCipher));
+	    });
+	});
     }
 
     // string, RetrievedFilePointer, SymmetricKey
@@ -935,12 +938,16 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 			// delete our folder if they didn't reciprocate
 			var ourDirForThem = followerRoots[freq.entry.owner];
 			var ourKeyForThem = ourDirForThem.getKey().key;
-			var keyFromResponse = freq.key;
+			var keyFromResponse = freq.key.key;
 			if (keyFromResponse == null || !arraysEqual(keyFromResponse, ourKeyForThem))
 			    ourDirForThem.remove(that);
-			// add entry point to 
+			else // add new entry to tree root
+			    that.downloadEntryPoints([freq.entry]).then(function(treenode) {
+				that.getAncestorsAndAddToTree(treenode, that);
+			    });
+			// add entry point to static data
 			that.addToStaticData(freq.entry).then(function(res) {
-			    corenodeClient.removeFollowRequest(that.user.getPublicKeys(), that.user.signMessage(freq.rawCipher));
+			    return corenodeClient.removeFollowRequest(that.user.getPublicKeys(), that.user.signMessage(freq.rawCipher));
 			});
 			return false;
 		    }
@@ -1007,52 +1014,58 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
                 res.push(entry);
 		this.addToStaticData(entry);
             }
-
-            // download the metadata blobs for these entry points
-            var proms = [];
-            for (var i=0; i < res.length; i++)
-		proms[i] = corenodeClient.getMetadataBlob(res[i].pointer.owner, res[i].pointer.writer, res[i].pointer.mapKey);
-            return Promise.all(proms).then(function(result) {
-                var entryPoints = [];
-                for (var i=0; i < result.length; i++) {
-                    if (result[i].byteLength > 8) {
-                        var unwrapped = new ByteArrayInputStream(result[i]).readArray();
-                        entryPoints.push([res[i], FileAccess.deserialize(unwrapped)]);
-                    } else {
-                        // these point to removed directories
-		    }
-                }
-                return Promise.resolve(entryPoints);
-            }.bind(this));
+	    
+            return this.downloadEntryPoints(res);
         }.bind(this));
     }.bind(this);
+
+    this.downloadEntryPoints = function(entries) {
+	// download the metadata blobs for these entry points
+        var proms = [];
+        for (var i=0; i < entries.length; i++)
+	    proms[i] = corenodeClient.getMetadataBlob(entries[i].pointer.owner, entries[i].pointer.writer, entries[i].pointer.mapKey);
+        return Promise.all(proms).then(function(result) {
+            var entryPoints = [];
+            for (var i=0; i < result.length; i++) {
+                if (result[i].byteLength > 8) {
+                    var unwrapped = new ByteArrayInputStream(result[i]).readArray();
+                    entryPoints.push([entries[i], FileAccess.deserialize(unwrapped)]);
+                } else {
+                    // these point to removed directories
+		}
+            }
+            return Promise.resolve(entryPoints);
+	});
+    }
 
     this.getTreeRoot = function() {
 	return Promise.resolve(this.rootNode);
     }
 
+    this.getAncestorsAndAddToTree = function(treeNode, context) {
+	try {
+	    return treeNode.retrieveParent(context).then(function(parent) {
+		if (parent == null)
+		    return Promise.resolve(true);
+		parent.addChild(treeNode);
+		return context.getAncestorsAndAddToTree(parent, context);
+	    });
+	} catch (e) {
+	    console.log(e);
+	    return Promise.resolve(null);
+	}
+    }
+    
     var createFileTree = function() {
 	return this.getRoots().then(function(roots){
 	    var entrypoints = roots.map(function(x) {return new FileTreeNode(new RetrievedFilePointer(x[0].pointer, x[1]), x[0].owner, x[0].readers, x[0].writers, x[0].pointer.writer);});
 	    console.log(entrypoints);
 	    var globalRoot = FileTreeNode.ROOT;
 	    var proms = [];
-	    var getAncestors = function(treeNode, context) {
-		try {
-		    return treeNode.retrieveParent(context).then(function(parent) {
-			if (parent == null)
-			    return Promise.resolve(true);
-			parent.addChild(treeNode);
-			return getAncestors(parent, context);
-		    });
-		} catch (e) {
-		    console.log(e);
-		    return Promise.resolve(null);
-		}
-	    }
+	    
 	    for (var i=0; i < entrypoints.length; i++) {
 		var current = entrypoints[i];
-		proms.push(getAncestors(current, this));
+		proms.push(this.getAncestorsAndAddToTree(current, this));
 	    }
 	    return Promise.all(proms).then(function(res) {
 		return Promise.resolve(globalRoot);
@@ -1194,6 +1207,11 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
     this.getKey = function() {
 	return pointer.filePointer.baseKey;
     }
+
+    this.clear = function() {
+	children = [];
+	childrenByName = {};
+    }.bind(this);
 
     this.retrieveParent = function(context) {
 	if (pointer == null)
