@@ -18,7 +18,7 @@ public class StaticHandler implements HttpHandler
         List<String> files = getResources(pathToRoot);
         if (caching)
             for(String s: files) {
-                data.put(s.substring(pathToRoot.length()), readResource(ClassLoader.getSystemClassLoader().getResourceAsStream(s)));
+                data.put(s.substring(pathToRoot.length()), readResourceAndGzip(ClassLoader.getSystemClassLoader().getResourceAsStream(s)));
             }
     }
 
@@ -32,10 +32,12 @@ public class StaticHandler implements HttpHandler
             if (!data.containsKey(path))
                 httpExchange.sendResponseHeaders(404, 0);
 
-        byte[] res = caching ? data.get(path) : readResource(new File(HttpsUserService.UI_DIR+path).exists() ?
-                new FileInputStream(HttpsUserService.UI_DIR+path)
-                : ClassLoader.getSystemClassLoader().getResourceAsStream(HttpsUserService.UI_DIR+path));
+        byte[] res = caching ? data.get(path) : readResourceAndGzip(new File(HttpsUserService.UI_DIR + path).exists() ?
+                new FileInputStream(HttpsUserService.UI_DIR + path)
+                : ClassLoader.getSystemClassLoader().getResourceAsStream(HttpsUserService.UI_DIR + path));
 
+
+        httpExchange.getResponseHeaders().set("Content-Encoding", "gzip");
         if (path.endsWith(".js"))
             httpExchange.getResponseHeaders().set("Content-Type", "text/javascript");
         else if (path.endsWith(".html"))
@@ -45,6 +47,18 @@ public class StaticHandler implements HttpHandler
         httpExchange.sendResponseHeaders(200, res.length);
         httpExchange.getResponseBody().write(res);
         httpExchange.getResponseBody().close();
+    }
+
+    private static byte[] readResourceAndGzip(InputStream in) throws IOException {
+        ByteArrayOutputStream bout = new ByteArrayOutputStream();
+        GZIPOutputStream gout = new GZIPOutputStream(bout);
+        byte[] tmp = new byte[4096];
+        int r;
+        while ((r=in.read(tmp)) >= 0)
+            gout.write(tmp, 0, r);
+        gout.flush();
+        gout.close();
+        return bout.toByteArray();
     }
 
     private static byte[] readResource(InputStream in) throws IOException {
