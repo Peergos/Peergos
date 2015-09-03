@@ -138,7 +138,7 @@ public class HttpsUserService
         httpsServer.createContext(DHT_URL, new DHTUserAPIHandler(router));
         httpsServer.createContext(ERASURE_URL, ErasureHandler.getInstance());
         httpsServer.createContext(PUBLIC_LINK_URL, new FixedResponseHandler(UI_DIR, "publiclink.html", false));
-        httpsServer.createContext(UI_URL, new StaticHandler(UI_DIR, true));
+        httpsServer.createContext(UI_URL, new StaticHandler(UI_DIR, false));
         httpsServer.createContext(HTTPCoreNodeServer.CORE_URL, new HTTPCoreNodeServer.CoreNodeHandler(coreNode));
         httpsServer.setExecutor(Executors.newFixedThreadPool(THREADS));
         httpsServer.start();

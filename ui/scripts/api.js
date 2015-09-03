@@ -242,36 +242,51 @@ function Chunk(data, key) {
 }
 Chunk.MAX_SIZE = Fragment.SIZE*EncryptedChunk.ERASURE_ORIGINAL
 
-
-function FileUploader(name, contents, key, parentLocation, parentparentKey) {
-    this.props = new FileProperties(name, contents.length, Date.now(), 0);
-    this.chunks = [];
+// string, File, SymmetricKey, Location, SymmetricKey -> 
+function FileUploader(name, file, key, parentLocation, parentparentKey) {
+    this.props = new FileProperties(name, file.size, Date.now(), 0);
     if (key == null) key = SymmetricKey.random();
-    for (var i=0; i < contents.length; i+= Chunk.MAX_SIZE)
-        this.chunks.push(new Chunk(slice(contents, i, Math.min(contents.length, i + Chunk.MAX_SIZE)), key));
 
-    this.upload = function(context, owner, writer) {
-        const chunk0 = this.chunks[0];
-console.log(new ReadableFilePointer(owner, writer, chunk0.mapKey, chunk0.key).toLink());
-        const that = this;
-	var proms = this.chunks.map(function(current, index, arr) {
-	    return new Promise(function(resolve, reject) {
-                const chunk = current;
-                const encryptedChunk = chunk.encrypt();
-                encryptedChunk.generateFragments().then(function(fragments){
+    // Process and upload chunk by chunk to avoid running out of RAM, in reverse order to build linked list
+    this.nchunks = Math.ceil(file.size/Chunk.MAX_SIZE);
+    this.file = file;
+    this.key = key;
+    this.parentLocation = parentLocation;
+    this.parentparentKey = parentparentKey;
+
+    this.uploadChunk = function(context, owner, writer, chunkIndex, file, nextLocation) {
+	var that = this;
+	return new Promise(function(resolve, reject) {
+	    console.log("uploading chunk: "+chunkIndex + " of "+file.name);
+	    var filereader = new FileReader();
+	    filereader.file_name = file.name;
+	    filereader.onload = function(){
+		const data = new Uint8Array(this.result);
+		var chunk = new Chunk(data, key)
+		const encryptedChunk = chunk.encrypt();
+		encryptedChunk.generateFragments().then(function(fragments){
                     console.log("Uploading chunk with %d fragments\n", fragments.length);
                     var hashes = [];
                     for (var f in fragments)
 			hashes.push(fragments[f].getHash());
-                    const retriever = new EncryptedChunkRetriever(chunk.nonce, encryptedChunk.getAuth(), hashes, index+1 < arr.length ? new Location(owner, writer, arr[index+1].mapKey) : null);
+                    const retriever = new EncryptedChunkRetriever(chunk.nonce, encryptedChunk.getAuth(), hashes, nextLocation);
                     const metaBlob = FileAccess.create(chunk.key, that.props, retriever, parentLocation, parentparentKey);
-                    resolve(context.uploadChunk(metaBlob, fragments, owner, writer, chunk.mapKey));
+                    context.uploadChunk(metaBlob, fragments, owner, writer, chunk.mapKey).then(function() {
+			resolve(new Location(owner, writer, chunk.mapKey));
+		    });
 		});
-	})});
-        return Promise.all(proms).then(function(res){
-            return Promise.resolve(new Location(owner, writer, chunk0.mapKey));
-        });
-    }
+	    }
+	    filereader.readAsArrayBuffer(file.slice(chunkIndex*Chunk.MAX_SIZE, Math.min((1+chunkIndex)*Chunk.MAX_SIZE, file.size)));
+	}).then(function(nextL) {
+	    if (chunkIndex > 0)
+		return that.uploadChunk(context, owner, writer, chunkIndex-1, file, nextL);
+	    return Promise.resolve(nextL);
+	});
+    }.bind(this);
+    
+    this.upload = function(context, owner, writer) {
+	return this.uploadChunk(context, owner, writer, this.nchunks-1, this.file, null);
+    }.bind(this);
 }
 
 /////////////////////////////
@@ -1264,7 +1279,7 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 	return pointer.fileAccess.isDirectory();
     }
 
-    this.uploadFile = function(filename, data, context) {
+    this.uploadFile = function(filename, file, context) {
 	const fileKey = SymmetricKey.random();
         const rootRKey = pointer.filePointer.baseKey;
         const owner = pointer.filePointer.owner;
@@ -1274,8 +1289,8 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 	const parentLocation = new Location(owner, writer, dirMapKey);
 	const dirParentKey = dirAccess.getParentKey(rootRKey);
 	
-        const file = new FileUploader(filename, data, fileKey, parentLocation, dirParentKey);
-        return file.upload(context, owner, entryWriterKey).then(function(fileLocation) {
+	const chunks = new FileUploader(filename, file, fileKey, parentLocation, dirParentKey);
+        return chunks.upload(context, owner, entryWriterKey).then(function(fileLocation) {
 	    dirAccess.addFile(fileLocation, rootRKey, fileKey);
 	    return userContext.uploadChunk(dirAccess, [], owner, entryWriterKey, dirMapKey);
 	});

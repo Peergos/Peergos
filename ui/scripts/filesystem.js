@@ -601,44 +601,36 @@ var Browser = React.createClass({
 
         uploadFile: function() {
                 return function (evt) {
-                        if (userContext == null) {
-                            alert("Please sign in first!");
-                            return false;
-                        }
-                        var readFile = evt.target.files[0];
-                        var name = readFile.name;
-                        var filereader = new FileReader();
-                        filereader.file_name = readFile.name;
-                        const browser = this;
-                        filereader.onload = function(){
-
-                            const data = new Uint8Array(this.result);
-                            const filename = this.file_name;
-                            console.log("upload file-name " + filename +" with data-length "+ data.length);
-                                
-                            const currentPath =  browser.currentPath();
-
-                            return browser.lastRetrievedFilePointer().uploadFile(filename, data, userContext).then(function() {
-                                
-                            clearInProgress();
-                            $.toaster(
-                                {
-                                    priority: "success",
-                                    message: "File "+ filename  +" uploaded to  "+ currentPath,
-                                    settings: {"timeout":  5000} 
-                                });
-                            browser.loadFilesFromServer();
-                            });
-                        };
-                        
-                        startInProgess(); 
+                    if (userContext == null) {
+                        alert("Please sign in first!");
+                        return false;
+                    }
+                    var readFile = evt.target.files[0];
+		    var size = readFile.size;
+                    var name = readFile.name;
+		    
+                    const browser = this;
+                    startInProgess(); 
+                    $.toaster(
+                        {
+                            priority: "info",
+                            message: "Uploading file  "+ name,
+                            settings: {"timeout":  10000} 
+                        });
+		    
+                    return browser.lastRetrievedFilePointer().uploadFile(name, readFile, userContext).then(function(res){
+                        console.log("upload filename " + name +" with data-length "+ size);
+                        const currentPath =  browser.currentPath();
+			
+                        clearInProgress();
                         $.toaster(
                             {
-                                priority: "info",
-                                message: "Uploading file  "+ name,
-                                settings: {"timeout":  10000} 
+                                priority: "success",
+                                message: "File "+ name  +" uploaded to  "+ currentPath,
+                                settings: {"timeout":  5000} 
                             });
-                        filereader.readAsArrayBuffer(readFile);
+                        browser.loadFilesFromServer();
+                    });
                 }.bind(this);
         },
                                 
