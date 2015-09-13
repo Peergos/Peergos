@@ -794,8 +794,9 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
     }.bind(this);
     
     var getFriendRoots = function() {
+	var ourname = this.username;
 	return this.rootNode.getChildren(this).then(function (children) {
-	    return Promise.resolve(children.filter(function(froot){return froot.getOwner() != this.username}));
+	    return Promise.resolve(children.filter(function(froot){return froot.getOwner() != ourname}));
 	}.bind(this));
     }.bind(this);
 
@@ -822,9 +823,9 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 
     this.getSocialState = function() {
 	return this.getFollowRequests().then(function(pending) {
-	    return getFollowing().then(function(following) {
-		return getFollowers().then(function(followers) {
-		    return Promise.resolve(new SocialState(pending, following, followers));
+	    return getFollowers().then(function(followers) {
+		return getFriendRoots().then(function(followingRoots) {
+		    return Promise.resolve(new SocialState(pending, followers, followingRoots));
 		});
 	    });
 	});
@@ -1146,10 +1147,14 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 }
 
 //List[FollowRequest],  List[String], List[String] 
-function SocialState(pending, following, followers) {
+function SocialState(pending, followers, followingRoots) {
     this.pending = pending;
-    this.following = following;
     this.followers = followers;
+    this.followingRoots = followingRoots;
+
+    this.getFollowingNames = function() {
+	return this.followingRoots.map(function(froot){return froot.getOwner()});
+    }
 }
 
 function ReadableFilePointer(owner, writer, mapKey, baseKey) {

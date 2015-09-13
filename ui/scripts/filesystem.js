@@ -90,7 +90,7 @@ const UserOptions = React.createClass({
         userContext.getSocialState().then(function(socialState) {
         this.populatePendingTable(socialState.pending);
         this.populateFollowersTable(socialState.followers);
-        this.populateFollowingTable(socialState.following);
+        this.populateFollowingTable(socialState.getFollowingNames());
         }.bind(this));
     },
 
