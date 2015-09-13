@@ -789,41 +789,47 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
         }.bind(this));
     }
 
-    this.getSharingFolder = function() {
+    var getSharingFolder = function() {
 	return this.sharingFolder;
     }.bind(this);
     
-    this.getFriendRoots = function() {
+    var getFriendRoots = function() {
 	return this.rootNode.getChildren(this).then(function (children) {
 	    return Promise.resolve(children.filter(function(froot){return froot.getOwner() != this.username}));
 	});
     }
 
-    this.getFollowers = function() {
-	return this.getFollowRequests().then(function() {
-	    return this.getSharingFolder().getChildren(this).then(function(friendFolders){
-		return Promise.resolve(friendFolders.map(function(froot){return froot.getFileProperties().name;}));
-	    });
-	}.bind(this));
+    var getFollowers = function() {
+	return getSharingFolder().getChildren(this).then(function(friendFolders){
+	    return Promise.resolve(friendFolders.map(function(froot){return froot.getFileProperties().name;}));
+	});
     }.bind(this);
 
-    this.getFollowing = function() {
+    var getFollowing = function() {
 	var that = this;
-	return this.getFollowRequests().then(function() {
-	    return this.getFriendRoots().then(function(friendRoots) {
-		return Promise.resolve(friendRoots.map(function(froot){return froot.getOwner()}).filter(function(name){return name != that.username;}));
-	    });
-	}.bind(this));
+	return this.getFriendRoots().then(function(friendRoots) {
+	    return Promise.resolve(friendRoots.map(function(froot){return froot.getOwner()}).filter(function(name){return name != that.username;}));
+	});
     }.bind(this)
 
-    this.getFollowerRoots = function() {
+    var getFollowerRoots = function() {
 	return this.getSharingFolder().getChildren(this).then(function(friendFolders){
 	    var res = {};
 	    friendFolders.map(function(froot){return res[froot.getFileProperties().name] = froot;});
 	    return Promise.resolve(res);
 	});
-    }
+    }.bind(this);
 
+    this.getSocialState = function() {
+	return this.getFollowRequests().then(function(pending) {
+	    return getFollowing().then(function(following) {
+		return getFollowers().then(function(followers) {
+		    return Promise.resolve(new SocialState(pending, following, followers));
+		});
+	    });
+	});
+    }.bind(this);
+    
     this.sendInitialFollowRequest = function(targetUsername) {
 	return this.sendFollowRequest(targetUsername, SymmetricKey.random());
     }
@@ -1137,6 +1143,12 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
             return Promise.resolve(result.fragments);
         });
     }
+}
+
+function SocialState(pending, following, followers) {
+    this.pending = pending;
+    this.following = following;
+    this.followers = followers;
 }
 
 function ReadableFilePointer(owner, writer, mapKey, baseKey) {
