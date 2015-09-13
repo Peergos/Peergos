@@ -574,6 +574,14 @@ var Browser = React.createClass({
                 });
         },
         
+        onHome: function() {
+                requireSignedIn(function()  {
+                    this.state.retrievedFilePointerPath=[];
+                    this.loadFilesFromServer();
+
+                }.bind(this));
+        },
+
         onUser: function() {
                 requireSignedIn(function()  {
 
@@ -709,6 +717,8 @@ var Browser = React.createClass({
 
         componentDidMount: function() {
                 this.loadFilesFromServer();
+                var homeButton = document.getElementById("homeButton");
+                homeButton.onclick = this.onHome;
                 var uploadButton = document.getElementById("uploadButton");
                 uploadButton.onclick = this.onUpload;
                 var userOptionsButton = document.getElementById("userOptionsButton");
