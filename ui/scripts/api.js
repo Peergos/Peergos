@@ -796,8 +796,8 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
     var getFriendRoots = function() {
 	return this.rootNode.getChildren(this).then(function (children) {
 	    return Promise.resolve(children.filter(function(froot){return froot.getOwner() != this.username}));
-	});
-    }
+	}.bind(this));
+    }.bind(this);
 
     var getFollowers = function() {
 	return getSharingFolder().getChildren(this).then(function(friendFolders){
@@ -807,13 +807,13 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 
     var getFollowing = function() {
 	var that = this;
-	return this.getFriendRoots().then(function(friendRoots) {
+	return getFriendRoots().then(function(friendRoots) {
 	    return Promise.resolve(friendRoots.map(function(froot){return froot.getOwner()}).filter(function(name){return name != that.username;}));
 	});
     }.bind(this)
 
     var getFollowerRoots = function() {
-	return this.getSharingFolder().getChildren(this).then(function(friendFolders){
+	return getSharingFolder().getChildren(this).then(function(friendFolders){
 	    var res = {};
 	    friendFolders.map(function(froot){return res[froot.getFileProperties().name] = froot;});
 	    return Promise.resolve(res);
@@ -844,7 +844,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 	    //TODO
 	    return Promise.resolve(true);
 	}
-	return context.getSharingFolder().mkdir(theirUsername, context, initialRequest.key).then(function(friendRoot) {
+	return getSharingFolder().mkdir(theirUsername, context, initialRequest.key).then(function(friendRoot) {
 	    // add a note to our static data so we know who we sent the read access to
 	    const entry = new EntryPoint(friendRoot.readOnly(), context.username, [theirUsername], []);
             const targetUser = initialRequest.entry.pointer.owner;
@@ -877,7 +877,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 
     // string, RetrievedFilePointer, SymmetricKey
     this.sendFollowRequest = function(targetUsername, requestedKey) {
-	var sharing = this.getSharingFolder();
+	var sharing = getSharingFolder();
 	var that = this;
 	return sharing.getChildren(this).then(function(children) {
 	    var alreadyFollowed = false;
@@ -887,7 +887,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 	    if (alreadyFollowed)
 		return Promise.resolve(false);
 	    // check for them not reciprocating
-	    return that.getFollowing().then(function(following) {
+	    return getFollowing().then(function(following) {
 		var alreadyFollowed = false;
 		for (var i=0; i < following.length; i++)
 		    if (following[i] == targetUsername)
@@ -916,7 +916,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 		});
             });
 	});
-    };
+    }.bind(this);
 
     this.sendWriteAccess = function(targetUser) {
         // create sharing keypair and give it write access
@@ -953,7 +953,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 	var that = this;
         return corenodeClient.getFollowRequests(user.getPublicKeys()).then(function(reqs){
 	    var all = reqs.map(decodeFollowRequest);
-	    return that.getFollowerRoots().then(function(followerRoots) {
+	    return getFollowerRoots().then(function(followerRoots) {
 		var initialRequests = all.filter(function(freq){
 		    if (followerRoots[freq.entry.owner] != null) {
 			// delete our folder if they didn't reciprocate
@@ -1145,6 +1145,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
     }
 }
 
+//List[FollowRequest],  List[String], List[String] 
 function SocialState(pending, following, followers) {
     this.pending = pending;
     this.following = following;

@@ -86,8 +86,15 @@ const UserOptions = React.createClass({
         });
     }, 
 
-    populatePendingTable: function()  {
-            userContext.getFollowRequests().then(function(pending) {
+    populateTables: function() {
+        userContext.getSocialState().then(function(socialState) {
+        this.populatePendingTable(socialState.pending);
+        this.populateFollowersTable(socialState.followers);
+        this.populateFollowingTable(socialState.following);
+        }.bind(this));
+    },
+
+    populatePendingTable: function(pending)  {
 
                 const reply = function(request,  accept, reciprocate, consoleMsg, onSuccessMsg, onErrorMsg) {
                     startInProgess();
@@ -101,13 +108,11 @@ const UserOptions = React.createClass({
                         });
                         clearInProgress();
 			this.props.browser.loadFilesFromServer();
-                        this.populatePendingTable();
-                        this.populateFollowersTable();
-                        this.populateFollowingTable();
+            this.populateTables();
                     }.bind(this));
                 }.bind(this);
 
-                return pending.map(function(request) {
+                const rows = pending.map(function(request) {
                     const pendingName = request.entry.name;
                     const allowAndFollowBack = function() {
 
@@ -142,9 +147,9 @@ const UserOptions = React.createClass({
                                     <td><button className="btn btn-info" onClick={allow}>allow</button></td>
                                     <td><button className="btn btn-danger" onClick={deny}>deny</button></td>
                             </tr>);
-                }.bind(this));
-            }.bind(this)).then(function(rows) {
-                    const PendingTable = React.createClass({
+            }.bind(this));
+            
+                const PendingTable = React.createClass({
                             render: function() {
                                 return (<div>
                                         <table className="table table-responsive table-striped table-hover">
@@ -160,11 +165,11 @@ const UserOptions = React.createClass({
                                         </div>);
                             }
                     });
+
                     React.render(   
                         <PendingTable/>,
                         document.getElementById("pendingRequestTable")
                     );
-            });
     },
 
     tableBuilder: function(header, names) {
@@ -186,17 +191,13 @@ const UserOptions = React.createClass({
             });
     },
 
-    populateFollowersTable: function()  {
-            userContext.getFollowers().then(function(names) {
+    populateFollowersTable: function(names)  {
                 const Anon = this.tableBuilder("Follower", names);
                 React.render(<Anon/>, document.getElementById("followersList"));
-            }.bind(this));
     },
-    populateFollowingTable: function()  {
-            userContext.getFollowing().then(function(names) {
+    populateFollowingTable: function(names)  {
                 const Anon = this.tableBuilder("Following", names);
                 React.render(<Anon/>, document.getElementById("followingList"));
-            }.bind(this));
     },
     render: function() {
 
@@ -216,9 +217,7 @@ const UserOptions = React.createClass({
     },
 
     componentDidMount: function() {
-            this.populatePendingTable();
-            this.populateFollowersTable();
-            this.populateFollowingTable();
+            this.populateTables();
     }
 });
 
