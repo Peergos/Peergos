@@ -1329,13 +1329,13 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 	});
     }
 
-    this.mkdir = function(newFolderName, context, requestedBaseSymmetricKey) {
+    this.mkdir = function(newFolderName, context, requestedBaseSymmetricKey, isSystemFolder) {
 	if (!this.isDirectory())
 	    return Promise.resolve(false);
 	const dirPointer = pointer.filePointer;
 	const dirAccess = pointer.fileAccess;
     	var rootDirKey = dirPointer.baseKey;
-	return dirAccess.mkdir(newFolderName, context, entryWriterKey, dirPointer.mapKey, rootDirKey, requestedBaseSymmetricKey);
+	return dirAccess.mkdir(newFolderName, context, entryWriterKey, dirPointer.mapKey, rootDirKey, requestedBaseSymmetricKey, isSystemFolder);
     }
 
     this.rename = function(newName, context) {
@@ -1773,14 +1773,14 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
     }
 
     //String, UserContext, User -> 
-    this.mkdir  = function(name, userContext, writer, ourMapKey, baseKey, optionalBaseKey) {
+    this.mkdir  = function(name, userContext, writer, ourMapKey, baseKey, optionalBaseKey, isSystemFolder) {
         if (!(writer instanceof User))
             throw "Can't modify a directory without write permission (writer must be a User)!";    
         const dirReadKey = optionalBaseKey != null ? optionalBaseKey : SymmetricKey.random();
         const dirMapKey = window.nacl.randomBytes(32); // root will be stored under this in the core node
 	const ourParentKey = this.getParentKey(baseKey);
 	const ourLocation = new Location(userContext.user, writer, ourMapKey);
-        const dir = DirAccess.create(dirReadKey, new FileProperties(name, 0, Date.now(), 0), ourLocation, ourParentKey);
+        const dir = DirAccess.create(dirReadKey, new FileProperties(name, 0, Date.now(), (isSystemFolder == null || !isSystemFolder) ? 0 : 1), ourLocation, ourParentKey);
 	const that = this;
 	    return userContext.uploadChunk(dir, [], userContext.user, writer, dirMapKey)
                 .then(function(success) {

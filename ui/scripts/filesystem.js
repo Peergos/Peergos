@@ -291,7 +291,7 @@ var SignUp = React.createClass({
                         }
                         return ctx.createEntryDirectory(username);
                 }).then(function(root) {
-			            return root.fileAccess.mkdir("shared", ctx, root.filePointer.writer, root.filePointer.mapKey, root.filePointer.baseKey);
+			            return root.fileAccess.mkdir("shared", ctx, root.filePointer.writer, root.filePointer.mapKey, root.filePointer.baseKey, true);
 		        }.bind(this)).then(function() {
                     console.log("Verified user "+ username +" is registered");
                     populateModalAndShow("Success", "You have registered the username "+  username);
