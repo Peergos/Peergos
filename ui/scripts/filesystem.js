@@ -50,28 +50,6 @@ function openItem(name, data) {
 }
 
 const UserOptions = React.createClass({
-        /**
-         *
-         *  send friend request
-         *
-         *  view pending friend requests
-         *
-         *  accept / deny friend request
-         *
-         *  share folder/file with friend
-         *
-         *  show shares
-         *
-         */
-        /*
-    getInitialState : function() {
-            return {}
-    },
-    componentDidMount: function() {
-
-    },
-    */
-    
 
     submitFriendRequest: function(targetUsername) {
         return userContext.sendInitialFollowRequest(document.getElementById("friend-name-input").value).then(function(res) {
@@ -90,7 +68,7 @@ const UserOptions = React.createClass({
         userContext.getSocialState().then(function(socialState) {
         this.populatePendingTable(socialState.pending);
         this.populateFollowersTable(socialState.followers);
-        this.populateFollowingTable(socialState.getFollowingNames());
+        this.populateFollowingTable(socialState.followingRoots);
         }.bind(this));
     },
 
@@ -195,9 +173,26 @@ const UserOptions = React.createClass({
                 const Anon = this.tableBuilder("Follower", names);
                 React.render(<Anon/>, document.getElementById("followersList"));
     },
-    populateFollowingTable: function(names)  {
-                const Anon = this.tableBuilder("Following", names);
-                React.render(<Anon/>, document.getElementById("followingList"));
+
+    populateFollowingTable: function(followingRoots)  {
+
+            const rows = followingRoots.map(function(froot) {
+                const onClick = function(){
+                        this.props.browser.loadFilesFromServer(froot);
+                }.bind(this);
+                return (<tr onClick={onClick}><td>{froot.getOwner()}</td></tr>);
+            }.bind(this));
+                
+            const  table = (<div>
+                                    <table className="table table-responsive table-striped table-hover">
+                                        <thead></thead>
+                                        <th>Following</th>
+                                        <tbody>
+                                            {rows}
+                                        </tbody>
+                                    </table>
+                                    </div>)
+            React.render(table, document.getElementById("followingList"));
     },
     render: function() {
 
@@ -469,7 +464,7 @@ var Browser = React.createClass({
                 }).join("/");
         },
 
-        loadFilesFromServer: function() {
+        loadFilesFromServer: function(fileTreeNode) {
                 if (typeof(userContext) == "undefined" || userContext == null)
                         return;
                 const callback = function(children) {
@@ -518,17 +513,26 @@ var Browser = React.createClass({
                 }.bind(this);
 
                 const isEmpty =  this.state.retrievedFilePointerPath.length == 0;
-                if (isEmpty) {
-                    userContext.init().then(function(inited){
-			        userContext.getUserRoot().then(function(globalRoot) {
+                const rootSupplied =  typeof(fileTreeNode) != "undefined";
+                if (rootSupplied || isEmpty) {
+                    var prom = null; 
+                    if (rootSupplied)  
+                            prom = fileTreeNode.getChildren(userContext)
+                                    .then(function(children){return children[0].getChildren(userContext).then(function(gChildren){return Promise.resolve(gChildren[0])})});
+                    else
+                       prom = userContext.init().then(userContext.getUserRoot);
                     
+                    prom.then(function(globalRoot){
+                    
+                    if (rootSupplied)
+                        this.state.retrievedFilePointerPath = [];
                     this.state.retrievedFilePointerPath.push(globalRoot);
+
                     this.updateNavbarPath(this.currentPath());
 
-                    globalRoot.getChildren().then(function(children) {
+                    globalRoot.getChildren(userContext).then(function(children) {
 				        callback(children);
 			    });
-			}.bind(this));
 		    }.bind(this));
                 }
                 else {

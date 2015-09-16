@@ -1077,7 +1077,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
                     return Promise.resolve(userRoots[0]);
             }.bind(this));
         }.bind(this));
-    }
+    }.bind(this);
 
     this.getAncestorsAndAddToTree = function(treeNode, context) {
 	try {
@@ -1161,7 +1161,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
     }
 }
 
-//List[FollowRequest],  List[String], List[String] 
+//List[FollowRequest],  List[String], List[FileTreeNode] 
 function SocialState(pending, followers, followingRoots) {
     this.pending = pending;
     this.followers = followers;
