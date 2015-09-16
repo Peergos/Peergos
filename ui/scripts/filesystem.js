@@ -180,13 +180,15 @@ const UserOptions = React.createClass({
                 const onClick = function(){
                         this.props.browser.loadFilesFromServer(froot);
                 }.bind(this);
-                return (<tr onClick={onClick}><td>{froot.getOwner()}</td></tr>);
+                return (<tr onClick={onClick}>
+                                <td><a><span className="glyphicon glyphicon-home"/>{"     "+froot.getOwner()}</a></td>
+                        </tr>);
             }.bind(this));
                 
             const  table = (<div>
                                     <table className="table table-responsive table-striped table-hover">
                                         <thead></thead>
-                                        <th>Following</th>
+                                        <th>Shared with  you</th>
                                         <tbody>
                                             {rows}
                                         </tbody>
