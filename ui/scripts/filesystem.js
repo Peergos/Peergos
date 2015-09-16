@@ -520,12 +520,16 @@ var Browser = React.createClass({
                 const isEmpty =  this.state.retrievedFilePointerPath.length == 0;
                 if (isEmpty) {
                     userContext.init().then(function(inited){
-			userContext.getTreeRoot().then(function(globalRoot) {
-			    globalRoot.getChildren().then(function(children) {
-				callback(children);
+			        userContext.getUserRoot().then(function(globalRoot) {
+                    
+                    this.state.retrievedFilePointerPath.push(globalRoot);
+                    this.updateNavbarPath(this.currentPath());
+
+                    globalRoot.getChildren().then(function(children) {
+				        callback(children);
 			    });
 			}.bind(this));
-		    });
+		    }.bind(this));
                 }
                 else {
 		    this.lastRetrievedFilePointer().getChildren(userContext).then(function(children) {

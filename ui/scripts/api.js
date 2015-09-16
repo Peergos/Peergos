@@ -1063,6 +1063,21 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
     this.getTreeRoot = function() {
 	return Promise.resolve(this.rootNode);
     }
+    
+    this.getUserRoot = function() {
+        return this.getTreeRoot().then(function(root) {
+            return root.getChildren().then(function(children) {
+                    if (children.length == 0)
+                            throw "no children in user root!";
+                    const userRoots = children.filter(function(e) {
+                        return e.getFileProperties().name == this.username;
+                    }.bind(this));
+                    if (userRoots.length != 1)
+                            throw  "user has "+ userRoots.length +" roots!";
+                    return Promise.resolve(userRoots[0]);
+            }.bind(this));
+        }.bind(this));
+    }
 
     this.getAncestorsAndAddToTree = function(treeNode, context) {
 	try {
