@@ -168,7 +168,7 @@ function FileProperties(name, size, modified, attr) {
     }
 
     this.isHidden = function() {
-	return 
+	return this.attr & 1 != 0;
     }
 }
 
