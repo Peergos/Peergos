@@ -4,9 +4,8 @@ import com.sun.net.httpserver.*;
 import peergos.corenode.AbstractCoreNode;
 import peergos.corenode.HTTPCoreNodeServer;
 import peergos.crypto.SSL;
-import peergos.storage.dht.Message;
+import peergos.storage.dht.*;
 import org.bouncycastle.operator.OperatorCreationException;
-import peergos.storage.dht.Router;
 import peergos.user.fs.erasure.ErasureHandler;
 import peergos.util.*;
 
@@ -35,8 +34,8 @@ public class HttpsUserService
         // disable weak algorithms
         System.out.println("\nInitial security properties:");
         System.out.println("jdk.tls.disabledAlgorithms: "+Security.getProperty("jdk.tls.disabledAlgorithms"));
-        System.out.println("jdk.certpath.disabledAlgorithms: "+Security.getProperty("jdk.certpath.disabledAlgorithms"));
-        System.out.println("jdk.tls.rejectClientInitializedRenegotiation: "+Security.getProperty("jdk.tls.rejectClientInitializedRenegotiation"));
+        System.out.println("jdk.certpath.disabledAlgorithms: " + Security.getProperty("jdk.certpath.disabledAlgorithms"));
+        System.out.println("jdk.tls.rejectClientInitializedRenegotiation: " + Security.getProperty("jdk.tls.rejectClientInitializedRenegotiation"));
 
         Security.setProperty("jdk.tls.disabledAlgorithms", "SSLv3, RC4, MD2, MD4, MD5, SHA1, DSA, DH, RSA keySize < 2048, EC keySize < 160");
         Security.setProperty("jdk.certpath.disabledAlgorithms", "RC4, MD2, MD4, MD5, SHA1, DSA, RSA keySize < 2048, EC keySize < 160");
@@ -55,15 +54,15 @@ public class HttpsUserService
     private final AbstractCoreNode coreNode;
     HttpsServer httpsServer;
 
-    public HttpsUserService(InetSocketAddress local, Logger LOGGER, Router router, AbstractCoreNode coreNode) throws IOException
+    public HttpsUserService(InetSocketAddress local, Logger LOGGER, DHT dht, AbstractCoreNode coreNode) throws IOException
     {
         this.LOGGER = LOGGER;
         this.local = local;
         this.coreNode = coreNode;
-        init(router);
+        init(dht);
     }
 
-    public boolean init(Router router) throws IOException {
+    public boolean init(DHT dht) throws IOException {
         try
         {
             try {
@@ -135,7 +134,7 @@ public class HttpsUserService
             return false;
         }
 
-        httpsServer.createContext(DHT_URL, new DHTUserAPIHandler(router));
+        httpsServer.createContext(DHT_URL, new DHTUserAPIHandler(dht));
         httpsServer.createContext(ERASURE_URL, ErasureHandler.getInstance());
         httpsServer.createContext(PUBLIC_LINK_URL, new FixedResponseHandler(UI_DIR, "publiclink.html", false));
         httpsServer.createContext(UI_URL, new StaticHandler(UI_DIR, false));

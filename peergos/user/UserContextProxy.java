@@ -5,13 +5,10 @@ import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 import peergos.corenode.AbstractCoreNode;
 import peergos.corenode.HTTPCoreNodeServer;
-import peergos.storage.dht.DHTAPI;
 import peergos.util.*;
 
 import java.io.*;
-import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.net.SocketAddress;
 import java.util.concurrent.*;
 
 public class UserContextProxy implements HttpHandler

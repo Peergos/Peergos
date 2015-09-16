@@ -38,11 +38,11 @@ public class Router
     private BlockingQueue queue = new ArrayBlockingQueue(200);
 
 
-    public Router(UserPublicKey donor, InetSocketAddress userAPIAddress, InetSocketAddress messengerAddress) throws IOException
+    public Router(UserPublicKey donor, InetSocketAddress messengerAddress) throws IOException
     {
         new File("log/").mkdir();
         us = new NodeID(messengerAddress);
-        String name = us.name() + "_" + us.external.getPort();
+        String name = getName();
         LOGGER = Logger.getLogger(name);
         Handler handler = new FileHandler("log/" + name + ".log", 10 * 1024 * 1024, 7);
         LOGGER.addHandler(handler);
@@ -51,13 +51,12 @@ public class Router
 
         String hostname = Args.getArg("domain", "localhost");
 
-        InetSocketAddress httpsMessengerAddress = new InetSocketAddress(hostname, userAPIAddress.getPort());
-        AbstractCoreNode core = HTTPCoreNode.getInstance();
-        // start the User Service
-        new HttpsUserService(httpsMessengerAddress, LOGGER, this, core);
-
         InetSocketAddress local = new InetSocketAddress(hostname, messengerAddress.getPort());
         messenger = new HttpMessenger(local, storage, LOGGER, this);
+    }
+
+    public String getName() {
+        return us.name() + "_" + us.external.getPort();
     }
 
     public NodeID address() {

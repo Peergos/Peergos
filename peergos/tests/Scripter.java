@@ -11,9 +11,9 @@ import java.util.concurrent.TimeUnit;
 public class Scripter extends Thread
 {
     BufferedReader commands;
-    DHTAPI api;
+    PeergosDHT api;
 
-    public Scripter(DHTAPI api, String source)
+    public Scripter(PeergosDHT api, String source)
     {
         this.api = api;
         try

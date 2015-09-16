@@ -10,11 +10,11 @@ import java.io.*;
 
 public class DHTUserAPIHandler implements HttpHandler
 {
-    private final DHTAPI dht;
+    private final DHT dht;
 
-    public DHTUserAPIHandler(Router r) throws IOException
+    public DHTUserAPIHandler(DHT dht) throws IOException
     {
-        this.dht = new DHTAPI(r);
+        this.dht = dht;
     }
 
     @Override

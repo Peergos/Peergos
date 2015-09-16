@@ -1,10 +1,9 @@
 package peergos.storage.dht;
 
-import peergos.corenode.AbstractCoreNode;
-import peergos.corenode.HTTPCoreNodeServer;
+import peergos.corenode.*;
 import peergos.crypto.*;
 import peergos.directory.DirectoryServer;
-import peergos.storage.net.IPMappings;
+import peergos.storage.net.*;
 import peergos.tests.Scripter;
 import peergos.util.*;
 
@@ -16,6 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.*;
 
 public class Start
 {
@@ -114,7 +114,7 @@ public class Start
         else {
             int port = Args.getInt("port", 8000);
             String domain = Args.getArg("domain", "localhost");
-            InetSocketAddress userAPIAddr = new InetSocketAddress(domain, port);
+            InetSocketAddress userAPIAddress = new InetSocketAddress(domain, port);
             InetSocketAddress messengerAddr = new InetSocketAddress(domain, port+1);
 
             String user = Args.getArg("user", "00000000000000000000000000000000000000000000000000000000000000000000");
@@ -122,13 +122,20 @@ public class Start
             InetAddress contactIP = isFirstNode ? null : InetAddress.getByName(Args.getArg("contactIP"));
             int contactPort = Args.getInt("contactPort", 8080);
             UserPublicKey donor = new UserPublicKey(ArrayOps.hexToBytes(user));
-            Router router = new Router(donor, userAPIAddr, messengerAddr);
+            Router router = new Router(donor, messengerAddr);
             router.init(new InetSocketAddress(contactIP, contactPort));
             // router is ready!
-            System.out.println(port+" joined dht");
-            DHTAPI api = new DHTAPI(router);
+            System.out.println(port + " joined dht");
+            PeergosDHT dht = new PeergosDHT(router);
+            // start the User Service
+            String hostname = Args.getArg("domain", "localhost");
+
+            InetSocketAddress httpsMessengerAddress = new InetSocketAddress(hostname, userAPIAddress.getPort());
+            AbstractCoreNode core = HTTPCoreNode.getInstance();
+
+            new HttpsUserService(httpsMessengerAddress, Logger.getLogger(router.getName()), dht, core);
             if (Args.hasArg("script")) {
-                new Scripter(api, Args.getArg("script")).start();
+                new Scripter(dht, Args.getArg("script")).start();
             }
         }
     }
