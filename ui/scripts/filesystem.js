@@ -181,7 +181,7 @@ const UserOptions = React.createClass({
                         this.props.browser.loadFilesFromServer(froot);
                 }.bind(this);
                 return (<tr onClick={onClick}>
-                                <td><a><span className="glyphicon glyphicon-home"/>{"     "+froot.getOwner()}</a></td>
+                                <td><a><span className="glyphicon glyphicon-folder-open"/>&nbsp;&nbsp;{froot.getOwner()}</a></td>
                         </tr>);
             }.bind(this));
                 
