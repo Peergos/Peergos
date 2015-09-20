@@ -288,7 +288,7 @@ var SignUp = React.createClass({
                         }
                         return ctx.createEntryDirectory(username);
                 }).then(function(root) {
-			            return root.fileAccess.mkdir("shared", ctx, root.filePointer.writer, root.filePointer.mapKey, root.filePointer.baseKey, true);
+			            return root.fileAccess.mkdir("shared", ctx, root.filePointer.writer, root.filePointer.mapKey, root.filePointer.baseKey, null, true);
 		        }.bind(this)).then(function() {
                     console.log("Verified user "+ username +" is registered");
                     populateModalAndShow("Success", "You have registered the username "+  username);
@@ -470,7 +470,7 @@ var Browser = React.createClass({
                 if (typeof(userContext) == "undefined" || userContext == null)
                         return;
                 const callback = function(children) {
-                            const files = children.map(function(treeNode) {
+                            const files = children.filter(function(child){return !child.getFileProperties().isHidden()}).map(function(treeNode) {
             	    		const props = treeNode.getFileProperties();
 	    	            	const isDir = treeNode.isDirectory();
 			        const name  = props.name;

@@ -1172,7 +1172,7 @@ function SocialState(pending, followers, followingRoots) {
     }
     
     // FileTreeNode, String, UserContext
-    this.shareFolder(file, targetUsername, context) {
+    this.shareFolder = function(file, targetUsername, context) {
 	return context.sharingFolder.getChildren(context).then(function(children) {
 	    for (var i=0; i < children.length; i++)
 		if (children[i].getProperties().name == targetUsername)
