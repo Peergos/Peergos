@@ -1171,11 +1171,15 @@ function SocialState(pending, followers, followingRoots) {
 	return this.followingRoots.map(function(froot){return froot.getOwner()});
     }
     
+    this.getFollowers = function() {
+        return this.followers;
+    } 
+
     // FileTreeNode, String, UserContext
-    this.shareFolder = function(file, targetUsername, context) {
+    this.share = function(file, targetUsername, context) {
 	return context.sharingFolder.getChildren(context).then(function(children) {
 	    for (var i=0; i < children.length; i++)
-		if (children[i].getProperties().name == targetUsername)
+		if (children[i].getFileProperties().name == targetUsername)
 		    return children[i].addLinkTo(file);
 	    return Promise.reject("Unknown friend: "+targetUsername);
 	});
