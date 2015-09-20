@@ -641,8 +641,15 @@ function CoreNodeClient() {
     
     //String  -> Uint8Array  -> fn -> fn -> void
     this.getMetadataBlob = function( owner,  encodedSharingKey,  mapKey) {
+	var ownerPublic = owner.getPublicKeys();
+	for (var i=0; i < ownerPublic.length; i++) {
+	    if (ownerPublic[i] != 0)
+		break;
+	    else if (i == ownerPublic.length-1)
+		throw "Invalid zero Owner requested!";
+	}
         var buffer = new ByteArrayOutputStream();
-        buffer.writeArray(owner.getPublicKeys());
+        buffer.writeArray(ownerPublic);
         buffer.writeArray(encodedSharingKey.getPublicKeys());
         buffer.writeArray(mapKey);
         return postProm("core/getMetadataBlob", buffer.toByteArray());
@@ -1081,6 +1088,9 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 
     this.getAncestorsAndAddToTree = function(treeNode, context) {
 	try {
+	    // don't need to add our own files this way, as we'll find them going down from our root
+	    if (treeNode.getOwner() == context.username && !treeNode.isWritable())
+		return Promise.resolve(true);
 	    return treeNode.retrieveParent(context).then(function(parent) {
 		if (parent == null)
 		    return Promise.resolve(true);
@@ -1262,17 +1272,18 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 	childrenByName[name] = child;
     }
 
-    this.addLinkTo = function(file) {
+    this.addLinkTo = function(file, context) {
 	if (!this.isDirectory())
-	    return false;
+	    return Promise.resolve(false);
 	if (!this.isWritable())
-	    return false;
+	    return Promise.resolve(false);
 	var loc = new Location(file.pointer.filePointer.owner, file.pointer.filePointer.writer, file.pointer.filePointer.mapKey);
 	if (file.isDirectory()) {
-	    return pointer.fileAccess.addSubdir(loc, getKey(), file.getKey());
+	    pointer.fileAccess.addSubdir(loc, getKey(), file.getKey());
 	} else {
-	    return pointer.fileAccess.addFile(loc, getKey(), file.getKey());
+	    pointer.fileAccess.addFile(loc, getKey(), file.getKey());
 	}
+	return pointer.fileAccess.commit(pointer.filePointer.owner, pointer.filePointer.writer, pointer.filePointer.mapKey, context);
     }
 
     this.isLink = function() {
@@ -1284,7 +1295,7 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
     }
 
     this.isWritable = function() {
-	return pointer.filePointer.writer instanceof User;
+	return entryWriterKey instanceof User;
     }
 
     this.getKey = function() {
@@ -1409,6 +1420,15 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 	const parentKey = getParentKey();
 	return pointer.fileAccess.getFileProperties(parentKey);
     }.bind(this);
+
+
+    if (pointer != null) {
+	var writable = entryWriterKey instanceof User;
+	if (!writable)
+	    console.log(this.getFileProperties().name + " is read only")
+	else
+	    console.log(this.getFileProperties().name + " is writable")
+    }
 }
 FileTreeNode.ROOT = new FileTreeNode(null, null, [], [], null);
 
@@ -1830,6 +1850,10 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
 		    return Promise.resolve(false);
                 });
     }
+
+    this.commit = function(owner, writer, ourMapKey, userContext) {
+	return userContext.uploadChunk(this, [], userContext.user, writer, ourMapKey)
+    }.bind(this);
 
     this.addSubdir = function(location, ourSubfolders, targetBaseKey) {
         this.subfolders.push(SymmetricLocationLink.create(ourSubfolders, targetBaseKey, location));
