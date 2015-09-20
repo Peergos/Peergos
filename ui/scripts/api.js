@@ -1190,7 +1190,7 @@ function SocialState(pending, followers, followingRoots) {
 	return context.sharingFolder.getChildren(context).then(function(children) {
 	    for (var i=0; i < children.length; i++)
 		if (children[i].getFileProperties().name == targetUsername)
-		    return children[i].addLinkTo(file);
+		    return children[i].addLinkTo(file, context);
 	    return Promise.reject("Unknown friend: "+targetUsername);
 	});
     }
@@ -1277,13 +1277,13 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 	    return Promise.resolve(false);
 	if (!this.isWritable())
 	    return Promise.resolve(false);
-	var loc = new Location(file.pointer.filePointer.owner, file.pointer.filePointer.writer, file.pointer.filePointer.mapKey);
+	var loc = file.getLocation();
 	if (file.isDirectory()) {
-	    pointer.fileAccess.addSubdir(loc, getKey(), file.getKey());
+	    pointer.fileAccess.addSubdir(loc, this.getKey(), file.getKey());
 	} else {
-	    pointer.fileAccess.addFile(loc, getKey(), file.getKey());
+	    pointer.fileAccess.addFile(loc, this.getKey(), file.getKey());
 	}
-	return pointer.fileAccess.commit(pointer.filePointer.owner, pointer.filePointer.writer, pointer.filePointer.mapKey, context);
+	return pointer.fileAccess.commit(pointer.filePointer.owner, entryWriterKey, pointer.filePointer.mapKey, context);
     }
 
     this.isLink = function() {
@@ -1300,6 +1300,10 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 
     this.getKey = function() {
 	return pointer.filePointer.baseKey;
+    }
+
+    this.getLocation = function() {
+	return new Location(pointer.filePointer.owner, pointer.filePointer.writer, pointer.filePointer.mapKey);
     }
 
     this.clear = function() {
@@ -1420,15 +1424,6 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 	const parentKey = getParentKey();
 	return pointer.fileAccess.getFileProperties(parentKey);
     }.bind(this);
-
-
-    if (pointer != null) {
-	var writable = entryWriterKey instanceof User;
-	if (!writable)
-	    console.log(this.getFileProperties().name + " is read only")
-	else
-	    console.log(this.getFileProperties().name + " is writable")
-    }
 }
 FileTreeNode.ROOT = new FileTreeNode(null, null, [], [], null);
 
