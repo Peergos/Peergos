@@ -1170,6 +1170,16 @@ function SocialState(pending, followers, followingRoots) {
     this.getFollowingNames = function() {
 	return this.followingRoots.map(function(froot){return froot.getOwner()});
     }
+    
+    // FileTreeNode, String, UserContext
+    this.shareFolder(file, targetUsername, context) {
+	return context.sharingFolder.getChildren(context).then(function(children) {
+	    for (var i=0; i < children.length; i++)
+		if (children[i].getProperties().name == targetUsername)
+		    return children[i].addLinkTo(file);
+	    return Promise.reject("Unknown friend: "+targetUsername);
+	});
+    }
 }
 
 function ReadableFilePointer(owner, writer, mapKey, baseKey) {
@@ -1246,6 +1256,23 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 	}
 	children.push(child);
 	childrenByName[name] = child;
+    }
+
+    this.addLinkTo = function(file) {
+	if (!this.isDirectory())
+	    return false;
+	if (!this.isWritable())
+	    return false;
+	var loc = new Location(file.pointer.filePointer.owner, file.pointer.filePointer.writer, file.pointer.filePointer.mapKey);
+	if (file.isDirectory()) {
+	    return pointer.fileAccess.addSubdir(loc, getKey(), file.getKey());
+	} else {
+	    return pointer.fileAccess.addFile(loc, getKey(), file.getKey());
+	}
+    }
+
+    this.isLink = function() {
+	return pointer.fileAcess.isLink();
     }
 
     this.isWritable = function() {
@@ -1601,8 +1628,9 @@ function FileAccess(parent2meta, properties, retriever, parentLink) {
     }
     
     this.isDirectory =  function() {
-            return this.getType() == 1;
+        return this.getType() == 1;
     }
+    
     this.getMetaKey = function(parentKey) {
         return parent2meta.target(parentKey);
     }
