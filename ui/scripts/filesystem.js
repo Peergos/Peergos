@@ -363,7 +363,7 @@ var File = React.createClass({
                                         this.props.onClick();
                                 } else if (selected  == "Create public link" && ! this.props.isdir) {
                                         //public link
-                                    const publicUrl =  window.location.origin + this.props.retrievedFilePointer.filePointer.toLink();
+                                    const publicUrl =  window.location.origin + this.props.retrievedFilePointer.toLink();
                                     const content = '<div class="container"><p style="word-wrap;break-all;"><a href="'+ publicUrl+'">public-link</a></p></div>';
                                     console.log("creating public link for "+ this.props.name);
 	            			        populateModalAndShow("Public link to file "+  this.props.name, content);

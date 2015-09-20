@@ -1275,6 +1275,10 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 	return pointer.fileAcess.isLink();
     }
 
+    this.toLink = function() {
+	return pointer.filePointer.toLink();
+    }
+
     this.isWritable = function() {
 	return pointer.filePointer.writer instanceof User;
     }
