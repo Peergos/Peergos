@@ -2,7 +2,6 @@ package peergos.storage.cloud.webdav;
 
 import java.io.*;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.atomic.*;
 
@@ -33,7 +32,7 @@ public class WebDavStorage implements Storage
         	createRoot();
         }else {
 			try {
-				readAllFiles(DIRECTORY, cache.getRoot());
+				readAllFiles("", cache.getRoot());
 			} catch (RemoteFileSystemError e) {e.printStackTrace();}
         }
     }
@@ -49,7 +48,9 @@ public class WebDavStorage implements Storage
     {
     	try {
     		WebDavAPI.createDirectory(session, getBaseDirectory() + "/" + dir);
-		} catch (RemoteFileSystemError e) {e.printStackTrace();}
+		} catch (RemoteFileSystemError e) {
+			e.printStackTrace();
+		}
     }
     private boolean rootExists()
     {
@@ -58,15 +59,17 @@ public class WebDavStorage implements Storage
 			if(resources != null && resources.size() > 0){
 				return true;
 			}
-		} catch (RemoteFileSystemError e) {e.printStackTrace();}
+		} catch (RemoteFileSystemError e) {
+			//this happens if directory not found.  e.printStackTrace();
+		}
     	return false;
     }
     private void readAllFiles(String subDirectory, RemoteFile dir) throws RemoteFileSystemError
     {
-    	List<DavResource> resources = WebDavAPI.list(session, getBaseDirectory() + "/" + subDirectory);
+    	List<DavResource> resources = WebDavAPI.list(session, getBaseDirectory() + subDirectory);
     	for(DavResource file : resources){
     		if(file.isDirectory()){
-    			RemoteFile childDir = dir.addSubDirectory(file.getDisplayName());
+    			RemoteFile childDir = dir.addSubDirectory(file.getName());
     			readAllFiles(subDirectory + "/" + file.getName(), childDir);
     		}else{
     			dir.addFile(file.getName(), file.getContentLength().intValue());
@@ -74,10 +77,8 @@ public class WebDavStorage implements Storage
     		}
     	}
     }
-
     public void close()
     {
-    	//kev todo add to interface??
     	WebDavAPI.close(session);
     }
     public long remainingSpace() {
@@ -94,13 +95,17 @@ public class WebDavStorage implements Storage
     	}
         new Fragment(key).write(value);
 		cache.addFile(key, value.length);
+        remainingSpace.addAndGet(-value.length);		    			
+
         return true;
     }
 
     public boolean remove(String key) throws IOException {
     	try {
 			WebDavAPI.delete(session, getBaseDirectory() + RemoteFileSystem.buildPathURL(key), key);
+			int len= cache.getFile(key).getSize();
 			cache.deleteFile(key);
+	        remainingSpace.addAndGet(len);		    			
 		} catch (RemoteFileSystemError e) {
 			return false;
 		}    	
