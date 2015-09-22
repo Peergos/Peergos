@@ -6,7 +6,7 @@ import peergos.util.ByteArrayWrapper;
 import java.util.Map;
 import java.util.concurrent.*;
 
-public class MemoryDHTUserAPI extends DHTUserAPI
+public class MemoryDHTUserAPI implements DHTUserAPI
 {
     private final Map<ByteArrayWrapper, byte[]> chunks = new ConcurrentHashMap<>();
 
