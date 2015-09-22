@@ -1,121 +1,84 @@
 package peergos.storage.dht;
 
 import peergos.storage.net.HttpMessenger;
-import peergos.util.ArrayOps;
-import peergos.util.ByteArrayWrapper;
+import peergos.util.*;
 
 import java.io.IOException;
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
-import java.net.UnknownHostException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
+import java.util.concurrent.*;
+import java.util.function.*;
 
 public class PeergosDHT implements DHT
 {
     private Router router;
-    private ExecutorService executor = Executors.newFixedThreadPool(16);
 
     public PeergosDHT(Router router)
     {
         this.router = router;
     }
 
-    static class ErrorHandler implements OnFailure {    @Override public final void onFailure(Throwable e) {      e.printStackTrace();    } }
-    static class PrintResult<T> implements OnSuccess<T> {    @Override public final void onSuccess(T t) {      System.out.println(t);    } }
-
-    public static class PutHandler<T> implements OnSuccess<T> {
+    public static class PutHandler implements Function<Object, PutOffer> {
         private final byte[] key, value;
-        private final PutHandlerCallback callback;
         private final Router router;
 
-        public PutHandler(Router router, byte[] key, byte[] value, PutHandlerCallback callback) {
+        public PutHandler(Router router, byte[] key, byte[] value) {
             this.key = key;
             this.value = value;
-            this.callback = callback;
             this.router = router;
         }
 
-        @Override public final void onSuccess(T obj)
+        public final PutOffer apply(Object obj)
         {
             PutOffer offer = (PutOffer) obj;
-            try {
                 if (offer.getTarget().external.equals(router.address().external)) {
                     if (router.storage.isWaitingFor(key))
                         router.storage.put(new ByteArrayWrapper(key), value);
-                } else
+                } else try {
                     HttpMessenger.putFragment(offer.getTarget().external, "/" + ArrayOps.bytesToHex(key), value);
-                callback.callback(offer);
-            } catch (IOException e)
-            {
-                // what do here?
-                e.printStackTrace();
-            }
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+                return offer;
         }
     }
 
-    public static class GetHandler<T> implements OnSuccess<T> {
+    public static class GetHandler implements Function<Object, GetOffer>{
         private final byte[] key;
-        private final GetHandlerCallback callback;
         private final Router router;
 
-        public GetHandler(Router router, byte[] key, GetHandlerCallback callback) {
+        public GetHandler(Router router, byte[] key) {
             this.key = key;
-            this.callback = callback;
             this.router = router;
         }
 
-        @Override public final void onSuccess(T obj)
+        public final GetOffer apply(Object obj)
         {
             GetOffer offer = (GetOffer) obj;
             if (offer.getTarget().external.equals(router.address().external))
                 offer.target = new NodeID(offer.target.id, offer.getTarget().external);
 
-            callback.callback(offer);
+            return offer;
         }
     }
 
     // 256 bit key / 32 byte
-    public Future<Object> put(byte[] key, byte[] value, byte[] owner, byte[] sharingKey, byte[] mapKey, byte[] proof, PutHandlerCallback onComplete, OnFailure onError)
+    public CompletableFuture<PutOffer> put(byte[] key, byte[] value, byte[] owner, byte[] sharingKey, byte[] mapKey, byte[] proof)
     {
         assert(key.length == 32);
-        Future<Object> fut = router.ask(new Message.PUT(key, value.length, owner, sharingKey, mapKey, proof));
-        OnSuccess success = new PutHandler(router, key, value, onComplete);
-        FutureWrapper.followWith(fut, success, onError, executor);
-        return fut;
+        CompletableFuture<Object> fut = router.ask(new Message.PUT(key, value.length, owner, sharingKey, mapKey, proof));
+        return fut.thenApply(new PutHandler(router, key, value));
     }
 
-    public Future<Object> contains(byte[] key, GetHandlerCallback onComplete, OnFailure onError)
+    public CompletableFuture<GetOffer> contains(byte[] key)
     {
         assert(key.length == 32);
-        Future<Object> fut = router.ask(new Message.GET(key));
-        OnSuccess success = new GetHandler(router, key, onComplete);
-        FutureWrapper.followWith(fut, success, onError, executor);
-        return fut;
+        CompletableFuture<Object> fut = router.ask(new Message.GET(key));
+        return fut.thenApply(new GetHandler(router, key));
     }
 
-    public Future<Object> get(byte[] key, GetHandlerCallback onComplete, OnFailure onError)
+    public CompletableFuture<GetOffer> get(byte[] key)
     {
         assert(key.length == 32);
-        Future<Object> fut = router.ask(new Message.GET(key));
-        OnSuccess success = new GetHandler(router, key, onComplete);
-        FutureWrapper.followWith(fut, success, onError, executor);
-        return fut;
-    }
-
-    public Future<Object> put(byte[] key, byte[] value, byte[] owner, byte[] sharingKey, byte[] mapKey, byte[] proof, PutHandlerCallback onComplete)
-    {
-        return put(key, value, owner, sharingKey, mapKey, proof, onComplete, new ErrorHandler());
-    }
-
-    public Future<Object> contains(byte[] key, GetHandlerCallback onComplete)
-    {
-        return contains(key, onComplete, new ErrorHandler());
-    }
-
-    public Future<Object> get(byte[] key, GetHandlerCallback onComplete)
-    {
-        return get(key, onComplete, new ErrorHandler());
+        CompletableFuture<Object> fut = router.ask(new Message.GET(key));
+        return fut.thenApply(new GetHandler(router, key));
     }
 }

@@ -1,10 +1,8 @@
 package peergos.storage.dht;
 
-import peergos.corenode.*;
 import peergos.crypto.*;
 import peergos.storage.*;
 import peergos.storage.net.HttpMessenger;
-import peergos.storage.net.HttpsUserService;
 import peergos.util.*;
 import peergos.util.ArrayOps;
 
@@ -31,8 +29,8 @@ public class Router
     private SortedMap<Long, Node> friends = new TreeMap();
     public final StorageWrapper storage;
     public Logger LOGGER;
-    private final Map<ByteArrayWrapper, peergos.util.CompletableFuture> pendingPuts = new ConcurrentHashMap<>();
-    private final Map<ByteArrayWrapper, peergos.util.CompletableFuture> pendingGets = new ConcurrentHashMap<>();
+    private final Map<ByteArrayWrapper, CompletableFuture> pendingPuts = new ConcurrentHashMap<>();
+    private final Map<ByteArrayWrapper, CompletableFuture> pendingGets = new ConcurrentHashMap<>();
     private final Random random = new Random(System.currentTimeMillis());
     private HttpMessenger messenger;
     private BlockingQueue queue = new ArrayBlockingQueue(200);
@@ -83,14 +81,9 @@ public class Router
         }
     }
 
-    public Future<Object> ask(Message m) {
+    public CompletableFuture<Object> ask(Message m) {
         LOGGER.log(Level.ALL, "Asking "+m.name());
-        peergos.util.CompletableFuture f = new peergos.util.CompletableFuture(new Callable() {
-            @Override
-            public Object call() throws Exception {
-                return null;
-            }
-        });
+        CompletableFuture f = new CompletableFuture();
         if (m instanceof Message.PUT)
         {
             pendingPuts.put(new ByteArrayWrapper(((Message.PUT) m).getKey()), f);
@@ -288,8 +281,8 @@ public class Router
             if (pendingPuts.containsKey(key))
             {
                 LOGGER.log(Level.ALL, "handling PUT_ACCEPT");
-                peergos.util.CompletableFuture success = pendingPuts.get(key);
-                success.addResult(new PutOffer(target));
+                CompletableFuture success = pendingPuts.get(key);
+                success.complete(new PutOffer(target));
                 pendingPuts.remove(key);
             }
         } else if (m instanceof Message.GET)
@@ -327,8 +320,8 @@ public class Router
             ByteArrayWrapper key = new ByteArrayWrapper(((Message.GET_RESULT) m).getKey());
             if (pendingGets.containsKey(key))
             {
-                peergos.util.CompletableFuture success = pendingGets.get(key);
-                success.addResult(new GetOffer(m.getHops().get(0), ((Message.GET_RESULT) m).getSize()));
+                CompletableFuture success = pendingGets.get(key);
+                success.complete(new GetOffer(m.getHops().get(0), ((Message.GET_RESULT) m).getSize()));
                 pendingGets.remove(key);
             }
             else

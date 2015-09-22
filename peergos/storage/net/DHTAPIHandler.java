@@ -11,11 +11,11 @@ import java.io.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.function.*;
 
 public class DHTAPIHandler implements HttpHandler
 {
     private final Router router;
-    private ExecutorService executor = Executors.newFixedThreadPool(2);
 
     public DHTAPIHandler(Router r)
     {
@@ -30,24 +30,24 @@ public class DHTAPIHandler implements HttpHandler
             Message m = Message.read(din);
             if (m instanceof Message.PUT) {
                 byte[] value = Serialize.deserializeByteArray(din, Fragment.SIZE);
-                Future<Object> fut = router.ask(m);
-                OnSuccess success = new PeergosDHT.PutHandler(router, ((Message.PUT) m).getKey(), value, new PutSuccess(httpExchange));
-                OnFailure failure = new Failure(httpExchange);
-                FutureWrapper.followWith(fut, success, failure, executor);
+                router.ask(m)
+                        .thenApply(new PeergosDHT.PutHandler(router, ((Message.PUT) m).getKey(), value))
+                        .thenAccept(new PutSuccess(httpExchange))
+                        .exceptionally(new Failure(httpExchange));
             } else if (m instanceof Message.GET) {
                 int type = din.readInt();
                 if (type == 1) // GET
                 {
-                    Future<Object> fut = router.ask(m);
-                    OnSuccess success = new PeergosDHT.GetHandler(router, ((Message.GET) m).getKey(), new GetSuccess(((Message.GET) m).getKey(), httpExchange));
-                    OnFailure failure = new Failure(httpExchange);
-                    FutureWrapper.followWith(fut, success, failure, executor);
+                    router.ask(m)
+                            .thenApply(new PeergosDHT.GetHandler(router, ((Message.GET) m).getKey()))
+                            .thenAccept(new GetSuccess(((Message.GET) m).getKey(), httpExchange))
+                            .exceptionally(new Failure(httpExchange));
                 } else if (type == 2) // CONTAINS
                 {
-                    Future<Object> fut = router.ask(m);
-                    OnSuccess success = new PeergosDHT.GetHandler(router, ((Message.GET) m).getKey(), new ContainsSuccess(httpExchange));
-                    OnFailure failure = new Failure(httpExchange);
-                    FutureWrapper.followWith(fut, success, failure, executor);
+                    router.ask(m)
+                            .thenApply(new PeergosDHT.GetHandler(router, ((Message.GET) m).getKey()))
+                            .thenAccept(new ContainsSuccess(httpExchange))
+                            .exceptionally(new Failure(httpExchange));
                 }
             }
         } catch (Exception e) {
@@ -56,7 +56,7 @@ public class DHTAPIHandler implements HttpHandler
         }
     }
 
-    private static class PutSuccess implements PutHandlerCallback
+    private static class PutSuccess implements Consumer<PutOffer>
     {
         private final HttpExchange exchange;
 
@@ -66,7 +66,7 @@ public class DHTAPIHandler implements HttpHandler
         }
 
         @Override
-        public void callback(PutOffer offer) {
+        public void accept(PutOffer offer) {
             try {
                 exchange.sendResponseHeaders(200, 0);
                 DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());
@@ -81,7 +81,7 @@ public class DHTAPIHandler implements HttpHandler
         }
     }
 
-    private static class GetSuccess implements GetHandlerCallback
+    private static class GetSuccess implements Consumer<GetOffer>
     {
         private final HttpExchange exchange;
         private final byte[] key;
@@ -93,7 +93,7 @@ public class DHTAPIHandler implements HttpHandler
         }
 
         @Override
-        public void callback(GetOffer offer) {
+        public void accept(GetOffer offer) {
             try {
                 exchange.sendResponseHeaders(200, 0);
                 DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());
@@ -109,7 +109,7 @@ public class DHTAPIHandler implements HttpHandler
         }
     }
 
-    private static class ContainsSuccess implements GetHandlerCallback
+    private static class ContainsSuccess implements Consumer<GetOffer>
     {
         private final HttpExchange exchange;
 
@@ -119,7 +119,7 @@ public class DHTAPIHandler implements HttpHandler
         }
 
         @Override
-        public void callback(GetOffer offer) {
+        public void accept(GetOffer offer) {
             try {
                 exchange.sendResponseHeaders(200, 0);
                 DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());
@@ -134,7 +134,7 @@ public class DHTAPIHandler implements HttpHandler
         }
     }
 
-    private static class Failure implements OnFailure
+    private static class Failure implements Function<Throwable, Void>
     {
         private final HttpExchange exchange;
 
@@ -143,7 +143,7 @@ public class DHTAPIHandler implements HttpHandler
             this.exchange = exchange;
         }
 
-        public void onFailure(java.lang.Throwable throwable) {
+        public Void apply(java.lang.Throwable throwable) {
             try {
                 exchange.sendResponseHeaders(200, 0);
                 DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());
@@ -155,6 +155,7 @@ public class DHTAPIHandler implements HttpHandler
             {
                 e.printStackTrace();
             }
+            return null;
         }
     }
 }

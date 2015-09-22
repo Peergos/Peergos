@@ -8,33 +8,28 @@ import java.util.concurrent.*;
 
 public class MemoryDHTUserAPI extends DHTUserAPI
 {
-    class DummyFuture<V> implements Future<V> {
-        private final V value;
-        public DummyFuture(V value){this.value = value;}
-        public boolean cancel(boolean b){return false;}
-        public boolean isCancelled(){return false;}
-        public boolean isDone(){return true;}
-        public V get(){return value;}
-        public V get(long l, java.util.concurrent.TimeUnit timeUnit){return value;}
-    }
-
     private final Map<ByteArrayWrapper, byte[]> chunks = new ConcurrentHashMap<>();
 
-    public  Future<Boolean> put(byte[] key, byte[] value, final byte[] owner, final byte[] sharingKey, final byte[] mapKey, final byte[] proof)
+    public CompletableFuture<Boolean> put(byte[] key, byte[] value, final byte[] owner, final byte[] sharingKey, final byte[] mapKey, final byte[] proof)
     {
         chunks.put(new ByteArrayWrapper(key), value);
-            return new DummyFuture<>(true);
-
+        CompletableFuture<Boolean> fut = new CompletableFuture<>();
+        fut.complete(true);
+        return fut;
     }
 
-    public  Future<Boolean> contains(byte[] key)
+    public CompletableFuture<Boolean> contains(byte[] key)
     {
         boolean contains = chunks.containsKey(new ByteArrayWrapper(key));
-        return new DummyFuture<>(contains);
+        CompletableFuture<Boolean> fut = new CompletableFuture<>();
+        fut.complete(contains);
+        return fut;
     }
 
-    public  Future<ByteArrayWrapper> get(byte[] key){
-        return new DummyFuture<>(new ByteArrayWrapper(chunks.get(new ByteArrayWrapper(key))));
+    public CompletableFuture<ByteArrayWrapper> get(byte[] key){
+        CompletableFuture<ByteArrayWrapper> fut = new CompletableFuture<>();
+        fut.complete(new ByteArrayWrapper(chunks.get(new ByteArrayWrapper(key))));
+        return fut;
     }
 
     public  void shutdown(){}

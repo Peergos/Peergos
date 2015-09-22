@@ -5,8 +5,6 @@ import peergos.storage.net.HttpMessenger;
 import peergos.util.*;
 
 import java.io.*;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 
 public class Scripter extends Thread
 {
@@ -39,37 +37,25 @@ public class Scripter extends Thread
                 } catch (InterruptedException e) {}
                 try {
                     if (parts[1].equals("PUT")) {
-                        Future<Object> fut = api.put(ArrayOps.hexToBytes(parts[2]), ArrayOps.hexToBytes(parts[3]),
-                                ArrayOps.hexToBytes(parts[4]), ArrayOps.hexToBytes(parts[5]), ArrayOps.hexToBytes(parts[6]), ArrayOps.hexToBytes(parts[7]), new PutHandlerCallback() {
-                            public void callback(PutOffer offer) {
-                                System.out.println("Put completed with no error");
-                            }
-                        });
+                        api.put(ArrayOps.hexToBytes(parts[2]), ArrayOps.hexToBytes(parts[3]),
+                                ArrayOps.hexToBytes(parts[4]), ArrayOps.hexToBytes(parts[5]), ArrayOps.hexToBytes(parts[6]), ArrayOps.hexToBytes(parts[7]))
+                                .thenAccept(offer -> System.out.println("Put completed with no error"));
                         System.out.println("Sent Put message..");
-                        fut.get(30, TimeUnit.SECONDS);
                     } else if (parts[1].equals("GET")) {
-                        Future<Object> fut = api.get(ArrayOps.hexToBytes(parts[2]), new GetHandlerCallback() {
-                            @Override
-                            public void callback(GetOffer offer) {
-                                try {
-                                    byte[] fragment = HttpMessenger.getFragment(offer.getTarget().external, "/" + parts[2]);
-                                    System.out.println("GET result: " + new String(fragment, "UTF-8"));
-                                } catch (IOException e) {
-                                    e.printStackTrace();
-                                }
-                            }
-                        });
+                        api.get(ArrayOps.hexToBytes(parts[2]))
+                                .thenAccept((offer) -> {
+                                    try {
+                                        byte[] fragment = HttpMessenger.getFragment(offer.getTarget().external, "/" + parts[2]);
+                                        System.out.println("GET result: " + new String(fragment, "UTF-8"));
+                                    } catch (IOException e) {
+                                        e.printStackTrace();
+                                    }
+                                });
                         System.out.println("Sent Get message");
-                        fut.get(30, TimeUnit.SECONDS);
                     } else if (parts[1].equals("CON")) {
-                        Future<Object> fut = api.contains(ArrayOps.hexToBytes(parts[2]), new GetHandlerCallback() {
-                            @Override
-                            public void callback(GetOffer offer) {
-                                System.out.println(offer.getSize() > 0 ? "true" : "false");
-                            }
-                        });
+                        api.contains(ArrayOps.hexToBytes(parts[2]))
+                                .thenAccept((offer) -> System.out.println(offer.getSize() > 0 ? "true" : "false"));
                         System.out.println("Sent Contains message");
-                        fut.get(30, TimeUnit.SECONDS);
                     } else if (parts[1].equals("KILL")) {
                         System.exit(0);
                     } else

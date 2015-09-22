@@ -4,9 +4,9 @@ import java.util.concurrent.*;
 
 public interface DHT
 {
-    Future<Object> put(byte[] key, byte[] value, byte[] owner, byte[] writingKey, byte[] mapKey, byte[] proof, PutHandlerCallback onComplete, OnFailure onError);
+    CompletableFuture<PutOffer> put(byte[] key, byte[] value, byte[] owner, byte[] writingKey, byte[] mapKey, byte[] proof);
 
-    Future<Object> contains(byte[] key, GetHandlerCallback onComplete, OnFailure onError);
+    CompletableFuture<GetOffer> contains(byte[] key);
 
-    Future<Object> get(byte[] key, GetHandlerCallback onComplete, OnFailure onError);
+    CompletableFuture<GetOffer> get(byte[] key);
 }

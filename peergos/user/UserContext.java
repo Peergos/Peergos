@@ -5,7 +5,6 @@ import peergos.crypto.SymmetricKey;
 import peergos.crypto.SymmetricLocationLink;
 import peergos.crypto.User;
 import peergos.crypto.UserPublicKey;
-import peergos.storage.dht.FutureWrapper;
 import peergos.user.fs.*;
 import peergos.util.ArrayOps;
 import peergos.util.ByteArrayWrapper;
@@ -167,7 +166,7 @@ public class UserContext
                 }
 
             // wait for all fragments to upload
-            Countdown<Object> all = new Countdown(futures.size(), futures, executor);
+            Countdown<Object> all = new Countdown(futures.size(), futures);
             try {
                 all.await();
             } catch (Exception e) {
@@ -181,10 +180,10 @@ public class UserContext
     public Fragment[] downloadFragments(List<ByteArrayWrapper> hashes)
     {
         Fragment[] res = new Fragment[hashes.size()];
-        List<Future<ByteArrayWrapper>> futs = new ArrayList<>(res.length);
+        List<CompletableFuture<ByteArrayWrapper>> futs = new ArrayList<>(res.length);
         for (int i=0; i < res.length; i++)
             futs.add(dht.get(hashes.get(i).data));
-        Countdown<ByteArrayWrapper> first50 = new Countdown<>(50, futs, executor);
+        Countdown<ByteArrayWrapper> first50 = new Countdown<>(50, futs);
         first50.await();
         List<Fragment> frags = new ArrayList<>();
         for (ByteArrayWrapper frag: first50.results)
@@ -236,18 +235,19 @@ public class UserContext
         List<Throwable> errors = Collections.synchronizedList(new ArrayList<>());
         Set<V> results = new ConcurrentSkipListSet<>();
 
-        public Countdown(int needed, List<Future<V>> futs, ExecutorService context)
+        public Countdown(int needed, List<CompletableFuture<V>> futs)
         {
             left = new CountDownLatch(needed);
             failuresAllowed = new AtomicInteger(futs.size()-needed);
-            for (Future<V> fut: futs)
-                FutureWrapper.followWith(fut, o -> {
-                    results.add((V) o);
+            for (CompletableFuture<V> fut: futs)
+                fut.thenAccept(o -> {
+                    results.add(o);
                     left.countDown();
-                }, e -> {
+                }).exceptionally(e -> {
                     failuresAllowed.decrementAndGet();
                     errors.add(e);
-                }, context);
+                    return null;
+                });
         }
 
         public void await()

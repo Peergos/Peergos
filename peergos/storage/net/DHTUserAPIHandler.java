@@ -7,6 +7,7 @@ import peergos.util.*;
 import com.sun.net.httpserver.*;
 
 import java.io.*;
+import java.util.function.*;
 
 public class DHTUserAPIHandler implements HttpHandler
 {
@@ -31,21 +32,15 @@ public class DHTUserAPIHandler implements HttpHandler
                 byte[] sharingKey = Serialize.deserializeByteArray(din, UserPublicKey.SIZE);
                 byte[] mapKey = Serialize.deserializeByteArray(din, 32);
                 byte[] proof = Serialize.deserializeByteArray(din, 4096);
-                PutHandlerCallback success = new PutSuccess(httpExchange);
-                Failure error = new Failure(httpExchange);
-                dht.put(key, value, owner, sharingKey, mapKey, proof, success, error);
+                dht.put(key, value, owner, sharingKey, mapKey, proof).thenAccept(new PutSuccess(httpExchange)).exceptionally(new Failure(httpExchange));
             } else if (type == 1) {
                 // GET
                 byte[] key = Serialize.deserializeByteArray(din, 64);
-                GetHandlerCallback success = new GetSuccess(key, httpExchange);
-                Failure error = new Failure(httpExchange);
-                dht.get(key, success, error);
+                dht.get(key).thenAccept(new GetSuccess(key, httpExchange)).exceptionally(new Failure(httpExchange));
             } else if (type == 2) {
                 // CONTAINS
                 byte[] key = Serialize.deserializeByteArray(din, 64);
-                GetHandlerCallback success = new ContainsSuccess(httpExchange);
-                Failure error = new Failure(httpExchange);
-                dht.contains(key, success, error);
+                dht.contains(key).thenAccept(new ContainsSuccess(httpExchange)).exceptionally(new Failure(httpExchange));
             } else {
                 httpExchange.sendResponseHeaders(404, 0);
             }
@@ -55,7 +50,7 @@ public class DHTUserAPIHandler implements HttpHandler
         }
     }
 
-    private static class PutSuccess implements PutHandlerCallback
+    private static class PutSuccess implements Consumer<PutOffer>
     {
         private final HttpExchange exchange;
 
@@ -65,7 +60,7 @@ public class DHTUserAPIHandler implements HttpHandler
         }
 
         @Override
-        public void callback(PutOffer offer) {
+        public void accept(PutOffer offer) {
             try {
                 exchange.sendResponseHeaders(200, 0);
                 DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());
@@ -80,7 +75,7 @@ public class DHTUserAPIHandler implements HttpHandler
         }
     }
 
-    private static class GetSuccess implements GetHandlerCallback
+    private static class GetSuccess implements Consumer<GetOffer>
     {
         private final HttpExchange exchange;
         private final byte[] key;
@@ -92,7 +87,7 @@ public class DHTUserAPIHandler implements HttpHandler
         }
 
         @Override
-        public void callback(GetOffer offer) {
+        public void accept(GetOffer offer) {
             try {
                 exchange.sendResponseHeaders(200, 0);
                 DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());
@@ -108,7 +103,7 @@ public class DHTUserAPIHandler implements HttpHandler
         }
     }
 
-    private static class ContainsSuccess implements GetHandlerCallback
+    private static class ContainsSuccess implements Consumer<GetOffer>
     {
         private final HttpExchange exchange;
 
@@ -118,7 +113,7 @@ public class DHTUserAPIHandler implements HttpHandler
         }
 
         @Override
-        public void callback(GetOffer offer) {
+        public void accept(GetOffer offer) {
             try {
                 exchange.sendResponseHeaders(200, 0);
                 DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());
@@ -133,7 +128,7 @@ public class DHTUserAPIHandler implements HttpHandler
         }
     }
 
-    private static class Failure implements OnFailure
+    private static class Failure implements Function<Throwable, Void>
     {
         private final HttpExchange exchange;
 
@@ -142,7 +137,7 @@ public class DHTUserAPIHandler implements HttpHandler
             this.exchange = exchange;
         }
 
-        public void onFailure(Throwable throwable) {
+        public Void apply(Throwable throwable) {
             try {
                 exchange.sendResponseHeaders(200, 0);
                 DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());
@@ -154,6 +149,7 @@ public class DHTUserAPIHandler implements HttpHandler
             {
                 e.printStackTrace();
             }
+            return null;
         }
     }
 }
