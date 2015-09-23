@@ -384,13 +384,13 @@ public class HTTPCoreNodeServer
         return Serialize.deserializeString(din, 1024);
     }
 
-    public static void createAndStart(String keyfile, char[] passphrase, int port)
+    public static void createAndStart(String keyfile, char[] passphrase, int port, AbstractCoreNode coreNode)
     {
         // eventually will need our own keypair to sign traffic to other core nodes our register ourselves with directory servers
         try {
             String hostname = Args.getArg("domain", "localhost");
             InetSocketAddress address = new InetSocketAddress(hostname, port);
-            HTTPCoreNodeServer server = new HTTPCoreNodeServer(AbstractCoreNode.getDefault(), address);
+            HTTPCoreNodeServer server = new HTTPCoreNodeServer(coreNode, address);
             server.start();
         } catch (Exception e)
         {

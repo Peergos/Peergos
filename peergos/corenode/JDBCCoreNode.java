@@ -65,7 +65,6 @@ public abstract class JDBCCoreNode extends AbstractCoreNode {
                 stmt.setString(1,this.name);
                 stmt.setString(2,this.b64string);
                 stmt.executeUpdate();
-                conn.commit();
                 return true;
             } catch (SQLException sqe) {
                 sqe.printStackTrace();
@@ -118,7 +117,6 @@ public abstract class JDBCCoreNode extends AbstractCoreNode {
             {
                 stmt = conn.createStatement();
                 stmt.executeUpdate(deleteStatement());
-                conn.commit();
                 return true;
             } catch (SQLException sqe) {
                 sqe.printStackTrace();
@@ -279,7 +277,6 @@ public abstract class JDBCCoreNode extends AbstractCoreNode {
                 stmt.setInt(1,this.storageID);
                 stmt.setString(2,this.b64hash);
                 stmt.executeUpdate();
-                conn.commit();
                 return true;
             } catch (SQLException sqe) {
                 sqe.printStackTrace();
@@ -326,7 +323,6 @@ public abstract class JDBCCoreNode extends AbstractCoreNode {
                 stmt.setString(3,new String(Base64.getEncoder().encode(owner.getPublicKeys())));
                 stmt.setDouble(4, fraction);
                 stmt.executeUpdate();
-                conn.commit();
                 return true;
             } catch (SQLException sqe) {
                 sqe.printStackTrace();
@@ -426,7 +422,6 @@ public abstract class JDBCCoreNode extends AbstractCoreNode {
                 stmt.setString(2,this.b64mapkey);
                 stmt.setString(3,this.b64fragmentdata);
                 stmt.executeUpdate();
-                conn.commit();
                 return true;
             } catch (SQLException sqe) {
                 sqe.printStackTrace();
@@ -498,7 +493,6 @@ public abstract class JDBCCoreNode extends AbstractCoreNode {
         {
             stmt = conn.createStatement();
             stmt.executeUpdate("delete from fragments where "+ deleteString +";");
-            conn.commit();
             return true;
         } catch (SQLException sqe) {
             sqe.printStackTrace();
@@ -553,7 +547,7 @@ public abstract class JDBCCoreNode extends AbstractCoreNode {
                 //System.out.println("Adding table "+ missingTable);
                 createStmt.executeUpdate(TABLES.get(missingTable));
                 createStmt.close();
-                conn.commit();
+
             } catch ( Exception e ) {
                 System.err.println( e.getClass().getName() + ": " + e.getMessage() );
             }
@@ -728,7 +722,6 @@ public abstract class JDBCCoreNode extends AbstractCoreNode {
         {
             stmt = conn.createStatement();
             stmt.executeUpdate("delete from "+table+" where "+ deleteString +";");
-            conn.commit();
             return true;
         } catch (SQLException sqe) {
             sqe.printStackTrace();

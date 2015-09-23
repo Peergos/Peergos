@@ -29,7 +29,7 @@ public class SQLiteCoreNode extends JDBCCoreNode
 
         String url = "jdbc:sqlite:"+dbPath;
         Connection conn= DriverManager.getConnection(url);
-        conn.setAutoCommit(false);
+        conn.setAutoCommit(true);
         return new SQLiteCoreNode(conn, dbPath);
     }
 }

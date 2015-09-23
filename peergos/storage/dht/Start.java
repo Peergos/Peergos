@@ -11,6 +11,8 @@ import java.io.File;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -67,12 +69,12 @@ public class Start
         }
         else if (Args.hasArg("localJS"))
         {
-            Args.parse(new String[]{"-script", "testscripts/empty.txt", "-domain", "localhost"});
+            Args.parse(new String[]{"-script", "testscripts/empty.txt", "-domain", "localhost", "-coreNodePath", Args.getArg("coreNodePath", ":memory:")});
             test(1);
         }
         else if (Args.hasArg("demo"))
         {
-            Args.parse(new String[]{"-domain", "demo.peergos.net"});
+            Args.parse(new String[]{"-domain", "demo.peergos.net", "-coreNodePath", Args.getArg("coreNodePath", ":memory:")});
             demo();
         }
         else if (Args.hasArg("directoryServer"))
@@ -85,7 +87,14 @@ public class Start
         {
             String keyfile = Args.getArg("keyfile", "core.key");
             char[] passphrase = Args.getArg("passphrase", "password").toCharArray();
-            HTTPCoreNodeServer.createAndStart(keyfile, passphrase, AbstractCoreNode.PORT);
+            String path = Args.getArg("coreNodePath", ":memory:");
+            System.out.println("Using core node path "+ path);
+            try {
+                SQLiteCoreNode coreNode = SQLiteCoreNode.build(path);
+                HTTPCoreNodeServer.createAndStart(keyfile, passphrase, AbstractCoreNode.PORT, coreNode);
+            } catch (SQLException sqle) {
+                throw new IllegalStateException(sqle);
+            }
         }
         else if (Args.hasArg("rootGen"))
         {
@@ -143,10 +152,8 @@ public class Start
     public static void demo() throws IOException{
         String domain = Args.getArg("domain", "localhost");
         Start.main(new String[] {"-directoryServer", "-domain", domain});
-        if (domain.equals("localhost"))
-            Start.main(new String[] {"-coreNode", "-local"});
-        else
-            Start.main(new String[] {"-coreNode", "-domain", domain});
+
+        Start.main(new String[] {"-coreNode", "-domain", domain, "-coreNodePath", Args.getArg("coreNodePath", ":memory:")});
 
         Start.main(new String[]{"-firstNode", "-port", "443", "-logMessages", "-domain", domain, "-publicserver"});
     }
@@ -157,13 +164,14 @@ public class Start
             throw new IllegalStateException("Need a script argument for test mode");
         String script = Args.getArg("script");
         String domain = Args.getArg("domain", "localhost");
+        String coreNodePath = Args.getArg("coreNodePath", ":memory:");
         Start.main(new String[] {"-directoryServer", "-local", "-domain", domain});
 
 
         if (domain.equals("localhost"))
-            Start.main(new String[] {"-coreNode", "-local"});
+            Start.main(new String[] {"-coreNode", "-local" , "-coreNodePath", coreNodePath });
         else
-            Start.main(new String[] {"-coreNode", "-domain", domain});
+            Start.main(new String[] {"-coreNode", "-domain", domain, "-coreNodePath", coreNodePath});
 
 
         String[] args;
