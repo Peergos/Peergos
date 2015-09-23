@@ -890,8 +890,12 @@ mkdir: function() {
 render: function() {
         if (userContext == null) 
                 return (<div className="container form-signin">
-                                <div id="login-form">
+                                <h2>Peergos</h2>
+                                <center>
+                                <img src="images/logo.png"/>
+                                </center>
                                 <h2>Please log in</h2>
+                                <div id="login-form">
                                 <div  className="form-group">
                                         <input placeholder="Username" id="login-user-input" className="form-control" type="text"/>
                                 </div>
