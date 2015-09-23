@@ -43,10 +43,9 @@ public class Scripter extends Thread
                         System.out.println("Sent Put message..");
                     } else if (parts[1].equals("GET")) {
                         api.get(ArrayOps.hexToBytes(parts[2]))
-                                .thenAccept((offer) -> {
+                                .thenAccept((result) -> {
                                     try {
-                                        byte[] fragment = HttpMessenger.getFragment(offer.getTarget().external, "/" + parts[2]);
-                                        System.out.println("GET result: " + new String(fragment, "UTF-8"));
+                                        System.out.println("GET result: " + new String(result, "UTF-8"));
                                     } catch (IOException e) {
                                         e.printStackTrace();
                                     }
@@ -54,7 +53,7 @@ public class Scripter extends Thread
                         System.out.println("Sent Get message");
                     } else if (parts[1].equals("CON")) {
                         api.contains(ArrayOps.hexToBytes(parts[2]))
-                                .thenAccept((offer) -> System.out.println(offer.getSize() > 0 ? "true" : "false"));
+                                .thenAccept(size -> System.out.println(size > 0 ? "true" : "false"));
                         System.out.println("Sent Contains message");
                     } else if (parts[1].equals("KILL")) {
                         System.exit(0);

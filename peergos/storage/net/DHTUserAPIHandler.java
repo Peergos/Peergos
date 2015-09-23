@@ -50,7 +50,7 @@ public class DHTUserAPIHandler implements HttpHandler
         }
     }
 
-    private static class PutSuccess implements Consumer<PutOffer>
+    private static class PutSuccess implements Consumer<Boolean>
     {
         private final HttpExchange exchange;
 
@@ -60,11 +60,11 @@ public class DHTUserAPIHandler implements HttpHandler
         }
 
         @Override
-        public void accept(PutOffer offer) {
+        public void accept(Boolean result) {
             try {
                 exchange.sendResponseHeaders(200, 0);
                 DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());
-                dout.writeInt(1); // success
+                dout.writeInt(result ? 1 : 0); // success
 
                 dout.flush();
                 dout.close();
@@ -75,7 +75,7 @@ public class DHTUserAPIHandler implements HttpHandler
         }
     }
 
-    private static class GetSuccess implements Consumer<GetOffer>
+    private static class GetSuccess implements Consumer<byte[]>
     {
         private final HttpExchange exchange;
         private final byte[] key;
@@ -87,13 +87,12 @@ public class DHTUserAPIHandler implements HttpHandler
         }
 
         @Override
-        public void accept(GetOffer offer) {
+        public void accept(byte[] value) {
             try {
                 exchange.sendResponseHeaders(200, 0);
                 DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());
                 dout.writeInt(1); // success
-                byte[] frag = HttpMessenger.getFragment(offer.getTarget().external, "/" + ArrayOps.bytesToHex(key));
-                Serialize.serialize(frag, dout);
+                Serialize.serialize(value, dout);
                 dout.flush();
                 dout.close();
             } catch (IOException e)
@@ -103,7 +102,7 @@ public class DHTUserAPIHandler implements HttpHandler
         }
     }
 
-    private static class ContainsSuccess implements Consumer<GetOffer>
+    private static class ContainsSuccess implements Consumer<Integer>
     {
         private final HttpExchange exchange;
 
@@ -113,12 +112,12 @@ public class DHTUserAPIHandler implements HttpHandler
         }
 
         @Override
-        public void accept(GetOffer offer) {
+        public void accept(Integer size) {
             try {
                 exchange.sendResponseHeaders(200, 0);
                 DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());
                 dout.writeInt(1); // success
-                dout.writeInt(offer.getSize());
+                dout.writeInt(size);
                 dout.flush();
                 dout.close();
             } catch (IOException e)
