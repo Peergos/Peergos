@@ -15,6 +15,18 @@ populateModalAndShow = function(title, content) {
         $('#modal-body').html(content);
         $('#modal').modal("show");   
 }
+
+
+hideNonWritableButtons = function() {
+    $("#mkdirButton").css("display","none");
+    $("#uploadButton").css("display","none");
+}
+
+showNonWritableButtons = function() {
+    $("#mkdirButton").css("display","block");
+    $("#uploadButton").css("display","block");
+}
+
 requireSignedIn = function(callback) {
     if (userContext == null)  
         populateModalAndShow('Who is this?','<p>Please sign in to continue.</p>');
@@ -580,6 +592,12 @@ loadFilesFromServer: function(fileTreeNode) {
             this.state.retrievedFilePointerPath.push(globalRoot);
 
             this.updateNavbarPath(this.currentPath());
+            
+            const path = this.state.retrievedFilePointerPath;
+            if  (path.length ==0 || ! path[0].isWritable())
+                    hideNonWritableButtons();
+            else 
+                    showNonWritableButtons();
 
             globalRoot.getChildren(userContext).then(function(children) {
                 callback(children);
