@@ -197,7 +197,6 @@ const UserOptions = React.createClass({
             React.render(table, document.getElementById("followingList"));
     },
     render: function() {
-
             return (<div>
                             <h2>Submit Follow Request</h2>
                             <div  className="form-group">
@@ -214,7 +213,9 @@ const UserOptions = React.createClass({
     },
 
     componentDidMount: function() {
-            this.populateTables();
+            $('#modal').on('show.bs.modal', function () {
+                this.populateTables();
+            }.bind(this));
     }
 });
 
@@ -646,9 +647,11 @@ onUser: function() {
         $('#modal-title').html("User options");
         React.render(
             <UserOptions browser={this}/>, 
-            document.getElementById('modal-body')
+            document.getElementById('modal-body'),
+            function() {
+                    $('#modal').modal("show")
+            }   
         );
-        $('#modal').modal("show");   
     }.bind(this));
 },
 
