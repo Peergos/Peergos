@@ -595,8 +595,8 @@ loadFilesFromServer: function(fileTreeNode) {
 pathAsButtons: function(){
          return this.state.retrievedFilePointerPath.map(function(e) {
             const props = e.getFileProperties();
-            const name = props.name;
             const index = this.state.retrievedFilePointerPath.indexOf(e);
+            const name = index == 0 ? e.getOwner() : props.name;
             const path = this.state.retrievedFilePointerPath.slice(0, index+1);
             const onClick = function() {
                 this.state.retrievedFilePointerPath = path;
