@@ -26,6 +26,9 @@ public class TweetNaCl {
     public static final int HASH_SIZE_BYTES = 64; // SHA-512
     private static final int SECRETBOX_INTERNAL_OVERHEAD_BYTES = 32;
 
+    public static class InvalidSignatureException extends RuntimeException {}
+    public static class InvalidCipherTextException extends RuntimeException {}
+
     public static void crypto_sign_keypair(byte[] pk, byte[] sk, boolean isSeeded)
     {
         byte[] d = new byte[64];
@@ -67,7 +70,7 @@ public class TweetNaCl {
         byte[] message = new byte[signed.length];
         int res = TweetNaCl.crypto_sign_open(message, signed, signed.length, publicSigningKey);
         if (res != 0)
-            throw new RuntimeException("Bad signature!");
+            throw new InvalidSignatureException();
         return Arrays.copyOfRange(message, 64, message.length);
     }
 
@@ -87,7 +90,7 @@ public class TweetNaCl {
         byte[] rawText = new byte[paddedCipher.length];
         int res = TweetNaCl.crypto_box_open(rawText, paddedCipher, paddedCipher.length, nonce, theirPublicBoxingKey, secretBoxingKey);
         if (res != 0)
-            throw new RuntimeException("Invalid cipher text!");
+            throw new InvalidCipherTextException();
         return Arrays.copyOfRange(rawText, 32, rawText.length);
     }
 
@@ -141,7 +144,7 @@ public class TweetNaCl {
     private static int vn(byte[] x, int xOff, byte[] y,int n)
     {
         int i,d = 0;
-        for (i=0;i < n;++i)d |= x[xOff + i]^y[i];
+        for (i=0;i < n;++i)d |= 0xff & (x[xOff + i]^y[i]);
         return (1 & ((d - 1) >> 8)) - 1;
     }
 
