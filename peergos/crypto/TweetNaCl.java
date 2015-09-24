@@ -1,9 +1,8 @@
 package peergos.crypto;
 
-import test.*;
-
 import java.util.Arrays;
 import java.util.Random;
+
 /* Ported from the original C by Ian Preston and Chris Boddy
  * crypto_hash() is ported from TweetNaCl.js
  * Released under GPL 2
@@ -66,7 +65,9 @@ public class TweetNaCl {
 
     public static byte[] crypto_sign_open(byte[] signed, byte[] publicSigningKey) {
         byte[] message = new byte[signed.length];
-        TweetNaCl.crypto_sign_open(message, signed, signed.length, publicSigningKey);
+        int res = TweetNaCl.crypto_sign_open(message, signed, signed.length, publicSigningKey);
+        if (res != 0)
+            throw new RuntimeException("Bad signature!");
         return Arrays.copyOfRange(message, 64, message.length);
     }
 
@@ -84,7 +85,9 @@ public class TweetNaCl {
         byte[] paddedCipher = new byte[cipher.length + 16];
         System.arraycopy(cipher, 0, paddedCipher, 16, cipher.length);
         byte[] rawText = new byte[paddedCipher.length];
-        TweetNaCl.crypto_box_open(rawText, paddedCipher, paddedCipher.length, nonce, theirPublicBoxingKey, secretBoxingKey);
+        int res = TweetNaCl.crypto_box_open(rawText, paddedCipher, paddedCipher.length, nonce, theirPublicBoxingKey, secretBoxingKey);
+        if (res != 0)
+            throw new RuntimeException("Invalid cipher text!");
         return Arrays.copyOfRange(rawText, 32, rawText.length);
     }
 
