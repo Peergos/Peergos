@@ -830,9 +830,9 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 
     this.getSocialState = function() {
 	return this.getFollowRequests().then(function(pending) {
-	    return getFollowers().then(function(followers) {
+	    return getFollowerRoots().then(function(followerRoots) {
 		return getFriendRoots().then(function(followingRoots) {
-		    return Promise.resolve(new SocialState(pending, followers, followingRoots));
+		    return Promise.resolve(new SocialState(pending, followerRoots, followingRoots));
 		});
 	    });
 	});
@@ -1172,10 +1172,26 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 }
 
 //List[FollowRequest],  List[String], List[FileTreeNode] 
-function SocialState(pending, followers, followingRoots) {
+function SocialState(pending, followerRootMap, followingRoots) {
     this.pending = pending;
-    this.followers = followers;
+    this.followerRootMap = followerRootMap;
     this.followingRoots = followingRoots;
+    this.followers = Object.keys(followerRootMap);
+    this.sharedLocations = {};
+
+    this.buildSharedLocations = function(followerRoot) {
+	console.log("hey");
+	var kids = followerRoot.getChildrenLocations();
+	for (var child in kids) {
+	    var key = kids[child].toString();
+	    if (this.sharedLocations[key] == null)
+		this.sharedLocations[key] = [];
+	    this.sharedLocations[key].push(followerRoot.getFileProperties().name);
+	}
+    }
+    
+    for (var follower in this.followers)
+	this.buildSharedLocations(followerRootMap[this.followers[follower]]);
 
     this.getFollowingNames = function() {
 	return this.followingRoots.map(function(froot){return froot.getOwner()});
@@ -1183,7 +1199,11 @@ function SocialState(pending, followers, followingRoots) {
     
     this.getFollowers = function() {
         return this.followers;
-    } 
+    }
+
+    this.sharedWith = function(location) {
+	return sharedLocations[location.toString()];
+    }
 
     // FileTreeNode, String, UserContext
     this.share = function(file, targetUsername, context) {
@@ -1304,6 +1324,12 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 
     this.getLocation = function() {
 	return new Location(pointer.filePointer.owner, pointer.filePointer.writer, pointer.filePointer.mapKey);
+    }
+
+    this.getChildrenLocations = function() {
+	if (!this.isDirectory())
+	    return [];
+	return pointer.fileAccess.getChildrenLocations(pointer.filePointer.baseKey);
     }
 
     this.clear = function() {
@@ -1572,6 +1598,12 @@ function Location(owner, writer, mapKey) {
     this.encrypt = function(key, nonce) {
         return key.encrypt(this.serialize(), nonce);
     }
+
+    this.toString = function() {
+	return nacl.util.encodeBase64(owner.getPublicKeys())+
+	    nacl.util.encodeBase64(writer.getPublicKeys())+
+	    nacl.util.encodeBase64(mapKey);
+    }
 }
 Location.deserialize = function(raw) {
     const buf = raw instanceof ByteArrayInputStream ? raw : new ByteArrayInputStream(raw);
@@ -1813,6 +1845,20 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
             })
             return Promise.resolve(retrievedFilePointers);
         })
+    }
+
+    this.getChildrenLocations = function(baseKey) {
+	var res = [];
+	for (var i=0; i < this.subfolders.length; i++) {
+	    var subfolderLink = this.subfolders[i];
+	    res.push(subfolderLink.targetLocation(baseKey));
+	}
+	var filesKey = this.subfolders2files.target(baseKey);
+	for (var i=0; i < this.files.length; i++) {
+	    var fileLink = this.files[i];
+	    res.push(fileLink.targetLocation(filesKey));
+	}
+	return res;
     }
 
     this.getParentKey = function(subfoldersKey) {
