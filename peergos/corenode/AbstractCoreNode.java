@@ -327,6 +327,7 @@ public abstract class AbstractCoreNode
             byte[] metaDataBlob = Arrays.copyOfRange(payload, 32, payload.length);
             return addMetadataBlob(owner, sharingKey, mapKey, metaDataBlob);
         } catch (TweetNaCl.InvalidSignatureException e) {
+            System.err.println("Invalid signature for owner: "+owner + " and sharer: "+sharingKey);
             return false;
         }
     }
@@ -349,7 +350,7 @@ public abstract class AbstractCoreNode
             // TODO return false;
         }
         System.out.printf("Adding metadata blob at owner:%s writer:%s mapKey:%s\n",
-                ArrayOps.bytesToHex(owner.getPublicKeys()), sharingKey, ArrayOps.bytesToHex(mapKey));
+                owner, sharingKey, ArrayOps.bytesToHex(mapKey));
 
         fragments.put(keyW, new MetadataBlob(new ByteArrayWrapper(metadataBlob), null));
         return true;
@@ -442,7 +443,7 @@ public abstract class AbstractCoreNode
             return false;
 
         System.out.printf("Removing metadata blob at owner:%s writer:%s mapKey:%s\n",
-                ArrayOps.bytesToHex(owner.getPublicKeys()), ArrayOps.bytesToHex(sharingKey.getPublicKeys()), ArrayOps.bytesToHex(mapKey));
+                owner, sharingKey, ArrayOps.bytesToHex(mapKey));
         return fragments.remove(new ByteArrayWrapper(mapKey)) != null;
     }
 
@@ -493,14 +494,15 @@ public abstract class AbstractCoreNode
 
     public synchronized MetadataBlob getMetadataBlob(UserPublicKey owner, byte[] encodedSharingKey, byte[] mapKey) {
         UserData userData = userMap.get(owner);
+        UserPublicKey sharer = new UserPublicKey(encodedSharingKey);
         if (userData == null) {
             System.out.printf("Returning EMPTY metadata blob from owner:%s writer:%s mapKey:%s\n",
-                ArrayOps.bytesToHex(owner.getPublicKeys()), ArrayOps.bytesToHex(encodedSharingKey), ArrayOps.bytesToHex(mapKey));
+                owner, sharer, ArrayOps.bytesToHex(mapKey));
             return MetadataBlob.EMPTY;
         }
-        Map<ByteArrayWrapper, MetadataBlob> sharedFragments = userData.metadata.get(new UserPublicKey(encodedSharingKey));
-        System.out.printf("Getting metadata blob at owner:%s writer:%s mapKey:%s\n",
-                ArrayOps.bytesToHex(owner.getPublicKeys()), ArrayOps.bytesToHex(encodedSharingKey), ArrayOps.bytesToHex(mapKey));
+
+        Map<ByteArrayWrapper, MetadataBlob> sharedFragments = userData.metadata.get(sharer);
+        System.out.printf("Getting metadata blob at owner:%s writer:%s mapKey:%s\n", owner, sharer, ArrayOps.bytesToHex(mapKey));
         ByteArrayWrapper key = new ByteArrayWrapper(mapKey);
         if ((sharedFragments == null) || (!sharedFragments.containsKey(key)))
             return null;

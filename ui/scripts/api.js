@@ -108,8 +108,9 @@ User.fromSecretKeys = function(secretKeys) {
 }
 
 User.random = function() {
-    var secretKeys = window.nacl.randomBytes(96);
-    return User.fromSecretKeys(secretKeys);
+    var secretBoxKey = window.nacl.randomBytes(32);
+    var signSeed = window.nacl.randomBytes(32);
+    return new User(nacl.sign.keyPair.fromSeed(signSeed), nacl.box.keyPair.fromSecretKey(new Uint8Array(secretBoxKey)));
 }
 
 function toKeyPair(pub, sec) {
@@ -1010,7 +1011,10 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
         metadata.serialize(buf);
         var metaBlob = buf.toByteArray();
         console.log("Storing metadata blob of " + metaBlob.length + " bytes.");
-        return corenodeClient.addMetadataBlob(owner.getPublicKeys(), sharer.getPublicKeys(), sharer.signMessage(concat(mapKey, metaBlob)))
+	var msg = concat(mapKey, metaBlob);
+	var signed = sharer.signMessage(msg);
+	var unsigned = sharer.unsignMessage(signed);
+        return corenodeClient.addMetadataBlob(owner.getPublicKeys(), sharer.getPublicKeys(), signed)
         .then(function(added) {
             if (!added) {
                 console.log("Meta blob store failed.");
