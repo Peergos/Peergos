@@ -153,7 +153,7 @@ public class UserContext
         } catch (IOException e) {e.printStackTrace();}
         byte[] metaBlob = bout.toByteArray();
         System.out.println("Storing metadata blob of " + metaBlob.length + " bytes.");
-        if (!core.addMetadataBlob(target, sharer.getPublicKeys(), mapKey, metaBlob, sharer.signMessage(ArrayOps.concat(mapKey, metaBlob))))
+        if (!core.addMetadataBlob(target, sharer.getPublicKeys(), sharer.signMessage(ArrayOps.concat(mapKey, metaBlob))))
             System.out.println("Meta blob store failed.");
         if (fragments.length > 0 ) {
             // now upload fragments to DHT

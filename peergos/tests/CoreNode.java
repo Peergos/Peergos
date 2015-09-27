@@ -55,7 +55,7 @@ public class CoreNode
             //add fragment
             //
             byte[] mapKey = new byte[10];
-            boolean addedFragment = coreNode.addMetadataBlob(user, follower.getPublicKeys(), mapKey, cipherText, follower.signMessage(cipherText));
+            boolean addedFragment = coreNode.addMetadataBlob(user, follower.getPublicKeys(), follower.signMessage(ArrayOps.concat(mapKey, cipherText)));
             assertTrue("added fragment", !addedFragment);
 
             // add storage allowance
@@ -69,7 +69,7 @@ public class CoreNode
             assertTrue("quota after registering fragment", quota == coreNode.fragmentLength() * frags);
 
             // try again adding fragment
-            addedFragment = coreNode.addMetadataBlob(user, follower.getPublicKeys(), mapKey, cipherText, follower.signMessage(cipherText));
+            addedFragment = coreNode.addMetadataBlob(user, follower.getPublicKeys(), follower.signMessage(ArrayOps.concat(mapKey, cipherText)));
             assertTrue("added fragment", addedFragment);
 
 

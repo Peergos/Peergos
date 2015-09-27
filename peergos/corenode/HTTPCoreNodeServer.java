@@ -203,10 +203,8 @@ public class HTTPCoreNodeServer
         {
             byte[] encodedOwnerPublicKey = deserializeByteArray(din);
             byte[] encodedSharingPublicKey = deserializeByteArray(din);
-            byte[] mapKey = deserializeByteArray(din);
-            byte[] metaDataBlob = deserializeByteArray(din);
-            byte[] signedHash = deserializeByteArray(din);
-            boolean isAdded = coreNode.addMetadataBlob(new UserPublicKey(encodedOwnerPublicKey), encodedSharingPublicKey, mapKey, metaDataBlob, signedHash);
+            byte[] signedPayload = deserializeByteArray(din);
+            boolean isAdded = coreNode.addMetadataBlob(new UserPublicKey(encodedOwnerPublicKey), encodedSharingPublicKey, signedPayload);
             dout.writeBoolean(isAdded);
         }
         

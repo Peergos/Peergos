@@ -295,7 +295,7 @@ public class HTTPCoreNode extends AbstractCoreNode
                 conn.disconnect();
         }
     }
-   @Override public boolean addMetadataBlob(UserPublicKey owner, byte[] encodedSharingPublicKey, byte[] mapKey, byte[] metadataBlob, byte[] sharingKeySignedHash)
+   @Override public boolean addMetadataBlob(UserPublicKey owner, byte[] encodedSharingPublicKey, byte[] sharingKeySignedPayload)
     {
         HttpURLConnection conn = null;
         try
@@ -309,9 +309,7 @@ public class HTTPCoreNode extends AbstractCoreNode
 
             Serialize.serialize(owner.getPublicKeys(), dout);
             Serialize.serialize(encodedSharingPublicKey, dout);
-            Serialize.serialize(mapKey, dout);
-            Serialize.serialize(metadataBlob, dout);
-            Serialize.serialize(sharingKeySignedHash, dout);
+            Serialize.serialize(sharingKeySignedPayload, dout);
             dout.flush();
 
             DataInputStream din = new DataInputStream(conn.getInputStream());

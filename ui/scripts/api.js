@@ -75,7 +75,7 @@ function User(signKeyPair, boxKeyPair) {
         signMessage(this.hash(input), cb);
     }
     
-    // (Uint8Array, (nonce, sig) => ())
+    // (Uint8Array => Uint8array)
     this.signMessage = function(input) {
         return nacl.sign(input, this.sSignKey);
     }
@@ -601,13 +601,11 @@ function CoreNodeClient() {
     };
 
     //Uint8Array -> Uint8Array -> Uint8Array -> Uint8Array  -> Uint8Array -> fn -> fn -> void
-    this.addMetadataBlob = function( owner,  encodedSharingPublicKey,  mapKey,  metadataBlob,  sharingKeySignedHash) {
+    this.addMetadataBlob = function( owner,  encodedSharingPublicKey, sharingKeySignedPayload) {
         var buffer = new ByteArrayOutputStream();
         buffer.writeArray(owner);
         buffer.writeArray(encodedSharingPublicKey);
-        buffer.writeArray(mapKey);
-        buffer.writeArray(metadataBlob);
-        buffer.writeArray(sharingKeySignedHash);
+        buffer.writeArray(sharingKeySignedPayload);
         return postProm("core/addMetadataBlob", buffer.toByteArray()).then(function(res) {
             return Promise.resolve(new ByteArrayInputStream(res).readByte() == 1);
         });
@@ -1012,7 +1010,7 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
         metadata.serialize(buf);
         var metaBlob = buf.toByteArray();
         console.log("Storing metadata blob of " + metaBlob.length + " bytes.");
-        return corenodeClient.addMetadataBlob(owner.getPublicKeys(), sharer.getPublicKeys(), mapKey, metaBlob, sharer.signMessage(concat(mapKey, metaBlob)))
+        return corenodeClient.addMetadataBlob(owner.getPublicKeys(), sharer.getPublicKeys(), sharer.signMessage(concat(mapKey, metaBlob)))
         .then(function(added) {
             if (!added) {
                 console.log("Meta blob store failed.");

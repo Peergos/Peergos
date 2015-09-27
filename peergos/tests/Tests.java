@@ -25,7 +25,7 @@ public class Tests
 //        testClass(GaloisPolynomial.Test.class);
 //        testClass(Crypto.class);
 //        testClass(SSL.class);
-        testClass(ErasureHandler.Test.class);
+//        testClass(ErasureHandler.Test.class);
 
         if (Args.hasArg("local")) {
             localTests();

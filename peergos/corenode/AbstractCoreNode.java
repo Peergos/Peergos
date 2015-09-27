@@ -312,28 +312,23 @@ public abstract class AbstractCoreNode
         return userData.followers.remove(sharingPublicKey);
     }
 
-    /*
-     * @param userKey X509 encoded key of user that wishes to add a fragment
-     * @param signedHash the SHA hash of encodedFragmentData, signed with the user private key 
-     * @param encodedFragmentData fragment meta-data encoded with userKey
-     */ 
-
-    //public boolean addMetadataBlob(byte[] userKey, byte[] signedHash, byte[] encodedFragmentData)
-    public boolean addMetadataBlob(UserPublicKey owner, byte[] encodedSharingPublicKey, byte[] mapKey, byte[] metadataBlob, byte[] sharingKeySignedHash)
+    public boolean addMetadataBlob(UserPublicKey owner, byte[] encodedSharingPublicKey, byte[] sharingKeySignedMapKeyPlusBlob)
     {
         UserPublicKey sharingKey = new UserPublicKey(encodedSharingPublicKey);
-        System.out.printf("Adding metadata blob at owner:%s writer:%s mapKey:%s\n",
-                ArrayOps.bytesToHex(owner.getPublicKeys()), ArrayOps.bytesToHex(encodedSharingPublicKey), ArrayOps.bytesToHex(mapKey));
         synchronized(this)
         {
             if (!userMap.get(owner).followers.contains(sharingKey))
                 return false;
         }
 
-        if (!sharingKey.isValidSignature(sharingKeySignedHash, ArrayOps.concat(mapKey, metadataBlob)))
+        try {
+            byte[] payload = sharingKey.unsignMessage(sharingKeySignedMapKeyPlusBlob);
+            byte[] mapKey = Arrays.copyOfRange(payload, 0, 32);
+            byte[] metaDataBlob = Arrays.copyOfRange(payload, 32, payload.length);
+            return addMetadataBlob(owner, sharingKey, mapKey, metaDataBlob);
+        } catch (TweetNaCl.InvalidSignatureException e) {
             return false;
-
-        return addMetadataBlob(owner, sharingKey, mapKey, metadataBlob);
+        }
     }
 
     protected synchronized boolean addMetadataBlob(UserPublicKey owner, UserPublicKey sharingKey, byte[] mapKey, byte[] metadataBlob)
@@ -353,6 +348,8 @@ public abstract class AbstractCoreNode
             // previous value as well, or some kind of version cas
             // TODO return false;
         }
+        System.out.printf("Adding metadata blob at owner:%s writer:%s mapKey:%s\n",
+                ArrayOps.bytesToHex(owner.getPublicKeys()), sharingKey, ArrayOps.bytesToHex(mapKey));
 
         fragments.put(keyW, new MetadataBlob(new ByteArrayWrapper(metadataBlob), null));
         return true;
