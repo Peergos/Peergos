@@ -60,6 +60,37 @@ function openItem(name, data) {
     ae.download = name;
     ae.click();
 }
+function dragHandler(e) {
+    e.stopPropagation();
+    e.preventDefault();
+}
+function uploadFileOnClient(readFile, browser) {
+    var size = readFile.size;
+    var name = readFile.name;
+    
+    startInProgess(); 
+    $.toaster(
+              {
+              priority: "info",
+              message: "Uploading file  "+ name,
+              settings: {"timeout":  10000} 
+              });
+    
+    return browser.lastRetrievedFilePointer().uploadFile(name, readFile, userContext)
+    .then(function(res){
+            console.log("upload filename " + name +" with data-length "+ size);
+            const currentPath =  browser.currentPath();
+                                                                                           
+            clearInProgress();
+            $.toaster(
+            {
+            priority: "success",
+            message: "File "+ name  +" uploaded to  "+ currentPath,
+            settings: {"timeout":  5000} 
+            });
+        browser.loadFilesFromServer();
+    });
+}
 
 const UserOptions = React.createClass({
 
@@ -692,34 +723,29 @@ uploadFile: function() {
                 return false;
             }
             var readFile = evt.target.files[0];
-    var size = readFile.size;
-            var name = readFile.name;
-    
             const browser = this;
-            startInProgess(); 
-            $.toaster(
-                {
-                    priority: "info",
-                    message: "Uploading file  "+ name,
-                    settings: {"timeout":  10000} 
-                });
-    
-            return browser.lastRetrievedFilePointer().uploadFile(name, readFile, userContext).then(function(res){
-                console.log("upload filename " + name +" with data-length "+ size);
-                const currentPath =  browser.currentPath();
-    
-                clearInProgress();
-                $.toaster(
-                    {
-                        priority: "success",
-                        message: "File "+ name  +" uploaded to  "+ currentPath,
-                        settings: {"timeout":  5000} 
-                    });
-                browser.loadFilesFromServer();
-            });
+            return uploadFileOnClient(readFile, browser);
+
         }.bind(this);
-},
-                        
+},      
+                                
+selectHandler: function() {
+        return function (evt) {
+            if (userContext == null) {
+                alert("Please sign in first!");
+                return false;
+            }  
+            dragHandler(evt);
+            const browser = this;
+            var files = evt.target.files || evt.dataTransfer.files;
+            for(var i = 0; i < files.length; i++) {
+                var file = files[i];
+                uploadFileOnClient(file, browser);
+                console.log("File:" + file.name + " type: " + file.type + " size (bytes): " + file.size);
+            }
+        }.bind(this);
+},                                
+                                
 loginOnEnter: function(event) {
         if (event.keyCode === 13) {
                 this.login();
@@ -814,7 +840,10 @@ componentDidMount: function() {
         signupButton.onclick = this.signup; 
         var passwordInput= document.getElementById("login-password-input");
         passwordInput.onkeypress=this.loginOnEnter;
-
+        var filedrag = document.getElementById("filedrag");
+        filedrag.addEventListener("dragover", dragHandler, false);
+        filedrag.addEventListener("dragleave", dragHandler, false);                        
+        filedrag.addEventListener("drop", this.selectHandler(), false);                      
 },
 
 updateSort: function(sort) {
