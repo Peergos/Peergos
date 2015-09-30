@@ -417,6 +417,7 @@ glyphClass: function() {
         return className;
 },
 
+
 renderGrid: function() {
         var glyphClass = this.glyphClass();
 
@@ -459,6 +460,17 @@ componentDidMount: function() {
                                                 document.getElementById("modal-body"));
                                         $('#modal').modal("show");   
                                 }.bind(this));
+                        } else if (selected  == "Shared with")  {
+                            userContext.getSocialState().then(function(socialState) {
+                                const sharedWith = socialState.sharedWith(this.props.retrievedFilePointer.getLocation()).map(function(name) {
+                                        return "<li>"+name+"</li>";
+                                }).join(""); 
+                                console.log("shared with "+ sharedWith);
+
+                                const ul = "<ul>"+ sharedWith +"</ul>";
+                                const title = "'"+this.props.name +"' is shared with";  
+                                populateModalAndShow(title, ul); 
+                            }.bind(this));
                         } else 
                                 console.log("no  action defined for context menu item "+ selected);    
                 }.bind(this)
@@ -957,6 +969,8 @@ render: function() {
                         <li><a tabIndex="-1">Create public link</a></li>
                         <li className="divider"></li>
                         <li><a tabIndex="-1">Share</a></li>
+                        <li className="divider"></li>
+                        <li><a tabIndex="-1">Shared with</a></li>
                         </ul>
                         </div>);
 

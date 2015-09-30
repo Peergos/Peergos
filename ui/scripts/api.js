@@ -1204,7 +1204,8 @@ function SocialState(pending, followerRootMap, followingRoots) {
     }
 
     this.sharedWith = function(location) {
-	return sharedLocations[location.toString()];
+	    const sharedWith = this.sharedLocations[location.toString()];
+        return sharedWith == null ? [] : sharedWith;
     }
 
     // FileTreeNode, String, UserContext
