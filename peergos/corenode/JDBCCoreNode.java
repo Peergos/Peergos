@@ -119,6 +119,7 @@ public abstract class JDBCCoreNode extends AbstractCoreNode {
                 stmt.executeUpdate(deleteStatement());
                 return true;
             } catch (SQLException sqe) {
+                System.err.println(deleteStatement());
                 sqe.printStackTrace();
                 return false;
             } finally {
@@ -148,7 +149,7 @@ public abstract class JDBCCoreNode extends AbstractCoreNode {
         public String b64DataName(){return DATA_NAME;}
         public String insertStatement(){return "insert into users (name, publickey) VALUES(?, ?);";}
         public String selectStatement(){return "select name, "+b64DataName()+" from users where name = '"+name+"';";}
-        public String deleteStatement(){return "delete from users where name = "+ name +" and "+ b64DataName()+ " = "+ b64string + ";";}
+        public String deleteStatement(){return "delete from users where name = \""+ name +"\" and "+ b64DataName()+ " = \""+ b64string + "\";";}
         static final String DATA_NAME = "publickey";
     }
 
@@ -191,7 +192,7 @@ public abstract class JDBCCoreNode extends AbstractCoreNode {
         public String b64DataName(){return DATA_NAME;}
         public String insertStatement(){return "insert into followrequests (name, publickey) VALUES(?, ?);";}
         public String selectStatement(){return "select name, "+b64DataName()+" from followrequests where name = "+name+";";}
-        public String deleteStatement(){return "delete from followrequests where name = "+ name +" and "+ b64DataName()+ " = "+ b64string + ";";}
+        public String deleteStatement(){return "delete from followrequests where name = \""+ name +"\" and "+ b64DataName()+ " = \""+ b64string + "\";";}
         static final String DATA_NAME = "publickey";
     }
 
@@ -213,7 +214,7 @@ public abstract class JDBCCoreNode extends AbstractCoreNode {
         public String b64DataName(){return DATA_NAME;}
         public String insertStatement(){return "insert into sharingkeys (name, publickey) VALUES(?, ?);";}
         public String selectStatement(){return "select name, "+b64DataName()+" from sharingkeys where name = "+name+";";}
-        public String deleteStatement(){return "delete from sharingkeys where name = "+ name +" and "+ b64DataName()+ " = "+ b64string + ";";}
+        public String deleteStatement(){return "delete from sharingkeys where name = \""+ name +"\" and "+ b64DataName()+ " = \""+ b64string + "\";";}
         static final String DATA_NAME = "publickey";
     }
 
