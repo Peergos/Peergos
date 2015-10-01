@@ -509,11 +509,11 @@ function CoreNodeClient() {
     };
     
     //UserPublicKey -> Uint8Array -> Uint8Array -> fn -> fn -> void
-    this.updateStaticData = function(owner, signedStaticData) {
+    this.setStaticData = function(owner, signedStaticData) {
         var buffer = new ByteArrayOutputStream();
         buffer.writeArray(owner.getPublicKeys());
         buffer.writeArray(signedStaticData);
-        return postProm("core/updateStaticData", buffer.toByteArray()); 
+        return postProm("core/setStaticData", buffer.toByteArray()); 
     };
     
     //String -> fn- >fn -> void
@@ -584,14 +584,6 @@ function CoreNodeClient() {
         });
     };
 
-    //String -> Uint8Array -> Uint8Array -> fn -> fn -> void
-    this.allowSharingKey = function(owner, signedWriter) {
-        var buffer = new ByteArrayOutputStream();
-        buffer.writeArray(owner);
-        buffer.writeArray(signedWriter); 
-        return postProm("core/allowSharingKey", buffer.toByteArray());
-    };
-    
     //String -> Uint8Array -> Uint8Array -> fn -> fn -> void
     this.banSharingKey = function(username,  encodedSharingPublicKey,  signedHash) {
         var buffer = new ByteArrayOutputStream();
@@ -783,9 +775,8 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
         // and authorise the writer key
         const rootPointer = new ReadableFilePointer(this.user, writer, rootMapKey, rootRKey);
         const entry = new EntryPoint(rootPointer, this.username, [], []);
-        return this.addSharingKey(writer).then(function(res) {
-            return this.addToStaticData(entry);
-        }.bind(this)).then(function(res) {
+        
+        return this.addToStaticData(entry).then(function(res) {
             var root = DirAccess.create(rootRKey, new FileProperties(directoryName, 0, Date.now(), 0));
             return this.uploadChunk(root, [], this.user, writer, rootMapKey).then(function(res) {
 		if (res)
@@ -932,28 +923,21 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 
         // add a note to our static data so we know who we sent the private key to
         var friendRoot = new ReadableFilePointer(user, sharing, rootMapKey, SymmetricKey.random());
-        return this.addSharingKey(sharing).then(function(res) {
-            return this.corenodeClient.getUsername(targetUser.getPublicKeys()).then(function(name) {
-                const entry = new EntryPoint(friendRoot, this.username, [], [name]);
-                return this.addToStaticData(entry).then(function(res) {
-                    // create a tmp keypair whose public key we can append to the request without leaking information
-                    var tmp = User.random();
-                    var payload = entry.serializeAndEncrypt(tmp, targetUser);
-                    return corenodeClient.followRequest(targetUser.getPublicKeys(), concat(tmp.pBoxKey, payload));
-                });
-            }.bind(this));
+        return this.corenodeClient.getUsername(targetUser.getPublicKeys()).then(function(name) {
+            const entry = new EntryPoint(friendRoot, this.username, [], [name]);
+            return this.addToStaticData(entry).then(function(res) {
+                // create a tmp keypair whose public key we can append to the request without leaking information
+                var tmp = User.random();
+                var payload = entry.serializeAndEncrypt(tmp, targetUser);
+                return corenodeClient.followRequest(targetUser.getPublicKeys(), concat(tmp.pBoxKey, payload));
+            });
         }.bind(this));
     }.bind(this);
-
-    this.addSharingKey = function(pub) {
-        var signed = user.signMessage(pub.getPublicKeys());
-        return corenodeClient.allowSharingKey(user.getPublicKeys(), signed);
-    }
 
     this.addToStaticData = function(entry) {
         this.staticData.push([entry.pointer.writer, entry]);
         var rawStatic = new Uint8Array(this.serializeStatic());
-        return corenodeClient.updateStaticData(user, user.signMessage(rawStatic));
+        return corenodeClient.setStaticData(user, user.signMessage(rawStatic));
     }
 
     this.getFollowRequests = function() {

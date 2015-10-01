@@ -17,7 +17,7 @@ public class StorageWrapper
     private final Map<ByteArrayWrapper, Credentials> credentials = new ConcurrentHashMap();
     private final UserPublicKey donor;
     private final InetSocketAddress us;
-    public AbstractCoreNode coreAPI = HTTPCoreNode.getInstance();
+    public CoreNode coreAPI = HTTPCoreNode.getInstance();
     private final Storage storage;
 
     public StorageWrapper(Storage storage, UserPublicKey donor, InetSocketAddress us) throws IOException {
@@ -35,10 +35,6 @@ public class StorageWrapper
             if (storage.contains(fragmentHash.toString()))
                 return false; // don't overwrite old data for now (not sure this would ever be a problem with a cryptographic hash..
         } catch (IOException e) {
-            return false;
-        }
-        if (!coreAPI.isFragmentAllowed(owner, sharingKey, mapKey, fragmentHash.data)) {
-            System.out.println("Core node rejected fragment storage");
             return false;
         }
         boolean res = storage.remainingSpace() - promisedSize.get() > size;
@@ -66,7 +62,6 @@ public class StorageWrapper
         }
         promisedSize.getAndAdd(-value.length);
         Credentials cred = credentials.remove(key);
-        coreAPI.registerFragmentStorage(donor, us, new UserPublicKey(cred.owner), cred.proof);
         return true;
     }
 

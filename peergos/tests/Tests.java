@@ -3,8 +3,7 @@ package peergos.tests;
 import org.junit.runner.JUnitCore;
 import org.junit.runner.Result;
 import org.junit.runner.notification.Failure;
-import peergos.corenode.AbstractCoreNode;
-import peergos.corenode.SQLiteCoreNode;
+import peergos.corenode.*;
 import peergos.crypto.User;
 import peergos.user.*;
 import peergos.user.fs.erasure.ErasureHandler;
@@ -57,7 +56,7 @@ public class Tests
         System.out.println("Doing local tests..");
         try {
             DHTUserAPI dht = new MemoryDHTUserAPI();
-            AbstractCoreNode core = SQLiteCoreNode.build(":memory:");
+            CoreNode core = SQLiteCoreNode.build(":memory:");
             contextTests(dht, core);
         } catch (Throwable e) {
             e.printStackTrace();
@@ -67,7 +66,7 @@ public class Tests
         }
     }
 
-    public static void contextTests(DHTUserAPI dht, AbstractCoreNode core) throws IOException {
+    public static void contextTests(DHTUserAPI dht, CoreNode core) throws IOException {
         String ourname = "Bob";
         User us = User.generateUserCredentials(ourname, "password");
         UserContext bob = new UserContext(ourname, us, dht, core);
@@ -90,21 +89,8 @@ public class Tests
         EntryPoint rootEntry = alice.decodeFollowRequest(reqs.get(0));
         User sharer = (User)rootEntry.pointer.writer;
 
-        // store a chunk in alice's space using the permitted sharing key (this could be alice or bob at this point)
-        int frags = 120;
-        int port = new Random(0).nextInt(Short.MAX_VALUE-1024) + 1024;
+        // store a chunk in alice's space using the permitted sharing key
 
-        InetSocketAddress address = new InetSocketAddress("localhost", port);
-        for (int i = 0; i < frags; i++) {
-            byte[] frag = ArrayOps.random(32);
-            byte[] message = ArrayOps.concat(sharer.getPublicKeys(), frag);
-            byte[] signed = sharer.signMessage(message);
-            if (!core.registerFragmentStorage(us, address, us, signed)) {
-                System.out.println("Failed to register fragment storage!");
-            }
-        }
-        long quota = core.getQuota(us);
-        System.out.println("Generated quota: " + quota/1024 + " KiB");
         long t1 = System.nanoTime();
         UserContext.Test.mediumFileTest(us, sharer, bob, alice);
         long t2 = System.nanoTime();

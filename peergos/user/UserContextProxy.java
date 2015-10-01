@@ -3,8 +3,7 @@ package peergos.user;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
-import peergos.corenode.AbstractCoreNode;
-import peergos.corenode.HTTPCoreNodeServer;
+import peergos.corenode.*;
 import peergos.util.*;
 
 import java.io.*;
@@ -16,7 +15,7 @@ public class UserContextProxy implements HttpHandler
     private final HTTPCoreNodeServer.CoreNodeHandler core;
     private final DHTUserAPI dht;
 
-    public UserContextProxy(DHTUserAPI dht, AbstractCoreNode coreNode) {
+    public UserContextProxy(DHTUserAPI dht, CoreNode coreNode) {
         this.dht = dht;
         this.core = new HTTPCoreNodeServer.CoreNodeHandler(coreNode);
     }
@@ -89,7 +88,7 @@ public class UserContextProxy implements HttpHandler
 
     private static final int CONNECTION_BACKLOG = 100;
 
-    public static void createAndStart(InetSocketAddress address, DHTUserAPI dhtApi, AbstractCoreNode coreNode, ExecutorService executorService) throws Exception {
+    public static void createAndStart(InetSocketAddress address, DHTUserAPI dhtApi, CoreNode coreNode, ExecutorService executorService) throws Exception {
         HttpServer server = HttpServer.create(address, CONNECTION_BACKLOG);
         ResourceHandler webUIhandler = new ResourceHandler("ui/");
         server.createContext("/", webUIhandler);
@@ -103,7 +102,7 @@ public class UserContextProxy implements HttpHandler
         String listenOn = Args.getArg("address", "localhost");
         int port = Args.getInt("port", 8001);
         InetSocketAddress address = new InetSocketAddress(listenOn, port);
-        AbstractCoreNode coreNode = AbstractCoreNode.getDefault();
+        CoreNode coreNode = CoreNode.getDefault();
         DHTUserAPI dhtUserAPI = new MemoryDHTUserAPI();
         ExecutorService executorService = Executors.newSingleThreadExecutor();
         try {

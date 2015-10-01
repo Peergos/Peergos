@@ -1,13 +1,6 @@
 package peergos.corenode;
 
-import peergos.crypto.*;
-import peergos.util.ByteArrayWrapper;
-
-import java.util.*;
-import java.net.*;
 import java.sql.*;
-
-import org.bouncycastle.util.encoders.Base64;
 
 public class SQLiteCoreNode extends JDBCCoreNode
 {
@@ -18,7 +11,7 @@ public class SQLiteCoreNode extends JDBCCoreNode
         this.dbPath = dbPath;
     }
 
-    public  static SQLiteCoreNode  build(String dbPath) throws SQLException
+    public static SQLiteCoreNode build(String dbPath) throws SQLException
     {
         try
         {
