@@ -426,20 +426,13 @@ public class JDBCCoreNode implements CoreNode {
         try {
             byte[] payload = writingKey.unsignMessage(writingKeySignedMapKeyPlusBlob);
             byte[] mapKey = Arrays.copyOfRange(payload, 0, 32);
-            byte[] metaDataBlob = Arrays.copyOfRange(payload, 32, payload.length);
-            return addMetadataBlob(owner, writingKey, mapKey, metaDataBlob);
+            byte[] metadataBlob = Arrays.copyOfRange(payload, 32, payload.length);
+            MetadataBlob blob = new MetadataBlob(writingKey.getPublicKeys(), mapKey, metadataBlob);
+            return blob.insert();
         } catch (TweetNaCl.InvalidSignatureException e) {
             System.err.println("Invalid signature for owner: "+owner + " and sharer: "+writingKey);
             return false;
         }
-    }
-
-    protected synchronized boolean addMetadataBlob(UserPublicKey owner, UserPublicKey writingKey, byte[] mapKey, byte[] metadataBlob)
-    {
-        // TODO verify
-
-        MetadataBlob blob = new MetadataBlob(writingKey.getPublicKeys(), mapKey, metadataBlob);
-        return blob.insert();
     }
 
     @Override
