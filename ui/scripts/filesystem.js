@@ -48,6 +48,8 @@ var url;
 var ae = document.createElement("a");
 document.body.appendChild(ae);
 ae.style = "display: none"; 
+var fragmentCounter = 0;
+var fragmentTotal =0;
 
 function openItem(name, data) {
     if(url != null){
@@ -78,7 +80,6 @@ function uploadFileOnClient(readFile, browser) {
     
     return browser.lastRetrievedFilePointer().uploadFile(name, readFile, userContext)
     .then(function(res){
-            console.log("upload filename " + name +" with data-length "+ size);
             const currentPath =  browser.currentPath();
                                                                                            
             clearInProgress();
@@ -89,6 +90,7 @@ function uploadFileOnClient(readFile, browser) {
             settings: {"timeout":  5000} 
             });
         browser.loadFilesFromServer();
+        document.title = "Peergos - Control your data!";
     });
 }
 
@@ -734,10 +736,17 @@ uploadFile: function() {
                 alert("Please sign in first!");
                 return false;
             }
-            var readFile = evt.target.files[0];
             const browser = this;
-            return uploadFileOnClient(readFile, browser);
-
+            var files = evt.target.files || evt.dataTransfer.files;
+            fragmentTotal = 0;
+            for(var j = 0; j < files.length; j++) {
+                fragmentTotal = fragmentTotal + 60 * Math.ceil(files[j].size/Chunk.MAX_SIZE);
+            }
+            fragmentCounter = 0;
+            for(var i = 0; i < files.length; i++) {
+                var file = files[i];
+                uploadFileOnClient(file, browser);
+            }
         }.bind(this);
 },      
                                 
@@ -750,10 +759,14 @@ selectHandler: function() {
             dragHandler(evt);
             const browser = this;
             var files = evt.target.files || evt.dataTransfer.files;
+            fragmentTotal = 0;
+            for(var j = 0; j < files.length; j++) {
+                fragmentTotal = fragmentTotal + 60 * Math.ceil(files[j].size/Chunk.MAX_SIZE);
+            }
+            fragmentCounter = 0;
             for(var i = 0; i < files.length; i++) {
                 var file = files[i];
                 uploadFileOnClient(file, browser);
-                console.log("File:" + file.name + " type: " + file.type + " size (bytes): " + file.size);
             }
         }.bind(this);
 },                                

@@ -1,4 +1,4 @@
-                        if (typeof module !== "undefined")
+if (typeof module !== "undefined")
     var nacl = require("./nacl");
 if (typeof module !== "undefined")
     var erasure = require("./erasure");
@@ -242,7 +242,6 @@ function Chunk(data, key) {
     }
 }
 Chunk.MAX_SIZE = Fragment.SIZE*EncryptedChunk.ERASURE_ORIGINAL
-
 // string, File, SymmetricKey, Location, SymmetricKey -> 
 function FileUploader(name, file, key, parentLocation, parentparentKey) {
     this.props = new FileProperties(name, file.size, Date.now(), 0);
@@ -250,12 +249,14 @@ function FileUploader(name, file, key, parentLocation, parentparentKey) {
 
     // Process and upload chunk by chunk to avoid running out of RAM, in reverse order to build linked list
     this.nchunks = Math.ceil(file.size/Chunk.MAX_SIZE);
+    
     this.file = file;
     this.key = key;
     this.parentLocation = parentLocation;
     this.parentparentKey = parentparentKey;
 
     this.uploadChunk = function(context, owner, writer, chunkIndex, file, nextLocation) {
+
 	var that = this;
 	return new Promise(function(resolve, reject) {
 	    console.log("uploading chunk: "+chunkIndex + " of "+file.name);
@@ -457,7 +458,7 @@ function DHTClient() {
     //
     //put
     //
-    this.put = function(keyData, valueData, owner, sharingKeyData, mapKeyData, proofData) {
+    this.put = function(keyData, valueData, owner, sharingKeyData, mapKeyData, proofData) {        
         var arrays = [keyData, valueData, owner, sharingKeyData, mapKeyData, proofData];
         var buffer = new ByteArrayOutputStream();
         buffer.writeInt(0); // PUT Message
@@ -1025,9 +1026,11 @@ function UserContext(username, user, dhtClient,  corenodeClient) {
 
             // now upload fragments to DHT
             var futures = [];
-            for (var i=0; i < fragments.length; i++)
+            for (var i=0; i < fragments.length; i++){
+                var pc = parseInt(fragmentCounter++ / fragmentTotal * 100);
+                document.title = "Peergos Uploading: " + pc + "%" ;        
                 futures[i] = this.uploadFragment(fragments[i], owner, sharer, mapKey);
-
+            }
             // wait for all fragments to upload
             return Promise.all(futures);
         }.bind(this));
