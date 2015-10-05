@@ -11,7 +11,7 @@ public class JDBCCoreNode implements CoreNode {
 
     private static final String TABLE_NAMES_SELECT_STMT = "SELECT * FROM sqlite_master WHERE type='table';";
     private static final String CREATE_USERS_TABLE = "create table users (id integer primary key autoincrement, name text not null, publickey text not null);";
-    private static final String CREATE_STATIC_DATA_TABLE = "create table staticdata (id integer primary key autoincrement, name text not null, staticdata text not null);";
+    private static final String CREATE_STATIC_DATA_TABLE = "create table staticdata (name text primary key not null, staticdata text not null);";
     private static final String CREATE_FOLLOW_REQUESTS_TABLE = "create table followrequests (id integer primary key autoincrement, name text not null, followrequest text not null);";
     private static final String CREATE_METADATA_BLOBS_TABLE = "create table metadatablobs (writingkey text not null, mapkey text not null, blobdata text not null, PRIMARY KEY (writingkey, mapkey));";
 
@@ -40,6 +40,7 @@ public class JDBCCoreNode implements CoreNode {
         {
             this(name, Base64.getDecoder().decode(d), d);
         }
+
         RowData(String name, byte[] data, String b64string)
         {
             this.name = name;
@@ -166,6 +167,31 @@ public class JDBCCoreNode implements CoreNode {
         public String selectStatement(){return "select name, "+b64DataName()+" from staticdata where name = '"+name+"';";}
         public String deleteStatement(){return "delete from staticdata where name = \""+ name +"\" and "+ b64DataName()+ " = \""+ b64string + "\";";}
         static final String DATA_NAME = "staticdata";
+
+        public boolean insert()
+        {
+            PreparedStatement stmt = null;
+            try
+            {
+                stmt = conn.prepareStatement("INSERT OR REPLACE INTO staticdata (name, staticdata) VALUES(?, ?)");
+
+                stmt.setString(1,this.name);
+                stmt.setString(2,this.b64string);
+                stmt.executeUpdate();
+                return true;
+            } catch (SQLException sqe) {
+                sqe.printStackTrace();
+                return false;
+            } finally {
+                if (stmt != null)
+                    try
+                    {
+                        stmt.close();
+                    } catch (SQLException sqe2) {
+                        sqe2.printStackTrace();
+                    }
+            }
+        }
     }
 
     private class FollowRequestData extends RowData
