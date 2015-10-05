@@ -3,6 +3,7 @@ package peergos.corenode;
 import peergos.crypto.*;
 import peergos.util.*;
 
+import java.io.*;
 import java.sql.*;
 import java.util.*;
 
@@ -11,7 +12,7 @@ public class JDBCCoreNode implements CoreNode {
     private static final String TABLE_NAMES_SELECT_STMT = "SELECT * FROM sqlite_master WHERE type='table';";
     private static final String CREATE_USERS_TABLE = "create table users (id integer primary key autoincrement, name text not null, publickey text not null);";
     private static final String CREATE_STATIC_DATA_TABLE = "create table staticdata (id integer primary key autoincrement, name text not null, staticdata text not null);";
-    private static final String CREATE_FOLLOW_REQUESTS_TABLE = "create table followrequests (id integer primary key autoincrement, name text not null, followrequests text not null);";
+    private static final String CREATE_FOLLOW_REQUESTS_TABLE = "create table followrequests (id integer primary key autoincrement, name text not null, followrequest text not null);";
     private static final String CREATE_METADATA_BLOBS_TABLE = "create table metadatablobs (writingkey text not null, mapkey text not null, blobdata text not null, PRIMARY KEY (writingkey, mapkey));";
 
     private static final Map<String,String> TABLES = new HashMap<>();
@@ -179,10 +180,10 @@ public class JDBCCoreNode implements CoreNode {
         }
 
         public String b64DataName(){return DATA_NAME;}
-        public String insertStatement(){return "insert into followrequests (name, followrequests) VALUES(?, ?);";}
-        public String selectStatement(){return "select name, "+b64DataName()+" from followrequests where name = "+name+";";}
+        public String insertStatement(){return "insert into followrequests (name, followrequest) VALUES(?, ?);";}
+        public String selectStatement(){return "select name, "+b64DataName()+" from followrequests where name = \""+name+"\";";}
         public String deleteStatement(){return "delete from followrequests where name = \""+ name +"\" and "+ b64DataName()+ " = \""+ b64string + "\";";}
-        static final String DATA_NAME = "followrequests";
+        static final String DATA_NAME = "followrequest";
     }
 
     private class MetadataBlob
@@ -392,31 +393,51 @@ public class JDBCCoreNode implements CoreNode {
     }
 
     @Override
-    public boolean followRequest(UserPublicKey target, byte[] encryptedPermission)
+    public boolean followRequest(UserPublicKey owner, byte[] encryptedPermission)
     {
-        // TODO check < max pending follow requests
+        byte[] dummy = null;
+        FollowRequestData selector = new FollowRequestData(owner, dummy);
+        RowData[] requests = selector.select();
+        if (requests != null && requests.length > CoreNode.MAX_PENDING_FOLLOWERS)
+            return false;
+        // ToDo add a crypto currency transaction to prevent spam
 
-        FollowRequestData request = new FollowRequestData(target, encryptedPermission);
+        FollowRequestData request = new FollowRequestData(owner, encryptedPermission);
         return request.insert();
     }
 
     @Override
-    public boolean removeFollowRequest(UserPublicKey target, byte[] req)
+    public boolean removeFollowRequest(UserPublicKey owner, byte[] req)
     {
-        // TODO check signature
+        try {
+            byte[] unsigned = owner.unsignMessage(req);
 
-        FollowRequestData request = new FollowRequestData(target, req);
-        return request.delete();
+            FollowRequestData request = new FollowRequestData(owner, unsigned);
+            return request.delete();
+        } catch (TweetNaCl.InvalidSignatureException e) {
+            return false;
+        }
     }
 
     @Override
     public byte[] getFollowRequests(UserPublicKey owner) {
         byte[] dummy = null;
         FollowRequestData request = new FollowRequestData(owner, dummy);
-        RowData[] users = request.select();
-        if (users == null || users.length != 1)
+        RowData[] requests = request.select();
+        if (requests == null)
+            return new byte[4];
+
+        ByteArrayOutputStream bout = new ByteArrayOutputStream();
+        DataOutput dout = new DataOutputStream(bout);
+        try {
+            dout.writeInt(requests.length);
+            for (RowData req : requests)
+                Serialize.serialize(req.data, dout);
+            return bout.toByteArray();
+        } catch (IOException e) {
+            e.printStackTrace();
             return null;
-        return users[0].data;
+        }
     }
 
     @Override
