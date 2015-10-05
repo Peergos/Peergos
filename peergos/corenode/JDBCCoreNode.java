@@ -12,7 +12,7 @@ public class JDBCCoreNode implements CoreNode {
     private static final String CREATE_USERS_TABLE = "create table users (id integer primary key autoincrement, name text not null, publickey text not null);";
     private static final String CREATE_STATIC_DATA_TABLE = "create table staticdata (id integer primary key autoincrement, name text not null, staticdata text not null);";
     private static final String CREATE_FOLLOW_REQUESTS_TABLE = "create table followrequests (id integer primary key autoincrement, name text not null, followrequests text not null);";
-    private static final String CREATE_METADATA_BLOBS_TABLE = "create table metadatablobs (id integer primary key autoincrement, writingkey text not null, mapkey text not null, blobdata text not null);";
+    private static final String CREATE_METADATA_BLOBS_TABLE = "create table metadatablobs (writingkey text not null, mapkey text not null, blobdata text not null, PRIMARY KEY (writingkey, mapkey));";
 
     private static final Map<String,String> TABLES = new HashMap<>();
     static
@@ -219,7 +219,7 @@ public class JDBCCoreNode implements CoreNode {
             PreparedStatement stmt = null;
             try
             {
-                stmt = conn.prepareStatement("insert into metadatablobs (writingkey, mapkey, blobdata) VALUES(?, ?, ?);");
+                stmt = conn.prepareStatement("INSERT OR REPLACE INTO metadatablobs (writingkey, mapkey, blobdata) VALUES(?, ?, ?)");
 
                 stmt.setString(1,this.b64WritingKey);
                 stmt.setString(2,this.b64mapkey);
