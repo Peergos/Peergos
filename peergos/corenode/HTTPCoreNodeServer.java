@@ -2,29 +2,26 @@ package peergos.corenode;
 
 import peergos.crypto.*;
 
-import java.util.*;
 import java.net.*;
 import java.io.*;
 
 import com.sun.net.httpserver.*;
 import peergos.util.Args;
-import peergos.util.ArrayOps;
 import peergos.util.Serialize;
 
 public class HTTPCoreNodeServer
 {
     private static final int CONNECTION_BACKLOG = 100;
-    private static final int HANDLER_THREAD_COUNT= 100;
 
     private static final int MAX_KEY_LENGTH = 1024*1024;
-    private static final int MAX_BLOB_LENGTH = 4*1024*1024;
     public static final String CORE_URL = "/core/";
+    public static final int PORT = 9999;
 
     public static class CoreNodeHandler implements HttpHandler
     {
-        private final AbstractCoreNode coreNode;
+        private final CoreNode coreNode;
 
-        public CoreNodeHandler(AbstractCoreNode coreNode) {
+        public CoreNodeHandler(CoreNode coreNode) {
             this.coreNode = coreNode;
         }
 
@@ -38,7 +35,7 @@ public class HTTPCoreNodeServer
             String path = exchange.getRequestURI().getPath();
             if (path.startsWith("/"))
                 path = path.substring(1);
-            String method = path.substring(path.lastIndexOf("/")+1);
+            String method = path.substring(path.lastIndexOf("/") + 1);
             //System.out.println("method "+ method +" from path "+ path);
 
             try {
@@ -51,10 +48,10 @@ public class HTTPCoreNodeServer
                         getPublicKey(din, dout);
                         break;
                     case "getStaticData":
-                        getClearanceData(din, dout);
+                        getStaticData(din, dout);
                         break;
-                    case "updateStaticData":
-                        updateClearanceData(din, dout);
+                    case "setStaticData":
+                        setStaticData(din, dout);
                         break;
                     case "getUsername":
                         getUsername(din, dout);
@@ -68,44 +65,11 @@ public class HTTPCoreNodeServer
                     case "removeFollowRequest":
                         removeFollowRequest(din, dout);
                         break;
-                    case "allowSharingKey":
-                        allowSharingKey(din, dout);
-                        break;
-                    case "banSharingKey":
-                        banSharingKey(din, dout);
-                        break;
                     case "addMetadataBlob":
                         addMetadataBlob(din, dout);
                         break;
-                    case "removeMetadataBlob":
-                        removeMetadataBlob(din, dout);
-                        break;
-                    case "getSharingKeys":
-                        getSharingKeys(din, dout);
-                        break;
                     case "getMetadataBlob":
                         getMetadataBlob(din, dout);
-                        break;
-                    case "addFragmentHashes":
-                        addFragmentHashes(din, dout);
-                        break;
-                    case "getFragmentHashes":
-                        getFragmentHashes(din, dout);
-                        break;
-                    case "isFragmentAllowed":
-                        isFragmentAllowed(din, dout);
-                        break;
-                    case "registerFragmentStorage":
-                        registerFragmentStorage(din, dout);
-                        break;
-                    case "getQuota":
-                        getQuota(din,dout);
-                        break;
-                    case "getUsage":
-                        getUsage(din,dout);
-                        break;
-                    case "removeUsername":
-                        removeUsername(din,dout);
                         break;
                     default:
                         throw new IOException("Unknown method "+ method);
@@ -180,44 +144,25 @@ public class HTTPCoreNodeServer
             dout.writeBoolean(isRemoved);
         }
 
-        void allowSharingKey(DataInputStream din, DataOutputStream dout) throws IOException
-        {
-            byte[] owner = deserializeByteArray(din);
-            byte[] signedSharingPublicKey = deserializeByteArray(din);
-
-            boolean isAllowed = coreNode.allowSharingKey(new UserPublicKey(owner), signedSharingPublicKey);
-            dout.writeBoolean(isAllowed);
-        }
-
-        void banSharingKey(DataInputStream din, DataOutputStream dout) throws IOException
-        {
-            byte[] owner = deserializeByteArray(din);
-            byte[] encodedSharingPublicKey = deserializeByteArray(din);
-            byte[] signedHash = deserializeByteArray(din);
-            boolean isBanned = coreNode.banSharingKey(new UserPublicKey(owner), encodedSharingPublicKey, signedHash);
-
-            dout.writeBoolean(isBanned);
-        }
-
         void addMetadataBlob(DataInputStream din, DataOutputStream dout) throws IOException
         {
             byte[] encodedOwnerPublicKey = deserializeByteArray(din);
             byte[] encodedSharingPublicKey = deserializeByteArray(din);
             byte[] signedPayload = deserializeByteArray(din);
-            boolean isAdded = coreNode.addMetadataBlob(new UserPublicKey(encodedOwnerPublicKey), encodedSharingPublicKey, signedPayload);
+            boolean isAdded = coreNode.setMetadataBlob(new UserPublicKey(encodedOwnerPublicKey), encodedSharingPublicKey, signedPayload);
             dout.writeBoolean(isAdded);
         }
         
-        void updateClearanceData(DataInputStream din, DataOutputStream dout) throws IOException
+        void setStaticData(DataInputStream din, DataOutputStream dout) throws IOException
         {
             byte[] owner = deserializeByteArray(din);
             byte[] signedStaticData = deserializeByteArray(din);
 
-            boolean isUpdated = coreNode.updateStaticData(new UserPublicKey(owner), signedStaticData);
+            boolean isUpdated = coreNode.setStaticData(new UserPublicKey(owner), signedStaticData);
             dout.writeBoolean(isUpdated);
         }
         
-        void getClearanceData(DataInputStream din, DataOutputStream dout) throws IOException
+        void getStaticData(DataInputStream din, DataOutputStream dout) throws IOException
         {
             byte[] owner = deserializeByteArray(din);
             byte[] userClearanceData = coreNode.getStaticData(new UserPublicKey(owner));
@@ -227,108 +172,18 @@ public class HTTPCoreNodeServer
                 Serialize.serialize(userClearanceData, dout);
         }
 
-        void removeMetadataBlob(DataInputStream din, DataOutputStream dout) throws IOException
-        {
-            byte[] ownerPublicKey = deserializeByteArray(din);
-            byte[] encodedSharingKey = deserializeByteArray(din);
-            byte[] mapKey = deserializeByteArray(din);
-            byte[] sharingKeySignedHash = deserializeByteArray(din);
-
-            boolean isRemoved = coreNode.removeMetadataBlob(new UserPublicKey(ownerPublicKey), encodedSharingKey, mapKey, sharingKeySignedHash);
-            dout.writeBoolean(isRemoved);
-        }
-        void getSharingKeys(DataInputStream din, DataOutputStream dout) throws IOException
-        {
-            byte[] owner = deserializeByteArray(din);
-            Iterator<UserPublicKey> it = coreNode.getSharingKeys(new UserPublicKey(owner));
-            while (it.hasNext())
-            {
-                byte[] b = it.next().getPublicKeys();
-                dout.writeInt(b.length);
-                dout.write(b);
-            }
-            dout.writeInt(-1);
-
-        }
-
         void getMetadataBlob(DataInputStream din, DataOutputStream dout) throws IOException
         {
             UserPublicKey owner = new UserPublicKey(deserializeByteArray(din));
             byte[] encodedSharingKey = deserializeByteArray(din);
             byte[] mapKey = deserializeByteArray(din);
-            AbstractCoreNode.MetadataBlob b = coreNode.getMetadataBlob(owner, encodedSharingKey, mapKey);
+            byte[] b = coreNode.getMetadataBlob(owner, encodedSharingKey, mapKey);
             if (b == null)
             {
                 Serialize.serialize(new byte[0], dout);
-                Serialize.serialize(new byte[0], dout);
                 return;
             }
-            Serialize.serialize(b.metadata.data, dout);
-            if (b.fragmentHashes != null)
-                Serialize.serialize(b.fragmentHashes, dout);
-            else
-                Serialize.serialize(new byte[0], dout);
-        }
-        void addFragmentHashes(DataInputStream din, DataOutputStream dout) throws IOException
-        {
-            byte[] owner = deserializeByteArray(din);
-            byte[] sharingKey = deserializeByteArray(din);
-            byte[] mapKey = deserializeByteArray(din);
-            byte[] metadataBlob = deserializeByteArray(din);
-            byte[] allHashes = deserializeByteArray(din);
-            byte[] sharingKeySignedHash = deserializeByteArray(din);
-            boolean isAllowed = coreNode.addFragmentHashes(new UserPublicKey(owner), sharingKey, mapKey, metadataBlob, ArrayOps.split(allHashes, UserPublicKey.HASH_BYTES), sharingKeySignedHash);
-            dout.writeBoolean(isAllowed);
-        }
-        void getFragmentHashes(DataInputStream din, DataOutputStream dout) throws IOException
-        {
-            byte[] owner = deserializeByteArray(din);
-            byte[] sharingKey = deserializeByteArray(din);
-            byte[] mapKey = deserializeByteArray(din);
-            Serialize.serialize(coreNode.getFragmentHashes(new UserPublicKey(owner), new UserPublicKey(sharingKey), mapKey), dout);
-        }
-        void isFragmentAllowed(DataInputStream din, DataOutputStream dout) throws IOException
-        {
-            byte[] owner = deserializeByteArray(din);
-            byte[] sharingKey =deserializeByteArray(din);
-            byte[] mapKey =deserializeByteArray(din);
-            byte[] hash =deserializeByteArray(din);
-            boolean isAllowed = coreNode.isFragmentAllowed(new UserPublicKey(owner), sharingKey, mapKey, hash);
-            dout.writeBoolean(isAllowed);
-        }
-
-        void registerFragmentStorage(DataInputStream din, DataOutputStream dout) throws IOException
-        {
-            byte[] recipientPublicKey = deserializeByteArray(din);
-            byte[] address = deserializeByteArray(din);
-            InetAddress node = InetAddress.getByAddress(address);
-            int port = din.readInt();
-            byte[] owner = deserializeByteArray(din);
-            byte[] signedKeyPlusHash = deserializeByteArray(din);
-            
-            boolean isRegistered = coreNode.registerFragmentStorage(new UserPublicKey(recipientPublicKey), new InetSocketAddress(node, port), new UserPublicKey(owner), signedKeyPlusHash);
-            dout.writeBoolean(isRegistered);
-        }
-
-        void getQuota(DataInputStream din, DataOutputStream dout) throws IOException
-        {
-            byte[] userPublicKey = deserializeByteArray(din);
-            long quota = coreNode.getQuota(new UserPublicKey(userPublicKey));
-            dout.writeLong(quota);
-        }
-        void getUsage(DataInputStream din, DataOutputStream dout) throws IOException
-        {
-            byte[] userPublicKey = deserializeByteArray(din);
-            long usage = coreNode.getUsage(new UserPublicKey(userPublicKey));
-            dout.writeLong(usage);
-        }
-        void removeUsername(DataInputStream din, DataOutputStream dout) throws IOException
-        {
-            String username = deserializeString(din);
-            byte[] userKey = deserializeByteArray(din);
-            byte[] signedHash = deserializeByteArray(din);
-            boolean isRemoved = coreNode.removeUsername(username, userKey, signedHash);
-            dout.writeBoolean(isRemoved);
+            Serialize.serialize(b, dout);
         }
 
         public void close() throws IOException{
@@ -340,7 +195,7 @@ public class HTTPCoreNodeServer
     private final InetSocketAddress address; 
     private final CoreNodeHandler ch;
 
-    public HTTPCoreNodeServer(AbstractCoreNode coreNode, InetSocketAddress address) throws IOException
+    public HTTPCoreNodeServer(CoreNode coreNode, InetSocketAddress address) throws IOException
     {
 
         this.address = address;
@@ -382,7 +237,7 @@ public class HTTPCoreNodeServer
         return Serialize.deserializeString(din, 1024);
     }
 
-    public static void createAndStart(String keyfile, char[] passphrase, int port, AbstractCoreNode coreNode)
+    public static void createAndStart(String keyfile, char[] passphrase, int port, CoreNode coreNode)
     {
         // eventually will need our own keypair to sign traffic to other core nodes our register ourselves with directory servers
         try {

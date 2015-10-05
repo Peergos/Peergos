@@ -69,8 +69,8 @@ public class Start
         }
         else if (Args.hasArg("localJS"))
         {
-            Args.parse(new String[]{"-script", "testscripts/empty.txt", "-domain", "localhost", "-coreNodePath", Args.getArg("coreNodePath", ":memory:")});
-            test(1);
+            Args.parse(new String[]{"-script", "testscripts/empty.txt", "-domain", "localhost", "-coreNodePath", Args.getArg("coreNodePath", "core.sql")});
+            local();
         }
         else if (Args.hasArg("demo"))
         {
@@ -91,7 +91,7 @@ public class Start
             System.out.println("Using core node path "+ path);
             try {
                 SQLiteCoreNode coreNode = SQLiteCoreNode.build(path);
-                HTTPCoreNodeServer.createAndStart(keyfile, passphrase, AbstractCoreNode.PORT, coreNode);
+                HTTPCoreNodeServer.createAndStart(keyfile, passphrase, HTTPCoreNodeServer.PORT, coreNode);
             } catch (SQLException sqle) {
                 throw new IllegalStateException(sqle);
             }
@@ -112,7 +112,7 @@ public class Start
         }
         else if (Args.hasArg("coreGen"))
         {
-            String domain = Args.getArg("domain", IPMappings.getMyPublicAddress(AbstractCoreNode.PORT).getHostName());
+            String domain = Args.getArg("domain", IPMappings.getMyPublicAddress(HTTPCoreNodeServer.PORT).getHostName());
             String ipAddress = SSL.isIPAddress(domain) ? domain : null;
             SSL.generateCSR(Args.getArg("password").toCharArray(), domain, ipAddress, Args.getArg("keyfile"), "core.csr");
         }
@@ -140,7 +140,7 @@ public class Start
             String hostname = Args.getArg("domain", "localhost");
 
             InetSocketAddress httpsMessengerAddress = new InetSocketAddress(hostname, userAPIAddress.getPort());
-            AbstractCoreNode core = HTTPCoreNode.getInstance();
+            CoreNode core = HTTPCoreNode.getInstance();
 
             new HttpsUserService(httpsMessengerAddress, Logger.getLogger(router.getName()), dht, core);
             if (Args.hasArg("script")) {
@@ -151,11 +151,22 @@ public class Start
 
     public static void demo() throws IOException{
         String domain = Args.getArg("domain", "localhost");
-        Start.main(new String[] {"-directoryServer", "-domain", domain});
+        Start.main(new String[]{"-directoryServer", "-domain", domain});
 
         Start.main(new String[] {"-coreNode", "-domain", domain, "-coreNodePath", Args.getArg("coreNodePath", ":memory:")});
 
         Start.main(new String[]{"-firstNode", "-port", "443", "-logMessages", "-domain", domain, "-publicserver"});
+    }
+
+    public static void local() throws IOException{
+        String domain = Args.getArg("domain", "localhost");
+        String coreNodePath = Args.getArg("coreNodePath", ":memory:");
+
+        Start.main(new String[] {"-directoryServer", "-domain", domain});
+
+        Start.main(new String[] {"-coreNode", "-domain", domain, "-coreNodePath", coreNodePath});
+
+        Start.main(new String[]{"-firstNode", "-port", "8000", "-logMessages", "-domain", domain, "-publicserver"});
     }
 
     public static void test(int nodes) throws IOException

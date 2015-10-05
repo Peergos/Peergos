@@ -1,8 +1,7 @@
 package peergos.storage.net;
 
 import com.sun.net.httpserver.*;
-import peergos.corenode.AbstractCoreNode;
-import peergos.corenode.HTTPCoreNodeServer;
+import peergos.corenode.*;
 import peergos.crypto.SSL;
 import peergos.storage.dht.*;
 import org.bouncycastle.operator.OperatorCreationException;
@@ -51,10 +50,10 @@ public class HttpsUserService
 
     private final Logger LOGGER;
     private final InetSocketAddress local;
-    private final AbstractCoreNode coreNode;
+    private final CoreNode coreNode;
     HttpsServer httpsServer;
 
-    public HttpsUserService(InetSocketAddress local, Logger LOGGER, DHT dht, AbstractCoreNode coreNode) throws IOException
+    public HttpsUserService(InetSocketAddress local, Logger LOGGER, DHT dht, CoreNode coreNode) throws IOException
     {
         this.LOGGER = LOGGER;
         this.local = local;

@@ -1,6 +1,6 @@
 package peergos.user;
 
-import peergos.corenode.AbstractCoreNode;
+import peergos.corenode.*;
 import peergos.crypto.SymmetricKey;
 import peergos.crypto.SymmetricLocationLink;
 import peergos.crypto.User;
@@ -24,12 +24,12 @@ public class UserContext
     public final String username;
     private User us;
     private DHTUserAPI dht;
-    private AbstractCoreNode core;
+    private CoreNode core;
     private Map<UserPublicKey, EntryPoint> staticData = new TreeMap<>();
     private ExecutorService executor = Executors.newFixedThreadPool(2);
 
 
-    public UserContext(String username, User user, DHTUserAPI dht, AbstractCoreNode core)
+    public UserContext(String username, User user, DHTUserAPI dht, CoreNode core)
     {
         this.username = username;
         this.us = user;
@@ -61,9 +61,8 @@ public class UserContext
         if (friendUsername == null)
             throw new IllegalStateException("User isn't registered! "+friend);
 
-        // create sharing keypair and give it write access
+        // create sharing keypair
         User sharing = User.random();
-        addSharingKey(sharing);
         ByteArrayWrapper rootMapKey = new ByteArrayWrapper(ArrayOps.random(32));
 
         // add a note to our static data so we know who we sent the private key to
@@ -124,17 +123,11 @@ public class UserContext
         } catch (IOException e) {throw new IllegalStateException(e.getMessage());}
     }
 
-    public boolean addSharingKey(UserPublicKey pub)
-    {
-        byte[] signed = us.signMessage(pub.getPublicKeys());
-        return core.allowSharingKey(us, signed);
-    }
-
     private boolean addToStaticData(EntryPoint entry)
     {
         staticData.put(entry.pointer.writer, entry);
         byte[] rawStatic = serializeStatic();
-        return core.updateStaticData(us, us.signMessage(rawStatic));
+        return core.setStaticData(us, us.signMessage(rawStatic));
     }
 
     private Future uploadFragment(Fragment f, UserPublicKey targetUser, User sharer, byte[] mapKey)
@@ -153,7 +146,7 @@ public class UserContext
         } catch (IOException e) {e.printStackTrace();}
         byte[] metaBlob = bout.toByteArray();
         System.out.println("Storing metadata blob of " + metaBlob.length + " bytes.");
-        if (!core.addMetadataBlob(target, sharer.getPublicKeys(), sharer.signMessage(ArrayOps.concat(mapKey, metaBlob))))
+        if (!core.setMetadataBlob(target, sharer.getPublicKeys(), sharer.signMessage(ArrayOps.concat(mapKey, metaBlob))))
             System.out.println("Meta blob store failed.");
         if (fragments.length > 0 ) {
             // now upload fragments to DHT
@@ -213,8 +206,8 @@ public class UserContext
     }
 
     public FileAccess getMetadata(Location loc) throws IOException {
-        AbstractCoreNode.MetadataBlob meta = core.getMetadataBlob(loc.owner, loc.writerKey.getPublicKeys(), loc.mapKey.data);
-        DataInputStream din = new DataInputStream(new ByteArrayInputStream(meta.metadata().data));
+        byte[] meta = core.getMetadataBlob(loc.owner, loc.writerKey.getPublicKeys(), loc.mapKey.data);
+        DataInputStream din = new DataInputStream(new ByteArrayInputStream(meta));
         return FileAccess.deserialize(din);
     }
 
