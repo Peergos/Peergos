@@ -74,7 +74,7 @@ public class Start
         }
         else if (Args.hasArg("demo"))
         {
-            Args.parse(new String[]{"-domain", "demo.peergos.net", "-coreNodePath", Args.getArg("coreNodePath", ":memory:")});
+            Args.parse(new String[]{"-domain", "demo.peergos.net", "-coreNodePath", Args.getArg("coreNodePath", "core.sql")});
             demo();
         }
         else if (Args.hasArg("directoryServer"))
