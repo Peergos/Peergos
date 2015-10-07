@@ -37,7 +37,7 @@ public class Scripter extends Thread
                 } catch (InterruptedException e) {}
                 try {
                     if (parts[1].equals("PUT")) {
-                        api.put(ArrayOps.hexToBytes(parts[2]), ArrayOps.hexToBytes(parts[3]),
+                        api.put(ArrayOps.hexToBytes(parts[3]),
                                 ArrayOps.hexToBytes(parts[4]), ArrayOps.hexToBytes(parts[5]), ArrayOps.hexToBytes(parts[6]), ArrayOps.hexToBytes(parts[7]))
                                 .thenAccept(offer -> System.out.println("Put completed with no error"));
                         System.out.println("Sent Put message..");

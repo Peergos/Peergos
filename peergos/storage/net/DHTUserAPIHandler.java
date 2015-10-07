@@ -7,6 +7,7 @@ import peergos.util.*;
 import com.sun.net.httpserver.*;
 
 import java.io.*;
+import java.util.*;
 import java.util.function.*;
 
 public class DHTUserAPIHandler implements HttpHandler
@@ -26,13 +27,12 @@ public class DHTUserAPIHandler implements HttpHandler
             int type = din.readInt();
             if (type == 0) {
                 // PUT
-                byte[] key = Serialize.deserializeByteArray(din, 64);
                 byte[] value = Serialize.deserializeByteArray(din, Fragment.SIZE);
                 byte[] owner = Serialize.deserializeByteArray(din, UserPublicKey.SIZE);
                 byte[] sharingKey = Serialize.deserializeByteArray(din, UserPublicKey.SIZE);
                 byte[] mapKey = Serialize.deserializeByteArray(din, 32);
                 byte[] proof = Serialize.deserializeByteArray(din, 4096);
-                dht.put(key, value, owner, sharingKey, mapKey, proof).thenAccept(new PutSuccess(httpExchange)).exceptionally(new Failure(httpExchange));
+                dht.put(value, owner, sharingKey, mapKey, proof).thenAccept(new PutSuccess(httpExchange)).exceptionally(new Failure(httpExchange));
             } else if (type == 1) {
                 // GET
                 byte[] key = Serialize.deserializeByteArray(din, 64);
@@ -50,7 +50,7 @@ public class DHTUserAPIHandler implements HttpHandler
         }
     }
 
-    private static class PutSuccess implements Consumer<Boolean>
+    private static class PutSuccess implements Consumer<Optional<byte[]>>
     {
         private final HttpExchange exchange;
 
@@ -60,12 +60,13 @@ public class DHTUserAPIHandler implements HttpHandler
         }
 
         @Override
-        public void accept(Boolean result) {
+        public void accept(Optional<byte[]> result) {
             try {
                 exchange.sendResponseHeaders(200, 0);
                 DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());
-                dout.writeInt(result ? 1 : 0); // success
-
+                dout.writeInt(result.isPresent() ? 1 : 0); // success
+                if (result.isPresent())
+                    Serialize.serialize(result.get(), dout);
                 dout.flush();
                 dout.close();
             } catch (IOException e)

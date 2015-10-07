@@ -2,6 +2,7 @@ package peergos.storage.dht;
 
 import org.ipfs.*;
 
+import java.util.*;
 import java.util.concurrent.*;
 
 public class IpfsDHT implements DHT {
@@ -11,7 +12,7 @@ public class IpfsDHT implements DHT {
         this.ipfs = ipfs;
     }
 
-    public CompletableFuture<Boolean> put(byte[] key, byte[] value, byte[] owner, byte[] writingKey, byte[] mapKey, byte[] proof) {
+    public CompletableFuture<Optional<byte[]>> put(byte[] value, byte[] owner, byte[] writingKey, byte[] mapKey, byte[] proof) {
         throw new IllegalStateException("Unimplemented!");
     }
 

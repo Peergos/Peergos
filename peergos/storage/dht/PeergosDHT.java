@@ -1,9 +1,11 @@
 package peergos.storage.dht;
 
+import peergos.crypto.*;
 import peergos.storage.net.HttpMessenger;
 import peergos.util.*;
 
 import java.io.IOException;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
 
@@ -16,29 +18,30 @@ public class PeergosDHT implements DHT
         this.router = router;
     }
 
-    public static class PutHandler implements Function<Object, Boolean> {
+    public static class PutHandler implements Function<Object, Optional<byte[]>> {
         private final byte[] key, value;
         private final Router router;
 
-        public PutHandler(Router router, byte[] key, byte[] value) {
-            this.key = key;
+        public PutHandler(Router router, byte[] value) {
+            this.key = UserPublicKey.hash(value);
             this.value = value;
             this.router = router;
         }
 
-        public final Boolean apply(Object obj)
+        public final Optional<byte[]> apply(Object obj)
         {
             PutOffer offer = (PutOffer) obj;
                 if (offer.getTarget().external.equals(router.address().external)) {
                     if (router.storage.isWaitingFor(key))
-                        return router.storage.put(new ByteArrayWrapper(key), value);
+                        if (router.storage.put(new ByteArrayWrapper(key), value))
+                            return Optional.of(key);
                 } else try {
                     HttpMessenger.putFragment(offer.getTarget().external, "/" + ArrayOps.bytesToHex(key), value);
-                    return true;
+                    return Optional.of(key);
                 } catch (IOException e) {
                     throw new RuntimeException(e);
                 }
-                return false;
+                return Optional.empty();
         }
     }
 
@@ -84,12 +87,11 @@ public class PeergosDHT implements DHT
         }
     }
 
-    // 256 bit key / 32 byte
-    public CompletableFuture<Boolean> put(byte[] key, byte[] value, byte[] owner, byte[] sharingKey, byte[] mapKey, byte[] proof)
+    public CompletableFuture<Optional<byte[]>> put(byte[] value, byte[] owner, byte[] sharingKey, byte[] mapKey, byte[] proof)
     {
-        assert(key.length == 32);
-        CompletableFuture<Object> fut = router.ask(new Message.PUT(key, value.length, owner, sharingKey, mapKey, proof));
-        return fut.thenApply(new PutHandler(router, key, value));
+        PutHandler handler = new PutHandler(router, value);
+        CompletableFuture<Object> fut = router.ask(new Message.PUT(handler.key, value.length, owner, sharingKey, mapKey, proof));
+        return fut.thenApply(handler);
     }
 
     public CompletableFuture<Integer> contains(byte[] key)

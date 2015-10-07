@@ -8,6 +8,7 @@ import peergos.util.ArrayOps;
 import peergos.util.Serialize;
 
 import java.io.*;
+import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -31,7 +32,7 @@ public class DHTAPIHandler implements HttpHandler
             if (m instanceof Message.PUT) {
                 byte[] value = Serialize.deserializeByteArray(din, Fragment.SIZE);
                 router.ask(m)
-                        .thenApply(new PeergosDHT.PutHandler(router, ((Message.PUT) m).getKey(), value))
+                        .thenApply(new PeergosDHT.PutHandler(router, value))
                         .thenAccept(new PutSuccess(httpExchange))
                         .exceptionally(new Failure(httpExchange));
             } else if (m instanceof Message.GET) {
@@ -56,7 +57,7 @@ public class DHTAPIHandler implements HttpHandler
         }
     }
 
-    private static class PutSuccess implements Consumer<Boolean>
+    private static class PutSuccess implements Consumer<Optional<byte[]>>
     {
         private final HttpExchange exchange;
 
@@ -66,12 +67,13 @@ public class DHTAPIHandler implements HttpHandler
         }
 
         @Override
-        public void accept(Boolean result) {
+        public void accept(Optional<byte[]> result) {
             try {
                 exchange.sendResponseHeaders(200, 0);
                 DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());
-                dout.writeInt(result ? 1 : 0); // success
-
+                dout.writeInt(result.isPresent() ? 1 : 0); // success
+                if (result.isPresent())
+                    Serialize.serialize(result.get(), dout);
                 dout.flush();
                 dout.close();
             } catch (IOException e)

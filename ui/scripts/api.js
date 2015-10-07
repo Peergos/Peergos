@@ -459,14 +459,18 @@ function DHTClient() {
     //put
     //
     this.put = function(keyData, valueData, owner, sharingKeyData, mapKeyData, proofData) {        
-        var arrays = [keyData, valueData, owner, sharingKeyData, mapKeyData, proofData];
+        var arrays = [valueData, owner, sharingKeyData, mapKeyData, proofData];
         var buffer = new ByteArrayOutputStream();
         buffer.writeInt(0); // PUT Message
         for (var iArray=0; iArray < arrays.length; iArray++) 
             buffer.writeArray(arrays[iArray]);
         return postProm("dht/put", buffer.toByteArray()).then(function(resBuf){
-            var res = new ByteArrayInputStream(resBuf).readInt();
-            if (res == 1) return Promise.resolve(true);
+            var stream = new ByteArrayInputStream(resBuf);
+	    var res = stream.readInt();
+            if (res == 1) {
+		var key = stream.readArray();
+		return Promise.resolve(true);//**for now only change server side** key);
+	    }
             return Promise.reject("Fragment upload failed");
         });
     };
