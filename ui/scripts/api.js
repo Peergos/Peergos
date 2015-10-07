@@ -1428,6 +1428,18 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 	return new ReadableFilePointer(filePointer.owner, entryWriterKey, filePointer.mapKey, baseKey);
     }.bind(this);
 
+    //FileTreeNode -> userContext -> void
+    this.copyTo = function(target, context) {
+        if (! target.isDirectory())
+            return Promise.reject("target "+ target +" must be a directory");
+        //add internal shit
+        const parentLocation = target.getLocation();
+        const rootKey = this.pointer.filePointer.baseKey;
+        const baseKey = Symmetric.random();
+        if(! this.isDirectory()) 
+            return Promise.resolve(target.addFile(this.location, rootKey, baseKey));
+    }
+
     this.remove = function(context) {
 	return new RetrievedFilePointer(writableFilePointer(), pointer.fileAccess).remove(context);
     }
