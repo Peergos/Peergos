@@ -268,6 +268,31 @@ public class JDBCCoreNode implements CoreNode {
             }
         }
 
+        public boolean delete()
+        {
+            PreparedStatement stmt = null;
+            try
+            {
+                stmt = conn.prepareStatement("DELETE from metadatablobs where writingkey=? AND mapkey=?");
+
+                stmt.setString(1,this.b64WritingKey);
+                stmt.setString(2,this.b64mapkey);
+                stmt.executeUpdate();
+                return true;
+            } catch (SQLException sqe) {
+                sqe.printStackTrace();
+                return false;
+            } finally {
+                if (stmt != null)
+                    try
+                    {
+                        stmt.close();
+                    } catch (SQLException sqe2) {
+                        sqe2.printStackTrace();
+                    }
+            }
+        }
+
         public MetadataBlob selectOne()
         {
             MetadataBlob[] fd = select("where writingKey = '"+ b64WritingKey +"' and mapkey = '"+ b64mapkey +"'");
@@ -468,17 +493,33 @@ public class JDBCCoreNode implements CoreNode {
     }
 
     @Override
-    public boolean setMetadataBlob(UserPublicKey owner, byte[] encodedWritingPublicKey, byte[] writingKeySignedMapKeyPlusBlob) {
+    public boolean setMetadataBlob(UserPublicKey owner, byte[] encodedWritingPublicKey, byte[] writingKeySignedMapKey) {
         UserPublicKey writingKey = new UserPublicKey(encodedWritingPublicKey);
 
         try {
-            byte[] payload = writingKey.unsignMessage(writingKeySignedMapKeyPlusBlob);
+            byte[] payload = writingKey.unsignMessage(writingKeySignedMapKey);
             byte[] mapKey = Arrays.copyOfRange(payload, 0, 32);
             byte[] metadataBlob = Arrays.copyOfRange(payload, 32, payload.length);
             MetadataBlob blob = new MetadataBlob(writingKey.getPublicKeys(), mapKey, metadataBlob);
             return blob.insert();
         } catch (TweetNaCl.InvalidSignatureException e) {
-            System.err.println("Invalid signature for owner: "+owner + " and sharer: "+writingKey);
+            System.err.println("Invalid signature during setMetadataBlob for owner: " + owner + " and sharer: " + writingKey);
+            return false;
+        }
+    }
+
+    @Override
+    public boolean removeMetadataBlob(UserPublicKey owner, byte[] encodedWritingPublicKey, byte[] writingKeySignedMapKeyPlusBlob) {
+        UserPublicKey writingKey = new UserPublicKey(encodedWritingPublicKey);
+
+        try {
+            byte[] payload = writingKey.unsignMessage(writingKeySignedMapKeyPlusBlob);
+            byte[] mapKey = Arrays.copyOfRange(payload, 0, 32);
+            byte[] metadataBlob = Arrays.copyOfRange(payload, 32, payload.length); // will be zero length for now // TODO  change to the current blob hash
+            MetadataBlob blob = new MetadataBlob(writingKey.getPublicKeys(), mapKey, metadataBlob);
+            return blob.delete();
+        } catch (TweetNaCl.InvalidSignatureException e) {
+            System.err.println("Invalid signature during removeMetadataBlob for owner: "+owner + " and sharer: "+writingKey);
             return false;
         }
     }

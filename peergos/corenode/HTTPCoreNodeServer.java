@@ -71,6 +71,9 @@ public class HTTPCoreNodeServer
                     case "getMetadataBlob":
                         getMetadataBlob(din, dout);
                         break;
+                    case "removeMetadataBlob":
+                        removeMetadataBlob(din, dout);
+                        break;
                     default:
                         throw new IOException("Unknown method "+ method);
                 }
@@ -152,7 +155,16 @@ public class HTTPCoreNodeServer
             boolean isAdded = coreNode.setMetadataBlob(new UserPublicKey(encodedOwnerPublicKey), encodedSharingPublicKey, signedPayload);
             dout.writeBoolean(isAdded);
         }
-        
+
+        void removeMetadataBlob(DataInputStream din, DataOutputStream dout) throws IOException
+        {
+            byte[] encodedOwnerPublicKey = deserializeByteArray(din);
+            byte[] encodedWriterPublicKey = deserializeByteArray(din);
+            byte[] signedPayload = deserializeByteArray(din);
+            boolean isAdded = coreNode.removeMetadataBlob(new UserPublicKey(encodedOwnerPublicKey), encodedWriterPublicKey, signedPayload);
+            dout.writeBoolean(isAdded);
+        }
+
         void setStaticData(DataInputStream din, DataOutputStream dout) throws IOException
         {
             byte[] owner = deserializeByteArray(din);

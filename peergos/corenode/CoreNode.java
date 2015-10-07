@@ -26,6 +26,8 @@ public interface CoreNode {
 
     boolean setMetadataBlob(UserPublicKey owner, byte[] encodedSharingPublicKey, byte[] sharingKeySignedMapKeyPlusBlob);
 
+    boolean removeMetadataBlob(UserPublicKey owner, byte[] encodedSharingPublicKey, byte[] sharingKeySignedMapKeyPlusBlob);
+
     byte[] getMetadataBlob(UserPublicKey owner, byte[] encodedSharingKey, byte[] mapKey);
 
     void close() throws IOException;

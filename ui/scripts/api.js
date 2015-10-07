@@ -614,7 +614,6 @@ function CoreNodeClient() {
         var buffer = new ByteArrayOutputStream();
         buffer.writeArray(owner.getPublicKeys());
         buffer.writeArray(writer.getPublicKeys());
-        buffer.writeArray(mapKey);
         buffer.writeArray(writer.signMessage(mapKey));
         return postProm("core/removeMetadataBlob", buffer.toByteArray());
     };

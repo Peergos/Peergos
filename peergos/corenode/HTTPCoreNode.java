@@ -266,7 +266,35 @@ public class HTTPCoreNode implements CoreNode
                 conn.disconnect();
         }
     }
-   @Override public byte[] getMetadataBlob(UserPublicKey owner, byte[] encodedSharingKey, byte[] mapKey)
+
+    @Override public boolean removeMetadataBlob(UserPublicKey owner, byte[] encodedSharingPublicKey, byte[] sharingKeySignedPayload)
+    {
+        HttpURLConnection conn = null;
+        try
+        {
+            conn = (HttpURLConnection) buildURL("core/removeMetadataBlob").openConnection();
+            conn.setDoInput(true);
+            conn.setDoOutput(true);
+
+            DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
+
+            Serialize.serialize(owner.getPublicKeys(), dout);
+            Serialize.serialize(encodedSharingPublicKey, dout);
+            Serialize.serialize(sharingKeySignedPayload, dout);
+            dout.flush();
+
+            DataInputStream din = new DataInputStream(conn.getInputStream());
+            return din.readBoolean();
+        } catch (IOException ioe) {
+            ioe.printStackTrace();
+            return false;
+        } finally {
+            if (conn != null)
+                conn.disconnect();
+        }
+    }
+
+    @Override public byte[] getMetadataBlob(UserPublicKey owner, byte[] encodedSharingKey, byte[] mapKey)
     {
         HttpURLConnection conn = null;
         try
