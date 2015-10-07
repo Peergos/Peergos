@@ -391,8 +391,10 @@ render: function() {
         const pwMsg = this.state.passwordMsg;
         const passwordLabel = pwMsg == "" ? (<div/>) : (<label>{pwMsg}</label>)
 
-        return (<div>
+        return (<div className="container form-signin">
+                <center>
                 <div className={usernameClass}>
+                    <h2>Sign up credentials</h2>
                     {usernameLabel}
                     <input placeholder="Username" id="signup-user-input" className="form-control" type="text"/>
                 </div>
@@ -404,8 +406,8 @@ render: function() {
                 <div  className="form-group">
                     <input placeholder="Email address (Optional)" id="signup-email-user-input" className="form-control" type="text"/>
                 </div>
-
             <button id="signupSubmitButton" className="btn btn-success">Create account</button>
+            </center>
             </div>
            );
 }
@@ -779,31 +781,37 @@ loginOnEnter: function(event) {
 },
 
 signup: function() {
-    $('#modal-title').html("Sign up");
+
+    $("#login-form").css("display","none");
     React.render(
         <SignUp browser={this}/>, 
-        document.getElementById('modal-body')
+        //document.getElementById('modal-body')
+        document.getElementById('signup-form')
     );
-    $('#modal').modal("show");   
 },
 
 login: function(usernameArg, passwordArg) {
         const usernameInput = document.getElementById("login-user-input");
         const passwordInput = document.getElementById("login-password-input");
 
-        const username = typeof(usernameArg) == "string" ? usernameArg : usernameInput.value;
-        const password = typeof(passwordArg) == "string" ? passwordArg : passwordInput.value;
+        const hasUsername = typeof(usernameArg) == "string";
+        const hasPassword = typeof(passwordArg) == "string";
+        const username = hasUsername ? usernameArg : usernameInput.value;
+        const password = hasPassword ? passwordArg : passwordInput.value;
+        
         startInProgess();
         const onVerified  = function() {
                 const displayName = userContext.username;
-                usernameInput.value = "";
-                passwordInput.value="";
+
+                if (! hasUsername) usernameInput.value = "";
+                if (! hasPassword) passwordInput.value="";
                 $("#logout").html("<button id=\"logoutButton\" class=\"btn btn-default\">"+
 "<span class=\"glyphicon glyphicon-off\"/>  " +
                                 displayName+
                                 "</button>");
                 $("#logoutButton").click(this.logout);
                 $("#login-form").css("display","none");
+                $("#signup-form").css("display","none");
                 this.loadFilesFromServer();
                 clearInProgress();
             }.bind(this);
@@ -825,7 +833,7 @@ login: function(usernameArg, passwordArg) {
         }).then(onVerified, 
                 function() {
                         //failed to authenticate user
-                        passwordInput.value='';
+                        if (! hasPassword) passwordInput.value='';
                         populateModalAndShow("Authentication Failure", "Invalid credentials.");
                         clearInProgress();
         });
@@ -948,8 +956,10 @@ render: function() {
                                 <center>
                                 <img src="images/logo.png"/>
                                 </center>
-                                <h2>Please log in</h2>
+                                <div id="signup-form">
+                                </div>
                                 <div id="login-form">
+                                <h2>Please log in</h2>
                                 <div  className="form-group">
                                         <input placeholder="Username" id="login-user-input" className="form-control" type="text"/>
                                 </div>
