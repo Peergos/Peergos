@@ -469,7 +469,7 @@ function DHTClient() {
 	    var res = stream.readInt();
             if (res == 1) {
 		var key = stream.readArray();
-		return Promise.resolve(true);//**for now only change server side** key);
+		return Promise.resolve(key);
 	    }
             return Promise.reject("Fragment upload failed");
         });
