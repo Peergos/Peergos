@@ -1440,9 +1440,8 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 	const newParentLocation = target.getLocation();
 	const newParentParentKey = target.getParentKey();
 	
-	const newAccess = pointer.fileAccess.withNewKeysAndParent(ourBaseKey, newBaseKey, newParentLocation, newParentParentKey);
-	// upload new metadatablob
-	return context.uploadChunk(newAccess, [], context.user, entryWriterKey, newMapKey).then(function(res) {
+	return pointer.fileAccess.copyTo(ourBaseKey, newBaseKey, newParentLocation, newParentParentKey, entryWriterKey, newMapKey, context).then(function(newAccess) {
+	    // upload new metadatablob
             const newRetrievedFilePointer = new RetrievedFilePointer(newRFP, newAccess);
 	    const newFileTreeNode = new FileTreeNode(newRetrievedFilePointer, context.username, [], [], entryWriterKey);
             return target.addLinkTo(newFileTreeNode, context);
@@ -1750,9 +1749,12 @@ function FileAccess(parent2meta, properties, retriever, parentLink) {
 	}
     }
 
-    this.withNewKeysAndParent = function(baseKey, newBaseKey, parentLocation, parentparentKey) {
+    this.copyTo = function(baseKey, newBaseKey, parentLocation, parentparentKey, entryWriterKey, newMapKey, context) {
 	const props = this.getFileProperties(baseKey);
-	return FileAccess.create(newBaseKey, props, this.retriever, parentLocation, parentparentKey);
+	const fa = FileAccess.create(newBaseKey, props, this.retriever, parentLocation, parentparentKey);
+	return context.uploadChunk(fa, [], context.user, entryWriterKey, newMapKey).then(function(res) {
+	    return Promise.resolve(fa);
+	});
     }
 }
 FileAccess.deserialize = function(raw) {
@@ -1919,26 +1921,33 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
         this.subfolders.push(SymmetricLocationLink.create(ourSubfolders, targetBaseKey, location));
     }
 
-    this.withNewKeysAndParent = function(baseKey, newBaseKey, parentLocation, parentparentKey) {
+    this.copyTo = function(baseKey, newBaseKey, parentLocation, parentparentKey, entryWriterKey, newMapKey, context) {
 	const parentKey = this.getParentKey(baseKey);
 	const props = this.getFileProperties(parentKey);
-	// keep parent key the same so children are still correct in their parentPointers
-	// anyone who had read access this dir won't be able to read the contents again,
-	// even if they cached the parentKey
 	const da = DirAccess.create(newBaseKey, props, this.retriever, parentLocation, parentparentKey, parentKey);
-	// re-add children
-	for (var i=0; i < this.subfolders.length; i++) {
-	    var targetBaseKey = this.subfolders[i].target(baseKey);
-	    var targetLocation = this.subfolders[i].targetLocation(baseKey);
-	    da.addSubdir(targetLocation, newBaseKey, targetBaseKey);
-	}
-	for (var i=0; i < this.files.length; i++) {
-	    var targetBaseKey = this.files[i].target(baseKey);
-	    var targetLocation = this.files[i].targetLocation(baseKey);
-	    da.addFile(targetLocation, newBaseKey, targetBaseKey);
-	}
+	const ourNewParentKey = da.getParentKey(newBaseKey);
+	const ourNewLocation = new Location(context.user, entryWriterKey, newMapKey);
 
-	return da;
+	return this.getChildren(context, baseKey).then(function(RFPs) {
+	    // upload new metadata blob for each child and re-add child
+	    var proms = RFPs.map(function(rfp) {
+		var newChildBaseKey = SymmetricKey.random();
+		var newChildMapKey = window.nacl.randomBytes(32);
+		var newChildLocation = new Location(context.user, entryWriterKey, newChildMapKey);
+		return rfp.fileAccess.copyTo(frp.filePointer.baseKey, newChildBaseKey, ourNewLocation, ourNewParentKey, entryWriterKey, newChildMapKey, context).then(function(newChildFileAccess){
+		    if (newChildFileAccess.isDirectory())
+			da.addSubdir(newChildLocation, newBaseKey, newChildBaseKey);
+		    else
+			da.addFile(newChildLocation, newBaseKey, newChildBaseKey);
+		    return Promise.resolve(true);
+		});
+	    });
+	    return Promise.all(proms);
+	}).then(function(res) {
+	    return context.uploadChunk(da, [], context.user, entryWriterKey, newMapKey).then(function(res) {
+		return Promise.resolve(da);
+	    });
+	});
     }
 }
 
