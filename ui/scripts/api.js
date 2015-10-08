@@ -1263,7 +1263,7 @@ ReadableFilePointer.deserialize = function(arr) {
     return new ReadableFilePointer(UserPublicKey.fromPublicKeys(owner), writer, mapKey, new SymmetricKey(rootDirKeySecret));
 }
 
-// RetrievedFilePointer, string, [string], [string]
+// RetrievedFilePointer, string, [string], [string], UserPublicKey
 function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
     var pointer = pointer; // O/W/M/K + FileAccess
     var children = [];
@@ -1333,7 +1333,7 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
     this.retrieveParent = function(context) {
 	if (pointer == null)
 	    return Promise.resolve(null);
-	var parentKey = getParentKey();
+	var parentKey = this.getParentKey();
 	return pointer.fileAccess.getParent(parentKey, context).then(function(parentRFP) {
 	    if (parentRFP == null)
 		return Promise.resolve(FileTreeNode.ROOT);
@@ -1341,7 +1341,7 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 	});
     }
 
-    var getParentKey = function() {
+    this.getParentKey = function() {
 	var parentKey = pointer.filePointer.baseKey;
 	if (this.isDirectory())
 	    try {
@@ -1428,16 +1428,25 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 	return new ReadableFilePointer(filePointer.owner, entryWriterKey, filePointer.mapKey, baseKey);
     }.bind(this);
 
-    //FileTreeNode -> userContext -> void
+    //FileTreeNode -> FileTreeNode -> userContext -> void
     this.copyTo = function(target, context) {
         if (! target.isDirectory())
-            return Promise.reject("target "+ target +" must be a directory");
-        //add internal shit
-        const parentLocation = target.getLocation();
-        const rootKey = this.pointer.filePointer.baseKey;
-        const baseKey = Symmetric.random();
-        if(! this.isDirectory()) 
-            return Promise.resolve(target.addFile(this.location, rootKey, baseKey));
+            return Promise.reject("CopyTo target "+ target +" must be a directory");
+        //make new FileTreeNode pointing to the same file, but with a different location
+        const newMapKey = window.nacl.randomBytes(32);
+	const newBaseKey = SymmetricKey.random();
+	const newRFP = new ReadableFilePointer(context.user, entryWriterKey, newMapKey, newBaseKey);
+        const ourBaseKey = this.getKey();
+	const newParentLocation = target.getLocation();
+	const newParentParentKey = target.getParentKey();
+	
+	const newAccess = pointer.fileAccess.withNewKeysAndParent(ourBaseKey, newBaseKey, newParentLocation, newParentParentKey);
+	// upload new metadatablob
+	return context.uploadChunk(newAccess, [], context.user, entryWriterKey, newMapKey).then(function(res) {
+            const newRetrievedFilePointer = new RetrievedFilePointer(newRFP, newAccess);
+	    const newFileTreeNode = new FileTreeNode(newRetrievedFilePointer, context.username, [], [], entryWriterKey);
+            return target.addLinkTo(newFileTreeNode, context);
+	});
     }
 
     this.remove = function(context) {
@@ -1452,7 +1461,7 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
     this.getFileProperties = function() {
 	if (pointer == null)
 	    return new FileProperties("/", 0, 0, 0);
-	const parentKey = getParentKey();
+	const parentKey = this.getParentKey();
 	return pointer.fileAccess.getFileProperties(parentKey);
     }.bind(this);
 }
@@ -1740,6 +1749,11 @@ function FileAccess(parent2meta, properties, retriever, parentLink) {
 	    return context.uploadChunk(fa, [], writableFilePointer.owner, writableFilePointer.writer, writableFilePointer.mapKey);
 	}
     }
+
+    this.withNewKeysAndParent = function(baseKey, newBaseKey, parentLocation, parentparentKey) {
+	const props = this.getFileProperties(baseKey);
+	return FileAccess.create(newBaseKey, props, this.retriever, parentLocation, parentparentKey);
+    }
 }
 FileAccess.deserialize = function(raw) {
     const buf = new ByteArrayInputStream(raw);
@@ -1904,6 +1918,28 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
     this.addSubdir = function(location, ourSubfolders, targetBaseKey) {
         this.subfolders.push(SymmetricLocationLink.create(ourSubfolders, targetBaseKey, location));
     }
+
+    this.withNewKeysAndParent = function(baseKey, newBaseKey, parentLocation, parentparentKey) {
+	const parentKey = this.getParentKey(baseKey);
+	const props = this.getFileProperties(parentKey);
+	// keep parent key the same so children are still correct in their parentPointers
+	// anyone who had read access this dir won't be able to read the contents again,
+	// even if they cached the parentKey
+	const da = DirAccess.create(newBaseKey, props, this.retriever, parentLocation, parentparentKey, parentKey);
+	// re-add children
+	for (var i=0; i < this.subfolders.length; i++) {
+	    var targetBaseKey = this.subfolders[i].target(baseKey);
+	    var targetLocation = this.subfolders[i].targetLocation(baseKey);
+	    da.addSubdir(targetLocation, newBaseKey, targetBaseKey);
+	}
+	for (var i=0; i < this.files.length; i++) {
+	    var targetBaseKey = this.files[i].target(baseKey);
+	    var targetLocation = this.files[i].targetLocation(baseKey);
+	    da.addFile(targetLocation, newBaseKey, targetBaseKey);
+	}
+
+	return da;
+    }
 }
 
 DirAccess.deserialize = function(base, bin) {
@@ -1923,10 +1959,11 @@ DirAccess.deserialize = function(base, bin) {
                          subfolders, files, base.parent2meta, base.properties, base.retriever, base.parentLink);
 }
 
-// User, SymmetricKey, FileProperties
-DirAccess.create = function(subfoldersKey, metadata, parentLocation, parentParentKey) {
+// SymmetricKey -> FileProperties -> Location -> SymmetricKey
+DirAccess.create = function(subfoldersKey, metadata, parentLocation, parentParentKey, parentKey) {
     var metaKey = SymmetricKey.random();
-    var parentKey = SymmetricKey.random();
+    if (parentKey == null)
+	parentKey = SymmetricKey.random();
     var filesKey = SymmetricKey.random();
     var metaNonce = metaKey.createNonce();
     var parentLink = parentLocation == null ? null : SymmetricLocationLink.create(parentKey, parentParentKey, parentLocation);
