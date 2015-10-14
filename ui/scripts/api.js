@@ -247,7 +247,7 @@ function Chunk(data, key) {
 }
 Chunk.MAX_SIZE = Fragment.SIZE*EncryptedChunk.ERASURE_ORIGINAL
 // string, File, SymmetricKey, Location, SymmetricKey -> 
-function FileUploader(name, file, key, parentLocation, parentparentKey, uploadPercentage) {
+function FileUploader(name, file, key, parentLocation, parentparentKey, setProgessPercentage) {
     this.props = new FileProperties(name, file.size, Date.now(), 0);
     if (key == null) key = SymmetricKey.random();
 
@@ -258,7 +258,7 @@ function FileUploader(name, file, key, parentLocation, parentparentKey, uploadPe
     this.key = key;
     this.parentLocation = parentLocation;
     this.parentparentKey = parentparentKey;
-    this.uploadPercentage = uploadPercentage;
+    this.setProgessPercentage = setProgessPercentage;
 
     this.uploadChunk = function(context, owner, writer, chunkIndex, file, nextLocation) {
 
@@ -278,7 +278,7 @@ function FileUploader(name, file, key, parentLocation, parentparentKey, uploadPe
 			hashes.push(fragments[f].getHash());
                     const retriever = new EncryptedChunkRetriever(chunk.nonce, encryptedChunk.getAuth(), hashes, nextLocation);
                     const metaBlob = FileAccess.create(chunk.key, that.props, retriever, parentLocation, parentparentKey);
-                    context.uploadChunk(metaBlob, fragments, owner, writer, chunk.mapKey, uploadPercentage).then(function() {
+                    context.uploadChunk(metaBlob, fragments, owner, writer, chunk.mapKey, setProgessPercentage).then(function() {
 			resolve(new Location(owner, writer, chunk.mapKey));
 		    });
 		});
@@ -286,7 +286,7 @@ function FileUploader(name, file, key, parentLocation, parentparentKey, uploadPe
 	    filereader.readAsArrayBuffer(file.slice(chunkIndex*Chunk.MAX_SIZE, Math.min((1+chunkIndex)*Chunk.MAX_SIZE, file.size)));
 	}).then(function(nextL) {
 	    if (chunkIndex > 0)
-		return that.uploadChunk(context, owner, writer, chunkIndex-1, file, nextL, uploadPercentage);
+		return that.uploadChunk(context, owner, writer, chunkIndex-1, file, nextL, setProgessPercentage);
 	    return Promise.resolve(nextL);
 	});
     }.bind(this);
@@ -1000,7 +1000,7 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
         return dhtClient.put(f.getHash(), f.getData(), targetUser.getPublicKeys(), sharer.getPublicKeys(), mapKey, sharer.signMessage(concat(sharer.getPublicKeys(), f.getHash())));
     }
 
-    this.uploadChunk = function(metadata, fragments, owner, sharer, mapKey, uploadPercentage) {
+    this.uploadChunk = function(metadata, fragments, owner, sharer, mapKey, setProgessPercentage) {
         var buf = new ByteArrayOutputStream();
         metadata.serialize(buf);
         var metaBlob = buf.toByteArray();
@@ -1020,9 +1020,10 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
             // now upload fragments to DHT
             var futures = [];
             for (var i=0; i < fragments.length; i++){
-                if(uploadPercentage != null){
-                    uploadPercentage.setPercent(parseInt(fragmentCounter++ / fragmentTotal * 100));
-                    document.title = "Peergos Uploading: " + uploadPercentage.current + "%" ;  
+                if(setProgessPercentage != null){
+                    var percentage = parseInt(fragmentCounter++ / fragmentTotal * 100);
+                    setProgessPercentage(percentage);
+                    document.title = "Peergos Uploading: " + percentage + "%" ;  
                 }
                 futures[i] = this.uploadFragment(fragments[i], owner, sharer, mapKey);
             }
@@ -1389,7 +1390,7 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 	return pointer.fileAccess.isDirectory();
     }
 
-    this.uploadFile = function(filename, file, context, uploadPercentage) {
+    this.uploadFile = function(filename, file, context, setProgessPercentage) {
 	const fileKey = SymmetricKey.random();
         const rootRKey = pointer.filePointer.baseKey;
         const owner = pointer.filePointer.owner;
@@ -1399,7 +1400,7 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 	const parentLocation = new Location(owner, writer, dirMapKey);
 	const dirParentKey = dirAccess.getParentKey(rootRKey);
 	
-	const chunks = new FileUploader(filename, file, fileKey, parentLocation, dirParentKey, uploadPercentage);
+	const chunks = new FileUploader(filename, file, fileKey, parentLocation, dirParentKey, setProgessPercentage);
         return chunks.upload(context, owner, entryWriterKey).then(function(fileLocation) {
 	    dirAccess.addFile(fileLocation, rootRKey, fileKey);
 	    return userContext.uploadChunk(dirAccess, [], owner, entryWriterKey, dirMapKey);

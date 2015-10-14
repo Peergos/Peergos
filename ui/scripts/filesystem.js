@@ -52,41 +52,6 @@ ae.style = "display: none";
 var fragmentCounter = 0;
 var fragmentTotal =0;
 
-var uploadPercentage = new Object();
-uploadPercentage.current = 0;
-uploadPercentage.setPercent = function(val){
-        this.current = val
-    
-};
-
-
-var UploadReact = React.createClass({
-        getInitialState: function() {
-            return {
-                percent: 0
-            }
-        },
-        render: function() {
-            return (<div><Progress percent={this.state.percent}/>
-                </div>);
-        },
-        componentDidMount: function() {
-            this.stupid();
-        },
-        stupid: function() {
-            var intervalId = setInterval(function() {
-                var percent = uploadPercentage.current;
-                this.setState({percent: percent});
-            }.bind(this), 1000);
-        },
-        setPercent : function(val){
-            this.setState({
-                percent: uploadPercentage.current,
-                random: false
-            });
-        }
-});
-
 function openItem(name, data) {
     if(url != null){
         window.URL.revokeObjectURL(url);
@@ -115,7 +80,7 @@ function uploadFileOnClient(readFile, browser) {
               settings: {"timeout":  10000} 
               });
     
-    return browser.lastRetrievedFilePointer().uploadFile(name, readFile, userContext, uploadPercentage)
+    return browser.lastRetrievedFilePointer().uploadFile(name, readFile, userContext, browser.setProgressPercent)
     .then(function(res){
             const currentPath =  browser.currentPath();
                                                                                            
@@ -128,8 +93,7 @@ function uploadFileOnClient(readFile, browser) {
             });
         browser.loadFilesFromServer();
         document.title = "Peergos - Control your data!";
-        uploadPercentage.current = 0;
-        uploadPercentage.browser = browser;
+        browser.setProgressPercent(0);
     });
 }
 
@@ -607,6 +571,13 @@ getInitialState: function() {
         };
 },
     
+setProgressPercent: function(percent) {
+    React.render(
+                <Progress percent={percent}/>,
+               document.getElementById("progressbar") 
+    );
+},
+
 entryPoint: function() {
     if (this.state.retrievedFilePointerPath.length == 0)
             throw "No entry-point!";
@@ -1100,7 +1071,8 @@ render: function() {
         layout = null; 
         
         if (this.state.gridView) 
-                return (<div><UploadReact/>
+                return (<div>
+                                <div id="progressbar"></div>
                                 {files}
                                 {contextMenu}
                                 {browserContextMenu}
@@ -1108,7 +1080,8 @@ render: function() {
 
                         const sortGlyph = "glyphicon glyphicon-sort";
 
-        return (<div><UploadReact/>
+        return (<div>
+                        <div id="progressbar"></div>
                         <table className="table table-responsive table-striped table-hover">
                         <thead><tr>
                                 <th><button onClick={this.pathSort} className="btn btn-default"><span className={sortGlyph}/>Path</button></th>
