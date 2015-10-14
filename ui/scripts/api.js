@@ -1434,9 +1434,10 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
             return Promise.reject("CopyTo target "+ target +" must be a directory");
         //make new FileTreeNode pointing to the same file, but with a different location
         const newMapKey = window.nacl.randomBytes(32);
-	const newBaseKey = SymmetricKey.random();
+	const ourBaseKey = this.getKey();
+	// a file baseKey is the key for the chunk, which hasn't changed, so this must stay the same
+	const newBaseKey = this.isDirectory() ? SymmetricKey.random() : ourBaseKey;
 	const newRFP = new ReadableFilePointer(context.user, entryWriterKey, newMapKey, newBaseKey);
-        const ourBaseKey = this.getKey();
 	const newParentLocation = target.getLocation();
 	const newParentParentKey = target.getParentKey();
 	
@@ -1750,6 +1751,8 @@ function FileAccess(parent2meta, properties, retriever, parentLink) {
     }
 
     this.copyTo = function(baseKey, newBaseKey, parentLocation, parentparentKey, entryWriterKey, newMapKey, context) {
+	if (!arraysEqual(baseKey.key, newBaseKey.key))
+	    throw "FileAcess clone must have same base key as original!";
 	const props = this.getFileProperties(baseKey);
 	const fa = FileAccess.create(newBaseKey, props, this.retriever, parentLocation, parentparentKey);
 	return context.uploadChunk(fa, [], context.user, entryWriterKey, newMapKey).then(function(res) {
@@ -1931,10 +1934,10 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
 	return this.getChildren(context, baseKey).then(function(RFPs) {
 	    // upload new metadata blob for each child and re-add child
 	    var proms = RFPs.map(function(rfp) {
-		var newChildBaseKey = SymmetricKey.random();
+		var newChildBaseKey = rfp.fileAccess.isDirectory() ? SymmetricKey.random() : rfp.filePointer.baseKey;
 		var newChildMapKey = window.nacl.randomBytes(32);
 		var newChildLocation = new Location(context.user, entryWriterKey, newChildMapKey);
-		return rfp.fileAccess.copyTo(frp.filePointer.baseKey, newChildBaseKey, ourNewLocation, ourNewParentKey, entryWriterKey, newChildMapKey, context).then(function(newChildFileAccess){
+		return rfp.fileAccess.copyTo(rfp.filePointer.baseKey, newChildBaseKey, ourNewLocation, ourNewParentKey, entryWriterKey, newChildMapKey, context).then(function(newChildFileAccess){
 		    if (newChildFileAccess.isDirectory())
 			da.addSubdir(newChildLocation, newBaseKey, newChildBaseKey);
 		    else
