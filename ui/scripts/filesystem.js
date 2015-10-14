@@ -448,6 +448,10 @@ componentDidMount: function() {
                                 this.remove();
                         } else if (selected  == "Open")  {
                                 this.props.onClick();
+                        } else if (selected  == "Copy")  {
+                                this.onCopy();
+                        } else if (selected  == "Cut")  {
+                                this.onCut();
                         } else if (selected  == "Create public link" && ! this.props.isdir) {
                                 //public link
                             const publicUrl =  window.location.origin + this.props.retrievedFilePointer.toLink();
@@ -498,6 +502,18 @@ rename: function() {
 }.bind(this));
 },
 
+onCopy: function() {
+   this.props.browser.setClipboard({
+           fileTreeNode: this.props.retrievedFilePointer,
+           op: "copy"
+   }); 
+},
+onCut: function() {
+   this.props.browser.setClipboard({
+           fileTreeNode: this.props.retrievedFilePointer,
+           op: "cut"
+   }); 
+},
 renderList: function() {
         //var dateString =  new Date(this.props.time*1000).toGMTString()
         var glyphClass = this.glyphClass();
@@ -547,7 +563,8 @@ getInitialState: function() {
         return {files: [],
                 gridView: true,
                 sort: File.pathSort,
-                retrievedFilePointerPath: []
+                retrievedFilePointerPath: [],
+                clipboard: {}
         };
 },
     
@@ -616,7 +633,8 @@ loadFilesFromServer: function(fileTreeNode) {
                         files: files, 
                         sort: this.state.sort,  
                         gridView: this.state.gridView, 
-                        retrievedFilePointerPath: this.state.retrievedFilePointerPath 
+                        retrievedFilePointerPath: this.state.retrievedFilePointerPath,
+                        clipboard: this.state.clipboard 
                     }, function() {
                             this.updateNavbarPath(this.currentPath());
                     }.bind(this)); 
@@ -681,6 +699,28 @@ updateNavbarPath: function(path){
                     </div>)
     React.render(elem, document.getElementById("pathSpan"));
 },
+
+setClipboard: function(clipboard) {
+        this.state.clipboard = clipboard;
+},
+
+onPaste: function() {
+    const clipboard = this.state.clipboard;
+    const pwd = this.lastRetrievedFilePointer();
+    if (typeof(clipboard) ==  undefined || typeof(clipboard.op) == "undefined")
+            return;
+    if (clipboard.op == "copy") {
+        clipboard.fileTreeNode.copyTo(pwd, userContext).then(function() {
+            this.loadFilesFromServer();
+        }.bind(this));
+    } else if (clipboard.op == "cut") {
+        clipboard.fileTreeNode.copyTo(pwd, userContext).then(function() {
+            return clipboard.fileTreeNode.remove(userContext);
+        }).then(function() {
+            this.loadFilesFromServer();
+        }.bind(this));
+    } else throw "unknown clipboard op "+ clipboard.op;
+},
 onParent: function() {
             requireSignedIn(function()  {
             if (this.state.retrievedFilePointerPath.length == 0) {
@@ -727,7 +767,8 @@ alternateView: function() {
                 files: this.state.files, 
                 sort: this.state.sort,  
                 retrievedFilePointerPath: this.state.retrievedFilePointerPath,
-                gridView: updatedView
+                gridView: updatedView,
+                clipboard: this.state.clipboard 
         });
 },
 
@@ -877,6 +918,17 @@ componentDidMount: function() {
         filedrag.addEventListener("dragover", dragHandler, false);
         filedrag.addEventListener("dragleave", dragHandler, false);                        
         filedrag.addEventListener("drop", this.selectHandler(), false);                      
+
+
+        $("#content").contextmenu({
+                target: '#browser-context-menu',
+                onItem: function(context, evt) {
+                        const selected  =  evt.target.text.trim();
+                        if (selected == "Paste") {
+                            this.onPaste();
+                        } else throw "unimplemneted selection "+ selected;
+                }.bind(this)        
+        });
 },
 
 updateSort: function(sort) {
@@ -910,7 +962,8 @@ addToPath: function(retrievedFilePointer) {
                 files: this.state.files, 
                 sort: this.state.sort,  
                 gridView: this.state.gridView, 
-                retrievedFilePointerPath: path
+                retrievedFilePointerPath: path,
+                clipboard: this.state.clipboard 
         },
         this.loadFilesFromServer
         );
@@ -981,18 +1034,26 @@ render: function() {
         const className = this.state.gridView ? listGlyph : gridGlyph;
         element.className = className;
         var layout = null;
+        var  browserContextMenu = (<div id="browser-context-menu">
+                        <ul className="dropdown-menu" role="menu">
+                            <li><a tabIndex="-1">Paste</a></li>
+                        </ul>
+                        </div>);
+
         var  contextMenu = (<div id="context-menu">
                         <ul className="dropdown-menu" role="menu">
                         <li><a tabIndex="-1">Open</a></li>
                         <li className="divider"></li>
                         <li><a tabIndex="-1">Rename</a></li>
-                        <li className="divider"></li>
                         <li><a tabIndex="-1">Remove</a></li>
+                        <li className="divider"></li>
+                        <li><a tabIndex="-1">Copy</a></li>
+                        <li><a tabIndex="-1">Cut</a></li>
+                        <li><a tabIndex="-1">Paste</a></li>
                         <li className="divider"></li>
                         <li><a tabIndex="-1">Create public link</a></li>
                         <li className="divider"></li>
                         <li><a tabIndex="-1">Share</a></li>
-                        <li className="divider"></li>
                         <li><a tabIndex="-1">Shared with</a></li>
                         </ul>
                         </div>);
@@ -1002,6 +1063,7 @@ render: function() {
                 return (<div>
                                 {files}
                                 {contextMenu}
+                                {browserContextMenu}
                                 </div>)
 
                         const sortGlyph = "glyphicon glyphicon-sort";
@@ -1017,6 +1079,7 @@ render: function() {
                                 </tbody>
                                 </table>
                                 {contextMenu}
+                                {browserContextMenu}
                                 </div>)
         }
 });
