@@ -52,6 +52,41 @@ ae.style = "display: none";
 var fragmentCounter = 0;
 var fragmentTotal =0;
 
+var uploadPercentage = new Object();
+uploadPercentage.current = 0;
+uploadPercentage.setPercent = function(val){
+        this.current = val
+    
+};
+
+
+var UploadReact = React.createClass({
+        getInitialState: function() {
+            return {
+                percent: 0
+            }
+        },
+        render: function() {
+            return (<div><Progress percent={this.state.percent}/>
+                </div>);
+        },
+        componentDidMount: function() {
+            this.stupid();
+        },
+        stupid: function() {
+            var intervalId = setInterval(function() {
+                var percent = uploadPercentage.current;
+                this.setState({percent: percent});
+            }.bind(this), 1000);
+        },
+        setPercent : function(val){
+            this.setState({
+                percent: uploadPercentage.current,
+                random: false
+            });
+        }
+});
+
 function openItem(name, data) {
     if(url != null){
         window.URL.revokeObjectURL(url);
@@ -80,7 +115,7 @@ function uploadFileOnClient(readFile, browser) {
               settings: {"timeout":  10000} 
               });
     
-    return browser.lastRetrievedFilePointer().uploadFile(name, readFile, userContext)
+    return browser.lastRetrievedFilePointer().uploadFile(name, readFile, userContext, uploadPercentage)
     .then(function(res){
             const currentPath =  browser.currentPath();
                                                                                            
@@ -93,6 +128,8 @@ function uploadFileOnClient(readFile, browser) {
             });
         browser.loadFilesFromServer();
         document.title = "Peergos - Control your data!";
+        uploadPercentage.current = 0;
+        uploadPercentage.browser = browser;
     });
 }
 
@@ -787,11 +824,11 @@ uploadFile: function() {
             for(var j = 0; j < files.length; j++) {
                 fragmentTotal = fragmentTotal + 60 * Math.ceil(files[j].size/Chunk.MAX_SIZE);
             }
-            fragmentCounter = 0;
             for(var i = 0; i < files.length; i++) {
                 var file = files[i];
                 uploadFileOnClient(file, browser);
             }
+            fragmentCounter = 0;
         }.bind(this);
 },      
                                 
@@ -1061,8 +1098,9 @@ render: function() {
                         </div>);
 
         layout = null; 
+        
         if (this.state.gridView) 
-                return (<div>
+                return (<div><UploadReact/>
                                 {files}
                                 {contextMenu}
                                 {browserContextMenu}
@@ -1070,7 +1108,7 @@ render: function() {
 
                         const sortGlyph = "glyphicon glyphicon-sort";
 
-        return (<div>
+        return (<div><UploadReact/>
                         <table className="table table-responsive table-striped table-hover">
                         <thead><tr>
                                 <th><button onClick={this.pathSort} className="btn btn-default"><span className={sortGlyph}/>Path</button></th>
