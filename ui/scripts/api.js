@@ -1021,10 +1021,10 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
             var futures = [];
             for (var i=0; i < fragments.length; i++){
                 if(setProgessPercentage != null){
-                    if(fragmentTotal != 0){
-                        var percentage = parseInt(++fragmentCounter / fragmentTotal * 100);
+                    if(uploadFragmentTotal != 0){
+                        var percentage = parseInt(++uploadFragmentCounter / uploadFragmentTotal * 100);
                         setProgessPercentage(percentage);
-                        document.title = "Peergos Uploading: " + percentage + "%" ;  
+                        //document.title = "Peergos Uploading: " + percentage + "%" ;  
                     }
                 }
                 futures[i] = this.uploadFragment(fragments[i], owner, sharer, mapKey);
@@ -1151,7 +1151,8 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
         });
     }
 
-    this.downloadFragments = function(hashes, nRequired) {
+    this.downloadFragments = function(hashes, setProgessPercentage) {
+        downloadFragmentTotal = downloadFragmentTotal + hashes.length;
         var result = {}; 
         result.fragments = [];
         result.nError = 0;
@@ -1161,14 +1162,21 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
             proms.push(dhtClient.get(hashes[i]).then(function(val) {
                 result.fragments.push(val);
                 console.log("Got Fragment.");
+                if(setProgessPercentage != null){
+                    if(downloadFragmentTotal != 0){
+                        var percentage = parseInt(++downloadFragmentCounter / downloadFragmentTotal * 100);
+                        setProgessPercentage(percentage);
+                        //document.title = "Peergos Downloading: " + percentage + "%" ;  
+                    }
+                }
             }).catch(function() {
                 result.nError++;
             }));
 
         return Promise.all(proms).then(function (all) {
             console.log("All done.");
-            if (result.fragments.length < nRequired)
-                throw "Not enough fragments!";
+            //if (result.fragments.length < nRequired)
+            //    throw "Not enough fragments!";
             return Promise.resolve(result.fragments);
         });
     }
@@ -1464,9 +1472,9 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 	return new RetrievedFilePointer(writableFilePointer(), pointer.fileAccess).remove(context);
     }
 
-    this.getInputStream = function(context, size) {
+    this.getInputStream = function(context, size, setProgessPercentage) {
 	const baseKey = pointer.filePointer.baseKey;
-	return pointer.fileAccess.retriever.getFile(context, baseKey, size)
+	return pointer.fileAccess.retriever.getFile(context, baseKey, size, setProgessPercentage)
     }
 
     this.getFileProperties = function() {
@@ -2041,11 +2049,10 @@ function EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChun
     this.chunkAuth = chunkAuth;
     this.fragmentHashes = fragmentHashes;
     this.nextChunk = nextChunk;
-
-    this.getFile = function(context, dataKey, len) {
+    this.getFile = function(context, dataKey, len, setProgessPercentage) {
         const stream = this;
-        return this.getChunkInputStream(context, dataKey, len).then(function(chunk) {
-            return Promise.resolve(new LazyInputStreamCombiner(stream, context, dataKey, chunk));
+        return this.getChunkInputStream(context, dataKey, len, setProgessPercentage).then(function(chunk) {
+            return Promise.resolve(new LazyInputStreamCombiner(stream, context, dataKey, chunk, setProgessPercentage));
         });
     }
 
@@ -2053,8 +2060,8 @@ function EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChun
         return this.nextChunk;
     }
 
-    this.getChunkInputStream = function(context, dataKey, len) {
-        var fragmentsProm = context.downloadFragments(fragmentHashes);
+    this.getChunkInputStream = function(context, dataKey, len, setProgessPercentage) {
+        var fragmentsProm = context.downloadFragments(fragmentHashes, setProgessPercentage);
         return fragmentsProm.then(function(fragments) {
             fragments = reorder(fragments, fragmentHashes);
             var cipherText = erasure.recombine(fragments, len != 0 ? len : Chunk.MAX_SIZE, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
@@ -2096,7 +2103,7 @@ function split(arr, size) {
     return res;
 }
 
-function LazyInputStreamCombiner(stream, context, dataKey, chunk) {
+function LazyInputStreamCombiner(stream, context, dataKey, chunk, setProgessPercentage) {
     if (!chunk)
 	throw "Invalid current chunk!";
     this.context = context;
@@ -2104,14 +2111,14 @@ function LazyInputStreamCombiner(stream, context, dataKey, chunk) {
     this.current = chunk;
     this.index = 0;
     this.next = stream.getNext();
-
+    this.setProgessPercentage = setProgessPercentage;
     this.getNextStream = function(len) {
         if (this.next != null) {
             const lazy = this;
             return context.getMetadata(this.next).then(function(meta) {
                 var nextRet = meta.retriever;
                 lazy.next = nextRet.getNext();
-                return nextRet.getChunkInputStream(context, dataKey, len);
+                return nextRet.getChunkInputStream(context, dataKey, len, setProgessPercentage);
             });
         }
         throw "EOFException";

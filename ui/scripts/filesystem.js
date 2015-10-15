@@ -49,8 +49,10 @@ var url;
 var ae = document.createElement("a");
 document.body.appendChild(ae);
 ae.style = "display: none"; 
-var fragmentCounter = 0;
-var fragmentTotal =0;
+var uploadFragmentCounter = 0;
+var uploadFragmentTotal = 0;
+var downloadFragmentCounter = 0;
+var downloadFragmentTotal = 0;
 
 function openItem(name, data) {
     if(url != null){
@@ -80,7 +82,7 @@ function uploadFileOnClient(readFile, browser) {
               settings: {"timeout":  10000} 
               });
     
-    return browser.lastRetrievedFilePointer().uploadFile(name, readFile, userContext, browser.setProgressPercent)
+    return browser.lastRetrievedFilePointer().uploadFile(name, readFile, userContext, browser.setUploadProgressPercent)
     .then(function(res){
             const currentPath =  browser.currentPath();
                                                                                            
@@ -569,19 +571,31 @@ getInitialState: function() {
         };
 },
     
-setProgressPercent: function(percent) {
-                                console.log(percent);
+setUploadProgressPercent: function(percent) {
     if(percent >= 100){
         percent = 0;
-        fragmentCounter = 0;
-        fragmentTotal = 0;
-        document.title = "Peergos - Control your data!";
+        uploadFragmentCounter = 0;
+        uploadFragmentTotal = 0;
+        //document.title = "Peergos - Control your data!";
     }
     React.render(
                 <Progress percent={percent}/>,
-               document.getElementById("progressbar") 
+               document.getElementById("uploadprogressbar") 
     );
 
+},
+setDownloadProgressPercent: function(percent) {
+    console.log(percent);
+    if(percent >= 100){
+        percent = 0;
+        downloadFragmentCounter = 0;
+        downloadFragmentTotal = 0;
+        //document.title = "Peergos - Control your data!";
+    }
+    React.render(
+                <Progress percent={percent}/>,
+                document.getElementById("downloadprogressbar") 
+                );
 },
 
 entryPoint: function() {
@@ -608,6 +622,7 @@ currentPath : function() {
 },
 
 loadFilesFromServer: function(fileTreeNode) {
+        const browser = this;
         if (typeof(userContext) == "undefined" || userContext == null)
                 return;
         const callback = function(children) {
@@ -628,7 +643,7 @@ loadFilesFromServer: function(fileTreeNode) {
                                 settings: {"timeout":  5000} 
                             });
                             startInProgess();
-                            treeNode.getInputStream(userContext, size).then(function(buf) {
+                            treeNode.getInputStream(userContext, size, browser.setDownloadProgressPercent).then(function(buf) {
                                 console.log("reading "+ name + " with size "+ size);
                                 return buf.read(size).then(function(originalData) {
                                     openItem(name, originalData);
@@ -798,7 +813,7 @@ uploadFile: function() {
             const browser = this;
             var files = evt.target.files || evt.dataTransfer.files;
             for(var j = 0; j < files.length; j++) {
-                fragmentTotal = fragmentTotal + 60 * Math.ceil(files[j].size/Chunk.MAX_SIZE);
+                uploadFragmentTotal = uploadFragmentTotal + 60 * Math.ceil(files[j].size/Chunk.MAX_SIZE);
             }
             for(var i = 0; i < files.length; i++) {
                 var file = files[i];
@@ -817,7 +832,7 @@ selectHandler: function() {
             const browser = this;
             var files = evt.target.files || evt.dataTransfer.files;
             for(var j = 0; j < files.length; j++) {
-                fragmentTotal = fragmentTotal + 60 * Math.ceil(files[j].size/Chunk.MAX_SIZE);
+                uploadFragmentTotal = uploadFragmentTotal + 60 * Math.ceil(files[j].size/Chunk.MAX_SIZE);
             }
             for(var i = 0; i < files.length; i++) {
                 var file = files[i];
@@ -1074,7 +1089,8 @@ render: function() {
         
         if (this.state.gridView) 
                 return (<div>
-                                <div id="progressbar"></div>
+                                <div id="uploadprogressbar"></div>
+                                <div id="downloadprogressbar"></div>
                                 {files}
                                 {contextMenu}
                                 {browserContextMenu}
@@ -1083,7 +1099,8 @@ render: function() {
                         const sortGlyph = "glyphicon glyphicon-sort";
 
         return (<div>
-                        <div id="progressbar"></div>
+                        <div id="uploadprogressbar"></div>
+                        <div id="downloadprogressbar"></div>
                         <table className="table table-responsive table-striped table-hover">
                         <thead><tr>
                                 <th><button onClick={this.pathSort} className="btn btn-default"><span className={sortGlyph}/>Path</button></th>
