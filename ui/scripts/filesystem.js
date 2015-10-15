@@ -91,9 +91,7 @@ function uploadFileOnClient(readFile, browser) {
             message: "File "+ name  +" uploaded to  "+ currentPath,
             settings: {"timeout":  5000} 
             });
-        browser.loadFilesFromServer();
-        document.title = "Peergos - Control your data!";
-        browser.setProgressPercent(0);
+        browser.loadFilesFromServer();        
     });
 }
 
@@ -572,10 +570,18 @@ getInitialState: function() {
 },
     
 setProgressPercent: function(percent) {
+                                console.log(percent);
+    if(percent >= 100){
+        percent = 0;
+        fragmentCounter = 0;
+        fragmentTotal = 0;
+        document.title = "Peergos - Control your data!";
+    }
     React.render(
                 <Progress percent={percent}/>,
                document.getElementById("progressbar") 
     );
+
 },
 
 entryPoint: function() {
@@ -791,7 +797,6 @@ uploadFile: function() {
             }
             const browser = this;
             var files = evt.target.files || evt.dataTransfer.files;
-            fragmentTotal = 0;
             for(var j = 0; j < files.length; j++) {
                 fragmentTotal = fragmentTotal + 60 * Math.ceil(files[j].size/Chunk.MAX_SIZE);
             }
@@ -799,7 +804,6 @@ uploadFile: function() {
                 var file = files[i];
                 uploadFileOnClient(file, browser);
             }
-            fragmentCounter = 0;
         }.bind(this);
 },      
                                 
@@ -812,11 +816,9 @@ selectHandler: function() {
             dragHandler(evt);
             const browser = this;
             var files = evt.target.files || evt.dataTransfer.files;
-            fragmentTotal = 0;
             for(var j = 0; j < files.length; j++) {
                 fragmentTotal = fragmentTotal + 60 * Math.ceil(files[j].size/Chunk.MAX_SIZE);
             }
-            fragmentCounter = 0;
             for(var i = 0; i < files.length; i++) {
                 var file = files[i];
                 uploadFileOnClient(file, browser);

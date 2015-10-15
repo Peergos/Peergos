@@ -1021,9 +1021,11 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
             var futures = [];
             for (var i=0; i < fragments.length; i++){
                 if(setProgessPercentage != null){
-                    var percentage = parseInt(fragmentCounter++ / fragmentTotal * 100);
-                    setProgessPercentage(percentage);
-                    document.title = "Peergos Uploading: " + percentage + "%" ;  
+                    if(fragmentTotal != 0){
+                        var percentage = parseInt(++fragmentCounter / fragmentTotal * 100);
+                        setProgessPercentage(percentage);
+                        document.title = "Peergos Uploading: " + percentage + "%" ;  
+                    }
                 }
                 futures[i] = this.uploadFragment(fragments[i], owner, sharer, mapKey);
             }
