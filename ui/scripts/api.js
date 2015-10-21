@@ -56,11 +56,15 @@ function generateKeyPairs(username, password, cb) {
     var salt = nacl.util.decodeUTF8(username)
     
     return new Promise(function(resolve, reject) {
-        scrypt(hash, salt, 17, 8, 64, 1000, function(keyBytes) {
+        scrypt(hash, salt, 17, 8, 96, 1000, function(keyBytes) {
             var bothBytes = nacl.util.decodeBase64(keyBytes);
             var signBytes = bothBytes.subarray(0, 32);
             var boxBytes = bothBytes.subarray(32, 64);
-            resolve(new User(nacl.sign.keyPair.fromSeed(signBytes), nacl.box.keyPair.fromSecretKey(new Uint8Array(boxBytes))));
+	    var rootKeyBytes = bothBytes.subarray(64, 96);
+            resolve({
+		user:new User(nacl.sign.keyPair.fromSeed(signBytes), nacl.box.keyPair.fromSecretKey(new Uint8Array(boxBytes))),
+		root:new SymmetricKey(rootKeyBytes)
+	    });
         }, 'base64');
     });
 }
@@ -717,9 +721,10 @@ function CoreNodeClient() {
     };
 };
 
-function UserContext(username, user, dhtClient,  corenodeClient) {
+function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
     this.username  = username;
     this.user = user;
+    this.rootKey = rootKey;
     this.dhtClient = dhtClient;
     this.corenodeClient = corenodeClient;
     this.staticData = []; // array of map entry pairs

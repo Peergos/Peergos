@@ -4,11 +4,15 @@ function generateKeyPairs(username, password, cb) {
     salt = nacl.util.decodeUTF8(username)
     
     return new Promise(function(resolve, reject) {
-	scrypt(hash, salt, 1, 8, 64, 1000, function(keyBytes) {
+	scrypt(hash, salt, 1, 8, 96, 1000, function(keyBytes) {
 	    var bothBytes = nacl.util.decodeBase64(keyBytes);
 	    var signBytes = bothBytes.subarray(0, 32);
 	    var boxBytes = bothBytes.subarray(32, 64);
-	    resolve(new User(nacl.sign.keyPair.fromSeed(signBytes), nacl.box.keyPair.fromSecretKey(new Uint8Array(boxBytes))));
+	    var rootBytes = bothBytes.subarray(64, 96);
+	    resolve({
+		user:new User(nacl.sign.keyPair.fromSeed(signBytes), nacl.box.keyPair.fromSecretKey(new Uint8Array(boxBytes))),
+		root:new SymmetricKey(rootBytes)
+	    });
 	}, 'base64');
     });
 }

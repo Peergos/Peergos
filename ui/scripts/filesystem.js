@@ -340,10 +340,10 @@ var submit = function() {
 
     var ctx = null;
     startInProgess();
-    return generateKeyPairs(username, pw1).then(function(user) {
+    return generateKeyPairs(username, pw1).then(function(keys) {
             const dht = new DHTClient();
             const corenode = new CoreNodeClient();
-            ctx = new UserContext(username, user, dht, corenode);    
+            ctx = new UserContext(username, keys.user, keys.root, dht, corenode);    
             return  ctx.isRegistered();
         }).then(function(registered) {
                 if  (! registered) {
@@ -858,10 +858,10 @@ login: function(usernameArg, passwordArg) {
             }.bind(this);
 
         var ctx = null;
-        return generateKeyPairs(username, password).then(function(user) {
+        return generateKeyPairs(username, password).then(function(keys) {
                 var dht = new DHTClient();
                 var corenode = new CoreNodeClient();
-                ctx = new UserContext(username, user, dht, corenode);    
+                ctx = new UserContext(username, keys.user, keys.root, dht, corenode);    
                 return  ctx.isRegistered();
         }).then(function(registered) {
                 if  (! registered) {
