@@ -10,6 +10,7 @@ $('#modal').on('hide.bs.modal', function () {
 
 userContext =  null;
 
+
 populateModalAndShow = function(title, content) {
         $('#modal-title').html(title);
         $('#modal-body').html(content);
@@ -66,6 +67,7 @@ function dragHandler(e) {
     e.stopPropagation();
     e.preventDefault();
 }
+
 function uploadFileOnClient(readFile, browser) {
     var size = readFile.size;
     var name = readFile.name;
@@ -426,7 +428,7 @@ renderGrid: function() {
         var glyphClass = this.glyphClass();
 
         return (<div className="col-xs-6 col-md-3">
-                        <a id={this.props.id} onClick={this.props.onClick}>
+                        <a id={this.props.id} onClick={this.props.onClick} style={{cursor: "pointer"}}>
                         <span style={{fontSize:"3.5em"}} className={glyphClass}/>
                         </a>
                         <div className="caption">
@@ -522,7 +524,7 @@ renderList: function() {
         console.log("rendering list file with props "+ this.props.name);
         return (<tr id={this.props.id}>
                         <td>
-                        <a onClick={this.props.onClick}><span style={{fontSize:"1.5em", paddingRight:"10px"}} className={glyphClass}/>{this.props.name}</a>
+                        <a onClick={this.props.onClick} style={{cursor: "pointer"}}><span style={{fontSize:"1.5em", paddingRight:"20px"}} className={glyphClass} />{this.props.name}</a>
                         </td>
                         <td>{File.sizeString(this.props.size)}</td>
                         </tr>);
