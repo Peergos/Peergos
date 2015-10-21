@@ -21,9 +21,7 @@ var Progress = React.createClass({
   render: function () {
     var progressStyle = merge({
       display: 'inline-block',
-      position: 'fixed',
-      top: 0,
-      left: 0,
+      position: 'relative',
       width: (this.props.percent + "%"),
       maxWidth: '100% !important',
       height: (this.props.height + "px"),

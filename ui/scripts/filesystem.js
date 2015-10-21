@@ -1089,12 +1089,13 @@ render: function() {
                         </ul>
                         </div>);
 
+                        var progressBarWidget =  (<div><div id="downloadprogressbar" ></div>
+                                                       <div id="uploadprogressbar" ></div></div>);
         layout = null; 
         
         if (this.state.gridView) 
-                return (<div>
-                        <div id="downloadprogressbar" ></div>
-                        <div id="uploadprogressbar" ></div>
+                                return (<div>
+                                        {progressBarWidget}
                                 {files}
                                 {contextMenu}
                                 {browserContextMenu}
@@ -1103,8 +1104,7 @@ render: function() {
                         const sortGlyph = "glyphicon glyphicon-sort";
 
         return (<div>
-                <div id="downloadprogressbar" ></div>
-                <div id="uploadprogressbar" ></div>
+                {progressBarWidget}
                         <table className="table table-responsive table-striped table-hover">
                         <thead><tr>
                                 <th><button onClick={this.pathSort} className="btn btn-default"><span className={sortGlyph}/>Path</button></th>
@@ -1116,6 +1116,7 @@ render: function() {
                                 </table>
                                 {contextMenu}
                                 {browserContextMenu}
+
                                 </div>)
         }
 });
