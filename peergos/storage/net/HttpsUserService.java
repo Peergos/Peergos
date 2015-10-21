@@ -22,7 +22,6 @@ public class HttpsUserService
     public static final String MESSAGE_URL = "/message/";
     public static final String DHT_URL = "/dht/";
     public static final String ERASURE_URL = "/erasure/";
-    public static final String PUBLIC_LINK_URL = "/public/";
     public static final String UI_URL = "/";
     public static final String UI_DIR = "ui/";
 
@@ -135,7 +134,6 @@ public class HttpsUserService
 
         httpsServer.createContext(DHT_URL, new DHTUserAPIHandler(dht));
         httpsServer.createContext(ERASURE_URL, ErasureHandler.getInstance());
-        httpsServer.createContext(PUBLIC_LINK_URL, new FixedResponseHandler(UI_DIR, "publiclink.html", false));
         httpsServer.createContext(UI_URL, new StaticHandler(UI_DIR, false));
         httpsServer.createContext(HTTPCoreNodeServer.CORE_URL, new HTTPCoreNodeServer.CoreNodeHandler(coreNode));
         httpsServer.setExecutor(Executors.newFixedThreadPool(THREADS));

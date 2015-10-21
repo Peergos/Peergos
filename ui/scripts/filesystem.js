@@ -1126,3 +1126,39 @@ React.render(
                 <Browser/>,
                 document.getElementById('content')
             );
+
+if (window.location.hash)  {
+    $("#login-form").css("display","none");
+    const  keysString = window.location.hash.substring(1);
+
+    console.log(keysString);
+    const filePointer = ReadableFilePointer.fromLink(keysString);
+    const baseKey = filePointer.baseKey;
+    console.log(filePointer);
+    const corenodeClient = new CoreNodeClient();
+    const context = new UserContext(null, null, null, new DHTClient(), corenodeClient);
+    corenodeClient.getMetadataBlob(filePointer.owner, filePointer.writer, filePointer.mapKey).then(function(raw) {
+		     
+        var unwrapped = new ByteArrayInputStream(raw).readArray();
+        if (unwrapped.length == 0)
+            return alert("File not found");
+        const fa = FileAccess.deserialize(unwrapped);
+        const props = fa.getFileProperties(baseKey);
+        const name = props.name;
+        const size = props.size;
+        $.toaster({
+            priority: "info",
+            message: "Downloading file "+ name, 
+            settings: {"timeout":  5000} 
+        });
+		     
+        fa.retriever.getFile(context, baseKey).then(function(buf) {
+                console.log("reading "+ name);
+		        return buf.read(size).then(function(originalData) {
+                openItem(name, originalData);
+            });
+        });
+    });
+}
+
+

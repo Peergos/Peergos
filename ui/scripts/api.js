@@ -1257,7 +1257,7 @@ function ReadableFilePointer(owner, writer, mapKey, baseKey) {
     }
 
     this.toLink = function() {
-	return "/public/" + bytesToHex(owner.getPublicKeys()) + "/" + bytesToHex(writer.getPublicKeys()) + "/" + bytesToHex(mapKey) + "/" + bytesToHex(baseKey.key);
+	return "#" + bytesToHex(owner.getPublicKeys()) + "/" + bytesToHex(writer.getPublicKeys()) + "/" + bytesToHex(mapKey) + "/" + bytesToHex(baseKey.key);
     }
 }
 ReadableFilePointer.fromLink = function(keysString) {
@@ -2104,7 +2104,7 @@ function split(arr, size) {
 
 function LazyInputStreamCombiner(stream, context, dataKey, chunk, setProgessPercentage) {
     if (!chunk)
-	throw "Invalid current chunk!";
+        throw "Invalid current chunk!";
     this.context = context;
     this.dataKey = dataKey;
     this.current = chunk;
