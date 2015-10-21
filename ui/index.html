@@ -7,6 +7,7 @@
                 <link rel="stylesheet" href="css/bootstrap-theme.min.css" />
                 <link rel="stylesheet" href="css/pong.css" />
                 <link rel="stylesheet" href="css/signin.css" />
+                <link rel="stylesheet" href="css/jquery-ui.min.css" />
 
                 <script type="text/javascript" src="scripts/scrypt.js"></script>
                 <script type="text/javascript" src="scripts/nacl.js"></script>
@@ -18,6 +19,8 @@
                 <script src="scripts/react.js"></script>
                 <script src="scripts/JSXTransformer.js"></script>
                 <script src="scripts/jquery.min.js"></script>
+                <script src="scripts/jquery.pointy.min.js"></script>
+                <script src="scripts/tour.js"></script>
                 <script src="scripts/marked.min.js"></script>
                 <script src="scripts/bootstrap.min.js"></script>
                 <script src="scripts/bootstrap-contextmenu.js"></script>
@@ -37,8 +40,8 @@
                         </div>
                         <div class="collapse navbar-collapse" id="example-navbar-collapse">
                                 <ul class="nav navbar-nav">
-                                        <li id="homeButton"><a><span data-toggle="tooltip" data-placement="bottom" title="Home" class="glyphicon glyphicon-home" style="cursor: pointer;"/></a></li>
-                                        <li id="uploadButton"><a><span data-toggle="tooltip" data-placement="bottom" title="Upload file" class="glyphicon glyphicon-upload"  style="cursor: pointer;"/></a></li>
+                                        <li id="homeButton"><a><span data-toggle="tooltip" data-placement="bottom" title="Home" class="glyphicon glyphicon-home tour-home" style="cursor: pointer;"/></a></li>
+                                        <li id="uploadButton"><a><span data-toggle="tooltip" data-placement="bottom" title="Upload file" class="glyphicon glyphicon-upload tour-upload"  style="cursor: pointer;"/></a></li>
                                         <li id="mkdirButton"><a><span data-toggle="tooltip" data-placement="bottom" title="Create new directory" class="glyphicon glyphicon-folder-open"  style="cursor: pointer;"/></a></li>
                                         <li id="alternateViewButton"><a><span data-toggle="tooltip" data-placement="bottom" title="Switch view" id="altViewSpan" class="glyphicon glyphicon-th-large"  style="cursor: pointer;"/></a></li>
                                         <li id="userOptionsButton"><a><span data-toggle="tooltip" data-placement="bottom" title="Sharinng options" id="sharingOptionsSpan" class="glyphicon glyphicon-user"  style="cursor: pointer;"/></a></li>
@@ -68,6 +71,13 @@
                                 </div>
                         </div>
                 </div>
+		<div style="padding:20%;padding-left:30%;">
+		  <div id="tour" class="ui-corner-all pointer ui-state-active" style="width:200px;padding:20px;">
+		    <div class="tour-text">
+		      text
+		    </div>
+		  </div>
+		</div>
 
                 <input type="file" id="uploadInput" style="display:none;" multiple="" />
                 <script type="text/jsx;harmony=true" src="scripts/filesystem.js"></script>
