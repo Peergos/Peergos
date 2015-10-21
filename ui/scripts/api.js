@@ -63,7 +63,7 @@ function generateKeyPairs(username, password, cb) {
 	    var rootKeyBytes = bothBytes.subarray(64, 96);
             resolve({
 		user:new User(nacl.sign.keyPair.fromSeed(signBytes), nacl.box.keyPair.fromSecretKey(new Uint8Array(boxBytes))),
-		root:new SymmetricKey(rootKeyBytes)
+		root:new SymmetricKey(new Uint8Array(rootKeyBytes))
 	    });
         }, 'base64');
     });
@@ -765,7 +765,7 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
         var buf = new ByteArrayOutputStream();
         buf.writeInt(this.staticData.length);
         for (var i = 0; i < this.staticData.length; i++)
-            buf.writeArray(this.staticData[i][1].serializeAndEncrypt(this.user, this.user));
+            buf.writeArray(this.staticData[i][1].serializeAndSymmetricallyEncrypt(this.rootKey));
         return buf.toByteArray();
     }
 
@@ -1036,7 +1036,7 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
             var count = buf.readInt();
             var res = [];
             for (var i=0; i < count; i++) {
-                var entry = EntryPoint.decryptAndDeserialize(buf.readArray(), context.user, context.user);
+                var entry = EntryPoint.symmetricallyDecryptAndDeserialize(buf.readArray(), context.rootKey);
                 res.push(entry);
 		this.addToStaticData(entry);
             }
@@ -1521,6 +1521,11 @@ function EntryPoint(pointer, owner, readers, writers) {
         return target.encryptMessageFor(this.serialize(), user);
     }
 
+    this.serializeAndSymmetricallyEncrypt = function(key) {
+	var nonce = key.createNonce();
+	return concat(nonce, key.encrypt(this.serialize(), nonce));
+    }
+
     this.serialize = function() {
         const dout = new ByteArrayOutputStream();
         dout.writeArray(this.pointer.serialize());
@@ -1537,6 +1542,23 @@ function EntryPoint(pointer, owner, readers, writers) {
     }
 }
 
+// byte[], Key
+EntryPoint.symmetricallyDecryptAndDeserialize = function(input, key) {
+    const nonce = input.subarray(0, 24);
+    const raw = new Uint8Array(key.decrypt(input.subarray(24, input.length), nonce));
+    const din = new ByteArrayInputStream(raw);
+    const pointer = ReadableFilePointer.deserialize(din.readArray());
+    const owner = din.readString();
+    const nReaders = din.readInt();
+    const readers = [];
+    for (var i=0; i < nReaders; i++)
+        readers.push(din.readString());
+    const nWriters = din.readInt();
+    const writers = [];
+    for (var i=0; i < nWriters; i++)
+        writers.push(din.readString());
+    return new EntryPoint(pointer, owner, readers, writers);
+}
 // byte[], User, UserPublicKey
 EntryPoint.decryptAndDeserialize = function(input, user, from) {
     const raw = new Uint8Array(user.decryptMessage(input, from));
