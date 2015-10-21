@@ -1152,7 +1152,6 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
     }
 
     this.downloadFragments = function(hashes, setProgessPercentage) {
-        downloadFragmentTotal = downloadFragmentTotal + hashes.length;
         var result = {}; 
         result.fragments = [];
         result.nError = 0;

@@ -572,11 +572,13 @@ getInitialState: function() {
 },
     
 setUploadProgressPercent: function(percent) {
+                                
+    console.log(percent);
     if(percent >= 100){
         percent = 0;
         uploadFragmentCounter = 0;
         uploadFragmentTotal = 0;
-        //document.title = "Peergos - Control your data!";
+        document.title = "Peergos - Control your data!";
     }
     React.render(
                 <Progress percent={percent}/>,
@@ -585,6 +587,7 @@ setUploadProgressPercent: function(percent) {
 
 },
 setDownloadProgressPercent: function(percent) {
+                                
     console.log(percent);
     if(percent >= 100){
         percent = 0;
@@ -596,6 +599,7 @@ setDownloadProgressPercent: function(percent) {
                 <Progress percent={percent}/>,
                 document.getElementById("downloadprogressbar") 
                 );
+                                 
 },
 
 entryPoint: function() {
@@ -634,6 +638,7 @@ loadFilesFromServer: function(fileTreeNode) {
                         const onClick = isDir ? function() {
                             this.addToPath(treeNode);
                         }.bind(this) :  function() {
+                            downloadFragmentTotal = downloadFragmentTotal + 60 * Math.ceil(size/Chunk.MAX_SIZE);
                             //download the chunks and reconstruct the original bytes
                             //get the data
                             $.toaster(
@@ -1089,8 +1094,8 @@ render: function() {
         
         if (this.state.gridView) 
                 return (<div>
-                                <div id="uploadprogressbar"></div>
-                                <div id="downloadprogressbar"></div>
+                        <div id="downloadprogressbar" ></div>
+                        <div id="uploadprogressbar" ></div>
                                 {files}
                                 {contextMenu}
                                 {browserContextMenu}
@@ -1099,8 +1104,8 @@ render: function() {
                         const sortGlyph = "glyphicon glyphicon-sort";
 
         return (<div>
-                        <div id="uploadprogressbar"></div>
-                        <div id="downloadprogressbar"></div>
+                <div id="downloadprogressbar" ></div>
+                <div id="uploadprogressbar" ></div>
                         <table className="table table-responsive table-striped table-hover">
                         <thead><tr>
                                 <th><button onClick={this.pathSort} className="btn btn-default"><span className={sortGlyph}/>Path</button></th>
