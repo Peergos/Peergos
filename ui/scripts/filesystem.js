@@ -920,7 +920,7 @@ componentDidMount: function() {
         filedrag.addEventListener("drop", this.selectHandler(), false);                      
 
 
-        $("#content").contextmenu({
+        $("#filedrag").contextmenu({
                 target: '#browser-context-menu',
                 onItem: function(context, evt) {
                         const selected  =  evt.target.text.trim();
