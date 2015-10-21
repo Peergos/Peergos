@@ -399,7 +399,7 @@ render: function() {
                 <div className={usernameClass}>
                     <h2>Sign up credentials</h2>
                     {usernameLabel}
-                    <input placeholder="Username" id="signup-user-input" className="form-control" type="text"/>
+                    <input placeholder="Username" id="signup-user-input" className="form-control" type="text" autoFocus={true}/>
                 </div>
                 <div className={passwordClass}>
                     {passwordLabel}
@@ -1045,7 +1045,7 @@ render: function() {
                                 <div id="login-form">
                                 <h2>Please log in</h2>
                                 <div  className="form-group">
-                                        <input placeholder="Username" id="login-user-input" className="form-control" type="text"/>
+                                        <input placeholder="Username" id="login-user-input" className="form-control" type="text" autoFocus={true}/>
                                 </div>
                                 <div className="form-group">
                                         <input placeholder="Password" id="login-password-input" className="form-control" type="password"/>
