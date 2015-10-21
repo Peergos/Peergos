@@ -151,9 +151,10 @@ public class Start
 
     public static void demo() throws IOException{
         String domain = Args.getArg("domain", "localhost");
+        String coreNodePath = Args.getArg("coreNodePath", ":memory:");
         Start.main(new String[]{"-directoryServer", "-domain", domain});
 
-        Start.main(new String[] {"-coreNode", "-domain", domain, "-coreNodePath", Args.getArg("coreNodePath", ":memory:")});
+        Start.main(new String[] {"-coreNode", "-domain", domain, "-coreNodePath", Args.getArg("coreNodePath", coreNodePath)});
 
         Start.main(new String[]{"-firstNode", "-port", "443", "-logMessages", "-domain", domain, "-publicserver"});
     }
