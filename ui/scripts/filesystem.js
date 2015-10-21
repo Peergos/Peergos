@@ -588,7 +588,6 @@ setUploadProgressPercent: function(percent) {
 },
 setDownloadProgressPercent: function(percent) {
                                 
-    console.log(percent);
     if(percent >= 100){
         percent = 0;
         downloadFragmentCounter = 0;
