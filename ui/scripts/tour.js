@@ -23,14 +23,23 @@ tourStep = function(text, targetClass) {
     drawArrow("pointer", targetClass);
 }
 
-var tourElements = ["tour-home", "tour-upload", "tour-mkdir", "tour-view", "tour-logout"];
+var tourElements = ["tour-home", "tour-upload", "tour-mkdir", "tour-view", "tour-social", "tour-logout"];
 var tourText = ["Click here to go to your home directory.", "Click here to upload a file, or drag and drop one into the window.", "Click here to make a new directory", "Click here for social options", "Click here to logout"];
 
 function showTour(index) {
     if (index != 0)
 	tourStep(tourText[index-1], tourElements[index-1]); // hide the previous one
     $(".pointer").show();
+    $(".pointy").show();
     tourStep(tourText[index], tourElements[index]);
+}
+
+function tourNext() {
+    var current = tourText.indexOf($(".tour-text").text());
+    if (current == tourElements.length-1)
+	endTour();
+    else
+	showTour(current+1);
 }
 
 function endTour() {
