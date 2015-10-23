@@ -19,7 +19,7 @@ drawArrow = function(sourceClass, targetClass) {
 }
 
 tourStep = function(text, targetClass) {
-    $(".pointer").text(text);
+    $(".tour-text").text(text);
     drawArrow("pointer", targetClass);
 }
 
@@ -29,7 +29,13 @@ var tourText = ["Click here to go to your home directory.", "Click here to uploa
 function showTour(index) {
     if (index != 0)
 	tourStep(tourText[index-1], tourElements[index-1]); // hide the previous one
+    $(".pointer").show();
     tourStep(tourText[index], tourElements[index]);
+}
+
+function endTour() {
+    $(".pointer").hide();
+    $(".pointy").hide();
 }
 
 function startTour() {
