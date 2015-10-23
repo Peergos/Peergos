@@ -19,7 +19,7 @@
                 <script src="scripts/react.js"></script>
                 <script src="scripts/JSXTransformer.js"></script>
                 <script src="scripts/jquery.min.js"></script>
-                <script src="scripts/jquery.pointy.min.js"></script>
+                <script src="scripts/jquery.pointy.js"></script>
                 <script src="scripts/tour.js"></script>
                 <script src="scripts/marked.min.js"></script>
                 <script src="scripts/bootstrap.min.js"></script>
@@ -42,12 +42,12 @@
                                 <ul class="nav navbar-nav">
                                         <li id="homeButton"><a><span data-toggle="tooltip" data-placement="bottom" title="Home" class="glyphicon glyphicon-home tour-home" style="cursor: pointer;"/></a></li>
                                         <li id="uploadButton"><a><span data-toggle="tooltip" data-placement="bottom" title="Upload file" class="glyphicon glyphicon-upload tour-upload"  style="cursor: pointer;"/></a></li>
-                                        <li id="mkdirButton"><a><span data-toggle="tooltip" data-placement="bottom" title="Create new directory" class="glyphicon glyphicon-folder-open"  style="cursor: pointer;"/></a></li>
-                                        <li id="alternateViewButton"><a><span data-toggle="tooltip" data-placement="bottom" title="Switch view" id="altViewSpan" class="glyphicon glyphicon-th-large"  style="cursor: pointer;"/></a></li>
-                                        <li id="userOptionsButton"><a><span data-toggle="tooltip" data-placement="bottom" title="Sharinng options" id="sharingOptionsSpan" class="glyphicon glyphicon-user"  style="cursor: pointer;"/></a></li>
+                                        <li id="mkdirButton"><a><span data-toggle="tooltip" data-placement="bottom" title="Create new directory" class="glyphicon glyphicon-folder-open tour-mkdir"  style="cursor: pointer;"/></a></li>
+                                        <li id="alternateViewButton"><a><span data-toggle="tooltip" data-placement="bottom" title="Switch view" id="altViewSpan" class="glyphicon glyphicon-th-large tour-view"  style="cursor: pointer;"/></a></li>
+                                        <li id="userOptionsButton"><a><span data-toggle="tooltip" data-placement="bottom" title="Sharinng options" id="sharingOptionsSpan" class="glyphicon glyphicon-user tour-social"  style="cursor: pointer;"/></a></li>
                                         <li><a id="pathSpan"><span data-toggle="tooltip" data-placement="bottom" title="Current location" class="glyphicon glyphicon-chevron-right"/></a></li>
                                 </ul>
-                                <div id="logout" class="navbar-form navbar-right">
+                                <div id="logout" class="navbar-form navbar-right tour-logout">
                                 </div>
                                 <div id="inProgress" class="navbar-form navbar-right">
                                 </div>
@@ -71,13 +71,11 @@
                                 </div>
                         </div>
                 </div>
-		<div style="padding:20%;padding-left:30%;">
-		  <div id="tour" class="ui-corner-all pointer ui-state-active" style="width:200px;padding:20px;">
-		    <div class="tour-text">
-		      text
-		    </div>
+		
+		  <div id="tour" class="ui-corner-all pointer pointy pointy-active ui-state-active" style="position:absolute;z-index:1000;left:20%;top20%;width:200px;padding:20px;">
+		      A sufficiently large amount of text to cover the largest example.
 		  </div>
-		</div>
+		
 
                 <input type="file" id="uploadInput" style="display:none;" multiple="" />
                 <script type="text/jsx;harmony=true" src="scripts/filesystem.js"></script>

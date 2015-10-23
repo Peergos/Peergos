@@ -19,6 +19,19 @@ drawArrow = function(sourceClass, targetClass) {
 }
 
 tourStep = function(text, targetClass) {
-    $(".tour-text").text(text);
+    $(".pointer").text(text);
     drawArrow("pointer", targetClass);
+}
+
+var tourElements = ["tour-home", "tour-upload", "tour-mkdir", "tour-view", "tour-logout"];
+var tourText = ["Click here to go to your home directory.", "Click here to upload a file, or drag and drop one into the window.", "Click here to make a new directory", "Click here for social options", "Click here to logout"];
+
+function showTour(index) {
+    if (index != 0)
+	tourStep(tourText[index-1], tourElements[index-1]); // hide the previous one
+    tourStep(tourText[index], tourElements[index]);
+}
+
+function startTour() {
+    showTour(0);
 }
