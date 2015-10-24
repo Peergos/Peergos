@@ -1059,8 +1059,8 @@ render: function() {
                     return (<File id={File.id()} gridView={this.state.gridView} onClick={f.onClick} name={f.name} isdir={f.isDir} size={f.size} browser={this} retrievedFilePointer={f.filePointer}/>)
         }.bind(this)); 
 
-        const gridGlyph = "glyphicon glyphicon-th-large";
-        const listGlyph = "glyphicon glyphicon-list";
+        const gridGlyph = "glyphicon glyphicon-th-large tour-view";
+        const listGlyph = "glyphicon glyphicon-list tour-view";
         const element = document.getElementById("altViewSpan");
         const className = this.state.gridView ? listGlyph : gridGlyph;
         element.className = className;
