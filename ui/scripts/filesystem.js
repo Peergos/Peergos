@@ -1076,7 +1076,7 @@ render: function() {
                         <li><a tabIndex="-1">Open</a></li>
                         <li className="divider"></li>
                         <li><a tabIndex="-1">Rename</a></li>
-                        <li><a tabIndex="-1">Remove</a></li>
+                        <li><a tabIndex="-1">Delete</a></li>
                         <li className="divider"></li>
                         <li><a tabIndex="-1">Copy</a></li>
                         <li><a tabIndex="-1">Cut</a></li>
