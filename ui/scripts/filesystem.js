@@ -285,7 +285,7 @@ const buildSharingTable = function(socialState, treeNode) {
                      clearInProgress();   
                      $.toaster({
                                         priority: "info",
-                                        message: "Failed to shared with "+ name, 
+                                        message: "Failed to share with "+ name, 
                                         settings: {"timeout":  5000} 
                      });
                 })
@@ -447,7 +447,7 @@ componentDidMount: function() {
                         console.log("on item "+ selected);
                         if  (selected  == "Rename") {
                                this.rename(); 
-                        } else if (selected  == "Remove")  {
+                        } else if (selected  == "Delete")  {
                                 this.remove();
                         } else if (selected  == "Open")  {
                                 this.props.onClick();
@@ -471,7 +471,7 @@ componentDidMount: function() {
                                                 document.getElementById("modal-body"));
                                         $('#modal').modal("show");   
                                 }.bind(this));
-                        } else if (selected  == "Shared with")  {
+                        } else if (selected  == "Readers")  {
                             userContext.getSocialState().then(function(socialState) {
                                 const sharedWith = socialState.sharedWith(this.props.retrievedFilePointer.getLocation()).map(function(name) {
                                         return "<li>"+name+"</li>";
@@ -1085,7 +1085,7 @@ render: function() {
                         <li><a tabIndex="-1">Create public link</a></li>
                         <li className="divider"></li>
                         <li><a tabIndex="-1">Share</a></li>
-                        <li><a tabIndex="-1">Shared with</a></li>
+                        <li><a tabIndex="-1">Readers</a></li>
                         </ul>
                         </div>);
 
