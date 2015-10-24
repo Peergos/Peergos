@@ -378,9 +378,9 @@ var submit = function() {
                 return root.fileAccess.mkdir("shared", ctx, root.filePointer.writer, root.filePointer.mapKey, root.filePointer.baseKey, null, true);
         }.bind(this)).then(function() {
             console.log("Verified user "+ username +" is registered");
-            populateModalAndShow("Success", "You have registered the username "+  username);
             clearInProgress();
             this.props.browser.login(username, pw1);
+	    startTour();
         }.bind(this));
 }.bind(this);
 document.getElementById("signupSubmitButton").onclick = submit; 

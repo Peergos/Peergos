@@ -44,7 +44,7 @@
                                         <li id="uploadButton"><a><span data-toggle="tooltip" data-placement="bottom" title="Upload file" class="glyphicon glyphicon-upload tour-upload"  style="cursor: pointer;"/></a></li>
                                         <li id="mkdirButton"><a><span data-toggle="tooltip" data-placement="bottom" title="Create new directory" class="glyphicon glyphicon-folder-open tour-mkdir"  style="cursor: pointer;"/></a></li>
                                         <li id="alternateViewButton"><a><span data-toggle="tooltip" data-placement="bottom" title="Switch view" id="altViewSpan" class="glyphicon glyphicon-th-large tour-view"  style="cursor: pointer;"/></a></li>
-                                        <li id="userOptionsButton"><a><span data-toggle="tooltip" data-placement="bottom" title="Sharinng options" id="sharingOptionsSpan" class="glyphicon glyphicon-user tour-social"  style="cursor: pointer;"/></a></li>
+                                        <li id="userOptionsButton"><a><span data-toggle="tooltip" data-placement="bottom" title="Sharing options" id="sharingOptionsSpan" class="glyphicon glyphicon-user tour-social"  style="cursor: pointer;"/></a></li>
                                         <li><a id="pathSpan"><span data-toggle="tooltip" data-placement="bottom" title="Current location" class="glyphicon glyphicon-chevron-right"/></a></li>
                                 </ul>
                                 <div id="logout" class="navbar-form navbar-right tour-logout">
@@ -72,11 +72,11 @@
                         </div>
                 </div>
 		
-		  <div id="tour" class="ui-corner-all pointer pointy pointy-active ui-state-active" style="position:absolute;z-index:1000;left:40%;top:20%;width:300px;padding:20px;display:none;">
+		  <div id="tour" class="ui-corner-all pointer pointy pointy-active ui-state-active" style="position:absolute;z-index:1000;left:40%;bottom:40%;width:300px;padding:20px;display:none;">
 		     <div class="tour-text" style="text-align:center;font-size:18px;margin:5px;">
 		      The tour!
 		     </div>
-		    <button type="button" class="close" onclick="tourNext();" style="margin:5px;padding:10px;z-index:1001;display:inline;">Continue</button>
+		    <button type="button" class="close tour-continue" onclick="tourNext();" style="margin:5px;padding:10px;z-index:1001;display:inline;">Continue</button>
 		    <button type="button" class="close" onclick="endTour();" style="margin:5px;padding:10px;z-index:1001;display:inline;">Skip tour</button>
 		  </div>
 		

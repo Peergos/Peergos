@@ -333,7 +333,7 @@ var $pointy =	$.pointy = function( pointee, options ) {
 				reg = data.$pointer.offset(),
 				pos = data.$pointer.position(),
 				// compare offset & position left, if position === offset, then use offset
-				useOffset = typeof o.useOffset === 'boolean' ? o.useOffset : pos.left === reg.left;
+				useOffset = false;//typeof o.useOffset === 'boolean' ? o.useOffset : pos.left === reg.left;
 
 			pos = useOffset ? reg : pos;
 			data.pointer.left   = pos.left;

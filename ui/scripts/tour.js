@@ -20,11 +20,12 @@ function drawArrow(sourceClass, targetClass) {
 
 function tourStep(text, targetClass) {
     $(".tour-text").text(text);
-    drawArrow("pointer", targetClass);
+    if (targetClass.length > 0)
+	drawArrow("pointer", targetClass);
 }
 
-var tourElements = ["tour-home", "tour-upload", "tour-mkdir", "tour-view", "tour-social", "tour-logout"];
-var tourText = ["Click here to go to your home directory", "Click here to upload a file, or drag and drop one into the window.", "Click here to make a new directory", "Click here to switch between grid and list view", "Click here for social options. You can send a follow request, see your followers and see the files shared with you.", "Click here to logout"];
+var tourElements = ["", "tour-home", "tour-upload", "tour-mkdir", "tour-view", "tour-social", "tour-logout"];
+var tourText = ["Welcome to Peergos! Let us show you around.", "Click here to go to your home directory", "Click here to upload a file, or drag and drop one into the window.", "Click here to make a new directory", "Click here to switch between grid and list view", "Click here for social options. You can send a follow request, see your followers and see the files shared with you.", "Click here to logout"];
 
 function showTour(index) {
     console.log("tour "+index);
