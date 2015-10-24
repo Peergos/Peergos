@@ -1,4 +1,4 @@
-arrow = function(from, to) {
+function arrow(from, to) {
     // initialize pointy
     to.pointy({
         pointer      : from,
@@ -14,23 +14,22 @@ arrow = function(from, to) {
 }
 
 // String -> String
-drawArrow = function(sourceClass, targetClass) {
+function drawArrow(sourceClass, targetClass) {
     arrow($("."+sourceClass), $("."+targetClass));
 }
 
-tourStep = function(text, targetClass) {
+function tourStep(text, targetClass) {
     $(".tour-text").text(text);
     drawArrow("pointer", targetClass);
 }
 
 var tourElements = ["tour-home", "tour-upload", "tour-mkdir", "tour-view", "tour-social", "tour-logout"];
-var tourText = ["Click here to go to your home directory.", "Click here to upload a file, or drag and drop one into the window.", "Click here to make a new directory", "Click here for social options. You can send a follow request, see your followers and see the files shared with you.", "Click here to logout"];
+var tourText = ["Click here to go to your home directory", "Click here to upload a file, or drag and drop one into the window.", "Click here to make a new directory", "Click here to switch between grid and list view", "Click here for social options. You can send a follow request, see your followers and see the files shared with you.", "Click here to logout"];
 
 function showTour(index) {
-    if (index != 0)
-	tourStep(tourText[index-1], tourElements[index-1]); // hide the previous one
+    console.log("tour "+index);
+    $(".pointy").hide();
     $(".pointer").show();
-    $(".pointy").show();
     tourStep(tourText[index], tourElements[index]);
 }
 
