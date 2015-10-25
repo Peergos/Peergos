@@ -44,7 +44,7 @@ function tourNext() {
 
 function endTour() {
     $(".pointer").hide();
-    $(".pointy").hide();
+    $(".pointy").remove();
 }
 
 function startTour() {
