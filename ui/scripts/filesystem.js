@@ -379,6 +379,7 @@ var submit = function() {
         }.bind(this)).then(function() {
             console.log("Verified user "+ username +" is registered");
             clearInProgress();
+            $("#signup-form").text("");
             this.props.browser.login(username, pw1);
 	    startTour();
         }.bind(this));
