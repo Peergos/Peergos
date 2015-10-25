@@ -1152,7 +1152,7 @@ if (window.location.hash)  {
             settings: {"timeout":  5000} 
         });
 		     
-        fa.retriever.getFile(context, baseKey).then(function(buf) {
+        fa.retriever.getFile(context, baseKey, size).then(function(buf) {
                 console.log("reading "+ name);
 		        return buf.read(size).then(function(originalData) {
                 openItem(name, originalData);
