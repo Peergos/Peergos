@@ -945,6 +945,9 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
     }.bind(this);
 
     this.addToStaticData = function(entry) {
+	for (var i=0; i < this.staticData.length; i++)
+	    if (this.staticData[i][1].equals(entry))
+		return Promise.resolve(true);
         this.staticData.push([entry.pointer.writer, entry]);
         var rawStatic = new Uint8Array(this.serializeStatic());
         return corenodeClient.setStaticData(user, user.signMessage(rawStatic));
@@ -1109,7 +1112,7 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
     var createFileTree = function() {
 	return this.getRoots().then(function(roots){
 	    var entrypoints = roots.map(function(x) {return new FileTreeNode(new RetrievedFilePointer(x[0].pointer, x[1]), x[0].owner, x[0].readers, x[0].writers, x[0].pointer.writer);});
-	    console.log(entrypoints);
+	    console.log("Entry points "+entrypoints);
 	    var globalRoot = FileTreeNode.ROOT;
 	    var proms = [];
 	    
@@ -1234,6 +1237,8 @@ function ReadableFilePointer(owner, writer, mapKey, baseKey) {
     this.baseKey = baseKey; //SymmetricKey
 
     this.equals = function(that) {
+	if (that == null)
+	    return false;
 	return arraysEqual(this.owner.getPublicKeys(), that.owner.getPublicKeys()) &&
 	    arraysEqual(this.writer.getPublicKeys(), that.writer.getPublicKeys()) && 
 	    arraysEqual(this.mapKey, that.mapKey) &&
@@ -1551,6 +1556,12 @@ function EntryPoint(pointer, owner, readers, writers) {
     this.owner = owner;
     this.readers = readers;
     this.writers = writers;
+
+    this.equals = function(that) {
+	if (that == null)
+	    return false;
+	return this.pointer.equals(that.pointer);
+    }
 
     // User, UserPublicKey
     this.serializeAndEncrypt = function(user, target) {
