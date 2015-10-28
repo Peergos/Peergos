@@ -381,7 +381,7 @@ var submit = function() {
         }.bind(this)).then(function() {
             console.log("Verified user "+ username +" is registered");
             clearInProgress();
-            $("#signup-form").text("");
+            $("#signup-form").css("display","none");
             this.props.browser.login(username, pw1);
 	    startTour();
         }.bind(this));
@@ -914,12 +914,12 @@ logout: function(evt) {
     console.log("User logging out.");
     requireSignedIn(function() {
         userContext = null;
-logout();
         this.setState(this.getInitialState(),
         function() {
                 this.updateNavbarPath((<div/>));
                 $("#login-form").css("display","block");
                 $("#logout").html("");
+                this.componentDidMount();
         }.bind(this));
     }.bind(this));
 },
