@@ -1,21 +1,24 @@
 const centerStyle = {"text-align": "center"};
 
-const addStuffComponent = (<div className="jumbotron">
-        <div className="container">
-                <h2 style={centerStyle}>Nothing to see  here yet</h2>
-                <p  style={centerStyle}>Drag and drop files here or click <span className="glyphicon glyphicon-upload"/> above</p>
-        </div>
-        </div>);
-
-const sharedByComponent = function(name) {
+const buildJumbo = function(header, content) {
     return (<div className="jumbotron">
         <div className="container">
-                <h2 style={centerStyle}>Nothing to see  here yet</h2>
-                <p style={centerStyle}>Files shared with you by {name} will appear here</p>
+                <h2 style={centerStyle}>{header}</h2>
+                <p style={centerStyle}>{content}</p>
         </div>
         </div>);
 }
 
+const addStuffComponent = buildJumbo(
+                ("Nothing to see here yet"), 
+                ['Drag and drop files here or click ', <span className="glyphicon glyphicon-upload"/>,' above']);
+
+const sharedByComponent = function(name) {
+        return buildJumbo(
+                ("Nothing to see here yet"), 
+                ["Files shared with you by '", name,"' will appear here"]
+                );
+};
 
 $(document).ready(function(){
     //init. tooltips
@@ -1077,7 +1080,7 @@ render: function() {
         }.bind(this)); 
 
         const jumbo = files.length != 0 ? (<div></div>) : 
-                addStuffComponent;
+                    this.lastRetrievedFilePointer().isWritable() ? addStuffComponent : sharedByComponent(this.lastRetrievedFilePointer().getOwner());
 
         const gridGlyph = "glyphicon glyphicon-th-large tour-view";
         const listGlyph = "glyphicon glyphicon-list tour-view";
