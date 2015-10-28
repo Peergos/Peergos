@@ -17,7 +17,7 @@ Your entire file system in Peergos is encrypted with symmetric cryptography, whi
 Threat Model
 ------------
 
-1. Peergos is designed to be secure against passive network adversaries, even ones with state level computational resources. Despite all the encrypted data being publicly accessible, no one but the intended recipients can deduce any data or friendship graphs. 
+1. Peergos is designed to be secure against passive network adversaries, even ones with state level computational resources, who are able to store all data on the Peergos network indefinitely. Despite all the encrypted data being publicly accessible, no one but the intended recipients can deduce any data or friendship graphs. 
 
 2. Peergos does not defend against a compromised user's machine. 
 
