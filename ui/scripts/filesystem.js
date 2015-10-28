@@ -1,3 +1,21 @@
+const centerStyle = {"text-align": "center"};
+
+const addStuffComponent = (<div className="jumbotron">
+        <div className="container">
+                <h2 style={centerStyle}>Nothing to see  here yet</h2>
+                <p  style={centerStyle}>Drag and drop files here or click <span className="glyphicon glyphicon-upload"/> above</p>
+        </div>
+        </div>);
+
+const sharedByComponent = function(name) {
+    return (<div className="jumbotron">
+        <div className="container">
+                <h2 style={centerStyle}>Nothing to see  here yet</h2>
+                <p style={centerStyle}>Files shared with you by {name} will appear here</p>
+        </div>
+        </div>);
+}
+
 
 $(document).ready(function(){
     //init. tooltips
@@ -1058,6 +1076,9 @@ render: function() {
                     return (<File id={File.id()} gridView={this.state.gridView} onClick={f.onClick} name={f.name} isdir={f.isDir} size={f.size} browser={this} retrievedFilePointer={f.filePointer}/>)
         }.bind(this)); 
 
+        const jumbo = files.length != 0 ? (<div></div>) : 
+                addStuffComponent;
+
         const gridGlyph = "glyphicon glyphicon-th-large tour-view";
         const listGlyph = "glyphicon glyphicon-list tour-view";
         const element = document.getElementById("altViewSpan");
@@ -1095,6 +1116,7 @@ render: function() {
         if (this.state.gridView) 
                                 return (<div>
                                         {progressBarWidget}
+                                        {jumbo}
                                 {files}
                                 {contextMenu}
                                 {browserContextMenu}
@@ -1113,6 +1135,7 @@ render: function() {
                                 {files}
                                 </tbody>
                                 </table>
+                                {jumbo}
                                 {contextMenu}
                                 {browserContextMenu}
 
