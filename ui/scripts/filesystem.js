@@ -573,13 +573,10 @@ getInitialState: function() {
 },
     
 setUploadProgressPercent: function(percent) {
-                                
-    console.log(percent);
     if(percent >= 100){
         percent = 0;
         uploadFragmentCounter = 0;
         uploadFragmentTotal = 0;
-        document.title = "Peergos - Control your data!";
     }
     React.render(
                 <Progress percent={percent}/>,
@@ -649,7 +646,6 @@ loadFilesFromServer: function(fileTreeNode) {
                             });
                             startInProgess();
                             treeNode.getInputStream(userContext, size, browser.setDownloadProgressPercent).then(function(buf) {
-                                console.log("reading "+ name + " with size "+ size);
                                 return buf.read(size).then(function(originalData) {
                                     openItem(name, originalData);
                                 });

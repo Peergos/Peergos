@@ -247,7 +247,7 @@ function Chunk(data, key) {
 }
 Chunk.MAX_SIZE = Fragment.SIZE*EncryptedChunk.ERASURE_ORIGINAL
 // string, File, SymmetricKey, Location, SymmetricKey -> 
-function FileUploader(name, file, key, parentLocation, parentparentKey, setProgessPercentage) {
+function FileUploader(name, file, key, parentLocation, parentparentKey, setProgressPercentage) {
     this.props = new FileProperties(name, file.size, Date.now(), 0);
     if (key == null) key = SymmetricKey.random();
 
@@ -258,7 +258,7 @@ function FileUploader(name, file, key, parentLocation, parentparentKey, setProge
     this.key = key;
     this.parentLocation = parentLocation;
     this.parentparentKey = parentparentKey;
-    this.setProgessPercentage = setProgessPercentage;
+    this.setProgressPercentage = setProgressPercentage;
 
     this.uploadChunk = function(context, owner, writer, chunkIndex, file, nextLocation) {
 
@@ -278,7 +278,7 @@ function FileUploader(name, file, key, parentLocation, parentparentKey, setProge
 			hashes.push(fragments[f].getHash());
                     const retriever = new EncryptedChunkRetriever(chunk.nonce, encryptedChunk.getAuth(), hashes, nextLocation);
                     const metaBlob = FileAccess.create(chunk.key, that.props, retriever, parentLocation, parentparentKey);
-                    context.uploadChunk(metaBlob, fragments, owner, writer, chunk.mapKey, setProgessPercentage).then(function() {
+                    context.uploadChunk(metaBlob, fragments, owner, writer, chunk.mapKey, setProgressPercentage).then(function() {
 			resolve(new Location(owner, writer, chunk.mapKey));
 		    });
 		});
@@ -286,7 +286,7 @@ function FileUploader(name, file, key, parentLocation, parentparentKey, setProge
 	    filereader.readAsArrayBuffer(file.slice(chunkIndex*Chunk.MAX_SIZE, Math.min((1+chunkIndex)*Chunk.MAX_SIZE, file.size)));
 	}).then(function(nextL) {
 	    if (chunkIndex > 0)
-		return that.uploadChunk(context, owner, writer, chunkIndex-1, file, nextL, setProgessPercentage);
+		return that.uploadChunk(context, owner, writer, chunkIndex-1, file, nextL, setProgressPercentage);
 	    return Promise.resolve(nextL);
 	});
     }.bind(this);
@@ -1000,7 +1000,7 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
         return dhtClient.put(f.getHash(), f.getData(), targetUser.getPublicKeys(), sharer.getPublicKeys(), mapKey, sharer.signMessage(concat(sharer.getPublicKeys(), f.getHash())));
     }
 
-    this.uploadChunk = function(metadata, fragments, owner, sharer, mapKey, setProgessPercentage) {
+    this.uploadChunk = function(metadata, fragments, owner, sharer, mapKey, setProgressPercentage) {
         var buf = new ByteArrayOutputStream();
         metadata.serialize(buf);
         var metaBlob = buf.toByteArray();
@@ -1020,10 +1020,10 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
             // now upload fragments to DHT
             var futures = [];
             for (var i=0; i < fragments.length; i++){
-                if(setProgessPercentage != null){
+                if(setProgressPercentage != null){
                     if(uploadFragmentTotal != 0){
                         var percentage = parseInt(++uploadFragmentCounter / uploadFragmentTotal * 100);
-                        setProgessPercentage(percentage);
+                        setProgressPercentage(percentage);
                         //document.title = "Peergos Uploading: " + percentage + "%" ;  
                     }
                 }
@@ -1151,7 +1151,7 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
         });
     }
 
-    this.downloadFragments = function(hashes, setProgessPercentage) {
+    this.downloadFragments = function(hashes, setProgressPercentage) {
         var result = {}; 
         result.fragments = [];
         result.nError = 0;
@@ -1160,11 +1160,11 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
         for (var i=0; i < hashes.length; i++)
             proms.push(dhtClient.get(hashes[i]).then(function(val) {
                 result.fragments.push(val);
-                console.log("Got Fragment.");
-                if(setProgessPercentage != null){
+                //console.log("Got Fragment.");
+                if(setProgressPercentage != null){
                     if(downloadFragmentTotal != 0){
                         var percentage = parseInt(++downloadFragmentCounter / downloadFragmentTotal * 100);
-                        setProgessPercentage(percentage);
+                        setProgressPercentage(percentage);
                         //document.title = "Peergos Downloading: " + percentage + "%" ;  
                     }
                 }
@@ -1399,7 +1399,7 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 	return pointer.fileAccess.isDirectory();
     }
 
-    this.uploadFile = function(filename, file, context, setProgessPercentage) {
+    this.uploadFile = function(filename, file, context, setProgressPercentage) {
 	const fileKey = SymmetricKey.random();
         const rootRKey = pointer.filePointer.baseKey;
         const owner = pointer.filePointer.owner;
@@ -1409,7 +1409,7 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 	const parentLocation = new Location(owner, writer, dirMapKey);
 	const dirParentKey = dirAccess.getParentKey(rootRKey);
 	
-	const chunks = new FileUploader(filename, file, fileKey, parentLocation, dirParentKey, setProgessPercentage);
+	const chunks = new FileUploader(filename, file, fileKey, parentLocation, dirParentKey, setProgressPercentage);
         return chunks.upload(context, owner, entryWriterKey).then(function(fileLocation) {
 	    dirAccess.addFile(fileLocation, rootRKey, fileKey);
 	    return userContext.uploadChunk(dirAccess, [], owner, entryWriterKey, dirMapKey);
@@ -1471,9 +1471,9 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 	return new RetrievedFilePointer(writableFilePointer(), pointer.fileAccess).remove(context);
     }
 
-    this.getInputStream = function(context, size, setProgessPercentage) {
+    this.getInputStream = function(context, size, setProgressPercentage) {
 	const baseKey = pointer.filePointer.baseKey;
-	return pointer.fileAccess.retriever.getFile(context, baseKey, size, setProgessPercentage)
+	return pointer.fileAccess.retriever.getFile(context, baseKey, size, setProgressPercentage)
     }
 
     this.getFileProperties = function() {
@@ -2048,10 +2048,10 @@ function EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChun
     this.chunkAuth = chunkAuth;
     this.fragmentHashes = fragmentHashes;
     this.nextChunk = nextChunk;
-    this.getFile = function(context, dataKey, len, setProgessPercentage) {
+    this.getFile = function(context, dataKey, len, setProgressPercentage) {
         const stream = this;
-        return this.getChunkInputStream(context, dataKey, len, setProgessPercentage).then(function(chunk) {
-            return Promise.resolve(new LazyInputStreamCombiner(stream, context, dataKey, chunk, setProgessPercentage));
+        return this.getChunkInputStream(context, dataKey, len, setProgressPercentage).then(function(chunk) {
+            return Promise.resolve(new LazyInputStreamCombiner(stream, context, dataKey, chunk, setProgressPercentage));
         });
     }
 
@@ -2059,8 +2059,8 @@ function EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChun
         return this.nextChunk;
     }
 
-    this.getChunkInputStream = function(context, dataKey, len, setProgessPercentage) {
-        var fragmentsProm = context.downloadFragments(fragmentHashes, setProgessPercentage);
+    this.getChunkInputStream = function(context, dataKey, len, setProgressPercentage) {
+        var fragmentsProm = context.downloadFragments(fragmentHashes, setProgressPercentage);
         return fragmentsProm.then(function(fragments) {
             fragments = reorder(fragments, fragmentHashes);
             var cipherText = erasure.recombine(fragments, len != 0 ? len : Chunk.MAX_SIZE, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
@@ -2102,7 +2102,7 @@ function split(arr, size) {
     return res;
 }
 
-function LazyInputStreamCombiner(stream, context, dataKey, chunk, setProgessPercentage) {
+function LazyInputStreamCombiner(stream, context, dataKey, chunk, setProgressPercentage) {
     if (!chunk)
         throw "Invalid current chunk!";
     this.context = context;
@@ -2110,14 +2110,14 @@ function LazyInputStreamCombiner(stream, context, dataKey, chunk, setProgessPerc
     this.current = chunk;
     this.index = 0;
     this.next = stream.getNext();
-    this.setProgessPercentage = setProgessPercentage;
+    this.setProgressPercentage = setProgressPercentage;
     this.getNextStream = function(len) {
         if (this.next != null) {
             const lazy = this;
             return context.getMetadata(this.next).then(function(meta) {
                 var nextRet = meta.retriever;
                 lazy.next = nextRet.getNext();
-                return nextRet.getChunkInputStream(context, dataKey, len, setProgessPercentage);
+                return nextRet.getChunkInputStream(context, dataKey, len, setProgressPercentage);
             });
         }
         throw "EOFException";

@@ -1,7 +1,7 @@
 Peergos
 ========
 
-Peergos is a peer-to-peer encrypted filesystem with secure sharing of files designed to be resistant to surveillance of data content or friendship graphs. It will have a secure email replacement, with some interoperabiltiy with email. There will also be a totally private and secure social network, where users are in control of who sees what (executed cryptographically). 
+Peergos is a peer-to-peer encrypted filesystem with secure sharing of files designed to be resistant to surveillance of data content or friendship graphs. It will have a secure email replacement, with some interoperability with email. There will also be a totally private and secure social network, where users are in control of who sees what (executed cryptographically).
 
 The name Peergos comes from the Greek word Πύργος (Pyrgos), which means stronghold or tower, but phonetically spelt with the nice connection to being peer-to-peer. 
 
@@ -12,7 +12,7 @@ Project aims
  - To allow individuals to securely and privately store files in a peer to peer network which has no central node and is generally difficult to disrupt or surveil
  - To allow secure sharing of such files with other users of the network without visible meta-data (who shares with who)
  - To have a beautiful user interface that any computer or mobile user can understand
- - To have super fast file transfers by transfering fragments in parallel to/from different sources
+ - To have super fast file transfers by transferring fragments in parallel to/from different sources
  - To enable a new secure form of email
  - To be independent of the central SSL CA trust architecture
  - A user should be able to easily run Peergos on a machine in their home and get their own Peergos storage space, and social communication platform from it. 
@@ -39,7 +39,7 @@ Architecture
 3.0 Nodes
  - Types of node in decreasing order of reliability: Directory node, Core node, Storage node, Client node
  - The Directory nodes' locations and SSL certificates are hard-coded
- - The Core nodes are highly reliable, high bandwith nodes. They maintain the encrypted meta-data store for file fragments, and handle sharing between users
+ - The Core nodes are highly reliable, high bandwidth nodes. They maintain the encrypted meta-data store for file fragments, and handle sharing between users
  - A new node contacts one of the directory nodes to get a list of Storage and Core nodes to connect to
  - Storage nodes discover other storage nodes via distributed hash table (DHT) network traffic
  - network topology is ring based with random links across circle ~ log(N) routing steps
@@ -58,7 +58,7 @@ Architecture
  - encrypted files are duplicated locally, using erasure codes, into multiple fragments to distribute to the network
 
 6.0 Incentives
- - Amount of storage individuals are allowed to use is the amount they donate divided by the replication ratio. This amount takes a week of > 70% uptime to be usable, and will decrease if donated storage is ever online for less than 70% in the previous month (as measured by the network)
+ - Amount of storage individuals are allowed to use is the amount they donate divided by the replication ratio. This amount takes a week of > 70% up-time to be usable, and will decrease if donated storage is ever online for less than 70% in the previous month (as measured by the network)
 
 7.0 Repair after node disappearance
  - User's client is responsible for ensuring enough fragments of their files remain (another incentive to stay online)
