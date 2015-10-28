@@ -1006,9 +1006,6 @@ updatePath: function(path) {
 },
 
 addToPath: function(retrievedFilePointer) {
-        if (retrievedFilePointer.equals(this.lastRetrievedFilePointer()))
-                return;//stop race-condition
-
         const path= this.state.retrievedFilePointerPath.slice();//copy
         path.push(retrievedFilePointer);
         this.setState({
