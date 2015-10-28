@@ -141,7 +141,7 @@ const UserOptions = React.createClass({
                 }.bind(this);
 
                 const rows = pending.map(function(request) {
-                    const pendingName = request.entry.name;
+                    const pendingName = request.entry.owner;
                     const allowAndFollowBack = function() {
 
                         return reply(request, 
