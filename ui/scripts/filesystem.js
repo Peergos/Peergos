@@ -29,8 +29,10 @@ showNonWritableButtons = function() {
 }
 
 requireSignedIn = function(callback) {
-    if (userContext == null)  
-        populateModalAndShow('Who is this?','<p>Please sign in to continue.</p>');
+    if (userContext == null) { 
+        const url = window.location.origin.split("#")[0];
+        populateModalAndShow('Who is this?','<p>Please <a href="'+url+'">sign in</a> to continue.</p>');
+    }
     else
         callback();
 }
