@@ -11,7 +11,7 @@ const buildJumbo = function(header, content) {
 
 const addStuffComponent = buildJumbo(
                 ("Nothing to see here yet"), 
-                ['Drag and drop files here or click ', <span className="glyphicon glyphicon-upload"/>,' above']);
+                ['Drag and drop files here or click ', <span className="glyphicon glyphicon-upload"/>,' above to upload']);
 
 const sharedByComponent = function(name) {
         return buildJumbo(
