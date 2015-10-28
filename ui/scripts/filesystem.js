@@ -708,6 +708,9 @@ loadFilesFromServer: function(fileTreeNode) {
             
             if (rootSupplied)
                 this.state.retrievedFilePointerPath = [];
+	    const tmpPath = this.state.retrievedFilePointerPath;
+	    if (tmpPath.length > 0 && tmpPath[tmpPath.length-1].equals(globalRoot))
+		return;
             this.state.retrievedFilePointerPath.push(globalRoot);
 
             this.updateNavbarPath(this.currentPath());

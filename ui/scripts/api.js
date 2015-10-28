@@ -1301,7 +1301,11 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
     this.equals = function(other) {
 	if (other == null)
 	    return false;
-	return pointer.equals(other.pointer);
+	return pointer.equals(other.getPointer());
+    }
+
+    this.getPointer = function() {
+	return pointer;
     }
 
     this.addChild = function(child) {
