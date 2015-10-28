@@ -724,7 +724,7 @@ pathAsButtons: function(){
             }.bind(this);
             const className = index == this.state.retrievedFilePointerPath.length -1 ? "btn-primary" : "btn-default";
 
-            return (<button className={"btn "+className} onClick={onClick}>{name}</button>)
+            return (<button className={"btn "+className + " tour-path"} onClick={onClick}>{name}</button>)
         }.bind(this));
 },
 

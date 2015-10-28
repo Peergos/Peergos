@@ -24,7 +24,7 @@ function tourStep(text, targetClass) {
 	drawArrow("pointer", targetClass);
 }
 
-var tourElements = ["", "tour-home", "tour-upload", "tour-mkdir", "", "", "", "", "tour-view", "tour-social", "tour-logout"];
+var tourElements = ["", "tour-home", "tour-upload", "tour-mkdir", "", "", "tour-path", "", "tour-view", "tour-social", "tour-logout"];
 var tourText = ["Welcome to Peergos! Let us show you around.", "Click here to go to your home directory", "Click here to upload a file, or drag and drop one into the window.", "Click here to make a new directory", "Click/touch a file to download it", "Click/touch a directory to navigate into it", "You can use the path bar to jump to other directories", "Right click/long press an item to see options like delete/rename", "Click here to switch between grid and list view", "Click here for social options. You can send a follow request, see your followers and see the files shared with you.", "Click here to logout"];
 
 function showTour(index) {
