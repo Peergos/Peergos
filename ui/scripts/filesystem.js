@@ -16,8 +16,7 @@ const addStuffComponent = buildJumbo(
 const sharedByComponent = function(name) {
         return buildJumbo(
                 ("Nothing to see here yet"), 
-                ["Files shared with you by '", name,"' will appear here"]
-                );
+                ["Files shared with you by '", name,"' will appear here"]);
 };
 
 $(document).ready(function(){
