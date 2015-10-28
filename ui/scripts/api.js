@@ -1233,6 +1233,13 @@ function ReadableFilePointer(owner, writer, mapKey, baseKey) {
     this.mapKey = mapKey; //ByteArrayWrapper
     this.baseKey = baseKey; //SymmetricKey
 
+    this.equals = function(that) {
+	return arraysEqual(this.owner.getPublicKeys(), that.owner.getPublicKeys()) &&
+	    arraysEqual(this.writer.getPublicKeys(), that.writer.getPublicKeys()) && 
+	    arraysEqual(this.mapKey, that.mapKey) &&
+	    arraysEqual(this.baseKey.key, that.baseKey.key);
+    }
+
     this.serialize = function() {
         var bout = new ByteArrayOutputStream();
         bout.writeArray(owner.getPublicKeys());
@@ -1290,6 +1297,12 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
     var readers = readers;
     var writers = writers;
     var entryWriterKey = entryWriterKey;
+
+    this.equals = function(other) {
+	if (other == null)
+	    return false;
+	return pointer.equals(other.pointer);
+    }
 
     this.addChild = function(child) {
 	var name = child.getFileProperties().name;
@@ -1495,6 +1508,12 @@ function RetrievedFilePointer(pointer, access) {
     this.fileAccess = access;
     if (access == null)
 	throw "Null fileAccess!";
+
+    this.equals = function(that) {
+	if (that == null)
+	    return false;
+	return this.filePointer.equals(that.filePointer);
+    }
 
     this.remove = function(context, parentRetrievedFilePointer) {
 	if (!this.filePointer.isWritable())
