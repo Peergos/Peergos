@@ -458,7 +458,7 @@ renderGrid: function() {
                         <span style={{fontSize:"3.5em"}} className={glyphClass}/>
                         </a>
                         <div className="caption">
-                        <h4 className="heading">{this.props.name}</h4>
+                        <h4 className="heading" style={{wordWrap:"break-word"}} >{this.props.name}</h4>
                         </div>
                         </div>);
 },
