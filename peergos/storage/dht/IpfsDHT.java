@@ -1,6 +1,6 @@
 package peergos.storage.dht;
 
-import org.ipfs.*;
+import org.ipfs.api.*;
 
 import java.util.*;
 import java.util.concurrent.*;
