@@ -543,6 +543,21 @@ function CoreNodeClient() {
         });
     };
     
+    // () -> List<String>
+    this.getAllUsernames = function() {
+        return getProm("core/getAllUsernamesGzip").then(function(res) {
+            const din = new ByteArrayInputStream(res);
+	    var res = [];
+	    for (;;) {
+		try {
+		    res.push(din.readString());
+		} catch (e) {
+		    break;
+		}
+	    }
+            return Promise.resolve(res);
+        });
+    };    
     
     //String -> Uint8Array -> Uint8Array -> fn -> fn ->  boolean 
     this.addUsername = function(username, encodedUserKey, signed, staticData) {

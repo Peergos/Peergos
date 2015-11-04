@@ -57,7 +57,9 @@ public class HTTPCoreNodeServer
                         getUsername(din, dout);
                         break;
                     case "getAllUsernamesGzip":
-                        getUsername(din, dout);
+                        exchange.getResponseHeaders().set("Content-Encoding", "gzip");
+                        exchange.getResponseHeaders().set("Content-Type", "application/octet-stream");
+                        getAllUsernamesGzip(din, dout);
                         break;
                     case "followRequest":
                         followRequest(din, dout);
@@ -130,7 +132,7 @@ public class HTTPCoreNodeServer
         void getAllUsernamesGzip(DataInputStream din, DataOutputStream dout) throws IOException
         {
             byte[] res = coreNode.getAllUsernamesGzip();
-            Serialize.serialize(res, dout);
+            dout.write(res);
         }
 
         void followRequest(DataInputStream din, DataOutputStream dout) throws IOException

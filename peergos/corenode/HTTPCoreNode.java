@@ -198,7 +198,13 @@ public class HTTPCoreNode implements CoreNode
             conn.setDoInput(true);
 
             DataInputStream din = new DataInputStream(conn.getInputStream());
-            return Serialize.deserializeByteArray(din, 10*1024*1024);
+            ByteArrayOutputStream bout = new ByteArrayOutputStream();
+            byte[] tmp = new byte[4096];
+            int r;
+            while ((r = din.read(tmp)) >= 0) {
+                bout.write(tmp, 0, r);
+            }
+            return bout.toByteArray();
         } finally {
             if (conn != null)
                 conn.disconnect();

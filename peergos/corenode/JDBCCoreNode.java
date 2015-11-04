@@ -435,6 +435,7 @@ public class JDBCCoreNode implements CoreNode {
                 String username = rs.getString("name");
                 list.add(username);
             }
+            System.out.print("JDBC: "+list);
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
             DataOutput dout = new DataOutputStream(new GZIPOutputStream(bout));
 
