@@ -378,6 +378,7 @@ function getProm(url) {
     return new Promise(function(resolve, reject) {
     var req = new XMLHttpRequest();
     req.open('GET', url);
+    req.responseType = 'arraybuffer';
 
     req.onload = function() {
         // This is called even on 404 etc
@@ -549,11 +550,10 @@ function CoreNodeClient() {
             const din = new ByteArrayInputStream(res);
 	    var res = [];
 	    for (;;) {
-		try {
-		    res.push(din.readString());
-		} catch (e) {
+		var uname = din.readString();
+		if (uname == "")
 		    break;
-		}
+		res.push(uname);
 	    }
             return Promise.resolve(res);
         });
@@ -746,6 +746,7 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
     this.staticData = []; // array of map entry pairs
     this.rootNode = null;
     this.sharingFolder = null;
+    this.usernames = [];
 
     this.init = function() {
 	FileTreeNode.ROOT.clear();
@@ -760,7 +761,10 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
 			    for (var j=0; j < ourdirs.length; j++) {
 				if (ourdirs[j].getFileProperties().name == "shared") {
 				    context.sharingFolder = ourdirs[j];
-				    return Promise.resolve(true);
+				    return context.corenodeClient.getAllUsernames().then(function(unames){
+					context.usernames = unames;
+					return Promise.resolve(true);
+				    });
 				}
 			    }
 			    return Promise.reject("Couldn't find shared folder!");
