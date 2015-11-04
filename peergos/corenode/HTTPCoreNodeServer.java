@@ -56,6 +56,9 @@ public class HTTPCoreNodeServer
                     case "getUsername":
                         getUsername(din, dout);
                         break;
+                    case "getAllUsernamesGzip":
+                        getUsername(din, dout);
+                        break;
                     case "followRequest":
                         followRequest(din, dout);
                         break;
@@ -122,6 +125,12 @@ public class HTTPCoreNodeServer
             if (k == null)
                 k="";
             Serialize.serialize(k, dout);
+        }
+
+        void getAllUsernamesGzip(DataInputStream din, DataOutputStream dout) throws IOException
+        {
+            byte[] res = coreNode.getAllUsernamesGzip();
+            Serialize.serialize(res, dout);
         }
 
         void followRequest(DataInputStream din, DataOutputStream dout) throws IOException

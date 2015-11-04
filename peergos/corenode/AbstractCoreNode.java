@@ -7,6 +7,7 @@ import peergos.util.Serialize;
 
 import java.util.*;
 import java.io.*;
+import java.util.zip.*;
 
 public abstract class AbstractCoreNode implements CoreNode
 {
@@ -74,6 +75,15 @@ public abstract class AbstractCoreNode implements CoreNode
         userPublicKeyToNameMap.put(key, username); 
         userMap.put(key, new UserData(clearanceData));
         return true;
+    }
+
+    public byte[] getAllUsernamesGzip() throws IOException {
+        ByteArrayOutputStream bout = new ByteArrayOutputStream();
+        DataOutput dout = new DataOutputStream(new GZIPOutputStream(bout));
+        for (String uname: userNameToPublicKeyMap.keySet())
+            Serialize.serialize(uname, dout);
+
+        return bout.toByteArray();
     }
 
     public boolean setStaticData(UserPublicKey owner, byte[] signedStaticData)

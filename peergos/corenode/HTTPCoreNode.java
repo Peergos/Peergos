@@ -188,6 +188,23 @@ public class HTTPCoreNode implements CoreNode
                 conn.disconnect();
         }
     }
+
+    @Override public byte[] getAllUsernamesGzip() throws IOException
+    {
+        HttpURLConnection conn = null;
+        try
+        {
+            conn = (HttpURLConnection) buildURL("core/getAllUsernamesGzip").openConnection();
+            conn.setDoInput(true);
+
+            DataInputStream din = new DataInputStream(conn.getInputStream());
+            return Serialize.deserializeByteArray(din, 10*1024*1024);
+        } finally {
+            if (conn != null)
+                conn.disconnect();
+        }
+    }
+
     @Override public byte[] getFollowRequests(UserPublicKey owner)
     {
         HttpURLConnection conn = null;

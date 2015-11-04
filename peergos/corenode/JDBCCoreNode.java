@@ -6,6 +6,7 @@ import peergos.util.*;
 import java.io.*;
 import java.sql.*;
 import java.util.*;
+import java.util.zip.*;
 
 public class JDBCCoreNode implements CoreNode {
 
@@ -422,6 +423,30 @@ public class JDBCCoreNode implements CoreNode {
         UserData user = new UserData(username, key.getPublicKeys());
         return user.insert();
     }
+
+    @Override
+    public byte[] getAllUsernamesGzip() throws IOException {
+        try (PreparedStatement stmt = conn.prepareStatement("select name from users"))
+        {
+            ResultSet rs = stmt.executeQuery();
+            List<String> list = new ArrayList<>();
+            while (rs.next())
+            {
+                String username = rs.getString("name");
+                list.add(username);
+            }
+            ByteArrayOutputStream bout = new ByteArrayOutputStream();
+            DataOutput dout = new DataOutputStream(new GZIPOutputStream(bout));
+
+            for (String uname: list)
+                Serialize.serialize(uname, dout);
+
+            return bout.toByteArray();
+        } catch (SQLException sqe) {
+            throw new IOException(sqe);
+        }
+    }
+
 
     @Override
     public byte[] getStaticData(UserPublicKey owner) {
