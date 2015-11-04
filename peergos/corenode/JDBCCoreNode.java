@@ -435,13 +435,13 @@ public class JDBCCoreNode implements CoreNode {
                 String username = rs.getString("name");
                 list.add(username);
             }
-            System.out.print("JDBC: "+list);
+
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
-            DataOutput dout = new DataOutputStream(new GZIPOutputStream(bout));
+            try (DataOutputStream dout = new DataOutputStream(new GZIPOutputStream(bout))) {
 
-            for (String uname: list)
-                Serialize.serialize(uname, dout);
-
+                for (String uname : list)
+                    Serialize.serialize(uname, dout);
+            }
             return bout.toByteArray();
         } catch (SQLException sqe) {
             throw new IOException(sqe);
