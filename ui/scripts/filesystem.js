@@ -250,7 +250,7 @@ const UserOptions = React.createClass({
                 const onClick = function(){
                         this.props.browser.loadFilesFromServer(froot);
                 }.bind(this);
-                return (<tr onClick={onClick}>
+                return (<tr style={{cursor: "pointer"}} onClick={onClick}>
                                 <td><a><span className="glyphicon glyphicon-folder-open"/>&nbsp;&nbsp;{froot.getOwner()}</a></td>
                         </tr>);
             }.bind(this));
@@ -312,7 +312,9 @@ const buildSharingTable = function(socialState, treeNode) {
                      });
                 })
             }.bind(this);
-            return (<tr><td onClick={onClick}>{name}</td></tr>);
+            return (<tr><td style={{cursor: "pointer"}} onClick={onClick}>
+                            <a>{name}</a>
+                            </td></tr>);
         }.bind(this));
 
         return (<div>
