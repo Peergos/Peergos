@@ -5,10 +5,12 @@ import peergos.util.*;
 
 import java.io.*;
 import java.sql.*;
+import java.time.*;
 import java.util.*;
 import java.util.zip.*;
 
 public class JDBCCoreNode implements CoreNode {
+    public static final long MIN_USERNAME_SET_REFRESH_PERIOD = 60*1000000000L;
 
     private static final String TABLE_NAMES_SELECT_STMT = "SELECT * FROM sqlite_master WHERE type='table';";
     private static final String CREATE_USERS_TABLE = "create table users (id integer primary key autoincrement, name text not null, publickey text not null);";
@@ -26,6 +28,23 @@ public class JDBCCoreNode implements CoreNode {
     }
 
     private Connection conn;
+    private final UserSetCache userSet = new UserSetCache();
+
+    private static class UserSetCache {
+        private volatile byte[] userSet = null;
+        private volatile LocalDateTime nextExpiry = LocalDateTime.MIN;
+
+        public Optional<byte[]> getMostRecent() {
+            if (LocalDateTime.now().isBefore(nextExpiry))
+                return Optional.of(userSet);
+            return Optional.empty();
+        }
+
+        public void setUserSet(byte[] set) {
+            userSet = set;
+            nextExpiry = LocalDateTime.now().plusNanos(MIN_USERNAME_SET_REFRESH_PERIOD);
+        }
+    }
 
     private abstract class RowData
     {
@@ -426,6 +445,9 @@ public class JDBCCoreNode implements CoreNode {
 
     @Override
     public byte[] getAllUsernamesGzip() throws IOException {
+        Optional<byte[]> cached = userSet.getMostRecent();
+        if (cached.isPresent())
+            return cached.get();
         try (PreparedStatement stmt = conn.prepareStatement("select name from users"))
         {
             ResultSet rs = stmt.executeQuery();
@@ -442,7 +464,9 @@ public class JDBCCoreNode implements CoreNode {
                 for (String uname : list)
                     Serialize.serialize(uname, dout);
             }
-            return bout.toByteArray();
+            byte[] res = bout.toByteArray();
+            userSet.setUserSet(res);
+            return res;
         } catch (SQLException sqe) {
             throw new IOException(sqe);
         }
