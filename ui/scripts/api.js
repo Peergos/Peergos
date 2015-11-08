@@ -201,10 +201,6 @@ function asyncErasureEncode(original, originalBlobs, allowedFailures) {
 function Fragment(data) {
     this.data = data;
 
-    this.getHash = function() {
-        return UserPublicKey.hash(data);
-    }
-
     this.getData = function() {
         return data;
     }
@@ -273,13 +269,12 @@ function FileUploader(name, file, key, parentLocation, parentparentKey, setProgr
 		const encryptedChunk = chunk.encrypt();
 		encryptedChunk.generateFragments().then(function(fragments){
                     console.log("Uploading chunk with %d fragments\n", fragments.length);
-                    var hashes = [];
-                    for (var f in fragments)
-			hashes.push(fragments[f].getHash());
-                    const retriever = new EncryptedChunkRetriever(chunk.nonce, encryptedChunk.getAuth(), hashes, nextLocation);
-                    const metaBlob = FileAccess.create(chunk.key, that.props, retriever, parentLocation, parentparentKey);
-                    context.uploadChunk(metaBlob, fragments, owner, writer, chunk.mapKey, setProgressPercentage).then(function() {
-			resolve(new Location(owner, writer, chunk.mapKey));
+		    context.uploadFragments(fragments, owner, writer, chunk.mapKey, setProgressPercentage).then(function(hashes){
+			const retriever = new EncryptedChunkRetriever(chunk.nonce, encryptedChunk.getAuth(), hashes, nextLocation);
+			const metaBlob = FileAccess.create(chunk.key, that.props, retriever, parentLocation, parentparentKey);
+			context.uploadChunk(metaBlob, owner, writer, chunk.mapKey).then(function() {
+			    resolve(new Location(owner, writer, chunk.mapKey));
+			});
 		    });
 		});
 	    }
@@ -1022,7 +1017,24 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
         return dhtClient.put(f.getHash(), f.getData(), targetUser.getPublicKeys(), sharer.getPublicKeys(), mapKey, sharer.signMessage(concat(sharer.getPublicKeys(), f.getHash())));
     }
 
-    this.uploadChunk = function(metadata, fragments, owner, sharer, mapKey, setProgressPercentage) {
+    this.uploadFragments = function(fragments, owner, sharer, mapKey, setProgressPercentage) {
+	// now upload fragments to DHT
+        var futures = [];
+        for (var i=0; i < fragments.length; i++){
+            if(setProgressPercentage != null){
+                if(uploadFragmentTotal != 0){
+                    var percentage = parseInt(++uploadFragmentCounter / uploadFragmentTotal * 100);
+                    setProgressPercentage(percentage);
+                    //document.title = "Peergos Uploading: " + percentage + "%" ;  
+                }
+            }
+            futures[i] = this.uploadFragment(fragments[i], owner, sharer, mapKey);
+        }
+        // wait for all fragments to upload
+        return Promise.all(futures);
+    }.bind(this);
+
+    this.uploadChunk = function(metadata, owner, sharer, mapKey) {
         var buf = new ByteArrayOutputStream();
         metadata.serialize(buf);
         var metaBlob = buf.toByteArray();
@@ -1034,26 +1046,10 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
         .then(function(added) {
             if (!added) {
                 console.log("Meta blob store failed.");
+		return Promise.resolve(false);
             }
-        }).then(function() {
-            if (fragments.length == 0 )
-                return Promise.resolve(true);
-
-            // now upload fragments to DHT
-            var futures = [];
-            for (var i=0; i < fragments.length; i++){
-                if(setProgressPercentage != null){
-                    if(uploadFragmentTotal != 0){
-                        var percentage = parseInt(++uploadFragmentCounter / uploadFragmentTotal * 100);
-                        setProgressPercentage(percentage);
-                        //document.title = "Peergos Uploading: " + percentage + "%" ;  
-                    }
-                }
-                futures[i] = this.uploadFragment(fragments[i], owner, sharer, mapKey);
-            }
-            // wait for all fragments to upload
-            return Promise.all(futures);
-        }.bind(this));
+	    return Promise.resolve(true);
+        });
     }
 
     this.getRoots = function() {
@@ -1453,7 +1449,7 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 	const chunks = new FileUploader(filename, file, fileKey, parentLocation, dirParentKey, setProgressPercentage);
         return chunks.upload(context, owner, entryWriterKey).then(function(fileLocation) {
 	    dirAccess.addFile(fileLocation, rootRKey, fileKey);
-	    return userContext.uploadChunk(dirAccess, [], owner, entryWriterKey, dirMapKey);
+	    return userContext.uploadChunk(dirAccess, owner, entryWriterKey, dirMapKey);
 	});
     }
 
@@ -1834,12 +1830,12 @@ function FileAccess(parent2meta, properties, retriever, parentLink) {
 				       this.subfolders, this.files, this.parent2meta,
 				       concat(metaNonce, metaKey.encrypt(newProps.serialize(), metaNonce))
 				      );
-	    return context.uploadChunk(dira, [], writableFilePointer.owner, writableFilePointer.writer, writableFilePointer.mapKey);
+	    return context.uploadChunk(dira, writableFilePointer.owner, writableFilePointer.writer, writableFilePointer.mapKey);
 	} else {
 	    metaKey = this.getMetaKey(writableFilePointer.baseKey);
 	    const nonce = metaKey.createNonce();
 	    const fa = new FileAccess(this.parent2meta, concat(nonce, metaKey.encrypt(newProps.serialize(), nonce)), this.retriever, this.parentLink);
-	    return context.uploadChunk(fa, [], writableFilePointer.owner, writableFilePointer.writer, writableFilePointer.mapKey);
+	    return context.uploadChunk(fa, writableFilePointer.owner, writableFilePointer.writer, writableFilePointer.mapKey);
 	}
     }
 
@@ -1848,7 +1844,7 @@ function FileAccess(parent2meta, properties, retriever, parentLink) {
 	    throw "FileAcess clone must have same base key as original!";
 	const props = this.getFileProperties(baseKey);
 	const fa = FileAccess.create(newBaseKey, props, this.retriever, parentLocation, parentparentKey);
-	return context.uploadChunk(fa, [], context.user, entryWriterKey, newMapKey).then(function(res) {
+	return context.uploadChunk(fa, context.user, entryWriterKey, newMapKey).then(function(res) {
 	    return Promise.resolve(fa);
 	});
     }
@@ -1941,7 +1937,7 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
 	    }
 	    this.files = newfiles;
 	}
-	return context.uploadChunk(this, [], readablePointer.owner, readablePointer.writer, readablePointer.mapKey);
+	return context.uploadChunk(this, readablePointer.owner, readablePointer.writer, readablePointer.mapKey);
     }
 
     // 0=FILE, 1=DIR
@@ -1996,12 +1992,12 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
 	const ourLocation = new Location(userContext.user, writer, ourMapKey);
         const dir = DirAccess.create(dirReadKey, new FileProperties(name, 0, Date.now(), (isSystemFolder == null || !isSystemFolder) ? 0 : 1), ourLocation, ourParentKey);
 	const that = this;
-	    return userContext.uploadChunk(dir, [], userContext.user, writer, dirMapKey)
+	    return userContext.uploadChunk(dir, userContext.user, writer, dirMapKey)
                 .then(function(success) {
                     if (success) {
                         that.addSubdir(new Location(userContext.user, writer, dirMapKey), baseKey, dirReadKey);
 			// now upload the changed metadata blob for dir
-			return userContext.uploadChunk(that, [], userContext.user, writer, ourMapKey).then(function(res) {
+			return userContext.uploadChunk(that, userContext.user, writer, ourMapKey).then(function(res) {
 			    return Promise.resolve(new ReadableFilePointer(userContext.user, writer, dirMapKey, dirReadKey));
 			});
                     }
@@ -2010,7 +2006,7 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
     }
 
     this.commit = function(owner, writer, ourMapKey, userContext) {
-	return userContext.uploadChunk(this, [], userContext.user, writer, ourMapKey)
+	return userContext.uploadChunk(this, userContext.user, writer, ourMapKey)
     }.bind(this);
 
     this.addSubdir = function(location, ourSubfolders, targetBaseKey) {
@@ -2040,7 +2036,7 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
 	    });
 	    return Promise.all(proms);
 	}).then(function(res) {
-	    return context.uploadChunk(da, [], context.user, entryWriterKey, newMapKey).then(function(res) {
+	    return context.uploadChunk(da, context.user, entryWriterKey, newMapKey).then(function(res) {
 		return Promise.resolve(da);
 	    });
 	});
