@@ -581,11 +581,12 @@ var File = React.createClass({
                 var spanStyle = {fontSize:"1.5em"}; 
 
                 console.log("rendering list file with props "+ this.props.name);
+                var sizeString = this.props.isdir ? "" : File.sizeString(this.props.size);
                 return (<tr id={this.props.id}>
                                 <td>
                                 <a onClick={this.props.onClick} style={{cursor: "pointer"}}><span style={{fontSize:"1.5em", paddingRight:"20px"}} className={glyphClass} />{this.props.name}</a>
                                 </td>
-                                <td>{File.sizeString(this.props.size)}</td>
+                                <td>{sizeString}</td>
                                 </tr>);
         },
 
