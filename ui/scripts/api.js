@@ -459,7 +459,7 @@ function DHTClient() {
     //
     //put
     //
-    this.put = function(keyData, valueData, owner, sharingKeyData, mapKeyData, proofData) {        
+    this.put = function(valueData, owner, sharingKeyData, mapKeyData, proofData) {        
         var arrays = [valueData, owner, sharingKeyData, mapKeyData, proofData];
         var buffer = new ByteArrayOutputStream();
         buffer.writeInt(0); // PUT Message
@@ -1018,7 +1018,7 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
     }
     
     this.uploadFragment = function(f, targetUser, sharer, mapKey) {
-        return dhtClient.put(f.getHash(), f.getData(), targetUser.getPublicKeys(), sharer.getPublicKeys(), mapKey, sharer.signMessage(concat(sharer.getPublicKeys(), f.getHash())));
+        return dhtClient.put(f.getData(), targetUser.getPublicKeys(), sharer.getPublicKeys(), mapKey, sharer.signMessage(sharer.getPublicKeys()));
     }
 
     this.uploadFragments = function(fragments, owner, sharer, mapKey, setProgressPercentage) {
