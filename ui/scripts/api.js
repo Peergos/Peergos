@@ -540,7 +540,7 @@ function CoreNodeClient() {
     };
     
     // () -> List<String>
-    this.getAllUsernames = function() {
+    this.fetchUsernames = function() {
         return getProm("core/getAllUsernamesGzip").then(function(res) {
             const din = new ByteArrayInputStream(res);
 	    var res = [];
@@ -756,7 +756,7 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
 			    for (var j=0; j < ourdirs.length; j++) {
 				if (ourdirs[j].getFileProperties().name == "shared") {
 				    context.sharingFolder = ourdirs[j];
-				    return context.corenodeClient.getAllUsernames().then(function(unames){
+				    return context.corenodeClient.fetchUsernames().then(function(unames){
 					context.usernames = unames;
 					return Promise.resolve(true);
 				    });
@@ -769,6 +769,10 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
 	    });
 	});
     }.bind(this);
+
+    this.getUsernames= function() {
+            return this.usernames;
+    }
 
     this.isRegistered = function() {
         return corenodeClient.getUsername(user.getPublicKeys()).then(function(res){
