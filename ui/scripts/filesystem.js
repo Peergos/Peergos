@@ -65,6 +65,7 @@ startInProgess = function() {
 clearInProgress = function() {
         var element = document.getElementById("inProgress");
         element.className = element.className.replace(/pong-loader/, "");
+        return Promise.resolve(true);
 }
 
 var url;
@@ -417,7 +418,7 @@ var SignUp = React.createClass({
                                         passwordClass : "",
                                         passwordMsg : ""
                                 });
-                                return reject();
+                                return Promise.resolve(false);
                         }.bind(this)).then(function(isRegistered) {
                                 if  (! isRegistered) { 
                                         clearInProgress();
@@ -432,13 +433,13 @@ var SignUp = React.createClass({
                                 }
                                 return ctx.createEntryDirectory(username);
                         }).then(function(root) {
-                                return root.fileAccess.mkdir("shared", ctx, root.filePointer.writer, root.filePointer.mapKey, root.filePointer.baseKey, null, true);
+                                return Promise.resolve(root.fileAccess.mkdir("shared", ctx, root.filePointer.writer, root.filePointer.mapKey, root.filePointer.baseKey, null, true));
                         }.bind(this)).then(function() {
-                                console.log("Verified user "+ username +" is registered");
-                                clearInProgress();
-                                $("#signup-form").css("display","none");
-                                this.props.browser.login(username, pw1);
-                                startTour();
+                            console.log("Verified user "+ username +" is registered");
+			    return this.props.browser.login(username, pw1).then(function(){
+				clearInProgress();
+				startTour();
+			    });
                         }.bind(this));
                 }.bind(this);
                 document.getElementById("signupSubmitButton").onclick = submit; 
@@ -681,92 +682,93 @@ var Browser = React.createClass({
         },
 
         loadFilesFromServer: function(fileTreeNode) {
-                const browser = this;
-                if (typeof(userContext) == "undefined" || userContext == null)
+            const browser = this;
+            if (typeof(userContext) == "undefined" || userContext == null)
+                return Promise.resolve(false);
+            const callback = function(children) {
+                const files = children.filter(function(child){return !child.getFileProperties().isHidden()}).map(function(treeNode) {
+                    const props = treeNode.getFileProperties();
+                    const isDir = treeNode.isDirectory();
+                    const name  = props.name;
+                    const size = props.size;
+                    const onClick = isDir ? function() {
+                        this.addToPath(treeNode);
+                    }.bind(this) :  function() {
+                        downloadFragmentTotal = downloadFragmentTotal + 60 * Math.ceil(size/Chunk.MAX_SIZE);
+                        //download the chunks and reconstruct the original bytes
+                        //get the data
+                        $.toaster(
+                            {
+                                priority: "info",
+                                message: "Downloading file "+ name, 
+                                settings: {"timeout":  5000} 
+                            });
+                        startInProgess();
+                        treeNode.getInputStream(userContext, size, browser.setDownloadProgressPercent).then(function(buf) {
+                            return buf.read(size).then(function(originalData) {
+                                openItem(name, originalData);
+                            });
+                        }).then(clearInProgress);
+                    }.bind(this);
+                    return {
+                        onClick: onClick,
+                        name: name,
+                        isDir: isDir,
+                        size: size,
+                        filePointer: treeNode
+                    }
+                }.bind(this));
+		
+                this.setState({
+                    files: files, 
+                    sort: this.state.sort,  
+                    gridView: this.state.gridView, 
+                    retrievedFilePointerPath: this.state.retrievedFilePointerPath,
+                    clipboard: this.state.clipboard 
+                }, function() {
+                    this.updateNavbarPath(this.currentPath());
+                }.bind(this)); 
+            }.bind(this);
+	    
+            const isEmpty =  this.state.retrievedFilePointerPath.length == 0;
+            const rootSupplied =  typeof(fileTreeNode) == "FileTreeNode";
+            if (rootSupplied || isEmpty) {
+                var prom = null; 
+                if (rootSupplied)  
+                    prom = fileTreeNode.getChildren(userContext)
+                    .then(function(children){return children[0].getChildren(userContext).then(function(gChildren){return Promise.resolve(gChildren[0])})});
+                else
+                    prom = userContext.init().then(userContext.getUserRoot);
+		
+                return prom.then(function(globalRoot){
+		    
+                    if (rootSupplied)
+                        this.state.retrievedFilePointerPath = [];
+                    const tmpPath = this.state.retrievedFilePointerPath;
+                    if (tmpPath.length > 0 && tmpPath[tmpPath.length-1].equals(globalRoot))
                         return;
-                const callback = function(children) {
-                        const files = children.filter(function(child){return !child.getFileProperties().isHidden()}).map(function(treeNode) {
-                                const props = treeNode.getFileProperties();
-                                const isDir = treeNode.isDirectory();
-                                const name  = props.name;
-                                const size = props.size;
-                                const onClick = isDir ? function() {
-                                        this.addToPath(treeNode);
-                                }.bind(this) :  function() {
-                                        downloadFragmentTotal = downloadFragmentTotal + 60 * Math.ceil(size/Chunk.MAX_SIZE);
-                                        //download the chunks and reconstruct the original bytes
-                                        //get the data
-                                        $.toaster(
-                                                        {
-                                                                priority: "info",
-                                                                message: "Downloading file "+ name, 
-                                                                settings: {"timeout":  5000} 
-                                                        });
-                                        startInProgess();
-                                        treeNode.getInputStream(userContext, size, browser.setDownloadProgressPercent).then(function(buf) {
-                                                return buf.read(size).then(function(originalData) {
-                                                        openItem(name, originalData);
-                                                });
-                                        }).then(clearInProgress);
-                                }.bind(this);
-
-                                return {
-                                        onClick: onClick,
-                                        name: name,
-                                        isDir: isDir,
-                                        size: size,
-                                        filePointer: treeNode
-                                }
-                        }.bind(this));
-
-                        this.setState({
-                                files: files, 
-                                sort: this.state.sort,  
-                                gridView: this.state.gridView, 
-                                retrievedFilePointerPath: this.state.retrievedFilePointerPath,
-                                clipboard: this.state.clipboard 
-                        }, function() {
-                                this.updateNavbarPath(this.currentPath());
-                        }.bind(this)); 
-                }.bind(this);
-
-                const isEmpty =  this.state.retrievedFilePointerPath.length == 0;
-                const rootSupplied =  typeof(fileTreeNode) != "undefined";
-                if (rootSupplied || isEmpty) {
-                        var prom = null; 
-                        if (rootSupplied)  
-                                prom = fileTreeNode.getChildren(userContext)
-                                        .then(function(children){return children[0].getChildren(userContext).then(function(gChildren){return Promise.resolve(gChildren[0])})});
-                        else
-                                prom = userContext.init().then(userContext.getUserRoot);
-
-                        prom.then(function(globalRoot){
-
-                                if (rootSupplied)
-                                        this.state.retrievedFilePointerPath = [];
-                                const tmpPath = this.state.retrievedFilePointerPath;
-                                if (tmpPath.length > 0 && tmpPath[tmpPath.length-1].equals(globalRoot))
-                                        return;
-                                this.state.retrievedFilePointerPath.push(globalRoot);
-
-                                this.updateNavbarPath(this.currentPath());
-
-                                const path = this.state.retrievedFilePointerPath;
-                                if  (path.length ==0 || ! path[0].isWritable())
-                                        hideNonWritableButtons();
-                                else 
-                                        showNonWritableButtons();
-
-                                globalRoot.getChildren(userContext).then(function(children) {
-                                        callback(children);
-                                });
-                        }.bind(this));
-                }
-                else {
-                        this.lastRetrievedFilePointer().getChildren(userContext).then(function(children) {
-                                callback(children);
-                        }.bind(this));
-                }    
+                    this.state.retrievedFilePointerPath.push(globalRoot);
+		    
+                    this.updateNavbarPath(this.currentPath());
+		    
+                    const path = this.state.retrievedFilePointerPath;
+                    if  (path.length ==0 || ! path[0].isWritable())
+                        hideNonWritableButtons();
+                    else 
+                        showNonWritableButtons();
+		    
+                    return globalRoot.getChildren(userContext).then(function(children) {
+                        callback(children);
+			return Promise.resolve(true);
+                    });
+                }.bind(this));
+            }
+            else {
+                return this.lastRetrievedFilePointer().getChildren(userContext).then(function(children) {
+                    callback(children);
+		    return Promise.resolve(true);
+                }.bind(this));
+            }    
         },
 
         pathAsButtons: function(){
@@ -935,15 +937,16 @@ var Browser = React.createClass({
 
                         if (! hasUsername) usernameInput.value = "";
                         if (! hasPassword) passwordInput.value="";
+
+		    return this.loadFilesFromServer().then(clearInProgress).then(function() {
                         $("#logout").html("<button id=\"logoutButton\" class=\"btn btn-default\">"+
-                                        "<span class=\"glyphicon glyphicon-off\"/>  " +
-                                        displayName+
-                                        "</button>");
+                                          "<span class=\"glyphicon glyphicon-off\"/>  " +
+                                          displayName+
+                                          "</button>");
                         $("#logoutButton").click(this.logout);
                         $("#login-form").css("display","none");
                         $("#signup-form").css("display","none");
-                        this.loadFilesFromServer();
-                        clearInProgress();
+                    });
                 }.bind(this);
 
                 var ctx = null;
@@ -958,8 +961,10 @@ var Browser = React.createClass({
                                 populateModalAndShow("Authentication Failure", "Invalid credentials.");
                                 return reject();
                         }
-                        else   
-                                userContext = ctx;  
+                        else {
+                            userContext = ctx;  
+			    return Promise.resolve(true);
+			}
                 }).then(onVerified, 
                         function() {
                                 //failed to authenticate user

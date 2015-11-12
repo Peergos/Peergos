@@ -806,7 +806,7 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
         
         return this.addToStaticData(entry).then(function(res) {
             var root = DirAccess.create(rootRKey, new FileProperties(directoryName, 0, Date.now(), 0));
-            return this.uploadChunk(root, [], this.user, writer, rootMapKey).then(function(res) {
+            return this.uploadChunk(root, this.user, writer, rootMapKey).then(function(res) {
 		if (res)
 		    return Promise.resolve(new RetrievedFilePointer(rootPointer, root));
 		return Promise.reject();
