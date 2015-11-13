@@ -157,7 +157,10 @@ const UserOptions = React.createClass({
                                 });
                                 clearInProgress();
                                 this.props.browser.loadFilesFromServer();
-                                this.populateTables();
+			        var that = this;
+			        userContext.init().then(function() {
+				    that.populateTables();
+				});
                         }.bind(this));
                 }.bind(this);
 
