@@ -1235,4 +1235,9 @@ if (window.location.hash)  {
         });
 }
 
+function checkBrowserCapabilities() {
+    if (typeof Promise == "undefined")
+	populateModalAndShow("Upgrade your browser", "Please use a modern browser. Chrome, Firefox and Safari are supported.");
+}
 
+checkBrowserCapabilities();
