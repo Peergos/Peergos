@@ -1143,7 +1143,7 @@ var Browser = React.createClass({
                                 </div>);
 
                 var  contextMenu = (<div id="context-menu">
-                                <ul className="dropdown-menu" role="menu">
+                                <ul className="dropdown-menu" style={{cursor: "pointer"}} role="menu">
                                 <li><a tabIndex="-1">Open</a></li>
                                 <li className="divider"></li>
                                 <li><a tabIndex="-1">Rename</a></li>
