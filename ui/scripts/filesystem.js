@@ -244,6 +244,7 @@ const UserOptions = React.createClass({
         },
 
         populateFollowersTable: function(names)  {
+	        names.sort();
                 const Anon = this.tableBuilder("Follower", names);
                 React.render(<Anon/>, document.getElementById("followersList"));
         },
