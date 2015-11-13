@@ -433,7 +433,7 @@ var SignUp = React.createClass({
                                 }
                                 return ctx.createEntryDirectory(username);
                         }).then(function(root) {
-                                return Promise.resolve(root.fileAccess.mkdir("shared", ctx, root.filePointer.writer, root.filePointer.mapKey, root.filePointer.baseKey, null, true));
+                                return root.fileAccess.mkdir("shared", ctx, root.filePointer.writer, root.filePointer.mapKey, root.filePointer.baseKey, null, true);
                         }.bind(this)).then(function() {
                             console.log("Verified user "+ username +" is registered");
 			    return this.props.browser.login(username, pw1).then(function(){
@@ -731,7 +731,7 @@ var Browser = React.createClass({
             }.bind(this);
 	    
             const isEmpty =  this.state.retrievedFilePointerPath.length == 0;
-            const rootSupplied =  typeof(fileTreeNode) == "FileTreeNode";
+            const rootSupplied =  typeof(fileTreeNode) == "object";
             if (rootSupplied || isEmpty) {
                 var prom = null; 
                 if (rootSupplied)  

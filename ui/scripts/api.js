@@ -1487,6 +1487,10 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 	return new ReadableFilePointer(filePointer.owner, entryWriterKey, filePointer.mapKey, baseKey);
     }.bind(this);
 
+    this.getEntryWriterKey = function() {
+	return entryWriterKey;
+    }
+
     //FileTreeNode -> FileTreeNode -> userContext -> void
     this.copyTo = function(target, context) {
         if (! target.isDirectory())
@@ -1496,14 +1500,14 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 	const ourBaseKey = this.getKey();
 	// a file baseKey is the key for the chunk, which hasn't changed, so this must stay the same
 	const newBaseKey = this.isDirectory() ? SymmetricKey.random() : ourBaseKey;
-	const newRFP = new ReadableFilePointer(context.user, entryWriterKey, newMapKey, newBaseKey);
+	const newRFP = new ReadableFilePointer(context.user, target.getEntryWriterKey(), newMapKey, newBaseKey);
 	const newParentLocation = target.getLocation();
 	const newParentParentKey = target.getParentKey();
 	
-	return pointer.fileAccess.copyTo(ourBaseKey, newBaseKey, newParentLocation, newParentParentKey, entryWriterKey, newMapKey, context).then(function(newAccess) {
+	return pointer.fileAccess.copyTo(ourBaseKey, newBaseKey, newParentLocation, newParentParentKey, target.getEntryWriterKey(), newMapKey, context).then(function(newAccess) {
 	    // upload new metadatablob
             const newRetrievedFilePointer = new RetrievedFilePointer(newRFP, newAccess);
-	    const newFileTreeNode = new FileTreeNode(newRetrievedFilePointer, context.username, [], [], entryWriterKey);
+	    const newFileTreeNode = new FileTreeNode(newRetrievedFilePointer, context.username, [], [], target.getEntryWriterKey());
             return target.addLinkTo(newFileTreeNode, context);
 	});
     }
