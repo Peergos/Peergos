@@ -493,7 +493,7 @@ var File = React.createClass({
 
                 return (<div className="col-xs-6 col-md-3">
                                 <a id={this.props.id} onClick={this.props.onClick} style={{cursor: "pointer"}}>
-                                <span style={{fontSize:"3.5em"}} className={glyphClass}/>
+                                <span id={this.props.id} draggable="true" onDragStart={this.props.onDragStart} onDragOver={this.props.onDragOver} onDrop={this.props.onDrop} style={{fontSize:"3.5em"}} className={glyphClass}/>
                                 </a>
                                 <div className="caption">
                                 <h4 className="heading" style={{wordWrap:"break-word"}} >{this.props.name}</h4>
@@ -589,7 +589,7 @@ var File = React.createClass({
                 var sizeString = this.props.isdir ? "" : File.sizeString(this.props.size);
                 return (<tr id={this.props.id}>
                                 <td>
-                                <a onClick={this.props.onClick} style={{cursor: "pointer"}}><span style={{fontSize:"1.5em", paddingRight:"20px"}} className={glyphClass} />{this.props.name}</a>
+                                <a onClick={this.props.onClick} style={{cursor: "pointer"}}><span id={this.props.id} draggable="true" onDragStart={this.props.onDragStart} onDragOver={this.props.onDragOver} onDrop={this.props.onDrop} style={{fontSize:"1.5em", paddingRight:"20px"}} className={glyphClass} />{this.props.name}</a>
                                 </td>
                                 <td>{sizeString}</td>
                                 </tr>);
@@ -714,12 +714,47 @@ var Browser = React.createClass({
                             });
                         }).then(clearInProgress);
                     }.bind(this);
+                    const onDragStart = function(ev) {
+                        ev.dataTransfer.effectAllowed='move';
+                        var id = ev.target.id;
+                        ev.dataTransfer.setData("moveId", id);
+                        this.setClipboard({
+                                fileTreeNode: treeNode,
+                                op: "cut"
+                         });
+                    }.bind(this);
+                    const onDrop = function(ev) {
+                        ev.preventDefault();
+                        var moveId = ev.dataTransfer.getData("moveId");
+                        ev.dataTransfer.setData("moveId", "");
+                        var id = ev.target.id;
+                        if(id != moveId && isDir) {
+                            const clipboard = this.state.clipboard;
+                            const path = treeNode;
+                            if (typeof(clipboard) ==  undefined || typeof(clipboard.op) == "undefined")
+                                    return;
+                            if (clipboard.op == "cut") {
+                                    clipboard.fileTreeNode.copyTo(path, userContext).then(function() {
+                                            return clipboard.fileTreeNode.remove(userContext);
+                                    }).then(function() {
+                                            this.loadFilesFromServer();
+                                    }.bind(this));
+                            }
+                        }
+                    }.bind(this);
+                    const onDragOver = function(ev) {//Never called, see dragHandler
+                        ev.preventDefault();
+                    }.bind(this);
+
                     return {
-                        onClick: onClick,
-                        name: name,
-                        isDir: isDir,
-                        size: size,
-                        filePointer: treeNode
+                            onClick: onClick,
+                            onDragStart : onDragStart,
+                            onDragOver : onDragOver,
+                            onDrop : onDrop,
+                            name: name,
+                            isDir: isDir,
+                            size: size,
+                            filePointer: treeNode
                     }
                 }.bind(this));
 		
@@ -895,7 +930,11 @@ var Browser = React.createClass({
                         if (userContext == null) {
                                 alert("Please sign in first!");
                                 return false;
-                        }  
+                        }
+                        var moveId = evt.dataTransfer.getData("moveId");//inside app drag and drop
+                        if(moveId != null && moveId.length > 0){
+                           return;
+                        }
                         dragHandler(evt);
                         const browser = this;
                         var files = evt.target.files || evt.dataTransfer.files;
@@ -1125,7 +1164,7 @@ var Browser = React.createClass({
                                         </div>);
 
                 const files = this.state.files.map(function(f) {
-                        return (<File id={File.id()} gridView={this.state.gridView} onClick={f.onClick} name={f.name} isdir={f.isDir} size={f.size} browser={this} retrievedFilePointer={f.filePointer}/>)
+                        return (<File id={File.id()} gridView={this.state.gridView} onClick={f.onClick} onDragStart={f.onDragStart} onDragOver={f.onDragOver} onDrop={f.onDrop} name={f.name} isdir={f.isDir} size={f.size} browser={this} retrievedFilePointer={f.filePointer}/>)
                 }.bind(this)); 
 
                 const jumbo = files.length != 0 ? (<div></div>) : 
