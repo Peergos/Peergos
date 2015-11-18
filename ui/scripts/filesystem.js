@@ -819,9 +819,26 @@ var Browser = React.createClass({
                                 this.state.retrievedFilePointerPath = path;
                                 this.loadFilesFromServer();
                         }.bind(this);
+                        const onDrop = function(ev) {
+                            ev.preventDefault();
+                            const clipboard = this.state.clipboard;
+                            if (typeof(clipboard) ==  undefined || typeof(clipboard.op) == "undefined")
+                                    return;
+                            if (clipboard.op == "cut") {
+                                    const pwd = e;//this.lastRetrievedFilePointer();
+                                    clipboard.fileTreeNode.copyTo(pwd, userContext).then(function() {
+                                            return clipboard.fileTreeNode.remove(userContext);
+                                    }).then(function() {
+                                            this.loadFilesFromServer();
+                                    }.bind(this));
+                            }
+                        }.bind(this);
+                        const onDragOver = function(ev) {
+                            ev.preventDefault();
+                        }.bind(this);
                         const className = index == this.state.retrievedFilePointerPath.length -1 ? "btn-primary" : "btn-default";
 
-                        return (<button className={"btn "+className + " tour-path"} onClick={onClick}>{name}</button>)
+                        return (<button className={"btn "+className + " tour-path"} onClick={onClick} onDrop={onDrop} onDragOver={onDragOver}>{name}</button>)
                 }.bind(this));
         },
 
