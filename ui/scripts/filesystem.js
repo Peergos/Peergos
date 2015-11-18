@@ -717,7 +717,7 @@ var Browser = React.createClass({
                     const onDragStart = function(ev) {
                         ev.dataTransfer.effectAllowed='move';
                         var id = ev.target.id;
-                        ev.dataTransfer.setData("moveId", id);
+                        ev.dataTransfer.setData("text/plain", id);
                         this.setClipboard({
                                 fileTreeNode: treeNode,
                                 op: "cut"
@@ -725,8 +725,7 @@ var Browser = React.createClass({
                     }.bind(this);
                     const onDrop = function(ev) {
                         ev.preventDefault();
-                        var moveId = ev.dataTransfer.getData("moveId");
-                        ev.dataTransfer.setData("moveId", "");
+                        var moveId = ev.dataTransfer.getData("text");
                         var id = ev.target.id;
                         if(id != moveId && isDir) {
                             const clipboard = this.state.clipboard;
@@ -931,7 +930,7 @@ var Browser = React.createClass({
                                 alert("Please sign in first!");
                                 return false;
                         }
-                        var moveId = evt.dataTransfer.getData("moveId");//inside app drag and drop
+                        var moveId = evt.dataTransfer.getData("text");//inside app drag and drop
                         if(moveId != null && moveId.length > 0){
                            return;
                         }
