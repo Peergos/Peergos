@@ -825,7 +825,7 @@ var Browser = React.createClass({
                             if (typeof(clipboard) ==  undefined || typeof(clipboard.op) == "undefined")
                                     return;
                             if (clipboard.op == "cut") {
-                                    const pwd = e;//this.lastRetrievedFilePointer();
+                                    const pwd = e;
                                     clipboard.fileTreeNode.copyTo(pwd, userContext).then(function() {
                                             return clipboard.fileTreeNode.remove(userContext);
                                     }).then(function() {
@@ -895,7 +895,23 @@ var Browser = React.createClass({
 
                 }.bind(this));
         },
-
+        onHomeDrop: function(ev) {
+            ev.preventDefault();
+            const clipboard = this.state.clipboard;
+            if (typeof(clipboard) ==  undefined || typeof(clipboard.op) == "undefined")
+                    return;
+            if (clipboard.op == "cut") {
+                    const pwd = this.state.retrievedFilePointerPath[0];
+                    clipboard.fileTreeNode.copyTo(pwd, userContext).then(function() {
+                            return clipboard.fileTreeNode.remove(userContext);
+                    }).then(function() {
+                            this.loadFilesFromServer();
+                    }.bind(this));
+            }
+        },
+        onHomeDragOver: function(ev) {
+            ev.preventDefault();
+        },
         onUser: function() {
                 requireSignedIn(function()  {
 
@@ -1051,6 +1067,8 @@ var Browser = React.createClass({
                 this.loadFilesFromServer();
                 var homeButton = document.getElementById("homeButton");
                 homeButton.onclick = this.onHome;
+                homeButton.ondrop = this.onHomeDrop;
+                homeButton.ondragover = this.onHomeDragOver;
                 var uploadButton = document.getElementById("uploadButton");
                 uploadButton.onclick = this.onUpload;
                 var userOptionsButton = document.getElementById("userOptionsButton");
