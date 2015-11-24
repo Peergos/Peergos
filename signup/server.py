@@ -45,9 +45,10 @@ def sendMessage(recipient, subject, message):
         
 def sendVerification(recipient, validationUrl):
     subject = "Peergos verification"
-    message = "Something Something Peergos\n\n"
+    message = "Thank you for registering for Peergos. Click this URL to complete your registration.\n\n"
     message += validationUrl
-    message += "\n\nThanks,\nPeergos"
+    message += "\n\nIf you didn't sign up to Peergos, then ignore this email."
+    message += "\n\nThanks,\nThe Peergos team"
 
     sendMessage(recipient, subject, message)
 
