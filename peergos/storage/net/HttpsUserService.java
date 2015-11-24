@@ -91,11 +91,11 @@ public class HttpsUserService
             KeyManagerFactory kmf = KeyManagerFactory.getInstance("SunX509");
             kmf.init(ks, password);
 
-            TrustManagerFactory tmf = TrustManagerFactory.getInstance("SunX509");
-            tmf.init(SSL.getTrustedKeyStore());
+//            TrustManagerFactory tmf = TrustManagerFactory.getInstance("SunX509");
+//            tmf.init(SSL.getTrustedKeyStore());
 
             // setup the HTTPS context and parameters
-            sslContext.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);
+            sslContext.init(kmf.getKeyManagers(), null, null);
             // set up perfect forward secrecy
             sslContext.getSupportedSSLParameters().setCipherSuites(new String[]{
                     "TLS_DHE_RSA_WITH_AES_128_GCM_SHA256",
