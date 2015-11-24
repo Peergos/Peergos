@@ -80,7 +80,7 @@ const submitEmailSignup = function(username, email) {
           function(data) {
                 const _status = JSON.parse(data);
                 console.log("email registration status : "+ _status);
-          );} 
+          }); 
 }
 var url;
 var ae = document.createElement("a");
