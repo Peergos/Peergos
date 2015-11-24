@@ -22,6 +22,7 @@ public class HttpsUserService
     public static final String MESSAGE_URL = "/message/";
     public static final String DHT_URL = "/dht/";
     public static final String SIGNUP_URL = "/signup/";
+    public static final String ACTIVATION_URL = "/activation/";
     public static final String ERASURE_URL = "/erasure/";
     public static final String UI_URL = "/";
     public static final String UI_DIR = "ui/";
@@ -135,6 +136,7 @@ public class HttpsUserService
 
         httpsServer.createContext(DHT_URL, new DHTUserAPIHandler(dht));
         httpsServer.createContext(SIGNUP_URL, new InverseProxy("demo.peergos.net"));
+        httpsServer.createContext(ACTIVATION_URL, new InverseProxy("demo.peergos.net"));
         httpsServer.createContext(ERASURE_URL, ErasureHandler.getInstance());
         httpsServer.createContext(UI_URL, new StaticHandler(UI_DIR, false));
         httpsServer.createContext(HTTPCoreNodeServer.CORE_URL, new HTTPCoreNodeServer.CoreNodeHandler(coreNode));
