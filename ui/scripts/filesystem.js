@@ -1018,10 +1018,10 @@ var Browser = React.createClass({
                                           "<span class=\"glyphicon glyphicon-off\"/>  " +
                                           displayName+
                                           "</button>");
-                        $("#logoutButton").click(this.logout);
+                        $("#logoutButton").click(this.logoutFunction);
                         $("#login-form").css("display","none");
                         $("#signup-form").css("display","none");
-                    });
+                    }.bind(this));
                 }.bind(this);
 
                 var ctx = null;
@@ -1049,8 +1049,9 @@ var Browser = React.createClass({
                         });
         },
 
-        logout: function(evt) {
+        logoutFunction: function(evt) {
                 console.log("User logging out.");
+                logout();
                 requireSignedIn(function() {
                         userContext = null;
                         this.setState(this.getInitialState(),
