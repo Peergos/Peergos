@@ -32,8 +32,10 @@ public class InverseProxy implements HttpHandler {
             int r;
             while ((r = in.read(tmp)) >= 0)
                 bout.write(tmp, 0, r);
-            System.out.println(new String(bout.toByteArray()));
-            httpExchange.sendResponseHeaders(200, 0);
+            byte[] bytes = bout.toByteArray();
+            System.out.println(new String(bytes));
+            httpExchange.sendResponseHeaders(200, bytes.length);
+            httpExchange.getResponseBody().write(bytes);
         } catch (Throwable t) {
             t.printStackTrace();
         }
