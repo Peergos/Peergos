@@ -5,6 +5,7 @@ import peergos.util.*;
 
 import java.io.*;
 import java.net.*;
+import java.util.*;
 
 public class InverseProxy implements HttpHandler {
     private final String targetDomain;
@@ -16,13 +17,13 @@ public class InverseProxy implements HttpHandler {
     @Override
     public void handle(HttpExchange httpExchange) throws IOException {
         try {
-            URLConnection conn;
+            HttpURLConnection conn;
             if (!Args.getArg("domain", "localhost").equals("localhost")) {
                 System.out.println("Signing up at localhost..");
-                conn = new URL("http://localhost:8765" + httpExchange.getRequestURI().getPath()).openConnection();
+                conn = (HttpURLConnection)new URL("http://localhost:8765" + httpExchange.getRequestURI().getPath()).openConnection();
             } else {
                 System.out.println("Signing up at " + targetDomain);
-                conn = new URL("https://" + targetDomain + httpExchange.getRequestURI().getPath()).openConnection();
+                conn = (HttpURLConnection)new URL("https://" + targetDomain + httpExchange.getRequestURI().getPath()).openConnection();
             }
             conn.connect();
             InputStream in = conn.getInputStream();
@@ -34,7 +35,10 @@ public class InverseProxy implements HttpHandler {
                 bout.write(tmp, 0, r);
             byte[] bytes = bout.toByteArray();
             System.out.println(new String(bytes));
-            httpExchange.sendResponseHeaders(200, bytes.length);
+            int respCode = conn.getResponseCode();
+            Map<String, List<String>> respHeaders = conn.getHeaderFields();
+            httpExchange.sendResponseHeaders(respCode, bytes.length);
+            httpExchange.getResponseHeaders().putAll(respHeaders);
             httpExchange.getResponseBody().write(bytes);
         } catch (Throwable t) {
             t.printStackTrace();
