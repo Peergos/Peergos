@@ -19,23 +19,30 @@ public class InverseProxy implements HttpHandler {
         try {
             HttpURLConnection conn;
             if (!Args.getArg("domain", "localhost").equals("localhost")) {
-                System.out.println("Signing up at localhost..");
+                System.out.println("Proxying to localhost..");
                 conn = (HttpURLConnection)new URL("http://localhost:8765" + httpExchange.getRequestURI().getPath()).openConnection();
             } else {
-                System.out.println("Signing up at " + targetDomain);
+                System.out.println("Proxying to " + targetDomain);
                 conn = (HttpURLConnection)new URL("https://" + targetDomain + httpExchange.getRequestURI().getPath()).openConnection();
             }
             conn.connect();
+            int respCode = conn.getResponseCode();
+            if (respCode == 500) {
+                httpExchange.sendResponseHeaders(500, 0);
+                return;
+            }
             InputStream in = conn.getInputStream();
 
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
-            byte[] tmp = new byte[256];
-            int r;
-            while ((r = in.read(tmp)) >= 0)
-                bout.write(tmp, 0, r);
+            if (respCode == 200) {
+                byte[] tmp = new byte[256];
+                int r;
+                while ((r = in.read(tmp)) >= 0)
+                    bout.write(tmp, 0, r);
+            }
             byte[] bytes = bout.toByteArray();
             System.out.println(new String(bytes));
-            int respCode = conn.getResponseCode();
+
             Map<String, List<String>> respHeaders = conn.getHeaderFields();
             httpExchange.getResponseHeaders().putAll(respHeaders);
             httpExchange.sendResponseHeaders(respCode, bytes.length);
