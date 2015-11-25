@@ -87,7 +87,7 @@ def activate_user(payload):
         if not "username" in user or not "address" in user: abort(404)
         username, address = user["username"],  user["address"]
         app.repository.put(username, address)
-        return redirect("http://demo.peergos.net", code=302)
+        return redirect("https://demo.peergos.net/", code=303)
     except BadSignature:
         abort(401)
 
