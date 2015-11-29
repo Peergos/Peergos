@@ -41,6 +41,7 @@ public class BTreeHandler implements HttpHandler
                     byte[] rootHash = raw.length == 0 ? new byte[0] : raw;
                     MerkleBTree btree = MerkleBTree.create(rootHash, dht);
                     byte[] newRoot = btree.put(mapKey, value);
+                    System.out.println("Btree handler put, new root: " + new ByteArrayWrapper(newRoot));
                     new ModifySuccess(httpExchange).accept(Optional.of(newRoot));
                 } catch (Exception e) {
                     e.printStackTrace();
@@ -53,9 +54,9 @@ public class BTreeHandler implements HttpHandler
                 System.out.println("Btree handler get, sharing: " + new ByteArrayWrapper(sharingKey) + ", mapkey: "+new ByteArrayWrapper(mapKey));
                 try {
                     byte[] rootHash = core.getMetadataBlob(sharingKey);
-                    System.out.println("Btree handler get, existing root: " + new ByteArrayWrapper(rootHash));
                     MerkleBTree btree = MerkleBTree.create(rootHash, dht);
                     byte[] value = btree.get(mapKey);
+                    System.out.println("Btree handler get, existing root: " + new ByteArrayWrapper(rootHash) + " -> value hash: "+new ByteArrayWrapper(value));
                     new GetSuccess(httpExchange).accept(value);
                 } catch (Exception e) {
                     e.printStackTrace();

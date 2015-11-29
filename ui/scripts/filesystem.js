@@ -455,7 +455,7 @@ var SignUp = React.createClass({
                                 return ctx.createEntryDirectory(username);
                         }).then(function(root) {
                                 return root.fileAccess.mkdir("shared", ctx, root.filePointer.writer, root.filePointer.mapKey, root.filePointer.baseKey, null, true);
-                        }.bind(this)).then(function() {
+                        }.bind(this)).then(function(res) {
                             console.log("Verified user "+ username +" is registered");
 			    return this.props.browser.login(username, pw1).then(function(){
 				clearInProgress();
