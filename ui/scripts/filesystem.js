@@ -78,7 +78,7 @@ const submitEmailSignup = function(username, email) {
     const url = buildSignupUrl(username, email);
     $.get(url,
           function(data) {
-                const _status = JSON.parse(data);
+                const _status = data.status;
                 console.log("email registration status : "+ _status);
           }); 
 }
