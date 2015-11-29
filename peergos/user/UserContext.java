@@ -146,7 +146,8 @@ public class UserContext
         } catch (IOException e) {e.printStackTrace();}
         byte[] metaBlob = bout.toByteArray();
         System.out.println("Storing metadata blob of " + metaBlob.length + " bytes.");
-        if (!core.setMetadataBlob(target, sharer.getPublicKeys(), sharer.signMessage(ArrayOps.concat(mapKey, metaBlob))))
+        // TODO correct this once we reinstate the Java API
+        if (!core.setMetadataBlob(us.getPublicKeys(), sharer.getPublicKeys(), sharer.signMessage(ArrayOps.concat(mapKey, metaBlob))))
             System.out.println("Meta blob store failed.");
         if (fragments.length > 0 ) {
             // now upload fragments to DHT
@@ -206,7 +207,8 @@ public class UserContext
     }
 
     public FileAccess getMetadata(Location loc) throws IOException {
-        byte[] meta = core.getMetadataBlob(loc.owner, loc.writerKey.getPublicKeys(), loc.mapKey.data);
+        // TODO correct with Btree once we reinstate Java API
+        byte[] meta = core.getMetadataBlob(loc.writerKey.getPublicKeys());
         DataInputStream din = new DataInputStream(new ByteArrayInputStream(meta));
         return FileAccess.deserialize(din);
     }

@@ -43,12 +43,6 @@ public class DHTAPIHandler implements HttpHandler
                             .thenApply(new PeergosDHT.GetHandler(router, ((Message.GET) m).getKey()))
                             .thenAccept(new GetSuccess(((Message.GET) m).getKey(), httpExchange))
                             .exceptionally(new Failure(httpExchange));
-                } else if (type == 2) // CONTAINS
-                {
-                    router.ask(m)
-                            .thenApply(new PeergosDHT.ContainsHandler(router, ((Message.GET) m).getKey()))
-                            .thenAccept(new ContainsSuccess(httpExchange))
-                            .exceptionally(new Failure(httpExchange));
                 }
             }
         } catch (Exception e) {
@@ -101,31 +95,6 @@ public class DHTAPIHandler implements HttpHandler
                 DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());
                 dout.writeInt(1); // success
                 Serialize.serialize(result, dout);
-                dout.flush();
-                dout.close();
-            } catch (IOException e)
-            {
-                e.printStackTrace();
-            }
-        }
-    }
-
-    private static class ContainsSuccess implements Consumer<Integer>
-    {
-        private final HttpExchange exchange;
-
-        private ContainsSuccess(HttpExchange exchange)
-        {
-            this.exchange = exchange;
-        }
-
-        @Override
-        public void accept(Integer size) {
-            try {
-                exchange.sendResponseHeaders(200, 0);
-                DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());
-                dout.writeInt(1); // success
-                dout.writeInt(size);
                 dout.flush();
                 dout.close();
             } catch (IOException e)

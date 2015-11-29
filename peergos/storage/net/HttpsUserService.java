@@ -5,6 +5,7 @@ import peergos.corenode.*;
 import peergos.crypto.SSL;
 import peergos.storage.dht.*;
 import org.bouncycastle.operator.OperatorCreationException;
+import peergos.storage.merklebtree.*;
 import peergos.user.fs.erasure.ErasureHandler;
 import peergos.util.*;
 
@@ -21,9 +22,9 @@ public class HttpsUserService
 {
     public static final String MESSAGE_URL = "/message/";
     public static final String DHT_URL = "/dht/";
+    public static final String BTREE_URL = "/btree/";
     public static final String SIGNUP_URL = "/signup/";
     public static final String ACTIVATION_URL = "/activation/";
-    public static final String ERASURE_URL = "/erasure/";
     public static final String UI_URL = "/";
     public static final String UI_DIR = "ui/";
 
@@ -54,7 +55,7 @@ public class HttpsUserService
     private final CoreNode coreNode;
     HttpsServer httpsServer;
 
-    public HttpsUserService(InetSocketAddress local, Logger LOGGER, DHT dht, CoreNode coreNode) throws IOException
+    public HttpsUserService(InetSocketAddress local, Logger LOGGER, ContentAddressedStorage dht, CoreNode coreNode) throws IOException
     {
         this.LOGGER = LOGGER;
         this.local = local;
@@ -62,7 +63,7 @@ public class HttpsUserService
         init(dht);
     }
 
-    public boolean init(DHT dht) throws IOException {
+    public boolean init(ContentAddressedStorage dht) throws IOException {
         try
         {
             try {
@@ -135,9 +136,9 @@ public class HttpsUserService
         }
 
         httpsServer.createContext(DHT_URL, new DHTUserAPIHandler(dht));
+        httpsServer.createContext(BTREE_URL, new BTreeHandler(coreNode, dht));
         httpsServer.createContext(SIGNUP_URL, new InverseProxy("demo.peergos.net"));
         httpsServer.createContext(ACTIVATION_URL, new InverseProxy("demo.peergos.net"));
-        httpsServer.createContext(ERASURE_URL, ErasureHandler.getInstance());
         httpsServer.createContext(UI_URL, new StaticHandler(UI_DIR, false));
         httpsServer.createContext(HTTPCoreNodeServer.CORE_URL, new HTTPCoreNodeServer.CoreNodeHandler(coreNode));
         httpsServer.setExecutor(Executors.newFixedThreadPool(THREADS));

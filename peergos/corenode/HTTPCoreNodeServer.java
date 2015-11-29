@@ -160,19 +160,18 @@ public class HTTPCoreNodeServer
 
         void addMetadataBlob(DataInputStream din, DataOutputStream dout) throws IOException
         {
-            byte[] encodedOwnerPublicKey = deserializeByteArray(din);
+            byte[] ownerPublicKey = deserializeByteArray(din);
             byte[] encodedSharingPublicKey = deserializeByteArray(din);
             byte[] signedPayload = deserializeByteArray(din);
-            boolean isAdded = coreNode.setMetadataBlob(new UserPublicKey(encodedOwnerPublicKey), encodedSharingPublicKey, signedPayload);
+            boolean isAdded = coreNode.setMetadataBlob(ownerPublicKey, encodedSharingPublicKey, signedPayload);
             dout.writeBoolean(isAdded);
         }
 
         void removeMetadataBlob(DataInputStream din, DataOutputStream dout) throws IOException
         {
-            byte[] encodedOwnerPublicKey = deserializeByteArray(din);
             byte[] encodedWriterPublicKey = deserializeByteArray(din);
             byte[] signedPayload = deserializeByteArray(din);
-            boolean isAdded = coreNode.removeMetadataBlob(new UserPublicKey(encodedOwnerPublicKey), encodedWriterPublicKey, signedPayload);
+            boolean isAdded = coreNode.removeMetadataBlob(encodedWriterPublicKey, signedPayload);
             dout.writeBoolean(isAdded);
         }
 
@@ -197,10 +196,8 @@ public class HTTPCoreNodeServer
 
         void getMetadataBlob(DataInputStream din, DataOutputStream dout) throws IOException
         {
-            UserPublicKey owner = new UserPublicKey(deserializeByteArray(din));
             byte[] encodedSharingKey = deserializeByteArray(din);
-            byte[] mapKey = deserializeByteArray(din);
-            byte[] b = coreNode.getMetadataBlob(owner, encodedSharingKey, mapKey);
+            byte[] b = coreNode.getMetadataBlob(encodedSharingKey);
             if (b == null)
             {
                 Serialize.serialize(new byte[0], dout);

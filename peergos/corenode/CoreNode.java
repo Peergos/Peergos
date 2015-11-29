@@ -44,11 +44,11 @@ public interface CoreNode {
 
     boolean removeFollowRequest(UserPublicKey owner, byte[] data);
 
-    boolean setMetadataBlob(UserPublicKey owner, byte[] encodedSharingPublicKey, byte[] sharingKeySignedMapKeyPlusBlob);
+    boolean setMetadataBlob(byte[] ownerPublicKey, byte[] encodedSharingPublicKey, byte[] sharingKeySignedBtreeRootHash);
 
-    boolean removeMetadataBlob(UserPublicKey owner, byte[] encodedSharingPublicKey, byte[] sharingKeySignedMapKeyPlusBlob);
+    boolean removeMetadataBlob(byte[] encodedSharingPublicKey, byte[] sharingKeySignedMapKeyPlusBlob);
 
-    byte[] getMetadataBlob(UserPublicKey owner, byte[] encodedSharingKey, byte[] mapKey);
+    byte[] getMetadataBlob(byte[] encodedSharingKey);
 
     void close() throws IOException;
 

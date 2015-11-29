@@ -262,7 +262,7 @@ public class HTTPCoreNode implements CoreNode
         }
     }
    
-   @Override public boolean setMetadataBlob(UserPublicKey owner, byte[] encodedSharingPublicKey, byte[] sharingKeySignedPayload)
+   @Override public boolean setMetadataBlob(byte[] ownerPublicKey, byte[] sharingPublicKey, byte[] sharingKeySignedPayload)
     {
         HttpURLConnection conn = null;
         try
@@ -273,9 +273,8 @@ public class HTTPCoreNode implements CoreNode
             
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-
-            Serialize.serialize(owner.getPublicKeys(), dout);
-            Serialize.serialize(encodedSharingPublicKey, dout);
+            Serialize.serialize(ownerPublicKey, dout);
+            Serialize.serialize(sharingPublicKey, dout);
             Serialize.serialize(sharingKeySignedPayload, dout);
             dout.flush();
 
@@ -290,7 +289,7 @@ public class HTTPCoreNode implements CoreNode
         }
     }
 
-    @Override public boolean removeMetadataBlob(UserPublicKey owner, byte[] encodedSharingPublicKey, byte[] sharingKeySignedPayload)
+    @Override public boolean removeMetadataBlob(byte[] encodedSharingPublicKey, byte[] sharingKeySignedPayload)
     {
         HttpURLConnection conn = null;
         try
@@ -301,7 +300,6 @@ public class HTTPCoreNode implements CoreNode
 
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-            Serialize.serialize(owner.getPublicKeys(), dout);
             Serialize.serialize(encodedSharingPublicKey, dout);
             Serialize.serialize(sharingKeySignedPayload, dout);
             dout.flush();
@@ -317,7 +315,7 @@ public class HTTPCoreNode implements CoreNode
         }
     }
 
-    @Override public byte[] getMetadataBlob(UserPublicKey owner, byte[] encodedSharingKey, byte[] mapKey)
+    @Override public byte[] getMetadataBlob(byte[] encodedSharingKey)
     {
         HttpURLConnection conn = null;
         try
@@ -329,9 +327,7 @@ public class HTTPCoreNode implements CoreNode
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
 
-            Serialize.serialize(owner.getPublicKeys(), dout);
             Serialize.serialize(encodedSharingKey, dout);
-            Serialize.serialize(mapKey, dout);
             dout.flush();
 
             DataInputStream din = new DataInputStream(conn.getInputStream());

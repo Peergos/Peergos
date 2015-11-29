@@ -166,21 +166,13 @@ public abstract class Message
         private final long target;
         private final byte[] key;
         private final int len;
-        private final byte[] owner;
-        private final byte[] sharingKey;
-        private final byte[] mapKey;
-        private final byte[] proof;
 
-        public PUT(byte[] key, int len, byte[] owner, byte[] sharingKey, byte[] mapKey, byte[] proof)
+        public PUT(byte[] key, int len)
         {
             super(Type.PUT);
             this.key = key;
             target = ArrayOps.getLong(key, 0);
             this.len = len;
-            this.owner = owner;
-            this.sharingKey = sharingKey;
-            this.mapKey = mapKey;
-            this.proof = proof;
         }
 
         public PUT(DataInput in) throws IOException
@@ -189,10 +181,6 @@ public abstract class Message
             key = Serialize.deserializeByteArray(in, 64);
             len = in.readInt();
             target = ArrayOps.getLong(key, 0);
-            owner = Serialize.deserializeByteArray(in, UserPublicKey.SIZE);
-            sharingKey = Serialize.deserializeByteArray(in, 64);
-            mapKey = Serialize.deserializeByteArray(in, 32);
-            proof = Serialize.deserializeByteArray(in, 4096);
         }
 
         public long getTarget()
@@ -205,19 +193,7 @@ public abstract class Message
             super.write(out);
             Serialize.serialize(key, out);
             out.writeInt(len);
-            Serialize.serialize(owner, out);
-            Serialize.serialize(sharingKey, out);
-            Serialize.serialize(mapKey, out);
-            Serialize.serialize(proof, out);
         }
-
-        public byte[] getOwner() {return owner;}
-
-        public byte[] getSharingKey() {return sharingKey;}
-
-        public byte[] getMapKey() {return mapKey;}
-
-        public byte[] getProof() {return proof;}
 
         public byte[] getKey()
         {

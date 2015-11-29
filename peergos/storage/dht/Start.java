@@ -4,14 +4,12 @@ import peergos.corenode.*;
 import peergos.crypto.*;
 import peergos.directory.DirectoryServer;
 import peergos.storage.net.*;
-import peergos.tests.Scripter;
 import peergos.util.*;
 
 import java.io.File;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
@@ -131,7 +129,7 @@ public class Start
             InetAddress contactIP = isFirstNode ? null : InetAddress.getByName(Args.getArg("contactIP"));
             int contactPort = Args.getInt("contactPort", 8080);
             UserPublicKey donor = new UserPublicKey(ArrayOps.hexToBytes(user));
-            Router router = new Router(donor, messengerAddr);
+            Router router = new Router(messengerAddr);
             router.init(new InetSocketAddress(contactIP, contactPort));
             // router is ready!
             System.out.println(port + " joined dht");
@@ -143,9 +141,6 @@ public class Start
             CoreNode core = HTTPCoreNode.getInstance();
 
             new HttpsUserService(httpsMessengerAddress, Logger.getLogger(router.getName()), dht, core);
-            if (Args.hasArg("script")) {
-                new Scripter(dht, Args.getArg("script")).start();
-            }
         }
     }
 

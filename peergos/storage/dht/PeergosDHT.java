@@ -1,6 +1,7 @@
 package peergos.storage.dht;
 
 import peergos.crypto.*;
+import peergos.storage.merklebtree.*;
 import peergos.storage.net.HttpMessenger;
 import peergos.util.*;
 
@@ -9,7 +10,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
 
-public class PeergosDHT implements DHT
+public class PeergosDHT implements ContentAddressedStorage
 {
     private Router router;
 
@@ -68,43 +69,31 @@ public class PeergosDHT implements DHT
         }
     }
 
-    public static class ContainsHandler implements Function<Object, Integer>{
-        private final byte[] key;
-        private final Router router;
-
-        public ContainsHandler(Router router, byte[] key) {
-            this.key = key;
-            this.router = router;
-        }
-
-        public final Integer apply(Object obj)
-        {
-            GetOffer offer = (GetOffer) obj;
-            if (offer.getTarget().external.equals(router.address().external))
-                offer.target = new NodeID(offer.target.id, offer.getTarget().external);
-
-            return offer.getSize();
-        }
-    }
-
-    public CompletableFuture<Optional<byte[]>> put(byte[] value, byte[] owner, byte[] sharingKey, byte[] mapKey, byte[] proof)
+    public byte[] put(byte[] value)
     {
         PutHandler handler = new PutHandler(router, value);
-        CompletableFuture<Object> fut = router.ask(new Message.PUT(handler.key, value.length, owner, sharingKey, mapKey, proof));
-        return fut.thenApply(handler);
+        CompletableFuture<Object> fut = router.ask(new Message.PUT(handler.key, value.length));
+        try {
+            return fut.thenApply(handler).get().get();
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
     }
 
-    public CompletableFuture<Integer> contains(byte[] key)
+    public byte[] get(byte[] key)
     {
-        assert(key.length == 32);
+        if (key.length == 0)
+            return new byte[0];
         CompletableFuture<Object> fut = router.ask(new Message.GET(key));
-        return fut.thenApply(new ContainsHandler(router, key));
+        try {
+            return fut.thenApply(new GetHandler(router, key)).get();
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
     }
 
-    public CompletableFuture<byte[]> get(byte[] key)
+    public void remove(byte[] key)
     {
-        assert(key.length == 32);
-        CompletableFuture<Object> fut = router.ask(new Message.GET(key));
-        return fut.thenApply(new GetHandler(router, key));
+        // Why u nooo remove!
     }
 }

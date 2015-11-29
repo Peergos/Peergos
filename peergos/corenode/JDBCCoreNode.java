@@ -16,7 +16,7 @@ public class JDBCCoreNode implements CoreNode {
     private static final String CREATE_USERS_TABLE = "create table users (id integer primary key autoincrement, name text not null, publickey text not null);";
     private static final String CREATE_STATIC_DATA_TABLE = "create table staticdata (name text primary key not null, staticdata text not null);";
     private static final String CREATE_FOLLOW_REQUESTS_TABLE = "create table followrequests (id integer primary key autoincrement, name text not null, followrequest text not null);";
-    private static final String CREATE_METADATA_BLOBS_TABLE = "create table metadatablobs (writingkey text not null, mapkey text not null, blobdata text not null, PRIMARY KEY (writingkey, mapkey));";
+    private static final String CREATE_METADATA_BLOBS_TABLE = "create table metadatablobs (writingkey text primary key not null, hash text not null);";
 
     private static final Map<String,String> TABLES = new HashMap<>();
     static
@@ -235,31 +235,29 @@ public class JDBCCoreNode implements CoreNode {
 
     private class MetadataBlob
     {
-        final byte[] writingKey, mapkey, blobdata;
-        final String b64WritingKey, b64mapkey, b64blobdata;
+        final byte[] writingKey, hash;
+        final String b64WritingKey, b64hash;
 
-        MetadataBlob(byte[] writingKey, byte[] mapkey, byte[] blobdata)
+        MetadataBlob(byte[] writingKey, byte[] hash)
         {
-            this(writingKey, new String(Base64.getEncoder().encode(writingKey)), mapkey, new String(Base64.getEncoder().encode(mapkey)), blobdata, blobdata == null ? null : new String(Base64.getEncoder().encode(blobdata)));
+            this(writingKey, new String(Base64.getEncoder().encode(writingKey)), hash, hash == null ? null : new String(Base64.getEncoder().encode(hash)));
 
         }
 
-        MetadataBlob(String b64WritingKey, String b64mapkey, String b64blobdata)
+        MetadataBlob(String b64WritingKey, String b64hash)
         {
-            this(Base64.getDecoder().decode(b64WritingKey), b64WritingKey, Base64.getDecoder().decode(b64mapkey), b64mapkey, Base64.getDecoder().decode(b64blobdata), b64blobdata);
+            this(Base64.getDecoder().decode(b64WritingKey), b64WritingKey, Base64.getDecoder().decode(b64hash), b64hash);
         }
 
-        MetadataBlob(byte[] writingKey, String b64WritingKey, byte[] mapkey, String b64mapkey, byte[] blobdata, String b64blobdata)
+        MetadataBlob(byte[] writingKey, String b64WritingKey, byte[] hash, String b64hash)
         {
             this.writingKey = writingKey;
             this.b64WritingKey = b64WritingKey;
-            this.mapkey=  mapkey;
-            this.b64mapkey = b64mapkey;
-            this.blobdata = blobdata;
-            this.b64blobdata = b64blobdata;
+            this.hash = hash;
+            this.b64hash = b64hash;
         }
 
-        public String selectStatement(){return "select writingkey, mapkey, blobdata from metadatablobs where writingkey = "+ b64WritingKey +";";}
+        public String selectStatement(){return "select writingkey, hash from metadatablobs where writingkey = "+ b64WritingKey +";";}
         public String deleteStatement(){return "delete from metadatablobs where writingkey = "+ b64WritingKey +";";}
 
         public boolean insert()
@@ -267,11 +265,10 @@ public class JDBCCoreNode implements CoreNode {
             PreparedStatement stmt = null;
             try
             {
-                stmt = conn.prepareStatement("INSERT OR REPLACE INTO metadatablobs (writingkey, mapkey, blobdata) VALUES(?, ?, ?)");
+                stmt = conn.prepareStatement("INSERT OR REPLACE INTO metadatablobs (writingkey, hash) VALUES(?, ?)");
 
                 stmt.setString(1,this.b64WritingKey);
-                stmt.setString(2,this.b64mapkey);
-                stmt.setString(3,this.b64blobdata);
+                stmt.setString(2,this.b64hash);
                 stmt.executeUpdate();
                 return true;
             } catch (SQLException sqe) {
@@ -293,10 +290,10 @@ public class JDBCCoreNode implements CoreNode {
             PreparedStatement stmt = null;
             try
             {
-                stmt = conn.prepareStatement("DELETE from metadatablobs where writingkey=? AND mapkey=?");
+                stmt = conn.prepareStatement("DELETE from metadatablobs where writingkey=? AND hash=?");
 
                 stmt.setString(1,this.b64WritingKey);
-                stmt.setString(2,this.b64mapkey);
+                stmt.setString(2,this.b64hash);
                 stmt.executeUpdate();
                 return true;
             } catch (SQLException sqe) {
@@ -315,7 +312,7 @@ public class JDBCCoreNode implements CoreNode {
 
         public MetadataBlob selectOne()
         {
-            MetadataBlob[] fd = select("where writingKey = '"+ b64WritingKey +"' and mapkey = '"+ b64mapkey +"'");
+            MetadataBlob[] fd = select("where writingKey = '"+ b64WritingKey +"'");
             if (fd == null || fd.length != 1)
                 return null;
             return fd[0];
@@ -331,12 +328,12 @@ public class JDBCCoreNode implements CoreNode {
             PreparedStatement stmt = null;
             try
             {
-                stmt = conn.prepareStatement("select writingKey, mapkey, blobdata from metadatablobs "+ selectString + ";");
+                stmt = conn.prepareStatement("select writingKey, hash from metadatablobs "+ selectString + ";");
                 ResultSet rs = stmt.executeQuery();
                 List<MetadataBlob> list = new ArrayList<MetadataBlob>();
                 while (rs.next())
                 {
-                    MetadataBlob f = new MetadataBlob(rs.getString("writingkey"), rs.getString("mapkey"), rs.getString("blobdata"));
+                    MetadataBlob f = new MetadataBlob(rs.getString("writingkey"), rs.getString("hash"));
                     list.add(f);
                 }
 
@@ -543,45 +540,41 @@ public class JDBCCoreNode implements CoreNode {
     }
 
     @Override
-    public boolean setMetadataBlob(UserPublicKey owner, byte[] encodedWritingPublicKey, byte[] writingKeySignedMapKey) {
-        UserPublicKey writingKey = new UserPublicKey(encodedWritingPublicKey);
+    public boolean setMetadataBlob(byte[] ownerPublicKey, byte[] writingPublicKey, byte[] writingKeySignedHash) {
+        UserPublicKey writingKey = new UserPublicKey(writingPublicKey);
 
         try {
-            byte[] payload = writingKey.unsignMessage(writingKeySignedMapKey);
-            byte[] mapKey = Arrays.copyOfRange(payload, 0, 32);
-            byte[] metadataBlob = Arrays.copyOfRange(payload, 32, payload.length);
-            MetadataBlob blob = new MetadataBlob(writingKey.getPublicKeys(), mapKey, metadataBlob);
+            byte[] btreeRootHash = writingKey.unsignMessage(writingKeySignedHash);
+            MetadataBlob blob = new MetadataBlob(writingKey.getPublicKeys(), btreeRootHash);
             return blob.insert();
         } catch (TweetNaCl.InvalidSignatureException e) {
-            System.err.println("Invalid signature during setMetadataBlob for owner: " + owner + " and sharer: " + writingKey);
+            System.err.println("Invalid signature during setMetadataBlob for sharer: " + writingKey);
             return false;
         }
     }
 
     @Override
-    public boolean removeMetadataBlob(UserPublicKey owner, byte[] encodedWritingPublicKey, byte[] writingKeySignedMapKeyPlusBlob) {
+    public boolean removeMetadataBlob(byte[] encodedWritingPublicKey, byte[] writingKeySignedMapKeyPlusBlob) {
         UserPublicKey writingKey = new UserPublicKey(encodedWritingPublicKey);
 
         try {
-            byte[] payload = writingKey.unsignMessage(writingKeySignedMapKeyPlusBlob);
-            byte[] mapKey = Arrays.copyOfRange(payload, 0, 32);
-            byte[] metadataBlob = Arrays.copyOfRange(payload, 32, payload.length); // will be zero length for now // TODO  change to the current blob hash
-            MetadataBlob blob = new MetadataBlob(writingKey.getPublicKeys(), mapKey, metadataBlob);
+            byte[] currentHash = writingKey.unsignMessage(writingKeySignedMapKeyPlusBlob);
+            MetadataBlob blob = new MetadataBlob(writingKey.getPublicKeys(), currentHash);
             return blob.delete();
         } catch (TweetNaCl.InvalidSignatureException e) {
-            System.err.println("Invalid signature during removeMetadataBlob for owner: "+owner + " and sharer: "+writingKey);
+            System.err.println("Invalid signature during removeMetadataBlob for  sharer: "+writingKey);
             return false;
         }
     }
 
     @Override
-    public byte[] getMetadataBlob(UserPublicKey owner, byte[] writingKey, byte[] mapKey) {
+    public byte[] getMetadataBlob(byte[] writingKey) {
         byte[] dummy = null;
-        MetadataBlob blob = new MetadataBlob(writingKey, mapKey, dummy);
+        MetadataBlob blob = new MetadataBlob(writingKey, dummy);
         MetadataBlob users = blob.selectOne();
         if (users == null)
             return null;
-        return users.blobdata;
+        return users.hash;
     }
 
     public synchronized void close()

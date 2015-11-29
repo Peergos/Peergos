@@ -1,26 +1,29 @@
 package peergos.storage.dht;
 
 import org.ipfs.api.*;
+import peergos.storage.merklebtree.*;
 
 import java.util.*;
 import java.util.concurrent.*;
 
-public class IpfsDHT implements DHT {
+public class IpfsDHT implements ContentAddressedStorage {
     private final IPFS ipfs;
 
     public IpfsDHT(IPFS ipfs) {
         this.ipfs = ipfs;
     }
 
-    public CompletableFuture<Optional<byte[]>> put(byte[] value, byte[] owner, byte[] writingKey, byte[] mapKey, byte[] proof) {
+    public byte[] get(byte[] key) {
         throw new IllegalStateException("Unimplemented!");
     }
 
-    public CompletableFuture<Integer> contains(byte[] key) {
+    @Override
+    public byte[] put(byte[] value) {
         throw new IllegalStateException("Unimplemented!");
     }
 
-    public CompletableFuture<byte[]> get(byte[] key) {
+    @Override
+    public void remove(byte[] key) {
         throw new IllegalStateException("Unimplemented!");
     }
 }

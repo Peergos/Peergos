@@ -459,8 +459,8 @@ function DHTClient() {
     //
     //put
     //
-    this.put = function(valueData, owner, sharingKeyData, mapKeyData, proofData) {        
-        var arrays = [valueData, owner, sharingKeyData, mapKeyData, proofData];
+    this.put = function(valueData, owner) {        
+        var arrays = [valueData, owner];
         var buffer = new ByteArrayOutputStream();
         buffer.writeInt(0); // PUT Message
         for (var iArray=0; iArray < arrays.length; iArray++) 
@@ -472,7 +472,7 @@ function DHTClient() {
 		var key = stream.readArray();
 		return Promise.resolve(key);
 	    }
-            return Promise.reject("Fragment upload failed");
+            return Promise.reject("DHT put failed");
         });
     };
     //
@@ -489,16 +489,6 @@ function DHTClient() {
                 return Promise.resolve(buf.readArray());
             return Promise.reject("Fragment download failed");
         });
-    };
-    
-    //
-    //contains
-    //
-    this.contains = function(keyData) {
-        var buffer = new ByteArrayOutputStream();
-        buffer.writeInt(2); // CONTAINS Message
-        buffer.writeArray(keyData);
-        return postProm("dht/contains", buffer.toByteArray()); 
     };
 }
 
@@ -732,12 +722,41 @@ function CoreNodeClient() {
     };
 };
 
+function BTree() {
+    
+    this.put = function(sharingKey, mapKey, value) {
+	var buffer = new ByteArrayOutputStream();
+	buffer.writeInt(0); // PUT
+        buffer.writeArray(sharingKey);
+        buffer.writeArray(mapKey);
+        buffer.writeArray(value);
+        return postProm("btree/put", buffer.toByteArray());
+    }
+
+    this.get = function(sharingKey, mapKey) {
+	var buffer = new ByteArrayOutputStream();
+	buffer.writeInt(1); // GET
+        buffer.writeArray(sharingKey);
+        buffer.writeArray(mapKey);
+        return postProm("btree/get", buffer.toByteArray());
+    }
+
+    this.remove = function(sharingKey, mapKey) {
+	var buffer = new ByteArrayOutputStream();
+	buffer.writeInt(2); // DELETE
+        buffer.writeArray(sharingKey);
+        buffer.writeArray(mapKey);
+        return postProm("btree/delete", buffer.toByteArray());
+    }
+}
+
 function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
     this.username  = username;
     this.user = user;
     this.rootKey = rootKey;
     this.dhtClient = dhtClient;
     this.corenodeClient = corenodeClient;
+    this.btree = new BTree();
     this.staticData = []; // array of map entry pairs
     this.rootNode = null;
     this.sharingFolder = null;
@@ -1017,8 +1036,8 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
 				 rawKey.length > 0 ? new SymmetricKey(rawKey) : null, raw);
     }
     
-    this.uploadFragment = function(f, targetUser, sharer, mapKey) {
-        return dhtClient.put(f.getData(), targetUser.getPublicKeys(), sharer.getPublicKeys(), mapKey, sharer.signMessage(sharer.getPublicKeys()));
+    this.uploadFragment = function(f, targetUser) {
+        return dhtClient.put(f.getData(), targetUser.getPublicKeys());
     }
 
     this.uploadFragments = function(fragments, owner, sharer, mapKey, setProgressPercentage) {
@@ -1032,7 +1051,7 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
                     //document.title = "Peergos Uploading: " + percentage + "%" ;  
                 }
             }
-            futures[i] = this.uploadFragment(fragments[i], owner, sharer, mapKey);
+            futures[i] = this.uploadFragment(fragments[i], owner);
         }
         // wait for all fragments to upload
         return Promise.all(futures);
@@ -1042,18 +1061,22 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
         var buf = new ByteArrayOutputStream();
         metadata.serialize(buf);
         var metaBlob = buf.toByteArray();
+	const btree = this.btree;
         console.log("Storing metadata blob of " + metaBlob.length + " bytes.");
-	var msg = concat(mapKey, metaBlob);
-	var signed = sharer.signMessage(msg);
-	var unsigned = sharer.unsignMessage(signed);
-        return corenodeClient.addMetadataBlob(owner.getPublicKeys(), sharer.getPublicKeys(), signed)
-        .then(function(added) {
-            if (!added) {
-                console.log("Meta blob store failed.");
+	return this.dhtClient.put(metaBlob, owner.getPublicKeys()).then(function(blobHash){
+	    return btree.put(sharer.getPublicKeys(), mapKey, blobHash);
+	}).then(function(newBtreeRoot) {
+	    var msg = newBtreeRoot;
+	    var signed = sharer.signMessage(msg);
+            return corenodeClient.addMetadataBlob(owner.getPublicKeys(), sharer.getPublicKeys(), signed)
+		.then(function(added) {
+		    if (!added) {
+			console.log("Meta blob store failed.");
 		return Promise.resolve(false);
-            }
-	    return Promise.resolve(true);
-        });
+		    }
+		    return Promise.resolve(true);
+		});
+	});
     }
 
     this.getRoots = function() {
@@ -1077,7 +1100,10 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
 	// download the metadata blobs for these entry points
         var proms = [];
         for (var i=0; i < entries.length; i++)
-	    proms[i] = corenodeClient.getMetadataBlob(entries[i].pointer.owner, entries[i].pointer.writer, entries[i].pointer.mapKey);
+	    proms[i] = this.btree.get(entries[i].pointer.writer.getPublicKeys(), entries[i].pointer.mapKey).then(function(hash) {
+		return dhtClient.get(hash);
+	    });
+
         return Promise.all(proms).then(function(result) {
             var entryPoints = [];
             for (var i=0; i < result.length; i++) {
