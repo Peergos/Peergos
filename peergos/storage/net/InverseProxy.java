@@ -6,6 +6,7 @@ import peergos.util.*;
 import java.io.*;
 import java.net.*;
 import java.util.*;
+import java.util.stream.*;
 
 public class InverseProxy implements HttpHandler {
     private final String targetDomain;
@@ -44,9 +45,11 @@ public class InverseProxy implements HttpHandler {
             System.out.println(new String(bytes));
 
             Map<String, List<String>> respHeaders = conn.getHeaderFields();
-            respHeaders.remove(null); // status is returned under a null key
-            System.out.println("headers: "+respHeaders);
-            httpExchange.getResponseHeaders().putAll(respHeaders);
+            // status is returned under a null key, remove it
+            Map<String, List<String>> headers = respHeaders.entrySet().stream().filter(e -> e.getKey() != null)
+                    .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue()));
+            System.out.println("headers: "+headers);
+            httpExchange.getResponseHeaders().putAll(headers);
             httpExchange.sendResponseHeaders(respCode, bytes.length);
             httpExchange.getResponseBody().write(bytes);
         } catch (Throwable t) {
