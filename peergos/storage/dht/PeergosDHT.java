@@ -31,6 +31,7 @@ public class PeergosDHT implements ContentAddressedStorage
 
         public final Optional<byte[]> apply(Object obj)
         {
+            System.out.println("dht put: "+new ByteArrayWrapper(key));
             PutOffer offer = (PutOffer) obj;
                 if (offer.getTarget().external.equals(router.address().external)) {
                     if (router.storage.isWaitingFor(key))
@@ -57,6 +58,7 @@ public class PeergosDHT implements ContentAddressedStorage
 
         public final byte[] apply(Object obj)
         {
+            System.out.println("dht get: "+new ByteArrayWrapper(key));
             GetOffer offer = (GetOffer) obj;
             if (offer.getTarget().external.equals(router.address().external))
                 offer.target = new NodeID(offer.target.id, offer.getTarget().external);
@@ -82,6 +84,7 @@ public class PeergosDHT implements ContentAddressedStorage
 
     public byte[] get(byte[] key)
     {
+        System.out.println("dht get start: "+new ByteArrayWrapper(key));
         if (key.length == 0)
             return new byte[0];
         CompletableFuture<Object> fut = router.ask(new Message.GET(key));

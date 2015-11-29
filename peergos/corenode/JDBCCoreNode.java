@@ -545,6 +545,7 @@ public class JDBCCoreNode implements CoreNode {
 
         try {
             byte[] btreeRootHash = writingKey.unsignMessage(writingKeySignedHash);
+            System.out.println("Setting metadata blob, writer: "+new ByteArrayWrapper(writingPublicKey) + ", hash: "+new ByteArrayWrapper(btreeRootHash));
             MetadataBlob blob = new MetadataBlob(writingKey.getPublicKeys(), btreeRootHash);
             return blob.insert();
         } catch (TweetNaCl.InvalidSignatureException e) {
@@ -574,6 +575,7 @@ public class JDBCCoreNode implements CoreNode {
         MetadataBlob users = blob.selectOne();
         if (users == null)
             return null;
+        System.out.println("Return metablob hash: " +new ByteArrayWrapper(users.hash));
         return users.hash;
     }
 

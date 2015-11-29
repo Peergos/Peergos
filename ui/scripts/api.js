@@ -730,7 +730,15 @@ function BTree() {
         buffer.writeArray(sharingKey);
         buffer.writeArray(mapKey);
         buffer.writeArray(value);
-        return postProm("btree/put", buffer.toByteArray());
+        return postProm("btree/put", buffer.toByteArray()).then(function(resBuf){
+            var stream = new ByteArrayInputStream(resBuf);
+	    var res = stream.readInt();
+            if (res == 1) {
+		var key = stream.readArray();
+		return Promise.resolve(key);
+	    }
+            return Promise.reject("BTree put failed");
+        });
     }
 
     this.get = function(sharingKey, mapKey) {
@@ -738,7 +746,13 @@ function BTree() {
 	buffer.writeInt(1); // GET
         buffer.writeArray(sharingKey);
         buffer.writeArray(mapKey);
-        return postProm("btree/get", buffer.toByteArray());
+        return postProm("btree/get", buffer.toByteArray()).then(function(res) {
+            var buf = new ByteArrayInputStream(res);
+            var success = buf.readInt();
+            if (success == 1)
+                return Promise.resolve(buf.readArray());
+            return Promise.reject("BTree get failed");
+        });
     }
 
     this.remove = function(sharingKey, mapKey) {
@@ -1108,8 +1122,7 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
             var entryPoints = [];
             for (var i=0; i < result.length; i++) {
                 if (result[i].byteLength > 8) {
-                    var unwrapped = new ByteArrayInputStream(result[i]).readArray();
-                    entryPoints.push([entries[i], FileAccess.deserialize(unwrapped)]);
+                    entryPoints.push([entries[i], FileAccess.deserialize(result[i])]);
                 } else {
                     // these point to removed directories
 		}
