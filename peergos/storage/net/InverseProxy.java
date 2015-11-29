@@ -44,6 +44,7 @@ public class InverseProxy implements HttpHandler {
             System.out.println(new String(bytes));
 
             Map<String, List<String>> respHeaders = conn.getHeaderFields();
+            respHeaders.remove(null); // status is returned under a null key
             System.out.println("headers: "+respHeaders);
             httpExchange.getResponseHeaders().putAll(respHeaders);
             httpExchange.sendResponseHeaders(respCode, bytes.length);
