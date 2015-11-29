@@ -37,7 +37,7 @@ public class BTreeHandler implements HttpHandler
 
                 try {
                     byte[] raw = core.getMetadataBlob(sharingKey);
-                    System.out.println("Btree handler put, existing root raw: " + new ByteArrayWrapper(raw) + " value: "+new ByteArrayWrapper(value));
+                    System.out.println("Btree handler put, existing root raw: " + new ByteArrayWrapper(raw) + " mapkey: "+new ByteArrayWrapper(mapKey)+" value: "+new ByteArrayWrapper(value));
                     byte[] rootHash = raw.length == 0 ? new byte[0] : raw;
                     MerkleBTree btree = MerkleBTree.create(rootHash, dht);
                     byte[] newRoot = btree.put(mapKey, value);
