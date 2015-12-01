@@ -23,8 +23,10 @@ public class StorageWrapper
 
     public boolean accept(ByteArrayWrapper fragmentHash, int size) {
         try {
-            if (storage.contains(fragmentHash.toString()))
-                return false; // don't overwrite old data for now (not sure this would ever be a problem with a cryptographic hash..
+            if (storage.contains(fragmentHash.toString())) {
+                pending.put(fragmentHash, size);
+                return true;
+            }
         } catch (IOException e) {
             return false;
         }
@@ -44,6 +46,8 @@ public class StorageWrapper
         // commit data
         try
         {
+            if (storage.contains(key.toString()))
+                return true;
             storage.put(key.toString(), value);
         } catch (IOException e)
         {

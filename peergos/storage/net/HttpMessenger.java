@@ -82,7 +82,7 @@ public class HttpMessenger
     {
         // for now, make a direct connection
         URL target = new URL("http", addr.getHostName(), addr.getPort(), key);
-        System.out.println("getting fragment from " + addr);
+        System.out.println("getting fragment "+key+" from " + addr);
         URLConnection conn = target.openConnection();
         InputStream in = conn.getInputStream();
         byte[] buf = new byte[2*1024*1024];
@@ -102,7 +102,7 @@ public class HttpMessenger
     {
         // for now, make a direct connection
         URL target = new URL("http", addr.getHostName(), addr.getPort(), key+"/");
-        System.out.println("sending fragment to " + target.toString());
+        System.out.println("sending fragment "+key+" to " + target.toString());
         HttpURLConnection conn = (HttpURLConnection) target.openConnection();
         conn.setDoOutput(true);
         conn.setRequestMethod("PUT");
