@@ -81,7 +81,12 @@ public class UserPublicKey implements Comparable<UserPublicKey>
         try {
             MessageDigest md = MessageDigest.getInstance(HASH);
             md.update(input);
-            return md.digest();
+            byte[] digest = md.digest();
+            byte[] multihash = new byte[2 + digest.length];
+            multihash[0] = 0x12;
+            multihash[1] = 0x20;
+            System.arraycopy(digest, 0, multihash, 2, digest.length);
+            return multihash;
         } catch (NoSuchAlgorithmException e)
         {
             throw new IllegalStateException("couldn't hash password");
