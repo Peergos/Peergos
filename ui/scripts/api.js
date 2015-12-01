@@ -1189,13 +1189,14 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
         var proms = [];
         for (var i=0; i < links.length; i++) {
             var loc = links[i].targetLocation(baseKey);
-            proms[i] = corenodeClient.getMetadataBlob(loc.owner, loc.writer, loc.mapKey);
+            proms[i] = this.btree.get(loc.writer.getPublicKeys(), loc.mapKey).then(function(hash) {
+		return dhtClient.get(hash);
+	    });
         }
         return Promise.all(proms).then(function(rawBlobs) {
             var accesses = [];
             for (var i=0; i < rawBlobs.length; i++) {
-                var unwrapped = new ByteArrayInputStream(rawBlobs[i]).readArray();
-                accesses[i] = [links[i].toReadableFilePointer(baseKey), unwrapped.length > 0 ? FileAccess.deserialize(unwrapped) : null];
+                accesses[i] = [links[i].toReadableFilePointer(baseKey), rawBlobs[i].length > 0 ? FileAccess.deserialize(rawBlobs[i]) : null];
             }
 	    const res = [];
 	    for (var i=0; i < accesses.length; i++)
