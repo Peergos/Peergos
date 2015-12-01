@@ -735,10 +735,19 @@ var Browser = React.createClass({
                         ev.dataTransfer.effectAllowed='move';
                         var id = ev.target.id;
                         ev.dataTransfer.setData("text/plain", id);
-                        this.setClipboard({
-                                fileTreeNode: treeNode,
-                                op: "cut"
-                         });
+                        var owner = treeNode.getOwner();
+                        var me = userContext.username;
+                        if(owner === me){
+                            this.setClipboard({
+                                    fileTreeNode: treeNode,
+                                    op: "cut"
+                             });
+                         }else{
+                            this.setClipboard({
+                                    fileTreeNode: treeNode,
+                                    op: "copy"
+                             });
+                         }
                     }.bind(this);
                     const onDrop = function(ev) {
                         ev.preventDefault();
@@ -917,7 +926,7 @@ var Browser = React.createClass({
             const clipboard = this.state.clipboard;
             if (typeof(clipboard) ==  undefined || typeof(clipboard.op) == "undefined")
                     return;
-            if (clipboard.op == "cut") {
+            if (clipboard.op == "cut"  || clipboard.op == "copy") {
                     const pwd = this.state.retrievedFilePointerPath[0];
                     clipboard.fileTreeNode.copyTo(pwd, userContext).then(function() {
                             return clipboard.fileTreeNode.remove(userContext);
