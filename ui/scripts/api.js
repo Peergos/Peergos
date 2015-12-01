@@ -1374,6 +1374,10 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 	return pointer.equals(other.getPointer());
     }
 
+    this.hasChildByName = function(name) {
+	return childrenByName[name] != null;
+    }
+
     this.getPointer = function() {
 	return pointer;
     }
@@ -1390,17 +1394,31 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 	childrenByName[name] = child;
     }
 
+    this.removeChild = function(child) {
+	var name = child.getFileProperties().name;
+	childrenByName[name] = null;
+	var index = children.indexOf(child);
+	if (index > -1)
+	    children.splice(index, 1);
+    }
+
     this.addLinkTo = function(file, context) {
 	if (!this.isDirectory())
 	    return Promise.resolve(false);
 	if (!this.isWritable())
 	    return Promise.resolve(false);
+	var name = file.getFileProperties().name;
+	if (childrenByName[name] != null) {
+	    console.log("Child already exists with name: "+name);
+	    return Promise.resolve(false)
+	}
 	var loc = file.getLocation();
 	if (file.isDirectory()) {
 	    pointer.fileAccess.addSubdir(loc, this.getKey(), file.getKey());
 	} else {
 	    pointer.fileAccess.addFile(loc, this.getKey(), file.getKey());
 	}
+	this.addChild(file);
 	return pointer.fileAccess.commit(pointer.filePointer.owner, entryWriterKey, pointer.filePointer.mapKey, context);
     }
 
@@ -1460,9 +1478,14 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
     this.getChildren = function(context) {
 	if (this == FileTreeNode.ROOT)
 	    return Promise.resolve(children);
+	const that = this;
 	try {
 	    return retrieveChildren(context).then(function(childrenRFPs){
 		return Promise.resolve(childrenRFPs.map(function(x) {return new FileTreeNode(x, owner, readers, writers, entryWriterKey);}));
+	    }).then(function(children){
+		//for (var i=0; i < children.length; i++)
+		    //that.addChild(children[i]);
+		return Promise.resolve(children);
 	    });
 	} catch (e) {
 	    // directories we don't have read access to have children populated during tree creation
@@ -1487,6 +1510,10 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
     }
 
     this.uploadFile = function(filename, file, context, setProgressPercentage) {
+	if (childrenByName[filename] != null) {
+	    console.log("Child already exists with name: "+filename);
+	    return Promise.resolve(false)
+	}
 	const fileKey = SymmetricKey.random();
         const rootRKey = pointer.filePointer.baseKey;
         const owner = pointer.filePointer.owner;
@@ -1506,13 +1533,19 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
     this.mkdir = function(newFolderName, context, requestedBaseSymmetricKey, isSystemFolder) {
 	if (!this.isDirectory())
 	    return Promise.resolve(false);
+	if (childrenByName[newFolderName] != null) {
+	    console.log("Child already exists with name: "+newFolderName);
+	    return Promise.resolve(false)
+	}
 	const dirPointer = pointer.filePointer;
 	const dirAccess = pointer.fileAccess;
     	var rootDirKey = dirPointer.baseKey;
 	return dirAccess.mkdir(newFolderName, context, entryWriterKey, dirPointer.mapKey, rootDirKey, requestedBaseSymmetricKey, isSystemFolder);
     }
 
-    this.rename = function(newName, context) {
+    this.rename = function(newName, context, parent) {
+	if (parent != null && parent.hasChildByName(newName))
+	    return Promise.resolve(false);
 	//get current props
         const filePointer = pointer.filePointer;
         const baseKey = filePointer.baseKey;
@@ -1541,6 +1574,8 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
     this.copyTo = function(target, context) {
         if (! target.isDirectory())
             return Promise.reject("CopyTo target "+ target +" must be a directory");
+	if (target.hasChildByName(this.getFileProperties().name))
+	    return Promise.resolve(false);
         //make new FileTreeNode pointing to the same file, but with a different location
         const newMapKey = window.nacl.randomBytes(32);
 	const ourBaseKey = this.getKey();
@@ -1558,7 +1593,9 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 	});
     }
 
-    this.remove = function(context) {
+    this.remove = function(context, parent) {
+	if (parent != null)
+	    parent.removeChild(this);
 	return new RetrievedFilePointer(writableFilePointer(), pointer.fileAccess).remove(context);
     }
 
@@ -1850,7 +1887,6 @@ function FileAccess(parent2meta, properties, retriever, parentLink) {
     this.removeFragments = function(context) {
 	if (this.isDirectory())
 	    return Promise.resolve(true);
-	// TODO delete fragments
 	return Promise.resolve(true);
     }
 
