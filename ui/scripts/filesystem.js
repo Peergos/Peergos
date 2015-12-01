@@ -1311,12 +1311,13 @@ if (window.location.hash)  {
         console.log(filePointer);
         const corenodeClient = new CoreNodeClient();
         const context = new UserContext(null, null, null, new DHTClient(), corenodeClient);
-        corenodeClient.getMetadataBlob(filePointer.owner, filePointer.writer, filePointer.mapKey).then(function(raw) {
+        context.btree.get(filePointer.writer.getPublicKeys(),  filePointer.mapKey).then(function(hash) {
+        return context.dhtClient.get(hash);
+        }).then(function(raw) {
 
-                var unwrapped = new ByteArrayInputStream(raw).readArray();
-                if (unwrapped.length == 0)
+                if (raw.length == 0)
                         return alert("File not found");
-                const fa = FileAccess.deserialize(unwrapped);
+                const fa = FileAccess.deserialize(raw);
                 const props = fa.getFileProperties(baseKey);
                 const name = props.name;
                 const size = props.size;

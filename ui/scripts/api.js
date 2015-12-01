@@ -38,10 +38,16 @@ UserPublicKey.fromPublicKeys = function(both) {
     return new UserPublicKey(pSign, pBox);
 }
 
-UserPublicKey.HASH_BYTES = 32;
+UserPublicKey.HASH_BYTES = 34;
 // Uint8Array => Uint8Array
 UserPublicKey.hash = function(arr) {
-    return sha256(arr);
+    const hash = sha256(arr);
+    const multihash = new Uint8Array(hash.length+2);
+    multihash[0] = 0x12;
+    multihash[1] = 0x20;
+    for(var i=0; i < hash.length; i++) multihash[i+2] = hash[i];
+
+    return multihash;
 }
 
 function createNonce(){
@@ -52,7 +58,7 @@ function createNonce(){
 // User methods
 // (string, string, (User -> ())
 function generateKeyPairs(username, password, cb) {
-    var hash = UserPublicKey.hash(nacl.util.decodeUTF8(password));
+    var hash = sha256(nacl.util.decodeUTF8(password));
     var salt = nacl.util.decodeUTF8(username)
     
     return new Promise(function(resolve, reject) {
