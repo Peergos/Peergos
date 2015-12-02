@@ -121,7 +121,7 @@ public class BTreeHandler implements HttpHandler
                 exchange.sendResponseHeaders(200, 0);
                 DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());
                 dout.writeInt(1); // success
-                Serialize.serialize(value, dout);
+                Serialize.serialize(value == null ? new byte[0] : value, dout);
                 dout.flush();
                 dout.close();
             } catch (IOException e)

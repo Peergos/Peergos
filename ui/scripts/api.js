@@ -766,7 +766,13 @@ function BTree() {
 	buffer.writeInt(2); // DELETE
         buffer.writeArray(sharingKey);
         buffer.writeArray(mapKey);
-        return postProm("btree/delete", buffer.toByteArray());
+        return postProm("btree/delete", buffer.toByteArray()).then(function(res) {
+            var buf = new ByteArrayInputStream(res);
+            var success = buf.readInt();
+            if (success == 1)
+                return Promise.resolve(buf.readArray());
+            return Promise.reject("BTree delete failed");
+        });
     }
 }
 
@@ -1635,7 +1641,10 @@ function RetrievedFilePointer(pointer, access) {
 	    return Promise.resolve(false);
 	if (!this.fileAccess.isDirectory())
 	    return this.fileAccess.removeFragments(context).then(function() {
-		context.corenodeClient.removeMetadataBlob(this.filePointer.owner, this.filePointer.writer, this.filePointer.mapKey);
+		return context.btree.remove(this.filePointer.writer.getPublicKeys(), this.filePointer.mapKey);
+	    }.bind(this)).then(function(treeRootHash) {
+		var signed = this.filePointer.writer.signMessage(treeRootHash);
+		return context.corenodeClient.addMetadataBlob(this.filePointer.owner.getPublicKeys(), this.filePointer.writer.getPublicKeys(), signed)
 	    }.bind(this)).then(function() {
 		// remove from parent
 		if (parentRetrievedFilePointer != null)
@@ -1646,7 +1655,10 @@ function RetrievedFilePointer(pointer, access) {
 	    for (var i=0; i < files.length; i++)
 		proms.push(files[i].remove(context, null));
 	    return Promise.all(proms).then(function() {
-		return context.corenodeClient.removeMetadataBlob(this.filePointer.owner, this.filePointer.writer, this.filePointer.mapKey);
+		return context.btree.remove(this.filePointer.writer.getPublicKeys(), this.filePointer.mapKey);
+	    }.bind(this)).then(function(treeRootHash) {
+		var signed = this.filePointer.writer.signMessage(treeRootHash);
+		return context.corenodeClient.addMetadataBlob(this.filePointer.owner.getPublicKeys(), this.filePointer.writer.getPublicKeys(), signed)
 	    }.bind(this)).then(function() {
 		// remove from parent
 		if (parentRetrievedFilePointer != null)
