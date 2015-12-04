@@ -1489,8 +1489,9 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 	    return retrieveChildren(context).then(function(childrenRFPs){
 		return Promise.resolve(childrenRFPs.map(function(x) {return new FileTreeNode(x, owner, readers, writers, entryWriterKey);}));
 	    }).then(function(children){
-		//for (var i=0; i < children.length; i++)
-		    //that.addChild(children[i]);
+		that.clear();
+		for (var i=0; i < children.length; i++)
+		    that.addChild(children[i]);
 		return Promise.resolve(children);
 	    });
 	} catch (e) {
@@ -1516,6 +1517,8 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
     }
 
     this.uploadFile = function(filename, file, context, setProgressPercentage) {
+	if (!this.isLegalName(filename))
+	    return Promise.resolve(false);
 	if (childrenByName[filename] != null) {
 	    console.log("Child already exists with name: "+filename);
 	    return Promise.resolve(false)
@@ -1536,12 +1539,20 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 	});
     }
 
+    this.isLegalName = function(name) {
+	if (name.indexOf("/") != -1)
+	    return false;
+	return true;
+    }
+
     this.mkdir = function(newFolderName, context, requestedBaseSymmetricKey, isSystemFolder) {
 	if (!this.isDirectory())
 	    return Promise.resolve(false);
+	if (!this.isLegalName(newFolderName))
+	    return Promise.resolve(false);
 	if (childrenByName[newFolderName] != null) {
 	    console.log("Child already exists with name: "+newFolderName);
-	    return Promise.resolve(false)
+	    return Promise.resolve(false);
 	}
 	const dirPointer = pointer.filePointer;
 	const dirAccess = pointer.fileAccess;
@@ -1550,6 +1561,8 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
     }
 
     this.rename = function(newName, context, parent) {
+	if (!this.isLegalName(newName))
+	    return Promise.resolve(false)
 	if (parent != null && parent.hasChildByName(newName))
 	    return Promise.resolve(false);
 	//get current props
