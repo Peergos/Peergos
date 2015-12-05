@@ -1260,6 +1260,12 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
             return Promise.resolve(result.fragments);
         });
     }
+    this.unfollow = function(username) {
+            //TODO
+    };
+    this.removeFollower  = function(useername) {
+            //TODO
+    };
 }
 
 //List[FollowRequest],  List[String], List[FileTreeNode] 

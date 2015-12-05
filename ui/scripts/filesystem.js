@@ -1,4 +1,4 @@
-const centerStyle = {"text-align": "center"};
+const centerStyle = {textAlign: "center"};
 
 const buildJumbo = function(header, content) {
         return (<div className="jumbotron">
@@ -221,9 +221,8 @@ const UserOptions = React.createClass({
                                                 <table className="table table-responsive table-striped table-hover">
                                                 <thead></thead>
                                                 <th>User</th>
-                                                <th></th>
-                                                <th></th>
-                                                <th></th>
+                                                <th>Follower</th>
+                                                <th>Remove</th>
                                                 <tbody>
                                                 {rows}
                                                 </tbody>
@@ -238,16 +237,24 @@ const UserOptions = React.createClass({
                             );
         },
 
-        tableBuilder: function(header, names) {
+        tableBuilder: function(names) {
                 const rows = names.map(function(name) {
-                        return (<tr><td>{name}</td></tr>);
+                        const  onRemove = function(evt) {
+                            userContext.unfollow(name);
+                            evt.preventDefault();
+                        };
+                        return (<tr>
+                                        <td>{name}</td>
+                                        <td style={{textAlign:"right"}}><button className="btn btn-danger" onClick={onRemove}>remove</button></td>
+                                </tr>);
                 });
                 return React.createClass({
                         render: function() {
                                 return (<div>
                                                 <table className="table table-responsive table-striped table-hover">
                                                 <thead></thead>
-                                                <th>{header}</th>
+                                                <th>Follower</th>
+                                                <th></th>
                                                 <tbody>
                                                 {rows}
                                                 </tbody>
@@ -259,7 +266,8 @@ const UserOptions = React.createClass({
 
         populateFollowersTable: function(names)  {
 	            names.sort(humanSort);
-                const Anon = this.tableBuilder("Follower", names);
+                const onRemove = function(){};
+                const Anon = this.tableBuilder(names);
                 React.render(<Anon/>, document.getElementById("followersList"));
         },
 
@@ -268,17 +276,24 @@ const UserOptions = React.createClass({
                 const rows = followingRoots.sort(function(l,r) {
                         return humanSort(l.getOwner(), r.getOwner());
                 }).map(function(froot) {
+                        const ownerName = froot.getOwner();
                         const onClick = function(){
                                 this.props.browser.loadFilesFromServer(froot);
                         }.bind(this);
+                        const onRemove = function(evt){
+                                userContext.removeFollower(ownerName);
+                                evt.preventDefault();
+                        };
                         return (<tr style={{cursor: "pointer"}} onClick={onClick}>
-                                        <td><a><span className="glyphicon glyphicon-folder-open"/>&nbsp;&nbsp;{froot.getOwner()}</a></td>
+                                        <td><a><span className="glyphicon glyphicon-folder-open"/>&nbsp;&nbsp;{ownerName}</a></td>
+                                        <td style={{textAlign:"right"}}><button className="btn btn-danger" onClick={onRemove}>unfollow</button></td>
                                         </tr>);
                 }.bind(this));
                 const  table = (<div>
                                 <table className="table table-responsive table-striped table-hover">
                                 <thead></thead>
-                                <th>Shared with  you</th>
+                                <th>Shared with you</th>
+                                <th></th>
                                 <tbody>
                                 {rows}
                                 </tbody>
