@@ -227,7 +227,6 @@ public class HTTPCoreNodeServer
         server.createContext(CORE_URL, ch);
         //server.setExecutor(Executors.newFixedThreadPool(HANDLER_THREAD_COUNT));
         server.setExecutor(null);
-        System.out.printf("Starting core node listening at %s:%d\n", address.getHostName(), address.getPort());
     }
 
     public void start() throws IOException

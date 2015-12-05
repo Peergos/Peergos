@@ -3,6 +3,7 @@ package peergos.storage.dht;
 import peergos.corenode.*;
 import peergos.crypto.*;
 import peergos.directory.DirectoryServer;
+import peergos.storage.merklebtree.*;
 import peergos.storage.net.*;
 import peergos.util.*;
 
@@ -122,25 +123,16 @@ public class Start
             int port = Args.getInt("port", 8000);
             String domain = Args.getArg("domain", "localhost");
             InetSocketAddress userAPIAddress = new InetSocketAddress(domain, port);
-            InetSocketAddress messengerAddr = new InetSocketAddress(domain, port+1);
 
-            String user = Args.getArg("user", "00000000000000000000000000000000000000000000000000000000000000000000");
-            boolean isFirstNode = Args.hasArg("firstNode");
-            InetAddress contactIP = isFirstNode ? null : InetAddress.getByName(Args.getArg("contactIP"));
-            int contactPort = Args.getInt("contactPort", 8080);
-            UserPublicKey donor = new UserPublicKey(ArrayOps.hexToBytes(user));
-            Router router = new Router(messengerAddr);
-            router.init(new InetSocketAddress(contactIP, contactPort));
-            // router is ready!
-            System.out.println(port + " joined dht");
-            PeergosDHT dht = new PeergosDHT(router);
+            ContentAddressedStorage dht = new IpfsDHT();
+
             // start the User Service
             String hostname = Args.getArg("domain", "localhost");
 
             InetSocketAddress httpsMessengerAddress = new InetSocketAddress(hostname, userAPIAddress.getPort());
             CoreNode core = HTTPCoreNode.getInstance();
 
-            new HttpsUserService(httpsMessengerAddress, Logger.getLogger(router.getName()), dht, core);
+            new HttpsUserService(httpsMessengerAddress, Logger.getLogger("IPFS"), dht, core);
         }
     }
 
