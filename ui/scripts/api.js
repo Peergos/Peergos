@@ -3,6 +3,10 @@ if (typeof module !== "undefined")
 if (typeof module !== "undefined")
     var erasure = require("./erasure");
 
+function humanSort(l,r) {
+                            const comp = l.toLowerCase().localCompare(r.toLowerCase());
+                            return comp != 0 ? comp : l.localCompare(r);
+};
 // API for the User interface to use
 /////////////////////////////
 
@@ -875,10 +879,7 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
 	    return Promise.resolve(
                         friendFolders.map(function(froot){
                                 return froot.getFileProperties().name;
-                        }).sort(function(l,r) {
-                            const comp = l.toLowerCase().localCompare(r.toLowerCase());
-                            return comp != 0 ? comp : l.localCompare(r);
-                        }));
+                        }).sort(humanSort));
 	});
     }.bind(this);
 
