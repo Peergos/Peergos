@@ -536,7 +536,7 @@ var File = React.createClass({
                                         this.onCopy();
                                 } else if (selected  == "Cut")  {
                                         this.onCut();
-                                } else if (selected  == "Create public link" && ! this.props.isdir) {
+                                } else if (selected  == "Create public link") {
                                         //public link
                                         const publicUrl =  window.location.origin + this.props.retrievedFilePointer.toLink();
                                         const content = '<div class="container"><p style="word-wrap;break-all;"><a href="'+ publicUrl+'">public-link</a></p></div>';
@@ -705,10 +705,11 @@ var Browser = React.createClass({
                 }).join("/");
         },
 
-        loadFilesFromServer: function(fileTreeNode) {
+        loadFilesFromServer: function(fileTreeNode, isPublic) {
             const browser = this;
             if (typeof(userContext) == "undefined" || userContext == null)
                 return Promise.resolve(false);
+
             const callback = function(children) {
                 const files = children.filter(function(child){return !child.getFileProperties().isHidden()}).map(function(treeNode) {
                     const props = treeNode.getFileProperties();
@@ -793,17 +794,21 @@ var Browser = React.createClass({
                     retrievedFilePointerPath: this.state.retrievedFilePointerPath,
                     clipboard: this.state.clipboard 
                 }, function() {
-                    this.updateNavbarPath(this.currentPath());
+                    this.updateNavbarPath(this.currentPath(), isPublic);
                 }.bind(this)); 
             }.bind(this);
 	    
             const isEmpty =  this.state.retrievedFilePointerPath.length == 0;
             const rootSupplied =  typeof(fileTreeNode) == "object";
-            if (rootSupplied || isEmpty) {
+            if (rootSupplied || isEmpty || isPublic) {
                 var prom = null; 
-                if (rootSupplied)  
-                    prom = fileTreeNode.getChildren(userContext)
-                    .then(function(children){return children[0].getChildren(userContext).then(function(gChildren){return Promise.resolve(gChildren[0])})});
+                if (isPublic) 
+                    prom = Promise.resolve(fileTreeNode);
+                else if (rootSupplied)  //navigate to /friendname/shared/ourname from the global-root
+                    prom = fileTreeNode.getChildren(userContext).then(function(children){
+                            return children[0].getChildren(userContext).then(
+                                            function(gChildren){
+                                                    return Promise.resolve(gChildren[0])})});
                 else
                     prom = userContext.init().then(userContext.getUserRoot);
 		
@@ -815,8 +820,9 @@ var Browser = React.createClass({
                     if (tmpPath.length > 0 && tmpPath[tmpPath.length-1].equals(globalRoot))
                         return;
                     this.state.retrievedFilePointerPath.push(globalRoot);
-		    
-                    this.updateNavbarPath(this.currentPath());
+		            
+                    this.updateNavbarPath(this.currentPath(), isPublic);
+
 		    
                     const path = this.state.retrievedFilePointerPath;
                     if  (path.length ==0 || ! path[0].isWritable())
@@ -838,11 +844,11 @@ var Browser = React.createClass({
             }    
         },
 
-        pathAsButtons: function(){
+        pathAsButtons: function(isPublic){
                 return this.state.retrievedFilePointerPath.map(function(e) {
                         const props = e.getFileProperties();
                         const index = this.state.retrievedFilePointerPath.indexOf(e);
-                        const name = index == 0 ? e.getOwner() : props.name;
+                        const name = index == 0  && ! isPublic ? e.getOwner() : props.name;
                         const path = this.state.retrievedFilePointerPath.slice(0, index+1);
                         const onClick = function() {
                                 this.state.retrievedFilePointerPath = path;
@@ -871,8 +877,8 @@ var Browser = React.createClass({
                 }.bind(this));
         },
 
-        updateNavbarPath: function(path){
-                const buttons = this.pathAsButtons();
+        updateNavbarPath: function(path, isPublic){
+                const buttons = this.pathAsButtons(isPublic);
                 const elem = (<div> 
                                 {buttons}
                                 </div>)
@@ -1092,9 +1098,56 @@ var Browser = React.createClass({
                                         }.bind(this));
                 }.bind(this));
         },
+        
+        displayPublic: function() {
+            $("#login-form").css("display","none");
+            const  keysString = window.location.hash.substring(1);
+
+            console.log(keysString);
+            const filePointer = ReadableFilePointer.fromLink(keysString);
+            const baseKey = filePointer.baseKey;
+            console.log(filePointer);
+            const corenodeClient = new CoreNodeClient();
+            userContext = new UserContext(null, null, null, new DHTClient(), corenodeClient);
+            userContext.btree.get(filePointer.writer.getPublicKeys(),  filePointer.mapKey).then(function(hash) {
+            return userContext.dhtClient.get(hash);
+            }).then(function(raw) {
+
+            if (raw.length == 0)
+                    return alert("File not found");
+            const fa = FileAccess.deserialize(raw);
+            const treeNode = new FileTreeNode(new RetrievedFilePointer(filePointer, fa), filePointer.owner, [], [], filePointer.writer);
+
+            const props = treeNode.getFileProperties();
+            const name = props.name;
+            if (! treeNode.isDirectory()) {
+                const size = props.size;
+                    $.toaster({
+                            priority: "info",
+                            message: "Downloading file "+ name, 
+                            settings: {"timeout":  5000} 
+                    });
+
+                    treeNode.getInputStream(userContext, size, function(x){}).then(function(buf) {
+                        return buf.read(size).then(function(originalData) {
+                                openItem(name, originalData);
+                            });
+                        }).then(clearInProgress);
+                } 
+                else {
+                    userContext.getAncestorsAndAddToTree(treeNode, userContext);
+                    const isPublic = true;
+                    this.loadFilesFromServer(treeNode, isPublic);
+                }
+            }.bind(this));
+        },
 
         componentDidMount: function() {
-                this.loadFilesFromServer();
+                if (window.location.hash) 
+                    this.displayPublic();
+                else
+                    this.loadFilesFromServer();
+
                 var homeButton = document.getElementById("homeButton");
                 homeButton.onclick = this.onHome;
                 homeButton.ondrop = this.onHomeDrop;
@@ -1303,41 +1356,6 @@ React.render(
                 <Browser/>,
                 document.getElementById('content')
             );
-
-if (window.location.hash)  {
-        $("#login-form").css("display","none");
-        const  keysString = window.location.hash.substring(1);
-
-        console.log(keysString);
-        const filePointer = ReadableFilePointer.fromLink(keysString);
-        const baseKey = filePointer.baseKey;
-        console.log(filePointer);
-        const corenodeClient = new CoreNodeClient();
-        const context = new UserContext(null, null, null, new DHTClient(), corenodeClient);
-        context.btree.get(filePointer.writer.getPublicKeys(),  filePointer.mapKey).then(function(hash) {
-        return context.dhtClient.get(hash);
-        }).then(function(raw) {
-
-                if (raw.length == 0)
-                        return alert("File not found");
-                const fa = FileAccess.deserialize(raw);
-                const props = fa.getFileProperties(baseKey);
-                const name = props.name;
-                const size = props.size;
-                $.toaster({
-                        priority: "info",
-                        message: "Downloading file "+ name, 
-                        settings: {"timeout":  5000} 
-                });
-
-                fa.retriever.getFile(context, baseKey, size).then(function(buf) {
-                        console.log("reading "+ name);
-                        return buf.read(size).then(function(originalData) {
-                                openItem(name, originalData);
-                        });
-                });
-        });
-}
 
 function checkBrowserCapabilities() {
     if (typeof Promise == "undefined")
