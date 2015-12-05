@@ -554,10 +554,11 @@ var File = React.createClass({
                                         }.bind(this));
                                 } else if (selected  == "Readers")  {
                                         userContext.getSocialState().then(function(socialState) {
-                                                const sharedWith = socialState.sharedWith(this.props.retrievedFilePointer.getLocation()).map(function(name) {
+                                                const sharedWith = socialState.sharedWith(this.props.retrievedFilePointer.getLocation())
+                                                    .sort(humanSort)
+                                                    .map(function(name) {
                                                         return "<li>"+name+"</li>";
                                                 }).join(""); 
-                                                console.log("shared with "+ sharedWith);
 
                                                 const ul = "<ul>"+ sharedWith +"</ul>";
                                                 const title = "'"+this.props.name +"' is shared with";  
