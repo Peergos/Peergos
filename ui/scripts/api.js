@@ -872,7 +872,13 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
 
     var getFollowers = function() {
 	return getSharingFolder().getChildren(this).then(function(friendFolders){
-	    return Promise.resolve(friendFolders.map(function(froot){return froot.getFileProperties().name;}));
+	    return Promise.resolve(
+                        friendFolders.map(function(froot){
+                                return froot.getFileProperties().name;
+                        }).sort(function(l,r) {
+                            const comp = l.toLowerCase().localCompare(r.toLowerCase());
+                            return comp != 0 ? comp : l.localCompare(r);
+                        }));
 	});
     }.bind(this);
 
