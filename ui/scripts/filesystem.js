@@ -525,7 +525,7 @@ var File = React.createClass({
                 var glyphClass = this.glyphClass();
 
                 return (<div className="col-xs-6 col-md-3">
-                                <a id={this.props.id} onClick={this.props.onClick} style={{cursor: "pointer"}}>
+                                <a id={this.props.id} onDoubleClick={this.props.onClick} style={{cursor: "pointer"}}>
                                 <span id={this.props.id} draggable="true" onDragStart={this.props.onDragStart} onDragOver={this.props.onDragOver} onDrop={this.props.onDrop} style={{fontSize:"3.5em"}} className={glyphClass}/>
                                 </a>
                                 <div className="caption">
@@ -624,7 +624,7 @@ var File = React.createClass({
                 var sizeString = this.props.isdir ? "" : File.sizeString(this.props.size);
                 return (<tr id={this.props.id}>
                                 <td>
-                                <a onClick={this.props.onClick} style={{cursor: "pointer"}}><span id={this.props.id} draggable="true" onDragStart={this.props.onDragStart} onDragOver={this.props.onDragOver} onDrop={this.props.onDrop} style={{fontSize:"1.5em", paddingRight:"20px"}} className={glyphClass} />{this.props.name}</a>
+                                <a onDoubleClick={this.props.onClick} style={{cursor: "pointer"}}><span id={this.props.id} draggable="true" onDragStart={this.props.onDragStart} onDragOver={this.props.onDragOver} onDrop={this.props.onDrop} style={{fontSize:"1.5em", paddingRight:"20px"}} className={glyphClass} />{this.props.name}</a>
                                 </td>
                                 <td>{sizeString}</td>
                                 </tr>);
