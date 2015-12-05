@@ -4,8 +4,8 @@ if (typeof module !== "undefined")
     var erasure = require("./erasure");
 
 function humanSort(l,r) {
-                            const comp = l.toLowerCase().localCompare(r.toLowerCase());
-                            return comp != 0 ? comp : l.localCompare(r);
+                            const comp = l.toLowerCase().localeCompare(r.toLowerCase());
+                            return comp != 0 ? comp : l.localeCompare(r);
 };
 // API for the User interface to use
 /////////////////////////////

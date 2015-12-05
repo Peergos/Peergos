@@ -258,14 +258,16 @@ const UserOptions = React.createClass({
         },
 
         populateFollowersTable: function(names)  {
-	        names.sort();
+	            names.sort(humanSort);
                 const Anon = this.tableBuilder("Follower", names);
                 React.render(<Anon/>, document.getElementById("followersList"));
         },
 
         populateFollowingTable: function(followingRoots)  {
 
-                const rows = followingRoots.map(function(froot) {
+                const rows = followingRoots.sort(function(l,r) {
+                        return humanSort(l.getOwner(), r.getOwner());
+                }).map(function(froot) {
                         const onClick = function(){
                                 this.props.browser.loadFilesFromServer(froot);
                         }.bind(this);
@@ -273,7 +275,6 @@ const UserOptions = React.createClass({
                                         <td><a><span className="glyphicon glyphicon-folder-open"/>&nbsp;&nbsp;{froot.getOwner()}</a></td>
                                         </tr>);
                 }.bind(this));
-
                 const  table = (<div>
                                 <table className="table table-responsive table-striped table-hover">
                                 <thead></thead>
