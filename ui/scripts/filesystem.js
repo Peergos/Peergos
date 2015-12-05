@@ -794,7 +794,7 @@ var Browser = React.createClass({
                     retrievedFilePointerPath: this.state.retrievedFilePointerPath,
                     clipboard: this.state.clipboard 
                 }, function() {
-                    this.updateNavbarPath(this.currentPath(), isPublic);
+                    this.updateNavbarPath(this.currentPath());
                 }.bind(this)); 
             }.bind(this);
 	    
@@ -821,7 +821,7 @@ var Browser = React.createClass({
                         return;
                     this.state.retrievedFilePointerPath.push(globalRoot);
 		            
-                    this.updateNavbarPath(this.currentPath(), isPublic);
+                    this.updateNavbarPath(this.currentPath());
 
 		    
                     const path = this.state.retrievedFilePointerPath;
@@ -844,11 +844,11 @@ var Browser = React.createClass({
             }    
         },
 
-        pathAsButtons: function(isPublic){
+        pathAsButtons: function(){
                 return this.state.retrievedFilePointerPath.map(function(e) {
                         const props = e.getFileProperties();
                         const index = this.state.retrievedFilePointerPath.indexOf(e);
-                        const name = index == 0  && ! isPublic ? e.getOwner() : props.name;
+                        const name = index == 0  ? e.getOwner() : props.name;
                         const path = this.state.retrievedFilePointerPath.slice(0, index+1);
                         const onClick = function() {
                                 this.state.retrievedFilePointerPath = path;
@@ -877,8 +877,8 @@ var Browser = React.createClass({
                 }.bind(this));
         },
 
-        updateNavbarPath: function(path, isPublic){
-                const buttons = this.pathAsButtons(isPublic);
+        updateNavbarPath: function(path){
+                const buttons = this.pathAsButtons();
                 const elem = (<div> 
                                 {buttons}
                                 </div>)
@@ -1116,19 +1116,21 @@ var Browser = React.createClass({
             if (raw.length == 0)
                     return alert("File not found");
             const fa = FileAccess.deserialize(raw);
-            const treeNode = new FileTreeNode(new RetrievedFilePointer(filePointer, fa), filePointer.owner, [], [], filePointer.writer);
 
-            const props = treeNode.getFileProperties();
-            const name = props.name;
-            if (! treeNode.isDirectory()) {
-                const size = props.size;
-                    $.toaster({
-                            priority: "info",
-                            message: "Downloading file "+ name, 
-                            settings: {"timeout":  5000} 
-                    });
+            return userContext.corenodeClient.getUsername(filePointer.owner.getPublicKeys()).then(function(ownerName) {
+                const treeNode =  new FileTreeNode(new RetrievedFilePointer(filePointer, fa), ownerName, [], [], filePointer.writer);
 
-                    treeNode.getInputStream(userContext, size, function(x){}).then(function(buf) {
+                const props = treeNode.getFileProperties();
+                const name = props.name;
+                if (! treeNode.isDirectory()) {
+                    const size = props.size;
+                        $.toaster({
+                                priority: "info",
+                                message: "Downloading file "+ name, 
+                                settings: {"timeout":  5000} 
+                        });
+
+                        treeNode.getInputStream(userContext, size, function(x){}).then(function(buf) {
                         return buf.read(size).then(function(originalData) {
                                 openItem(name, originalData);
                             });
@@ -1140,6 +1142,8 @@ var Browser = React.createClass({
                     this.loadFilesFromServer(treeNode, isPublic);
                 }
             }.bind(this));
+            }.bind(this));
+            
         },
 
         componentDidMount: function() {
