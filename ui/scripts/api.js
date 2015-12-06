@@ -649,19 +649,10 @@ function CoreNodeClient() {
         return postProm("core/getSharingKeys", buffer.toByteArray());
     };
     
-    //String  -> Uint8Array  -> fn -> fn -> void
-    this.getMetadataBlob = function( owner,  encodedSharingKey,  mapKey) {
-	var ownerPublic = owner.getPublicKeys();
-	for (var i=0; i < ownerPublic.length; i++) {
-	    if (ownerPublic[i] != 0)
-		break;
-	    else if (i == ownerPublic.length-1)
-		throw "Invalid zero Owner requested!";
-	}
+    //writing key -> btree root hash
+    this.getMetadataBlob = function(encodedSharingKey) {
         var buffer = new ByteArrayOutputStream();
-        buffer.writeArray(ownerPublic);
         buffer.writeArray(encodedSharingKey.getPublicKeys());
-        buffer.writeArray(mapKey);
         return postProm("core/getMetadataBlob", buffer.toByteArray());
     };
     
@@ -1226,11 +1217,12 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
     }
 
     this.getMetadata = function(loc) {
-        return corenodeClient.getMetadataBlob(loc.owner, loc.writer, loc.mapKey).then(function(buf) {
-            var unwrapped = new ByteArrayInputStream(buf).readArray();
-            return FileAccess.deserialize(unwrapped);
-        });
-    }
+	return this.btree.get(loc.writer.getPublicKeys(), loc.mapKey).then(function(blobHash) {
+	    return this.dhtClient.get(blobHash).then(function(raw) {
+		return Promise.resolve(FileAccess.deserialize(raw));
+	    });
+	}.bind(this));
+    }.bind(this);
 
     this.downloadFragments = function(hashes, setProgressPercentage) {
         var result = {}; 
