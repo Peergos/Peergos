@@ -1105,7 +1105,7 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
         metadata.serialize(buf);
         var metaBlob = buf.toByteArray();
 	const btree = this.btree;
-        console.log("Storing metadata blob of " + metaBlob.length + " bytes.");
+        console.log("Storing metadata blob of " + metaBlob.length + " bytes. to mapKey: "+bytesToHex(mapKey));
 	return this.dhtClient.put(metaBlob, owner.getPublicKeys()).then(function(blobHash){
 	    return btree.put(sharer.getPublicKeys(), mapKey, blobHash);
 	}).then(function(newBtreeRoot) {
@@ -2036,10 +2036,10 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
         bout.writeInt(subfolders.length)
         for (var i=0; i < subfolders.length; i++)
             bout.writeArray(subfolders[i].serialize());
-        bout.writeInt(files.length)
-        for (var i=0; i < files.length; i++)
-            bout.writeArray(files[i].serialize());
-    }
+        bout.writeInt(this.files.length)
+        for (var i=0; i < this.files.length; i++)
+            bout.writeArray(this.files[i].serialize());
+    }.bind(this);
 
     // Location, SymmetricKey, SymmetricKey
     this.addFile = function(location, ourSubfolders, targetParent) {
@@ -2051,7 +2051,7 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
         buf.writeArray(link);
         buf.writeArray(loc);
         this.files.push(SymmetricLocationLink.create(filesKey, targetParent, location));
-    }
+    }.bind(this);
 
     this.removeChild = function(childRetrievedPointer, readablePointer, context) {
 	if (childRetrievedPointer.fileAccess.isDirectory()) {
@@ -2070,20 +2070,20 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
 	} else {
 	    const newfiles = [];
 	    const filesKey = subfolders2files.target(readablePointer.baseKey)
-	    for (var i=0; i < files.length; i++) {
-		var target = files[i].targetLocation(filesKey);
+	    for (var i=0; i < this.files.length; i++) {
+		var target = this.files[i].targetLocation(filesKey);
 		var keep = true;
 		if (arraysEqual(target.mapKey, childRetrievedPointer.filePointer.mapKey))
 		    if (arraysEqual(target.writer.getPublicKeys(), childRetrievedPointer.filePointer.writer.getPublicKeys()))
 			if (arraysEqual(target.owner.getPublicKeys(), childRetrievedPointer.filePointer.owner.getPublicKeys()))
 			    keep = false;
 		if (keep)
-		    newfiles.push(files[i]);
+		    newfiles.push(this.files[i]);
 	    }
 	    this.files = newfiles;
 	}
 	return context.uploadChunk(this, readablePointer.owner, readablePointer.writer, readablePointer.mapKey);
-    }
+    }.bind(this);
 
     // 0=FILE, 1=DIR
     this.getType = function() {
@@ -2148,7 +2148,7 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
                     }
 		    return Promise.resolve(false);
                 });
-    }
+    }.bind(this);
 
     this.commit = function(owner, writer, ourMapKey, userContext) {
 	return userContext.uploadChunk(this, userContext.user, writer, ourMapKey)
