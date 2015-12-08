@@ -611,6 +611,7 @@ var File = React.createClass({
         },
         onCut: function() {
                 this.props.browser.setClipboard({
+		        parent: this.props.browser.lastRetrievedFilePointer(),
                         fileTreeNode: this.props.retrievedFilePointer,
                         op: "cut"
                 }); 
@@ -758,6 +759,7 @@ var Browser = React.createClass({
                         var me = userContext.username;
                         if(owner === me){
                             this.setClipboard({
+				    parent: this.lastRetrievedFilePointer(),
                                     fileTreeNode: treeNode,
                                     op: "cut"
                              });
@@ -779,7 +781,7 @@ var Browser = React.createClass({
                                     return;
                             if (clipboard.op == "cut") {
                                     clipboard.fileTreeNode.copyTo(path, userContext).then(function() {
-                                            return clipboard.fileTreeNode.remove(userContext);
+                                            return clipboard.fileTreeNode.remove(userContext, clipboard.parent);
                                     }).then(function() {
                                             this.loadFilesFromServer();
                                     }.bind(this));
@@ -877,7 +879,7 @@ var Browser = React.createClass({
                             if (clipboard.op == "cut") {
                                     const pwd = e;
                                     clipboard.fileTreeNode.copyTo(pwd, userContext).then(function() {
-                                            return clipboard.fileTreeNode.remove(userContext);
+                                            return clipboard.fileTreeNode.remove(userContext, clipboard.parent);
                                     }).then(function() {
                                             this.loadFilesFromServer();
                                     }.bind(this));
@@ -915,7 +917,7 @@ var Browser = React.createClass({
                         }.bind(this));
                 } else if (clipboard.op == "cut") {
                         clipboard.fileTreeNode.copyTo(pwd, userContext).then(function() {
-                                return clipboard.fileTreeNode.remove(userContext);
+                                return clipboard.fileTreeNode.remove(userContext, clipboard.parent);
                         }).then(function() {
                                 this.loadFilesFromServer();
                         }.bind(this));
@@ -953,7 +955,7 @@ var Browser = React.createClass({
             if (clipboard.op == "cut"  || clipboard.op == "copy") {
                     const pwd = this.state.retrievedFilePointerPath[0];
                     clipboard.fileTreeNode.copyTo(pwd, userContext).then(function() {
-                            return clipboard.fileTreeNode.remove(userContext);
+                            return clipboard.fileTreeNode.remove(userContext, clipboard.parent);
                     }).then(function() {
                             this.loadFilesFromServer();
                     }.bind(this));

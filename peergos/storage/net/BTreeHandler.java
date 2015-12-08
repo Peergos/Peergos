@@ -34,7 +34,7 @@ public class BTreeHandler implements HttpHandler
                 byte[] sharingKey = Serialize.deserializeByteArray(din, UserPublicKey.SIZE);
                 byte[] mapKey = Serialize.deserializeByteArray(din, 32);
                 byte[] value = Serialize.deserializeByteArray(din, Fragment.SIZE);
-
+                System.out.println("Put mapkey: "+new ByteArrayWrapper(mapKey));
                 try {
                     byte[] raw = core.getMetadataBlob(sharingKey);
                     byte[] rootHash = raw.length == 0 ? new byte[0] : raw;
@@ -49,6 +49,7 @@ public class BTreeHandler implements HttpHandler
                 // GET
                 byte[] sharingKey = Serialize.deserializeByteArray(din, UserPublicKey.SIZE);
                 byte[] mapKey = Serialize.deserializeByteArray(din, 64);
+                System.out.println("Get mapkey: "+new ByteArrayWrapper(mapKey));
                 try {
                     byte[] rootHash = core.getMetadataBlob(sharingKey);
                     MerkleBTree btree = MerkleBTree.create(rootHash, dht);
@@ -62,6 +63,7 @@ public class BTreeHandler implements HttpHandler
                 // DELETE
                 byte[] sharingKey = Serialize.deserializeByteArray(din, UserPublicKey.SIZE);
                 byte[] mapKey = Serialize.deserializeByteArray(din, 64);
+                System.out.println("Deleted mapkey: "+new ByteArrayWrapper(mapKey));
                 try {
                     byte[] rootHash = core.getMetadataBlob(sharingKey);
                     MerkleBTree btree = MerkleBTree.create(rootHash, dht);

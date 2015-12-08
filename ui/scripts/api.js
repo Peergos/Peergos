@@ -480,6 +480,8 @@ function DHTClient() {
 	    var res = stream.readInt();
             if (res == 1) {
 		var key = stream.readArray();
+		if (key.length == 0)
+		    throw "Invalid hash returned by DHT (zero length)";
 		return Promise.resolve(key);
 	    }
             return Promise.reject("DHT put failed");
@@ -488,7 +490,9 @@ function DHTClient() {
     //
     //get
     //
-    this.get = function(keyData) { 
+    this.get = function(keyData) {
+	if (keyData.length == 0)
+	    throw "Invalid hash: length = 0";
         var buffer = new ByteArrayOutputStream();
         buffer.writeInt(1); // GET Message
         buffer.writeArray(keyData);
@@ -615,6 +619,8 @@ function CoreNodeClient() {
 
     //Uint8Array -> Uint8Array -> Uint8Array -> Uint8Array  -> Uint8Array -> fn -> fn -> void
     this.addMetadataBlob = function( owner,  encodedSharingPublicKey, sharingKeySignedPayload) {
+	if (sharingKeySignedPayload.length != 64 + 34)
+	    throw "Invalid signed hash";
         var buffer = new ByteArrayOutputStream();
         buffer.writeArray(owner);
         buffer.writeArray(encodedSharingPublicKey);
@@ -725,7 +731,10 @@ function CoreNodeClient() {
 
 function BTree() {
     
+    // encoded public key, mapkey, multihash
     this.put = function(sharingKey, mapKey, value) {
+	if (value.length == 0)
+	    throw "Invalid multihash in btree put: length = 0";
 	var buffer = new ByteArrayOutputStream();
 	buffer.writeInt(0); // PUT
         buffer.writeArray(sharingKey);
@@ -735,8 +744,10 @@ function BTree() {
             var stream = new ByteArrayInputStream(resBuf);
 	    var res = stream.readInt();
             if (res == 1) {
-		var key = stream.readArray();
-		return Promise.resolve(key);
+		var newRootHash = stream.readArray();
+		if (newRootHash.length == 0)
+		    throw "Invalid hash returned from BTree put: length = 0";
+		return Promise.resolve(newRootHash);
 	    }
             return Promise.reject("BTree put failed");
         });
@@ -750,8 +761,12 @@ function BTree() {
         return postProm("btree/get", buffer.toByteArray()).then(function(res) {
             var buf = new ByteArrayInputStream(res);
             var success = buf.readInt();
-            if (success == 1)
-                return Promise.resolve(buf.readArray());
+            if (success == 1) {
+		var multihash = buf.readArray();
+		if (multihash.length == 0)
+		    throw "Invalid hash returned from BTree get: length = 0";
+                return Promise.resolve(multihash);
+	    }
             return Promise.reject("BTree get failed");
         });
     }
@@ -764,8 +779,12 @@ function BTree() {
         return postProm("btree/delete", buffer.toByteArray()).then(function(res) {
             var buf = new ByteArrayInputStream(res);
             var success = buf.readInt();
-            if (success == 1)
-                return Promise.resolve(buf.readArray());
+            if (success == 1) {
+		var multihash = buf.readArray();
+		if (multihash.length == 0)
+		    throw "Invalid hash returned from BTree remove: length = 0";
+                return Promise.resolve(multihash);
+	    }
             return Promise.reject("BTree delete failed");
         });
     }
@@ -1405,12 +1424,13 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 	childrenByName[name] = child;
     }
 
-    this.removeChild = function(child) {
+    this.removeChild = function(child, context) {
 	var name = child.getFileProperties().name;
 	childrenByName[name] = null;
 	var index = children.indexOf(child);
 	if (index > -1)
 	    children.splice(index, 1);
+	return pointer.fileAccess.removeChild(child.getPointer(), pointer.filePointer, context)
     }
 
     this.addLinkTo = function(file, context) {
@@ -1618,10 +1638,15 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
     }
 
     this.remove = function(context, parent) {
-	if (parent != null)
-	    parent.removeChild(this);
-	return new RetrievedFilePointer(writableFilePointer(), pointer.fileAccess).remove(context);
-    }
+	var func = function() {
+	    if (parent != null)
+		return parent.removeChild(this, context);
+	    return Promise.resolve(true);
+	}.bind(this);
+	return func().then(function(res) { 
+	    return new RetrievedFilePointer(writableFilePointer(), pointer.fileAccess).remove(context);
+	});
+    }.bind(this);
 
     this.getInputStream = function(context, size, setProgressPercentage) {
 	const baseKey = pointer.filePointer.baseKey;
@@ -2032,7 +2057,7 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
 	if (childRetrievedPointer.fileAccess.isDirectory()) {
 	    const newsubfolders = [];
 	    for (var i=0; i < subfolders.length; i++) {
-		const target = subfolders[i].targetLocation(readablePointer.baseKey);
+		var target = subfolders[i].targetLocation(readablePointer.baseKey);
 		var keep = true;
 		if (arraysEqual(target.mapKey, childRetrievedPointer.filePointer.mapKey))
 		    if (arraysEqual(target.writer.getPublicKeys(), childRetrievedPointer.filePointer.writer.getPublicKeys()))
@@ -2046,7 +2071,7 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
 	    const newfiles = [];
 	    const filesKey = subfolders2files.target(readablePointer.baseKey)
 	    for (var i=0; i < files.length; i++) {
-		const target = files[i].targetLocation(filesKey);
+		var target = files[i].targetLocation(filesKey);
 		var keep = true;
 		if (arraysEqual(target.mapKey, childRetrievedPointer.filePointer.mapKey))
 		    if (arraysEqual(target.writer.getPublicKeys(), childRetrievedPointer.filePointer.writer.getPublicKeys()))
