@@ -764,7 +764,7 @@ function BTree() {
             if (success == 1) {
 		var multihash = buf.readArray();
 		if (multihash.length == 0)
-		    throw "Invalid hash returned from BTree get: length = 0";
+		    throw "Invalid hash returned from BTree get("+bytesToHex(mapKey)+"): length = 0";
                 return Promise.resolve(multihash);
 	    }
             return Promise.reject("BTree get failed");
@@ -1560,9 +1560,9 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 	const chunks = new FileUploader(filename, file, fileKey, parentLocation, dirParentKey, setProgressPercentage);
         return chunks.upload(context, owner, entryWriterKey).then(function(fileLocation) {
 	    dirAccess.addFile(fileLocation, rootRKey, fileKey);
-	    return userContext.uploadChunk(dirAccess, owner, entryWriterKey, dirMapKey);
+	    return context.uploadChunk(dirAccess, owner, entryWriterKey, dirMapKey);
 	});
-    }
+    }.bind(this);
 
     this.isLegalName = function(name) {
 	if (name.indexOf("/") != -1)
@@ -2030,12 +2030,12 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
     this.superSerialize = this.serialize;
     this.serialize = function(bout) {
         this.superSerialize(bout);
-        bout.writeArray(subfolders2parent.serialize());
-        bout.writeArray(subfolders2files.serialize());
+        bout.writeArray(this.subfolders2parent.serialize());
+        bout.writeArray(this.subfolders2files.serialize());
         bout.writeInt(0);
-        bout.writeInt(subfolders.length)
-        for (var i=0; i < subfolders.length; i++)
-            bout.writeArray(subfolders[i].serialize());
+        bout.writeInt(this.subfolders.length)
+        for (var i=0; i < this.subfolders.length; i++)
+            bout.writeArray(this.subfolders[i].serialize());
         bout.writeInt(this.files.length)
         for (var i=0; i < this.files.length; i++)
             bout.writeArray(this.files[i].serialize());
@@ -2043,7 +2043,7 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
 
     // Location, SymmetricKey, SymmetricKey
     this.addFile = function(location, ourSubfolders, targetParent) {
-        const filesKey = subfolders2files.target(ourSubfolders);
+        const filesKey = this.subfolders2files.target(ourSubfolders);
         var nonce = filesKey.createNonce();
         var loc = location.encrypt(filesKey, nonce);
         var link = concat(nonce, filesKey.encrypt(targetParent.key, nonce));
@@ -2056,15 +2056,15 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
     this.removeChild = function(childRetrievedPointer, readablePointer, context) {
 	if (childRetrievedPointer.fileAccess.isDirectory()) {
 	    const newsubfolders = [];
-	    for (var i=0; i < subfolders.length; i++) {
-		var target = subfolders[i].targetLocation(readablePointer.baseKey);
+	    for (var i=0; i < this.subfolders.length; i++) {
+		var target = this.subfolders[i].targetLocation(readablePointer.baseKey);
 		var keep = true;
 		if (arraysEqual(target.mapKey, childRetrievedPointer.filePointer.mapKey))
 		    if (arraysEqual(target.writer.getPublicKeys(), childRetrievedPointer.filePointer.writer.getPublicKeys()))
 			if (arraysEqual(target.owner.getPublicKeys(), childRetrievedPointer.filePointer.owner.getPublicKeys()))
 			    keep = false;
 		if (keep)
-		    newsubfolders.push(subfolders[i]);
+		    newsubfolders.push(this.subfolders[i]);
 	    }
 	    this.subfolders = newsubfolders;
 	} else {
@@ -2156,7 +2156,7 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
 
     this.addSubdir = function(location, ourSubfolders, targetBaseKey) {
         this.subfolders.push(SymmetricLocationLink.create(ourSubfolders, targetBaseKey, location));
-    }
+    }.bind(this);
 
     this.copyTo = function(baseKey, newBaseKey, parentLocation, parentparentKey, entryWriterKey, newMapKey, context) {
 	const parentKey = this.getParentKey(baseKey);
