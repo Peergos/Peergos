@@ -1129,7 +1129,7 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
 				return Promise.resolve(true);
 		//	    });
 		//	});
-		//    });
+		    });
 	    });
 	});
     }.bind(this);
