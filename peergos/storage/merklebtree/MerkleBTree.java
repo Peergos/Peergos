@@ -67,7 +67,7 @@ public class MerkleBTree
         if (root.hash.isPresent())
             storage.remove(root.hash.get());
         if (!newRoot.hash.isPresent()) {
-            root = new TreeNode(newRoot.keys, storage.put(root.serialize()));
+            root = new TreeNode(newRoot.keys, storage.put(newRoot.serialize()));
         } else
             root = newRoot;
         return root.hash.get();
