@@ -659,7 +659,10 @@ function CoreNodeClient() {
     this.getMetadataBlob = function(encodedSharingKey) {
         var buffer = new ByteArrayOutputStream();
         buffer.writeArray(encodedSharingKey.getPublicKeys());
-        return postProm("core/getMetadataBlob", buffer.toByteArray());
+        return postProm("core/getMetadataBlob", buffer.toByteArray()).then(function(res) {
+            var buf = new ByteArrayInputStream(res);
+            return Promise.resolve(buf.readArray());
+        });
     };
     
     //String  -> Uint8Array  -> Uint8Array -> fn -> fn -> void
@@ -1107,20 +1110,29 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
 	const btree = this.btree;
         console.log("Storing metadata blob of " + metaBlob.length + " bytes. to mapKey: "+bytesToHex(mapKey));
 	return this.dhtClient.put(metaBlob, owner.getPublicKeys()).then(function(blobHash){
-	    return btree.put(sharer.getPublicKeys(), mapKey, blobHash);
-	}).then(function(newBtreeRoot) {
-	    var msg = newBtreeRoot;
-	    var signed = sharer.signMessage(msg);
-            return corenodeClient.addMetadataBlob(owner.getPublicKeys(), sharer.getPublicKeys(), signed)
-		.then(function(added) {
-		    if (!added) {
-			console.log("Meta blob store failed.");
-		return Promise.resolve(false);
-		    }
-		    return Promise.resolve(true);
-		});
+	    return btree.put(sharer.getPublicKeys(), mapKey, blobHash).then(function(newBtreeRoot) {
+		var msg = newBtreeRoot;
+		var signed = sharer.signMessage(msg);
+		return corenodeClient.addMetadataBlob(owner.getPublicKeys(), sharer.getPublicKeys(), signed)
+		    .then(function(added) {
+			if (!added) {
+			    console.log("Meta blob store failed.");
+			    return Promise.resolve(false);
+			}
+			// double check
+		//	return corenodeClient.getMetadataBlob(sharer).then(function(treeroot) {
+		//	    if (!arraysEqual(treeroot, newBtreeRoot))
+		//		throw "returned tree root different to written one!" + bytesToHex(treeroot) + " != " + bytesToHex(newBtreeRoot);
+		//	    return btree.get(sharer.getPublicKeys(), mapKey).then(function(returnedBlobHash) {
+		//		if (!arraysEqual(returnedBlobHash, blobHash))
+		//		    throw "different hash in btree get after btree put! " + bytesToHex(returnedBlobHash) + " != " + bytesToHex(blobHash);
+				return Promise.resolve(true);
+		//	    });
+		//	});
+		//    });
+	    });
 	});
-    }
+    }.bind(this);
 
     this.getRoots = function() {
         const context = this;
