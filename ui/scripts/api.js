@@ -1083,6 +1083,8 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
 			    ourDirForThem.remove(that, getSharingFolder());
 			    // remove entry point as well
 			    that.removeFromStaticData(ourDirForThem);
+			    // clear their response follow req too
+			    corenodeClient.removeFollowRequest(that.user.getPublicKeys(), that.user.signMessage(freq.rawCipher));
 			} else // add new entry to tree root
 			    that.downloadEntryPoints([freq.entry]).then(function(treenode) {
 				that.getAncestorsAndAddToTree(treenode, that);
