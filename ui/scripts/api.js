@@ -41,6 +41,9 @@ UserPublicKey.fromPublicKeys = function(both) {
     var pBox = slice(both, 32, 64);
     return new UserPublicKey(pSign, pBox);
 }
+UserPublicKey.createNull = function() {
+    return new UserPublicKey(new Uint8Array(32), new Uint8Array(32));
+}
 
 UserPublicKey.HASH_BYTES = 34;
 // Uint8Array => Uint8Array
@@ -157,6 +160,9 @@ function SymmetricKey(key) {
 SymmetricKey.NONCE_BYTES = 24;
 SymmetricKey.random = function() {
     return new SymmetricKey(nacl.randomBytes(32));
+}
+SymmetricKey.createNull = function() {
+    return new SymmetricKey(new Uint8Array(32));
 }
 
 function FileProperties(name, size, modified, attr) {
@@ -932,8 +938,22 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
 	// if accept, create directory to share with them, note in entry points (they follow us)
 	if (!accept) {
 	    // send a null entry and null key (full rejection)
-	    //TODO
-	    return Promise.resolve(true);
+
+	    var buf = new ByteArrayOutputStream();
+	    // write a null entry point
+	    var entry = new EntryPoint(ReadableFilePointer.createNull(), context.username, [], []);
+	    buf.writeArray(entry.serialize());
+	    buf.writeArray(new Uint8Array(0)); // tell them we're not reciprocating
+	    var plaintext = buf.toByteArray();
+	    const targetUser = initialRequest.entry.pointer.owner;
+	    // create a tmp keypair whose public key we can prepend to the request without leaking information
+            var tmp = User.random();
+            var payload = targetUser.encryptMessageFor(plaintext, tmp);
+
+            return corenodeClient.followRequest(initialRequest.entry.pointer.owner.getPublicKeys(), concat(tmp.pBoxKey, payload)).then(function(res) {
+		// remove pending follow request from them
+		return corenodeClient.removeFollowRequest(context.user.getPublicKeys(), context.user.signMessage(initialRequest.rawCipher));
+	    });
 	}
 	return getSharingFolder().mkdir(theirUsername, context, initialRequest.key).then(function(friendRoot) {
 	    // add a note to our static data so we know who we sent the read access to
@@ -1036,6 +1056,18 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
         return corenodeClient.setStaticData(user, user.signMessage(rawStatic));
     }
 
+    this.removeFromStaticData = function(fileTreeNode) {
+	var pointer = fileTreeNode.getPointer().filePointer;
+	// find and remove matching entry point
+	for (var i=0; i < this.staticData.length; i++)
+	    if (this.staticData[i][1].pointer.equals(pointer)) {
+		this.staticData.splice(i, 1);
+		var rawStatic = new Uint8Array(this.serializeStatic());
+		return corenodeClient.setStaticData(user, user.signMessage(rawStatic));
+	    }
+	return Promise.resolve(true);
+    }.bind(this);
+
     this.getFollowRequests = function() {
 	var that = this;
         return corenodeClient.getFollowRequests(user.getPublicKeys()).then(function(reqs){
@@ -1046,16 +1078,19 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
 			// delete our folder if they didn't reciprocate
 			var ourDirForThem = followerRoots[freq.entry.owner];
 			var ourKeyForThem = ourDirForThem.getKey().key;
-			var keyFromResponse = freq.key.key;
-			if (keyFromResponse == null || !arraysEqual(keyFromResponse, ourKeyForThem))
-			    ourDirForThem.remove(that);
-			else // add new entry to tree root
+			var keyFromResponse = freq.key == null ? null : freq.key.key;
+			if (keyFromResponse == null || !arraysEqual(keyFromResponse, ourKeyForThem)) {
+			    ourDirForThem.remove(that, getSharingFolder());
+			    // remove entry point as well
+			    that.removeFromStaticData(ourDirForThem);
+			} else // add new entry to tree root
 			    that.downloadEntryPoints([freq.entry]).then(function(treenode) {
 				that.getAncestorsAndAddToTree(treenode, that);
 			    });
 			// add entry point to static data
-			that.addToStaticData(freq.entry).then(function(res) {
-			    return corenodeClient.removeFollowRequest(that.user.getPublicKeys(), that.user.signMessage(freq.rawCipher));
+			if (!arraysEqual(freq.entry.pointer.baseKey.key, new Uint8Array(32)))
+			    that.addToStaticData(freq.entry).then(function(res) {
+				return corenodeClient.removeFollowRequest(that.user.getPublicKeys(), that.user.signMessage(freq.rawCipher));
 			});
 			return false;
 		    }
@@ -1399,10 +1434,13 @@ ReadableFilePointer.deserialize = function(arr) {
     UserPublicKey.fromPublicKeys(writerRaw);
     return new ReadableFilePointer(UserPublicKey.fromPublicKeys(owner), writer, mapKey, new SymmetricKey(rootDirKeySecret));
 }
+ReadableFilePointer.createNull = function() {
+    return new ReadableFilePointer(UserPublicKey.createNull(), UserPublicKey.createNull(), new Uint8Array(32), SymmetricKey.createNull());
+}
 
 // RetrievedFilePointer, string, [string], [string], UserPublicKey
 function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
-    var pointer = pointer; // O/W/M/K + FileAccess
+    var pointer = pointer == null ? null : pointer.withWriter(entryWriterKey); // O/W/M/K + FileAccess
     var children = [];
     var childrenByName = {};
     var owner = ownername;
@@ -1720,6 +1758,10 @@ function RetrievedFilePointer(pointer, access) {
 		    parentRetrievedFilePointer.fileAccess.removeChild(this, parentRetrievedFilePointer.filePointer, context);
 	    });
 	}.bind(this));
+    }.bind(this);
+
+    this.withWriter = function(writer) {
+	return new RetrievedFilePointer(new ReadableFilePointer(this.filePointer.owner, writer, this.filePointer.mapKey, this.filePointer.baseKey), this.fileAccess);
     }.bind(this);
 }
 
