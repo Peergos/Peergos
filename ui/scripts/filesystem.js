@@ -240,7 +240,7 @@ const UserOptions = React.createClass({
         tableBuilder: function(names) {
                 const rows = names.map(function(name) {
                         const  onRemove = function(evt) {
-                            userContext.unfollow(name);
+                            userContext.removeFollower(name);
                             evt.preventDefault();
                         };
                         return (<tr>
@@ -281,7 +281,7 @@ const UserOptions = React.createClass({
                                 this.props.browser.loadFilesFromServer(froot);
                         }.bind(this);
                         const onRemove = function(evt){
-                                userContext.removeFollower(ownerName);
+                                userContext.unfollow(ownerName);
                                 evt.preventDefault();
                         };
                         return (<tr style={{cursor: "pointer"}} onClick={onClick}>

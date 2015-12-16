@@ -1321,10 +1321,12 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
         });
     }
     this.unfollow = function(username) {
-            //TODO
+	console.log("Unfollowing: "+username);
+        //TODO
     };
-    this.removeFollower  = function(useername) {
-            //TODO
+    this.removeFollower  = function(username) {
+	console.log("Remove follower: " + username);
+        //TODO
     };
 }
 
