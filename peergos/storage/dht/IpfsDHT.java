@@ -5,13 +5,18 @@ import peergos.storage.merklebtree.*;
 
 import java.io.*;
 import java.util.*;
-import java.util.concurrent.*;
 
 public class IpfsDHT implements ContentAddressedStorage {
     private final IPFS ipfs;
+    private final Multihash EMPTY;
 
     public IpfsDHT(IPFS ipfs) {
         this.ipfs = ipfs;
+        try {
+            EMPTY = ipfs.object._new(Optional.empty()).hash;
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public IpfsDHT() {
@@ -20,6 +25,7 @@ public class IpfsDHT implements ContentAddressedStorage {
 
     public byte[] get(byte[] key) {
         try {
+//            return ipfs.object.get(new Multihash(key)).data.get();
             return ipfs.block.get(new Multihash(key));
         } catch (IOException e) {
             throw new RuntimeException(e);
@@ -29,6 +35,7 @@ public class IpfsDHT implements ContentAddressedStorage {
     @Override
     public byte[] put(byte[] value) {
         try {
+//            return ipfs.object.patch(EMPTY, "set-data", Optional.of(value), Optional.empty(), Optional.empty());
             return ipfs.block.put(Arrays.asList(value)).get(0).hash.toBytes();
         } catch (IOException e) {
             throw new RuntimeException(e);
@@ -37,6 +44,10 @@ public class IpfsDHT implements ContentAddressedStorage {
 
     @Override
     public void remove(byte[] key) {
-        System.out.println("Unimplemented IPFS remove!");
+//        try {
+//            ipfs.pin.rm(new Multihash(key));
+//        } catch (IOException e) {
+//            throw new RuntimeException(e);
+//        }
     }
 }
