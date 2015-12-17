@@ -1322,12 +1322,26 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
     }
     this.unfollow = function(username) {
 	console.log("Unfollowing: "+username);
-        //TODO
+	// remove entry point from static data
+	var that = this;
+	FileTreeNode.ROOT.getDescendentByPath("/"+username+"/shared/"+this.username).then(function(dir) {
+	    // remove our static data entry storing that we've granted them access
+	    that.removeFromStaticData(dir);
+	});
+	FileTreeNode.ROOT.getDescendentByPath("/"+username).then(function(dir) {
+	    dir.remove(that, FileTreeNode.ROOT);
+	});
     };
     this.removeFollower  = function(username) {
 	console.log("Remove follower: " + username);
-        //TODO
-    };
+	var that = this;
+	// remove /$us/shared/$them
+	FileTreeNode.ROOT.getDescendentByPath("/"+this.username+"/shared/"+username).then(function(dir) {
+	    dir.remove(that, getSharingFolder());
+	    // remove our static data entry storing that we've granted them access
+	    that.removeFromStaticData(dir);
+	});
+    }.bind(this);
 }
 
 //List[FollowRequest],  List[String], List[FileTreeNode] 
@@ -1339,7 +1353,6 @@ function SocialState(pending, followerRootMap, followingRoots) {
     this.sharedLocations = {};
 
     this.buildSharedLocations = function(followerRoot) {
-	console.log("hey");
 	var kids = followerRoot.getChildrenLocations();
 	for (var child in kids) {
 	    var key = kids[child].toString();
@@ -1478,6 +1491,24 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 	childrenByName[name] = child;
     }
 
+    this.getDescendentByPath = function(path, context) {
+	if (path == "")
+	    return Promise.resolve(this);
+	if (path.startsWith("/"))
+	    path = path.substring(1);
+	var slash = path.indexOf("/");
+	var prefix = slash > 0 ? path.substring(0, slash) : path;
+	var suffix = slash > 0 ? path.substring(slash + 1) : "";
+	var userContext = context;
+	return this.getChildren(context).then(function(children) {
+	    for (var i=0; i < children.length; i++)
+		if (children[i].getFileProperties().name == prefix) {
+		    return children[i].getDescendentByPath(suffix, userContext)
+		}
+	    return Promise.resolve(null);
+	});
+    }.bind(this);
+
     this.removeChild = function(child, context) {
 	var name = child.getFileProperties().name;
 	childrenByName[name] = null;
@@ -1583,8 +1614,14 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 	const filePointer = pointer.filePointer;
         const fileAccess = pointer.fileAccess;
         const rootDirKey = filePointer.baseKey;
-
-        return fileAccess.getChildren(userContext, rootDirKey)
+	var canGetChildren = true;
+	try {
+	    fileAccess.getMetaKey(rootDirKey);
+	    canGetChildren = false;
+	} catch (e) {}
+	if (canGetChildren)
+            return fileAccess.getChildren(userContext, rootDirKey);
+	throw "No credentials to retrieve children!";
     }
 
     this.getOwner = function() {
