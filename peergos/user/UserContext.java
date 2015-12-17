@@ -127,7 +127,9 @@ public class UserContext
     {
         staticData.put(entry.pointer.writer, entry);
         byte[] rawStatic = serializeStatic();
-        return core.setStaticData(us, us.signMessage(rawStatic));
+        // TODO translate back from Javascript
+        CompletableFuture<Boolean> put = dht.put(UserPublicKey.hash(rawStatic), rawStatic, us.getPublicKeys(), us.getPublicKeys(), new byte[0], new byte[0]);
+        return core.setMetadataBlob(us.getPublicKeys(), us.getPublicKeys(), us.signMessage(rawStatic));
     }
 
     private Future uploadFragment(Fragment f, UserPublicKey targetUser, User sharer, byte[] mapKey)
@@ -185,9 +187,9 @@ public class UserContext
         return frags.toArray(new Fragment[frags.size()]);
     }
 
-    public Map<EntryPoint, FileAccess> getRoots() throws IOException
+    public Map<EntryPoint, FileAccess> getRoots() throws Exception
     {
-        byte[] staticData = core.getStaticData(us);
+        byte[] staticData = dht.get(core.getMetadataBlob(us.getPublicKeys())).get().data;
         DataInput din = new DataInputStream(new ByteArrayInputStream(staticData));
         int entries = din.readInt();
         this.staticData = new HashMap<>();
@@ -276,7 +278,7 @@ public class UserContext
 
         public Test() {}
 
-        public static void mediumFileTest(UserPublicKey owner, User sharer, UserContext receiver, UserContext sender) throws IOException {
+        public static void mediumFileTest(UserPublicKey owner, User sharer, UserContext receiver, UserContext sender) throws Exception {
             // create a root dir and a file to it, then retrieve and decrypt the file using the receiver
             // create root cryptree
             SymmetricKey rootRKey = SymmetricKey.random();

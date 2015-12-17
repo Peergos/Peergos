@@ -16,7 +16,7 @@ import java.util.*;
 public class Tests
 {
 
-    public static void main(String[] args) throws IOException
+    public static void main(String[] args) throws Exception
     {
         Args.parse(args);
 //        testClass(Components.class);
@@ -66,7 +66,7 @@ public class Tests
         }
     }
 
-    public static void contextTests(DHTUserAPI dht, CoreNode core) throws IOException {
+    public static void contextTests(DHTUserAPI dht, CoreNode core) throws Exception {
         String ourname = "Bob";
         User us = User.generateUserCredentials(ourname, "password");
         UserContext bob = new UserContext(ourname, us, dht, core);

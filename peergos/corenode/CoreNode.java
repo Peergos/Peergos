@@ -34,10 +34,6 @@ public interface CoreNode {
         return res;
     }
 
-    boolean setStaticData(UserPublicKey owner, byte[] signedStaticData);
-
-    byte[] getStaticData(UserPublicKey owner);
-
     boolean followRequest(UserPublicKey target, byte[] encryptedPermission);
 
     byte[] getFollowRequests(UserPublicKey owner);

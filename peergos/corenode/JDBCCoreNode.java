@@ -14,7 +14,6 @@ public class JDBCCoreNode implements CoreNode {
 
     private static final String TABLE_NAMES_SELECT_STMT = "SELECT * FROM sqlite_master WHERE type='table';";
     private static final String CREATE_USERS_TABLE = "create table users (id integer primary key autoincrement, name text not null, publickey text not null);";
-    private static final String CREATE_STATIC_DATA_TABLE = "create table staticdata (name text primary key not null, staticdata text not null);";
     private static final String CREATE_FOLLOW_REQUESTS_TABLE = "create table followrequests (id integer primary key autoincrement, name text not null, followrequest text not null);";
     private static final String CREATE_METADATA_BLOBS_TABLE = "create table metadatablobs (writingkey text primary key not null, hash text not null);";
 
@@ -22,7 +21,6 @@ public class JDBCCoreNode implements CoreNode {
     static
     {
         TABLES.put("users", CREATE_USERS_TABLE);
-        TABLES.put("staticdata", CREATE_STATIC_DATA_TABLE);
         TABLES.put("followrequests", CREATE_FOLLOW_REQUESTS_TABLE);
         TABLES.put("metadatablobs", CREATE_METADATA_BLOBS_TABLE);
     }
@@ -169,50 +167,6 @@ public class JDBCCoreNode implements CoreNode {
         public String selectStatement(){return "select name, "+b64DataName()+" from users where name = '"+name+"';";}
         public String deleteStatement(){return "delete from users where name = \""+ name +"\" and "+ b64DataName()+ " = \""+ b64string + "\";";}
         static final String DATA_NAME = "publickey";
-    }
-
-    private class StaticData extends RowData
-    {
-        StaticData(byte[] publicKey, byte[] staticdata)
-        {
-            super(new String(Base64.getEncoder().encode(publicKey)), staticdata);
-        }
-        StaticData(String publickey, String data)
-        {
-            super(publickey, data);
-        }
-
-        public String b64DataName(){return DATA_NAME;}
-
-        public String insertStatement(){return "insert into staticdata (name, staticdata) VALUES(?, ?);";}
-        public String selectStatement(){return "select name, "+b64DataName()+" from staticdata where name = '"+name+"';";}
-        public String deleteStatement(){return "delete from staticdata where name = \""+ name +"\" and "+ b64DataName()+ " = \""+ b64string + "\";";}
-        static final String DATA_NAME = "staticdata";
-
-        public boolean insert()
-        {
-            PreparedStatement stmt = null;
-            try
-            {
-                stmt = conn.prepareStatement("INSERT OR REPLACE INTO staticdata (name, staticdata) VALUES(?, ?)");
-
-                stmt.setString(1,this.name);
-                stmt.setString(2,this.b64string);
-                stmt.executeUpdate();
-                return true;
-            } catch (SQLException sqe) {
-                sqe.printStackTrace();
-                return false;
-            } finally {
-                if (stmt != null)
-                    try
-                    {
-                        stmt.close();
-                    } catch (SQLException sqe2) {
-                        sqe2.printStackTrace();
-                    }
-            }
-        }
     }
 
     private class FollowRequestData extends RowData
@@ -466,28 +420,6 @@ public class JDBCCoreNode implements CoreNode {
             return res;
         } catch (SQLException sqe) {
             throw new IOException(sqe);
-        }
-    }
-
-
-    @Override
-    public byte[] getStaticData(UserPublicKey owner) {
-        byte[] dummy = null;
-        StaticData staticData = new StaticData(owner.getPublicKeys(), dummy);
-        RowData[] users = staticData.select();
-        if (users == null || users.length != 1)
-            return null;
-        return users[0].data;
-    }
-
-    @Override
-    public boolean setStaticData(UserPublicKey owner, byte[] signedStaticData) {
-        try {
-            StaticData userData = new StaticData(owner.getPublicKeys(), owner.unsignMessage(signedStaticData));
-            return userData.insert();
-        } catch (TweetNaCl.InvalidSignatureException e) {
-            System.err.println("Invalid signature setting static data for: "+owner);
-            return false;
         }
     }
 

@@ -60,56 +60,6 @@ public class HTTPCoreNode implements CoreNode
         }
     }
 
-    @Override public boolean setStaticData(UserPublicKey owner, byte[] signedStaticData)
-    {
-        HttpURLConnection conn = null;
-        try
-        {
-            conn = (HttpURLConnection) buildURL("core/setStaticData").openConnection();
-            conn.setDoInput(true);
-            conn.setDoOutput(true);
-            DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
-
-
-            Serialize.serialize(owner.getPublicKeys(), dout);
-            Serialize.serialize(signedStaticData, dout);
-            dout.flush();
-
-            DataInputStream din = new DataInputStream(conn.getInputStream());
-            return din.readBoolean();
-        } catch (IOException ioe) {
-            ioe.printStackTrace();
-            return false;
-        } finally {
-            if (conn != null)
-                conn.disconnect();
-        }
-    }
-    
-    @Override public synchronized byte[] getStaticData(UserPublicKey owner)
-    {
-        HttpURLConnection conn = null;
-        try
-        {
-            conn = (HttpURLConnection) buildURL("core/getStaticData").openConnection();
-            conn.setDoInput(true);
-            conn.setDoOutput(true);
-
-            DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
-            Serialize.serialize(owner.getPublicKeys(), dout);
-            dout.flush();
-
-            DataInputStream din = new DataInputStream(conn.getInputStream());
-            return deserializeByteArray(din); 
-        } catch (IOException ioe) {
-            ioe.printStackTrace();
-            return null;
-        } finally {
-            if (conn != null)
-                conn.disconnect();
-        }
-    }
-
     @Override public String getUsername(byte[] publicKey)
     {
         HttpURLConnection conn = null;

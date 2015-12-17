@@ -47,12 +47,6 @@ public class HTTPCoreNodeServer
                     case "getPublicKey":
                         getPublicKey(din, dout);
                         break;
-                    case "getStaticData":
-                        getStaticData(din, dout);
-                        break;
-                    case "setStaticData":
-                        setStaticData(din, dout);
-                        break;
                     case "getUsername":
                         getUsername(din, dout);
                         break;
@@ -173,25 +167,6 @@ public class HTTPCoreNodeServer
             byte[] signedPayload = deserializeByteArray(din);
             boolean isAdded = coreNode.removeMetadataBlob(encodedWriterPublicKey, signedPayload);
             dout.writeBoolean(isAdded);
-        }
-
-        void setStaticData(DataInputStream din, DataOutputStream dout) throws IOException
-        {
-            byte[] owner = deserializeByteArray(din);
-            byte[] signedStaticData = deserializeByteArray(din);
-
-            boolean isUpdated = coreNode.setStaticData(new UserPublicKey(owner), signedStaticData);
-            dout.writeBoolean(isUpdated);
-        }
-        
-        void getStaticData(DataInputStream din, DataOutputStream dout) throws IOException
-        {
-            byte[] owner = deserializeByteArray(din);
-            byte[] userClearanceData = coreNode.getStaticData(new UserPublicKey(owner));
-            if (userClearanceData == null)
-                dout.writeInt(0);
-            else
-                Serialize.serialize(userClearanceData, dout);
         }
 
         void getMetadataBlob(DataInputStream din, DataOutputStream dout) throws IOException
