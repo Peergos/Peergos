@@ -98,6 +98,8 @@ ByteArrayInputStream = function(arr) {
 
     this.readArray = function() {
 	const len = this.readInt();
+	if (len < 0)
+	    throw "negative array size! "+len;
 	const res = new Uint8Array(len);
 	for (var i=0; i < len; i++)
 	    res[i] = this.arr[this.index++];

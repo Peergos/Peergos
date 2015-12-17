@@ -524,21 +524,6 @@ function CoreNodeClient() {
 	});
     };
     
-    //UserPublicKey -> Uint8Array -> Uint8Array -> fn -> fn -> void
-    this.setStaticData = function(owner, signedStaticData) {
-        var buffer = new ByteArrayOutputStream();
-        buffer.writeArray(owner.getPublicKeys());
-        buffer.writeArray(signedStaticData);
-        return postProm("core/setStaticData", buffer.toByteArray()); 
-    };
-    
-    //String -> fn- >fn -> void
-    this.getStaticData = function(owner) {
-        var buffer = new ByteArrayOutputStream();
-        buffer.writeArray(owner.getPublicKeys());
-        return postProm("core/getStaticData", buffer.toByteArray());
-    };
-    
     //Uint8Array -> fn -> fn -> void
     this.getUsername = function(publicKey) {
         var buffer = new ByteArrayOutputStream();
@@ -872,9 +857,9 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
         const rootPointer = new ReadableFilePointer(this.user, writer, rootMapKey, rootRKey);
         const entry = new EntryPoint(rootPointer, this.username, [], []);
         
-        return this.addToStaticData(entry).then(function(res) {
-            var root = DirAccess.create(rootRKey, new FileProperties(directoryName, 0, Date.now(), 0));
-            return this.uploadChunk(root, this.user, writer, rootMapKey).then(function(res) {
+        return this.addToStaticDataAndCommit(entry).then(function(res) {
+	    var root = DirAccess.create(rootRKey, new FileProperties(directoryName, 0, Date.now(), 0));
+	    return this.uploadChunk(root, this.user, writer, rootMapKey).then(function(res) {
 		if (res)
 		    return Promise.resolve(new RetrievedFilePointer(rootPointer, root));
 		return Promise.reject();
@@ -959,7 +944,7 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
 	    // add a note to our static data so we know who we sent the read access to
 	    const entry = new EntryPoint(friendRoot.readOnly(), context.username, [theirUsername], []);
             const targetUser = initialRequest.entry.pointer.owner;
-	    return context.addToStaticData(entry).then(function(res) {
+	    return context.addToStaticDataAndCommit(entry).then(function(res) {
 		// create a tmp keypair whose public key we can prepend to the request without leaking information
                 var tmp = User.random();
 		var buf = new ByteArrayOutputStream();
@@ -971,13 +956,13 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
 
                     return corenodeClient.followRequest(initialRequest.entry.pointer.owner.getPublicKeys(), concat(tmp.pBoxKey, payload));
 		}
-		// if reciprocate, add entry point to their shared dirctory (we follow them) and them 
+		// if reciprocate, add entry point to their shared dirctory (we follow them) and then 
 		buf.writeArray(initialRequest.entry.pointer.baseKey.key); // tell them we are reciprocating
 		var plaintext = buf.toByteArray();
                 var payload = targetUser.encryptMessageFor(plaintext, tmp);
 		
                 return corenodeClient.followRequest(initialRequest.entry.pointer.owner.getPublicKeys(), concat(tmp.pBoxKey, payload)).then(function(res) {
-		    return context.addToStaticData(initialRequest.entry);
+		    return context.addToStaticDataAndCommit(initialRequest.entry);
 		});
 	    }).then(function(res) {
 		// remove original request
@@ -1011,7 +996,7 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
 			
 			// add a note to our static data so we know who we sent the read access to
 			const entry = new EntryPoint(friendRoot.readOnly(), that.username, [targetUsername], []);
-			return that.addToStaticData(entry).then(function(res) {
+			return that.addToStaticDataAndCommit(entry).then(function(res) {
 			    // send details to allow friend to follow us, and optionally let us follow them		
 			    // create a tmp keypair whose public key we can prepend to the request without leaking information
 			    var tmp = User.random();
@@ -1038,7 +1023,7 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
         var friendRoot = new ReadableFilePointer(user, sharing, rootMapKey, SymmetricKey.random());
         return this.corenodeClient.getUsername(targetUser.getPublicKeys()).then(function(name) {
             const entry = new EntryPoint(friendRoot, this.username, [], [name]);
-            return this.addToStaticData(entry).then(function(res) {
+            return this.addToStaticDataAndCommit(entry).then(function(res) {
                 // create a tmp keypair whose public key we can append to the request without leaking information
                 var tmp = User.random();
                 var payload = entry.serializeAndEncrypt(tmp, targetUser);
@@ -1052,9 +1037,29 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
 	    if (this.staticData[i][1].equals(entry))
 		return Promise.resolve(true);
         this.staticData.push([entry.pointer.writer, entry]);
-        var rawStatic = new Uint8Array(this.serializeStatic());
-        return corenodeClient.setStaticData(user, user.signMessage(rawStatic));
-    }
+        return Promise.resolve(true);
+    }.bind(this);
+
+    this.addToStaticDataAndCommit = function(entry) {
+	return this.addToStaticData(entry).then(function(res) {
+	    return this.commitStaticData();
+	}.bind(this));
+    }.bind(this);
+
+    this.commitStaticData = function() {
+	var rawStatic = new Uint8Array(this.serializeStatic());
+	return this.dhtClient.put(rawStatic, user.getPublicKeys()).then(function(blobHash){
+	    var signed = this.user.signMessage(blobHash);
+	    return corenodeClient.addMetadataBlob(this.user.getPublicKeys(), this.user.getPublicKeys(), signed)
+		.then(function(added) {
+		    if (!added) {
+			console.log("Static data store failed.");
+			return Promise.resolve(false);
+		    }
+		    return Promise.resolve(true);
+		});
+	}.bind(this));
+    }.bind(this);
 
     this.removeFromStaticData = function(fileTreeNode) {
 	var pointer = fileTreeNode.getPointer().filePointer;
@@ -1062,8 +1067,7 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
 	for (var i=0; i < this.staticData.length; i++)
 	    if (this.staticData[i][1].pointer.equals(pointer)) {
 		this.staticData.splice(i, 1);
-		var rawStatic = new Uint8Array(this.serializeStatic());
-		return corenodeClient.setStaticData(user, user.signMessage(rawStatic));
+		return this.commitStaticData();
 	    }
 	return Promise.resolve(true);
     }.bind(this);
@@ -1091,9 +1095,9 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
 			    });
 			// add entry point to static data
 			if (!arraysEqual(freq.entry.pointer.baseKey.key, new Uint8Array(32)))
-			    that.addToStaticData(freq.entry).then(function(res) {
+			    that.addToStaticDataAndCommit(freq.entry).then(function(res) {
 				return corenodeClient.removeFollowRequest(that.user.getPublicKeys(), that.user.signMessage(freq.rawCipher));
-			});
+			    });
 			return false;
 		    }
 		    return followerRoots[freq.entry.owner] == null;
@@ -1171,11 +1175,16 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
 	});
     }.bind(this);
 
+    this.getStaticData = function() {
+	return this.corenodeClient.getMetadataBlob(this.user).then(function(staticHash) {
+	    return this.dhtClient.get(staticHash);
+	}.bind(this));
+    }.bind(this);
+
     this.getRoots = function() {
         const context = this;
-        return corenodeClient.getStaticData(user).then(function(raw) {
+        return this.getStaticData().then(function(raw) {
             var buf = new ByteArrayInputStream(raw);
-            var totalStaticLength = buf.readInt();
             var count = buf.readInt();
             var res = [];
             for (var i=0; i < count; i++) {
