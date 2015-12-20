@@ -76,7 +76,7 @@ function generateKeyPairs(username, password, cb) {
 	    var rootKeyBytes = bothBytes.subarray(64, 96);
             resolve({
 		user:new User(nacl.sign.keyPair.fromSeed(signBytes), nacl.box.keyPair.fromSecretKey(new Uint8Array(boxBytes))),
-		root:new SymmetricKey(new Uint8Array(rootKeyBytes))
+		root:new SymmetricKey(new Uint8Array(rootKeyBytes), 1)
 	    });
         }, 'base64');
     });
@@ -137,33 +137,51 @@ function toKeyPair(pub, sec) {
 /////////////////////////////
 // SymmetricKey methods
 
-function SymmetricKey(key) {
+function SymmetricKey(key, type) {
     if (key.length != nacl.secretbox.keyLength)
 	throw "Invalid symmetric key: "+key;
     this.key = key;
+    // only current type is 1 = TweetNaCl 256 bit symmetric key
+    this.type = type;
 
     // (Uint8Array, Uint8Array[24]) => Uint8Array
     this.encrypt = function(data, nonce) {
-    return nacl.secretbox(data, nonce, this.key);
+	return nacl.secretbox(data, nonce, this.key);
     }
 
     // (Uint8Array, Uint8Array) => Uint8Array
     this.decrypt = function(cipher, nonce) {
-    return nacl.secretbox.open(cipher, nonce, this.key);
+	return nacl.secretbox.open(cipher, nonce, this.key);
     }
 
     // () => Uint8Array
     this.createNonce = function() {
-    return nacl.randomBytes(24);
-}
+	return nacl.randomBytes(24);
+    }
+
+    this.serialize = function() {
+	var buf = new ByteArrayOutputStream();
+	buf.writeByte(this.type);
+	buf.write(this.key, 0, this.key.length);
+	return buf.toByteArray();
+    }.bind(this);
 }
 SymmetricKey.NONCE_BYTES = 24;
 SymmetricKey.random = function() {
-    return new SymmetricKey(nacl.randomBytes(32));
+    return new SymmetricKey(nacl.randomBytes(32), 1);
 }
 SymmetricKey.createNull = function() {
-    return new SymmetricKey(new Uint8Array(32));
+    return new SymmetricKey(new Uint8Array(32), 1);
 }
+SymmetricKey.deserialize = function(raw) {
+    const buf = new ByteArrayInputStream(raw);
+    const type = buf.readByte();
+    if (type != 1)
+	throw "Unknown SymmetricKey type: " + type;
+    var key = buf.read(32);
+    return new SymmetricKey(key, 1);
+}
+
 
 function FileProperties(name, size, modified, attr) {
     this.name = name;
@@ -957,7 +975,7 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
                     return corenodeClient.followRequest(initialRequest.entry.pointer.owner.getPublicKeys(), concat(tmp.pBoxKey, payload));
 		}
 		// if reciprocate, add entry point to their shared dirctory (we follow them) and then 
-		buf.writeArray(initialRequest.entry.pointer.baseKey.key); // tell them we are reciprocating
+		buf.writeArray(initialRequest.entry.pointer.baseKey.serialize()); // tell them we are reciprocating
 		var plaintext = buf.toByteArray();
                 var payload = targetUser.encryptMessageFor(plaintext, tmp);
 		
@@ -1002,7 +1020,7 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
 			    var tmp = User.random();
 			    var buf = new ByteArrayOutputStream();
 			    buf.writeArray(entry.serialize());
-			    buf.writeArray(requestedKey != null ? requestedKey.key : new Uint8Array(0));
+			    buf.writeArray(requestedKey != null ? requestedKey.serialize() : new Uint8Array(0));
 			    var plaintext = buf.toByteArray();
 			    var payload = targetUser.encryptMessageFor(plaintext, tmp);
 			    
@@ -1081,8 +1099,8 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
 		    if (followerRoots[freq.entry.owner] != null) {
 			// delete our folder if they didn't reciprocate
 			var ourDirForThem = followerRoots[freq.entry.owner];
-			var ourKeyForThem = ourDirForThem.getKey().key;
-			var keyFromResponse = freq.key == null ? null : freq.key.key;
+			var ourKeyForThem = ourDirForThem.getKey().serialize();
+			var keyFromResponse = freq.key == null ? null : freq.key.serialize();
 			if (keyFromResponse == null || !arraysEqual(keyFromResponse, ourKeyForThem)) {
 			    ourDirForThem.remove(that, getSharingFolder());
 			    // remove entry point as well
@@ -1094,7 +1112,7 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
 				that.getAncestorsAndAddToTree(treenode, that);
 			    });
 			// add entry point to static data
-			if (!arraysEqual(freq.entry.pointer.baseKey.key, new Uint8Array(32)))
+			if (!arraysEqual(freq.entry.pointer.baseKey.serialize(), SymmetricKey.createNull().serialize()))
 			    that.addToStaticDataAndCommit(freq.entry).then(function(res) {
 				return corenodeClient.removeFollowRequest(that.user.getPublicKeys(), that.user.signMessage(freq.rawCipher));
 			    });
@@ -1120,7 +1138,7 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
 	var rawEntry = input.readArray();
 	var rawKey = input.readArray();
         return new FollowRequest(rawEntry.length > 0 ? EntryPoint.deserialize(rawEntry) : null, 
-				 rawKey.length > 0 ? new SymmetricKey(rawKey) : null, raw);
+				 rawKey.length > 0 ? SymmetricKey.deserialize(rawKey) : null, raw);
     }
     
     this.uploadFragment = function(f, targetUser) {
@@ -1410,7 +1428,7 @@ function ReadableFilePointer(owner, writer, mapKey, baseKey) {
 	return arraysEqual(this.owner.getPublicKeys(), that.owner.getPublicKeys()) &&
 	    arraysEqual(this.writer.getPublicKeys(), that.writer.getPublicKeys()) && 
 	    arraysEqual(this.mapKey, that.mapKey) &&
-	    arraysEqual(this.baseKey.key, that.baseKey.key);
+	    arraysEqual(this.baseKey.serialize(), that.baseKey.serialize());
     }
 
     this.serialize = function() {
@@ -1421,7 +1439,7 @@ function ReadableFilePointer(owner, writer, mapKey, baseKey) {
         else
             bout.writeArray(writer.getPublicKeys());
         bout.writeArray(mapKey);
-        bout.writeArray(baseKey.key);
+        bout.writeArray(baseKey.serialize());
         return bout.toByteArray();
     }
 
@@ -1437,7 +1455,7 @@ function ReadableFilePointer(owner, writer, mapKey, baseKey) {
     }
 
     this.toLink = function() {
-	return "#" + Base58.encode(owner.getPublicKeys()) + "/" + Base58.encode(writer.getPublicKeys()) + "/" + Base58.encode(mapKey) + "/" + Base58.encode(baseKey.key);
+	return "#" + Base58.encode(owner.getPublicKeys()) + "/" + Base58.encode(writer.getPublicKeys()) + "/" + Base58.encode(mapKey) + "/" + Base58.encode(baseKey.serialize());
     }
 }
 ReadableFilePointer.fromLink = function(keysString) {
@@ -1445,7 +1463,7 @@ ReadableFilePointer.fromLink = function(keysString) {
     const owner = UserPublicKey.fromPublicKeys(Base58.decode(split[0]));
     const writer = UserPublicKey.fromPublicKeys(Base58.decode(split[1]));
     const mapKey = Base58.decode(split[2]);
-    const baseKey = new SymmetricKey(Base58.decode(split[3]));
+    const baseKey = SymmetricKey.deserialize(Base58.decode(split[3]));
     return new ReadableFilePointer(owner, writer, mapKey, baseKey);
 }
 
@@ -1458,7 +1476,7 @@ ReadableFilePointer.deserialize = function(arr) {
     const writer = writerRaw.length == window.nacl.box.secretKeyLength + window.nacl.sign.secretKeyLength ?
     User.fromSecretKeys(writerRaw) :
     UserPublicKey.fromPublicKeys(writerRaw);
-    return new ReadableFilePointer(UserPublicKey.fromPublicKeys(owner), writer, mapKey, new SymmetricKey(rootDirKeySecret));
+    return new ReadableFilePointer(UserPublicKey.fromPublicKeys(owner), writer, mapKey, SymmetricKey.deserialize(rootDirKeySecret));
 }
 ReadableFilePointer.createNull = function() {
     return new ReadableFilePointer(UserPublicKey.createNull(), UserPublicKey.createNull(), new Uint8Array(32), SymmetricKey.createNull());
@@ -1927,11 +1945,11 @@ function SymmetricLink(link) {
 
     this.target = function(from) {
     var encoded = from.decrypt(this.link, this.nonce);
-    return new SymmetricKey(encoded);
+    return SymmetricKey.deserialize(encoded);
     }
 }
 SymmetricLink.fromPair = function(from, to, nonce) {
-    return new SymmetricLink(concat(nonce, from.encrypt(to.key, nonce)));
+    return new SymmetricLink(concat(nonce, from.encrypt(to.serialize(), nonce)));
 }
 
 // UserPublicKey, UserPublicKey, Uint8Array
@@ -1985,7 +2003,7 @@ function SymmetricLocationLink(arr) {
         var nonce = slice(this.link, 0, SymmetricKey.NONCE_BYTES);
         var rest = slice(this.link, SymmetricKey.NONCE_BYTES, this.link.length);
         var encoded = from.decrypt(rest, nonce);
-        return new SymmetricKey(encoded);
+        return SymmetricKey.deserialize(encoded);
     }
 
     this.serialize = function() {
@@ -2004,7 +2022,7 @@ function SymmetricLocationLink(arr) {
 SymmetricLocationLink.create = function(fromKey, toKey, location) {
     var nonce = fromKey.createNonce();
     var loc = location.encrypt(fromKey, nonce);
-    var link = concat(nonce, fromKey.encrypt(toKey.key, nonce));
+    var link = concat(nonce, fromKey.encrypt(toKey.serialize(), nonce));
     var buf = new ByteArrayOutputStream();
     buf.writeArray(link);
     buf.writeArray(loc);
@@ -2089,7 +2107,7 @@ function FileAccess(parent2meta, properties, retriever, parentLink) {
     }
 
     this.copyTo = function(baseKey, newBaseKey, parentLocation, parentparentKey, entryWriterKey, newMapKey, context) {
-	if (!arraysEqual(baseKey.key, newBaseKey.key))
+	if (!arraysEqual(baseKey.serialize(), newBaseKey.serialize()))
 	    throw "FileAcess clone must have same base key as original!";
 	const props = this.getFileProperties(baseKey);
 	const fa = FileAccess.create(newBaseKey, props, this.retriever, parentLocation, parentparentKey);
@@ -2150,7 +2168,7 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
         const filesKey = this.subfolders2files.target(ourSubfolders);
         var nonce = filesKey.createNonce();
         var loc = location.encrypt(filesKey, nonce);
-        var link = concat(nonce, filesKey.encrypt(targetParent.key, nonce));
+        var link = concat(nonce, filesKey.encrypt(targetParent.serialize(), nonce));
         var buf = new ByteArrayOutputStream();
         buf.writeArray(link);
         buf.writeArray(loc);
