@@ -23,19 +23,16 @@ done
 
 if [ "$1" = "backupcerts" ] ; then
     cp RootCertificate.src RootCertificate.backup
-    cp DirectoryCertificates.src DirectoryCertificates.backup
     cp CoreCertificates.src CoreCertificates.backup
 fi
 
 if [ "$1" = "restorecerts" ] ; then
     cp RootCertificate.backup RootCertificate.src
-    cp DirectoryCertificates.backup DirectoryCertificates.src
     cp CoreCertificates.backup CoreCertificates.src
 fi
 
 if [ "$1" = "server" ] ; then
     cp RootCertificate.src peergos/crypto/RootCertificate.java
-    cp DirectoryCertificates.src peergos/crypto/DirectoryCertificates.java
     cp CoreCertificates.src peergos/crypto/CoreCertificates.java
     mkdir -p build
     echo "Name: Peergos Storage Server" > def.manifest
@@ -51,7 +48,6 @@ fi
 
 if [ "$1" = "tests" ] ; then
     cp RootCertificate.src peergos/crypto/RootCertificate.java
-    cp DirectoryCertificates.src peergos/crypto/DirectoryCertificates.java
     cp CoreCertificates.src peergos/crypto/CoreCertificates.java
     mkdir -p build
     echo "Name: Peergos Tests" > def.manifest
@@ -64,30 +60,3 @@ if [ "$1" = "tests" ] ; then
 -C build peergos
     rm -f def.manifest
 fi
-
-if [ "$1" = "net" ] ; then
-    cp RootCertificate.src peergos/crypto/RootCertificate.java
-    cp DirectoryCertificates.src peergos/crypto/DirectoryCertificates.java
-    cp CoreCertificates.src peergos/crypto/CoreCertificates.java
-    mkdir -p build
-    echo "Name: Peergos Net Tests" > def.manifest
-    echo "Main-Class: peergos.net.upnp.Upnp" >> def.manifest
-    echo "Build-Date: " `date` >> def.manifest
-    echo "Class-Path: " ${CP_SPACE} >> def.manifest
-    javac ${JAVA_BUILD_OPTS} -d build ${JAVA_SOURCE} ${JAVA_TEST} ${JAVA_ORG}
-    jar -cfm Net.jar def.manifest \
--C build peergos -C build test -C build org
-    rm -f def.manifest
-fi
-
-
-
-
-
-
-
-
-
-
-
-

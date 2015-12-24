@@ -1,8 +1,6 @@
 package peergos.crypto;
 
 import org.bouncycastle.x509.extension.AuthorityKeyIdentifierStructure;
-import peergos.directory.DirectoryServer;
-import peergos.storage.net.IPMappings;
 import org.bouncycastle.asn1.DEROctetString;
 import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
 import org.bouncycastle.asn1.x500.RDN;
@@ -161,71 +159,11 @@ public class SSL
             ks.load(new FileInputStream(SSL_KEYSTORE_FILENAME), password);
             return ks;
         }
-        ks.load(null, password);
-        KeyPair keypair = generateKeyPair();
-        String ip = IPMappings.getMyPublicAddress(IPMappings.STORAGE_PORT).getHostName();
-        System.out.println("Generating an SSL certificate for "+ip);
-        PKCS10CertificationRequest csr = generateCSR(password, ip, ip, keypair, "storage.csr");
-        PrivateKey myPrivateKey = keypair.getPrivate();
 
-        // make rootCA a trust source
-        X509Certificate rootCert = (X509Certificate) getRootCertificate();
-
-        Certificate[] dirs = SSL.getDirectoryServerCertificates();
-        Certificate cert;
-        Certificate dir;
-        boolean tryLocal = false;
-        while (true) {
-            try {
-                dir = dirs[new SecureRandom().nextInt() % dirs.length];
-//            String alias = getCommonName(dir);
-//            ks.setCertificateEntry(alias, dir);
-
-                // synchronously contact a directory server to sign our certificate
-                String address = tryLocal ? "localhost" : SSL.getCommonName(dir);
-                URL target = new URL("http", address, DirectoryServer.PORT, "/sign");
-                System.out.println("sending CSR to " + target.toString());
-                HttpURLConnection conn = (HttpURLConnection) target.openConnection();
-                conn.setDoOutput(true);
-                conn.setRequestMethod("PUT");
-                OutputStream out = conn.getOutputStream();
-                byte[] raw = csr.getEncoded();
-                out.write(raw);
-                out.close();
-
-                InputStream in = conn.getInputStream();
-                byte[] buf = new byte[4 * 1024];
-                ByteArrayOutputStream bout = new ByteArrayOutputStream();
-                while (true) {
-                    int r = in.read(buf);
-                    if (r < 0)
-                        break;
-                    bout.write(buf, 0, r);
-                }
-                CertificateFactory fact = CertificateFactory.getInstance("X.509", "BC");
-                cert = fact.generateCertificate(new ByteArrayInputStream(bout.toByteArray()));
-                break;
-            } catch (IOException e) {
-                tryLocal = true;
-            }
-        }
-        // will throw exception if certificates don't verify by signer public key
-        dir.verify(rootCert.getPublicKey());
-        cert.verify(dir.getPublicKey());
-
-        KeyStore.Entry root = new KeyStore.TrustedCertificateEntry(rootCert);
-        ks.setEntry(getCommonName(rootCert), root, null);
-        ks.setCertificateEntry(getCommonName(cert), cert);
-        ks.setCertificateEntry(getCommonName(dir), dir);
-        ks.setKeyEntry(getCommonName(cert), myPrivateKey, password, new Certificate[]{cert, dir, rootCert});
-        Certificate[] chain = ks.getCertificateChain(getCommonName(cert));
-        if (chain.length != 3)
-            throw new IllegalStateException("Certificate chain must contain 3 certificates! "+chain.length);
-        ks.store(new FileOutputStream(SSL_KEYSTORE_FILENAME), password);
-        return ks;
+        throw new IllegalStateException("SSL keystore file doesn't exist: "+SSL_KEYSTORE_FILENAME);
     }
 
-    public static Certificate generateSelfSignedCertificate(String commonName, String ipaddress, PublicKey signee, PrivateKey signer)
+    public static Certificate generateSelfSignedCertificate(String commonName, PublicKey signee, PrivateKey signer)
             throws KeyStoreException, IOException, NoSuchAlgorithmException, CertificateException, InvalidKeyException,
             NoSuchProviderException, SignatureException, OperatorCreationException
     {
@@ -259,7 +197,7 @@ public class SSL
             throws KeyStoreException, IOException, NoSuchAlgorithmException, CertificateException, InvalidKeyException,
             NoSuchProviderException, SignatureException, OperatorCreationException
     {
-        return generateSelfSignedCertificate("Peergos", "peergos.secret", keypair.getPublic(), keypair.getPrivate());
+        return generateSelfSignedCertificate("Peergos", keypair.getPublic(), keypair.getPrivate());
     }
 
     public static void generateAndSaveRootCertificate(char[] password)
@@ -287,12 +225,12 @@ public class SSL
         }
     }
 
-    public static KeyPair generateCSR(char[] passphrase, String commonName, String ipAddress, String keyfile, String csrfile) throws IOException
+    public static KeyPair generateCSR(char[] passphrase, String commonName, String keyfile, String csrfile) throws IOException
     {
         String msg;
         try {
             KeyPair pair = generateAndSaveKeyPair(keyfile, passphrase);
-            generateCSR(passphrase, commonName, ipAddress, loadKeyPair(keyfile, passphrase), csrfile);
+            generateCSR(passphrase, commonName, loadKeyPair(keyfile, passphrase), csrfile);
             return pair;
         } catch (NoSuchAlgorithmException e) {e.printStackTrace(); msg= e.getMessage();}
         catch (InvalidKeySpecException e) {e.printStackTrace();msg= e.getMessage();}
@@ -301,10 +239,10 @@ public class SSL
         throw new IllegalStateException(msg);
     }
 
-    public static PKCS10CertificationRequest generateCSR(char[] password, String cn, String ipaddress, KeyPair keypair, String outfile)
+    public static PKCS10CertificationRequest generateCSR(char[] password, String cn, KeyPair keypair, String outfile)
     {
         try {
-            return generateCertificateSignRequestAndSaveToFile(outfile, password, cn, ipaddress, keypair);
+            return generateCertificateSignRequestAndSaveToFile(outfile, password, cn, keypair);
         } catch (Exception e)
         {
             e.printStackTrace();
@@ -313,11 +251,11 @@ public class SSL
     }
 
     public static PKCS10CertificationRequest generateCertificateSignRequestAndSaveToFile(String outfile, char[] password,
-                                                                            String commonName, String ipaddress, KeyPair keys)
+                                                                            String commonName, KeyPair keys)
             throws KeyStoreException, IOException, NoSuchAlgorithmException, CertificateException, InvalidKeyException,
             NoSuchProviderException, SignatureException, OperatorCreationException, CRMFException
     {
-        PKCS10CertificationRequest csr = generateCertificateSignRequest(password, commonName, ipaddress, keys);
+        PKCS10CertificationRequest csr = generateCertificateSignRequest(password, commonName, keys);
         BufferedWriter w = new BufferedWriter(new FileWriter(outfile));
         String type = "CERTIFICATE REQUEST";
         byte[] encoding = csr.getEncoded();
@@ -334,7 +272,7 @@ public class SSL
     }
 
     public static PKCS10CertificationRequest generateCertificateSignRequest(char[] password, String commonName,
-                                                                            String ipAddress, KeyPair keys)
+                                                                            KeyPair keys)
             throws KeyStoreException, IOException, NoSuchAlgorithmException, CertificateException, InvalidKeyException,
             NoSuchProviderException, SignatureException, OperatorCreationException, CRMFException
     {
@@ -350,16 +288,6 @@ public class SSL
         builder.addRDN(PKCSObjectIdentifiers.pkcs_9_at_emailAddress, "hello.NSA.GCHQ.ASIO@goodluck.com");
 
         PKCS10CertificationRequestBuilder requestBuilder = new JcaPKCS10CertificationRequestBuilder(builder.build(), keys.getPublic());
-        if (commonName.equals("localhost"))
-            ipAddress = "127.0.0.1";
-        if (ipAddress != null && isIPAddress(ipAddress)) {
-            System.out.println("Adding SAN to SSL certificate");
-            GeneralNames subjectAltName = new GeneralNames(new GeneralName(GeneralName.iPAddress, ipAddress));
-            Extension[] ext = new Extension[]{new Extension(Extension.subjectAlternativeName, false, new DEROctetString(subjectAltName))};
-            PKCS10CertificationRequest csr = requestBuilder.addAttribute(PKCSObjectIdentifiers.pkcs_9_at_extensionRequest,
-                    new Extensions(ext)).build(new JcaContentSignerBuilder("SHA256withRSA").setProvider("BC").build(keys.getPrivate()));
-            return csr;
-        }
         PKCS10CertificationRequest csr = requestBuilder.build(new JcaContentSignerBuilder("SHA256withRSA").setProvider("BC").build(keys.getPrivate()));
         return csr;
     }
@@ -551,15 +479,13 @@ public class SSL
             char[] dirPass = "password".toCharArray();
             KeyPair dirKeys = generateKeyPair();
             String dirCN = "192.168.0.18";
-            String dirIP = "192.168.0.18";
-            PKCS10CertificationRequest dirCSR = generateCertificateSignRequest(dirPass, dirCN, dirIP, dirKeys);
+            PKCS10CertificationRequest dirCSR = generateCertificateSignRequest(dirPass, dirCN, dirKeys);
             Certificate dir = signCertificate(dirCSR, rootKeys.getPrivate(), root, true);
 
             char[] userPass = "password".toCharArray();
             KeyPair userKeys = generateKeyPair();
             String userCN = "192.168.0.19";
-            String userIP = "192.168.0.19";
-            PKCS10CertificationRequest userCSR = generateCertificateSignRequest(userPass, userCN, userIP, userKeys);
+            PKCS10CertificationRequest userCSR = generateCertificateSignRequest(userPass, userCN, userKeys);
             Certificate user = signCertificate(userCSR, dirKeys.getPrivate(), dir, false);
 
             // will throw exception if certificates don't verify by signer public key
