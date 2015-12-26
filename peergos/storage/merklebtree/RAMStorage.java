@@ -1,5 +1,6 @@
 package peergos.storage.merklebtree;
 
+import org.ipfs.api.Multihash;
 import peergos.util.*;
 
 import java.security.*;
@@ -9,6 +10,11 @@ public class RAMStorage implements ContentAddressedStorage {
     private Map<ByteArrayWrapper, byte[]> storage = new HashMap<>();
 
     @Override
+    public Multihash put(MerkleNode object) {
+        return new Multihash(put(object.data));
+    }
+
+        @Override
     public byte[] put(byte[] value) {
         byte[] hash = hash(value);
         storage.put(new ByteArrayWrapper(hash), value);

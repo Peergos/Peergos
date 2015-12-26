@@ -1,9 +1,11 @@
 package peergos.storage.merklebtree;
 
+import org.ipfs.api.Multihash;
 import peergos.util.*;
 
 import java.io.*;
 import java.util.*;
+import java.util.stream.Collectors;
 
 public class TreeNode {
     public final Optional<byte[]> hash;
@@ -74,7 +76,7 @@ public class TreeNode {
             keys.remove(nextSmallest);
             keys.add(modified);
             // commit this node to storage
-            byte[] hash = storage.put(this.serialize());
+            byte[] hash = storage.put(this.toMerkleNode()).toBytes();
             if (!Arrays.equals(hash, this.hash.get()))
                 storage.remove(this.hash.get());
             return new TreeNode(this.keys, hash);
@@ -83,7 +85,7 @@ public class TreeNode {
             if (keys.size() < maxChildren) {
                 keys.add(new KeyElement(key, value, new byte[0]));
                 // commit this node to storage
-                byte[] hash = storage.put(this.serialize());
+                byte[] hash = storage.put(this.toMerkleNode()).toBytes();
                 if (this.hash.isPresent())
                     storage.remove(this.hash.get());
                 return new TreeNode(this.keys, hash);
@@ -95,13 +97,13 @@ public class TreeNode {
             // commit left child
             SortedSet<KeyElement> left = keys.headSet(median);
             TreeNode leftChild = new TreeNode(left);
-            byte[] leftChildHash = storage.put(leftChild.serialize());
+            byte[] leftChildHash = storage.put(leftChild.toMerkleNode()).toBytes();
 
             // commit right child
             SortedSet<KeyElement> right = keys.tailSet(median);
             right.remove(right.first());
             TreeNode rightChild = new TreeNode(median.targetHash, right);
-            byte[] rightChildHash = storage.put(rightChild.serialize());
+            byte[] rightChildHash = storage.put(rightChild.toMerkleNode()).toBytes();
 
             // now add median to parent
             TreeSet holder = new TreeSet<>();
@@ -121,7 +123,7 @@ public class TreeNode {
                 keys.remove(nextSmallest);
                 keys.add(replacementNextSmallest);
                 keys.add(modifiedChild.keys.last());
-                byte[] hash = storage.put(this.serialize());
+                byte[] hash = storage.put(this.toMerkleNode()).toBytes();
                 storage.remove(this.hash.get());
                 return new TreeNode(this.keys, hash);
             }
@@ -138,13 +140,13 @@ public class TreeNode {
             // commit left child
             SortedSet<KeyElement> left = keys.headSet(median);
             TreeNode leftChild = new TreeNode(left);
-            byte[] leftChildHash = storage.put(leftChild.serialize());
+            byte[] leftChildHash = storage.put(leftChild.toMerkleNode()).toBytes();
 
             // commit right child
             SortedSet<KeyElement> right = keys.tailSet(median);
             right.remove(right.first());
             TreeNode rightChild = new TreeNode(median.targetHash, right);
-            byte[] rightChildHash = storage.put(rightChild.serialize());
+            byte[] rightChildHash = storage.put(rightChild.toMerkleNode()).toBytes();
 
             // now add median to parent
             TreeSet holder = new TreeSet<>();
@@ -157,7 +159,7 @@ public class TreeNode {
         KeyElement updated = new KeyElement(nextSmallest.key, nextSmallest.valueHash, modifiedChild.hash.get());
         keys.remove(nextSmallest);
         keys.add(updated);
-        byte[] hash = storage.put(this.serialize());
+        byte[] hash = storage.put(this.toMerkleNode()).toBytes();
         if (!Arrays.equals(hash, this.hash.get()))
             storage.remove(this.hash.get());
         return new TreeNode(this, hash);
@@ -199,7 +201,7 @@ public class TreeNode {
                 keys.remove(nextSmallest);
                 storage.remove(this.hash.get());
                 if (keys.size() >= maxChildren/2) {
-                    byte[] hash = storage.put(this.serialize());
+                    byte[] hash = storage.put(this.toMerkleNode()).toBytes();
                     return new TreeNode(this.keys, hash);
                 }
                 return new TreeNode(this.keys);
@@ -210,14 +212,14 @@ public class TreeNode {
                 byte[] value = child.get(smallestKey, storage);
                 TreeNode newChild = child.delete(smallestKey, storage, maxChildren);
 
-                byte[] childHash = storage.put(newChild.serialize());
+                byte[] childHash = storage.put(newChild.toMerkleNode()).toBytes();
                 keys.remove(nextSmallest);
                 storage.remove(nextSmallest.targetHash);
                 KeyElement replacement = new KeyElement(smallestKey, value, childHash);
                 keys.add(replacement);
                 storage.remove(this.hash.get());
                 if (newChild.keys.size() >= maxChildren/2) {
-                    byte[] hash = storage.put(this.serialize());
+                    byte[] hash = storage.put(this.toMerkleNode()).toBytes();
                     return new TreeNode(this, hash);
                 } else {
                     // re-balance
@@ -239,7 +241,7 @@ public class TreeNode {
             // re-balance
             return rebalance(this, child, nextSmallest.targetHash, storage, maxChildren);
         }
-        byte[] hash = storage.put(this.serialize());
+        byte[] hash = storage.put(this.toMerkleNode()).toBytes();
         storage.remove(this.hash.get());
         return new TreeNode(this, hash);
     }
@@ -264,17 +266,17 @@ public class TreeNode {
             parent.keys.remove(centerKey);
 
             child.keys.add(new KeyElement(rightKey.get().key, rightKey.get().valueHash, right.keys.first().targetHash));
-            byte[] newChildHash = storage.put(child.serialize());
+            byte[] newChildHash = storage.put(child.toMerkleNode()).toBytes();
 
             right.keys.remove(newSeparator);
             right.keys.remove(new KeyElement(new ByteArrayWrapper(new byte[0]), new byte[0], new byte[0]));
             right = new TreeNode(newSeparator.targetHash, right.keys);
-            byte[] newRightHash = storage.put(right.serialize());
+            byte[] newRightHash = storage.put(right.toMerkleNode()).toBytes();
 
             parent.keys.remove(rightKey.get());
             parent.keys.add(new KeyElement(centerKey.key, centerKey.valueHash, newChildHash));
             parent.keys.add(new KeyElement(newSeparator.key, newSeparator.valueHash, newRightHash));
-            byte[] hash = storage.put(parent.serialize());
+            byte[] hash = storage.put(parent.toMerkleNode()).toBytes();
             if (child.hash.isPresent())
                 storage.remove(child.hash.get());
             storage.remove(parent.hash.get());
@@ -286,17 +288,17 @@ public class TreeNode {
             parent.keys.remove(centerKey);
 
             left.keys.remove(newSeparator);
-            byte[] newLeftHash = storage.put(left.serialize());
+            byte[] newLeftHash = storage.put(left.toMerkleNode()).toBytes();
 
             child.keys.add(new KeyElement(centerKey.key, centerKey.valueHash, child.keys.first().targetHash));
             child.keys.remove(new KeyElement(new ByteArrayWrapper(new byte[0]), new byte[0], new byte[0]));
             child.keys.add(new KeyElement(new ByteArrayWrapper(new byte[0]), new byte[0], newSeparator.targetHash));
-            byte[] newChildHash = storage.put(child.serialize());
+            byte[] newChildHash = storage.put(child.toMerkleNode()).toBytes();
 
             parent.keys.remove(leftKey.get());
             parent.keys.add(new KeyElement(leftKey.get().key, leftKey.get().valueHash, newLeftHash));
             parent.keys.add(new KeyElement(newSeparator.key, newSeparator.valueHash, newChildHash));
-            byte[] hash = storage.put(parent.serialize());
+            byte[] hash = storage.put(parent.toMerkleNode()).toBytes();
             if (child.hash.isPresent())
                 storage.remove(child.hash.get());
             storage.remove(parent.hash.get());
@@ -309,7 +311,7 @@ public class TreeNode {
                 combinedKeys.addAll(rightSibling.get().keys);
                 combinedKeys.add(new KeyElement(rightKey.get().key, rightKey.get().valueHash, rightSibling.get().keys.first().targetHash));
                 TreeNode combined = new TreeNode(combinedKeys);
-                byte[] combinedHash = storage.put(combined.serialize());
+                byte[] combinedHash = storage.put(combined.toMerkleNode()).toBytes();
 
                 parent.keys.remove(rightKey.get());
                 parent.keys.remove(centerKey);
@@ -318,7 +320,7 @@ public class TreeNode {
                     storage.remove(child.hash.get());
                 storage.remove(parent.hash.get());
                 if (parent.keys.size() >= maxChildren/2) {
-                    byte[] hash = storage.put(parent.serialize());
+                    byte[] hash = storage.put(parent.toMerkleNode()).toBytes();
                     return new TreeNode(parent, hash);
                 }
                 return new TreeNode(parent.keys);
@@ -329,7 +331,7 @@ public class TreeNode {
                 combinedKeys.addAll(leftSibling.get().keys);
                 combinedKeys.add(new KeyElement(centerKey.key, centerKey.valueHash, child.keys.first().targetHash));
                 TreeNode combined = new TreeNode(combinedKeys);
-                byte[] combinedHash = storage.put(combined.serialize());
+                byte[] combinedHash = storage.put(combined.toMerkleNode()).toBytes();
 
                 parent.keys.remove(leftKey.get());
                 parent.keys.remove(centerKey);
@@ -338,7 +340,7 @@ public class TreeNode {
                     storage.remove(child.hash.get());
                 storage.remove(parent.hash.get());
                 if (parent.keys.size() >= maxChildren/2) {
-                    byte[] hash = storage.put(parent.serialize());
+                    byte[] hash = storage.put(parent.toMerkleNode()).toBytes();
                     return new TreeNode(parent, hash);
                 }
                 return new TreeNode(parent.keys);
@@ -375,6 +377,15 @@ public class TreeNode {
         } catch (IOException e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    public MerkleNode toMerkleNode() {
+        Map<String, Multihash> links = keys.stream().filter(k -> k.targetHash.length > 0).collect(Collectors.toMap(k -> k.key.toString(), k -> new Multihash(k.targetHash)));
+        return new MerkleNode(serialize(), links);
+    }
+
+    public static TreeNode fromMerkleNode(MerkleNode node) throws IOException {
+        return deserialize(node.data);
     }
 
     public static TreeNode deserialize(byte[] raw) throws IOException {

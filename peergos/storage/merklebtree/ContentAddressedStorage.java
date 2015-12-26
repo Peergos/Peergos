@@ -1,6 +1,15 @@
 package peergos.storage.merklebtree;
 
+import org.ipfs.api.Multihash;
+
 public interface ContentAddressedStorage {
+
+    /**
+     *
+     * @param object
+     * @return a hash of the stored object
+     */
+    Multihash put(MerkleNode object);
 
     /**
      *

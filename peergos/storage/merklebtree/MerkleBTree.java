@@ -22,7 +22,7 @@ public class MerkleBTree
     public static MerkleBTree create(byte[] rootHash, ContentAddressedStorage dht) throws IOException {
         if (rootHash.length == 0) {
             TreeNode newRoot = new TreeNode(new TreeSet<>());
-            byte[] hash = dht.put(newRoot.serialize());
+            byte[] hash = dht.put(newRoot.toMerkleNode()).toBytes();
             return new MerkleBTree(newRoot, hash, dht, MAX_NODE_CHILDREN);
         }
         return new MerkleBTree(TreeNode.deserialize(dht.get(rootHash)), rootHash, dht, MAX_NODE_CHILDREN);
@@ -50,7 +50,7 @@ public class MerkleBTree
         if (root.hash.isPresent())
             storage.remove(root.hash.get());
         if (!newRoot.hash.isPresent()) {
-            root = new TreeNode(newRoot.keys, storage.put(newRoot.serialize()));
+            root = new TreeNode(newRoot.keys, storage.put(newRoot.toMerkleNode()).toBytes());
         } else
             root = newRoot;
         return root.hash.get();
@@ -67,7 +67,7 @@ public class MerkleBTree
         if (root.hash.isPresent())
             storage.remove(root.hash.get());
         if (!newRoot.hash.isPresent()) {
-            root = new TreeNode(newRoot.keys, storage.put(newRoot.serialize()));
+            root = new TreeNode(newRoot.keys, storage.put(newRoot.toMerkleNode()).toBytes());
         } else
             root = newRoot;
         return root.hash.get();
