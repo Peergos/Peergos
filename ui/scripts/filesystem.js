@@ -458,18 +458,18 @@ var SignUp = React.createClass({
                                 return Promise.resolve(false);
                         }.bind(this)).then(function(isRegistered) {
                                 if  (! isRegistered) { 
-                                        clearInProgress();
-                                        reject();
+                                    clearInProgress();
 
-                                        this.setState({
-                                                usernameClass : "has-error has-feedback",
-                                                usernameMsg : "Failed to register username",
-                                                passwordClass : "",
-                                                passwordMsg : ""
-                                        });
+                                    this.setState({
+                                        usernameClass : "has-error has-feedback",
+                                        usernameMsg : "Failed to register username. Whitespace is not allowed in username.",
+                                        passwordClass : "",
+                                        passwordMsg : ""
+                                    });
+                                    return Promise.reject("Couldn't register username!");
                                 }
                                 return ctx.createEntryDirectory(username);
-                        }).then(function(root) {
+                        }.bind(this)).then(function(root) {
                                 return root.fileAccess.mkdir("shared", ctx, root.filePointer.writer, root.filePointer.mapKey, root.filePointer.baseKey, null, true);
                         }.bind(this)).then(function(res) {
                             console.log("Verified user "+ username +" is registered");

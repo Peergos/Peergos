@@ -378,6 +378,8 @@ public class JDBCCoreNode implements CoreNode {
 
     @Override
     public boolean addUsername(String username, byte[] encodedUserKey, byte[] signed, byte[] staticData) {
+        if (username.contains(" ") || username.contains("\t") || username.contains("\n"))
+            return false;
         UserPublicKey key = new UserPublicKey(encodedUserKey);
 
         if (! key.isValidSignature(signed, ArrayOps.concat(username.getBytes(), encodedUserKey, staticData)))
