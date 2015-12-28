@@ -37,6 +37,8 @@ function UserPublicKey(publicSignKey, publicBoxKey) {
 }
 //Uint8Array => UserPublicKey
 UserPublicKey.fromPublicKeys = function(both) {
+    if (both.length == 0)
+	throw "Null keys returned";
     var pSign = slice(both, 0, 32);
     var pBox = slice(both, 32, 64);
     return new UserPublicKey(pSign, pBox);
@@ -537,7 +539,9 @@ function CoreNodeClient() {
         buffer.writeString(username);
         return postProm("core/getPublicKey", buffer.toByteArray()).then(function(raw) {
 	    var arr = new ByteArrayInputStream(raw).readArray();
-	    var res = arr.length = 0 ? null : UserPublicKey.fromPublicKeys(arr);
+	    var res = arr.length == 0 ? null : UserPublicKey.fromPublicKeys(arr);
+	    if (res == null)
+		return Promise.reject("No such user");
 	    return Promise.resolve(res);
 	});
     };
