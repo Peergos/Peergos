@@ -185,20 +185,24 @@ SymmetricKey.deserialize = function(raw) {
 }
 
 
-function FileProperties(name, size, modified, attr) {
+function FileProperties(name, size, modified, attr, thumbnail) {
     this.name = name;
     this.size = size;
     this.modified = modified;
     this.attr = attr; //  | HIDDEN
+    if (thumbnail == null)
+	thumbnail = new Uint8Array(0);
+    this.thumbnail = thumbnail;
 
     this.serialize = function() {
         var buf = new ByteArrayOutputStream();
-        buf.writeString(name);
-        buf.writeDouble(size);
-	buf.writeDouble(modified);
-	buf.writeByte(attr);
+        buf.writeString(this.name);
+        buf.writeDouble(this.size);
+	buf.writeDouble(this.modified);
+	buf.writeByte(this.attr);
+	buf.writeArray(this.thumbnail);
         return buf.toByteArray();
-    }
+    }.bind(this);
 
     this.getSize = function() {
         return size;
@@ -211,6 +215,15 @@ function FileProperties(name, size, modified, attr) {
     this.isHidden = function() {
 	return this.attr & 1 != 0;
     }
+
+    this.hasThumbnail = function() {
+	return this.thumbnail.length > 0;
+    }.bind(this);
+
+    this.getThumbURL = function() {
+	var blob = new Blob([this.thumbnail], {type: 'image/png'});
+	return URL.createObjectURL(blob);
+    }.bind(this);
 }
 
 FileProperties.deserialize = function(raw) {
@@ -219,7 +232,8 @@ FileProperties.deserialize = function(raw) {
     var size = buf.readDouble();
     var modified = buf.readDouble();
     var attr = buf.readByte();
-    return new FileProperties(name, size, modified, attr);
+    var thumb = buf.readArray();
+    return new FileProperties(name, size, modified, attr, thumb);
 }
 
 function asyncErasureEncode(original, originalBlobs, allowedFailures) {
