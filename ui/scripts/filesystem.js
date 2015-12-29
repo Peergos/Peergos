@@ -479,7 +479,26 @@ var SignUp = React.createClass({
 			    });
                         }.bind(this));
                 }.bind(this);
+	        var keyPress = function() {
+		    var passwd = document.getElementById("signup-password-input").value;
+		    var index = commonPasswords.indexOf(passwd);
+		    if (index != -1)
+			this.setState({
+                            usernameClass : "",
+                            usernameMsg : "",
+                            passwordClass : "has-error has-feedback",
+                            passwordMsg : "Your password is the number " + (index+1) +" most common password. We recommend changing it!"
+                        });
+		    else
+			this.setState({
+                            usernameClass : "",
+                            usernameMsg : "",
+                            passwordClass : "",
+                            passwordMsg : ""
+                        });
+		}.bind(this);
                 document.getElementById("signupSubmitButton").onclick = submit; 
+                document.getElementById("signup-password-input").onkeyup = keyPress; 
         }, 
         render: function() {
                 const  usernameClass = "form-group "+ this.state.usernameClass;

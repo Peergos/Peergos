@@ -2524,6 +2524,11 @@ function hexToBytes(hex) {
     return result;
 }
 
+var commonPasswords;
+get("/passwords.json", function(res){
+    commonPasswords = JSON.parse(res);
+});
+
 if (typeof module !== "undefined"){
     module.exports.randomSymmetricKey = randomSymmetricKey;
     module.exports.SymmetricKey = SymmetricKey;
