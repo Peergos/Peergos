@@ -293,8 +293,11 @@ function Chunk(data, key) {
 }
 Chunk.MAX_SIZE = Fragment.SIZE*EncryptedChunk.ERASURE_ORIGINAL
 // string, File, SymmetricKey, Location, SymmetricKey -> 
-function FileUploader(name, file, key, parentLocation, parentparentKey, setProgressPercentage) {
-    this.props = new FileProperties(name, file.size, Date.now(), 0);
+function FileUploader(name, file, key, parentLocation, parentparentKey, setProgressPercentage, fileProperties) {
+    if (fileProperties == null)
+	this.props = new FileProperties(name, file.size, Date.now(), 0);
+    else
+	this.props = fileProperties;
     if (key == null) key = SymmetricKey.random();
 
     // Process and upload chunk by chunk to avoid running out of RAM, in reverse order to build linked list
@@ -339,6 +342,28 @@ function FileUploader(name, file, key, parentLocation, parentparentKey, setProgr
     this.upload = function(context, owner, writer) {
 	return this.uploadChunk(context, owner, writer, this.nchunks-1, this.file, null);
     }.bind(this);
+}
+
+function generateThumbnail(imageBlob, fileName) {
+    if (fileName.substr(-1) !== ".png" && fileName.substr(-4) !== ".jpg")
+	return Promise.resolve(new Uint8Array(0));
+    return new Promise(function(resolve, reject) {
+	var canvas = document.createElement('canvas');
+	var ctx = canvas.getContext('2d');
+	var img = new Image();
+	img.onload = function(){
+            canvas.width = img.width;
+            canvas.height = img.height;
+            var w = 100, h = 100;
+            ctx.scale(w/img.width, h/img.height);
+            ctx.drawImage(img,0,0);
+            
+            var b64Thumb = canvas.toDataURL().substring("data:image/png;base64,".length);
+	    resolve(nacl.util.decodeBase64(b64Thumb));
+	}
+	var url = URL.createObjectURL(imageBlob);
+	img.src = url;
+    });
 }
 
 /////////////////////////////
@@ -1693,10 +1718,13 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 	const parentLocation = new Location(owner, writer, dirMapKey);
 	const dirParentKey = dirAccess.getParentKey(rootRKey);
 	
-	const chunks = new FileUploader(filename, file, fileKey, parentLocation, dirParentKey, setProgressPercentage);
-        return chunks.upload(context, owner, entryWriterKey).then(function(fileLocation) {
-	    dirAccess.addFile(fileLocation, rootRKey, fileKey);
-	    return context.uploadChunk(dirAccess, owner, entryWriterKey, dirMapKey);
+	return generateThumbnail(file, filename).then(function(thumbData) {
+	    const fileProps = new FileProperties(filename, file.size, Date.now(), 0, thumbData);
+	    const chunks = new FileUploader(filename, file, fileKey, parentLocation, dirParentKey, setProgressPercentage, fileProps);
+            return chunks.upload(context, owner, entryWriterKey).then(function(fileLocation) {
+		dirAccess.addFile(fileLocation, rootRKey, fileKey);
+		return context.uploadChunk(dirAccess, owner, entryWriterKey, dirMapKey);
+	    });
 	});
     }.bind(this);
 
