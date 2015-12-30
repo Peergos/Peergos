@@ -1775,7 +1775,7 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
         const key = this.isDirectory() ? fileAccess.getParentKey(baseKey) : baseKey; 
         const currentProps = fileAccess.getFileProperties(key);
 	
-        const newProps = new FileProperties(newName, currentProps.size, currentProps.modified, currentProps.attr);
+        const newProps = new FileProperties(newName, currentProps.size, currentProps.modified, currentProps.attr, currentProps.thumbnail);
 	
         return fileAccess.rename(writableFilePointer(), newProps, context);
     }
