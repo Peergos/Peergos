@@ -345,23 +345,35 @@ function FileUploader(name, file, key, parentLocation, parentparentKey, setProgr
 }
 
 function generateThumbnail(imageBlob, fileName) {
-    if (fileName.substr(-1) !== ".png" && fileName.substr(-4) !== ".jpg")
-	return Promise.resolve(new Uint8Array(0));
     return new Promise(function(resolve, reject) {
-	var canvas = document.createElement('canvas');
-	var ctx = canvas.getContext('2d');
-	var img = new Image();
-	img.onload = function(){
-            var w = 100, h = 100;
-            canvas.width = w;
-            canvas.height = h;
-            ctx.drawImage(img,0,0,img.width, img.height, 0, 0, w, h);
-            
-            var b64Thumb = canvas.toDataURL().substring("data:image/png;base64,".length);
-	    resolve(nacl.util.decodeBase64(b64Thumb));
+	var filereader = new FileReader();
+	filereader.file_name = imageBlob.name;
+	filereader.readAsArrayBuffer(imageBlob.slice(0, 20));
+	filereader.onload = function(){
+	    const data = new Uint8Array(this.result);
+	    resolve(data);
 	}
-	var url = URL.createObjectURL(imageBlob);
-	img.src = url;
+    }).then(function(data) {
+	const JPEG = new Uint8Array([255, 216]);
+	const PNG = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+	if (!arraysEqual(data.slice(0, PNG.length), PNG) && !arraysEqual(data.slice(0, 2), JPEG))
+	    return Promise.resolve(new Uint8Array(0));
+	return new Promise(function(resolve, reject) {
+	    var canvas = document.createElement('canvas');
+	    var ctx = canvas.getContext('2d');
+	    var img = new Image();
+	    img.onload = function(){
+		var w = 100, h = 100;
+		canvas.width = w;
+		canvas.height = h;
+		ctx.drawImage(img,0,0,img.width, img.height, 0, 0, w, h);
+		
+		var b64Thumb = canvas.toDataURL().substring("data:image/png;base64,".length);
+		resolve(nacl.util.decodeBase64(b64Thumb));
+	    }
+	    var url = URL.createObjectURL(imageBlob);
+	    img.src = url;
+	});
     });
 }
 
