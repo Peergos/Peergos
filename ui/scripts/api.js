@@ -352,11 +352,10 @@ function generateThumbnail(imageBlob, fileName) {
 	var ctx = canvas.getContext('2d');
 	var img = new Image();
 	img.onload = function(){
-            canvas.width = img.width;
-            canvas.height = img.height;
             var w = 100, h = 100;
-            ctx.scale(w/img.width, h/img.height);
-            ctx.drawImage(img,0,0);
+            canvas.width = w;
+            canvas.height = h;
+            ctx.drawImage(img,0,0,img.width, img.height, 0, 0, w, h);
             
             var b64Thumb = canvas.toDataURL().substring("data:image/png;base64,".length);
 	    resolve(nacl.util.decodeBase64(b64Thumb));
