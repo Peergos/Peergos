@@ -340,7 +340,11 @@ function FileUploader(name, file, key, parentLocation, parentparentKey, setProgr
     }.bind(this);
     
     this.upload = function(context, owner, writer) {
-	return this.uploadChunk(context, owner, writer, this.nchunks-1, this.file, null);
+	const t1 = Date.now();
+	return this.uploadChunk(context, owner, writer, this.nchunks-1, this.file, null).then(function(res) {
+	    console.log("File encryption, erasure coding and upload took: " +(Date.now()-t1) + " mS");
+	    return Promise.resolve(res);
+	});
     }.bind(this);
 }
 
