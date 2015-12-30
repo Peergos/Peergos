@@ -542,10 +542,11 @@ var File = React.createClass({
 
         renderGrid: function() {
                 var glyphClass = this.glyphClass();
-
+	    console.log(this.props.thumbURL);
+	        const icon = this.props.hasThumb ? (<img draggable="true" onDragStart={this.props.onDragStart} onDragOver={this.props.onDragOver} onDrop={this.props.onDrop} className={glyphClass} src={this.props.thumbURL}/>) : (<span id={this.props.id} draggable="true" onDragStart={this.props.onDragStart} onDragOver={this.props.onDragOver} onDrop={this.props.onDrop} style={{fontSize:"3.5em"}} className={glyphClass}/>);
                 return (<div className="col-xs-6 col-md-3">
                                 <a id={this.props.id} onDoubleClick={this.props.onClick} style={{cursor: "pointer"}}>
-                                <span id={this.props.id} draggable="true" onDragStart={this.props.onDragStart} onDragOver={this.props.onDragOver} onDrop={this.props.onDrop} style={{fontSize:"3.5em"}} className={glyphClass}/>
+                                {icon}
                                 </a>
                                 <div className="caption">
                                 <h4 className="heading" style={{wordWrap:"break-word"}} >{this.props.name}</h4>
@@ -751,6 +752,8 @@ var Browser = React.createClass({
                     const isDir = treeNode.isDirectory();
                     const name  = props.name;
                     const size = props.size;
+		    const hasThumb = props.hasThumbnail();
+		    const thumbURL = props.getThumbURL();
                     const onClick = isDir ? function() {
                         this.addToPath(treeNode);
                     }.bind(this) :  function() {
@@ -819,7 +822,9 @@ var Browser = React.createClass({
                             name: name,
                             isDir: isDir,
                             size: size,
-                            filePointer: treeNode
+                            filePointer: treeNode,
+			    hasThumb: hasThumb,
+			    thumbURL: thumbURL
                     }
                 }.bind(this));
 		
@@ -1321,7 +1326,7 @@ var Browser = React.createClass({
                                         </div>);
 
                 const files = this.state.files.map(function(f) {
-                        return (<File id={File.id()} gridView={this.state.gridView} onClick={f.onClick} onDragStart={f.onDragStart} onDragOver={f.onDragOver} onDrop={f.onDrop} name={f.name} isdir={f.isDir} size={f.size} browser={this} retrievedFilePointer={f.filePointer}/>)
+                        return (<File id={File.id()} gridView={this.state.gridView} onClick={f.onClick} onDragStart={f.onDragStart} onDragOver={f.onDragOver} onDrop={f.onDrop} name={f.name} isdir={f.isDir} size={f.size} browser={this} retrievedFilePointer={f.filePointer} hasThumb={f.hasThumb} thumbURL={f.thumbURL}/>)
                 }.bind(this)); 
 
                 const jumbo = files.length != 0 ? (<div></div>) : 
