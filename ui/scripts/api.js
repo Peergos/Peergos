@@ -354,9 +354,10 @@ function generateThumbnail(imageBlob, fileName) {
 	    resolve(data);
 	}
     }).then(function(data) {
+	const BMP = new Uint8Array([66, 77]);
 	const JPEG = new Uint8Array([255, 216]);
 	const PNG = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
-	if (!arraysEqual(data.slice(0, PNG.length), PNG) && !arraysEqual(data.slice(0, 2), JPEG))
+	if (!arraysEqual(data.slice(0, BMP.length), BMP) && !arraysEqual(data.slice(0, PNG.length), PNG) && !arraysEqual(data.slice(0, 2), JPEG))
 	    return Promise.resolve(new Uint8Array(0));
 	return new Promise(function(resolve, reject) {
 	    var canvas = document.createElement('canvas');
