@@ -3,6 +3,7 @@ package peergos.storage.dht;
 import org.ipfs.api.*;
 import peergos.storage.merklebtree.*;
 import peergos.storage.merklebtree.MerkleNode;
+import peergos.util.ArrayOps;
 
 import java.io.*;
 import java.util.*;
@@ -27,10 +28,7 @@ public class IpfsDHT implements ContentAddressedStorage {
     @Override
     public byte[] get(byte[] key) {
         try {
-            // delete this once IPFS object patch set-data is working
-            if (true)
-                return ipfs.block.get(new Multihash(key));
-            return ipfs.object.get(new Multihash(key)).data.get();
+            return ipfs.object.data(new Multihash(key));
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -38,13 +36,6 @@ public class IpfsDHT implements ContentAddressedStorage {
 
     @Override
     public Multihash put(MerkleNode object) {
-        // delete this once IPFS object patch set-data is working
-        if (true)
-            try {
-                return ipfs.block.put(Arrays.asList(object.data)).get(0).hash;
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
         try {
             org.ipfs.api.MerkleNode data = ipfs.object.patch(EMPTY, "set-data", Optional.of(object.data), Optional.empty(), Optional.empty());
             Multihash current = data.hash;
@@ -71,5 +62,15 @@ public class IpfsDHT implements ContentAddressedStorage {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public static void main(String[] args) throws IOException {
+        IpfsDHT dht = new IpfsDHT();
+        byte[] val = new byte[57];
+        new Random().nextBytes(val);
+        byte[] key = dht.put(val);
+        byte[] val2 = dht.get(key);
+        boolean equals = Arrays.equals(val, val2);
+        System.out.println(equals);
     }
 }
