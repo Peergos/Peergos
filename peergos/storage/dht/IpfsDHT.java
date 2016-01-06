@@ -40,7 +40,7 @@ public class IpfsDHT implements ContentAddressedStorage {
             org.ipfs.api.MerkleNode data = ipfs.object.patch(EMPTY, "set-data", Optional.of(object.data), Optional.empty(), Optional.empty());
             Multihash current = data.hash;
             for (Map.Entry<String, Multihash> e : object.links.entrySet())
-                current = ipfs.object.patch(current, "add-link", Optional.empty(), Optional.of(""), Optional.of(e.getValue())).hash;
+                current = ipfs.object.patch(current, "add-link", Optional.empty(), Optional.of(e.getKey()), Optional.of(e.getValue())).hash;
             return current;
         } catch (IOException e) {
             throw new RuntimeException(e);

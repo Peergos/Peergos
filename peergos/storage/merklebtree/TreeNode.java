@@ -380,7 +380,7 @@ public class TreeNode {
     }
 
     public MerkleNode toMerkleNode() {
-        Map<String, Multihash> links = keys.stream().filter(k -> k.targetHash.length > 0).collect(Collectors.toMap(k -> k.key.toString(), k -> new Multihash(k.targetHash)));
+        Map<String, Multihash> links = keys.stream().filter(k -> k.targetHash.length > 0).collect(Collectors.toMap(k -> k.key.data.length > 0 ? k.key.toString() : "0", k -> new Multihash(k.targetHash)));
         return new MerkleNode(serialize(), links);
     }
 
