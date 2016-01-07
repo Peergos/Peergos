@@ -153,7 +153,7 @@ public class SSL
             NoSuchProviderException, SignatureException, OperatorCreationException
     {
         // store certificates to disk, otherwise an upgrade would induce a DDOS on the directory servers to sign all the new certificates
-        KeyStore ks = KeyStore.getInstance("PKCS12", "BC");
+        KeyStore ks = KeyStore.getInstance("PKCS12");
         if (new File(SSL_KEYSTORE_FILENAME).exists())
         {
             ks.load(new FileInputStream(SSL_KEYSTORE_FILENAME), password);
