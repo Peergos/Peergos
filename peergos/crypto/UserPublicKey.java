@@ -2,8 +2,6 @@ package peergos.crypto;
 
 import peergos.util.ArrayOps;
 
-import java.io.*;
-import java.security.*;
 import java.util.*;
 
 public class UserPublicKey implements Comparable<UserPublicKey>
