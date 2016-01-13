@@ -557,8 +557,8 @@ function DHTClient() {
         buffer.writeInt(0); // PUT Message
         for (var iArray=0; iArray < arrays.length; iArray++) 
             buffer.writeArray(arrays[iArray]);
+	buffer.writeInt(linkHashes != null ? linkHashes.length : 0);
 	if (linkHashes != null) {
-	    buffer.writeInt(linkHashes.length);
 	    for (var i=0; i < linkHashes.length; i++)
 		buffer.writeArray(linkHashes[i]);
 	}

@@ -33,11 +33,9 @@ public class DHTUserAPIHandler implements HttpHandler
                 byte[] owner = Serialize.deserializeByteArray(din, UserPublicKey.SIZE);
                 // TODO check we care about owner
                 List<Multihash> hashes = new ArrayList<>();
-                try {
-                    int nlinks = din.readInt();
-                    for (int i = 0; i < nlinks; i++)
-                        hashes.add(new Multihash(Serialize.deserializeByteArray(din, 1024)));
-                } catch (EOFException eof) {}
+                int nlinks = din.readInt();
+                for (int i = 0; i < nlinks; i++)
+                    hashes.add(new Multihash(Serialize.deserializeByteArray(din, 1024)));
 
                 SortedMap<String, Multihash> namedLinks = new TreeMap<>();
                 for (int i=0; i < hashes.size(); i++)
