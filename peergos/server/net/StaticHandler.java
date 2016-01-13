@@ -1,4 +1,4 @@
-package peergos.storage.net;
+package peergos.server.net;
 
 import com.sun.net.httpserver.*;
 
@@ -32,9 +32,9 @@ public class StaticHandler implements HttpHandler
             if (!data.containsKey(path))
                 httpExchange.sendResponseHeaders(404, 0);
 
-        byte[] res = caching ? data.get(path) : readResourceAndGzip(new File(HttpsUserService.UI_DIR + path).exists() ?
-                new FileInputStream(HttpsUserService.UI_DIR + path)
-                : ClassLoader.getSystemClassLoader().getResourceAsStream(HttpsUserService.UI_DIR + path));
+        byte[] res = caching ? data.get(path) : readResourceAndGzip(new File(UserService.UI_DIR + path).exists() ?
+                new FileInputStream(UserService.UI_DIR + path)
+                : ClassLoader.getSystemClassLoader().getResourceAsStream(UserService.UI_DIR + path));
 
 
         httpExchange.getResponseHeaders().set("Content-Encoding", "gzip");

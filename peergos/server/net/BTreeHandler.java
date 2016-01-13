@@ -1,10 +1,10 @@
-package peergos.storage.net;
+package peergos.server.net;
 
 import com.sun.net.httpserver.*;
 import peergos.corenode.*;
 import peergos.crypto.*;
-import peergos.storage.dht.*;
-import peergos.storage.merklebtree.*;
+import peergos.server.merklebtree.*;
+import peergos.server.storage.ContentAddressedStorage;
 import peergos.user.fs.*;
 import peergos.util.*;
 

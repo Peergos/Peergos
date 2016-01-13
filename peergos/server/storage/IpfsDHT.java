@@ -1,9 +1,7 @@
-package peergos.storage.dht;
+package peergos.server.storage;
 
 import org.ipfs.api.*;
-import peergos.storage.merklebtree.*;
-import peergos.storage.merklebtree.MerkleNode;
-import peergos.util.ArrayOps;
+import peergos.server.merklebtree.MerkleNode;
 
 import java.io.*;
 import java.util.*;

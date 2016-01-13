@@ -1,6 +1,6 @@
-package peergos.storage.merklebtree;
+package peergos.server.merklebtree;
 
-import peergos.storage.dht.*;
+import peergos.server.storage.ContentAddressedStorage;
 import peergos.util.*;
 
 import java.io.*;

@@ -5,13 +5,11 @@ import org.junit.runner.Result;
 import org.junit.runner.notification.Failure;
 import peergos.corenode.*;
 import peergos.crypto.User;
-import peergos.storage.merklebtree.ContentAddressedStorage;
+import peergos.server.storage.ContentAddressedStorage;
+import peergos.server.storage.RAMStorage;
 import peergos.user.*;
-import peergos.user.fs.erasure.ErasureHandler;
 import peergos.util.*;
 
-import java.io.IOException;
-import java.net.*;
 import java.util.*;
 
 public class Tests
@@ -56,7 +54,7 @@ public class Tests
     public static void localTests() {
         System.out.println("Doing local tests..");
         try {
-            ContentAddressedStorage dht = new ContentAddressedStorage.Memory();
+            ContentAddressedStorage dht = new RAMStorage();
             CoreNode core = SQLiteCoreNode.build(":memory:");
             contextTests(dht, core);
         } catch (Throwable e) {

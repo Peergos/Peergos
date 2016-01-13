@@ -6,7 +6,7 @@ import peergos.crypto.SymmetricKey;
 import peergos.crypto.SymmetricLocationLink;
 import peergos.crypto.User;
 import peergos.crypto.UserPublicKey;
-import peergos.storage.merklebtree.ContentAddressedStorage;
+import peergos.server.storage.ContentAddressedStorage;
 import peergos.user.fs.*;
 import peergos.util.ArrayOps;
 import peergos.util.ByteArrayWrapper;

@@ -1,9 +1,9 @@
-package peergos.storage.net;
+package peergos.server.net;
 
 import org.ipfs.api.*;
 import peergos.crypto.*;
-import peergos.storage.merklebtree.*;
-import peergos.storage.merklebtree.MerkleNode;
+import peergos.server.merklebtree.MerkleNode;
+import peergos.server.storage.ContentAddressedStorage;
 import peergos.user.fs.*;
 import peergos.util.*;
 import com.sun.net.httpserver.*;
@@ -12,11 +12,11 @@ import java.io.*;
 import java.util.*;
 import java.util.function.*;
 
-public class DHTUserAPIHandler implements HttpHandler
+public class DHTHandler implements HttpHandler
 {
     private final ContentAddressedStorage dht;
 
-    public DHTUserAPIHandler(ContentAddressedStorage dht) throws IOException
+    public DHTHandler(ContentAddressedStorage dht) throws IOException
     {
         this.dht = dht;
     }

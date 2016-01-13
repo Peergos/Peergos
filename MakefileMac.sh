@@ -36,7 +36,7 @@ if [ "$1" = "server" ] ; then
     cp CoreCertificates.src peergos/crypto/CoreCertificates.java
     mkdir -p build
     echo "Name: Peergos Storage Server" > def.manifest
-    echo "Main-Class: peergos.storage.dht.Start" >> def.manifest
+    echo "Main-Class: peergos.server.Start" >> def.manifest
     echo "Build-Date: " `date` >> def.manifest
     echo "Class-Path: " ${CP_SPACE} >> def.manifest
     javac ${JAVA_BUILD_OPTS} -d build ${JAVA_SOURCE}

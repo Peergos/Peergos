@@ -1,4 +1,4 @@
-package peergos.storage.net;
+package peergos.server.net;
 
 import com.sun.net.httpserver.*;
 

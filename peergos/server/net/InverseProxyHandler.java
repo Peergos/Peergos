@@ -1,4 +1,4 @@
-package peergos.storage.net;
+package peergos.server.net;
 
 import com.sun.net.httpserver.*;
 import peergos.util.*;
@@ -8,10 +8,10 @@ import java.net.*;
 import java.util.*;
 import java.util.stream.*;
 
-public class InverseProxy implements HttpHandler {
+public class InverseProxyHandler implements HttpHandler {
     private final String targetDomain;
 
-    public InverseProxy(String targetDomain) {
+    public InverseProxyHandler(String targetDomain) {
         this.targetDomain = targetDomain;
     }
 

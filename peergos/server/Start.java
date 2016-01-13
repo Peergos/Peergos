@@ -1,9 +1,10 @@
-package peergos.storage.dht;
+package peergos.server;
 
 import peergos.corenode.*;
 import peergos.crypto.*;
-import peergos.storage.merklebtree.*;
-import peergos.storage.net.*;
+import peergos.server.storage.ContentAddressedStorage;
+import peergos.server.storage.IpfsDHT;
+import peergos.server.net.*;
 import peergos.util.*;
 
 import java.io.IOException;
@@ -94,7 +95,7 @@ public class Start
             InetSocketAddress httpsMessengerAddress = new InetSocketAddress(hostname, userAPIAddress.getPort());
             CoreNode core = HTTPCoreNode.getInstance();
 
-            new HttpsUserService(httpsMessengerAddress, Logger.getLogger("IPFS"), dht, core);
+            new UserService(httpsMessengerAddress, Logger.getLogger("IPFS"), dht, core);
         }
     }
 

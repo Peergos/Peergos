@@ -1,10 +1,10 @@
-package peergos.storage.net;
+package peergos.server.net;
 
 import com.sun.net.httpserver.*;
 import peergos.corenode.*;
 import peergos.crypto.SSL;
 import org.bouncycastle.operator.OperatorCreationException;
-import peergos.storage.merklebtree.*;
+import peergos.server.storage.ContentAddressedStorage;
 import peergos.util.*;
 
 import javax.net.ssl.*;
@@ -15,9 +15,8 @@ import java.security.cert.*;
 import java.util.concurrent.*;
 import java.util.logging.Logger;
 
-public class HttpsUserService
+public class UserService
 {
-    public static final String MESSAGE_URL = "/message/";
     public static final String DHT_URL = "/dht/";
     public static final String BTREE_URL = "/btree/";
     public static final String SIGNUP_URL = "/signup/";
@@ -52,7 +51,7 @@ public class HttpsUserService
     private final CoreNode coreNode;
     private HttpServer server;
 
-    public HttpsUserService(InetSocketAddress local, Logger LOGGER, ContentAddressedStorage dht, CoreNode coreNode) throws IOException
+    public UserService(InetSocketAddress local, Logger LOGGER, ContentAddressedStorage dht, CoreNode coreNode) throws IOException
     {
         this.LOGGER = LOGGER;
         this.local = local;
@@ -136,10 +135,10 @@ public class HttpsUserService
             }
         }
 
-        server.createContext(DHT_URL, new DHTUserAPIHandler(dht));
+        server.createContext(DHT_URL, new DHTHandler(dht));
         server.createContext(BTREE_URL, new BTreeHandler(coreNode, dht));
-        server.createContext(SIGNUP_URL, new InverseProxy("demo.peergos.net"));
-        server.createContext(ACTIVATION_URL, new InverseProxy("demo.peergos.net"));
+        server.createContext(SIGNUP_URL, new InverseProxyHandler("demo.peergos.net"));
+        server.createContext(ACTIVATION_URL, new InverseProxyHandler("demo.peergos.net"));
         server.createContext(UI_URL, new StaticHandler(UI_DIR, false));
         server.createContext(HTTPCoreNodeServer.CORE_URL, new HTTPCoreNodeServer.CoreNodeHandler(coreNode));
         server.setExecutor(Executors.newFixedThreadPool(THREADS));

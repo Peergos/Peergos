@@ -1,12 +1,8 @@
-package peergos.storage.net;
+package peergos.server.net;
 
 import com.sun.net.httpserver.*;
 
 import java.io.*;
-import java.net.*;
-import java.util.*;
-import java.util.jar.*;
-import java.util.zip.*;
 
 public class FixedResponseHandler implements HttpHandler
 {
@@ -23,9 +19,9 @@ public class FixedResponseHandler implements HttpHandler
 
     @Override
     public void handle(HttpExchange httpExchange) throws IOException {
-        byte[] res = data != null ? data : readResource(new File(HttpsUserService.UI_DIR+path).exists() ?
-                new FileInputStream(HttpsUserService.UI_DIR+path)
-                : ClassLoader.getSystemClassLoader().getResourceAsStream(HttpsUserService.UI_DIR+path));
+        byte[] res = data != null ? data : readResource(new File(UserService.UI_DIR+path).exists() ?
+                new FileInputStream(UserService.UI_DIR+path)
+                : ClassLoader.getSystemClassLoader().getResourceAsStream(UserService.UI_DIR+path));
 
         if (path.endsWith(".js"))
             httpExchange.getResponseHeaders().set("Content-Type", "text/javascript");
