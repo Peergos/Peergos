@@ -1,6 +1,6 @@
 package peergos.user.fs;
 
-import peergos.crypto.User;
+import peergos.crypto.Hash;
 
 public class Fragment
 {
@@ -12,7 +12,7 @@ public class Fragment
     public Fragment(byte[] data)
     {
         this.data = data;
-        this.hash = User.hash(data);
+        this.hash = Hash.sha256(data);
     }
 
     public byte[] getHash()

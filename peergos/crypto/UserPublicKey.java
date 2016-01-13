@@ -8,8 +8,6 @@ import java.util.*;
 
 public class UserPublicKey implements Comparable<UserPublicKey>
 {
-    public static final String HASH = "SHA-256";
-    public static final int HASH_BYTES = 32;
     public static final int SIZE = 64;
     public static final int PADDING_LENGTH = 32;
     private static final Random rnd = new Random();
@@ -78,33 +76,6 @@ public class UserPublicKey implements Comparable<UserPublicKey>
     public boolean isValidSignature(byte[] signed, byte[] raw)
     {
         return Arrays.equals(unsignMessage(signed), raw);
-    }
-
-    public static byte[] hash(String password)
-    {
-        try {
-            return hash(password.getBytes("UTF-8"));
-        } catch (UnsupportedEncodingException e)
-        {
-            throw new IllegalStateException("couldn't hash password");
-        }
-    }
-
-    public static byte[] hash(byte[] input)
-    {
-        try {
-            MessageDigest md = MessageDigest.getInstance(HASH);
-            md.update(input);
-            byte[] digest = md.digest();
-            byte[] multihash = new byte[2 + digest.length];
-            multihash[0] = 0x12;
-            multihash[1] = 0x20;
-            System.arraycopy(digest, 0, multihash, 2, digest.length);
-            return multihash;
-        } catch (NoSuchAlgorithmException e)
-        {
-            throw new IllegalStateException("couldn't hash password");
-        }
     }
 
     @Override

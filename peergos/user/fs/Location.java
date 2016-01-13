@@ -10,6 +10,7 @@ import java.io.*;
 
 public class Location
 {
+    public static final int MAP_KEY_SIZE = 32;
     public final UserPublicKey owner;
     public final UserPublicKey writerKey;
     public final ByteArrayWrapper mapKey;
@@ -38,7 +39,7 @@ public class Location
     public static Location deserialise(DataInput din) throws IOException {
         UserPublicKey owner = new UserPublicKey(Serialize.deserializeByteArray(din, UserPublicKey.SIZE));
         UserPublicKey pub = new UserPublicKey(Serialize.deserializeByteArray(din, UserPublicKey.SIZE));
-        ByteArrayWrapper mapKey = new ByteArrayWrapper(Serialize.deserializeByteArray(din, UserPublicKey.HASH_BYTES));
+        ByteArrayWrapper mapKey = new ByteArrayWrapper(Serialize.deserializeByteArray(din, MAP_KEY_SIZE));
         return new Location(owner, pub, mapKey);
     }
 

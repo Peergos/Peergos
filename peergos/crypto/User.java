@@ -65,7 +65,8 @@ public class User extends UserPublicKey
     {
         // need usernames and public keys to be in 1-1 correspondence, and the private key to be derivable from the username+password
         // username is salt against rainbow table attacks
-        byte[] hash = hash(username+password);
+        // TODO fix this to use Scrypt
+        byte[] hash = Hash.sha256(username+password);
         byte[] publicSigningKey = new byte[32];
         byte[] secretSigningKey = new byte[64];
         Random r = new Random(Arrays.hashCode(hash));
