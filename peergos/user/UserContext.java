@@ -1,10 +1,12 @@
 package peergos.user;
 
+import org.ipfs.api.Multihash;
 import peergos.corenode.*;
 import peergos.crypto.SymmetricKey;
 import peergos.crypto.SymmetricLocationLink;
 import peergos.crypto.User;
 import peergos.crypto.UserPublicKey;
+import peergos.storage.merklebtree.ContentAddressedStorage;
 import peergos.user.fs.*;
 import peergos.util.ArrayOps;
 import peergos.util.ByteArrayWrapper;
@@ -18,18 +20,19 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class UserContext
 {
+    // TODO translate back from Javascript
     public static final int MAX_USERNAME_SIZE = 1024;
     public static final int MAX_KEY_SIZE = 96;
 
     public final String username;
     private User us;
-    private DHTUserAPI dht;
+    private ContentAddressedStorage dht;
     private CoreNode core;
     private Map<UserPublicKey, EntryPoint> staticData = new TreeMap<>();
     private ExecutorService executor = Executors.newFixedThreadPool(2);
 
 
-    public UserContext(String username, User user, DHTUserAPI dht, CoreNode core)
+    public UserContext(String username, User user, ContentAddressedStorage dht, CoreNode core)
     {
         this.username = username;
         this.us = user;
@@ -113,6 +116,7 @@ public class UserContext
 
     public synchronized byte[] serializeStatic()
     {
+        // TODO translate back from Javascript
         try {
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
             DataOutput dout = new DataOutputStream(bout);
@@ -127,14 +131,13 @@ public class UserContext
     {
         staticData.put(entry.pointer.writer, entry);
         byte[] rawStatic = serializeStatic();
-        // TODO translate back from Javascript
-        CompletableFuture<Boolean> put = dht.put(UserPublicKey.hash(rawStatic), rawStatic, us.getPublicKeys(), us.getPublicKeys(), new byte[0], new byte[0]);
-        return core.setMetadataBlob(us.getPublicKeys(), us.getPublicKeys(), us.signMessage(rawStatic));
+        byte[] putHash = dht.put(rawStatic);
+        return core.setMetadataBlob(us.getPublicKeys(), us.getPublicKeys(), us.signMessage(putHash));
     }
 
-    private Future uploadFragment(Fragment f, UserPublicKey targetUser, User sharer, byte[] mapKey)
+    private Multihash uploadFragment(Fragment f, UserPublicKey targetUser, User sharer, byte[] mapKey)
     {
-        return dht.put(f.getHash(), f.getData(), targetUser.getPublicKeys(), sharer.getPublicKeys(), mapKey, sharer.signMessage(ArrayOps.concat(sharer.getPublicKeys(), f.getHash())));
+        return new Multihash(dht.put(f.getData()));
     }
 
     private boolean uploadChunk(FileAccess meta, Fragment[] fragments, UserPublicKey target, User sharer, byte[] mapKey)
@@ -153,43 +156,28 @@ public class UserContext
             System.out.println("Meta blob store failed.");
         if (fragments.length > 0 ) {
             // now upload fragments to DHT
-            List<Future<Object>> futures = new ArrayList<>();
+            List<Multihash> hashes = new ArrayList<>();
             for (Fragment f : fragments)
                 try {
-                    futures.add(uploadFragment(f, target, sharer, mapKey));
+                    hashes.add(uploadFragment(f, target, sharer, mapKey));
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
-
-            // wait for all fragments to upload
-            Countdown<Object> all = new Countdown(futures.size(), futures);
-            try {
-                all.await();
-            } catch (Exception e) {
-                e.printStackTrace();
-                return false;
-            }
         }
         return true;
     }
 
     public Fragment[] downloadFragments(List<ByteArrayWrapper> hashes)
     {
-        Fragment[] res = new Fragment[hashes.size()];
-        List<CompletableFuture<ByteArrayWrapper>> futs = new ArrayList<>(res.length);
-        for (int i=0; i < res.length; i++)
-            futs.add(dht.get(hashes.get(i).data));
-        Countdown<ByteArrayWrapper> first50 = new Countdown<>(50, futs);
-        first50.await();
         List<Fragment> frags = new ArrayList<>();
-        for (ByteArrayWrapper frag: first50.results)
-            frags.add(new Fragment(frag.data));
+        for (ByteArrayWrapper hash: hashes)
+            frags.add(new Fragment(dht.get(hash.data)));
         return frags.toArray(new Fragment[frags.size()]);
     }
 
     public Map<EntryPoint, FileAccess> getRoots() throws Exception
     {
-        byte[] staticData = dht.get(core.getMetadataBlob(us.getPublicKeys())).get().data;
+        byte[] staticData = dht.get(core.getMetadataBlob(us.getPublicKeys()));
         DataInput din = new DataInputStream(new ByteArrayInputStream(staticData));
         int entries = din.readInt();
         this.staticData = new HashMap<>();

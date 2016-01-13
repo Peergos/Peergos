@@ -1,6 +1,11 @@
 package peergos.storage.merklebtree;
 
 import org.ipfs.api.Multihash;
+import peergos.user.fs.Fragment;
+import peergos.util.ByteArrayWrapper;
+
+import java.util.HashMap;
+import java.util.Map;
 
 public interface ContentAddressedStorage {
 
@@ -31,4 +36,30 @@ public interface ContentAddressedStorage {
      */
     void remove(byte[] key);
 
+    class Memory implements ContentAddressedStorage {
+        Map<ByteArrayWrapper, Fragment> storage = new HashMap<>();
+
+        @Override
+        public Multihash put(MerkleNode object) {
+            // assumes links are encoded in the data, so don't need to be explicitly serialized
+            return new Multihash(put(object.data));
+        }
+
+        @Override
+        public byte[] put(byte[] value) {
+            Fragment f = new Fragment(value);
+            storage.put(new ByteArrayWrapper(f.getHash()), f);
+            return f.getHash();
+        }
+
+        @Override
+        public byte[] get(byte[] key) {
+            return storage.get(new ByteArrayWrapper(key)).getData();
+        }
+
+        @Override
+        public void remove(byte[] key) {
+            storage.remove(new ByteArrayWrapper(key));
+        }
+    }
 }

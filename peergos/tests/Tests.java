@@ -5,6 +5,7 @@ import org.junit.runner.Result;
 import org.junit.runner.notification.Failure;
 import peergos.corenode.*;
 import peergos.crypto.User;
+import peergos.storage.merklebtree.ContentAddressedStorage;
 import peergos.user.*;
 import peergos.user.fs.erasure.ErasureHandler;
 import peergos.util.*;
@@ -55,7 +56,7 @@ public class Tests
     public static void localTests() {
         System.out.println("Doing local tests..");
         try {
-            DHTUserAPI dht = new MemoryDHTUserAPI();
+            ContentAddressedStorage dht = new ContentAddressedStorage.Memory();
             CoreNode core = SQLiteCoreNode.build(":memory:");
             contextTests(dht, core);
         } catch (Throwable e) {
@@ -66,7 +67,7 @@ public class Tests
         }
     }
 
-    public static void contextTests(DHTUserAPI dht, CoreNode core) throws Exception {
+    public static void contextTests(ContentAddressedStorage dht, CoreNode core) throws Exception {
         String ourname = "Bob";
         User us = User.generateUserCredentials(ourname, "password");
         UserContext bob = new UserContext(ourname, us, dht, core);
