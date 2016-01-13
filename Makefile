@@ -17,28 +17,28 @@ restorecerts:
 
 .PHONY: server
 server: 
-	cp RootCertificate.src peergos/crypto/RootCertificate.java
-	cp CoreCertificates.src peergos/crypto/CoreCertificates.java
+	cp RootCertificate.src src/peergos/crypto/RootCertificate.java
+	cp CoreCertificates.src src/peergos/crypto/CoreCertificates.java
 	mkdir -p build
 	echo "Name: Peergos Server" > def.manifest
 	echo "Main-Class: peergos.server.Start" >> def.manifest
 	echo "Build-Date: " `date` >> def.manifest
 	echo "Class-Path: " $(CP_SPACE)>> def.manifest
-	javac $(JAVA_BUILD_OPTS) -d build `find peergos -name \*.java`
+	javac $(JAVA_BUILD_OPTS) -d build `find src -name \*.java`
 	jar -cfm PeergosServer.jar def.manifest ui/ \
 	    -C build peergos
 	rm -f def.manifest
 
 .PHONY: tests
 tests: 
-	cp RootCertificate.src peergos/crypto/RootCertificate.java
-	cp CoreCertificates.src peergos/crypto/CoreCertificates.java
+	cp RootCertificate.src src/peergos/crypto/RootCertificate.java
+	cp CoreCertificates.src src/peergos/crypto/CoreCertificates.java
 	mkdir -p build
 	echo "Name: Peergos Tests" > def.manifest
 	echo "Main-Class: peergos.tests.Tests" >> def.manifest
 	echo "Build-Date: " `date` >> def.manifest
 	echo "Class-Path: " $(CP_SPACE)>> def.manifest
-	javac $(JAVA_BUILD_OPTS) -d build `find peergos -name \*.java`
+	javac $(JAVA_BUILD_OPTS) -d build `find src -name \*.java`
 	jar -cfm PeergosTests.jar def.manifest ui/ \
 	    -C build peergos
 	rm -f def.manifest

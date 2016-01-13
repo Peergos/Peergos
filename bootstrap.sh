@@ -1,6 +1,6 @@
 #!/bin/bash
-cp RootCertificate.src peergos/crypto/RootCertificate.java
-cp CoreCertificates.src peergos/crypto/CoreCertificates.java
+cp RootCertificate.src src/peergos/crypto/RootCertificate.java
+cp CoreCertificates.src src/peergos/crypto/CoreCertificates.java
 domain=$1
 if [ "$domain" = "" ];then
    domain=peergos.org
@@ -8,13 +8,13 @@ fi
 echo "Using domain $domain."
 echo generating root certificate...
 java -jar PeergosServer.jar -rootGen -password password
-cp peergos/crypto/RootCertificate.java RootCertificate.src
+cp src/peergos/crypto/RootCertificate.java RootCertificate.src
 make server > /dev/null
 echo generating core node certificate...
 java -jar PeergosServer.jar -coreGen -password password -keyfile core.key -domain $domain
 echo signing core node certificate...
 java -jar PeergosServer.jar -coreSign -csr core.csr -rootPassword password
-cp peergos/crypto/CoreCertificates.java CoreCertificates.src
+cp src/peergos/crypto/CoreCertificates.java CoreCertificates.src
 make server > /dev/null
 rm -f storage.csr
 rm -f storage.p12
