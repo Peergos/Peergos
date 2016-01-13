@@ -12,9 +12,11 @@ public class StaticHandler implements HttpHandler
 {
     private static Map<String, byte[]> data = new HashMap<>();
     private final boolean caching;
+    private final String pathToRoot;
 
     public StaticHandler(String pathToRoot, boolean caching) throws IOException {
         this.caching = caching;
+        this.pathToRoot = pathToRoot;
         List<String> files = getResources(pathToRoot);
         if (caching)
             for(String s: files) {
@@ -32,9 +34,9 @@ public class StaticHandler implements HttpHandler
             if (!data.containsKey(path))
                 httpExchange.sendResponseHeaders(404, 0);
 
-        byte[] res = caching ? data.get(path) : readResourceAndGzip(new File(UserService.UI_DIR + path).exists() ?
-                new FileInputStream(UserService.UI_DIR + path)
-                : ClassLoader.getSystemClassLoader().getResourceAsStream(UserService.UI_DIR + path));
+        byte[] res = caching ? data.get(path) : readResourceAndGzip(new File(pathToRoot + path).exists() ?
+                new FileInputStream(pathToRoot + path)
+                : ClassLoader.getSystemClassLoader().getResourceAsStream(pathToRoot + path));
 
 
         httpExchange.getResponseHeaders().set("Content-Encoding", "gzip");

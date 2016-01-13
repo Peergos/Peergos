@@ -4,7 +4,6 @@ import peergos.corenode.*;
 import peergos.crypto.*;
 import peergos.server.storage.ContentAddressedStorage;
 import peergos.server.storage.IpfsDHT;
-import peergos.server.net.*;
 import peergos.util.*;
 
 import java.io.IOException;
@@ -30,7 +29,7 @@ public class Start
 
     public static void printOptions()
     {
-        System.out.println("\nDefiance RoutingServer help.");
+        System.out.println("\nPeergos Server help.");
         System.out.println("\nOptions:");
         for (String k: OPTIONS.keySet())
             System.out.println("-"+ k + "\t " + OPTIONS.get(k));

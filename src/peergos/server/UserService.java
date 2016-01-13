@@ -1,9 +1,10 @@
-package peergos.server.net;
+package peergos.server;
 
 import com.sun.net.httpserver.*;
 import peergos.corenode.*;
 import peergos.crypto.SSL;
 import org.bouncycastle.operator.OperatorCreationException;
+import peergos.server.net.*;
 import peergos.server.storage.ContentAddressedStorage;
 import peergos.util.*;
 
