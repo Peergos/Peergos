@@ -21,6 +21,6 @@ public class AsymmetricLink
 
     public SymmetricKey target(User to, UserPublicKey from)
     {
-        return new SymmetricKey(to.decryptMessage(link, from.publicBoxingKey));
+        return new SymmetricKey(to.decryptMessage(link, from.getPublicBoxingKey()));
     }
 }

@@ -77,7 +77,7 @@ public class UserContext
         // create a tmp keypair whose public key we can append to the request without leaking information
         User tmp = User.random();
         byte[] payload = entry.serializeAndEncrypt(tmp,  friend);
-        return core.followRequest(friend, ArrayOps.concat(tmp.publicBoxingKey, payload));
+        return core.followRequest(friend, ArrayOps.concat(tmp.getPublicBoxingKey(), payload));
     }
 
     public List<byte[]> getFollowRequests()

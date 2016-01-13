@@ -93,7 +93,7 @@ public class JSUserPublicKey extends UserPublicKey
             res = (byte[]) invocable.invokeFunction("toByteArray", invocable.invokeFunction("box",
                     invocable.invokeFunction("fromByteArray", input),
                     invocable.invokeFunction("fromByteArray", nonce),
-                    invocable.invokeFunction("fromByteArray", publicBoxingKey),
+                    invocable.invokeFunction("fromByteArray", getPublicBoxingKey()),
                     invocable.invokeFunction("fromByteArray", ourSecretBoxingKey)));
         } catch (Exception e) {throw new RuntimeException(e);}
         return ArrayOps.concat(res, nonce);
@@ -111,7 +111,7 @@ public class JSUserPublicKey extends UserPublicKey
         try {
             Object res = invocable.invokeFunction("unsign",
                     invocable.invokeFunction("fromByteArray", signed),
-                    invocable.invokeFunction("fromByteArray", publicSigningKey));
+                    invocable.invokeFunction("fromByteArray", getPublicSigningKey()));
             if (res == null)
                 throw new IllegalStateException("Invalid signature: unsign returned null.");
             return (byte[]) invocable.invokeFunction("toByteArray", res);
@@ -140,7 +140,7 @@ public class JSUserPublicKey extends UserPublicKey
             throw new IllegalStateException("Signing public key != second half of secret key!");
 
         User juser = new User(secretSigningKey, secretBoxingKey, publicSigningKey, publicBoxingKey);
-        JSUser jsuser = new JSUser(juser.secretSigningKey, juser.secretBoxingKey, juser.publicSigningKey, juser.publicBoxingKey);
+        JSUser jsuser = new JSUser(juser.secretSigningKey, juser.secretBoxingKey, juser.getPublicSigningKey(), juser.getPublicBoxingKey());
         byte[] message = "G'day mate!".getBytes();
 
         // box
@@ -148,11 +148,11 @@ public class JSUserPublicKey extends UserPublicKey
         byte[] cipher2 = juser.encryptMessageFor(message, juser.secretBoxingKey);
 
         // unbox
-        byte[] clear = juser.decryptMessage(cipher, jsuser.publicBoxingKey);
+        byte[] clear = juser.decryptMessage(cipher, jsuser.getPublicBoxingKey());
         if (!Arrays.equals(clear, message)) {
             throw new IllegalStateException("JS -> J, Decrypted message != original: "+new String(clear) + " != "+new String(message));
         }
-        byte[] clear2 = jsuser.decryptMessage(cipher2, jsuser.publicBoxingKey);
+        byte[] clear2 = jsuser.decryptMessage(cipher2, jsuser.getPublicBoxingKey());
         if (!Arrays.equals(clear2, message))
             throw new IllegalStateException("J -> JS, Decrypted message != original: "+new String(clear2) + " != "+new String(message));
 

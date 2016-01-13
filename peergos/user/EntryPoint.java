@@ -25,7 +25,7 @@ public class EntryPoint
     }
 
     public static EntryPoint decryptAndDeserialize(byte[] input, User user, UserPublicKey from) throws IOException {
-        byte[] raw = user.decryptMessage(input, from.publicBoxingKey);
+        byte[] raw = user.decryptMessage(input, from.getPublicBoxingKey());
         DataInput din = new DataInputStream(new ByteArrayInputStream(raw));
         ReadableFilePointer pointer = ReadableFilePointer.deserialize(din);
         String owner = Serialize.deserializeString(din, 1024);

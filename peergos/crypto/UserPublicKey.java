@@ -14,7 +14,7 @@ public class UserPublicKey implements Comparable<UserPublicKey>
     public static final int PADDING_LENGTH = 32;
     private static final Random rnd = new Random();
 
-    public final byte[] publicSigningKey, publicBoxingKey;
+    private final byte[] publicSigningKey, publicBoxingKey;
 
     public UserPublicKey(byte[] publicSigningKey, byte[] publicBoxingKey)
     {
@@ -29,6 +29,20 @@ public class UserPublicKey implements Comparable<UserPublicKey>
     public byte[] getPublicKeys()
     {
         return ArrayOps.concat(publicSigningKey, publicBoxingKey);
+    }
+
+    public byte[] getPublicSigningKey()
+    {
+        return publicSigningKey;
+    }
+
+    public byte[] getPublicBoxingKey()
+    {
+        return publicBoxingKey;
+    }
+
+    public UserPublicKey toUserPublicKey() {
+        return new UserPublicKey(publicSigningKey, publicBoxingKey);
     }
 
     public byte[] encryptMessageFor(byte[] input, byte[] ourSecretBoxingKey)

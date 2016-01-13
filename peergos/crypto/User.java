@@ -53,10 +53,6 @@ public class User extends UserPublicKey
         return ArrayOps.concat(secretSigningKey, secretBoxingKey);
     }
 
-    public UserPublicKey toUserPublicKey() {
-        return new UserPublicKey(publicSigningKey, publicBoxingKey);
-    }
-
     public static User generateUserCredentials(String username, String password)
     {
         // need usernames and public keys to be in 1-1 correspondence, and the private key to be derivable from the username+password
@@ -87,7 +83,7 @@ public class User extends UserPublicKey
         byte[] message = "G'day mate!".getBytes();
         byte[] cipher = user.encryptMessageFor(message, user.secretBoxingKey);
         System.out.println("Cipher: "+ArrayOps.bytesToHex(cipher));
-        byte[] clear = user.decryptMessage(cipher, user.publicBoxingKey);
+        byte[] clear = user.decryptMessage(cipher, user.getPublicBoxingKey());
         assert (Arrays.equals(message, clear));
 
         byte[] signed = user.signMessage(message);
