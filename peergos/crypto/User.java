@@ -7,7 +7,7 @@ import java.util.Random;
 
 public class User extends UserPublicKey
 {
-    public final byte[] secretSigningKey, secretBoxingKey;
+    private final byte[] secretSigningKey, secretBoxingKey;
 
     public User(byte[] secretSigningKey, byte[] secretBoxingKey, byte[] publicSigningKey, byte[] publicBoxingKey)
     {
@@ -21,6 +21,14 @@ public class User extends UserPublicKey
         super(getPublicSigningKey(secretSigningKey), getPublicBoxingKey(secretBoxingKey));
         this.secretSigningKey = secretSigningKey;
         this.secretBoxingKey = secretBoxingKey;
+    }
+
+    public byte[] getSecretSigningKey() {
+        return secretSigningKey;
+    }
+
+    public byte[] getSecretBoxingKey() {
+        return secretBoxingKey;
     }
 
     public static byte[] getPublicSigningKey(byte[] secretSigningKey) {

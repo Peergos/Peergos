@@ -41,7 +41,7 @@ public class EntryPoint
     }
 
     public byte[] serializeAndEncrypt(User user, UserPublicKey target) {
-        return target.encryptMessageFor(serialize(), user.secretBoxingKey);
+        return target.encryptMessageFor(serialize(), user.getSecretBoxingKey());
     }
 
     private byte[] serialize() {

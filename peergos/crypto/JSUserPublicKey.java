@@ -140,12 +140,12 @@ public class JSUserPublicKey extends UserPublicKey
             throw new IllegalStateException("Signing public key != second half of secret key!");
 
         User juser = new User(secretSigningKey, secretBoxingKey, publicSigningKey, publicBoxingKey);
-        JSUser jsuser = new JSUser(juser.secretSigningKey, juser.secretBoxingKey, juser.getPublicSigningKey(), juser.getPublicBoxingKey());
+        JSUser jsuser = new JSUser(juser.getSecretSigningKey(), juser.getSecretBoxingKey(), juser.getPublicSigningKey(), juser.getPublicBoxingKey());
         byte[] message = "G'day mate!".getBytes();
 
         // box
-        byte[] cipher = jsuser.encryptMessageFor(message, juser.secretBoxingKey);
-        byte[] cipher2 = juser.encryptMessageFor(message, juser.secretBoxingKey);
+        byte[] cipher = jsuser.encryptMessageFor(message, juser.getSecretBoxingKey());
+        byte[] cipher2 = juser.encryptMessageFor(message, juser.getSecretBoxingKey());
 
         // unbox
         byte[] clear = juser.decryptMessage(cipher, jsuser.getPublicBoxingKey());
