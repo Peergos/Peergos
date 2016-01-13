@@ -66,7 +66,7 @@ function createNonce(){
 /////////////////////////////
 // User methods
 // (string, string, (User -> ())
-function generateKeyPairs(username, password, cb) {
+function generateKeyPairs(username, password) {
     var hash = sha256(nacl.util.decodeUTF8(password));
     var salt = nacl.util.decodeUTF8(username)
     
@@ -325,7 +325,7 @@ function FileUploader(name, file, key, parentLocation, parentparentKey, setProgr
 		    context.uploadFragments(fragments, owner, writer, chunk.mapKey, setProgressPercentage).then(function(hashes){
 			const retriever = new EncryptedChunkRetriever(chunk.nonce, encryptedChunk.getAuth(), hashes, nextLocation);
 			const metaBlob = FileAccess.create(chunk.key, that.props, retriever, parentLocation, parentparentKey);
-			context.uploadChunk(metaBlob, owner, writer, chunk.mapKey).then(function() {
+			context.uploadChunk(metaBlob, owner, writer, chunk.mapKey, hashes).then(function() {
 			    resolve(new Location(owner, writer, chunk.mapKey));
 			});
 		    });
@@ -551,12 +551,17 @@ function DHTClient() {
     //
     //put
     //
-    this.put = function(valueData, owner) {        
+    this.put = function(valueData, owner, linkHashes) {        
         var arrays = [valueData, owner];
         var buffer = new ByteArrayOutputStream();
         buffer.writeInt(0); // PUT Message
         for (var iArray=0; iArray < arrays.length; iArray++) 
             buffer.writeArray(arrays[iArray]);
+	if (linkHashes != null) {
+	    buffer.writeInt(linkHashes.length);
+	    for (var i=0; i < linkHashes.length; i++)
+		buffer.writeArray(linkHashes[i]);
+	}
         return postProm("dht/put", buffer.toByteArray()).then(function(resBuf){
             var stream = new ByteArrayInputStream(resBuf);
 	    var res = stream.readInt();
@@ -1222,13 +1227,13 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
         return Promise.all(futures);
     }.bind(this);
 
-    this.uploadChunk = function(metadata, owner, sharer, mapKey) {
+    this.uploadChunk = function(metadata, owner, sharer, mapKey, linkHashes) {
         var buf = new ByteArrayOutputStream();
         metadata.serialize(buf);
         var metaBlob = buf.toByteArray();
 	const btree = this.btree;
         console.log("Storing metadata blob of " + metaBlob.length + " bytes. to mapKey: "+bytesToHex(mapKey));
-	return this.dhtClient.put(metaBlob, owner.getPublicKeys()).then(function(blobHash){
+	return this.dhtClient.put(metaBlob, owner.getPublicKeys(), linkHashes).then(function(blobHash){
 	    return btree.put(sharer.getPublicKeys(), mapKey, blobHash).then(function(newBtreeRoot) {
 		var msg = newBtreeRoot;
 		var signed = sharer.signMessage(msg);

@@ -1,7 +1,9 @@
 package peergos.storage.net;
 
+import org.ipfs.api.*;
 import peergos.crypto.*;
 import peergos.storage.merklebtree.*;
+import peergos.storage.merklebtree.MerkleNode;
 import peergos.user.fs.*;
 import peergos.util.*;
 import com.sun.net.httpserver.*;
@@ -30,7 +32,18 @@ public class DHTUserAPIHandler implements HttpHandler
                 byte[] value = Serialize.deserializeByteArray(din, Fragment.SIZE);
                 byte[] owner = Serialize.deserializeByteArray(din, UserPublicKey.SIZE);
                 // TODO check we care about owner
-                byte[] put = dht.put(value);
+                List<Multihash> hashes = new ArrayList<>();
+                try {
+                    int nlinks = din.readInt();
+                    for (int i = 0; i < nlinks; i++)
+                        hashes.add(new Multihash(Serialize.deserializeByteArray(din, 1024)));
+                } catch (EOFException eof) {}
+
+                SortedMap<String, Multihash> namedLinks = new TreeMap<>();
+                for (int i=0; i < hashes.size(); i++)
+                    namedLinks.put(Integer.toString(i), hashes.get(i));
+                MerkleNode obj = new MerkleNode(value, namedLinks);
+                byte[] put = dht.put(obj).toBytes();
                 new PutSuccess(httpExchange).accept(Optional.of(put));
             } else if (type == 1) {
                 // GET
