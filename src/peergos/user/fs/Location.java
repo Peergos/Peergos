@@ -1,8 +1,7 @@
 package peergos.user.fs;
 
-import peergos.crypto.SymmetricKey;
+import peergos.crypto.symmetric.SymmetricKey;
 import peergos.crypto.UserPublicKey;
-import peergos.user.UserContext;
 import peergos.util.ByteArrayWrapper;
 import peergos.util.Serialize;
 
@@ -22,8 +21,8 @@ public class Location
     }
 
     public void serialise(DataOutput dout) throws IOException {
-        Serialize.serialize(owner.getPublicKeys(), dout);
-        Serialize.serialize(writerKey.getPublicKeys(), dout);
+        Serialize.serialize(owner.serializePublicKeys(), dout);
+        Serialize.serialize(writerKey.serializePublicKeys(), dout);
         Serialize.serialize(mapKey.data, dout);
     }
 
@@ -36,9 +35,9 @@ public class Location
         return key.encrypt(bout.toByteArray(), iv);
     }
 
-    public static Location deserialise(DataInput din) throws IOException {
-        UserPublicKey owner = new UserPublicKey(Serialize.deserializeByteArray(din, UserPublicKey.SIZE));
-        UserPublicKey pub = new UserPublicKey(Serialize.deserializeByteArray(din, UserPublicKey.SIZE));
+    public static Location deserialise(DataInputStream din) throws IOException {
+        UserPublicKey owner = UserPublicKey.deserialize(din);
+        UserPublicKey pub = UserPublicKey.deserialize(din);
         ByteArrayWrapper mapKey = new ByteArrayWrapper(Serialize.deserializeByteArray(din, MAP_KEY_SIZE));
         return new Location(owner, pub, mapKey);
     }

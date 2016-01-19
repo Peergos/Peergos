@@ -1,5 +1,6 @@
 package peergos.crypto;
 
+import peergos.crypto.symmetric.SymmetricKey;
 import peergos.util.ArrayOps;
 
 import java.util.Arrays;

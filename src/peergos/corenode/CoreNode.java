@@ -12,11 +12,11 @@ public interface CoreNode {
     int MAX_PENDING_FOLLOWERS = 100;
     int MAX_USERNAME_SIZE = 100;
 
-    UserPublicKey getPublicKey(String username);
+    UserPublicKey getPublicKey(String username) throws IOException;
 
-    String getUsername(byte[] encodedUserKey);
+    String getUsername(byte[] encodedUserKey) throws IOException;
 
-    boolean addUsername(String username, byte[] encodedUserKey, byte[] signed, byte[] staticData);
+    boolean addUsername(String username, byte[] encodedUserKey, byte[] signed, byte[] staticData) throws IOException;
 
     byte[] getAllUsernamesGzip() throws IOException;
 
@@ -40,9 +40,9 @@ public interface CoreNode {
 
     boolean removeFollowRequest(UserPublicKey owner, byte[] data);
 
-    boolean setMetadataBlob(byte[] ownerPublicKey, byte[] encodedSharingPublicKey, byte[] sharingKeySignedBtreeRootHash);
+    boolean setMetadataBlob(byte[] ownerPublicKey, byte[] encodedSharingPublicKey, byte[] sharingKeySignedBtreeRootHash) throws IOException;
 
-    boolean removeMetadataBlob(byte[] encodedSharingPublicKey, byte[] sharingKeySignedMapKeyPlusBlob);
+    boolean removeMetadataBlob(byte[] encodedSharingPublicKey, byte[] sharingKeySignedMapKeyPlusBlob) throws IOException;
 
     byte[] getMetadataBlob(byte[] encodedSharingKey);
 

@@ -109,7 +109,7 @@ public class HTTPCoreNodeServer
             UserPublicKey k = coreNode.getPublicKey(username);
             if (k == null)
                 return;
-            byte[] b = k.getPublicKeys();
+            byte[] b = k.serializePublicKeys();
             dout.writeInt(b.length);
             dout.write(b);
         }
@@ -131,24 +131,24 @@ public class HTTPCoreNodeServer
 
         void followRequest(DataInputStream din, DataOutputStream dout) throws IOException
         {
-            byte[] target = deserializeByteArray(din);
+            UserPublicKey target = UserPublicKey.deserialize(din);
             byte[] encodedSharingPublicKey = deserializeByteArray(din);
 
-            boolean followRequested = coreNode.followRequest(new UserPublicKey(target), encodedSharingPublicKey);
+            boolean followRequested = coreNode.followRequest(target, encodedSharingPublicKey);
             dout.writeBoolean(followRequested);
         }
         void getFollowRequests(DataInputStream din, DataOutputStream dout) throws IOException
         {
-            byte[] ownerPublicKey = deserializeByteArray(din);
-            byte[] res = coreNode.getFollowRequests(new UserPublicKey(ownerPublicKey));
+            UserPublicKey ownerPublicKey = UserPublicKey.deserialize(din);
+            byte[] res = coreNode.getFollowRequests(ownerPublicKey);
             Serialize.serialize(res, dout);
         }
         void removeFollowRequest(DataInputStream din, DataOutputStream dout) throws IOException
         {
-            byte[] owner = deserializeByteArray(din);
+            UserPublicKey owner = UserPublicKey.deserialize(din);
             byte[] signedFollowRequest = deserializeByteArray(din);
 
-            boolean isRemoved = coreNode.removeFollowRequest(new UserPublicKey(owner), signedFollowRequest);
+            boolean isRemoved = coreNode.removeFollowRequest(owner, signedFollowRequest);
             dout.writeBoolean(isRemoved);
         }
 

@@ -1,61 +1,61 @@
 package peergos.crypto;
 
+import peergos.crypto.asymmetric.PublicBoxingKey;
+import peergos.crypto.asymmetric.PublicSigningKey;
+import peergos.crypto.asymmetric.SecretBoxingKey;
 import peergos.util.ArrayOps;
 
+import java.io.ByteArrayInputStream;
+import java.io.DataInputStream;
+import java.io.IOException;
 import java.util.*;
 
 public class UserPublicKey implements Comparable<UserPublicKey>
 {
-    public static final int SIZE = 64;
-    public static final int PADDING_LENGTH = 32;
-    private static final Random rnd = new Random();
+    public static final int MAX_SIZE = 1024*1024;
 
-    private final byte[] publicSigningKey, publicBoxingKey;
+    public final PublicSigningKey publicSigningKey;
+    public final PublicBoxingKey publicBoxingKey;
 
-    public UserPublicKey(byte[] publicSigningKey, byte[] publicBoxingKey)
+    public UserPublicKey(PublicSigningKey publicSigningKey, PublicBoxingKey publicBoxingKey)
     {
         this.publicSigningKey = publicSigningKey;
         this.publicBoxingKey = publicBoxingKey;
     }
 
-    public UserPublicKey(byte[] keys) {
-        this(Arrays.copyOfRange(keys, 0, 32), Arrays.copyOfRange(keys, 32, 64));
+    public static UserPublicKey deserialize(DataInputStream din) throws IOException {
+        PublicSigningKey signingKey = PublicSigningKey.deserialize(din);
+        PublicBoxingKey boxingKey = PublicBoxingKey.deserialize(din);
+        return new UserPublicKey(signingKey, boxingKey);
     }
 
-    public byte[] getPublicKeys()
+    public byte[] serializePublicKeys()
     {
-        return ArrayOps.concat(publicSigningKey, publicBoxingKey);
+        return ArrayOps.concat(publicSigningKey.serialize(), publicBoxingKey.serialize());
     }
 
     public byte[] getPublicSigningKey()
     {
-        return publicSigningKey;
+        return publicSigningKey.getPublicSigningKey();
     }
 
     public byte[] getPublicBoxingKey()
     {
-        return publicBoxingKey;
+        return publicBoxingKey.getPublicBoxingKey();
     }
 
-    public UserPublicKey toUserPublicKey() {
-        return new UserPublicKey(publicSigningKey, publicBoxingKey);
-    }
-
-    public byte[] encryptMessageFor(byte[] input, byte[] ourSecretBoxingKey)
+    public byte[] encryptMessageFor(byte[] input, SecretBoxingKey ourSecretBoxingKey)
     {
-        byte[] nonce = createNonce();
-        return ArrayOps.concat(TweetNaCl.crypto_box(input, nonce, publicBoxingKey, ourSecretBoxingKey), nonce);
-    }
-
-    public byte[] createNonce() {
-        byte[] nonce = new byte[TweetNaCl.BOX_NONCE_BYTES];
-        rnd.nextBytes(nonce);
-        return nonce;
+        return publicBoxingKey.encryptMessageFor(input, ourSecretBoxingKey);
     }
 
     public byte[] unsignMessage(byte[] signed)
     {
-        return TweetNaCl.crypto_sign_open(signed, publicSigningKey);
+        return publicSigningKey.unsignMessage(signed);
+    }
+
+    public UserPublicKey toUserPublicKey() {
+        return new UserPublicKey(publicSigningKey, publicBoxingKey);
     }
 
     public boolean equals(Object o)
@@ -63,12 +63,12 @@ public class UserPublicKey implements Comparable<UserPublicKey>
         if (! (o instanceof UserPublicKey))
             return false;
 
-        return Arrays.equals(publicBoxingKey, ((UserPublicKey) o).publicBoxingKey) && Arrays.equals(publicSigningKey, ((UserPublicKey) o).publicSigningKey);
+        return publicBoxingKey.equals(((UserPublicKey) o).publicBoxingKey) && publicSigningKey.equals(((UserPublicKey) o).publicSigningKey);
     }
 
     public int hashCode()
     {
-        return Arrays.hashCode(publicBoxingKey) ^ Arrays.hashCode(publicSigningKey);
+        return publicBoxingKey.hashCode() ^ publicSigningKey.hashCode();
     }
 
     public boolean isValidSignature(byte[] signed, byte[] raw)
@@ -78,17 +78,14 @@ public class UserPublicKey implements Comparable<UserPublicKey>
 
     @Override
     public int compareTo(UserPublicKey userPublicKey) {
-        int signing = ArrayOps.compare(publicSigningKey, userPublicKey.publicSigningKey);
-        if (signing != 0)
-            return signing;
-        return ArrayOps.compare(publicBoxingKey, userPublicKey.publicBoxingKey);
+        return ArrayOps.compare(serializePublicKeys(), userPublicKey.serializePublicKeys());
     }
 
     public String toString() {
-        return new String(Base64.getEncoder().encode(getPublicKeys()));
+        return new String(Base64.getEncoder().encode(serializePublicKeys()));
     }
 
-    public static UserPublicKey fromString(String b64) {
-        return new UserPublicKey(Base64.getDecoder().decode(b64));
+    public static UserPublicKey fromString(String b64) throws IOException {
+        return deserialize(new DataInputStream(new ByteArrayInputStream(Base64.getDecoder().decode(b64))));
     }
 }

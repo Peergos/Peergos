@@ -1,4 +1,6 @@
-package peergos.crypto;
+package peergos.crypto.asymmetric.curve25519;
+
+import peergos.crypto.TweetNaCl;
 
 import java.util.Arrays;
 

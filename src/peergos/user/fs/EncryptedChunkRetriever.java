@@ -1,6 +1,7 @@
 package peergos.user.fs;
 
 import peergos.crypto.*;
+import peergos.crypto.symmetric.SymmetricKey;
 import peergos.user.*;
 import peergos.user.fs.erasure.*;
 import peergos.util.*;
@@ -68,7 +69,7 @@ public class EncryptedChunkRetriever implements FileRetriever {
             nextChunk.get().serialise(dout);
     }
 
-    public static EncryptedChunkRetriever deserialize(DataInput din) throws IOException {
+    public static EncryptedChunkRetriever deserialize(DataInputStream din) throws IOException {
         byte[] chunkNonce = Serialize.deserializeByteArray(din, SymmetricKey.NONCE_BYTES);
         byte[] chunkAuth = Serialize.deserializeByteArray(din, TweetNaCl.SECRETBOX_OVERHEAD_BYTES);
         // TODO change to safer serialization (don't assume hash size)

@@ -1,6 +1,6 @@
 package peergos.user.fs;
 
-import peergos.crypto.*;
+import peergos.crypto.symmetric.SymmetricKey;
 import peergos.user.*;
 
 import java.io.*;
@@ -34,7 +34,7 @@ public interface FileRetriever
         }
     }
 
-    static FileRetriever deserialize(DataInput din) throws IOException {
+    static FileRetriever deserialize(DataInputStream din) throws IOException {
         int type = din.readByte() & 0xff;
         switch (Type.values()[type]) {
             case Simple:

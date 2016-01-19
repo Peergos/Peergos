@@ -366,21 +366,21 @@ public class JDBCCoreNode implements CoreNode {
     }
 
     @Override
-    public UserPublicKey getPublicKey(String username)
+    public UserPublicKey getPublicKey(String username) throws IOException
     {
         byte[] dummy = null;
         UserData user = new UserData(username, dummy);
         RowData[] users = user.select();
         if (users == null || users.length != 1)
             return null;
-        return new UserPublicKey(users[0].data);
+        return UserPublicKey.deserialize(new DataInputStream(new ByteArrayInputStream(users[0].data)));
     }
 
     @Override
-    public boolean addUsername(String username, byte[] encodedUserKey, byte[] signed, byte[] staticData) {
+    public boolean addUsername(String username, byte[] encodedUserKey, byte[] signed, byte[] staticData) throws IOException {
         if (username.contains(" ") || username.contains("\t") || username.contains("\n"))
             return false;
-        UserPublicKey key = new UserPublicKey(encodedUserKey);
+        UserPublicKey key = UserPublicKey.deserialize(new DataInputStream(new ByteArrayInputStream(encodedUserKey)));
 
         if (! key.isValidSignature(signed, ArrayOps.concat(username.getBytes(), encodedUserKey, staticData)))
             return false;
@@ -388,11 +388,11 @@ public class JDBCCoreNode implements CoreNode {
         UserPublicKey existingKey = getPublicKey(username);
         if (existingKey != null)
             return false;
-        String existingUsername = getUsername(key.getPublicKeys());
+        String existingUsername = getUsername(key.serializePublicKeys());
         if (existingUsername.length() > 0)
             return false;
 
-        UserData user = new UserData(username, key.getPublicKeys());
+        UserData user = new UserData(username, key.serializePublicKeys());
         return user.insert();
     }
 
@@ -474,12 +474,12 @@ public class JDBCCoreNode implements CoreNode {
     }
 
     @Override
-    public boolean setMetadataBlob(byte[] ownerPublicKey, byte[] writingPublicKey, byte[] writingKeySignedHash) {
-        UserPublicKey writingKey = new UserPublicKey(writingPublicKey);
+    public boolean setMetadataBlob(byte[] ownerPublicKey, byte[] writingPublicKey, byte[] writingKeySignedHash) throws IOException {
+        UserPublicKey writingKey = UserPublicKey.deserialize(new DataInputStream(new ByteArrayInputStream(writingPublicKey)));
 
         try {
             byte[] btreeRootHash = writingKey.unsignMessage(writingKeySignedHash);
-            MetadataBlob blob = new MetadataBlob(writingKey.getPublicKeys(), btreeRootHash);
+            MetadataBlob blob = new MetadataBlob(writingKey.serializePublicKeys(), btreeRootHash);
             return blob.insert();
         } catch (TweetNaCl.InvalidSignatureException e) {
             System.err.println("Invalid signature during setMetadataBlob for sharer: " + writingKey);
@@ -488,12 +488,12 @@ public class JDBCCoreNode implements CoreNode {
     }
 
     @Override
-    public boolean removeMetadataBlob(byte[] encodedWritingPublicKey, byte[] writingKeySignedMapKeyPlusBlob) {
-        UserPublicKey writingKey = new UserPublicKey(encodedWritingPublicKey);
+    public boolean removeMetadataBlob(byte[] encodedWritingPublicKey, byte[] writingKeySignedMapKeyPlusBlob) throws IOException {
+        UserPublicKey writingKey = UserPublicKey.deserialize(new DataInputStream(new ByteArrayInputStream(encodedWritingPublicKey)));
 
         try {
             byte[] currentHash = writingKey.unsignMessage(writingKeySignedMapKeyPlusBlob);
-            MetadataBlob blob = new MetadataBlob(writingKey.getPublicKeys(), currentHash);
+            MetadataBlob blob = new MetadataBlob(writingKey.serializePublicKeys(), currentHash);
             return blob.delete();
         } catch (TweetNaCl.InvalidSignatureException e) {
             System.err.println("Invalid signature during removeMetadataBlob for  sharer: "+writingKey);

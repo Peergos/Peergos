@@ -456,20 +456,6 @@ public class SSL
         }
     }
 
-    // Directory server certificates are signed by the root key
-    public static Certificate[] getDirectoryServerCertificates()
-    {
-        List<Certificate> dirs = new ArrayList();
-        for (int i =0; i < DirectoryCertificates.NUM_SERVERS; i++)
-        {
-            try {
-                CertificateFactory  fact = CertificateFactory.getInstance("X.509", "BC");
-                dirs.add(fact.generateCertificate(new ByteArrayInputStream(DirectoryCertificates.servers[i])));
-            } catch (Exception e) {e.printStackTrace();}
-        }
-        return dirs.toArray(new Certificate[0]);
-    }
-
     @org.junit.Test
     public void test() {
         try {

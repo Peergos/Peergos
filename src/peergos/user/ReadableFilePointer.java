@@ -1,6 +1,9 @@
 package peergos.user;
 
 import peergos.crypto.*;
+import peergos.crypto.asymmetric.SecretBoxingKey;
+import peergos.crypto.asymmetric.SecretSigningKey;
+import peergos.crypto.symmetric.SymmetricKey;
 import peergos.util.*;
 
 import java.io.*;
@@ -18,14 +21,17 @@ public class ReadableFilePointer {
         this.rootDirKey = rootDirKey;
     }
 
-    public static ReadableFilePointer deserialize(DataInput din) throws IOException {
-        byte[] owner = Serialize.deserializeByteArray(din, UserContext.MAX_KEY_SIZE);
-        byte[] writerRaw = Serialize.deserializeByteArray(din, UserContext.MAX_KEY_SIZE);
+    public static ReadableFilePointer deserialize(DataInputStream din) throws IOException {
+        UserPublicKey owner = UserPublicKey.deserialize(din);
+        UserPublicKey writer = UserPublicKey.deserialize(din);
         ByteArrayWrapper mapKey = new ByteArrayWrapper(Serialize.deserializeByteArray(din, UserContext.MAX_KEY_SIZE));
         byte[] secretRootDirKey = Serialize.deserializeByteArray(din, UserContext.MAX_KEY_SIZE);
-        UserPublicKey writer = writerRaw.length == TweetNaCl.BOX_SECRET_KEY_BYTES + TweetNaCl.SIGN_SECRET_KEY_BYTES ?
-                User.deserialize(writerRaw) : new UserPublicKey(writerRaw);
-        return new ReadableFilePointer(new UserPublicKey(owner), writer, mapKey, new SymmetricKey(secretRootDirKey));
+        try {
+            SecretSigningKey signingKey = SecretSigningKey.deserialize(din);
+            SecretBoxingKey boxingKey = SecretBoxingKey.deserialize(din);
+            writer = new User(signingKey, boxingKey, writer.publicSigningKey, writer.publicBoxingKey);
+        } catch (EOFException e) {}
+        return new ReadableFilePointer(owner, writer, mapKey, new SymmetricKey(secretRootDirKey));
     }
 
     public boolean isWritable() {
@@ -39,11 +45,12 @@ public class ReadableFilePointer {
     }
 
     public void serialize(DataOutput dout) throws IOException {
-        Serialize.serialize(owner.getPublicKeys(), dout);
+        Serialize.serialize(owner.serializePublicKeys(), dout);
+        // this is broken
         if (writer instanceof User)
             Serialize.serialize(((User)writer).getPrivateKeys(), dout);
         else
-            Serialize.serialize(writer.getPublicKeys(), dout);
+            Serialize.serialize(writer.serializePublicKeys(), dout);
         Serialize.serialize(mapKey.data, dout);
         Serialize.serialize(rootDirKey.getKey(), dout);
     }

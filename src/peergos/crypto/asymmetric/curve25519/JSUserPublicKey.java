@@ -1,5 +1,8 @@
-package peergos.crypto;
+package peergos.crypto.asymmetric.curve25519;
 
+import peergos.crypto.TweetNaCl;
+import peergos.crypto.User;
+import peergos.crypto.UserPublicKey;
 import peergos.util.ArrayOps;
 
 import javax.script.Invocable;
@@ -11,6 +14,8 @@ import java.util.Random;
 
 public class JSUserPublicKey extends UserPublicKey
 {
+    public static final int PADDING_LENGTH = 32;
+
     private static ScriptEngineManager engineManager = new ScriptEngineManager();
     public static final ScriptEngine engine = engineManager.getEngineByName("nashorn");
     public static final Invocable invocable = (Invocable) engine;
@@ -26,7 +31,7 @@ public class JSUserPublicKey extends UserPublicKey
         try {
             engine.eval("var navigator = {}, window = {}; window.crypto = {};\n window.crypto.getRandomValues = " +
                     "function (arr){\n" +
-                    "    var jarr = Java.type('peergos.crypto.JSUserPublicKey').getRandomValues(arr.length);\n" +
+                    "    var jarr = Java.type('peergos.crypto.asymmetric.curve25519.JSUserPublicKey').getRandomValues(arr.length);\n" +
                     "    for (var i=0; i < arr.length; i++) arr[i] = jarr[i];\n" +
                     "}\n" +
                     "" +
@@ -80,7 +85,7 @@ public class JSUserPublicKey extends UserPublicKey
 
 
     public JSUserPublicKey(byte[] publicSigningKey, byte[] publicBoxingKey) {
-        super(publicSigningKey, publicBoxingKey);
+        super(new Ed25519PublicKey(publicSigningKey), new Curve25519PublicKey(publicBoxingKey));
     }
 
     public byte[] encryptMessageFor(byte[] input, byte[] ourSecretBoxingKey)
@@ -139,16 +144,17 @@ public class JSUserPublicKey extends UserPublicKey
         if (!Arrays.equals(publicSigningKey, Arrays.copyOfRange(secretSigningKey, 32, 64)))
             throw new IllegalStateException("Signing public key != second half of secret key!");
 
-        User juser = new User(secretSigningKey, secretBoxingKey, publicSigningKey, publicBoxingKey);
+        User juser = new User(new Ed25519SecretKey(secretSigningKey), new Curve25519SecretKey(secretBoxingKey),
+                new Ed25519PublicKey(publicSigningKey), new Curve25519PublicKey(publicBoxingKey));
         JSUser jsuser = new JSUser(juser.getSecretSigningKey(), juser.getSecretBoxingKey(), juser.getPublicSigningKey(), juser.getPublicBoxingKey());
         byte[] message = "G'day mate!".getBytes();
 
         // box
         byte[] cipher = jsuser.encryptMessageFor(message, juser.getSecretBoxingKey());
-        byte[] cipher2 = juser.encryptMessageFor(message, juser.getSecretBoxingKey());
+        byte[] cipher2 = juser.encryptMessageFor(message, juser.secretBoxingKey);
 
         // unbox
-        byte[] clear = juser.decryptMessage(cipher, jsuser.getPublicBoxingKey());
+        byte[] clear = juser.decryptMessage(cipher, jsuser.publicBoxingKey);
         if (!Arrays.equals(clear, message)) {
             throw new IllegalStateException("JS -> J, Decrypted message != original: "+new String(clear) + " != "+new String(message));
         }

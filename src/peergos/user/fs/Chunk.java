@@ -1,9 +1,6 @@
 package peergos.user.fs;
 
-import peergos.crypto.*;
-
-import javax.crypto.*;
-import java.security.*;
+import peergos.crypto.symmetric.SymmetricKey;
 
 public class Chunk
 {

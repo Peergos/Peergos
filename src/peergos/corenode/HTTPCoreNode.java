@@ -50,7 +50,7 @@ public class HTTPCoreNode implements CoreNode
 
             DataInputStream din = new DataInputStream(conn.getInputStream());
             byte[] publicKey = deserializeByteArray(din);
-            return new UserPublicKey(publicKey);
+            return UserPublicKey.deserialize(new DataInputStream(new ByteArrayInputStream(publicKey)));
         } catch (IOException ioe) {
             ioe.printStackTrace();
             return null;
@@ -124,7 +124,7 @@ public class HTTPCoreNode implements CoreNode
 
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-            Serialize.serialize(target.getPublicKeys(), dout);
+            Serialize.serialize(target.serializePublicKeys(), dout);
             Serialize.serialize(encryptedPermission, dout);
             dout.flush();
 
@@ -173,7 +173,7 @@ public class HTTPCoreNode implements CoreNode
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
 
-            Serialize.serialize(owner.getPublicKeys(), dout);
+            Serialize.serialize(owner.serializePublicKeys(), dout);
             dout.flush();
 
             DataInputStream din = new DataInputStream(conn.getInputStream());
@@ -197,7 +197,7 @@ public class HTTPCoreNode implements CoreNode
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
             
 
-            Serialize.serialize(owner.getPublicKeys(), dout);
+            Serialize.serialize(owner.serializePublicKeys(), dout);
             Serialize.serialize(signedRequest, dout);
             dout.flush();
 

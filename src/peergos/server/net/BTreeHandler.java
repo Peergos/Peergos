@@ -31,7 +31,7 @@ public class BTreeHandler implements HttpHandler
             int type = din.readInt();
             if (type == 0) {
                 // PUT
-                byte[] sharingKey = Serialize.deserializeByteArray(din, UserPublicKey.SIZE);
+                byte[] sharingKey = Serialize.deserializeByteArray(din, UserPublicKey.MAX_SIZE);
                 byte[] mapKey = Serialize.deserializeByteArray(din, 32);
                 byte[] value = Serialize.deserializeByteArray(din, Fragment.SIZE);
                 System.out.println("Put mapkey: "+new ByteArrayWrapper(mapKey)+ " -> "+new ByteArrayWrapper(value));
@@ -47,7 +47,7 @@ public class BTreeHandler implements HttpHandler
                 }
             } else if (type == 1) {
                 // GET
-                byte[] sharingKey = Serialize.deserializeByteArray(din, UserPublicKey.SIZE);
+                byte[] sharingKey = Serialize.deserializeByteArray(din, UserPublicKey.MAX_SIZE);
                 byte[] mapKey = Serialize.deserializeByteArray(din, 64);
                 System.out.println("Get mapkey: "+new ByteArrayWrapper(mapKey));
                 try {
@@ -61,7 +61,7 @@ public class BTreeHandler implements HttpHandler
                 }
             } else if (type == 2) {
                 // DELETE
-                byte[] sharingKey = Serialize.deserializeByteArray(din, UserPublicKey.SIZE);
+                byte[] sharingKey = Serialize.deserializeByteArray(din, UserPublicKey.MAX_SIZE);
                 byte[] mapKey = Serialize.deserializeByteArray(din, 64);
                 System.out.println("Deleted mapkey: "+new ByteArrayWrapper(mapKey));
                 try {

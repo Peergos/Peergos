@@ -1,6 +1,9 @@
 package peergos.user.fs;
 
 import peergos.crypto.*;
+import peergos.crypto.asymmetric.PublicBoxingKey;
+import peergos.crypto.asymmetric.SecretBoxingKey;
+import peergos.crypto.symmetric.SymmetricKey;
 import peergos.util.*;
 
 import java.io.*;
@@ -10,13 +13,13 @@ import java.util.stream.*;
 public class DirAccess extends FileAccess
 {
     // read permissions
-    private SortedMap<UserPublicKey, AsymmetricLink> sharingR2subfoldersR; // optional
+    private SortedMap<PublicBoxingKey, AsymmetricLink> sharingR2subfoldersR; // optional
     private final SymmetricLink subfolders2files;
     private final SymmetricLink subfolders2parent;
     private final List<SymmetricLocationLink> subfolders = new ArrayList<>(); // encrypted locations
     private final List<SymmetricLocationLink> files = new ArrayList<>();
 
-    public DirAccess(FileAccess base, SortedMap<UserPublicKey, AsymmetricLink> sharingR, byte[] s2f, byte[] s2p)
+    public DirAccess(FileAccess base, SortedMap<PublicBoxingKey, AsymmetricLink> sharingR, byte[] s2f, byte[] s2p)
     {
         super(base);
         sharingR2subfoldersR = sharingR;
@@ -24,7 +27,7 @@ public class DirAccess extends FileAccess
         subfolders2parent = new SymmetricLink(s2p);
     }
 
-    public DirAccess(SortedMap<UserPublicKey, AsymmetricLink> sharingR, SymmetricLink s2f, SymmetricLink s2p, SymmetricLink p2m, byte[] metadata, SymmetricLocationLink parentLocationLink)
+    public DirAccess(SortedMap<PublicBoxingKey, AsymmetricLink> sharingR, SymmetricLink s2f, SymmetricLink s2p, SymmetricLink p2m, byte[] metadata, SymmetricLocationLink parentLocationLink)
     {
         super(p2m, metadata, Optional.empty(), parentLocationLink);
         sharingR2subfoldersR = sharingR;
@@ -32,13 +35,13 @@ public class DirAccess extends FileAccess
         subfolders2parent = s2p;
     }
 
-    public static DirAccess create(User owner, SymmetricKey meta, SymmetricKey parent, SymmetricKey files, SymmetricKey subfolders, Set<UserPublicKey> sharingR,
+    public static DirAccess create(SecretBoxingKey owner, SymmetricKey meta, SymmetricKey parent, SymmetricKey files, SymmetricKey subfolders, Set<PublicBoxingKey> sharingR,
                                    FileProperties metadata, byte[] metaNonce, Location location, SymmetricKey rootParentKey)
     {
     	SymmetricLocationLink parentLocationLink = location != null ?  new SymmetricLocationLink(parent, rootParentKey, location) : null;
     	
-        TreeMap<UserPublicKey, AsymmetricLink> collect = sharingR.stream()
-                .collect(Collectors.toMap(x -> (UserPublicKey) x, x -> new AsymmetricLink(owner, (UserPublicKey) x, subfolders), (a, b) -> a, () -> new TreeMap<>()));
+        TreeMap<PublicBoxingKey, AsymmetricLink> collect = sharingR.stream()
+                .collect(Collectors.toMap(x -> (PublicBoxingKey) x, x -> new AsymmetricLink(owner, (PublicBoxingKey) x, subfolders), (a, b) -> a, () -> new TreeMap<>()));
         return new DirAccess(collect,
                 new SymmetricLink(subfolders, files, subfolders.createNonce()),
                 new SymmetricLink(subfolders, parent, subfolders.createNonce()),
@@ -47,12 +50,12 @@ public class DirAccess extends FileAccess
                 , parentLocationLink);
     }
 
-    public static DirAccess createRoot(User owner, SymmetricKey subfoldersKey, FileProperties metadata)
+    public static DirAccess createRoot(SecretBoxingKey owner, SymmetricKey subfoldersKey, FileProperties metadata)
     {
         return create(owner, subfoldersKey, metadata, null, null);
     }
     
-    public static DirAccess create(User owner, SymmetricKey subfoldersKey, FileProperties metadata, Location location, SymmetricKey rootParentKey)
+    public static DirAccess create(SecretBoxingKey owner, SymmetricKey subfoldersKey, FileProperties metadata, Location location, SymmetricKey rootParentKey)
     {
         SymmetricKey metaKey = SymmetricKey.random();
         return create(owner, metaKey, SymmetricKey.random(), SymmetricKey.random(), subfoldersKey, Collections.EMPTY_SET, metadata, metaKey.createNonce(), location, rootParentKey);
@@ -69,8 +72,8 @@ public class DirAccess extends FileAccess
         Serialize.serialize(subfolders2parent.serialize(), dout);
         Serialize.serialize(subfolders2files.serialize(), dout);
         dout.writeInt(sharingR2subfoldersR.size());
-        for (UserPublicKey key: sharingR2subfoldersR.keySet()) {
-            Serialize.serialize(key.getPublicKeys(), dout);
+        for (PublicBoxingKey key: sharingR2subfoldersR.keySet()) {
+            Serialize.serialize(key.serialize(), dout);
             Serialize.serialize(sharingR2subfoldersR.get(key).serialize(), dout);
         }
         // read subtree
@@ -86,14 +89,14 @@ public class DirAccess extends FileAccess
         }
     }
 
-    public static DirAccess deserialize(FileAccess base, DataInput din) throws IOException
+    public static DirAccess deserialize(FileAccess base, DataInputStream din) throws IOException
     {
         byte[] s2p = Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE);
         byte[] s2f = Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE);
         int readSharingKeys = din.readInt();
-        SortedMap<UserPublicKey, AsymmetricLink> sharingR = new TreeMap<>();
+        SortedMap<PublicBoxingKey, AsymmetricLink> sharingR = new TreeMap<>();
         for (int i=0; i < readSharingKeys; i++)
-            sharingR.put(new UserPublicKey(Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE)),
+            sharingR.put(PublicBoxingKey.deserialize(din),
                     new AsymmetricLink(Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE)));
         DirAccess res =  new DirAccess(base, sharingR, s2f, s2p);
         int subs = din.readInt();
@@ -131,7 +134,7 @@ public class DirAccess extends FileAccess
         files.add(toTargetParent);
     }
 
-    public void addRSharingKey(User owner, UserPublicKey key, SymmetricKey subfoldersKey)
+    public void addRSharingKey(SecretBoxingKey owner, PublicBoxingKey key, SymmetricKey subfoldersKey)
     {
         sharingR2subfoldersR.put(key, new AsymmetricLink(owner, key, subfoldersKey));
     }

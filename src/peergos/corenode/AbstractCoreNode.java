@@ -45,18 +45,18 @@ public abstract class AbstractCoreNode implements CoreNode
         return userNameToPublicKeyMap.get(username);
     }
 
-    public synchronized String getUsername(byte[] encodedUserKey)
+    public synchronized String getUsername(byte[] encodedUserKey) throws IOException
     {
-        UserPublicKey key = new UserPublicKey(encodedUserKey);
+        UserPublicKey key = UserPublicKey.deserialize(new DataInputStream(new ByteArrayInputStream(encodedUserKey)));
         String name = userPublicKeyToNameMap.get(key);
         if (name == null)
             name = "";
         return name;
     }
 
-    public boolean addUsername(String username, byte[] encodedUserKey, byte[] signed, byte[] staticData)
+    public boolean addUsername(String username, byte[] encodedUserKey, byte[] signed, byte[] staticData) throws IOException
     {
-        UserPublicKey key = new UserPublicKey(encodedUserKey);
+        UserPublicKey key = UserPublicKey.deserialize(new DataInputStream(new ByteArrayInputStream(encodedUserKey)));
 
         if (! key.isValidSignature(signed, ArrayOps.concat(username.getBytes(), encodedUserKey, staticData)))
             return false;
@@ -157,9 +157,9 @@ public abstract class AbstractCoreNode implements CoreNode
         return userData.followRequests.remove(baw);
     }
 
-    public boolean setMetadataBlob(UserPublicKey owner, byte[] encodedSharingPublicKey, byte[] sharingKeySignedMapKeyPlusBlob)
+    public boolean setMetadataBlob(UserPublicKey owner, byte[] encodedSharingPublicKey, byte[] sharingKeySignedMapKeyPlusBlob) throws IOException
     {
-        UserPublicKey sharingKey = new UserPublicKey(encodedSharingPublicKey);
+        UserPublicKey sharingKey = UserPublicKey.deserialize(new DataInputStream(new ByteArrayInputStream(encodedSharingPublicKey)));
 
         try {
             byte[] payload = sharingKey.unsignMessage(sharingKeySignedMapKeyPlusBlob);
@@ -196,9 +196,9 @@ public abstract class AbstractCoreNode implements CoreNode
         return true;
     }
 
-    public synchronized byte[] getMetadataBlob(UserPublicKey owner, byte[] encodedSharingKey, byte[] mapKey) {
+    public synchronized byte[] getMetadataBlob(UserPublicKey owner, byte[] encodedSharingKey, byte[] mapKey) throws IOException {
         UserData userData = userMap.get(owner);
-        UserPublicKey writer = new UserPublicKey(encodedSharingKey);
+        UserPublicKey writer = UserPublicKey.deserialize(new DataInputStream(new ByteArrayInputStream(encodedSharingKey)));
         if (userData == null) {
             System.out.printf("Returning EMPTY metadata blob from owner:%s writer:%s mapKey:%s\n",
                 owner, writer, ArrayOps.bytesToHex(mapKey));

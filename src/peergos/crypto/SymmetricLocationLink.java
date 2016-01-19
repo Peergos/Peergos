@@ -1,5 +1,6 @@
 package peergos.crypto;
 
+import peergos.crypto.symmetric.SymmetricKey;
 import peergos.user.fs.Location;
 import peergos.util.ArrayOps;
 import peergos.util.Serialize;

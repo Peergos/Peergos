@@ -30,15 +30,7 @@ public class Tests
             return;
         }
 
-        UserContext.Test.setStorageAddress(Args.getArg("clusterAddress", "localhost"));
-        UserContext.Test.setCoreNodeAddress(Args.getArg("coreAddress", "localhost"));
-        String user = Args.hasArg("randomise") ? "Bob" + System.currentTimeMillis() : "Bob";
-        String follower = Args.hasArg("randomise") ? "Alice" + System.currentTimeMillis() : "Alice";
-        UserContext.Test.setUser(user);
-        UserContext.Test.setFollower(follower);
 
-        testClass(UserContext.Test.class);
-//        testClass(User.Test.class);
 //        testClass(CoreNode.class);
     }
 
@@ -90,9 +82,5 @@ public class Tests
 
         // store a chunk in alice's space using the permitted sharing key
 
-        long t1 = System.nanoTime();
-        UserContext.Test.mediumFileTest(us, sharer, bob, alice);
-        long t2 = System.nanoTime();
-        System.out.printf("File test took %d mS\n", (t2 - t1) / 1000000);
     }
 }

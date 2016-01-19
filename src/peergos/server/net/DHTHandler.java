@@ -30,7 +30,7 @@ public class DHTHandler implements HttpHandler
             if (type == 0) {
                 // PUT
                 byte[] value = Serialize.deserializeByteArray(din, Fragment.SIZE);
-                byte[] owner = Serialize.deserializeByteArray(din, UserPublicKey.SIZE);
+                byte[] owner = Serialize.deserializeByteArray(din, UserPublicKey.MAX_SIZE);
                 // TODO check we care about owner
                 List<Multihash> hashes = new ArrayList<>();
                 int nlinks = din.readInt();

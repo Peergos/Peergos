@@ -1,7 +1,7 @@
 package peergos.user;
 
-import peergos.corenode.*;
-import peergos.crypto.*;
+import peergos.crypto.asymmetric.PublicBoxingKey;
+import peergos.crypto.asymmetric.SecretBoxingKey;
 import peergos.util.*;
 
 import java.io.*;
@@ -24,9 +24,9 @@ public class EntryPoint
             throw new IllegalArgumentException("We can't grant someone write access to something we only have read access to!");
     }
 
-    public static EntryPoint decryptAndDeserialize(byte[] input, User user, UserPublicKey from) throws IOException {
-        byte[] raw = user.decryptMessage(input, from.getPublicBoxingKey());
-        DataInput din = new DataInputStream(new ByteArrayInputStream(raw));
+    public static EntryPoint decryptAndDeserialize(byte[] input, SecretBoxingKey user, PublicBoxingKey from) throws IOException {
+        byte[] raw = user.decryptMessage(input, from);
+        DataInputStream din = new DataInputStream(new ByteArrayInputStream(raw));
         ReadableFilePointer pointer = ReadableFilePointer.deserialize(din);
         String owner = Serialize.deserializeString(din, 1024);
         int nReaders = din.readInt();
@@ -40,8 +40,8 @@ public class EntryPoint
         return new EntryPoint(pointer, owner, readers, writers);
     }
 
-    public byte[] serializeAndEncrypt(User user, UserPublicKey target) {
-        return target.encryptMessageFor(serialize(), user.getSecretBoxingKey());
+    public byte[] serializeAndEncrypt(SecretBoxingKey user, PublicBoxingKey target) {
+        return target.encryptMessageFor(serialize(), user);
     }
 
     private byte[] serialize() {

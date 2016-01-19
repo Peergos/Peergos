@@ -1,13 +1,13 @@
 package peergos.user.fs;
 
 import peergos.crypto.*;
+import peergos.crypto.symmetric.SymmetricKey;
 import peergos.util.*;
 
-import java.io.DataInput;
+import java.io.DataInputStream;
 import java.io.DataOutput;
 import java.io.IOException;
 import java.util.*;
-import java.util.stream.*;
 
 public class FileAccess
 {
@@ -72,7 +72,7 @@ public class FileAccess
         dout.write(getType().ordinal());
     }
 
-    public static FileAccess deserialize(DataInput din) throws IOException
+    public static FileAccess deserialize(DataInputStream din) throws IOException
     {
         byte[] p2m = Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE);
         byte[] fileProperties = Serialize.deserializeByteArray(din, MAX_ELEMENT_SIZE);

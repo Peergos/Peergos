@@ -1,70 +1,63 @@
 package peergos.crypto;
 
+import peergos.crypto.asymmetric.PublicBoxingKey;
+import peergos.crypto.asymmetric.PublicSigningKey;
+import peergos.crypto.asymmetric.SecretBoxingKey;
+import peergos.crypto.asymmetric.SecretSigningKey;
+import peergos.crypto.asymmetric.curve25519.Curve25519PublicKey;
+import peergos.crypto.asymmetric.curve25519.Curve25519SecretKey;
+import peergos.crypto.asymmetric.curve25519.Ed25519PublicKey;
+import peergos.crypto.asymmetric.curve25519.Ed25519SecretKey;
 import peergos.util.ArrayOps;
 
+import java.io.DataInputStream;
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.Random;
 
 public class User extends UserPublicKey
 {
-    private final byte[] secretSigningKey, secretBoxingKey;
+    public final SecretSigningKey secretSigningKey;
+    public final SecretBoxingKey secretBoxingKey;
 
-    public User(byte[] secretSigningKey, byte[] secretBoxingKey, byte[] publicSigningKey, byte[] publicBoxingKey)
+    public User(SecretSigningKey secretSigningKey, SecretBoxingKey secretBoxingKey, PublicSigningKey publicSigningKey, PublicBoxingKey publicBoxingKey)
     {
         super(publicSigningKey, publicBoxingKey);
         this.secretSigningKey = secretSigningKey;
         this.secretBoxingKey = secretBoxingKey;
     }
 
-    public User(byte[] secretSigningKey, byte[] secretBoxingKey)
-    {
-        super(getPublicSigningKey(secretSigningKey), getPublicBoxingKey(secretBoxingKey));
-        this.secretSigningKey = secretSigningKey;
-        this.secretBoxingKey = secretBoxingKey;
-    }
-
     public byte[] getSecretSigningKey() {
-        return secretSigningKey;
+        return secretSigningKey.getSecretSigningKey();
     }
 
     public byte[] getSecretBoxingKey() {
-        return secretBoxingKey;
-    }
-
-    public static byte[] getPublicSigningKey(byte[] secretSigningKey) {
-        return Arrays.copyOfRange(secretSigningKey, 32, 64);
-    }
-
-    public static byte[] getPublicBoxingKey(byte[] secretBoxingKey) {
-        byte[] pub = new byte[32];
-        TweetNaCl.crypto_scalarmult_base(pub, secretBoxingKey);
-        return pub;
+        return secretBoxingKey.getSecretBoxingKey();
     }
 
     public byte[] signMessage(byte[] message)
     {
-        return TweetNaCl.crypto_sign(message, secretSigningKey);
+        return secretSigningKey.signMessage(message);
     }
 
-    public byte[] decryptMessage(byte[] cipher, byte[] theirPublicBoxingKey)
+    public byte[] decryptMessage(byte[] cipher, PublicBoxingKey theirPublicBoxingKey)
     {
-        byte[] nonce = Arrays.copyOfRange(cipher, cipher.length - TweetNaCl.BOX_NONCE_BYTES, cipher.length);
-        cipher = Arrays.copyOfRange(cipher, 0, cipher.length - TweetNaCl.BOX_NONCE_BYTES);
-        return TweetNaCl.crypto_box_open(cipher, nonce, theirPublicBoxingKey, secretBoxingKey);
+        return secretBoxingKey.decryptMessage(cipher, theirPublicBoxingKey);
     }
 
-    public static User deserialize(byte[] input) {
-        return new User(Arrays.copyOfRange(input, 0, 64), Arrays.copyOfRange(input, 64, 96));
+    public static User deserialize(DataInputStream din) throws IOException {
+        UserPublicKey pub = UserPublicKey.deserialize(din);
+        SecretSigningKey signingKey = SecretSigningKey.deserialize(din);
+        SecretBoxingKey boxingKey = SecretBoxingKey.deserialize(din);
+        return new User(signingKey, boxingKey, pub.publicSigningKey, pub.publicBoxingKey);
     }
 
     public byte[] getPrivateKeys() {
-        return ArrayOps.concat(secretSigningKey, secretBoxingKey);
+        return ArrayOps.concat(secretSigningKey.serialize(), secretBoxingKey.serialize());
     }
 
     public static User generateUserCredentials(String username, String password)
     {
-        // need usernames and public keys to be in 1-1 correspondence, and the private key to be derivable from the username+password
-        // username is salt against rainbow table attacks
         // TODO fix this to use Scrypt
         byte[] hash = Hash.sha256(username+password);
         byte[] publicSigningKey = new byte[32];
@@ -76,7 +69,10 @@ public class User extends UserPublicKey
         byte[] secretBoxingKey = new byte[32];
         System.arraycopy(secretSigningKey, 32, secretBoxingKey, 0, 32);
         TweetNaCl.crypto_box_keypair(publicBoxingKey, secretBoxingKey, true);
-        return new User(secretSigningKey, secretBoxingKey, publicSigningKey, publicBoxingKey);
+        return new User(new Ed25519SecretKey(secretSigningKey),
+                new Curve25519SecretKey(secretBoxingKey),
+                new Ed25519PublicKey(publicSigningKey),
+                new Curve25519PublicKey(publicBoxingKey));
     }
 
     public static User random() {
@@ -88,11 +84,11 @@ public class User extends UserPublicKey
 
     public static void main(String[] args) {
         User user = User.generateUserCredentials("Username", "password");
-        System.out.println("PublicKey: " + ArrayOps.bytesToHex(user.getPublicKeys()));
+        System.out.println("PublicKey: " + ArrayOps.bytesToHex(user.serializePublicKeys()));
         byte[] message = "G'day mate!".getBytes();
         byte[] cipher = user.encryptMessageFor(message, user.secretBoxingKey);
         System.out.println("Cipher: "+ArrayOps.bytesToHex(cipher));
-        byte[] clear = user.decryptMessage(cipher, user.getPublicBoxingKey());
+        byte[] clear = user.decryptMessage(cipher, user.publicBoxingKey);
         assert (Arrays.equals(message, clear));
 
         byte[] signed = user.signMessage(message);

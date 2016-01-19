@@ -1,6 +1,6 @@
 package peergos.user.fs;
 
-import peergos.crypto.SymmetricKey;
+import peergos.crypto.symmetric.SymmetricKey;
 import peergos.crypto.SymmetricLocationLink;
 import peergos.user.UserContext;
 

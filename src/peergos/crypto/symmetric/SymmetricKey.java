@@ -1,6 +1,7 @@
-package peergos.crypto;
+package peergos.crypto.symmetric;
 
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import peergos.crypto.TweetNaCl;
 
 import java.security.*;
 
