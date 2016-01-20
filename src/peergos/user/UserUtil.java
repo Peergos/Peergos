@@ -1,4 +1,4 @@
-package peergos.user.fs.erasure;
+package peergos.user;
 
 import com.lambdaworks.crypto.SCrypt;
 import peergos.crypto.Hash;
