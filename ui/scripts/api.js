@@ -1123,7 +1123,7 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
 	    const targetUser = initialRequest.entry.pointer.owner;
 	    // create a tmp keypair whose public key we can prepend to the request without leaking information
             var tmp = User.random();
-            var payload = targetUser.encryptMessageFor(plaintext, tmp);
+            var payload = targetUser.encryptMessageFor(plaintext, tmp.sBoxKey);
 
             return corenodeClient.followRequest(initialRequest.entry.pointer.owner.getPublicKeys(), concat(tmp.pBoxKey, payload)).then(function(res) {
 		// remove pending follow request from them
@@ -1142,14 +1142,14 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
 		if (! reciprocate) {
 		    buf.writeArray(new Uint8Array(0)); // tell them we're not reciprocating
 		    var plaintext = buf.toByteArray();
-                    var payload = targetUser.encryptMessageFor(plaintext, tmp);
+                    var payload = targetUser.encryptMessageFor(plaintext, tmp.sBoxKey);
 
                     return corenodeClient.followRequest(initialRequest.entry.pointer.owner.getPublicKeys(), concat(tmp.pBoxKey, payload));
 		}
 		// if reciprocate, add entry point to their shared dirctory (we follow them) and then 
 		buf.writeArray(initialRequest.entry.pointer.baseKey.serialize()); // tell them we are reciprocating
 		var plaintext = buf.toByteArray();
-                var payload = targetUser.encryptMessageFor(plaintext, tmp);
+                var payload = targetUser.encryptMessageFor(plaintext, tmp.sBoxKey);
 		
                 return corenodeClient.followRequest(initialRequest.entry.pointer.owner.getPublicKeys(), concat(tmp.pBoxKey, payload)).then(function(res) {
 		    return context.addToStaticDataAndCommit(initialRequest.entry);
