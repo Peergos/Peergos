@@ -16,7 +16,7 @@ public interface SecretBoxingKey {
     byte[] decryptMessage(byte[] cipher, PublicBoxingKey from);
 
     static SecretBoxingKey deserialize(DataInputStream din) throws IOException {
-        PublicBoxingKey.Type t = PublicBoxingKey.Type.values()[din.read()];
+        PublicBoxingKey.Type t = PublicBoxingKey.Type.byValue(din.read());
         switch (t) {
             case Curve25519:
                 byte[] key = new byte[32];

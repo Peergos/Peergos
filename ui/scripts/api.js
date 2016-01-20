@@ -20,11 +20,9 @@ function Ed25519PublicKey(key) {
     }
 
     // () => Uint8Array
-    this.serialize = function() {
-	var buf = new ByteArrayOutputStream();
+    this.serialize = function(buf) {
 	buf.writeByte(EC_TYPE);
 	buf.write(this.key, 0, this.key.length);
-	return buf.toByteArray();
     }.bind(this);
 }
 function Ed25519SecretKey(key) {
@@ -36,11 +34,9 @@ function Ed25519SecretKey(key) {
     }
     
     // () => Uint8Array
-    this.serialize = function() {
-	var buf = new ByteArrayOutputStream();
+    this.serialize = function(buf) {
 	buf.writeByte(EC_TYPE);
 	buf.write(this.key, 0, this.key.length);
-	return buf.toByteArray();
     }.bind(this);
 }
 function Curve25519PublicKey(key) {
@@ -53,11 +49,9 @@ function Curve25519PublicKey(key) {
     }
     
     // () => Uint8Array
-    this.serialize = function() {
-	var buf = new ByteArrayOutputStream();
+    this.serialize = function(buf) {
 	buf.writeByte(EC_TYPE);
 	buf.write(this.key, 0, this.key.length);
-	return buf.toByteArray();
     }.bind(this);
 }
 function Curve25519SecretKey(key) {
@@ -71,11 +65,9 @@ function Curve25519SecretKey(key) {
     }
 
     // () => Uint8Array
-    this.serialize = function() {
-	var buf = new ByteArrayOutputStream();
+    this.serialize = function(buf) {
 	buf.writeByte(EC_TYPE);
 	buf.write(this.key, 0, this.key.length);
-	return buf.toByteArray();
     }.bind(this);
 }
 function PublicSigningKey() {
@@ -125,14 +117,6 @@ function UserPublicKey(publicSignKey, publicBoxKey) {
     this.pSignKey = publicSignKey;
     this.pBoxKey = publicBoxKey;
 
-    // ((err, publicKeyString) -> ())
-    this.getPublicKeys = function() {
-        var tmp = new Uint8Array(this.pSignKey.length + this.pBoxKey.length);
-        tmp.set(this.pSignKey, 0);
-        tmp.set(this.pBoxKey, this.pSignKey.length);
-        return tmp;
-    }
-    
     // (Uint8Array, SecretBoxingKey -> Uint8Array)
     this.encryptMessageFor = function(input, from) {
         return this.pBoxKey.encryptMessageFor(input, from);
@@ -151,9 +135,10 @@ function UserPublicKey(publicSignKey, publicBoxKey) {
 
     this.getPublicKeys = function() {
 	var buf = new ByteArrayOutputStream();
-	this.serialize(buf);
+	this.pSignKey.serialize(buf);
+	this.pBoxKey.serialize(buf);
 	return buf.toByteArray();
-    }
+    }.bind(this);
 }
 //Uint8Array => UserPublicKey
 UserPublicKey.fromPublicKeys = function(both) {
@@ -219,12 +204,12 @@ function User(publicSignKey, publicBoxKey, secretSignKey, secretBoxKey) {
     // (Uint8Array => Uint8array)
     this.signMessage = function(input) {
         return this.sSignKey.signMessage(input);
-    }
+    }.bind(this);
     
     // (Uint8Array, PublicBoxingKey) -> Uint8Array)
     this.decryptMessage = function(cipher, them) {
         return this.sBoxKey.decryptMessage(cipher, them);
-    }
+    }.bind(this);
 
     // ByteArrayOutputStream -> ()
     this.serialize = function(buf) {
@@ -232,7 +217,7 @@ function User(publicSignKey, publicBoxKey, secretSignKey, secretBoxKey) {
 	this.sBoxKey.serialize(buf);
 	this.pSignKey.serialize(buf);
 	this.pBoxKey.serialize(buf);
-    }
+    }.bind(this);
 }
 
 User.deserialize = function(din) {
@@ -246,7 +231,13 @@ User.deserialize = function(din) {
 User.random = function() {
     var secretBoxKey = window.nacl.randomBytes(32);
     var signSeed = window.nacl.randomBytes(32);
-    return new User(nacl.sign.keyPair.fromSeed(signSeed), nacl.box.keyPair.fromSecretKey(new Uint8Array(secretBoxKey)));
+    var signPair = nacl.sign.keyPair.fromSeed(signSeed);
+    var boxPair = nacl.box.keyPair.fromSecretKey(new Uint8Array(secretBoxKey));
+    var pSignKey = new Ed25519PublicKey(signPair.publicKey);
+    var pBoxKey = new Curve25519PublicKey(boxPair.publicKey);
+    var sSignKey = new Ed25519SecretKey(signPair.secretKey);
+    var sBoxKey = new Curve25519SecretKey(boxPair.secretKey);
+    return new User(pSignKey, pBoxKey, sSignKey, sBoxKey);
 }
 
 /////////////////////////////

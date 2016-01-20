@@ -16,7 +16,7 @@ public interface SecretSigningKey {
     byte[] signMessage(byte[] message);
 
     static SecretSigningKey deserialize(DataInputStream din) throws IOException {
-        PublicSigningKey.Type t = PublicSigningKey.Type.values()[din.read()];
+        PublicSigningKey.Type t = PublicSigningKey.Type.byValue(din.read());
         switch (t) {
             case Ed25519:
                 byte[] key = new byte[64];

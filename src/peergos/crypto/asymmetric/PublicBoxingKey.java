@@ -4,14 +4,23 @@ import peergos.crypto.asymmetric.curve25519.Curve25519PublicKey;
 
 import java.io.DataInputStream;
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 
 public interface PublicBoxingKey {
+    Map<Integer, Type> byValue = new HashMap<>();
     enum Type {
         Curve25519(0xEC);
 
         public final int value;
-        Type(int value) {
+        Type(int value)
+        {
             this.value = value;
+            byValue.put(value, this);
+        }
+
+        public static Type byValue(int val) {
+            return byValue.get(val);
         }
     }
 
@@ -26,7 +35,7 @@ public interface PublicBoxingKey {
     byte[] createNonce();
 
     static PublicBoxingKey deserialize(DataInputStream din) throws IOException {
-        Type t = Type.values()[din.read()];
+        Type t = Type.byValue(din.read());
         switch (t) {
             case Curve25519:
                 byte[] key = new byte[32];
