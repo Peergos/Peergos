@@ -16,13 +16,19 @@ import java.security.GeneralSecurityException;
 import java.util.Arrays;
 
 public class UserUtil {
-    private static byte[] generateKeys(String username, String password) throws GeneralSecurityException {
+    private static final int N = 1 << 17;
+    private static byte[] generateKeys(String username, String password) {
         byte[] hash = Hash.sha256(password.getBytes());
         byte[] salt = username.getBytes();
-        return SCrypt.scrypt(hash, salt, 17, 8, 96, 1000);
+        try {
+
+            return SCrypt.scrypt(hash, salt, N, 8, 96, 1000);
+        } catch (GeneralSecurityException gse) {
+            throw new IllegalStateException(gse);
+        }
     }
 
-    public UserWithRoot generateUser(String username, String password) throws GeneralSecurityException {
+    public static UserWithRoot generateUser(String username, String password) {
         byte[] keyBytes = generateKeys(username, password);
 
         byte[] signBytesSeed = Arrays.copyOfRange(keyBytes, 0, 32);

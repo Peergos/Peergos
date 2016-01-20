@@ -8,6 +8,7 @@ import peergos.crypto.asymmetric.curve25519.Curve25519PublicKey;
 import peergos.crypto.asymmetric.curve25519.Curve25519SecretKey;
 import peergos.crypto.asymmetric.curve25519.Ed25519PublicKey;
 import peergos.crypto.asymmetric.curve25519.Ed25519SecretKey;
+import peergos.user.UserUtil;
 import peergos.util.ArrayOps;
 
 import java.io.DataInputStream;
@@ -60,30 +61,27 @@ public class User extends UserPublicKey
         return ArrayOps.concat(secretSigningKey.serialize(), secretBoxingKey.serialize(), super.serialize());
     }
 
-    public static User generateUserCredentials(String username, String password)
-    {
-        // TODO fix this to use Scrypt
-        byte[] hash = Hash.sha256(username+password);
-        byte[] publicSigningKey = new byte[32];
-        byte[] secretSigningKey = new byte[64];
-        Random r = new Random(Arrays.hashCode(hash));
-        r.nextBytes(secretSigningKey); // only 32 are used
-        TweetNaCl.crypto_sign_keypair(publicSigningKey, secretSigningKey, true);
-        byte[] publicBoxingKey = new byte[32];
-        byte[] secretBoxingKey = new byte[32];
-        System.arraycopy(secretSigningKey, 32, secretBoxingKey, 0, 32);
-        TweetNaCl.crypto_box_keypair(publicBoxingKey, secretBoxingKey, true);
-        return new User(new Ed25519SecretKey(secretSigningKey),
-                new Curve25519SecretKey(secretBoxingKey),
-                new Ed25519PublicKey(publicSigningKey),
-                new Curve25519PublicKey(publicBoxingKey));
+    public static User generateUserCredentials(String username, String password) {
+        return UserUtil.generateUser(username, password).getUser();
     }
 
+
     public static User random() {
-        byte[] tmp = new byte[8];
-        Random r = new Random();
-        r.nextBytes(tmp);
-        return generateUserCredentials("username", ArrayOps.bytesToHex(tmp));
+
+        byte[] secretSignBytes = new byte[64];
+        byte[] publicSignBytes = new byte[32];
+        byte[] secretBoxBytes = new byte[32];
+        byte[] publicBoxBytes = new  byte[32];
+
+        boolean isSeeded = false;
+        TweetNaCl.crypto_sign_keypair(publicSignBytes, secretSignBytes, isSeeded);
+        TweetNaCl.crypto_box_keypair(publicBoxBytes, secretBoxBytes, isSeeded);
+
+        return new User(
+                new Ed25519SecretKey(secretSignBytes),
+                new Curve25519SecretKey(secretBoxBytes),
+                new Ed25519PublicKey(publicSignBytes),
+                new Curve25519PublicKey(publicBoxBytes));
     }
 
     public static void main(String[] args) {
