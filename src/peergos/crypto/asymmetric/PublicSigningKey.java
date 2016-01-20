@@ -6,7 +6,14 @@ import java.io.DataInputStream;
 import java.io.IOException;
 
 public interface PublicSigningKey {
-    enum Type {Ed25519}
+    enum Type {
+        Ed25519(0xEC);
+
+        public final int value;
+        Type(int value) {
+            this.value = value;
+        }
+    }
 
     Type type();
 

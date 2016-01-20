@@ -5,8 +5,6 @@ import peergos.crypto.*;
 import peergos.user.UserContext;
 import peergos.util.*;
 
-import java.sql.*;
-import java.util.*;
 import java.net.*;
 import java.io.*;
 import static peergos.corenode.HTTPCoreNodeServer.*;
@@ -124,7 +122,7 @@ public class HTTPCoreNode implements CoreNode
 
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-            Serialize.serialize(target.serializePublicKeys(), dout);
+            Serialize.serialize(target.serialize(), dout);
             Serialize.serialize(encryptedPermission, dout);
             dout.flush();
 
@@ -173,7 +171,7 @@ public class HTTPCoreNode implements CoreNode
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
 
-            Serialize.serialize(owner.serializePublicKeys(), dout);
+            Serialize.serialize(owner.serialize(), dout);
             dout.flush();
 
             DataInputStream din = new DataInputStream(conn.getInputStream());
@@ -197,7 +195,7 @@ public class HTTPCoreNode implements CoreNode
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
             
 
-            Serialize.serialize(owner.serializePublicKeys(), dout);
+            Serialize.serialize(owner.serialize(), dout);
             Serialize.serialize(signedRequest, dout);
             dout.flush();
 

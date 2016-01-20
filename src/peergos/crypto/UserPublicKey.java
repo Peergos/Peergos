@@ -29,7 +29,7 @@ public class UserPublicKey implements Comparable<UserPublicKey>
         return new UserPublicKey(signingKey, boxingKey);
     }
 
-    public byte[] serializePublicKeys()
+    public byte[] serialize()
     {
         return ArrayOps.concat(publicSigningKey.serialize(), publicBoxingKey.serialize());
     }
@@ -78,11 +78,11 @@ public class UserPublicKey implements Comparable<UserPublicKey>
 
     @Override
     public int compareTo(UserPublicKey userPublicKey) {
-        return ArrayOps.compare(serializePublicKeys(), userPublicKey.serializePublicKeys());
+        return ArrayOps.compare(serialize(), userPublicKey.serialize());
     }
 
     public String toString() {
-        return new String(Base64.getEncoder().encode(serializePublicKeys()));
+        return new String(Base64.getEncoder().encode(serialize()));
     }
 
     public static UserPublicKey fromString(String b64) throws IOException {

@@ -109,7 +109,7 @@ public class HTTPCoreNodeServer
             UserPublicKey k = coreNode.getPublicKey(username);
             if (k == null)
                 return;
-            byte[] b = k.serializePublicKeys();
+            byte[] b = k.serialize();
             dout.writeInt(b.length);
             dout.write(b);
         }

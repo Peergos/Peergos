@@ -21,8 +21,8 @@ public class Location
     }
 
     public void serialise(DataOutput dout) throws IOException {
-        Serialize.serialize(owner.serializePublicKeys(), dout);
-        Serialize.serialize(writerKey.serializePublicKeys(), dout);
+        Serialize.serialize(owner.serialize(), dout);
+        Serialize.serialize(writerKey.serialize(), dout);
         Serialize.serialize(mapKey.data, dout);
     }
 

@@ -10,11 +10,120 @@ function humanSort(l,r) {
 // API for the User interface to use
 /////////////////////////////
 
+const EC_TYPE = 0xEC; // TweetNaCl elliptic curve type (25519)
+function Ed25519PublicKey(key) {
+    this.key = key;
+    
+    // Uint8Array => Uint8Array
+    this.unsignMessage = function(sig) {
+        return nacl.sign.open(sig, this.key);
+    }
+
+    // () => Uint8Array
+    this.serialize = function() {
+	var buf = new ByteArrayOutputStream();
+	buf.writeByte(EC_TYPE);
+	buf.write(this.key, 0, this.key.length);
+	return buf.toByteArray();
+    }.bind(this);
+}
+function Ed25519SecretKey(key) {
+    this.key = key;
+    
+    // (Uint8Array => Uint8array)
+    this.signMessage = function(input) {
+        return nacl.sign(input, this.key);
+    }
+    
+    // () => Uint8Array
+    this.serialize = function() {
+	var buf = new ByteArrayOutputStream();
+	buf.writeByte(EC_TYPE);
+	buf.write(this.key, 0, this.key.length);
+	return buf.toByteArray();
+    }.bind(this);
+}
+function Curve25519PublicKey(key) {
+    this.key = key;
+    
+    // (Uint8Array, SecretBoxingKey -> Uint8Array)
+    this.encryptMessageFor = function(input, secretKey) {
+        var nonce = createNonce();
+        return concat(nacl.box(input, nonce, this.key, secretKey.key), nonce);
+    }
+    
+    // () => Uint8Array
+    this.serialize = function() {
+	var buf = new ByteArrayOutputStream();
+	buf.writeByte(EC_TYPE);
+	buf.write(this.key, 0, this.key.length);
+	return buf.toByteArray();
+    }.bind(this);
+}
+function Curve25519SecretKey(key) {
+    this.key = key;
+    
+    // (Uint8Array, PublicBoxingKey -> Uint8Array)
+    this.decryptMessage = function(cipher, them) {
+        var nonce = slice(cipher, cipher.length-24, cipher.length);
+        cipher = slice(cipher, 0, cipher.length-24);
+        return nacl.box.open(cipher, nonce, them.key, this.key);
+    }
+
+    // () => Uint8Array
+    this.serialize = function() {
+	var buf = new ByteArrayOutputStream();
+	buf.writeByte(EC_TYPE);
+	buf.write(this.key, 0, this.key.length);
+	return buf.toByteArray();
+    }.bind(this);
+}
+function PublicSigningKey() {
+}
+PublicSigningKey.deserialize = function(din) {
+    var type = 0xff & din.readByte();
+    if (type == EC_TYPE) {
+	return new Ed25519PublicKey(din.read(32));
+    }
+    else
+	throw "Unknown Public Signing Key type: "+type;
+}
+function SecretSigningKey() {
+}
+SecretSigningKey.deserialize = function(din) {
+    var type = 0xff & din.readByte();
+    if (type == EC_TYPE) {
+	return new Ed25519SecretKey(din.read(64));
+    }
+    else
+	throw "Unknown Secret Signing Key type: "+type;
+}
+function PublicBoxingKey() {
+}
+PublicBoxingKey.deserialize = function(din) {
+    var type = 0xff & din.readByte();
+    if (type == EC_TYPE) {
+	return new Curve25519PublicKey(din.read(32));
+    }
+    else
+	throw "Unknown Public Boxing Key type: "+type;
+}
+function SecretBoxingKey() {
+}
+SecretBoxingKey.deserialize = function(din) {
+    var type = 0xff & din.readByte();
+    if (type == EC_TYPE) {
+	return new Curve25519PublicKey(din.read(32));
+    }
+    else
+	throw "Unknown Secret Boxing Key type: "+type;
+}
+
 /////////////////////////////
 // UserPublicKey methods
 function UserPublicKey(publicSignKey, publicBoxKey) {
-    this.pSignKey = publicSignKey; // 32 bytes
-    this.pBoxKey = publicBoxKey; // 32 bytes
+    this.pSignKey = publicSignKey;
+    this.pBoxKey = publicBoxKey;
 
     // ((err, publicKeyString) -> ())
     this.getPublicKeys = function() {
@@ -24,27 +133,39 @@ function UserPublicKey(publicSignKey, publicBoxKey) {
         return tmp;
     }
     
-    // (Uint8Array, User, (nonce, cipher) -> ())
-    this.encryptMessageFor = function(input, us) {
-        var nonce = createNonce();
-        return concat(nacl.box(input, nonce, this.pBoxKey, us.sBoxKey), nonce);
+    // (Uint8Array, SecretBoxingKey -> Uint8Array)
+    this.encryptMessageFor = function(input, from) {
+        return this.pBoxKey.encryptMessageFor(input, from);
     }
     
     // Uint8Array => boolean
     this.unsignMessage = function(sig) {
-        return nacl.sign.open(sig, this.pSignKey);
+        return this.pSignKey.unsignMessage(sig);
+    }
+
+    // (ByteArrayOutputStream) => ()
+    this.serialize = function(buf) {
+	this.pSignKey.serialize(buf);
+	this.pBoxKey.serialize(buf);
+    }.bind(this);
+
+    this.getPublicKeys = function() {
+	var buf = new ByteArrayOutputStream();
+	this.serialize(buf);
+	return buf.toByteArray();
     }
 }
 //Uint8Array => UserPublicKey
 UserPublicKey.fromPublicKeys = function(both) {
     if (both.length == 0)
 	throw "Null keys returned";
-    var pSign = slice(both, 0, 32);
-    var pBox = slice(both, 32, 64);
+    var din = new ByteArrayInputStream(both);
+    var pSign = PublicSigningKey.deserialize(din);
+    var pBox = PublicBoxingKey.deserialize(din);
     return new UserPublicKey(pSign, pBox);
 }
 UserPublicKey.createNull = function() {
-    return new UserPublicKey(new Uint8Array(32), new Uint8Array(32));
+    return new UserPublicKey(new Ed25519PublicKey(new Uint8Array(32)), new Curve25519PublicKey(new Uint8Array(32)));
 }
 
 UserPublicKey.HASH_BYTES = 34;
@@ -76,64 +197,56 @@ function generateKeyPairs(username, password) {
             var signBytes = bothBytes.subarray(0, 32);
             var boxBytes = bothBytes.subarray(32, 64);
 	    var rootKeyBytes = bothBytes.subarray(64, 96);
+	    var sPair = nacl.sign.keyPair.fromSeed(signBytes);
+	    var bPair = nacl.box.keyPair.fromSecretKey(new Uint8Array(boxBytes));
+	    var pSignKey = new Ed25519PublicKey(sPair.publicKey);
+	    var pBoxKey = new Curve25519PublicKey(bPair.publicKey);
+	    var sSignKey = new Ed25519SecretKey(sPair.secretKey);
+	    var sBoxKey = new Curve25519SecretKey(bPair.secretKey);
             resolve({
-		user:new User(nacl.sign.keyPair.fromSeed(signBytes), nacl.box.keyPair.fromSecretKey(new Uint8Array(boxBytes))),
+		user:new User(pSignKey, pBoxKey, sSignKey, sBoxKey),
 		root:new SymmetricKey(new Uint8Array(rootKeyBytes), 1)
 	    });
         }, 'base64');
     });
 }
 
-function User(signKeyPair, boxKeyPair) {
-    UserPublicKey.call(this, signKeyPair.publicKey, boxKeyPair.publicKey);
-    this.sSignKey = signKeyPair.secretKey; // 64 bytes
-    this.sBoxKey = boxKeyPair.secretKey; // 32 bytes
-    
-    // (Uint8Array, (nonce, sig) => ())
-    this.hashAndSignMessage = function(input, cb) {
-        signMessage(this.hash(input), cb);
-    }
+function User(publicSignKey, publicBoxKey, secretSignKey, secretBoxKey) {
+    UserPublicKey.call(this, publicSignKey, publicBoxKey);
+    this.sSignKey = secretSignKey;
+    this.sBoxKey = secretBoxKey;
     
     // (Uint8Array => Uint8array)
     this.signMessage = function(input) {
-        return nacl.sign(input, this.sSignKey);
+        return this.sSignKey.signMessage(input);
     }
     
-    // (Uint8Array, (err, literals) -> ())
+    // (Uint8Array, PublicBoxingKey) -> Uint8Array)
     this.decryptMessage = function(cipher, them) {
-        var nonce = slice(cipher, cipher.length-24, cipher.length);
-        cipher = slice(cipher, 0, cipher.length-24);
-        return nacl.box.open(cipher, nonce, them.pBoxKey, this.sBoxKey);
+        return this.sBoxKey.decryptMessage(cipher, them);
     }
 
-    this.getSecretKeys = function() {
-        var tmp = new Uint8Array(this.sSignKey.length + this.sBoxKey.length);
-        tmp.set(this.sSignKey, 0);
-        tmp.set(this.sBoxKey, this.sSignKey.length);
-        return tmp;
+    // ByteArrayOutputStream -> ()
+    this.serialize = function(buf) {
+	this.sSignKey.serialize(buf);
+	this.sBoxKey.serialize(buf);
+	this.pSignKey.serialize(buf);
+	this.pBoxKey.serialize(buf);
     }
 }
 
-User.fromEncodedKeys = function(publicKeys, secretKeys) {
-    return new User(toKeyPair(slice(publicKeys, 0, 32), slice(secretKeys, 0, 64)), toKeyPair(slice(publicKeys, 32, 64), slice(secretKeys, 64, 96)));
-}
-
-User.fromSecretKeys = function(secretKeys) {
-    var publicBoxKey = new Uint8Array(32);
-    nacl.lowlevel.crypto_scalarmult_base(publicBoxKey, slice(secretKeys, 64, 96))
-    return User.fromEncodedKeys(concat(slice(secretKeys, 32, 64), 
-                publicBoxKey),
-                secretKeys);
+User.deserialize = function(din) {
+    var sSignKey = SecretSigningKey.deserialize(din);
+    var sBoxKey = SecretBoxingKey.deserialize(din);
+    var pSignKey = PublicSigningKey.deserialize(din);
+    var pBoxKey = PublicBoxingKey.deserialize(din);
+    return new User(pSignKey, pBoxKey, sSignKey, sBoxKey);
 }
 
 User.random = function() {
     var secretBoxKey = window.nacl.randomBytes(32);
     var signSeed = window.nacl.randomBytes(32);
     return new User(nacl.sign.keyPair.fromSeed(signSeed), nacl.box.keyPair.fromSecretKey(new Uint8Array(secretBoxKey)));
-}
-
-function toKeyPair(pub, sec) {
-    return {publicKey:pub, secretKey:sec};
 }
 
 /////////////////////////////
@@ -1499,10 +1612,8 @@ function ReadableFilePointer(owner, writer, mapKey, baseKey) {
     this.serialize = function() {
         var bout = new ByteArrayOutputStream();
         bout.writeArray(owner.getPublicKeys());
-        if (writer instanceof User)
-            bout.writeArray(writer.getSecretKeys());
-        else
-            bout.writeArray(writer.getPublicKeys());
+	bout.writeByte(this.isWritable() ? 1 : 0);
+        writer.serialize(bout);
         bout.writeArray(mapKey);
         bout.writeArray(baseKey.serialize());
         return bout.toByteArray();
@@ -1535,12 +1646,10 @@ ReadableFilePointer.fromLink = function(keysString) {
 ReadableFilePointer.deserialize = function(arr) {
     const bin = new ByteArrayInputStream(arr);
     const owner = bin.readArray();
-    const writerRaw = bin.readArray();
+    const hasPrivateKeys = bin.readByte() == 1;
+    const writer = hasPrivateKeys ? User.deserialize(bin) : UserPublicKey.deserialize(bin);
     const mapKey = bin.readArray();
     const rootDirKeySecret = bin.readArray();
-    const writer = writerRaw.length == window.nacl.box.secretKeyLength + window.nacl.sign.secretKeyLength ?
-    User.fromSecretKeys(writerRaw) :
-    UserPublicKey.fromPublicKeys(writerRaw);
     return new ReadableFilePointer(UserPublicKey.fromPublicKeys(owner), writer, mapKey, SymmetricKey.deserialize(rootDirKeySecret));
 }
 ReadableFilePointer.createNull = function() {

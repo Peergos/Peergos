@@ -24,7 +24,7 @@ public class Ed25519PublicKey implements PublicSigningKey {
         try {
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
             DataOutputStream dout = new DataOutputStream(bout);
-            dout.writeByte(type().ordinal());
+            dout.writeByte(type().value);
             dout.write(publicKey);
             return bout.toByteArray();
         } catch (IOException e) {

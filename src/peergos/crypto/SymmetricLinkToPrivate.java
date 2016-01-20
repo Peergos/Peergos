@@ -14,7 +14,7 @@ public class SymmetricLinkToPrivate
 
     public SymmetricLinkToPrivate(SymmetricKey from, User to, byte[] iv)
     {
-        link = ArrayOps.concat(iv, from.encrypt(to.getPrivateKeys(), iv));
+        link = ArrayOps.concat(iv, from.encrypt(to.serialize(), iv));
     }
 
     public SymmetricLinkToPrivate(SymmetricKey from, User to)
@@ -32,7 +32,7 @@ public class SymmetricLinkToPrivate
         return link;
     }
 
-    public User target(SymmetricKey from) throws IOException
+    public UserPublicKey target(SymmetricKey from) throws IOException
     {
         byte[] nonce = Arrays.copyOfRange(link, 0, SymmetricKey.NONCE_BYTES);
         byte[] encoded = from.decrypt(Arrays.copyOfRange(link, SymmetricKey.NONCE_BYTES, link.length), nonce);

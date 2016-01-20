@@ -6,7 +6,14 @@ import java.io.DataInputStream;
 import java.io.IOException;
 
 public interface PublicBoxingKey {
-    enum Type {Curve25519}
+    enum Type {
+        Curve25519(0xEC);
+
+        public final int value;
+        Type(int value) {
+            this.value = value;
+        }
+    }
 
     Type type();
 

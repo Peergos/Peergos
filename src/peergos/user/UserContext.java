@@ -45,20 +45,20 @@ public class UserContext
     public boolean register() throws IOException
     {
         byte[] rawStatic = serializeStatic();
-        byte[] signed = us.signMessage(ArrayOps.concat(username.getBytes(), us.serializePublicKeys(), rawStatic));
-        return core.addUsername(username, us.serializePublicKeys(), signed, rawStatic);
+        byte[] signed = us.signMessage(ArrayOps.concat(username.getBytes(), us.serialize(), rawStatic));
+        return core.addUsername(username, us.serialize(), signed, rawStatic);
     }
 
     public boolean isRegistered() throws IOException
     {
-        String name = core.getUsername(us.serializePublicKeys());
+        String name = core.getUsername(us.serialize());
         return username.equals(name);
     }
 
     public boolean sendFollowRequest(UserPublicKey friend) throws IOException
     {
         // check friend is a registered user
-        String friendUsername = core.getUsername(friend.serializePublicKeys());
+        String friendUsername = core.getUsername(friend.serialize());
         if (friendUsername == null)
             throw new IllegalStateException("User isn't registered! "+friend);
 
@@ -69,7 +69,7 @@ public class UserContext
         // add a note to our static data so we know who we sent the private key to
         ReadableFilePointer friendRoot = new ReadableFilePointer(us, sharing, rootMapKey, SymmetricKey.random());
         SortedSet<String> writers = new TreeSet<>();
-        writers.add(core.getUsername(friend.serializePublicKeys()));
+        writers.add(core.getUsername(friend.serialize()));
         EntryPoint entry = new EntryPoint(friendRoot, username, new TreeSet<>(), writers);
         addToStaticData(entry);
 
@@ -130,7 +130,7 @@ public class UserContext
         staticData.put(entry.pointer.writer, entry);
         byte[] rawStatic = serializeStatic();
         byte[] putHash = dht.put(rawStatic);
-        return core.setMetadataBlob(us.serializePublicKeys(), us.serializePublicKeys(), us.signMessage(putHash));
+        return core.setMetadataBlob(us.serialize(), us.serialize(), us.signMessage(putHash));
     }
 
     private Multihash uploadFragment(Fragment f, UserPublicKey targetUser, User sharer, byte[] mapKey)
@@ -150,7 +150,7 @@ public class UserContext
         byte[] metaBlob = bout.toByteArray();
         System.out.println("Storing metadata blob of " + metaBlob.length + " bytes.");
         // TODO correct this once we reinstate the Java API
-        if (!core.setMetadataBlob(us.serializePublicKeys(), sharer.serializePublicKeys(), sharer.signMessage(ArrayOps.concat(mapKey, metaBlob))))
+        if (!core.setMetadataBlob(us.serialize(), sharer.serialize(), sharer.signMessage(ArrayOps.concat(mapKey, metaBlob))))
             System.out.println("Meta blob store failed.");
         if (fragments.length > 0 ) {
             // now upload fragments to DHT
@@ -175,7 +175,7 @@ public class UserContext
 
     public Map<EntryPoint, FileAccess> getRoots() throws Exception
     {
-        byte[] staticData = dht.get(core.getMetadataBlob(us.serializePublicKeys()));
+        byte[] staticData = dht.get(core.getMetadataBlob(us.serialize()));
         DataInput din = new DataInputStream(new ByteArrayInputStream(staticData));
         int entries = din.readInt();
         this.staticData = new HashMap<>();
@@ -196,7 +196,7 @@ public class UserContext
 
     public FileAccess getMetadata(Location loc) throws IOException {
         // TODO correct with Btree once we reinstate Java API
-        byte[] meta = core.getMetadataBlob(loc.writerKey.serializePublicKeys());
+        byte[] meta = core.getMetadataBlob(loc.writerKey.serialize());
         DataInputStream din = new DataInputStream(new ByteArrayInputStream(meta));
         return FileAccess.deserialize(din);
     }

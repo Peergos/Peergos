@@ -45,12 +45,8 @@ public class ReadableFilePointer {
     }
 
     public void serialize(DataOutput dout) throws IOException {
-        Serialize.serialize(owner.serializePublicKeys(), dout);
-        // this is broken
-        if (writer instanceof User)
-            Serialize.serialize(((User)writer).getPrivateKeys(), dout);
-        else
-            Serialize.serialize(writer.serializePublicKeys(), dout);
+        Serialize.serialize(owner.serialize(), dout);
+        Serialize.serialize(writer.serialize(), dout);
         Serialize.serialize(mapKey.data, dout);
         Serialize.serialize(rootDirKey.getKey(), dout);
     }

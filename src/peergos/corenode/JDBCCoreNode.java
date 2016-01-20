@@ -388,11 +388,11 @@ public class JDBCCoreNode implements CoreNode {
         UserPublicKey existingKey = getPublicKey(username);
         if (existingKey != null)
             return false;
-        String existingUsername = getUsername(key.serializePublicKeys());
+        String existingUsername = getUsername(key.serialize());
         if (existingUsername.length() > 0)
             return false;
 
-        UserData user = new UserData(username, key.serializePublicKeys());
+        UserData user = new UserData(username, key.serialize());
         return user.insert();
     }
 
@@ -479,7 +479,7 @@ public class JDBCCoreNode implements CoreNode {
 
         try {
             byte[] btreeRootHash = writingKey.unsignMessage(writingKeySignedHash);
-            MetadataBlob blob = new MetadataBlob(writingKey.serializePublicKeys(), btreeRootHash);
+            MetadataBlob blob = new MetadataBlob(writingKey.serialize(), btreeRootHash);
             return blob.insert();
         } catch (TweetNaCl.InvalidSignatureException e) {
             System.err.println("Invalid signature during setMetadataBlob for sharer: " + writingKey);
@@ -493,7 +493,7 @@ public class JDBCCoreNode implements CoreNode {
 
         try {
             byte[] currentHash = writingKey.unsignMessage(writingKeySignedMapKeyPlusBlob);
-            MetadataBlob blob = new MetadataBlob(writingKey.serializePublicKeys(), currentHash);
+            MetadataBlob blob = new MetadataBlob(writingKey.serialize(), currentHash);
             return blob.delete();
         } catch (TweetNaCl.InvalidSignatureException e) {
             System.err.println("Invalid signature during removeMetadataBlob for  sharer: "+writingKey);

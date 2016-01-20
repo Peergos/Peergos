@@ -45,15 +45,19 @@ public class User extends UserPublicKey
         return secretBoxingKey.decryptMessage(cipher, theirPublicBoxingKey);
     }
 
-    public static User deserialize(DataInputStream din) throws IOException {
-        UserPublicKey pub = UserPublicKey.deserialize(din);
-        SecretSigningKey signingKey = SecretSigningKey.deserialize(din);
-        SecretBoxingKey boxingKey = SecretBoxingKey.deserialize(din);
-        return new User(signingKey, boxingKey, pub.publicSigningKey, pub.publicBoxingKey);
+    public static UserPublicKey deserialize(DataInputStream din) throws IOException {
+        boolean hasPrivateKeys = din.read() == 1;
+        if (hasPrivateKeys) {
+            SecretSigningKey signingKey = SecretSigningKey.deserialize(din);
+            SecretBoxingKey boxingKey = SecretBoxingKey.deserialize(din);
+            UserPublicKey pub = UserPublicKey.deserialize(din);
+            return new User(signingKey, boxingKey, pub.publicSigningKey, pub.publicBoxingKey);
+        }
+        return UserPublicKey.deserialize(din);
     }
 
-    public byte[] getPrivateKeys() {
-        return ArrayOps.concat(secretSigningKey.serialize(), secretBoxingKey.serialize());
+    public byte[] serialize() {
+        return ArrayOps.concat(secretSigningKey.serialize(), secretBoxingKey.serialize(), super.serialize());
     }
 
     public static User generateUserCredentials(String username, String password)
@@ -84,7 +88,7 @@ public class User extends UserPublicKey
 
     public static void main(String[] args) {
         User user = User.generateUserCredentials("Username", "password");
-        System.out.println("PublicKey: " + ArrayOps.bytesToHex(user.serializePublicKeys()));
+        System.out.println("PublicKey: " + ArrayOps.bytesToHex(user.serialize()));
         byte[] message = "G'day mate!".getBytes();
         byte[] cipher = user.encryptMessageFor(message, user.secretBoxingKey);
         System.out.println("Cipher: "+ArrayOps.bytesToHex(cipher));
