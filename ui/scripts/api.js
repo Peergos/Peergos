@@ -145,11 +145,13 @@ UserPublicKey.fromPublicKeys = function(both) {
     if (both.length == 0)
 	throw "Null keys returned";
     var din = new ByteArrayInputStream(both);
+    return UserPublicKey.deserialize(din);
+}
+UserPublicKey.deserialize = function(din) {
     var pSign = PublicSigningKey.deserialize(din);
     var pBox = PublicBoxingKey.deserialize(din);
     return new UserPublicKey(pSign, pBox);
 }
-UserPublicKey.deserialize = UserPublicKey.fromPublicKeys;
 UserPublicKey.createNull = function() {
     return new UserPublicKey(new Ed25519PublicKey(new Uint8Array(32)), new Curve25519PublicKey(new Uint8Array(32)));
 }
@@ -1194,7 +1196,10 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
 			    var plaintext = buf.toByteArray();
 			    var payload = targetUser.encryptMessageFor(plaintext, tmp.sBoxKey);
 			    
-			    return corenodeClient.followRequest(targetUser.getPublicKeys(), concat(tmp.pBoxKey, payload));
+			    var res = new ByteArrayOutputStream();
+			    res.writeArray(tmp.getPublicKeys());
+			    res.writeArray(payload);
+			    return corenodeClient.followRequest(targetUser.getPublicKeys(), res.toByteArray());
 			});
 		    });
 		});
@@ -1296,14 +1301,10 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
     };
 
     var decodeFollowRequest = function(raw) {
-        var pBoxKey = new Uint8Array(32);
-        for (var i=0; i < 32; i++)
-            pBoxKey[i] = raw[i]; // signing key is not used
-        var tmp = new UserPublicKey(null, pBoxKey);
         var buf = new ByteArrayInputStream(raw);
-        buf.read(32);
-        var cipher = new Uint8Array(buf.read(raw.length - 32));
-	var plaintext = user.decryptMessage(cipher, tmp);
+        var tmp = UserPublicKey.deserialize(new ByteArrayInputStream(buf.readArray()));
+        var cipher = buf.readArray();
+	var plaintext = user.decryptMessage(cipher, tmp.pBoxKey);
 	var input = new ByteArrayInputStream(plaintext);
 	var rawEntry = input.readArray();
 	var rawKey = input.readArray();
