@@ -33,7 +33,7 @@ public class BTreeHandler implements HttpHandler
                 // PUT
                 byte[] sharingKey = Serialize.deserializeByteArray(din, UserPublicKey.MAX_SIZE);
                 byte[] mapKey = Serialize.deserializeByteArray(din, 32);
-                byte[] value = Serialize.deserializeByteArray(din, Fragment.SIZE);
+                byte[] value = Serialize.deserializeByteArray(din, ContentAddressedStorage.MAX_OBJECT_LENGTH);
                 System.out.println("Put mapkey: "+new ByteArrayWrapper(mapKey)+ " -> "+new ByteArrayWrapper(value));
                 try {
                     byte[] raw = core.getMetadataBlob(sharingKey);

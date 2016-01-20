@@ -2,7 +2,6 @@
 package peergos.corenode;
 
 import peergos.crypto.*;
-import peergos.user.UserContext;
 import peergos.util.*;
 
 import java.net.*;
@@ -73,7 +72,10 @@ public class HTTPCoreNode implements CoreNode
             dout.flush();
 
             DataInputStream din = new DataInputStream(conn.getInputStream());
-            return Serialize.deserializeString(din, UserContext.MAX_USERNAME_SIZE);
+            if  (true)
+                throw new IllegalStateException("TODO: UserContext.MAX_USERNAME_SIZE");
+            int maxUsernameSize = -1;
+            return Serialize.deserializeString(din, maxUsernameSize);
         } catch (IOException ioe) {
             ioe.printStackTrace();
             return null;

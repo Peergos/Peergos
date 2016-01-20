@@ -29,7 +29,7 @@ public class DHTHandler implements HttpHandler
             int type = din.readInt();
             if (type == 0) {
                 // PUT
-                byte[] value = Serialize.deserializeByteArray(din, Fragment.SIZE);
+                byte[] value = Serialize.deserializeByteArray(din, ContentAddressedStorage.MAX_OBJECT_LENGTH);
                 byte[] owner = Serialize.deserializeByteArray(din, UserPublicKey.MAX_SIZE);
                 // TODO check we care about owner
                 List<Multihash> hashes = new ArrayList<>();

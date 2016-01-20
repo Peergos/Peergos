@@ -5,6 +5,7 @@ import peergos.server.merklebtree.MerkleNode;
 
 public interface ContentAddressedStorage {
 
+    static final int MAX_OBJECT_LENGTH  = 1024*256;
     /**
      *
      * @param object
