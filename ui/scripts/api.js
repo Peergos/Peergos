@@ -149,6 +149,7 @@ UserPublicKey.fromPublicKeys = function(both) {
     var pBox = PublicBoxingKey.deserialize(din);
     return new UserPublicKey(pSign, pBox);
 }
+UserPublicKey.deserialize = UserPublicKey.fromPublicKeys;
 UserPublicKey.createNull = function() {
     return new UserPublicKey(new Ed25519PublicKey(new Uint8Array(32)), new Curve25519PublicKey(new Uint8Array(32)));
 }
@@ -1191,7 +1192,7 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
 			    buf.writeArray(entry.serialize());
 			    buf.writeArray(requestedKey != null ? requestedKey.serialize() : new Uint8Array(0));
 			    var plaintext = buf.toByteArray();
-			    var payload = targetUser.encryptMessageFor(plaintext, tmp);
+			    var payload = targetUser.encryptMessageFor(plaintext, tmp.sBoxKey);
 			    
 			    return corenodeClient.followRequest(targetUser.getPublicKeys(), concat(tmp.pBoxKey, payload));
 			});

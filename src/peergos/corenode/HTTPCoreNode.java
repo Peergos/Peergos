@@ -72,10 +72,7 @@ public class HTTPCoreNode implements CoreNode
             dout.flush();
 
             DataInputStream din = new DataInputStream(conn.getInputStream());
-            if  (true)
-                throw new IllegalStateException("TODO: UserContext.MAX_USERNAME_SIZE");
-            int maxUsernameSize = -1;
-            return Serialize.deserializeString(din, maxUsernameSize);
+            return Serialize.deserializeString(din, CoreNode.MAX_USERNAME_SIZE);
         } catch (IOException ioe) {
             ioe.printStackTrace();
             return null;
