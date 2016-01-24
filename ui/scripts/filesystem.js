@@ -1153,9 +1153,9 @@ var Browser = React.createClass({
             return userContext.dhtClient.get(hash);
             }).then(function(raw) {
 
-            if (raw.length == 0)
+            if (raw.data.length == 0)
                     return alert("File not found");
-            const fa = FileAccess.deserialize(raw);
+            const fa = FileAccess.deserialize(raw.data);
 
             return userContext.corenodeClient.getUsername(filePointer.owner.getPublicKeys()).then(function(ownerName) {
                 const treeNode =  new FileTreeNode(new RetrievedFilePointer(filePointer, fa), ownerName, [], [], filePointer.writer);
