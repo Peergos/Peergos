@@ -694,7 +694,7 @@ function DHTClient() {
             var buf = new ByteArrayInputStream(res);
             var success = buf.readInt();
             if (success == 1)
-                return Promise.resolve(buf.readArray());
+                return Promise.resolve({hash:keyData,data:buf.readArray()});
             return Promise.reject("Fragment download failed");
         });
     };
@@ -1373,7 +1373,7 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
     this.getRoots = function() {
         const context = this;
         return this.getStaticData().then(function(raw) {
-            var buf = new ByteArrayInputStream(raw);
+            var buf = new ByteArrayInputStream(raw.data);
             var count = buf.readInt();
             var res = [];
             for (var i=0; i < count; i++) {
@@ -1397,8 +1397,8 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
         return Promise.all(proms).then(function(result) {
             var entryPoints = [];
             for (var i=0; i < result.length; i++) {
-                if (result[i].byteLength > 8) {
-                    entryPoints.push([entries[i], FileAccess.deserialize(result[i])]);
+                if (result[i].data.byteLength > 8) {
+                    entryPoints.push([entries[i], FileAccess.deserialize(result[i].data)]);
                 } else {
                     // these point to removed directories
 		}
@@ -1472,7 +1472,7 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
         return Promise.all(proms).then(function(rawBlobs) {
             var accesses = [];
             for (var i=0; i < rawBlobs.length; i++) {
-                accesses[i] = [links[i].toReadableFilePointer(baseKey), rawBlobs[i].length > 0 ? FileAccess.deserialize(rawBlobs[i]) : null];
+                accesses[i] = [links[i].toReadableFilePointer(baseKey), rawBlobs[i].data.length > 0 ? FileAccess.deserialize(rawBlobs[i].data) : null];
             }
 	    const res = [];
 	    for (var i=0; i < accesses.length; i++)
@@ -1485,7 +1485,7 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
     this.getMetadata = function(loc) {
 	return this.btree.get(loc.writer.getPublicKeys(), loc.mapKey).then(function(blobHash) {
 	    return this.dhtClient.get(blobHash).then(function(raw) {
-		return Promise.resolve(FileAccess.deserialize(raw));
+		return Promise.resolve(FileAccess.deserialize(raw.data));
 	    });
 	}.bind(this));
     }.bind(this);
@@ -2652,9 +2652,9 @@ function reorder(fragments, hashes) {
         hashMap.set(nacl.util.encodeBase64(hashes[i]), i); // Seems Map can't handle array contents equality
     var res = [];
     for (var i=0; i < fragments.length; i++) {
-        var hash = nacl.util.encodeBase64(UserPublicKey.hash(fragments[i]));
+        var hash = nacl.util.encodeBase64(fragments[i].hash);
         var index = hashMap.get(hash);
-        res[index] = fragments[i];
+        res[index] = fragments[i].data;
     }
     return res;
 }
