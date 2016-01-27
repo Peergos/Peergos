@@ -1,65 +1,50 @@
 package peergos.crypto.symmetric;
 
-import org.bouncycastle.jce.provider.BouncyCastleProvider;
-import peergos.crypto.TweetNaCl;
+import java.io.DataInputStream;
+import java.io.IOException;
+import java.util.*;
 
-import java.security.*;
-
-public class SymmetricKey
+public interface SymmetricKey
 {
-    public static final int KEY_BYTES = 32;
-    public static final int NONCE_BYTES = 24;
+    Map<Integer, Type> byValue = new HashMap<>();
+    enum Type {
+        TweetNaCl(0x1);
 
-    private final byte[] secretKey;
+        public final int value;
 
-    public SymmetricKey(byte[] encoded)
-    {
-        this.secretKey = encoded;
+        Type(int value) {
+            this.value = value;
+            byValue.put(value, this);
+        }
+
+        public static Type byValue(int val) {
+            return byValue.get(val);
+        }
     }
 
-    public byte[] getKey()
-    {
-        return secretKey;
+    Type type();
+
+    byte[] getKey();
+
+    byte[] encrypt(byte[] data, byte[] nonce);
+
+    byte[] decrypt(byte[] data, byte[] nonce);
+
+    byte[] createNonce();
+
+    static SymmetricKey deserialize(DataInputStream din) throws IOException {
+        Type t = Type.byValue(din.read());
+        switch (t) {
+            case TweetNaCl:
+                byte[] key = new byte[32];
+                din.readFully(key);
+                return new TweetNaClKey(key);
+            default: throw new IllegalStateException("Unknown Symmetric Key type: "+t.name());
+        }
+
     }
 
-    public byte[] encrypt(byte[] data, byte[] nonce)
-    {
-        return encrypt(secretKey, data, nonce);
-    }
-
-    public byte[] decrypt(byte[] data, byte[] nonce)
-    {
-        return decrypt(secretKey, data, nonce);
-    }
-
-    public static byte[] encrypt(byte[] key, byte[] data, byte[] nonce)
-    {
-        return TweetNaCl.secretbox(data, nonce, key);
-    }
-
-    public static byte[] decrypt(byte[] key, byte[] cipher, byte[] nonce)
-    {
-        return TweetNaCl.secretbox_open(cipher, nonce, key);
-    }
-
-    private static SecureRandom csprng = new SecureRandom();
-
-    public byte[] createNonce()
-    {
-        byte[] res = new byte[NONCE_BYTES];
-        csprng.nextBytes(res);
-        return res;
-    }
-
-    public static SymmetricKey random()
-    {
-        byte[] key = new byte[KEY_BYTES];
-        csprng.nextBytes(key);
-        return new SymmetricKey(key);
-    }
-
-    static
-    {
-        Security.addProvider(new BouncyCastleProvider());
+    static SymmetricKey random() {
+        return TweetNaClKey.random();
     }
 }
