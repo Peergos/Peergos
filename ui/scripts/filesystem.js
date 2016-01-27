@@ -975,12 +975,19 @@ var Browser = React.createClass({
             const clipboard = this.state.clipboard;
             if (typeof(clipboard) ==  undefined || typeof(clipboard.op) == "undefined")
                     return;
-            if (clipboard.op == "cut"  || clipboard.op == "copy") {
+            if (clipboard.op == "cut") {
                     const pwd = this.state.retrievedFilePointerPath[0];
                     clipboard.fileTreeNode.copyTo(pwd, userContext).then(function() {
                             return clipboard.fileTreeNode.remove(userContext, clipboard.parent);
                     }).then(function() {
                             this.loadFilesFromServer();
+                    }.bind(this));
+            }else if (clipboard.op == "copy") {
+                    FileTreeNode.ROOT.getDescendentByPath("/" + userContext.username, userContext)
+                    .then(function(home){
+                        clipboard.fileTreeNode.copyTo(home, userContext).then(function() {
+                                this.loadFilesFromServer();
+                        }.bind(this));
                     }.bind(this));
             }
         },
