@@ -208,7 +208,7 @@ public class SSL
             KeyPair keypair = generateKeyPair();
             PrivateKey myPrivateKey = keypair.getPrivate();
             Certificate cert = generateRootCertificate(keypair);
-            BufferedWriter w = new BufferedWriter(new FileWriter("peergos/crypto/RootCertificate.java"));
+            BufferedWriter w = new BufferedWriter(new FileWriter("src/peergos/crypto/RootCertificate.java"));
             w.write("package peergos.crypto;\n\nimport org.bouncycastle.util.encoders.Base64;\n\n" +
                     "public class RootCertificate {\n    public static final byte[] rootCA = Base64.decode(");
             printCertificate(cert, w);
@@ -324,7 +324,7 @@ public class SSL
             KeyStore ks = getRootKeyStore(rootPassword);
             PrivateKey rootPriv = (PrivateKey) ks.getKey("private", rootPassword);
             Certificate signed = signCertificate(csr, rootPriv, getRootCertificate(), true);
-            BufferedWriter w = new BufferedWriter(new FileWriter("peergos/crypto/"+type+"Certificates.java"));
+            BufferedWriter w = new BufferedWriter(new FileWriter("src/peergos/crypto/"+type+"Certificates.java"));
             w.write("package peergos.crypto;\n\nimport org.bouncycastle.util.encoders.Base64;\n\n" +
                     "public class "+type+"Certificates {\n    public static final int NUM_SERVERS = 1;\n"+
                     "    public static byte[][] servers = new byte[NUM_SERVERS][];\n    static {\n"+
