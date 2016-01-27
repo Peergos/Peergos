@@ -1540,6 +1540,11 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
 	    that.removeFromStaticData(dir);
 	});
     }.bind(this);
+
+    this.logout = function() {
+	this.rootNode = null;
+	FileTreeNode.ROOT = new FileTreeNode(null, null, [], [], null);
+    }.bind(this);
 }
 
 //List[FollowRequest],  List[String], List[FileTreeNode] 
@@ -1949,10 +1954,6 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
     }.bind(this);
 }
 FileTreeNode.ROOT = new FileTreeNode(null, null, [], [], null);
-
-function logout() {
-    FileTreeNode.ROOT = new FileTreeNode(null, null, [], [], null);
-}
 
 //ReadableFilePointer, FileAccess
 function RetrievedFilePointer(pointer, access) {

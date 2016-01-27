@@ -1,6 +1,7 @@
 package peergos.user.fs;
 
 import peergos.crypto.symmetric.SymmetricKey;
+import peergos.crypto.symmetric.TweetNaClKey;
 import peergos.util.ByteArrayWrapper;
 
 import java.security.SecureRandom;
@@ -16,7 +17,7 @@ public class Chunk {
     private final ByteArrayWrapper data, nonce, mapKey;
 
     public Chunk(SymmetricKey key, ByteArrayWrapper data) {
-        this(key, data, build(SymmetricKey.NONCE_BYTES), build(Location.MAP_KEY_LENGTH));
+        this(key, data, build(TweetNaClKey.NONCE_BYTES), build(Location.MAP_KEY_LENGTH));
     }
 
     public Chunk(SymmetricKey key, ByteArrayWrapper data, ByteArrayWrapper nonce, ByteArrayWrapper mapKey) {

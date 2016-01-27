@@ -4,6 +4,10 @@ import peergos.crypto.asymmetric.PublicBoxingKey;
 import peergos.crypto.asymmetric.SecretBoxingKey;
 import peergos.crypto.symmetric.SymmetricKey;
 
+import java.io.ByteArrayInputStream;
+import java.io.DataInputStream;
+import java.io.IOException;
+
 public class AsymmetricLink
 {
     private final byte[] link;
@@ -25,6 +29,6 @@ public class AsymmetricLink
 
     public SymmetricKey target(User to, UserPublicKey from)
     {
-        return new SymmetricKey(to.decryptMessage(link, from.publicBoxingKey));
+        return SymmetricKey.deserialize(to.decryptMessage(link, from.publicBoxingKey));
     }
 }

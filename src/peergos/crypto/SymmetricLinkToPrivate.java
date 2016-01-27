@@ -1,6 +1,7 @@
 package peergos.crypto;
 
 import peergos.crypto.symmetric.SymmetricKey;
+import peergos.crypto.symmetric.TweetNaClKey;
 import peergos.util.ArrayOps;
 
 import java.io.ByteArrayInputStream;
@@ -34,8 +35,8 @@ public class SymmetricLinkToPrivate
 
     public UserPublicKey target(SymmetricKey from) throws IOException
     {
-        byte[] nonce = Arrays.copyOfRange(link, 0, SymmetricKey.NONCE_BYTES);
-        byte[] encoded = from.decrypt(Arrays.copyOfRange(link, SymmetricKey.NONCE_BYTES, link.length), nonce);
+        byte[] nonce = Arrays.copyOfRange(link, 0, TweetNaClKey.NONCE_BYTES);
+        byte[] encoded = from.decrypt(Arrays.copyOfRange(link, TweetNaClKey.NONCE_BYTES, link.length), nonce);
         return User.deserialize(new DataInputStream(new ByteArrayInputStream(encoded)));
     }
 }

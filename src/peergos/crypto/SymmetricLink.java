@@ -1,6 +1,7 @@
 package peergos.crypto;
 
 import peergos.crypto.symmetric.SymmetricKey;
+import peergos.crypto.symmetric.TweetNaClKey;
 import peergos.util.ArrayOps;
 
 import java.util.Arrays;
@@ -17,8 +18,8 @@ public class SymmetricLink
 
     public SymmetricLink(byte[] link)
     {
-        this.link = Arrays.copyOfRange(link, SymmetricKey.NONCE_BYTES, link.length);
-        this.nonce = Arrays.copyOfRange(link, 0, SymmetricKey.NONCE_BYTES);
+        this.link = Arrays.copyOfRange(link, TweetNaClKey.NONCE_BYTES, link.length);
+        this.nonce = Arrays.copyOfRange(link, 0, TweetNaClKey.NONCE_BYTES);
     }
 
     public byte[] serialize()
@@ -34,6 +35,6 @@ public class SymmetricLink
     public SymmetricKey target(SymmetricKey from)
     {
         byte[] encoded = from.decrypt(link, nonce);
-        return new SymmetricKey(encoded);
+        return SymmetricKey.deserialize(encoded);
     }
 }

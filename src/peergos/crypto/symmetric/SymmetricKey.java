@@ -1,5 +1,8 @@
 package peergos.crypto.symmetric;
 
+import org.ibex.nestedvm.Runtime;
+
+import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
 import java.io.IOException;
 import java.util.*;
@@ -31,6 +34,14 @@ public interface SymmetricKey
     byte[] decrypt(byte[] data, byte[] nonce);
 
     byte[] createNonce();
+
+    static SymmetricKey deserialize(byte[] in) {
+        try {
+            return deserialize(new DataInputStream(new ByteArrayInputStream(in)));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
 
     static SymmetricKey deserialize(DataInputStream din) throws IOException {
         Type t = Type.byValue(din.read());

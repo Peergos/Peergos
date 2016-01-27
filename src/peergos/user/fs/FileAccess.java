@@ -12,9 +12,9 @@ public class FileAccess {
     public static class SymmetricLocationLink{}
 
 
-    private final SymmetricLink parentToMeta;
-    private final EncryptedFileProperties fileProperties;
-    private final FileRetriever retriever;
-    private final SymmetricLocationLink parentLink;
+//    private final SymmetricLink parentToMeta;
+//    private final EncryptedFileProperties fileProperties;
+//    private final FileRetriever retriever;
+//    private final SymmetricLocationLink parentLink;
 
 }

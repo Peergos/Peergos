@@ -9,6 +9,7 @@ import peergos.crypto.asymmetric.curve25519.Curve25519SecretKey;
 import peergos.crypto.asymmetric.curve25519.Ed25519PublicKey;
 import peergos.crypto.asymmetric.curve25519.Ed25519SecretKey;
 import peergos.crypto.symmetric.SymmetricKey;
+import peergos.crypto.symmetric.TweetNaClKey;
 import peergos.user.UserContext;
 import peergos.user.UserWithRoot;
 
@@ -50,7 +51,7 @@ public class UserUtil {
                 new Ed25519PublicKey(publicSignBytes),
                 new Curve25519PublicKey(pubilcBoxBytes));
 
-        SymmetricKey root =  new SymmetricKey(rootKeyBytes);
+        SymmetricKey root =  new TweetNaClKey(rootKeyBytes);
 
         return new UserWithRoot(user, root);
     }

@@ -1126,7 +1126,7 @@ var Browser = React.createClass({
 
         logoutFunction: function(evt) {
                 console.log("User logging out.");
-                logout();
+                userContext.logout();
                 requireSignedIn(function() {
                         userContext = null;
                         this.setState(this.getInitialState(),
