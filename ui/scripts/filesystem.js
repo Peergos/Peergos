@@ -1201,8 +1201,6 @@ var Browser = React.createClass({
                 uploadButton.onclick = this.onUpload;
                 var userOptionsButton = document.getElementById("userOptionsButton");
                 userOptionsButton.onclick = this.onUser;
-                var uploadInput = document.getElementById("uploadInput"); 
-                uploadInput.addEventListener("change", this.uploadFile(), false);
                 var mkdirButton = document.getElementById("mkdirButton"); 
                 mkdirButton.onclick = this.mkdir;
                 var alternateViewButton = document.getElementById("alternateViewButton"); 
@@ -1213,6 +1211,9 @@ var Browser = React.createClass({
                 signupButton.onclick = this.signup; 
                 var passwordInput= document.getElementById("login-password-input");
                 passwordInput.onkeypress=this.loginOnEnter;
+
+                var uploadInput = document.getElementById("uploadInput"); 
+                uploadInput.addEventListener("change", this.uploadFile(), false);
                 var filedrag = document.getElementById("filedrag");
                 filedrag.addEventListener("dragover", dragHandler, false);
                 filedrag.addEventListener("dragleave", dragHandler, false);                        
@@ -1231,12 +1232,12 @@ var Browser = React.createClass({
         },
         
         clearListeners: function() {
-            const ids= ["uploadInput", "filedrag"];
-            ids.forEach(function(id) {
-                 const current = document.getElementById(id);
-                 const updated = current.cloneNode(true);
-                 current.parentNode.replaceChild(updated, current);
-            });
+                var uploadInput = document.getElementById("uploadInput"); 
+                uploadInput.removeEventListener("change", this.uploadFile(), false);
+                var filedrag = document.getElementById("filedrag");
+                filedrag.removeEventListener("dragover", dragHandler, false);
+                filedrag.removeEventListener("dragleave", dragHandler, false);                        
+                filedrag.removeEventListener("drop", this.selectHandler(), false);                      
         },
 
         updateSort: function(sort) {

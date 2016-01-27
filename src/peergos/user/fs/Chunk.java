@@ -4,7 +4,6 @@ import peergos.crypto.symmetric.SymmetricKey;
 import peergos.util.ByteArrayWrapper;
 
 import java.security.SecureRandom;
-import java.util.List;
 import java.util.Random;
 
 public class Chunk {

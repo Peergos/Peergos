@@ -6,8 +6,10 @@ public class FileAccess {
     public static class EncryptedFileProperties{
         //todo : wrap byte array
     }
-    public static class  FileRetriever{}
-    public static class  SymmetricLocationLink{}
+    public static class  FileRetriever{
+        //todo
+    }
+    public static class SymmetricLocationLink{}
 
 
     private final SymmetricLink parentToMeta;
