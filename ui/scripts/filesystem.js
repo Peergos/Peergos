@@ -1135,6 +1135,7 @@ var Browser = React.createClass({
                                                 $("#login-form").css("display","block");
                                                 $("#logout").html("");
                                                 this.componentDidMount();
+                                                this.clearListeners();
                                         }.bind(this));
                 }.bind(this));
         },
@@ -1227,6 +1228,15 @@ var Browser = React.createClass({
                                 } else throw "unimplemneted selection "+ selected;
                         }.bind(this)        
                 });
+        },
+        
+        clearListeners: function() {
+            const ids= ["uploadInput", "filedrag"];
+            ids.forEach(function(id) {
+                 const current = document.getElementById(id);
+                 const updated = current.cloneNode(true);
+                 current.parentNode.replaceChild(updated, current);
+            });
         },
 
         updateSort: function(sort) {
