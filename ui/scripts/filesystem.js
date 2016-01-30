@@ -278,6 +278,7 @@ const UserOptions = React.createClass({
                 }).map(function(froot) {
                         const ownerName = froot.getOwner();
                         const onClick = function(){
+                                $('#modal').modal("hide");
                                 this.props.browser.loadFilesFromServer(froot);
                         }.bind(this);
                         const onRemove = function(evt){
