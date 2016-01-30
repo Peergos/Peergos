@@ -413,7 +413,7 @@ var SignUp = React.createClass({
                         const pw1 = document.getElementById("signup-password-input").value;
                         const pw2 = document.getElementById("signup-verify-password-input").value;
                         const email = document.getElementById("signup-email-user-input").value;
-                        //TODO: email
+                        
                         if (pw1.length < 0) {
                                 this.setState({
                                         usernameClass : "",
@@ -438,6 +438,16 @@ var SignUp = React.createClass({
                             submitEmailSignup(username, email);
 
                         var ctx = null;
+		        // check username is valid
+		        if (username.includes(" ") || username.includes("\t") || username.includes("\n")) {
+			    this.setState({
+                                usernameClass : "has-error has-feedback",
+                                usernameMsg : "Username cannot contain whitespace!",
+                                passwordClass : "",
+                                passwordMsg : ""
+                            });
+			    return;
+		        }
                         startInProgess();
                         return generateKeyPairs(username, pw1).then(function(keys) {
                                 const dht = new DHTClient();
@@ -446,13 +456,14 @@ var SignUp = React.createClass({
                                 return  ctx.isRegistered();
                         }).then(function(registered) {
                                 if  (! registered) {
-                                        console.log("Now registering  user "+ username);
-                                        return ctx.register();
+				    // No user exists with that public key
+                                    console.log("Now registering  user "+ username);
+                                    return ctx.register();
                                 }
                                 clearInProgress();
                                 this.setState({
                                         usernameClass : "has-error has-feedback",
-                                        usernameMsg : "Username is already registered!",
+                                        usernameMsg : "That public key is already registered!",
                                         passwordClass : "",
                                         passwordMsg : ""
                                 });
@@ -463,14 +474,26 @@ var SignUp = React.createClass({
 
                                     this.setState({
                                         usernameClass : "has-error has-feedback",
-                                        usernameMsg : "Failed to register username. Check username.",
+                                        usernameMsg : "This username is already registered!",
                                         passwordClass : "",
                                         passwordMsg : ""
                                     });
-                                    return Promise.reject("Couldn't register username!");
+				    // This should never happen unless the same username and password is given as an existing user
+                                    return Promise.reject("Public key is already registered!");
                                 }
                                 return ctx.createEntryDirectory(username);
-                        }.bind(this)).then(function(root) {
+                        }.bind(this),
+					   function(err) {
+					       clearInProgress();
+					       
+					       this.setState({
+						   usernameClass : "has-error has-feedback",
+						   usernameMsg : "Failed to register username. ",
+						   passwordClass : "",
+						   passwordMsg : ""
+					       });
+                                    return Promise.reject("Couldn't register username!");
+					  }).then(function(root) {
                                 return root.fileAccess.mkdir("shared", ctx, root.filePointer.writer, root.filePointer.mapKey, root.filePointer.baseKey, null, true);
                         }.bind(this)).then(function(res) {
                             console.log("Verified user "+ username +" is registered");
