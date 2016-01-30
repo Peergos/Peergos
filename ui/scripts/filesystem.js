@@ -455,14 +455,14 @@ var SignUp = React.createClass({
                                         passwordClass : "",
                                         passwordMsg : ""
                                 });
-                                return Promise.resolve(false);
+                                return Promise.reject("Username is already registered!");
                         }.bind(this)).then(function(isRegistered) {
                                 if  (! isRegistered) { 
                                     clearInProgress();
 
                                     this.setState({
                                         usernameClass : "has-error has-feedback",
-                                        usernameMsg : "Failed to register username. Whitespace is not allowed in username.",
+                                        usernameMsg : "Failed to register username. Check username.",
                                         passwordClass : "",
                                         passwordMsg : ""
                                     });
