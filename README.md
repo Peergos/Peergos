@@ -1,3 +1,5 @@
+![Peergos Logo](https://raw.githubusercontent.com/ianopolous/Peergos/gh-pages/images/PeergosLogo.png)
+
 Peergos
 ========
 
