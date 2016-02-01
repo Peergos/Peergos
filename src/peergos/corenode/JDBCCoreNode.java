@@ -1,5 +1,6 @@
 package peergos.corenode;
 
+import org.ibex.nestedvm.Runtime;
 import peergos.crypto.*;
 import peergos.util.*;
 
@@ -478,8 +479,14 @@ public class JDBCCoreNode implements CoreNode {
         UserPublicKey writingKey = UserPublicKey.deserialize(new DataInputStream(new ByteArrayInputStream(writingPublicKey)));
 
         try {
-            byte[] btreeRootHash = writingKey.unsignMessage(writingKeySignedHash);
-            MetadataBlob blob = new MetadataBlob(writingKey.serialize(), btreeRootHash);
+            byte[] current = getMetadataBlob(writingPublicKey);
+            byte[] bothHashes = writingKey.unsignMessage(writingKeySignedHash);
+            // check CAS [current hash, new hash]
+            DataInputStream din = new DataInputStream(new ByteArrayInputStream(bothHashes));
+            byte[] claimedCurrentHash = Serialize.deserializeByteArray(din, 4096);
+            if (!Arrays.equals(current, claimedCurrentHash) && current != null)
+                return false;
+            MetadataBlob blob = new MetadataBlob(writingKey.serialize(), bothHashes);
             return blob.insert();
         } catch (TweetNaCl.InvalidSignatureException e) {
             System.err.println("Invalid signature during setMetadataBlob for sharer: " + writingKey);
@@ -508,7 +515,13 @@ public class JDBCCoreNode implements CoreNode {
         MetadataBlob users = blob.selectOne();
         if (users == null)
             return null;
-        return users.hash;
+        DataInputStream din = new DataInputStream(new ByteArrayInputStream(users.hash));
+        try {
+            Serialize.deserializeByteArray(din, 4096);
+            return Serialize.deserializeByteArray(din, 4096);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public synchronized void close()

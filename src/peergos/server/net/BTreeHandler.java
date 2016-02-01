@@ -40,7 +40,11 @@ public class BTreeHandler implements HttpHandler
                     byte[] rootHash = raw.length == 0 ? new byte[0] : raw;
                     MerkleBTree btree = MerkleBTree.create(rootHash, dht);
                     byte[] newRoot = btree.put(mapKey, value);
-                    new ModifySuccess(httpExchange).accept(Optional.of(newRoot));
+                    ByteArrayOutputStream bout = new ByteArrayOutputStream();
+                    DataOutputStream dout = new DataOutputStream(bout);
+                    Serialize.serialize(rootHash, dout);
+                    Serialize.serialize(newRoot, dout);
+                    new ModifySuccess(httpExchange).accept(Optional.of(bout.toByteArray()));
                 } catch (Exception e) {
                     e.printStackTrace();
                     new ModifySuccess(httpExchange).accept(Optional.empty());
@@ -68,7 +72,11 @@ public class BTreeHandler implements HttpHandler
                     byte[] rootHash = core.getMetadataBlob(sharingKey);
                     MerkleBTree btree = MerkleBTree.create(rootHash, dht);
                     byte[] newRoot = btree.delete(mapKey);
-                    new ModifySuccess(httpExchange).accept(Optional.of(newRoot));
+                    ByteArrayOutputStream bout = new ByteArrayOutputStream();
+                    DataOutputStream dout = new DataOutputStream(bout);
+                    Serialize.serialize(rootHash, dout);
+                    Serialize.serialize(newRoot, dout);
+                    new ModifySuccess(httpExchange).accept(Optional.of(bout.toByteArray()));
                 } catch (Exception e) {
                     e.printStackTrace();
                     new ModifySuccess(httpExchange).accept(Optional.empty());

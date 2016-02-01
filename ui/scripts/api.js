@@ -800,8 +800,8 @@ function CoreNodeClient() {
 
     //Uint8Array -> Uint8Array -> Uint8Array -> Uint8Array  -> Uint8Array -> fn -> fn -> void
     this.addMetadataBlob = function( owner,  encodedSharingPublicKey, sharingKeySignedPayload) {
-	if (sharingKeySignedPayload.length != 64 + 34)
-	    throw "Invalid signed hash";
+	if (sharingKeySignedPayload.length != 64 + 2*34 + 2*4 && sharingKeySignedPayload.length  != 64 + 34 + 8)
+	    throw "Invalid signed pair of hashes!";
         var buffer = new ByteArrayOutputStream();
         buffer.writeArray(owner);
         buffer.writeArray(encodedSharingPublicKey);
@@ -1242,15 +1242,20 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
     this.commitStaticData = function() {
 	var rawStatic = new Uint8Array(this.serializeStatic());
 	return this.dhtClient.put(rawStatic, user.getPublicKeys()).then(function(blobHash){
-	    var signed = this.user.signMessage(blobHash);
-	    return corenodeClient.addMetadataBlob(this.user.getPublicKeys(), this.user.getPublicKeys(), signed)
-		.then(function(added) {
-		    if (!added) {
-			console.log("Static data store failed.");
-			return Promise.resolve(false);
-		    }
-		    return Promise.resolve(true);
-		});
+	    return this.corenodeClient.getMetadataBlob(this.user).then(function(currentHash) {
+		var bout = new ByteArrayOutputStream();
+		bout.writeArray(currentHash);
+		bout.writeArray(blobHash);
+		var signed = this.user.signMessage(bout.toByteArray());
+		return corenodeClient.addMetadataBlob(this.user.getPublicKeys(), this.user.getPublicKeys(), signed)
+		    .then(function(added) {
+			if (!added) {
+			    console.log("Static data store failed.");
+			    return Promise.resolve(false);
+			}
+			return Promise.resolve(true);
+		    });
+	    }.bind(this));
 	}.bind(this));
     }.bind(this);
 
@@ -1340,8 +1345,8 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
 	const btree = this.btree;
         console.log("Storing metadata blob of " + metaBlob.length + " bytes. to mapKey: "+bytesToHex(mapKey));
 	return this.dhtClient.put(metaBlob, owner.getPublicKeys(), linkHashes).then(function(blobHash){
-	    return btree.put(sharer.getPublicKeys(), mapKey, blobHash).then(function(newBtreeRoot) {
-		var msg = newBtreeRoot;
+	    return btree.put(sharer.getPublicKeys(), mapKey, blobHash).then(function(newBtreeRootCAS) {
+		var msg = newBtreeRootCAS;
 		var signed = sharer.signMessage(msg);
 		return corenodeClient.addMetadataBlob(owner.getPublicKeys(), sharer.getPublicKeys(), signed)
 		    .then(function(added) {
@@ -1974,8 +1979,8 @@ function RetrievedFilePointer(pointer, access) {
 	if (!this.fileAccess.isDirectory())
 	    return this.fileAccess.removeFragments(context).then(function() {
 		return context.btree.remove(this.filePointer.writer.getPublicKeys(), this.filePointer.mapKey);
-	    }.bind(this)).then(function(treeRootHash) {
-		var signed = this.filePointer.writer.signMessage(treeRootHash);
+	    }.bind(this)).then(function(treeRootHashCAS) {
+		var signed = this.filePointer.writer.signMessage(treeRootHashCAS);
 		return context.corenodeClient.addMetadataBlob(this.filePointer.owner.getPublicKeys(), this.filePointer.writer.getPublicKeys(), signed)
 	    }.bind(this)).then(function() {
 		// remove from parent
@@ -1988,8 +1993,8 @@ function RetrievedFilePointer(pointer, access) {
 		proms.push(files[i].remove(context, null));
 	    return Promise.all(proms).then(function() {
 		return context.btree.remove(this.filePointer.writer.getPublicKeys(), this.filePointer.mapKey);
-	    }.bind(this)).then(function(treeRootHash) {
-		var signed = this.filePointer.writer.signMessage(treeRootHash);
+	    }.bind(this)).then(function(treeRootHashCAS) {
+		var signed = this.filePointer.writer.signMessage(treeRootHashCAS);
 		return context.corenodeClient.addMetadataBlob(this.filePointer.owner.getPublicKeys(), this.filePointer.writer.getPublicKeys(), signed)
 	    }.bind(this)).then(function() {
 		// remove from parent
