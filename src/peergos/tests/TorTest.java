@@ -21,7 +21,7 @@ public class TorTest {
 
         SocketFactory sf = tor.getSocketFactory();
 
-        URL url = new URL("https://demo.peergos.net");
+        URL url = new URL("http://www.google.com/");
         String websiteAddress = url.getHost();
 
         String file = url.getFile();
@@ -35,6 +35,7 @@ public class TorTest {
         String line;
         while ((line = response.readLine()) != null)
             b.append(line + "\n");
+
         String resp = b.toString();
         System.out.println(resp);
     }
