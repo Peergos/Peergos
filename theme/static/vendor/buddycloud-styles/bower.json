@@ -1,19 +1,19 @@
 {
-  "name": "buddycloud-styles",
+  "name": "peergos-styles",
   "version": "0.0.0",
   "authors": [
     "Jan Lindenberg <jan.lindenberg@gmail.com>",
     "Vítor Avelino <contact@vitoravelino.me>"
   ],
-  "description": "Bootstrap theme for buddycloud sites",
+  "description": "Bootstrap theme for peergos sites",
   "main": [
-    "dist/css/buddycloud-styles.css",
-    "dist/js/buddycloud-styles.js"
+    "dist/css/peergos-styles.css",
+    "dist/js/peergos-styles.js"
   ],
   "keywords": [
     "css",
     "framework",
-    "buddycloud"
+    "peergos"
   ],
   "license": "Apache2",
   "private": true,

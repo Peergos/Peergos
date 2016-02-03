@@ -1,19 +1,19 @@
 #Pagination
 
 ```shell
-#GET https://buddycloud.com/api/{channelId}?{queryParameter}={value}
+#GET https://peergos.org/api/{channelId}?{queryParameter}={value}
 
-curl https://buddycloud.com/api/juliet@buddycloud.org?max=10 \
+curl https://peergos.org/api/juliet@peergos.org?max=10 \
      -X GET
 ```
 
 ```javascript
-#XMPP-FTW event 'xmpp.buddycloud.retrieve'
+#XMPP-FTW event 'xmpp.peergos.retrieve'
 
 socket.send(
-    'xmpp.buddycloud.retrieve',
+    'xmpp.peergos.retrieve',
     {
-        node: '/user/juliet@buddycloud.com/posts',
+        node: '/user/juliet@peergos.org/posts',
         rsm: {
             max: 10
         },
@@ -22,7 +22,7 @@ socket.send(
 )
 ```
 
-Buddycloud uses [Result Set Management](http://xmpp.org/extensions/xep-0059.html) for pagination. This is useful when:
+Peergos uses [Result Set Management](http://xmpp.org/extensions/xep-0059.html) for pagination. This is useful when:
 
 * building mobile applications and needing to limit the amount of data that the API sends back. 
 * your app needs to retrieve new messages since it was last online.

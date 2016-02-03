@@ -4,7 +4,7 @@ You can schedule certain message types to be pushed to your users. For example, 
 
 Push notifications can currently be sent through [GCM](http://developer.android.com/google/gcm/index.html) and email.
 
-Push notifications are powered by the [Buddycloud Pusher](https://github.com/buddycloud/buddycloud-pusher) project. The _Pusher_ is designed to be easy to extend to cover new event types in channels and new push systems.
+Push notifications are powered by the [Peergos Pusher](https://github.com/peergos/peergos-pusher) project. The _Pusher_ is designed to be easy to extend to cover new event types in channels and new push systems.
 
 ### Query Parameters
 
@@ -24,7 +24,7 @@ followMyChannel         | `true`,`false` | `true` | Someone started following th
 
 ##Fetch Settings
 ```shell
-curl https://demo.buddycloud.org/api/???? \
+curl https://demo.peergos.org/api/???? \
  --??? \
  --???
 ```
@@ -42,12 +42,12 @@ curl https://demo.buddycloud.org/api/???? \
 To fetch the current settings for a `type` of notification, use a `GET` request. This returns a list of the avalible settings for a user.
 
 ### HTTP Request
-`POST https://demo.buddycloud.org/api/????`
+`POST https://demo.peergos.org/api/????`
 
 
 ##Update Settings
 ```shell
-curl https://demo.buddycloud.org/api/???? \
+curl https://demo.peergos.org/api/???? \
  --??? \
  --???
 ```
@@ -65,4 +65,4 @@ curl https://demo.buddycloud.org/api/???? \
 To update a users settings simply `POST` back to the API endpoint.
 
 ### HTTP Request
-`POST https://demo.buddycloud.org/api/????`
+`POST https://demo.peergos.org/api/????`

@@ -11,7 +11,7 @@ $(window.document).ready(function(data){
         };
     })();
 
-    jid = uuid() + "@starter.buddycloud.com";
+    jid = uuid() + "@starter.peergos.org";
     password = uuid() + "_password";
     $(".generated-u").text(jid);
     $(".generated-p").text(password);

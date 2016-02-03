@@ -1,5 +1,5 @@
-## buddycloud website
-[![Build Status](https://travis-ci.org/buddycloud/buddycloud.com.png?branch=master)](https://travis-ci.org/buddycloud/buddycloud.com)
+## peergos website
+[![Build Status](https://travis-ci.org/peergos/peergos.org.png?branch=master)](https://travis-ci.org/peergos/peergos.com)
 
 ### Requirements
 
@@ -13,9 +13,9 @@ Pelican's [GETTING STARTED](http://docs.getpelican.com/en/latest/getting_started
 
 ### Installation instructions
 ```bash
-git clone ssh://git@github.com/buddycloud/buddycloud.com.git
+git clone ssh://git@github.com/peergos/peergos.org.git
 # install Pelican and dependencies
-cd buddycloud.com
+cd peergos.org
 ```
 
 ### Runing the server in development mode
@@ -62,7 +62,7 @@ Files are updated to the `gh_pages` branch
 ```bash
 make github
 ```
-view the updates on http://buddycloud.com
+view the updates on http://peergos.org
 
 ### Markdown Extensions
 
@@ -165,7 +165,7 @@ Exports from Omnigraffle on OS X.
 
 ```
 pip install omnigraffle-image-export
-omnigraffle-export -f png buddycloud.com-diagrams.graffle ~/Documents/src/buddycloud.com/buddycloud-theme/static/img/diagrams
+omnigraffle-export -f png peergos.org-diagrams.graffle ~/Documents/src/peergos.com/peergos-theme/static/img/diagrams
 ```
 
 #### Slate pages

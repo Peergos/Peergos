@@ -11,7 +11,7 @@ class TabbedNavPre(Preprocessor):
 	*Bootstrap Tooglable tabs preprocessor*.
 	
 	Necessary if the tabbed content was originally converted from
-	wikitext from https://buddycloud.org/wiki,
+	wikitext from https://peergos.org/wiki,
 	therefore formatted like this:
 
 	<tabbed>

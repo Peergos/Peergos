@@ -492,10 +492,10 @@ html, body {
 }
 
 @import 'bootstrap';
-@import '../../../../../../theme/static/vendor/buddycloud-styles/src/sass/variables';
-@import '../../../../../../theme/static/vendor/buddycloud-styles/src/sass/general';
-@import '../../../../../../theme/static/vendor/buddycloud-styles/src/sass/navbar';
-@import '../../../../../../theme/static/vendor/buddycloud-styles/src/sass/typography';
-@import '../../../../../../theme/static/vendor/buddycloud-styles/src/sass/highlight';
-@import '../../../../../../theme/static/vendor/buddycloud-styles/src/sass/tables';
-@import 'buddycloud';
+@import '../../../../../../theme/static/vendor/peergos-styles/src/sass/variables';
+@import '../../../../../../theme/static/vendor/peergos-styles/src/sass/general';
+@import '../../../../../../theme/static/vendor/peergos-styles/src/sass/navbar';
+@import '../../../../../../theme/static/vendor/peergos-styles/src/sass/typography';
+@import '../../../../../../theme/static/vendor/peergos-styles/src/sass/highlight';
+@import '../../../../../../theme/static/vendor/peergos-styles/src/sass/tables';
+@import 'peergos';

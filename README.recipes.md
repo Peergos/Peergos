@@ -1,7 +1,7 @@
 Aim
 ---
 
-- get more developers building on buddycloud
+- get more developers building on peergos
 - show [web initially] developers how easy it is to start adding messaging to their application
 - a new recipe every week
 - guest contributors
@@ -9,7 +9,7 @@ Aim
 
 Assume
 ------
-- no buddycloud account (so the first step should be to create a user)
+- no peergos account (so the first step should be to create a user)
 - no knowlege of XMPP
 - no interest in learning XMPP
 - no webserver (deploy to 127.0.0.1)
@@ -33,7 +33,7 @@ Ingredients:
 - time needed for each step
 ```estimated time: 5 minutes```
 - Steps
-steps should be similar to the format we use in installing buddycloud (http://buddycloud.com/install)- to the point of being mostly copy/paste-able.
+steps should be similar to the format we use in installing peergos (http://peergos.org/install)- to the point of being mostly copy/paste-able.
 eg:
 ```
 1. download the skeleton project from...
@@ -47,7 +47,7 @@ Recipee ideas
 - geolocation sharing
 - webrtc calling
 - private dropbox
-- facewall with buddycloud.js
+- facewall with peergos.js
 - meatmap (capture the geoloc, place the captured image onto a map)
 - meatpile (capture the photo, drop it into a pile on the screen)
 - Build a secure "WhatsApp" proof of concept (using GPG and ./public-key node.)
@@ -55,4 +55,4 @@ Recipee ideas
 - Create a "meat map" with recorded videos from other people running the demo.
 - Share files using a QR code, upload any file to the QR code (which is actually the API endpoint, or something like that) 
 - Build a public Dropbox. 100% DMCA free. (using the media server)
-- Meatspac.es clone built on buddycloud (it's forkable at https://github.com/meatspaces/meatspace-chat)
+- Meatspac.es clone built on peergos (it's forkable at https://github.com/meatspaces/meatspace-chat)

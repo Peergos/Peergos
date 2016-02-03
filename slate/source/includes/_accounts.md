@@ -1,22 +1,22 @@
 #Accounts
 
-Your users will need to authenticate against the server with a username that looks like `username@domain`. For example `username@example.buddycloud.com`.
+Your users will need to authenticate against the server with a username that looks like `username@domain`. For example `username@example.peergos.org`.
 
 ##Create User
 
 > `POST` /api/account
 
 > ###Example
-> Creating the `juliet@buddycloud.com` account using `curl`:
+> Creating the `juliet@peergos.org` account using `curl`:
 
 ```shell
-curl https://buddycloud.com/api/account \
+curl https://peergos.org/api/account \
      -X POST \
      -H "Content-Type: application/json; charset=utf-8" \
      -d '{ \
-            "username": "juliet@buddycloud.com", \
+            "username": "juliet@peergos.org", \
             "password": "romeo-forever", \
-            "email": "juliet@buddycloud.com" \
+            "email": "juliet@peergos.org" \
          }'
 ```
 
@@ -35,12 +35,12 @@ Argument   | Required | Notes
 > `GET` /api/
 
 > ###Example
-> Checking if `juliet@buddycloud.com` matches with password `romeo-forever`, using `curl`:
+> Checking if `juliet@peergos.org` matches with password `romeo-forever`, using `curl`:
 
 ```shell
-curl https://buddycloud.com/api/ \
+curl https://peergos.org/api/ \
     -X GET \
-    -u juliet@buddycloud.com:romeo-forever
+    -u juliet@peergos.org:romeo-forever
 ```
 
 Use this endpoint to check if you have valid User credentials (`username` and `password`).
@@ -54,12 +54,12 @@ If you're returned 200 OK, the credentials are valid.
 > `DELETE` /api/account
 
 > ###Example
-> Deleting the `juliet@buddycloud.com` account using `curl`:
+> Deleting the `juliet@peergos.org` account using `curl`:
 
 ```shell
-curl https://buddycloud.com/api/account \
+curl https://peergos.org/api/account \
      -X DELETE \
-     -u juliet@buddycloud.com:romeo-forever
+     -u juliet@peergos.org:romeo-forever
 ```
 
 Removes a user account. 
@@ -71,15 +71,15 @@ Removes a user account.
 > `POST` /api/account/pw/change
 
 > ###Example
-> Changing the `juliet@buddycloud.com`'s password using `curl`:
+> Changing the `juliet@peergos.org`'s password using `curl`:
 
 ```shell 
-curl https://buddycloud.com/api/account/pw/change \
+curl https://peergos.org/api/account/pw/change \
      -X POST \
-     -u juliet@buddycloud.com:romeo-forever \
+     -u juliet@peergos.org:romeo-forever \
      -H "Content-Type: application/json; charset=utf-8" \
      -d '{ \
-            "username": "juliet@buddycloud.com", \
+            "username": "juliet@peergos.org", \
             "password": "new-password" \
          }'
 ```
@@ -91,13 +91,13 @@ Changes the user's `password`.
 > `POST` /api/account/pw/reset
 
 > ###Example
-> Resetting the `juliet@buddycloud.com`'s password using `curl`:
+> Resetting the `juliet@peergos.org`'s password using `curl`:
 
 ```shell 
-curl https://buddycloud.com/api/account/pw/reset \
+curl https://peergos.org/api/account/pw/reset \
      -X POST \
      -H "Content-Type: application/json" \
-     -d '{ "username": "juliet@buddycloud.com" }'
+     -d '{ "username": "juliet@peergos.org" }'
 ```
 
 This resets the user's `password` by sending a new password to the `email` address provided by the user during registration.

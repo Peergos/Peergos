@@ -1,38 +1,38 @@
 <html>
 
 <head>
-	<title>How Buddycloud Works</title>
-	<meta name="url" content="how buddycloud works" />
-	<meta name="save_as" content="how-buddycloud-works.html" />
+	<title>How Peergos Works</title>
+	<meta name="url" content="how peergos works" />
+	<meta name="save_as" content="how-peergos-works.html" />
 	<meta name="show_in_top_menu" content="false" />
 	<meta name="order" content="-1" />
-	<meta name="show_as_selected" content="how buddycloud works" />
+	<meta name="show_as_selected" content="how peergos works" />
 	<meta name="table_of_contents" content="true" />
-	<meta name="description" content="How Buddycloud works - Learn how Buddycloud works through a combination of Open SDK, 
+	<meta name="description" content="How Peergos works - Learn how Buddycloud works through a combination of Open SDK, 
 	open protocol and open-source server." />
-  <meta name="author" content="Buddycloud" />
-  <meta name="keywords" content="sdk, Publish-Subscribe, open source, open protocol, how Buddycloud works" />
+  <meta name="author" content="Peergos" />
+  <meta name="keywords" content="sdk, Publish-Subscribe, open source, open protocol, how Peergos works" />
 </head>
 
 <body>
   <div>
     <p>Three components that work together: Open SDK, open protocol and open-source server.</p>
     <figure>
-      <img class="center-block" src="/theme/img/diagrams/how-buddycloud-works.png" alt="How Buddycloud works" 
+      <img class="center-block" src="/theme/img/diagrams/how-peergos-works.png" alt="How Peergos works" 
       style="padding-top: 15px; padding-bottom: 15px;" />
     </figure>
     <p>You add a small SDK to your mobile or web app; your users communicate.</p>
-    <p>Web applications then communicate via a websocket with the Buddycloud Server. Mobile applications use the REST API 
+    <p>Web applications then communicate via a websocket with the Peergos Server. Mobile applications use the REST API 
     (or XMPP).</p>
     <br>
     <h3>Channel.</h3>
-    <p>Each Buddycloud server will find, connect and share the data you choose with users on other Buddycloud servers.</p>
+    <p>Each Peergos server will find, connect and share the data you choose with users on other Buddycloud servers.</p>
     <p>This approach has huge benefits, especially for industries that care about data privacy.</p>
     <table class="table table-striped">
 		  <tr>
 			  <th></th>
 			  <th>Old Design (Twitter, Facebook, G+, App.net)</th>
-			  <th>Buddycloud</th>
+			  <th>Peergos</th>
 		  </tr>
 		  <tr>
 			  <td>Trust Model</td>
@@ -56,7 +56,7 @@
 		  </tr>
 	  </table>
 	  <br>
-	  <p>A channel is a collection of activity feeds and value-stores that can have publishers, and subscribers. Buddycloud 
+	  <p>A channel is a collection of activity feeds and value-stores that can have publishers, and subscribers. Peergos 
 	  channels can scale up to millions of followers or scale down to be used as an individual data-store.</p>
 	  <p>Channels look like:</p>
 	  <table class="table table-striped">
@@ -70,7 +70,7 @@
 		  </tr>
 		  <tr>
 			  <td><code>user@other-domain.com</code></td>
-			  <td>A buddycloud channel on a remote site</td>
+			  <td>A peergos channel on a remote site</td>
 		  </tr>
 		  <tr>
 			  <td><code>customer-support@company.com</code></td>
@@ -82,12 +82,12 @@
 	  <p>Each channel is made up of application nodes. When you follow a channel, for example, <code>user@example.com</code>
 		you are really following a collection of application nodes. (<code>user@example.com/posts</code>, <code>user@example.com/public-key</code>, 
 		<code>user@example.com/geolocation</code>, etc). Any updates to a node are pushed out to all followers of the channel. So when 
-		you want to build your application on Buddycloud you simply use an existing application node or create a new one for 
+		you want to build your application on Peergos you simply use an existing application node or create a new one for 
 		your projects specific needs.</p>
     <figure>
 		    <img class="center-block" src="/theme/img/diagrams/channels%20comprise%20application%20nodes.png" alt="channels intercommunicate" 
 		    style="padding-top: 15px; padding-bottom: 15px;"/>
-		    <figcaption>Buddycloud channels are extensible for any application to use.</figcaption>
+		    <figcaption>Peergos channels are extensible for any application to use.</figcaption>
 	 </figure>
 	  
 	  <p>Each Application node can have different stream formats, different metadata fields and different stream lengths 
@@ -202,17 +202,17 @@
 	  role.</p>
 	  <br>
     <h3>Federation.</h3>
-    <p>Like Facebook has a wall, Twitter has a Feed, Buddycloud has channels. User's follow channels that can be another 
+    <p>Like Facebook has a wall, Twitter has a Feed, Peergos has channels. User's follow channels that can be another 
     user (for example: <code>juliet@capulet.lit</code> follows <code>romeo@montague.lit</code>) or topics 
     (<code>juliet@caputlet.lit</code> follows <code>fan-club@verona-fc.lit</code>).</p>
-    <p>Your users can follow channels and chat with users on local and remote Buddycloud sites.</p>
+    <p>Your users can follow channels and chat with users on local and remote Peergos sites.</p>
     <figure>
-      <img class="center-block" src="/theme/img/diagrams/federated-channels.png" alt="Buddycloud Federates" 
+      <img class="center-block" src="/theme/img/diagrams/federated-channels.png" alt="Peergos Federates" 
       style="padding-top: 15px; padding-bottom: 15px;"/>
     </figure>
     <br>
     <h3>Authenticate against your existing database of users.</h3>
-	    <p>Buddycloud has a number of ways to authenticate against your existing database of users.</p>
+	    <p>Peergos has a number of ways to authenticate against your existing database of users.</p>
 	    <table class="table table-striped">
 		    <tr>
 			    <th></th>
@@ -220,13 +220,13 @@
 			    <th>Use case</th>
 		    </tr>
 		    <tr>
-			    <td>Buddycloud user database</td>
-			    <td>Use Buddycloud API for user authentication</td>
+			    <td>Peergos user database</td>
+			    <td>Use Peergos API for user authentication</td>
 			    <td>Starting fresh with a new set of users</td>
 		    </tr>
 		    <tr>
 			    <td>Parallel secret</td>
-			    <td>Your application generates a secret to be used with the buddycloud service</td>
+			    <td>Your application generates a secret to be used with the peergos service</td>
 			    <td>New user base or existing user database</td>
 		    </tr>
 		    <tr>

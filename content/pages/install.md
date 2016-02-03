@@ -7,14 +7,14 @@ table_of_contents: true
 
 <h2 data-hidden-from-toc="true">Docker?</h2>
 
-If you'd rather run this as a Docker instance, check out <https://github.com/buddycloud/dockerfiles>
+If you'd rather run this as a Docker instance, check out <https://github.com/peergos/dockerfiles>
 
 
 Install Requirements
 --------------------
 
--   a server with an internet routable IP address (No public IP, no problem, use the [buddycloud
-    hosting](http://hosting.buddycloud.com))
+-   a server with an internet routable IP address (No public IP, no problem, use the [peergos
+    hosting](http://hosting.peergos.org))
 -   a domain name (the instructions assume EXAMPLE.COM)
 -   the ability to edit your DNS
 -   Ubuntu, 14.04 (LTS)
@@ -24,45 +24,45 @@ Getting Help
 
 Please ask if you get stuck
 
--   chatroom: <https://jappix.com/?r=seehaus@channels.buddycloud.com>
--   mailing list: <https://groups.google.com/forum/#!forum/buddycloud-dev>
--   report an issue on github: <https://github.com/buddycloud>
--   email us at: [reach-a-developer@buddycloud.com](mailto:reach-a-developer@buddycloud.com)
+-   chatroom: <https://jappix.com/?r=seehaus@channels.peergos.org>
+-   mailing list: <https://groups.google.com/forum/#!forum/peergos-dev>
+-   report an issue on github: <https://github.com/peergos>
+-   email us at: [reach-a-developer@peergos.org](mailto:reach-a-developer@peergos.com)
 
-Buddycloud DNS
+Peergos DNS
 --------------
 
 <span style="color:green">Estimated time: **10 mins**</span>
 
 ### Aim
 
--   website for buddycloud channels: <http://buddycloud.EXAMPLE.COM>
--   server running buddycloud: buddycloud.EXAMPLE.COM
+-   website for peergos channels: <http://peergos.EXAMPLE.COM>
+-   server running peergos: peergos.EXAMPLE.COM
 
 ### Configure
 
-This install will setup a buddycloud webclient at
-<http://buddycloud.EXAMPLE.COM>
+This install will setup a peergos webclient at
+<http://peergos.EXAMPLE.COM>
 
 Log into your registrar or edit your DNS zone file. In this example we use 1.2.3.4 as your server
 address.
 
 ~~~~ {.text}
 
-buddycloud.EXAMPLE.COM.                    IN A            1.2.3.4 # SRV records must point to A records
-_xmpp-server._tcp.EXAMPLE.COM.             IN SRV 5 0 5269 buddycloud.EXAMPLE.COM. # XMPP Server
-_xmpp-client._tcp.EXAMPLE.COM.             IN SRV 5 0 5222 buddycloud.EXAMPLE.COM. # XMPP client connections
-_xmpp-server._tcp.anon.EXAMPLE.COM.        IN SRV 5 0 5269 buddycloud.EXAMPLE.COM. # XMPP Server anonymous connections
-_xmpp-client._tcp.anon.EXAMPLE.COM.        IN SRV 5 0 5222 buddycloud.EXAMPLE.COM. # XMPP anonymous client connections
-_xmpp-server._tcp.media.EXAMPLE.COM.       IN SRV 5 0 5269 buddycloud.EXAMPLE.COM. # Media Server XMPP component
-_xmpp-server._tcp.buddycloud.EXAMPLE.COM.  IN SRV 5 0 5269 buddycloud.EXAMPLE.COM. # buddycloud Server XMPP component
-_buddycloud-api._tcp.EXAMPLE.COM.          IN TXT "v=1.0 host=buddycloud.EXAMPLE.COM protocol=https path=/api port=443" 
-_bcloud-server._tcp.EXAMPLE.COM            IN TXT "v=1.0 server=buddycloud.EXAMPLE.COM" # To delegate to a hosting platoform
+peergos.EXAMPLE.COM.                    IN A            1.2.3.4 # SRV records must point to A records
+_xmpp-server._tcp.EXAMPLE.COM.             IN SRV 5 0 5269 peergos.EXAMPLE.COM. # XMPP Server
+_xmpp-client._tcp.EXAMPLE.COM.             IN SRV 5 0 5222 peergos.EXAMPLE.COM. # XMPP client connections
+_xmpp-server._tcp.anon.EXAMPLE.COM.        IN SRV 5 0 5269 peergos.EXAMPLE.COM. # XMPP Server anonymous connections
+_xmpp-client._tcp.anon.EXAMPLE.COM.        IN SRV 5 0 5222 peergos.EXAMPLE.COM. # XMPP anonymous client connections
+_xmpp-server._tcp.media.EXAMPLE.COM.       IN SRV 5 0 5269 peergos.EXAMPLE.COM. # Media Server XMPP component
+_xmpp-server._tcp.peergos.EXAMPLE.COM.  IN SRV 5 0 5269 peergos.EXAMPLE.COM. # peergos Server XMPP component
+_peergos-api._tcp.EXAMPLE.COM.          IN TXT "v=1.0 host=peergos.EXAMPLE.COM protocol=https path=/api port=443" 
+_bcloud-server._tcp.EXAMPLE.COM            IN TXT "v=1.0 server=peergos.EXAMPLE.COM" # To delegate to a hosting platoform
 ~~~~
 
 ### Test
 
-Test your DNS on <http://protocol.buddycloud.com/EXAMPLE.COM>
+Test your DNS on <http://protocol.peergos.org/EXAMPLE.COM>
 
 (replace `EXAMPLE.COM` by your actual domain)
 
@@ -153,19 +153,19 @@ VirtualHost "anon.EXAMPLE.COM"
   allow_registration    = false
   anonymous_login       = true
 
--- Buddycloud Channel Server XMPP component configuration.
-Component "buddycloud.EXAMPLE.COM"
+-- Peergos Channel Server XMPP component configuration.
+Component "peergos.EXAMPLE.COM"
   component_secret      = "tellnoone"
   
--- Buddycloud Channel Server (optional topic channels).
+-- Peergos Channel Server (optional topic channels).
 Component "topics.EXAMPLE.COM"
   component_secret      = "tellnoone"
 
--- Buddycloud Media Server XMPP component configuration.
+-- Peergos Media Server XMPP component configuration.
 Component "media.EXAMPLE.COM"
   component_secret      = "tellnoone"
 
--- Buddycloud Pusher Server XMPP component configuration.
+-- Peergos Pusher Server XMPP component configuration.
 Component "pusher.EXAMPLE.COM"
   component_secret      = "tellnoone"
 ~~~~
@@ -179,7 +179,7 @@ Component "pusher.EXAMPLE.COM"
 ### Test
 
 Check your server is visible on
-<http://protocol.buddycloud.com/EXAMPLE.COM>
+<http://protocol.peergos.org/EXAMPLE.COM>
 
 (replace `EXAMPLE.COM` by your actual domain)
 
@@ -197,7 +197,7 @@ tail -F /var/log/prosody/prosody.err \
         /var/log/prosody/prosody.log
 ~~~~
 
-Buddycloud Server
+Peergos Server
 -----------------
 
 <span style="color:green">Estimated time: **5 mins**</span>
@@ -207,13 +207,13 @@ Buddycloud Server
 ~~~~ bash
 # install dependencies
 apt-get install postgresql postgresql-client postgresql-contrib openjdk-7-jre dbconfig-common
-# Download package from http://downloads.buddycloud.com/packages/debian/nightly/buddycloud-server-java/
-dpkg -i buddycloud-server-java*.deb
+# Download package from http://downloads.peergos.org/packages/debian/nightly/peergos-server-java/
+dpkg -i peergos-server-java*.deb
 ~~~~
 
 ### Configure Server
 
-Edit `/etc/buddycloud-server-java/configuration.properties`.
+Edit `/etc/peergos-server-java/configuration.properties`.
 
 -   change EXAMPLE.COM to match your domain
 -   double check the database connection strings
@@ -221,13 +221,13 @@ Edit `/etc/buddycloud-server-java/configuration.properties`.
 ### Start Server
 
 ~~~~ bash
-/etc/init.d/buddycloud-server-java start
+/etc/init.d/peergos-server-java start
 ~~~~
 
 ### Test
 
-Check the buddycloud server is discoverable using
-<http://protocol.buddycloud.com> (should pass `buddycloud_server_disco`
+Check the peergos server is discoverable using
+<http://protocol.peergos.org> (should pass `peergos_server_disco`
 test)
 
 ### Debug
@@ -235,26 +235,26 @@ test)
 check logs
 
 ~~~~ bash
-tail -F /var/log/buddycloud-server-java/log 
+tail -F /var/log/peergos-server-java/log 
 ~~~~
 
 Test the database is installed (password is in
-`/etc/buddycloud-server-java/configuration.properties`)
+`/etc/peergos-server-java/configuration.properties`)
 
 ~~~~ bash
-psql -h 127.0.0.1 --username buddycloudserverjava -d buddycloudserverjava -c "select * from nodes;" 
+psql -h 127.0.0.1 --username peergosserverjava -d peergosserverjava -c "select * from nodes;" 
 node
 ------
 (0 rows)
-# this means that your buddycloud server database schema been installed successfully.
+# this means that your peergos server database schema been installed successfully.
 ~~~~
 
-Buddycloud API Server
+Peergos API Server
 ---------------------
 
 <span style="color:green">Estimated time: **6 mins**</span>
 
--   Alternative: [Install from source](http://github.com/buddycloud/buddycloud-http-api)
+-   Alternative: [Install from source](http://github.com/peergos/peergos-http-api)
 
 *Note: SSL and API requests: Chrome and Firefox will **not** work with
 self signed certificates when used for API calls. Ordinarily you would
@@ -275,18 +275,18 @@ apt-get install nodejs apache2 apache2.2-common
 # ensure you have the correct modules enabled in Apache
 a2enmod rewrite proxy_http ssl headers expires deflate
 service apache2 reload
-# Download from http://downloads.buddycloud.com/packages/debian/nightly/buddycloud-http-api/
-dpkg -i buddycloud-http-api*.deb; 
+# Download from http://downloads.peergos.org/packages/debian/nightly/peergos-http-api/
+dpkg -i peergos-http-api*.deb; 
 ~~~~
 
 ### Configure Server
 
-Edit `/etc/buddycloud-http-api/config.js` to use your domain.
+Edit `/etc/peergos-http-api/config.js` to use your domain.
 
 ### Restart Server
 
 ~~~~ bash
-/etc/init.d/buddycloud-http-api start
+/etc/init.d/peergos-http-api start
 ~~~~
 
 ### Add Site to Apache
@@ -296,19 +296,19 @@ publicly available. As we are using Apache to serve the webclient, we
 use the same site to redirect requests to the API. Thus, if you run the
 webclient from EXAMPLE.com, the API will be run from EXAMPLE.com/api.
 
-Please refer to [buddycloud Apache virtual host
-setup](buddycloud Apache virtual host setup "wikilink") for site setup,
+Please refer to [peergos Apache virtual host
+setup](peergos Apache virtual host setup "wikilink") for site setup,
 then
 
 ~~~~ bash
-a2ensite buddycloud-apache-virtual-host
+a2ensite peergos-apache-virtual-host
 /etc/init.d/apache2 reload
 ~~~~
 
 ### Test
 
-Check your buddycloud API server is discoverable on
-<http://protocol.buddycloud.com/EXAMPLE.COM>
+Check your peergos API server is discoverable on
+<http://protocol.peergos.org/EXAMPLE.COM>
 
 (replace EXAMPLE.COM by your actual domain)
 
@@ -320,32 +320,32 @@ The following tests must pass:
 ### Debug
 
 ~~~~ bash
-node --version # The buddycloud API requires nodejs 0.8.*
-tail -F /var/log/buddycloud-http-api/buddycloud-http-api.log
+node --version # The peergos API requires nodejs 0.8.*
+tail -F /var/log/peergos-http-api/peergos-http-api.log
 ~~~~
 
-Buddycloud Webclient
+Peergos Webclient
 --------------------
 
 <span style="color:green">Estimated time: **5 mins**</span>
 
--   Alternative: [buddycloud nginx
-    setup](https://github.com/buddycloud/dockerfiles/blob/master/buddycloud-stack/config/buddycloud-nginx-server-block)
+-   Alternative: [peergos nginx
+    setup](https://github.com/peergos/dockerfiles/blob/master/peergos-stack/config/peergos-nginx-server-block)
 
 ### Install
 
 ~~~~ bash
-# Download from http://downloads.buddycloud.com/packages/debian/releases/buddycloud-webclient/ 
-dpkg -i buddycloud-webclient*.deb;
+# Download from http://downloads.peergos.org/packages/debian/releases/peergos-webclient/ 
+dpkg -i peergos-webclient*.deb;
 ~~~~
 
 ### Configure
 
 ~~~~ bash
-vim /etc/apache2/sites-available/buddycloud-apache-virtual-host
-cp /usr/share/buddycloud-webclient/config.js.example /usr/share/buddycloud-webclient/config.js
-vim /usr/share/buddycloud-webclient/config.js
-a2ensite buddycloud-apache-virtual-host
+vim /etc/apache2/sites-available/peergos-apache-virtual-host
+cp /usr/share/peergos-webclient/config.js.example /usr/share/peergos-webclient/config.js
+vim /usr/share/peergos-webclient/config.js
+a2ensite peergos-apache-virtual-host
 service apache2 reload
 ~~~~
 
@@ -354,7 +354,7 @@ service apache2 reload
 -   [check your SSL setup](https://www.ssllabs.com/ssltest/index.html)
 -   open `https://EXAMPLE.COM/` in your browser: you should see the
     login screen
--   open `https://EXAMPLE.COM/team@topics.buddycloud.org` in your
+-   open `https://EXAMPLE.COM/team@topics.peergos.org` in your
     browser: you should see an open channel displayed
 
 ### Debug
@@ -366,7 +366,7 @@ tail -F /var/log/apache2/EXAMPLE.COM-error.log \
         /var/log/apache2/api.EXAMPLE.COM-error.log
 ~~~~
 
-Buddycloud Pusher
+Peergos Pusher
 -----------------
 
 <span style="color:green">Estimated time: **5 mins**</span>
@@ -374,10 +374,10 @@ Buddycloud Pusher
 ### Install
 
 ~~~~ bash
-# Download from http://downloads.buddycloud.com/packages/debian/ 
-wget http://downloads.buddycloud.com/packages/debian/nightly/buddycloud-pusher/buddycloud-pusher-$LATEST/buddycloud-pusher_$LATEST_all.deb
+# Download from http://downloads.peergos.org/packages/debian/ 
+wget http://downloads.peergos.org/packages/debian/nightly/peergos-pusher/peergos-pusher-$LATEST/peergos-pusher_$LATEST_all.deb
 # Install it with dpkg
-dpkg -i buddycloud-pusher_$LATEST_all.deb
+dpkg -i peergos-pusher_$LATEST_all.deb
 ~~~~
 
 ### Configure
@@ -390,21 +390,21 @@ Component "pusher.EXAMPLE.COM"
 ~~~~
 
 Change XMPP settings in the Pusher
-`/usr/share/buddycloud-pusher/configuration.properties`
+`/usr/share/peergos-pusher/configuration.properties`
 
 ~~~~ {.java}
 xmpp.subdomain=pusher.EXAMPLE.COM
 xmpp.secretkey=tellnoone
 ~~~~
 
-Add the Pusher to the API in `/etc/buddycloud-http-api/config.js`
+Add the Pusher to the API in `/etc/peergos-http-api/config.js`
 
 ~~~~ {.lua}
 pusherComponent: 'pusher.EXAMPLE.COM'
 ~~~~
 
 Change SMTP settings in the pusher
-`/usr/share/buddycloud-pusher/configuration.properties`
+`/usr/share/peergos-pusher/configuration.properties`
 
 ~~~~ bash
 # Use STMP auth
@@ -416,7 +416,7 @@ mail.smtp.host=smtp.example.com
 # SMTP port
 mail.smtp.port=587
 # SMTP login user
-mail.username=admin@pusher.buddycloud.com
+mail.username=admin@pusher.peergos.org
 # SMTP login password
 mail.password=password
 ~~~~
@@ -425,7 +425,7 @@ Create a GCM project and get an API key as per
 `http://developer.android.com/google/gcm/gs.html#create-proj`
 
 Change GCM settings in the pusher
-`/usr/share/buddycloud-pusher/configuration.properties`
+`/usr/share/peergos-pusher/configuration.properties`
 
 ~~~~ bash
 # GCM project id 
@@ -437,21 +437,21 @@ gcm.api_key=
 ### Restart
 
 ~~~~ bash
-/etc/init.d/buddycloud-pusher restart
-/etc/init.d/buddycloud-http-api restart
+/etc/init.d/peergos-pusher restart
+/etc/init.d/peergos-http-api restart
 ~~~~
 
 ### Test
 
 -   Enable and configure push notifications in the webclient (or via the
-    [Pusher API](http://buddycloud.com/api#notification_settings_))
+    [Pusher API](http://peergos.org/api#notification_settings_))
 -   After a new post in your channel, for instance, you should get an
     email and/or GCM notification.
 
 ### Debug
 
 ~~~~ bash
-tail -F /usr/share/buddycloud-pusher/logs/log
+tail -F /usr/share/peergos-pusher/logs/log
 ~~~~
 
 Final Steps
@@ -459,56 +459,56 @@ Final Steps
 
 You are done!
 
-Log-into your buddycloud node at <http://buddycloud.EXAMPLE.COM/> and
+Log-into your peergos node at <http://peergos.EXAMPLE.COM/> and
 follow your first channels.
 
 Sharing Debug Info
 ------------------
 
 The following commands will generate a file called
-`/tmp/buddycloud-debug.txt` to [Pastebin](http://pastebin.com/).
+`/tmp/peergos-debug.txt` to [Pastebin](http://pastebin.com/).
 
-When you have run the commands, please share the link in the [buddycloud
-chat room](https://jappix.com/?r=seehaus@channels.buddycloud.com) or on
+When you have run the commands, please share the link in the [peergos
+chat room](https://jappix.com/?r=seehaus@channels.peergos.org) or on
 the
-[https://groups.google.com/forum/#!forum/buddycloud-dev](buddycloud-dev mailing list).
+[https://groups.google.com/forum/#!forum/peergos-dev](peergos-dev mailing list).
 
 ~~~~ bash
-# buddycloud related configuration files
+# peergos related configuration files
 sudo cat /etc/prosody/prosody.cfg.lua \
          /etc/postgresql/9.1/main/pg_hba.conf \
-         /opt/buddycloud-server-java/environment.properties \ 
-         /etc/init.d/buddycloud-server-java \ 
+         /opt/peergos-server-java/environment.properties \ 
+         /etc/init.d/peergos-server-java \ 
          /var/www/<your-domain-name>/config.js \ 
-         /etc/apache2/sites-enabled/<your-domain-name>  >> /tmp/buddycloud.debug.txt
+         /etc/apache2/sites-enabled/<your-domain-name>  >> /tmp/peergos.debug.txt
 
 # network 
-ip addr  show >> /tmp/buddycloud-debug.txt
-ip route show >> /tmp/buddycloud-debug.txt
+ip addr  show >> /tmp/peergos-debug.txt
+ip route show >> /tmp/peergos-debug.txt
 
 # what is running
-ps -efww >> /tmp/buddycloud-debug.txt
+ps -efww >> /tmp/peergos-debug.txt
 
 # what's listening
-sudo netstat -plutn | grep LISTEN >> /tmp/buddycloud-debug.txt
+sudo netstat -plutn | grep LISTEN >> /tmp/peergos-debug.txt
 
 # what's stopping things from listening
-sudo iptables -vnL INPUT >> /tmp/buddycloud-debug.txt
-sudo iptables -vnL OUTPUT >> /tmp/buddycloud-debug.txt
+sudo iptables -vnL INPUT >> /tmp/peergos-debug.txt
+sudo iptables -vnL OUTPUT >> /tmp/peergos-debug.txt
 
 # the related log files
 sudo tail -n 200 /var/log/apache2/<your-domain-name>-access.log \
                  /var/log/apache2/<your-domain-name>-error.log \
                  /var/log/prosody/prosody.log \
                  /var/log/prosody/prosody.err \
-                 /var/log/buddycloud-server.log \
-                 /var/log/postgresql/postgresql-9.1-main.log >> /tmp/buddycloud-debug.log 
+                 /var/log/peergos-server.log \
+                 /var/log/postgresql/postgresql-9.1-main.log >> /tmp/peergos-debug.log 
 
 # Edit the file and remove any passwords.
-sudo edit /tmp/buddycloud-debug.txt
+sudo edit /tmp/peergos-debug.txt
 
 # To automatically upload the file:
 sudo apt-get install pastebinit
-sudo cat /tmp/buddycloud-debug.txt | pastebinit
+sudo cat /tmp/peergos-debug.txt | pastebinit
 ~~~~
 

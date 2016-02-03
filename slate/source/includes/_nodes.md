@@ -10,7 +10,7 @@ Each node has:
 
 ### Personal Nodes v. Topic Nodes
 
-Buddycloud divides nodes into two categories: `topic` and `personal`.
+Peergos divides nodes into two categories: `topic` and `personal`.
 
 For example, the channel `juliet@capulet.lit` comprises personal nodes for each type of information that `juliet` wants to share, such as her social activities, reflections on her mood, and the media she comments on. 
 
@@ -37,7 +37,7 @@ The node metadata for _public_ and _private_ nodes is always publicly accessible
 
 ### Who creates the set of nodes for a channel?
 
-Your application is responsible for creating the set of nodes it is going to use for a given channel. For example, the social application running at <https://buddycloud.com> automatically creates the following nodes everytime a new channel is created:
+Your application is responsible for creating the set of nodes it is going to use for a given channel. For example, the social application running at <https://peergos.org> automatically creates the following nodes everytime a new channel is created:
 
 Name             | Personal Channel |Topic Channel | Description 
 -----------------|:---------------: |:------------:|----------------
@@ -56,9 +56,9 @@ Name             | Personal Channel |Topic Channel | Description
 > Creating a node called `new-node` using `curl`:
 
 ```shell
-curl https://buddycloud.com/api/juliet@buddycloud.com/new-node \
+curl https://peergos.org/api/juliet@peergos.com/new-node \
     -X POST \
-    -u juliet@buddycloud.com:romeo-forever
+    -u juliet@peergos.org:romeo-forever
 ```
 
 This allows creation of nodes.
@@ -71,9 +71,9 @@ This allows creation of nodes.
 > Deleting the node called `new-node` using `curl`:
 
 ```shell
-curl https://buddycloud.com/api/juliet@buddycloud.com/new-node \
+curl https://peergos.org/api/juliet@peergos.com/new-node \
     -X DELETE \
-    -u juliet@buddycloud.com:romeo-forever
+    -u juliet@peergos.org:romeo-forever
 ```
 
 This will remove a node.
@@ -86,9 +86,9 @@ This will remove a node.
 > Fetching the node `new-node`'s metadata using `curl`:
 
 ```shell
-curl https://buddycloud.com/api/juliet@buddycloud.com/metadata/new-node \
+curl https://peergos.org/api/juliet@peergos.com/metadata/new-node \
      -X GET \
-     -u juliet@buddycloud.com:romeo-forever
+     -u juliet@peergos.org:romeo-forever
 ```
 
 Metadata allows you to describe the node, set defaults and even add a location to the node so that it will show up in nearby queries.
@@ -103,9 +103,9 @@ Node metadata is always visible for both public and private nodes.
 > Updating the node `new-node`'s metadata using `curl`:
 
 ```shell
-curl https://buddycloud.com/api/juliet@buddycloud.com/metadata/new-node \
+curl https://peergos.org/api/juliet@peergos.com/metadata/new-node \
      -X POST \
-     -u juliet@buddycloud.com:romeo-forever \
+     -u juliet@peergos.org:romeo-forever \
      -H "Content-Type: application/json" \
      -d '{ \
             "title": "New Node Title", \
@@ -128,5 +128,5 @@ Field            | Edit? | Values | Description
 `channel_type`       | false   | `personal`, `topic` | whether this is a `personal` node or a `topic` node
 `default_` `affiliation` | true | `publisher`, `follower` | the permissions a new subscriber is granted
 
-A complete set of node metadata is available from the [Buddycloud protocol specification](http://buddycloud.github.io/buddycloud-xep/#default-roles). 
+A complete set of node metadata is available from the [Peergos protocol specification](http://peergos.github.io/peergos-xep/#default-roles). 
 

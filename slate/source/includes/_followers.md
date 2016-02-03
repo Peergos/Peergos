@@ -21,12 +21,12 @@ The `outcast` affiliation is useful for dealing with abusive users.
 
 > ###Example
 
-> Fetching followers of the `romeo@buddycloud.com/posts` node, using `curl`:
+> Fetching followers of the `romeo@peergos.org/posts` node, using `curl`:
 
 ```shell
-curl https://buddycloud.com/api/romeo@buddycloud.com/subscribers/posts \
+curl https://peergos.org/api/romeo@peergos.com/subscribers/posts \
      -X GET \
-     -u romeo@buddycloud.com:juliet-forever \
+     -u romeo@peergos.org:juliet-forever \
      -H "Content-Type: application/json"
 ```
 
@@ -37,8 +37,8 @@ HTTP/1.1 200 OK
 Content-Type: application/json
 
 {
-    "romeo@buddycloud.com": "owner",
-    "benvolio@buddycloud.com": "publisher"
+    "romeo@peergos.org": "owner",
+    "benvolio@peergos.org": "publisher"
 }
 ```
 
@@ -54,12 +54,12 @@ Return the list without authentication | requesting user must also be an `owner`
 
 > ###Example
 
-> Retrieving pending subscriptions to the `romeo@buddycloud.com` node, using `curl`:
+> Retrieving pending subscriptions to the `romeo@peergos.org` node, using `curl`:
 
 ```shell
-curl https://buddycloud.com/api/romeo@buddycloud.com/subscribers/posts/approve \
+curl https://peergos.org/api/romeo@peergos.com/subscribers/posts/approve \
      -X GET \
-     -u romeo@buddycloud.com:juliet-forever \
+     -u romeo@peergos.org:juliet-forever \
      -H "Content-Type: application/json"
 ```
 
@@ -72,15 +72,15 @@ Content-Type application/json
 [
     {
         "subscription": "subscribed",
-        "jid": "benvolio@buddycloud.com"
+        "jid": "benvolio@peergos.org"
     },
     {
         "subscription": "pending",
-        "jid": "juliet@buddycloud.com"
+        "jid": "juliet@peergos.org"
     },
     {
         "subscription": "pending",
-        "jid": "tybalt@buddycloud.com"
+        "jid": "tybalt@peergos.org"
     }
 ]
 ```
@@ -93,21 +93,21 @@ Retrieves the list of subscriptions of a node. Returns a list of objects contain
 
 > ###Example
 
-> Authorising subscription of `juliet@buddycloud.com` and denying to `tybalt@buddycloud.com`, using `curl`:
+> Authorising subscription of `juliet@peergos.org` and denying to `tybalt@peergos.com`, using `curl`:
 
 ```shell
-curl https://buddycloud.com/api/romeo@buddycloud.com/subscribers/posts/approve \
+curl https://peergos.org/api/romeo@peergos.com/subscribers/posts/approve \
      -X POST \
-     -u romeo@buddycloud.com:juliet-forever \
+     -u romeo@peergos.org:juliet-forever \
      -H "Content-Type: application/json" \
      -d '[ \
              { \
                  "subscription": "subscribed", \
-                 "jid": "juliet@buddycloud.com" \
+                 "jid": "juliet@peergos.org" \
              }, \
              { \
                  "subscription": "none", \
-                 "jid": "tybalt@buddycloud.com" \
+                 "jid": "tybalt@peergos.org" \
              } \
          ]'
 ```
@@ -127,15 +127,15 @@ Subscription State | Description
 
 > ###Example
 
-> Changing `juliet@buddycloud.com`'s subscription affiliation to `romeo@buddycloud.com/posts` to `member`, using `curl`:
+> Changing `juliet@peergos.org`'s subscription affiliation to `romeo@peergos.com/posts` to `member`, using `curl`:
 
 ```shell
-curl https://buddycloud.com/api/romeo@buddycloud.com/subscribers/posts \
+curl https://peergos.org/api/romeo@peergos.com/subscribers/posts \
      -X POST \
-     -u romeo@buddycloud.com:juliet-forever \
+     -u romeo@peergos.org:juliet-forever \
      -H "Content-Type: application/json" \
      -d '{ \
-             "juliet@buddycloud.com": "member" \
+             "juliet@peergos.org": "member" \
          }'
 ```
 

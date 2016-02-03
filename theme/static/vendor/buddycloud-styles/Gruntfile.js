@@ -23,10 +23,10 @@ module.exports = function (grunt) {
     // concat: {
     //   dist: {
     //     src: [
-    //       'src/<%= dirs.js %>/buddycloud-styles.js',
+    //       'src/<%= dirs.js %>/peergos-styles.js',
     //       'src/<%= dirs.js %>/vendor/highlight.min.js'
     //     ],
-    //     dest: 'src/<%= dirs.js %>/buddycloud-styles.js'
+    //     dest: 'src/<%= dirs.js %>/peergos-styles.js'
     //   }
     // },
 
@@ -37,9 +37,9 @@ module.exports = function (grunt) {
       },
       target: {
         files: {
-          'dist/<%= dirs.js %>/buddycloud-styles.min.js': [
+          'dist/<%= dirs.js %>/peergos-styles.min.js': [
             'src/<%= dirs.js %>/vendor/highlight.min.js',
-            'src/<%= dirs.js %>/buddycloud-styles.js'
+            'src/<%= dirs.js %>/peergos-styles.js'
           ]
         }
       }
@@ -55,9 +55,9 @@ module.exports = function (grunt) {
       },
       dev: {
         expand: true,
-        cwd: 'docs/theme/static/vendor/buddycloud-styles/dist/<%= dirs.css %>/',
+        cwd: 'docs/theme/static/vendor/peergos-styles/dist/<%= dirs.css %>/',
         src: ['*.css', '!*.min.css'],
-        dest: 'docs/theme/static/vendor/buddycloud-styles/dist/<%= dirs.css %>/',
+        dest: 'docs/theme/static/vendor/peergos-styles/dist/<%= dirs.css %>/',
         ext: '.min.css'
       }
     },
@@ -75,7 +75,7 @@ module.exports = function (grunt) {
       dev: {
         options: {
           sassDir: 'src/<%= dirs.sass %>',
-          cssDir: 'docs/theme/static/vendor/buddycloud-styles/dist/<%= dirs.css %>',
+          cssDir: 'docs/theme/static/vendor/peergos-styles/dist/<%= dirs.css %>',
           imagesDir: 'src/<%= dirs.img %>',
           relativeAssets: true,
           outputStyle: 'expanded'
@@ -123,7 +123,7 @@ module.exports = function (grunt) {
             expand: true,
             cwd: 'dist/',
             src: ['**/*.js'],
-            dest: 'docs/theme/static/vendor/buddycloud-styles/dist/'
+            dest: 'docs/theme/static/vendor/peergos-styles/dist/'
           }
         ]
       }

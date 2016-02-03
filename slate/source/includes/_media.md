@@ -2,7 +2,7 @@
 
 File's inherit the permissions of the channel they are shared with. For example sharing files onto a private channel will mean that *only* that channel's followers can download them.
 
-Media can be any type of file, and any file size (Buddycloud site administrators usually set about 1GB as a maximum size.)
+Media can be any type of file, and any file size (Peergos site administrators usually set about 1GB as a maximum size.)
 
 <aside class="notice">Authentication is not required for requesting media from a public channel. Authentication is required for private channels.</aside>
 
@@ -15,9 +15,9 @@ The media `id` of `avatar` is currently reserved and used for storing a channels
 > `GET` /api/`channelID`/media
 
 ```shell
-curl https://buddycloud.com/api/juliet@buddycloud.com/media \
+curl https://peergos.org/api/juliet@peergos.com/media \
      -X GET \
-     -u juliet@buddycloud.com:romeo-forever
+     -u juliet@peergos.org:romeo-forever
 ```
 
 > Response would be as follows:
@@ -30,7 +30,7 @@ Content-Type: application/json
     {
         "id": "lETuJi8rPE4IfQrygN8rVtGx3",
         "fileName": "photo.jpg",
-        "author": "juliet@buddycloud.com",
+        "author": "juliet@peergos.org",
         "title": "Juliet's pic",
         "mimeType": "image/jpeg",
         "description": "Juliet's picture 1595/06/01",
@@ -39,7 +39,7 @@ Content-Type: application/json
         "fileSize": "60892",
         "height": "312",
         "width": "312",
-        "entityId": "capulet@topics.buddycloud.com"
+        "entityId": "capulet@topics.peergos.org"
     }
 ]
 ```
@@ -57,9 +57,9 @@ This returns a list of all avaliable media objects in a channel.
 > Retrieving the raw media of id `$MEDIA_ID`, using `curl`:
 
 ```shell
-curl https://buddycloud.com/api/juliet@buddycloud.com/media/$MEDIA_ID \
+curl https://peergos.org/api/juliet@peergos.com/media/$MEDIA_ID \
      -X GET \
-     -u juliet@buddycloud.com:romeo-forever
+     -u juliet@peergos.org:romeo-forever
 ```
 
 > ###Get the media thumbnail preview
@@ -71,9 +71,9 @@ curl https://buddycloud.com/api/juliet@buddycloud.com/media/$MEDIA_ID \
 > Retrieving a preview of the media of id `$MEDIA_ID`, using `curl`:
 
 ```shell
-curl https://buddycloud.com/api/juliet@buddycloud.com/media/$MEDIA_ID?maxheight=150&maxwidth=150 \
+curl https://peergos.org/api/juliet@peergos.com/media/$MEDIA_ID?maxheight=150&maxwidth=150 \
      -X GET \
-     -u juliet@buddycloud.com:romeo-forever
+     -u juliet@peergos.org:romeo-forever
 ```
 
 > ###Get avatar
@@ -82,12 +82,12 @@ curl https://buddycloud.com/api/juliet@buddycloud.com/media/$MEDIA_ID?maxheight=
 
 > ###Example
 
-> Retrieving avatar of `juliet@buddycloud.com`, using `curl`:
+> Retrieving avatar of `juliet@peergos.org`, using `curl`:
 
 ```shell
-curl https://buddycloud.com/api/juliet@buddycloud.com/media/avatar \
+curl https://peergos.org/api/juliet@peergos.com/media/avatar \
      -X GET \
-     -u juliet@buddycloud.com:romeo-forever
+     -u juliet@peergos.org:romeo-forever
 ```
 
 This request returns a media file.
@@ -109,12 +109,12 @@ When both `maxheight` and `maxwidth` are requested the server will return a file
 
 > ###Example
 
-> Posting new media to the `capulet@topics.buddycloud.com` channel, using `curl`:
+> Posting new media to the `capulet@topics.peergos.org` channel, using `curl`:
 
 ```shell
-curl https://buddycloud.com/api/capulet@topics.buddycloud.com/media \
+curl https://peergos.org/api/capulet@topics.peergos.com/media \
      -X POST \
-     -u juliet@buddycloud.com:romeo-forever \
+     -u juliet@peergos.org:romeo-forever \
      -H "Content-Type: application/json" \
      -d '{ \
              "data": "media data in bytes", \
@@ -134,7 +134,7 @@ Content-Type: application/json
 {
     "id": "lETuJi8rPE4IfQrygN6rVtGx3",
     "fileName": "prom.png",
-    "author": "juliet@buddycloud.com",
+    "author": "juliet@peergos.org",
     "title": "Juliet's prom pic",
     "mimeType": "image/png",
     "description": "Juliet's beautiful prom pic!",
@@ -143,7 +143,7 @@ Content-Type: application/json
     "fileSize": 60892,
     "height": 312,
     "width": 312,
-    "entityId": "capulet@topics.buddycloud.com"
+    "entityId": "capulet@topics.peergos.org"
 }
 ```
 
@@ -159,12 +159,12 @@ Updating existing media with the same `id` will overwrite the existing media con
 
 > ###Example
 
-> Deleting media of id `$MEDIA_ID` from the `juliet@buddycloud.com` channel, using `curl`:
+> Deleting media of id `$MEDIA_ID` from the `juliet@peergos.org` channel, using `curl`:
 
 ```shell
-curl https://buddycloud.com/api/juliet@buddycloud.com/media/$MEDIA_ID \
+curl https://peergos.org/api/juliet@peergos.com/media/$MEDIA_ID \
      -x DELETE \
-     -u juliet@buddycloud.com:romeo-forever
+     -u juliet@peergos.org:romeo-forever
 ```
 
 Removes media from the channel.
@@ -180,9 +180,9 @@ Deleting media will remove it from the requested channel. This does not remove i
 > Fetching metadata of media of id `$MEDIA_ID`, using `curl`:
 
 ```shell
-curl https://buddycloud.com/api/juliet@buddycloud.com/media/$MEDIA_ID/metadata \
+curl https://peergos.org/api/juliet@peergos.com/media/$MEDIA_ID/metadata \
      -X GET \
-     -u juliet@buddycloud.com:romeo-forever
+     -u juliet@peergos.org:romeo-forever
 ```
 
 > Response would be as follows:
@@ -195,7 +195,7 @@ Content-Type: application/json
     {
         "id": "lETuJi8rPE4IfQrygN8rVtGx3",
         "fileName": "photo.jpg",
-        "author": "juliet@buddycloud.com",
+        "author": "juliet@peergos.org",
         "title": "Juliet's pic",
         "mimeType": "image/jpeg",
         "description": "Juliet's picture 1595/06/01",
@@ -204,7 +204,7 @@ Content-Type: application/json
         "fileSize": "60892",
         "height": "312",
         "width": "312",
-        "entityId": "capulet@topics.buddycloud.com"
+        "entityId": "capulet@topics.peergos.org"
     }
 ]
 ```
@@ -220,9 +220,9 @@ Endpoint used to fetch a given media's metadata.
 > Updating the media of id `$MEDIA_ID`'s name and title, using `curl`:
 
 ```shell
-curl https://buddycloud.com/api/juliet@buddycloud.com/media/$MEDIA_ID \
+curl https://peergos.org/api/juliet@peergos.com/media/$MEDIA_ID \
      -X PUT \
-     -u juliet@buddycloud.com:romeo-forever \
+     -u juliet@peergos.org:romeo-forever \
      -d '{ \
             "filename": "A good name for that picture of Jules", \
             "title": "A new title" \

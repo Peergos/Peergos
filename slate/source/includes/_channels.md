@@ -6,4 +6,4 @@ Channels are a group of publish-subscribe nodes. For example, the channel `julie
 - `/user/juliet@capulet.lit/status` node (a text string describing `juliet@capulet.lit`’s mood)
 - `/user/juliet@capulet.lit/music-i-liked` node (a hypothetical activity stream of music `juliet@capulet.lit` likes)
 
-![Channels and Nodes](http://buddycloud.com/theme/img/diagrams/channel%20hierachy.png "Channels and Nodes")
+![Channels and Nodes](http://peergos.org/theme/img/diagrams/channel%20hierachy.png "Channels and Nodes")

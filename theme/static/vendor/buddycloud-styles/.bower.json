@@ -1,18 +1,18 @@
 {
-  "name": "buddycloud-styles",
+  "name": "peergos-styles",
   "authors": [
     "Jan Lindenberg <jan.lindenberg@gmail.com>",
     "Vítor Avelino <contact@vitoravelino.me>"
   ],
-  "description": "Bootstrap theme for buddycloud sites",
+  "description": "Bootstrap theme for peergos sites",
   "main": [
-    "dist/css/buddycloud-styles.css",
-    "dist/js/buddycloud-styles.js"
+    "dist/css/peergos-styles.css",
+    "dist/js/peergos-styles.js"
   ],
   "keywords": [
     "css",
     "framework",
-    "buddycloud"
+    "peergos"
   ],
   "license": "Apache2",
   "private": true,
@@ -25,14 +25,14 @@
   "dependencies": {
     "bootstrap": "3.1.1"
   },
-  "homepage": "https://github.com/buddycloud/buddycloud-styles",
+  "homepage": "https://github.com/peergos/peergos-styles",
   "_release": "c6886e80ca",
   "_resolution": {
     "type": "branch",
     "branch": "master",
     "commit": "c6886e80cab0a95b73f53c0da0b4544c29e26758"
   },
-  "_source": "git://github.com/buddycloud/buddycloud-styles.git",
+  "_source": "git://github.com/peergos/peergos-styles.git",
   "_target": "*",
-  "_originalSource": "buddycloud/buddycloud-styles"
+  "_originalSource": "peergos/peergos-styles"
 }

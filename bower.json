@@ -1,7 +1,7 @@
 {
   "name": "budducloud.com",
   "dependencies": {
-    "buddycloud-styles": "buddycloud/buddycloud-styles",
+    "peergos-styles": "peergos/peergos-styles",
     "js-sequence-diagrams": "vitoravelino/js-sequence-diagrams#~1.0.5"
   }
 }

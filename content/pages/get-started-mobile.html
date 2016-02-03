@@ -15,10 +15,10 @@
 <div class="row">
 
   <p>
-    You can access Buddycloud in many ways. This walkthrough will help you setup a Buddycloud-powered Android application with the ultimate goal of introducing you on how to exchange posts in a channel node, which is the most basic thing you can do with Buddycloud.
+    You can access Peergos in many ways. This walkthrough will help you setup a Buddycloud-powered Android application with the ultimate goal of introducing you on how to exchange posts in a channel node, which is the most basic thing you can do with Buddycloud.
   </p>
   <p>
-    This example uses our <a href="http://buddycloud.com/api">REST API</a>, which is better suited for mobile apps. You will need aid from the <a href="https://github.com/buddycloud/buddycloud-pusher">Pusher service</a> in order to implement a push-to-pull schema in your Android app; communication to the Pusher service is done through the REST API.
+    This example uses our <a href="http://peergos.org/api">REST API</a>, which is better suited for mobile apps. You will need aid from the <a href="https://github.com/peergos/peergos-pusher">Pusher service</a> in order to implement a push-to-pull schema in your Android app; communication to the Pusher service is done through the REST API.
   </p>
   <p>
     Here is how this guide is meant to be used.
@@ -28,14 +28,14 @@
   <ul>
     <li>
       <p>
-        To start building Buddycloud you will need a test account on the 
-        <a href="https://hosting.buddycloud.com/login">Dev-Console</a>. We recommend using the developer console initially 
-        and later, you can install your own Buddycloud stack.
+        To start building Peergos you will need a test account on the 
+        <a href="https://hosting.peergos.org/login">Dev-Console</a>. We recommend using the developer console initially 
+        and later, you can install your own Peergos stack.
       </p>
     </li>
     <li>
       <p>
-        The <a href="javascript:scroll_if_anchor('#using_the_api_');">Using the API</a> section simply explains the REST API calls involved in the flow of creating users and logging into Buddycloud as just-created/already-existing users.
+        The <a href="javascript:scroll_if_anchor('#using_the_api_');">Using the API</a> section simply explains the REST API calls involved in the flow of creating users and logging into Peergos as just-created/already-existing users.
       </p>
       <p>
         You can go ahead and implement these features into your app or simply simulate them through the console by issuing these HTTP calls via <kbd>curl</kbd>. <b>You MUST at least create a user to keep going</b>.
@@ -51,7 +51,7 @@
     </li>
     <li>
       <p>
-        Then, once your Android application has a logged user to work with, the <a href="javascript:scroll_if_anchor('#using_the_pusher_');">Using the Pusher</a> section explains the next flow your app is supposed to take, which is to interact with both the Pusher service and Google Cloud Messaging in order to make your app able to receive Buddycloud updates regarding your logged user.
+        Then, once your Android application has a logged user to work with, the <a href="javascript:scroll_if_anchor('#using_the_pusher_');">Using the Pusher</a> section explains the next flow your app is supposed to take, which is to interact with both the Pusher service and Google Cloud Messaging in order to make your app able to receive Peergos updates regarding your logged user.
       </p>
       <p>
         As you will see by reading the official Android guides regarding GCM, some of these steps are meant to be performed once your Android application is opened and others everytime it is resumed.
@@ -64,7 +64,7 @@
 
   <h4 data-hidden-from-toc="true">Usage flows</h4>
   <p>
-    After setup, your Android application will end up with a logged Buddycloud user to work with and fully able to receive Buddycloud updates.
+    After setup, your Android application will end up with a logged Peergos user to work with and fully able to receive Buddycloud updates.
   </p>
   <p>
     These are some of the cool things you can do once you've got that:
@@ -83,21 +83,21 @@
 
   <h2>Using the API</h2>
   <p>
-    If you were to use your own Buddycloud domain now, to find the API endpoint of your domain, you'd go to your <a href="https://hosting.buddycloud.com/vhosts">hosting console</a>, then select your domain. Then the API endpoint for your domain would be listed among other endpoints.
+    If you were to use your own Peergos domain now, to find the API endpoint of your domain, you'd go to your <a href="https://hosting.peergos.org/vhosts">hosting console</a>, then select your domain. Then the API endpoint for your domain would be listed among other endpoints.
   </p>
   <p>
-    But for this walkthrough you'll use the demo service, which means your app will talk to the demo service's API endpoint at <code>starter.buddycloud.com/api</code>.
+    But for this walkthrough you'll use the demo service, which means your app will talk to the demo service's API endpoint at <code>starter.peergos.org/api</code>.
   </p>
 
   <h3>Create a User</h3>
   <p>
-    Many interactions with a given Buddycloud domain's REST API are only allowed with valid user credentials. For example, you need an user in order to register with the Pusher service (more about this very important service below). For this walkthrough you'll use a randomly-named Buddycloud account, which you'll create with help from the REST API.
+    Many interactions with a given Peergos domain's REST API are only allowed with valid user credentials. For example, you need an user in order to register with the Pusher service (more about this very important service below). For this walkthrough you'll use a randomly-named Buddycloud account, which you'll create with help from the REST API.
   </p>
   <p>
-    The following API call creates this Buddycloud user account <code><span class='generated-u'></span></code>:
+    The following API call creates this Peergos user account <code><span class='generated-u'></span></code>:
   </p>
   <div class="highlight">
-      <pre><code>curl https://starter.buddycloud.com/api/account \
+      <pre><code>curl https://starter.peergos.org/api/account \
     -X POST \
     -H "Content-Type: application/json" \
     -H "Accept: application/json" \
@@ -113,7 +113,7 @@
     You can check user credentials at any time simply by issuing the following API call:
   </p>
   <div class="highlight">
-      <pre><code>curl https://starter.buddycloud.com/api/ \
+      <pre><code>curl https://starter.peergos.org/api/ \
     -u <span class="generated-u"></span>:<span class="generated-p"></span> \
     -X GET \
     -H "Accept: application/json"</code></pre>
@@ -127,7 +127,7 @@
     For this walkthrough your Android app will register to the Pusher service that is used by the demo service. The Pusher is responsible for sending push notifications to the app.
   </p>
   <p>
-    Buddycloud updates are sent by the Pusher through <a href="developer.android.com/google/gcm/index.html">Google Cloud Messaging</a>, so that means your Android application must become a GCM Client in order to receive them. 
+    Peergos updates are sent by the Pusher through <a href="developer.android.com/google/gcm/index.html">Google Cloud Messaging</a>, so that means your Android application must become a GCM Client in order to receive them. 
   </p>
 
   <h3>Setup Google Play Services</h3>
@@ -137,18 +137,18 @@
 
   <h3>Implement your Android app as a GCM Client</h3>
   <p>
-    For this walkthrough, you don't need to create a Google API project, get API keys, build your own GCM servers, establish communication between them and your Buddycloud domains, etc.
+    For this walkthrough, you don't need to create a Google API project, get API keys, build your own GCM servers, establish communication between them and your Peergos domains, etc.
   </p>
   <p>
     All you need to do is implement your Android app as a GCM Client, as we are already taking care of the rest.
   </p>
   <p>
-    So please refer to <a href="http://developer.android.com/google/gcm/client.html">this guide</a> and perform steps <a href="http://developer.android.com/google/gcm/client.html#play-services">1</a> and <a href="http://developer.android.com/google/gcm/client.html#manifest">2</a> in order to make your Android app able to receive Buddycloud updates via GCM.
+    So please refer to <a href="http://developer.android.com/google/gcm/client.html">this guide</a> and perform steps <a href="http://developer.android.com/google/gcm/client.html#play-services">1</a> and <a href="http://developer.android.com/google/gcm/client.html#manifest">2</a> in order to make your Android app able to receive Peergos updates via GCM.
   </p>
 
   <h3>Register with the Pusher</h3>
   <p>
-    Every registration with the Pusher service is associated with the logged user your Android application is working with. You can perform the steps below using hardcoded credentials or you can implement the flows explained in the <a href="javascript:scroll_if_anchor('#using_the_api_');">Using the API</a> section into your app and have the next steps below happen once a user logs into your Buddycloud-powered app.
+    Every registration with the Pusher service is associated with the logged user your Android application is working with. You can perform the steps below using hardcoded credentials or you can implement the flows explained in the <a href="javascript:scroll_if_anchor('#using_the_api_');">Using the API</a> section into your app and have the next steps below happen once a user logs into your Peergos-powered app.
   </p>
   <p>
     Take advice from <a href="http://developer.android.com/google/gcm/client.html#app">Step 3</a> of the guide above as it will help you on implementing your Android app as a GCM Client.
@@ -159,10 +159,10 @@
     In the <a href="http://developer.android.com/google/gcm/client.html#sample-register">Register for GCM</a> section, beware that instead of getting your own <code>SENDER_ID</code> from the Google API Console, in this walkthrough you'll just get the one associated with the demo Pusher service.
   </p>
   <p>
-    That's why you'll need the following call to the Buddycloud REST API:
+    That's why you'll need the following call to the Peergos REST API:
   </p>
   <div class="highlight">
-      <pre><code>curl https://starter.buddycloud.com/api/notification_metadata?type=gcm \
+      <pre><code>curl https://starter.peergos.org/api/notification_metadata?type=gcm \
     -u <span class="generated-u"></span>:<span class="generated-p"></span> \
     -X GET \
     -H "Accept: application/json"</code></pre>
@@ -188,7 +188,7 @@
     Use the following call to the REST API to do that:
   </p>
   <div class="highlight">
-    <pre><code>curl https://starter.buddycloud.com/api/notification_settings \
+    <pre><code>curl https://starter.peergos.org/api/notification_settings \
     -u <span class="generated-u"></span>:<span class="generated-p"></span> \
     -X POST \
     -H "Content-Type: application/json" \
@@ -199,7 +199,7 @@
     }'</code></pre>
   </div>
   <p>
-    Within the payload of the call above you can specify the exact events you want to listen for incoming Buddycloud updates. Just add the events as keys with values being a boolean indicating whether or not you want updates of given event types.
+    Within the payload of the call above you can specify the exact events you want to listen for incoming Peergos updates. Just add the events as keys with values being a boolean indicating whether or not you want updates of given event types.
   </p>
   <p>For example, to be notified when your user is mentioned in another post or when there are new posts to nodes you are subscribed to, add the following key-value pairs to the payload before making the HTTP call:
   </p>
@@ -218,7 +218,7 @@
     <tr>
       <th>JSON payload event key</th>
       <th>Default</th>
-      <th>Associated Buddycloud GCM push notification event keys</th>
+      <th>Associated Peergos GCM push notification event keys</th>
     </tr>
     <tr>
       <td><code>postAfterMe</code></td>
@@ -265,34 +265,34 @@
 
   <h1 data-hidden-from-toc="true" id="exchanging_posts">Exchanging posts</h1>
   <p>
-    For the purposes of this walkthrough, you'll work with this specific node: <code>demo-node@starter.buddycloud.com/posts</code>.
+    For the purposes of this walkthrough, you'll work with this specific node: <code>demo-node@starter.peergos.org/posts</code>.
   </p>
   <p>
     You will subscribe to it, so that you receive updates when there are new posts to this node. Please have your Android app issue the following API call (or you can simply do it yourself manually via <kbd>curl</kbd>):
   </p>
   <div class="highlight">
-    <pre><code>curl https://starter.buddycloud.com/api/subscribed \
+    <pre><code>curl https://starter.peergos.org/api/subscribed \
     -u <span class="generated-u"></span>:<span class="generated-p"></span> \
     -X POST \
     -H "Content-Type: application/json" \
     -H "Accept: application/json" \
     -d '{ \
-          "demo-node@starter.buddycloud.com/posts": "publisher" \
+          "demo-node@starter.peergos.org/posts": "publisher" \
     }'</code></pre>
   </div>
   <p>
-    Now the logged user <code><span class="generated-u"></span></code> is subscribed to the node <code>demo-node@starter.buddycloud.com/posts</code>, thus the logged user has permission to listen for incoming updates, fetch old posts to this node or even create new posts to this node.
+    Now the logged user <code><span class="generated-u"></span></code> is subscribed to the node <code>demo-node@starter.peergos.org/posts</code>, thus the logged user has permission to listen for incoming updates, fetch old posts to this node or even create new posts to this node.
   </p>
 
   <h2>Listening for incoming posts</h2>
   <p>
-    By performing the steps so far in this guide, you have properly empowered your Android application to be able to receive Buddycloud updates regarding the current logged user.
+    By performing the steps so far in this guide, you have properly empowered your Android application to be able to receive Peergos updates regarding the current logged user.
   </p>
   <p>
-    Before proceeding, please read <a href="http://developer.android.com/google/gcm/client.html#sample-receive">this guide</a> on how to receive GCM push notifications in general, as the same principles obviously apply for receiving Buddycloud updates through GCM. You will need a <code>GCMIntentService</code> similar to the one in that sample code snippet provided in that guide.
+    Before proceeding, please read <a href="http://developer.android.com/google/gcm/client.html#sample-receive">this guide</a> on how to receive GCM push notifications in general, as the same principles obviously apply for receiving Peergos updates through GCM. You will need a <code>GCMIntentService</code> similar to the one in that sample code snippet provided in that guide.
   </p>
   <div class="alert alert-info">
-    You can also refer to the <a href="http://github.com/buddycloud/buddycloud-android">source code</a> of our ready-made Buddycloud Android client to get a better understanding! The complete <code>GCMIntentService</code> used by this project is located <a href="http://github.com/buddycloud/buddycloud-android/blob/master/src/com/buddycloud/GCMIntentService.java">here</a>.
+    You can also refer to the <a href="http://github.com/peergos/peergos-android">source code</a> of our ready-made Peergos Android client to get a better understanding! The complete <code>GCMIntentService</code> used by this project is located <a href="http://github.com/peergos/peergos-android/blob/master/src/com/peergos/GCMIntentService.java">here</a>.
   </div>
   <p>
 As you might recall, in previous steps in this walkthrough you've registered with the Pusher; while doing so you've indicated interest in receiving notifications for these particular events:
@@ -309,7 +309,7 @@ As you might recall, in previous steps in this walkthrough you've registered wit
     That means your <code>GCMIntentService</code> will need to make sure it doesn't ignore incoming events with keys <code>POST_ON_SUBSCRIBED_CHANNEL</code> or <code>MENTION</code>.
   </p>
   <p>
-    The following code snippet shows how to make sure incoming push notifications are exactly the kind of Buddycloud updates you're listening for:
+    The following code snippet shows how to make sure incoming push notifications are exactly the kind of Peergos updates you're listening for:
   </p>
   <div class="highlight">
     <pre><code>@Override
@@ -346,7 +346,7 @@ protected void onHandleIntent(Intent incomingPushNotif) {
 }</code></pre>
   </div>
   <p>
-    All types of Buddycloud GCM push notification event keys are listed in <a href="javascript:scroll_if_anchor('#event_keys');">the third column of the table above</a>.
+    All types of Peergos GCM push notification event keys are listed in <a href="javascript:scroll_if_anchor('#event_keys');">the third column of the table above</a>.
   </p>
 
   <h2>Fetching old posts</h2>
@@ -368,10 +368,10 @@ protected void onHandleIntent(Intent incomingPushNotif) {
     For example, to fetch the last 10 posts you can do:
   </p>
   <div class="alert alert-info">
-    Please <a href="javascript:scroll_if_anchor('#exchanging_posts');">make sure</a> your user is subscribed to <code>demo-node@starter.buddycloud.com/posts</code> first.
+    Please <a href="javascript:scroll_if_anchor('#exchanging_posts');">make sure</a> your user is subscribed to <code>demo-node@starter.peergos.org/posts</code> first.
   </div>
   <div class="highlight">
-    <pre><code>curl https://starter.buddycloud.com/api/demo-node@starter.buddycloud.com/content/posts/threads?max=10 \
+    <pre><code>curl https://starter.peergos.org/api/demo-node@starter.peergos.com/content/posts/threads?max=10 \
     -u <span class="generated-u"></span>:<span class="generated-p"></span> \
     -X GET \
     -H "Accept: application/json"</code></pre>
@@ -402,7 +402,7 @@ protected void onHandleIntent(Intent incomingPushNotif) {
     Then you can get posts older than the one of ID <code>ANOTHER_GIVEN_POST_ID</code> by issuing the following API call:
   </p>
   <div class="highlight">
-    <pre><code>curl https://starter.buddycloud.com/api/demo-node@starter.buddycloud.com/content/posts/threads?max=10&amp;after=ANOTHER_GIVEN_POST_ID \
+    <pre><code>curl https://starter.peergos.org/api/demo-node@starter.peergos.com/content/posts/threads?max=10&amp;after=ANOTHER_GIVEN_POST_ID \
     -u <span class="generated-u"></span>:<span class="generated-p"></span> \
     -X GET \
     -H "Accept: application/json"</code></pre>
@@ -410,13 +410,13 @@ protected void onHandleIntent(Intent incomingPushNotif) {
 
   <h2>Creating a new post</h2>
   <p>
-    Finally, the following REST API call shall be used whenever the user your Android application is working with wishes to create a new post to one of the nodes it is subscribed to (e.g. <code>demo-node@starter.buddycloud.com/posts</code>):
+    Finally, the following REST API call shall be used whenever the user your Android application is working with wishes to create a new post to one of the nodes it is subscribed to (e.g. <code>demo-node@starter.peergos.org/posts</code>):
   </p>
   <div class="alert alert-info">
-    Please <a href="javascript:scroll_if_anchor('#exchanging_posts');">make sure</a> your user is subscribed to <code>demo-node@starter.buddycloud.com/posts</code> first.
+    Please <a href="javascript:scroll_if_anchor('#exchanging_posts');">make sure</a> your user is subscribed to <code>demo-node@starter.peergos.org/posts</code> first.
   </div>
   <div class="highlight">
-    <pre><code>curl https://starter.buddycloud.com/api/demo-node@starter.buddycloud.com/content/posts \
+    <pre><code>curl https://starter.peergos.org/api/demo-node@starter.peergos.com/content/posts \
     -u <span class="generated-u"></span>:<span class="generated-p"></span> \
     -X POST \
     -H "Accept: application/json" \
@@ -428,7 +428,7 @@ protected void onHandleIntent(Intent incomingPushNotif) {
 
   <h2>Jumpstart</h2>
   <p>
-    To get going you can also fork our ready-made demo app from <a href="http://github.com/buddycloud/buddycloud-android">http://github.com/buddycloud/buddycloud-android</a>.
+    To get going you can also fork our ready-made demo app from <a href="http://github.com/peergos/peergos-android">http://github.com/peergos/peergos-android</a>.
   </p>
 
 </div>

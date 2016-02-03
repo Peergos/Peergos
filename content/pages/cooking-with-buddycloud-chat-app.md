@@ -1,6 +1,6 @@
 Title: Add chat to your app
-url: cooking-with-buddycloud-chat-app
-save_as: cooking-with-buddycloud-chat-app.html
+url: cooking-with-peergos-chat-app
+save_as: cooking-with-peergos-chat-app.html
 order: -1
 show_in_top_menu: false
 table_of_contents: true
@@ -17,15 +17,15 @@ Difficulty: <span style="color:#2DAEBF;"><strong>Easy</strong></span>
 Ingredients
 -----------
 
-- [Project Skeleton](https://github.com/buddycloud/skeleton-project.git)
+- [Project Skeleton](https://github.com/peergos/skeleton-project.git)
 - [Node and NPM](http://nodejs.org/download/)
 - Your favourite text editor
 
 Getting help
 ------------
 
--  Email: <reach-a-developer@buddycloud.com>
--  Twitter: [@buddycloud](https://twitter.com/buddycloud)
+-  Email: <reach-a-developer@peergos.org>
+-  Twitter: [@peergos](https://twitter.com/peergos)
 
 Method
 ------
@@ -36,7 +36,7 @@ Method
 
 ```
   +---------+  HTML/IMG/JS/CSS  +----------+
-  | User /  | <---------------+ | xmpp-ftw | (codepen demo is using: "https://xmpp-ftw.buddycloud.com")
+  | User /  | <---------------+ | xmpp-ftw | (codepen demo is using: "https://xmpp-ftw.peergos.org")
   | Browser |      websocket    | server   |
   +---------+ <---------------> +----------+
                                     ^
@@ -44,7 +44,7 @@ Method
                                     |
                                     v
                                 +--------+   component   +------------+
-                                |  XMPP  |   connection  | buddycloud |
+                                |  XMPP  |   connection  | peergos |
                                 | server |<------------->| server     |
                                 +--------+               +------------+
                                     ^
@@ -59,7 +59,7 @@ Method
 
 Let's get setup with a skeleton project.
 ~~~~ bash
-git clone https://github.com/buddycloud/skeleton-project.git
+git clone https://github.com/peergos/skeleton-project.git
 ~~~~
 
 Then we get all the npm modules installed and start npm
@@ -80,8 +80,8 @@ Chatting works as follows:
 
 First up, let's register a user by issuing a POST request to the HTTP API /account endpoint:
 ~~~~ javascript
-var apiLocation = "https://demo.buddycloud.org/api";
-var domain = "@buddycloud.org";
+var apiLocation = "https://demo.peergos.org/api";
+var domain = "@peergos.org";
 _registerUser = function(username, password) {
     var jid = username + domain;
     $.ajax({
@@ -131,20 +131,20 @@ function login(jid, password) {
 
 socket.on('xmpp.connection', function(data) {
     console.log('Connected as', data.jid);
-    discoverBuddycloudServer();
+    discoverPeergosServer();
 });
 ~~~~
 
-As you have seen above, once connected you must discover the Buddycloud server:
+As you have seen above, once connected you must discover the Peergos server:
 
 ~~~~
-function discoverBuddycloudServer() {
+function discoverPeergosServer() {
     socket.send(
-        'xmpp.buddycloud.discover',
+        'xmpp.peergos.discover',
         {},
         function(error, data) {
             if (error) return console.error(error);
-            console.log('Discovered Buddycloud server at', data);
+            console.log('Discovered Peergos server at', data);
             createNode();
             getNodeItems();
         }
@@ -152,22 +152,22 @@ function discoverBuddycloudServer() {
 }
 ~~~~
 
-Now we will create our channel for sharing chat messages: it will be ```chat-room@topics.buddycloud.org```:
+Now we will create our channel for sharing chat messages: it will be ```chat-room@topics.peergos.org```:
 
 ~~~~ javascript
 function createNode(){
-    socket.send('xmpp.buddycloud.create',
+    socket.send('xmpp.peergos.create',
     {
-        node : "/user/chat-room@topics.buddycloud.org/chat",
+        node : "/user/chat-room@topics.peergos.org/chat",
         options: [
-            { "var": "buddycloud#channel_type", value : "topic" },
+            { "var": "peergos#channel_type", value : "topic" },
             { "var": "pubsub#title", value : "Chat Topic Channel" },
             { "var": "pubsub#access_model", value : "open" },
-            { "var": "buddycloud#default_affiliation", value : "publisher" }
+            { "var": "peergos#default_affiliation", value : "publisher" }
         ]
     },
     function(error, data) {
-        console.log('xmpp.buddycloud.create response arrived');
+        console.log('xmpp.peergos.create response arrived');
         if (!error){
             console.log('Created Chat Room node', data);
         }
@@ -179,7 +179,7 @@ function createNode(){
             console.error(error);
         }
         getNewMessagesNotification();
-        sendPresenceToBuddycloudServer();
+        sendPresenceToPeergosServer();
     });
 }
 ~~~~
@@ -187,9 +187,9 @@ function createNode(){
 As you may have noticed, if the node already exists, we'll at least make sure the user is subscribed to it (in a best effort approach):
 ~~~~
 function subscribeToNode(){
-    var node = "/user/chat-room@topics.buddycloud.org/chat";
+    var node = "/user/chat-room@topics.peergos.org/chat";
     socket.send(
-        'xmpp.buddycloud.subscribe',
+        'xmpp.peergos.subscribe',
         {
             "node": node,
         },
@@ -204,8 +204,8 @@ function subscribeToNode(){
 Then specify that you want to listen for incoming messages:
 ~~~~
 function getNewMessagesNotification(){
-    socket.on('xmpp.buddycloud.push.item', function(data) {
-        var node = "/user/chat-room@topics.buddycloud.org/chat";
+    socket.on('xmpp.peergos.push.item', function(data) {
+        var node = "/user/chat-room@topics.peergos.org/chat";
         if ( node === data.node ){ //Notifications of messages on other nodes may arrive as well
             handleItem(data);
         }
@@ -213,10 +213,10 @@ function getNewMessagesNotification(){
 }
 ~~~~
 
-And you must send presence to the buddycloud server to inform it you're online:
+And you must send presence to the peergos server to inform it you're online:
 ~~~~
-function sendPresenceToBuddycloudServer(){
-    socket.send('xmpp.buddycloud.presence', {});
+function sendPresenceToPeergosServer(){
+    socket.send('xmpp.peergos.presence', {});
 }
 ~~~~
 
@@ -231,7 +231,7 @@ var getNodeItems = function(itemId) {
         data.id = itemId;
     }
     socket.send(
-        'xmpp.buddycloud.retrieve',
+        'xmpp.peergos.retrieve',
         data,
         handleItems
     );
@@ -241,9 +241,9 @@ var getNodeItems = function(itemId) {
 Now, you can try sending a message to the chat room:
 ~~~~ javascript
 function sendMessage(message){
-    var node = "/user/chat-room@topics.buddycloud.org/chat";
+    var node = "/user/chat-room@topics.peergos.org/chat";
     socket.send(
-        'xmpp.buddycloud.publish',
+        'xmpp.peergos.publish',
         {
             "node": node,
             "content": {
@@ -264,7 +264,7 @@ function sendMessage(message){
 
 And that's it!
 
-Hope you had fun cooking with buddycloud.
+Hope you had fun cooking with peergos.
 
 Working demo in [codepen.io](http://codepen.io/guilhermesgb/pen/lJfLg/), feel free to take a look at it if need be.
 
@@ -273,8 +273,8 @@ We also view the source code of this Simple Chat recipe [here](https://github.co
 Any Questions?
 --------------
 
-Want to contribute to this [page](https://github.com/buddycloud/buddycloud.com/blob/master/content/pages/cooking-with-buddycloud-chat-app.md)?
+Want to contribute to this [page](https://github.com/peergos/peergos.org/blob/master/content/pages/cooking-with-peergos-chat-app.md)?
 
-For any questions or concerns, please contact us at <reach-a-developer@buddycloud.com> or at Twitter: [@buddycloud](https://twitter.com/buddycloud)!
+For any questions or concerns, please contact us at <reach-a-developer@peergos.org> or at Twitter: [@peergos](https://twitter.com/peergos)!
 
 Happy cooking!

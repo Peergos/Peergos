@@ -15,19 +15,19 @@
 <div class="row">
   <h2>Build a messaging app</h2>
   <p>
-    You can access Buddycloud in many ways. The following steps quickly introduce you on how to exchange posts in a channel node, which is the most basic thing you can do with Buddycloud.
+    You can access Peergos in many ways. The following steps quickly introduce you on how to exchange posts in a channel node, which is the most basic thing you can do with Buddycloud.
   </p>
   <p>
-    This example uses Javascript (better suited for web apps) but you can use our <a href="http://buddycloud.com/api">REST API</a> in order to build other apps such as mobile ones.
+    This example uses Javascript (better suited for web apps) but you can use our <a href="http://peergos.org/api">REST API</a> in order to build other apps such as mobile ones.
   </p>
-  <h3>Sign up for a test account / Install Buddycloud</h3>
-  <p>To start building Buddycloud you will need a test account on the <a href="https://hosting.buddycloud.com/login">
-    Dev-Console</a>. We recommend using the developer console initially and later, you can install your own Buddycloud 
+  <h3>Sign up for a test account / Install Peergos</h3>
+  <p>To start building Peergos you will need a test account on the <a href="https://hosting.peergos.org/login">
+    Dev-Console</a>. We recommend using the developer console initially and later, you can install your own Peergos 
     stack.</p>
   <h3>Include primus.js</h3>
   <p>You will need to include this script otherwise none of the steps below will work.</p>
   <div class="highlight">
-      <pre><code>&lt;script src="https://demo.buddycloud.com/scripts/primus/primus.js" type="text/javascript"&gt;&lt;/script&gt;</code></pre>
+      <pre><code>&lt;script src="https://demo.peergos.org/scripts/primus/primus.js" type="text/javascript"&gt;&lt;/script&gt;</code></pre>
   </div>
 
   <h3>Create a user</h3>
@@ -35,7 +35,7 @@
       The following Javascript code snippet creates an account: <code><span class='generated-u'></span></code>.
   </p>
   <div class="highlight">
-      <pre><code>var socket = new Primus("https://demo.buddycloud.com");
+      <pre><code>var socket = new Primus("https://demo.peergos.org");
 socket.on('open', function() {
     socket.send('xmpp.login',
     {
@@ -52,10 +52,10 @@ socket.on('xmpp.connection', function() {
 
   <h3>Connect, authenticate, discover</h3>
   <p>
-      The following Javascript code snippet <b><i>is pretty important and required so that you can perform the further steps</i></b> described in the following sections in this document. This is how you connect to your Buddycloud domain, authenticate your user and then discover the Buddycloud server.
+      The following Javascript code snippet <b><i>is pretty important and required so that you can perform the further steps</i></b> described in the following sections in this document. This is how you connect to your Peergos domain, authenticate your user and then discover the Buddycloud server.
   </p>
   <div class="highlight">
-      <pre><code>var socket = new Primus("https://demo.buddycloud.com");
+      <pre><code>var socket = new Primus("https://demo.peergos.org");
 socket.on('open', function() {
     socket.send('xmpp.login',
     {
@@ -65,7 +65,7 @@ socket.on('open', function() {
 });
 
 socket.on('xmpp.connection', function() {
-    socket.send('xmpp.buddycloud.discover', {}, function(error, data) {
+    socket.send('xmpp.peergos.discover', {}, function(error, data) {
         window.alert("Authenticated as your user successfully!");
     });
 });</code></pre>
@@ -73,12 +73,12 @@ socket.on('xmpp.connection', function() {
 
   <h3>Fetch posts</h3>
   <p>
-      The following Javascript code snippet assumes you are already authenticated and also that you have already discovered the Buddycloud server. It retrieves posts from the <code>get-started@demo.buddycloud.com/posts</code> node.
+      The following Javascript code snippet assumes you are already authenticated and also that you have already discovered the Peergos server. It retrieves posts from the <code>get-started@demo.peergos.org/posts</code> node.
   </p>
   <div class="highlight">
-      <pre><code>socket.send('xmpp.buddycloud.retrieve',
+      <pre><code>socket.send('xmpp.peergos.retrieve',
 {
-    node: '/user/get-started@demo.buddycloud.com/posts',
+    node: '/user/get-started@demo.peergos.org/posts',
     rsm: { max: 10 }
 },
 function(error, posts) {
@@ -97,17 +97,17 @@ function(error, posts) {
 
   <h3>Post something yourself</h3>
   <p>
-      The following Javascript code snippet assumes you are already authenticated and that you have already discovered the Buddycloud server. It subscribes your user to the <code>get-started@demo.buddycloud.com/posts</code> node and then creates a post on this node. Finally, it starts listening for incoming messages (and thus will receive the one you've just posted).
+      The following Javascript code snippet assumes you are already authenticated and that you have already discovered the Peergos server. It subscribes your user to the <code>get-started@demo.peergos.org/posts</code> node and then creates a post on this node. Finally, it starts listening for incoming messages (and thus will receive the one you've just posted).
   </p>
   <div class="highlight">
-      <pre><code>socket.send('xmpp.buddycloud.subscribe',
+      <pre><code>socket.send('xmpp.peergos.subscribe',
 {
-    node: '/user/get-started@demo.buddycloud.com/posts'
+    node: '/user/get-started@demo.peergos.org/posts'
 },
 function(error, data) {
-    socket.send('xmpp.buddycloud.publish',
+    socket.send('xmpp.peergos.publish',
     {
-        node: '/user/get-started@demo.buddycloud.com/posts',
+        node: '/user/get-started@demo.peergos.org/posts',
         content: {
             atom: {
                 content: "Hello world!"
@@ -121,8 +121,8 @@ function(error, data) {
     });
 });
 
-socket.on('xmpp.buddycloud.push.item', function(post) {
-    if ( post.node === '/user/get-started@demo.buddycloud.com/posts' ) {
+socket.on('xmpp.peergos.push.item', function(post) {
+    if ( post.node === '/user/get-started@demo.peergos.org/posts' ) {
         var author = post.entry.atom.author.name;
         var content = post.entry.atom.content.content;
         window.alert("You were notified of new post!\nAuthor: "+author+"; Msg: "+content);

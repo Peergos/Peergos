@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*- #
 from __future__ import unicode_literals
 
-AUTHOR = u'Buddycloud team'
-SITENAME = u'Buddycloud'
+AUTHOR = u'Peergos team'
+SITENAME = u'Peergos'
 SITEURL = ''
 
 TIMEZONE = 'Europe/Berlin'

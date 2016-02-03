@@ -5,12 +5,12 @@ order: -1
 table_of_contents: false
 show_in_top_menu: false
 
-The HTTP API is implemented by the [buddycloud HTTP API
-server](https://github.com/buddycloud/buddycloud-http-api).
+The HTTP API is implemented by the [peergos HTTP API
+server](https://github.com/peergos/peergos-http-api).
 
-The buddycloud HTTP API presents a simple way to access buddycloud
+The peergos HTTP API presents a simple way to access peergos
 channels through a REST-like interface. It is thought as an alternative
-to buddycloud's [XMPP interface](http://buddycloud.github.io/buddycloud-xep/).
+to peergos's [XMPP interface](http://peergos.github.io/peergos-xep/).
 
 ---
 
@@ -37,7 +37,7 @@ HTTPS only
 :   All requests should be sent using HTTPS.
 
 UTF-8 encoding
-:   Each string passed to and from the buddycloud API must be UTF-8
+:   Each string passed to and from the peergos API must be UTF-8
     encoded. (In the case of JSON set "Content-Type" to
     "application/json; charset=utf-8")
 
@@ -58,22 +58,22 @@ Tools for experiments
 Finding the API server
 ======================
 
-Since each domain runs their own buddycloud API server, you can use DNS
+Since each domain runs their own peergos API server, you can use DNS
 to discover the API server for a domain.
 
-A DNS lookup for the `_buddycloud-api._tcp.example.com` [TXT
+A DNS lookup for the `_peergos-api._tcp.example.com` [TXT
 record](https://en.wikipedia.org/wiki/TXT_record) will give you the
 server. <tabber> dig command=
 
 ~~~~ bash
-$ dig txt _buddycloud-api._tcp.EXAMPLE.COM
+$ dig txt _peergos-api._tcp.EXAMPLE.COM
 
 ;; ANSWER SECTION:
-_buddycloud-api._tcp.EXAMPLE.COM.         IN TXT "v=1.0 host=buddycloud.EXAMPLE.COM protocol=https path=/api port=443"
+_peergos-api._tcp.EXAMPLE.COM.         IN TXT "v=1.0 host=peergos.EXAMPLE.COM protocol=https path=/api port=443"
 ~~~~
 
 This tells a client that any API calls for `example.com` should be made
-against `https://buddycloud.example.com:443/api` </tabber>
+against `https://peergos.example.com:443/api` </tabber>
 
 ---
 
@@ -92,7 +92,7 @@ server of *domain2.net*.)
 Content Types
 =============
 
-A buddycloud channel is essentially a collection of publish subscribe
+A peergos channel is essentially a collection of publish subscribe
 nodes. Each post is a complete Atom formatted entry.
 
 A [JSON](http://www.json.org/)-based format is also available that
@@ -294,8 +294,8 @@ Channel Content
 client->API server: HTTP request
 API server->XMPP server: create XMPP connection
 XMPP server-->API server: XMPP connection created
-API server->Buddycloud server: XMPP request
-Buddycloud server-->API server: XMPP response
+API server->Peergos server: XMPP request
+Peergos server-->API server: XMPP response
 API server-->client: HTTP response
 
 #### Description
@@ -570,8 +570,8 @@ Location: http://api.example.com/alice@example.com/content/posts/fooboo
 client->API server: HTTP request
 API server->XMPP server: create XMPP connection
 XMPP server-->API server: XMPP connection created
-API server->Buddycloud server: XMPP request
-Buddycloud server-->API server: XMPP response
+API server->Peergos server: XMPP request
+Peergos server-->API server: XMPP response
 API server-->client: HTTP response
 
 Description
@@ -670,8 +670,8 @@ Channel Metadata
 client->API server: HTTP request
 API server->XMPP server: create XMPP connection
 XMPP server-->API server: XMPP connection created
-API server->Buddycloud server: XMPP request
-Buddycloud server-->API server: XMPP response
+API server->Peergos server: XMPP request
+Peergos server-->API server: XMPP response
 API server-->client: HTTP response
 
 Description
@@ -744,8 +744,8 @@ Subscriptions
 client->API server: HTTP request
 API server->XMPP server: create XMPP connection
 XMPP server-->API server: XMPP connection created
-API server->Buddycloud server: XMPP request
-Buddycloud server-->API server: XMPP response
+API server->Peergos server: XMPP request
+Peergos server-->API server: XMPP response
 API server-->client: HTTP response
 
 Description
@@ -837,8 +837,8 @@ Content-Type: application/json
 client->API server: HTTP request
 API server->XMPP server: create XMPP connection
 XMPP server-->API server: XMPP connection created
-API server->Buddycloud server: XMPP request
-Buddycloud server-->API server: XMPP response
+API server->Peergos server: XMPP request
+Peergos server-->API server: XMPP response
 API server-->client: HTTP response
 
 Description
@@ -914,8 +914,8 @@ Content-Type: application/json
 client->API server: HTTP request
 API server->XMPP server: create XMPP connection
 XMPP server-->API server: XMPP connection created
-API server->Buddycloud server: XMPP request
-Buddycloud server-->API server: XMPP response
+API server->Peergos server: XMPP request
+Peergos server-->API server: XMPP response
 API server-->client: HTTP response
 
 Description
@@ -990,9 +990,9 @@ Media server->API server: XMPP: "dial-back" to confirm
 Note right of Media server: XEP-0070
 Note right of API server: checking request origin
 API server-->Media server: XMPP: confirms request origin
-Media server->Buddycloud server: XMPP: check perms
-Note right of Buddycloud server: XEP-0060
-Buddycloud server-->Media server: XMPP: response
+Media server->Peergos server: XMPP: check perms
+Note right of Peergos server: XEP-0060
+Peergos server-->Media server: XMPP: response
 Media server-->API server: HTTP: response
 API server-->client: forward response
 
@@ -1037,8 +1037,8 @@ Media Metadata
     is calculated by the server and not editable.
 :   **width** *server-set* width of the uploaded image or video. This is
     calculated by the server and not editable.
-:   **author** *required* the buddycloudID of the author
-:   **entityId** *required* the buddycloudID of the channel or user that
+:   **author** *required* the peergosID of the author
+:   **entityId** *required* the peergosID of the channel or user that
     owns the media
 :   **shaChecksum** *required* SHA1 file checksum
 :   **mimeType** *required* mimetype
@@ -1140,9 +1140,9 @@ Media server->API server: XMPP: asks for request confirmation
 Note right of Media server: XEP-0070
 Note right of API server: checking request origin
 API server-->Media server: XMPP: confirms request origin
-Media server->Buddycloud server: XMPP: check permissions to access media
-Note right of Buddycloud server: XEP-0060
-Buddycloud server-->Media server: XMPP: response to permission request
+Media server->Peergos server: XMPP: check permissions to access media
+Note right of Peergos server: XEP-0060
+Peergos server-->Media server: XMPP: response to permission request
 Media server-->API server: HTTP: request response
 API server-->client: forward response
 
@@ -1253,9 +1253,9 @@ Media server->API server: XMPP: asks for request confirmation
 Note right of Media server: XEP-0070
 Note right of API server: checking request origin
 API server-->Media server: XMPP: confirms request origin
-Media server->Buddycloud server: XMPP: check permissions to access media
-Note right of Buddycloud server: XEP-0060
-Buddycloud server-->Media server: XMPP: response to permission request
+Media server->Peergos server: XMPP: check permissions to access media
+Note right of Peergos server: XEP-0060
+Peergos server-->Media server: XMPP: response to permission request
 Media server-->API server: HTTP: request response
 API server-->client: forward response
 
@@ -1374,8 +1374,8 @@ Channel Management
 client->API server: HTTP request
 API server->XMPP server: create XMPP connection
 XMPP server-->API server: XMPP connection created
-API server->Buddycloud server: XMPP request
-Buddycloud server-->API server: XMPP response
+API server->Peergos server: XMPP request
+Peergos server-->API server: XMPP response
 API server-->client: HTTP response
 
 Description
@@ -1451,8 +1451,8 @@ Content-Type: application/json
         "creationDate" : "2012-04-24T09:13:51+0000",
         "defaultAffiliation" : "publisher",
         "description" : "/dev/hack",
-        "jid" : "team@topics.buddycloud.org",
-        "title" : "buddycloud dev team"
+        "jid" : "team@topics.peergos.org",
+        "title" : "peergos dev team"
       },
       { "channelType" : "personal",
         "creationDate" : "2012-02-05T13:31:12+0000",
@@ -1478,8 +1478,8 @@ Content Sync
 client->API server: HTTP request
 API server->XMPP server: create XMPP connection
 XMPP server-->API server: XMPP connection created
-API server->Buddycloud server: XMPP request
-Buddycloud server-->API server: XMPP response
+API server->Peergos server: XMPP request
+Peergos server-->API server: XMPP response
 API server-->client: HTTP response
 
 Description
@@ -1707,7 +1707,7 @@ API server-->client: forward response
 
 Description
 :   Performs a search over channels' metadata and posts' content indexed
-    by the [Channel Directory](https://buddycloud.org/wiki/Channel_Directory_Project).
+    by the [Channel Directory](https://peergos.org/wiki/Channel_Directory_Project).
 
 Content Types
 :   JSON *(application/json)*
@@ -1742,10 +1742,10 @@ GET /search?type=metadata&q=hack
 Content-Type: application/json
 
 {"items":
-  [{"jid":"team@topics.buddycloud.org",
+  [{"jid":"team@topics.peergos.org",
     "description":"/dev/hack",
     "creationDate":"2012-04-24T09:13:51+0000",
-    "title":"buddycloud dev team",
+    "title":"peergos dev team",
     "channelType":"topic",
     "defaultAffiliation":"publisher"}
   ],
@@ -1774,12 +1774,12 @@ Content-Type: application/json
         "published" : "2012-11-12T21:53:49+0000",
         "updated" : "2012-11-12T21:53:49+0000"
       },
-      { "author" : "tester1234@buddycloud.org",
+      { "author" : "tester1234@peergos.org",
         "content" : "hack hack",
         "id" : "d3cd8bc5-5722-42cd-9b95-1313fbe6644b",
         "in_reply_to" : null,
-        "parent_fullid" : "/user/tester1234@buddycloud.org/posts",
-        "parent_simpleid" : "tester1234@buddycloud.org",
+        "parent_fullid" : "/user/tester1234@peergos.org/posts",
+        "parent_simpleid" : "tester1234@peergos.org",
         "published" : "2012-09-25T23:58:00+0000",
         "updated" : "2012-09-25T23:58:00+0000"
       }
@@ -1803,7 +1803,7 @@ API server-->client: forward response
 
 Description
 :   Recommends channels for a given user based on taste data indexed by
-    the [Channel Directory](https://buddycloud.org/wiki/Channel_Directory_Project).
+    the [Channel Directory](https://peergos.org/wiki/Channel_Directory_Project).
 
 Content Types
 :   JSON *(application/json)*
@@ -1838,8 +1838,8 @@ Content-Type: application/json
         "creationDate" : "2012-04-24T09:13:51+0000",
         "defaultAffiliation" : "publisher",
         "description" : "/dev/hack",
-        "jid" : "team@topics.buddycloud.org",
-        "title" : "buddycloud dev team"
+        "jid" : "team@topics.peergos.org",
+        "title" : "peergos dev team"
       },
       { "channelType" : "personal",
         "creationDate" : "2012-02-05T13:31:12+0000",
@@ -1869,7 +1869,7 @@ API server-->client: forward response
 
 Description
 :   Retrieves the most active channels among the channels indexed by the
-    [Channel Directory](https://buddycloud.org/wiki/Channel_Directory_Project). The most active channels are the ones that had more posts in the window of a day.
+    [Channel Directory](https://peergos.org/wiki/Channel_Directory_Project). The most active channels are the ones that had more posts in the window of a day.
 
 Content Types
 :   JSON *(application/json)*
@@ -1901,14 +1901,14 @@ Content-Type: application/json
         "creationDate" : "2012-08-05T14:57:26+0000",
         "defaultAffiliation" : "publisher",
         "description" : "This is an RSS feed from the BBC News - World website.  Original: http://feeds.bbci.co.uk/news/world/rss.xml",
-        "jid" : "bbc_news_-_world@topics.buddycloud.org",
+        "jid" : "bbc_news_-_world@topics.peergos.org",
         "title" : "BBC News - World"
       },
       { "channelType" : "personal",
         "creationDate" : "2011-10-06T12:02:58+0000",
         "defaultAffiliation" : "publisher",
         "description" : "Flipping you the channel bits. Night and day, the distributed way",
-        "jid" : "simon@buddycloud.org",
+        "jid" : "simon@peergos.org",
         "title" : "Simon's chonnel"
       }
     ],

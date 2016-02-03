@@ -1,6 +1,6 @@
 #Direct Messaging
 
-Direct messages give you a quick way to send messages betwen users on your Buddycloud site and to users on remote Buddycloud sites. Direct messaging uses XMPP's native messaging.
+Direct messages give you a quick way to send messages betwen users on your Peergos site and to users on remote Buddycloud sites. Direct messaging uses XMPP's native messaging.
  
 ##Post Message
 
@@ -53,7 +53,7 @@ socket.on('xmpp.chat.message', function(data) {
 ```json
 {
   from: {
-    domain: 'buddycloud.com',
+    domain: 'peergos.org',
     user: 'friend'
     },
     content: 'What time should we go out tonight?',
@@ -65,7 +65,7 @@ socket.on('xmpp.chat.message', function(data) {
       }, */
  /* state: 'active' */
  /* archived: [
-    { by: { domain: 'buddycloud.com' }, id: 'archive:1' }
+    { by: { domain: 'peergos.org' }, id: 'archive:1' }
     ] */
 }
 ```

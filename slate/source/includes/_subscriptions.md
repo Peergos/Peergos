@@ -19,12 +19,12 @@ Users can only request their own subscriptions and are unable to view other user
 > `GET` /api/subscribed
 
 > ###Example
-> Fetching subscriptions of `juliet@buddycloud.com`, using `curl`:
+> Fetching subscriptions of `juliet@peergos.org`, using `curl`:
 
 ```shell
-curl https://buddycloud.com/api/subscribed \
+curl https://peergos.org/api/subscribed \
      -X GET \
-     -u juliet@buddycloud.com:romeo-forever \
+     -u juliet@peergos.org:romeo-forever \
      -H "Accept: application/json"
 ```
 
@@ -35,10 +35,10 @@ HTTP/1.1 200 OK
 Content-Type: application/json
 
 {
-    "juliet@buddycloud.com/posts": "owner",
-    "juliet@buddycloud.com/status": "owner",
-    "romeo@buddycloud.com/posts": "pending",
-    "capulet@topics.buddycloud.com/posts": "publisher"
+    "juliet@peergos.org/posts": "owner",
+    "juliet@peergos.org/status": "owner",
+    "romeo@peergos.org/posts": "pending",
+    "capulet@topics.peergos.org/posts": "publisher"
 }
 ```
 
@@ -59,14 +59,14 @@ The values denote the subscription type:
 > `POST` /api/subscribed
 
 > ###Example
-> `juliet@buddycloud.com` is subscribing to `romeo@buddycloud.com/posts`, using `curl`:
+> `juliet@peergos.org` is subscribing to `romeo@peergos.com/posts`, using `curl`:
 
 ```shell
-curl https://buddycloud.com/api/subscribed \
+curl https://peergos.org/api/subscribed \
      -X POST \
-     -u juliet@buddycloud.com:romeo-forever \
+     -u juliet@peergos.org:romeo-forever \
      -H "Content-Type: application/json" \
-     -d '{ "romeo@buddycloud.com/posts": "publisher" }'
+     -d '{ "romeo@peergos.org/posts": "publisher" }'
 ```
 
 Following behavior is dependent on the channel type:
@@ -91,15 +91,15 @@ Following a _private_ channel:
 
 > ###Example
 
-> `juliet@buddycloud.com` unfollows `romeo@buddycloud.com/posts`, using `curl`:
+> `juliet@peergos.org` unfollows `romeo@peergos.com/posts`, using `curl`:
 
 ```shell
-curl https://buddycloud.com/api/subscribed \
+curl https://peergos.org/api/subscribed \
      -X POST \
-     -u juliet@buddycloud.com:romeo-forever \
+     -u juliet@peergos.org:romeo-forever \
      -H "Content-Type: application/json" \
      -d '{ \
-             "romeo@buddycloud.com/posts": "none" \
+             "romeo@peergos.org/posts": "none" \
          }'
 ```
 

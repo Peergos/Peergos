@@ -2,12 +2,12 @@
 
 You can search for authors, metadata, channels, and channel content.
 
-There are two search services on Buddycloud that are tuned for different needs,
+There are two search services on Peergos that are tuned for different needs,
 
-- *Local search:* finds content on your own Buddycloud domain.
-- *Buddycloud-wide search:* finds channels, posts and metadata from public channels using the [Buddycloud crawler](https://github.com/buddycloud/channel-directory).
+- *Local search:* finds content on your own Peergos domain.
+- *Peergos-wide search:* finds channels, posts and metadata from public channels using the [Buddycloud crawler](https://github.com/peergos/channel-directory).
 
-Search type      | Local search | Buddycloud-wide search
+Search type      | Local search | Peergos-wide search
 -----------------|--------------|------------------------
 Channel content  | public and private channels | public channels
 Post author      | yes          | no
@@ -16,9 +16,9 @@ Location         | no           | yes
 
 ##Search by Content
 ```shell
-#POST https://demo.buddycloud.org/api/search?type=content&q={queryKey}
+#POST https://demo.peergos.org/api/search?type=content&q={queryKey}
 
-curl https://demo.buddycloud.org/api/search?type=content&q=Romeo \
+curl https://demo.peergos.org/api/search?type=content&q=Romeo \
      -x GET
 
 
@@ -76,9 +76,9 @@ Query for a specific user's posts.
 ##Search by Metadata
 
 ```shell
-#POST https://demo.buddycloud.org/api/search?type=metadata?q={queryKey}
+#POST https://demo.peergos.org/api/search?type=metadata?q={queryKey}
 
-curl https://demo.buddycloud.org/api/search?type=metadata&q=Romeo \
+curl https://demo.peergos.org/api/search?type=metadata&q=Romeo \
      -x GET
 
 

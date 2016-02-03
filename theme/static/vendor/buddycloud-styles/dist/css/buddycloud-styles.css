@@ -1831,7 +1831,7 @@ h1[id] {
   color: #E5E9EF;
 }
 
-/* Buddycloud Light Grey */
+/* Peergos Light Grey */
 /* line 23, ../../src/sass/vendor/_highlight.scss */
 .hljs-number,
 .hljs-preprocessor,
@@ -1845,7 +1845,7 @@ h1[id] {
   color: #E5E9EF !important;
 }
 
-/* Buddycloud Grey */
+/* Peergos Grey */
 /* line 33, ../../src/sass/vendor/_highlight.scss */
 .hljs-string,
 .hljs-value,
@@ -1856,7 +1856,7 @@ h1[id] {
   color: #C4C8CD !important;
 }
 
-/* Buddycloud Green-Blue */
+/* Peergos Green-Blue */
 /* line 60, ../../src/sass/vendor/_highlight.scss */
 .hljs-variable,
 .hljs-attribute,
@@ -2227,7 +2227,7 @@ ul.list-inline > li:before {
   height: 1.333em;
   display: block;
   position: absolute;
-  background-image: url("../img/logos/buddycloud_logo_mark_white.svg");
+  background-image: url("../img/logos/peergos_logo_mark_white.svg");
   background-repeat: no-repeat;
   background-size: cover;
 }

@@ -7,7 +7,7 @@ Denote variables with `{variable name}`
 - not `:variable name`
 - not `:variable name:`
 
-eg: `GET https://demo.buddycloud.org/api/{channelID}/media/{Mediaid}`
+eg: `GET https://demo.peergos.org/api/{channelID}/media/{Mediaid}`
 
 ##Channel types:
 

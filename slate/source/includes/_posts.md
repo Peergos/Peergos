@@ -5,7 +5,7 @@ New posts to a node are automaticaly:
 * pushed to the channel's online followers
 * spooled up for the channel's offline followers
 * archived and retrievable using the [fetch posts](#fetch-posts) method.
-* indexed by the [channel crawler](https://github.com/buddycloud/channel-directory)
+* indexed by the [channel crawler](https://github.com/peergos/channel-directory)
 
 Different channel types have different post formats.
 
@@ -25,7 +25,7 @@ Field       | Description | Responsible | <div style="display:none;">Example</di
 
 ###Pagination
 
-Buddycloud uses [Result Set Management](http://xmpp.org/extensions/xep-0059.html) for pagination of results obtained by the different endpoints for fetching posts specified below. This is useful when:
+Peergos uses [Result Set Management](http://xmpp.org/extensions/xep-0059.html) for pagination of results obtained by the different endpoints for fetching posts specified below. This is useful when:
 
 * building mobile applications and needing to limit the amount of data that the API sends back. 
 * your app needs to retrieve new messages since it was last online.
@@ -45,12 +45,12 @@ Parameter | Description
 > `POST` /api/`channelID`/content/`nodeID`
 
 > ###Example
-> Creating a new post to the `posts` node of `romeo@buddycloud.com`, using `curl`:
+> Creating a new post to the `posts` node of `romeo@peergos.org`, using `curl`:
 
 ```shell
-curl https://buddycloud.com/api/romeo@buddycloud.com/content/posts \
+curl https://peergos.org/api/romeo@peergos.com/content/posts \
      -X POST \
-     -u juliet@buddycloud.com:romeo-forever \
+     -u juliet@peergos.org:romeo-forever \
      -H "Content-Type: application/json" \
      -d '{ "content": "O Romeo, Romeo, wherefore art thou Romeo?" }'
 ```
@@ -60,7 +60,7 @@ curl https://buddycloud.com/api/romeo@buddycloud.com/content/posts \
 ```shell
 HTTP/1.1 201 Created
 
-Location: https://buddycloud.com/romeo@buddycloud.com/content/posts/$POST_ID
+Location: https://peergos.org/romeo@peergos.com/content/posts/$POST_ID
 ```
 
 Use this endpoint to create new post to a given node.
@@ -72,12 +72,12 @@ Use this endpoint to create new post to a given node.
 > `DELETE` /api/`channelID`/content/`nodeID`/`postID`
 
 > ###Example
-> Deleting post of id `$POST_ID` from the `posts` node of `romeo@buddycloud.com`, using `curl`:
+> Deleting post of id `$POST_ID` from the `posts` node of `romeo@peergos.org`, using `curl`:
 
 ```shell
-curl https://buddycloud.com/api/romeo@buddycloud.com/content/posts/$POST_ID \
+curl https://peergos.org/api/romeo@peergos.com/content/posts/$POST_ID \
      -X DELETE \
-     -u juliet@buddycloud.com:romeo-forever 
+     -u juliet@peergos.org:romeo-forever 
 ```
 
 Removes a post from a node.
@@ -94,10 +94,10 @@ When a post is deleted,
 > `GET` /api/`channelID`/content/`nodeID`/`postID`
 
 > ###Example
-> Fetching specific post of id `$POST_ID` from the `juliet@buddycloud.com/posts` node, using `curl`:
+> Fetching specific post of id `$POST_ID` from the `juliet@peergos.org/posts` node, using `curl`:
 
 ```shell
-curl https://buddycloud.com/api/juliet@buddycloud.com/content/posts/$POST_ID \
+curl https://peergos.org/api/juliet@peergos.com/content/posts/$POST_ID \
     -X GET \
     -H "Accept: application/json"
 ```
@@ -110,7 +110,7 @@ Content-Type: application/json
 
 {
     "id": "$POST_ID",
-    "author": "romeo@buddycloud.com",
+    "author": "romeo@peergos.org",
     "updated": "1595-06-01T12:00:00Z",
     "content": "But, soft! What light through yonder window breaks? It is the east, and Juliet is the sun.",
     "media": null
@@ -126,10 +126,10 @@ For obvious reasons, this endpoint doesn't support pagination. The other endpoin
 > `GET` /api/`channelID`/content/`nodeID`/`postID`/replyTo
 
 > ###Example
-> Fetching child posts of post to node `juliet@buddycloud.com/posts` of id `$POST_ID` using `curl`:
+> Fetching child posts of post to node `juliet@peergos.org/posts` of id `$POST_ID` using `curl`:
 
 ```shell
-curl https://buddycloud.com/api/juliet@buddycloud.com/content/posts/$POST_ID/replyTo \
+curl https://peergos.org/api/juliet@peergos.com/content/posts/$POST_ID/replyTo \
      -X GET \
      -H "Accept: application/json"
 ```
@@ -143,7 +143,7 @@ Content-Type: application/json
 [
     {
         "id": "$NEWEST_CHILD_POST_ID",
-        "author": "romeo@buddycloud.com",
+        "author": "romeo@peergos.org",
         "updated": "1595-06-01T12:00:00Z",
         "content": "But, soft! What light through yonder window breaks? It is the east, and Juliet is the sun.",
         "replyTo": "$POST_ID",
@@ -152,7 +152,7 @@ Content-Type: application/json
     ...
     {
         "id": "$OLDEST_CHILD_POST_ID",
-        "author": "romeo@buddycloud.com",
+        "author": "romeo@peergos.org",
         "updated": "1591-06-04T12:00:00Z",
         "content": "Thus with a kiss I die.",
         "replyTo": "$POST_ID",
@@ -170,7 +170,7 @@ Content-Type: application/json
 > Fetching posts from a node using pagination, using `curl`:
 
 ```shell
-curl https://buddycloud.com/api/juliet@buddycloud.com/content/posts?after=$NEWEST_POST_ID \
+curl https://peergos.org/api/juliet@peergos.com/content/posts?after=$NEWEST_POST_ID \
      -X GET \
      -H "Accept: application/json"
 ```
@@ -186,7 +186,7 @@ Content-Type: application/json
     ...
     {
         "id": "$OLDEST_CHILD_POST_ID",
-        "author": "romeo@buddycloud.com",
+        "author": "romeo@peergos.org",
         "updated": "1591-06-04T12:00:00Z",
         "content": "Thus with a kiss I die.",
         "replyTo": "$POST_ID",
@@ -203,10 +203,10 @@ Retrieves one or more posts that are children of a given node specified by `$POS
 > `GET` /api/`channelID`/content/`nodeID`
 
 > ###Example
-> Fetching the most recent posts from the `juliet@buddycloud.com/posts` node, using `curl`:
+> Fetching the most recent posts from the `juliet@peergos.org/posts` node, using `curl`:
 
 ```shell
-curl https://buddycloud.com/api/juliet@buddycloud.com/content/posts \
+curl https://peergos.org/api/juliet@peergos.com/content/posts \
      -X GET \
      -H "Accept: application/json"
 ```
@@ -220,7 +220,7 @@ Content-Type: application/json
 [
     {
         "id": "$NEWEST_POST_ID",
-        "author": "romeo@buddycloud.com",
+        "author": "romeo@peergos.org",
         "updated": "1595-06-01T12:00:00Z",
         "content": "But, soft! What light through yonder window breaks? It is the east, and Juliet is the sun.",
         "media": null
@@ -228,7 +228,7 @@ Content-Type: application/json
     ...
     {
         "id": "$OLDEST_POST_ID",
-        "author": "romeo@buddycloud.com",
+        "author": "romeo@peergos.org",
         "updated": "1591-06-04T12:00:00Z",
         "content": "Thus with a kiss I die.",
         "media": null
@@ -245,7 +245,7 @@ Content-Type: application/json
 > Fetching posts from a node using pagination, using `curl`:
 
 ```shell
-curl https://buddycloud.com/api/juliet@buddycloud.com/content/posts?max=3 \
+curl https://peergos.org/api/juliet@peergos.com/content/posts?max=3 \
      -X GET \
      -H "Accept: application/json"
 ```
@@ -259,7 +259,7 @@ Content-Type: application/json
 [
     {
         "id": "$NEWEST_POST_ID",
-        "author": "romeo@buddycloud.com",
+        "author": "romeo@peergos.org",
         "updated": "1595-06-01T12:00:00Z",
         "content": "But, soft! What light through yonder window breaks? It is the east, and Juliet is the sun.",
         "media": null
@@ -267,7 +267,7 @@ Content-Type: application/json
     ...
     {
         "id": "$OLDEST_POST_ID",
-        "author": "romeo@buddycloud.com",
+        "author": "romeo@peergos.org",
         "updated": "1591-06-04T12:00:00Z",
         "content": "Thus with a kiss I die.",
         "media": null
@@ -290,10 +290,10 @@ For another approach, please refer to the Fetch Recent Post Threads section depi
 > `GET` /api/`channelID`/content/`nodeID`/threads
 
 > ###Example
-> Fetching the most recent post threads from the `juliet@buddycloud.com/posts` node, using `curl`:
+> Fetching the most recent post threads from the `juliet@peergos.org/posts` node, using `curl`:
 
 ```shell
-curl https://buddycloud.com/api/juliet@buddycloud.com/content/posts/threads \
+curl https://peergos.org/api/juliet@peergos.com/content/posts/threads \
      -X GET \
      -H "Accept: application/json"
 ```
@@ -311,7 +311,7 @@ Content-Type: application/json
     "items": [
         {
             "id": "$OLDEST_CHILD_POST_ID",
-            "author": "romeo@buddycloud.com",
+            "author": "romeo@peergos.org",
             "updated": "1595-06-01T12:00:00Z",
             "content": "First reply.",
             "replyTo": "$PARENT_POST_ID"
@@ -322,7 +322,7 @@ Content-Type: application/json
         ...
         {
             "id": "$NEWEST_CHILD_POST_ID",
-            "author": "romeo@buddycloud.com",
+            "author": "romeo@peergos.org",
             "updated": "1595-06-01T12:00:00Z",
             "content": "Last thing ever said.",
             "replyTo": "$PARENT_POST_ID"
@@ -330,7 +330,7 @@ Content-Type: application/json
         },
         {
             "id": "$PARENT_POST_ID",
-            "author": "romeo@buddycloud.com",
+            "author": "romeo@peergos.org",
             "updated": "1591-06-04T12:00:00Z",
             "content": "First thing ever said.",
             "media": null
