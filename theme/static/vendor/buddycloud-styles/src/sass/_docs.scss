@@ -1,0 +1,40 @@
+/***********************
+* Docs
+***********************/
+
+// examples
+.bs-example {
+  img {
+    border: 1px solid hsl(0,0%,90%);
+  }
+}
+
+// sidebar
+.bs-docs-sidebar {
+  @media #{$min-768} {
+    padding-left: 0;
+  }
+
+  &.affix {
+    top: 90px;
+  }
+
+  .nav {
+    > li > a {
+      color: $dark-gray;
+      &:hover, &:focus {
+        color: $primary-color;
+        border-left-color: transparent;
+      }
+    }
+
+    > .active {
+      > a,
+      &:hover > a,
+      &:focus > a {
+        color: $primary-color;
+        border-left-color: transparent;
+      }
+    }
+  }
+}

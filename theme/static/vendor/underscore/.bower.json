@@ -1,0 +1,14 @@
+{
+  "name": "underscore",
+  "homepage": "https://github.com/jashkenas/underscore",
+  "version": "1.4.4",
+  "_release": "1.4.4",
+  "_resolution": {
+    "type": "version",
+    "tag": "1.4.4",
+    "commit": "484bdb43ec4a9dd6a40e60a2d25317bec7aeb43f"
+  },
+  "_source": "git://github.com/jashkenas/underscore.git",
+  "_target": "~1.4.x",
+  "_originalSource": "underscore"
+}

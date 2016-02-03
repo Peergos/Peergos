@@ -1,0 +1,29 @@
+{
+  "name": "buddycloud-styles",
+  "version": "0.0.0",
+  "authors": [
+    "Jan Lindenberg <jan.lindenberg@gmail.com>",
+    "Vítor Avelino <contact@vitoravelino.me>"
+  ],
+  "description": "Bootstrap theme for buddycloud sites",
+  "main": [
+    "dist/css/buddycloud-styles.css",
+    "dist/js/buddycloud-styles.js"
+  ],
+  "keywords": [
+    "css",
+    "framework",
+    "buddycloud"
+  ],
+  "license": "Apache2",
+  "private": true,
+  "ignore": [
+    ".*",
+    "docs",
+    "bower_components",
+    "app/bower_components"
+  ],
+  "dependencies": {
+    "bootstrap": "3.1.1"
+  }
+}

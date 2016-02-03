@@ -1,0 +1,15 @@
+/***********************
+* Tables
+***********************/
+
+.table {
+  td, th {
+    font-size: 0.75em;
+    @include transition(color .2s linear);
+    @include transition(background-color .2s linear);
+  }
+
+  tr {
+    border-top: 1px solid hsl(0,0%,95%);
+  }
+}

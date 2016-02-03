@@ -1,0 +1,60 @@
+.api {
+  padding-top: 50px;
+
+  blockquote {
+    border-left: none;
+  }
+
+  .highlight {
+    border: none;
+  }
+}
+
+.tocify-wrapper {
+  font-size: 13px;
+  margin-top: 50px;
+  background-color: white;
+
+  a {
+    color: #999;
+  }
+
+  .tocify-focus {
+    -webkit-box-shadow: none;
+    box-shadow: none;
+    background-color: transparent;
+
+    a {
+      font-weight: bold;
+      color: #2DAEBF;
+    }
+  }
+
+  > img {
+    display: none;
+  }
+
+  .tocify-subheader {
+    background-color: white;
+    background-image: none;
+
+    > li:first-child {
+      border-top: none;
+    }
+
+    > li:last-child {
+      border-bottom: none;
+    }
+  }
+}
+
+
+.content table tr:nth-child(even) > td,
+.content section table tr:nth-child(even) > td {
+  background-color: #F9F9F9;
+}
+
+.content table tr:nth-child(odd) > td,
+.content section table tr:nth-child(odd) > td {
+  background-color: #fff;
+}

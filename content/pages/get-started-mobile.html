@@ -1,0 +1,436 @@
+<html>
+<head>
+    <title>Get Started / Mobile</title>
+    <meta name="url" content="get-started-mobile" />
+    <meta name="save_as" content="get-started-mobile.html" />
+    <meta name="show_in_top_menu" content="false" />
+    <meta name="order" content="-1" />
+    <meta name="top_menu_name" content="Get Started" />
+    <meta name="show_as_selected" content="get-started" />
+    <meta name="table_of_contents" content="true" />
+    <meta name="button_style" content="grey" />
+</head>
+<body>
+
+<div class="row">
+
+  <p>
+    You can access Buddycloud in many ways. This walkthrough will help you setup a Buddycloud-powered Android application with the ultimate goal of introducing you on how to exchange posts in a channel node, which is the most basic thing you can do with Buddycloud.
+  </p>
+  <p>
+    This example uses our <a href="http://buddycloud.com/api">REST API</a>, which is better suited for mobile apps. You will need aid from the <a href="https://github.com/buddycloud/buddycloud-pusher">Pusher service</a> in order to implement a push-to-pull schema in your Android app; communication to the Pusher service is done through the REST API.
+  </p>
+  <p>
+    Here is how this guide is meant to be used.
+  </p>
+
+  <h4 data-hidden-from-toc="true">Setup flows</h4>
+  <ul>
+    <li>
+      <p>
+        To start building Buddycloud you will need a test account on the 
+        <a href="https://hosting.buddycloud.com/login">Dev-Console</a>. We recommend using the developer console initially 
+        and later, you can install your own Buddycloud stack.
+      </p>
+    </li>
+    <li>
+      <p>
+        The <a href="javascript:scroll_if_anchor('#using_the_api_');">Using the API</a> section simply explains the REST API calls involved in the flow of creating users and logging into Buddycloud as just-created/already-existing users.
+      </p>
+      <p>
+        You can go ahead and implement these features into your app or simply simulate them through the console by issuing these HTTP calls via <kbd>curl</kbd>. <b>You MUST at least create a user to keep going</b>.
+      </p>
+      <div class="alert alert-info" role="alert">
+        <p>
+          Please note that the REST API uses the <a href="http://en.wikipedia.org/wiki/Basic_access_authentication">HTTP Basic authentication</a> for passing user credentials.
+        </p>
+        <p>
+          Please make sure you perform <a href="http://en.wikipedia.org/wiki/Basic_access_authentication#Client_side">these operations</a> when using the HTTP client library of your choice to make API calls (the code snippets below don't do it but that's because <kbd>curl -u</kbd> is already doing it for us).
+        </p>
+      </div>
+    </li>
+    <li>
+      <p>
+        Then, once your Android application has a logged user to work with, the <a href="javascript:scroll_if_anchor('#using_the_pusher_');">Using the Pusher</a> section explains the next flow your app is supposed to take, which is to interact with both the Pusher service and Google Cloud Messaging in order to make your app able to receive Buddycloud updates regarding your logged user.
+      </p>
+      <p>
+        As you will see by reading the official Android guides regarding GCM, some of these steps are meant to be performed once your Android application is opened and others everytime it is resumed.
+      </p>
+      <p>
+        Obviously these steps can only be performed within your Android application! So you'll need to take the HTTP calls demonstrated in <kbd>curl</kbd> from this guide and use the HTTP client library of your choice in your app.
+      </p>
+    </li>
+  </ul>
+
+  <h4 data-hidden-from-toc="true">Usage flows</h4>
+  <p>
+    After setup, your Android application will end up with a logged Buddycloud user to work with and fully able to receive Buddycloud updates.
+  </p>
+  <p>
+    These are some of the cool things you can do once you've got that:
+  </p>
+  <ul>
+    <li>
+      <a href="javascript:scroll_if_anchor('#listening_for_incoming_posts_');">Listening for incoming posts to a node...</a>
+    </li>
+    <li>
+      <a href="javascript:scroll_if_anchor('#fetching_old_posts_');">Fetching old posts from a node...</a>
+    </li>
+    <li>
+      <a href="javascript:scroll_if_anchor('#creating_a_new_post_');">Creating new post to a node...</a>
+    </li>
+  </ul>
+
+  <h2>Using the API</h2>
+  <p>
+    If you were to use your own Buddycloud domain now, to find the API endpoint of your domain, you'd go to your <a href="https://hosting.buddycloud.com/vhosts">hosting console</a>, then select your domain. Then the API endpoint for your domain would be listed among other endpoints.
+  </p>
+  <p>
+    But for this walkthrough you'll use the demo service, which means your app will talk to the demo service's API endpoint at <code>starter.buddycloud.com/api</code>.
+  </p>
+
+  <h3>Create a User</h3>
+  <p>
+    Many interactions with a given Buddycloud domain's REST API are only allowed with valid user credentials. For example, you need an user in order to register with the Pusher service (more about this very important service below). For this walkthrough you'll use a randomly-named Buddycloud account, which you'll create with help from the REST API.
+  </p>
+  <p>
+    The following API call creates this Buddycloud user account <code><span class='generated-u'></span></code>:
+  </p>
+  <div class="highlight">
+      <pre><code>curl https://starter.buddycloud.com/api/account \
+    -X POST \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json" \
+    -d '{ \
+          "username": "<span class="generated-u"></span>", \
+          "password": "<span class="generated-p"></span>", \
+          "email": "YOUR_EMAIL_HERE" \
+    }'</code></pre>
+  </div>
+
+  <h3>Check User login credentials</h3>
+  <p>
+    You can check user credentials at any time simply by issuing the following API call:
+  </p>
+  <div class="highlight">
+      <pre><code>curl https://starter.buddycloud.com/api/ \
+    -u <span class="generated-u"></span>:<span class="generated-p"></span> \
+    -X GET \
+    -H "Accept: application/json"</code></pre>
+  </div>
+  <p>
+    If the HTTP call is successful, the credentials you sent are valid. You will need to safely store them within your Android app to proceed making further REST API calls using them!
+  </p>
+
+  <h2>Using the Pusher</h2>
+  <p>
+    For this walkthrough your Android app will register to the Pusher service that is used by the demo service. The Pusher is responsible for sending push notifications to the app.
+  </p>
+  <p>
+    Buddycloud updates are sent by the Pusher through <a href="developer.android.com/google/gcm/index.html">Google Cloud Messaging</a>, so that means your Android application must become a GCM Client in order to receive them. 
+  </p>
+
+  <h3>Setup Google Play Services</h3>
+  <p>
+    Please refer to <a href="http://developer.android.com/google/play-services/setup.html">this guide</a> in order to setup Google Play Services for your Android application.
+  </p>
+
+  <h3>Implement your Android app as a GCM Client</h3>
+  <p>
+    For this walkthrough, you don't need to create a Google API project, get API keys, build your own GCM servers, establish communication between them and your Buddycloud domains, etc.
+  </p>
+  <p>
+    All you need to do is implement your Android app as a GCM Client, as we are already taking care of the rest.
+  </p>
+  <p>
+    So please refer to <a href="http://developer.android.com/google/gcm/client.html">this guide</a> and perform steps <a href="http://developer.android.com/google/gcm/client.html#play-services">1</a> and <a href="http://developer.android.com/google/gcm/client.html#manifest">2</a> in order to make your Android app able to receive Buddycloud updates via GCM.
+  </p>
+
+  <h3>Register with the Pusher</h3>
+  <p>
+    Every registration with the Pusher service is associated with the logged user your Android application is working with. You can perform the steps below using hardcoded credentials or you can implement the flows explained in the <a href="javascript:scroll_if_anchor('#using_the_api_');">Using the API</a> section into your app and have the next steps below happen once a user logs into your Buddycloud-powered app.
+  </p>
+  <p>
+    Take advice from <a href="http://developer.android.com/google/gcm/client.html#app">Step 3</a> of the guide above as it will help you on implementing your Android app as a GCM Client.
+  </p>
+
+  <h4>Get SENDER_ID from the Pusher</h4>
+  <p>
+    In the <a href="http://developer.android.com/google/gcm/client.html#sample-register">Register for GCM</a> section, beware that instead of getting your own <code>SENDER_ID</code> from the Google API Console, in this walkthrough you'll just get the one associated with the demo Pusher service.
+  </p>
+  <p>
+    That's why you'll need the following call to the Buddycloud REST API:
+  </p>
+  <div class="highlight">
+      <pre><code>curl https://starter.buddycloud.com/api/notification_metadata?type=gcm \
+    -u <span class="generated-u"></span>:<span class="generated-p"></span> \
+    -X GET \
+    -H "Accept: application/json"</code></pre>
+  </div>
+  <p>
+    Which should give you a JSON like this as response:
+  </p>
+  <div class="highlight">
+      <pre><code>{ "google_project_id": "USE_THIS_SENDER_ID" }</code></pre>
+  </div>
+  <p>
+    The value associated to the <code>google_project_id</code> key in the JSON response is the <code>SENDER_ID</code> your Android app should use to register for GCM.
+  </p>
+
+  <h4>Send REGISTRATION_ID to the Pusher</h4>
+  <p>
+    As instructed in Step 3 of <a href="http://developer.android.com/google/gcm/client.html#app">that guide linked above</a>, after registering for GCM, your Android app will be given a <code>registration_id</code>.
+  </p>
+  <p>
+    Finally, your Android app must use that <code>registration_id</code> to register with the Pusher server.
+  </p>
+  <p>
+    Use the following call to the REST API to do that:
+  </p>
+  <div class="highlight">
+    <pre><code>curl https://starter.buddycloud.com/api/notification_settings \
+    -u <span class="generated-u"></span>:<span class="generated-p"></span> \
+    -X POST \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json" \
+    -d '{ \
+          "type": "gcm", \
+          "target": "SENDER_ID_GOES_HERE" \
+    }'</code></pre>
+  </div>
+  <p>
+    Within the payload of the call above you can specify the exact events you want to listen for incoming Buddycloud updates. Just add the events as keys with values being a boolean indicating whether or not you want updates of given event types.
+  </p>
+  <p>For example, to be notified when your user is mentioned in another post or when there are new posts to nodes you are subscribed to, add the following key-value pairs to the payload before making the HTTP call:
+  </p>
+  <div class="highlight">
+    <pre><code>{
+        "type": "gcm",
+        "target": "SENDER_ID_GOES_HERE",
+        "postMentionedMe": "true",
+        "postOnSubscribedChannel": "true"
+}</code></pre>
+  </div>
+  <p id="event_keys">
+    These are all the events supported by the Pusher:
+  </p>
+  <table class="table table-condensed">
+    <tr>
+      <th>JSON payload event key</th>
+      <th>Default</th>
+      <th>Associated Buddycloud GCM push notification event keys</th>
+    </tr>
+    <tr>
+      <td><code>postAfterMe</code></td>
+      <td>&#10003;</td>
+      <td><small><code>POST_AFTER_MY_POST</code></small></td>
+    </tr>
+    <tr>
+      <td><code>postMentionedMe</code></td>
+      <td>&#10003;</td>
+      <td><small><code>MENTION</code></small></td>
+    </tr>
+    <tr>
+      <td><code>postOnMyChannel</code></td>
+      <td>&#10003;</td>
+      <td><small><code>POST_ON_MY_CHANNEL</code></small></td>
+    </tr>
+    <tr>
+      <td><code>postOnSubscribedChannel</code></td>
+      <td>&#10007;</td>
+      <td><small><code>POST_ON_SUBSCRIBED_CHANNEL</code></small></td>
+    </tr>
+    <tr>
+      <td><code>followMyChannel</code></td>
+      <td>&#10003;</td>
+      <td>
+       <small>
+        <code>FOLLOW</code>,
+        <code>UNFOLLOW</code>
+       </small>
+      </td>
+    </tr>
+    <tr>
+      <td><code>followRequest</code></td>
+      <td>&#10003;</td>
+      <td>
+       <small>
+        <code>FOLLOW_REQUEST</code>,
+        <code>FOLLOW_REQUEST_APPROVED</code>,
+        <code>FOLLOW_REQUEST_DENIED</code>
+       </small>
+      </td>
+    </tr>
+  </table>
+
+  <h1 data-hidden-from-toc="true" id="exchanging_posts">Exchanging posts</h1>
+  <p>
+    For the purposes of this walkthrough, you'll work with this specific node: <code>demo-node@starter.buddycloud.com/posts</code>.
+  </p>
+  <p>
+    You will subscribe to it, so that you receive updates when there are new posts to this node. Please have your Android app issue the following API call (or you can simply do it yourself manually via <kbd>curl</kbd>):
+  </p>
+  <div class="highlight">
+    <pre><code>curl https://starter.buddycloud.com/api/subscribed \
+    -u <span class="generated-u"></span>:<span class="generated-p"></span> \
+    -X POST \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json" \
+    -d '{ \
+          "demo-node@starter.buddycloud.com/posts": "publisher" \
+    }'</code></pre>
+  </div>
+  <p>
+    Now the logged user <code><span class="generated-u"></span></code> is subscribed to the node <code>demo-node@starter.buddycloud.com/posts</code>, thus the logged user has permission to listen for incoming updates, fetch old posts to this node or even create new posts to this node.
+  </p>
+
+  <h2>Listening for incoming posts</h2>
+  <p>
+    By performing the steps so far in this guide, you have properly empowered your Android application to be able to receive Buddycloud updates regarding the current logged user.
+  </p>
+  <p>
+    Before proceeding, please read <a href="http://developer.android.com/google/gcm/client.html#sample-receive">this guide</a> on how to receive GCM push notifications in general, as the same principles obviously apply for receiving Buddycloud updates through GCM. You will need a <code>GCMIntentService</code> similar to the one in that sample code snippet provided in that guide.
+  </p>
+  <div class="alert alert-info">
+    You can also refer to the <a href="http://github.com/buddycloud/buddycloud-android">source code</a> of our ready-made Buddycloud Android client to get a better understanding! The complete <code>GCMIntentService</code> used by this project is located <a href="http://github.com/buddycloud/buddycloud-android/blob/master/src/com/buddycloud/GCMIntentService.java">here</a>.
+  </div>
+  <p>
+As you might recall, in previous steps in this walkthrough you've registered with the Pusher; while doing so you've indicated interest in receiving notifications for these particular events:
+    <ul>
+      <li>
+        When there are <b>new posts</b> to nodes the current logged <b>user is subscribed to</b>.
+      </li>
+      <li>
+        When the current logged <b>user is mentioned</b> by others' posts.
+      </li>
+    </ul>
+  </p>
+  <p>
+    That means your <code>GCMIntentService</code> will need to make sure it doesn't ignore incoming events with keys <code>POST_ON_SUBSCRIBED_CHANNEL</code> or <code>MENTION</code>.
+  </p>
+  <p>
+    The following code snippet shows how to make sure incoming push notifications are exactly the kind of Buddycloud updates you're listening for:
+  </p>
+  <div class="highlight">
+    <pre><code>@Override
+protected void onHandleIntent(Intent incomingPushNotif) {
+
+  String pushMessage = incomingPushNotif.getStringExtra("message");
+  String pushEvent = incomingPushNotif.getStringExtra("event");
+
+  if ( pushEvent.equals("POST_ON_SUBSCRIBED_CHANNEL") ) {
+
+    String author = incomingPushNotif.getStringExtra("AUTHOR_JID");
+    String channel = incomingPushNotif.getStringExtra("CHANNEL_JID");
+    String postedContent = incomingPushNotif.getStringExtra("CONTENT");
+
+    /*
+     * This means there is a new post to a node your user is subscribed to...
+     * Handle this event as you wish!
+     */
+
+  }
+  else if ( pushEvent.equals("MENTION") ) {
+
+    String author = incomingPushNotif.getStringExtra("AUTHOR_JID");
+    String channel = incomingPushNotif.getStringExtra("CHANNEL_JID");
+    String postedContent = incomingPushNotif.getStringExtra("CONTENT");
+
+    /*
+     * This means there is a new post in which your user is mentioned...
+     * Handle this event as you wish!
+     */
+
+  }
+
+}</code></pre>
+  </div>
+  <p>
+    All types of Buddycloud GCM push notification event keys are listed in <a href="javascript:scroll_if_anchor('#event_keys');">the third column of the table above</a>.
+  </p>
+
+  <h2>Fetching old posts</h2>
+  <p>
+    Your Android app can fetch as many old posts as you want, potentially through several separate REST API calls.
+  </p>
+  <p>
+    The following REST API call accepts several query parameters that control exactly which portions of old posts you desire to receive.
+  </p>
+  <ul>
+    <li>
+      The <code>max</code> parameter specifies up to which amount of posts you want to get in each call.
+    </li>
+    <li>
+    The <code>after</code> parameter, when present, means you want to retrieve only posts older than the post of given ID.
+    </li>
+  </ul>
+  <p>
+    For example, to fetch the last 10 posts you can do:
+  </p>
+  <div class="alert alert-info">
+    Please <a href="javascript:scroll_if_anchor('#exchanging_posts');">make sure</a> your user is subscribed to <code>demo-node@starter.buddycloud.com/posts</code> first.
+  </div>
+  <div class="highlight">
+    <pre><code>curl https://starter.buddycloud.com/api/demo-node@starter.buddycloud.com/content/posts/threads?max=10 \
+    -u <span class="generated-u"></span>:<span class="generated-p"></span> \
+    -X GET \
+    -H "Accept: application/json"</code></pre>
+  </div>
+  <p>
+    And you will get posts in a JSON format like this:
+  </p>
+  <div class="highlight">
+    <pre><code>[
+  {
+    "id": "A_GIVEN_POST_ID",
+    "author": "<span class="generated-u"></span>",
+    "updated": "1595-06-01T12:00:00Z",
+    "content": "This is a random post.",
+    "media": null
+  },
+  ...
+  {
+    "id": "ANOTHER_GIVEN_POST_ID",
+    "author": "<span class="generated-u"></span>",
+    "updated": "1591-06-04T12:00:00Z",
+    "content": "This is an older random post.",
+    "media": null
+  }
+]</code></pre>
+  </div>
+  <p>
+    Then you can get posts older than the one of ID <code>ANOTHER_GIVEN_POST_ID</code> by issuing the following API call:
+  </p>
+  <div class="highlight">
+    <pre><code>curl https://starter.buddycloud.com/api/demo-node@starter.buddycloud.com/content/posts/threads?max=10&amp;after=ANOTHER_GIVEN_POST_ID \
+    -u <span class="generated-u"></span>:<span class="generated-p"></span> \
+    -X GET \
+    -H "Accept: application/json"</code></pre>
+  </div>
+
+  <h2>Creating a new post</h2>
+  <p>
+    Finally, the following REST API call shall be used whenever the user your Android application is working with wishes to create a new post to one of the nodes it is subscribed to (e.g. <code>demo-node@starter.buddycloud.com/posts</code>):
+  </p>
+  <div class="alert alert-info">
+    Please <a href="javascript:scroll_if_anchor('#exchanging_posts');">make sure</a> your user is subscribed to <code>demo-node@starter.buddycloud.com/posts</code> first.
+  </div>
+  <div class="highlight">
+    <pre><code>curl https://starter.buddycloud.com/api/demo-node@starter.buddycloud.com/content/posts \
+    -u <span class="generated-u"></span>:<span class="generated-p"></span> \
+    -X POST \
+    -H "Accept: application/json" \
+    -H "Content-Type: application/json" \
+    -d '{ \
+          "content": "Yet another random post, the newest!" \
+    }'</code></pre>
+  </div>
+
+  <h2>Jumpstart</h2>
+  <p>
+    To get going you can also fork our ready-made demo app from <a href="http://github.com/buddycloud/buddycloud-android">http://github.com/buddycloud/buddycloud-android</a>.
+  </p>
+
+</div>
+</body>
+</html>

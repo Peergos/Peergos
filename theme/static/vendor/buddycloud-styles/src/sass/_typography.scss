@@ -1,0 +1,125 @@
+/***********************
+* Typography
+***********************/
+body {
+  font-family: 'Open Sans';
+  font-size: 16px;
+  font-weight: 300;
+  line-height: 1.5;
+}
+
+h1, h2, h3, h4, h5, h6,
+.h1, .h2, .h3, .h4, .h5, .h6 {
+  font-weight: 600;
+}
+
+h1 {
+  &.main-title,
+  &[id].main-title {
+    margin-top: 0;
+    padding-top: 20px;
+  }
+}
+
+h1[id],
+h2,
+.h2 {
+  margin-top: 58px;
+  padding-top: 0;
+}
+
+h3, .h3 {
+  margin-top: 38px;
+  margin-bottom: 20px;
+}
+
+h4, .h4 {
+  margin-top: 32px;
+  margin-bottom: 16px;
+}
+
+a {
+  color: $primary-color;
+  font-weight: 400;
+
+  &:hover {
+    color: $primary-color;
+  }
+}
+
+p {
+  margin: 0 0 1em;
+}
+
+code,
+kbd,
+pre,
+samp {
+    font-family: 'Source Code Pro', Menlo, Monaco, Consolas, "Courier New", monospace;
+    font-weight: 500;
+}
+
+mark {
+    background-color: $primary-color;
+    color: $white;
+    padding: 0 .25em;
+    font-weight: 400;
+}
+
+small {
+  font-weight: 500;
+  letter-spacing: 0.05em;
+}
+
+dd {
+  margin-bottom: 0.875em;
+}
+
+// blockquote
+blockquote,
+.blockquote-reverse {
+  border-color: $primary-color;
+}
+
+blockquote footer,
+blockquote footer cite {
+  font-style: italic;
+  color: inherit;
+}
+
+// lists
+ul > li {
+  list-style: none;
+}
+
+ul > li:before {
+  content: ' ';
+  width: .5em;
+  height: .5em;
+  @include border-radius(100%);
+  position: absolute;
+  margin: .5em 0 0 -1em;
+  background-color: rgba(0,0,0,.2);
+}
+
+ol > li {
+  position: relative;
+  list-style: none;
+  counter-increment: list-order;
+}
+
+ol > li:before {
+    margin: 0 0 0 -1em;
+    padding: 0 .5em 0 0;
+    width: 1em;
+    height: 1em;
+    content: counter(list-order);
+    color: rgba(0,0,0,.2);
+    font-weight: 700;
+}
+
+.nav li:before,
+ul.list-unstyled > li:before,
+ul.list-inline > li:before{
+    content: none;
+}

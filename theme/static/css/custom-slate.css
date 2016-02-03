@@ -1,0 +1,63 @@
+/* line 1, ../../sass/custom-slate.scss */
+.api {
+  padding-top: 50px;
+}
+/* line 4, ../../sass/custom-slate.scss */
+.api blockquote {
+  border-left: none;
+}
+/* line 8, ../../sass/custom-slate.scss */
+.api .highlight {
+  border: none;
+}
+
+/* line 13, ../../sass/custom-slate.scss */
+.tocify-wrapper {
+  font-size: 13px;
+  margin-top: 50px;
+  background-color: white;
+}
+/* line 18, ../../sass/custom-slate.scss */
+.tocify-wrapper a {
+  color: #999;
+}
+/* line 22, ../../sass/custom-slate.scss */
+.tocify-wrapper .tocify-focus {
+  -webkit-box-shadow: none;
+  box-shadow: none;
+  background-color: transparent;
+}
+/* line 27, ../../sass/custom-slate.scss */
+.tocify-wrapper .tocify-focus a {
+  font-weight: bold;
+  color: #2DAEBF;
+}
+/* line 33, ../../sass/custom-slate.scss */
+.tocify-wrapper > img {
+  display: none;
+}
+/* line 37, ../../sass/custom-slate.scss */
+.tocify-wrapper .tocify-subheader {
+  background-color: white;
+  background-image: none;
+}
+/* line 41, ../../sass/custom-slate.scss */
+.tocify-wrapper .tocify-subheader > li:first-child {
+  border-top: none;
+}
+/* line 45, ../../sass/custom-slate.scss */
+.tocify-wrapper .tocify-subheader > li:last-child {
+  border-bottom: none;
+}
+
+/* line 53, ../../sass/custom-slate.scss */
+.content table tr:nth-child(even) > td,
+.content section table tr:nth-child(even) > td {
+  background-color: #F9F9F9;
+}
+
+/* line 58, ../../sass/custom-slate.scss */
+.content table tr:nth-child(odd) > td,
+.content section table tr:nth-child(odd) > td {
+  background-color: #fff;
+}

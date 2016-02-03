@@ -1,0 +1,41 @@
+.background-friends {
+  background-color: #E5E9EF;
+}
+
+#friends {
+  color: #666;
+  padding: 1em 1em 2em 1em;
+
+  p {
+    margin: 0;
+    font-weight: 500;
+  }
+
+  div {
+    background-image: url('../img/friends/friends_01.png');
+    background-position: center;
+    background-size: contain;
+    background-repeat: no-repeat;
+    height: 16em;
+    margin-right: 2em;
+    opacity: .7;
+  }
+
+  // media queries
+  @media (min-width: 420px) {
+    div {
+      background-image: url('../img/friends/friends_02.png');
+      height: 8em;
+    }
+  }
+
+  @media (min-width: 768px) {
+    div {
+      background-image: url('../img/friends/friends_04.png');
+      height: 6em;
+    }
+  }
+}
+
+
+

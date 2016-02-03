@@ -1,0 +1,60 @@
+{% if GITHUB_USER %}
+
+    {% if GITHUB_REPO_COUNT is not defined %}
+        {% set GITHUB_REPO_COUNT = 5 %}
+    {% endif %}
+    {% if GITHUB_SKIP_FORK is not defined %}
+        {% set GITHUB_SKIP_FORK = "false" %}
+    {% else %}
+        {% if GITHUB_SKIP_FORK %}
+            {% set GITHUB_SKIP_FORK = "true" %}
+        {% else %}
+            {% set GITHUB_SKIP_FORK = "false" %}
+        {% endif %}
+    {% endif %}
+    {% if GITHUB_SORT_ATTRIBUTE is not defined %}
+        {% set GITHUB_SORT_ATTRIBUTE = "pushed_at" %}
+    {% endif %}
+    {% if GITHUB_SORT_DESCENDING is not defined %}
+        {% set GITHUB_SORT_DESCENDING = "true" %}
+    {% else %}
+        {% if GITHUB_SORT_DESCENDING %}
+            {% set GITHUB_SORT_DESCENDING = "true" %}
+        {% else %}
+            {% set GITHUB_SORT_DESCENDING = "false" %}
+        {% endif %}
+    {% endif %}
+
+    <section>
+    <ul class="list-group list-group-flush">
+    <li class="list-group-item"><h4><i class="icon-github icon-large"></i>GitHub Repos</h4></li>
+        <div id="gh_repos">
+            <p class="list-group-item">Status updating...</p>
+        </div>
+        {% if GITHUB_SHOW_USER_LINK is defined %}
+            <a href="https://github.com/{{ GITHUB_USER }}">@{{ GITHUB_USER }}</a> on GitHub
+        {% endif %}
+    </ul>
+        <script type="text/javascript">
+            $(document).ready(function () {
+                if (!window.jXHR) {
+                    var jxhr = document.createElement('script');
+                    jxhr.type = 'text/javascript';
+                    jxhr.src = '{{ SITEURL }}/theme/js/jXHR.js';
+                    var s = document.getElementsByTagName('script')[0];
+                    s.parentNode.insertBefore(jxhr, s);
+                }
+
+                github.showRepos({
+                    user: '{{ GITHUB_USER }}',
+                    count: {{ GITHUB_REPO_COUNT }},
+                    skip_forks: {{ GITHUB_SKIP_FORK }},
+                    target: '#gh_repos',
+                    sort_attribute: '{{ GITHUB_SORT_ATTRIBUTE }}',
+                    sort_descending: {{ GITHUB_SORT_DESCENDING }}
+                });
+            });
+        </script>
+        <script src="{{ SITEURL }}/theme/js/github.js" type="text/javascript"></script>
+    </section>
+{% endif %}

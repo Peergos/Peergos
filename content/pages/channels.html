@@ -1,0 +1,261 @@
+<html>
+<head>
+<title>Channels</title>
+<meta name="url" content="channels" />
+<meta name="save_as" content="channels.html" />
+<meta name="order" content="-1" />
+<meta name="show_in_top_menu" content="false" />
+<meta name="top_menu_name" content="channels" />
+</head>
+<body>
+	<p>Buddycloud is a revolutionary new design where anyone can run their own
+		Buddycloud server, and each Buddycloud server will find, connect and share the
+		data you choose with users on other Buddycloud servers.</p>
+	<p>This approach has huge benefits, especially for industries that care
+		about data privacy (Finance, Medicine).</p>
+	<table class='table table-striped'>
+		<tr>
+			<th></th>
+			<th>Old Design (Twitter, Facebook, G+, App.net)</th>
+			<th>Buddycloud</th>
+		</tr>
+		<tr>
+			<td>Trust Model</td>
+			<td>Trust them</td>
+			<td>You control and choose</td>
+		</tr>
+		<tr>
+			<td>Data location</td>
+			<td>USA</td>
+			<td>You choose</td>
+		</tr>
+		<tr>
+			<td>Intranet only/behind the firewall (runs in-house)</td>
+			<td>Not possible</td>
+			<td>Hosted or behind your firewall</td>
+		</tr>
+		<tr>
+			<td>Add new features</td>
+			<td>One-size-fits-all</td>
+			<td>fully extensible</td>
+		</tr>
+	</table>
+	<h2>Buddycloud uses channels</h2>
+	<p>
+		A channel is a collection of activity feeds and value-stores that can have
+		publishers, and subscribers. Buddycloud channels can scale up to millions of
+		followers or scale down to be used as an individual data-store. A channel
+		looks like
+		<code>user@example.com</code>
+	</p>
+	<figure>
+		<img src="/theme/img/diagrams/buddycloud uses channels.png"
+			alt="buddycloud uses channels" />
+		<figcaption>Buddycloud channels are extensible for any
+			application to use.</figcaption>
+	</figure>
+	<p>channels look like</p>
+	<table class="table table-striped">
+		<tr>
+			<th>Channel Address</th>
+			<th>Description</th>
+		</tr>
+		<tr>
+			<td>user@example.com</td>
+			<td>A user's channel</td>
+		</tr>
+		<tr>
+			<td>user@other-domain.com</td>
+			<td>A buddycloud channel on a remote site</td>
+		</tr>
+		<tr>
+			<td>customer-support@company.com</td>
+			<td>A channel that anyone can post into and get support</td>
+		</tr>
+	</table>
+	<br />
+	<h2>Channels are a bundle of nodes</h2>
+	<p>
+		Each channel is made up of application nodes. When you follow a channel, for
+		example,
+		<code>user@example.com</code>
+		you are really following a collection of application nodes. (
+		<code>user@example.com/posts</code>
+		,
+		<code>user@example.com/public-key</code>
+		,
+		<code>user@example.com/geolocation</code>
+		, etc). Any updates to a node are pushed out to all followers of the channel.
+		So when you want to build your application on Buddycloud you simply use an
+		existing application node or create a new one for your projects specific
+		needs.
+	</p>
+	<p>
+	<figure>
+		<img src="/theme/img/diagrams/channels comprise application nodes.png"
+			alt="channels intercommunicate" />
+		<figcaption>Buddycloud channels are extensible for any
+			application to use.</figcaption>
+	</figure>
+	<p>Each Application node can have different stream formats, different
+		metadata fields and different stream lengths (single item vs infinite items).</p>
+	<table class="table table-striped">
+		<tr>
+			<th>Channel and Application node name</th>
+			<th>Example</th>
+		</tr>
+		<tr>
+			<td>user@example.com/posts</td>
+			<td>One or more, activitystream of public posts</td>
+		</tr>
+		<tr>
+			<td>user@example.com/selfies-application</td>
+			<td>One or more, activitystream for a selfies application</td>
+		</tr>
+		<tr>
+			<td>user@example.com/public-key</td>
+			<td>A single public key that can be used to encrypt messages to <code>user@example.com</code>
+			</td>
+		</tr>
+		<tr>
+			<td>user@example.com/geolocation</td>
+			<td>An application updates the users location and all followers receive
+				the update</td>
+		</tr>
+		<tr>
+			<td>user@example.com/webrtc</td>
+			<td>An application node used for webRTC call negotiation and setup</td>
+		</tr>
+	</table>
+	<br />
+	<h2>Channel synchronization</h2>
+	<p>Buddycloud channels are synchronized across Buddycloud sites</p>
+	<p>
+		You post data in a channel (for example
+		<code>user@example.com/posts</code>
+		) and the update is synchronized to followers on the local and remote
+		Buddycloud servers. The Buddycloud server will also take care of "catching-up"
+		from remote sites if it has been offline.
+	</p>
+	<p>
+	<figure>
+		<img src="/theme/img/diagrams/channel sync between sites.png"
+			alt="channels intercommunicate" />
+		<figcaption>Data posted into one channel is pushed to follower's
+			channels.</figcaption>
+	</figure>
+	<br />
+	<h2>Personal and Topic channels</h2>
+	<p>There are two different types of channels. Personal channels and
+		Topic/Group/Application channels.</p>
+	<table class="table table-striped">
+		<tr>
+			<th></th>
+			<th>Personal channels</th>
+			<th>Topic/group/application channels</th>
+		</tr>
+		<tr>
+			<td>Creation time</td>
+			<td>Automatically created for new users</td>
+			<td>Created by users or applications</td>
+		</tr>
+		<tr>
+			<td>Example</td>
+			<td><code>user@example.com</code></td>
+			<td><code>football@example.com</code><br /> <code>cat-pictures@example.com</code><br />
+				<code>{uuid}@example.com</code></td>
+		</tr>
+		<tr>
+			<td>Channels per user</td>
+			<td>Always one</td>
+			<td>Infinite</td>
+		</tr>
+	</table>
+	<br />
+	<h2>Channel privacy</h2>
+	<p>Each channel can have different privacy models</p>
+	<table class="table table-striped">
+		<tr>
+			<th>Privacy model</th>
+			<th>Typical use</th>
+			<th>Example</th>
+		</tr>
+		<tr>
+			<td>whitelist</td>
+			<td>New followers to a channel need to be approved</td>
+			<td><code>user@example.com</code></td>
+		</tr>
+		<tr>
+			<td>open</td>
+			<td>A popular channel that serves public information</td>
+			<td><code>news-updates@bbc.co.uk</code></td>
+		</tr>
+		<tr>
+			<td>site-wide</td>
+			<td>A company channel where you want to automatically approve anyone on
+				a domain</td>
+			<td><code>team@example.com</code></td>
+		</tr>
+	</table>
+	<br />
+	<h2>Channel Roles</h2>
+	<p>Channel followers have have different roles. Most of the time you will
+		not need them but roles can help keep the social aspect flowing.</p>
+	<table class="table table-striped">
+		<tr>
+			<th>Role</th>
+			<th>What can they do?</th>
+		</tr>
+		<tr>
+			<td>Owner</td>
+			<td>A single user who can make other users moderators</td>
+		</tr>
+		<tr>
+			<td>Moderator</td>
+			<td>A list of users who can approve new followers to the channel. Curate
+				posts.</td>
+		</tr>
+		<tr>
+			<td>Follower+post</td>
+			<td>A list of users who can post to the channel</td>
+		</tr>
+		<tr>
+			<td>Follower</td>
+			<td>A list of users who have read-only access to the channel</td>
+		</tr>
+		<tr>
+			<td>Banned</td>
+			<td>A list of users that cannot access the channel</td>
+		</tr>
+	</table>
+	<p>Channel owners can set the default role for new followers. For example:
+		new followers will inherit the follower+post role.</p>
+	<h2>Authenticate against your existing database of users</h2>
+	<p>Buddycloud has a number of ways to authenticate against your existing
+		database of users.</p>
+	<table class="table table-striped">
+		<tr>
+			<th></th>
+			<th>How it works</th>
+			<th>Use case</th>
+		</tr>
+		<tr>
+			<td>Buddycloud user database</td>
+			<td>Use Buddycloud API for user authentication</td>
+			<td>Starting fresh with a new set of users</td>
+		</tr>
+		<tr>
+			<td>Parallel secret</td>
+			<td>Your application generates a secret to be used with the buddycloud
+				service</td>
+			<td>New user base or existing user database</td>
+		</tr>
+		<tr>
+			<td>Remote application call</td>
+			<td>Authenticate users according to a pre-existing application API (for
+				example https://your-app.com/auth)</td>
+			<td>New user base or existing user database</td>
+		</tr>
+	</table>
+</body>
+</html>

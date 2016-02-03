@@ -1,0 +1,17 @@
+{% if using_tags %}
+
+{% if article.tags %}
+    {% if TAG_LIST_SEPARATOR is not defined %}
+        {% set TAG_LIST_SEPARATOR = "/" %}
+    {% endif %}
+
+	<span class="label label-default">Tags</span>
+	{% for tag in article.tags %}
+		<a href="{{ SITEURL }}/{{ tag.url }}">{{ tag }}</a>
+	    {% if not loop.last %}
+	        {{ TAG_LIST_SEPARATOR }}
+	    {% endif %}
+	{% endfor %}
+{% endif %}
+
+{% endif %}

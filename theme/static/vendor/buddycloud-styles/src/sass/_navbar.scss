@@ -1,0 +1,79 @@
+/***********************
+* Navbar
+***********************/
+
+// collapse
+.navbar-collapse {
+  border-top: none;
+  @include box-shadow(none);
+}
+
+// inverse
+.navbar-inverse {
+  background-color: $primary-color;
+
+  .navbar-nav {
+    @media #{$min-768} {
+      float: right;
+    }
+
+    @media #{$max-768} {
+      > li > a {
+        border-top: 1px solid rgba(12, 83, 90, 0.3);
+      }
+    }
+
+    @media #{$max-900} {
+      font-size: 0.9375em;
+    }
+
+    > li > a {
+      color: $top-bar-link-color;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    > .active > a {
+      background-color: transparent;
+
+      &:hover,
+      &:focus {
+        background-color: transparent;
+      }
+    }
+  }
+
+  .navbar-toggle {
+    border: none;
+    background-color: rgba(12, 83, 90, 0.2);
+  }
+
+  .navbar-brand {
+    color: $white;
+    font-size: 1.5em;
+    padding-left: 2.4em;
+    font-weight: 400;
+
+    &:before {
+      margin: -.24em 0 0 -1.75em;
+      content: ' ';
+      width: 1.333em;
+      height: 1.333em;
+      display: block;
+      position: absolute;
+      background-image: url('../img/logos/buddycloud_logo_mark_white.svg');
+      background-repeat: no-repeat;
+      background-size: cover;
+    }
+  }
+}
+
+// fixed-top
+.navbar-fixed-top {
+  border-width: 0;
+}
+
+
+.navbar-inverse .navbar-toggle:hover, .navbar-inverse .navbar-toggle:focus {
+background-color: rgba(12, 83, 90, 0.3);
+}

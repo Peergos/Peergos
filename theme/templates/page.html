@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% set active_page = page.show_as_selected|default(page.slug) %}
+{% set content_layout = page.content_layout|default("column") %}
+{% block title %}{{ page.title }}{% endblock %}
+
+{% if page.table_of_contents|default("false") == "true" %}
+  {% set toc_info = page.content|extract_toc_info(active_page) %}
+{% endif %}
+{% block table_of_contents %}
+    {% if page.table_of_contents|default("false") == "true" %}
+    <div id="full-toc" class="bs-docs-sidebar hidden-print affix-top hidden-xs hidden-sm" role="complementary">
+  {{ toc_info|create_toc }}
+    </div>
+    {% endif %}
+{% endblock %}
+
+{% block content %}
+  {% if page.show_page_header|default("true") != "false" %}
+    <h1 class="page-header main-title">{{ page.header | default(page.title) }}</h1>
+  {% endif %}
+    <div class="bs-docs-section">
+  {% if page.table_of_contents|default("false") == "true" %}
+    {{ page.content|add_toc_hooks(toc_info, active_page) }}
+  {% else %}
+    {{ page.content }}
+  {% endif %}
+    </div>
+{% endblock %}
+
+{% block morescripts %}
+    {% if active_page == "documentation" %}
+        {% include "documentation.html" %}
+    {% endif %}
+{% endblock %}

@@ -1,0 +1,443 @@
+<html>
+<head>
+    <title>Features</title>
+    <meta name="url" content="features" />
+    <meta name="save_as" content="features.html" />
+    <meta name="show_in_top_menu" content="true" />
+    <meta name="order" content="3" />
+    <meta name="top_menu_name" content="Features" />
+    <meta name="show_as_selected" content="features" />
+    <meta name="table_of_contents" content="true" />
+    <meta name="description" content="Buddycloud features is the open source tools and services to help you build messaging into your app." />
+    <meta name="author" content="Buddycloud" />
+    <meta name="keywords" content="Open source, product, federated, extensible, community, support, secure, scalable, saves time, 
+    private and public cloud" />
+</head>
+<body>
+    <section>
+      <div class="row">
+        <p>Buddycloud gives you open source tools, libraries, services and community to help you build user-to-user, group and
+        social messaging into your web or mobile app.</p>
+        <p><img alt="bc-core-essence-diagram" style="margin-top: 10px; margin-bottom: 10px;" src="/theme/img/diagrams/core-essence.png"/></p>
+        <p>The Buddycloud features include this software:</p>
+        <ul>
+          <li><a href="https://github.com/buddycloud/buddycloud-server-java" target="_blank">buddycloud-server-java</a></li>
+          <li><a href="https://github.com/buddycloud/buddycloud-http-api" target="_blank">buddycloud-http-api</a> including 
+          <a href="https://xmpp-ftw.jit.su/" target="_blank">xmpp-ftw integration</a></li>
+          <li><a href="https://github.com/buddycloud/buddycloud-media-server" target="_blank">buddycloud-media-server</a></li>
+          <li><a href="https://github.com/buddycloud/buddycloud-pusher" target="_blank">buddycloud-pusher</a></li>
+          <li><a href="https://github.com/buddycloud/channel-directory" target="_blank">buddycloud-channel-directory</a></li>
+          <li><a href="https://github.com/buddycloud/buddycloud-friend-finder" target="_blank">buddycloud-friend-finder</a></li>
+        </ul>
+        <p>And some demo apps:</p>
+        <ul>
+          <li><a href="https://github.com/buddycloud/buddycloud-angular-app" target="_blank">buddycloud-angular-app</a></li>
+          <li><a href="https://github.com/buddycloud/webclient" target="_blank">buddycloud-web-client</a></li>
+          <li><a href="https://github.com/buddycloud/buddycloud-android" target="_blank">buddycloud-android</a></li>
+        </ul>
+      </div>
+    </section>
+    <section>
+      <div class="row">
+        <h2>Designed for Developers</h2>
+        <p>Build your product, grow your community. Quickly.</p>
+        <p>The Buddycloud stack helps you get started easily and grows with you as your product and community expands.</p>
+      </div>
+      <div class="row">
+        <h3>Add user-to-user messaging to your app.</h3>
+        <p>Your users can <a href="https://xmpp-ftw.jit.su/manual/core/#send-a-message" target="_blank">send direct messages 
+        to each other</a>. Even better, Buddycloud's federated design means that your users can communicate with millions of 
+        other existing users that already run Buddycloud.</p>
+        <figure>
+        <img class="center-block" src="/theme/img/diagrams/buddycloud uses channels.png" alt="user to user diagram" style="padding-top: 20px; padding-bottom: 20px;"/>
+        </figure>
+      </div>
+      <div class="row">
+        <h3>Some things are better in a group.</h3>
+        <p><a href="http://buddycloud.com/api#create-post" target="_blank">Multi-user and group messaging</a> is
+        also fully supported. Your users can create public and private groups ("topic channels") to share 
+        group-messages, files videos and photos. Your users have  so that your users have total control over who          can post and who can follow private content</p>
+        <figure><img class="center-block" src="/theme/img/isotope/channel.png" alt="channel screenshot" style="padding-top: 20px; padding-bottom: 20px;"/>
+        </figure>
+      </div>
+      <div class="row">
+        <h3>Power to the [nice] people!</h3>
+        <figure><img class="pull-right" style="padding-left:20px;" src="/theme/img/diagrams/moderation.png" alt="publish subscribe diagram"/></figure>
+        <p>
+          Empower your community to self-police using Buddycloud's rich moderation features. Channels have easy to understand blacklist/whitelist options of who can post content. Buddycloud Channel moderators help keep the conversation on track, control who can participate and can easily banish trolls back to their bridges.</p>
+      </div>
+      <div class="row">
+        <h3>A personal activity feed for Madam?</h3>
+        <p>Each of your users can also have a <a href="http://buddycloud.com/api#channels">Personal Channel</a>. Personal 
+        channels are like a Twitter feed or Facebook wall. Except, because of Buddycloud's federated design, your users can 
+        follow their friends from any other site.</p>
+        <figure>
+        <img class="center-block" src="/theme/img/isotope/message-stream.png" alt="message stream screenshot" style="padding-top: 20px; padding-bottom: 20px;"/>
+        </figure>
+      </div>
+      <div class="row">
+        <h3>Build apps with an intuitive API.</h3>
+        <p>An easy to use <a href="https://github.com/buddycloud/buddycloud-http-api" target="_blank">REST API</a> presents 
+        all the Buddycloud components as restful objects that you can query or update. It's the quickest way to start 
+        developing on Buddycloud.</p>
+        <p>Buddycloud also ships with a <a href="https://xmpp-ftw.jit.su/manual/extensions/buddycloud/" target="_blank">extensive 
+        real-time websocket API</a> that streams new events as they happen.</p>
+        <p>Both APIs are open source. You can extend them to support unique use cases.</p>
+      </div>
+      <div class="row">
+        <h3>One pattern to learn, everything is publish-subscribe.</h3>
+        <p>Whether it's posts in a channel or user-to-user messages, Buddycloud uses a publish-subscribe pattern for messaging.
+        Building on Pub/Sub gives easy querying for message history, guaranteed message delivery and a decoupling of publishers
+        and subscribers who don't need to both be online at the same time.  All this means you can use the same logic for your
+        mobile and web applications.</p>
+        <figure>
+        <img class="center-block" src="/theme/img/diagrams/publish-subscribe.png" alt="publish subscribe diagram" style="padding-top: 20px; padding-bottom: 20px;"/>
+        </figure>
+      </div>
+      <div class="row">
+        <h3>Seamless code deployment.</h3>
+        <p>Ever had that problem when your code worked perfect in your local environment but failed when it was deployed to
+        production? We made deploying code from development (on your laptop) to your production servers seamless.</p>
+        <p>The <a href="https://github.com/buddycloud/buddycloud-vm" target="_blank">Buddycloud-VM</a> and 
+        <a href="https://github.com/buddycloud/saltstack" target="_blank">Saltstack</a> give you identical code, services and 
+        configuration. You can develop your code on a local virtual machine and know that the exact same code will work in 
+        your staging and production environments. Ship your Buddycloud code faster and with fewer errors.</p>
+      </div>
+      <div class="row">
+        <h3>Access to a rich code ecosystem.</h3>
+        <p>There's a bunch of <a href="http://buddycloud.com/software-stack" target="_blank">existing Buddycloud open source 
+        projects</a>. The code for these is available to use and reuse in your own application. This code includes libraries 
+        and demo applications for Android, IOS, web and the Buddycloud services and comes with a helpful community to point you in 
+        the right direction.</p>
+      </div>
+      <div class="row">
+        <h3>Push-to-pull the mobile friendliness.</h3>
+        <figure>
+        <img src="/theme/img/isotope/push-notification.png" alt="push notification screenshot" class="pull-right" style="padding-left:20px;"/>
+        </figure>
+        <p>Create real-time mobile applications with instant battery-friendly updates.</p>
+        <p>Buddycloud uses a push-to-pull content update pattern:</p>
+        <ul>
+        <li>When your user is online (the application is running in the foreground), new content is automatically 
+        streamed to them.</li>
+        <li>When your user is offline (the application is suspended), the 
+        <a href="https://github.com/buddycloud/buddycloud-pusher" target="_blank">Buddycloud Pusher</a> will trigger a push 
+        notification to the mobile device and the application can trigger a background pull.</li>
+        <li>When your user clicks on the push notification, the new content is already downloaded and waiting for them.</li>
+        </ul>
+      </div>
+      <div class="row">
+        <h3>Even more cat pictures.</h3>
+        <p>Wouldn't it be nice to have file sharing that just works? Buddycloud ships with integrated file sharing so that your 
+        users can drag-and-drop files into their channel and they are securely shared with their followers.</p>
+        <p>The Buddycloud <a href="https://github.com/buddycloud/buddycloud-server-java" target="_blank">Media Server</a> 
+        supports any file types including images and videos. Image sharing comes with thumbnail previews for images including 
+        a max-height or max-width constraint for flexible embedding on different screen sizes.</p>
+        <figure>
+        <img src="/theme/img/isotope/media-server.png" alt="media server screenshot" class="center-block" style="padding-top: 20px; padding-bottom: 20px;"/>
+        </figure>      
+      </div>
+      <div class="row">
+        <h3>Security at the core.</h3>
+        <figure>
+        <img src="/theme/img/diagrams/security.png" alt="security diagram" class="pull-left" style="padding-right:40px; padding-top:10px; padding-bottom:20px;"/>
+        </figure>
+        <p>Buddycloud is built on a strong foundation of peer-reviewed client libraries, strong crypto, and a transparent 
+        development process. Backdoor free and secure by design.</p>
+        <p>The Buddycloud <a href="https://github.com/buddycloud/saltstack" target="_blank">orchestration tool</a> helps you 
+        set up a secure-by-default service and tests your deployment for security problems. This enables you to develop 
+        secure applications.</p>
+        <p>An additional set of <a href="https://xmpp.net/" target="_blank">tests</a> help you check your 
+        site to site encryption.</p>
+      </div>
+      <div class="row">
+        <h3>Simple to understand privacy for your users.</h3>
+        <p>Buddycloud channels give your users complete <a href="http://buddycloud.com/api#update-metadata" target="_blank">
+          control over their privacy</a>. Easy-to-understand privacy controls lets them know exactly what is shared with whom. 
+          The Buddycloud server ships with content plugins that enable you to easily support end to end encrypted messages.</p>
+        <figure>
+        <img class="center-block" src="/theme/img/isotope/user-privacy.png" alt="user privacy screenshot" style="padding-top: 20px; padding-bottom: 20px;"/>
+        </figure>
+      </div>
+    </section>
+    <br/>
+    <section>
+      <div class="row">
+        <h2>Designed for Production</h2>
+        <p>Fast, flexible, scalable: Buddycloud is incredibly fast, easy to set up, extensible and provides an architecture 
+        that can manage your diverse application development needs. The Buddycloud stack brings together the best of the 
+        messaging world, amplifies its capabilities and expands its range; resulting in a system that is as versatile as it is 
+        practical.</p>
+      </div>
+      <div class="row">
+        <h3>Federation built into the core.</h3>
+        <p>Other companies build services that lock you into using them. However, we believe communication is better when 
+        you can talk to everyone on different services. Buddycloud brings federated messaging into your apps. While you keep 
+        control of your userbase and privacy, your users can connect, share and message with users on all other 
+        Buddycloud-enabled apps.</p>
+        <figure>
+        <img class="center-block" src="/theme/img/diagrams/federation.png" alt="federation diagram" style="padding-bottom:20px;"/>
+        </figure>
+        <p>We take this for granted in email: <i>user1@gmail.com</i> can reach <i>user2@hotmail.com</i>. Now we've 
+        done the same for in-app messaging.</p>
+        <blockquote>
+          <p>"Think of Buddycloud as email 2.0"</p>
+          <footer>
+            <cite>
+              <a href="https://www.surevine.com/leadership/john-atherton/" target="_blank">John Atherton</a></cite>
+              , CTO at <a href="/surevine-case-study" target="_blank">Surevine</a>.
+          </footer>
+        </blockquote>
+      </div>
+      <div class="row">
+        <figure>
+        <img src="/theme/img/diagrams/open-source.png" alt="open-source-diagram" class="pull-right" style="padding-left:40px;"/>
+        </figure>
+        <h3>Transparent and open source development.</h3>
+        <p>Buddycloud is developed under the <a href="http://www.apache.org/licenses/LICENSE-2.0.html" target="_blank">
+          Apache 2.0 License</a>, and can be used for open and proprietary projects. As other developers submit their 
+          improvements back to the Buddycloud project, we all benefit.</p>
+      </div>
+      <div class="row">
+        <h3>Easily extensible for your unique app.</h3>
+        <figure>
+        <img src="/theme/img/diagrams/Extensible.png" alt="extensible-diagram" class="pull-left" style="padding-right:40px; padding-top:10px;"/>
+        </figure>
+        <p>Design your lean-mean messaging stack with just the components you need. The existing code is designed to be easily 
+        extensible to suit your exact use case.</p>
+        <p>Buddycloud's microservice design means you can run the <a href="https://github.com/buddycloud/buddycloud-vm" 
+        target="_blank">full Buddycloud stack</a> on your compute grid or a tailored stack on your Raspberry Pi.</p>
+        <p>Adding new services is as simple as dropping a new config-line into a <a href="https://github.com/buddycloud/buddycloud-vm/blob/master/saltstack/salt_local/salt/top.sls">
+          file</a>.</p>
+      </div>
+      <div class="row">
+        <h3>We're open [protocol].</h3>
+        <p>The <a href="http://xmpp.org/extensions/inbox/buddycloud-channels.html" target="_blank">Buddycloud 
+        Protocol</a> codifies how Buddycloud works. This helps other companies create compatible Buddycloud services. 
+        Choose the best provider and implementation for your project without being locked in.</p>
+      </div>
+      <div class="row">
+        <h3>Starting your community just got easier.</h3>
+        <p><a href="https://hosting.buddycloud.com/login">BC:Hosted</a> helps you manage your application users: importing 
+        existing users, adding and deleting users and re-issuing passwords. It's also possible to use your existing user 
+        database.</p>
+        <p>Buddycloud simply sends an "is this user and password valid?" request to your current authentication and authorisation 
+        service.</p>
+        <figure>
+        <img src="/theme/img/isotope/xmpp-summit.jpg" alt="buddycloud at xmpp summit photo" class="center-block" style="padding-top: 20px; padding-bottom: 20px;"/>
+        </figure>
+      </div>
+      <div class="row">
+        <h3>Analytics to help you improve.</h3>
+        <figure>
+          <img class="center-block" src="/theme/img/diagrams/analytics.png" alt="analytics diagram" style="padding-top: 20px; padding-bottom: 20px;"/>
+        </figure>
+        <p>Buddycloud sends daily activity reports that help you understand your application's messaging use and helps you 
+        discover active channels, users and content. Additional reports and a firehose of messages can easily be setup. 
+        Analytics are a key part in discovering who your super-fans are and help you turn them into community ambassadors.</p>
+      </div>
+      <div class="row">
+        <h3>Protocol testing, testing, testing...</h3>
+        <p>The Buddycloud <a href="http://protocol.buddycloud.com/" target="_blank">Protocol Tester</a> remotely checks your 
+        Buddycloud site for configuration bugs. Enter your domain name and the Protocol Tester begins running a battery of 
+        remote tests that help you ensure that your Buddycloud-enabled site is correctly set up. Tests include checking DNS 
+        settings, API configuration and the Buddycloud services.</p>
+        <figure>
+        <img src="/theme/img/isotope/buddycloud_protocol_tester.png" alt="protocol tester diagram" class="center-block" style="padding-top: 20px; padding-bottom: 20px;"/>
+        </figure>      
+      </div>
+      <div class="row">
+        <h3>Total hosting control</h3>
+        <p>Quickly start developing on the free <a href="https://hosting.buddycloud.com/login">Buddycloud hosted 
+        service</a> or download and <a href="http://buddycloud.com/install">install</a> your own version of the 
+        Buddycloud features on your own servers and exactly the way you like.</p>
+        <figure>
+        <img src="/theme/img/diagrams/private-onsite.png" alt="private-onsite-diagram" class="center-block" style="padding-top: 20px; padding-bottom: 20px;"/>
+        </figure>
+      </div>
+      <div class="row">
+        <h3>Scales up without surprises.</h3>
+        <figure>
+        <img src="/theme/img/diagrams/scalable.png" alt="scalable-diagram" class="pull-right" style="padding-left:40px;"/>
+        </figure>
+        <p>Scale up your infrastructure to support millions of simultaneous users and manage peak events by simply adding 
+        more servers. Buddycloud components are designed to scale horizontally. And when you need even more power, Buddycloud's 
+        API server ships <a href="http://blog.buddycloud.com/post/59883382741/scaling-buddycloud-with-fanoutio" target="_blank">
+          with support for Fanout's real-time CDN</a>.</p>
+      </div>
+    </section>
+    <br/>
+    <section>
+      <div class="row">
+        <h2>Designed for Your Users</h2>
+        <p>Buddycloud components are designed to help you <a href="https://www.useronboard.com/how-instagram-onboards-new-users/" target="_blank">
+        onboard</a> your existing users and help your new users discover content. 
+        Your users can even import existing social graphs and connect with friends already on the service.</p>
+      </div>
+      <div class="row">
+        <h3>Friend Finder for finding friends.</h3>
+        <p>To create a smooth user onboarding, the <a href="https://github.com/buddycloud/buddycloud-friend-finder" target="_blank">Friend Finder</a>
+        service matches your users to friends that are already using your app. The Friend Finder uses one-way hashes (to protect 
+        privacy)  of contact data like email addresses, FacebookIDs or phone numbers. The Friend Finder shows your users a list of 
+        friends already using your application and alerts existing users when a known friend signs-up.</p>
+        <figure>
+          <img class="center-block" src="/theme/img/diagrams/friend-finder.png" alt="friend finder diagram" style="padding-top: 20px; padding-bottom: 20px;"/>
+        </figure>
+        <blockquote>
+          <p>"34 of your friends are already on CatBook. Add them here."</p>
+          <footer>
+            <cite>directory.buddycloud.org</cite>
+          </footer>
+        </blockquote>
+      </div>
+      <div class="row">
+        <h3>If you like that, you might like this.</h3>
+        <p>The <a href="https://github.com/buddycloud/channel-directory" target="_blank">Content Discovery service</a> recommends channels 
+        based on a graph database of who follows what. Present your users with relevant content based on what they and their 
+        peers are already following, leading to a richer application.</p>
+        <figure>
+          <img class="center-block" src="/theme/img/diagrams/taste-engine.png" alt="taste engine diagram" style="padding-top: 20px; padding-bottom: 20px;"/>
+        </figure>        
+        <blockquote>
+          <p>"If you follow these channels, perhaps you would be interested in this channel."</p>
+          <footer>
+            <cite>directory.buddycloud.org</cite>
+          </footer>
+        </blockquote>
+      </div>
+      <div class="row">
+        <h3>Find trending content with the Channel Directory server.</h3>
+        <p>The Buddycloud <a href="https://github.com/buddycloud/channel-directory" target="_blank">Channel Directory</a> server lists the most 
+        popular, newest, and currently most active channels. These lists are generated from the number of posts and followers. 
+        The directory provides data for your local channels (on your server) and from remote channels (on other Buddycloud 
+        servers), all accessible from one API. Your users can always find fresh and interesting channels to participate in.</p>
+        <blockquote>
+          <p>"The most active Buddycloud channel today: <code>franz@buddycloud.org</code>"</p>
+          <footer>
+            <cite>directory.buddycloud.org</cite>
+          </footer>
+        </blockquote>
+        <figure>
+          <img class="center-block" src="/theme/img/isotope/channel-directory.png" alt="channel directory screenshot" style="padding-top: 20px; padding-bottom: 20px;"/>
+        </figure>
+      </div>
+      <div class="row">
+        <h3>It's somewhere out there, just search.</h3>
+        <p>Quickly <a href="https://github.com/buddycloud/channel-directory" target="_blank">find posts</a> in your 
+        Buddycloud channels. All posts are indexed and <a href="https://github.com/buddycloud/channel-directory" target="_blank">
+          instantly searchable</a>. Your searches can be limited to your local Buddycloud server or you can search for posts 
+          across all Buddycloud servers.</p>
+        <figure>
+          <img class="center-block" src="/theme/img/isotope/buddycloud_search_engine.jpg" alt="search engine screenshot" style="padding-top: 20px; padding-bottom: 20px;"/>
+        </figure>
+      </div>
+    </section>
+    <section>
+      <div class="row">
+        <h2>Designed for Your Company</h2>
+        <p>The only in-app messaging system that can run behind your firewall.</p>
+        <p>Reliable support to help you run your Buddycloud-stack on-site and scale up. The benefits of the full Buddycloud
+        stack hosted securely behind your firewall. Your users, your network, your security policies.</p>
+      </div>
+      <div class="row">
+        <h3>Consulting from experts to speed up your process.</h3>
+        <figure>
+            <img src="/theme/img/diagrams/consulting.png" alt="consulting-diagram" class="pull-right hidden-xs" style="padding-left:20px;" />
+            <img src="/theme/img/diagrams/consulting.png" alt="consulting-diagram" class="center-block hidden-sm hidden-md hidden-lg" style="padding-bottom:20px; padding-top:20px;" />
+        </figure>
+        <p>The Buddycloud team works with organisations to help them build messaging into their intranet, mobile and web apps.</p>
+        <p>Both on-site and remotely, you get the benefit of working directly with Buddycloud developers and operational teams. 
+        A typical engagement includes designing, environment-setup, development help and scaling help. Buddycloud experts with 
+        experience and knowledge help you minimize the time required to launch your app.</p>
+      </div>
+      <div class="row">
+        <h3>Use your own domain name.</h3>
+        <figure>
+            <img src="/theme/img/diagrams/own-domain.png" alt="own-domain-diagram" 
+            class="center-block" style="padding-top: 20px; padding-bottom: 20px;" />
+        </figure> 
+        <p>Buddycloud Enterprise and Buddycloud Hosting both support using your own domain name. Users addresses can be 
+        identical to email addresses: username@domainname.</p>
+      </div>
+      <div class="row">
+        <h3>Supported 24/7.</h3>
+        <figure>
+            <img src="/theme/img/diagrams/24-7.png" alt="24-7-diagram" 
+            class="center-block" style="padding-top: 20px; padding-bottom: 20px;" />
+        </figure>
+        <p>Designed to keep you running smoothly and provide coverage for peak events: Buddycloud Support is available 
+        via web, IM, email, phone and onsite.</p>
+        <p>Support includes custom builds, security and issue fixes. And inclusive consultation time.</p>
+        <p>The sales team can help you select the right plan. All 24/7.</p>
+      </div>
+      <div class="row">
+        <h3>Full support to help you scale up.</h3>
+        <figure>
+            <img src="/theme/img/diagrams/scalable.png" alt="scalable-diagram" class="pull-left hidden-xs" style="padding-right:20px;" />
+            <img src="/theme/img/diagrams/scalable.png" alt="scalable-diagram" class="center-block hidden-sm hidden-md hidden-lg" style="padding-top:20px; padding-bottom:20px;" />
+        </figure>
+        <p>Your app grows. Sometimes quicker than is comfortable. Buddycloud-support can help you scale up.</p>
+        <p>Every single component of the Buddycloud backend is designed to be run in a horizontally-scalable cluster. 
+        And to help you get your real time messages delivered Buddycloud works closely with the great team at Fanout to 
+        directly plug into their real time CDN.</p>
+      </div>
+      <div class="row">
+        <h3>Buddycloud licensing.</h3>
+        <figure>
+            <img src="/theme/img/diagrams/licensing.png" alt="licensing-diagram" class="pull-right hidden-xs" style="padding-top:10px; padding-left:20px;" />
+            <img src="/theme/img/diagrams/licensing.png" alt="licensing-diagram" class="center-block hidden-sm hidden-md hidden-lg" style="padding-top:20px; padding-bottom:20px;" />
+        </figure>
+        <p>All code is released under the commercial friendly Apache 2.0 license. This means you can easily add it to your 
+        own code. Please contact the sales team if you need a different license for your organisation.</p>
+        <p>The hosting platform is available under a proprietary license.</p>
+      </div>
+    </section>
+    <br/>
+    <section>
+      <div class="hidden-xs hidden-sm" style="display:table; width:100%;">
+        <div style="display:table-row">
+          <div class="text-center" style="display:table-cell; padding-right:15px; width:50%;">
+            <figure>
+            <a href="/developers" class="overlay">
+            <img class="center-block" src="/theme/img/diagrams/get-started.png" alt="get-started-diagram" style="padding-top: 20px; padding-bottom: 20px;"/>
+            </a>
+            </figure>          
+          </div>
+          <div class="text-center" style="display:table-cell; padding-left:15px; width:50%;">
+            <figure>
+            <a href="/contact" class="overlay">
+            <img class="center-block" src="/theme/img/diagrams/hosting-big.png" alt="hosting-big-diagram" style="padding-top: 20px; padding-bottom: 20px;"/>
+            </a>
+            </figure>     
+          </div>
+        </div>
+   <div style="display:table-row">
+    <div class="text-center" style="display:table-cell; padding-right:15px; vertical-align:bottom; width:50%;">
+      <p>
+        <a class="btn center-block" href="/developers">Developer Quickstart</a>
+      </p>
+    </div>
+    <div class="text-center" style="display:table-cell; padding-left:15px; vertical-align:bottom; width:50%;">
+      <p>
+        <a class="btn center-block" href="/contact">Contact us to get more information</a>
+      </p>
+    </div>
+   </div>
+  </div>
+  <div class="hidden-md hidden-lg row">
+    <div class="text-center">
+      <p>
+        <a class="btn" href="/developers">Developer Quickstart</a>
+      </p>
+    </div>
+  </div>
+  <div class="hidden-md hidden-lg row">
+    <div class="text-center">
+      <p>
+        <a class="btn" href="/contact">Contact us to get more information</a>
+      </p>
+    </div>
+  </div>
+  </section>
+</body>
+</html>

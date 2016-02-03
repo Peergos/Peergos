@@ -1,0 +1,164 @@
+/* isotope config */
+
+.isotope-item{
+  width: 200px;
+  margin: 5px;
+  border-radius: 4px;
+  padding: 10px;
+  overflow: hidden;
+}
+
+.isotope-item:nth-child(even){
+  background-color: #C4C8CD;
+}
+
+.isotope-item:nth-child(odd){
+  background-color: #E5E9EF;
+}
+
+.isotope-item.width-medium{
+  width: 410px;
+}
+
+.isotope-item.width-medium:nth-child(even){
+  background-color: #38434C;
+}
+
+.isotope-item.width-medium:nth-child(odd){
+  background-color: #2DAEBF;
+}
+
+.isotope-item.width-large{
+  width: 830px;
+}
+
+#isotope-container{
+  margin-bottom: 50px;
+}
+
+.isotope-item h2{
+  margin-top: 10px;
+}
+
+.isotope-item figure{
+  margin-bottom: 10px;
+  overflow: hidden;
+  border-radius: 4px;
+}
+
+.isotope-item .video_box{
+  position: relative;
+  width: 100%;
+  margin-bottom: 10px;
+}
+
+.isotope-item .video_box:before{
+  content: "";
+  display: block;
+  padding-top: 75%;
+}
+
+.isotope-item .video_content{
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  right: 0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.isotope-item iframe{
+  width: 100%;
+  height: 100%;
+}
+
+.isotope-item > .links{
+  display: table;
+  width: 100%;
+}
+
+.isotope-item > .links > div{
+  display: table-row;
+}
+
+.isotope-item > .links > div > div{
+  display: table-cell;
+  text-align: center;
+}
+
+.isotope-item > .links > div > div > a{
+  cursor: pointer;
+}
+
+.isotope-item:not(.width-medium) > .links > div > div > a{
+  color: #38434C;
+}
+
+.isotope-item:not(.width-medium) > .links > div:nth-child(2) > div{
+  display: none;
+}
+
+.isotope-item > .links > div > div > a:hover{
+  text-decoration: none;
+}
+
+.isotope-item.width-medium h2,
+.isotope-item.width-medium p,
+.isotope-item.width-medium > .links > div > div > a{
+  color: white;
+}
+
+.isotope-item:not(.width-medium) > .ellipsis{
+  overflow: hidden;
+  height: 60px;
+  line-height: 25px;
+  border: 5px solid transparent;
+  margin-bottom: 1em;
+}
+
+.isotope-item:not(.width-medium) > .ellipsis:before{
+  content: "";
+  float: left;
+  width: 5px;
+  height: 60px;
+  overflow: hidden;
+}
+
+.isotope-item:not(.width-medium) > .ellipsis > p{
+  float: right;
+  width: 100%;
+  margin: 0;
+  margin-left: -5px;
+}
+
+.isotope-item:not(.width-medium) > .ellipsis:after{
+  content: "\02026";
+  box-sizing: content-box;
+  -webkit-box-sizing: content-box;
+  -moz-box-sizing: content-box;
+  float: right;
+  position: relative;
+  top: -36px;
+  left: 100%;
+  width: 3em;
+  margin-left: -3em;
+  padding-right: 5px;
+  text-align: right;
+}
+
+.isotope-item:not(.width-medium):nth-child(even) > .ellipsis:after{
+  background: -webkit-gradient(linear, left top, right top, from(rgba(255, 255, 255, 0)), to(#C4C8CD), color-stop(50%, #C4C8CD));
+  background: -moz-linear-gradient(to right, rgba(255, 255, 255, 0), #C4C8CD 50%, #C4C8CD);
+  background: -o-linear-gradient(to right, rgba(255, 255, 255, 0), #C4C8CD 50%, #C4C8CD);
+  background: -ms-linear-gradient(to right, rgba(255, 255, 255, 0), #C4C8CD 50%, #C4C8CD);
+  background: linear-gradient(to right, rgba(255, 255, 255, 0), #C4C8CD 50%, #C4C8CD);
+}
+
+.isotope-item:not(.width-medium):nth-child(odd) > .ellipsis:after{
+  background: -webkit-gradient(linear, left top, right top, from(rgba(255, 255, 255, 0)), to(#E5E9EF), color-stop(50%, #E5E9EF));
+  background: -moz-linear-gradient(to right, rgba(255, 255, 255, 0), #E5E9Ef 50%, #E5E9EF);
+  background: -o-linear-gradient(to right, rgba(255, 255, 255, 0), #E5E9EF 50%, #E5E9EF);
+  background: -ms-linear-gradient(to right, rgba(255, 255, 255, 0), #E5E9EF 50%, #E5E9EF);
+  background: linear-gradient(to right, rgba(255, 255, 255, 0), #E5E9EF 50%, #E5E9EF);
+}

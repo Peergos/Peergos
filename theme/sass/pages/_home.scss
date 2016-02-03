@@ -1,0 +1,11 @@
+@import 'compass/css3/transition';
+
+.index {
+  padding-top: 3em;
+
+  @import 'home/features';
+  @import 'home/footer';
+  @import 'home/friends';
+  @import 'home/header';
+  @import 'home/highlight';
+}

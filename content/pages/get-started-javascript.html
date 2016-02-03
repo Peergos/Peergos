@@ -1,0 +1,134 @@
+<html>
+<head>
+    <title>Get Started / Web</title>
+    <meta name="url" content="get-started-javascript" />
+    <meta name="save_as" content="get-started-javascript.html" />
+    <meta name="show_in_top_menu" content="false" />
+    <meta name="order" content="-1" />
+    <meta name="top_menu_name" content="Get Started" />
+    <meta name="show_as_selected" content="get-started" />
+    <meta name="table_of_contents" content="true" />
+    <meta name="button_style" content="grey" />
+</head>
+<body>
+
+<div class="row">
+  <h2>Build a messaging app</h2>
+  <p>
+    You can access Buddycloud in many ways. The following steps quickly introduce you on how to exchange posts in a channel node, which is the most basic thing you can do with Buddycloud.
+  </p>
+  <p>
+    This example uses Javascript (better suited for web apps) but you can use our <a href="http://buddycloud.com/api">REST API</a> in order to build other apps such as mobile ones.
+  </p>
+  <h3>Sign up for a test account / Install Buddycloud</h3>
+  <p>To start building Buddycloud you will need a test account on the <a href="https://hosting.buddycloud.com/login">
+    Dev-Console</a>. We recommend using the developer console initially and later, you can install your own Buddycloud 
+    stack.</p>
+  <h3>Include primus.js</h3>
+  <p>You will need to include this script otherwise none of the steps below will work.</p>
+  <div class="highlight">
+      <pre><code>&lt;script src="https://demo.buddycloud.com/scripts/primus/primus.js" type="text/javascript"&gt;&lt;/script&gt;</code></pre>
+  </div>
+
+  <h3>Create a user</h3>
+  <p>
+      The following Javascript code snippet creates an account: <code><span class='generated-u'></span></code>.
+  </p>
+  <div class="highlight">
+      <pre><code>var socket = new Primus("https://demo.buddycloud.com");
+socket.on('open', function() {
+    socket.send('xmpp.login',
+    {
+        jid: '<span class="generated-u"></span>',
+        password: '<span class="generated-p"></span>',
+        register: true
+    });
+});
+
+socket.on('xmpp.connection', function() {
+    window.alert("User account created successfully!");
+});</code></pre>
+  </div>
+
+  <h3>Connect, authenticate, discover</h3>
+  <p>
+      The following Javascript code snippet <b><i>is pretty important and required so that you can perform the further steps</i></b> described in the following sections in this document. This is how you connect to your Buddycloud domain, authenticate your user and then discover the Buddycloud server.
+  </p>
+  <div class="highlight">
+      <pre><code>var socket = new Primus("https://demo.buddycloud.com");
+socket.on('open', function() {
+    socket.send('xmpp.login',
+    {
+        jid: '<span class="generated-u"></span>',
+        password: '<span class="generated-p"></span>'
+    });
+});
+
+socket.on('xmpp.connection', function() {
+    socket.send('xmpp.buddycloud.discover', {}, function(error, data) {
+        window.alert("Authenticated as your user successfully!");
+    });
+});</code></pre>
+  </div>
+
+  <h3>Fetch posts</h3>
+  <p>
+      The following Javascript code snippet assumes you are already authenticated and also that you have already discovered the Buddycloud server. It retrieves posts from the <code>get-started@demo.buddycloud.com/posts</code> node.
+  </p>
+  <div class="highlight">
+      <pre><code>socket.send('xmpp.buddycloud.retrieve',
+{
+    node: '/user/get-started@demo.buddycloud.com/posts',
+    rsm: { max: 10 }
+},
+function(error, posts) {
+    if (!error) {
+        /* handle display of existing posts */
+        output = "";
+        posts.reverse().forEach(function(post) {
+            var author = post.entry.atom.author.name;
+            var content = post.entry.atom.content.content;
+            output += "Author: " + author + "; Msg: " + content + "\n";
+        });
+        window.alert("Fetched posts successfully!\n"+output);
+    }
+});</code></pre>
+  </div>
+
+  <h3>Post something yourself</h3>
+  <p>
+      The following Javascript code snippet assumes you are already authenticated and that you have already discovered the Buddycloud server. It subscribes your user to the <code>get-started@demo.buddycloud.com/posts</code> node and then creates a post on this node. Finally, it starts listening for incoming messages (and thus will receive the one you've just posted).
+  </p>
+  <div class="highlight">
+      <pre><code>socket.send('xmpp.buddycloud.subscribe',
+{
+    node: '/user/get-started@demo.buddycloud.com/posts'
+},
+function(error, data) {
+    socket.send('xmpp.buddycloud.publish',
+    {
+        node: '/user/get-started@demo.buddycloud.com/posts',
+        content: {
+            atom: {
+                content: "Hello world!"
+            }
+        }
+    },
+    function(error, posts) {
+        if (!error) {
+            window.alert("Post created successfully!");
+        }
+    });
+});
+
+socket.on('xmpp.buddycloud.push.item', function(post) {
+    if ( post.node === '/user/get-started@demo.buddycloud.com/posts' ) {
+        var author = post.entry.atom.author.name;
+        var content = post.entry.atom.content.content;
+        window.alert("You were notified of new post!\nAuthor: "+author+"; Msg: "+content);
+    }
+});</code></pre>
+  </div>
+</div>
+</body>
+</html>

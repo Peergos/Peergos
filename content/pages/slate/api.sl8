@@ -1,0 +1,36 @@
+Title: API
+url: api
+save_as: api.html
+order: -1
+table_of_contents: false
+show_in_top_menu: false
+
+---
+title: Buddycloud API Reference
+
+#language_tabs:
+#  - shell : REST API
+#  - javascript : XMPP-FTW
+
+toc_footers:
+  - <a href='#'>Sign Up for a Buddycloud developer hosting</a>
+
+includes:
+  - introduction
+  - discovery
+  - accounts
+  - channels
+  - nodes
+  - posts
+  - subscriptions
+  - followers
+#  - messaging
+  - media
+  - realtime
+#  - search
+#  - push
+#  - content-recommendation
+#  - social-recommendation
+
+search: true
+---

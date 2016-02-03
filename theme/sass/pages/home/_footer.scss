@@ -1,0 +1,73 @@
+.background-contact {
+  background-color: #38434C;
+}
+
+#contact {
+  color: #fff;
+  font-weight: 400;
+  padding-bottom: 3em;
+}
+
+#contact ul {
+  margin: 0;
+  padding: 0;
+  list-style-type: none;
+  line-height: 2;
+}
+
+#contact a:not(.gs-title) {
+  color: #fff;
+}
+
+.contact {
+
+  a {
+    display: block;
+    float: left;
+    margin-right: 1em;
+    width: 2em;
+    height: 2em;
+    background-color: #2DAEBF;
+    text-indent: -999em;
+    border-radius: 0.25em;
+    background-size: cover;
+    background-image: url('../img/contact/twitter.svg');
+    @include transition(background-color .2s linear);
+
+    &:hover {
+      background-color: #333;
+    }
+  }
+
+  .blog {
+    background-image: url('../img/contact/blog.svg');
+  }
+
+  .email {
+    background-image: url('../img/contact/email.svg');
+  }
+
+  .twitter {
+    background-image: url('../img/contact/twitter.svg');
+  }
+
+  .linkedin {
+    background-image: url('../img/contact/linkedin.svg');
+  }
+
+  .github {
+    background-image: url('../img/contact/github.svg');
+  }
+
+  .buddycloud {
+    background-image: url('../img/contact/buddycloud.svg');
+  }
+
+  .googleplus {
+    background-image: url('../img/contact/googleplus.svg');
+  }
+
+  .facebook {
+    background-image: url('../img/contact/facebook.svg' );
+  }
+}

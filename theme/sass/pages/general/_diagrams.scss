@@ -1,0 +1,56 @@
+.js_sequence_diagram {
+  width: 100%;
+  overflow: hidden;
+  position: relative;
+}
+
+rect[fill=none] {
+  stroke-width: 2px;
+}
+
+.seq-diag-primary {
+  stroke: #2DAEBF;
+  fill: #2DAEBF;
+}
+
+.seq-diag-secondary {
+  stroke: #A6A6A6;
+  fill: #A6A6A6;
+}
+
+rect[fill='#ffffff'] {
+  opacity: 0;
+  stroke-width: 2px;
+}
+
+path[class='seq-diag-primary'], path[class='seq-diag-secondary'] {
+  stroke-width: 2.6px;
+}
+
+.seq-diag-primary tspan {
+  font-family: 'Open Sans';
+  font-weight: 600;
+  fill: white;
+  stroke: white;
+  stroke-width: 0px;
+  stroke-width: -0.4px;
+}
+
+.seq-diag-secondary tspan {
+  font-family: 'Open Sans';
+  fill: white;
+  stroke: white;
+  stroke-width: 0px;
+}
+
+.seq-diag-link,
+.seq-diag-note {
+  opacity: 0.5;
+  stroke-opacity: 0.5;
+
+  tspan {
+    font-family: 'Open Sans';
+    font-weight: 600;
+    font-style: italic;
+  }
+}

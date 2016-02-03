@@ -1,0 +1,81 @@
+/*Tweaks needed to make it work alongside with codehilite md extension*/
+.highlight .hljs span {
+//  color: #61DFF5;
+  color: #2DAEBF;
+}
+
+/* Comment */
+.hljs-comment,
+.hljs-title {
+//  color: #969896 !important;
+  color: #E5E9EF;
+}
+
+/* Buddycloud Light Grey */
+.hljs-number,
+.hljs-preprocessor,
+.hljs-pragma,
+.hljs-built_in,
+.hljs-literal,
+.hljs-params,
+.hljs-constant,
+.ruby .hljs-class .hljs-title,
+.css .hljs-rules .hljs-attribute {
+  color: #E5E9EF !important;
+}
+
+/* Buddycloud Grey */
+.hljs-string,
+.hljs-value,
+.hljs-inheritance,
+.hljs-header,
+.ruby .hljs-symbol,
+.xml .hljs-cdata {
+  color: #C4C8CD !important;
+}
+
+/* Buddycloud Green-Blue */
+.hljs-variable,
+.hljs-attribute,
+.hljs-tag,
+.hljs-regexp,
+.ruby .hljs-constant,
+.xml .hljs-tag .hljs-title,
+.xml .hljs-pi,
+.xml .hljs-doctype,
+.html .hljs-doctype,
+.css .hljs-id,
+.css .hljs-class,
+.css .hljs-pseudo,
+.css .hljs-hexcolor,
+.hljs-function,
+.python .hljs-decorator,
+.python .hljs-title,
+.ruby .hljs-function .hljs-title,
+.ruby .hljs-title .hljs-keyword,
+.perl .hljs-sub,
+.javascript .hljs-title,
+.coffeescript .hljs-title,
+.hljs-keyword,
+.javascript .hljs-function {
+  color: #2DAEBF !important;
+}
+
+.highlight .hljs,
+.highlight pre .hljs {
+  display: block;
+  background: transparent;
+//  color: #61DFF5;
+  color: #2DAEBF;
+  padding: 0.5em;
+}
+
+.coffeescript .javascript,
+.javascript .xml,
+.tex .hljs-formula,
+.xml .javascript,
+.xml .vbscript,
+.xml .css,
+.xml .hljs-cdata {
+  opacity: 0.5;
+}

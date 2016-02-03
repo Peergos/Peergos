@@ -1,0 +1,115 @@
+<html>
+
+<head>
+	<title>Developers</title>
+	<meta name="url" content="developers" />
+	<meta name="save_as" content="developers.html" />
+	<meta name="show_in_top_menu" content="true" />
+	<meta name="order" content="2" />
+	<meta name="top_menu_name" content="Developers" />
+	<meta name="show_as_selected" content="developers" />
+	<meta name="table_of_contents" content="true" />
+	<meta name="description" content="Buddycloud's developers page - Learn how to develop with Buddycloud or how to run the 
+	Buddycloud stack." />
+  <meta name="author" content="Buddycloud" />
+  <meta name="keywords" content="Quickstart, API Reference, Example Apps, develop, run, Web, Mobile, XEP, HTTP, documentation
+  Code Ecosystem, how Buddycloud works" />
+</head>
+
+<body>
+  <div style="display:table; width:100%;">
+   <div style="display:table-row;">
+    <div class="text-center" style="display:table-cell; width:50%; padding-right:25px;">
+      <figure>
+        <img alt="get-started-mobile-diagram" src="/theme/img/diagrams/get-started-mobile.png" class="center-block" style="padding-top: 20px; padding-bottom: 20px;">
+      </figure>
+            <div class="row">
+        <div class="col-md-12 column">
+          <a class="btn btn-primary" href="/get-started-mobile">Build a Mobile App</a>
+        </div>
+        <br />
+        <div class="col-md-12 column">
+        </div>
+        <br />
+        <div class="col-md-12 column">
+        <p><a href="https://play.google.com/store/apps/details?id=com.buddycloud&hl=en">Demo App</a> 
+        (<a href="https://github.com/buddycloud/buddycloud-android">Source</a>)</p>
+        </div>
+      </div>
+    </div>
+    <br class="hidden-md hidden-lg" />
+    <div class="text-center" style="display:table-cell; width:50%; padding-left:25px;">
+      <figure>
+        <img alt="get-started-web-diagram" src="/theme/img/diagrams/get-started-web.png" class="center-block" style="padding-top: 20px; padding-bottom: 20px;">
+      </figure>
+            <div class="row">
+        <div class="col-md-12 column">
+          <a class="btn btn-primary" href="/get-started-javascript">Build a Web App</a>
+        </div>
+        <br />
+        <div class="col-md-12 column">
+        </div>
+        <br />
+        <div class="col-md-12 column">
+        <p><a href="https://buddycloud.org/">Demo App</a> 
+        (<a href="https://github.com/buddycloud/buddycloud-angular-app">Source</a>)</p>
+        </div>
+      </div>
+    </div>
+   </div>
+  </div>
+
+  <h2>General Documentation</h2>
+      <dl class="dl-horizontal">
+        <dt><a href="http://buddycloud.com/api">HTTP API:</a></dt>
+        <dd>The best way to develop mobile applications.</dd>
+        <dt><a href="https://xmpp-ftw.jit.su/manual/extensions/buddycloud/" target="_blank">Javascript XMPP-FTW:</a></dt>
+        <dd>Get the better of developing web-based applications with our useful guide.</dd>
+        <dt><a href="http://buddycloud.github.io/buddycloud-xep/" target="_blank">Protocol:</a></dt>
+        <dd>The protocol that drives Buddycloud.</dd>
+        <dt><a href="http://buddycloud.com/how-buddycloud-works">How BC works:</a></dt>
+        <dd>Background reading on how everything fits together.</dd>
+        <dt><a href="http://buddycloud.com/software-stack">Code Ecosystem:</a></dt>
+        <dd>Existing Buddycloud open source projects.</dd>
+        <dt><a href="http://buddycloud.com/faq" >FAQs:</a></dt>
+        <dd>Questions and answers about Buddycloud.</dd>
+        <dt>Get help:</dt>
+        <dd><a href="https://jappix.com/?r=seehaus@channels.buddycloud.com" target="_blank">Join chatroom.</a></dd>
+        <dd><a href="https://groups.google.com/forum/#!forum/buddycloud-dev" target="_blank">Developer mailing list.</a></dd>
+      </dl>
+  <h2>Run Buddycloud</h2>
+  <div style="display:table; width:100%;">
+   <div style="display:table-row;">
+    <div class="text-center" style="display:table-cell; width:33%; padding-right:25px;">
+      <h3>On my laptop / On a virtual-machine.</h3>
+      <p align="left"><a href="https://github.com/buddycloud/buddycloud-vm">Download and run Buddycloud</a> on your development 
+      server.</p>
+    </div>
+    <br class="hidden-md hidden-lg" />
+    <div class="text-center" style="display:table-cell; width:33%; padding-right:25px; padding-left:25px;">
+      <h3>In production.</h3>
+      <p align="left">We've designed the <a href="http://buddycloud.com/features">Buddycloud features</a> to run the same 
+      bits in development as you run in production. So you always ship to production in a reliable manner. All Buddycloud
+      code is deployable using <a href="https://github.com/buddycloud/saltstack">Buddycloud's saltstack scripts</a>.</p>
+    </div>
+    <br class="hidden-md hidden-lg" />
+    <div class="text-center" style="display:table-cell; width:33%; padding-left:25px;">
+      <h3>Please run it for me.</h3>
+      <p align="left">We have several <a href="http://buddycloud.com/services">support contracts</a> to help you run Buddycloud on-premises.</p>
+    </div>
+   </div>
+  </div>
+  <br />
+    <h3>Advanced: I already have an XMPP server.</h3>
+    <p><a href="http://buddycloud.com/features">Buddycloud components</a> treat the XMPP server as a pure message router and will work with any XMPP server.</p>
+    <p>To test Buddycloud againsts your own XMPP server without installing anything, just add the following DNS records:</p>
+    <div class="highlight">
+      <pre>        
+        <code class="hljs bash">buddycloud.example.com.                          CNAME             hosted.buddycloud.org.</code>
+        <code class="hljs bash">_buddycloud-server._tcp.example.com.             PTR               channels.buddycloud.org.</code></pre></div>
+    <p>Now visit <code>buddycloud.example.com</code></p>
+    <br />
+    <h3>Test your site.</h3>
+    <p>The <a href="http://protocol.buddycloud.com/">Buddycloud Protocol Tester</a> remotely checks your Buddycloud site for configuration bugs.</p>
+</body>
+</html>
