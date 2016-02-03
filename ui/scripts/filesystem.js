@@ -362,7 +362,16 @@ const UserOptions = React.createClass({
 const buildSharingTable = function(socialState, treeNode) {
         const type = treeNode.isDirectory() ? "Folder": "File";
 
-        const rows = socialState.getFollowers().map(function(name) {
+        const alreadySharedWith = socialState.sharedWith(treeNode.getLocation());
+        var existing = {};
+        alreadySharedWith.forEach(function(entry) {
+          existing[entry] = true;
+        });
+        var availableFollowers = socialState.getFollowers().filter(function(name){
+                return !(name in existing);
+        });
+
+        const rows = availableFollowers.map(function(name) {
                 const onClick = function() {
                         startInProgess();
                         socialState.share(treeNode, name, userContext).then(function() {
