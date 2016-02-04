@@ -20,16 +20,9 @@ public class Ed25519PublicKey implements PublicSigningKey {
         return PublicSigningKey.Type.Ed25519;
     }
 
-    public byte[] serialize() {
-        try {
-            ByteArrayOutputStream bout = new ByteArrayOutputStream();
-            DataOutputStream dout = new DataOutputStream(bout);
-            dout.writeByte(type().value);
-            dout.write(publicKey);
-            return bout.toByteArray();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+    public void serialize(DataOutputStream dout) throws IOException {
+        dout.writeByte(type().value);
+        dout.write(publicKey);
     }
 
     public byte[] getPublicSigningKey() {

@@ -1,13 +1,9 @@
 package peergos.crypto;
 
-import peergos.crypto.asymmetric.PublicBoxingKey;
-import peergos.crypto.asymmetric.PublicSigningKey;
-import peergos.crypto.asymmetric.SecretBoxingKey;
-import peergos.util.ArrayOps;
+import peergos.crypto.asymmetric.*;
+import peergos.util.*;
 
-import java.io.ByteArrayInputStream;
-import java.io.DataInputStream;
-import java.io.IOException;
+import java.io.*;
 import java.util.*;
 
 public class UserPublicKey implements Comparable<UserPublicKey>
@@ -29,9 +25,18 @@ public class UserPublicKey implements Comparable<UserPublicKey>
         return new UserPublicKey(signingKey, boxingKey);
     }
 
+    public void serialize(DataOutputStream dout) throws IOException {
+        publicSigningKey.serialize(dout);
+        publicBoxingKey.serialize(dout);
+    }
+
+    public static UserPublicKey fromByteArray(byte[] raw) throws IOException {
+        return deserialize(new DataInputStream(new ByteArrayInputStream(raw)));
+    }
+
     public byte[] serialize()
     {
-        return ArrayOps.concat(publicSigningKey.serialize(), publicBoxingKey.serialize());
+        return ArrayOps.concat(publicSigningKey.toByteArray(), publicBoxingKey.toByteArray());
     }
 
     public byte[] getPublicSigningKey()

@@ -23,18 +23,6 @@ public class Curve25519PublicKey implements PublicBoxingKey {
         return Type.Curve25519;
     }
 
-    public byte[] serialize() {
-        try {
-            ByteArrayOutputStream bout = new ByteArrayOutputStream();
-            DataOutputStream dout = new DataOutputStream(bout);
-            dout.writeByte(type().value);
-            dout.write(publicKey);
-            return bout.toByteArray();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
     public byte[] getPublicBoxingKey() {
         return Arrays.copyOfRange(publicKey, 0, publicKey.length);
     }
@@ -42,6 +30,11 @@ public class Curve25519PublicKey implements PublicBoxingKey {
     public byte[] encryptMessageFor(byte[] input, SecretBoxingKey from) {
         byte[] nonce = createNonce();
         return ArrayOps.concat(TweetNaCl.crypto_box(input, nonce, publicKey, from.getSecretBoxingKey()), nonce);
+    }
+
+    public void serialize(DataOutputStream dout) throws IOException {
+        dout.writeByte(type().value);
+        dout.write(publicKey);
     }
 
     public byte[] createNonce() {

@@ -2,8 +2,7 @@ package peergos.crypto.asymmetric;
 
 import peergos.crypto.asymmetric.curve25519.Curve25519PublicKey;
 
-import java.io.DataInputStream;
-import java.io.IOException;
+import java.io.*;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -20,19 +19,36 @@ public interface PublicBoxingKey {
         }
 
         public static Type byValue(int val) {
+            if (!byValue.containsKey(val))
+                throw new IllegalStateException("Unknown public boxing key type: " + String.format("%02x", val));
             return byValue.get(val);
         }
     }
 
     Type type();
 
-    byte[] serialize();
-
     byte[] getPublicBoxingKey();
 
     byte[] encryptMessageFor(byte[] input, SecretBoxingKey from);
 
     byte[] createNonce();
+
+    void serialize(DataOutputStream dout) throws IOException;
+
+    default byte[] toByteArray() {
+        try {
+            ByteArrayOutputStream bout = new ByteArrayOutputStream();
+            DataOutputStream dout = new DataOutputStream(bout);
+            serialize(dout);
+            return bout.toByteArray();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    static PublicBoxingKey fromByteArray(byte[] raw) throws IOException {
+        return deserialize(new DataInputStream(new ByteArrayInputStream(raw)));
+    }
 
     static PublicBoxingKey deserialize(DataInputStream din) throws IOException {
         Type t = Type.byValue(din.read());
