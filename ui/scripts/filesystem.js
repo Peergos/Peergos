@@ -105,6 +105,11 @@ function openItem(name, data) {
 function dragHandler(e) {
         e.stopPropagation();
         e.preventDefault();
+        if(e.dataTransfer.effectAllowed ==='move'){
+            e.dataTransfer.dropEffect = 'move';
+        }else{
+            e.dataTransfer.dropEffect = 'copy';
+        }
 }
 
 function uploadFileOnClient(readFile, browser) {
@@ -818,6 +823,7 @@ var Browser = React.createClass({
                                     op: "cut"
                              });
                          }else{
+                            ev.dataTransfer.effectAllowed='copy';
                             this.setClipboard({
                                     fileTreeNode: treeNode,
                                     op: "copy"
@@ -844,6 +850,7 @@ var Browser = React.createClass({
                     }.bind(this);
                     const onDragOver = function(ev) {//Never called, see dragHandler
                         ev.preventDefault();
+
                     }.bind(this);
 
                     return {
@@ -1269,7 +1276,7 @@ var Browser = React.createClass({
                 uploadInput.addEventListener("change", this.uploadFile(), false);
                 var filedrag = document.getElementById("filedrag");
                 filedrag.addEventListener("dragover", dragHandler, false);
-                filedrag.addEventListener("dragleave", dragHandler, false);                        
+                filedrag.addEventListener("dragleave", dragHandler, false);
                 filedrag.addEventListener("drop", this.selectHandler(), false);                      
 
 
@@ -1289,7 +1296,7 @@ var Browser = React.createClass({
                 uploadInput.removeEventListener("change", this.uploadFile(), false);
                 var filedrag = document.getElementById("filedrag");
                 filedrag.removeEventListener("dragover", dragHandler, false);
-                filedrag.removeEventListener("dragleave", dragHandler, false);                        
+                filedrag.removeEventListener("dragleave", dragHandler, false);
                 filedrag.removeEventListener("drop", this.selectHandler(), false);                      
         },
 
