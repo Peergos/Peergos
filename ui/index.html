@@ -47,7 +47,12 @@
                                         <li id="uploadButton"><a><span data-toggle="tooltip" data-placement="bottom" title="Upload file" class="glyphicon glyphicon-upload tour-upload"  style="cursor: pointer;"/></a></li>
                                         <li id="mkdirButton"><a><span data-toggle="tooltip" data-placement="bottom" title="Create new directory" class="glyphicon glyphicon-folder-open tour-mkdir"  style="cursor: pointer;"/></a></li>
                                         <li id="alternateViewButton"><a><span data-toggle="tooltip" data-placement="bottom" title="Switch view" id="altViewSpan" class="glyphicon glyphicon-th-large tour-view"  style="cursor: pointer;"/></a></li>
-                                        <li id="userOptionsButton"><a><span data-toggle="tooltip" data-placement="bottom" title="Sharing options" id="sharingOptionsSpan" class="glyphicon glyphicon-user tour-social"  style="cursor: pointer;"/></a></li>
+                                        <li id="userOptionsButton">
+                                                <a>
+                                                        <span data-toggle="tooltip" data-placement="bottom" title="Sharing options" id="sharingOptionsSpan" class="glyphicon glyphicon-user tour-social"  style="cursor: pointer;"/>
+                                                        <span id="pendingSpan"></span>
+                                                </a>
+                                        </li>
                                         <li><a id="pathSpan"><span data-toggle="tooltip" data-placement="bottom" title="Current location" class="glyphicon glyphicon-chevron-right tour-path"/></a></li>
                                 </ul>
                                 <div id="logout" class="navbar-form navbar-right tour-logout" style="margin-right:-7px;">

@@ -867,6 +867,7 @@ var Browser = React.createClass({
                     retrievedFilePointerPath: this.state.retrievedFilePointerPath,
                     clipboard: this.state.clipboard 
                 }, function() {
+                    this.updatePending();
                     this.updateNavbarPath(this.currentPath());
                 }.bind(this)); 
             }.bind(this);
@@ -949,7 +950,19 @@ var Browser = React.createClass({
                         return (<button className={"btn "+className + " tour-path"} onClick={onClick} onDrop={onDrop} onDragOver={onDragOver}>{name}</button>)
                 }.bind(this));
         },
-
+        updatePending: function(){
+               userContext.getSocialState().then(function(socialState) {
+                    var pending = socialState.pending.length;
+                    var spanStyle = {display: "none"};
+                    if(pending > 0){
+                        spanStyle = {background: "red", position: "relative", top: "-10px", left: "-5px"};
+                    }
+                    const elem = (<span className="badge" style={spanStyle}>
+                                   {pending}
+                                   </span>)
+                           React.render(elem, document.getElementById("pendingSpan"));
+               }.bind(this));
+        },
         updateNavbarPath: function(path){
                 const buttons = this.pathAsButtons();
                 const elem = (<div> 
