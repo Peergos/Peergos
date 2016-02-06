@@ -954,7 +954,11 @@ var Browser = React.createClass({
                         }.bind(this);
                         const className = index == this.state.retrievedFilePointerPath.length -1 ? "btn-primary" : "btn-default";
 
-                        return (<button className={"btn "+className + " tour-path"} onClick={onClick} onDrop={onDrop} onDragOver={onDragOver}>{name}</button>)
+                        var style = {display: "block"};
+                        if(e.getOwner() !== userContext.username){
+                            style = {background: "orangered"};
+                        }
+                        return (<button className={"btn "+className + " tour-path"} onClick={onClick} onDrop={onDrop} onDragOver={onDragOver} style={style}>{name}</button>)
                 }.bind(this));
         },
         updatePending: function(){
