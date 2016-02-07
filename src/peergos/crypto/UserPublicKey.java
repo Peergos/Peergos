@@ -19,10 +19,14 @@ public class UserPublicKey implements Comparable<UserPublicKey>
         this.publicBoxingKey = publicBoxingKey;
     }
 
-    public static UserPublicKey deserialize(DataInputStream din) throws IOException {
-        PublicSigningKey signingKey = PublicSigningKey.deserialize(din);
-        PublicBoxingKey boxingKey = PublicBoxingKey.deserialize(din);
-        return new UserPublicKey(signingKey, boxingKey);
+    public static UserPublicKey deserialize(DataInputStream din) {
+        try {
+            PublicSigningKey signingKey = PublicSigningKey.deserialize(din);
+            PublicBoxingKey boxingKey = PublicBoxingKey.deserialize(din);
+            return new UserPublicKey(signingKey, boxingKey);
+        } catch (IOException e) {
+            throw new IllegalStateException("Invalid serialized UserPublicKey", e);
+        }
     }
 
     public void serialize(DataOutputStream dout) throws IOException {
@@ -30,7 +34,7 @@ public class UserPublicKey implements Comparable<UserPublicKey>
         publicBoxingKey.serialize(dout);
     }
 
-    public static UserPublicKey fromByteArray(byte[] raw) throws IOException {
+    public static UserPublicKey fromByteArray(byte[] raw) {
         return deserialize(new DataInputStream(new ByteArrayInputStream(raw)));
     }
 

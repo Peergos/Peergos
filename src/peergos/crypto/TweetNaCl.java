@@ -1,5 +1,6 @@
 package peergos.crypto;
 
+import java.security.*;
 import java.util.Arrays;
 import java.util.Random;
 
@@ -1245,7 +1246,15 @@ public class TweetNaCl {
         return 0;
     }
 
-    private static Random prng = new Random(0); // only used for testing, so make deterministic
+    private static final SecureRandom prng = getRnd();
+
+    private static SecureRandom getRnd() {
+        try {
+            return SecureRandom.getInstanceStrong();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("Couldn't create SecureRandom!", e);
+        }
+    }
 
     private static void randombytes(byte[] b, int len) {
         byte[] r = new byte[len];

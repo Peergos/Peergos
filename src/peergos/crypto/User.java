@@ -46,15 +46,19 @@ public class User extends UserPublicKey
         return secretBoxingKey.decryptMessage(cipher, theirPublicBoxingKey);
     }
 
-    public static UserPublicKey deserialize(DataInputStream din) throws IOException {
-        boolean hasPrivateKeys = din.read() == 1;
-        if (hasPrivateKeys) {
-            SecretSigningKey signingKey = SecretSigningKey.deserialize(din);
-            SecretBoxingKey boxingKey = SecretBoxingKey.deserialize(din);
-            UserPublicKey pub = UserPublicKey.deserialize(din);
-            return new User(signingKey, boxingKey, pub.publicSigningKey, pub.publicBoxingKey);
+    public static UserPublicKey deserialize(DataInputStream din) {
+        try {
+            boolean hasPrivateKeys = din.read() == 1;
+            if (hasPrivateKeys) {
+                SecretSigningKey signingKey = SecretSigningKey.deserialize(din);
+                SecretBoxingKey boxingKey = SecretBoxingKey.deserialize(din);
+                UserPublicKey pub = UserPublicKey.deserialize(din);
+                return new User(signingKey, boxingKey, pub.publicSigningKey, pub.publicBoxingKey);
+            }
+            return UserPublicKey.deserialize(din);
+        } catch (IOException e) {
+            throw new IllegalStateException("Invalid serialized User", e);
         }
-        return UserPublicKey.deserialize(din);
     }
 
     public byte[] serialize() {
