@@ -6,6 +6,7 @@ import com.subgraph.orchid.*;
 import java.io.*;
 import java.net.*;
 import javax.net.*;
+import javax.net.ssl.*;
 
 public class TorTest {
 
@@ -21,13 +22,14 @@ public class TorTest {
 
         SocketFactory sf = tor.getSocketFactory();
 
-        URL url = new URL("http://www.google.com/");
-        String websiteAddress = url.getHost();
+        String websiteAddress = "www.google.com";
+        SSLSocketFactory ssl = (SSLSocketFactory)SSLSocketFactory.getDefault();
 
-        String file = url.getFile();
-        Socket clientSocket = sf.createSocket(websiteAddress, 80);
-        BufferedReader response = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-        OutputStreamWriter outWriter = new OutputStreamWriter(clientSocket.getOutputStream());
+        String file = "/";
+        Socket unsafeSocket = sf.createSocket(websiteAddress, 443);
+        Socket sslSocket = ssl.createSocket(unsafeSocket, websiteAddress, 443, false);
+        BufferedReader response = new BufferedReader(new InputStreamReader(sslSocket.getInputStream()));
+        OutputStreamWriter outWriter = new OutputStreamWriter(sslSocket.getOutputStream());
         outWriter.write("GET " + file + " HTTP/1.0\r\n\n");
         outWriter.flush();
 
