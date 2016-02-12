@@ -4,6 +4,7 @@ import peergos.crypto.*;
 
 import java.net.*;
 import java.io.*;
+import java.util.*;
 
 import com.sun.net.httpserver.*;
 import peergos.util.Args;
@@ -41,8 +42,11 @@ public class HTTPCoreNodeServer
             try {
                 switch (method)
                 {
-                    case "addUsername":
-                        addUsername(din, dout);
+                    case "getChain":
+                        getChain(din, dout);
+                        break;
+                    case "updateChain":
+                        updateChain(din, dout);
                         break;
                     case "getPublicKey":
                         getPublicKey(din, dout);
@@ -91,14 +95,25 @@ public class HTTPCoreNodeServer
 
         }
 
-        void addUsername(DataInputStream din, DataOutputStream dout) throws IOException
+        void getChain(DataInputStream din, DataOutputStream dout) throws IOException
         {
             String username = deserializeString(din);
-            byte[] encodedKey = deserializeByteArray(din);
-            byte[] hash = deserializeByteArray(din);
-            byte[] staticData = deserializeByteArray(din);
-            
-            boolean isAdded = coreNode.addUsername(username, encodedKey, hash, staticData);
+
+            List<UserPublicKeyLink> chain = coreNode.getChain(username);
+            dout.writeInt(chain.size());
+            for (UserPublicKeyLink link : chain) {
+                Serialize.serialize(link.toByteArray(), dout);
+            }
+        }
+
+        void updateChain(DataInputStream din, DataOutputStream dout) throws IOException
+        {
+            String username = deserializeString(din);
+            int count = din.readInt();
+            List<UserPublicKeyLink> res = new ArrayList<>();
+            for (int i=0; i < count; i++)
+                res.add(UserPublicKeyLink.fromByteArray(Serialize.deserializeByteArray(din, UserPublicKeyLink.MAX_SIZE)));
+            boolean isAdded = coreNode.updateChain(username, res);
 
             dout.writeBoolean(isAdded);
         }

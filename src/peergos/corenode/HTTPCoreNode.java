@@ -6,6 +6,8 @@ import peergos.util.*;
 
 import java.net.*;
 import java.io.*;
+import java.util.*;
+
 import static peergos.corenode.HTTPCoreNodeServer.*;
 
 
@@ -82,23 +84,49 @@ public class HTTPCoreNode implements CoreNode
         }
     }
 
-    @Override public boolean addUsername(String username, byte[] encodedUserKey, byte[] signed, byte[] staticData)
-    {
+    @Override public List<UserPublicKeyLink> getChain(String username) {
         HttpURLConnection conn = null;
         try
         {
-            conn = (HttpURLConnection) buildURL("core/addUsername").openConnection();
+            conn = (HttpURLConnection) buildURL("core/getChain").openConnection();
             conn.setDoInput(true);
             conn.setDoOutput(true);
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
-            
 
             Serialize.serialize(username, dout);
-            Serialize.serialize(encodedUserKey, dout);
-            Serialize.serialize(signed, dout);
-            Serialize.serialize(staticData, dout);
             dout.flush();
-            
+
+            DataInputStream din = new DataInputStream(conn.getInputStream());
+            int count = din.readInt();
+            List<UserPublicKeyLink> res = new ArrayList<>();
+            for (int i=0; i < count; i++)
+                res.add(UserPublicKeyLink.fromByteArray(Serialize.deserializeByteArray(din, UserPublicKeyLink.MAX_SIZE)));
+            return res;
+        } catch (IOException ioe) {
+            ioe.printStackTrace();
+            throw new IllegalStateException(ioe);
+        } finally {
+            if (conn != null)
+                conn.disconnect();
+        }
+    }
+
+    @Override public boolean updateChain(String username, List<UserPublicKeyLink> chain) {
+        HttpURLConnection conn = null;
+        try
+        {
+            conn = (HttpURLConnection) buildURL("core/updateChain").openConnection();
+            conn.setDoInput(true);
+            conn.setDoOutput(true);
+            DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
+
+            Serialize.serialize(username, dout);
+            dout.writeInt(chain.size());
+            for (UserPublicKeyLink link : chain) {
+                Serialize.serialize(link.toByteArray(), dout);
+            }
+            dout.flush();
+
             DataInputStream din = new DataInputStream(conn.getInputStream());
             return din.readBoolean();
         } catch (IOException ioe) {
@@ -110,7 +138,7 @@ public class HTTPCoreNode implements CoreNode
         }
     }
 
-   @Override public boolean followRequest(UserPublicKey target, byte[] encryptedPermission)
+    @Override public boolean followRequest(UserPublicKey target, byte[] encryptedPermission)
     {
         HttpURLConnection conn = null;
         try

@@ -5,6 +5,7 @@ import peergos.util.*;
 
 import java.io.*;
 import java.sql.*;
+import java.time.*;
 import java.util.*;
 import java.util.zip.*;
 
@@ -12,11 +13,16 @@ public interface CoreNode {
     int MAX_PENDING_FOLLOWERS = 100;
     int MAX_USERNAME_SIZE = 100;
 
-    UserPublicKey getPublicKey(String username) throws IOException;
-
     String getUsername(byte[] encodedUserKey) throws IOException;
 
-    boolean addUsername(String username, byte[] encodedUserKey, byte[] signed, byte[] staticData) throws IOException;
+    List<UserPublicKeyLink> getChain(String username);
+
+    boolean updateChain(String username, List<UserPublicKeyLink> chain);
+
+    default UserPublicKey getPublicKey(String username) throws IOException {
+        List<UserPublicKeyLink> chain = getChain(username);
+        return chain.get(chain.size()-1).claim.publicKey;
+    }
 
     byte[] getAllUsernamesGzip() throws IOException;
 

@@ -1,6 +1,5 @@
 package peergos.corenode;
 
-import org.ibex.nestedvm.Runtime;
 import peergos.crypto.*;
 import peergos.util.*;
 
@@ -8,20 +7,28 @@ import java.io.*;
 import java.sql.*;
 import java.time.*;
 import java.util.*;
+import java.util.stream.*;
 import java.util.zip.*;
 
 public class JDBCCoreNode implements CoreNode {
     public static final long MIN_USERNAME_SET_REFRESH_PERIOD = 60*1000000000L;
 
     private static final String TABLE_NAMES_SELECT_STMT = "SELECT * FROM sqlite_master WHERE type='table';";
-    private static final String CREATE_USERS_TABLE = "create table users (id integer primary key autoincrement, name text not null, publickey text not null);";
+    private static final String CREATE_USERNAMES_TABLE =
+            "create table users (id integer primary key autoincrement, name text not null unique);";
+    private static final String CREATE_LINKS_TABLE =
+            "create table links (id integer primary key autoincrement, publickeylink text not null);";
+    private static final String CREATE_CHAINS_TABLE =
+            "create table chains (userID int references users(id), linkID int references links(id), lindex int, primary key (userID, lindex));";
     private static final String CREATE_FOLLOW_REQUESTS_TABLE = "create table followrequests (id integer primary key autoincrement, name text not null, followrequest text not null);";
     private static final String CREATE_METADATA_BLOBS_TABLE = "create table metadatablobs (writingkey text primary key not null, hash text not null);";
 
     private static final Map<String,String> TABLES = new HashMap<>();
     static
     {
-        TABLES.put("users", CREATE_USERS_TABLE);
+        TABLES.put("users", CREATE_USERNAMES_TABLE);
+        TABLES.put("links", CREATE_LINKS_TABLE);
+        TABLES.put("chains", CREATE_CHAINS_TABLE);
         TABLES.put("followrequests", CREATE_FOLLOW_REQUESTS_TABLE);
         TABLES.put("metadatablobs", CREATE_METADATA_BLOBS_TABLE);
     }
@@ -378,23 +385,94 @@ public class JDBCCoreNode implements CoreNode {
     }
 
     @Override
-    public boolean addUsername(String username, byte[] encodedUserKey, byte[] signed, byte[] staticData) throws IOException {
-        if (username.contains(" ") || username.contains("\t") || username.contains("\n"))
-            return false;
-        UserPublicKey key = UserPublicKey.deserialize(new DataInputStream(new ByteArrayInputStream(encodedUserKey)));
+    public List<UserPublicKeyLink> getChain(String username) {
+        try {
+            try (PreparedStatement preparedStatement = conn.prepareStatement("select chains.lindex, links.publickeylink from links inner join chains on links.id=chains.linkid \n" +
+                    "inner join users on chains.userid=users.id where users.name=? order by chains.lindex;")) {
+                preparedStatement.setString(1, username);
+                ResultSet resultSet = preparedStatement.executeQuery();
+                Map<Integer, String> serializedChain = new HashMap<>();
+                while (resultSet.next()) {
+                    serializedChain.put(resultSet.getInt(1), resultSet.getString(2));
+                }
+                ArrayList<UserPublicKeyLink> result = new ArrayList<>();
+                for (int i=0; i < serializedChain.size(); i++) {
+                    if (!serializedChain.containsKey(i))
+                        throw new IllegalStateException("Missing UserPublicKeyLink at index: "+i);
+                    result.add(UserPublicKeyLink.fromByteArray(Base64.getDecoder().decode(serializedChain.get(i))));
+                }
+                return result;
+            }
+        } catch (SQLException sqle) {
+            throw new IllegalStateException(sqle);
+        }
+    }
 
-        if (! key.isValidSignature(signed, ArrayOps.concat(username.getBytes(), encodedUserKey, staticData)))
+    @Override
+    public boolean updateChain(String username, List<UserPublicKeyLink> tail) {
+        UserPublicKeyLink.validChain(tail, username);
+
+        if (tail.size() > 2)
             return false;
 
-        UserPublicKey existingKey = getPublicKey(username);
-        if (existingKey != null)
-            return false;
-        String existingUsername = getUsername(key.serialize());
-        if (existingUsername.length() > 0)
-            return false;
+        List<UserPublicKeyLink> existing = getChain(username);
+        List<String> existingStrings = existing.stream().map(x -> new String(Base64.getEncoder().encode(x.toByteArray()))).collect(Collectors.toList());
+        List<UserPublicKeyLink> merged = UserPublicKeyLink.merge(existing, tail);
+        List<String> toWrite = merged.stream().map(x -> new String(Base64.getEncoder().encode(x.toByteArray()))).collect(Collectors.toList());
 
-        UserData user = new UserData(username, key.serialize());
-        return user.insert();
+        // Conceptually this should be a CAS of the new chain in for the old one under the username
+        // The last one or two elements will have changed
+        if (existingStrings.size() == 0 && toWrite.size() == 1) {
+            // single link to claim a new username
+            try {
+                PreparedStatement user = null, link = null, chain = null;
+                try {
+                    conn.setAutoCommit(false);
+                    user = conn.prepareStatement("insert into users (name) VALUES(?);");
+                    user.setString(1, username);
+                    link = conn.prepareStatement("insert into links (publickeylink) VALUES(?);");
+                    link.setString(1, toWrite.get(0));
+                    chain = conn.prepareStatement("insert into chains (userid, linkid, lindex) select users.id, links.id, 0 "
+                            + "from users inner join links on links.publickeylink=? and users.name=?;");
+                    chain.setString(1, toWrite.get(0));
+                    chain.setString(2, username);
+                    conn.commit();
+                    return true;
+                } catch (SQLException sqe) {
+                    throw new IllegalStateException(sqe);
+                } finally {
+                    if (user != null) {
+                        user.close();
+                    }
+                    if (link != null) {
+                        link.close();
+                    }
+                    if (chain != null) {
+                        chain.close();
+                    }
+                    conn.setAutoCommit(true);
+                }
+            } catch (SQLException e) {
+                throw new IllegalStateException(e);
+            }
+        } else if (toWrite.size() == existingStrings.size() + 1) {
+            // two link update ( a key change to an existing username)
+            throw new IllegalStateException("Unimplemented!");
+        } else if (toWrite.size() == existingStrings.size()) {
+            // single link update to existing username
+            try (PreparedStatement stmt = conn.prepareStatement("update links set publickeylink=? where links.publickeylink=?;"))
+            {
+                stmt.setString(1, toWrite.get(toWrite.size()-1));
+                stmt.setString(2, existingStrings.get(toWrite.size()-1));
+                ResultSet rs = stmt.executeQuery();
+                while (rs.next()) {}
+
+                return true;
+            } catch (SQLException sqe) {
+                throw new IllegalStateException(sqe);
+            }
+        } else
+            throw new IllegalStateException("Tried to shorten key chain for username: "+username+"!");
     }
 
     @Override
