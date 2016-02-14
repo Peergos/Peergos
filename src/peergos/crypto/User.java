@@ -75,9 +75,13 @@ public class User extends UserPublicKey
         byte[] secretSignBytes = new byte[64];
         byte[] publicSignBytes = new byte[32];
         byte[] secretBoxBytes = new byte[32];
-        byte[] publicBoxBytes = new  byte[32];
+        byte[] publicBoxBytes = new byte[32];
 
         boolean isSeeded = false;
+        return random(secretSignBytes, publicSignBytes, secretBoxBytes, publicBoxBytes, isSeeded);
+    }
+
+    private static User random(byte[] secretSignBytes, byte[] publicSignBytes, byte[] secretBoxBytes, byte[] publicBoxBytes, boolean isSeeded) {
         TweetNaCl.crypto_sign_keypair(publicSignBytes, secretSignBytes, isSeeded);
         TweetNaCl.crypto_box_keypair(publicBoxBytes, secretBoxBytes, isSeeded);
 
@@ -86,6 +90,22 @@ public class User extends UserPublicKey
                 new Curve25519SecretKey(secretBoxBytes),
                 new Ed25519PublicKey(publicSignBytes),
                 new Curve25519PublicKey(publicBoxBytes));
+    }
+
+    public static User insecureRandom() {
+
+        byte[] secretSignBytes = new byte[64];
+        byte[] publicSignBytes = new byte[32];
+        byte[] secretBoxBytes = new byte[32];
+        byte[] publicBoxBytes = new byte[32];
+
+        Random rnd = new Random();
+        rnd.nextBytes(secretSignBytes);
+        rnd.nextBytes(publicSignBytes);
+        rnd.nextBytes(secretBoxBytes);
+        rnd.nextBytes(publicBoxBytes);
+        boolean isSeeded = true;
+        return random(secretSignBytes, publicSignBytes, secretBoxBytes, publicBoxBytes, isSeeded);
     }
 
     public static void main(String[] args) {

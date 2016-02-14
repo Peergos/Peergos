@@ -181,7 +181,7 @@ public class UserPublicKeyLink {
         if (!keyChangeProof.isPresent())
             return false;
         UserPublicKey targetKey = UserPublicKey.fromByteArray(from.claim.publicKey.unsignMessage(keyChangeProof.get()));
-        if (!targetKey.equals(target))
+        if (!Arrays.equals(targetKey.serialize(), target.serialize()))
             return false;
 
         return true;
@@ -224,7 +224,7 @@ public class UserPublicKeyLink {
         @Test
         public void coreNode() throws Exception {
             CoreNode core = CoreNode.getDefault();
-            User user = User.random();
+            User user = User.insecureRandom();
             String username = "someuser";
 
             // register the username
@@ -244,12 +244,15 @@ public class UserPublicKeyLink {
                 throw new IllegalStateException("Retrieved chain element different "+chain2 +" != "+Arrays.asList(upl2));
 
             // now change the keys
-            User user2 = User.random();
+            User user2 = User.insecureRandom();
             List<UserPublicKeyLink> chain3 = UserPublicKeyLink.createChain(user, user2, username, LocalDate.now().plusWeeks(1));
             boolean success3 = core.updateChain(username, chain3);
             List<UserPublicKeyLink> chain3Retrieved = core.getChain(username);
             if (!chain3.equals(chain3Retrieved))
                 throw new IllegalStateException("Retrieved chain element different");
+
+            // try to claim the same username with a different key
+
         }
     }
 }
