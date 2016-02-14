@@ -168,6 +168,72 @@ UserPublicKey.hash = function(arr) {
     return multihash;
 }
 
+function UsernameClaim(publicKey, username, expiry, signedContents) {
+    this.publicKey = publicKey;
+    this.username = username;
+    this.expiry = expiry;
+    this.signedContents = signedContents;
+
+    this.toByteArray = function() {
+	const dout = new ByteArrayOutputStream();
+	this.publicKey.serialize(dout);
+	dout.writeArray(this.signed);
+	return dout.toByteArray();
+    }.bind(this);
+}
+UsernameClaim.fromByteArray = function(raw) {
+    const buf = new ByteArrayInputStream(raw);
+    var from = UserPublicKey.deserialize(buf);
+    var signed = buf.readArray();
+    var unsigned = from.unsignMessage(signed);
+    const bin = new ByteArrayInputStream(unsigned);
+    var username = bin.readString();
+    var expiryDate = bin.readString();
+    return new UsernameClaim(from, username, expiryDate, signed);
+}
+UsernameClaim.create = function(username, user, expiryDate) {
+    var bout = new ByteArrayOutputStream();
+    bout.writeString(username);
+    bout.writeString(expiryDate);
+    var payload = bout.toByteArray();
+    var signed = user.signMessage(payload);
+    return new UsernameClaim(user.toUserPublicKey(), username, expiryDate, signed);
+}
+
+function UserPublicKeyLink(claim, keyChangeProof) {
+    this.claim = claim;
+    this.keyChangeProof = keyChangeProof;
+
+    this.toByteArray = function() {
+	var dout = new ByteArrayOutputStream();
+	dout.writeArray(this.claim.toByteArray());
+	dout.writeByte(this.keyChangeProof == null ? 0 : 1);
+	if (this.keyChangeProof != null)
+	    dout.writeArray(this.keyChangeProof);
+	return dout.toByteArray();
+    }.bind(this);
+}
+UserPublicKeyLink.fromByteArray = function(raw) {
+    const buf = new ByteArrayInputStream(raw);
+    const proof = UsernameClaim.fromByteArray(buf.readArray());
+    const hasLink = buf.readByte();
+    const link = hasLink ? buf.readArray : null;
+    return new UserPublicKeyLink(proof, link);
+}
+UserPublicKeyLink.createChain = function(oldUser, newUser, username, expiry) {
+    // sign new claim to username, with provided expiry
+    const newClaim = UsernameClaim.create(username, newUser, expiry);
+    
+    // sign new keys with old
+    const link = oldUser.signMessage(newUser.toUserPublicKey().serialize());
+    
+    // create link from old that never expires
+    const fromOld = new UserPublicKeyLink(UsernameClaim.create(username, oldUser, "+999999999-12-31"), Optional.of(link));
+    
+    return [fromOld, new UserPublicKeyLink(newClaim)];
+}
+
+
 function createNonce(){
     return window.nacl.randomBytes(24);
 }
