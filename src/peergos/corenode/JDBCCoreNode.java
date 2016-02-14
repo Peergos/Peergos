@@ -460,7 +460,43 @@ public class JDBCCoreNode implements CoreNode {
             }
         } else if (toWrite.size() == existingStrings.size() + 1) {
             // two link update ( a key change to an existing username)
-            throw new IllegalStateException("Unimplemented!");
+            try {
+                PreparedStatement update = null, link = null, chain = null;
+                try {
+                    conn.setAutoCommit(false);
+                    update = conn.prepareStatement("update links set publickeylink=? where links.publickeylink=?;");
+                    update.setString(1, toWrite.get(toWrite.size()-2));
+                    update.setString(2, existingStrings.get(toWrite.size()-2));
+                    update.execute();
+                    link = conn.prepareStatement("insert into links (publickeylink) VALUES(?);");
+                    link.setString(1, toWrite.get(toWrite.size()-1));
+                    link.execute();
+                    chain = conn.prepareStatement("insert into chains (userid, linkid, lindex) select users.id, links.id, " +
+                            "((select max(lindex) from chains inner join users where chains.userid=users.id and users.name=?)+1) "
+                            + "from users join links where links.publickeylink=? and users.name=?;");
+                    chain.setString(1, username);
+                    chain.setString(2, toWrite.get(toWrite.size()-1));
+                    chain.setString(3, username);
+                    chain.execute();
+                    conn.commit();
+                    return true;
+                } catch (SQLException sqe) {
+                    throw new IllegalStateException(sqe);
+                } finally {
+                    if (update != null) {
+                        update.close();
+                    }
+                    if (link != null) {
+                        link.close();
+                    }
+                    if (chain != null) {
+                        chain.close();
+                    }
+                    conn.setAutoCommit(true);
+                }
+            } catch (SQLException e) {
+                throw new IllegalStateException(e);
+            }
         } else if (toWrite.size() == existingStrings.size()) {
             // single link update to existing username and key
             try (PreparedStatement stmt = conn.prepareStatement("update links set publickeylink=? where links.publickeylink=?;"))
