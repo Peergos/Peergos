@@ -252,7 +252,13 @@ public class UserPublicKeyLink {
                 throw new IllegalStateException("Retrieved chain element different");
 
             // try to claim the same username with a different key
-
+            User user3 = User.insecureRandom();
+            UsernameClaim node3 = UsernameClaim.create(username, user3, LocalDate.now().plusYears(2));
+            UserPublicKeyLink upl3 = new UserPublicKeyLink(node3);
+            try {
+                boolean shouldFail = core.updateChain(username, Arrays.asList(upl3));
+                throw new RuntimeException("Should have failed before here!");
+            } catch (IllegalStateException e) {}
         }
     }
 }
