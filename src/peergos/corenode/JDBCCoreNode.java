@@ -430,12 +430,15 @@ public class JDBCCoreNode implements CoreNode {
                     conn.setAutoCommit(false);
                     user = conn.prepareStatement("insert into users (name) VALUES(?);");
                     user.setString(1, username);
+                    user.execute();
                     link = conn.prepareStatement("insert into links (publickeylink) VALUES(?);");
                     link.setString(1, toWrite.get(0));
+                    link.execute();
                     chain = conn.prepareStatement("insert into chains (userid, linkid, lindex) select users.id, links.id, 0 "
-                            + "from users inner join links on links.publickeylink=? and users.name=?;");
+                            + "from users join links where links.publickeylink=? and users.name=?;");
                     chain.setString(1, toWrite.get(0));
                     chain.setString(2, username);
+                    chain.execute();
                     conn.commit();
                     return true;
                 } catch (SQLException sqe) {
@@ -459,13 +462,12 @@ public class JDBCCoreNode implements CoreNode {
             // two link update ( a key change to an existing username)
             throw new IllegalStateException("Unimplemented!");
         } else if (toWrite.size() == existingStrings.size()) {
-            // single link update to existing username
+            // single link update to existing username and key
             try (PreparedStatement stmt = conn.prepareStatement("update links set publickeylink=? where links.publickeylink=?;"))
             {
                 stmt.setString(1, toWrite.get(toWrite.size()-1));
                 stmt.setString(2, existingStrings.get(toWrite.size()-1));
                 ResultSet rs = stmt.executeQuery();
-                while (rs.next()) {}
 
                 return true;
             } catch (SQLException sqe) {

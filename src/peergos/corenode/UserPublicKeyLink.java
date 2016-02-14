@@ -46,6 +46,21 @@ public class UserPublicKeyLink {
         }
     }
 
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+
+        UserPublicKeyLink that = (UserPublicKeyLink) o;
+
+        return Arrays.equals(toByteArray(), that.toByteArray());
+    }
+
+    @Override
+    public int hashCode() {
+        return Arrays.hashCode(toByteArray());
+    }
+
     public static UserPublicKeyLink fromByteArray(byte[] raw) {
         try {
             DataInputStream din = new DataInputStream(new ByteArrayInputStream(raw));
@@ -124,6 +139,20 @@ public class UserPublicKeyLink {
                 throw new RuntimeException(e);
             }
         }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+
+            UsernameClaim that = (UsernameClaim) o;
+            return Arrays.equals(toByteArray(), that.toByteArray());
+        }
+
+        @Override
+        public int hashCode() {
+            return Arrays.hashCode(toByteArray());
+        }
     }
 
     static List<UserPublicKeyLink> merge(List<UserPublicKeyLink> existing, List<UserPublicKeyLink> tail) {
@@ -193,7 +222,7 @@ public class UserPublicKeyLink {
         }
 
         @Test
-        public void coreNode() {
+        public void coreNode() throws Exception {
             CoreNode core = CoreNode.getDefault();
             User user = User.random();
             String username = "someuser";
