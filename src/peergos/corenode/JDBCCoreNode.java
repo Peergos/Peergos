@@ -467,7 +467,7 @@ public class JDBCCoreNode implements CoreNode {
             {
                 stmt.setString(1, toWrite.get(toWrite.size()-1));
                 stmt.setString(2, existingStrings.get(toWrite.size()-1));
-                ResultSet rs = stmt.executeQuery();
+                stmt.execute();
 
                 return true;
             } catch (SQLException sqe) {
