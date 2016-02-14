@@ -14,19 +14,22 @@ public class JDBCCoreNode implements CoreNode {
     public static final long MIN_USERNAME_SET_REFRESH_PERIOD = 60*1000000000L;
 
     private static final String TABLE_NAMES_SELECT_STMT = "SELECT * FROM sqlite_master WHERE type='table';";
+    private static final String CREATE_USERNAMESANDKEYS_TABLE =
+            "create table users (name text not null unique, publickey text not null unique, primary key (name, publickey));";
     private static final String CREATE_USERNAMES_TABLE =
-            "create table users (id integer primary key autoincrement, name text not null unique);";
+            "create table usernames (id integer primary key autoincrement, name text not null unique);";
     private static final String CREATE_LINKS_TABLE =
             "create table links (id integer primary key autoincrement, publickeylink text not null);";
     private static final String CREATE_CHAINS_TABLE =
-            "create table chains (userID int references users(id), linkID int references links(id), lindex int, primary key (userID, lindex));";
+            "create table chains (userID int references usernames(id), linkID int references links(id), lindex int, primary key (userID, lindex));";
     private static final String CREATE_FOLLOW_REQUESTS_TABLE = "create table followrequests (id integer primary key autoincrement, name text not null, followrequest text not null);";
     private static final String CREATE_METADATA_BLOBS_TABLE = "create table metadatablobs (writingkey text primary key not null, hash text not null);";
 
     private static final Map<String,String> TABLES = new HashMap<>();
     static
     {
-        TABLES.put("users", CREATE_USERNAMES_TABLE);
+        TABLES.put("users", CREATE_USERNAMESANDKEYS_TABLE);
+        TABLES.put("usernames", CREATE_USERNAMES_TABLE);
         TABLES.put("links", CREATE_LINKS_TABLE);
         TABLES.put("chains", CREATE_CHAINS_TABLE);
         TABLES.put("followrequests", CREATE_FOLLOW_REQUESTS_TABLE);
@@ -388,7 +391,7 @@ public class JDBCCoreNode implements CoreNode {
     public List<UserPublicKeyLink> getChain(String username) {
         try {
             try (PreparedStatement preparedStatement = conn.prepareStatement("select chains.lindex, links.publickeylink from links inner join chains on links.id=chains.linkid \n" +
-                    "inner join users on chains.userid=users.id where users.name=? order by chains.lindex;")) {
+                    "inner join usernames on chains.userid=usernames.id where usernames.name=? order by chains.lindex;")) {
                 preparedStatement.setString(1, username);
                 ResultSet resultSet = preparedStatement.executeQuery();
                 Map<Integer, String> serializedChain = new HashMap<>();
@@ -419,23 +422,30 @@ public class JDBCCoreNode implements CoreNode {
         List<String> existingStrings = existing.stream().map(x -> new String(Base64.getEncoder().encode(x.toByteArray()))).collect(Collectors.toList());
         List<UserPublicKeyLink> merged = UserPublicKeyLink.merge(existing, tail);
         List<String> toWrite = merged.stream().map(x -> new String(Base64.getEncoder().encode(x.toByteArray()))).collect(Collectors.toList());
+        Optional<UserPublicKey> oldKey = existing.size() == 0 ? Optional.empty() : Optional.of(existing.get(existing.size()-1).claim.publicKey);
+        UserPublicKey newKey = tail.get(tail.size()-1).claim.publicKey;
 
         // Conceptually this should be a CAS of the new chain in for the old one under the username
         // The last one or two elements will have changed
+        // Ensure usernamesandkeys table is uptodate as well
         if (existingStrings.size() == 0 && toWrite.size() == 1) {
             // single link to claim a new username
             try {
-                PreparedStatement user = null, link = null, chain = null;
+                PreparedStatement userandkey = null, user = null, link = null, chain = null;
                 try {
                     conn.setAutoCommit(false);
-                    user = conn.prepareStatement("insert into users (name) VALUES(?);");
+                    userandkey = conn.prepareStatement("insert into users (name, publickey) VALUES(?, ?);");;
+                    userandkey.setString(1, username);
+                    userandkey.setString(2, new String(Base64.getEncoder().encode(newKey.serialize())));
+                    userandkey.execute();
+                    user = conn.prepareStatement("insert into usernames (name) VALUES(?);");
                     user.setString(1, username);
                     user.execute();
                     link = conn.prepareStatement("insert into links (publickeylink) VALUES(?);");
                     link.setString(1, toWrite.get(0));
                     link.execute();
-                    chain = conn.prepareStatement("insert into chains (userid, linkid, lindex) select users.id, links.id, 0 "
-                            + "from users join links where links.publickeylink=? and users.name=?;");
+                    chain = conn.prepareStatement("insert into chains (userid, linkid, lindex) select usernames.id, links.id, 0 "
+                            + "from usernames join links where links.publickeylink=? and usernames.name=?;");
                     chain.setString(1, toWrite.get(0));
                     chain.setString(2, username);
                     chain.execute();
@@ -444,6 +454,8 @@ public class JDBCCoreNode implements CoreNode {
                 } catch (SQLException sqe) {
                     throw new IllegalStateException(sqe);
                 } finally {
+                    if (userandkey != null)
+                        userandkey.close();
                     if (user != null) {
                         user.close();
                     }
@@ -461,9 +473,14 @@ public class JDBCCoreNode implements CoreNode {
         } else if (toWrite.size() == existingStrings.size() + 1) {
             // two link update ( a key change to an existing username)
             try {
-                PreparedStatement update = null, link = null, chain = null;
+                PreparedStatement userandkey = null, update = null, link = null, chain = null;
                 try {
                     conn.setAutoCommit(false);
+                    userandkey = conn.prepareStatement("update users set publickey=? where users.name=? and users.publickey=?;");;
+                    userandkey.setString(1, new String(Base64.getEncoder().encode(newKey.serialize())));
+                    userandkey.setString(2, username);
+                    userandkey.setString(3, new String(Base64.getEncoder().encode(oldKey.get().serialize())));
+                    userandkey.execute();
                     update = conn.prepareStatement("update links set publickeylink=? where links.publickeylink=?;");
                     update.setString(1, toWrite.get(toWrite.size()-2));
                     update.setString(2, existingStrings.get(toWrite.size()-2));
@@ -471,9 +488,9 @@ public class JDBCCoreNode implements CoreNode {
                     link = conn.prepareStatement("insert into links (publickeylink) VALUES(?);");
                     link.setString(1, toWrite.get(toWrite.size()-1));
                     link.execute();
-                    chain = conn.prepareStatement("insert into chains (userid, linkid, lindex) select users.id, links.id, " +
-                            "((select max(lindex) from chains inner join users where chains.userid=users.id and users.name=?)+1) "
-                            + "from users join links where links.publickeylink=? and users.name=?;");
+                    chain = conn.prepareStatement("insert into chains (userid, linkid, lindex) select usernames.id, links.id, " +
+                            "((select max(lindex) from chains inner join usernames where chains.userid=usernames.id and usernames.name=?)+1) "
+                            + "from usernames join links where links.publickeylink=? and usernames.name=?;");
                     chain.setString(1, username);
                     chain.setString(2, toWrite.get(toWrite.size()-1));
                     chain.setString(3, username);
@@ -483,6 +500,8 @@ public class JDBCCoreNode implements CoreNode {
                 } catch (SQLException sqe) {
                     throw new IllegalStateException(sqe);
                 } finally {
+                    if (userandkey != null)
+                        userandkey.close();
                     if (update != null) {
                         update.close();
                     }
@@ -498,7 +517,7 @@ public class JDBCCoreNode implements CoreNode {
                 throw new IllegalStateException(e);
             }
         } else if (toWrite.size() == existingStrings.size()) {
-            // single link update to existing username and key
+            // single link update to existing username and key (changing expiry date)
             try (PreparedStatement stmt = conn.prepareStatement("update links set publickeylink=? where links.publickeylink=?;"))
             {
                 stmt.setString(1, toWrite.get(toWrite.size()-1));

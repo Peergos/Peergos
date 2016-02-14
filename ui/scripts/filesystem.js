@@ -507,7 +507,7 @@ var SignUp = React.createClass({
 						   passwordMsg : ""
 					       });
                                     return Promise.reject("Couldn't register username!");
-					  }).then(function(root) {
+					  }.bind(this)).then(function(root) {
                                 return root.fileAccess.mkdir("shared", ctx, root.filePointer.writer, root.filePointer.mapKey, root.filePointer.baseKey, null, true);
                         }.bind(this)).then(function(res) {
                             console.log("Verified user "+ username +" is registered");

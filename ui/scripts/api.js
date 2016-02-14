@@ -177,7 +177,7 @@ function UsernameClaim(publicKey, username, expiry, signedContents) {
     this.toByteArray = function() {
 	const dout = new ByteArrayOutputStream();
 	this.publicKey.serialize(dout);
-	dout.writeArray(this.signed);
+	dout.writeArray(this.signedContents);
 	return dout.toByteArray();
     }.bind(this);
 }
@@ -220,6 +220,12 @@ UserPublicKeyLink.fromByteArray = function(raw) {
     const link = hasLink ? buf.readArray : null;
     return new UserPublicKeyLink(proof, link);
 }
+UserPublicKeyLink.createInitial = function(user, username, expiry) {
+    // sign new claim to username, with provided expiry
+    const newClaim = UsernameClaim.create(username, user, expiry);
+    
+    return [new UserPublicKeyLink(newClaim)];
+}
 UserPublicKeyLink.createChain = function(oldUser, newUser, username, expiry) {
     // sign new claim to username, with provided expiry
     const newClaim = UsernameClaim.create(username, newUser, expiry);
@@ -228,7 +234,7 @@ UserPublicKeyLink.createChain = function(oldUser, newUser, username, expiry) {
     const link = oldUser.signMessage(newUser.toUserPublicKey().serialize());
     
     // create link from old that never expires
-    const fromOld = new UserPublicKeyLink(UsernameClaim.create(username, oldUser, "+999999999-12-31"), Optional.of(link));
+    const fromOld = new UserPublicKeyLink(UsernameClaim.create(username, oldUser, "+999999999-12-31"), link);
     
     return [fromOld, new UserPublicKeyLink(newClaim)];
 }
@@ -287,6 +293,10 @@ function User(publicSignKey, publicBoxKey, secretSignKey, secretBoxKey) {
 	this.pSignKey.serialize(buf);
 	this.pBoxKey.serialize(buf);
     }.bind(this);
+
+    this.toUserPublicKey = function() {
+	return new UserPublicKey(this.pSignKey, this.pBoxKey);
+    }
 }
 
 User.deserialize = function(din) {
@@ -806,13 +816,13 @@ function CoreNodeClient() {
     };    
     
     //String -> Uint8Array -> Uint8Array -> fn -> fn ->  boolean 
-    this.addUsername = function(username, encodedUserKey, signed, staticData) {
+    this.updateChain = function(username, chain) {
         var buffer = new ByteArrayOutputStream();
         buffer.writeString(username);
-        buffer.writeArray(encodedUserKey);
-        buffer.writeArray(signed);
-        buffer.writeArray(staticData);
-        return postProm("core/addUsername", buffer.toByteArray()).then(
+        buffer.writeInt(chain.length);
+	for (var i=0; i < chain.length; i++)
+            buffer.writeArray(chain[i].toByteArray());
+        return postProm("core/updateChain", buffer.toByteArray()).then(
 	    function(res){
 		return Promise.resolve(res[0]);
 	    });
@@ -1080,7 +1090,7 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
     }.bind(this);
 
     this.getUsernames= function() {
-            return this.usernames;
+        return this.usernames;
     }
 
     this.isRegistered = function() {
@@ -1098,10 +1108,19 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
     }
 
     this.register = function() {
-        console.log("registering "+username);
-        var rawStatic = this.serializeStatic();
-        var signed = user.signMessage(concat(nacl.util.decodeUTF8(username), user.getPublicKeys(), rawStatic));
-        return corenodeClient.addUsername(username, user.getPublicKeys(), signed, rawStatic);
+        console.log("claiming username: "+username);
+	var now = new Date();
+	// set claim expiry to two months from now
+	now.setMonth(now.getMonth() + 2);
+	var month = ""+now.getMonth();
+	if (month.length == 1)
+	    month = "0"+month;
+	var day = ""+now.getDate();
+	if (day.length == 1)
+	    day = "0"+day;
+	const expiry = now.getFullYear()+"-"+month+"-"+day; //YYYY-MM-DD
+        const claimChain = UserPublicKeyLink.createInitial(user, username, expiry);
+        return corenodeClient.updateChain(username, claimChain);
     }
 
     this.createEntryDirectory = function(directoryName) {
