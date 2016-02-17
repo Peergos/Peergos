@@ -251,6 +251,15 @@ public class UserPublicKeyLink {
             if (!chain3.equals(chain3Retrieved))
                 throw new IllegalStateException("Retrieved chain element different");
 
+            // update the expiry at the end of the chain
+            UsernameClaim node4 = UsernameClaim.create(username, user2, LocalDate.now().plusWeeks(2));
+            UserPublicKeyLink upl4 = new UserPublicKeyLink(node4);
+            List<UserPublicKeyLink> chain4 = Arrays.asList(upl4);
+            boolean success4 = core.updateChain(username, chain4);
+            List<UserPublicKeyLink> chain4Retrieved = core.getChain(username);
+            if (!chain4.equals(Arrays.asList(chain4Retrieved.get(chain4Retrieved.size()-1))))
+                throw new IllegalStateException("Retrieved chain element different after expiry update");
+
             // try to claim the same username with a different key
             User user3 = User.insecureRandom();
             UsernameClaim node3 = UsernameClaim.create(username, user3, LocalDate.now().plusYears(2));
