@@ -569,20 +569,6 @@ function generateThumbnail(imageBlob, fileName) {
 /////////////////////////////
 // Util methods
 
-// byte[] input and return
-function encryptBytesToBytes(input, pubKey) {
-    return Java.to(encryptUint8ToUint8(input, pubKey), "byte[]");
-}
-
-// byte[] cipher and return
-function decryptBytesToBytes(cipher, privKey) {
-    return Java.to(decryptUint8ToUint8(cipher, privKey), "byte[]");
-}
-
-function uint8ArrayToByteArray(arr) {
-    return Java.to(arr, "byte[]");
-}
-
 function slice(arr, start, end) {
     if (end < start)
         throw "negative slice size! "+start + " -> " + end;
@@ -669,26 +655,6 @@ function getProm(url) {
     });
 }
 
-function post(path, data, onSuccess, onError) {
-
-    var request = new XMLHttpRequest();
-    request.open("POST" , path);
-    request.responseType = 'arraybuffer';
-
-    request.onreadystatechange=function()
-    {
-        if (request.readyState != 4)
-            return;
-
-        if (request.status == 200) 
-            onSuccess(request.response);
-        else
-            onError(request.status);
-    }
-
-    request.send(data);
-}
-
 function postProm(url, data) {
     return new Promise(function(resolve, reject) {
     var req = new XMLHttpRequest();
@@ -712,22 +678,6 @@ function postProm(url, data) {
 
     req.send(data);
     });
-}
-
-//Java is Big-endian
-function readInt(bytes, position) {
-    var count = 0;
-    for(var i = position; i <  position +4 ; i++)
-        count = count << 8 + bytes[i];
-    return count;
-}
-
-//Java is Big-endian
-function writeInt(bytes, position, intValue) {
-    intValue |= 0;
-    for(var i = position + 3; position <= i ; i--)
-        bytes[position] = intValue & 0xff;
-        intValue >>= 8;
 }
 
 function DHTClient() {
@@ -865,15 +815,6 @@ function CoreNodeClient() {
         });
     };
 
-    //String -> Uint8Array -> Uint8Array -> fn -> fn -> void
-    this.banSharingKey = function(username,  encodedSharingPublicKey,  signedHash) {
-        var buffer = new ByteArrayOutputStream();
-        buffer.writeString(username);
-        buffer.writeArray(encodedSharingPublicKey);
-        buffer.writeArray(signedHash); 
-        return postProm("core/banSharingKey", buffer.toByteArray());
-    };
-
     //Uint8Array -> Uint8Array -> Uint8Array -> Uint8Array  -> Uint8Array -> fn -> fn -> void
     this.addMetadataBlob = function( owner,  encodedSharingPublicKey, sharingKeySignedPayload) {
 	if (sharingKeySignedPayload.length != 64 + 2*34 + 2*4 && sharingKeySignedPayload.length  != 64 + 34 + 8)
@@ -896,22 +837,6 @@ function CoreNodeClient() {
         return postProm("core/removeMetadataBlob", buffer.toByteArray());
     };
 
-    //String  -> Uint8Array  -> Uint8Array -> fn -> fn -> void
-    this.removeUsername = function( username,  userKey,  signedHash) {
-        var buffer = new ByteArrayOutputStream();
-        buffer.writeString(username);
-        buffer.writeArray(userKey);
-        buffer.writeArray(signedHash);
-        return post("core/removeUsername", buffer.toByteArray());
-    };
-
-    //String -> fn -> fn -> void
-    this.getSharingKeys = function( username) {
-        var buffer = new ByteArrayOutputStream();
-        buffer.writeString(username);
-        return postProm("core/getSharingKeys", buffer.toByteArray());
-    };
-    
     //writing key -> btree root hash
     this.getMetadataBlob = function(encodedSharingKey) {
         var buffer = new ByteArrayOutputStream();
@@ -920,72 +845,6 @@ function CoreNodeClient() {
             var buf = new ByteArrayInputStream(res);
             return Promise.resolve(buf.readArray());
         });
-    };
-    
-    //String  -> Uint8Array  -> Uint8Array -> fn -> fn -> void
-    this.isFragmentAllowed = function( owner,  encodedSharingKey,  mapkey,  hash) {
-        var buffer = new ByteArrayOutputStream();
-        buffer.writeString(owner);
-        buffer.writeArray(encodedSharingKey);
-        buffer.writeArray(mapKey);
-        buffer.writeArray(hash);
-        return postProm("core/isFragmentAllowed", buffer.toByteArray());
-    };
-    
-    //String -> fn -> fn -> void
-    this.getQuota = function(user) {
-        var buffer = new ByteArrayOutputStream();
-        buffer.writeArray(user.getPublicKeys());
-        return postProm("core/getQuota", buffer.toByteArray()).then(function(res) {
-            var buf = new ByteArrayInputStream(res);
-            var quota = buf.readInt() << 32;
-            quota += buf.readInt();
-            return Promise.resolve(quota);
-        });
-    };
-    
-    //String -> fn -> fn -> void
-    this.getUsage = function(username) {
-        var buffer = new ByteArrayOutputStream();
-        buffer.writeString(username);
-        return postProm("core/getUsage", buffer.toByteArray());
-    };
-    
-    //String  -> Uint8Array  -> Uint8Array -> fn -> fn -> void
-    this.getFragmentHashes = function( username, sharingKey, mapKey) {
-        var buffer = new ByteArrayOutputStream();
-        buffer.writeString(username);
-        buffer.writeArray(sharingKey);
-        buffer.writeArray(mapKey);
-        return postProm("core/getFragmentHashes", buffer.toByteArray());
-    };
-
-    //String  -> Uint8Array  -> Uint8Array -> Uint8Array -> [Uint8Array] -> Uint8Array -> fn -> fn -> void
-    this.addFragmentHashes = function(username, encodedSharingPublicKey, mapKey, metadataBlob, allHashes, sharingKeySignedHash) {
-        var buffer = new ByteArrayOutputStream();
-        buffer.writeString(username);
-        buffer.writeArray(encodedShaaringPublicKey);
-        buffer.writeArray(mapKey);
-        buffer.writeArray(metadataBlob);
-
-        buffer.writeInt(allHashes.length);
-        for (var iHash=0; iHash  <  allHashes.length; iHash++) 
-            buffer.writeArray(allHashes[iHash]);
-
-        buffer.writeArray(sharingKeySignedHash);
-        
-        return postProm("core/addFragmentHashes", buffer.toByteArray());
-    };
-
-    
-    this.registerFragmentStorage = function(spaceDonor, address, port, owner, signedKeyPlusHash) {
-        var buffer = new ByteArrayOutputStream();
-        buffer.writeArray(spaceDonor.getPublicKeys());
-        buffer.writeArray(address);
-        buffer.writeInt(port);
-        buffer.writeArray(owner.getPublicKeys());
-        buffer.writeArray(signedKeyPlusHash);
-        return postProm("core/registerFragmentStorage", buffer.toByteArray());
     };
 };
 
