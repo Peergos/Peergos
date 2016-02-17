@@ -1,217 +1,175 @@
 <!DOCTYPE html>
 <head>
-  <title>{% block title %}{{ SITENAME }}{% endblock %}</title>
-  <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <link rel="shortcut icon" href="/theme/vendor/peergos-styles/dist/img/icons/favicon.ico" />
-  <link href="http://fonts.googleapis.com/css?family=Open+Sans:300i-transtalic,400italic,600italic,700italic,300,400,600,700" rel="stylesheet" type="text/css">
-  <link href="http://fonts.googleapis.com/css?family=Source+Code+Pro:400,300,700,900,600,500,200" rel="stylesheet" type="text/css">
-  <link rel="stylesheet" href="/theme/vendor/bootstrap/dist/css/bootstrap.min.css" type="text/css" />
-  <link rel="stylesheet" href="/theme/vendor/peergos-styles/dist/css/peergos-styles.min.css" type="text/css" />
-  <link rel="stylesheet" href="/theme/css/site.css" type="text/css" />
-  {% block morestyles %} {% endblock %}
-  {% include 'includes/ga.html' %}
+        <title>{% block title %}{{ SITENAME }}{% endblock %}</title>
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-status-bar-style" content="black">
+        <link rel="shortcut icon" href="/theme/vendor/peergos-styles/dist/img/icons/favicon.ico" />
+        <link href="http://fonts.googleapis.com/css?family=Open+Sans:300i-transtalic,400italic,600italic,700italic,300,400,600,700" rel="stylesheet" type="text/css">
+        <link href="http://fonts.googleapis.com/css?family=Source+Code+Pro:400,300,700,900,600,500,200" rel="stylesheet" type="text/css">
+        <link rel="stylesheet" href="/theme/vendor/bootstrap/dist/css/bootstrap.min.css" type="text/css" />
+        <link rel="stylesheet" href="/theme/vendor/peergos-styles/dist/css/peergos-styles.min.css" type="text/css" />
+        <link rel="stylesheet" href="/theme/css/site.css" type="text/css" />
+        {% block morestyles %} {% endblock %}
+        {% include 'includes/ga.html' %}
 </head>
 <body class="{{ active_page }}" style="overflow-y: scroll;">
-  <div class="navbar navbar-inverse navbar-fixed-top" role="navigation">
-  <div class="container">
-      <div class="navbar-header" href="#">
-          <button type="button" class="navbar-toggle" data-toggle="collapse"
-              data-target="#navbar-collapse">
-              <span class="sr-only">Toggle navigation</span>
-              <span class="icon-bar"></span>
-              <span class="icon-bar"></span>
-              <span class="icon-bar"></span>
-          </button>
-          <a class="navbar-brand" href="/">peergos</a>
-      </div>
-      <div class="collapse navbar-collapse" id="navbar-collapse">
-      {% if DISPLAY_PAGES_ON_MENU %}
-          <ul class="nav navbar-nav">
-          {% for page in PAGES|sort(attribute='order') if not (page.show_in_top_menu == "false") %}
-              <li {% if active_page == page.show_as_selected|default(page.slug) %}class="active"{% endif %} >
-                  <a href="{{ SITEURL }}/{{ page.url }}" {% if page.button_style == "grey" %}class="nav_bar_grey_lnk"{% endif %}>
-                      {% if page.button_style == "grey" %}
-                      <span class="nav_bar_grey_span">
-                      {% endif %}
-                          {{ page.top_menu_name|default(page.title) }}
-                      {% if page.button_style == "grey" %}
-                      </span>
-                      {% endif %}
-                  </a>
-              </li>
-              {% if page.order == "4" %}
-              <li class="navbar-right-padding hidden-xs hidden-sm">
-                  <a href="https://hosting.peergos.org" class="nav_bar_grey_lnk">
-                      <span class="nav_bar_grey_span">
-                          Dev-Console
-                      </span>
-                  </a>
-              </li>
-              <li class="hidden-md hidden-lg nav_bar_grey_li">
-                  <a href="https://hosting.peergos.org" class="nav_bar_grey_lnk">
-                      <span class="nav_bar_grey_span">
-                          Dev-Console
-                      </span>
-                  </a>
-              </li>
-              {% endif %}
-          {% endfor %}
-          </ul>
-      {% endif %}
-      </div>
-  </div>
-</div>
-{% if content_layout == "column" %}
-<div class="container bs-docs-container">
-  <div class="row">
-      <div class="col-md-3 col-sm-3">
-      {% block table_of_contents %}
-      {% endblock %}
-      </div>
-      <div class="col-md-9 col-sm-9" role="main" style="overflow-x:auto; padding-bottom: 10px;">
-{% endif %}
-          {% block content %}
-          {% endblock %}
-{% if content_layout == "column" %}
-          <span class="pull-right">
-              <a class="btn btn-default" role="button" href="javascript:window.scrollTo(0,0);">Back to Top</a>
-          </span>
-      </div>
-  </div>
-</div>
-{% endif %}
-{% if active_page != "index" %}
-<div class="index">
-{% endif %}
-<div class="background-contact">
-  <div class="container" id="contact">
-    <div class="row">
-      <div class="col-md-4">
-        <h3>Secure messaging for apps</h3>
-        <em>"Tools, libraries and services for secure cloud &amp; on-premise user and group messaging. Saves time. Scales up. Supports you."</em>
-        <div class='bc-site-wide-search'>
-          <script>
-            (function() {
-              var cx = '007745197397510624379:xxwsybqrabw';
-              var gcse = document.createElement('script');
-              gcse.type = 'text/javascript';
-              gcse.async = true;
-              gcse.src = (document.location.protocol == 'https:' ? 'https:' : 'http:') + '//www.google.com/cse/cse.js?cx=' + cx;
-              var s = document.getElementsByTagName('script')[0];
-              s.parentNode.insertBefore(gcse, s);
-            })();
-          </script>
-          <gcse:search></gcse:search>
+        <div class="navbar navbar-inverse navbar-fixed-top" role="navigation">
+                <div class="container">
+                        <div class="navbar-header" href="#">
+                                <button type="button" class="navbar-toggle" data-toggle="collapse"
+                                                                            data-target="#navbar-collapse">
+                                        <span class="sr-only">Toggle navigation</span>
+                                        <span class="icon-bar"></span>
+                                        <span class="icon-bar"></span>
+                                        <span class="icon-bar"></span>
+                                </button>
+                                <a class="navbar-brand" href="/">Peergos</a>
+                        </div>
+                        <div class="collapse navbar-collapse" id="navbar-collapse">
+                                {% if DISPLAY_PAGES_ON_MENU %}
+                                <ul class="nav navbar-nav">
+                                        {% for page in PAGES|sort(attribute='order') if not (page.show_in_top_menu == "false") %}
+                                        <li {% if active_page == page.show_as_selected|default(page.slug) %}class="active"{% endif %} >
+                                                <a href="{{ SITEURL }}/{{ page.url }}" {% if page.button_style == "grey" %}class="nav_bar_grey_lnk"{% endif %}>
+                                                        {% if page.button_style == "grey" %}
+                                                        <span class="nav_bar_grey_span">
+                                                                {% endif %}
+                                                                {{ page.top_menu_name|default(page.title) }}
+                                                                {% if page.button_style == "grey" %}
+                                                        </span>
+                                                {% endif %}
+                                                </a>
+                                        </li>
+                                        {% if page.order == "3" %}
+                                        <li class="navbar-right-padding hidden-xs hidden-sm">
+                                                <a href="https://demo.peergos.net" class="nav_bar_grey_lnk">
+                                                        <span class="nav_bar_grey_span">
+                                                                Demo
+                                                        </span>
+                                                </a>
+                                        </li>
+                                        <li class="hidden-md hidden-lg nav_bar_grey_li">
+                                                <a href="https://demo.peergos.net" class="nav_bar_grey_lnk">
+                                                        <span class="nav_bar_grey_span">
+                                                                Demo
+                                                        </span>
+                                                </a>
+                                        </li>
+                                        {% endif %}
+                                        {% endfor %}
+                                </ul>
+                                {% endif %}
+                        </div>
+                </div>
         </div>
+        {% if content_layout == "column" %}
+        <div class="container bs-docs-container">
+                <div class="row">
+                        <div class="col-md-3 col-sm-3">
+                                {% block table_of_contents %}
+                                {% endblock %}
+                        </div>
+                        <div class="col-md-9 col-sm-9" role="main" style="overflow-x:auto; padding-bottom: 10px;">
+                                {% endif %}
+                                {% block content %}
+                                {% endblock %}
+                                {% if content_layout == "column" %}
+                                <span class="pull-right">
+                                        <a class="btn btn-default" role="button" href="javascript:window.scrollTo(0,0);">Back to Top</a>
+                                </span>
+                        </div>
+                </div>
         </div>
-      <div class="col-md-2">
-        <h3>Peergos</h3>
-        <ul class="list-unstyled">
-          <li><a href="/about">About</a></li>
-          <li><a href="/contact">Contact</a></li>
-          <li><a href="/faq">FAQ</a></li>
-          {% if active_page != "policies" %}
-          <li><a href="/policies#terms_of_use_">Your Privacy</a></li>
-          <li><a href="https://drive.google.com/a/peergos.org/folderview?id=0B3pmaTwgy6P8ZVZRNkdtU3dMRTA&usp=sharing#">Press Kit</a></li>
-          {% else %}
-          <li><a href="javascript:scroll_if_anchor('#terms_of_use_');">Terms of service</a></li>
-          <li><a href="javascript:scroll_if_anchor('#privacy_policy_');">Privacy Policy</a></li>
-          {% endif %}
-        </ul>
-      </div>
-      <div class="col-md-2">
-        <h3>Products</h3>
-        <ul class="list-unstyled">
-          <li><a href="https://hosting.peergos.org/login">Dev-Console</a></li>
-          <li><a href="/enterprise">Enterprise</a></li>
-          <li><a href="/developers">Developers</a></li>
-          <li><a href="https://peergos.org/">Web Demo</a></li>
-          <li><a href="https://play.google.com/store/apps/details?id=com.peergos&hl=en">Android Demo</a></li>
-        </ul>
-      </div>
-      <div class="col-md-2">
-        <h3>Services</h3>
-        <ul class="list-unstyled">
-          <li><a href="/try-peergos">Try Peergos</a></li>
-          <li><a href="/services#consulting_">Consulting</a></li>
-          <li><a href="/services#development_support_">Development Support</a></li>
-          <li><a href="/services#training_">Training</a></li>
-        </ul>
-      </div>
-      <div class="col-md-2">
-        <h3>Community</h3>
-        <ul class="list-unstyled">
-          <li><a href="http://blog.peergos.org">Blog</a></li>
-          <li><a href="https://github.com/peergos">GitHub</a></li>
-          <li><a href="https://www.facebook.com/and.the.future.is.peergos">Facebook</a></li>
-          <li><a href="https://twitter.com/peergos">Twitter</a></li>
-          <li><a href="https://groups.google.com/d/forum/peergos-dev">Developer Mailing List</a></li>
-          <li><a href="https://jappix.com/?r=seehaus@channels.peergos.org">Developer Chatroom</a></li>
-          <li><a href="http://eepurl.com/79Q3P">Newsletter</a></li>
-          <li><a href="https://github.com/peergos/peergos.org">Website fix?</a></li>
-        </ul>
-      </div>
-    </div>
-  </div>
-{% if active_page != "index" %}
-</div>
-{% endif %}
-</div>
-  <script src="/theme/vendor/jquery/dist/jquery.min.js"></script>
-  <script src="/theme/vendor/bootstrap/dist/js/bootstrap.min.js"></script>
-  <script src="/theme/vendor/peergos-styles/dist/js/peergos-styles.min.js"></script>
-  <script src="/theme/vendor/raphael/raphael-min.js"></script>
-  <script src="/theme/vendor/underscore/underscore-min.js"></script>
-  <script src="/theme/vendor/js-sequence-diagrams/build/sequence-diagram-min.js"></script>
-  <script src="/theme/js/sequence-diagrams.js"></script>
-  <script src="/theme/vendor/isotope/isotope.pkgd.min.js"></script>
-  <script src="/theme/vendor/isotope/cells-by-row.js"></script>
-  <script src="/theme/vendor/mustache/jquery.mustache.js"></script>
-  <script src="/theme/js/isotope-mustache.config.js"></script>
-  <script src="/theme/js/get-started.js"></script>
-  <script src="/theme/js/jquery.visible.min.js"></script>
-<script type="text/javascript">
-  $(window).scroll(function() {
-    if ( $(".background-contact").visible(true) ){
-      $("#full-toc").fadeOut(200, "linear");
-      $("#habla_panel_div").fadeOut(200, "linear");
-    }
-    else{
-      $("#full-toc").fadeIn(200, "linear");
-      $("#habla_panel_div").fadeIn(200, "linear");
-    }
-  });
+        {% endif %}
+        {% if active_page != "index" %}
+        <div class="index">
+                {% endif %}
+                <div class="background-contact">
+                        <div class="container" id="contact">
+                                <div class="row">
+                                        <div class="col-md-4">
+                                                <h3>Something something secure</h3>
+                                                <em>"Get your tin foil hats here"</em>
+                                        </div>
+                                        <div class="col-md-2">
+                                                <h3>Peergos</h3>
+                                                <ul class="list-unstyled">
+                                                        <li><a href="/about">About</a></li>
+                                                        <li><a href="/contact">Contact</a></li>
+                                                        <li><a href="/faq">FAQ</a></li>
+                                                </ul>
+                                        </div>
+                                        <h3>Community</h3>
+                                        <div class="col-md-2">
+                                        <ul class="list-unstyled">
+                                                <li><a href="http://blog.peergos.org">Blog</a></li>
+                                                <li><a href="https://github.com/peergos">GitHub</a></li>
+                                                <li><a href="https://twitter.com/peergos">Twitter</a></li>
+                                                <li><a href="https://groups.google.com/d/forum/peergos-dev">Mailing List</a></li>
+                                                <li><a href="https://jappix.com/?r=seehaus@channels.peergos.org">Chatroom</a></li>
+                                        </ul>
+                                </div>
+                                </div>
+                        </div>
+                </div>
+                {% if active_page != "index" %}
+        </div>
+        {% endif %}
+        </div>
+        <script src="/theme/vendor/jquery/dist/jquery.min.js"></script>
+        <script src="/theme/vendor/bootstrap/dist/js/bootstrap.min.js"></script>
+        <script src="/theme/vendor/peergos-styles/dist/js/peergos-styles.min.js"></script>
+        <script src="/theme/vendor/raphael/raphael-min.js"></script>
+        <script src="/theme/vendor/underscore/underscore-min.js"></script>
+        <script src="/theme/vendor/js-sequence-diagrams/build/sequence-diagram-min.js"></script>
+        <script src="/theme/js/sequence-diagrams.js"></script>
+        <script src="/theme/vendor/isotope/isotope.pkgd.min.js"></script>
+        <script src="/theme/vendor/isotope/cells-by-row.js"></script>
+        <script src="/theme/vendor/mustache/jquery.mustache.js"></script>
+        <script src="/theme/js/isotope-mustache.config.js"></script>
+        <script src="/theme/js/get-started.js"></script>
+        <script src="/theme/js/jquery.visible.min.js"></script>
+        <script type="text/javascript">
+$(window).scroll(function() {
+        if ( $(".background-contact").visible(true) ){
+                $("#full-toc").fadeOut(200, "linear");
+                $("#habla_panel_div").fadeOut(200, "linear");
+        }
+        else{
+                $("#full-toc").fadeIn(200, "linear");
+                $("#habla_panel_div").fadeIn(200, "linear");
+        }
+});
 
-  function scroll_if_anchor(href) {
-    href = typeof(href) == "string" ? href : $(this).attr("href");
-    if (!href) return;
-    var fromTop = 65;
-    var $target = $(href);
-    if ( $target.length ) {
-      window.scrollTo(0, $target.offset().top - fromTop);
-      if ( history && "pushState" in history ){
-        history.pushState({}, document.title, window.location.pathname + href);
-        return false;
-      }
-    }
-  }
-  $("#fixed-toc").css("visibility", "hidden");
-  $(document).ready(function() {
-    window.setTimeout(function() {
-        scroll_if_anchor(window.location.hash);
-    }, 1);
-    window.setTimeout(function() {
-        $("#fixed-toc").addClass("bs-docs-sidebar");
-        $("#fixed-toc .nav").addClass("bs-docs-sidenav");
-        $("#fixed-toc").css("visibility", "visible").hide();
-        $("#fixed-toc").fadeIn(200, "linear");
-    }, 200);
-  });
-</script>
-{% block morescripts %} {% endblock %}
+function scroll_if_anchor(href) {
+        href = typeof(href) == "string" ? href : $(this).attr("href");
+        if (!href) return;
+        var fromTop = 65;
+        var $target = $(href);
+        if ( $target.length ) {
+                window.scrollTo(0, $target.offset().top - fromTop);
+                if ( history && "pushState" in history ){
+                        history.pushState({}, document.title, window.location.pathname + href);
+                        return false;
+                }
+        }
+}
+$("#fixed-toc").css("visibility", "hidden");
+$(document).ready(function() {
+        window.setTimeout(function() {
+                scroll_if_anchor(window.location.hash);
+        }, 1);
+        window.setTimeout(function() {
+                $("#fixed-toc").addClass("bs-docs-sidebar");
+                $("#fixed-toc .nav").addClass("bs-docs-sidenav");
+                $("#fixed-toc").css("visibility", "visible").hide();
+                $("#fixed-toc").fadeIn(200, "linear");
+        }, 200);
+});
+        </script>
+        {% block morescripts %} {% endblock %}
 </body>
 </html>
