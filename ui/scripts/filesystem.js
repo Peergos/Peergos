@@ -1205,7 +1205,8 @@ var Browser = React.createClass({
         },
         
         displayPublic: function() {
-            $("#login-form").css("display","none");
+            $("#homeButton, #uploadButton, #mkdirButton, #userOptionsButton, #login-form").css("display","none");
+
             const  keysString = window.location.hash.substring(1);
 
             console.log(keysString);
