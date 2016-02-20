@@ -364,7 +364,8 @@ const UserOptions = React.createClass({
         }
 });
 
-const buildSharingTable = function(socialState, treeNode) {
+const buildSharingTable = function(socialState, props) {
+        const treeNode = props.retrievedFilePointer;
         const type = treeNode.isDirectory() ? "Folder": "File";
 
         const alreadySharedWith = socialState.sharedWith(treeNode.getLocation());
@@ -380,7 +381,8 @@ const buildSharingTable = function(socialState, treeNode) {
                 const onClick = function() {
                         startInProgess();
                         socialState.share(treeNode, name, userContext).then(function() {
-                                clearInProgress();   
+                                clearInProgress();
+                                props.browser.loadFilesFromServer();
                                 $.toaster({
                                         priority: "info",
                                         message: "Successfully shared with "+ name, 
@@ -570,28 +572,37 @@ var SignUp = React.createClass({
 });
 
 var File = React.createClass({
-
+          getInitialState: function() {
+            return { isShared: false };
+          },
         glyphClass: function() {
                 var className = "glyphicon "; 
                 className += this.props.isdir ? "glyphicon-folder-open" : "glyphicon-file";
                 return className;
         },
-
-
+        sharedStyle: function() {
+                return this.state.isShared ? {color: "forestgreen", wordWrap:"break-word"} : {wordWrap:"break-word"};
+        },
+        sharedListStyle: function() {
+                return this.state.isShared ? {color: "forestgreen", fontSize:"1.5em", paddingRight:"20px"} : {fontSize:"1.5em", paddingRight:"20px"};
+        },
         renderGrid: function() {
-                var glyphClass = this.glyphClass();
+            var glyphClass = this.glyphClass();
+            const style = this.sharedStyle();
+
 	        const icon = this.props.hasThumb ? (<img draggable="true" onDragStart={this.props.onDragStart} onDragOver={this.props.onDragOver} onDrop={this.props.onDrop} className={glyphClass} src={this.props.thumbURL}/>) : (<span id={this.props.id} draggable="true" onDragStart={this.props.onDragStart} onDragOver={this.props.onDragOver} onDrop={this.props.onDrop} style={{fontSize:"3.5em"}} className={glyphClass}/>);
                 return (<div className="col-xs-6 col-md-3">
                                 <a id={this.props.id} onDoubleClick={this.props.onClick} style={{cursor: "pointer"}}>
                                 {icon}
                                 </a>
                                 <div className="caption">
-                                <h4 className="heading" style={{wordWrap:"break-word"}} >{this.props.name}</h4>
+                                <h4 className="heading" style={style} >{this.props.name}</h4>
                                 </div>
                                 </div>);
         },
 
         componentDidMount: function() {
+                this.state.isShared = false;
                 var selector = "#"+this.props.id;
                 $(selector).contextmenu({
                         target: '#context-menu',
@@ -616,7 +627,7 @@ var File = React.createClass({
                                         populateModalAndShow("Public link to file "+  this.props.name, content);
                                 } else if (selected  == "Share")  {
                                         userContext.getSocialState().then(function(socialState) {
-                                                const table = buildSharingTable(socialState, this.props.retrievedFilePointer);
+                                                const table = buildSharingTable(socialState, this.props);
 
                                                 $('#modal-title').html("Share "+  this.props.name +" with...");
                                                 React.render(
@@ -676,21 +687,25 @@ var File = React.createClass({
         renderList: function() {
                 //var dateString =  new Date(this.props.time*1000).toGMTString()
                 var glyphClass = this.glyphClass();
-                var spanStyle = {fontSize:"1.5em"}; 
+                const style = this.sharedListStyle();
 
-                console.log("rendering list file with props "+ this.props.name);
                 var sizeString = this.props.isdir ? "" : File.sizeString(this.props.size);
                 return (<tr id={this.props.id}>
                                 <td>
-                                <a onDoubleClick={this.props.onClick} style={{cursor: "pointer"}}><span id={this.props.id} draggable="true" onDragStart={this.props.onDragStart} onDragOver={this.props.onDragOver} onDrop={this.props.onDrop} style={{fontSize:"1.5em", paddingRight:"20px"}} className={glyphClass} />{this.props.name}</a>
+                                <a onDoubleClick={this.props.onClick} style={{cursor: "pointer"}}><span id={this.props.id} draggable="true" onDragStart={this.props.onDragStart} onDragOver={this.props.onDragOver} onDrop={this.props.onDrop} style={style} className={glyphClass} />{this.props.name}</a>
                                 </td>
                                 <td>{sizeString}</td>
                                 </tr>);
         },
 
         render: function() {
-                console.log("rendering with grid? "+ this.props.gridView);
-
+                userContext.getSocialState().then(function(socialState) {
+                        var loc = this.props.retrievedFilePointer.getLocation();
+                        var is = socialState.sharedWith(loc).length > 0;
+                        if(is != this.state.isShared){
+                            this.setState({isShared: is});
+                        }
+                }.bind(this));
                 return this.props.gridView ? this.renderGrid() : this.renderList();
         }
 
@@ -789,6 +804,7 @@ var Browser = React.createClass({
                     const isDir = treeNode.isDirectory();
                     const name  = props.name;
                     const size = props.size;
+
 		    const hasThumb = props.hasThumbnail();
 		    const thumbURL = props.getThumbURL();
                     const onClick = isDir ? function() {
@@ -852,7 +868,6 @@ var Browser = React.createClass({
                         ev.preventDefault();
 
                     }.bind(this);
-
                     return {
                             onClick: onClick,
                             onDragStart : onDragStart,
@@ -862,8 +877,8 @@ var Browser = React.createClass({
                             isDir: isDir,
                             size: size,
                             filePointer: treeNode,
-			    hasThumb: hasThumb,
-			    thumbURL: thumbURL
+                            hasThumb: hasThumb,
+                            thumbURL: thumbURL
                     }
                 }.bind(this));
 		
@@ -1375,6 +1390,8 @@ var Browser = React.createClass({
                                         .then(clearInProgress)
                                         .then(this.loadFilesFromServer);
                         }
+                        this.componentDidMount();
+
                 }.bind(this));
         },
 
