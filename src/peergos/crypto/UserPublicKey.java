@@ -94,7 +94,7 @@ public class UserPublicKey implements Comparable<UserPublicKey>
         return new String(Base64.getEncoder().encode(serialize()));
     }
 
-    public static UserPublicKey fromString(String b64) throws IOException {
+    public static UserPublicKey fromString(String b64) {
         return deserialize(new DataInputStream(new ByteArrayInputStream(Base64.getDecoder().decode(b64))));
     }
 }

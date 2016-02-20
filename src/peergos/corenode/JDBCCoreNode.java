@@ -14,12 +14,10 @@ public class JDBCCoreNode implements CoreNode {
     public static final long MIN_USERNAME_SET_REFRESH_PERIOD = 60*1000000000L;
 
     private static final String TABLE_NAMES_SELECT_STMT = "SELECT * FROM sqlite_master WHERE type='table';";
-    private static final String CREATE_USERNAMESANDKEYS_TABLE =
-            "create table users (name text not null unique, publickey text not null unique, primary key (name, publickey));";
     private static final String CREATE_USERNAMES_TABLE =
             "create table usernames (id integer primary key autoincrement, name text not null unique);";
     private static final String CREATE_LINKS_TABLE =
-            "create table links (id integer primary key autoincrement, publickeylink text not null);";
+            "create table links (id integer primary key autoincrement, publickey text not null unique, link text not null);";
     private static final String CREATE_CHAINS_TABLE =
             "create table chains (userID int references usernames(id), linkID int references links(id), lindex int, primary key (userID, lindex));";
     private static final String CREATE_FOLLOW_REQUESTS_TABLE = "create table followrequests (id integer primary key autoincrement, name text not null, followrequest text not null);";
@@ -28,7 +26,6 @@ public class JDBCCoreNode implements CoreNode {
     private static final Map<String,String> TABLES = new HashMap<>();
     static
     {
-        TABLES.put("users", CREATE_USERNAMESANDKEYS_TABLE);
         TABLES.put("usernames", CREATE_USERNAMES_TABLE);
         TABLES.put("links", CREATE_LINKS_TABLE);
         TABLES.put("chains", CREATE_CHAINS_TABLE);
@@ -363,7 +360,7 @@ public class JDBCCoreNode implements CoreNode {
     {
         String b64key = Base64.getEncoder().encodeToString(encodedKey);
         try {
-            try (PreparedStatement preparedStatement = conn.prepareStatement("select name from users where publickey = ? limit 1")) {
+            try (PreparedStatement preparedStatement = conn.prepareStatement("select name from usernames u inner join chains ch on u.id=ch.userid inner join links ln on ch.linkid=ln.id and ln.publickey = ? limit 1")) {
                 preparedStatement.setString(1, b64key);
                 ResultSet resultSet = preparedStatement.executeQuery();
                 boolean next = resultSet.next();
@@ -377,32 +374,22 @@ public class JDBCCoreNode implements CoreNode {
     }
 
     @Override
-    public UserPublicKey getPublicKey(String username) throws IOException
-    {
-        byte[] dummy = null;
-        UserData user = new UserData(username, dummy);
-        RowData[] users = user.select();
-        if (users == null || users.length != 1)
-            return null;
-        return UserPublicKey.deserialize(new DataInputStream(new ByteArrayInputStream(users[0].data)));
-    }
-
-    @Override
     public List<UserPublicKeyLink> getChain(String username) {
         try {
-            try (PreparedStatement preparedStatement = conn.prepareStatement("select chains.lindex, links.publickeylink from links inner join chains on links.id=chains.linkid \n" +
+            try (PreparedStatement preparedStatement = conn.prepareStatement("select chains.lindex, links.publickey, links.link from links inner join chains on links.id=chains.linkid \n" +
                     "inner join usernames on chains.userid=usernames.id where usernames.name=? order by chains.lindex;")) {
                 preparedStatement.setString(1, username);
                 ResultSet resultSet = preparedStatement.executeQuery();
-                Map<Integer, String> serializedChain = new HashMap<>();
+                Map<Integer, UserPublicKeyLink> serializedChain = new HashMap<>();
                 while (resultSet.next()) {
-                    serializedChain.put(resultSet.getInt(1), resultSet.getString(2));
+                    serializedChain.put(resultSet.getInt(1), UserPublicKeyLink.fromByteArray(UserPublicKey.fromString(resultSet.getString(2)),
+                            Base64.getDecoder().decode(resultSet.getString(3))));
                 }
                 ArrayList<UserPublicKeyLink> result = new ArrayList<>();
                 for (int i=0; i < serializedChain.size(); i++) {
                     if (!serializedChain.containsKey(i))
                         throw new IllegalStateException("Missing UserPublicKeyLink at index: "+i);
-                    result.add(UserPublicKeyLink.fromByteArray(Base64.getDecoder().decode(serializedChain.get(i))));
+                    result.add(serializedChain.get(i));
                 }
                 return result;
             }
@@ -422,31 +409,30 @@ public class JDBCCoreNode implements CoreNode {
         List<String> existingStrings = existing.stream().map(x -> new String(Base64.getEncoder().encode(x.toByteArray()))).collect(Collectors.toList());
         List<UserPublicKeyLink> merged = UserPublicKeyLink.merge(existing, tail);
         List<String> toWrite = merged.stream().map(x -> new String(Base64.getEncoder().encode(x.toByteArray()))).collect(Collectors.toList());
-        Optional<UserPublicKey> oldKey = existing.size() == 0 ? Optional.empty() : Optional.of(existing.get(existing.size()-1).claim.publicKey);
-        UserPublicKey newKey = tail.get(tail.size()-1).claim.publicKey;
+        Optional<UserPublicKey> oldKey = existing.size() == 0 ? Optional.empty() : Optional.of(existing.get(existing.size()-1).owner);
+        UserPublicKey newKey = tail.get(tail.size()-1).owner;
 
         // Conceptually this should be a CAS of the new chain in for the old one under the username
         // The last one or two elements will have changed
         // Ensure usernamesandkeys table is uptodate as well
+        Optional<String> existingKeyb64 = oldKey.map(x -> new String(Base64.getEncoder().encode(x.serialize())));
+        String newKeyb64 = new String(Base64.getEncoder().encode(newKey.serialize()));
         if (existingStrings.size() == 0 && toWrite.size() == 1) {
             // single link to claim a new username
             try {
-                PreparedStatement userandkey = null, user = null, link = null, chain = null;
+                PreparedStatement user = null, link = null, chain = null;
                 try {
                     conn.setAutoCommit(false);
-                    userandkey = conn.prepareStatement("insert into users (name, publickey) VALUES(?, ?);");;
-                    userandkey.setString(1, username);
-                    userandkey.setString(2, new String(Base64.getEncoder().encode(newKey.serialize())));
-                    userandkey.execute();
                     user = conn.prepareStatement("insert into usernames (name) VALUES(?);");
                     user.setString(1, username);
                     user.execute();
-                    link = conn.prepareStatement("insert into links (publickeylink) VALUES(?);");
-                    link.setString(1, toWrite.get(0));
+                    link = conn.prepareStatement("insert into links (publickey, link) VALUES(?, ?);");
+                    link.setString(1, newKeyb64);
+                    link.setString(2, toWrite.get(0));
                     link.execute();
                     chain = conn.prepareStatement("insert into chains (userid, linkid, lindex) select usernames.id, links.id, 0 "
-                            + "from usernames join links where links.publickeylink=? and usernames.name=?;");
-                    chain.setString(1, toWrite.get(0));
+                            + "from usernames join links where links.publickey=? and usernames.name=?;");
+                    chain.setString(1, newKeyb64);
                     chain.setString(2, username);
                     chain.execute();
                     conn.commit();
@@ -454,8 +440,6 @@ public class JDBCCoreNode implements CoreNode {
                 } catch (SQLException sqe) {
                     throw new IllegalStateException(sqe);
                 } finally {
-                    if (userandkey != null)
-                        userandkey.close();
                     if (user != null) {
                         user.close();
                     }
@@ -473,26 +457,22 @@ public class JDBCCoreNode implements CoreNode {
         } else if (toWrite.size() == existingStrings.size() + 1) {
             // two link update ( a key change to an existing username)
             try {
-                PreparedStatement userandkey = null, update = null, link = null, chain = null;
+                PreparedStatement update = null, link = null, chain = null;
                 try {
                     conn.setAutoCommit(false);
-                    userandkey = conn.prepareStatement("update users set publickey=? where users.name=? and users.publickey=?;");;
-                    userandkey.setString(1, new String(Base64.getEncoder().encode(newKey.serialize())));
-                    userandkey.setString(2, username);
-                    userandkey.setString(3, new String(Base64.getEncoder().encode(oldKey.get().serialize())));
-                    userandkey.execute();
-                    update = conn.prepareStatement("update links set publickeylink=? where links.publickeylink=?;");
+                    update = conn.prepareStatement("update links set link=? where links.publickey=?;");
                     update.setString(1, toWrite.get(toWrite.size()-2));
-                    update.setString(2, existingStrings.get(toWrite.size()-2));
+                    update.setString(2, existingKeyb64.get());
                     update.execute();
-                    link = conn.prepareStatement("insert into links (publickeylink) VALUES(?);");
-                    link.setString(1, toWrite.get(toWrite.size()-1));
+                    link = conn.prepareStatement("insert into links (publickey, link) VALUES(?, ?);");
+                    link.setString(1, newKeyb64);
+                    link.setString(2, toWrite.get(toWrite.size()-1));
                     link.execute();
                     chain = conn.prepareStatement("insert into chains (userid, linkid, lindex) select usernames.id, links.id, " +
                             "((select max(lindex) from chains inner join usernames where chains.userid=usernames.id and usernames.name=?)+1) "
-                            + "from usernames join links where links.publickeylink=? and usernames.name=?;");
+                            + "from usernames join links where links.publickey=? and usernames.name=?;");
                     chain.setString(1, username);
-                    chain.setString(2, toWrite.get(toWrite.size()-1));
+                    chain.setString(2, newKeyb64);
                     chain.setString(3, username);
                     chain.execute();
                     conn.commit();
@@ -500,8 +480,6 @@ public class JDBCCoreNode implements CoreNode {
                 } catch (SQLException sqe) {
                     throw new IllegalStateException(sqe);
                 } finally {
-                    if (userandkey != null)
-                        userandkey.close();
                     if (update != null) {
                         update.close();
                     }
@@ -518,10 +496,10 @@ public class JDBCCoreNode implements CoreNode {
             }
         } else if (toWrite.size() == existingStrings.size()) {
             // single link update to existing username and key (changing expiry date)
-            try (PreparedStatement stmt = conn.prepareStatement("update links set publickeylink=? where links.publickeylink=?;"))
+            try (PreparedStatement stmt = conn.prepareStatement("update links set link=? where links.publickey=?;"))
             {
                 stmt.setString(1, toWrite.get(toWrite.size()-1));
-                stmt.setString(2, existingStrings.get(toWrite.size()-1));
+                stmt.setString(2, existingKeyb64.get());
                 stmt.execute();
 
                 return true;
@@ -537,7 +515,7 @@ public class JDBCCoreNode implements CoreNode {
         Optional<byte[]> cached = userSet.getMostRecent();
         if (cached.isPresent())
             return cached.get();
-        try (PreparedStatement stmt = conn.prepareStatement("select name from users"))
+        try (PreparedStatement stmt = conn.prepareStatement("select name from usernames"))
         {
             ResultSet rs = stmt.executeQuery();
             List<String> list = new ArrayList<>();

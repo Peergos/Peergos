@@ -21,7 +21,7 @@ public interface CoreNode {
 
     default UserPublicKey getPublicKey(String username) throws IOException {
         List<UserPublicKeyLink> chain = getChain(username);
-        return chain.get(chain.size()-1).claim.publicKey;
+        return chain.get(chain.size()-1).owner;
     }
 
     byte[] getAllUsernamesGzip() throws IOException;

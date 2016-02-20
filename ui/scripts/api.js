@@ -168,28 +168,25 @@ UserPublicKey.hash = function(arr) {
     return multihash;
 }
 
-function UsernameClaim(publicKey, username, expiry, signedContents) {
-    this.publicKey = publicKey;
+function UsernameClaim(username, expiry, signedContents) {
     this.username = username;
     this.expiry = expiry;
     this.signedContents = signedContents;
 
     this.toByteArray = function() {
 	const dout = new ByteArrayOutputStream();
-	this.publicKey.serialize(dout);
 	dout.writeArray(this.signedContents);
 	return dout.toByteArray();
     }.bind(this);
 }
-UsernameClaim.fromByteArray = function(raw) {
+UsernameClaim.fromByteArray = function(owner, raw) {
     const buf = new ByteArrayInputStream(raw);
-    var from = UserPublicKey.deserialize(buf);
     var signed = buf.readArray();
-    var unsigned = from.unsignMessage(signed);
+    var unsigned = owner.unsignMessage(signed);
     const bin = new ByteArrayInputStream(unsigned);
     var username = bin.readString();
     var expiryDate = bin.readString();
-    return new UsernameClaim(from, username, expiryDate, signed);
+    return new UsernameClaim(username, expiryDate, signed);
 }
 UsernameClaim.create = function(username, user, expiryDate) {
     var bout = new ByteArrayOutputStream();
@@ -197,10 +194,11 @@ UsernameClaim.create = function(username, user, expiryDate) {
     bout.writeString(expiryDate);
     var payload = bout.toByteArray();
     var signed = user.signMessage(payload);
-    return new UsernameClaim(user.toUserPublicKey(), username, expiryDate, signed);
+    return new UsernameClaim(username, expiryDate, signed);
 }
 
-function UserPublicKeyLink(claim, keyChangeProof) {
+function UserPublicKeyLink(owner, claim, keyChangeProof) {
+    this.owner = owner;
     this.claim = claim;
     this.keyChangeProof = keyChangeProof;
 
@@ -224,7 +222,7 @@ UserPublicKeyLink.createInitial = function(user, username, expiry) {
     // sign new claim to username, with provided expiry
     const newClaim = UsernameClaim.create(username, user, expiry);
     
-    return [new UserPublicKeyLink(newClaim)];
+    return [new UserPublicKeyLink(user.toUserPublicKey(), newClaim)];
 }
 UserPublicKeyLink.createChain = function(oldUser, newUser, username, expiry) {
     // sign new claim to username, with provided expiry
@@ -234,9 +232,9 @@ UserPublicKeyLink.createChain = function(oldUser, newUser, username, expiry) {
     const link = oldUser.signMessage(newUser.toUserPublicKey().serialize());
     
     // create link from old that never expires
-    const fromOld = new UserPublicKeyLink(UsernameClaim.create(username, oldUser, "+999999999-12-31"), link);
+    const fromOld = new UserPublicKeyLink(oldUser.toUserPublicKey(), UsernameClaim.create(username, oldUser, "+999999999-12-31"), link);
     
-    return [fromOld, new UserPublicKeyLink(newClaim)];
+    return [fromOld, new UserPublicKeyLink(newUser.toUserPublicKey(), newClaim)];
 }
 
 
@@ -770,8 +768,10 @@ function CoreNodeClient() {
         var buffer = new ByteArrayOutputStream();
         buffer.writeString(username);
         buffer.writeInt(chain.length);
-	for (var i=0; i < chain.length; i++)
+	for (var i=0; i < chain.length; i++) {
+            chain[i].owner.serialize(buffer);
             buffer.writeArray(chain[i].toByteArray());
+	}
         return postProm("core/updateChain", buffer.toByteArray()).then(
 	    function(res){
 		return Promise.resolve(res[0]);

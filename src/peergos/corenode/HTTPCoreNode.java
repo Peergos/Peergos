@@ -99,8 +99,10 @@ public class HTTPCoreNode implements CoreNode
             DataInputStream din = new DataInputStream(conn.getInputStream());
             int count = din.readInt();
             List<UserPublicKeyLink> res = new ArrayList<>();
-            for (int i=0; i < count; i++)
-                res.add(UserPublicKeyLink.fromByteArray(Serialize.deserializeByteArray(din, UserPublicKeyLink.MAX_SIZE)));
+            for (int i=0; i < count; i++) {
+                UserPublicKey owner = UserPublicKey.deserialize(din);
+                res.add(UserPublicKeyLink.fromByteArray(owner, Serialize.deserializeByteArray(din, UserPublicKeyLink.MAX_SIZE)));
+            }
             return res;
         } catch (IOException ioe) {
             ioe.printStackTrace();
@@ -123,6 +125,7 @@ public class HTTPCoreNode implements CoreNode
             Serialize.serialize(username, dout);
             dout.writeInt(chain.size());
             for (UserPublicKeyLink link : chain) {
+                link.owner.serialize(dout);
                 Serialize.serialize(link.toByteArray(), dout);
             }
             dout.flush();

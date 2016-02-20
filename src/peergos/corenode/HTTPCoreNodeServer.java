@@ -102,6 +102,7 @@ public class HTTPCoreNodeServer
             List<UserPublicKeyLink> chain = coreNode.getChain(username);
             dout.writeInt(chain.size());
             for (UserPublicKeyLink link : chain) {
+                link.owner.serialize(dout);
                 Serialize.serialize(link.toByteArray(), dout);
             }
         }
@@ -111,8 +112,10 @@ public class HTTPCoreNodeServer
             String username = deserializeString(din);
             int count = din.readInt();
             List<UserPublicKeyLink> res = new ArrayList<>();
-            for (int i=0; i < count; i++)
-                res.add(UserPublicKeyLink.fromByteArray(Serialize.deserializeByteArray(din, UserPublicKeyLink.MAX_SIZE)));
+            for (int i=0; i < count; i++) {
+                UserPublicKey owner = UserPublicKey.deserialize(din);
+                res.add(UserPublicKeyLink.fromByteArray(owner, Serialize.deserializeByteArray(din, UserPublicKeyLink.MAX_SIZE)));
+            }
             boolean isAdded = coreNode.updateChain(username, res);
 
             dout.writeBoolean(isAdded);
