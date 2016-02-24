@@ -19,7 +19,7 @@ public class JDBCCoreNode implements CoreNode {
     private static final String CREATE_LINKS_TABLE =
             "create table links (id integer primary key autoincrement, publickey text not null unique, link text not null);";
     private static final String CREATE_CHAINS_TABLE =
-            "create table chains (userID int references usernames(id), linkID int references links(id), lindex int, primary key (userID, lindex));";
+            "create table chains (userID int references usernames(id), linkID int references links(id), lindex int, primary key (userID, lindex)); create unique index uniq1 on chains(userID, linkID)";
     private static final String CREATE_FOLLOW_REQUESTS_TABLE = "create table followrequests (id integer primary key autoincrement, name text not null, followrequest text not null);";
     private static final String CREATE_METADATA_BLOBS_TABLE = "create table metadatablobs (writingkey text primary key not null, hash text not null);";
 
@@ -468,9 +468,11 @@ public class JDBCCoreNode implements CoreNode {
                     link.setString(1, newKeyb64);
                     link.setString(2, toWrite.get(toWrite.size()-1));
                     link.execute();
-                    chain = conn.prepareStatement("insert into chains (userid, linkid, lindex) select usernames.id, links.id, " +
-                            "((select max(lindex) from chains inner join usernames where chains.userid=usernames.id and usernames.name=?)+1) "
-                            + "from usernames join links where links.publickey=? and usernames.name=?;");
+                    chain = conn.prepareStatement("insert into chains (userid, linkid, lindex) " +
+                            "select usernames.id, links.id, " +
+                            "((select max(lindex) from chains inner join usernames where " +
+                            "chains.userid=usernames.id and usernames.name=?)+1) " +
+                            "from usernames join links where links.publickey=? and usernames.name=?;");
                     chain.setString(1, username);
                     chain.setString(2, newKeyb64);
                     chain.setString(3, username);
