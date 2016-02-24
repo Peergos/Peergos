@@ -93,8 +93,9 @@ public class Start
 
             InetSocketAddress httpsMessengerAddress = new InetSocketAddress(hostname, userAPIAddress.getPort());
             CoreNode core = HTTPCoreNode.getInstance();
+            CoreNode pinner = new PinningCoreNode(core, dht);
 
-            new UserService(httpsMessengerAddress, Logger.getLogger("IPFS"), dht, core);
+            new UserService(httpsMessengerAddress, Logger.getLogger("IPFS"), dht, pinner);
         }
     }
 

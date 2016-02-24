@@ -6,7 +6,7 @@ import peergos.util.*;
 
 import java.io.*;
 import java.util.*;
-import java.util.stream.Collectors;
+import java.util.stream.*;
 
 public class TreeNode {
     public final Optional<byte[]> hash;
@@ -381,7 +381,14 @@ public class TreeNode {
     }
 
     public MerkleNode toMerkleNode() {
-        Map<String, Multihash> links = keys.stream().filter(k -> k.targetHash.length > 0).collect(Collectors.toMap(k -> k.key.data.length > 0 ? k.key.toString() : "0", k -> new Multihash(k.targetHash)));
+        Map<String, Multihash> links = Stream.concat(
+                keys.stream()
+                        .filter(k -> k.targetHash.length > 0)
+                        .map(k -> new Multihash(k.targetHash)),
+                keys.stream()
+                        .filter(k -> k.valueHash.length > 0)
+                        .map(k -> new Multihash(k.valueHash)))
+                .collect(Collectors.toMap(h -> h.toString(), h -> h));
         return new MerkleNode(serialize(), links);
     }
 

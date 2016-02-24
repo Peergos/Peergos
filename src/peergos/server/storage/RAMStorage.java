@@ -40,6 +40,16 @@ public class RAMStorage implements ContentAddressedStorage {
         return storage.size();
     }
 
+    @Override
+    public boolean recursivePin(Multihash h) {
+        return true;
+    }
+
+    @Override
+    public boolean recursiveUnpin(Multihash h) {
+        return true;
+    }
+
     public static byte[] hash(byte[] input)
     {
         try {

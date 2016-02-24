@@ -5,7 +5,7 @@ import peergos.server.merklebtree.MerkleNode;
 
 public interface ContentAddressedStorage {
 
-    static final int MAX_OBJECT_LENGTH  = 1024*256;
+    int MAX_OBJECT_LENGTH  = 1024*256;
     /**
      *
      * @param object
@@ -32,4 +32,8 @@ public interface ContentAddressedStorage {
      * @param key the hash of a value previously stored
      */
     void remove(byte[] key);
+
+    boolean recursivePin(Multihash h);
+
+    boolean recursiveUnpin(Multihash h);
 }

@@ -52,11 +52,24 @@ public class IpfsDHT implements ContentAddressedStorage {
 
     @Override
     public void remove(byte[] key) {
-        // delete this once IPFS object patch set-data is working
-        if (true)
-            return;
+        // do nothing as removal is handled by GC and only the roots are pinned
+    }
+
+    @Override
+    public boolean recursivePin(Multihash h) {
         try {
-            ipfs.pin.rm(new Multihash(key));
+            List<Multihash> added = ipfs.pin.add(h);
+            return added.contains(h);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public boolean recursiveUnpin(Multihash h) {
+        try {
+            List<Multihash> added = ipfs.pin.rm(h, true);
+            return added.contains(h);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
