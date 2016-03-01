@@ -24,11 +24,22 @@ public class ErrorTests {
                     )
             );
 
-            double p = 0.7;
-            int f = 40, e = 30;
+            double p = 0.5;
+            int f = 40, e = 10;
             int n = f + 2*e, k = f + e;
-            while (!acceptableFailure.test(probabilityFailure(n, k, p)))
-                p = (1 + p)/2;
+
+            double min_p = 0.0, max_p = 1.0;
+            while (true) {
+                if (acceptableFailure.test(probabilityFailure(n, k, p))) {
+                    max_p = p;
+                    p = (p + min_p) / 2;
+                } else {
+                    min_p = p;
+                    p = (1 + p) / 2;
+                }
+                if (Math.abs(max_p - min_p) < 0.01)
+                    break;
+            }
             System.out.printf("%d, %d, %.2f -> %.15f\n", n, k, p, probabilityFailure(n, k, p));
         }
     }
