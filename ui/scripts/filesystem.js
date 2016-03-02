@@ -512,33 +512,39 @@ var SignUp = React.createClass({
 			    });
                         }.bind(this));
                 }.bind(this);
-	        var keyPress = function() {
+	        var validatePassword = function() {
+		    // after one failed attempt update the status after each keystroke
 		    var passwd = document.getElementById("signup-password-input").value;
 		    var index = commonPasswords.indexOf(passwd);
-		    if (index != -1)
+		    var suffix = ["th", "st", "nd", "rd", "th", "th", "th", "th", "th", "th"][(index+1) % 10];
+		    if (index != -1) {
 			    this.setState({
                             usernameClass : "",
                             usernameMsg : "",
-                            passwordClass : "has-error has-feedback",
-                            passwordMsg : "Warning: your password is the number " + (index+1) +" most common password!"
+			    checkPassword: true,
+                            passwordClass : "has-error has-feedback alert alert-danger",
+                            passwordMsg : "Warning: your password is the " + (index+1) + suffix + " most common password!"
                         });
-            else if (passwd.length < passwordWarningThreshold) {
+			document.getElementById("signup-password-input").onkeyup = document.getElementById("signup-verify-password-input").onfocus;
+                    } else if (passwd.length < passwordWarningThreshold) {
                                 this.setState({
-                                        usernameClass : "",
-                                        usernameMsg : "",
-                                        passwordClass : "has-error has-feedback",
-                                        passwordMsg : "Warning: passwords less than "+ passwordWarningThreshold +" characters are considered un-safe."}); 
+                                    usernameClass : "",
+                                    usernameMsg : "",
+				    checkPassword: true,
+                                    passwordClass : "has-error has-feedback alert alert-danger",
+                                    passwordMsg : "Warning: passwords less than "+ passwordWarningThreshold +" characters are considered unsafe."});
+			document.getElementById("signup-password-input").onkeyup = document.getElementById("signup-verify-password-input").onfocus;
                         }
 		    else
     			this.setState({
                             usernameClass : "",
                             usernameMsg : "",
-                            passwordClass : "",
-                            passwordMsg : ""
+                            passwordClass : this.state.checkPassword ? "alert alert-success" : "",
+                            passwordMsg : this.state.checkPassword ? "That's a better password." : ""
                         });
 		}.bind(this);
                 document.getElementById("signupSubmitButton").onclick = submit; 
-                document.getElementById("signup-password-input").onkeyup = keyPress; 
+                document.getElementById("signup-verify-password-input").onfocus = validatePassword; 
         }, 
         render: function() {
                 const  usernameClass = "form-group "+ this.state.usernameClass;
