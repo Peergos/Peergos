@@ -1396,11 +1396,13 @@ var Browser = React.createClass({
         },
 
         render: function() {
+                 const banner = ! this.props.isDemo ? <div></div> : <div className="alert alert-danger"><strong>WARNING:</strong> This is a demo server and all data will be occasionally cleared.</div>;
                 if (userContext == null) 
                         return (<div className="container form-signin">
+				        {banner}
                                         <h2>Peergos</h2>
                                         <center>
-                                        <img src="images/logo.png"/>
+				        <img src="images/logo.png"/>
                                         </center>
                                         <div id="signup-form">
                                         </div>
@@ -1488,9 +1490,9 @@ var Browser = React.createClass({
         }
 });
 
-
+var isDemo = window.location.hostname == "demo.peergos.net";
 React.render(
-                <Browser/>,
+                <Browser isDemo={isDemo} />,
                 document.getElementById('content')
             );
 
