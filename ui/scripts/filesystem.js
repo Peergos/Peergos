@@ -414,6 +414,8 @@ const buildSharingTable = function(socialState, props) {
                         </div>)
 };
 
+const passwordWarningThreshold = 12;
+
 var SignUp = React.createClass({
         getInitialState : function() {
                 return {
@@ -430,15 +432,6 @@ var SignUp = React.createClass({
                         const pw2 = document.getElementById("signup-verify-password-input").value;
                         const email = document.getElementById("signup-email-user-input").value;
                         
-                        if (pw1.length < 0) {
-                                this.setState({
-                                        usernameClass : "",
-                                        usernameMsg : "",
-                                        passwordClass : "has-error has-feedback",
-                                        passwordMsg : "Password must be 8 characters long!"
-                                }); 
-                                return;
-                        }
                         if (pw1 != pw2) {
                                 this.setState({
                                         usernameClass : "",
@@ -523,14 +516,21 @@ var SignUp = React.createClass({
 		    var passwd = document.getElementById("signup-password-input").value;
 		    var index = commonPasswords.indexOf(passwd);
 		    if (index != -1)
-			this.setState({
+			    this.setState({
                             usernameClass : "",
                             usernameMsg : "",
                             passwordClass : "has-error has-feedback",
-                            passwordMsg : "Your password is the number " + (index+1) +" most common password. We recommend changing it!"
+                            passwordMsg : "Warning: your password is the number " + (index+1) +" most common password!"
                         });
+            else if (passwd.length < passwordWarningThreshold) {
+                                this.setState({
+                                        usernameClass : "",
+                                        usernameMsg : "",
+                                        passwordClass : "has-error has-feedback",
+                                        passwordMsg : "Warning: passwords less than "+ passwordWarningThreshold +" characters are considered un-safe."}); 
+                        }
 		    else
-			this.setState({
+    			this.setState({
                             usernameClass : "",
                             usernameMsg : "",
                             passwordClass : "",
