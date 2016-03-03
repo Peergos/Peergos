@@ -1402,13 +1402,13 @@ var Browser = React.createClass({
         },
 
         render: function() {
-                 const banner = ! this.props.isDemo ? <div></div> : <div className="alert alert-danger"><strong>WARNING:</strong> This is a demo server and all data will be occasionally cleared.</div>;
+                var banner = <div className="alert alert-danger"><strong>WARNING:</strong> This is a demo server and all data will be occasionally cleared.</div>;
                 if (userContext == null) 
-                        return (<div className="container form-signin">
-				        {banner}
+                        return (<div className="container form-signin"><div>
+				                        {this.props.isDemo && banner}
                                         <h2>Peergos</h2>
                                         <center>
-				        <img src="images/logo.png"/>
+				                        <img src="images/logo.png"/>
                                         </center>
                                         <div id="signup-form">
                                         </div>
@@ -1422,7 +1422,7 @@ var Browser = React.createClass({
                                         </div>
                                         <button id="loginButton" className="btn btn-large btn-block btn-success" >Login</button>
                                         <button id="signupButton" className="btn btn-large btn-block btn-primary" >Sign up</button>
-                                        </div>
+                                        </div></div>
                                         </div>);
 
                 const files = this.state.files.map(function(f) {
