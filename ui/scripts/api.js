@@ -4,8 +4,8 @@ if (typeof module !== "undefined")
     var erasure = require("./erasure");
 
 function humanSort(l,r) {
-                            const comp = l.toLowerCase().localeCompare(r.toLowerCase());
-                            return comp != 0 ? comp : l.localeCompare(r);
+    const comp = l.toLowerCase().localeCompare(r.toLowerCase());
+    return comp != 0 ? comp : l.localeCompare(r);
 };
 // API for the User interface to use
 /////////////////////////////
@@ -1015,9 +1015,9 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
     var getFollowers = function() {
 	return getSharingFolder().getChildren(this).then(function(friendFolders){
 	    return Promise.resolve(
-                        friendFolders.map(function(froot){
-                                return froot.getFileProperties().name;
-                        }).sort(humanSort));
+                friendFolders.map(function(froot){
+                    return froot.getFileProperties().name;
+                }).sort(humanSort));
 	});
     }.bind(this);
 
@@ -1124,7 +1124,7 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
 			alreadyFollowed = true;
 		if (alreadyFollowed)
 		    return Promise.resolve(false);
-
+		
 		return that.corenodeClient.getPublicKey(targetUsername).then(function(targetUser) {
 		    return sharing.mkdir(targetUsername, that).then(function(friendRoot) {
 			
@@ -1363,14 +1363,14 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
     this.getUserRoot = function() {
         return this.getTreeRoot().then(function(root) {
             return root.getChildren().then(function(children) {
-                    if (children.length == 0)
-                            throw "no children in user root!";
-                    const userRoots = children.filter(function(e) {
-                        return e.getFileProperties().name == this.username;
-                    }.bind(this));
-                    if (userRoots.length != 1)
-                            throw  "user has "+ userRoots.length +" roots!";
-                    return Promise.resolve(userRoots[0]);
+                if (children.length == 0)
+                    throw "no children in user root!";
+                const userRoots = children.filter(function(e) {
+                    return e.getFileProperties().name == this.username;
+                }.bind(this));
+                if (userRoots.length != 1)
+                    throw  "user has "+ userRoots.length +" roots!";
+                return Promise.resolve(userRoots[0]);
             }.bind(this));
         }.bind(this));
     }.bind(this);
@@ -2208,7 +2208,7 @@ function FileAccess(parent2meta, properties, retriever, parentLink) {
     this.rename = function(writableFilePointer, newProps, context) {
 	if (!writableFilePointer.isWritable())
 	    throw "Need a writable pointer!";
-    var metaKey;
+	var metaKey;
 	if (this.isDirectory()) {
 	    const parentKey = this.subfolders2parent.target(writableFilePointer.baseKey);
 	    metaKey = this.getMetaKey(parentKey);
@@ -2259,7 +2259,7 @@ FileAccess.create = function(parentKey, props, retriever, parentLocation, parent
     var metaKey = SymmetricKey.random();
     var nonce = metaKey.createNonce();
     return new FileAccess(SymmetricLink.fromPair(parentKey, metaKey, parentKey.createNonce()),
-                concat(nonce, metaKey.encrypt(props.serialize(), nonce)), retriever, SymmetricLocationLink.create(parentKey, parentparentKey, parentLocation));
+			  concat(nonce, metaKey.encrypt(props.serialize(), nonce)), retriever, SymmetricLocationLink.create(parentKey, parentparentKey, parentLocation));
 }
 
 function DirAccess(subfolders2files, subfolders2parent, subfolders, files, parent2meta, properties, retriever, parentLink) {
@@ -2379,17 +2379,17 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
 	const ourLocation = new Location(userContext.user, writer, ourMapKey);
         const dir = DirAccess.create(dirReadKey, new FileProperties(name, 0, Date.now(), (isSystemFolder == null || !isSystemFolder) ? 0 : 1), ourLocation, ourParentKey);
 	const that = this;
-	    return userContext.uploadChunk(dir, userContext.user, writer, dirMapKey)
-                .then(function(success) {
-                    if (success) {
-                        that.addSubdir(new Location(userContext.user, writer, dirMapKey), baseKey, dirReadKey);
-			// now upload the changed metadata blob for dir
-			return userContext.uploadChunk(that, userContext.user, writer, ourMapKey).then(function(res) {
-			    return Promise.resolve(new ReadableFilePointer(userContext.user, writer, dirMapKey, dirReadKey));
-			});
-                    }
-		    return Promise.resolve(false);
-                });
+	return userContext.uploadChunk(dir, userContext.user, writer, dirMapKey)
+            .then(function(success) {
+                if (success) {
+                    that.addSubdir(new Location(userContext.user, writer, dirMapKey), baseKey, dirReadKey);
+		    // now upload the changed metadata blob for dir
+		    return userContext.uploadChunk(that, userContext.user, writer, ourMapKey).then(function(res) {
+			return Promise.resolve(new ReadableFilePointer(userContext.user, writer, dirMapKey, dirReadKey));
+		    });
+                }
+		return Promise.resolve(false);
+            });
     }.bind(this);
 
     this.commit = function(owner, writer, ourMapKey, userContext) {
