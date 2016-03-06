@@ -424,7 +424,7 @@ function asyncErasureEncode(original, originalBlobs, allowedFailures) {
 	    var bfrags = e.data;
 	    resolve(bfrags);
 	};
-	worker.postMessage({original:original, originalBlobs:EncryptedChunk.ERASURE_ORIGINAL, allowedFailures:EncryptedChunk.ERASURE_ALLOWED_FAILURES});
+	worker.postMessage({original:original, originalBlobs:originalBlobs, allowedFailures:allowedFailures});
     });
     return prom;
 }
@@ -442,25 +442,26 @@ function EncryptedChunk(encrypted) {
     this.auth = slice(encrypted, 0, window.nacl.secretbox.overheadLength);
     this.cipher = slice(encrypted, window.nacl.secretbox.overheadLength, encrypted.length);
 
-    this.generateFragments = function() {
-        return asyncErasureEncode(this.cipher, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES).then(function(bfrags) {
+    this.generateFragments = function(nOriginalFragments, nAllowedFailures) {
+        return asyncErasureEncode(this.cipher, nOriginalFragments, nAllowedFailures).then(function(bfrags) {
             var frags = [];
             for (var i=0; i < bfrags.length; i++)
 		frags[i] = new Fragment(bfrags[i]);
 	    return Promise.resolve(frags);
 	});
-    }
+    }.bind(this);
 
     this.getAuth = function() {
         return this.auth;
-    }
+    }.bind(this);
 
     this.decrypt = function(key, nonce) {
         return key.decrypt(concat(this.auth, this.cipher), nonce);
-    }
+    }.bind(this);
 }
-EncryptedChunk.ERASURE_ORIGINAL = 40;
-EncryptedChunk.ERASURE_ALLOWED_FAILURES = 10;
+
+EncryptedChunk.ERASURE_ORIGINAL = 40; // mean 128 KiB fragments, could also use 80, 20, 10, 5
+EncryptedChunk.ERASURE_ALLOWED_FAILURES = 10; // generates twice this extra fragments
 
 function Chunk(data, key) {
     this.data = data;
@@ -472,9 +473,10 @@ function Chunk(data, key) {
         return new EncryptedChunk(key.encrypt(data, this.nonce));
     }
 }
-Chunk.MAX_SIZE = Fragment.SIZE*EncryptedChunk.ERASURE_ORIGINAL
+
+Chunk.MAX_SIZE = 5*1024*1024;
 // string, File, SymmetricKey, Location, SymmetricKey -> 
-function FileUploader(name, file, key, parentLocation, parentparentKey, setProgressPercentage, fileProperties) {
+function FileUploader(name, file, key, parentLocation, parentparentKey, setProgressPercentage, fileProperties, nOriginalFragments, nAllowedFalures) {
     if (fileProperties == null)
 	this.props = new FileProperties(name, file.size, Date.now(), 0);
     else
@@ -489,9 +491,10 @@ function FileUploader(name, file, key, parentLocation, parentparentKey, setProgr
     this.parentLocation = parentLocation;
     this.parentparentKey = parentparentKey;
     this.setProgressPercentage = setProgressPercentage;
+    this.nOriginalFragments = nOriginalFragments != null ? nOriginalFragments : EncryptedChunk.ERASURE_ORIGINAL;
+    this.nAllowedFalures = nAllowedFalures != null ? nAllowedFalures : EncryptedChunk.ERASURE_ALLOWED_FAILURES;
 
     this.uploadChunk = function(context, owner, writer, chunkIndex, file, nextLocation) {
-
 	var that = this;
 	return new Promise(function(resolve, reject) {
 	    console.log("uploading chunk: "+chunkIndex + " of "+file.name);
@@ -501,10 +504,10 @@ function FileUploader(name, file, key, parentLocation, parentparentKey, setProgr
 		const data = new Uint8Array(this.result);
 		var chunk = new Chunk(data, key)
 		const encryptedChunk = chunk.encrypt();
-		encryptedChunk.generateFragments().then(function(fragments){
+		encryptedChunk.generateFragments(that.nOriginalFragments, that.nAllowedFalures).then(function(fragments){
                     console.log("Uploading chunk with %d fragments\n", fragments.length);
 		    context.uploadFragments(fragments, owner, writer, chunk.mapKey, setProgressPercentage).then(function(hashes){
-			const retriever = new EncryptedChunkRetriever(chunk.nonce, encryptedChunk.getAuth(), hashes, nextLocation);
+			const retriever = new EncryptedChunkRetriever(chunk.nonce, encryptedChunk.getAuth(), hashes, nextLocation, that.nOriginalFragments, that.nAllowedFalures);
 			const metaBlob = FileAccess.create(chunk.key, that.props, retriever, parentLocation, parentparentKey);
 			context.uploadChunk(metaBlob, owner, writer, chunk.mapKey, hashes).then(function() {
 			    resolve(new Location(owner, writer, chunk.mapKey));
@@ -2479,9 +2482,11 @@ FileRetriever.deserialize = function(bin) {
     }
 }
 
-function EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChunk) {
+function EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChunk, nOriginalFragments, nAllowedFailures) {
     this.chunkNonce = chunkNonce;
     this.chunkAuth = chunkAuth;
+    this.nOriginalFragments = nOriginalFragments;
+    this.nAllowedFailures = nAllowedFailures;
     this.fragmentHashes = fragmentHashes;
     this.nextChunk = nextChunk;
     this.getFile = function(context, dataKey, len, setProgressPercentage) {
@@ -2496,17 +2501,18 @@ function EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChun
     }
 
     this.getChunkInputStream = function(context, dataKey, len, setProgressPercentage) {
+	var that = this;
         var fragmentsProm = context.downloadFragments(fragmentHashes, setProgressPercentage);
         return fragmentsProm.then(function(fragments) {
             fragments = reorder(fragments, fragmentHashes);
-            var cipherText = erasure.recombine(fragments, len != 0 ? len : Chunk.MAX_SIZE, EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
+            var cipherText = erasure.recombine(fragments, len != 0 ? len : Chunk.MAX_SIZE, that.nOriginalFragments, that.nAllowedFailures);
 	    if (len != 0)
 		cipherText = cipherText.subarray(0, len);
             var fullEncryptedChunk = new EncryptedChunk(concat(chunkAuth, cipherText));
             var original = fullEncryptedChunk.decrypt(dataKey, chunkNonce);
             return Promise.resolve(original);
         });
-    }
+    }.bind(this);
 
     this.serialize = function(buf) {
         buf.writeByte(1); // This class
@@ -2516,7 +2522,9 @@ function EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChun
         buf.writeByte(this.nextChunk != null ? 1 : 0);
         if (this.nextChunk != null)
             buf.write(this.nextChunk.serialize());
-    }
+	buf.writeInt(this.nOriginalFragments);
+	buf.writeInt(this.nAllowedFailures);
+    }.bind(this)
 }
 EncryptedChunkRetriever.deserialize = function(buf) {
     var chunkNonce = buf.readArray();
@@ -2527,7 +2535,15 @@ EncryptedChunkRetriever.deserialize = function(buf) {
     var nextChunk = null;
     if (hasNext == 1)
         nextChunk = Location.deserialize(buf);
-    return new EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChunk);
+    var nOriginalFragments = EncryptedChunk.ERASURE_ORIGINAL;
+    var nAllowedFailures = EncryptedChunk.ERASURE_ALLOWED_FAILURES;
+    try {
+	nOriginalFragments = buf.readInt();
+	nAllowedFailures = buf.readInt();
+    } catch (e) {
+	// Backwards compat
+    }
+    return new EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChunk, nOriginalFragments, nAllowedFailures);
 }
 
 function split(arr, size) {
