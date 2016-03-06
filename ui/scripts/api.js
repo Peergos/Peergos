@@ -460,6 +460,8 @@ function EncryptedChunk(encrypted) {
     }.bind(this);
 }
 
+EncryptedChunk.ALLOWED_ORIGINAL = [5, 10, 20, 40, 80];
+EncryptedChunk.ALLOWED_FAILURES = [5, 10, 20, 40, 80];
 EncryptedChunk.ERASURE_ORIGINAL = 40; // mean 128 KiB fragments, could also use 80, 20, 10, 5
 EncryptedChunk.ERASURE_ALLOWED_FAILURES = 10; // generates twice this extra fragments
 
@@ -2535,13 +2537,13 @@ EncryptedChunkRetriever.deserialize = function(buf) {
     var nextChunk = null;
     if (hasNext == 1)
         nextChunk = Location.deserialize(buf);
-    var nOriginalFragments = EncryptedChunk.ERASURE_ORIGINAL;
-    var nAllowedFailures = EncryptedChunk.ERASURE_ALLOWED_FAILURES;
-    try {
-	nOriginalFragments = buf.readInt();
-	nAllowedFailures = buf.readInt();
-    } catch (e) {
-	// Backwards compat
+    var nOriginalFragments = buf.readInt();
+    var nAllowedFailures = buf.readInt();
+    if (!EncryptedChunk.ALLOWED_ORIGINAL.includes(nOriginalFragments) || !EncryptedChunk.ALLOWED_FAILURES.includes()) {
+	// backwards compatible with when these were not included
+	buf.skip(-8);
+	nOriginalFragments = EncryptedChunk.ERASURE_ORIGINAL;
+	nAllowedFailures = EncryptedChunk.ERASURE_ALLOWED_FAILURES;
     }
     return new EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChunk, nOriginalFragments, nAllowedFailures);
 }

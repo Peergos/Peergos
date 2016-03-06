@@ -116,4 +116,10 @@ ByteArrayInputStream = function(arr) {
     this.readString = function() {
 	return nacl.util.encodeUTF8(this.readArray());
     }
+
+    this.skip = function(bytes) {
+	this.index += bytes;
+	if (this.index < 0 || this.index > this.arr.length)
+	    throw "Illegal offset into array! " + this.index;
+    }
 }
