@@ -178,6 +178,10 @@ function UsernameClaim(username, expiry, signedContents) {
 	dout.writeArray(this.signedContents);
 	return dout.toByteArray();
     }.bind(this);
+
+    this.getKeyChangeProof = function() {
+	return signedContents != null ? subarray(signedContents, 0, signedContents.length) : null;
+    }
 }
 UsernameClaim.fromByteArray = function(owner, raw) {
     const buf = new ByteArrayInputStream(raw);
@@ -229,14 +233,55 @@ UserPublicKeyLink.createChain = function(oldUser, newUser, username, expiry) {
     const newClaim = UsernameClaim.create(username, newUser, expiry);
     
     // sign new keys with old
-    const link = oldUser.signMessage(newUser.toUserPublicKey().serialize());
+    const link = oldUser.signMessage(newUser.toUserPublicKey().getPublicKeys());
     
     // create link from old that never expires
     const fromOld = new UserPublicKeyLink(oldUser.toUserPublicKey(), UsernameClaim.create(username, oldUser, "+999999999-12-31"), link);
     
     return [fromOld, new UserPublicKeyLink(newUser.toUserPublicKey(), newClaim)];
 }
-
+// UserPublicKeyLink[], UserPublicKeyLink[] -> UserPublicKeyLink[]
+UserPublicKeyLink.merge = function(existing, tail) {
+    if (existing.length == 0)
+        return tail;
+    if (!arraysEqual(tail[0].owner, existing[existing.size()-1].owner))
+        throw "Different keys in merge chains intersection!";
+    var result = existing.slice();
+    result[result.length-1] = tail[0];
+    result[result.length] = tail[1];
+    validChain(result, tail[0].claim.username);
+    return result;
+}
+// UserPublicKeyLink[], String -> boolean
+UserPublicKeyLink.validChain = function(chain, username) {
+    for (var i=0; i < chain.length-1; i++)
+        if (!validLink(chain[i], chain[i+1].owner, username))
+            throw "Invalid public key chain link!";
+    if (!validClaim(chain[chain.size()-1], username))
+        throw "Invalid username claim!";
+}
+// UserPublicKeyLink, UserPublicKey, String -> boolean
+UserPublicKeyLink.validLink = function(from, target, username) {
+    if (!validClaim(from, username))
+        return true;
+    
+    var keyChangeProof = from.getKeyChangeProof();
+    if (keyChangeProof == null)
+        return false;
+    var targetKey = UserPublicKey.fromByteArray(from.owner.unsignMessage(keyChangeProof));
+    if (!arraysEqual(targetKey.getPublicKeys(), target.getPublicKeys()))
+        return false;
+    
+    return true;
+}
+// UserPublicKeyLink, String -> boolean
+UserPublicKeyLink.validClaim = function(from, username) {
+    if (username.includes(" ") || username.includes("\t") || username.includes("\n"))
+        return false;
+    if (from.claim.username != username || from.claim.expiry.isBefore(LocalDate.now()))
+        return false;
+    return true;
+}
 
 function createNonce(){
     return window.nacl.randomBytes(24);

@@ -156,7 +156,7 @@ public class UserPublicKeyLink {
     static List<UserPublicKeyLink> merge(List<UserPublicKeyLink> existing, List<UserPublicKeyLink> tail) {
         if (existing.size() == 0)
             return tail;
-        if (tail.get(0).owner.equals(existing.get(existing.size()-1).owner))
+        if (!tail.get(0).owner.equals(existing.get(existing.size()-1).owner))
             throw new IllegalStateException("Different keys in merge chains intersection!");
         List<UserPublicKeyLink> result = Stream.concat(existing.subList(0, existing.size() - 1).stream(), tail.stream()).collect(Collectors.toList());
         validChain(result, tail.get(0).claim.username);
