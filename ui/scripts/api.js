@@ -2136,6 +2136,7 @@ function Location(owner, writer, mapKey) {
         return bout.toByteArray();
     }
 
+    //SymmetricKey, Uint8Array -> Uint8Array
     this.encrypt = function(key, nonce) {
         return key.encrypt(this.serialize(), nonce);
     }
