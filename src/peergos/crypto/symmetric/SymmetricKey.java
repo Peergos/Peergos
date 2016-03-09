@@ -2,9 +2,7 @@ package peergos.crypto.symmetric;
 
 import org.ibex.nestedvm.Runtime;
 
-import java.io.ByteArrayInputStream;
-import java.io.DataInputStream;
-import java.io.IOException;
+import java.io.*;
 import java.util.*;
 
 public interface SymmetricKey
@@ -53,6 +51,21 @@ public interface SymmetricKey
             default: throw new IllegalStateException("Unknown Symmetric Key type: "+t.name());
         }
 
+    }
+
+    default void serialize(DataOutputStream dout) throws IOException  {
+        dout.writeInt(type().value);
+        dout.write(getKey());
+    }
+
+    default byte[] toByteArray() {
+        ByteArrayOutputStream bout = new ByteArrayOutputStream();
+        try (DataOutputStream dout = new DataOutputStream(bout)){
+            serialize(dout);
+            return bout.toByteArray();
+        } catch (IOException ioe) {
+            throw new IllegalStateException(ioe);
+        }
     }
 
     static SymmetricKey random() {
