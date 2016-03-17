@@ -6,13 +6,8 @@ import peergos.crypto.symmetric.SymmetricKey;
 import peergos.util.ByteArrayWrapper;
 import peergos.util.Serialize;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
+import java.io.*;
 
-/**
- * Created by chrirs on 09/03/16.
- */
 public class ReadableFilePointer {
     public final UserPublicKey owner, writer;
     public final ByteArrayWrapper mapKey;
@@ -48,6 +43,12 @@ public class ReadableFilePointer {
         return result;
     }
 
+    public byte[] toByteArray() throws IOException {
+        ByteArrayOutputStream bout = new ByteArrayOutputStream();
+        serialize(new DataOutputStream(bout));
+        return bout.toByteArray();
+    }
+
     public void serialize(DataOutputStream dout) throws IOException {
         dout.write(owner.serialize());
         dout.writeBoolean(isWritable());
@@ -73,6 +74,10 @@ public class ReadableFilePointer {
 
     public static ReadableFilePointer fromPublicLink(String keysString) {
         throw new IllegalStateException("Unimplemented");
+    }
+
+    public static ReadableFilePointer fromByteArray(byte[] in) throws  IOException {
+
     }
 
     public static ReadableFilePointer deserialize(DataInputStream din) throws IOException {
