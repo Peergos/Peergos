@@ -1,20 +1,26 @@
 package peergos.user.fs;
 
+import peergos.crypto.symmetric.*;
+import peergos.user.*;
+
 import java.io.*;
+import java.util.function.*;
 
 public interface FileRetriever {
 
     Location getNext();
 
+    byte[] getChunkInputStream(UserContext context, SymmetricKey dataKey, int len, Consumer<Long> monitor);
+
     static FileRetriever deserialize(DataInputStream bin) throws IOException {
         byte type = bin.readByte();
         switch (type) {
             case 0:
-                throw new Exception("Simple FileRetriever not implemented!");
+                throw new IllegalStateException("Simple FileRetriever not implemented!");
             case 1:
                 return EncryptedChunkRetriever.deserialize(bin);
             default:
-                throw new Exception("Unknown FileRetriever type: "+type);
+                throw new IllegalStateException("Unknown FileRetriever type: "+type);
         }
     }
 }

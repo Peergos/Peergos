@@ -12,12 +12,13 @@ import java.util.*;
 import java.util.function.*;
 import java.util.stream.*;
 
-public class EncryptedChunkRetriever {
+public class EncryptedChunkRetriever implements FileRetriever {
 
     private final byte[] chunkNonce, chunkAuth;
     private final int nOriginalFragments, nAllowedFailures;
     private final List<Multihash> fragmentHashes;
     private final Location nextChunk;
+    private Function getFile;
 
     public EncryptedChunkRetriever(byte[] chunkNonce, byte[] chunkAuth, List<Multihash> fragmentHashes, Location nextChunk, int nOriginalFragments, int nAllowedFailures) {
         this.chunkNonce = chunkNonce;
@@ -26,12 +27,10 @@ public class EncryptedChunkRetriever {
         this.nAllowedFailures = nAllowedFailures;
         this.fragmentHashes = fragmentHashes;
         this.nextChunk = nextChunk;
-        this.getFile = function(context, dataKey, len, setProgressPercentage) {
-            const stream = this;
-            return this.getChunkInputStream(context, dataKey, len, setProgressPercentage).then(function(chunk) {
-                return Promise.resolve(new LazyInputStreamCombiner(stream, context, dataKey, chunk, setProgressPercentage));
-            });
-        }
+        this.getFile = (context, dataKey, len, monitor) -> {
+            byte[] chunk = getChunkInputStream(context, dataKey, len, monitor);
+            return new LazyInputStreamCombiner(stream, context, dataKey, chunk, monitor);
+        };
     }
 
     public Location getNext() {
