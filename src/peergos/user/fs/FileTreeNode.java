@@ -267,7 +267,7 @@ public class FileTreeNode {
         if (target.hasChildByName(getFileProperties().name))
             return false;
         //make new FileTreeNode pointing to the same file, but with a different location
-        byte[] newMapKey = window.nacl.randomBytes(32);
+        byte[] newMapKey = TweetNaCl.securedRandom(32);
         SymmetricKey ourBaseKey = this.getKey();
         // a file baseKey is the key for the chunk, which hasn't changed, so this must stay the same
         SymmetricKey newBaseKey = this.isDirectory() ? SymmetricKey.random() : ourBaseKey;
@@ -283,19 +283,14 @@ public class FileTreeNode {
     }
 
     public boolean remove(UserContext context, FileTreeNode parent) {
-        var func = function() {
-            if (parent != null)
-                return parent.removeChild(this, context);
-            return Promise.resolve(true);
-        }.bind(this);
-        return func().then(function(res) {
-            return new RetrievedFilePointer(writableFilePointer(), pointer.fileAccess).remove(context);
-        });
+        if (parent != null)
+            parent.removeChild(this, context);
+        return new RetrievedFilePointer(writableFilePointer(), pointer.fileAccess).remove(context, null);
     }
 
-    public InputStream getInputStream(UserContext context, size, Consumer<Long> monitor) {
+    public InputStream getInputStream(UserContext context, long size, Consumer<Long> monitor) {
         SymmetricKey baseKey = pointer.filePointer.baseKey;
-        return pointer.fileAccess.retriever.getFile(context, baseKey, size, monitor)
+        return pointer.fileAccess.retriever.getFile(context, baseKey, size, monitor);
     }
 
     public FileProperties getFileProperties() {
@@ -303,5 +298,21 @@ public class FileTreeNode {
             return new FileProperties("/", 0, LocalDateTime.MIN, false, Optional.empty());
         SymmetricKey parentKey = this.getParentKey();
         return pointer.fileAccess.getFileProperties(parentKey);
+    }
+
+    public byte[] generateThumbnail(InputStream imageBlob, String fileName) {
+        byte[] data = new byte[20];
+        byte[] BMP = new byte[]{66, 77};
+        byte[] GIF = new byte[]{71, 73, 70};
+        byte[] JPEG = new byte[]{(byte)255, (byte)216};
+        byte[] PNG = new byte[]{(byte)137, 80, 78, 71, 13, 10, 26, 10};
+        if (!Arrays.equals(Arrays.copyOfRange(data, 0, BMP.length), BMP)
+                && !Arrays.equals(Arrays.copyOfRange(data, 0, GIF.length), GIF)
+                && !Arrays.equals(Arrays.copyOfRange(data, 0, PNG.length), PNG)
+                && !Arrays.equals(Arrays.copyOfRange(data, 0, 2), JPEG))
+            return new byte[0];
+        int width = 100, height = 100;
+	    //TODO
+        return new byte[0];
     }
 }

@@ -1,13 +1,9 @@
 package peergos.user.fs;
 
-import org.bouncycastle.util.Arrays;
 import peergos.crypto.SymmetricLink;
 import peergos.crypto.symmetric.SymmetricKey;
 import peergos.user.UserContext;
-import peergos.util.ByteArrayWrapper;
-import peergos.util.Serialize;
 
-import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 
@@ -46,15 +42,6 @@ public class FileAccess {
 
     public boolean removeFragments(UserContext userContext) {
         throw new IllegalStateException("Deprecated");
-    }
-
-
-
-    public static class  FileRetriever{
-        //todo
-        public void serialize(DataOutputStream dout) throws IOException {
-            throw new IllegalStateException("Unimplemented");
-        }
     }
 
 

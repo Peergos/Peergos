@@ -19,9 +19,9 @@ public class UserContext {
     public final String username;
     private final User user;
     private final SymmetricKey rootKey;
-    private final ContentAddressedStorage dhtClient;
-    private final CoreNode corenodeClient;
-    private final MerkleBTree btree;
+    public final ContentAddressedStorage dhtClient;
+    public final CoreNode corenodeClient;
+    public final MerkleBTree btree;
 
     private final Map<Object, Object> staticData = new HashMap<>();
     private final Set<String> usernames = new HashSet<>();
@@ -225,7 +225,7 @@ public class UserContext {
     public boolean sendWriteAccess(String targetUser) {
         // create sharing keypair and give it write access
         User sharing = User.random();
-        byte[] rootMapKey = window.nacl.randomBytes(32);
+        byte[] rootMapKey = TweetNaCl.securedRandom(32);
 
         // add a note to our static data so we know who we sent the private key to
         ReadableFilePointer friendRoot = new ReadableFilePointer(user, sharing, rootMapKey, SymmetricKey.random());
