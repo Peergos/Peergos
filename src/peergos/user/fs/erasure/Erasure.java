@@ -1,7 +1,7 @@
 package peergos.user.fs.erasure;
 
 import java.io.ByteArrayOutputStream;
-import java.util.Arrays;
+import java.util.*;
 
 public class Erasure {
 
@@ -47,6 +47,11 @@ public class Erasure {
     public static byte[] recombine(byte[][] encoded, int truncateTo, int originalBlobs, int allowedFailures)
     {
         return recombine(new GaloisField256(), encoded, truncateTo, originalBlobs, allowedFailures);
+    }
+
+    public static byte[] recombine(List<byte[]> encoded, int truncateTo, int originalBlobs, int allowedFailures)
+    {
+        return recombine(new GaloisField256(), encoded.toArray(new byte[0][]), truncateTo, originalBlobs, allowedFailures);
     }
 
     public static byte[] recombine(GaloisField f, byte[][] encoded, int truncateTo, int originalBlobs, int allowedFailures)

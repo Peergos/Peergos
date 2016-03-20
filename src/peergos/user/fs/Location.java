@@ -2,52 +2,37 @@ package peergos.user.fs;
 
 import peergos.crypto.UserPublicKey;
 import peergos.crypto.symmetric.SymmetricKey;
-import peergos.util.ByteArrayWrapper;
+import peergos.util.*;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.DataInputStream;
-import java.io.IOException;
-import java.util.Arrays;
-import java.util.stream.Stream;
+import java.io.*;
 
 public class Location {
     public static final int MAP_KEY_LENGTH = 32;
 
-    public final UserPublicKey ownerKey, writerKey;
+    public final UserPublicKey owner, writer;
     public final ByteArrayWrapper mapKey;
 
-    public Location(UserPublicKey ownerKey, UserPublicKey writerKey, ByteArrayWrapper mapKey) {
+    public Location(UserPublicKey owner, UserPublicKey writer, ByteArrayWrapper mapKey) {
         if (mapKey.data.length != MAP_KEY_LENGTH)
             throw  new IllegalArgumentException("map key length "+ mapKey.data.length +" is not "+ MAP_KEY_LENGTH);
-        this.ownerKey = ownerKey;
-        this.writerKey = writerKey;
+        this.owner = owner;
+        this.writer = writer;
         this.mapKey = mapKey;
     }
 
     public byte[] serialize() {
-
-        ByteArrayOutputStream bout = new ByteArrayOutputStream();
-        for (byte[] bytes: Arrays.asList(
-                ownerKey.serialize(),
-                writerKey.serialize(),
-                mapKey.data)) {
-                    try {
-                        bout.write(bytes);
-                    } catch (IOException ioe) {
-                        throw new IllegalStateException(ioe);
-                    }
-                }
-
-        return bout.toByteArray();
+        DataSink sink = new DataSink();
+        sink.writeArray(owner.getPublicKeys());
+        sink.writeArray(writer.getPublicKeys());
+        sink.writeArray(mapKey.data);
+        return sink.toByteArray();
     }
 
-    public ByteArrayWrapper encrypt(SymmetricKey key, ByteArrayWrapper nonce) {
-        byte[] bytes = key.encrypt(serialize(), nonce.data);
-        return new ByteArrayWrapper(bytes);
+    public byte[] encrypt(SymmetricKey key, byte[] nonce) {
+        return key.encrypt(serialize(), nonce);
     }
 
-    public static Location deserialize(DataInputStream din) throws IOException {
+    public static Location deserialize(DataInput din) throws IOException {
         UserPublicKey ownerKey = UserPublicKey.deserialize(din);
         UserPublicKey writerKey = UserPublicKey.deserialize(din);
         byte[] mapKey = new byte[MAP_KEY_LENGTH];
@@ -56,10 +41,8 @@ public class Location {
                 new ByteArrayWrapper(mapKey));
     }
 
-    public static Location decrypt(SymmetricKey fromKey, ByteArrayWrapper nonce, ByteArrayWrapper location) throws IOException {
-        byte[] bytes = fromKey.decrypt(location.data, nonce.data);
-        return Location.deserialize(
-                new DataInputStream(
-                        new ByteArrayInputStream(bytes)));
+    public static Location decrypt(SymmetricKey fromKey, byte[] nonce, byte[] location) throws IOException {
+        byte[] bytes = fromKey.decrypt(location, nonce);
+        return Location.deserialize(new DataSource(bytes));
     }
 }

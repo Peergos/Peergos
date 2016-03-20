@@ -278,7 +278,8 @@ public class FileTreeNode {
         FileAccess newAccess = pointer.fileAccess.copyTo(ourBaseKey, newBaseKey, newParentLocation, newParentParentKey, target.getEntryWriterKey(), newMapKey, context);
         // upload new metadatablob
         RetrievedFilePointer newRetrievedFilePointer = new RetrievedFilePointer(newRFP, newAccess);
-        FileTreeNode newFileTreeNode = new FileTreeNode(newRetrievedFilePointer, context.username, [], [], target.getEntryWriterKey());
+        FileTreeNode newFileTreeNode = new FileTreeNode(newRetrievedFilePointer, context.username,
+                Collections.EMPTY_SET, Collections.EMPTY_SET, target.getEntryWriterKey());
         return target.addLinkTo(newFileTreeNode, context);
     }
 

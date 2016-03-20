@@ -31,7 +31,7 @@ public interface PublicSigningKey {
 
     byte[] unsignMessage(byte[] signed);
 
-    void serialize(DataOutputStream dout) throws IOException;
+    void serialize(DataOutput dout) throws IOException;
 
     default byte[] toByteArray() {
         try {
@@ -42,15 +42,14 @@ public interface PublicSigningKey {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-
     }
 
     static PublicSigningKey fromByteArray(byte[] raw) throws IOException {
         return deserialize(new DataInputStream(new ByteArrayInputStream(raw)));
     }
 
-    static PublicSigningKey deserialize(DataInputStream din) throws IOException {
-        Type t = Type.byValue(din.read());
+    static PublicSigningKey deserialize(DataInput din) throws IOException {
+        Type t = Type.byValue(din.readUnsignedByte());
         switch (t) {
             case Ed25519:
                 byte[] key = new byte[32];

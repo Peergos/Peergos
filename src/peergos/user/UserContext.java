@@ -23,8 +23,8 @@ public class UserContext {
     public final CoreNode corenodeClient;
     public final MerkleBTree btree;
 
-    private final Map<Object, Object> staticData = new HashMap<>();
-    private final Set<String> usernames = new HashSet<>();
+    private final SortedMap<Object, Object> staticData = new TreeMap<>();
+    private Set<String> usernames;
     private FileTreeNode rootNode;
     private FileTreeNode sharingFolder;
 
@@ -38,7 +38,7 @@ public class UserContext {
     }
 
 
-    public void init() {
+    public void init() throws IOException {
         FileTreeNode.ROOT.clear();
         staticData.clear();
         this.rootNode = createFileTree();
@@ -49,7 +49,7 @@ public class UserContext {
                 for (FileTreeNode childNode: ourdirs) {
                     if (childNode.getFileProperties().name == "shared") {
                         sharingFolder = childNode;
-                        usernames = corenodeClient.fetchUsernames();
+                        usernames = corenodeClient.getAllUsernames().stream().collect(Collectors.toSet());
                     }
                 }
             }
@@ -62,7 +62,7 @@ public class UserContext {
         return usernames;
     }
 
-    public boolean isRegistered() {
+    public boolean isRegistered() throws IOException {
         return corenodeClient.getUsername(user.getPublicKeys()).equals(username);
     }
 
@@ -79,7 +79,7 @@ public class UserContext {
         System.out.println("claiming username: "+username);
         LocalDate now = LocalDate.now();
         // set claim expiry to two months from now
-        now.plusMonths(2)
+        now.plusMonths(2);
         String expiry = now.toString(); //YYYY-MM-DD
         List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createInitial(user, username, expiry);
         return corenodeClient.updateChain(username, claimChain);
@@ -456,7 +456,7 @@ public class UserContext {
         });
     };
 
-    public List<Fragment> downloadFragments(List<Multihash> hashes, Consumer<Double> setProgressPercentage) {
+    public List<Fragment> downloadFragments(List<Multihash> hashes, Consumer<Long> setProgressPercentage) {
         var result = {};
         result.fragments = [];
         result.nError = 0;

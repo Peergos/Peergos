@@ -19,7 +19,7 @@ public class UserPublicKey implements Comparable<UserPublicKey>
         this.publicBoxingKey = publicBoxingKey;
     }
 
-    public static UserPublicKey deserialize(DataInputStream din) {
+    public static UserPublicKey deserialize(DataInput din) {
         try {
             PublicSigningKey signingKey = PublicSigningKey.deserialize(din);
             PublicBoxingKey boxingKey = PublicBoxingKey.deserialize(din);
@@ -29,7 +29,7 @@ public class UserPublicKey implements Comparable<UserPublicKey>
         }
     }
 
-    public void serialize(DataOutputStream dout) throws IOException {
+    public void serialize(DataOutput dout) throws IOException {
         publicSigningKey.serialize(dout);
         publicBoxingKey.serialize(dout);
     }
@@ -51,6 +51,17 @@ public class UserPublicKey implements Comparable<UserPublicKey>
     public byte[] getPublicBoxingKey()
     {
         return publicBoxingKey.getPublicBoxingKey();
+    }
+
+    public byte[] getPublicKeys() {
+        try {
+            DataSink buf = new DataSink();
+            this.publicSigningKey.serialize(buf);
+            this.publicBoxingKey.serialize(buf);
+            return buf.toByteArray();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public byte[] encryptMessageFor(byte[] input, SecretBoxingKey ourSecretBoxingKey)

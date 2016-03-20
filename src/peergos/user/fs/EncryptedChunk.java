@@ -6,6 +6,7 @@ import peergos.user.fs.erasure.*;
 import peergos.util.*;
 
 import java.util.*;
+import java.util.stream.*;
 
 public class EncryptedChunk {
 
@@ -32,8 +33,8 @@ public class EncryptedChunk {
         return key.decrypt(ArrayOps.concat(this.auth, this.cipher), nonce);
     }
 
-    //EncryptedChunk.ALLOWED_ORIGINAL = [5, 10, 20, 40, 80];
-    //EncryptedChunk.ALLOWED_FAILURES = [5, 10, 20, 40, 80];
+    public static final Set<Integer> ALLOWED_ORIGINAL = Stream.of(5, 10, 20, 40, 80).collect(Collectors.toSet());
+    public static final Set<Integer> ALLOWED_FAILURES = Stream.of(5, 10, 20, 40, 80).collect(Collectors.toSet());
     public static final int ERASURE_ORIGINAL = 40; // mean 128 KiB fragments, could also use 80, 20, 10, 5
     public static final int ERASURE_ALLOWED_FAILURES = 10; // generates twice this extra fragments
 }

@@ -46,7 +46,7 @@ public class LazyInputStreamCombiner {
         return current.readByte();
     }
 
-    public void read(int len, byte[] res, int offset) throws IOException {
+    public byte[] read(int len, byte[] res, int offset) throws IOException {
         if (res == null) {
             res = new byte[(len;
             offset = 0;

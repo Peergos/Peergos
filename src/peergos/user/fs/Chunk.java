@@ -8,8 +8,8 @@ import java.security.SecureRandom;
 import java.util.Random;
 
 public class Chunk {
-    public static final long ERASURE_ORIGINAL= 40;
-    public static final long MAX_SIZE = Fragment.MAX_LENGTH * ERASURE_ORIGINAL;
+    public static final int ERASURE_ORIGINAL= 40;
+    public static final int MAX_SIZE = Fragment.MAX_LENGTH * ERASURE_ORIGINAL;
 
     private static final Random random = new SecureRandom();
 

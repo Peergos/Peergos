@@ -1,49 +1,55 @@
 package peergos.user.fs;
 
 import org.bouncycastle.util.Arrays;
+import peergos.crypto.*;
 import peergos.crypto.symmetric.SymmetricKey;
-import peergos.util.ByteArrayWrapper;
-import peergos.util.Serialize;
+import peergos.util.*;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
+import java.io.*;
 
-/**
- * Created by chrirs on 09/03/16.
- */
 public class SymmetricLocationLink {
-    public final ByteArrayWrapper link;
-    public final Location location;
+    public final byte[] link;
+    public final byte[] loc;
 
-    public SymmetricLocationLink(ByteArrayWrapper link, Location location) {
+    public SymmetricLocationLink(byte[] link, byte[] location) {
         this.link = link;
-        this.location = location;
+        this.loc = location;
     }
 
-
-    public static SymmetricLocationLink deserialize(DataInputStream din) throws IOException {
-        byte[] link = Serialize.deserializeByteArray(din, 0x1000);
-        Location location = Location.deserialize(din);
-        return new SymmetricLocationLink(
-                new ByteArrayWrapper(link), location);
+    public Location targetLocation(SymmetricKey from) throws IOException {
+        byte[] nonce = Arrays.copyOfRange(link, 0, TweetNaCl.SECRETBOX_NONCE_BYTES);
+        return Location.decrypt(from, nonce, loc);
     }
 
-    public void serialize(DataOutputStream dout) throws IOException {
-        dout.write(link.data);
-        dout.write(location.serialize());
+    public SymmetricKey target(SymmetricKey from) {
+        byte[] nonce = Arrays.copyOfRange(link, 0, TweetNaCl.SECRETBOX_NONCE_BYTES);
+        byte[] rest = Arrays.copyOfRange(link, TweetNaCl.SECRETBOX_NONCE_BYTES, link.length);
+        byte[] encoded = from.decrypt(rest, nonce);
+        return SymmetricKey.deserialize(encoded);
+    }
+
+    public byte[] serialize() {
+        DataSink buf = new DataSink();
+        buf.writeArray(link);
+        buf.writeArray(loc);
+        return buf.toByteArray();
+    }
+
+    public ReadableFilePointer toReadableFilePointer(SymmetricKey baseKey) throws IOException {
+       Location loc =  targetLocation(baseKey);
+       SymmetricKey key = target(baseKey);
+       return new ReadableFilePointer(loc.owner, loc.writer, loc.mapKey, key);
+    }
+
+    public static SymmetricLocationLink deserialize(byte[] raw) throws IOException {
+        DataSource source = new DataSource(raw);
+        return new SymmetricLocationLink(source.readArray(), source.readArray());
     }
 
     public static SymmetricLocationLink create(SymmetricKey fromKey, SymmetricKey toKey, Location location) {
-
-        ByteArrayWrapper nonce = new ByteArrayWrapper(
-                fromKey.createNonce());
-
-        byte[] bytes = fromKey.encrypt(toKey.toByteArray(), nonce.data);
-        byte[] link = Arrays.concatenate(nonce.data, bytes);
-
-        return new SymmetricLocationLink(
-                new ByteArrayWrapper(link),
-                location);
+        byte[] nonce = fromKey.createNonce();
+        byte[] loc = location.encrypt(fromKey, nonce);
+        byte[] link = ArrayOps.concat(nonce, fromKey.encrypt(toKey.serialize(), nonce));
+        return new SymmetricLocationLink(link, loc);
     }
 }

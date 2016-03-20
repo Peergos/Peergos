@@ -2337,12 +2337,6 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
     // Location, SymmetricKey, SymmetricKey
     this.addFile = function(location, ourSubfolders, targetParent) {
         const filesKey = this.subfolders2files.target(ourSubfolders);
-        var nonce = filesKey.createNonce();
-        var loc = location.encrypt(filesKey, nonce);
-        var link = concat(nonce, filesKey.encrypt(targetParent.serialize(), nonce));
-        var buf = new ByteArrayOutputStream();
-        buf.writeArray(link);
-        buf.writeArray(loc);
         this.files.push(SymmetricLocationLink.create(filesKey, targetParent, location));
     }.bind(this);
 
@@ -2585,7 +2579,7 @@ EncryptedChunkRetriever.deserialize = function(buf) {
         nextChunk = Location.deserialize(buf);
     var nOriginalFragments = buf.readInt();
     var nAllowedFailures = buf.readInt();
-    if (!EncryptedChunk.ALLOWED_ORIGINAL.includes(nOriginalFragments) || !EncryptedChunk.ALLOWED_FAILURES.includes()) {
+    if (!EncryptedChunk.ALLOWED_ORIGINAL.includes(nOriginalFragments) || !EncryptedChunk.ALLOWED_FAILURES.includes(nAllowedFailures)) {
 	// backwards compatible with when these were not included
 	buf.skip(-8);
 	nOriginalFragments = EncryptedChunk.ERASURE_ORIGINAL;

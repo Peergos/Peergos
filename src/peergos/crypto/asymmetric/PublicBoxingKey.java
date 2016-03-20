@@ -33,7 +33,7 @@ public interface PublicBoxingKey {
 
     byte[] createNonce();
 
-    void serialize(DataOutputStream dout) throws IOException;
+    void serialize(DataOutput dout) throws IOException;
 
     default byte[] toByteArray() {
         try {
@@ -50,8 +50,8 @@ public interface PublicBoxingKey {
         return deserialize(new DataInputStream(new ByteArrayInputStream(raw)));
     }
 
-    static PublicBoxingKey deserialize(DataInputStream din) throws IOException {
-        Type t = Type.byValue(din.read());
+    static PublicBoxingKey deserialize(DataInput din) throws IOException {
+        Type t = Type.byValue(din.readUnsignedByte());
         switch (t) {
             case Curve25519:
                 byte[] key = new byte[32];

@@ -18,7 +18,6 @@ public class EncryptedChunkRetriever implements FileRetriever {
     private final int nOriginalFragments, nAllowedFailures;
     private final List<Multihash> fragmentHashes;
     private final Location nextChunk;
-    private Function getFile;
 
     public EncryptedChunkRetriever(byte[] chunkNonce, byte[] chunkAuth, List<Multihash> fragmentHashes, Location nextChunk, int nOriginalFragments, int nAllowedFailures) {
         this.chunkNonce = chunkNonce;
@@ -27,10 +26,11 @@ public class EncryptedChunkRetriever implements FileRetriever {
         this.nAllowedFailures = nAllowedFailures;
         this.fragmentHashes = fragmentHashes;
         this.nextChunk = nextChunk;
-        this.getFile = (context, dataKey, len, monitor) -> {
-            byte[] chunk = getChunkInputStream(context, dataKey, len, monitor);
-            return new LazyInputStreamCombiner(stream, context, dataKey, chunk, monitor);
-        };
+    }
+
+    public LazyInputStreamCombiner getFile(UserContext context, SymmetricKey dataKey, long len, Consumer<Long> monitor) {
+        byte[] chunk = getChunkInputStream(context, dataKey, len, monitor);
+        return new LazyInputStreamCombiner(this, context, dataKey, chunk, monitor);
     }
 
     public Location getNext() {
@@ -40,7 +40,7 @@ public class EncryptedChunkRetriever implements FileRetriever {
     public byte[] getChunkInputStream(UserContext context, SymmetricKey dataKey, int len, Consumer<Long> monitor) {
         List<Fragment> fragments = context.downloadFragments(fragmentHashes, monitor);
         fragments = reorder(fragments, fragmentHashes);
-        byte[] cipherText = Erasure.recombine(fragments, len != 0 ? len : Chunk.MAX_SIZE, nOriginalFragments, nAllowedFailures);
+        byte[] cipherText = Erasure.recombine(fragments.stream().map(f -> f.data.data).collect(Collectors.toList()), len != 0 ? len : Chunk.MAX_SIZE, nOriginalFragments, nAllowedFailures);
         if (len != 0)
             cipherText = Arrays.copyOfRange(cipherText, 0, len);
         EncryptedChunk fullEncryptedChunk = new EncryptedChunk(ArrayOps.concat(chunkAuth, cipherText));
@@ -48,30 +48,30 @@ public class EncryptedChunkRetriever implements FileRetriever {
         return original;
     }
 
-    public void serialize(DataOutputStream buf) throws IOException {
-        buf.writeByte(1); // This class
+    public void serialize(DataSink buf) throws IOException {
+        buf.writeByte((byte)1); // This class
         buf.writeArray(chunkNonce);
         buf.writeArray(chunkAuth);
-        buf.writeArray(ArrayOps.concat(fragmentHashes));
-        buf.writeByte(this.nextChunk != null ? 1 : 0);
+        buf.writeArray(ArrayOps.concat(fragmentHashes.stream().map(h -> new ByteArrayWrapper(h.toBytes())).collect(Collectors.toList())));
+        buf.writeByte(this.nextChunk != null ? (byte)1 : 0);
         if (this.nextChunk != null)
             buf.write(this.nextChunk.serialize());
         buf.writeInt(this.nOriginalFragments);
         buf.writeInt(this.nAllowedFailures);
     }
 
-    public static EncryptedChunkRetriever deserialize(DataInputStream buf) {
+    public static EncryptedChunkRetriever deserialize(DataSource buf) throws IOException {
         byte[] chunkNonce = buf.readArray();
         byte[] chunkAuth = buf.readArray();
         byte[] concatFragmentHashes = buf.readArray();
-        List<byte[]> fragmentHashes = split(concatFragmentHashes, UserPublicKey.HASH_BYTES);
+        List<byte[]> fragmentHashes = split(concatFragmentHashes, Hash.HASH_BYTES);
         boolean hasNext = buf.readBoolean();
         Location nextChunk = null;
         if (hasNext)
             nextChunk = Location.deserialize(buf);
         int nOriginalFragments = buf.readInt();
         int nAllowedFailures = buf.readInt();
-        if (!EncryptedChunk.ALLOWED_ORIGINAL.includes(nOriginalFragments) || !EncryptedChunk.ALLOWED_FAILURES.includes()) {
+        if (!EncryptedChunk.ALLOWED_ORIGINAL.contains(nOriginalFragments) || !EncryptedChunk.ALLOWED_FAILURES.contains(nAllowedFailures)) {
             // backwards compatible with when these were not included
             buf.skip(-8);
             nOriginalFragments = EncryptedChunk.ERASURE_ORIGINAL;

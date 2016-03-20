@@ -10,8 +10,12 @@ import java.util.*;
 
 public class DirAccess extends FileAccess {
 
-    public DirAccess(SymmetricLink subfolders2files, SymmetricLink subfolders2parent, subfolders, files,
-                     SymmetricLink parent2meta, byte[] properties, FileRetriever retriever, SymmetricLocationLink parentLink) {
+    private final SymmetricLink subfolders2files, subfolders2parent;
+    private final List<SymmetricLocationLink> subfolders, files;
+
+    public DirAccess(SymmetricLink subfolders2files, SymmetricLink subfolders2parent, List<SymmetricLocationLink> subfolders,
+                     List<SymmetricLocationLink> files, SymmetricLink parent2meta, byte[] properties,
+                     FileRetriever retriever, SymmetricLocationLink parentLink) {
         super(parent2meta, properties, retriever, parentLink);
         this.subfolders2files = subfolders2files;
         this.subfolders2parent = subfolders2parent;
@@ -19,35 +23,27 @@ public class DirAccess extends FileAccess {
         this.files = files;
     }
 
-    public void serialize(DataOutputStream bout) {
+    public void serialize(DataSink bout) throws IOException {
         super.serialize(bout);
-        bout.writeArray(this.subfolders2parent.serialize());
-        bout.writeArray(this.subfolders2files.serialize());
+        bout.writeArray(subfolders2parent.serialize());
+        bout.writeArray(subfolders2files.serialize());
         bout.writeInt(0);
-        bout.writeInt(this.subfolders.length)
-        for (int i=0; i < this.subfolders.length; i++)
-            bout.writeArray(this.subfolders[i].serialize());
-        bout.writeInt(this.files.length)
-        for (int i=0; i < this.files.length; i++)
-            bout.writeArray(this.files[i].serialize());
+        bout.writeInt(this.subfolders.size());
+        subfolders.forEach(x -> bout.writeArray(x.serialize()));
+        bout.writeInt(this.files.size());
+        files.forEach(x -> bout.writeArray(x.serialize()));
     }
 
     // Location, SymmetricKey, SymmetricKey
     public void addFile(Location location, SymmetricKey ourSubfolders, SymmetricKey targetParent) {
-        const filesKey = this.subfolders2files.target(ourSubfolders);
-        var nonce = filesKey.createNonce();
-        var loc = location.encrypt(filesKey, nonce);
-        var link = concat(nonce, filesKey.encrypt(targetParent.serialize(), nonce));
-        var buf = new ByteArrayOutputStream();
-        buf.writeArray(link);
-        buf.writeArray(loc);
-        this.files.push(SymmetricLocationLink.create(filesKey, targetParent, location));
+        SymmetricKey filesKey = this.subfolders2files.target(ourSubfolders);
+        this.files.add(SymmetricLocationLink.create(filesKey, targetParent, location));
     }
 
     public boolean removeChild(RetrievedFilePointer childRetrievedPointer, ReadableFilePointer readablePointer, UserContext context) {
         if (childRetrievedPointer.fileAccess.isDirectory()) {
-            const newsubfolders = [];
-            for (var i=0; i < this.subfolders.length; i++) {
+            List<SymmetricLocationLink> newsubfolders = new ArrayList<>();
+            for (int i=0; i < this.subfolders.size(); i++) {
                 var target = this.subfolders[i].targetLocation(readablePointer.baseKey);
                 var keep = true;
                 if (arraysEqual(target.mapKey, childRetrievedPointer.filePointer.mapKey))
@@ -179,24 +175,23 @@ public class DirAccess extends FileAccess {
         });
     }
 
-    public static DirAccess deserialize(FileAccess base, DataInputStream bin) {
+    public static DirAccess deserialize(FileAccess base, DataSource bin) throws IOException {
         byte[] s2p = bin.readArray();
         byte[] s2f = bin.readArray();
 
         int nSharingKeys = bin.readInt();
-        var files = [], subfolders = [];
+        List<SymmetricLocationLink> files = new ArrayList<>(), subfolders = new ArrayList<>();
         int nsubfolders = bin.readInt();
         for (int i=0; i < nsubfolders; i++)
-            subfolders[i] = new SymmetricLocationLink(bin.readArray());
+            subfolders.add(SymmetricLocationLink.deserialize(bin.readArray()));
         int nfiles = bin.readInt();
         for (int i=0; i < nfiles; i++)
-            files[i] = new SymmetricLocationLink(bin.readArray());
-        return new DirAccess(new SymmetricLink(s2f),
-                new SymmetricLink(s2p),
+            files.add(SymmetricLocationLink.deserialize(bin.readArray()));
+        return new DirAccess(new SymmetricLink(s2f), new SymmetricLink(s2p),
                 subfolders, files, base.parent2meta, base.properties, base.retriever, base.parentLink);
     }
 
-    public static DirAccess create(SymmetricKey subfoldersKey, metadata, Location parentLocation, SymmetricKey parentParentKey, SymmetricKey parentKey) {
+    public static DirAccess create(SymmetricKey subfoldersKey, FileProperties metadata, Location parentLocation, SymmetricKey parentParentKey, SymmetricKey parentKey) {
         SymmetricKey metaKey = SymmetricKey.random();
         if (parentKey == null)
             parentKey = SymmetricKey.random();

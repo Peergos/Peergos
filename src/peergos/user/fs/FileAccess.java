@@ -9,19 +9,19 @@ import java.io.*;
 import java.util.*;
 
 public class FileAccess {
-    public final SymmetricLink parent2Meta;
-    public final byte[] fileProperties;
-    public final FileRetriever fileRetriever;
-    public final SymmetricLocationLink parentLink;
+    private final SymmetricLink parent2meta;
+    private final byte[] properties;
+    private final FileRetriever retriever;
+    private final SymmetricLocationLink parentLink;
 
     public FileAccess(SymmetricLink parent2Meta, byte[] fileProperties, FileRetriever fileRetriever, SymmetricLocationLink parentLink) {
-        this.parent2Meta = parent2Meta;
-        this.fileProperties = fileProperties;
-        this.fileRetriever = fileRetriever;
+        this.parent2meta = parent2Meta;
+        this.properties = fileProperties;
+        this.retriever = fileRetriever;
         this.parentLink = parentLink;
     }
 
-    public void serialize(DataOutputStream bout) throws IOException {
+    public void serialize(DataSink bout) throws IOException {
         bout.writeArray(parent2meta.serialize());
         bout.writeArray(properties);
         bout.writeByte(retriever != null ? 1 : 0);
@@ -50,30 +50,27 @@ public class FileAccess {
         return true;
     }
 
-    public FileProperties getFileProperties(SymmetricKey parentKey) {
-        byte[] nonce = slice(this.properties, 0, SymmetricKey.NONCE_BYTES);
-        byte[] cipher = slice(this.properties, SymmetricKey.NONCE_BYTES, this.properties.length);
-        return FileProperties.deserialize(this.getMetaKey(parentKey).decrypt(cipher, nonce));
+    public FileProperties getFileProperties(SymmetricKey parentKey) throws IOException {
+        byte[] nonce = Arrays.copyOfRange(properties, 0, TweetNaCl.SECRETBOX_NONCE_BYTES);
+        byte[] cipher = Arrays.copyOfRange(properties, TweetNaCl.SECRETBOX_NONCE_BYTES, this.properties.length);
+        return FileProperties.deserialize(getMetaKey(parentKey).decrypt(cipher, nonce));
     }
 
     public RetrievedFilePointer getParent(SymmetricKey parentKey, UserContext context) {
         if (this.parentLink == null)
             return null;
-        return context.retrieveAllMetadata([this.parentLink], parentKey).then(
-                function(res) {
-            RetrievedFilePointer retrievedFilePointer = res.map(function(entry) {
-                return new RetrievedFilePointer(entry[0],  entry[1]);
-            })[0];
-            return Promise.resolve(retrievedFilePointer);
-        })
+        Map<ReadableFilePointer, FileAccess> res = context.retrieveAllMetadata(Arrays.asList(parentLink), parentKey);
+        RetrievedFilePointer retrievedFilePointer = res.entrySet().stream()
+                .map(entry -> new RetrievedFilePointer(entry.getKey(),  entry.getValue())).findAny().get();
+        return retrievedFilePointer;
     }
 
     public boolean rename(ReadableFilePointer writableFilePointer, FileProperties newProps, UserContext context) {
         if (!writableFilePointer.isWritable())
-            throw "Need a writable pointer!";
+            throw new IllegalStateException("Need a writable pointer!");
         SymmetricKey metaKey;
         if (this.isDirectory()) {
-            SymmetricKey parentKey = this.subfolders2parent.target(writableFilePointer.baseKey);
+            SymmetricKey parentKey = subfolders2parent.target(writableFilePointer.baseKey);
             metaKey = this.getMetaKey(parentKey);
             byte[] metaNonce = metaKey.createNonce();
             DirAccess dira = new DirAccess(this.subfolders2files, this.subfolders2parent,
@@ -84,29 +81,29 @@ public class FileAccess {
         } else {
             metaKey = this.getMetaKey(writableFilePointer.baseKey);
             byte[] nonce = metaKey.createNonce();
-            FileAccess fa = new FileAccess(this.parent2meta, concat(nonce, metaKey.encrypt(newProps.serialize(), nonce)), this.retriever, this.parentLink);
+            FileAccess fa = new FileAccess(this.parent2meta, ArrayOps.concat(nonce, metaKey.encrypt(newProps.serialize(), nonce)), this.retriever, this.parentLink);
             return context.uploadChunk(fa, writableFilePointer.owner, writableFilePointer.writer, writableFilePointer.mapKey);
         }
     }
 
     public FileAccess copyTo(SymmetricKey baseKey, SymmetricKey newBaseKey, Location parentLocation, SymmetricKey parentparentKey,
-                  UserPublicKey entryWriterKey, byte[] newMapKey, UserContext context) {
+                  UserPublicKey entryWriterKey, byte[] newMapKey, UserContext context) throws IOException {
         if (!Arrays.equals(baseKey.serialize(), newBaseKey.serialize()))
             throw new IllegalStateException("FileAcess clone must have same base key as original!");
-        FileProperties props = this.getFileProperties(baseKey);
+        FileProperties props = getFileProperties(baseKey);
         FileAccess fa = FileAccess.create(newBaseKey, props, this.retriever, parentLocation, parentparentKey);
         context.uploadChunk(fa, context.user, entryWriterKey, newMapKey);
         return fa;
     }
 
     public static FileAccess deserialize(byte[] raw) throws IOException {
-        ByteArrayInputStream buf = new ByteArrayInputStream(raw);
+        DataSource buf = new DataSource(raw);
         byte[] p2m = buf.readArray();
         byte[] properties = buf.readArray();
         boolean hasRetreiver = buf.readBoolean();
         FileRetriever retriever =  hasRetreiver ? FileRetriever.deserialize(buf) : null;
         boolean hasParent = buf.readBoolean();
-        SymmetricLocationLink parentLink =  hasParent ? new SymmetricLocationLink(buf.readArray()) : null;
+        SymmetricLocationLink parentLink =  hasParent ? SymmetricLocationLink.deserialize(buf.readArray()) : null;
         byte type = buf.readByte();
         FileAccess fileAccess = new FileAccess(new SymmetricLink(p2m), properties, retriever, parentLink);
         switch(type) {
