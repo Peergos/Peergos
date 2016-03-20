@@ -17,7 +17,7 @@ import java.util.stream.*;
 
 public class UserContext {
     public final String username;
-    private final User user;
+    public final User user;
     private final SymmetricKey rootKey;
     public final ContentAddressedStorage dhtClient;
     public final CoreNode corenodeClient;
@@ -441,7 +441,7 @@ public class UserContext {
         return res;
     }
 
-    public getMetadata(Location loc) {
+    public FileAccess getMetadata(Location loc) {
         return btree.get(loc.writer.getPublicKeys(), loc.mapKey).then(function(blobHash) {
             return dhtClient.get(blobHash).then(function(raw) {
                 return Promise.resolve(FileAccess.deserialize(raw.data));

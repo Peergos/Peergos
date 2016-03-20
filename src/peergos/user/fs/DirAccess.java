@@ -6,12 +6,14 @@ import peergos.user.*;
 import peergos.util.*;
 
 import java.io.*;
+import java.time.*;
 import java.util.*;
+import java.util.stream.*;
 
 public class DirAccess extends FileAccess {
 
     private final SymmetricLink subfolders2files, subfolders2parent;
-    private final List<SymmetricLocationLink> subfolders, files;
+    private List<SymmetricLocationLink> subfolders, files;
 
     public DirAccess(SymmetricLink subfolders2files, SymmetricLink subfolders2parent, List<SymmetricLocationLink> subfolders,
                      List<SymmetricLocationLink> files, SymmetricLink parent2meta, byte[] properties,
@@ -40,36 +42,38 @@ public class DirAccess extends FileAccess {
         this.files.add(SymmetricLocationLink.create(filesKey, targetParent, location));
     }
 
-    public boolean removeChild(RetrievedFilePointer childRetrievedPointer, ReadableFilePointer readablePointer, UserContext context) {
+    public boolean removeChild(RetrievedFilePointer childRetrievedPointer, ReadableFilePointer readablePointer, UserContext context) throws IOException {
         if (childRetrievedPointer.fileAccess.isDirectory()) {
-            List<SymmetricLocationLink> newsubfolders = new ArrayList<>();
-            for (int i=0; i < this.subfolders.size(); i++) {
-                var target = this.subfolders[i].targetLocation(readablePointer.baseKey);
-                var keep = true;
-                if (arraysEqual(target.mapKey, childRetrievedPointer.filePointer.mapKey))
-                    if (arraysEqual(target.writer.getPublicKeys(), childRetrievedPointer.filePointer.writer.getPublicKeys()))
-                        if (arraysEqual(target.owner.getPublicKeys(), childRetrievedPointer.filePointer.owner.getPublicKeys()))
-                            keep = false;
-                if (keep)
-                    newsubfolders.push(this.subfolders[i]);
-            }
-            this.subfolders = newsubfolders;
+            this.subfolders = subfolders.stream().filter(e -> {
+                try {
+                    Location target = e.targetLocation(readablePointer.baseKey);
+                    boolean keep = true;
+                    if (Arrays.equals(target.mapKey, childRetrievedPointer.filePointer.mapKey))
+                        if (Arrays.equals(target.writer.getPublicKeys(), childRetrievedPointer.filePointer.writer.getPublicKeys()))
+                            if (Arrays.equals(target.owner.getPublicKeys(), childRetrievedPointer.filePointer.owner.getPublicKeys()))
+                                keep = false;
+                    return keep;
+                } catch (IOException f) {
+                    return false;
+                }
+            }).collect(Collectors.toList());
         } else {
-            const newfiles = [];
-            const filesKey = subfolders2files.target(readablePointer.baseKey)
-            for (var i=0; i < this.files.length; i++) {
-                var target = this.files[i].targetLocation(filesKey);
-                var keep = true;
-                if (arraysEqual(target.mapKey, childRetrievedPointer.filePointer.mapKey))
-                    if (arraysEqual(target.writer.getPublicKeys(), childRetrievedPointer.filePointer.writer.getPublicKeys()))
-                        if (arraysEqual(target.owner.getPublicKeys(), childRetrievedPointer.filePointer.owner.getPublicKeys()))
-                            keep = false;
-                if (keep)
-                    newfiles.push(this.files[i]);
-            }
-            this.files = newfiles;
+            files = files.stream().filter(e -> {
+            SymmetricKey filesKey = subfolders2files.target(readablePointer.baseKey);
+                try {
+                    Location target = e.targetLocation(filesKey);
+                    boolean keep = true;
+                    if (Arrays.equals(target.mapKey, childRetrievedPointer.filePointer.mapKey))
+                        if (Arrays.equals(target.writer.getPublicKeys(), childRetrievedPointer.filePointer.writer.getPublicKeys()))
+                            if (Arrays.equals(target.owner.getPublicKeys(), childRetrievedPointer.filePointer.owner.getPublicKeys()))
+                                keep = false;
+                    return keep;
+                } catch (IOException f) {
+                    return false;
+                }
+            }).collect(Collectors.toList());
         }
-        return context.uploadChunk(this, readablePointer.owner, readablePointer.writer, readablePointer.mapKey);
+        return context.uploadChunk(this, readablePointer.owner, (User) readablePointer.writer, readablePointer.mapKey, Collections.EMPTY_LIST);
     }
 
     // 0=FILE, 1=DIR
@@ -79,31 +83,18 @@ public class DirAccess extends FileAccess {
 
     // returns [RetrievedFilePointer]
     public Set<RetrievedFilePointer> getChildren(UserContext context, SymmetricKey baseKey) {
-        const prom1 = context.retrieveAllMetadata(this.subfolders, baseKey);
-        const prom2 = context.retrieveAllMetadata(this.files, this.subfolders2files.target(baseKey));
-        return Promise.all([prom1, prom2]).then(function(mapArr) {
-            const res = mapArr[0];
-            for (var i=0; i < mapArr[1].length; i++)
-                res.push(mapArr[1][i]);
-            const retrievedFilePointers = res.map(function(entry) {
-               return new RetrievedFilePointer(entry[0],  entry[1]);
-            })
-            return Promise.resolve(retrievedFilePointers);
-        })
+        Map<ReadableFilePointer, FileAccess> subdirs = context.retrieveAllMetadata(this.subfolders, baseKey);
+        Map<ReadableFilePointer, FileAccess> files = context.retrieveAllMetadata(this.files, this.subfolders2files.target(baseKey));
+        return Stream.concat(subdirs.entrySet().stream(), files.entrySet().stream())
+                .map(e -> new RetrievedFilePointer(e.getKey(), e.getValue()))
+                .collect(Collectors.toSet());
     }
 
     public Set<Location> getChildrenLocations(SymmetricKey baseKey) {
-        Set<Location> res = new HashSet<>();
-        for (var i=0; i < this.subfolders.length; i++) {
-            var subfolderLink = this.subfolders[i];
-            res.add(subfolderLink.targetLocation(baseKey));
-        }
         SymmetricKey filesKey = this.subfolders2files.target(baseKey);
-        for (int i=0; i < this.files.length; i++) {
-            var fileLink = this.files[i];
-            res.add(fileLink.targetLocation(filesKey));
-        }
-        return res;
+        return Stream.concat(subfolders.stream().map(d -> d.targetLocation(baseKey)),
+                files.stream().map(f -> f.targetLocation(filesKey)))
+                .collect(Collectors.toSet());
     }
 
     public SymmetricKey getParentKey(SymmetricKey subfoldersKey) {
@@ -115,64 +106,54 @@ public class DirAccess extends FileAccess {
     }
 
     //String, UserContext, User ->
-    public boolean mkdir(name, userContext, writer, ourMapKey, baseKey, optionalBaseKey, isSystemFolder) {
-        if (!(writer instanceof User))
-            throw "Can't modify a directory without write permission (writer must be a User)!";
-        const dirReadKey = optionalBaseKey != null ? optionalBaseKey : SymmetricKey.random();
-        const dirMapKey = window.nacl.randomBytes(32); // root will be stored under this in the core node
-        const ourParentKey = this.getParentKey(baseKey);
-        const ourLocation = new Location(userContext.user, writer, ourMapKey);
-        const dir = DirAccess.create(dirReadKey, new FileProperties(name, 0, Date.now(), (isSystemFolder == null || !isSystemFolder) ? 0 : 1), ourLocation, ourParentKey);
-        const that = this;
-        return userContext.uploadChunk(dir, userContext.user, writer, dirMapKey)
-                .then(function(success) {
-            if (success) {
-                that.addSubdir(new Location(userContext.user, writer, dirMapKey), baseKey, dirReadKey);
-                // now upload the changed metadata blob for dir
-                return userContext.uploadChunk(that, userContext.user, writer, ourMapKey).then(function(res) {
-                    return Promise.resolve(new ReadableFilePointer(userContext.user, writer, dirMapKey, dirReadKey));
-                });
-            }
-            return Promise.resolve(false);
-        });
+    public ReadableFilePointer mkdir(String name, UserContext userContext, User writer, byte[] ourMapKey,
+                                     SymmetricKey baseKey, SymmetricKey optionalBaseKey, boolean isSystemFolder) throws IOException {
+        SymmetricKey dirReadKey = optionalBaseKey != null ? optionalBaseKey : SymmetricKey.random();
+        byte[] dirMapKey = TweetNaCl.securedRandom(32); // root will be stored under this in the core node
+        SymmetricKey ourParentKey = this.getParentKey(baseKey);
+        Location ourLocation = new Location(userContext.user, writer, ourMapKey);
+        DirAccess dir = DirAccess.create(dirReadKey, new FileProperties(name, 0, LocalDateTime.now(), isSystemFolder, Optional.empty()), ourLocation, ourParentKey, null);
+        boolean success = userContext.uploadChunk(dir, userContext.user, writer, dirMapKey, Collections.EMPTY_LIST);
+        if (success) {
+            addSubdir(new Location(userContext.user, writer, dirMapKey), baseKey, dirReadKey);
+            // now upload the changed metadata blob for dir
+            userContext.uploadChunk(this, userContext.user, writer, ourMapKey, Collections.EMPTY_LIST);
+            return new ReadableFilePointer(userContext.user, writer, dirMapKey, dirReadKey);
+        }
+        throw new IllegalStateException("Couldn't upload directory metadata!");
     }
 
-    public boolean commit(UserPublicKey owner, UserPublicKey writer, byte[] ourMapKey, UserContext userContext) {
-        return userContext.uploadChunk(this, userContext.user, writer, ourMapKey)
+    public boolean commit(UserPublicKey owner, User writer, byte[] ourMapKey, UserContext userContext) throws IOException {
+        return userContext.uploadChunk(this, userContext.user, writer, ourMapKey, Collections.EMPTY_LIST);
     }
 
     public void addSubdir(Location location, SymmetricKey ourSubfolders, SymmetricKey targetBaseKey) {
-        this.subfolders.push(SymmetricLocationLink.create(ourSubfolders, targetBaseKey, location));
+        this.subfolders.add(SymmetricLocationLink.create(ourSubfolders, targetBaseKey, location));
     }
 
     public DirAccess copyTo(SymmetricKey baseKey, SymmetricKey newBaseKey, Location parentLocation,
-                            SymmetricKey parentparentKey, UserPublicKey entryWriterKey, byte[] newMapKey, UserContext context) {
-        const parentKey = this.getParentKey(baseKey);
-        const props = this.getFileProperties(parentKey);
-        const da = DirAccess.create(newBaseKey, props, this.retriever, parentLocation, parentparentKey, parentKey);
-        const ourNewParentKey = da.getParentKey(newBaseKey);
-        const ourNewLocation = new Location(context.user, entryWriterKey, newMapKey);
+                            SymmetricKey parentparentKey, User entryWriterKey, byte[] newMapKey, UserContext context) throws IOException {
+        SymmetricKey parentKey = getParentKey(baseKey);
+        FileProperties props = getFileProperties(parentKey);
+        DirAccess da = DirAccess.create(newBaseKey, props, retriever(), parentLocation, parentparentKey, parentKey);
+        SymmetricKey ourNewParentKey = da.getParentKey(newBaseKey);
+        Location ourNewLocation = new Location(context.user, entryWriterKey, newMapKey);
 
-        return this.getChildren(context, baseKey).then(function(RFPs) {
-            // upload new metadata blob for each child and re-add child
-            var proms = RFPs.map(function(rfp) {
-                var newChildBaseKey = rfp.fileAccess.isDirectory() ? SymmetricKey.random() : rfp.filePointer.baseKey;
-                var newChildMapKey = window.nacl.randomBytes(32);
-                var newChildLocation = new Location(context.user, entryWriterKey, newChildMapKey);
-                return rfp.fileAccess.copyTo(rfp.filePointer.baseKey, newChildBaseKey, ourNewLocation, ourNewParentKey, entryWriterKey, newChildMapKey, context).then(function(newChildFileAccess){
-                    if (newChildFileAccess.isDirectory())
-                        da.addSubdir(newChildLocation, newBaseKey, newChildBaseKey);
-                    else
-                        da.addFile(newChildLocation, newBaseKey, newChildBaseKey);
-                    return Promise.resolve(true);
-                });
-            });
-            return Promise.all(proms);
-        }).then(function(res) {
-            return context.uploadChunk(da, context.user, entryWriterKey, newMapKey).then(function(res) {
-                return Promise.resolve(da);
-            });
-        });
+        Set<RetrievedFilePointer> RFPs = this.getChildren(context, baseKey);
+        // upload new metadata blob for each child and re-add child
+        for (RetrievedFilePointer rfp: RFPs) {
+            SymmetricKey newChildBaseKey = rfp.fileAccess.isDirectory() ? SymmetricKey.random() : rfp.filePointer.baseKey;
+            byte[] newChildMapKey = TweetNaCl.securedRandom(32);
+            Location newChildLocation = new Location(context.user, entryWriterKey, newChildMapKey);
+            FileAccess newChildFileAccess = rfp.fileAccess.copyTo(rfp.filePointer.baseKey, newChildBaseKey,
+                    ourNewLocation, ourNewParentKey, entryWriterKey, newChildMapKey, context);
+            if (newChildFileAccess.isDirectory())
+                da.addSubdir(newChildLocation, newBaseKey, newChildBaseKey);
+            else
+                da.addFile(newChildLocation, newBaseKey, newChildBaseKey);
+        }
+        context.uploadChunk(da, context.user, entryWriterKey, newMapKey, Collections.EMPTY_LIST);
+        return da;
     }
 
     public static DirAccess deserialize(FileAccess base, DataSource bin) throws IOException {

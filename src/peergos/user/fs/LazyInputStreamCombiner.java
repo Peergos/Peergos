@@ -13,7 +13,6 @@ public class LazyInputStreamCombiner {
     private byte[] current;
     private int index;
     private Location next;
-    private final Function<Integer, byte[]> getNextStream;
 
     public LazyInputStreamCombiner(FileRetriever stream, UserContext context, SymmetricKey dataKey, byte[] chunk, Consumer<Long> monitor) {
         this.context = context;
@@ -22,15 +21,16 @@ public class LazyInputStreamCombiner {
         this.index = 0;
         this.next = stream.getNext();
         this.monitor = monitor;
-        this.getNextStream = len -> {
-            if (this.next != null) {
-                meta = context.getMetadata(this.next);
-                FileRetriever nextRet = meta.retriever;
-                next = nextRet.getNext();
-                return nextRet.getChunkInputStream(context, dataKey, len, monitor);
-            }
-            throw new IllegalStateException("End Of File!");
-        };
+    }
+
+    public byte[] getNextStream(int len) {
+        if (this.next != null) {
+            FileAccess meta = context.getMetadata(this.next);
+            FileRetriever nextRet = meta.retriever();
+            next = nextRet.getNext();
+            return nextRet.getChunkInputStream(context, dataKey, len, monitor);
+        }
+        throw new IllegalStateException("End Of File!");
     }
 
     public int bytesReady() {
@@ -41,14 +41,14 @@ public class LazyInputStreamCombiner {
         try {
             return this.current[this.index++];
         } catch (Exception e) {}
-        current = getNextStream.apply(-1);
+        current = getNextStream(-1);
         index = 0;
-        return current.readByte();
+        return current[index++];
     }
 
     public byte[] read(int len, byte[] res, int offset) throws IOException {
         if (res == null) {
-            res = new byte[(len;
+            res = new byte[len];
             offset = 0;
         }
         int available = bytesReady();
@@ -57,8 +57,8 @@ public class LazyInputStreamCombiner {
             res[offset + i] = readByte();
         if (available >= len)
             return res;
-        long nextSize = len - toRead > Chunk.MAX_SIZE ? Chunk.MAX_SIZE : (len-toRead) % Chunk.MAX_SIZE;
-        current = this.getNextStream.apply(nextSize);
+        int nextSize = len - toRead > Chunk.MAX_SIZE ? Chunk.MAX_SIZE : (len-toRead) % Chunk.MAX_SIZE;
+        current = this.getNextStream(nextSize);
         index = 0;
         return read(len-toRead, res, offset + toRead);
     }

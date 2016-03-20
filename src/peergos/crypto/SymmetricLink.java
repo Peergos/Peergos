@@ -37,4 +37,8 @@ public class SymmetricLink
         byte[] encoded = from.decrypt(link, nonce);
         return SymmetricKey.deserialize(encoded);
     }
+
+    public static SymmetricLink fromPair(SymmetricKey from, SymmetricKey to, byte[] nonce) {
+    return new SymmetricLink(ArrayOps.concat(nonce, from.encrypt(to.serialize(), nonce)));
+}
 }

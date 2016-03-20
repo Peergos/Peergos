@@ -65,6 +65,10 @@ public class FileAccess {
         return retrievedFilePointer;
     }
 
+    public FileRetriever retriever() {
+        return retriever;
+    }
+
     public boolean rename(ReadableFilePointer writableFilePointer, FileProperties newProps, UserContext context) {
         if (!writableFilePointer.isWritable())
             throw new IllegalStateException("Need a writable pointer!");
