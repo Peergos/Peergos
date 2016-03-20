@@ -38,6 +38,10 @@ public class UserPublicKey implements Comparable<UserPublicKey>
         return deserialize(new DataInputStream(new ByteArrayInputStream(raw)));
     }
 
+    public static UserPublicKey fromPublicKeys(byte[] raw) {
+        return fromByteArray(raw);
+    }
+
     public byte[] serialize()
     {
         return ArrayOps.concat(publicSigningKey.toByteArray(), publicBoxingKey.toByteArray());

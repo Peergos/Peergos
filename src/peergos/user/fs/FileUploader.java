@@ -41,26 +41,30 @@ public class FileUploader {
         this.nAllowedFalures = nAllowedFalures != -1 ? nAllowedFalures : EncryptedChunk.ERASURE_ALLOWED_FAILURES;
     }
 
-    public Location uploadChunk(UserContext context, UserPublicKey owner, UserPublicKey writer, long chunkIndex, File file, Location nextLocation) {
+    public Location uploadChunk(UserContext context, UserPublicKey owner, User writer, long chunkIndex, File file,
+                                Location nextLocation, Consumer<Long> monitor) throws IOException {
 	    System.out.println("uploading chunk: "+chunkIndex + " of "+file.getName());
-		byte[] data = file.slice(chunkIndex*Chunk.MAX_SIZE, Math.min((1+chunkIndex)*Chunk.MAX_SIZE, file.size));
-		Chunk chunk = new Chunk(data, key)
+        RandomAccessFile raf = new RandomAccessFile(file, "r");
+        raf.seek(chunkIndex*Chunk.MAX_SIZE);
+		byte[] data = new byte[(int)Math.min((1L+chunkIndex)*Chunk.MAX_SIZE-file.length(), Chunk.MAX_SIZE)];
+        raf.readFully(data);
+		Chunk chunk = new Chunk(data, key);
 		EncryptedChunk encryptedChunk = chunk.encrypt();
 		List<Fragment> fragments = encryptedChunk.generateFragments(nOriginalFragments, nAllowedFalures);
-        System.out.println("Uploading chunk with %d fragments\n", fragments.length);
-        List<Multihash> hashes = context.uploadFragments(fragments, owner, writer, chunk.mapKey, setProgressPercentage);
-        FileRetriever retriever = new EncryptedChunkRetriever(chunk.nonce, encryptedChunk.getAuth(), hashes, nextLocation, nOriginalFragments, nAllowedFalures);
-        FileAccess metaBlob = FileAccess.create(chunk.key, that.props, retriever, parentLocation, parentparentKey);
-        context.uploadChunk(metaBlob, owner, writer, chunk.mapKey, hashes);
-        Location nextL = new Location(owner, writer, chunk.mapKey);
+        System.out.printf("Uploading chunk with %d fragments\n", fragments.size());
+        List<Multihash> hashes = context.uploadFragments(fragments, owner, writer, chunk.mapKey(), monitor);
+        FileRetriever retriever = new EncryptedChunkRetriever(chunk.nonce(), encryptedChunk.getAuth(), hashes, nextLocation, nOriginalFragments, nAllowedFalures);
+        FileAccess metaBlob = FileAccess.create(chunk.key(), props, retriever, parentLocation, parentparentKey);
+        context.uploadChunk(metaBlob, owner, writer, chunk.mapKey(), hashes);
+        Location nextL = new Location(owner, writer, chunk.mapKey());
         if (chunkIndex > 0)
             return uploadChunk(context, owner, writer, chunkIndex-1, file, nextL, monitor);
         return nextL;
     }
 
-    public boolean upload(UserContext context, UserPublicKey owner, UserPublicKey writer) {
+    public Location upload(UserContext context, UserPublicKey owner, User writer) throws IOException {
         long t1 = System.currentTimeMillis();
-        boolean res =  this.uploadChunk(context, owner, writer, this.nchunks-1, this.file, null);
+        Location res = uploadChunk(context, owner, writer, this.nchunks-1, this.file, null, null);
         System.out.println("File encryption, erasure coding and upload took: " +(System.currentTimeMillis()-t1) + " mS");
         return res;
     }

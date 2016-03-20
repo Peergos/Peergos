@@ -327,54 +327,47 @@ public class UserContext {
                 rawKey.length > 0 ? SymmetricKey.deserialize(rawKey) : null, raw);
     }
 
-    public void uploadFragment(Fragment f, UserPublicKey targetUser) {
+    public Multihash uploadFragment(Fragment f, UserPublicKey targetUser) {
         return dhtClient.put(f.data, targetUser.getPublicKeys());
     }
 
-    public void uploadFragments(List<Fragment> fragments, UserPublicKey owner, UserPublicKey sharer, byte[] mapKey, Runnable progressCounter) {
+    public List<Multihash> uploadFragments(List<Fragment> fragments, UserPublicKey owner, UserPublicKey sharer, byte[] mapKey, Consumer<Long> progressCounter) {
         // now upload fragments to DHT
         for (int i=0; i < fragments.size(); i++){
-            if(progressCounter != null)
-                progressCounter.run();
             uploadFragment(fragments.get(i), owner);
+            if (progressCounter != null)
+                progressCounter.accept(1L);
         }
     }
 
-    public void uploadChunk(FileAccess metadata, UserPublicKey owner, UserPublicKey sharer, byte[] mapKey, byte[][] linkHashes) throws IOException {
-        ByteArrayOutputStream bout = new ByteArrayOutputStream();
-        DataOutputStream dout = new DataOutputStream(bout);
+    public boolean uploadChunk(FileAccess metadata, UserPublicKey owner, User sharer, byte[] mapKey, List<Multihash> linkHashes) throws IOException {
+        DataSink dout = new DataSink();
         metadata.serialize(dout);
-        byte[] metaBlob = bout.toByteArray();
+        byte[] metaBlob = dout.toByteArray();
         System.out.println("Storing metadata blob of " + metaBlob.length + " bytes. to mapKey: "+ArrayOps.bytesToHex(mapKey));
-        return dhtClient.put(metaBlob, owner.getPublicKeys(), linkHashes).then(function(blobHash){
-            return btree.put(sharer.getPublicKeys(), mapKey, blobHash).then(function(newBtreeRootCAS) {
-                var msg = newBtreeRootCAS;
-                var signed = sharer.signMessage(msg);
-                return corenodeClient.addMetadataBlob(owner.getPublicKeys(), sharer.getPublicKeys(), signed)
-                        .then(function(added) {
-                    if (!added) {
-                        System.out.println("Meta blob store failed.");
-                        return Promise.resolve(false);
-                    }
-                    return Promise.resolve(true);
-                })
-            })
-        })
+        byte[] blobHash = dhtClient.put(metaBlob, owner.getPublicKeys(), linkHashes);
+        byte[] newBtreeRootCAS = btree.put(sharer.getPublicKeys(), mapKey, blobHash);
+        byte[] signed = sharer.signMessage(newBtreeRootCAS);
+        boolean added =  corenodeClient.addMetadataBlob(owner.getPublicKeys(), sharer.getPublicKeys(), signed);
+        if (!added) {
+            System.out.println("Meta blob store failed.");
+            return false;
+        }
+        return true;
     }
 
     private byte[] getStaticData() {
-        return dhtClient.get(corenodeClient.getMetadataBlob(user));
+        return dhtClient.get(corenodeClient.getMetadataBlob(user.getPublicKeys()));
     }
 
-    private Map<EntryPoint, FileAcess> getRoots() throws IOException {
+    private Map<EntryPoint, FileAccess> getRoots() throws IOException {
         byte[] raw = getStaticData();
-        ByteArrayInputStream bin = new ByteArrayInputStream(raw);
-        DataInputStream din = new DataInputStream(bin);
+        DataSource source = new DataSource(raw);
 
-        int count = din.readInt();
+        int count = source.readInt();
         Set<EntryPoint> res = new HashSet<>();
         for (int i=0; i < count; i++) {
-            EntryPoint entry = EntryPoint.symmetricallyDecryptAndDeserialize(buf.readArray(), rootKey);
+            EntryPoint entry = EntryPoint.symmetricallyDecryptAndDeserialize(source.readArray(), rootKey);
             res.add(entry);
             addToStaticData(entry);
         }

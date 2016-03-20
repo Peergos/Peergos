@@ -10,11 +10,11 @@ public class Location {
     public static final int MAP_KEY_LENGTH = 32;
 
     public final UserPublicKey owner, writer;
-    public final ByteArrayWrapper mapKey;
+    public final byte[] mapKey;
 
-    public Location(UserPublicKey owner, UserPublicKey writer, ByteArrayWrapper mapKey) {
-        if (mapKey.data.length != MAP_KEY_LENGTH)
-            throw  new IllegalArgumentException("map key length "+ mapKey.data.length +" is not "+ MAP_KEY_LENGTH);
+    public Location(UserPublicKey owner, UserPublicKey writer, byte[] mapKey) {
+        if (mapKey.length != MAP_KEY_LENGTH)
+            throw  new IllegalArgumentException("map key length "+ mapKey.length +" is not "+ MAP_KEY_LENGTH);
         this.owner = owner;
         this.writer = writer;
         this.mapKey = mapKey;
@@ -24,7 +24,7 @@ public class Location {
         DataSink sink = new DataSink();
         sink.writeArray(owner.getPublicKeys());
         sink.writeArray(writer.getPublicKeys());
-        sink.writeArray(mapKey.data);
+        sink.writeArray(mapKey);
         return sink.toByteArray();
     }
 
@@ -37,8 +37,7 @@ public class Location {
         UserPublicKey writerKey = UserPublicKey.deserialize(din);
         byte[] mapKey = new byte[MAP_KEY_LENGTH];
         din.readFully(mapKey);
-        return new Location(ownerKey, writerKey,
-                new ByteArrayWrapper(mapKey));
+        return new Location(ownerKey, writerKey, mapKey);
     }
 
     public static Location decrypt(SymmetricKey fromKey, byte[] nonce, byte[] location) throws IOException {
