@@ -10,9 +10,9 @@ import java.util.*;
 
 public class FileAccess {
     protected final SymmetricLink parent2meta;
-    private final byte[] properties;
-    private final FileRetriever retriever;
-    private final SymmetricLocationLink parentLink;
+    protected final byte[] properties;
+    protected final FileRetriever retriever;
+    protected final SymmetricLocationLink parentLink;
 
     public FileAccess(SymmetricLink parent2Meta, byte[] fileProperties, FileRetriever fileRetriever, SymmetricLocationLink parentLink) {
         this.parent2meta = parent2Meta;
@@ -56,7 +56,7 @@ public class FileAccess {
         return FileProperties.deserialize(getMetaKey(parentKey).decrypt(cipher, nonce));
     }
 
-    public RetrievedFilePointer getParent(SymmetricKey parentKey, UserContext context) {
+    public RetrievedFilePointer getParent(SymmetricKey parentKey, UserContext context) throws IOException {
         if (this.parentLink == null)
             return null;
         Map<ReadableFilePointer, FileAccess> res = context.retrieveAllMetadata(Arrays.asList(parentLink), parentKey);

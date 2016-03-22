@@ -13,7 +13,7 @@ import java.util.stream.*;
 
 public class FileTreeNode {
 
-    public static final FileTreeNode ROOT = new FileTreeNode(null, null, Collections.EMPTY_SET, Collections.EMPTY_SET, null);
+    public static FileTreeNode ROOT = new FileTreeNode(null, null, Collections.EMPTY_SET, Collections.EMPTY_SET, null);
     RetrievedFilePointer pointer;
     Set<FileTreeNode> children = new HashSet<>();
     Map<String, FileTreeNode> childrenByName = new HashMap<>();
@@ -46,7 +46,7 @@ public class FileTreeNode {
         return pointer;
     }
 
-    public void addChild(FileTreeNode child) {
+    public void addChild(FileTreeNode child) throws IOException {
         String name = child.getFileProperties().name;
         if (childrenByName.containsKey(name)) {
             if (pointer != null) {
@@ -58,7 +58,7 @@ public class FileTreeNode {
         childrenByName.put(name, child);
     }
 
-    public Optional<FileTreeNode> getDescendentByPath(String path, UserContext context) {
+    public Optional<FileTreeNode> getDescendentByPath(String path, UserContext context) throws IOException {
         if (path.length() == 0)
             return Optional.of(this);
         if (path.startsWith("/"))
@@ -74,13 +74,13 @@ public class FileTreeNode {
         return Optional.empty();
     }
 
-    public void removeChild(FileTreeNode child, UserContext context) {
+    public void removeChild(FileTreeNode child, UserContext context) throws IOException {
         String name = child.getFileProperties().name;
         children.remove(childrenByName.remove(name));
         return pointer.fileAccess.removeChild(child.getPointer(), pointer.filePointer, context);
     }
 
-    public boolean addLinkTo(FileTreeNode file, UserContext context) {
+    public boolean addLinkTo(FileTreeNode file, UserContext context) throws IOException {
         if (!this.isDirectory())
             return false;
         if (!this.isWritable())
@@ -199,7 +199,7 @@ public class FileTreeNode {
         SymmetricKey fileKey = SymmetricKey.random();
         SymmetricKey rootRKey = pointer.filePointer.baseKey;
         UserPublicKey owner = pointer.filePointer.owner;
-        ByteArrayWrapper dirMapKey = pointer.filePointer.mapKey;
+        byte[] dirMapKey = pointer.filePointer.mapKey;
         UserPublicKey writer = pointer.filePointer.writer;
         FileAccess dirAccess = pointer.fileAccess;
         Location parentLocation = new Location(owner, writer, dirMapKey);
@@ -217,22 +217,22 @@ public class FileTreeNode {
         return !name.contains("/");
     }
 
-    public boolean mkdir(String newFolderName, UserContext context, SymmetricKey requestedBaseSymmetricKey, boolean isSystemFolder) {
+    public Optional<ReadableFilePointer> mkdir(String newFolderName, UserContext context, SymmetricKey requestedBaseSymmetricKey, boolean isSystemFolder) {
         if (!this.isDirectory())
-            return false;
+            return Optional.empty();
         if (!isLegalName(newFolderName))
-            return false;
+            return Optional.empty();
         if (childrenByName.containsKey(newFolderName)) {
             System.out.println("Child already exists with name: "+newFolderName);
-            return false;
+            return Optional.empty();
         }
         ReadableFilePointer dirPointer = pointer.filePointer;
         FileAccess dirAccess = pointer.fileAccess;
         SymmetricKey rootDirKey = dirPointer.baseKey;
-        return dirAccess.mkdir(newFolderName, context, entryWriterKey, dirPointer.mapKey, rootDirKey, requestedBaseSymmetricKey, isSystemFolder);
+        return Optional.of(dirAccess.mkdir(newFolderName, context, entryWriterKey, dirPointer.mapKey, rootDirKey, requestedBaseSymmetricKey, isSystemFolder));
     }
 
-    public boolean rename(String newName, UserContext context, FileTreeNode parent) {
+    public boolean rename(String newName, UserContext context, FileTreeNode parent) throws IOException {
         if (!this.isLegalName(newName))
             return false;
         if (parent != null && parent.hasChildByName(newName))
@@ -283,7 +283,7 @@ public class FileTreeNode {
         return target.addLinkTo(newFileTreeNode, context);
     }
 
-    public boolean remove(UserContext context, FileTreeNode parent) {
+    public boolean remove(UserContext context, FileTreeNode parent) throws IOException {
         if (parent != null)
             parent.removeChild(this, context);
         return new RetrievedFilePointer(writableFilePointer(), pointer.fileAccess).remove(context, null);
@@ -291,10 +291,10 @@ public class FileTreeNode {
 
     public InputStream getInputStream(UserContext context, long size, Consumer<Long> monitor) {
         SymmetricKey baseKey = pointer.filePointer.baseKey;
-        return pointer.fileAccess.retriever.getFile(context, baseKey, size, monitor);
+        return pointer.fileAccess.retriever().getFile(context, baseKey, size, monitor);
     }
 
-    public FileProperties getFileProperties() {
+    public FileProperties getFileProperties() throws IOException {
         if (pointer == null)
             return new FileProperties("/", 0, LocalDateTime.MIN, false, Optional.empty());
         SymmetricKey parentKey = this.getParentKey();

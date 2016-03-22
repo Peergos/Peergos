@@ -62,6 +62,10 @@ public class UserContext {
         return usernames;
     }
 
+    public FileTreeNode getSharingFolder() {
+        return sharingFolder;
+    }
+
     public boolean isRegistered() throws IOException {
         return corenodeClient.getUsername(user.getPublicKeys()).equals(username);
     }
@@ -85,18 +89,18 @@ public class UserContext {
         return corenodeClient.updateChain(username, claimChain);
     }
 
-    public RetrievedFilePointer createEntryDirectory(String directoryName) {
+    public RetrievedFilePointer createEntryDirectory(String directoryName) throws IOException {
         User writer = User.random();
         byte[] rootMapKey = TweetNaCl.securedRandom(32); // root will be stored under this in the core node
         SymmetricKey rootRKey = SymmetricKey.random();
 
         // and authorise the writer key
-        ReadableFilePointer rootPointer = new ReadableFilePointer(this.user, writer, new ByteArrayWrapper(rootMapKey), rootRKey);
-        EntryPoint entry = new EntryPoint(rootPointer, this.username, Arrays.asList(), Arrays.asList());
+        ReadableFilePointer rootPointer = new ReadableFilePointer(this.user, writer, rootMapKey, rootRKey);
+        EntryPoint entry = new EntryPoint(rootPointer, this.username, Collections.EMPTY_SET,Collections.EMPTY_SET);
 
         addToStaticDataAndCommit(entry);
-        DirAccess root = DirAccess.create(rootRKey, new FileProperties(directoryName, 0, LocalDateTime.now(), false, Optional.empty()));
-        boolean uploaded = this.uploadChunk(root, this.user, writer, rootMapKey, new byte[0][]);
+        DirAccess root = DirAccess.create(rootRKey, new FileProperties(directoryName, 0, LocalDateTime.now(), false, Optional.empty()), null, null, null);
+        boolean uploaded = this.uploadChunk(root, this.user, writer, rootMapKey, Collections.EMPTY_LIST);
         if (uploaded)
             return new RetrievedFilePointer(rootPointer, root);
         throw new IllegalStateException("Failed to create entry directory!");
@@ -107,7 +111,15 @@ public class UserContext {
     }
 
     public Set<String> getFollowers() {
-        return getSharingFolder().getChildren(this).stream().map(f -> f.getFileProperties().name).sorted(UserContext::humanSort).collect();
+        return getSharingFolder().getChildren(this).stream()
+                .flatMap(f -> {
+                    try {
+                        return Stream.of(f.getFileProperties().name);
+                    } catch (IOException e) {
+                        return Stream.empty();
+                    }
+                })
+                .sorted(UserContext::humanSort).collect(Collectors.toSet());
     }
 
     private static int humanSort(String a, String b) {
@@ -115,7 +127,7 @@ public class UserContext {
     }
 
     public Set<String> getFollowing() {
-        return getFriendRoots().stream().map(froot -> froot.getOwner()).filter(name -> !name.equals(username));
+        return getFriendRoots().stream().map(froot -> froot.getOwner()).filter(name -> !name.equals(username)).collect(Collectors.toSet());
     }
 
     Map<String, FileTreeNode> getFollowerRoots() {
@@ -123,73 +135,67 @@ public class UserContext {
     }
 
     public SocialState getSocialState() {
-        return this.getFollowRequests().then(function(pending) {
-            return getFollowerRoots().then(function(followerRoots) {
-                return getFriendRoots().then(function(followingRoots) {
-                    return Promise.resolve(new SocialState(pending, followerRoots, followingRoots));
-                })
-            })
-        })
+        Set<FollowRequest> pending = getFollowRequests();
+        Map<String, FileTreeNode> followerRoots = getFollowerRoots();
+        Set<FileTreeNode> followingRoots = getFriendRoots();
+        return new SocialState(pending, followerRoots, followingRoots);
     }
 
-    public boolean sendInitialFollowRequest(String targetUsername) {
+    public boolean sendInitialFollowRequest(String targetUsername) throws IOException {
         return sendFollowRequest(targetUsername, SymmetricKey.random());
     }
 
     // FollowRequest, boolean, boolean
     public boolean sendReplyFollowRequest(FollowRequest initialRequest, boolean accept, boolean reciprocate) throws IOException {
-        String theirUsername = initialRequest.entry.owner;
+        String theirUsername = initialRequest.entry.get().owner;
         // if accept, create directory to share with them, note in entry points (they follow us)
         if (!accept) {
             // send a null entry and null key (full rejection)
 
-            ByteArrayOutputStream bout = new ByteArrayOutputStream();
-            DataOutputStream dout = new DataOutputStream(bout);
+            DataSink dout = new DataSink();
             // write a null entry point
             EntryPoint entry = new EntryPoint(ReadableFilePointer.createNull(), username, Collections.EMPTY_SET, Collections.EMPTY_SET);
             dout.writeArray(entry.serialize());
             dout.writeArray(new byte[0]); // tell them we're not reciprocating
-            byte[] plaintext = bout.toByteArray();
-            UserPublicKey targetUser = initialRequest.entry.pointer.owner;
+            byte[] plaintext = dout.toByteArray();
+            UserPublicKey targetUser = initialRequest.entry.get().pointer.owner;
             // create a tmp keypair whose public key we can prepend to the request without leaking information
             User tmp = User.random();
             byte[] payload = targetUser.encryptMessageFor(plaintext, tmp.secretBoxingKey);
 
-            corenodeClient.followRequest(initialRequest.entry.pointer.owner.getPublicKeys(), concat(tmp.pBoxKey, payload));
+            corenodeClient.followRequest(initialRequest.entry.get().pointer.owner.getPublicKeys(), ArrayOps.concat(tmp.publicBoxingKey, payload));
             // remove pending follow request from them
-            return corenodeClient.removeFollowRequest(context.user.getPublicKeys(), context.user.signMessage(initialRequest.rawCipher));
+            return corenodeClient.removeFollowRequest(user.getPublicKeys(), user.signMessage(initialRequest.rawCipher));
         }
-        friendRoot = getSharingFolder().mkdir(theirUsername, context, initialRequest.key);
+        ReadableFilePointer friendRoot = getSharingFolder().mkdir(theirUsername, this, initialRequest.key.get(), true);
         // add a note to our static data so we know who we sent the read access to
-        EntryPoint entry = new EntryPoint(friendRoot.readOnly(), context.username, [theirUsername], []);
-        UserPublicKey targetUser = initialRequest.entry.pointer.owner;
+        EntryPoint entry = new EntryPoint(friendRoot.readOnly(), username, Stream.of(theirUsername).collect(Collectors.toSet()), Collections.EMPTY_SET);
+        UserPublicKey targetUser = initialRequest.entry.get().pointer.owner;
         addToStaticDataAndCommit(entry);
         // create a tmp keypair whose public key we can prepend to the request without leaking information
         User tmp = User.random();
-        ByteArrayOutputStream bout = new ByteArrayOutputStream();
-        DataOutputStream dout = new DataOutputStream(bout);
+        DataSink dout = new DataSink();
         dout.writeArray(entry.serialize());
         if (! reciprocate) {
-            dout.writeArray(new Uint8Array(0)); // tell them we're not reciprocating
+            dout.writeArray(new byte[0]); // tell them we're not reciprocating
         } else {
             // if reciprocate, add entry point to their shared dirctory (we follow them) and then
-            dout.writeArray(initialRequest.entry.pointer.baseKey.serialize()); // tell them we are reciprocating
+            dout.writeArray(initialRequest.entry.get().pointer.baseKey.serialize()); // tell them we are reciprocating
         }
-        byte[] plaintext = bout.toByteArray();
+        byte[] plaintext = dout.toByteArray();
         byte[] payload = targetUser.encryptMessageFor(plaintext, tmp.secretBoxingKey);
 
-        ByteArrayOutputStream rout = new ByteArrayOutputStream();
-        DataOutputStream resp = new DataOutputStream(rout);
+        DataSink resp = new DataSink();
         resp.writeArray(tmp.getPublicKeys());
         resp.writeArray(payload);
-        corenodeClient.followRequest(initialRequest.entry.pointer.owner.getPublicKeys(), rout.toByteArray());
+        corenodeClient.followRequest(initialRequest.entry.get().pointer.owner.getPublicKeys(), resp.toByteArray());
         addToStaticDataAndCommit(initialRequest.entry.get());
         // remove original request
         return corenodeClient.removeFollowRequest(user.getPublicKeys(), user.signMessage(initialRequest.rawCipher));
     }
 
     // string, RetrievedFilePointer, SymmetricKey
-    public boolean sendFollowRequest(String targetUsername, SymmetricKey requestedKey) {
+    public boolean sendFollowRequest(String targetUsername, SymmetricKey requestedKey) throws IOException {
         FileTreeNode sharing = getSharingFolder();
         Set<FileTreeNode> children = sharing.getChildren(this);
         boolean alreadyFollowed = children.stream().filter(f -> f.getFileProperties().name.equals(targetUsername)).findAny().isPresent();
@@ -202,24 +208,24 @@ public class UserContext {
             return false;
 
         UserPublicKey targetUser = corenodeClient.getPublicKey(targetUsername);
-        FileTreeNode friendRoot = sharing.mkdir(targetUsername, that);
+        FileTreeNode friendRoot = sharing.mkdir(targetUsername, this);
 
         // add a note to our static data so we know who we sent the read access to
-        EntryPoint entry = new EntryPoint(friendRoot.readOnly(), that.username, [targetUsername], []);
+        EntryPoint entry = new EntryPoint(friendRoot.readOnly(), username, Stream.of(targetUsername).collect(Collectors.toSet()), Collections.EMPTY_SET);
         addToStaticDataAndCommit(entry);
         // send details to allow friend to follow us, and optionally let us follow them
         // create a tmp keypair whose public key we can prepend to the request without leaking information
         User tmp = User.random();
-        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        DataSink buf = new DataSink();
         buf.writeArray(entry.serialize());
         buf.writeArray(requestedKey != null ? requestedKey.serialize() : new byte[0]);
         byte[] plaintext = buf.toByteArray();
-        byte[] payload = targetUser.encryptMessageFor(plaintext, tmp.sBoxKey);
+        byte[] payload = targetUser.encryptMessageFor(plaintext, tmp.secretBoxingKey);
 
-        ByteArrayOutputStream bout = new ByteArrayOutputStream();
+        DataSink res = new DataSink();
         res.writeArray(tmp.getPublicKeys());
         res.writeArray(payload);
-        return corenodeClient.followRequest(targetUser.getPublicKeys(), bout.toByteArray());
+        return corenodeClient.followRequest(targetUser.getPublicKeys(), res.toByteArray());
     };
 
     public boolean sendWriteAccess(String targetUser) {
@@ -229,15 +235,13 @@ public class UserContext {
 
         // add a note to our static data so we know who we sent the private key to
         ReadableFilePointer friendRoot = new ReadableFilePointer(user, sharing, rootMapKey, SymmetricKey.random());
-        return corenodeClient.getUsername(targetUser.getPublicKeys()).then(function(name) {
-            EntryPoint entry = new EntryPoint(friendRoot, username, [], [name]);
-            return addToStaticDataAndCommit(entry).then(function(res) {
-                // create a tmp keypair whose public key we can append to the request without leaking information
-                User tmp = User.random();
-                byte[] payload = entry.serializeAndEncrypt(tmp, targetUser);
-                return corenodeClient.followRequest(targetUser.getPublicKeys(), concat(tmp.pBoxKey, payload));
-            })
-        })
+        String name = corenodeClient.getUsername(targetUser.getPublicKeys());
+        EntryPoint entry = new EntryPoint(friendRoot, username, Collections.EMPTY_SET, Stream.of(name).collect(Collectors.toSet()));
+        addToStaticDataAndCommit(entry);
+        // create a tmp keypair whose public key we can append to the request without leaking information
+        User tmp = User.random();
+        byte[] payload = entry.serializeAndEncrypt(tmp, targetUser);
+        return corenodeClient.followRequest(targetUser.getPublicKeys(), ArrayOps.concat(tmp.publicBoxingKey, payload));
     }
 
     public boolean addToStaticData(EntryPoint entry) {
@@ -248,20 +252,20 @@ public class UserContext {
         return true;
     }
 
-    public void addToStaticDataAndCommit(EntryPoint entry) {
+    public void addToStaticDataAndCommit(EntryPoint entry) throws IOException {
         addToStaticData(entry);
         commitStaticData();
     }
 
     private boolean commitStaticData() throws IOException {
         byte[] rawStatic = serializeStatic();
-        Multihash blobash = dhtClient.put(rawStatic, user.getPublicKeys());
+        Multihash blobHash = dhtClient.put(rawStatic, user.getPublicKeys());
         byte[] currentHash = corenodeClient.getMetadataBlob(user.getPublicKeys());
-        ByteArrayOutputStream bout = new ByteArrayOutputStream();
+        DataSink bout = new DataSink();
         bout.writeArray(currentHash);
-        bout.writeArray(blobHash);
+        bout.writeArray(blobHash.toBytes());
         byte[] signed = user.signMessage(bout.toByteArray());
-        boolean added = corenodeClient.addMetadataBlob(user.getPublicKeys(), user.getPublicKeys(), signed);
+        boolean added = corenodeClient.setMetadataBlob(user.getPublicKeys(), user.getPublicKeys(), signed);
         if (!added) {
             System.out.println("Static data store failed.");
             return false;
@@ -269,65 +273,63 @@ public class UserContext {
         return true;
     }
 
-    private boolean removeFromStaticData(FileTreeNode fileTreeNode) {
-        var pointer = fileTreeNode.getPointer().filePointer;
+    private boolean removeFromStaticData(FileTreeNode fileTreeNode) throws IOException {
+        ReadableFilePointer pointer = fileTreeNode.getPointer().filePointer;
         // find and remove matching entry point
-        for (int i=0; i < this.staticData.length; i++)
+        for (int i=0; i < this.staticData.size(); i++)
             if (this.staticData[i][1].pointer.equals(pointer)) {
                 this.staticData.splice(i, 1);
-                return this.commitStaticData();
+                return commitStaticData();
             }
         return true;
     };
 
-    public Set<FollowRequest> getFollowRequests() {
-        return corenodeClient.getFollowRequests(user.getPublicKeys()).then(function(reqs){
-            var all = reqs.map(decodeFollowRequest);
-            return getFollowerRoots().then(function(followerRoots) {
-                var initialRequests = all.filter(function(freq){
-                    if (followerRoots[freq.entry.owner] != null) {
-                        // delete our folder if they didn't reciprocate
-                        var ourDirForThem = followerRoots[freq.entry.owner];
-                        var ourKeyForThem = ourDirForThem.getKey().serialize();
-                        var keyFromResponse = freq.key == null ? null : freq.key.serialize();
-                        if (keyFromResponse == null || !arraysEqual(keyFromResponse, ourKeyForThem)) {
-                            ourDirForThem.remove(that, getSharingFolder());
-                            // remove entry point as well
-                            that.removeFromStaticData(ourDirForThem);
-                            // clear their response follow req too
-                            corenodeClient.removeFollowRequest(that.user.getPublicKeys(), that.user.signMessage(freq.rawCipher));
-                        } else // add new entry to tree root
-                            that.downloadEntryPoints([freq.entry]).then(function(treenode) {
-                            that.getAncestorsAndAddToTree(treenode, that);
-                        });
-                        // add entry point to static data
-                        if (!arraysEqual(freq.entry.pointer.baseKey.serialize(), SymmetricKey.createNull().serialize()))
-                            that.addToStaticDataAndCommit(freq.entry).then(function(res) {
-                            return corenodeClient.removeFollowRequest(that.user.getPublicKeys(), that.user.signMessage(freq.rawCipher));
-                        });
-                        return false;
-                    }
-                    return followerRoots[freq.entry.owner] == null;
-                });
-                return Promise.resolve(initialRequests);
-            })
-        })
+    public Set<FollowRequest> getFollowRequests() throws IOException {
+        byte[] reqs = corenodeClient.getFollowRequests(user.getPublicKeys());
+        DataSource din = new DataSource(reqs);
+        int n = din.readInt();
+        List<FollowRequest> all = IntStream.range(0, n).mapToObj(decodeFollowRequest(din.readArray()));
+        Map<String, FileTreeNode> followerRoots = getFollowerRoots();
+        List<FollowRequest> initialRequests = all.stream().filter(freq -> {
+            if (followerRoots[freq.entry.get().owner] != null) {
+                // delete our folder if they didn't reciprocate
+                FileTreeNode ourDirForThem = followerRoots[freq.entry.get().owner];
+                byte[] ourKeyForThem = ourDirForThem.getKey().serialize();
+                byte[] keyFromResponse = freq.key == null ? null : freq.key.serialize();
+                if (keyFromResponse == null || !arraysEqual(keyFromResponse, ourKeyForThem)) {
+                    ourDirForThem.remove(this, getSharingFolder());
+                    // remove entry point as well
+                    removeFromStaticData(ourDirForThem);
+                    // clear their response follow req too
+                    corenodeClient.removeFollowRequest(user.getPublicKeys(), user.signMessage(freq.rawCipher));
+                } else // add new entry to tree root
+                    treeode = downloadEntryPoints(Arrays.asList(freq.entry.get())).stream().findAny().get();
+                getAncestorsAndAddToTree(treenode, this);
+                // add entry point to static data
+                if (!Arrays.equals(freq.entry.get().pointer.baseKey.serialize(), SymmetricKey.createNull().serialize())) {
+                    addToStaticDataAndCommit(freq.entry.get());
+                    return corenodeClient.removeFollowRequest(user.getPublicKeys(), user.signMessage(freq.rawCipher));
+                }
+                return false;
+            }
+            return followerRoots[freq.entry.get().owner] == null;
+        });
+        return initialRequests;
     }
 
-    private FollowRequest decodeFollowRequest(byte[] raw) {
-        ByteArrayInputStream bin = new ByteArrayInputStream(raw);
-        DataInputStream buf = new DataInputStream(bin);
-        UserPublicKey tmp = UserPublicKey.deserialize(new ByteArrayInputStream(Serialize.deserializeByteArray(buf, 4096)));
+    private FollowRequest decodeFollowRequest(byte[] raw) throws IOException {
+        DataSource buf = new DataSource(raw);
+        UserPublicKey tmp = UserPublicKey.deserialize(new DataSource(Serialize.deserializeByteArray(buf, 4096)));
         byte[] cipher = buf.readArray();
         byte[] plaintext = user.decryptMessage(cipher, tmp.publicBoxingKey);
-        ByteArrayInputStream input = new ByteArrayInputStream(plaintext);
+        DataSource input = new DataSource(plaintext);
         byte[] rawEntry = input.readArray();
         byte[] rawKey = input.readArray();
         return new FollowRequest(rawEntry.length > 0 ? EntryPoint.deserialize(rawEntry) : null,
                 rawKey.length > 0 ? SymmetricKey.deserialize(rawKey) : null, raw);
     }
 
-    public Multihash uploadFragment(Fragment f, UserPublicKey targetUser) {
+    public Multihash uploadFragment(Fragment f, UserPublicKey targetUser) throws IOException {
         return dhtClient.put(f.data, targetUser.getPublicKeys());
     }
 
@@ -348,7 +350,7 @@ public class UserContext {
         byte[] blobHash = dhtClient.put(metaBlob, owner.getPublicKeys(), linkHashes);
         byte[] newBtreeRootCAS = btree.put(sharer.getPublicKeys(), mapKey, blobHash);
         byte[] signed = sharer.signMessage(newBtreeRootCAS);
-        boolean added =  corenodeClient.addMetadataBlob(owner.getPublicKeys(), sharer.getPublicKeys(), signed);
+        boolean added =  corenodeClient.setMetadataBlob(owner.getPublicKeys(), sharer.getPublicKeys(), signed);
         if (!added) {
             System.out.println("Meta blob store failed.");
             return false;
@@ -375,7 +377,7 @@ public class UserContext {
         return downloadEntryPoints(res);
     }
 
-    private Map<EntryPoint, FileAccess> downloadEntryPoints(Set<EntryPoint> entries) {
+    private Map<EntryPoint, FileAccess> downloadEntryPoints(Set<EntryPoint> entries) throws IOException {
         // download the metadata blobs for these entry points
         Map<EntryPoint, FileAccess> res = new HashMap<>();
         for (EntryPoint entry: entries) {
@@ -391,11 +393,16 @@ public class UserContext {
 
     public FileTreeNode getUserRoot() {
         FileTreeNode root = getTreeRoot();
-        Set<FileTreeNode> children = root.getChildren();
+        Set<FileTreeNode> children = root.getChildren(this);
 
         if (children.size() == 0)
             throw new IllegalStateException("no children in user root!");
-        List<FileTreeNode> userRoots = children.stream().filter(e -> e.getFileProperties().name.equals(username)).collect(Collectors.toList());
+        List<FileTreeNode> userRoots = children.stream()
+                .filter(e -> { try {
+            return e.getFileProperties().name.equals(username);
+        } catch (IOException ioe) {
+            return false;
+        }}).collect(Collectors.toList());
         if (userRoots.size() != 1)
             throw new IllegalStateException("user has "+ userRoots.size() +" roots!");
         return userRoots.get(0);
@@ -406,18 +413,18 @@ public class UserContext {
             // don't need to add our own files this way, as we'll find them going down from our root
             if (treeNode.getOwner() == username && !treeNode.isWritable())
                 return;
-            FileTreeNode parent = treeNode.retrieveParent(this);
-            if (parent == null)
+            Optional<FileTreeNode> parent = treeNode.retrieveParent(this);
+            if (!parent.isPresent())
                 return;
-            parent.addChild(treeNode);
-            getAncestorsAndAddToTree(parent);
+            parent.get().addChild(treeNode);
+            getAncestorsAndAddToTree(parent.get());
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    private FileTreeNode createFileTree() {
-        Map<EntryPoint, FileAcess> roots = getRoots();
+    private FileTreeNode createFileTree() throws IOException {
+        Map<EntryPoint, FileAccess> roots = getRoots();
         Set<FileTreeNode> entrypoints = roots.entrySet().stream()
                 .map(e -> new FileTreeNode(new RetrievedFilePointer(e.getKey().pointer, e.getValue()), e.getKey().owner,
                         e.getKey().readers, e.getKey().writers, e.getKey().pointer.writer)).collect(Collectors.toSet());
@@ -430,7 +437,7 @@ public class UserContext {
         return globalRoot;
     }
 
-    public Map<ReadableFilePointer, FileAccess> retrieveAllMetadata(List<SymmetricLocationLink> links, SymmetricKey baseKey) {
+    public Map<ReadableFilePointer, FileAccess> retrieveAllMetadata(List<SymmetricLocationLink> links, SymmetricKey baseKey) throws IOException {
         Map<ReadableFilePointer, FileAccess> res = new HashMap<>();
         for (SymmetricLocationLink link: links) {
             Location loc = link.targetLocation(baseKey);
@@ -441,67 +448,43 @@ public class UserContext {
         return res;
     }
 
-    public FileAccess getMetadata(Location loc) {
-        return btree.get(loc.writer.getPublicKeys(), loc.mapKey).then(function(blobHash) {
-            return dhtClient.get(blobHash).then(function(raw) {
-                return Promise.resolve(FileAccess.deserialize(raw.data));
-            });
-        });
+    public FileAccess getMetadata(Location loc) throws IOException {
+        Multihash blobHash = btree.get(loc.writer.getPublicKeys(), loc.mapKey);
+        byte[] raw = dhtClient.get(blobHash.toBytes());
+        return FileAccess.deserialize(raw);
     };
 
-    public List<Fragment> downloadFragments(List<Multihash> hashes, Consumer<Long> setProgressPercentage) {
-        var result = {};
-        result.fragments = [];
-        result.nError = 0;
-
-        var proms = [];
-        for (var i=0; i < hashes.length; i++)
-            proms.push(dhtClient.get(hashes[i]).then(function(val) {
-            result.fragments.push(val);
-            //System.out.println("Got Fragment.");
-            if(setProgressPercentage != null){
-                if(downloadFragmentTotal != 0){
-                    var percentage = parseInt(++downloadFragmentCounter / downloadFragmentTotal * 100);
-                    setProgressPercentage(percentage);
-                    //document.title = "Peergos Downloading: " + percentage + "%" ;
-                }
-            }
-        }).catch(function() {
-            result.nError++;
-        }));
-
-        return Promise.all(proms).then(function (all) {
-            System.out.println("All done.");
-            //if (result.fragments.length < nRequired)
-            //    throw "Not enough fragments!";
-            return Promise.resolve(result.fragments);
-        });
+    public List<Fragment> downloadFragments(List<Multihash> hashes, Consumer<Long> monitor) {
+        return hashes.stream()
+                .map(h -> {
+                    Fragment f = new Fragment(new ByteArrayWrapper(dhtClient.get(h.toBytes())));
+                    monitor.accept(1L);
+                    return f;
+                })
+                .collect(Collectors.toList());
     }
 
-    public void unfollow(String username) {
+    public void unfollow(String username) throws IOException {
         System.out.println("Unfollowing: "+username);
         // remove entry point from static data
-        FileTreeNode.ROOT.getDescendentByPath("/"+username+"/shared/"+username).then(function(dir) {
-            // remove our static data entry storing that we've granted them access
-            that.removeFromStaticData(dir);
-        });
-        FileTreeNode.ROOT.getDescendentByPath("/"+username).then(function(dir) {
-            dir.remove(that, FileTreeNode.ROOT);
-        })
+        Optional<FileTreeNode> dir = FileTreeNode.ROOT.getDescendentByPath("/"+username+"/shared/"+username, this);
+        // remove our static data entry storing that we've granted them access
+        removeFromStaticData(dir.get());
+        Optional<FileTreeNode> entry = FileTreeNode.ROOT.getDescendentByPath("/"+username, this);
+        entry.get().remove(this, FileTreeNode.ROOT);
     }
 
-    public void removeFollower(String username) {
+    public void removeFollower(String username) throws IOException {
         System.out.println("Remove follower: " + username);
         // remove /$us/shared/$them
-        FileTreeNode.ROOT.getDescendentByPath("/"+username+"/shared/"+username).then(function(dir) {
-            dir.remove(that, getSharingFolder());
-            // remove our static data entry storing that we've granted them access
-            that.removeFromStaticData(dir);
-        })
+        Optional<FileTreeNode> dir = FileTreeNode.ROOT.getDescendentByPath("/"+username+"/shared/"+username, this);
+        dir.get().remove(this, getSharingFolder());
+        // remove our static data entry storing that we've granted them access
+        removeFromStaticData(dir.get());
     }
 
     public void logout() {
         rootNode = null;
-        FileTreeNode.ROOT = new FileTreeNode(null, null, [], [], null);
+        FileTreeNode.ROOT = new FileTreeNode(null, null, Collections.EMPTY_SET, Collections.EMPTY_SET, null);
     }
 }
