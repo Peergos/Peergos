@@ -36,7 +36,22 @@ public class DirAccess extends FileAccess {
         files.forEach(x -> bout.writeArray(x.serialize()));
     }
 
-    // Location, SymmetricKey, SymmetricKey
+    public boolean rename(ReadableFilePointer writableFilePointer, FileProperties newProps, UserContext context) throws IOException {
+        if (!writableFilePointer.isWritable())
+            throw new IllegalStateException("Need a writable pointer!");
+        SymmetricKey metaKey;
+        SymmetricKey parentKey = subfolders2parent.target(writableFilePointer.baseKey);
+        metaKey = this.getMetaKey(parentKey);
+        byte[] metaNonce = metaKey.createNonce();
+        DirAccess dira = new DirAccess(this.subfolders2files, this.subfolders2parent,
+                this.subfolders, this.files, this.parent2meta,
+                ArrayOps.concat(metaNonce, metaKey.encrypt(newProps.serialize(), metaNonce)),
+                null,
+
+        );
+        return context.uploadChunk(dira, writableFilePointer.owner, (User)writableFilePointer.writer, writableFilePointer.mapKey, Collections.EMPTY_LIST);
+    }
+
     public void addFile(Location location, SymmetricKey ourSubfolders, SymmetricKey targetParent) {
         SymmetricKey filesKey = this.subfolders2files.target(ourSubfolders);
         this.files.add(SymmetricLocationLink.create(filesKey, targetParent, location));

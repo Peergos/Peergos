@@ -9,7 +9,7 @@ import java.io.*;
 import java.util.*;
 
 public class FileAccess {
-    private final SymmetricLink parent2meta;
+    protected final SymmetricLink parent2meta;
     private final byte[] properties;
     private final FileRetriever retriever;
     private final SymmetricLocationLink parentLink;
@@ -69,29 +69,18 @@ public class FileAccess {
         return retriever;
     }
 
-    public boolean rename(ReadableFilePointer writableFilePointer, FileProperties newProps, UserContext context) {
+    public boolean rename(ReadableFilePointer writableFilePointer, FileProperties newProps, UserContext context) throws IOException {
         if (!writableFilePointer.isWritable())
             throw new IllegalStateException("Need a writable pointer!");
         SymmetricKey metaKey;
-        if (this.isDirectory()) {
-            SymmetricKey parentKey = subfolders2parent.target(writableFilePointer.baseKey);
-            metaKey = this.getMetaKey(parentKey);
-            byte[] metaNonce = metaKey.createNonce();
-            DirAccess dira = new DirAccess(this.subfolders2files, this.subfolders2parent,
-                    this.subfolders, this.files, this.parent2meta,
-                    ArrayOps.concat(metaNonce, metaKey.encrypt(newProps.serialize(), metaNonce))
-            );
-            return context.uploadChunk(dira, writableFilePointer.owner, writableFilePointer.writer, writableFilePointer.mapKey);
-        } else {
-            metaKey = this.getMetaKey(writableFilePointer.baseKey);
-            byte[] nonce = metaKey.createNonce();
-            FileAccess fa = new FileAccess(this.parent2meta, ArrayOps.concat(nonce, metaKey.encrypt(newProps.serialize(), nonce)), this.retriever, this.parentLink);
-            return context.uploadChunk(fa, writableFilePointer.owner, writableFilePointer.writer, writableFilePointer.mapKey);
-        }
+        metaKey = this.getMetaKey(writableFilePointer.baseKey);
+        byte[] nonce = metaKey.createNonce();
+        FileAccess fa = new FileAccess(this.parent2meta, ArrayOps.concat(nonce, metaKey.encrypt(newProps.serialize(), nonce)), this.retriever, this.parentLink);
+        return context.uploadChunk(fa, writableFilePointer.owner, (User) writableFilePointer.writer, writableFilePointer.mapKey);
     }
 
     public FileAccess copyTo(SymmetricKey baseKey, SymmetricKey newBaseKey, Location parentLocation, SymmetricKey parentparentKey,
-                  UserPublicKey entryWriterKey, byte[] newMapKey, UserContext context) throws IOException {
+                  User entryWriterKey, byte[] newMapKey, UserContext context) throws IOException {
         if (!Arrays.equals(baseKey.serialize(), newBaseKey.serialize()))
             throw new IllegalStateException("FileAcess clone must have same base key as original!");
         FileProperties props = getFileProperties(baseKey);

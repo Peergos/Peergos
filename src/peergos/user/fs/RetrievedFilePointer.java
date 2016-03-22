@@ -3,6 +3,7 @@ package peergos.user.fs;
 import peergos.crypto.*;
 import peergos.user.*;
 
+import java.io.*;
 import java.util.*;
 
 public class RetrievedFilePointer {
@@ -24,26 +25,27 @@ public class RetrievedFilePointer {
         return filePointer.equals(((RetrievedFilePointer)that).filePointer);
     }
 
-    public boolean remove(UserContext context, RetrievedFilePointer parentRetrievedFilePointer) {
+    public boolean remove(UserContext context, RetrievedFilePointer parentRetrievedFilePointer) throws IOException {
         if (!this.filePointer.isWritable())
             return false;
         if (!this.fileAccess.isDirectory()) {
             return this.fileAccess.removeFragments(context);
             byte[] treeRootHashCAS = context.btree.remove(this.filePointer.writer.getPublicKeys(), this.filePointer.mapKey);
-            byte[] signed = this.filePointer.writer.signMessage(treeRootHashCAS);
-            context.corenodeClient.addMetadataBlob(this.filePointer.owner.getPublicKeys(), this.filePointer.writer.getPublicKeys(), signed);
+            byte[] signed = ((User)filePointer.writer).signMessage(treeRootHashCAS);
+            context.corenodeClient.setMetadataBlob(this.filePointer.owner.getPublicKeys(), this.filePointer.writer.getPublicKeys(), signed);
             // remove from parent
             if (parentRetrievedFilePointer != null)
-                parentRetrievedFilePointer.fileAccess.removeChild(this, parentRetrievedFilePointer.filePointer, context);
+                ((DirAccess)parentRetrievedFilePointer.fileAccess).removeChild(this, parentRetrievedFilePointer.filePointer, context);
         }
-        Set<FileTreeNode> files = fileAccess.getChildren(context, this.filePointer.baseKey);
-        files.forEach(f -> f.remove(context, null));
+        Set<RetrievedFilePointer> files = ((DirAccess)fileAccess).getChildren(context, this.filePointer.baseKey);
+        for (RetrievedFilePointer file: files)
+            file.remove(context, null);
         byte[] treeRootHashCAS = context.btree.remove(this.filePointer.writer.getPublicKeys(), this.filePointer.mapKey);
-        byte[] signed = this.filePointer.writer.signMessage(treeRootHashCAS);
-        return context.corenodeClient.addMetadataBlob(this.filePointer.owner.getPublicKeys(), this.filePointer.writer.getPublicKeys(), signed);
+        byte[] signed = ((User)filePointer.writer).signMessage(treeRootHashCAS);
+        return context.corenodeClient.setMetadataBlob(this.filePointer.owner.getPublicKeys(), this.filePointer.writer.getPublicKeys(), signed);
         // remove from parent
         if (parentRetrievedFilePointer != null)
-            parentRetrievedFilePointer.fileAccess.removeChild(this, parentRetrievedFilePointer.filePointer, context);
+            ((DirAccess)parentRetrievedFilePointer.fileAccess).removeChild(this, parentRetrievedFilePointer.filePointer, context);
     }
 
     public RetrievedFilePointer withWriter(UserPublicKey writer) {
