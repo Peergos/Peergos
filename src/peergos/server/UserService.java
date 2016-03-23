@@ -13,6 +13,7 @@ import java.io.*;
 import java.net.*;
 import java.security.*;
 import java.security.cert.*;
+import java.util.Map;
 import java.util.concurrent.*;
 import java.util.logging.Logger;
 
@@ -137,11 +138,19 @@ public class UserService
         }
 
         server.createContext(DHT_URL, new DHTHandler(dht));
-        server.createContext(BTREE_URL, new BTreeHandler(coreNode, dht));
         server.createContext(SIGNUP_URL, new InverseProxyHandler("demo.peergos.net"));
         server.createContext(ACTIVATION_URL, new InverseProxyHandler("demo.peergos.net"));
         server.createContext(UI_URL, new StaticHandler(UI_DIR, false));
         server.createContext(HTTPCoreNodeServer.CORE_URL, new HTTPCoreNodeServer.CoreNodeHandler(coreNode));
+
+        BTreeHandlers bTreeHandlers = new BTreeHandlers(coreNode, dht);
+
+        bTreeHandlers.handlerMap()
+                .entrySet()
+                .stream()
+                .forEach(e -> server.createContext(e.getKey(), e.getValue()));
+
+
         server.setExecutor(Executors.newFixedThreadPool(THREADS));
         server.start();
 

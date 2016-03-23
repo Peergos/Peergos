@@ -905,7 +905,6 @@ function BTree() {
 	if (value.length == 0)
 	    throw "Invalid multihash in btree put: length = 0";
 	var buffer = new ByteArrayOutputStream();
-	buffer.writeInt(0); // PUT
         buffer.writeArray(sharingKey);
         buffer.writeArray(mapKey);
         buffer.writeArray(value);
@@ -924,7 +923,6 @@ function BTree() {
 
     this.get = function(sharingKey, mapKey) {
 	var buffer = new ByteArrayOutputStream();
-	buffer.writeInt(1); // GET
         buffer.writeArray(sharingKey);
         buffer.writeArray(mapKey);
         return postProm("btree/get", buffer.toByteArray()).then(function(res) {
@@ -942,7 +940,6 @@ function BTree() {
 
     this.remove = function(sharingKey, mapKey) {
 	var buffer = new ByteArrayOutputStream();
-	buffer.writeInt(2); // DELETE
         buffer.writeArray(sharingKey);
         buffer.writeArray(mapKey);
         return postProm("btree/delete", buffer.toByteArray()).then(function(res) {
