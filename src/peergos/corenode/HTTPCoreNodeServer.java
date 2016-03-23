@@ -1,5 +1,6 @@
 package peergos.corenode;
 
+import org.ipfs.api.Multihash;
 import peergos.crypto.*;
 
 import java.net.*;
@@ -7,6 +8,7 @@ import java.io.*;
 import java.util.*;
 
 import com.sun.net.httpserver.*;
+import peergos.server.merklebtree.MaybeMultihash;
 import peergos.util.Args;
 import peergos.util.Serialize;
 
@@ -178,7 +180,10 @@ public class HTTPCoreNodeServer
             byte[] ownerPublicKey = deserializeByteArray(din);
             byte[] encodedSharingPublicKey = deserializeByteArray(din);
             byte[] signedPayload = deserializeByteArray(din);
-            boolean isAdded = coreNode.setMetadataBlob(ownerPublicKey, encodedSharingPublicKey, signedPayload);
+            boolean isAdded = coreNode.setMetadataBlob(
+                    UserPublicKey.fromByteArray(ownerPublicKey),
+                    UserPublicKey.fromByteArray(encodedSharingPublicKey),
+                    signedPayload);
             dout.writeBoolean(isAdded);
         }
 
@@ -186,20 +191,21 @@ public class HTTPCoreNodeServer
         {
             byte[] encodedWriterPublicKey = deserializeByteArray(din);
             byte[] signedPayload = deserializeByteArray(din);
-            boolean isAdded = coreNode.removeMetadataBlob(encodedWriterPublicKey, signedPayload);
+            boolean isAdded = coreNode.removeMetadataBlob(
+                    UserPublicKey.fromByteArray(encodedWriterPublicKey),
+                    signedPayload);
             dout.writeBoolean(isAdded);
         }
 
         void getMetadataBlob(DataInputStream din, DataOutputStream dout) throws IOException
         {
             byte[] encodedSharingKey = deserializeByteArray(din);
-            byte[] b = coreNode.getMetadataBlob(encodedSharingKey);
-            if (b == null)
-            {
-                Serialize.serialize(new byte[0], dout);
-                return;
-            }
-            Serialize.serialize(b, dout);
+            Multihash metadataBlob = coreNode.getMetadataBlob(
+                    UserPublicKey.fromByteArray(encodedSharingKey));
+
+            boolean isPresent = metadataBlob != null;
+            MaybeMultihash maybeMultihash = isPresent ? MaybeMultihash.of(metadataBlob) : MaybeMultihash.EMPTY();
+            maybeMultihash.serialize(dout);
         }
 
         public void close() throws IOException{

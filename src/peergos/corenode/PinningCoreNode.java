@@ -53,9 +53,8 @@ public class PinningCoreNode implements CoreNode {
     }
 
     @Override
-    public boolean setMetadataBlob(byte[] ownerPublicKey, byte[] encodedSharingPublicKey, byte[] sharingKeySignedBtreeRootHashes) throws IOException {
+    public boolean setMetadataBlob(UserPublicKey ownerPublicKey, UserPublicKey signer, byte[] sharingKeySignedBtreeRootHashes) throws IOException {
         // first pin new root
-        UserPublicKey signer = UserPublicKey.fromByteArray(encodedSharingPublicKey);
         byte[] message = signer.unsignMessage(sharingKeySignedBtreeRootHashes);
         DataInputStream din = new DataInputStream(new ByteArrayInputStream(message));
         byte[] rawOldRoot = Serialize.deserializeByteArray(din, 256);
@@ -63,7 +62,7 @@ public class PinningCoreNode implements CoreNode {
         Multihash newRoot = new Multihash(Serialize.deserializeByteArray(din, 256));
         if (!storage.recursivePin(newRoot))
             return false;
-        boolean b = target.setMetadataBlob(ownerPublicKey, encodedSharingPublicKey, sharingKeySignedBtreeRootHashes);
+        boolean b = target.setMetadataBlob(ownerPublicKey, signer, sharingKeySignedBtreeRootHashes);
         if (!b)
             return false;
         // unpin old root
@@ -71,16 +70,15 @@ public class PinningCoreNode implements CoreNode {
     }
 
     @Override
-    public boolean removeMetadataBlob(byte[] encodedSharingPublicKey, byte[] sharingKeySignedMapKeyPlusBlob) throws IOException {
+    public boolean removeMetadataBlob(UserPublicKey sharer, byte[] sharingKeySignedMapKeyPlusBlob) throws IOException {
         // first pin new root
-        UserPublicKey signer = UserPublicKey.fromByteArray(encodedSharingPublicKey);
-        byte[] message = signer.unsignMessage(sharingKeySignedMapKeyPlusBlob);
+        byte[] message = sharer.unsignMessage(sharingKeySignedMapKeyPlusBlob);
         DataInputStream din = new DataInputStream(new ByteArrayInputStream(message));
         Multihash oldRoot = new Multihash(Serialize.deserializeByteArray(din, 256));
         Multihash newRoot = new Multihash(Serialize.deserializeByteArray(din, 256));
         if (!storage.recursivePin(newRoot))
             return false;
-        boolean b = target.removeMetadataBlob(encodedSharingPublicKey, sharingKeySignedMapKeyPlusBlob);
+        boolean b = target.removeMetadataBlob(sharer, sharingKeySignedMapKeyPlusBlob);
         if (!b)
             return false;
         // unpin old root
@@ -88,7 +86,7 @@ public class PinningCoreNode implements CoreNode {
     }
 
     @Override
-    public byte[] getMetadataBlob(byte[] encodedSharingKey) {
+    public Multihash getMetadataBlob(UserPublicKey encodedSharingKey) {
         return target.getMetadataBlob(encodedSharingKey);
     }
 

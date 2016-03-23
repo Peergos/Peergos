@@ -1,6 +1,7 @@
 package peergos.server.net;
 
 import com.sun.net.httpserver.*;
+import org.ipfs.api.Multihash;
 import peergos.corenode.*;
 import peergos.crypto.*;
 import peergos.server.merklebtree.*;
@@ -28,9 +29,9 @@ public class BTreeHandlers
             byte[] mapKey = Serialize.deserializeByteArray(din, 64);
             System.out.println("Get mapkey: "+new ByteArrayWrapper(mapKey));
             try {
-                byte[] rootHash = core.getMetadataBlob(sharingKey);
+                Multihash rootHash = core.getMetadataBlob(UserPublicKey.fromByteArray(sharingKey));
                 MerkleBTree btree = MerkleBTree.create(rootHash, dht);
-                byte[] value = btree.get(mapKey);
+                byte[] value = btree.get(mapKey).toBytes();
                 new GetSuccess(httpExchange).accept(value);
             } catch (Exception e) {
                 e.printStackTrace();
@@ -50,14 +51,16 @@ public class BTreeHandlers
                 byte[] value = Serialize.deserializeByteArray(din, ContentAddressedStorage.MAX_OBJECT_LENGTH);
                 System.out.println("Put mapkey: " + new ByteArrayWrapper(mapKey) + " -> " + new ByteArrayWrapper(value));
                 try {
-                    byte[] raw = core.getMetadataBlob(sharingKey);
-                    byte[] rootHash = raw.length == 0 ? new byte[0] : raw;
+                    Multihash metadataBlob = core.getMetadataBlob(UserPublicKey.fromByteArray(sharingKey));
+                    boolean isPresent = metadataBlob == null;
+                    MaybeMultihash rootHash = ! isPresent ? MaybeMultihash.EMPTY() : MaybeMultihash.of(metadataBlob);
                     MerkleBTree btree = MerkleBTree.create(rootHash, dht);
-                    byte[] newRoot = btree.put(mapKey, value);
+                    Multihash newRoot = btree.put(mapKey,
+                            new Multihash(value));
                     ByteArrayOutputStream bout = new ByteArrayOutputStream();
                     DataOutputStream dout = new DataOutputStream(bout);
-                    Serialize.serialize(rootHash, dout);
-                    Serialize.serialize(newRoot, dout);
+                    Serialize.serialize(rootHash.toBytes(), dout);
+                    Serialize.serialize(newRoot.toBytes(), dout);
                     new ModifySuccess(httpExchange).accept(Optional.of(bout.toByteArray()));
                 } catch (Exception e) {
                     e.printStackTrace();
@@ -76,13 +79,15 @@ public class BTreeHandlers
             byte[] mapKey = Serialize.deserializeByteArray(din, 64);
             System.out.println("Deleted mapkey: "+new ByteArrayWrapper(mapKey));
             try {
-                byte[] rootHash = core.getMetadataBlob(sharingKey);
+                Multihash rootHash = core.getMetadataBlob(UserPublicKey.fromByteArray(sharingKey));
                 MerkleBTree btree = MerkleBTree.create(rootHash, dht);
-                byte[] newRoot = btree.delete(mapKey);
+                Multihash newRoot = btree.delete(mapKey);
                 ByteArrayOutputStream bout = new ByteArrayOutputStream();
                 DataOutputStream dout = new DataOutputStream(bout);
-                Serialize.serialize(rootHash, dout);
-                Serialize.serialize(newRoot, dout);
+                Serialize.serialize(rootHash.toBytes(),
+                        dout);
+                Serialize.serialize(newRoot.toBytes(),
+                        dout);
                 new ModifySuccess(httpExchange).accept(Optional.of(bout.toByteArray()));
             } catch (Exception e) {
                 e.printStackTrace();

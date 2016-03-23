@@ -1,7 +1,10 @@
 package peergos.server.net;
 
+import org.ipfs.api.Multihash;
 import peergos.corenode.CoreNode;
 import peergos.corenode.HTTPCoreNode;
+import peergos.crypto.UserPublicKey;
+import peergos.server.merklebtree.MaybeMultihash;
 import peergos.server.storage.IpfsDHT;
 import peergos.server.storage.ContentAddressedStorage;
 import peergos.server.merklebtree.MerkleBTree;
@@ -17,10 +20,13 @@ public class BTreeTest {
 
         CoreNode core = HTTPCoreNode.getInstance();
         ContentAddressedStorage dht = new IpfsDHT();
-        byte[] rootHash = core.getMetadataBlob(writer);
-        MerkleBTree btree = MerkleBTree.create(rootHash, dht);
+        Multihash rootHash = core.getMetadataBlob(
+                UserPublicKey.fromByteArray(writer));
+        boolean isPresent = rootHash != null;
+        MaybeMultihash maybeMultihash = isPresent ? MaybeMultihash.of(rootHash): MaybeMultihash.EMPTY();
+        MerkleBTree btree = MerkleBTree.create(maybeMultihash, dht);
         btree.print(System.out);
-        byte[] value = btree.get(mapKey);
-        System.out.println(value == null ? value : new ByteArrayWrapper(value));
+        MaybeMultihash maybeMultihash1 = btree.get(mapKey);
+        System.out.println(maybeMultihash1);
     }
 }

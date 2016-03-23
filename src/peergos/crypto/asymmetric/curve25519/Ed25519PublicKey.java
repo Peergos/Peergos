@@ -4,6 +4,7 @@ import peergos.crypto.TweetNaCl;
 import peergos.crypto.asymmetric.PublicSigningKey;
 
 import java.io.ByteArrayOutputStream;
+import java.io.DataOutput;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.Arrays;
@@ -20,7 +21,7 @@ public class Ed25519PublicKey implements PublicSigningKey {
         return PublicSigningKey.Type.Ed25519;
     }
 
-    public void serialize(DataOutputStream dout) throws IOException {
+    public void serialize(DataOutput dout) throws IOException {
         dout.writeByte(type().value);
         dout.write(publicKey);
     }

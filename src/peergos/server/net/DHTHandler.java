@@ -46,7 +46,7 @@ public class DHTHandler implements HttpHandler
             } else if (type == 1) {
                 // GET
                 byte[] key = Serialize.deserializeByteArray(din, 64);
-                byte[] value = dht.get(key);
+                byte[] value = dht.get(new Multihash(key));
                 new GetSuccess(key, httpExchange).accept(value);
             } else {
                 httpExchange.sendResponseHeaders(404, 0);

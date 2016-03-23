@@ -1,6 +1,9 @@
 package peergos.util;
 
+import org.ipfs.api.Multihash;
 import peergos.crypto.UserPublicKey;
+import peergos.server.merklebtree.MaybeMultihash;
+import peergos.server.merklebtree.PairMultihash;
 
 import java.io.IOException;
 
@@ -13,9 +16,9 @@ public interface Btree {
      * @return the new root hash of the btree
      * @throws IOException
      */
-    byte[] put(UserPublicKey sharingKey,
-                         byte[] mapKey,
-                         byte[] value) throws IOException;
+    PairMultihash put(UserPublicKey sharingKey,
+                      byte[] mapKey,
+                      Multihash value) throws IOException;
 
     /**
      *
@@ -24,8 +27,8 @@ public interface Btree {
      * @return  the value stored under mapKey for sharingKey
      * @throws IOException
      */
-    byte[] get(UserPublicKey sharingKey,
-                         byte[] mapKey) throws IOException;
+    MaybeMultihash get(UserPublicKey sharingKey,
+                                 byte[] mapKey) throws IOException;
 
     /**
      *
@@ -34,6 +37,6 @@ public interface Btree {
      * @return  hash(sharingKey.metadata) | the new root hash of the btree
      * @throws IOException
      */
-    byte[] remove(UserPublicKey sharingKey,
+    PairMultihash remove(UserPublicKey sharingKey,
                             byte[] mapKey) throws IOException;
 }

@@ -1,5 +1,6 @@
 package peergos.corenode;
 
+import org.ipfs.api.Multihash;
 import peergos.crypto.*;
 import peergos.util.*;
 
@@ -590,16 +591,15 @@ public class JDBCCoreNode implements CoreNode {
     }
 
     @Override
-    public boolean setMetadataBlob(byte[] ownerPublicKey, byte[] writingPublicKey, byte[] writingKeySignedHash) throws IOException {
-        UserPublicKey writingKey = UserPublicKey.deserialize(new DataInputStream(new ByteArrayInputStream(writingPublicKey)));
+    public boolean setMetadataBlob(UserPublicKey ownerPublicKey, UserPublicKey writingKey, byte[] writingKeySignedHash) throws IOException {
 
         try {
-            byte[] current = getMetadataBlob(writingPublicKey);
+            Multihash current= getMetadataBlob(writingKey);
             byte[] bothHashes = writingKey.unsignMessage(writingKeySignedHash);
             // check CAS [current hash, new hash]
             DataInputStream din = new DataInputStream(new ByteArrayInputStream(bothHashes));
             byte[] claimedCurrentHash = Serialize.deserializeByteArray(din, 4096);
-            if (!Arrays.equals(current, claimedCurrentHash) && current != null)
+            if (current != null && !Arrays.equals(current.toBytes(), claimedCurrentHash))
                 return false;
             MetadataBlob blob = new MetadataBlob(writingKey.serialize(), bothHashes);
             return blob.insert();
@@ -610,8 +610,7 @@ public class JDBCCoreNode implements CoreNode {
     }
 
     @Override
-    public boolean removeMetadataBlob(byte[] encodedWritingPublicKey, byte[] writingKeySignedMapKeyPlusBlob) throws IOException {
-        UserPublicKey writingKey = UserPublicKey.deserialize(new DataInputStream(new ByteArrayInputStream(encodedWritingPublicKey)));
+    public boolean removeMetadataBlob(UserPublicKey writingKey, byte[] writingKeySignedMapKeyPlusBlob) throws IOException {
 
         try {
             byte[] currentHash = writingKey.unsignMessage(writingKeySignedMapKeyPlusBlob);
@@ -624,16 +623,16 @@ public class JDBCCoreNode implements CoreNode {
     }
 
     @Override
-    public byte[] getMetadataBlob(byte[] writingKey) {
+    public Multihash getMetadataBlob(UserPublicKey writingKey) {
         byte[] dummy = null;
-        MetadataBlob blob = new MetadataBlob(writingKey, dummy);
+        MetadataBlob blob = new MetadataBlob(writingKey.serialize(), dummy);
         MetadataBlob users = blob.selectOne();
         if (users == null)
             return null;
         DataInputStream din = new DataInputStream(new ByteArrayInputStream(users.hash));
         try {
             Serialize.deserializeByteArray(din, 4096);
-            return Serialize.deserializeByteArray(din, 4096);
+            return new Multihash(Serialize.deserializeByteArray(din, 4096));
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

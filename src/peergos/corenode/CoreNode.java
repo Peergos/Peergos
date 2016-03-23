@@ -1,5 +1,6 @@
 package peergos.corenode;
 
+import org.ipfs.api.Multihash;
 import peergos.crypto.*;
 import peergos.util.*;
 
@@ -46,11 +47,11 @@ public interface CoreNode {
 
     boolean removeFollowRequest(UserPublicKey owner, byte[] data);
 
-    boolean setMetadataBlob(byte[] ownerPublicKey, byte[] encodedSharingPublicKey, byte[] sharingKeySignedBtreeRootHash) throws IOException;
+    boolean setMetadataBlob(UserPublicKey ownerPublicKey, UserPublicKey encodedSharingPublicKey, byte[] sharingKeySignedBtreeRootHash) throws IOException;
 
-    boolean removeMetadataBlob(byte[] encodedSharingPublicKey, byte[] sharingKeySignedMapKeyPlusBlob) throws IOException;
+    boolean removeMetadataBlob(UserPublicKey encodedSharingPublicKey, byte[] sharingKeySignedMapKeyPlusBlob) throws IOException;
 
-    byte[] getMetadataBlob(byte[] encodedSharingKey);
+    Multihash getMetadataBlob(UserPublicKey encodedSharingKey);
 
     void close() throws IOException;
 

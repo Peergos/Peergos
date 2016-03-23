@@ -21,7 +21,7 @@ public class UserContext {
     private final SymmetricKey rootKey;
     public final ContentAddressedStorage dhtClient;
     public final CoreNode corenodeClient;
-    public final MerkleBTree btree;
+    public final Btree btree;
 
     private final SortedMap<UserPublicKey, EntryPoint> staticData = new TreeMap<>();
     private Set<String> usernames;
@@ -34,7 +34,7 @@ public class UserContext {
         this.rootKey = root;
         this.dhtClient = dht;
         this.corenodeClient = coreNode;
-        this.btree = MerkleBTree.create(new byte[0], dhtClient);
+        this.btree = new BtreeImpl(coreNode, dht);
     }
 
 
@@ -349,7 +349,7 @@ public class UserContext {
         byte[] metaBlob = dout.toByteArray();
         System.out.println("Storing metadata blob of " + metaBlob.length + " bytes. to mapKey: "+ArrayOps.bytesToHex(mapKey));
         byte[] blobHash = dhtClient.put(metaBlob, owner.getPublicKeys(), linkHashes);
-        byte[] newBtreeRootCAS = btree.put(sharer.getPublicKeys(), mapKey, blobHash);
+        byte[] newBtreeRootCAS = btree.put(sharer, mapKey, blobHash);
         byte[] signed = sharer.signMessage(newBtreeRootCAS);
         boolean added =  corenodeClient.setMetadataBlob(owner.getPublicKeys(), sharer.getPublicKeys(), signed);
         if (!added) {
@@ -382,7 +382,7 @@ public class UserContext {
         // download the metadata blobs for these entry points
         Map<EntryPoint, FileAccess> res = new HashMap<>();
         for (EntryPoint entry: entries) {
-            byte[] value = dhtClient.get(btree.get(entry.pointer.writer.getPublicKeys(), entry.pointer.mapKey));
+            byte[] value = dhtClient.get(btree.get(entry.pointer.writer, entry.pointer.mapKey));
             if (value.length > 8) // otherwise this is a deleted directory
                 res.put(entry, FileAccess.deserialize(value));
         }
@@ -442,7 +442,8 @@ public class UserContext {
         Map<ReadableFilePointer, FileAccess> res = new HashMap<>();
         for (SymmetricLocationLink link: links) {
             Location loc = link.targetLocation(baseKey);
-            byte[] data = dhtClient.get(btree.get(loc.writer.getPublicKeys(), loc.mapKey));
+            byte[] key = btree.get(loc.writer, loc.mapKey);
+            byte[] data = dhtClient.get(key);
             if (data.length > 0)
                 res.put(link.toReadableFilePointer(baseKey), FileAccess.deserialize(data));
         }
@@ -450,7 +451,7 @@ public class UserContext {
     }
 
     public FileAccess getMetadata(Location loc) throws IOException {
-        Multihash blobHash = btree.get(loc.writer.getPublicKeys(), loc.mapKey);
+        Multihash blobHash = btree.get(loc.writer, loc.mapKey);
         byte[] raw = dhtClient.get(blobHash.toBytes());
         return FileAccess.deserialize(raw);
     };

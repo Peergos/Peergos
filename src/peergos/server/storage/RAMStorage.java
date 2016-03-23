@@ -8,28 +8,25 @@ import java.security.*;
 import java.util.*;
 
 public class RAMStorage implements ContentAddressedStorage {
-    private Map<ByteArrayWrapper, byte[]> storage = new HashMap<>();
+    private Map<Multihash, byte[]> storage = new HashMap<>();
 
     @Override
     public Multihash put(MerkleNode object) {
-        return new Multihash(put(object.data));
-    }
-
-        @Override
-    public byte[] put(byte[] value) {
+        byte[] value = object.data;
         byte[] hash = hash(value);
-        storage.put(new ByteArrayWrapper(hash), value);
-        return hash;
+        Multihash multihash = new Multihash(Multihash.Type.sha2_256, hash);
+        storage.put(multihash, value);
+        return multihash;
     }
 
     @Override
-    public byte[] get(byte[] key) {
-        return storage.get(new ByteArrayWrapper(key));
+    public byte[] get(Multihash key) {
+        return storage.get(key);
     }
 
     @Override
-    public void remove(byte[] key) {
-        storage.remove(new ByteArrayWrapper(key));
+    public void remove(Multihash key) {
+        storage.remove(key);
     }
 
     public void clear() {

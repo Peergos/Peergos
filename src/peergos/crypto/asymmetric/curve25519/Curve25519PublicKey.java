@@ -6,6 +6,7 @@ import peergos.crypto.asymmetric.SecretBoxingKey;
 import peergos.util.ArrayOps;
 
 import java.io.ByteArrayOutputStream;
+import java.io.DataOutput;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.Arrays;
@@ -32,7 +33,7 @@ public class Curve25519PublicKey implements PublicBoxingKey {
         return ArrayOps.concat(TweetNaCl.crypto_box(input, nonce, publicKey, from.getSecretBoxingKey()), nonce);
     }
 
-    public void serialize(DataOutputStream dout) throws IOException {
+    public void serialize(DataOutput dout) throws IOException {
         dout.writeByte(type().value);
         dout.write(publicKey);
     }

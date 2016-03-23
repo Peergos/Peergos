@@ -15,23 +15,16 @@ public interface ContentAddressedStorage {
 
     /**
      *
-     * @param value
-     * @return a hash of the value
-     */
-    byte[] put(byte[] value);
-
-    /**
-     *
      * @param key the hash of a value previously stored
      * @return
      */
-    byte[] get(byte[] key);
+    byte[] get(Multihash key);
 
     /**
      *
      * @param key the hash of a value previously stored
      */
-    void remove(byte[] key);
+    void remove(Multihash key);
 
     boolean recursivePin(Multihash h);
 

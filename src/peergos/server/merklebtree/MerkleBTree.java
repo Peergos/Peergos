@@ -1,5 +1,6 @@
 package peergos.server.merklebtree;
 
+import org.ipfs.api.Multihash;
 import peergos.server.storage.ContentAddressedStorage;
 import peergos.util.*;
 
@@ -13,19 +14,28 @@ public class MerkleBTree
     public final int maxChildren;
     public TreeNode root;
 
-    public MerkleBTree(TreeNode root, byte[] rootHash, ContentAddressedStorage storage, int maxChildren) {
+    public MerkleBTree(TreeNode root, MaybeMultihash rootHash, ContentAddressedStorage storage, int maxChildren) {
         this.storage = storage;
         this.root = new TreeNode(root.keys, rootHash);
         this.maxChildren = maxChildren;
     }
 
-    public static MerkleBTree create(byte[] rootHash, ContentAddressedStorage dht) throws IOException {
-        if (rootHash.length == 0) {
+    public MerkleBTree(TreeNode root, Multihash rootHash, ContentAddressedStorage storage, int maxChildren) {
+        this(root, MaybeMultihash.of(rootHash), storage, maxChildren);
+    }
+
+    public static MerkleBTree create(Multihash rootHash, ContentAddressedStorage dht) throws IOException {
+        return create(MaybeMultihash.of(rootHash),
+                dht);
+    }
+
+    public static MerkleBTree create(MaybeMultihash rootHash, ContentAddressedStorage dht) throws IOException {
+        if (!  rootHash.isPresent()) {
             TreeNode newRoot = new TreeNode(new TreeSet<>());
-            byte[] hash = dht.put(newRoot.toMerkleNode()).toBytes();
-            return new MerkleBTree(newRoot, hash, dht, MAX_NODE_CHILDREN);
+            Multihash put = dht.put(newRoot.toMerkleNode());
+            return new MerkleBTree(newRoot, put, dht, MAX_NODE_CHILDREN);
         }
-        return new MerkleBTree(TreeNode.deserialize(dht.get(rootHash)), rootHash, dht, MAX_NODE_CHILDREN);
+        return new MerkleBTree(TreeNode.deserialize(dht.get(rootHash.get())), rootHash, dht, MAX_NODE_CHILDREN);
     }
 
     /**
@@ -34,7 +44,7 @@ public class MerkleBTree
      * @return value stored under rawKey
      * @throws IOException
      */
-    public byte[] get(byte[] rawKey) throws IOException {
+    public MaybeMultihash get(byte[] rawKey) throws IOException {
         return root.get(new ByteArrayWrapper(rawKey), storage);
     }
 
@@ -45,12 +55,12 @@ public class MerkleBTree
      * @return hash of new tree root
      * @throws IOException
      */
-    public byte[] put(byte[] rawKey, byte[] value) throws IOException {
+    public Multihash put(byte[] rawKey, Multihash value) throws IOException {
         TreeNode newRoot = root.put(new ByteArrayWrapper(rawKey), value, storage, maxChildren);
         if (root.hash.isPresent())
             storage.remove(root.hash.get());
         if (!newRoot.hash.isPresent()) {
-            root = new TreeNode(newRoot.keys, storage.put(newRoot.toMerkleNode()).toBytes());
+            root = new TreeNode(newRoot.keys, storage.put(newRoot.toMerkleNode()));
         } else
             root = newRoot;
         return root.hash.get();
@@ -62,12 +72,12 @@ public class MerkleBTree
      * @return hash of new tree root
      * @throws IOException
      */
-    public byte[] delete(byte[] rawKey) throws IOException {
+    public Multihash delete(byte[] rawKey) throws IOException {
         TreeNode newRoot = root.delete(new ByteArrayWrapper(rawKey), storage, maxChildren);
         if (root.hash.isPresent())
             storage.remove(root.hash.get());
         if (!newRoot.hash.isPresent()) {
-            root = new TreeNode(newRoot.keys, storage.put(newRoot.toMerkleNode()).toBytes());
+            root = new TreeNode(newRoot.keys, storage.put(newRoot.toMerkleNode()));
         } else
             root = newRoot;
         return root.hash.get();

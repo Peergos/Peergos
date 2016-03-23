@@ -24,9 +24,9 @@ public class IpfsDHT implements ContentAddressedStorage {
     }
 
     @Override
-    public byte[] get(byte[] key) {
+    public byte[] get(Multihash key) {
         try {
-            return ipfs.object.data(new Multihash(key));
+            return ipfs.object.data(key);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -45,13 +45,9 @@ public class IpfsDHT implements ContentAddressedStorage {
         }
     }
 
-    @Override
-    public byte[] put(byte[] value) {
-        return put(new MerkleNode(value)).toBytes();
-    }
 
     @Override
-    public void remove(byte[] key) {
+    public void remove(Multihash key) {
         // do nothing as removal is handled by GC and only the roots are pinned
     }
 
@@ -77,11 +73,12 @@ public class IpfsDHT implements ContentAddressedStorage {
 
     public static void main(String[] args) throws IOException {
         IpfsDHT dht = new IpfsDHT();
-        byte[] val = new byte[57];
-        new Random().nextBytes(val);
-        byte[] key = dht.put(val);
-        byte[] val2 = dht.get(key);
-        boolean equals = Arrays.equals(val, val2);
+        byte[] val1 = new byte[57];
+        MerkleNode val = new MerkleNode(val1);
+        new Random().nextBytes(val1);
+        Multihash put = dht.put(val);
+        byte[] val2 = dht.get(put);
+        boolean equals = Arrays.equals(val1, val2);
         System.out.println(equals);
     }
 }

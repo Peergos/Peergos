@@ -1,6 +1,7 @@
 
 package peergos.corenode;
 
+import org.ipfs.api.Multihash;
 import peergos.crypto.*;
 import peergos.util.*;
 
@@ -240,7 +241,7 @@ public class HTTPCoreNode implements CoreNode
         }
     }
    
-   @Override public boolean setMetadataBlob(byte[] ownerPublicKey, byte[] sharingPublicKey, byte[] sharingKeySignedPayload)
+   @Override public boolean setMetadataBlob(UserPublicKey ownerPublicKey, UserPublicKey sharingPublicKey, byte[] sharingKeySignedPayload)
     {
         HttpURLConnection conn = null;
         try
@@ -251,8 +252,8 @@ public class HTTPCoreNode implements CoreNode
             
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-            Serialize.serialize(ownerPublicKey, dout);
-            Serialize.serialize(sharingPublicKey, dout);
+            Serialize.serialize(ownerPublicKey.serialize(), dout);
+            Serialize.serialize(sharingPublicKey.serialize(), dout);
             Serialize.serialize(sharingKeySignedPayload, dout);
             dout.flush();
 
@@ -267,7 +268,7 @@ public class HTTPCoreNode implements CoreNode
         }
     }
 
-    @Override public boolean removeMetadataBlob(byte[] encodedSharingPublicKey, byte[] sharingKeySignedPayload)
+    @Override public boolean removeMetadataBlob(UserPublicKey encodedSharingPublicKey, byte[] sharingKeySignedPayload)
     {
         HttpURLConnection conn = null;
         try
@@ -278,7 +279,7 @@ public class HTTPCoreNode implements CoreNode
 
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-            Serialize.serialize(encodedSharingPublicKey, dout);
+            Serialize.serialize(encodedSharingPublicKey.serialize(), dout);
             Serialize.serialize(sharingKeySignedPayload, dout);
             dout.flush();
 
@@ -293,7 +294,7 @@ public class HTTPCoreNode implements CoreNode
         }
     }
 
-    @Override public byte[] getMetadataBlob(byte[] encodedSharingKey)
+    @Override public Multihash getMetadataBlob(UserPublicKey encodedSharingKey)
     {
         HttpURLConnection conn = null;
         try
@@ -305,12 +306,13 @@ public class HTTPCoreNode implements CoreNode
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
 
-            Serialize.serialize(encodedSharingKey, dout);
+            Serialize.serialize(encodedSharingKey.serialize(), dout);
             dout.flush();
+
 
             DataInputStream din = new DataInputStream(conn.getInputStream());
             byte[] meta = deserializeByteArray(din);
-            return meta;
+            return new Multihash(meta);
         } catch (IOException ioe) {
             ioe.printStackTrace();
             return null;
