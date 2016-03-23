@@ -19,23 +19,22 @@ public class BtreeImpl implements Btree {
     }
 
     @Override
-    public ByteArrayWrapper put(UserPublicKey sharingKey, byte[] mapKey, byte[] value) throws IOException {
+    public byte[] put(UserPublicKey sharingKey, byte[] mapKey, byte[] value) throws IOException {
         byte[] raw = coreNode.getMetadataBlob(sharingKey.serialize());
         byte[] rootHash = raw.length == 0 ? new byte[0] : raw;
         MerkleBTree btree = MerkleBTree.create(rootHash, dht);
-        byte[] newRoot = btree.put(mapKey, value);
-        return new ByteArrayWrapper(newRoot);
+        return btree.put(mapKey, value);
     }
 
     @Override
-    public ByteArrayWrapper get(UserPublicKey sharingKey, byte[] mapKey) throws IOException {
+    public byte[] get(UserPublicKey sharingKey, byte[] mapKey) throws IOException {
         byte[] rootHash = coreNode.getMetadataBlob(sharingKey.serialize());
         MerkleBTree btree = MerkleBTree.create(rootHash, dht);
-        return new ByteArrayWrapper(btree.get(mapKey));
+        return btree.get(mapKey);
     }
 
     @Override
-    public ByteArrayWrapper remove(UserPublicKey sharingKey, byte[] mapKey) throws IOException {
+    public byte[] remove(UserPublicKey sharingKey, byte[] mapKey) throws IOException {
         byte[] rootHash = coreNode.getMetadataBlob(sharingKey.serialize());
         MerkleBTree btree = MerkleBTree.create(rootHash, dht);
         byte[] newRoot = btree.delete(mapKey);
@@ -44,6 +43,6 @@ public class BtreeImpl implements Btree {
         DataOutputStream dout = new DataOutputStream(bout);
         Serialize.serialize(rootHash, dout);
         Serialize.serialize(newRoot, dout);
-        return new ByteArrayWrapper(bout.toByteArray());
+        return bout.toByteArray();
     }
 }

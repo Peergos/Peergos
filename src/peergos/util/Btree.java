@@ -13,7 +13,7 @@ public interface Btree {
      * @return the new root hash of the btree
      * @throws IOException
      */
-    ByteArrayWrapper put(UserPublicKey sharingKey,
+    byte[] put(UserPublicKey sharingKey,
                          byte[] mapKey,
                          byte[] value) throws IOException;
 
@@ -24,7 +24,7 @@ public interface Btree {
      * @return  the value stored under mapKey for sharingKey
      * @throws IOException
      */
-    ByteArrayWrapper get(UserPublicKey sharingKey,
+    byte[] get(UserPublicKey sharingKey,
                          byte[] mapKey) throws IOException;
 
     /**
@@ -34,6 +34,6 @@ public interface Btree {
      * @return  hash(sharingKey.metadata) | the new root hash of the btree
      * @throws IOException
      */
-    ByteArrayWrapper remove(UserPublicKey sharingKey,
+    byte[] remove(UserPublicKey sharingKey,
                             byte[] mapKey) throws IOException;
 }
