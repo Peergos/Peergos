@@ -153,6 +153,12 @@ public class UserPublicKeyLink {
         }
     }
 
+    public static List<UserPublicKeyLink> createInitial(User user, String username, LocalDate expiry) {
+        UsernameClaim newClaim = UsernameClaim.create(username, user, expiry);
+
+        return Collections.singletonList(new UserPublicKeyLink(user.toUserPublicKey(), newClaim));
+    }
+
     static List<UserPublicKeyLink> merge(List<UserPublicKeyLink> existing, List<UserPublicKeyLink> tail) {
         if (existing.size() == 0)
             return tail;

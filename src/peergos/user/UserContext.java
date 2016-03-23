@@ -79,10 +79,9 @@ public class UserContext {
 
     public boolean register() {
         System.out.println("claiming username: "+username);
-        LocalDate now = LocalDate.now();
+        LocalDate expiry = LocalDate.now();
         // set claim expiry to two months from now
-        now.plusMonths(2);
-        String expiry = now.toString(); //YYYY-MM-DD
+        expiry.plusMonths(2);
         List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createInitial(user, username, expiry);
         return corenodeClient.updateChain(username, claimChain);
     }
@@ -329,12 +328,12 @@ public class UserContext {
         DataSource input = new DataSource(plaintext);
         byte[] rawEntry = input.readArray();
         byte[] rawKey = input.readArray();
-        return new FollowRequest(rawEntry.length > 0 ? EntryPoint.deserialize(rawEntry) : null,
-                rawKey.length > 0 ? SymmetricKey.deserialize(rawKey) : null, raw);
+        return new FollowRequest(rawEntry.length > 0 ? Optional.of(EntryPoint.deserialize(rawEntry)) : Optional.empty(),
+                rawKey.length > 0 ? Optional.of(SymmetricKey.deserialize(rawKey)) : Optional.empty(), raw);
     }
 
     public Multihash uploadFragment(Fragment f, UserPublicKey targetUser) throws IOException {
-        return dhtClient.put(f.data, targetUser.getPublicKeys());
+        return dhtClient.put(f.data, targetUser);
     }
 
     public List<Multihash> uploadFragments(List<Fragment> fragments, UserPublicKey owner, UserPublicKey sharer, byte[] mapKey, Consumer<Long> progressCounter) throws IOException {
@@ -351,9 +350,9 @@ public class UserContext {
         metadata.serialize(dout);
         byte[] metaBlob = dout.toByteArray();
         System.out.println("Storing metadata blob of " + metaBlob.length + " bytes. to mapKey: "+ArrayOps.bytesToHex(mapKey));
-        byte[] blobHash = dhtClient.put(metaBlob, owner, linkHashes);
-        byte[] newBtreeRootCAS = btree.put(sharer, mapKey, blobHash);
-        byte[] signed = sharer.signMessage(newBtreeRootCAS);
+        Multihash blobHash = dhtClient.put(metaBlob, owner, linkHashes);
+        PairMultihash newBtreeRootCAS = btree.put(sharer, mapKey, blobHash);
+        byte[] signed = sharer.signMessage(newBtreeRootCAS.toByteArray());
         boolean added =  corenodeClient.setMetadataBlob(owner, sharer, signed);
         if (!added) {
             System.out.println("Meta blob store failed.");

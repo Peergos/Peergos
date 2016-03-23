@@ -150,7 +150,7 @@ public class DirAccess extends FileAccess {
                             SymmetricKey parentparentKey, User entryWriterKey, byte[] newMapKey, UserContext context) throws IOException {
         SymmetricKey parentKey = getParentKey(baseKey);
         FileProperties props = getFileProperties(parentKey);
-        DirAccess da = DirAccess.create(newBaseKey, props, retriever(), parentLocation, parentparentKey, parentKey);
+        DirAccess da = DirAccess.create(newBaseKey, props, parentLocation, parentparentKey, parentKey);
         SymmetricKey ourNewParentKey = da.getParentKey(newBaseKey);
         Location ourNewLocation = new Location(context.user, entryWriterKey, newMapKey);
 

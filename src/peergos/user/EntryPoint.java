@@ -42,6 +42,21 @@ public class EntryPoint {
         return sink.toByteArray();
     }
 
+    static EntryPoint deserialize(byte[] raw) throws IOException {
+        DataSource din = new DataSource(raw);
+        ReadableFilePointer pointer = ReadableFilePointer.deserialize(din.readArray());
+        String owner = din.readString();
+        int nReaders = din.readInt();
+        Set<String> readers = new HashSet<>();
+        for (int i=0; i < nReaders; i++)
+            readers.add(din.readString());
+        int nWriters = din.readInt();
+        Set<String> writers = new HashSet<>();
+        for (int i=0; i < nWriters; i++)
+            writers.add(din.readString());
+        return new EntryPoint(pointer, owner, readers, writers);
+    }
+
     static EntryPoint symmetricallyDecryptAndDeserialize(byte[] input, SymmetricKey key) throws IOException {
         byte[] nonce = Arrays.copyOfRange(input, 0, 24);
         byte[] raw = key.decrypt(Arrays.copyOfRange(input, 24, input.length), nonce);

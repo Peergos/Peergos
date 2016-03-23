@@ -155,7 +155,12 @@ public class FileTreeNode {
             Set<RetrievedFilePointer> childrenRFPs = retrieveChildren(context);
             Set<FileTreeNode> newChildren = childrenRFPs.stream().map(x -> new FileTreeNode(x, ownername, readers, writers, entryWriterKey)).collect(Collectors.toSet());
             clear();
-            newChildren.forEach(c -> addChild(c));
+            newChildren.forEach(c -> {
+                try {
+                    addChild(c);
+                } catch (IOException e) {
+                }
+            });
             return new HashSet<>(children);
         } catch (Exception e) {
             // directories we don't have read access to have children populated during tree creation
