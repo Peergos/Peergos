@@ -6,7 +6,7 @@ import peergos.user.*;
 import java.io.*;
 import java.util.function.*;
 
-public class LazyInputStreamCombiner {
+public class LazyInputStreamCombiner extends InputStream {
     private final UserContext context;
     private final SymmetricKey dataKey;
     private final Consumer<Long> monitor;
@@ -23,7 +23,7 @@ public class LazyInputStreamCombiner {
         this.monitor = monitor;
     }
 
-    public byte[] getNextStream(int len) {
+    public byte[] getNextStream(int len) throws IOException {
         if (this.next != null) {
             FileAccess meta = context.getMetadata(this.next);
             FileRetriever nextRet = meta.retriever();
@@ -37,13 +37,18 @@ public class LazyInputStreamCombiner {
         return this.current.length - this.index;
     }
 
-    public byte readByte() {
+    public byte readByte() throws IOException {
         try {
             return this.current[this.index++];
         } catch (Exception e) {}
         current = getNextStream(-1);
         index = 0;
         return current[index++];
+    }
+
+    @Override
+    public int read() throws IOException {
+        return readByte() & 0xff;
     }
 
     public byte[] read(int len, byte[] res, int offset) throws IOException {

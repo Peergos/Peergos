@@ -1,6 +1,7 @@
 package peergos.crypto;
 
 import peergos.crypto.asymmetric.*;
+import peergos.crypto.asymmetric.curve25519.*;
 import peergos.util.*;
 
 import java.io.*;
@@ -111,5 +112,9 @@ public class UserPublicKey implements Comparable<UserPublicKey>
 
     public static UserPublicKey fromString(String b64) {
         return deserialize(new DataInputStream(new ByteArrayInputStream(Base64.getDecoder().decode(b64))));
+    }
+
+    public static UserPublicKey createNull() {
+        return new UserPublicKey(new Ed25519PublicKey(new byte[32]), new Curve25519PublicKey(new byte[32]));
     }
 }

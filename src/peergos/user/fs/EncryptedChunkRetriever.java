@@ -37,7 +37,7 @@ public class EncryptedChunkRetriever implements FileRetriever {
         return this.nextChunk;
     }
 
-    public byte[] getChunkInputStream(UserContext context, SymmetricKey dataKey, int len, Consumer<Long> monitor) {
+    public byte[] getChunkInputStream(UserContext context, SymmetricKey dataKey, long len, Consumer<Long> monitor) {
         List<Fragment> fragments = context.downloadFragments(fragmentHashes, monitor);
         fragments = reorder(fragments, fragmentHashes);
         byte[] cipherText = Erasure.recombine(fragments.stream().map(f -> f.data.data).collect(Collectors.toList()), len != 0 ? len : Chunk.MAX_SIZE, nOriginalFragments, nAllowedFailures);
@@ -48,7 +48,7 @@ public class EncryptedChunkRetriever implements FileRetriever {
         return original;
     }
 
-    public void serialize(DataSink buf) throws IOException {
+    public void serialize(DataSink buf) {
         buf.writeByte((byte)1); // This class
         buf.writeArray(chunkNonce);
         buf.writeArray(chunkAuth);

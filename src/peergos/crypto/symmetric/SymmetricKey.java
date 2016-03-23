@@ -63,4 +63,8 @@ public interface SymmetricKey
     static SymmetricKey random() {
         return TweetNaClKey.random();
     }
+
+    static SymmetricKey createNull() {
+        return new TweetNaClKey(new byte[32]);
+    }
 }

@@ -68,6 +68,6 @@ public class ReadableFilePointer {
     }
 
     public static ReadableFilePointer createNull() {
-        return new ReadableFilePointer(UserPublicKey.createNull(), UserPublicKey.createNull(), new byte(32), SymmetricKey.createNull());
+        return new ReadableFilePointer(UserPublicKey.createNull(), UserPublicKey.createNull(), new byte[32], SymmetricKey.createNull());
     }
 }

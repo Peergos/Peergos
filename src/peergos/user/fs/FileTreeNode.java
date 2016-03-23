@@ -214,7 +214,7 @@ public class FileTreeNode {
         return !name.contains("/");
     }
 
-    public Optional<ReadableFilePointer> mkdir(String newFolderName, UserContext context, SymmetricKey requestedBaseSymmetricKey, boolean isSystemFolder) {
+    public Optional<ReadableFilePointer> mkdir(String newFolderName, UserContext context, SymmetricKey requestedBaseSymmetricKey, boolean isSystemFolder) throws IOException {
         if (!this.isDirectory())
             return Optional.empty();
         if (!isLegalName(newFolderName))
@@ -224,9 +224,9 @@ public class FileTreeNode {
             return Optional.empty();
         }
         ReadableFilePointer dirPointer = pointer.filePointer;
-        FileAccess dirAccess = pointer.fileAccess;
+        DirAccess dirAccess = (DirAccess)pointer.fileAccess;
         SymmetricKey rootDirKey = dirPointer.baseKey;
-        return Optional.of(dirAccess.mkdir(newFolderName, context, entryWriterKey, dirPointer.mapKey, rootDirKey, requestedBaseSymmetricKey, isSystemFolder));
+        return Optional.of(dirAccess.mkdir(newFolderName, context, (User)entryWriterKey, dirPointer.mapKey, rootDirKey, requestedBaseSymmetricKey, isSystemFolder));
     }
 
     public boolean rename(String newName, UserContext context, FileTreeNode parent) throws IOException {
@@ -242,7 +242,7 @@ public class FileTreeNode {
         SymmetricKey key = this.isDirectory() ? fileAccess.getParentKey(baseKey) : baseKey;
         FileProperties currentProps = fileAccess.getFileProperties(key);
 
-        FileProperties newProps = new FileProperties(newName, currentProps.size, currentProps.modified, currentProps.attr, currentProps.thumbnail);
+        FileProperties newProps = new FileProperties(newName, currentProps.size, currentProps.modified, currentProps.isHidden, currentProps.thumbnail);
 
         return fileAccess.rename(writableFilePointer(), newProps, context);
     }
@@ -258,7 +258,7 @@ public class FileTreeNode {
         return entryWriterKey;
     }
 
-    public boolean copyTo(FileTreeNode target, UserContext context) {
+    public boolean copyTo(FileTreeNode target, UserContext context) throws IOException {
         if (! target.isDirectory())
             throw new IllegalStateException("CopyTo target "+ target +" must be a directory");
         if (target.hasChildByName(getFileProperties().name))
