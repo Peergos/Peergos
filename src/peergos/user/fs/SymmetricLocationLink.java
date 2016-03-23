@@ -16,7 +16,7 @@ public class SymmetricLocationLink {
         this.loc = location;
     }
 
-    public Location targetLocation(SymmetricKey from) throws IOException {
+    public Location targetLocation(SymmetricKey from) {
         byte[] nonce = Arrays.copyOfRange(link, 0, TweetNaCl.SECRETBOX_NONCE_BYTES);
         return Location.decrypt(from, nonce, loc);
     }

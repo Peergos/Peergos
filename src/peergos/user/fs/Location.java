@@ -32,15 +32,19 @@ public class Location {
         return key.encrypt(serialize(), nonce);
     }
 
-    public static Location deserialize(DataInput din) throws IOException {
-        UserPublicKey ownerKey = UserPublicKey.deserialize(din);
-        UserPublicKey writerKey = UserPublicKey.deserialize(din);
-        byte[] mapKey = new byte[MAP_KEY_LENGTH];
-        din.readFully(mapKey);
-        return new Location(ownerKey, writerKey, mapKey);
+    public static Location deserialize(DataInput din) {
+        try {
+            UserPublicKey ownerKey = UserPublicKey.deserialize(din);
+            UserPublicKey writerKey = UserPublicKey.deserialize(din);
+            byte[] mapKey = new byte[MAP_KEY_LENGTH];
+            din.readFully(mapKey);
+            return new Location(ownerKey, writerKey, mapKey);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
-    public static Location decrypt(SymmetricKey fromKey, byte[] nonce, byte[] location) throws IOException {
+    public static Location decrypt(SymmetricKey fromKey, byte[] nonce, byte[] location) {
         byte[] bytes = fromKey.decrypt(location, nonce);
         return Location.deserialize(new DataSource(bytes));
     }

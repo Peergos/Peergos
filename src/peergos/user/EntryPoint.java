@@ -26,21 +26,20 @@ public class EntryPoint {
         return target.encryptMessageFor(this.serialize(), user.secretBoxingKey);
     }
 
-    public byte[] serializeAndSymmetricallyEncrypt(SymmetricKey key) throws IOException {
+    public byte[] serializeAndSymmetricallyEncrypt(SymmetricKey key) {
         byte[] nonce = key.createNonce();
-        return ArrayOps.concat(nonce, key.encrypt(this.serialize(), nonce));
+        return ArrayOps.concat(nonce, key.encrypt(serialize(), nonce));
     }
 
-    public byte[] serialize() throws IOException {
-        ByteArrayOutputStream bout = new ByteArrayOutputStream();
-        DataOutputStream dout = new DataOutputStream(bout);
-        Serialize.serialize(pointer.toByteArray(), dout);
-        Serialize.serialize(owner, dout);
-        dout.writeInt(readers.size());
-        readers.forEach(s -> {try {Serialize.serialize(s, dout);} catch (IOException e){}});
-        dout.writeInt(writers.size());
-        writers.forEach(s -> {try {Serialize.serialize(s, dout);} catch (IOException e){}});
-        return bout.toByteArray();
+    public byte[] serialize() {
+        DataSink sink = new DataSink();
+        sink.writeArray(pointer.toByteArray());
+        sink.writeString(owner);
+        sink.writeInt(readers.size());
+        readers.forEach(s -> sink.writeString(s));
+        sink.writeInt(writers.size());
+        writers.forEach(s -> sink.writeString(s));
+        return sink.toByteArray();
     }
 
     static EntryPoint symmetricallyDecryptAndDeserialize(byte[] input, SymmetricKey key) throws IOException {

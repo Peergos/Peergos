@@ -68,7 +68,7 @@ public class DirAccess extends FileAccess {
                             if (Arrays.equals(target.owner.getPublicKeys(), childRetrievedPointer.filePointer.owner.getPublicKeys()))
                                 keep = false;
                     return keep;
-                } catch (IOException f) {
+                } catch (Exception f) {
                     return false;
                 }
             }).collect(Collectors.toList());
@@ -83,7 +83,7 @@ public class DirAccess extends FileAccess {
                             if (Arrays.equals(target.owner.getPublicKeys(), childRetrievedPointer.filePointer.owner.getPublicKeys()))
                                 keep = false;
                     return keep;
-                } catch (IOException f) {
+                } catch (Exception f) {
                     return false;
                 }
             }).collect(Collectors.toList());
@@ -97,7 +97,7 @@ public class DirAccess extends FileAccess {
     }
 
     // returns [RetrievedFilePointer]
-    public Set<RetrievedFilePointer> getChildren(UserContext context, SymmetricKey baseKey) {
+    public Set<RetrievedFilePointer> getChildren(UserContext context, SymmetricKey baseKey) throws IOException {
         Map<ReadableFilePointer, FileAccess> subdirs = context.retrieveAllMetadata(this.subfolders, baseKey);
         Map<ReadableFilePointer, FileAccess> files = context.retrieveAllMetadata(this.files, this.subfolders2files.target(baseKey));
         return Stream.concat(subdirs.entrySet().stream(), files.entrySet().stream())
