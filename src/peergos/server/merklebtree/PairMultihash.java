@@ -1,12 +1,8 @@
 package peergos.server.merklebtree;
 
-import org.ipfs.api.Multihash;
 import peergos.util.DataSink;
-import peergos.util.DataSource;
 
-import java.io.DataInput;
-import java.io.DataOutput;
-import java.io.IOException;
+import java.io.*;
 
 public class PairMultihash {
     public final MaybeMultihash  left, right;
@@ -19,7 +15,12 @@ public class PairMultihash {
     public void serialize(DataOutput dout) throws IOException {
         left.serialize(dout);
         right.serialize(dout);
+    }
 
+    public byte[] toByteArray() throws IOException {
+        DataSink sink = new DataSink();
+        serialize(sink);
+        return sink.toByteArray();
     }
 
     public static PairMultihash deserialize(DataInput din) throws IOException {

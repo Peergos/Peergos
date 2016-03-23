@@ -137,7 +137,7 @@ public class HTTPCoreNodeServer
         void getUsername(DataInputStream din, DataOutputStream dout) throws IOException
         {
             byte[] publicKey = deserializeByteArray(din);
-            String k = coreNode.getUsername(publicKey);
+            String k = coreNode.getUsername(UserPublicKey.fromByteArray(publicKey));
             if (k == null)
                 k="";
             Serialize.serialize(k, dout);

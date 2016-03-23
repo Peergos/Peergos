@@ -38,11 +38,12 @@ public class EncryptedChunkRetriever implements FileRetriever {
     }
 
     public byte[] getChunkInputStream(UserContext context, SymmetricKey dataKey, long len, Consumer<Long> monitor) {
-        List<Fragment> fragments = context.downloadFragments(fragmentHashes, monitor);
+        List<FragmentWithHash> fragments = context.downloadFragments(fragmentHashes, monitor);
         fragments = reorder(fragments, fragmentHashes);
-        byte[] cipherText = Erasure.recombine(fragments.stream().map(f -> f.data.data).collect(Collectors.toList()), len != 0 ? len : Chunk.MAX_SIZE, nOriginalFragments, nAllowedFailures);
+        byte[] cipherText = Erasure.recombine(fragments.stream().map(f -> f.fragment.data.data).collect(Collectors.toList()),
+                len != 0 ? (int)len : Chunk.MAX_SIZE, nOriginalFragments, nAllowedFailures);
         if (len != 0)
-            cipherText = Arrays.copyOfRange(cipherText, 0, len);
+            cipherText = Arrays.copyOfRange(cipherText, 0, (int)len);
         EncryptedChunk fullEncryptedChunk = new EncryptedChunk(ArrayOps.concat(chunkAuth, cipherText));
         byte[] original = fullEncryptedChunk.decrypt(dataKey, chunkNonce);
         return original;
@@ -79,6 +80,13 @@ public class EncryptedChunkRetriever implements FileRetriever {
         }
         List<Multihash> hashes = fragmentHashes.stream().map(b -> new Multihash(b)).collect(Collectors.toList());
         return new EncryptedChunkRetriever(chunkNonce, chunkAuth, hashes, nextChunk, nOriginalFragments, nAllowedFailures);
+    }
+
+    private static List<FragmentWithHash> reorder(List<FragmentWithHash> fragments, List<Multihash> hashes) {
+        List<FragmentWithHash> res = new ArrayList<>();
+        for (FragmentWithHash f: fragments)
+            res.add(hashes.indexOf(f.hash), f);
+        return res;
     }
 
     private static List<byte[]> split(byte[] arr, int size) {

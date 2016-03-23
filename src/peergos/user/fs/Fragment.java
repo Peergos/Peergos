@@ -13,6 +13,4 @@ public class Fragment {
         this.data = data;
 
     }
-
-
 }

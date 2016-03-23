@@ -18,8 +18,8 @@ public class PinningCoreNode implements CoreNode {
     }
 
     @Override
-    public String getUsername(byte[] encodedUserKey) throws IOException {
-        return target.getUsername(encodedUserKey);
+    public String getUsername(UserPublicKey publicKey) throws IOException {
+        return target.getUsername(publicKey);
     }
 
     @Override

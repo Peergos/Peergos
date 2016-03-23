@@ -357,9 +357,9 @@ public class JDBCCoreNode implements CoreNode {
     }
 
     @Override
-    public String getUsername(byte[] encodedKey)
+    public String getUsername(UserPublicKey encodedKey)
     {
-        String b64key = Base64.getEncoder().encodeToString(encodedKey);
+        String b64key = Base64.getEncoder().encodeToString(encodedKey.serialize());
         try {
             try (PreparedStatement preparedStatement = conn.prepareStatement("select name from usernames u inner join chains ch on u.id=ch.userid inner join links ln on ch.linkid=ln.id and ln.publickey = ? limit 1")) {
                 preparedStatement.setString(1, b64key);

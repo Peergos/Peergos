@@ -60,7 +60,7 @@ public class HTTPCoreNode implements CoreNode
         }
     }
 
-    @Override public String getUsername(byte[] publicKey)
+    @Override public String getUsername(UserPublicKey publicKey)
     {
         HttpURLConnection conn = null;
         try
@@ -71,7 +71,7 @@ public class HTTPCoreNode implements CoreNode
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
 
-            Serialize.serialize(publicKey, dout);
+            Serialize.serialize(publicKey.serialize(), dout);
             dout.flush();
 
             DataInputStream din = new DataInputStream(conn.getInputStream());

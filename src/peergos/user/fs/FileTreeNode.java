@@ -119,7 +119,7 @@ public class FileTreeNode {
     public Set<Location> getChildrenLocations() {
         if (!this.isDirectory())
             return Collections.emptySet();
-        return pointer.fileAccess.getChildrenLocations(pointer.filePointer.baseKey);
+        return ((DirAccess)pointer.fileAccess).getChildrenLocations(pointer.filePointer.baseKey);
     }
 
     public void clear() {
@@ -201,7 +201,7 @@ public class FileTreeNode {
         Location parentLocation = new Location(owner, writer, dirMapKey);
         SymmetricKey dirParentKey = dirAccess.getParentKey(rootRKey);
 
-        byte[] thumbData = generateThumbnail(file, filename);
+        byte[] thumbData = generateThumbnail(new RandomAccessFile(file, "r"), filename);
         FileProperties fileProps = new FileProperties(filename, file.length(), LocalDateTime.now(), false, Optional.of(thumbData));
         FileUploader chunks = new FileUploader(filename, file, fileKey, parentLocation, dirParentKey, monitor, fileProps,
                 EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
@@ -272,7 +272,7 @@ public class FileTreeNode {
         Location newParentLocation = target.getLocation();
         SymmetricKey newParentParentKey = target.getParentKey();
 
-        FileAccess newAccess = pointer.fileAccess.copyTo(ourBaseKey, newBaseKey, newParentLocation, newParentParentKey, target.getEntryWriterKey(), newMapKey, context);
+        FileAccess newAccess = pointer.fileAccess.copyTo(ourBaseKey, newBaseKey, newParentLocation, newParentParentKey, (User)target.getEntryWriterKey(), newMapKey, context);
         // upload new metadatablob
         RetrievedFilePointer newRetrievedFilePointer = new RetrievedFilePointer(newRFP, newAccess);
         FileTreeNode newFileTreeNode = new FileTreeNode(newRetrievedFilePointer, context.username,
@@ -298,7 +298,7 @@ public class FileTreeNode {
         return pointer.fileAccess.getFileProperties(parentKey);
     }
 
-    public byte[] generateThumbnail(InputStream imageBlob, String fileName) {
+    public byte[] generateThumbnail(RandomAccessFile imageBlob, String fileName) {
         byte[] data = new byte[20];
         byte[] BMP = new byte[]{66, 77};
         byte[] GIF = new byte[]{71, 73, 70};

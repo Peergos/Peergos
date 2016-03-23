@@ -259,7 +259,7 @@ public class UserPublicKeyLink {
                 throw new IllegalStateException("Retrieved chain element different after expiry update");
 
             // check username lookup
-            String uname = core.getUsername(user2.toUserPublicKey().serialize());
+            String uname = core.getUsername(user2.toUserPublicKey());
             if (!uname.equals(username))
                 throw new IllegalStateException("Returned username is different! "+uname + " != "+username);
 

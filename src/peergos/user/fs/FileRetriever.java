@@ -13,7 +13,7 @@ public interface FileRetriever {
 
     LazyInputStreamCombiner getFile(UserContext context, SymmetricKey dataKey, long len, Consumer<Long> monitor);
 
-    byte[] getChunkInputStream(UserContext context, SymmetricKey dataKey, int len, Consumer<Long> monitor);
+    byte[] getChunkInputStream(UserContext context, SymmetricKey dataKey, long len, Consumer<Long> monitor);
 
     void serialize(DataSink sink);
 

@@ -14,7 +14,7 @@ public interface CoreNode {
     int MAX_PENDING_FOLLOWERS = 100;
     int MAX_USERNAME_SIZE = 100;
 
-    String getUsername(byte[] encodedUserKey) throws IOException;
+    String getUsername(UserPublicKey key) throws IOException;
 
     List<UserPublicKeyLink> getChain(String username);
 

@@ -67,7 +67,7 @@ public class UserContext {
     }
 
     public boolean isRegistered() throws IOException {
-        return corenodeClient.getUsername(user.getPublicKeys()).equals(username);
+        return corenodeClient.getUsername(user).equals(username);
     }
 
     public byte[] serializeStatic() throws IOException {
@@ -129,11 +129,14 @@ public class UserContext {
     }
 
     Map<String, FileTreeNode> getFollowerRoots() {
-        return getSharingFolder().getChildren(this).stream().collect(Collectors.toMap(e -> e.getFileProperties().name, e -> e));
+        return getSharingFolder()
+                .getChildren(this)
+                .stream()
+                .collect(Collectors.toMap(e -> e.getFileProperties().name, e -> e));
     }
 
     public SocialState getSocialState() throws IOException {
-        Set<FollowRequest> pending = getFollowRequests();
+        List<FollowRequest> pending = getFollowRequests();
         Map<String, FileTreeNode> followerRoots = getFollowerRoots();
         Set<FileTreeNode> followingRoots = getFriendRoots();
         return new SocialState(pending, followerRoots, followingRoots);
@@ -161,9 +164,9 @@ public class UserContext {
             User tmp = User.random();
             byte[] payload = targetUser.encryptMessageFor(plaintext, tmp.secretBoxingKey);
 
-            corenodeClient.followRequest(initialRequest.entry.get().pointer.owner.getPublicKeys(), ArrayOps.concat(tmp.publicBoxingKey, payload));
+            corenodeClient.followRequest(initialRequest.entry.get().pointer.owner, ArrayOps.concat(tmp.publicBoxingKey.toByteArray(), payload));
             // remove pending follow request from them
-            return corenodeClient.removeFollowRequest(user.getPublicKeys(), user.signMessage(initialRequest.rawCipher));
+            return corenodeClient.removeFollowRequest(user, user.signMessage(initialRequest.rawCipher));
         }
         ReadableFilePointer friendRoot = getSharingFolder().mkdir(theirUsername, this, initialRequest.key.get(), true).get();
         // add a note to our static data so we know who we sent the read access to
@@ -226,20 +229,20 @@ public class UserContext {
         return corenodeClient.followRequest(targetUser.toUserPublicKey(), res.toByteArray());
     };
 
-    public boolean sendWriteAccess(String targetUser) {
+    public boolean sendWriteAccess(UserPublicKey targetUser) throws IOException {
         // create sharing keypair and give it write access
         User sharing = User.random();
         byte[] rootMapKey = TweetNaCl.securedRandom(32);
 
         // add a note to our static data so we know who we sent the private key to
         ReadableFilePointer friendRoot = new ReadableFilePointer(user, sharing, rootMapKey, SymmetricKey.random());
-        String name = corenodeClient.getUsername(targetUser.getPublicKeys());
-        EntryPoint entry = new EntryPoint(friendRoot, username, Collections.EMPTY_SET, Stream.of(name).collect(Collectors.toSet()));
+        String name = corenodeClient.getUsername(targetUser);
+        EntryPoint entry = new EntryPoint(friendRoot, username, Collections.emptySet(), Stream.of(name).collect(Collectors.toSet()));
         addToStaticDataAndCommit(entry);
         // create a tmp keypair whose public key we can append to the request without leaking information
         User tmp = User.random();
         byte[] payload = entry.serializeAndEncrypt(tmp, targetUser);
-        return corenodeClient.followRequest(targetUser.getPublicKeys(), ArrayOps.concat(tmp.publicBoxingKey, payload));
+        return corenodeClient.followRequest(targetUser, ArrayOps.concat(tmp.publicBoxingKey.toByteArray(), payload));
     }
 
     public boolean addToStaticData(EntryPoint entry) {
@@ -257,13 +260,13 @@ public class UserContext {
 
     private boolean commitStaticData() throws IOException {
         byte[] rawStatic = serializeStatic();
-        Multihash blobHash = dhtClient.put(rawStatic, user.getPublicKeys());
-        byte[] currentHash = corenodeClient.getMetadataBlob(user.getPublicKeys());
+        Multihash blobHash = dhtClient.put(rawStatic, user);
+        Multihash currentHash = corenodeClient.getMetadataBlob(user);
         DataSink bout = new DataSink();
-        bout.writeArray(currentHash);
+        bout.writeArray(currentHash.toBytes());
         bout.writeArray(blobHash.toBytes());
         byte[] signed = user.signMessage(bout.toByteArray());
-        boolean added = corenodeClient.setMetadataBlob(user.getPublicKeys(), user.getPublicKeys(), signed);
+        boolean added = corenodeClient.setMetadataBlob(user, user, signed);
         if (!added) {
             System.out.println("Static data store failed.");
             return false;
@@ -296,7 +299,7 @@ public class UserContext {
                 // delete our folder if they didn't reciprocate
                 FileTreeNode ourDirForThem = followerRoots.get(freq.entry.get().owner);
                 byte[] ourKeyForThem = ourDirForThem.getKey().serialize();
-                byte[] keyFromResponse = freq.key == null ? null : freq.key.serialize();
+                byte[] keyFromResponse = freq.key == null ? null : freq.key.get().serialize();
                 if (keyFromResponse == null || !Arrays.equals(keyFromResponse, ourKeyForThem)) {
                     ourDirForThem.remove(this, getSharingFolder());
                     // remove entry point as well
@@ -348,10 +351,10 @@ public class UserContext {
         metadata.serialize(dout);
         byte[] metaBlob = dout.toByteArray();
         System.out.println("Storing metadata blob of " + metaBlob.length + " bytes. to mapKey: "+ArrayOps.bytesToHex(mapKey));
-        byte[] blobHash = dhtClient.put(metaBlob, owner.getPublicKeys(), linkHashes);
+        byte[] blobHash = dhtClient.put(metaBlob, owner, linkHashes);
         byte[] newBtreeRootCAS = btree.put(sharer, mapKey, blobHash);
         byte[] signed = sharer.signMessage(newBtreeRootCAS);
-        boolean added =  corenodeClient.setMetadataBlob(owner.getPublicKeys(), sharer.getPublicKeys(), signed);
+        boolean added =  corenodeClient.setMetadataBlob(owner, sharer, signed);
         if (!added) {
             System.out.println("Meta blob store failed.");
             return false;
@@ -360,7 +363,7 @@ public class UserContext {
     }
 
     private byte[] getStaticData() {
-        return dhtClient.get(corenodeClient.getMetadataBlob(user.getPublicKeys()));
+        return dhtClient.get(corenodeClient.getMetadataBlob(user.toUserPublicKey()));
     }
 
     private Map<EntryPoint, FileAccess> getRoots() throws IOException {
@@ -382,10 +385,11 @@ public class UserContext {
         // download the metadata blobs for these entry points
         Map<EntryPoint, FileAccess> res = new HashMap<>();
         for (EntryPoint entry: entries) {
-            byte[] value = dhtClient.get(btree.get(entry.pointer.writer, entry.pointer.mapKey));
+            byte[] value = dhtClient.get(btree.get(entry.pointer.writer, entry.pointer.mapKey).get());
             if (value.length > 8) // otherwise this is a deleted directory
                 res.put(entry, FileAccess.deserialize(value));
         }
+        return res;
     }
 
     public FileTreeNode getTreeRoot() {
@@ -442,8 +446,8 @@ public class UserContext {
         Map<ReadableFilePointer, FileAccess> res = new HashMap<>();
         for (SymmetricLocationLink link: links) {
             Location loc = link.targetLocation(baseKey);
-            byte[] key = btree.get(loc.writer, loc.mapKey);
-            byte[] data = dhtClient.get(key);
+            MaybeMultihash key = btree.get(loc.writer, loc.mapKey);
+            byte[] data = dhtClient.get(key.get());
             if (data.length > 0)
                 res.put(link.toReadableFilePointer(baseKey), FileAccess.deserialize(data));
         }
@@ -451,17 +455,17 @@ public class UserContext {
     }
 
     public FileAccess getMetadata(Location loc) throws IOException {
-        Multihash blobHash = btree.get(loc.writer, loc.mapKey);
-        byte[] raw = dhtClient.get(blobHash.toBytes());
+        MaybeMultihash blobHash = btree.get(loc.writer, loc.mapKey);
+        byte[] raw = dhtClient.get(blobHash.get());
         return FileAccess.deserialize(raw);
     };
 
-    public List<Fragment> downloadFragments(List<Multihash> hashes, Consumer<Long> monitor) {
+    public List<FragmentWithHash> downloadFragments(List<Multihash> hashes, Consumer<Long> monitor) {
         return hashes.stream()
                 .map(h -> {
-                    Fragment f = new Fragment(new ByteArrayWrapper(dhtClient.get(h.toBytes())));
+                    Fragment f = new Fragment(new ByteArrayWrapper(dhtClient.get(h)));
                     monitor.accept(1L);
-                    return f;
+                    return new FragmentWithHash(f, h);
                 })
                 .collect(Collectors.toList());
     }
