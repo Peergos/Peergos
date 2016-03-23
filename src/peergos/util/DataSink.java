@@ -95,8 +95,12 @@ public class DataSink implements DataOutput {
     }
 
     @Override
-    public void writeByte(int b) throws IOException {
-        dout.writeByte(b);
+    public void writeByte(int b) {
+        try {
+            dout.writeByte(b);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override

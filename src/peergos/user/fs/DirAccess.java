@@ -47,7 +47,7 @@ public class DirAccess extends FileAccess {
                 this.subfolders, this.files, this.parent2meta,
                 ArrayOps.concat(metaNonce, metaKey.encrypt(newProps.serialize(), metaNonce)),
                 null,
-
+                parentLink
         );
         return context.uploadChunk(dira, writableFilePointer.owner, (User)writableFilePointer.writer, writableFilePointer.mapKey, Collections.EMPTY_LIST);
     }

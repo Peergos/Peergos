@@ -19,14 +19,18 @@ public class ReadableFilePointer {
         this.baseKey = baseKey;
     }
 
-    public byte[] serialize() throws IOException {
-        DataSink bout = new DataSink();
-        bout.writeArray(owner.getPublicKeys());
-        bout.writeByte(this.isWritable() ? 1 : 0);
-        writer.serialize(bout);
-        bout.writeArray(mapKey);
-        bout.writeArray(baseKey.serialize());
-        return bout.toByteArray();
+    public byte[] serialize() {
+        try {
+            DataSink bout = new DataSink();
+            bout.writeArray(owner.getPublicKeys());
+            bout.writeByte(this.isWritable() ? 1 : 0);
+            writer.serialize(bout);
+            bout.writeArray(mapKey);
+            bout.writeArray(baseKey.serialize());
+            return bout.toByteArray();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public ReadableFilePointer readOnly() {

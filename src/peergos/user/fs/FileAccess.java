@@ -42,6 +42,10 @@ public class FileAccess {
         return this.getType() == 1;
     }
 
+    public SymmetricKey getParentKey(SymmetricKey parentKey) {
+        return parentKey;
+    }
+
     public SymmetricKey getMetaKey(SymmetricKey parentKey) {
         return parent2meta.target(parentKey);
     }
@@ -76,16 +80,17 @@ public class FileAccess {
         metaKey = this.getMetaKey(writableFilePointer.baseKey);
         byte[] nonce = metaKey.createNonce();
         FileAccess fa = new FileAccess(this.parent2meta, ArrayOps.concat(nonce, metaKey.encrypt(newProps.serialize(), nonce)), this.retriever, this.parentLink);
-        return context.uploadChunk(fa, writableFilePointer.owner, (User) writableFilePointer.writer, writableFilePointer.mapKey);
+        return context.uploadChunk(fa, writableFilePointer.owner, (User) writableFilePointer.writer,
+                writableFilePointer.mapKey, Collections.emptyList()); //TODO get fragment hashes from retriever
     }
 
     public FileAccess copyTo(SymmetricKey baseKey, SymmetricKey newBaseKey, Location parentLocation, SymmetricKey parentparentKey,
                   User entryWriterKey, byte[] newMapKey, UserContext context) throws IOException {
         if (!Arrays.equals(baseKey.serialize(), newBaseKey.serialize()))
-            throw new IllegalStateException("FileAcess clone must have same base key as original!");
+            throw new IllegalStateException("FileAccess clone must have same base key as original!");
         FileProperties props = getFileProperties(baseKey);
         FileAccess fa = FileAccess.create(newBaseKey, props, this.retriever, parentLocation, parentparentKey);
-        context.uploadChunk(fa, context.user, entryWriterKey, newMapKey);
+        context.uploadChunk(fa, context.user, entryWriterKey, newMapKey, Collections.emptyList()); //TODO get fragment hashes from retriever
         return fa;
     }
 

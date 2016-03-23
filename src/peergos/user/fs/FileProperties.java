@@ -13,9 +13,9 @@ public class FileProperties {
     public final long size;
     public final LocalDateTime modified;
     public final boolean isHidden;
-    public final Optional<ByteArrayWrapper> thumbnail;
+    public final Optional<byte[]> thumbnail;
 
-    public FileProperties(String name, long size, LocalDateTime modified, boolean isHidden, Optional<ByteArrayWrapper> thumbnail) {
+    public FileProperties(String name, long size, LocalDateTime modified, boolean isHidden, Optional<byte[]> thumbnail) {
         this.name = name;
         this.size = size;
         this.modified = modified;
@@ -32,7 +32,7 @@ public class FileProperties {
         if (!thumbnail.isPresent())
             dout.write(-1);
         else
-            dout.writeArray(thumbnail.get().data);
+            dout.writeArray(thumbnail.get());
 
         return dout.toByteArray();
     }
@@ -44,9 +44,9 @@ public class FileProperties {
         double modified = din.readDouble();
         boolean isHidden = din.readBoolean();
         int length = din.readInt();
-        Optional<ByteArrayWrapper> thumbnail = length == -1 ?
+        Optional<byte[]> thumbnail = length == -1 ?
                 Optional.empty() :
-                Optional.of(new ByteArrayWrapper(Serialize.deserializeByteArray(din, ContentAddressedStorage.MAX_OBJECT_LENGTH)));
+                Optional.of(Serialize.deserializeByteArray(din, ContentAddressedStorage.MAX_OBJECT_LENGTH));
 
         return new FileProperties(name, size, LocalDateTime.ofEpochSecond((int)modified, 0, ZoneOffset.UTC), isHidden, thumbnail);
     }
