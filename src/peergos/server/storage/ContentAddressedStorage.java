@@ -20,6 +20,10 @@ public interface ContentAddressedStorage {
         return put(new MerkleNode(data, links.stream().collect(Collectors.toMap(m -> m.toString(), m -> m))));
     }
 
+    default Multihash put(byte[] data) {
+        return put(new MerkleNode(data, Collections.emptyMap()));
+    }
+
     /**
      *
      * @param key the hash of a value previously stored

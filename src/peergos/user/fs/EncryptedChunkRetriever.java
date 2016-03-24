@@ -40,7 +40,7 @@ public class EncryptedChunkRetriever implements FileRetriever {
     public byte[] getChunkInputStream(UserContext context, SymmetricKey dataKey, long len, Consumer<Long> monitor) {
         List<FragmentWithHash> fragments = context.downloadFragments(fragmentHashes, monitor);
         fragments = reorder(fragments, fragmentHashes);
-        byte[] cipherText = Erasure.recombine(fragments.stream().map(f -> f.fragment.data.data).collect(Collectors.toList()),
+        byte[] cipherText = Erasure.recombine(fragments.stream().map(f -> f.fragment.data).collect(Collectors.toList()),
                 len != 0 ? (int)len : Chunk.MAX_SIZE, nOriginalFragments, nAllowedFailures);
         if (len != 0)
             cipherText = Arrays.copyOfRange(cipherText, 0, (int)len);

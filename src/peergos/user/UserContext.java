@@ -96,7 +96,7 @@ public class UserContext {
         EntryPoint entry = new EntryPoint(rootPointer, this.username, Collections.EMPTY_SET,Collections.EMPTY_SET);
 
         addToStaticDataAndCommit(entry);
-        DirAccess root = DirAccess.create(rootRKey, new FileProperties(directoryName, 0, LocalDateTime.now(), false, Optional.empty()), null, null, null);
+        DirAccess root = DirAccess.create(rootRKey, new FileProperties(directoryName, 0, LocalDateTime.now(), false, Optional.empty()), (Location)null, null, null);
         boolean uploaded = this.uploadChunk(root, this.user, writer, rootMapKey, Collections.EMPTY_LIST);
         if (uploaded)
             return new RetrievedFilePointer(rootPointer, root);
@@ -305,9 +305,16 @@ public class UserContext {
                     removeFromStaticData(ourDirForThem);
                     // clear their response follow req too
                     corenodeClient.removeFollowRequest(user.toUserPublicKey(), user.signMessage(freq.rawCipher));
-                } else // add new entry to tree root
-                    treenode = downloadEntryPoints(Arrays.asList(freq.entry.get())).stream().findAny().get();
-                getAncestorsAndAddToTree(treenode, this);
+                } else {
+                    // add new entry to tree root
+                    FileTreeNode treenode = downloadEntryPoints(Stream.of(freq.entry.get()).collect(Collectors.toSet()))
+                            .entrySet()
+                            .stream()
+                            .map(e -> new FileTreeNode(new RetrievedFilePointer(e.getKey().pointer, e.getValue()),
+                                    e.getKey().owner, e.getKey().readers, e.getKey().writers, e.getKey().pointer.writer))
+                            .findAny().get();
+                    getAncestorsAndAddToTree(treenode);
+                }
                 // add entry point to static data
                 if (!Arrays.equals(freq.entry.get().pointer.baseKey.serialize(), SymmetricKey.createNull().serialize())) {
                     addToStaticDataAndCommit(freq.entry.get());
@@ -462,7 +469,7 @@ public class UserContext {
     public List<FragmentWithHash> downloadFragments(List<Multihash> hashes, Consumer<Long> monitor) {
         return hashes.stream()
                 .map(h -> {
-                    Fragment f = new Fragment(new ByteArrayWrapper(dhtClient.get(h)));
+                    Fragment f = new Fragment(dhtClient.get(h));
                     monitor.accept(1L);
                     return new FragmentWithHash(f, h);
                 })

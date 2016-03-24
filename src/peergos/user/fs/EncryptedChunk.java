@@ -21,7 +21,7 @@ public class EncryptedChunk {
         byte[][] bfrags = Erasure.split(this.cipher, nOriginalFragments, nAllowedFailures);
         List<Fragment> frags = new ArrayList<>();
         for (int i=0; i < bfrags.length; i++)
-            frags.add(new Fragment(new ByteArrayWrapper(bfrags[i])));
+            frags.add(new Fragment(bfrags[i]));
 	    return frags;
     }
 
