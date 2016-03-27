@@ -28,13 +28,13 @@ public class UserContext {
     private FileTreeNode rootNode;
     private FileTreeNode sharingFolder;
 
-    public UserContext(String username, User user, SymmetricKey root, DHTClient dht, CoreNode coreNode) throws IOException {
+    public UserContext(String username, User user, SymmetricKey root, DHTClient dht, Btree btree, CoreNode coreNode) throws IOException {
         this.username = username;
         this.user = user;
         this.rootKey = root;
         this.dhtClient = dht;
         this.corenodeClient = coreNode;
-        this.btree = new BtreeImpl(coreNode, dht);
+        this.btree = btree;
     }
 
 
