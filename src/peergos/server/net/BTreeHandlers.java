@@ -56,7 +56,7 @@ public class BTreeHandlers
                             new Multihash(value));
                     ByteArrayOutputStream bout = new ByteArrayOutputStream();
                     DataOutputStream dout = new DataOutputStream(bout);
-                    Serialize.serialize(rootHash.toBytes(), dout);
+                    rootHash.serialize(dout);
                     Serialize.serialize(newRoot.toBytes(), dout);
                     new ModifySuccess(httpExchange).accept(Optional.of(bout.toByteArray()));
                 } catch (Exception e) {

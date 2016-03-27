@@ -599,8 +599,8 @@ public class JDBCCoreNode implements CoreNode {
             byte[] bothHashes = writingKey.unsignMessage(writingKeySignedHash);
             // check CAS [current hash, new hash]
             DataInputStream din = new DataInputStream(new ByteArrayInputStream(bothHashes));
-            byte[] claimedCurrentHash = Serialize.deserializeByteArray(din, 4096);
-            if (current != null && !Arrays.equals(current.toBytes(), claimedCurrentHash))
+            MaybeMultihash claimedCurrentHash = MaybeMultihash.deserialize(din);
+            if (! current.equals(claimedCurrentHash))
                 return false;
             MetadataBlob blob = new MetadataBlob(writingKey.serialize(), bothHashes);
             return blob.insert();

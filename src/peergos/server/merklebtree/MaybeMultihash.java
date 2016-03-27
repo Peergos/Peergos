@@ -39,32 +39,38 @@ public class MaybeMultihash {
     }
 
     public String toString() {
-        throw new IllegalStateException("Unimplemented");
+        return hash != null ? hash.toString() : "EMPTY";
     }
 
+    @Override
     public boolean equals(Object o) {
-        throw new IllegalStateException("Unimplemented");
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+
+        MaybeMultihash that = (MaybeMultihash) o;
+
+        return hash != null ? hash.equals(that.hash) : that.hash == null;
+
     }
 
+    @Override
     public int hashCode() {
-        throw new IllegalStateException("Unimplemented");
+        return hash != null ? hash.hashCode() : 0;
     }
-
 
     public static MaybeMultihash deserialize(DataInput din) throws IOException {
         int val  = din.readInt();
 
         boolean isPresent  = val != 0;
-        if (isPresent)
+        if (! isPresent)
             return MaybeMultihash.EMPTY();
         byte[] data  = new byte[val];
         din.readFully(data);
-        return MaybeMultihash.of(
-                new Multihash(data));
+        return MaybeMultihash.of(new Multihash(data));
     }
 
     public void serialize(DataOutput dout) throws IOException {
-        if (!isPresent())
+        if (! isPresent())
             dout.writeInt(0);
         else {
             byte[] bytes = hash.toBytes();
