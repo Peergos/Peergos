@@ -26,11 +26,13 @@ public class BTreeHandlers
 
             byte[] sharingKey = Serialize.deserializeByteArray(din, UserPublicKey.MAX_SIZE);
             byte[] mapKey = Serialize.deserializeByteArray(din, 64);
-            System.out.println("Get mapkey: "+new ByteArrayWrapper(mapKey));
+
             try {
                 MaybeMultihash rootHash = core.getMetadataBlob(UserPublicKey.fromByteArray(sharingKey));
                 MerkleBTree btree = MerkleBTree.create(rootHash, dht);
-                byte[] value = btree.get(mapKey).toBytes();
+                MaybeMultihash res = btree.get(mapKey);
+                byte[] value = res.toBytes();
+                System.out.println("Get mapkey: "+new ByteArrayWrapper(mapKey) + " = "+ res);
                 new GetSuccess(httpExchange).accept(value);
             } catch (Exception e) {
                 e.printStackTrace();
@@ -45,24 +47,24 @@ public class BTreeHandlers
         public void handle(HttpExchange httpExchange) throws IOException {
             InputStream in = httpExchange.getRequestBody();
             DataInputStream din = new DataInputStream(in);
-                byte[] sharingKey = Serialize.deserializeByteArray(din, UserPublicKey.MAX_SIZE);
-                byte[] mapKey = Serialize.deserializeByteArray(din, 32);
-                byte[] value = Serialize.deserializeByteArray(din, ContentAddressedStorage.MAX_OBJECT_LENGTH);
-                System.out.println("Put mapkey: " + new ByteArrayWrapper(mapKey) + " -> " + new ByteArrayWrapper(value));
-                try {
-                    MaybeMultihash rootHash = core.getMetadataBlob(UserPublicKey.fromByteArray(sharingKey));
-                    MerkleBTree btree = MerkleBTree.create(rootHash, dht);
-                    Multihash newRoot = btree.put(mapKey,
-                            new Multihash(value));
-                    ByteArrayOutputStream bout = new ByteArrayOutputStream();
-                    DataOutputStream dout = new DataOutputStream(bout);
-                    rootHash.serialize(dout);
-                    Serialize.serialize(newRoot.toBytes(), dout);
-                    new ModifySuccess(httpExchange).accept(Optional.of(bout.toByteArray()));
-                } catch (Exception e) {
-                    e.printStackTrace();
-                    new ModifySuccess(httpExchange).accept(Optional.empty());
-                }
+            byte[] sharingKey = Serialize.deserializeByteArray(din, UserPublicKey.MAX_SIZE);
+            byte[] mapKey = Serialize.deserializeByteArray(din, 32);
+            byte[] valueRaw = Serialize.deserializeByteArray(din, ContentAddressedStorage.MAX_OBJECT_LENGTH);
+            Multihash value = new Multihash(valueRaw);
+            System.out.println("Put mapkey: " + new ByteArrayWrapper(mapKey) + " -> " + value);
+            try {
+                MaybeMultihash rootHash = core.getMetadataBlob(UserPublicKey.fromByteArray(sharingKey));
+                MerkleBTree btree = MerkleBTree.create(rootHash, dht);
+                Multihash newRoot = btree.put(mapKey, value);
+                ByteArrayOutputStream bout = new ByteArrayOutputStream();
+                DataOutputStream dout = new DataOutputStream(bout);
+                rootHash.serialize(dout);
+                Serialize.serialize(newRoot.toBytes(), dout);
+                new ModifySuccess(httpExchange).accept(Optional.of(bout.toByteArray()));
+            } catch (Exception e) {
+                e.printStackTrace();
+                new ModifySuccess(httpExchange).accept(Optional.empty());
+            }
         }
     }
 

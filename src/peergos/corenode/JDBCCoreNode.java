@@ -600,8 +600,10 @@ public class JDBCCoreNode implements CoreNode {
             // check CAS [current hash, new hash]
             DataInputStream din = new DataInputStream(new ByteArrayInputStream(bothHashes));
             MaybeMultihash claimedCurrentHash = MaybeMultihash.deserialize(din);
+            MaybeMultihash newHash = MaybeMultihash.deserialize(din);
             if (! current.equals(claimedCurrentHash))
                 return false;
+            System.out.println("Core::setMetadata for "+writingKey + " from "+ current + " to " + newHash);
             MetadataBlob blob = new MetadataBlob(writingKey.serialize(), bothHashes);
             return blob.insert();
         } catch (TweetNaCl.InvalidSignatureException e) {
