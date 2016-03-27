@@ -1,4 +1,4 @@
-package peergos.util;
+package peergos.user;
 
 import org.ipfs.api.Multihash;
 import peergos.corenode.CoreNode;
@@ -8,8 +8,6 @@ import peergos.server.merklebtree.MerkleBTree;
 import peergos.server.merklebtree.PairMultihash;
 import peergos.server.storage.ContentAddressedStorage;
 
-import java.io.ByteArrayOutputStream;
-import java.io.DataOutputStream;
 import java.io.IOException;
 
 public class BtreeImpl implements Btree {

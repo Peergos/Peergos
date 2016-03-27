@@ -5,7 +5,6 @@ import peergos.corenode.*;
 import peergos.crypto.*;
 import peergos.crypto.symmetric.SymmetricKey;
 import peergos.server.merklebtree.*;
-import peergos.server.storage.ContentAddressedStorage;
 import peergos.user.fs.*;
 import peergos.util.*;
 
