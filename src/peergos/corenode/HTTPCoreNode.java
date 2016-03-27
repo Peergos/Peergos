@@ -3,6 +3,7 @@ package peergos.corenode;
 
 import org.ipfs.api.Multihash;
 import peergos.crypto.*;
+import peergos.server.merklebtree.*;
 import peergos.util.*;
 
 import java.net.*;
@@ -294,7 +295,7 @@ public class HTTPCoreNode implements CoreNode
         }
     }
 
-    @Override public Multihash getMetadataBlob(UserPublicKey encodedSharingKey)
+    @Override public MaybeMultihash getMetadataBlob(UserPublicKey encodedSharingKey)
     {
         HttpURLConnection conn = null;
         try
@@ -312,7 +313,9 @@ public class HTTPCoreNode implements CoreNode
 
             DataInputStream din = new DataInputStream(conn.getInputStream());
             byte[] meta = deserializeByteArray(din);
-            return new Multihash(meta);
+            if (meta.length == 0)
+                return MaybeMultihash.EMPTY();
+            return MaybeMultihash.of(new Multihash(meta));
         } catch (IOException ioe) {
             ioe.printStackTrace();
             return null;

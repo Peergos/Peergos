@@ -200,12 +200,10 @@ public class HTTPCoreNodeServer
         void getMetadataBlob(DataInputStream din, DataOutputStream dout) throws IOException
         {
             byte[] encodedSharingKey = deserializeByteArray(din);
-            Multihash metadataBlob = coreNode.getMetadataBlob(
+            MaybeMultihash metadataBlob = coreNode.getMetadataBlob(
                     UserPublicKey.fromByteArray(encodedSharingKey));
 
-            boolean isPresent = metadataBlob != null;
-            MaybeMultihash maybeMultihash = isPresent ? MaybeMultihash.of(metadataBlob) : MaybeMultihash.EMPTY();
-            maybeMultihash.serialize(dout);
+            metadataBlob.serialize(dout);
         }
 
         public void close() throws IOException{

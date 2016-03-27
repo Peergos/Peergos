@@ -2,6 +2,7 @@ package peergos.corenode;
 
 import org.ipfs.api.Multihash;
 import peergos.crypto.*;
+import peergos.server.merklebtree.*;
 import peergos.util.*;
 
 import java.io.*;
@@ -594,7 +595,7 @@ public class JDBCCoreNode implements CoreNode {
     public boolean setMetadataBlob(UserPublicKey ownerPublicKey, UserPublicKey writingKey, byte[] writingKeySignedHash) throws IOException {
 
         try {
-            Multihash current= getMetadataBlob(writingKey);
+            MaybeMultihash current= getMetadataBlob(writingKey);
             byte[] bothHashes = writingKey.unsignMessage(writingKeySignedHash);
             // check CAS [current hash, new hash]
             DataInputStream din = new DataInputStream(new ByteArrayInputStream(bothHashes));
@@ -623,16 +624,19 @@ public class JDBCCoreNode implements CoreNode {
     }
 
     @Override
-    public Multihash getMetadataBlob(UserPublicKey writingKey) {
+    public MaybeMultihash getMetadataBlob(UserPublicKey writingKey) {
         byte[] dummy = null;
         MetadataBlob blob = new MetadataBlob(writingKey.serialize(), dummy);
         MetadataBlob users = blob.selectOne();
         if (users == null)
-            return null;
+            return MaybeMultihash.EMPTY();
         DataInputStream din = new DataInputStream(new ByteArrayInputStream(users.hash));
         try {
             Serialize.deserializeByteArray(din, 4096);
-            return new Multihash(Serialize.deserializeByteArray(din, 4096));
+            byte[] multihash = Serialize.deserializeByteArray(din, 4096);
+            if (multihash.length == 0)
+                return MaybeMultihash.EMPTY();
+            return MaybeMultihash.of(new Multihash(multihash));
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

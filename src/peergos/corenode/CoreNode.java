@@ -2,6 +2,7 @@ package peergos.corenode;
 
 import org.ipfs.api.Multihash;
 import peergos.crypto.*;
+import peergos.server.merklebtree.*;
 import peergos.util.*;
 
 import java.io.*;
@@ -51,7 +52,7 @@ public interface CoreNode {
 
     boolean removeMetadataBlob(UserPublicKey encodedSharingPublicKey, byte[] sharingKeySignedMapKeyPlusBlob) throws IOException;
 
-    Multihash getMetadataBlob(UserPublicKey encodedSharingKey);
+    MaybeMultihash getMetadataBlob(UserPublicKey encodedSharingKey);
 
     void close() throws IOException;
 

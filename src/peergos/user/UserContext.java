@@ -275,7 +275,7 @@ public class UserContext {
     private boolean commitStaticData() throws IOException {
         byte[] rawStatic = serializeStatic();
         Multihash blobHash = dhtClient.put(rawStatic, user, Collections.emptyList());
-        Multihash currentHash = corenodeClient.getMetadataBlob(user);
+        Multihash currentHash = corenodeClient.getMetadataBlob(user).get();
         DataSink bout = new DataSink();
         bout.writeArray(currentHash.toBytes());
         bout.writeArray(blobHash.toBytes());
@@ -408,7 +408,7 @@ public class UserContext {
     }
 
     private byte[] getStaticData() throws IOException {
-        return dhtClient.get(corenodeClient.getMetadataBlob(user.toUserPublicKey())).get();
+        return dhtClient.get(corenodeClient.getMetadataBlob(user.toUserPublicKey()).get()).get();
     }
 
     private Map<EntryPoint, FileAccess> getRoots() throws IOException {

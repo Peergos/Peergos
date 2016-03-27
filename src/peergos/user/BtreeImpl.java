@@ -21,9 +21,7 @@ public class BtreeImpl implements Btree {
 
     @Override
     public PairMultihash put(UserPublicKey sharingKey, byte[] mapKey, Multihash value) throws IOException {
-        Multihash raw = coreNode.getMetadataBlob(sharingKey);
-        boolean isPresent = raw == null;
-        MaybeMultihash rootHash = ! isPresent ? MaybeMultihash.EMPTY() : MaybeMultihash.of(raw);
+        MaybeMultihash rootHash = coreNode.getMetadataBlob(sharingKey);
         MerkleBTree btree = MerkleBTree.create(rootHash, dht);
         return new PairMultihash(
                 rootHash,
@@ -32,18 +30,14 @@ public class BtreeImpl implements Btree {
 
     @Override
     public MaybeMultihash get(UserPublicKey sharingKey, byte[] mapKey) throws IOException {
-        Multihash raw = coreNode.getMetadataBlob(sharingKey);
-        boolean isPresent = raw == null;
-        MaybeMultihash rootHash = ! isPresent ? MaybeMultihash.EMPTY() : MaybeMultihash.of(raw);
+        MaybeMultihash rootHash = coreNode.getMetadataBlob(sharingKey);
         MerkleBTree btree = MerkleBTree.create(rootHash, dht);
         return btree.get(mapKey);
     }
 
     @Override
     public PairMultihash remove(UserPublicKey sharingKey, byte[] mapKey) throws IOException {
-        Multihash raw = coreNode.getMetadataBlob(sharingKey);
-        boolean isPresent = raw == null;
-        MaybeMultihash rootHash = ! isPresent ? MaybeMultihash.EMPTY() : MaybeMultihash.of(raw);
+        MaybeMultihash rootHash = coreNode.getMetadataBlob(sharingKey);
 
         MerkleBTree btree = MerkleBTree.create(rootHash, dht);
         Multihash newRoot = btree.delete(mapKey);

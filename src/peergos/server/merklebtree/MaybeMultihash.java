@@ -1,7 +1,7 @@
 package peergos.server.merklebtree;
 
 import org.ipfs.api.Multihash;
-import peergos.util.Serialize;
+import peergos.util.*;
 
 import java.io.DataInput;
 import java.io.DataInputStream;
@@ -29,7 +29,13 @@ public class MaybeMultihash {
     }
 
     public byte[] toBytes() {
-        throw new IllegalStateException("Unimplemented");
+        try {
+            DataSink sink = new DataSink();
+            serialize(sink);
+            return sink.toByteArray();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public String toString() {
@@ -58,7 +64,7 @@ public class MaybeMultihash {
     }
 
     public void serialize(DataOutput dout) throws IOException {
-        if (isPresent())
+        if (!isPresent())
             dout.writeInt(0);
         else {
             byte[] bytes = hash.toBytes();

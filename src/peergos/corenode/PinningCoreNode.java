@@ -2,6 +2,7 @@ package peergos.corenode;
 
 import org.ipfs.api.*;
 import peergos.crypto.*;
+import peergos.server.merklebtree.*;
 import peergos.server.storage.*;
 import peergos.util.*;
 
@@ -86,7 +87,7 @@ public class PinningCoreNode implements CoreNode {
     }
 
     @Override
-    public Multihash getMetadataBlob(UserPublicKey encodedSharingKey) {
+    public MaybeMultihash getMetadataBlob(UserPublicKey encodedSharingKey) {
         return target.getMetadataBlob(encodedSharingKey);
     }
 

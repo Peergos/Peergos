@@ -15,9 +15,9 @@ import java.util.function.*;
 
 public class BTreeHandlers
 {
-    private static final String PUT_STEM = "btree/put";
-    private static final String GET_STEM = "btree/get";
-    private static final String REMOVE_STEM = "btree/delete";
+    private static final String PUT_STEM = "/btree/put/";
+    private static final String GET_STEM = "/btree/get/";
+    private static final String REMOVE_STEM = "/btree/delete/";
 
     private class GetHandler implements HttpHandler {
         @Override
@@ -29,7 +29,7 @@ public class BTreeHandlers
             byte[] mapKey = Serialize.deserializeByteArray(din, 64);
             System.out.println("Get mapkey: "+new ByteArrayWrapper(mapKey));
             try {
-                Multihash rootHash = core.getMetadataBlob(UserPublicKey.fromByteArray(sharingKey));
+                MaybeMultihash rootHash = core.getMetadataBlob(UserPublicKey.fromByteArray(sharingKey));
                 MerkleBTree btree = MerkleBTree.create(rootHash, dht);
                 byte[] value = btree.get(mapKey).toBytes();
                 new GetSuccess(httpExchange).accept(value);
@@ -51,9 +51,7 @@ public class BTreeHandlers
                 byte[] value = Serialize.deserializeByteArray(din, ContentAddressedStorage.MAX_OBJECT_LENGTH);
                 System.out.println("Put mapkey: " + new ByteArrayWrapper(mapKey) + " -> " + new ByteArrayWrapper(value));
                 try {
-                    Multihash metadataBlob = core.getMetadataBlob(UserPublicKey.fromByteArray(sharingKey));
-                    boolean isPresent = metadataBlob == null;
-                    MaybeMultihash rootHash = ! isPresent ? MaybeMultihash.EMPTY() : MaybeMultihash.of(metadataBlob);
+                    MaybeMultihash rootHash = core.getMetadataBlob(UserPublicKey.fromByteArray(sharingKey));
                     MerkleBTree btree = MerkleBTree.create(rootHash, dht);
                     Multihash newRoot = btree.put(mapKey,
                             new Multihash(value));
@@ -79,7 +77,7 @@ public class BTreeHandlers
             byte[] mapKey = Serialize.deserializeByteArray(din, 64);
             System.out.println("Deleted mapkey: "+new ByteArrayWrapper(mapKey));
             try {
-                Multihash rootHash = core.getMetadataBlob(UserPublicKey.fromByteArray(sharingKey));
+                MaybeMultihash rootHash = core.getMetadataBlob(UserPublicKey.fromByteArray(sharingKey));
                 MerkleBTree btree = MerkleBTree.create(rootHash, dht);
                 Multihash newRoot = btree.delete(mapKey);
                 ByteArrayOutputStream bout = new ByteArrayOutputStream();

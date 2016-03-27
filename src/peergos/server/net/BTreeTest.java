@@ -20,11 +20,9 @@ public class BTreeTest {
 
         CoreNode core = HTTPCoreNode.getInstance();
         ContentAddressedStorage dht = new IpfsDHT();
-        Multihash rootHash = core.getMetadataBlob(
+        MaybeMultihash rootHash = core.getMetadataBlob(
                 UserPublicKey.fromByteArray(writer));
-        boolean isPresent = rootHash != null;
-        MaybeMultihash maybeMultihash = isPresent ? MaybeMultihash.of(rootHash): MaybeMultihash.EMPTY();
-        MerkleBTree btree = MerkleBTree.create(maybeMultihash, dht);
+        MerkleBTree btree = MerkleBTree.create(rootHash, dht);
         btree.print(System.out);
         MaybeMultihash maybeMultihash1 = btree.get(mapKey);
         System.out.println(maybeMultihash1);

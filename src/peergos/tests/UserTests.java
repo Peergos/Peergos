@@ -20,6 +20,7 @@ public class UserTests {
         Btree.HTTP btree = new Btree.HTTP(new URL("http://localhost/"));
         HTTPCoreNode coreNode = new HTTPCoreNode(new URL("http://localhost"+":"+HTTPCoreNodeServer.PORT+"/"));
         context = new UserContext(username, userWithRoot.getUser(), userWithRoot.getRoot(), dht, btree, coreNode);
+        context.init();
     }
 
     @Test
