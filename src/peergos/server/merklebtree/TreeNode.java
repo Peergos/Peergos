@@ -95,7 +95,7 @@ public class TreeNode {
             Multihash multiHash = storage.put(this.toMerkleNode());
             if (! multiHash.equals(this.hash.get()))
                 storage.remove(this.hash.get());
-            return new TreeNode(this.keys, hash);
+            return new TreeNode(this.keys, multiHash);
         }
         if (! nextSmallest.targetHash.isPresent()) {
             if (keys.size() < maxChildren) {
