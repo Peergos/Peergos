@@ -24,6 +24,21 @@ public class Curve25519PublicKey implements PublicBoxingKey {
         return Type.Curve25519;
     }
 
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+
+        Curve25519PublicKey that = (Curve25519PublicKey) o;
+
+        return Arrays.equals(publicKey, that.publicKey);
+    }
+
+    @Override
+    public int hashCode() {
+        return Arrays.hashCode(publicKey);
+    }
+
     public byte[] getPublicBoxingKey() {
         return Arrays.copyOfRange(publicKey, 0, publicKey.length);
     }

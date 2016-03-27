@@ -21,6 +21,21 @@ public class Curve25519SecretKey implements SecretBoxingKey {
         return PublicBoxingKey.Type.Curve25519;
     }
 
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+
+        Curve25519SecretKey that = (Curve25519SecretKey) o;
+
+        return Arrays.equals(secretKey, that.secretKey);
+    }
+
+    @Override
+    public int hashCode() {
+        return Arrays.hashCode(secretKey);
+    }
+
     public byte[] serialize() {
         try {
             ByteArrayOutputStream bout = new ByteArrayOutputStream();

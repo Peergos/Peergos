@@ -21,6 +21,21 @@ public class Ed25519SecretKey implements SecretSigningKey {
         return PublicSigningKey.Type.Ed25519;
     }
 
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+
+        Ed25519SecretKey that = (Ed25519SecretKey) o;
+
+        return Arrays.equals(secretKey, that.secretKey);
+    }
+
+    @Override
+    public int hashCode() {
+        return Arrays.hashCode(secretKey);
+    }
+
     public byte[] serialize() {
         try {
             ByteArrayOutputStream bout = new ByteArrayOutputStream();

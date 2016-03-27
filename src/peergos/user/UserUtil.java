@@ -19,11 +19,11 @@ import java.util.Arrays;
 public class UserUtil {
     private static final int N = 1 << 17;
     private static byte[] generateKeys(String username, String password) {
-        byte[] hash = Hash.sha256(password.getBytes());
+        byte[] hash = Arrays.copyOfRange(Hash.sha256(password.getBytes()), 2, 34);
         byte[] salt = username.getBytes();
         try {
 
-            return SCrypt.scrypt(hash, salt, N, 8, 96, 1000);
+            return SCrypt.scrypt(hash, salt, N, 8, 1, 96);
         } catch (GeneralSecurityException gse) {
             throw new IllegalStateException(gse);
         }

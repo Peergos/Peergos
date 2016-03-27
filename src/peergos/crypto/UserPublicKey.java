@@ -88,7 +88,8 @@ public class UserPublicKey implements Comparable<UserPublicKey>
         if (! (o instanceof UserPublicKey))
             return false;
 
-        return publicBoxingKey.equals(((UserPublicKey) o).publicBoxingKey) && publicSigningKey.equals(((UserPublicKey) o).publicSigningKey);
+        UserPublicKey other = (UserPublicKey) o;
+        return publicBoxingKey.equals(other.publicBoxingKey) && publicSigningKey.equals(other.publicSigningKey);
     }
 
     public int hashCode()

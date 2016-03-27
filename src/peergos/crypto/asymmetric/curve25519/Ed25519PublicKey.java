@@ -21,6 +21,21 @@ public class Ed25519PublicKey implements PublicSigningKey {
         return PublicSigningKey.Type.Ed25519;
     }
 
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+
+        Ed25519PublicKey that = (Ed25519PublicKey) o;
+
+        return Arrays.equals(publicKey, that.publicKey);
+    }
+
+    @Override
+    public int hashCode() {
+        return Arrays.hashCode(publicKey);
+    }
+
     public void serialize(DataOutput dout) throws IOException {
         dout.writeByte(type().value);
         dout.write(publicKey);
