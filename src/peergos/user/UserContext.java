@@ -224,7 +224,7 @@ public class UserContext {
             return false;
 
         UserPublicKey targetUser = corenodeClient.getPublicKey(targetUsername);
-        ReadableFilePointer friendRoot = sharing.mkdir(targetUsername, this).get();
+        ReadableFilePointer friendRoot = sharing.mkdir(targetUsername, this, null, true).get();
 
         // add a note to our static data so we know who we sent the read access to
         EntryPoint entry = new EntryPoint(friendRoot.readOnly(), username, Stream.of(targetUsername).collect(Collectors.toSet()), Collections.EMPTY_SET);
