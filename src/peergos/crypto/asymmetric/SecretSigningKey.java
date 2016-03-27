@@ -2,8 +2,7 @@ package peergos.crypto.asymmetric;
 
 import peergos.crypto.asymmetric.curve25519.Ed25519SecretKey;
 
-import java.io.DataInputStream;
-import java.io.IOException;
+import java.io.*;
 
 public interface SecretSigningKey {
 
@@ -15,8 +14,8 @@ public interface SecretSigningKey {
 
     byte[] signMessage(byte[] message);
 
-    static SecretSigningKey deserialize(DataInputStream din) throws IOException {
-        PublicSigningKey.Type t = PublicSigningKey.Type.byValue(din.read());
+    static SecretSigningKey deserialize(DataInput din) throws IOException {
+        PublicSigningKey.Type t = PublicSigningKey.Type.byValue(din.readUnsignedByte());
         switch (t) {
             case Ed25519:
                 byte[] key = new byte[64];

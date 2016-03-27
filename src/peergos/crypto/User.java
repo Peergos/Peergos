@@ -11,8 +11,7 @@ import peergos.crypto.asymmetric.curve25519.Ed25519SecretKey;
 import peergos.user.UserUtil;
 import peergos.util.ArrayOps;
 
-import java.io.DataInputStream;
-import java.io.IOException;
+import java.io.*;
 import java.util.Arrays;
 import java.util.Random;
 
@@ -46,9 +45,9 @@ public class User extends UserPublicKey
         return secretBoxingKey.decryptMessage(cipher, theirPublicBoxingKey);
     }
 
-    public static UserPublicKey deserialize(DataInputStream din) {
+    public static UserPublicKey deserialize(DataInput din) {
         try {
-            boolean hasPrivateKeys = din.read() == 1;
+            boolean hasPrivateKeys = din.readBoolean();
             if (hasPrivateKeys) {
                 SecretSigningKey signingKey = SecretSigningKey.deserialize(din);
                 SecretBoxingKey boxingKey = SecretBoxingKey.deserialize(din);

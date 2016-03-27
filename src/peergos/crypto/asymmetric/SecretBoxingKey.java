@@ -2,8 +2,7 @@ package peergos.crypto.asymmetric;
 
 import peergos.crypto.asymmetric.curve25519.Curve25519SecretKey;
 
-import java.io.DataInputStream;
-import java.io.IOException;
+import java.io.*;
 
 public interface SecretBoxingKey {
 
@@ -15,8 +14,8 @@ public interface SecretBoxingKey {
 
     byte[] decryptMessage(byte[] cipher, PublicBoxingKey from);
 
-    static SecretBoxingKey deserialize(DataInputStream din) throws IOException {
-        PublicBoxingKey.Type t = PublicBoxingKey.Type.byValue(din.read());
+    static SecretBoxingKey deserialize(DataInput din) throws IOException {
+        PublicBoxingKey.Type t = PublicBoxingKey.Type.byValue(din.readUnsignedByte());
         switch (t) {
             case Curve25519:
                 byte[] key = new byte[32];

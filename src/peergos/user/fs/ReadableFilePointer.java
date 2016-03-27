@@ -60,8 +60,7 @@ public class ReadableFilePointer {
     public static ReadableFilePointer deserialize(byte[] arr) throws IOException {
         DataSource bin = new DataSource(arr);
         byte[] owner = bin.readArray();
-        boolean hasPrivateKeys = bin.readByte() == 1;
-        UserPublicKey writer = hasPrivateKeys ? User.deserialize(bin) : UserPublicKey.deserialize(bin);
+        UserPublicKey writer = User.deserialize(bin);
         byte[] mapKey = bin.readArray();
         byte[] rootDirKeySecret = bin.readArray();
         return new ReadableFilePointer(UserPublicKey.fromPublicKeys(owner), writer, mapKey, SymmetricKey.deserialize(rootDirKeySecret));
