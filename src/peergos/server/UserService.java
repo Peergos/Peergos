@@ -13,14 +13,12 @@ import java.io.*;
 import java.net.*;
 import java.security.*;
 import java.security.cert.*;
-import java.util.Map;
 import java.util.concurrent.*;
 import java.util.logging.Logger;
 
 public class UserService
 {
     public static final String DHT_URL = "/dht/";
-    public static final String BTREE_URL = "/btree/";
     public static final String SIGNUP_URL = "/signup/";
     public static final String ACTIVATION_URL = "/activation/";
     public static final String UI_URL = "/";

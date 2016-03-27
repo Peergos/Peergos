@@ -6,7 +6,6 @@ import peergos.corenode.*;
 import peergos.crypto.*;
 import peergos.server.merklebtree.*;
 import peergos.server.storage.ContentAddressedStorage;
-import peergos.user.fs.*;
 import peergos.util.*;
 
 import java.io.*;
@@ -15,9 +14,9 @@ import java.util.function.*;
 
 public class BTreeHandlers
 {
-    private static final String PUT_STEM = "/btree/put/";
-    private static final String GET_STEM = "/btree/get/";
-    private static final String REMOVE_STEM = "/btree/delete/";
+    private static final String PUT_STEM = "/btree/put";
+    private static final String GET_STEM = "/btree/get";
+    private static final String REMOVE_STEM = "/btree/delete";
 
     private class GetHandler implements HttpHandler {
         @Override
