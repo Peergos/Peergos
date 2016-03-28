@@ -30,7 +30,7 @@ public class FileUploader {
         if (key == null) key = SymmetricKey.random();
 
         // Process and upload chunk by chunk to avoid running out of RAM, in reverse order to build linked list
-        this.nchunks = (long) Math.ceil(file.length() / Chunk.MAX_SIZE);
+        this.nchunks = (long) Math.ceil((double) file.length() / Chunk.MAX_SIZE);
 
         this.file = file;
         this.key = key;
@@ -45,8 +45,14 @@ public class FileUploader {
                                 Location nextLocation, Consumer<Long> monitor) throws IOException {
 	    System.out.println("uploading chunk: "+chunkIndex + " of "+file.getName());
         RandomAccessFile raf = new RandomAccessFile(file, "r");
-        raf.seek(chunkIndex*Chunk.MAX_SIZE);
-		byte[] data = new byte[(int)Math.min((1L+chunkIndex)*Chunk.MAX_SIZE-file.length(), Chunk.MAX_SIZE)];
+        long position = chunkIndex * Chunk.MAX_SIZE;
+        raf.seek(position);
+
+        long fileLength = file.length();
+        boolean isLastChunk = fileLength < position + Chunk.MAX_SIZE;
+        long length =  isLastChunk ? (fileLength -  position) : Chunk.MAX_SIZE;
+        byte[] data = new byte[(int) length];
+
         raf.readFully(data);
 		Chunk chunk = new Chunk(data, key);
 		EncryptedChunk encryptedChunk = chunk.encrypt();
