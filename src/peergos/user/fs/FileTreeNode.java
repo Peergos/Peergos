@@ -309,6 +309,7 @@ public class FileTreeNode {
         try {
             return getFileProperties().name;
         } catch (IOException ioe) {
+            ioe.printStackTrace();
             return "InvalidFileTreeNode";
         }
     }

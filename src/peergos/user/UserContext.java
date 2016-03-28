@@ -424,7 +424,8 @@ public class UserContext {
     }
 
     private byte[] getStaticData() throws IOException {
-        return dhtClient.get(corenodeClient.getMetadataBlob(user.toUserPublicKey()).get()).get();
+        Multihash key = corenodeClient.getMetadataBlob(user.toUserPublicKey()).get();
+        return dhtClient.get(key).get();
     }
 
     private Map<EntryPoint, FileAccess> getRoots() throws IOException {

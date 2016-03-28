@@ -60,6 +60,10 @@ public class User extends UserPublicKey
         }
     }
 
+    public void serialize(DataOutput dout) throws IOException {
+        dout.write(serialize());
+    }
+
     public byte[] serialize() {
         return ArrayOps.concat(secretSigningKey.serialize(), secretBoxingKey.serialize(), super.serialize());
     }

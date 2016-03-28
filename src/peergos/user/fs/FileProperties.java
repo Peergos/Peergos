@@ -30,7 +30,7 @@ public class FileProperties {
         dout.writeDouble(modified.toEpochSecond(ZoneOffset.UTC));
         dout.writeBoolean(isHidden);
         if (!thumbnail.isPresent())
-            dout.write(-1);
+            dout.writeInt(0);
         else
             dout.writeArray(thumbnail.get());
 

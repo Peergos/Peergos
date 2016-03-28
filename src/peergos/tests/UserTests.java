@@ -16,37 +16,18 @@ import java.util.logging.Logger;
 
 public class UserTests {
 
-    private static UserContext context;
-
     private static int N_CHUNKS = 10;
     public static int RANDOM_SEED = 666;
-
-    public static String username = "test01";
-    public static String password = "test01";
 
     private static final Logger LOG = Logger.getGlobal();
 
     private static Random random = new Random(RANDOM_SEED);
 
-    private static UserContext setup(String username,  String  password) throws IOException {
-        UserWithRoot userWithRoot = UserUtil.generateUser(username, password);
-        DHTClient.HTTP dht = new DHTClient.HTTP(new URL("http://localhost:8000/"));
-        Btree.HTTP btree = new Btree.HTTP(new URL("http://localhost:8000/"));
-        HTTPCoreNode coreNode = new HTTPCoreNode(new URL("http://localhost:8000/"));
-        context = new UserContext(username, userWithRoot.getUser(), userWithRoot.getRoot(), dht, btree, coreNode);
-        context.init();
-        return context;
-    }
-    @BeforeClass
-    public static void setup() throws IOException {
-        context = setup(username, password);
-    }
-
-    @Test public  void signupTest() throws IOException {
+    @Test
+    public void javascriptCompatible() throws IOException {
         String username = "test01";
         String password = "test01";
 
-        UserContext signupUser = setup(username, password);
         UserWithRoot userWithRoot = UserUtil.generateUser(username, password);
         UserPublicKey expected = UserPublicKey.fromString("7HvEWP6yd1UD8rOorfFrieJ8S7yC8+l3VisV9kXNiHmI7Eav7+3GTRSVBRCymItrzebUUoCi39M6rdgeOU9sXXFD");
         if (! expected.equals(userWithRoot.getUser().toUserPublicKey()))
@@ -54,18 +35,18 @@ public class UserTests {
     }
 
     @Test
-    public void login() {
-        System.out.println();
-    }
-
-    @Test
-    public void signup() throws IOException {
+    public void randomSignup() throws IOException {
         String username = "test" + (System.currentTimeMillis() % 10000);
         String password = "password";
+        ensureSignedUp(username, password);
+    }
+
+    public UserContext ensureSignedUp(String username, String password) throws IOException {
         DHTClient.HTTP dht = new DHTClient.HTTP(new URL("http://localhost:8000/"));
         Btree.HTTP btree = new Btree.HTTP(new URL("http://localhost:8000/"));
         HTTPCoreNode coreNode = new HTTPCoreNode(new URL("http://localhost:8000/"));
         UserContext userContext = UserContext.ensureSignedUp(username, password, dht, btree, coreNode);
+        return userContext;
     }
 
     public void add(String path) {
@@ -76,8 +57,11 @@ public class UserTests {
         return null;
     }
 
-    @Test public void readWriteTest() throws IOException {
-
+    @Test
+    public void readWriteTest() throws IOException {
+        String username = "test01";
+        String password = "test01";
+        UserContext context = ensureSignedUp(username, password);
         FileTreeNode userRoot = context.getUserRoot();
 
         Set<FileTreeNode> children = userRoot.getChildren(context);
