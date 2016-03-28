@@ -430,9 +430,10 @@ public class UserContext {
         // download the metadata blobs for these entry points
         Map<EntryPoint, FileAccess> res = new HashMap<>();
         for (EntryPoint entry: entries) {
-            byte[] value = dhtClient.get(btree.get(entry.pointer.writer, entry.pointer.mapKey).get()).get();
-            if (value.length > 8) // otherwise this is a deleted directory
-                res.put(entry, FileAccess.deserialize(value));
+            MaybeMultihash btreeValue = btree.get(entry.pointer.writer, entry.pointer.mapKey);
+            Optional<byte[]> value = dhtClient.get(btreeValue.get());
+            if (value.isPresent()) // otherwise this is a deleted directory
+                res.put(entry, FileAccess.deserialize(value.get()));
         }
         return res;
     }

@@ -67,7 +67,7 @@ public interface Btree {
                 conn.setDoOutput(true);
                 DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-                Serialize.serialize(sharingKey.serialize(), dout);
+                Serialize.serialize(sharingKey.toUserPublicKey().serialize(), dout);
                 Serialize.serialize(mapKey, dout);
                 Serialize.serialize(value.toBytes(), dout);
                 dout.flush();
@@ -94,7 +94,7 @@ public interface Btree {
                 conn.setDoOutput(true);
                 DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-                Serialize.serialize(sharingKey.serialize(), dout);
+                Serialize.serialize(sharingKey.toUserPublicKey().serialize(), dout);
                 Serialize.serialize(mapKey, dout);
                 dout.flush();
 
@@ -105,7 +105,7 @@ public interface Btree {
                 byte[] res = Serialize.deserializeByteArray(din, 256);
                 if (res.length == 0)
                     return MaybeMultihash.EMPTY();
-                return new MaybeMultihash(new Multihash(res));
+                return new MaybeMultihash(new Multihash(new DataSource(res).readArray()));
             } finally {
                 if (conn != null)
                     conn.disconnect();
@@ -121,7 +121,7 @@ public interface Btree {
                 conn.setDoOutput(true);
                 DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-                Serialize.serialize(sharingKey.serialize(), dout);
+                Serialize.serialize(sharingKey.toUserPublicKey().serialize(), dout);
                 Serialize.serialize(mapKey, dout);
                 dout.flush();
 
