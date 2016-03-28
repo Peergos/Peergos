@@ -10,7 +10,7 @@ import java.time.*;
 import java.util.*;
 import java.util.function.*;
 
-public class FileUploader {
+public class FileUploader implements AutoCloseable {
 
     private final File file;
     private final FileProperties props;
@@ -20,9 +20,9 @@ public class FileUploader {
     private final SymmetricKey parentparentKey;
     private final Consumer<Long> monitor;
     private final int nOriginalFragments, nAllowedFalures;
-
+    private final RandomAccessFile raf;
     public FileUploader(String name, File file, SymmetricKey key, Location parentLocation, SymmetricKey parentparentKey,
-                        Consumer<Long> monitor, FileProperties fileProperties, int nOriginalFragments, int nAllowedFalures) {
+                        Consumer<Long> monitor, FileProperties fileProperties, int nOriginalFragments, int nAllowedFalures) throws IOException {
         if (fileProperties == null)
             this.props = new FileProperties(name, file.length(), LocalDateTime.now(), false, Optional.empty());
         else
@@ -33,6 +33,7 @@ public class FileUploader {
         this.nchunks = (long) Math.ceil((double) file.length() / Chunk.MAX_SIZE);
 
         this.file = file;
+        this.raf = new RandomAccessFile(file, "r");
         this.key = key;
         this.parentLocation = parentLocation;
         this.parentparentKey = parentparentKey;
@@ -41,10 +42,10 @@ public class FileUploader {
         this.nAllowedFalures = nAllowedFalures != -1 ? nAllowedFalures : EncryptedChunk.ERASURE_ALLOWED_FAILURES;
     }
 
-    public Location uploadChunk(UserContext context, UserPublicKey owner, User writer, long chunkIndex, File file,
+    public Location uploadChunk(UserContext context, UserPublicKey owner, User writer, long chunkIndex,
                                 Location nextLocation, Consumer<Long> monitor) throws IOException {
 	    System.out.println("uploading chunk: "+chunkIndex + " of "+file.getName());
-        RandomAccessFile raf = new RandomAccessFile(file, "r");
+
         long position = chunkIndex * Chunk.MAX_SIZE;
         raf.seek(position);
 
@@ -64,14 +65,18 @@ public class FileUploader {
         context.uploadChunk(metaBlob, owner, writer, chunk.mapKey(), hashes);
         Location nextL = new Location(owner, writer, chunk.mapKey());
         if (chunkIndex > 0)
-            return uploadChunk(context, owner, writer, chunkIndex-1, file, nextL, monitor);
+            return uploadChunk(context, owner, writer, chunkIndex-1, nextL, monitor);
         return nextL;
     }
 
     public Location upload(UserContext context, UserPublicKey owner, User writer) throws IOException {
         long t1 = System.currentTimeMillis();
-        Location res = uploadChunk(context, owner, writer, this.nchunks-1, this.file, null, null);
+        Location res = uploadChunk(context, owner, writer, this.nchunks-1, null, null);
         System.out.println("File encryption, erasure coding and upload took: " +(System.currentTimeMillis()-t1) + " mS");
         return res;
+    }
+
+    public void close() throws IOException  {
+        raf.close();
     }
 }
