@@ -10,10 +10,10 @@ import java.net.*;
 
 public class UserTests {
 
-    UserContext context;
+    private static UserContext context;
 
-    @Before
-    public void setup() throws IOException {
+    @BeforeClass
+    public static void setup() throws IOException {
         String username = "test01";
         String password = "test01";
         UserWithRoot userWithRoot = UserUtil.generateUser(username, password);
@@ -30,5 +30,9 @@ public class UserTests {
     @Test
     public void login() {
         System.out.println();
+    }
+
+    @Test
+    public void signup() {
     }
 }
