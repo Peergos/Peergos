@@ -45,7 +45,6 @@ public class HTTPCoreNode implements CoreNode
             conn.setDoOutput(true);
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-
             Serialize.serialize(username, dout);
             dout.flush();
 
@@ -72,7 +71,7 @@ public class HTTPCoreNode implements CoreNode
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
 
-            Serialize.serialize(publicKey.serialize(), dout);
+            Serialize.serialize(publicKey.toUserPublicKey().serialize(), dout);
             dout.flush();
 
             DataInputStream din = new DataInputStream(conn.getInputStream());
@@ -154,7 +153,7 @@ public class HTTPCoreNode implements CoreNode
 
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-            Serialize.serialize(target.serialize(), dout);
+            Serialize.serialize(target.toUserPublicKey().serialize(), dout);
             Serialize.serialize(encryptedPermission, dout);
             dout.flush();
 
@@ -203,7 +202,7 @@ public class HTTPCoreNode implements CoreNode
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
 
-            Serialize.serialize(owner.serialize(), dout);
+            Serialize.serialize(owner.toUserPublicKey().serialize(), dout);
             dout.flush();
 
             DataInputStream din = new DataInputStream(conn.getInputStream());
@@ -227,7 +226,7 @@ public class HTTPCoreNode implements CoreNode
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
             
 
-            Serialize.serialize(owner.serialize(), dout);
+            Serialize.serialize(owner.toUserPublicKey().serialize(), dout);
             Serialize.serialize(signedRequest, dout);
             dout.flush();
 
@@ -253,8 +252,8 @@ public class HTTPCoreNode implements CoreNode
             
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-            Serialize.serialize(ownerPublicKey.serialize(), dout);
-            Serialize.serialize(sharingPublicKey.serialize(), dout);
+            Serialize.serialize(ownerPublicKey.toUserPublicKey().serialize(), dout);
+            Serialize.serialize(sharingPublicKey.toUserPublicKey().serialize(), dout);
             Serialize.serialize(sharingKeySignedPayload, dout);
             dout.flush();
 
@@ -280,7 +279,7 @@ public class HTTPCoreNode implements CoreNode
 
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
-            Serialize.serialize(encodedSharingPublicKey.serialize(), dout);
+            Serialize.serialize(encodedSharingPublicKey.toUserPublicKey().serialize(), dout);
             Serialize.serialize(sharingKeySignedPayload, dout);
             dout.flush();
 
@@ -307,7 +306,7 @@ public class HTTPCoreNode implements CoreNode
             DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
 
 
-            Serialize.serialize(encodedSharingKey.serialize(), dout);
+            Serialize.serialize(encodedSharingKey.toUserPublicKey().serialize(), dout);
             dout.flush();
 
 
@@ -318,7 +317,7 @@ public class HTTPCoreNode implements CoreNode
             return MaybeMultihash.of(new Multihash(meta));
         } catch (IOException ioe) {
             ioe.printStackTrace();
-            return null;
+            return MaybeMultihash.EMPTY();
         } finally {
             if (conn != null)
                 conn.disconnect();

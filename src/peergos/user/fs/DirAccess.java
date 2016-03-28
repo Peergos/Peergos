@@ -196,7 +196,7 @@ public class DirAccess extends FileAccess {
         SymmetricLocationLink parentLink = parentLocation == null ? null : SymmetricLocationLink.create(parentKey, parentParentKey, parentLocation);
         return new DirAccess(SymmetricLink.fromPair(subfoldersKey, filesKey, subfoldersKey.createNonce()),
                 SymmetricLink.fromPair(subfoldersKey, parentKey, subfoldersKey.createNonce()),
-                Collections.EMPTY_LIST, Collections.EMPTY_LIST,
+                new ArrayList<>(), new ArrayList<>(),
                 SymmetricLink.fromPair(parentKey, metaKey, parentKey.createNonce()),
                 ArrayOps.concat(metaNonce, metaKey.encrypt(metadata.serialize(), metaNonce)),
                 null,

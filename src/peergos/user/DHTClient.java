@@ -43,7 +43,7 @@ public interface DHTClient {
 
                 dout.writeInt(0); // PUT message
                 Serialize.serialize(value, dout);
-                Serialize.serialize(writer.serialize(), dout);
+                Serialize.serialize(writer.toUserPublicKey().serialize(), dout);
                 dout.writeInt(links.size());
                 for (Multihash hash: links)
                     Serialize.serialize(hash.toBytes(), dout);

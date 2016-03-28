@@ -9,12 +9,15 @@ import peergos.user.fs.*;
 import peergos.util.*;
 
 import java.io.*;
+import java.net.*;
 import java.time.*;
 import java.util.*;
 import java.util.function.*;
 import java.util.stream.*;
 
 public class UserContext {
+    public static final String SHARED_DIR_NAME = "shared";
+
     public final String username;
     public final User user;
     private final SymmetricKey rootKey;
@@ -36,6 +39,18 @@ public class UserContext {
         this.btree = btree;
     }
 
+    public static UserContext ensureSignedUp(String username, String password, DHTClient dht, Btree btree, CoreNode coreNode) throws IOException {
+        UserWithRoot userWithRoot = UserUtil.generateUser(username, password);
+        UserContext context = new UserContext(username, userWithRoot.getUser(), userWithRoot.getRoot(), dht, btree, coreNode);
+        if (!context.isRegistered()) {
+            context.register();
+            RetrievedFilePointer userRoot = context.createEntryDirectory(username);
+            ReadableFilePointer shared = ((DirAccess) userRoot.fileAccess).mkdir(SHARED_DIR_NAME, context, (User) userRoot.filePointer.writer,
+                    userRoot.filePointer.mapKey, userRoot.filePointer.baseKey, null, true);
+        }
+        context.init();
+        return context;
+    }
 
     public void init() throws IOException {
         FileTreeNode.ROOT.clear();
@@ -67,7 +82,7 @@ public class UserContext {
     }
 
     public boolean isRegistered() throws IOException {
-        return corenodeClient.getUsername(user).equals(username);
+        return username.equals(corenodeClient.getUsername(user));
     }
 
     public byte[] serializeStatic() throws IOException {
@@ -93,11 +108,11 @@ public class UserContext {
 
         // and authorise the writer key
         ReadableFilePointer rootPointer = new ReadableFilePointer(this.user, writer, rootMapKey, rootRKey);
-        EntryPoint entry = new EntryPoint(rootPointer, this.username, Collections.EMPTY_SET,Collections.EMPTY_SET);
+        EntryPoint entry = new EntryPoint(rootPointer, this.username, Collections.emptySet(),Collections.emptySet());
 
         addToStaticDataAndCommit(entry);
         DirAccess root = DirAccess.create(rootRKey, new FileProperties(directoryName, 0, LocalDateTime.now(), false, Optional.empty()), (Location)null, null, null);
-        boolean uploaded = this.uploadChunk(root, this.user, writer, rootMapKey, Collections.EMPTY_LIST);
+        boolean uploaded = this.uploadChunk(root, this.user, writer, rootMapKey, Collections.emptyList());
         if (uploaded)
             return new RetrievedFilePointer(rootPointer, root);
         throw new IllegalStateException("Failed to create entry directory!");
@@ -276,9 +291,9 @@ public class UserContext {
     private boolean commitStaticData() throws IOException {
         byte[] rawStatic = serializeStatic();
         Multihash blobHash = dhtClient.put(rawStatic, user, Collections.emptyList());
-        Multihash currentHash = corenodeClient.getMetadataBlob(user).get();
+        MaybeMultihash currentHash = corenodeClient.getMetadataBlob(user);
         DataSink bout = new DataSink();
-        bout.writeArray(currentHash.toBytes());
+        currentHash.serialize(bout);
         bout.writeArray(blobHash.toBytes());
         byte[] signed = user.signMessage(bout.toByteArray());
         boolean added = corenodeClient.setMetadataBlob(user, user, signed);

@@ -4,16 +4,12 @@ import org.junit.*;
 import peergos.corenode.*;
 import peergos.crypto.*;
 import peergos.user.*;
-import peergos.user.fs.FileTreeNode;
+import peergos.user.fs.*;
 
 import java.io.*;
 import java.net.*;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.Random;
-import java.util.Set;
-import java.util.UUID;
+import java.nio.file.*;
+import java.util.*;
 import java.util.logging.Logger;
 
 public class UserTests {
@@ -61,7 +57,13 @@ public class UserTests {
     }
 
     @Test
-    public void signup() {
+    public void signup() throws IOException {
+        String username = "test" + (System.currentTimeMillis() % 10000);
+        String password = "password";
+        DHTClient.HTTP dht = new DHTClient.HTTP(new URL("http://localhost:8000/"));
+        Btree.HTTP btree = new Btree.HTTP(new URL("http://localhost:8000/"));
+        HTTPCoreNode coreNode = new HTTPCoreNode(new URL("http://localhost:8000/"));
+        UserContext userContext = UserContext.ensureSignedUp(username, password, dht, btree, coreNode);
     }
 
     public void add(String path) {
