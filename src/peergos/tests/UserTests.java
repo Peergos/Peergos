@@ -114,7 +114,9 @@ public class UserTests {
     private static Path createTmpFile(String filename) throws IOException {
         ensureTmpDir();
         Path resolve = TMP_DIR.resolve(filename);
-        resolve.toFile().createNewFile();
+        File file = resolve.toFile();
+        file.createNewFile();
+        file.deleteOnExit();
         return resolve;
     }
 

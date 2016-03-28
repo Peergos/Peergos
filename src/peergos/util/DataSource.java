@@ -7,7 +7,8 @@ public class DataSource implements DataInput {
     private final DataInputStream din;
 
     public DataSource(byte[] source) {
-        this.din = new DataInputStream(new ByteArrayInputStream(source));
+        ByteArrayInputStream bin = new ByteArrayInputStream(source);
+        this.din = new DataInputStream(bin);
     }
 
     public boolean readBoolean() throws IOException {
@@ -102,5 +103,9 @@ public class DataSource implements DataInput {
     @Override
     public String readUTF() throws IOException {
         return din.readUTF();
+    }
+
+    public int remaining() throws IOException {
+        return din.available();
     }
 }

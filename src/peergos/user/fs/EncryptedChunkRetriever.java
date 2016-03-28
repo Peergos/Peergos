@@ -65,7 +65,12 @@ public class EncryptedChunkRetriever implements FileRetriever {
         byte[] chunkNonce = buf.readArray();
         byte[] chunkAuth = buf.readArray();
         byte[] concatFragmentHashes = buf.readArray();
-        List<byte[]> fragmentHashes = split(concatFragmentHashes, Hash.HASH_BYTES);
+
+        List<Multihash> hashes = new ArrayList<>();
+        DataSource dataSource = new DataSource(concatFragmentHashes);
+        while (dataSource.remaining() != 0)
+            hashes.add(Multihash.deserialize(dataSource));
+
         boolean hasNext = buf.readBoolean();
         Location nextChunk = null;
         if (hasNext)
@@ -78,7 +83,8 @@ public class EncryptedChunkRetriever implements FileRetriever {
             nOriginalFragments = EncryptedChunk.ERASURE_ORIGINAL;
             nAllowedFailures = EncryptedChunk.ERASURE_ALLOWED_FAILURES;
         }
-        List<Multihash> hashes = fragmentHashes.stream().map(b -> new Multihash(b)).collect(Collectors.toList());
+
+
         return new EncryptedChunkRetriever(chunkNonce, chunkAuth, hashes, nextChunk, nOriginalFragments, nAllowedFailures);
     }
 
