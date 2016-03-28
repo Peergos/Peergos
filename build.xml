@@ -48,6 +48,10 @@
     </copy>
   </target>
 
+  <target name="test" depends="compile">
+    
+  </target> 
+
   <target name="clean" description="clean up">
     <delete dir="${build}"/>
     <delete dir="${dist}"/>
