@@ -33,11 +33,20 @@ public class ReadableFilePointer {
         }
     }
 
+    public static ReadableFilePointer deserialize(byte[] arr) throws IOException {
+        DataSource bin = new DataSource(arr);
+        UserPublicKey owner = UserPublicKey.fromByteArray(bin.readArray());
+        UserPublicKey writer = User.deserialize(bin);
+        byte[] mapKey = bin.readArray();
+        byte[] rootDirKeySecret = bin.readArray();
+        return new ReadableFilePointer(owner, writer, mapKey, SymmetricKey.deserialize(rootDirKeySecret));
+    }
+
     public ReadableFilePointer readOnly() {
-	if (!isWritable())
-	    return this;
-	UserPublicKey publicWriter = UserPublicKey.fromPublicKeys(this.writer.getPublicKeys());
-	return new ReadableFilePointer(this.owner, publicWriter, this.mapKey, this.baseKey);
+        if (!isWritable())
+            return this;
+        UserPublicKey publicWriter = UserPublicKey.fromPublicKeys(this.writer.getPublicKeys());
+        return new ReadableFilePointer(this.owner, publicWriter, this.mapKey, this.baseKey);
     }
 
     public boolean isWritable() {
@@ -55,15 +64,6 @@ public class ReadableFilePointer {
         byte[] mapKey = Base58.decode(split[2]);
         SymmetricKey baseKey = SymmetricKey.deserialize(Base58.decode(split[3]));
         return new ReadableFilePointer(owner, writer, mapKey, baseKey);
-    }
-
-    public static ReadableFilePointer deserialize(byte[] arr) throws IOException {
-        DataSource bin = new DataSource(arr);
-        UserPublicKey owner = UserPublicKey.fromByteArray(bin.readArray());
-        UserPublicKey writer = User.deserialize(bin);
-        byte[] mapKey = bin.readArray();
-        byte[] rootDirKeySecret = bin.readArray();
-        return new ReadableFilePointer(owner, writer, mapKey, SymmetricKey.deserialize(rootDirKeySecret));
     }
 
     public static ReadableFilePointer createNull() {
