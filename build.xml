@@ -49,7 +49,18 @@
   </target>
 
   <target name="test" depends="compile">
-    
+    <junit printsummary="yes" fork="true" haltonfailure="yes">
+      <jvmarg value="-Xmx512m"/>
+      <classpath>
+	<pathelement location="lib/junit-4.11.jar" />
+	<pathelement location="lib/hamcrest-core-1.3.jar" />
+	<pathelement location="PeergosServer.jar" />
+      </classpath>
+      <test name="peergos.tests.UserTests" haltonfailure="yes" outfile="result">
+	<formatter type="plain"/>
+	<formatter type="xml"/>
+      </test>
+    </junit>
   </target> 
 
   <target name="clean" description="clean up">
