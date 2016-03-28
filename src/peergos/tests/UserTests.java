@@ -5,8 +5,10 @@ import static org.junit.Assert.*;
 
 import peergos.corenode.*;
 import peergos.crypto.*;
+import peergos.server.*;
 import peergos.user.*;
 import peergos.user.fs.*;
+import peergos.util.*;
 
 import java.io.*;
 import java.net.*;
@@ -22,6 +24,12 @@ public class UserTests {
     private static final Logger LOG = Logger.getGlobal();
 
     private static Random random = new Random(RANDOM_SEED);
+
+    @BeforeClass
+    public static void startPeergos() throws IOException {
+        Args.parse(new String[]{"useIPFS", "false"});
+        Start.local();
+    }
 
     @Test
     public void javascriptCompatible() throws IOException {

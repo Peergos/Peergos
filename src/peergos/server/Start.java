@@ -2,8 +2,7 @@ package peergos.server;
 
 import peergos.corenode.*;
 import peergos.crypto.*;
-import peergos.server.storage.ContentAddressedStorage;
-import peergos.server.storage.IpfsDHT;
+import peergos.server.storage.*;
 import peergos.util.*;
 
 import java.io.IOException;
@@ -86,7 +85,8 @@ public class Start
             String domain = Args.getArg("domain", "localhost");
             InetSocketAddress userAPIAddress = new InetSocketAddress(domain, port);
 
-            ContentAddressedStorage dht = new IpfsDHT();
+            boolean useIPFS = Args.getBoolean("useIPFS", true);
+            ContentAddressedStorage dht = useIPFS ? new IpfsDHT() : new RAMStorage();
 
             // start the User Service
             String hostname = Args.getArg("domain", "localhost");
@@ -111,9 +111,10 @@ public class Start
     public static void local() throws IOException{
         String domain = Args.getArg("domain", "localhost");
         String coreNodePath = Args.getArg("coreNodePath", ":memory:");
+        boolean useIPFS = Args.getBoolean("useIPFS", true);
 
         Start.main(new String[] {"-coreNode", "-domain", domain, "-coreNodePath", coreNodePath});
 
-        Start.main(new String[]{"-port", "8000", "-logMessages", "-domain", domain, "-publicserver"});
+        Start.main(new String[]{"-port", "8000", "-logMessages", "-domain", domain, "-publicserver", "-useIPFS", Boolean.toString(useIPFS)});
     }
 }
