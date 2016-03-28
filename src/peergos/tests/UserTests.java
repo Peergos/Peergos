@@ -1,6 +1,8 @@
 package peergos.tests;
 
 import org.junit.*;
+import static org.junit.Assert.*;
+
 import peergos.corenode.*;
 import peergos.crypto.*;
 import peergos.user.*;
@@ -89,10 +91,31 @@ public class UserTests {
         byte[] data = randomData(0x1000);
         Files.write(tmpPath, data);
 
-        userRoot.uploadFile(name, tmpPath.toFile(), context,  (l) -> {});
+        boolean b = userRoot.uploadFile(name, tmpPath.toFile(), context, (l) -> {});
 
-//        userRoot.uploadFile();
+        assertTrue("file upload", b);
 
+        Optional<FileTreeNode> opt = userRoot.getChildren(context)
+                .stream()
+                .filter(e -> {
+                    try {
+                        return e.getFileProperties().name.equals(name);
+                    } catch (IOException ioe) {
+                        ioe.printStackTrace();
+                        return false;
+                    }
+                }).findFirst();
+
+        assertTrue("found uploaded file", opt.isPresent());
+
+        FileTreeNode fileTreeNode = opt.get();
+        long size = fileTreeNode.getFileProperties().size;
+        InputStream in = fileTreeNode.getInputStream(context, size, (l) -> {});
+        byte[] retrievedData = readFully(in);
+
+        boolean  dataEquals = Arrays.equals(data, retrievedData);
+
+        assertTrue("retrieved same data", dataEquals);
     }
 
     private static String randomString() {
@@ -120,4 +143,13 @@ public class UserTests {
         return resolve;
     }
 
+
+    private static byte[] readFully(InputStream in) throws IOException {
+        ByteArrayOutputStream bout =  new ByteArrayOutputStream();
+        byte[] b =  new  byte[0x1000];
+        int nRead = -1;
+        while ((nRead = in.read(b, 0, b.length)) != -1 )
+            bout.write(b, 0, nRead);
+        return bout.toByteArray();
+    }
 }

@@ -30,7 +30,7 @@ public class LazyInputStreamCombiner extends InputStream {
             next = nextRet.getNext();
             return nextRet.getChunkInputStream(context, dataKey, len, monitor);
         }
-        throw new IllegalStateException("End Of File!");
+        throw new EOFException();
     }
 
     public int bytesReady() {
@@ -48,10 +48,14 @@ public class LazyInputStreamCombiner extends InputStream {
 
     @Override
     public int read() throws IOException {
-        return readByte() & 0xff;
+        try {
+            return readByte() & 0xff;
+        } catch (EOFException eofe) {
+            return -1;
+        }
     }
 
-    public byte[] read(int len, byte[] res, int offset) throws IOException {
+    public byte[] readArray(int len, byte[] res, int offset) throws IOException {
         if (res == null) {
             res = new byte[len];
             offset = 0;
@@ -65,6 +69,6 @@ public class LazyInputStreamCombiner extends InputStream {
         int nextSize = len - toRead > Chunk.MAX_SIZE ? Chunk.MAX_SIZE : (len-toRead) % Chunk.MAX_SIZE;
         current = this.getNextStream(nextSize);
         index = 0;
-        return read(len-toRead, res, offset + toRead);
+        return readArray(len-toRead, res, offset + toRead);
     }
 }
