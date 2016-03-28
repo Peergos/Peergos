@@ -3,4 +3,6 @@ jdk:
   - oraclejdk8
 
 after_failure:
+  - pwd
+  - ls
   - cat TEST-*.txt
