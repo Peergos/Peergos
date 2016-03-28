@@ -28,8 +28,7 @@
     </javac>
   </target>
 
-  <target name="dist" depends="compile"
-        description="generate the distribution">
+  <target name="dist" depends="compile" description="generate the distribution">
     <mkdir dir="${dist}/lib"/>
     <copy todir="${dist}/lib">
       <fileset dir="lib"/>
@@ -48,7 +47,7 @@
     </copy>
   </target>
 
-  <target name="test" depends="compile">
+  <target name="test" depends="compile,dist">
     <junit printsummary="yes" fork="true" haltonfailure="yes">
       <jvmarg value="-Xmx512m"/>
       <classpath>
