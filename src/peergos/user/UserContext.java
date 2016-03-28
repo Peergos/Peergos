@@ -49,6 +49,7 @@ public class UserContext {
                     if (childNode.getFileProperties().name.equals("shared")) {
                         sharingFolder = childNode;
                         usernames = corenodeClient.getAllUsernames().stream().collect(Collectors.toSet());
+                        return;
                     }
                 }
             }

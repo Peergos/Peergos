@@ -38,13 +38,13 @@ public class FileProperties {
     }
 
     public static FileProperties deserialize(byte[] raw) throws IOException {
-        DataInput din = new DataSource(raw);
-        String name = din.readUTF();
+        DataSource din = new DataSource(raw);
+        String name = din.readString();
         int size = din.readInt();
         double modified = din.readDouble();
         boolean isHidden = din.readBoolean();
         int length = din.readInt();
-        Optional<byte[]> thumbnail = length == -1 ?
+        Optional<byte[]> thumbnail = length == 0 ?
                 Optional.empty() :
                 Optional.of(Serialize.deserializeByteArray(din, ContentAddressedStorage.MAX_OBJECT_LENGTH));
 

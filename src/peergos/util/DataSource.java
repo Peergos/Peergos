@@ -42,7 +42,7 @@ public class DataSource implements DataInput {
     }
 
     public String readString() throws IOException {
-        return din.readUTF();
+        return new String(readArray());
     }
 
     public void skip(int bytes) throws IOException {

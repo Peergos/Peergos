@@ -32,12 +32,11 @@ public class Location {
         return key.encrypt(serialize(), nonce);
     }
 
-    public static Location deserialize(DataInput din) {
+    public static Location deserialize(DataSource din) {
         try {
-            UserPublicKey ownerKey = UserPublicKey.deserialize(din);
-            UserPublicKey writerKey = UserPublicKey.deserialize(din);
-            byte[] mapKey = new byte[MAP_KEY_LENGTH];
-            din.readFully(mapKey);
+            UserPublicKey ownerKey = UserPublicKey.fromByteArray(din.readArray());
+            UserPublicKey writerKey = UserPublicKey.fromByteArray(din.readArray());
+            byte[] mapKey = din.readArray();
             return new Location(ownerKey, writerKey, mapKey);
         } catch (IOException e) {
             throw new RuntimeException(e);

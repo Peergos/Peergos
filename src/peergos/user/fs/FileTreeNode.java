@@ -159,10 +159,12 @@ public class FileTreeNode {
                 try {
                     addChild(c);
                 } catch (IOException e) {
+                    e.printStackTrace();
                 }
             });
             return new HashSet<>(children);
         } catch (Exception e) {
+            e.printStackTrace();
             // directories we don't have read access to have children populated during tree creation
             return new HashSet<>(children);
         }
@@ -301,6 +303,14 @@ public class FileTreeNode {
             return new FileProperties("/", 0, LocalDateTime.MIN, false, Optional.empty());
         SymmetricKey parentKey = this.getParentKey();
         return pointer.fileAccess.getFileProperties(parentKey);
+    }
+
+    public String toString() {
+        try {
+            return getFileProperties().name;
+        } catch (IOException ioe) {
+            return "InvalidFileTreeNode";
+        }
     }
 
     public byte[] generateThumbnail(RandomAccessFile imageBlob, String fileName) {
