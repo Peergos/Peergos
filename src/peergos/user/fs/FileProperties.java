@@ -40,7 +40,7 @@ public class FileProperties {
     public static FileProperties deserialize(byte[] raw) throws IOException {
         DataSource din = new DataSource(raw);
         String name = din.readString();
-        int size = din.readInt();
+        long size = (long) din.readDouble();
         double modified = din.readDouble();
         boolean isHidden = din.readBoolean();
         int length = din.readInt();
