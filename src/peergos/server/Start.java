@@ -83,7 +83,7 @@ public class Start
         }
         else {
             int webPort = Args.getInt("port", 8000);
-            int corenodePort = Args.getInt("port", HTTPCoreNodeServer.PORT);
+            int corenodePort = Args.getInt("corenodePort", HTTPCoreNodeServer.PORT);
             String domain = Args.getArg("domain", "localhost");
             InetSocketAddress userAPIAddress = new InetSocketAddress(domain, webPort);
 

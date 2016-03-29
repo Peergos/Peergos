@@ -276,10 +276,10 @@ public class UserContext {
     }
 
     public boolean addToStaticData(EntryPoint entry) {
-        for (int i=0; i < this.staticData.size(); i++)
-            if (this.staticData.get(entry.pointer.writer).equals(entry))
+        for (int i=0; i < staticData.size(); i++)
+            if (entry.equals(staticData.get(entry.pointer.writer)))
                 return true;
-        this.staticData.put(entry.pointer.writer, entry);
+        staticData.put(entry.pointer.writer, entry);
         return true;
     }
 
