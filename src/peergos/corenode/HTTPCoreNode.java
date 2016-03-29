@@ -17,8 +17,8 @@ public class HTTPCoreNode implements CoreNode
 {
     private final URL coreNodeURL;
 
-    public static CoreNode getInstance() throws IOException {
-        return new HTTPCoreNode(new URL("http://"+ SSL.getCommonName(SSL.getCoreServerCertificates()[0])+":"+HTTPCoreNodeServer.PORT+"/"));
+    public static CoreNode getInstance(int port) throws IOException {
+        return new HTTPCoreNode(new URL("http://"+ SSL.getCommonName(SSL.getCoreServerCertificates()[0])+":"+port+"/"));
     }
 
     public HTTPCoreNode(URL coreNodeURL)

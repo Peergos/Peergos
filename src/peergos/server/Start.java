@@ -59,10 +59,11 @@ public class Start
             String keyfile = Args.getArg("keyfile", "core.key");
             char[] passphrase = Args.getArg("passphrase", "password").toCharArray();
             String path = Args.getArg("coreNodePath", ":memory:");
+            int corenodePort = Args.getInt("corenodePort", HTTPCoreNodeServer.PORT);
             System.out.println("Using core node path "+ path);
             try {
                 SQLiteCoreNode coreNode = SQLiteCoreNode.build(path);
-                HTTPCoreNodeServer.createAndStart(keyfile, passphrase, HTTPCoreNodeServer.PORT, coreNode);
+                HTTPCoreNodeServer.createAndStart(keyfile, passphrase, corenodePort, coreNode);
             } catch (SQLException sqle) {
                 throw new IllegalStateException(sqle);
             }
@@ -81,9 +82,10 @@ public class Start
             SSL.signCertificate(Args.getArg("csr", "core.csr"), Args.getArg("rootPassword").toCharArray(), "Core");
         }
         else {
-            int port = Args.getInt("port", 8000);
+            int webPort = Args.getInt("port", 8000);
+            int corenodePort = Args.getInt("port", HTTPCoreNodeServer.PORT);
             String domain = Args.getArg("domain", "localhost");
-            InetSocketAddress userAPIAddress = new InetSocketAddress(domain, port);
+            InetSocketAddress userAPIAddress = new InetSocketAddress(domain, webPort);
 
             boolean useIPFS = Args.getBoolean("useIPFS", true);
             ContentAddressedStorage dht = useIPFS ? new IpfsDHT() : new RAMStorage();
@@ -92,7 +94,7 @@ public class Start
             String hostname = Args.getArg("domain", "localhost");
 
             InetSocketAddress httpsMessengerAddress = new InetSocketAddress(hostname, userAPIAddress.getPort());
-            CoreNode core = HTTPCoreNode.getInstance();
+            CoreNode core = HTTPCoreNode.getInstance(corenodePort);
             CoreNode pinner = new PinningCoreNode(core, dht);
 
             new UserService(httpsMessengerAddress, Logger.getLogger("IPFS"), dht, pinner);
@@ -112,9 +114,12 @@ public class Start
         String domain = Args.getArg("domain", "localhost");
         String coreNodePath = Args.getArg("coreNodePath", ":memory:");
         boolean useIPFS = Args.getBoolean("useIPFS", true);
+        int webPort = Args.getInt("port", 8000);
+        int corenodePort = Args.getInt("corenodePort", HTTPCoreNodeServer.PORT);
 
-        Start.main(new String[] {"-coreNode", "-domain", domain, "-coreNodePath", coreNodePath});
+        Start.main(new String[] {"-coreNode", "-domain", domain, "-coreNodePath", coreNodePath, "-corenodePort", Integer.toString(corenodePort)});
 
-        Start.main(new String[]{"-port", "8000", "-logMessages", "-domain", domain, "-publicserver", "-useIPFS", Boolean.toString(useIPFS)});
+        Start.main(new String[]{"-port", Integer.toString(webPort), "-logMessages", "-domain", domain, "-publicserver",
+                "-useIPFS", Boolean.toString(useIPFS), "-corenodePort", Integer.toString(corenodePort)});
     }
 }

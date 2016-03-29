@@ -5,6 +5,7 @@ import static org.junit.Assert.*;
 
 import peergos.corenode.*;
 import peergos.crypto.*;
+import peergos.crypto.symmetric.*;
 import peergos.server.*;
 import peergos.user.*;
 import peergos.user.fs.*;
@@ -20,6 +21,8 @@ public class UserTests {
 
     private static int N_CHUNKS = 10;
     public static int RANDOM_SEED = 666;
+    public static int WEB_PORT = 9876;
+    public static int CORE_PORT = 9753;
 
     private static final Logger LOG = Logger.getGlobal();
 
@@ -27,7 +30,7 @@ public class UserTests {
 
     @BeforeClass
     public static void startPeergos() throws IOException {
-        Args.parse(new String[]{"useIPFS", "false"});
+        Args.parse(new String[]{"useIPFS", "false", "-port", Integer.toString(WEB_PORT), "-corenodePort", Integer.toString(CORE_PORT)});
         Start.local();
     }
 
@@ -50,11 +53,20 @@ public class UserTests {
     }
 
     public UserContext ensureSignedUp(String username, String password) throws IOException {
-        DHTClient.HTTP dht = new DHTClient.HTTP(new URL("http://localhost:8000/"));
-        Btree.HTTP btree = new Btree.HTTP(new URL("http://localhost:8000/"));
-        HTTPCoreNode coreNode = new HTTPCoreNode(new URL("http://localhost:8000/"));
+        DHTClient.HTTP dht = new DHTClient.HTTP(new URL("http://localhost:"+ WEB_PORT +"/"));
+        Btree.HTTP btree = new Btree.HTTP(new URL("http://localhost:"+ WEB_PORT +"/"));
+        HTTPCoreNode coreNode = new HTTPCoreNode(new URL("http://localhost:"+ WEB_PORT +"/"));
         UserContext userContext = UserContext.ensureSignedUp(username, password, dht, btree, coreNode);
         return userContext;
+    }
+
+    @Test
+    public void social() throws IOException {
+        UserContext u1 = ensureSignedUp("q", "q");
+        UserContext u2 = ensureSignedUp("w", "w");
+        u2.sendFollowRequest(u1.username, SymmetricKey.random());
+        List<FollowRequest> u1Requests = u1.getFollowRequests();
+        assertTrue("Receive a follow request", u1Requests.size() > 0);
     }
 
     public void add(String path) {
