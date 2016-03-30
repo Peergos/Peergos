@@ -67,6 +67,9 @@ public class UserTests {
         u2.sendFollowRequest(u1.username, SymmetricKey.random());
         List<FollowRequest> u1Requests = u1.getFollowRequests();
         assertTrue("Receive a follow request", u1Requests.size() > 0);
+        u1.sendReplyFollowRequest(u1Requests.get(0), true, true);
+        List<FollowRequest> u2FollowRequests = u2.getFollowRequests();
+        System.out.println();
     }
 
     public void add(String path) {

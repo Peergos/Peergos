@@ -3,7 +3,6 @@ package peergos.user.fs;
 import peergos.crypto.*;
 import peergos.crypto.symmetric.*;
 import peergos.user.*;
-import peergos.util.*;
 
 import java.io.*;
 import java.time.*;
@@ -13,7 +12,6 @@ import java.util.stream.*;
 
 public class FileTreeNode {
 
-    public static FileTreeNode ROOT = new FileTreeNode(null, null, Collections.EMPTY_SET, Collections.EMPTY_SET, null);
     RetrievedFilePointer pointer;
     Set<FileTreeNode> children = new HashSet<>();
     Map<String, FileTreeNode> childrenByName = new HashMap<>();
@@ -133,7 +131,7 @@ public class FileTreeNode {
         SymmetricKey parentKey = getParentKey();
         RetrievedFilePointer parentRFP = pointer.fileAccess.getParent(parentKey, context);
         if (parentRFP == null)
-            return Optional.of(FileTreeNode.ROOT);
+            return Optional.of(context.getTreeRoot());
         return Optional.of(new FileTreeNode(parentRFP, ownername, Collections.EMPTY_SET, Collections.EMPTY_SET, entryWriterKey));
     }
 
@@ -149,7 +147,7 @@ public class FileTreeNode {
     }
 
     public Set<FileTreeNode> getChildren(UserContext context) {
-        if (this == FileTreeNode.ROOT)
+        if (this == context.getTreeRoot())
             return new HashSet<>(children);
         try {
             Set<RetrievedFilePointer> childrenRFPs = retrieveChildren(context);
@@ -312,6 +310,10 @@ public class FileTreeNode {
             ioe.printStackTrace();
             return "InvalidFileTreeNode";
         }
+    }
+
+    public static FileTreeNode createRoot() {
+        return new FileTreeNode(null, null, Collections.EMPTY_SET, Collections.EMPTY_SET, null);
     }
 
     public byte[] generateThumbnail(RandomAccessFile imageBlob, String fileName) {

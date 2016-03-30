@@ -53,7 +53,6 @@ public class UserContext {
     }
 
     public void init() throws IOException {
-        FileTreeNode.ROOT.clear();
         staticData.clear();
         this.rootNode = createFileTree();
         Set<FileTreeNode> children = rootNode.getChildren(this);
@@ -497,7 +496,7 @@ public class UserContext {
                 .map(e -> new FileTreeNode(new RetrievedFilePointer(e.getKey().pointer, e.getValue()), e.getKey().owner,
                         e.getKey().readers, e.getKey().writers, e.getKey().pointer.writer)).collect(Collectors.toSet());
         System.out.println("Entry points "+entrypoints);
-        FileTreeNode globalRoot = FileTreeNode.ROOT;
+        FileTreeNode globalRoot = FileTreeNode.createRoot();
 
         for (FileTreeNode current: entrypoints) {
             getAncestorsAndAddToTree(current);
@@ -540,17 +539,17 @@ public class UserContext {
     public void unfollow(String username) throws IOException {
         System.out.println("Unfollowing: "+username);
         // remove entry point from static data
-        Optional<FileTreeNode> dir = FileTreeNode.ROOT.getDescendentByPath("/"+username+"/shared/"+username, this);
+        Optional<FileTreeNode> dir = getTreeRoot().getDescendentByPath("/"+username+"/shared/"+username, this);
         // remove our static data entry storing that we've granted them access
         removeFromStaticData(dir.get());
-        Optional<FileTreeNode> entry = FileTreeNode.ROOT.getDescendentByPath("/"+username, this);
-        entry.get().remove(this, FileTreeNode.ROOT);
+        Optional<FileTreeNode> entry = getTreeRoot().getDescendentByPath("/"+username, this);
+        entry.get().remove(this, getTreeRoot());
     }
 
     public void removeFollower(String username) throws IOException {
         System.out.println("Remove follower: " + username);
         // remove /$us/shared/$them
-        Optional<FileTreeNode> dir = FileTreeNode.ROOT.getDescendentByPath("/"+username+"/shared/"+username, this);
+        Optional<FileTreeNode> dir = getTreeRoot().getDescendentByPath("/"+username+"/shared/"+username, this);
         dir.get().remove(this, getSharingFolder());
         // remove our static data entry storing that we've granted them access
         removeFromStaticData(dir.get());
@@ -558,6 +557,5 @@ public class UserContext {
 
     public void logout() {
         rootNode = null;
-        FileTreeNode.ROOT = new FileTreeNode(null, null, Collections.EMPTY_SET, Collections.EMPTY_SET, null);
     }
 }
