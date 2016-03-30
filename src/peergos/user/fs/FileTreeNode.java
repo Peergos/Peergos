@@ -198,16 +198,15 @@ public class FileTreeNode {
 
     public boolean isDirectory() {
         boolean isNull = pointer == null;
-        return isNull ? true : pointer.fileAccess.isDirectory();
+        return isNull || pointer.fileAccess.isDirectory();
     }
 
     public boolean uploadFile(String filename, File f, UserContext context, Consumer<Long> monitor) throws IOException {
-//        return uploadFile(filename, new RandomAccessFile(f, "r"), f.length(), context,  monitor);
-        throw new IllegalStateException("oh no!");
+        return uploadFile(filename, new ResetableFileInputStream(f), f.length(), context,  monitor);
     }
 
     public boolean uploadFile(String filename, InputStream fileData, long length, UserContext context, Consumer<Long> monitor) throws IOException {
-        if (!this.isLegalName(filename))
+        if (!isLegalName(filename))
             return false;
         if (childrenByName.containsKey(filename)) {
             System.out.println("Child already exists with name: "+filename);
