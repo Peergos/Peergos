@@ -54,7 +54,8 @@ public class UserContext {
 
     public void init() throws IOException {
         staticData.clear();
-        this.rootNode = createFileTree();
+        this.rootNode = FileTreeNode.createRoot();
+        createFileTree();
         Set<FileTreeNode> children = rootNode.getChildren(this);
         for (FileTreeNode child: children) {
             if (child.getFileProperties().name.equals(username)) {
@@ -490,18 +491,16 @@ public class UserContext {
         }
     }
 
-    private FileTreeNode createFileTree() throws IOException {
+    private void createFileTree() throws IOException {
         Map<EntryPoint, FileAccess> roots = getRoots();
         Set<FileTreeNode> entrypoints = roots.entrySet().stream()
                 .map(e -> new FileTreeNode(new RetrievedFilePointer(e.getKey().pointer, e.getValue()), e.getKey().owner,
                         e.getKey().readers, e.getKey().writers, e.getKey().pointer.writer)).collect(Collectors.toSet());
         System.out.println("Entry points "+entrypoints);
-        FileTreeNode globalRoot = FileTreeNode.createRoot();
 
         for (FileTreeNode current: entrypoints) {
             getAncestorsAndAddToTree(current);
         }
-        return globalRoot;
     }
 
     public Map<ReadableFilePointer, FileAccess> retrieveAllMetadata(List<SymmetricLocationLink> links, SymmetricKey baseKey) throws IOException {
