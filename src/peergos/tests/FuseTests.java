@@ -16,7 +16,7 @@ public class FuseTests {
     public static int WEB_PORT = 9876;
     public static int CORE_PORT = 9753;
     public static PeergosFS peergosFS;
-    public static String username = "test01";
+    public static String username = "test02";
     public static String password = "password";
     public static Path mountPoint = Paths.get("tmp","mnt");
 

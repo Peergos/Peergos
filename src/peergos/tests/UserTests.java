@@ -115,7 +115,7 @@ public class UserTests {
         FileTreeNode fileTreeNode = opt.get();
         long size = fileTreeNode.getFileProperties().size;
         InputStream in = fileTreeNode.getInputStream(context, size, (l) -> {});
-        byte[] retrievedData = readFully(in);
+        byte[] retrievedData = Serialize.readFully(in);
 
         boolean  dataEquals = Arrays.equals(data, retrievedData);
 
@@ -145,15 +145,5 @@ public class UserTests {
         file.createNewFile();
         file.deleteOnExit();
         return resolve;
-    }
-
-
-    private static byte[] readFully(InputStream in) throws IOException {
-        ByteArrayOutputStream bout =  new ByteArrayOutputStream();
-        byte[] b =  new  byte[0x1000];
-        int nRead = -1;
-        while ((nRead = in.read(b, 0, b.length)) != -1 )
-            bout.write(b, 0, nRead);
-        return bout.toByteArray();
     }
 }

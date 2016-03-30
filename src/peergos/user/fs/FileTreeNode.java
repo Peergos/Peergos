@@ -201,7 +201,12 @@ public class FileTreeNode {
         return isNull ? true : pointer.fileAccess.isDirectory();
     }
 
-    public boolean uploadFile(String filename, File file, UserContext context, Consumer<Long> monitor) throws IOException {
+    public boolean uploadFile(String filename, File f, UserContext context, Consumer<Long> monitor) throws IOException {
+//        return uploadFile(filename, new RandomAccessFile(f, "r"), f.length(), context,  monitor);
+        throw new IllegalStateException("oh no!");
+    }
+
+    public boolean uploadFile(String filename, InputStream fileData, long length, UserContext context, Consumer<Long> monitor) throws IOException {
         if (!this.isLegalName(filename))
             return false;
         if (childrenByName.containsKey(filename)) {
@@ -217,9 +222,9 @@ public class FileTreeNode {
         Location parentLocation = new Location(owner, writer, dirMapKey);
         SymmetricKey dirParentKey = dirAccess.getParentKey(rootRKey);
 
-        byte[] thumbData = generateThumbnail(new RandomAccessFile(file, "r"), filename);
-        FileProperties fileProps = new FileProperties(filename, file.length(), LocalDateTime.now(), false, Optional.of(thumbData));
-        FileUploader chunks = new FileUploader(filename, file, fileKey, parentLocation, dirParentKey, monitor, fileProps,
+        byte[] thumbData = generateThumbnail(fileData, filename);
+        FileProperties fileProps = new FileProperties(filename, length, LocalDateTime.now(), false, Optional.of(thumbData));
+        FileUploader chunks = new FileUploader(filename, fileData, length, fileKey, parentLocation, dirParentKey, monitor, fileProps,
                 EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
         Location fileLocation = chunks.upload(context, owner, (User)entryWriterKey);
         dirAccess.addFile(fileLocation, rootRKey, fileKey);
@@ -327,7 +332,7 @@ public class FileTreeNode {
         }
     }
 
-    public byte[] generateThumbnail(RandomAccessFile imageBlob, String fileName) {
+    public byte[] generateThumbnail(InputStream imageBlob, String fileName) {
         byte[] data = new byte[20];
         byte[] BMP = new byte[]{66, 77};
         byte[] GIF = new byte[]{71, 73, 70};

@@ -1,6 +1,7 @@
 package peergos.util;
 
 import java.io.*;
+import java.util.Arrays;
 
 public class Serialize
 {
@@ -46,4 +47,17 @@ public class Serialize
         return new byte[len];
     }
 
+    public static byte[] readFully(InputStream in) throws IOException {
+        ByteArrayOutputStream bout =  new ByteArrayOutputStream();
+        byte[] b =  new  byte[0x1000];
+        int nRead = -1;
+        while ((nRead = in.read(b, 0, b.length)) != -1 )
+            bout.write(b, 0, nRead);
+        return bout.toByteArray();
+    }
+
+    public static byte[] ensureSize(byte[] data, int  size) {
+        boolean iBigger = data.length < size;
+        return  iBigger ? Arrays.copyOf(data, size) : data;
+    }
 }
