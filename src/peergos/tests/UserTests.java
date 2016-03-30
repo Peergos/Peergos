@@ -69,6 +69,8 @@ public class UserTests {
         assertTrue("Receive a follow request", u1Requests.size() > 0);
         u1.sendReplyFollowRequest(u1Requests.get(0), true, true);
         List<FollowRequest> u2FollowRequests = u2.getFollowRequests();
+        Optional<FileTreeNode> friendRoot = u2.getTreeRoot().getDescendentByPath("/" + u1.username, u2);
+        assertTrue("Friend root present after accepted follow request", friendRoot.isPresent());
         System.out.println();
     }
 
