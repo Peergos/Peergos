@@ -59,8 +59,16 @@ public class FileTreeNode {
     }
 
     public Optional<FileTreeNode> getDescendentByPath(String path, UserContext context) throws IOException {
+
         if (path.length() == 0)
             return Optional.of(this);
+
+        if (path.equals("/"))
+            if (isDirectory())
+                return Optional.of(this);
+            else
+                return Optional.empty();
+
         if (path.startsWith("/"))
             path = path.substring(1);
         int slash = path.indexOf("/");
@@ -189,7 +197,8 @@ public class FileTreeNode {
     }
 
     public boolean isDirectory() {
-        return pointer.fileAccess.isDirectory();
+        boolean isNull = pointer == null;
+        return isNull ? true : pointer.fileAccess.isDirectory();
     }
 
     public boolean uploadFile(String filename, File file, UserContext context, Consumer<Long> monitor) throws IOException {
@@ -219,6 +228,10 @@ public class FileTreeNode {
 
     static boolean isLegalName(String name) {
         return !name.contains("/");
+    }
+
+    public Optional<ReadableFilePointer> mkdir(String newFolderName, UserContext context, boolean isSystemFolder) throws IOException {
+        return mkdir(newFolderName, context, null, isSystemFolder);
     }
 
     public Optional<ReadableFilePointer> mkdir(String newFolderName, UserContext context, SymmetricKey requestedBaseSymmetricKey, boolean isSystemFolder) throws IOException {

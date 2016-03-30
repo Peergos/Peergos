@@ -52,7 +52,7 @@ public class UserTests {
         ensureSignedUp(username, password);
     }
 
-    public UserContext ensureSignedUp(String username, String password) throws IOException {
+    public static UserContext ensureSignedUp(String username, String password) throws IOException {
         DHTClient.HTTP dht = new DHTClient.HTTP(new URL("http://localhost:"+ WEB_PORT +"/"));
         Btree.HTTP btree = new Btree.HTTP(new URL("http://localhost:"+ WEB_PORT +"/"));
         HTTPCoreNode coreNode = new HTTPCoreNode(new URL("http://localhost:"+ WEB_PORT +"/"));
