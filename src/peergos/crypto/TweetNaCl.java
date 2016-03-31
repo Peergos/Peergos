@@ -1246,9 +1246,9 @@ public class TweetNaCl {
         return 0;
     }
 
-    private static final SecureRandom prng = getRnd();
+    private static final Random prng = getSecureRandom();
 
-    private static SecureRandom getRnd() {
+    private static SecureRandom getSecureRandom() {
         try {
             return SecureRandom.getInstanceStrong();
         } catch (NoSuchAlgorithmException e) {

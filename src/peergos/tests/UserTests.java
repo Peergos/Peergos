@@ -12,6 +12,7 @@ import peergos.user.fs.*;
 import peergos.util.*;
 
 import java.io.*;
+import java.lang.reflect.*;
 import java.net.*;
 import java.nio.file.*;
 import java.util.*;
@@ -29,10 +30,22 @@ public class UserTests {
     private static Random random = new Random(RANDOM_SEED);
 
     @BeforeClass
-    public static void startPeergos() throws IOException {
+    public static void startPeergos() throws Exception {
         Args.parse(new String[]{"useIPFS", "false", "-port", Integer.toString(WEB_PORT), "-corenodePort", Integer.toString(CORE_PORT)});
         Start.local();
+        // use insecure random otherwise tests take ages
+        setFinalStatic(TweetNaCl.class.getDeclaredField("prng"), new Random());
     }
+
+    static void setFinalStatic(Field field, Object newValue) throws Exception {
+      field.setAccessible(true);
+
+      Field modifiersField = Field.class.getDeclaredField("modifiers");
+      modifiersField.setAccessible(true);
+      modifiersField.setInt(field, field.getModifiers() & ~Modifier.FINAL);
+
+      field.set(null, newValue);
+   }
 
     @Test
     public void javascriptCompatible() throws IOException {
