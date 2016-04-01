@@ -209,8 +209,9 @@ public class FileTreeNode {
         if (!isLegalName(filename))
             return false;
         if (childrenByName.containsKey(filename)) {
-            System.out.println("Child already exists with name: "+filename);
-            return false;
+            //TODO move to API which allows modifying a section of a file
+            System.out.println("Overwriting child with name: "+filename);
+            removeChild(childrenByName.get(filename), context);
         }
         SymmetricKey fileKey = SymmetricKey.random();
         SymmetricKey rootRKey = pointer.filePointer.baseKey;

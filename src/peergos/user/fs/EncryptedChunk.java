@@ -18,6 +18,8 @@ public class EncryptedChunk {
     }
 
     public List<Fragment> generateFragments(int nOriginalFragments, int nAllowedFailures) {
+        if (this.cipher.length == 0)
+            return Collections.emptyList();
         byte[][] bfrags = Erasure.split(this.cipher, nOriginalFragments, nAllowedFailures);
         List<Fragment> frags = new ArrayList<>();
         for (int i=0; i < bfrags.length; i++)

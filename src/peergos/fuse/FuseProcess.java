@@ -1,14 +1,16 @@
 package peergos.fuse;
 
+import peergos.crypto.*;
 import peergos.server.Start;
 import peergos.tests.UserTests;
 import peergos.user.UserContext;
 import peergos.util.Args;
 
 import java.io.IOException;
+import java.lang.reflect.*;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.UUID;
+import java.util.*;
 
 public class FuseProcess implements Runnable, AutoCloseable {
 
@@ -67,7 +69,17 @@ public class FuseProcess implements Runnable, AutoCloseable {
             throw new IllegalStateException();
     }
 
-    public static void main(String[] args) throws IOException {
+    static void setFinalStatic(Field field, Object newValue) throws Exception {
+        field.setAccessible(true);
+
+        Field modifiersField = Field.class.getDeclaredField("modifiers");
+        modifiersField.setAccessible(true);
+        modifiersField.setInt(field, field.getModifiers() & ~Modifier.FINAL);
+
+        field.set(null, newValue);
+    }
+
+    public static void main(String[] args) throws Exception {
 
 
         int WEB_PORT = 9876;
@@ -78,6 +90,9 @@ public class FuseProcess implements Runnable, AutoCloseable {
                 "-corenodePort", Integer.toString(CORE_PORT)});
 
         Start.local();
+
+        // use insecure random otherwise tests take ages
+        setFinalStatic(TweetNaCl.class.getDeclaredField("prng"), new Random());
 
         Args.parse(args);
         String username = Args.getArg("username", "test01");

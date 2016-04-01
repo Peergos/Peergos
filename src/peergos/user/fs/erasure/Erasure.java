@@ -62,6 +62,8 @@ public class Erasure {
         int inputSize = encodeSize*originalBlobs/n;
         int nec = encodeSize-inputSize;
         int symbolSize = inputSize/originalBlobs;
+        if (encoded.length == 0)
+            return new byte[0];
         int tbSize = encoded[0].length;
 
         ByteArrayOutputStream res = new ByteArrayOutputStream();

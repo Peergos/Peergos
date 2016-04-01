@@ -1,5 +1,7 @@
 package peergos.crypto;
 
+import peergos.util.*;
+
 import java.security.*;
 import java.util.Arrays;
 import java.util.Random;
@@ -108,7 +110,9 @@ public class TweetNaCl {
         byte[] m = new byte[c.length];
         System.arraycopy(cipher, 0, c, SECRETBOX_OVERHEAD_BYTES, cipher.length);
         if (c.length < 32) throw new IllegalStateException("Cipher too small!");
-        if (crypto_secretbox_open(m, c, c.length, nonce, key) != 0) throw new IllegalStateException("Invalid encryption!");
+        if (crypto_secretbox_open(m, c, c.length, nonce, key) != 0)
+            throw new IllegalStateException("Invalid encryption! ["+ cipher.length + "] = " +
+                ArrayOps.bytesToHex(Arrays.copyOfRange(cipher, 0, Math.min(cipher.length, 128))));
         return Arrays.copyOfRange(m, SECRETBOX_INTERNAL_OVERHEAD_BYTES, m.length);
     }
 
