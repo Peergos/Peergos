@@ -1,18 +1,16 @@
 package peergos.fuse;
 
 import jnr.ffi.Pointer;
-import jnr.ffi.Struct;
 import jnr.ffi.types.*;
-import peergos.tests.UserTests;
 import peergos.user.UserContext;
 import peergos.user.fs.FileProperties;
 import peergos.user.fs.FileTreeNode;
 import peergos.user.fs.ReadableFilePointer;
 import peergos.util.Serialize;
-import ru.serce.jnrfuse.AbstractFuseFS;
 
 import ru.serce.jnrfuse.ErrorCodes;
 import ru.serce.jnrfuse.FuseFillDir;
+import ru.serce.jnrfuse.FuseStubFS;
 import ru.serce.jnrfuse.struct.*;
 
 import java.io.ByteArrayInputStream;
@@ -20,12 +18,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Arrays;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 
-public class PeergosFS extends AbstractFuseFS {
+public class PeergosFS extends FuseStubFS {
 
     private static class PeergosStat {
         private final FileTreeNode treeNode;
@@ -186,7 +183,7 @@ public class PeergosFS extends AbstractFuseFS {
 
     @Override
     public int flush(String s, FuseFileInfo fuseFileInfo) {
-        return unimp();
+        return 0;
     }
 
     @Override
@@ -204,10 +201,10 @@ public class PeergosFS extends AbstractFuseFS {
         return unimp();
     }
 
-    @Override
-    public int getxattr(String s, String s1, Pointer pointer, @size_t long l) {
-        return unimp();
-    }
+//    @Override
+//    public int getxattr(String s, String s1, Pointer pointer, @size_t long l) {
+//        return 0;
+//    }
 
     @Override
     public int listxattr(String s, Pointer pointer, @size_t long l) {
@@ -251,12 +248,19 @@ public class PeergosFS extends AbstractFuseFS {
 
     @Override
     public int access(String s, int i) {
-        return unimp();
+        return 0;
     }
 
     @Override
     public int create(String s, @mode_t long l, FuseFileInfo fuseFileInfo) {
-        return unimp();
+
+        Path path = Paths.get(s);
+        String parentPath = path.getParent().toString();
+        String name = path.getFileName().toString();
+        byte[] emptyData = new byte[0];
+
+        return applyIfPresent(parentPath,
+                (stat) -> write(stat,  name, emptyData, 0, 0));
     }
 
     @Override
@@ -266,17 +270,19 @@ public class PeergosFS extends AbstractFuseFS {
 
     @Override
     public int fgetattr(String s, FileStat fileStat, FuseFileInfo fuseFileInfo) {
-        return unimp();
+        return getattr(s, fileStat);
     }
 
     @Override
     public int lock(String s, FuseFileInfo fuseFileInfo, int i, Flock flock) {
-        return unimp();
+        // TODO: 01/04/16  
+        return 0;
     }
 
     @Override
     public int utimens(String s, Timespec[] timespecs) {
         return unimp();
+
     }
 
     @Override
@@ -294,15 +300,16 @@ public class PeergosFS extends AbstractFuseFS {
         return unimp();
     }
 
-    @Override
-    public int write_buf(String s, FuseBufvec fuseBufvec, @off_t long l, FuseFileInfo fuseFileInfo) {
-        return unimp();
-    }
+//    @Override
+//    public int write_buf(String s, FuseBufvec fuseBufvec, @off_t long l, FuseFileInfo fuseFileInfo) {
+//
+//        return write();
+//    }
 
-    @Override
-    public int read_buf(String s, Pointer pointer, @size_t long l, @off_t long l1, FuseFileInfo fuseFileInfo) {
-        return unimp();
-    }
+//    @Override
+//    public int read_buf(String s, Pointer pointer, @size_t long l, @off_t long l1, FuseFileInfo fuseFileInfo) {
+//        return 0;
+//    }
 
     @Override
     public int flock(String s, FuseFileInfo fuseFileInfo, int i) {
@@ -391,60 +398,75 @@ public class PeergosFS extends AbstractFuseFS {
         return 0;
     }
 
-    public int write(PeergosStat parent, String name, Pointer pointer, long size, long offset) {
+    private byte[] getData(Pointer pointer, int size) {
+        if (Integer.MAX_VALUE < size) {
+            throw new IllegalStateException("Cannot write more than " + Integer.MAX_VALUE + " bytes");
+        }
 
-        try {
-            long updatedLength = size + offset;
-            if (Integer.MAX_VALUE < updatedLength) {
-                throw new IllegalStateException("Cannot write more than " + Integer.MAX_VALUE + " bytes");
-            }
-            int iSize = (int) size;
-            int iOffset = (int) offset;
-            byte[] toWrite = new byte[iSize];
-            pointer.get(0, toWrite, 0, iSize);
+        byte[] toWrite = new byte[size];
+        pointer.get(0, toWrite, 0, size);
+        return toWrite;
+    }
+
+    public int write(PeergosStat parent, String name, byte[] toWrite, long size, long offset) {
+        {
+
+            try {
+                long updatedLength = size + offset;
+                if (Integer.MAX_VALUE < updatedLength) {
+                    throw new IllegalStateException("Cannot write more than " + Integer.MAX_VALUE + " bytes");
+                }
+
+                int iOffset = (int) offset;
+                int iSize= (int) size;
+
+                Optional<FileTreeNode> targetOpt = parent.treeNode.getChildren(userContext).stream()
+                        .filter(e -> getPropertiesUnchecked(e).name.equals(name))
+                        .findFirst();
 
 
-            Optional<FileTreeNode> targetOpt = parent.treeNode.getChildren(userContext).stream()
-                    .filter(e -> getPropertiesUnchecked(e).name.equals(name))
-                    .findFirst();
+                byte[] uploadData = null;
+                if (targetOpt.isPresent()) {
+                    //get current data  and overwrite
+                    FileTreeNode treeNode = targetOpt.get();
+                    InputStream is = treeNode.getInputStream(userContext, getPropertiesUnchecked(treeNode).size, (l) -> {
+                    });
+                    try {
+                        byte[] data = Serialize.readFully(is);
+                        data = Serialize.ensureSize(data, (int) updatedLength);
+                        System.arraycopy(toWrite, 0, data, iOffset, iSize);
+                        uploadData = data;
+                    } catch (IOException ioe) {
+                        ioe.printStackTrace();
+                        return 1;
+                    }
+                } else {
+                    //nothing there yet
+                    uploadData = new byte[(int) updatedLength];
+                    System.arraycopy(toWrite, 0, uploadData, iOffset, toWrite.length);
+                }
 
-
-            byte[] uploadData = null;
-            if (targetOpt.isPresent()) {
-                //get current data  and overwrite
-                FileTreeNode treeNode = targetOpt.get();
-                InputStream is = treeNode.getInputStream(userContext, getPropertiesUnchecked(treeNode).size, (l) -> {
-                });
+                //re-upload data
                 try {
-                    byte[] data = Serialize.readFully(is);
-                    data = Serialize.ensureSize(data, (int) updatedLength);
-                    System.arraycopy(toWrite, 0, data, iOffset, iSize);
-                    uploadData = data;
-                } catch (IOException ioe) {
-                    ioe.printStackTrace();
+                    parent.treeNode.uploadFile(name, new ByteArrayInputStream(uploadData), updatedLength, userContext, (l) -> {
+                    });
+                } catch (IOException e) {
+                    e.printStackTrace();
                     return 1;
                 }
-            } else {
-                //nothing there yet
-                uploadData = new byte[(int) updatedLength];
-                System.arraycopy(toWrite, 0, uploadData, iOffset, toWrite.length);
-            }
-
-            //re-upload data
-            try {
-                parent.treeNode.uploadFile(name, new ByteArrayInputStream(uploadData), updatedLength, userContext, (l) -> {
-                });
-            } catch (IOException e) {
-                e.printStackTrace();
+                return 0;
+            } catch (Throwable t) {
+                t.printStackTrace();
                 return 1;
-            }
-            return 0;
-        } catch (Throwable t) {
-            t.printStackTrace();
-            return 1;
 
+            }
         }
     }
+    public int write(PeergosStat parent, String name, Pointer pointer, long size, long offset) {
+        byte[] data = getData(pointer, (int) size);
+        return write(parent, name, data, size, offset);
+    }
+
     private static FileProperties getPropertiesUnchecked(FileTreeNode  node) {
         try {
             return node.getFileProperties();

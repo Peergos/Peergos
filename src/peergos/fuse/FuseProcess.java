@@ -88,7 +88,7 @@ public class FuseProcess implements Runnable, AutoCloseable {
         path = path.resolve(UUID.randomUUID().toString());
         path.toFile().mkdirs();
 
-        System.out.println("Mountpoint "+ path);
+        System.out.println("\n\nMountpoint "+ path+"\n\n");
 
         UserContext userContext = UserTests.ensureSignedUp(username, password);
         PeergosFS peergosFS = new PeergosFS(userContext);
