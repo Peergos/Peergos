@@ -14,7 +14,7 @@ import java.util.function.*;
 public class FileUploader implements AutoCloseable {
 
     private final String name;
-    private final long length;
+    private final long offset, length;
     private final FileProperties props;
     private final SymmetricKey key;
     private final long nchunks;
@@ -22,8 +22,8 @@ public class FileUploader implements AutoCloseable {
     private final SymmetricKey parentparentKey;
     private final Consumer<Long> monitor;
     private final int nOriginalFragments, nAllowedFalures;
-    private final InputStream raf;
-    public FileUploader(String name, InputStream fileData, long length, SymmetricKey key, Location parentLocation, SymmetricKey parentparentKey,
+    private final InputStream raf; // resettable input stream
+    public FileUploader(String name, InputStream fileData, long offset, long length, SymmetricKey key, Location parentLocation, SymmetricKey parentparentKey,
                         Consumer<Long> monitor, FileProperties fileProperties, int nOriginalFragments, int nAllowedFalures) throws IOException {
         if (fileProperties == null)
             this.props = new FileProperties(name, length, LocalDateTime.now(), false, Optional.empty());
@@ -34,6 +34,7 @@ public class FileUploader implements AutoCloseable {
         // Process and upload chunk by chunk to avoid running out of RAM, in reverse order to build linked list
         this.nchunks = (long) Math.ceil((double) length / Chunk.MAX_SIZE);
         this.name = name;
+        this.offset = offset;
         this.length = length;
         this.raf = fileData;
         this.key = key;
@@ -54,8 +55,9 @@ public class FileUploader implements AutoCloseable {
 
         long fileLength = length;
         boolean isLastChunk = fileLength < position + Chunk.MAX_SIZE;
-        long length =  isLastChunk ? (fileLength -  position) : Chunk.MAX_SIZE;
-        byte[] data = Serialize.readFully(raf);
+        int length =  isLastChunk ? (int)(fileLength -  position) : Chunk.MAX_SIZE;
+        byte[] data = new byte[length];
+        Serialize.readFullArray(raf, data);
 
 		Chunk chunk = new Chunk(data, key);
 		EncryptedChunk encryptedChunk = chunk.encrypt();

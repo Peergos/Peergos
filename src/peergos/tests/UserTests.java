@@ -105,7 +105,7 @@ public class UserTests {
 
         String name = randomString();
         Path tmpPath = createTmpFile(name);
-        byte[] data = randomData(0x1000);
+        byte[] data = randomData(10*1024*1024); // 2 chunks to test block chaining
         Files.write(tmpPath, data);
 
         boolean b = userRoot.uploadFile(name, tmpPath.toFile(), context, (l) -> {});

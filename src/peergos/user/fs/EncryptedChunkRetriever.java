@@ -30,7 +30,7 @@ public class EncryptedChunkRetriever implements FileRetriever {
 
     public LazyInputStreamCombiner getFile(UserContext context, SymmetricKey dataKey, long len, Consumer<Long> monitor) {
         byte[] chunk = getChunkInputStream(context, dataKey, len, monitor);
-        return new LazyInputStreamCombiner(this, context, dataKey, chunk, monitor);
+        return new LazyInputStreamCombiner(this, context, dataKey, chunk, len, monitor);
     }
 
     public Location getNext() {
@@ -41,8 +41,8 @@ public class EncryptedChunkRetriever implements FileRetriever {
         List<FragmentWithHash> fragments = context.downloadFragments(fragmentHashes, monitor);
         fragments = reorder(fragments, fragmentHashes);
         byte[] cipherText = Erasure.recombine(fragments.stream().map(f -> f.fragment.data).collect(Collectors.toList()),
-                len != 0 ? (int)len : Chunk.MAX_SIZE, nOriginalFragments, nAllowedFailures);
-        if (len != 0)
+                len > Chunk.MAX_SIZE ? Chunk.MAX_SIZE : (int) len, nOriginalFragments, nAllowedFailures);
+        if (len < Chunk.MAX_SIZE)
             cipherText = Arrays.copyOfRange(cipherText, 0, (int)len);
         EncryptedChunk fullEncryptedChunk = new EncryptedChunk(ArrayOps.concat(chunkAuth, cipherText));
         byte[] original = fullEncryptedChunk.decrypt(dataKey, chunkNonce);

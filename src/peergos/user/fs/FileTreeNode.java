@@ -206,6 +206,10 @@ public class FileTreeNode {
     }
 
     public boolean uploadFile(String filename, InputStream fileData, long length, UserContext context, Consumer<Long> monitor) throws IOException {
+        return uploadFile(filename, fileData, 0, length, context, monitor);
+    }
+
+    public boolean uploadFile(String filename, InputStream fileData, long offset, long length, UserContext context, Consumer<Long> monitor) throws IOException {
         if (!isLegalName(filename))
             return false;
         if (childrenByName.containsKey(filename)) {
@@ -224,7 +228,7 @@ public class FileTreeNode {
 
         byte[] thumbData = generateThumbnail(fileData, filename);
         FileProperties fileProps = new FileProperties(filename, length, LocalDateTime.now(), false, Optional.of(thumbData));
-        FileUploader chunks = new FileUploader(filename, fileData, length, fileKey, parentLocation, dirParentKey, monitor, fileProps,
+        FileUploader chunks = new FileUploader(filename, fileData, offset, length, fileKey, parentLocation, dirParentKey, monitor, fileProps,
                 EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
         Location fileLocation = chunks.upload(context, owner, (User)entryWriterKey);
         dirAccess.addFile(fileLocation, rootRKey, fileKey);
