@@ -80,8 +80,6 @@ public class FuseProcess implements Runnable, AutoCloseable {
     }
 
     public static void main(String[] args) throws Exception {
-
-
         int WEB_PORT = 9876;
         int CORE_PORT = 9753;
 

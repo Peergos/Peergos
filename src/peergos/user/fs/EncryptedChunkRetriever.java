@@ -44,6 +44,8 @@ public class EncryptedChunkRetriever implements FileRetriever {
                 len > Chunk.MAX_SIZE ? Chunk.MAX_SIZE : (int) len, nOriginalFragments, nAllowedFailures);
         if (len < Chunk.MAX_SIZE)
             cipherText = Arrays.copyOfRange(cipherText, 0, (int)len);
+        if (cipherText.length == 0)
+            return cipherText;
         EncryptedChunk fullEncryptedChunk = new EncryptedChunk(ArrayOps.concat(chunkAuth, cipherText));
         byte[] original = fullEncryptedChunk.decrypt(dataKey, chunkNonce);
         return original;
