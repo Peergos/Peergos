@@ -138,6 +138,15 @@ public class UserTests {
         new Random().nextBytes(data5);
         userRoot.uploadFile(newname, new ByteArrayInputStream(data5), 0, data5.length, context, l -> {});
         checkFileContents(data5, userRoot.getDescendentByPath(newname, context).get(), context);
+
+
+        // insert data in the middle of second chunk
+        System.out.println("\n***** Mid 2nd chunk write test");
+        byte[] dataInsert = "some data to insert somewhere else".getBytes();
+        int start = 5*1024*1024 + 4*1024;
+        userRoot.uploadFile(newname, new ByteArrayInputStream(dataInsert), start, start + dataInsert.length, context, l -> {});
+        System.arraycopy(dataInsert, 0, data5, start, dataInsert.length);
+        checkFileContents(data5, userRoot.getDescendentByPath(newname, context).get(), context);
     }
 
     private static void checkFileContents(byte[] expected, FileTreeNode f, UserContext context) throws IOException {

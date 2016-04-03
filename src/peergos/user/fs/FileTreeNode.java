@@ -236,12 +236,12 @@ public class FileTreeNode {
 
             Location nextChunkLocation = null;
             while (startIndex < endIndex) {
-                System.out.println("Writing to chunk at mapkey: "+ArrayOps.bytesToHex(child.getLocation().mapKey));
                 long existingEnd = filesSize;
                 LocatedChunk currentOriginal = startIndex/Chunk.MAX_SIZE <= filesSize/Chunk.MAX_SIZE ? retriever.getChunkInputStream(context, baseKey, startIndex,
                         existingEnd, child.getLocation(), monitor) :
                         new LocatedChunk(nextChunkLocation,
                                 new Chunk(new byte[Math.min(Chunk.MAX_SIZE, (int) (endIndex - startIndex))], baseKey, nextChunkLocation.mapKey));
+                System.out.println("Writing to chunk at mapkey: "+ArrayOps.bytesToHex(currentOriginal.location.mapKey));
                 // modify chunk, re-encrypt and upload
                 int internalStart = (int) (startIndex % Chunk.MAX_SIZE);
                 int internalEnd = endIndex - (startIndex - internalStart) > Chunk.MAX_SIZE ?
