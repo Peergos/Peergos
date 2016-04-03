@@ -28,25 +28,33 @@ public class EncryptedChunkRetriever implements FileRetriever {
         this.nextChunk = nextChunk;
     }
 
-    public LazyInputStreamCombiner getFile(UserContext context, SymmetricKey dataKey, long len, Consumer<Long> monitor) {
+    public LazyInputStreamCombiner getFile(UserContext context, SymmetricKey dataKey, long len, Consumer<Long> monitor) throws IOException {
         byte[] chunk = getChunkInputStream(context, dataKey, len, monitor);
         return new LazyInputStreamCombiner(this, context, dataKey, chunk, len, monitor);
+    }
+
+    public EncryptedChunk getEncryptedChunk(long offset, SymmetricKey dataKey, UserContext context, Consumer<Long> monitor) throws IOException {
+        if (offset < Chunk.MAX_SIZE) {
+            List<FragmentWithHash> fragments = context.downloadFragments(fragmentHashes, monitor);
+            fragments = reorder(fragments, fragmentHashes);
+            byte[] cipherText = Erasure.recombine(fragments.stream().map(f -> f.fragment.data).collect(Collectors.toList()),
+                    Chunk.MAX_SIZE, nOriginalFragments, nAllowedFailures);
+            EncryptedChunk fullEncryptedChunk = new EncryptedChunk(ArrayOps.concat(chunkAuth, cipherText));
+            return fullEncryptedChunk;
+        }
+        FileAccess meta = context.getMetadata(getNext());
+        FileRetriever nextRet = meta.retriever();
+        return nextRet.getEncryptedChunk(offset - Chunk.MAX_SIZE, dataKey, context, monitor);
     }
 
     public Location getNext() {
         return this.nextChunk;
     }
 
-    public byte[] getChunkInputStream(UserContext context, SymmetricKey dataKey, long len, Consumer<Long> monitor) {
-        List<FragmentWithHash> fragments = context.downloadFragments(fragmentHashes, monitor);
-        fragments = reorder(fragments, fragmentHashes);
-        byte[] cipherText = Erasure.recombine(fragments.stream().map(f -> f.fragment.data).collect(Collectors.toList()),
-                len > Chunk.MAX_SIZE ? Chunk.MAX_SIZE : (int) len, nOriginalFragments, nAllowedFailures);
-        if (len < Chunk.MAX_SIZE)
-            cipherText = Arrays.copyOfRange(cipherText, 0, (int)len);
-        if (cipherText.length == 0)
-            return cipherText;
-        EncryptedChunk fullEncryptedChunk = new EncryptedChunk(ArrayOps.concat(chunkAuth, cipherText));
+    public byte[] getChunkInputStream(UserContext context, SymmetricKey dataKey, long truncateTo, Consumer<Long> monitor) throws IOException {
+        EncryptedChunk fullEncryptedChunk = getEncryptedChunk(0, dataKey, context, monitor);
+        if (truncateTo < Chunk.MAX_SIZE)
+            fullEncryptedChunk = fullEncryptedChunk.truncateTo((int)truncateTo);
         byte[] original = fullEncryptedChunk.decrypt(dataKey, chunkNonce);
         return original;
     }
@@ -85,7 +93,6 @@ public class EncryptedChunkRetriever implements FileRetriever {
             nOriginalFragments = EncryptedChunk.ERASURE_ORIGINAL;
             nAllowedFailures = EncryptedChunk.ERASURE_ALLOWED_FAILURES;
         }
-
 
         return new EncryptedChunkRetriever(chunkNonce, chunkAuth, hashes, nextChunk, nOriginalFragments, nAllowedFailures);
     }

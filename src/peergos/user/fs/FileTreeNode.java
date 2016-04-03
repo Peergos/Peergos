@@ -213,8 +213,13 @@ public class FileTreeNode {
             return false;
         if (childrenByName.containsKey(filename)) {
             //TODO move to API which allows modifying a section of a file
-            System.out.println("Overwriting child with name: "+filename);
-            removeChild(childrenByName.get(filename), context);
+            System.out.println("Overwriting section ["+Long.toHexString(offset)+", "+Long.toHexString(length)+"] of child with name: "+filename);
+            // get initial EncryptedChunk and proceed from there
+            FileTreeNode child = childrenByName.get(filename);
+            FileProperties childProps = child.getFileProperties();
+            child.getEncryptedChunk(offset, context);
+            // TODO
+            throw new IllegalStateException("Unimplemented!");
         }
         SymmetricKey fileKey = SymmetricKey.random();
         SymmetricKey rootRKey = pointer.filePointer.baseKey;
@@ -314,9 +319,14 @@ public class FileTreeNode {
         return new RetrievedFilePointer(writableFilePointer(), pointer.fileAccess).remove(context, null);
     }
 
-    public InputStream getInputStream(UserContext context, long size, Consumer<Long> monitor) {
+    public InputStream getInputStream(UserContext context, long size, Consumer<Long> monitor) throws IOException {
         SymmetricKey baseKey = pointer.filePointer.baseKey;
         return pointer.fileAccess.retriever().getFile(context, baseKey, size, monitor);
+    }
+
+    private EncryptedChunk getEncryptedChunk(long offset, UserContext context) throws IOException {
+        SymmetricKey baseKey = pointer.filePointer.baseKey;
+        return pointer.fileAccess.retriever().getEncryptedChunk(offset, baseKey, context, l -> {});
     }
 
     public FileProperties getFileProperties() throws IOException {

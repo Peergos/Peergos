@@ -383,8 +383,8 @@ public class PeergosFS extends FuseStubFS {
     }
 
     public int read(PeergosStat stat, Pointer pointer, long size, long offset) {
-        InputStream is = stat.treeNode.getInputStream(userContext, size +  offset, (l) -> {});
         try {
+            InputStream is = stat.treeNode.getInputStream(userContext, size +  offset, (l) -> {});
             is.skip(offset);
 
             for (long i = 0; i < size; i++)

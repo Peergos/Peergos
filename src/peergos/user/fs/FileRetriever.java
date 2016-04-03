@@ -11,9 +11,11 @@ public interface FileRetriever {
 
     Location getNext();
 
-    LazyInputStreamCombiner getFile(UserContext context, SymmetricKey dataKey, long len, Consumer<Long> monitor);
+    LazyInputStreamCombiner getFile(UserContext context, SymmetricKey dataKey, long len, Consumer<Long> monitor) throws IOException;
 
-    byte[] getChunkInputStream(UserContext context, SymmetricKey dataKey, long len, Consumer<Long> monitor);
+    EncryptedChunk getEncryptedChunk(long offset, SymmetricKey dataKey, UserContext context, Consumer<Long> monitor) throws IOException;
+
+    byte[] getChunkInputStream(UserContext context, SymmetricKey dataKey, long len, Consumer<Long> monitor) throws IOException;
 
     void serialize(DataSink sink);
 
