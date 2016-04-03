@@ -49,9 +49,12 @@ public class EncryptedChunkRetriever implements FileRetriever {
     public Location getLocationAt(Location startLocation, long offset, UserContext context) throws IOException {
         if (offset < Chunk.MAX_SIZE)
             return startLocation;
-        FileAccess meta = context.getMetadata(getNext());
+        Location next = getNext();
+        if (next == null)
+            return null;
+        FileAccess meta = context.getMetadata(next);
         FileRetriever nextRet = meta.retriever();
-        return nextRet.getLocationAt(getNext(), offset - Chunk.MAX_SIZE, context);
+        return nextRet.getLocationAt(next, offset - Chunk.MAX_SIZE, context);
     }
 
     public Location getNext() {

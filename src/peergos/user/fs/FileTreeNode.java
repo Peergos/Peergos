@@ -217,7 +217,6 @@ public class FileTreeNode {
             FileTreeNode child = childrenByName.get(filename);
             FileProperties childProps = child.getFileProperties();
             long filesSize = childProps.size;
-            FileProperties newProps = new FileProperties(childProps.name, endIndex > filesSize ? endIndex : filesSize, LocalDateTime.now(), childProps.isHidden, childProps.thumbnail);
             FileRetriever retriever = child.getRetriever();
             SymmetricKey baseKey = pointer.filePointer.baseKey;
 
@@ -227,15 +226,19 @@ public class FileTreeNode {
             }
 
             while (startIndex < endIndex) {
-                LocatedChunk currentOriginal = retriever.getChunkInputStream(context, baseKey, startIndex, endIndex, getLocation(), monitor);
+                LocatedChunk currentOriginal = retriever.getChunkInputStream(context, baseKey, startIndex, Math.min(filesSize, endIndex), getLocation(), monitor);
                 // modify chunk, re-encrypt and upload
                 int internalStart = (int) (startIndex % Chunk.MAX_SIZE);
                 int internalEnd = endIndex - (startIndex - internalStart) > Chunk.MAX_SIZE ?
                         Chunk.MAX_SIZE : (int)(endIndex - (startIndex - internalStart));
                 byte[] raw = currentOriginal.chunk.data();
+                if (raw.length < internalEnd)
+                    raw = Arrays.copyOfRange(raw, 0, internalEnd);
                 fileData.read(raw, internalStart, internalEnd);
                 Chunk updated = new Chunk(raw, baseKey, currentOriginal.location.mapKey);
                 LocatedChunk located = new LocatedChunk(currentOriginal.location, updated);
+                FileProperties newProps = new FileProperties(childProps.name, endIndex > filesSize ? endIndex : filesSize,
+                        LocalDateTime.now(), childProps.isHidden, childProps.thumbnail);
                 Location nextChunkLocation = retriever.getLocationAt(getLocation(), startIndex + Chunk.MAX_SIZE, context);
                 FileUploader.uploadChunk((User)entryWriterKey, newProps, getLocation(), getParentKey(), located,
                         EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES, nextChunkLocation, context, monitor);
@@ -244,6 +247,7 @@ public class FileTreeNode {
                 startIndex += Chunk.MAX_SIZE;
                 startIndex = startIndex - (startIndex % Chunk.MAX_SIZE);
             }
+            return true;
         }
         if (startIndex > 0) {
             // TODO if startIndex > 0 prepend with a zero section
