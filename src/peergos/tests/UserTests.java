@@ -119,6 +119,12 @@ public class UserTests {
         new Random().nextBytes(data3);
         userRoot.uploadFile(filename, new ByteArrayInputStream(data3), 0, data3.length, context, l -> {});
         checkFileContents(data3, userRoot.getDescendentByPath(filename, context).get(), context);
+
+        byte[] data4 = "some data to insert somewhere".getBytes();
+        int startIndex = 100 * 1024;
+        userRoot.uploadFile(filename, new ByteArrayInputStream(data4), startIndex, startIndex + data4.length, context, l -> {});
+        System.arraycopy(data4, 0, data3, startIndex, data4.length);
+        checkFileContents(data3, userRoot.getDescendentByPath(filename, context).get(), context);
     }
 
     private static void checkFileContents(byte[] expected, FileTreeNode f, UserContext context) throws IOException {

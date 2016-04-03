@@ -237,7 +237,9 @@ public class FileTreeNode {
             Location nextChunkLocation = null;
             while (startIndex < endIndex) {
                 System.out.println("Writing to chunk at mapkey: "+ArrayOps.bytesToHex(child.getLocation().mapKey));
-                LocatedChunk currentOriginal = retriever.getChunkInputStream(context, baseKey, startIndex, Math.min(filesSize, endIndex), child.getLocation(), monitor);
+                long existingEnd = filesSize;
+                LocatedChunk currentOriginal = retriever.getChunkInputStream(context, baseKey, startIndex,
+                        existingEnd, child.getLocation(), monitor);
                 // modify chunk, re-encrypt and upload
                 int internalStart = (int) (startIndex % Chunk.MAX_SIZE);
                 int internalEnd = endIndex - (startIndex - internalStart) > Chunk.MAX_SIZE ?
@@ -245,7 +247,7 @@ public class FileTreeNode {
                 byte[] raw = currentOriginal.chunk.data();
                 if (raw.length < internalEnd)
                     raw = Arrays.copyOfRange(raw, 0, internalEnd);
-                fileData.read(raw, internalStart, internalEnd);
+                fileData.read(raw, internalStart, internalEnd - internalStart);
                 Chunk updated = new Chunk(raw, baseKey, currentOriginal.location.mapKey);
                 LocatedChunk located = new LocatedChunk(currentOriginal.location, updated);
                 FileProperties newProps = new FileProperties(childProps.name, endIndex > filesSize ? endIndex : filesSize,
