@@ -109,6 +109,11 @@ public class UserTests {
         Optional<FileTreeNode> child = userRoot.getDescendentByPath(filename, context);
         Long size0 = child.map(f -> f.getFileProperties().size).get();
         assertTrue("initial filesize == 0", size0 == 0);
+        byte[] data2 = "This is a small amount of data".getBytes();
+        userRoot.uploadFile(filename, new ByteArrayInputStream(data2), 0, data2.length, context, l -> {});
+        Optional<FileTreeNode> child2 = userRoot.getDescendentByPath(filename, context);
+        byte[] retrievedData = Serialize.readFully(child2.get().getInputStream(context, child2.get().getFileProperties().size, l-> {}));
+        assertTrue("Correct contents", Arrays.equals(retrievedData, data2));
     }
 
     @Test

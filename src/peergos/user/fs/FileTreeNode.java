@@ -252,7 +252,7 @@ public class FileTreeNode {
                         LocalDateTime.now(), childProps.isHidden, childProps.thumbnail);
                 nextChunkLocation = retriever.getLocationAt(getLocation(), startIndex + Chunk.MAX_SIZE, context);
                 if (nextChunkLocation == null)
-                    nextChunkLocation = new Location(nextChunkLocation.owner, nextChunkLocation.writer, TweetNaCl.securedRandom(32));
+                    nextChunkLocation = new Location(currentOriginal.location.owner, currentOriginal.location.writer, TweetNaCl.securedRandom(32));
                 FileUploader.uploadChunk((User)entryWriterKey, newProps, getLocation(), getParentKey(), located,
                         EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES, nextChunkLocation, context, monitor);
 
