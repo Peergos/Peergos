@@ -113,8 +113,6 @@ public class UserTests {
         userRoot.uploadFile(filename, new ByteArrayInputStream(data2), 0, data2.length, context, l -> {});
         checkFileContents(data2, userRoot.getDescendentByPath(filename, context).get(), context);
 
-        checkFileContents(data2, userRoot.getDescendentByPath(filename, context).get(), context);
-
         // extend file within existing chunk
         byte[] data3 = new byte[128*1024];
         new Random().nextBytes(data3);
@@ -132,6 +130,11 @@ public class UserTests {
         String newname = "newname.txt";
         userRoot.getDescendentByPath(filename, context).get().rename(newname, context, userRoot);
         checkFileContents(data3, userRoot.getDescendentByPath(newname, context).get(), context);
+        // check from the root as well
+        checkFileContents(data3, context.getTreeRoot().getDescendentByPath(username + "/"+newname, context).get(), context);
+        // check from a fresh log in too
+        UserContext context2 = ensureSignedUp(username, password);
+        checkFileContents(data3, context2.getTreeRoot().getDescendentByPath(username + "/"+newname, context2).get(), context);
 
         //overwrite with 2 chunk file
         byte[] data5 = new byte[10*1024*1024];
