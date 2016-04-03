@@ -1,11 +1,13 @@
 package peergos.fuse;
 
 import jnr.ffi.Pointer;
+import jnr.ffi.Struct;
 import jnr.ffi.types.*;
 import peergos.user.UserContext;
 import peergos.user.fs.FileProperties;
 import peergos.user.fs.FileTreeNode;
 import peergos.user.fs.ReadableFilePointer;
+import peergos.util.ArrayOps;
 import peergos.util.Serialize;
 
 import ru.serce.jnrfuse.ErrorCodes;
@@ -18,10 +20,16 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 
+/**
+ * Nice FUSE API doc @
+ * https://www.cs.hmc.edu/~geoff/classes/hmc.cs135.201001/homework/fuse/fuse_doc.html
+ */
 public class PeergosFS extends FuseStubFS {
 
     private static class PeergosStat {
@@ -154,26 +162,28 @@ public class PeergosFS extends FuseStubFS {
     @Override
     public int truncate(String s, @off_t long l) {
         //TODO
-        return unimp();
-    }
-
-    @Override
-    public int open(String s, FuseFileInfo fuseFileInfo) {
-        System.out.println("OPEN "+ s);
         return 0;
     }
 
     @Override
-    public int read(String s, Pointer pointer, @size_t long l, @off_t long l1, FuseFileInfo fuseFileInfo) {
-        return applyIfPresent(s, (stat) -> read(stat, pointer, l, l1));
+    public int open(String s, FuseFileInfo fuseFileInfo) {
+        debug("OPEN %s", s);
+        return 0;
     }
 
     @Override
-    public int write(String s, Pointer pointer, @size_t long l, @off_t long l1, FuseFileInfo fuseFileInfo) {
+    public int read(String s, Pointer pointer, @size_t long size, @off_t long offset, FuseFileInfo fuseFileInfo) {
+        debug("READ %s, size %d  offset %d ", s, size, offset);
+        return applyIfPresent(s, (stat) -> read(stat, pointer, size, offset));
+    }
+
+    @Override
+    public int write(String s, Pointer pointer, @size_t long size, @off_t long offset, FuseFileInfo fuseFileInfo) {
+        debug("WRITE %s, size %d  offset %d ", s, size, offset);
         Path path = Paths.get(s);
         String parentPath = path.getParent().toString();
         String name = path.getFileName().toString();
-        return applyIfPresent(parentPath, (parent) -> write(parent, name, pointer, l, l1));
+        return applyIfPresent(parentPath, (parent) -> write(parent, name, pointer, size, offset), -ErrorCodes.ENOENT());
     }
 
     @Override
@@ -186,30 +196,30 @@ public class PeergosFS extends FuseStubFS {
         return 0;
     }
 
-    @Override
-    public int release(String s, FuseFileInfo fuseFileInfo) {
-        return 0;
-    }
+//    @Override
+//    public int release(String s, FuseFileInfo fuseFileInfo) {
+//        return 0;
+//    }
 
-    @Override
-    public int fsync(String s, int i, FuseFileInfo fuseFileInfo) {
-        return unimp();
-    }
+//    @Override
+//    public int fsync(String s, int i, FuseFileInfo fuseFileInfo) {
+//        return unimp();
+//    }
 
-    @Override
-    public int setxattr(String s, String s1, Pointer pointer, @size_t long l, int i) {
-        return unimp();
-    }
+//    @Override
+//    public int setxattr(String s, String s1, Pointer pointer, @size_t long l, int i) {
+//        return unimp();
+//    }
 
 //    @Override
 //    public int getxattr(String s, String s1, Pointer pointer, @size_t long l) {
 //        return 0;
 //    }
 
-    @Override
-    public int listxattr(String s, Pointer pointer, @size_t long l) {
-        return unimp();
-    }
+//    @Override
+//    public int listxattr(String s, Pointer pointer, @size_t long l) {
+//        return unimp();
+//    }
 
     @Override
     public int removexattr(String s, String s1) {
@@ -247,7 +257,8 @@ public class PeergosFS extends FuseStubFS {
     }
 
     @Override
-    public int access(String s, int i) {
+    public int access(String s, int mask) {
+        debug("ACCESS %s, mask %d", s, mask);
         return 0;
     }
 
@@ -382,20 +393,24 @@ public class PeergosFS extends FuseStubFS {
         return 0;
     }
 
-    public int read(PeergosStat stat, Pointer pointer, long size, long offset) {
+    public int read(PeergosStat stat, Pointer pointer, long requestedSize, long offset) {
+        long actualSize = stat.properties.size;
+        if (offset > actualSize) {
+            return 0;
+        }
+        long size = Math.min(actualSize, requestedSize);
         try {
-            InputStream is = stat.treeNode.getInputStream(userContext, size +  offset, (l) -> {});
             is.skip(offset);
 
             for (long i = 0; i < size; i++)
                 pointer.putByte(i, (byte) is.read());
 
-        } catch (IOException  ioe) {
+        } catch (Exception  ioe) {
             ioe.printStackTrace();
             return 1;
         }
 
-        return 0;
+        return (int) size;
     }
 
     private byte[] getData(Pointer pointer, int size) {
@@ -409,59 +424,61 @@ public class PeergosFS extends FuseStubFS {
     }
 
     public int write(PeergosStat parent, String name, byte[] toWrite, long size, long offset) {
-        {
 
-            try {
-                long updatedLength = size + offset;
-                if (Integer.MAX_VALUE < updatedLength) {
-                    throw new IllegalStateException("Cannot write more than " + Integer.MAX_VALUE + " bytes");
-                }
+        debug("WRITE data %s, size %d, offset %d, parent %s, name %s", ArrayOps.bytesToHex(toWrite), size, offset, parent.properties.name, name);
 
-                int iOffset = (int) offset;
-                int iSize= (int) size;
+        try {
+            long updatedLength = size + offset;
+            if (Integer.MAX_VALUE < updatedLength) {
+                throw new IllegalStateException("Cannot write more than " + Integer.MAX_VALUE + " bytes");
+            }
 
-                Optional<FileTreeNode> targetOpt = parent.treeNode.getChildren(userContext).stream()
-                        .filter(e -> getPropertiesUnchecked(e).name.equals(name))
-                        .findFirst();
+            int iOffset = (int) offset;
+            int iSize= (int) size;
+
+            Optional<FileTreeNode> targetOpt = parent.treeNode.getChildren(userContext).stream()
+                    .filter(e -> getPropertiesUnchecked(e).name.equals(name))
+                    .findFirst();
 
 
-                byte[] uploadData = null;
-                if (targetOpt.isPresent()) {
-                    //get current data  and overwrite
-                    FileTreeNode treeNode = targetOpt.get();
-                    InputStream is = treeNode.getInputStream(userContext, getPropertiesUnchecked(treeNode).size, (l) -> {
-                    });
-                    try {
-                        byte[] data = Serialize.readFully(is);
-                        data = Serialize.ensureSize(data, (int) updatedLength);
-                        System.arraycopy(toWrite, 0, data, iOffset, iSize);
-                        uploadData = data;
-                    } catch (IOException ioe) {
-                        ioe.printStackTrace();
-                        return 1;
-                    }
-                } else {
-                    //nothing there yet
-                    uploadData = new byte[(int) updatedLength];
-                    System.arraycopy(toWrite, 0, uploadData, iOffset, toWrite.length);
-                }
-
-                //re-upload data
+            byte[] uploadData = null;
+            if (targetOpt.isPresent()) {
+                //get current data  and overwrite
+                FileTreeNode treeNode = targetOpt.get();
+                InputStream is = treeNode.getInputStream(userContext, getPropertiesUnchecked(treeNode).size, (l) -> {
+                });
                 try {
-                    parent.treeNode.uploadFile(name, new ByteArrayInputStream(uploadData), updatedLength, userContext, (l) -> {
-                    });
-                } catch (IOException e) {
-                    e.printStackTrace();
+                    byte[] data = Serialize.readFully(is);
+                    data = Serialize.ensureSize(data, (int) updatedLength);
+                    System.arraycopy(toWrite, 0, data, iOffset, iSize);
+                    uploadData = data;
+                } catch (IOException ioe) {
+                    ioe.printStackTrace();
                     return 1;
                 }
-                return 0;
-            } catch (Throwable t) {
-                t.printStackTrace();
-                return 1;
-
+            } else {
+                //nothing there yet
+                uploadData = new byte[(int) updatedLength];
+                System.arraycopy(toWrite, 0, uploadData, iOffset, toWrite.length);
             }
+
+            //re-upload data
+            try {
+                parent.treeNode.uploadFile(name, new ByteArrayInputStream(uploadData), updatedLength, userContext, (l) -> {});
+                return iSize;
+            } catch (IOException e) {
+                e.printStackTrace();
+                return 1;
+            }
+
+        } catch (Throwable t) {
+            t.printStackTrace();
+            return 1;
+
         }
+
     }
+
     public int write(PeergosStat parent, String name, Pointer pointer, long size, long offset) {
         byte[] data = getData(pointer, (int) size);
         return write(parent, name, data, size, offset);
@@ -473,5 +490,13 @@ public class PeergosFS extends FuseStubFS {
         }  catch (IOException ioe) {
             throw new IllegalStateException(ioe);
         }
+    }
+
+    /**
+     * JNR doesn't play nicely with debugger at all => debugging like it's 1990
+     */
+    private void debug(String template, Object... obj) {
+        String msg = String.format(template, obj);
+        System.out.println(msg);
     }
 }
