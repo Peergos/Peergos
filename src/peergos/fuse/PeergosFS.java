@@ -400,6 +400,8 @@ public class PeergosFS extends FuseStubFS {
         }
         long size = Math.min(actualSize, requestedSize);
         try {
+            InputStream is = stat.treeNode.getInputStream(userContext, size +  offset, (l) -> {});
+
             is.skip(offset);
 
             for (long i = 0; i < size; i++)
