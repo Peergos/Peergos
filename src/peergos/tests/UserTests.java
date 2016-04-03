@@ -152,6 +152,13 @@ public class UserTests {
         checkFileContents(data5, userRoot.getDescendentByPath(newname, context).get(), context);
     }
 
+    private static void runForAWhile() {
+        for (int i=0; i < 600; i++)
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {}
+    }
+
     private static void checkFileContents(byte[] expected, FileTreeNode f, UserContext context) throws IOException {
         byte[] retrievedData = Serialize.readFully(f.getInputStream(context, f.getFileProperties().size, l-> {}));
         assertTrue("Correct contents", Arrays.equals(retrievedData, expected));

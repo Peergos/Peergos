@@ -32,7 +32,7 @@ public class FileUploader implements AutoCloseable {
         if (key == null) key = SymmetricKey.random();
 
         // Process and upload chunk by chunk to avoid running out of RAM, in reverse order to build linked list
-        this.nchunks = (long) Math.ceil((double) length / Chunk.MAX_SIZE);
+        this.nchunks = (long) Math.ceil((double) (length + 1) / Chunk.MAX_SIZE);
         this.name = name;
         this.offset = offset;
         this.length = length;
