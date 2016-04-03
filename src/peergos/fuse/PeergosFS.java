@@ -20,8 +20,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
+import java.time.*;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
@@ -292,7 +291,29 @@ public class PeergosFS extends FuseStubFS {
 
     @Override
     public int utimens(String s, Timespec[] timespecs) {
-        return unimp();
+        int aDefault = -ErrorCodes.ENOENT();
+
+        Optional<PeergosStat> parentOpt = getParentByPath(s);
+        if (! parentOpt.isPresent())
+            return aDefault;
+
+        return applyIfPresent(s, (stat) -> {
+            Timespec modified = timespecs[0], access = timespecs[1];
+            long epochSeconds = modified.tv_sec.get();
+            Instant instant = Instant.ofEpochSecond(epochSeconds);
+            LocalDateTime lastModified = LocalDateTime.ofInstant(instant, ZoneId.systemDefault());
+
+//            debug("UTIMENS %s, with %s, %d, %s", s, lastModified.toString(), epochSeconds, modified.toString());
+
+            FileProperties updated = stat.properties.withModified(lastModified);
+            try {
+                boolean isUpdated = stat.treeNode.setProperties(updated, userContext, parentOpt.get().treeNode);
+                return isUpdated ? 0 : 1;
+            } catch (IOException ex) {
+                ex.printStackTrace();
+                return 1;
+            }
+        }, aDefault);
 
     }
 
@@ -352,6 +373,11 @@ public class PeergosFS extends FuseStubFS {
             ioe.printStackTrace();
             return Optional.empty();
         }
+    }
+
+    private Optional<PeergosStat> getParentByPath(String  path) {
+        String parentPath = Paths.get(path).getParent().toString();
+        return getByPath(parentPath);
     }
 
     private int applyIf(String path, boolean isPresent, Function<PeergosStat,  Integer> func, int _default) {
@@ -485,6 +511,9 @@ public class PeergosFS extends FuseStubFS {
         byte[] data = getData(pointer, (int) size);
         return write(parent, name, data, size, offset);
     }
+
+
+
 
     private static FileProperties getPropertiesUnchecked(FileTreeNode  node) {
         try {

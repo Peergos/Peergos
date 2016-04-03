@@ -312,6 +312,18 @@ public class FileTreeNode {
         return fileAccess.rename(writableFilePointer(), newProps, context);
     }
 
+    public boolean setProperties(FileProperties updatedProperties, UserContext context, FileTreeNode parent) throws IOException {
+        String newName = updatedProperties.name;
+        if (!this.isLegalName(newName))
+            return false;
+        if (parent != null && parent.hasChildByName(newName))
+            return false;
+        //get current props
+        FileAccess fileAccess = pointer.fileAccess;
+
+        return fileAccess.rename(writableFilePointer(), updatedProperties, context);
+    }
+
     private ReadableFilePointer writableFilePointer() {
         ReadableFilePointer filePointer = pointer.filePointer;
         FileAccess fileAccess = pointer.fileAccess;
