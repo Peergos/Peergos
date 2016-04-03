@@ -32,4 +32,8 @@ public class Chunk {
     public byte[] nonce() {
         return Arrays.copyOfRange(nonce, 0, nonce.length);
     }
+
+    public byte[] data() {
+        return Arrays.copyOfRange(data, 0, data.length);
+    }
 }

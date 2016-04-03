@@ -28,10 +28,11 @@ public class LazyInputStreamCombiner extends InputStream {
 
     public byte[] getNextStream(int len) throws IOException {
         if (this.next != null) {
-            FileAccess meta = context.getMetadata(this.next);
+            Location nextLocation = this.next;
+            FileAccess meta = context.getMetadata(nextLocation);
             FileRetriever nextRet = meta.retriever();
-            next = nextRet.getNext();
-            return nextRet.getChunkInputStream(context, dataKey, len, monitor);
+            this.next = nextRet.getNext();
+            return nextRet.getChunkInputStream(context, dataKey, 0, len, nextLocation, monitor).chunk.data();
         }
         throw new EOFException();
     }

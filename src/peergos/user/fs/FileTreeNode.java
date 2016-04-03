@@ -208,19 +208,24 @@ public class FileTreeNode {
         return uploadFile(filename, fileData, 0, length, context, monitor);
     }
 
-    public boolean uploadFile(String filename, InputStream fileData, long offset, long length, UserContext context, Consumer<Long> monitor) throws IOException {
+    public boolean uploadFile(String filename, InputStream fileData, long startIndex, long endIndex, UserContext context, Consumer<Long> monitor) throws IOException {
         if (!isLegalName(filename))
             return false;
         if (childrenByName.containsKey(filename)) {
             //TODO move to API which allows modifying a section of a file
-            System.out.println("Overwriting section ["+Long.toHexString(offset)+", "+Long.toHexString(length)+"] of child with name: "+filename);
+            System.out.println("Overwriting section ["+Long.toHexString(startIndex)+", "+Long.toHexString(endIndex)+"] of child with name: "+filename);
             // get initial EncryptedChunk and proceed from there
             FileTreeNode child = childrenByName.get(filename);
             FileProperties childProps = child.getFileProperties();
-            child.getEncryptedChunk(offset, context);
-            // TODO
-            throw new IllegalStateException("Unimplemented!");
+            while (startIndex < endIndex) {
+                FileRetriever retriever = child.getRetriever();
+                SymmetricKey baseKey = pointer.filePointer.baseKey;
+                LocatedChunk original = retriever.getChunkInputStream(context, baseKey, startIndex, endIndex, getLocation(), monitor);
+
+                throw new IllegalStateException("Unimplemented!");
+            }
         }
+        // TODO if offset > 0 prepend with a zero section
         SymmetricKey fileKey = SymmetricKey.random();
         SymmetricKey rootRKey = pointer.filePointer.baseKey;
         UserPublicKey owner = pointer.filePointer.owner;
@@ -231,8 +236,8 @@ public class FileTreeNode {
         SymmetricKey dirParentKey = dirAccess.getParentKey(rootRKey);
 
         byte[] thumbData = generateThumbnail(fileData, filename);
-        FileProperties fileProps = new FileProperties(filename, length, LocalDateTime.now(), false, Optional.of(thumbData));
-        FileUploader chunks = new FileUploader(filename, fileData, offset, length, fileKey, parentLocation, dirParentKey, monitor, fileProps,
+        FileProperties fileProps = new FileProperties(filename, endIndex, LocalDateTime.now(), false, Optional.of(thumbData));
+        FileUploader chunks = new FileUploader(filename, fileData, startIndex, endIndex, fileKey, parentLocation, dirParentKey, monitor, fileProps,
                 EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
         Location fileLocation = chunks.upload(context, owner, (User)entryWriterKey);
         dirAccess.addFile(fileLocation, rootRKey, fileKey);
@@ -321,12 +326,11 @@ public class FileTreeNode {
 
     public InputStream getInputStream(UserContext context, long size, Consumer<Long> monitor) throws IOException {
         SymmetricKey baseKey = pointer.filePointer.baseKey;
-        return pointer.fileAccess.retriever().getFile(context, baseKey, size, monitor);
+        return pointer.fileAccess.retriever().getFile(context, baseKey, size, getLocation(), monitor);
     }
 
-    private EncryptedChunk getEncryptedChunk(long offset, UserContext context) throws IOException {
-        SymmetricKey baseKey = pointer.filePointer.baseKey;
-        return pointer.fileAccess.retriever().getEncryptedChunk(offset, baseKey, context, l -> {});
+    private FileRetriever getRetriever() {
+        return pointer.fileAccess.retriever();
     }
 
     public FileProperties getFileProperties() throws IOException {
