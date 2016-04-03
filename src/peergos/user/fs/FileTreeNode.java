@@ -3,6 +3,7 @@ package peergos.user.fs;
 import peergos.crypto.*;
 import peergos.crypto.symmetric.*;
 import peergos.user.*;
+import peergos.user.fs.erasure.*;
 import peergos.util.*;
 
 import java.io.*;
@@ -212,20 +213,42 @@ public class FileTreeNode {
         if (!isLegalName(filename))
             return false;
         if (childrenByName.containsKey(filename)) {
-            //TODO move to API which allows modifying a section of a file
             System.out.println("Overwriting section ["+Long.toHexString(startIndex)+", "+Long.toHexString(endIndex)+"] of child with name: "+filename);
-            // get initial EncryptedChunk and proceed from there
             FileTreeNode child = childrenByName.get(filename);
             FileProperties childProps = child.getFileProperties();
-            while (startIndex < endIndex) {
-                FileRetriever retriever = child.getRetriever();
-                SymmetricKey baseKey = pointer.filePointer.baseKey;
-                LocatedChunk original = retriever.getChunkInputStream(context, baseKey, startIndex, endIndex, getLocation(), monitor);
+            long filesSize = childProps.size;
+            FileProperties newProps = new FileProperties(childProps.name, endIndex > filesSize ? endIndex : filesSize, LocalDateTime.now(), childProps.isHidden, childProps.thumbnail);
+            FileRetriever retriever = child.getRetriever();
+            SymmetricKey baseKey = pointer.filePointer.baseKey;
 
+            if (startIndex > filesSize || endIndex / Chunk.MAX_SIZE > filesSize / Chunk.MAX_SIZE) {
+                // TODO if offset > fileSize append with zeroes up to startIndex, or add chunks after file end
                 throw new IllegalStateException("Unimplemented!");
             }
+
+            while (startIndex < endIndex) {
+                LocatedChunk currentOriginal = retriever.getChunkInputStream(context, baseKey, startIndex, endIndex, getLocation(), monitor);
+                // modify chunk, re-encrypt and upload
+                int internalStart = (int) (startIndex % Chunk.MAX_SIZE);
+                int internalEnd = endIndex - (startIndex - internalStart) > Chunk.MAX_SIZE ?
+                        Chunk.MAX_SIZE : (int)(endIndex - (startIndex - internalStart));
+                byte[] raw = currentOriginal.chunk.data();
+                fileData.read(raw, internalStart, internalEnd);
+                Chunk updated = new Chunk(raw, baseKey, currentOriginal.location.mapKey);
+                LocatedChunk located = new LocatedChunk(currentOriginal.location, updated);
+                Location nextChunkLocation = retriever.getLocationAt(getLocation(), startIndex + Chunk.MAX_SIZE, context);
+                FileUploader.uploadChunk((User)entryWriterKey, newProps, getLocation(), getParentKey(), located,
+                        EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES, nextChunkLocation, context, monitor);
+
+                //update indices to be relative to next chunk
+                startIndex += Chunk.MAX_SIZE;
+                startIndex = startIndex - (startIndex % Chunk.MAX_SIZE);
+            }
         }
-        // TODO if offset > 0 prepend with a zero section
+        if (startIndex > 0) {
+            // TODO if startIndex > 0 prepend with a zero section
+            throw new IllegalStateException("Unimplemented!");
+        }
         SymmetricKey fileKey = SymmetricKey.random();
         SymmetricKey rootRKey = pointer.filePointer.baseKey;
         UserPublicKey owner = pointer.filePointer.owner;

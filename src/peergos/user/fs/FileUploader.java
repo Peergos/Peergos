@@ -60,13 +60,8 @@ public class FileUploader implements AutoCloseable {
         Serialize.readFullArray(raf, data);
 
 		Chunk chunk = new Chunk(data, key);
-		EncryptedChunk encryptedChunk = chunk.encrypt();
-		List<Fragment> fragments = encryptedChunk.generateFragments(nOriginalFragments, nAllowedFalures);
-        System.out.printf("Uploading chunk with %d fragments\n", fragments.size());
-        List<Multihash> hashes = context.uploadFragments(fragments, owner, writer, chunk.mapKey(), monitor);
-        FileRetriever retriever = new EncryptedChunkRetriever(chunk.nonce(), encryptedChunk.getAuth(), hashes, nextLocation, nOriginalFragments, nAllowedFalures);
-        FileAccess metaBlob = FileAccess.create(chunk.key(), props, retriever, parentLocation, parentparentKey);
-        context.uploadChunk(metaBlob, owner, writer, chunk.mapKey(), hashes);
+        LocatedChunk locatedChunk = new LocatedChunk(new Location(owner, writer, chunk.mapKey()), chunk);
+        uploadChunk(writer, props, parentLocation, parentparentKey, locatedChunk, nOriginalFragments, nAllowedFalures, nextLocation, context, monitor);
         Location nextL = new Location(owner, writer, chunk.mapKey());
         if (chunkIndex > 0)
             return uploadChunk(context, owner, writer, chunkIndex-1, nextL, monitor);
@@ -78,6 +73,18 @@ public class FileUploader implements AutoCloseable {
         Location res = uploadChunk(context, owner, writer, this.nchunks-1, null, null);
         System.out.println("File encryption, erasure coding and upload took: " +(System.currentTimeMillis()-t1) + " mS");
         return res;
+    }
+
+    public static void uploadChunk(User writer, FileProperties props, Location parentLocation, SymmetricKey parentparentKey,
+                                   LocatedChunk chunk, int nOriginalFragments, int nAllowedFalures, Location nextChunkLocation, UserContext context, Consumer<Long> monitor) throws IOException {
+        EncryptedChunk encryptedChunk = chunk.chunk.encrypt();
+        List<Fragment> fragments = encryptedChunk.generateFragments(nOriginalFragments, nAllowedFalures);
+        System.out.printf("Uploading chunk with %d fragments\n", fragments.size());
+        List<Multihash> hashes = context.uploadFragments(fragments, chunk.location.owner, chunk.location.writer, chunk.chunk.mapKey(), monitor);
+        FileRetriever retriever = new EncryptedChunkRetriever(chunk.chunk.nonce(), encryptedChunk.getAuth(), hashes, nextChunkLocation, nOriginalFragments, nAllowedFalures);
+        FileAccess metaBlob = FileAccess.create(chunk.chunk.key(), props, retriever, parentLocation, parentparentKey);
+        context.uploadChunk(metaBlob, chunk.location.owner, writer, chunk.chunk.mapKey(), hashes);
+        Location nextL = new Location(chunk.location.owner, chunk.location.writer, chunk.chunk.mapKey());
     }
 
     public void close() throws IOException  {

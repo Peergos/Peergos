@@ -10,11 +10,17 @@ public class Chunk {
     public static final int MAX_SIZE = Fragment.MAX_LENGTH * ERASURE_ORIGINAL;
 
     private final SymmetricKey key;
-    private final byte[] data, nonce = TweetNaCl.securedRandom(TweetNaCl.SECRETBOX_NONCE_BYTES), mapKey = TweetNaCl.securedRandom(32);
+    private final byte[] data, mapKey;
+    private final byte[] nonce = TweetNaCl.securedRandom(TweetNaCl.SECRETBOX_NONCE_BYTES);
+
+    public Chunk(byte[] data, SymmetricKey key, byte[] mapKey) {
+        this.data = data;
+        this.key = key;
+        this.mapKey = mapKey;
+    }
 
     public Chunk(byte[] data, SymmetricKey key) {
-        this.key = key;
-        this.data = data;
+        this(data, key, TweetNaCl.securedRandom(32));
     }
 
     public EncryptedChunk encrypt() {

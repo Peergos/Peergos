@@ -46,12 +46,20 @@ public class EncryptedChunkRetriever implements FileRetriever {
         return nextRet.getEncryptedChunk(bytesRemainingUntilStart - Chunk.MAX_SIZE, dataKey, getNext(), context, monitor);
     }
 
+    public Location getLocationAt(Location startLocation, long offset, UserContext context) throws IOException {
+        if (offset < Chunk.MAX_SIZE)
+            return startLocation;
+        FileAccess meta = context.getMetadata(getNext());
+        FileRetriever nextRet = meta.retriever();
+        return nextRet.getLocationAt(getNext(), offset - Chunk.MAX_SIZE, context);
+    }
+
     public Location getNext() {
         return this.nextChunk;
     }
 
     public LocatedChunk getChunkInputStream(UserContext context, SymmetricKey dataKey, long startIndex, long truncateTo, Location ourLocation, Consumer<Long> monitor) throws IOException {
-        LocatedEncryptedChunk fullEncryptedChunk = getEncryptedChunk(0, dataKey, ourLocation, context, monitor);
+        LocatedEncryptedChunk fullEncryptedChunk = getEncryptedChunk(startIndex, dataKey, ourLocation, context, monitor);
         if (truncateTo < Chunk.MAX_SIZE)
             fullEncryptedChunk = new LocatedEncryptedChunk(fullEncryptedChunk.location, fullEncryptedChunk.chunk.truncateTo((int)truncateTo));
         byte[] original = fullEncryptedChunk.chunk.decrypt(dataKey, chunkNonce);

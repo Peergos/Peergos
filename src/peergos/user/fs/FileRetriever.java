@@ -15,6 +15,8 @@ public interface FileRetriever {
 
     LocatedEncryptedChunk getEncryptedChunk(long bytesRemainingUntilStart, SymmetricKey dataKey, Location ourLocation, UserContext context, Consumer<Long> monitor) throws IOException;
 
+    Location getLocationAt(Location startLocation, long offset, UserContext context) throws IOException;
+
     LocatedChunk getChunkInputStream(UserContext context, SymmetricKey dataKey, long startIndex, long truncateTo, Location ourLocation, Consumer<Long> monitor) throws IOException;
 
     void serialize(DataSink sink);
