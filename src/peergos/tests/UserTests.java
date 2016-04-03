@@ -115,16 +115,29 @@ public class UserTests {
 
         checkFileContents(data2, userRoot.getDescendentByPath(filename, context).get(), context);
 
+        // extend file within existing chunk
         byte[] data3 = new byte[128*1024];
         new Random().nextBytes(data3);
         userRoot.uploadFile(filename, new ByteArrayInputStream(data3), 0, data3.length, context, l -> {});
         checkFileContents(data3, userRoot.getDescendentByPath(filename, context).get(), context);
 
+        // insert data in the middle
         byte[] data4 = "some data to insert somewhere".getBytes();
         int startIndex = 100 * 1024;
         userRoot.uploadFile(filename, new ByteArrayInputStream(data4), startIndex, startIndex + data4.length, context, l -> {});
         System.arraycopy(data4, 0, data3, startIndex, data4.length);
         checkFileContents(data3, userRoot.getDescendentByPath(filename, context).get(), context);
+
+        //rename
+        String newname = "newname.txt";
+        userRoot.getDescendentByPath(filename, context).get().rename(newname, context, userRoot);
+        checkFileContents(data3, userRoot.getDescendentByPath(newname, context).get(), context);
+
+        //overwrite with 2 chunk file
+        byte[] data5 = new byte[10*1024*1024];
+        new Random().nextBytes(data5);
+        userRoot.uploadFile(newname, new ByteArrayInputStream(data5), 0, data5.length, context, l -> {});
+        checkFileContents(data5, userRoot.getDescendentByPath(newname, context).get(), context);
     }
 
     private static void checkFileContents(byte[] expected, FileTreeNode f, UserContext context) throws IOException {

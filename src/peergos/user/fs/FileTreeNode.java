@@ -229,8 +229,8 @@ public class FileTreeNode {
             FileRetriever retriever = child.getRetriever();
             SymmetricKey baseKey = child.pointer.filePointer.baseKey;
 
-            if (startIndex > filesSize || endIndex / Chunk.MAX_SIZE > filesSize / Chunk.MAX_SIZE) {
-                // TODO if offset > fileSize append with zeroes up to startIndex, or add chunks after file end
+            if (startIndex > filesSize) {
+                // TODO if offset > fileSize append with zeroes up to startIndex
                 throw new IllegalStateException("Unimplemented!");
             }
 
@@ -238,8 +238,10 @@ public class FileTreeNode {
             while (startIndex < endIndex) {
                 System.out.println("Writing to chunk at mapkey: "+ArrayOps.bytesToHex(child.getLocation().mapKey));
                 long existingEnd = filesSize;
-                LocatedChunk currentOriginal = retriever.getChunkInputStream(context, baseKey, startIndex,
-                        existingEnd, child.getLocation(), monitor);
+                LocatedChunk currentOriginal = startIndex/Chunk.MAX_SIZE <= filesSize/Chunk.MAX_SIZE ? retriever.getChunkInputStream(context, baseKey, startIndex,
+                        existingEnd, child.getLocation(), monitor) :
+                        new LocatedChunk(nextChunkLocation,
+                                new Chunk(new byte[Math.min(Chunk.MAX_SIZE, (int) (endIndex - startIndex))], baseKey, nextChunkLocation.mapKey));
                 // modify chunk, re-encrypt and upload
                 int internalStart = (int) (startIndex % Chunk.MAX_SIZE);
                 int internalEnd = endIndex - (startIndex - internalStart) > Chunk.MAX_SIZE ?
@@ -253,7 +255,7 @@ public class FileTreeNode {
                 FileProperties newProps = new FileProperties(childProps.name, endIndex > filesSize ? endIndex : filesSize,
                         LocalDateTime.now(), childProps.isHidden, childProps.thumbnail);
                 nextChunkLocation = retriever.getLocationAt(getLocation(), startIndex + Chunk.MAX_SIZE, context);
-                if (nextChunkLocation == null && startIndex + Chunk.MAX_SIZE < endIndex)
+                if (nextChunkLocation == null && startIndex + Chunk.MAX_SIZE < endIndex) // extending file past final chunk
                     nextChunkLocation = new Location(currentOriginal.location.owner, currentOriginal.location.writer, TweetNaCl.securedRandom(32));
                 FileUploader.uploadChunk((User)entryWriterKey, newProps, getLocation(), getParentKey(), located,
                         EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES, nextChunkLocation, context, monitor);
