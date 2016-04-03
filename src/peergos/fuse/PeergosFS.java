@@ -414,7 +414,7 @@ public class PeergosFS extends FuseStubFS {
     private int readdir(PeergosStat stat, FuseFillDir fuseFillDir, Pointer pointer) {
         Set<FileTreeNode> children = stat.treeNode.getChildren(userContext);
         children.stream()
-                .map(e ->  getPropertiesUnchecked(e).name)
+                .map(e ->  e.getFileProperties().name)
                 .forEach(e ->  fuseFillDir.apply(pointer, e,  null, 0));
         return 0;
     }
@@ -465,7 +465,7 @@ public class PeergosFS extends FuseStubFS {
             int iSize= (int) size;
 
             Optional<FileTreeNode> targetOpt = parent.treeNode.getChildren(userContext).stream()
-                    .filter(e -> getPropertiesUnchecked(e).name.equals(name))
+                    .filter(e -> e.getFileProperties().name.equals(name))
                     .findFirst();
 
 
@@ -473,7 +473,7 @@ public class PeergosFS extends FuseStubFS {
             if (targetOpt.isPresent()) {
                 //get current data  and overwrite
                 FileTreeNode treeNode = targetOpt.get();
-                InputStream is = treeNode.getInputStream(userContext, getPropertiesUnchecked(treeNode).size, (l) -> {
+                InputStream is = treeNode.getInputStream(userContext, treeNode.getFileProperties().size, (l) -> {
                 });
                 try {
                     byte[] data = Serialize.readFully(is);
@@ -510,17 +510,6 @@ public class PeergosFS extends FuseStubFS {
     public int write(PeergosStat parent, String name, Pointer pointer, long size, long offset) {
         byte[] data = getData(pointer, (int) size);
         return write(parent, name, data, size, offset);
-    }
-
-
-
-
-    private static FileProperties getPropertiesUnchecked(FileTreeNode  node) {
-        try {
-            return node.getFileProperties();
-        }  catch (IOException ioe) {
-            throw new IllegalStateException(ioe);
-        }
     }
 
     /**

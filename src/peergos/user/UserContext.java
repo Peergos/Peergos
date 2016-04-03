@@ -124,13 +124,7 @@ public class UserContext {
 
     public Set<String> getFollowers() {
         return getSharingFolder().getChildren(this).stream()
-                .flatMap(f -> {
-                    try {
-                        return Stream.of(f.getFileProperties().name);
-                    } catch (IOException e) {
-                        return Stream.empty();
-                    }
-                })
+                .flatMap(f -> Stream.of(f.getFileProperties().name))
                 .sorted(UserContext::humanSort).collect(Collectors.toSet());
     }
 
@@ -146,13 +140,7 @@ public class UserContext {
         return getSharingFolder()
                 .getChildren(this)
                 .stream()
-                .flatMap(e -> {
-                    try {
-                        return Stream.of(new AbstractMap.SimpleEntry<>(e.getFileProperties().name, e));
-                    } catch (IOException ioe) {
-                        return Stream.empty();
-                    }
-                })
+                .flatMap(e -> Stream.of(new AbstractMap.SimpleEntry<>(e.getFileProperties().name, e)))
                 .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue()));
     }
 
@@ -221,13 +209,7 @@ public class UserContext {
         FileTreeNode sharing = getSharingFolder();
         Set<FileTreeNode> children = sharing.getChildren(this);
         boolean alreadyFollowed = children.stream()
-                .filter(f -> {
-                    try {
-                        return f.getFileProperties().name.equals(targetUsername);
-                    } catch (IOException ioe) {
-                        return false;
-                    }
-                })
+                .filter(f -> f.getFileProperties().name.equals(targetUsername))
                 .findAny()
                 .isPresent();
         if (alreadyFollowed)
@@ -466,11 +448,7 @@ public class UserContext {
         if (children.size() == 0)
             throw new IllegalStateException("no children in user root!");
         List<FileTreeNode> userRoots = children.stream()
-                .filter(e -> { try {
-            return e.getFileProperties().name.equals(username);
-        } catch (IOException ioe) {
-            return false;
-        }}).collect(Collectors.toList());
+                .filter(e -> e.getFileProperties().name.equals(username)).collect(Collectors.toList());
         if (userRoots.size() != 1)
             throw new IllegalStateException("user has "+ userRoots.size() +" roots!");
         return userRoots.get(0);

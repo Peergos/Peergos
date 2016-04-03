@@ -3,7 +3,6 @@ package peergos.user.fs;
 import peergos.crypto.*;
 import peergos.crypto.symmetric.*;
 import peergos.user.*;
-import peergos.user.fs.erasure.*;
 import peergos.util.*;
 
 import java.io.*;
@@ -15,6 +14,7 @@ import java.util.stream.*;
 public class FileTreeNode {
 
     RetrievedFilePointer pointer;
+    private FileProperties props;
     Set<FileTreeNode> children = new HashSet<>();
     Map<String, FileTreeNode> childrenByName = new HashMap<>();
     String ownername;
@@ -28,6 +28,15 @@ public class FileTreeNode {
         this.readers = readers;
         this.writers = writers;
         this.entryWriterKey = entryWriterKey;
+        if (pointer == null)
+            props = new FileProperties("/", 0, LocalDateTime.MIN, false, Optional.empty());
+        else
+            try {
+                SymmetricKey parentKey = this.getParentKey();
+                props = pointer.fileAccess.getFileProperties(parentKey);
+            } catch (IOException e) {
+                throw new IllegalStateException(e);
+            }
     }
 
     public boolean equals(Object other) {
@@ -225,6 +234,7 @@ public class FileTreeNode {
                 throw new IllegalStateException("Unimplemented!");
             }
 
+            Location nextChunkLocation = null;
             while (startIndex < endIndex) {
                 System.out.println("Writing to chunk at mapkey: "+ArrayOps.bytesToHex(child.getLocation().mapKey));
                 LocatedChunk currentOriginal = retriever.getChunkInputStream(context, baseKey, startIndex, Math.min(filesSize, endIndex), child.getLocation(), monitor);
@@ -240,7 +250,9 @@ public class FileTreeNode {
                 LocatedChunk located = new LocatedChunk(currentOriginal.location, updated);
                 FileProperties newProps = new FileProperties(childProps.name, endIndex > filesSize ? endIndex : filesSize,
                         LocalDateTime.now(), childProps.isHidden, childProps.thumbnail);
-                Location nextChunkLocation = retriever.getLocationAt(getLocation(), startIndex + Chunk.MAX_SIZE, context);
+                nextChunkLocation = retriever.getLocationAt(getLocation(), startIndex + Chunk.MAX_SIZE, context);
+                if (nextChunkLocation == null)
+                    nextChunkLocation = new Location(nextChunkLocation.owner, nextChunkLocation.writer, TweetNaCl.securedRandom(32));
                 FileUploader.uploadChunk((User)entryWriterKey, newProps, getLocation(), getParentKey(), located,
                         EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES, nextChunkLocation, context, monitor);
 
@@ -373,20 +385,12 @@ public class FileTreeNode {
         return pointer.fileAccess.retriever();
     }
 
-    public FileProperties getFileProperties() throws IOException {
-        if (pointer == null)
-            return new FileProperties("/", 0, LocalDateTime.MIN, false, Optional.empty());
-        SymmetricKey parentKey = this.getParentKey();
-        return pointer.fileAccess.getFileProperties(parentKey);
+    public FileProperties getFileProperties() {
+        return props;
     }
 
     public String toString() {
-        try {
-            return getFileProperties().name;
-        } catch (IOException ioe) {
-            ioe.printStackTrace();
-            return "InvalidFileTreeNode";
-        }
+        return getFileProperties().name;
     }
 
     public static FileTreeNode createRoot() {

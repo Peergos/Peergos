@@ -96,6 +96,22 @@ public class UserTests {
     }
 
     @Test
+    public void writeReadVariations() throws IOException {
+        String username = "test01";
+        String password = "test01";
+        UserContext context = ensureSignedUp(username, password);
+        FileTreeNode userRoot = context.getUserRoot();
+        byte[] data = new byte[0];
+
+        String filename = "somedata.txt";
+        userRoot.uploadFile(filename, new ByteArrayInputStream(data), data.length, context, l -> {});
+
+        Optional<FileTreeNode> child = userRoot.getDescendentByPath(filename, context);
+        Long size0 = child.map(f -> f.getFileProperties().size).get();
+        assertTrue("initial filesize == 0", size0 == 0);
+    }
+
+    @Test
     public void readWriteTest() throws IOException {
         String username = "test01";
         String password = "test01";
@@ -119,14 +135,8 @@ public class UserTests {
 
         Optional<FileTreeNode> opt = userRoot.getChildren(context)
                 .stream()
-                .filter(e -> {
-                    try {
-                        return e.getFileProperties().name.equals(name);
-                    } catch (IOException ioe) {
-                        ioe.printStackTrace();
-                        return false;
-                    }
-                }).findFirst();
+                .filter(e -> e.getFileProperties().name.equals(name))
+                .findFirst();
 
         assertTrue("found uploaded file", opt.isPresent());
 
