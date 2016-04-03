@@ -112,7 +112,8 @@ public class TweetNaCl {
         if (c.length < 32) throw new IllegalStateException("Cipher too small!");
         if (crypto_secretbox_open(m, c, c.length, nonce, key) != 0)
             throw new IllegalStateException("Invalid encryption! ["+ cipher.length + "] = " +
-                ArrayOps.bytesToHex(Arrays.copyOfRange(cipher, 0, Math.min(cipher.length, 128))));
+                    ArrayOps.bytesToHex(Arrays.copyOfRange(cipher, 0, Math.min(cipher.length, 64))) + " ... " +
+                    ArrayOps.bytesToHex(Arrays.copyOfRange(cipher, Math.max(0, cipher.length - 64), cipher.length)));
         return Arrays.copyOfRange(m, SECRETBOX_INTERNAL_OVERHEAD_BYTES, m.length);
     }
 

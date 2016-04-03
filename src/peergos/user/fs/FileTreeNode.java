@@ -370,7 +370,7 @@ public class FileTreeNode {
         // upload new metadatablob
         RetrievedFilePointer newRetrievedFilePointer = new RetrievedFilePointer(newRFP, newAccess);
         FileTreeNode newFileTreeNode = new FileTreeNode(newRetrievedFilePointer, context.username,
-                Collections.EMPTY_SET, Collections.EMPTY_SET, target.getEntryWriterKey());
+                Collections.emptySet(), Collections.emptySet(), target.getEntryWriterKey());
         return target.addLinkTo(newFileTreeNode, context);
     }
 
@@ -380,9 +380,9 @@ public class FileTreeNode {
         return new RetrievedFilePointer(writableFilePointer(), pointer.fileAccess).remove(context, null);
     }
 
-    public InputStream getInputStream(UserContext context, long size, Consumer<Long> monitor) throws IOException {
+    public InputStream getInputStream(UserContext context, long fileSize, Consumer<Long> monitor) throws IOException {
         SymmetricKey baseKey = pointer.filePointer.baseKey;
-        return pointer.fileAccess.retriever().getFile(context, baseKey, size, getLocation(), monitor);
+        return pointer.fileAccess.retriever().getFile(context, baseKey, fileSize, getLocation(), monitor);
     }
 
     private FileRetriever getRetriever() {
