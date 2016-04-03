@@ -27,9 +27,9 @@ public class EncryptedChunkRetriever implements FileRetriever {
         this.nextChunk = nextChunk;
     }
 
-    public LazyInputStreamCombiner getFile(UserContext context, SymmetricKey dataKey, long len, Location ourLocation, Consumer<Long> monitor) throws IOException {
-        LocatedChunk chunk = getChunkInputStream(context, dataKey, 0, len, ourLocation, monitor);
-        return new LazyInputStreamCombiner(this, context, dataKey, chunk.chunk.data(), len, monitor);
+    public LazyInputStreamCombiner getFile(UserContext context, SymmetricKey dataKey, long fileSize, Location ourLocation, Consumer<Long> monitor) throws IOException {
+        LocatedChunk chunk = getChunkInputStream(context, dataKey, 0, fileSize, ourLocation, monitor);
+        return new LazyInputStreamCombiner(this, context, dataKey, chunk.chunk.data(), fileSize, monitor);
     }
 
     public LocatedEncryptedChunk getEncryptedChunk(long bytesRemainingUntilStart, long truncateTo, byte[] nonce, SymmetricKey dataKey, Location ourLocation, UserContext context, Consumer<Long> monitor) throws IOException {

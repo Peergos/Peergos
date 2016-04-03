@@ -13,7 +13,7 @@ public interface FileRetriever {
 
     byte[] getNonce();
 
-    LazyInputStreamCombiner getFile(UserContext context, SymmetricKey dataKey, long truncateTo, Location ourLocation, Consumer<Long> monitor) throws IOException;
+    LazyInputStreamCombiner getFile(UserContext context, SymmetricKey dataKey, long fileSize, Location ourLocation, Consumer<Long> monitor) throws IOException;
 
     LocatedEncryptedChunk getEncryptedChunk(long bytesRemainingUntilStart, long bytesRemainingUntilEnd, byte[] nonce, SymmetricKey dataKey, Location ourLocation, UserContext context, Consumer<Long> monitor) throws IOException;
 
