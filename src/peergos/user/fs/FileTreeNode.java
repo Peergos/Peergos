@@ -218,7 +218,7 @@ public class FileTreeNode {
             FileProperties childProps = child.getFileProperties();
             long filesSize = childProps.size;
             FileRetriever retriever = child.getRetriever();
-            SymmetricKey baseKey = pointer.filePointer.baseKey;
+            SymmetricKey baseKey = child.pointer.filePointer.baseKey;
 
             if (startIndex > filesSize || endIndex / Chunk.MAX_SIZE > filesSize / Chunk.MAX_SIZE) {
                 // TODO if offset > fileSize append with zeroes up to startIndex, or add chunks after file end
