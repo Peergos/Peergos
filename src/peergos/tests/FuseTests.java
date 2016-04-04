@@ -1,15 +1,17 @@
 package peergos.tests;
 
 import org.junit.*;
+import peergos.corenode.*;
 import peergos.crypto.*;
 import peergos.fuse.*;
 import peergos.server.Start;
-import peergos.user.UserContext;
+import peergos.user.*;
 import peergos.util.*;
 
 import java.io.*;
 import java.lang.*;
 import java.lang.reflect.*;
+import java.net.*;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
@@ -32,6 +34,14 @@ public class FuseTests {
         field.set(null, newValue);
     }
 
+    public static UserContext ensureSignedUp(String username, String password) throws IOException {
+        DHTClient.HTTP dht = new DHTClient.HTTP(new URL("http://localhost:"+ WEB_PORT +"/"));
+        Btree.HTTP btree = new Btree.HTTP(new URL("http://localhost:"+ WEB_PORT +"/"));
+        HTTPCoreNode coreNode = new HTTPCoreNode(new URL("http://localhost:"+ WEB_PORT +"/"));
+        UserContext userContext = UserContext.ensureSignedUp(username, password, dht, btree, coreNode);
+        return userContext;
+    }
+
     @BeforeClass
     public static void init() throws Exception {
         Args.parse(new String[]{"useIPFS", "false",
@@ -39,7 +49,7 @@ public class FuseTests {
                 "-corenodePort", Integer.toString(CORE_PORT)});
 
         Start.local();
-        UserContext userContext = UserTests.ensureSignedUp(username, password);
+        UserContext userContext = ensureSignedUp(username, password);
 
         // use insecure random otherwise tests take ages
         setFinalStatic(TweetNaCl.class.getDeclaredField("prng"), new Random());

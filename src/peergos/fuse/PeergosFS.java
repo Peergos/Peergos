@@ -28,6 +28,8 @@ import java.util.function.Function;
 /**
  * Nice FUSE API doc @
  * https://www.cs.hmc.edu/~geoff/classes/hmc.cs135.201001/homework/fuse/fuse_doc.html
+ * also
+ * https://github.com/libfuse/libfuse/blob/master/include/fuse.h
  */
 public class PeergosFS extends FuseStubFS {
 
