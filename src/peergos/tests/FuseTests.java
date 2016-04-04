@@ -82,10 +82,10 @@ public class FuseTests {
         Path home = mountPoint.resolve(username);
 
         String data = "Hello Peergos!";
-        readStdout(Runtime.getRuntime().exec("echo \""+data+"\" > " + home + "/data.txt"));
-        String res = readStdout(Runtime.getRuntime().exec("cat " + home + "/data.txt"));
-//        Assert.assertTrue("Correct file contents: "+res, res.equals(data));
-//        System.out.println(res);
+        readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "echo \""+data+"\" > " + home + "/data.txt"}));
+        String res = readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "cat " + home + "/data.txt"}));
+        Assert.assertTrue("Correct file contents: "+res, res.equals(data));
+        System.out.println(res);
     }
 
     @AfterClass
