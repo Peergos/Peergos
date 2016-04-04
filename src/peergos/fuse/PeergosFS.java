@@ -132,8 +132,11 @@ public class PeergosFS extends FuseStubFS {
             if(! treeNode.isPresent())
                 return 1;
 
-            stat.treeNode.rename(name, userContext,
-                    treeNode.get());
+            FileTreeNode parent = treeNode.get();
+            Path requested = Paths.get(name);
+            if (!parent.getFileProperties().name.equals(requested.getParent().getFileName().toString()))
+                return 1; // trying to move to a different directory! Unimplemented!
+            stat.treeNode.rename(requested.getFileName().toString(), userContext, parent);
             return 0;
         } catch (IOException ioe) {
             ioe.printStackTrace();

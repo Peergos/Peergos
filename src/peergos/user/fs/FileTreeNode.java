@@ -311,10 +311,10 @@ public class FileTreeNode {
         return Optional.of(dirAccess.mkdir(newFolderName, context, (User)entryWriterKey, dirPointer.mapKey, rootDirKey, requestedBaseSymmetricKey, isSystemFolder));
     }
 
-    public boolean rename(String newName, UserContext context, FileTreeNode parent) throws IOException {
-        if (!this.isLegalName(newName))
+    public boolean rename(String newFilename, UserContext context, FileTreeNode parent) throws IOException {
+        if (!this.isLegalName(newFilename))
             return false;
-        if (parent != null && parent.hasChildByName(newName))
+        if (parent != null && parent.hasChildByName(newFilename))
             return false;
         //get current props
         ReadableFilePointer filePointer = pointer.filePointer;
@@ -324,7 +324,7 @@ public class FileTreeNode {
         SymmetricKey key = this.isDirectory() ? fileAccess.getParentKey(baseKey) : baseKey;
         FileProperties currentProps = fileAccess.getFileProperties(key);
 
-        FileProperties newProps = new FileProperties(newName, currentProps.size, currentProps.modified, currentProps.isHidden, currentProps.thumbnail);
+        FileProperties newProps = new FileProperties(newFilename, currentProps.size, currentProps.modified, currentProps.isHidden, currentProps.thumbnail);
 
         return fileAccess.rename(writableFilePointer(), newProps, context);
     }
