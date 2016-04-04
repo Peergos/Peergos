@@ -92,6 +92,17 @@ public class FuseTests {
         String movedSmallFileContents = readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "cat " + home + "/"+newFileName}));
         Assert.assertTrue("Correct moved file contents", movedSmallFileContents.equals(data));
 
+        // mkdir
+        String dirName = "adirectory";
+        readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "mkdir " + home + "/"+dirName}));
+        String dirLs = readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "ls " + home + "/"}));
+        Assert.assertTrue("Mkdir exists", dirLs.contains(dirName));
+
+        //move a file to a different directory (calls rename)
+        readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "mv " + home + "/"+newFileName+" "+ home + "/"+dirName+"/"+newFileName}));
+        String movedToDirSmallFileContents = readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "cat " + home + "/"+dirName+"/"+newFileName}));
+        Assert.assertTrue("Correct file contents after move to another directory", movedToDirSmallFileContents.equals(data));
+
         // write a medium file
         byte[] tmp = new byte[1024*1024]; // File size will be twice this
         new Random().nextBytes(tmp);

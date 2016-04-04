@@ -128,15 +128,23 @@ public class PeergosFS extends FuseStubFS {
 
     private int rename(PeergosStat stat, String name) {
         try {
+            Path requested = Paths.get(name);
+            Optional<FileTreeNode> newParent = userContext.getTreeRoot().getDescendentByPath(requested.getParent().toString(), userContext);
+            if (!newParent.isPresent())
+                return 1;
+
             Optional<FileTreeNode> treeNode = stat.treeNode.retrieveParent(userContext);
-            if(! treeNode.isPresent())
+            if (!treeNode.isPresent())
                 return 1;
 
             FileTreeNode parent = treeNode.get();
-            Path requested = Paths.get(name);
-            if (!parent.getFileProperties().name.equals(requested.getParent().getFileName().toString()))
-                return 1; // trying to move to a different directory! Unimplemented!
             stat.treeNode.rename(requested.getFileName().toString(), userContext, parent);
+            if (!parent.equals(newParent.get())) {
+                boolean copyResult = stat.treeNode.copyTo(newParent.get(), userContext);
+                boolean removed = stat.treeNode.remove(userContext, parent);
+                if (!copyResult || !removed)
+                    return 1;
+            }
             return 0;
         } catch (IOException ioe) {
             ioe.printStackTrace();
