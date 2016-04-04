@@ -189,6 +189,8 @@ public class PeergosFS extends FuseStubFS {
 
     @Override
     public int statfs(String s, Statvfs statvfs) {
+        statvfs.f_bsize.set(128*1024L);
+//        return 0;
         return unimp();
     }
 
