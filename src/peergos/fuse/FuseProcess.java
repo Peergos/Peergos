@@ -27,11 +27,10 @@ public class FuseProcess implements Runnable, AutoCloseable {
 
     @Override
     public void run() {
-
         while  (! isFinished) {
             synchronized (this) {
                 try {
-                    wait(10000);
+                    wait(1000);
                 } catch (InterruptedException ie) {}
             }
         }
@@ -49,10 +48,13 @@ public class FuseProcess implements Runnable, AutoCloseable {
         new Thread(this).start();
     }
 
-    public synchronized void close() {
-        ensureNotFinished();
+    public void close() {
+        if (isFinished)
+            return;
         isFinished = true;
-        notify();
+        synchronized (this) {
+            notify();
+        }
         System.out.println("CLOSE");
         while (! isClosed) {
             try {
