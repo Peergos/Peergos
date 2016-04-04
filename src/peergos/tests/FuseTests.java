@@ -44,6 +44,9 @@ public class FuseTests {
 
     @BeforeClass
     public static void init() throws Exception {
+        // use insecure random otherwise tests take ages
+        setFinalStatic(TweetNaCl.class.getDeclaredField("prng"), new Random());
+
         Args.parse(new String[]{"useIPFS", "false",
                 "-port", Integer.toString(WEB_PORT),
                 "-corenodePort", Integer.toString(CORE_PORT)});
@@ -51,8 +54,6 @@ public class FuseTests {
         Start.local();
         UserContext userContext = ensureSignedUp(username, password);
 
-        // use insecure random otherwise tests take ages
-        setFinalStatic(TweetNaCl.class.getDeclaredField("prng"), new Random());
 
         String mountPath = Args.getArg("mountPoint", "/tmp/peergos/tmp");
 
@@ -81,8 +82,10 @@ public class FuseTests {
         Path home = mountPoint.resolve(username);
 
         String data = "Hello Peergos!";
-        String res = readStdout(Runtime.getRuntime().exec("echo \""+data+"\" > " + home + "/data.txt"));
-        System.out.println(res);
+        readStdout(Runtime.getRuntime().exec("echo \""+data+"\" > " + home + "/data.txt"));
+        String res = readStdout(Runtime.getRuntime().exec("cat " + home + "/data.txt"));
+//        Assert.assertTrue("Correct file contents: "+res, res.equals(data));
+//        System.out.println(res);
     }
 
     @AfterClass
