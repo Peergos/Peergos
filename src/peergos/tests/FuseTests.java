@@ -12,8 +12,7 @@ import java.io.*;
 import java.lang.*;
 import java.lang.reflect.*;
 import java.net.*;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.nio.file.*;
 import java.util.*;
 
 public class FuseTests {
@@ -81,11 +80,25 @@ public class FuseTests {
 
         Path home = mountPoint.resolve(username);
 
+        // write a small file
         String data = "Hello Peergos!";
         readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "echo \""+data+"\" > " + home + "/data.txt"}));
-        String res = readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "cat " + home + "/data.txt"}));
-        Assert.assertTrue("Correct file contents: "+res, res.equals(data));
-        System.out.println(res);
+        String smallFileContents = readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "cat " + home + "/data.txt"}));
+        Assert.assertTrue("Correct file contents: "+smallFileContents, smallFileContents.equals(data));
+
+        // write a medium file
+        byte[] tmp = new byte[1024*1024]; // File size will be twice this
+        new Random().nextBytes(tmp);
+        String mediumFileContents = ArrayOps.bytesToHex(tmp);
+        Path tmpFile = Files.createTempFile("" + System.currentTimeMillis(), "");
+        FileOutputStream fout = new FileOutputStream(tmpFile.toFile());
+        fout.write(mediumFileContents.getBytes());
+        fout.flush();
+        fout.close();
+        readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "cp \""+tmpFile+"\" " + home + "/data2.txt"}));
+        String readMediumFileContents = readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "cat " + home + "/data2.txt"}));
+        Assert.assertTrue("Correct medium size file contents", mediumFileContents.equals(readMediumFileContents));
+        System.out.println();
     }
 
     @AfterClass

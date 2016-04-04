@@ -42,7 +42,7 @@ public class FuseProcess implements Runnable, AutoCloseable {
 
         boolean blocking = false;
         boolean debug = true;
-        String[] fuseOpts = new String[0];
+        String[] fuseOpts = new String[]{"-o", "big_writes"};
         peergosFS.mount(mountPoint, blocking, debug, fuseOpts);
 
         new Thread(this).start();
