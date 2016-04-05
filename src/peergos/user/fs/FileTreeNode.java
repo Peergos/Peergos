@@ -221,9 +221,10 @@ public class FileTreeNode {
     public boolean uploadFile(String filename, InputStream fileData, long startIndex, long endIndex, UserContext context, Consumer<Long> monitor) throws IOException {
         if (!isLegalName(filename))
             return false;
-        if (childrenByName.containsKey(filename)) {
+        Optional<FileTreeNode> childOpt = getChildren(context).stream().filter(f -> f.getFileProperties().name.equals(filename)).findAny();
+        if (childOpt.isPresent()) {
             System.out.println("Overwriting section ["+Long.toHexString(startIndex)+", "+Long.toHexString(endIndex)+"] of child with name: "+filename);
-            FileTreeNode child = childrenByName.get(filename);
+            FileTreeNode child = childOpt.get();
             FileProperties childProps = child.getFileProperties();
             long filesSize = childProps.size;
             FileRetriever retriever = child.getRetriever();

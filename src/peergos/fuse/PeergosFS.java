@@ -476,50 +476,12 @@ public class PeergosFS extends FuseStubFS {
                 throw new IllegalStateException("Cannot write more than " + Integer.MAX_VALUE + " bytes");
             }
 
-            int iOffset = (int) offset;
-            int iSize= (int) size;
-
-            Optional<FileTreeNode> targetOpt = parent.treeNode.getChildren(userContext).stream()
-                    .filter(e -> e.getFileProperties().name.equals(name))
-                    .findFirst();
-
-
-            byte[] uploadData = null;
-            if (targetOpt.isPresent()) {
-                //get current data  and overwrite
-                FileTreeNode treeNode = targetOpt.get();
-                InputStream is = treeNode.getInputStream(userContext, treeNode.getFileProperties().size, (l) -> {
-                });
-                try {
-                    byte[] data = Serialize.readFully(is);
-                    data = Serialize.ensureSize(data, (int) updatedLength);
-                    System.arraycopy(toWrite, 0, data, iOffset, iSize);
-                    uploadData = data;
-                } catch (IOException ioe) {
-                    ioe.printStackTrace();
-                    return 1;
-                }
-            } else {
-                //nothing there yet
-                uploadData = new byte[(int) updatedLength];
-                System.arraycopy(toWrite, 0, uploadData, iOffset, toWrite.length);
-            }
-
-            //re-upload data
-            try {
-                parent.treeNode.uploadFile(name, new ByteArrayInputStream(uploadData), updatedLength, userContext, (l) -> {});
-                return iSize;
-            } catch (IOException e) {
-                e.printStackTrace();
-                return 1;
-            }
-
+            boolean b = parent.treeNode.uploadFile(name, new ByteArrayInputStream(toWrite), offset, offset + size, userContext, l -> {});
+            return b ? (int) size : 1;
         } catch (Throwable t) {
             t.printStackTrace();
             return 1;
-
         }
-
     }
 
     public int write(PeergosStat parent, String name, Pointer pointer, long size, long offset) {

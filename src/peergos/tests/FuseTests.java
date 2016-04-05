@@ -20,7 +20,7 @@ public class FuseTests {
     public static int CORE_PORT = 7777;
     public static String username = "test02";
     public static String password = username;
-    public static Path mountPoint;
+    public static Path mountPoint, home;
     public static FuseProcess fuseProcess;
 
     static void setFinalStatic(Field field, Object newValue) throws Exception {
@@ -59,6 +59,7 @@ public class FuseTests {
         mountPoint = Paths.get(mountPath);
         mountPoint = mountPoint.resolve(UUID.randomUUID().toString());
         mountPoint.toFile().mkdirs();
+        home = mountPoint.resolve(username);
 
         System.out.println("\n\nMountpoint "+ mountPoint +"\n\n");
         PeergosFS peergosFS = new PeergosFS(userContext);
@@ -76,35 +77,38 @@ public class FuseTests {
     @Test
     public void variousTests() throws IOException {
         String homeName = readStdout(Runtime.getRuntime().exec("ls " + mountPoint));
-        Assert.assertTrue("Correct home directory: "+homeName, homeName.equals(username));
+        Assert.assertTrue("Correct home directory: " + homeName, homeName.equals(username));
 
         Path home = mountPoint.resolve(username);
 
         // write a small file
         String data = "Hello Peergos!";
-        readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "echo \""+data+"\" > " + home + "/data.txt"}));
+        readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "echo \"" + data + "\" > " + home + "/data.txt"}));
         String smallFileContents = readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "cat " + home + "/data.txt"}));
-        Assert.assertTrue("Correct file contents: "+smallFileContents, smallFileContents.equals(data));
+        Assert.assertTrue("Correct file contents: " + smallFileContents, smallFileContents.equals(data));
 
         // rename a file
         String newFileName = "moredata.txt";
-        readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "mv " + home + "/data.txt "+ home + "/"+newFileName}));
-        String movedSmallFileContents = readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "cat " + home + "/"+newFileName}));
+        readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "mv " + home + "/data.txt " + home + "/" + newFileName}));
+        String movedSmallFileContents = readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "cat " + home + "/" + newFileName}));
         Assert.assertTrue("Correct moved file contents", movedSmallFileContents.equals(data));
 
         // mkdir
         String dirName = "adirectory";
-        readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "mkdir " + home + "/"+dirName}));
+        readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "mkdir " + home + "/" + dirName}));
         String dirLs = readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "ls " + home + "/"}));
         Assert.assertTrue("Mkdir exists", dirLs.contains(dirName));
 
         //move a file to a different directory (calls rename)
-        readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "mv " + home + "/"+newFileName+" "+ home + "/"+dirName+"/"+newFileName}));
-        String movedToDirSmallFileContents = readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "cat " + home + "/"+dirName+"/"+newFileName}));
+        readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "mv " + home + "/" + newFileName + " " + home + "/" + dirName + "/" + newFileName}));
+        String movedToDirSmallFileContents = readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "cat " + home + "/" + dirName + "/" + newFileName}));
         Assert.assertTrue("Correct file contents after move to another directory", movedToDirSmallFileContents.equals(data));
+    }
 
+    @Test
+    public void mediumFileTest() throws IOException {
         // write a medium file
-        byte[] tmp = new byte[1024*1024]; // File size will be twice this
+        byte[] tmp = new byte[1*1024*1024]; // File size will be twice this
         new Random().nextBytes(tmp);
         String mediumFileContents = ArrayOps.bytesToHex(tmp);
         Path tmpFile = Files.createTempFile("" + System.currentTimeMillis(), "");
@@ -115,7 +119,13 @@ public class FuseTests {
         readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "cp \""+tmpFile+"\" " + home + "/data2.txt"}));
         String readMediumFileContents = readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "cat " + home + "/data2.txt"}));
         Assert.assertTrue("Correct medium size file contents", mediumFileContents.equals(readMediumFileContents));
-        System.out.println();
+    }
+
+    private static void runForAWhile() {
+        for (int i=0; i < 600; i++)
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {}
     }
 
     @AfterClass
