@@ -113,6 +113,10 @@ public class UserTests {
         userRoot.uploadFile(filename, new ByteArrayInputStream(data2), 0, data2.length, context, l -> {});
         checkFileContents(data2, userRoot.getDescendentByPath(filename, context).get(), context);
 
+        // check file size
+        assertTrue("File size", data2.length == userRoot.getDescendentByPath(filename, context).get().getFileProperties().size);
+        assertTrue("File size", data2.length == context.getTreeRoot().getDescendentByPath(username+"/"+filename, context).get().getFileProperties().size);
+
         // extend file within existing chunk
         byte[] data3 = new byte[128*1024];
         new Random().nextBytes(data3);

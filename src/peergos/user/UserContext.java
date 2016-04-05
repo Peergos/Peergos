@@ -493,10 +493,14 @@ public class UserContext {
         return res;
     }
 
-    public FileAccess getMetadata(Location loc) throws IOException {
+    public Optional<FileAccess> getMetadata(Location loc) throws IOException {
+        if (loc == null)
+            return Optional.empty();
         MaybeMultihash blobHash = btree.get(loc.writer, loc.mapKey);
+        if (!blobHash.isPresent())
+            return Optional.empty();
         byte[] raw = dhtClient.get(blobHash.get()).get();
-        return FileAccess.deserialize(raw);
+        return Optional.of(FileAccess.deserialize(raw));
     };
 
     public List<FragmentWithHash> downloadFragments(List<Multihash> hashes, Consumer<Long> monitor) {

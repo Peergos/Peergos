@@ -4,6 +4,7 @@ import peergos.crypto.symmetric.*;
 import peergos.user.*;
 
 import java.io.*;
+import java.util.*;
 import java.util.function.*;
 
 public class LazyInputStreamCombiner extends InputStream {
@@ -29,10 +30,12 @@ public class LazyInputStreamCombiner extends InputStream {
     public byte[] getNextStream(int len) throws IOException {
         if (this.next != null) {
             Location nextLocation = this.next;
-            FileAccess meta = context.getMetadata(nextLocation);
-            FileRetriever nextRet = meta.retriever();
+            Optional<FileAccess> meta = context.getMetadata(nextLocation);
+            if (!meta.isPresent())
+                throw new EOFException();
+            FileRetriever nextRet = meta.get().retriever();
             this.next = nextRet.getNext();
-            return nextRet.getChunkInputStream(context, dataKey, 0, len, nextLocation, monitor).chunk.data();
+            return nextRet.getChunkInputStream(context, dataKey, 0, len, nextLocation, monitor).get().chunk.data();
         }
         throw new EOFException();
     }

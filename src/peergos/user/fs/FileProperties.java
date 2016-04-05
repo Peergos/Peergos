@@ -51,6 +51,10 @@ public class FileProperties {
         return new FileProperties(name, size, LocalDateTime.ofEpochSecond((int)modified, 0, ZoneOffset.UTC), isHidden, thumbnail);
     }
 
+    public FileProperties withSize(long newSize) {
+        return new FileProperties(name, newSize, modified, isHidden, thumbnail);
+    }
+
     public FileProperties withModified(LocalDateTime modified) {
         return new FileProperties(name, size, modified, isHidden, thumbnail);
     }

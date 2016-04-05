@@ -28,11 +28,11 @@ public class EncryptedChunkRetriever implements FileRetriever {
     }
 
     public LazyInputStreamCombiner getFile(UserContext context, SymmetricKey dataKey, long fileSize, Location ourLocation, Consumer<Long> monitor) throws IOException {
-        LocatedChunk chunk = getChunkInputStream(context, dataKey, 0, fileSize, ourLocation, monitor);
-        return new LazyInputStreamCombiner(this, context, dataKey, chunk.chunk.data(), fileSize, monitor);
+        Optional<LocatedChunk> chunk = getChunkInputStream(context, dataKey, 0, fileSize, ourLocation, monitor);
+        return new LazyInputStreamCombiner(this, context, dataKey, chunk.get().chunk.data(), fileSize, monitor);
     }
 
-    public LocatedEncryptedChunk getEncryptedChunk(long bytesRemainingUntilStart, long truncateTo, byte[] nonce, SymmetricKey dataKey, Location ourLocation, UserContext context, Consumer<Long> monitor) throws IOException {
+    public Optional<LocatedEncryptedChunk> getEncryptedChunk(long bytesRemainingUntilStart, long truncateTo, byte[] nonce, SymmetricKey dataKey, Location ourLocation, UserContext context, Consumer<Long> monitor) throws IOException {
         if (bytesRemainingUntilStart < Chunk.MAX_SIZE) {
             List<FragmentWithHash> fragments = context.downloadFragments(fragmentHashes, monitor);
             fragments = reorder(fragments, fragmentHashes);
@@ -41,22 +41,34 @@ public class EncryptedChunkRetriever implements FileRetriever {
             EncryptedChunk fullEncryptedChunk = new EncryptedChunk(ArrayOps.concat(chunkAuth, cipherText));
             if (truncateTo < Chunk.MAX_SIZE)
                 fullEncryptedChunk = fullEncryptedChunk.truncateTo((int)truncateTo);
-            return new LocatedEncryptedChunk(ourLocation, fullEncryptedChunk, nonce);
+            return Optional.of(new LocatedEncryptedChunk(ourLocation, fullEncryptedChunk, nonce));
         }
-        FileAccess meta = context.getMetadata(getNext());
-        FileRetriever nextRet = meta.retriever();
-        return nextRet.getEncryptedChunk(bytesRemainingUntilStart - Chunk.MAX_SIZE, truncateTo - Chunk.MAX_SIZE, nextRet.getNonce(), dataKey, getNext(), context, monitor);
+        Optional<FileAccess> meta = context.getMetadata(getNext());
+        return meta.flatMap(m -> {
+            try {
+                FileRetriever nextRet = m.retriever();
+                return nextRet.getEncryptedChunk(bytesRemainingUntilStart - Chunk.MAX_SIZE, truncateTo - Chunk.MAX_SIZE, nextRet.getNonce(), dataKey, getNext(), context, monitor);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
     }
 
-    public Location getLocationAt(Location startLocation, long offset, UserContext context) throws IOException {
+    public Optional<Location> getLocationAt(Location startLocation, long offset, UserContext context) throws IOException {
         if (offset < Chunk.MAX_SIZE)
-            return startLocation;
+            return Optional.of(startLocation);
         Location next = getNext();
         if (next == null)
-            return null;
-        FileAccess meta = context.getMetadata(next);
-        FileRetriever nextRet = meta.retriever();
-        return nextRet.getLocationAt(next, offset - Chunk.MAX_SIZE, context);
+            return Optional.empty();
+        Optional<FileAccess> meta = context.getMetadata(next);
+        return meta.flatMap(m -> {
+            try {
+                FileRetriever nextRet = m.retriever();
+                return nextRet.getLocationAt(next, offset - Chunk.MAX_SIZE, context);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
     }
 
     public Location getNext() {
@@ -67,11 +79,13 @@ public class EncryptedChunkRetriever implements FileRetriever {
         return chunkNonce;
     }
 
-    public LocatedChunk getChunkInputStream(UserContext context, SymmetricKey dataKey, long startIndex, long truncateTo, Location ourLocation, Consumer<Long> monitor) throws IOException {
-        LocatedEncryptedChunk fullEncryptedChunk = getEncryptedChunk(startIndex, truncateTo, chunkNonce, dataKey, ourLocation, context, monitor);
+    public Optional<LocatedChunk> getChunkInputStream(UserContext context, SymmetricKey dataKey, long startIndex, long truncateTo, Location ourLocation, Consumer<Long> monitor) throws IOException {
+        Optional<LocatedEncryptedChunk> fullEncryptedChunk = getEncryptedChunk(startIndex, truncateTo, chunkNonce, dataKey, ourLocation, context, monitor);
 
-        byte[] original = fullEncryptedChunk.chunk.decrypt(dataKey, fullEncryptedChunk.nonce);
-        return new LocatedChunk(fullEncryptedChunk.location, new Chunk(original, dataKey));
+        return fullEncryptedChunk.map(enc -> {
+            byte[] original = enc.chunk.decrypt(dataKey, enc.nonce);
+            return new LocatedChunk(enc.location, new Chunk(original, dataKey));
+        });
     }
 
     public void serialize(DataSink buf) {

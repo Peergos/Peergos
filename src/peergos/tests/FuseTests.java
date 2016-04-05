@@ -87,6 +87,10 @@ public class FuseTests {
         String smallFileContents = readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "cat " + home + "/data.txt"}));
         Assert.assertTrue("Correct file contents: " + smallFileContents, smallFileContents.equals(data));
 
+        // correct file size
+        String fileSize = readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "wc -c " + home + "/data.txt"})).split(" ")[0];
+        Assert.assertTrue("Correct file size", fileSize.equals(Integer.toString(data.length())));
+
         // rename a file
         String newFileName = "moredata.txt";
         readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "mv " + home + "/data.txt " + home + "/" + newFileName}));

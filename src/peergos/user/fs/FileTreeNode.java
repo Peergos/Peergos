@@ -231,17 +231,27 @@ public class FileTreeNode {
             SymmetricKey baseKey = child.pointer.filePointer.baseKey;
 
             if (startIndex > filesSize) {
-                // TODO if offset > fileSize append with zeroes up to startIndex
+                // TODO append with zeroes up to startIndex
                 throw new IllegalStateException("Unimplemented!");
             }
 
-            Location nextChunkLocation = null;
+            Optional<Location> nextChunkLocation = Optional.empty();
+            if (startIndex == Chunk.MAX_SIZE)
+                System.nanoTime();
             while (startIndex < endIndex) {
                 long existingEnd = filesSize;
-                LocatedChunk currentOriginal = startIndex/Chunk.MAX_SIZE <= filesSize/Chunk.MAX_SIZE ? retriever.getChunkInputStream(context, baseKey, startIndex,
-                        existingEnd, child.getLocation(), monitor) :
-                        new LocatedChunk(nextChunkLocation,
-                                new Chunk(new byte[Math.min(Chunk.MAX_SIZE, (int) (endIndex - startIndex))], baseKey, nextChunkLocation.mapKey));
+                Optional<LocatedChunk> currentOriginalOpt = startIndex/Chunk.MAX_SIZE <= filesSize/Chunk.MAX_SIZE ? retriever.getChunkInputStream(context, baseKey, startIndex,
+                        existingEnd, child.getLocation(), monitor) : nextChunkLocation.isPresent() ?
+                        Optional.of(new LocatedChunk(nextChunkLocation.get(),
+                                new Chunk(new byte[Math.min(Chunk.MAX_SIZE, (int) (endIndex - startIndex))], baseKey, nextChunkLocation.get().mapKey))) :
+                        Optional.empty();
+                LocatedChunk currentOriginal;
+                if (currentOriginalOpt.isPresent())
+                    currentOriginal = currentOriginalOpt.get();
+                else {
+                    Location newChunkLocation = new Location(getLocation().owner, getLocation().writer, TweetNaCl.securedRandom(32));
+                    currentOriginal = new LocatedChunk(newChunkLocation, new Chunk(new byte[0], baseKey, newChunkLocation.mapKey));
+                }
                 System.out.println("Writing to chunk at mapkey: "+ArrayOps.bytesToHex(currentOriginal.location.mapKey));
                 // modify chunk, re-encrypt and upload
                 int internalStart = (int) (startIndex % Chunk.MAX_SIZE);
@@ -256,14 +266,18 @@ public class FileTreeNode {
                 FileProperties newProps = new FileProperties(childProps.name, endIndex > filesSize ? endIndex : filesSize,
                         LocalDateTime.now(), childProps.isHidden, childProps.thumbnail);
                 nextChunkLocation = retriever.getLocationAt(getLocation(), startIndex + Chunk.MAX_SIZE, context);
-                if (nextChunkLocation == null && startIndex + Chunk.MAX_SIZE < endIndex) // extending file past final chunk
-                    nextChunkLocation = new Location(currentOriginal.location.owner, currentOriginal.location.writer, TweetNaCl.securedRandom(32));
+                if (!nextChunkLocation.isPresent() && startIndex + Chunk.MAX_SIZE < endIndex) // extending file past final chunk
+                    nextChunkLocation = Optional.of(new Location(currentOriginal.location.owner, currentOriginal.location.writer, TweetNaCl.securedRandom(32)));
                 FileUploader.uploadChunk((User)entryWriterKey, newProps, getLocation(), getParentKey(), located,
-                        EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES, nextChunkLocation, context, monitor);
+                        EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES, nextChunkLocation.orElse(null), context, monitor);
 
                 //update indices to be relative to next chunk
                 startIndex += Chunk.MAX_SIZE;
                 startIndex = startIndex - (startIndex % Chunk.MAX_SIZE);
+            }
+            if (endIndex > filesSize) {
+                // update file size in FileProperties of first chunk
+                child.setProperties(child.getFileProperties().withSize(endIndex), context, this);
             }
             return true;
         }
