@@ -145,7 +145,7 @@ public class UserTests {
         new Random().nextBytes(data5);
         userRoot.uploadFile(newname, new ByteArrayInputStream(data5), 0, data5.length, context, l -> {});
         checkFileContents(data5, userRoot.getDescendentByPath(newname, context).get(), context);
-
+        assertTrue("10MiB file size", data5.length == userRoot.getDescendentByPath(newname, context).get().getFileProperties().size);
 
         // insert data in the middle of second chunk
         System.out.println("\n***** Mid 2nd chunk write test");
