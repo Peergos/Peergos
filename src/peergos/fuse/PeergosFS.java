@@ -445,8 +445,12 @@ public class PeergosFS extends FuseStubFS {
 
             is.skip(offset);
 
-            for (long i = 0; i < size; i++)
-                pointer.putByte(i, (byte) is.read());
+            for (long i = 0; i < size; i++) {
+                int read = is.read();
+                if (read < 0)
+                    return 1;
+                pointer.putByte(i, (byte) read);
+            }
 
         } catch (Exception  ioe) {
             ioe.printStackTrace();

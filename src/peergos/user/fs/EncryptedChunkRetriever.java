@@ -60,6 +60,8 @@ public class EncryptedChunkRetriever implements FileRetriever {
         Location next = getNext();
         if (next == null)
             return Optional.empty();
+        if (offset < 2*Chunk.MAX_SIZE)
+            return Optional.of(next); // chunk at this location hasn't been written yet, only referenced by previous chunk
         Optional<FileAccess> meta = context.getMetadata(next);
         return meta.flatMap(m -> {
             try {
@@ -82,9 +84,15 @@ public class EncryptedChunkRetriever implements FileRetriever {
     public Optional<LocatedChunk> getChunkInputStream(UserContext context, SymmetricKey dataKey, long startIndex, long truncateTo, Location ourLocation, Consumer<Long> monitor) throws IOException {
         Optional<LocatedEncryptedChunk> fullEncryptedChunk = getEncryptedChunk(startIndex, truncateTo, chunkNonce, dataKey, ourLocation, context, monitor);
 
+        if (!fullEncryptedChunk.isPresent()) {
+            Optional<Location> unwrittenChunkLocation = getLocationAt(ourLocation, startIndex, context);
+            return unwrittenChunkLocation.map(l -> new LocatedChunk(l,
+                    new Chunk(new byte[Math.min(Chunk.MAX_SIZE, (int) (truncateTo - startIndex))], dataKey, l.mapKey)));
+        }
+
         return fullEncryptedChunk.map(enc -> {
             byte[] original = enc.chunk.decrypt(dataKey, enc.nonce);
-            return new LocatedChunk(enc.location, new Chunk(original, dataKey));
+            return new LocatedChunk(enc.location, new Chunk(original, dataKey, enc.location.mapKey));
         });
     }
 

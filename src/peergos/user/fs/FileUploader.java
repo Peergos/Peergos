@@ -68,9 +68,9 @@ public class FileUploader implements AutoCloseable {
         return nextL;
     }
 
-    public Location upload(UserContext context, UserPublicKey owner, User writer) throws IOException {
+    public Location upload(UserContext context, UserPublicKey owner, User writer, Location nextChunk) throws IOException {
         long t1 = System.currentTimeMillis();
-        Location res = uploadChunk(context, owner, writer, this.nchunks-1, null, null);
+        Location res = uploadChunk(context, owner, writer, this.nchunks-1, nextChunk, l -> {});
         System.out.println("File encryption, erasure coding and upload took: " +(System.currentTimeMillis()-t1) + " mS");
         return res;
     }

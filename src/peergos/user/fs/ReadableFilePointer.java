@@ -20,6 +20,10 @@ public class ReadableFilePointer {
         this.baseKey = baseKey;
     }
 
+    public Location getLocation() {
+        return new Location(owner, writer, mapKey);
+    }
+
     public byte[] serialize() {
         try {
             DataSink bout = new DataSink();

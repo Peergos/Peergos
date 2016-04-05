@@ -235,23 +235,14 @@ public class FileTreeNode {
                 throw new IllegalStateException("Unimplemented!");
             }
 
-            Optional<Location> nextChunkLocation = Optional.empty();
-            if (startIndex == Chunk.MAX_SIZE)
-                System.nanoTime();
+            Optional<Location> nextChunkLocationOpt = retriever.getLocationAt(child.getLocation(), startIndex + Chunk.MAX_SIZE, context);
+            Location nextChunkLocation = nextChunkLocationOpt.orElse(new Location(getLocation().owner, getLocation().writer, TweetNaCl.securedRandom(32)));
             while (startIndex < endIndex) {
                 long existingEnd = filesSize;
-                Optional<LocatedChunk> currentOriginalOpt = startIndex/Chunk.MAX_SIZE <= filesSize/Chunk.MAX_SIZE ? retriever.getChunkInputStream(context, baseKey, startIndex,
-                        existingEnd, child.getLocation(), monitor) : nextChunkLocation.isPresent() ?
-                        Optional.of(new LocatedChunk(nextChunkLocation.get(),
-                                new Chunk(new byte[Math.min(Chunk.MAX_SIZE, (int) (endIndex - startIndex))], baseKey, nextChunkLocation.get().mapKey))) :
-                        Optional.empty();
-                LocatedChunk currentOriginal;
-                if (currentOriginalOpt.isPresent())
-                    currentOriginal = currentOriginalOpt.get();
-                else {
-                    Location newChunkLocation = new Location(getLocation().owner, getLocation().writer, TweetNaCl.securedRandom(32));
-                    currentOriginal = new LocatedChunk(newChunkLocation, new Chunk(new byte[0], baseKey, newChunkLocation.mapKey));
-                }
+                LocatedChunk currentOriginal =
+                        retriever.getChunkInputStream(context, baseKey, startIndex, existingEnd, child.getLocation(), monitor).orElse(
+                        new LocatedChunk(nextChunkLocation,
+                                new Chunk(new byte[Math.min(Chunk.MAX_SIZE, (int) (endIndex - startIndex))], baseKey, nextChunkLocation.mapKey)));
                 System.out.println("Writing to chunk at mapkey: "+ArrayOps.bytesToHex(currentOriginal.location.mapKey));
                 // modify chunk, re-encrypt and upload
                 int internalStart = (int) (startIndex % Chunk.MAX_SIZE);
@@ -265,19 +256,21 @@ public class FileTreeNode {
                 LocatedChunk located = new LocatedChunk(currentOriginal.location, updated);
                 FileProperties newProps = new FileProperties(childProps.name, endIndex > filesSize ? endIndex : filesSize,
                         LocalDateTime.now(), childProps.isHidden, childProps.thumbnail);
-                nextChunkLocation = retriever.getLocationAt(getLocation(), startIndex + Chunk.MAX_SIZE, context);
-                if (!nextChunkLocation.isPresent() && startIndex + Chunk.MAX_SIZE < endIndex) // extending file past final chunk
-                    nextChunkLocation = Optional.of(new Location(currentOriginal.location.owner, currentOriginal.location.writer, TweetNaCl.securedRandom(32)));
                 FileUploader.uploadChunk((User)entryWriterKey, newProps, getLocation(), getParentKey(), located,
-                        EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES, nextChunkLocation.orElse(null), context, monitor);
+                        EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES, nextChunkLocation, context, monitor);
+
+                Optional<Location> tmp = retriever.getLocationAt(child.getLocation(), startIndex + Chunk.MAX_SIZE, context);
+                nextChunkLocation = tmp.orElse(new Location(getLocation().owner, getLocation().writer, TweetNaCl.securedRandom(32)));
 
                 //update indices to be relative to next chunk
                 startIndex += Chunk.MAX_SIZE;
                 startIndex = startIndex - (startIndex % Chunk.MAX_SIZE);
             }
-            if (endIndex > filesSize) {
+            if (endIndex > filesSize && endIndex > Chunk.MAX_SIZE) {
                 // update file size in FileProperties of first chunk
-                child.setProperties(child.getFileProperties().withSize(endIndex), context, this);
+                boolean b = child.setProperties(child.getFileProperties().withSize(endIndex), context, this);
+                if (!b)
+                    throw new IllegalStateException("Failed to update file properties for "+child);
             }
             return true;
         }
@@ -287,20 +280,19 @@ public class FileTreeNode {
         }
         SymmetricKey fileKey = SymmetricKey.random();
         SymmetricKey rootRKey = pointer.filePointer.baseKey;
-        UserPublicKey owner = pointer.filePointer.owner;
         byte[] dirMapKey = pointer.filePointer.mapKey;
-        UserPublicKey writer = pointer.filePointer.writer;
         DirAccess dirAccess = (DirAccess) pointer.fileAccess;
-        Location parentLocation = new Location(owner, writer, dirMapKey);
         SymmetricKey dirParentKey = dirAccess.getParentKey(rootRKey);
+        Location parentLocation = getLocation();
 
         byte[] thumbData = generateThumbnail(fileData, filename);
         FileProperties fileProps = new FileProperties(filename, endIndex, LocalDateTime.now(), false, Optional.of(thumbData));
         FileUploader chunks = new FileUploader(filename, fileData, startIndex, endIndex, fileKey, parentLocation, dirParentKey, monitor, fileProps,
                 EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
-        Location fileLocation = chunks.upload(context, owner, (User)entryWriterKey);
+        Location nextChunkLocation = new Location(getLocation().owner, getLocation().writer, TweetNaCl.securedRandom(32));
+        Location fileLocation = chunks.upload(context, parentLocation.owner, (User)entryWriterKey, nextChunkLocation);
         dirAccess.addFile(fileLocation, rootRKey, fileKey);
-        return context.uploadChunk(dirAccess, owner, (User)entryWriterKey, dirMapKey, Collections.emptyList());
+        return context.uploadChunk(dirAccess, parentLocation.owner, (User)entryWriterKey, dirMapKey, Collections.emptyList());
     }
 
     static boolean isLegalName(String name) {
@@ -346,11 +338,14 @@ public class FileTreeNode {
 
     public boolean setProperties(FileProperties updatedProperties, UserContext context, FileTreeNode parent) throws IOException {
         String newName = updatedProperties.name;
-        if (!this.isLegalName(newName))
+        if (!isLegalName(newName))
             return false;
-        if (parent != null && parent.hasChildByName(newName))
+        if (parent != null && parent.hasChildByName(newName) &&
+                !parent.getChildrenLocations().stream()
+                        .map(l -> new ByteArrayWrapper(l.mapKey))
+                        .collect(Collectors.toSet())
+                        .contains(new ByteArrayWrapper(pointer.filePointer.getLocation().mapKey)))
             return false;
-        //get current props
         FileAccess fileAccess = pointer.fileAccess;
 
         return fileAccess.rename(writableFilePointer(), updatedProperties, context);

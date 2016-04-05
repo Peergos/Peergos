@@ -105,7 +105,10 @@ public interface Btree {
                 byte[] res = Serialize.deserializeByteArray(din, 256);
                 if (res.length == 0)
                     return MaybeMultihash.EMPTY();
-                return new MaybeMultihash(new Multihash(new DataSource(res).readArray()));
+                byte[] multihash = new DataSource(res).readArray();
+                if (multihash.length == 0)
+                    return MaybeMultihash.EMPTY();
+                return new MaybeMultihash(new Multihash(multihash));
             } finally {
                 if (conn != null)
                     conn.disconnect();
