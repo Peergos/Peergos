@@ -112,7 +112,7 @@ public class FuseTests {
     @Test
     public void mediumFileTest() throws IOException {
         // write a medium file
-        byte[] tmp = new byte[5*1024*1024]; // File size will be twice this
+        byte[] tmp = new byte[5*1024*1024/2 + 128*1024]; // File size will be twice this
         new Random().nextBytes(tmp);
         String mediumFileContents = ArrayOps.bytesToHex(tmp);
         Path tmpFile = Files.createTempFile("" + System.currentTimeMillis(), "");
