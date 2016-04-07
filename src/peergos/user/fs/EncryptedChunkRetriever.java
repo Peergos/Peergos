@@ -91,8 +91,12 @@ public class EncryptedChunkRetriever implements FileRetriever {
         }
 
         return fullEncryptedChunk.map(enc -> {
-            byte[] original = enc.chunk.decrypt(dataKey, enc.nonce);
-            return new LocatedChunk(enc.location, new Chunk(original, dataKey, enc.location.mapKey));
+            try {
+                byte[] original = enc.chunk.decrypt(dataKey, enc.nonce);
+                return new LocatedChunk(enc.location, new Chunk(original, dataKey, enc.location.mapKey));
+            } catch (IllegalStateException e) {
+                throw new IllegalStateException("Couldn't decrypt chunk at mapkey: "+new ByteArrayWrapper(enc.location.mapKey), e);
+            }
         });
     }
 

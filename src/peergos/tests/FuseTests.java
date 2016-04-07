@@ -44,7 +44,7 @@ public class FuseTests {
     @BeforeClass
     public static void init() throws Exception {
         // use insecure random otherwise tests take ages
-        setFinalStatic(TweetNaCl.class.getDeclaredField("prng"), new Random());
+        setFinalStatic(TweetNaCl.class.getDeclaredField("prng"), new Random(1));
 
         Args.parse(new String[]{"useIPFS", "false",
                 "-port", Integer.toString(WEB_PORT),

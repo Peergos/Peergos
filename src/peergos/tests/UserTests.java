@@ -34,7 +34,7 @@ public class UserTests {
         Args.parse(new String[]{"useIPFS", "false", "-port", Integer.toString(WEB_PORT), "-corenodePort", Integer.toString(CORE_PORT)});
         Start.local();
         // use insecure random otherwise tests take ages
-        setFinalStatic(TweetNaCl.class.getDeclaredField("prng"), new Random());
+        setFinalStatic(TweetNaCl.class.getDeclaredField("prng"), new Random(1));
     }
 
     static void setFinalStatic(Field field, Object newValue) throws Exception {
@@ -115,10 +115,10 @@ public class UserTests {
 
         // check file size
         assertTrue("File size", data2.length == userRoot.getDescendentByPath(filename, context).get().getFileProperties().size);
-        assertTrue("File size", data2.length == context.getTreeRoot().getDescendentByPath(username+"/"+filename, context).get().getFileProperties().size);
+        assertTrue("File size", data2.length == context.getTreeRoot().getDescendentByPath(username + "/" + filename, context).get().getFileProperties().size);
 
         // extend file within existing chunk
-        byte[] data3 = new byte[128*1024];
+        byte[] data3 = new byte[128 * 1024];
         new Random().nextBytes(data3);
         userRoot.uploadFile(filename, new ByteArrayInputStream(data3), 0, data3.length, context, l -> {});
         checkFileContents(data3, userRoot.getDescendentByPath(filename, context).get(), context);
@@ -135,25 +135,37 @@ public class UserTests {
         userRoot.getDescendentByPath(filename, context).get().rename(newname, context, userRoot);
         checkFileContents(data3, userRoot.getDescendentByPath(newname, context).get(), context);
         // check from the root as well
-        checkFileContents(data3, context.getTreeRoot().getDescendentByPath(username + "/"+newname, context).get(), context);
+        checkFileContents(data3, context.getTreeRoot().getDescendentByPath(username + "/" + newname, context).get(), context);
         // check from a fresh log in too
         UserContext context2 = ensureSignedUp(username, password);
-        checkFileContents(data3, context2.getTreeRoot().getDescendentByPath(username + "/"+newname, context2).get(), context);
+        checkFileContents(data3, context2.getTreeRoot().getDescendentByPath(username + "/" + newname, context2).get(), context);
+    }
+
+    @Test
+    public void mediumFileWrite() throws IOException {
+        String username = "test01";
+        String password = "test01";
+        UserContext context = ensureSignedUp(username, password);
+        FileTreeNode userRoot = context.getUserRoot();
+
+        String filename = "mediumfile.bin";
+        byte[] data = new byte[0];
+        userRoot.uploadFile(filename, new ByteArrayInputStream(data), data.length, context, l -> {});
 
         //overwrite with 2 chunk file
         byte[] data5 = new byte[10*1024*1024];
         new Random().nextBytes(data5);
-        userRoot.uploadFile(newname, new ByteArrayInputStream(data5), 0, data5.length, context, l -> {});
-        checkFileContents(data5, userRoot.getDescendentByPath(newname, context).get(), context);
-        assertTrue("10MiB file size", data5.length == userRoot.getDescendentByPath(newname, context).get().getFileProperties().size);
+        userRoot.uploadFile(filename, new ByteArrayInputStream(data5), 0, data5.length, context, l -> {});
+        checkFileContents(data5, userRoot.getDescendentByPath(filename, context).get(), context);
+        assertTrue("10MiB file size", data5.length == userRoot.getDescendentByPath(filename, context).get().getFileProperties().size);
 
         // insert data in the middle of second chunk
         System.out.println("\n***** Mid 2nd chunk write test");
         byte[] dataInsert = "some data to insert somewhere else".getBytes();
         int start = 5*1024*1024 + 4*1024;
-        userRoot.uploadFile(newname, new ByteArrayInputStream(dataInsert), start, start + dataInsert.length, context, l -> {});
+        userRoot.uploadFile(filename, new ByteArrayInputStream(dataInsert), start, start + dataInsert.length, context, l -> {});
         System.arraycopy(dataInsert, 0, data5, start, dataInsert.length);
-        checkFileContents(data5, userRoot.getDescendentByPath(newname, context).get(), context);
+        checkFileContents(data5, userRoot.getDescendentByPath(filename, context).get(), context);
     }
 
     private static void runForAWhile() {

@@ -235,20 +235,22 @@ public class FileTreeNode {
                 throw new IllegalStateException("Unimplemented!");
             }
 
-            Optional<Location> nextChunkLocationOpt = retriever.getLocationAt(child.getLocation(), startIndex + Chunk.MAX_SIZE, context);
-            Location nextChunkLocation = nextChunkLocationOpt.orElse(new Location(getLocation().owner, getLocation().writer, TweetNaCl.securedRandom(32)));
-            while (startIndex < endIndex) {
-                long existingEnd = filesSize;
-                LocatedChunk currentOriginal =
-                        retriever.getChunkInputStream(context, baseKey, startIndex, existingEnd, child.getLocation(), monitor).orElse(
-                        new LocatedChunk(nextChunkLocation,
-                                new Chunk(new byte[Math.min(Chunk.MAX_SIZE, (int) (endIndex - startIndex))], baseKey, nextChunkLocation.mapKey)));
-                System.out.println("Writing to chunk at mapkey: "+ArrayOps.bytesToHex(currentOriginal.location.mapKey));
+            if (endIndex == 10*1024*1024)
+                System.nanoTime();
+
+            for (; startIndex < endIndex; startIndex = startIndex + Chunk.MAX_SIZE - (startIndex % Chunk.MAX_SIZE)) {
+
+                LocatedChunk currentOriginal = retriever.getChunkInputStream(context, baseKey, startIndex, filesSize, child.getLocation(), monitor).get();
+                Optional<Location> nextChunkLocationOpt = retriever.getLocationAt(child.getLocation(), startIndex + Chunk.MAX_SIZE, context);
+                Location nextChunkLocation = nextChunkLocationOpt.orElse(new Location(getLocation().owner, getLocation().writer, TweetNaCl.securedRandom(32)));
+
+                System.out.println("********** Writing to chunk at mapkey: "+ArrayOps.bytesToHex(currentOriginal.location.mapKey) + " next: "+nextChunkLocation);
                 // modify chunk, re-encrypt and upload
                 int internalStart = (int) (startIndex % Chunk.MAX_SIZE);
                 int internalEnd = endIndex - (startIndex - internalStart) > Chunk.MAX_SIZE ?
                         Chunk.MAX_SIZE : (int)(endIndex - (startIndex - internalStart));
                 byte[] raw = currentOriginal.chunk.data();
+                // extend data array if necessary
                 if (raw.length < internalEnd)
                     raw = Arrays.copyOfRange(raw, 0, internalEnd);
                 fileData.read(raw, internalStart, internalEnd - internalStart);
@@ -259,18 +261,17 @@ public class FileTreeNode {
                 FileUploader.uploadChunk((User)entryWriterKey, newProps, getLocation(), getParentKey(), located,
                         EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES, nextChunkLocation, context, monitor);
 
-                Optional<Location> tmp = retriever.getLocationAt(child.getLocation(), startIndex + Chunk.MAX_SIZE, context);
-                nextChunkLocation = tmp.orElse(new Location(getLocation().owner, getLocation().writer, TweetNaCl.securedRandom(32)));
-
                 //update indices to be relative to next chunk
-                startIndex += Chunk.MAX_SIZE;
-                startIndex = startIndex - (startIndex % Chunk.MAX_SIZE);
-            }
-            if (endIndex > filesSize && endIndex > Chunk.MAX_SIZE) {
-                // update file size in FileProperties of first chunk
-                boolean b = child.setProperties(child.getFileProperties().withSize(endIndex), context, this);
-                if (!b)
-                    throw new IllegalStateException("Failed to update file properties for "+child);
+                if (startIndex + internalEnd - internalStart > filesSize) {
+                    filesSize = startIndex + internalEnd - internalStart;
+                    if (startIndex + internalEnd - internalStart > Chunk.MAX_SIZE) {
+                        // update file size in FileProperties of first chunk
+                        Optional<FileTreeNode> updatedChild = getChildren(context).stream().filter(f -> f.getFileProperties().name.equals(filename)).findAny();
+                        boolean b = updatedChild.get().setProperties(child.getFileProperties().withSize(endIndex), context, this);
+                        if (!b)
+                            throw new IllegalStateException("Failed to update file properties for "+child);
+                    }
+                }
             }
             return true;
         }
