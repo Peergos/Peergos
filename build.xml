@@ -52,7 +52,7 @@
 
   <target name="test" depends="compile,dist">
     <junit printsummary="yes" fork="true" haltonfailure="yes">
-      <jvmarg value="-Xmx512m"/>
+      <jvmarg value="-Xmx1g"/>
       <classpath>
 	<pathelement location="lib/junit-4.11.jar" />
 	<pathelement location="lib/hamcrest-core-1.3.jar" />
