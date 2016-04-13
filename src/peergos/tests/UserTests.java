@@ -65,6 +65,17 @@ public class UserTests {
         ensureSignedUp(username, password);
     }
 
+    @Test
+    public void changePassword() throws IOException {
+        String username = "test" + (System.currentTimeMillis() % 10000);
+        String password = "password";
+        UserContext userContext = ensureSignedUp(username, password);
+        String newPassword = "newPassword";
+        userContext.changePassword(newPassword);
+        ensureSignedUp(username, newPassword);
+
+    }
+
     public static UserContext ensureSignedUp(String username, String password) throws IOException {
         DHTClient.HTTP dht = new DHTClient.HTTP(new URL("http://localhost:"+ WEB_PORT +"/"));
         Btree.HTTP btree = new Btree.HTTP(new URL("http://localhost:"+ WEB_PORT +"/"));
