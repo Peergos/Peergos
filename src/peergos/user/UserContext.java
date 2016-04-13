@@ -9,7 +9,6 @@ import peergos.user.fs.*;
 import peergos.util.*;
 
 import java.io.*;
-import java.net.*;
 import java.time.*;
 import java.util.*;
 import java.util.function.*;
@@ -86,6 +85,10 @@ public class UserContext {
     }
 
     public byte[] serializeStatic() throws IOException {
+        return serializeStatic(staticData, rootKey);
+    }
+
+    public static byte[] serializeStatic(SortedMap<UserPublicKey, EntryPoint> staticData, SymmetricKey rootKey) throws IOException {
         DataSink sink = new DataSink();
         sink.writeInt(staticData.size());
         staticData.values().forEach(ep -> sink.writeArray(ep.serializeAndSymmetricallyEncrypt(rootKey)));
@@ -99,6 +102,22 @@ public class UserContext {
         expiry.plusMonths(2);
         List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createInitial(user, username, expiry);
         return corenodeClient.updateChain(username, claimChain);
+    }
+
+    public UserContext changePassword(String newPassword) throws IOException{
+        System.out.println("changing password");
+        LocalDate expiry = LocalDate.now();
+        // set claim expiry to two months from now
+        expiry.plusMonths(2);
+        UserWithRoot updatedUser = UserUtil.generateUser(username, newPassword);
+        if(!commitStaticData(updatedUser.getUser(), staticData, updatedUser.getRoot(), dhtClient, corenodeClient))
+            throw new IllegalStateException("Change Password Failed: couldn't upload new file system entry points!");
+
+        List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createChain(user, updatedUser.getUser(),  username, expiry);
+        if(!corenodeClient.updateChain(username, claimChain))
+            throw new IllegalStateException("Couldn't register new public keys during password change!");
+
+        return UserContext.ensureSignedUp(username, newPassword, dhtClient, btree, corenodeClient);
     }
 
     public RetrievedFilePointer createEntryDirectory(String directoryName) throws IOException {
@@ -285,11 +304,11 @@ public class UserContext {
 
     public void addToStaticDataAndCommit(EntryPoint entry) throws IOException {
         addToStaticData(entry);
-        commitStaticData();
+        commitStaticData(user, staticData, rootKey, dhtClient, corenodeClient);
     }
-
-    private boolean commitStaticData() throws IOException {
-        byte[] rawStatic = serializeStatic();
+    private static boolean commitStaticData(User user, SortedMap<UserPublicKey, EntryPoint> staticData, SymmetricKey rootKey
+            , DHTClient dhtClient, CoreNode corenodeClient) throws IOException {
+        byte[] rawStatic = serializeStatic(staticData, rootKey);
         Multihash blobHash = dhtClient.put(rawStatic, user, Collections.emptyList());
         MaybeMultihash currentHash = corenodeClient.getMetadataBlob(user);
         DataSink bout = new DataSink();
@@ -312,7 +331,7 @@ public class UserContext {
             Map.Entry<UserPublicKey, EntryPoint> entry = iter.next();
             if (entry.getValue().pointer.equals(pointer)) {
                 iter.remove();
-                return commitStaticData();
+                return commitStaticData(user, staticData, rootKey, dhtClient, corenodeClient);
             }
         }
         return true;

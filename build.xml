@@ -62,6 +62,10 @@
 	<formatter type="plain"/>
 	<formatter type="xml"/>
       </test>
+      <test name="peergos.tests.UserPublicKeyLinkTests" haltonfailure="yes">
+          <formatter type="plain"/>
+          <formatter type="xml"/>
+      </test>
     </junit>
   </target> 
 
