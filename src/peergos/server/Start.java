@@ -56,11 +56,11 @@ public class Start
         {
             demo();
         }
-        else if (Args.hasArg("coreNode"))
+        else if (Args.hasArg("corenode"))
         {
             String keyfile = Args.getArg("keyfile", "core.key");
             char[] passphrase = Args.getArg("passphrase", "password").toCharArray();
-            String path = Args.getArg("coreNodePath", ":memory:");
+            String path = Args.getArg("corenodePath", ":memory:");
             int corenodePort = Args.getInt("corenodePort", HTTPCoreNodeServer.PORT);
             System.out.println("Using core node path "+ path);
             try {
@@ -105,21 +105,21 @@ public class Start
 
     public static void demo() throws IOException{
         String domain = Args.getArg("domain", "demo.peergos.net");
-        String coreNodePath = Args.getArg("coreNodePath", "core.sql");
+        String corenodePath = Args.getArg("corenodePath", "core.sql");
 
-        Start.main(new String[] {"-coreNode", "-domain", domain, "-coreNodePath", Args.getArg("coreNodePath", coreNodePath)});
+        Start.main(new String[] {"-corenode", "-domain", domain, "-corenodePath", Args.getArg("corenodePath", corenodePath)});
 
         Start.main(new String[]{"-port", "443", "-logMessages", "-domain", domain, "-publicserver"});
     }
 
     public static void local() throws IOException{
         String domain = Args.getArg("domain", "localhost");
-        String coreNodePath = Args.getArg("coreNodePath", ":memory:");
+        String corenodePath = Args.getArg("corenodePath", ":memory:");
         boolean useIPFS = Args.getBoolean("useIPFS", true);
         int webPort = Args.getInt("port", 8000);
         int corenodePort = Args.getInt("corenodePort", HTTPCoreNodeServer.PORT);
 
-        Start.main(new String[] {"-coreNode", "-domain", domain, "-coreNodePath", coreNodePath, "-corenodePort", Integer.toString(corenodePort)});
+        Start.main(new String[] {"-corenode", "-domain", domain, "-corenodePath", corenodePath, "-corenodePort", Integer.toString(corenodePort)});
 
         Start.main(new String[]{"-port", Integer.toString(webPort), "-logMessages", "-domain", domain, "-publicserver",
                 "-useIPFS", Boolean.toString(useIPFS), "-corenodePort", Integer.toString(corenodePort)});
