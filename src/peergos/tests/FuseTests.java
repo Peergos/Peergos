@@ -14,6 +14,7 @@ import java.lang.reflect.*;
 import java.net.*;
 import java.nio.file.*;
 import java.util.*;
+import java.util.stream.*;
 
 public class FuseTests {
     public static int WEB_PORT = 8888;
@@ -53,7 +54,6 @@ public class FuseTests {
         Start.local();
         UserContext userContext = ensureSignedUp(username, password);
 
-
         String mountPath = Args.getArg("mountPoint", "/tmp/peergos/tmp");
 
         mountPoint = Paths.get(mountPath);
@@ -76,53 +76,64 @@ public class FuseTests {
 
     @Test
     public void variousTests() throws IOException {
-        String homeName = readStdout(Runtime.getRuntime().exec("ls " + mountPoint));
-        Assert.assertTrue("Correct home directory: " + homeName, homeName.equals(username));
+        boolean homeExists = Stream.of(mountPoint.toFile().listFiles())
+                .map(f -> f.getName())
+                .filter(n -> n.equals(username))
+                .findAny()
+                .isPresent();
+        Assert.assertTrue("Correct home directory: " + homeExists, homeExists);
 
         Path home = mountPoint.resolve(username);
 
         // write a small file
+        Path filename1 = home.resolve("data.txt");
         String data = "Hello Peergos!";
-        readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "echo \"" + data + "\" > " + home + "/data.txt"}));
-        String smallFileContents = readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "cat " + home + "/data.txt"}));
-        Assert.assertTrue("Correct file contents: " + smallFileContents, smallFileContents.equals(data));
+        FileOutputStream fout1 = new FileOutputStream(filename1.toFile());
+        fout1.write(data.getBytes());
+        fout1.flush();
+        fout1.close();
+        byte[] smallFileContents = Serialize.readFully(new FileInputStream(filename1.toFile()));
+        Assert.assertTrue("Correct file contents: " + new String(smallFileContents), Arrays.equals(smallFileContents, data.getBytes()));
 
         // correct file size
-        String fileSizePlusOne = readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "wc -c " + home + "/data.txt"})).split(" ")[0];
-        Assert.assertTrue("Correct file size", fileSizePlusOne.equals(Integer.toString(data.length() + 1)));
+        Assert.assertTrue("Correct file size", filename1.toFile().length() == data.getBytes().length);
 
         // rename a file
-        String newFileName = "moredata.txt";
+        Path newFileName = home.resolve("moredata.txt");
+        boolean renamed = filename1.toFile().renameTo(newFileName.toFile());
         readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "mv " + home + "/data.txt " + home + "/" + newFileName}));
-        String movedSmallFileContents = readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "cat " + home + "/" + newFileName}));
-        Assert.assertTrue("Correct moved file contents", movedSmallFileContents.equals(data));
+        byte[] movedSmallFileContents = Serialize.readFully(new FileInputStream(newFileName.toFile()));
+        Assert.assertTrue("Correct moved file contents", renamed && Arrays.equals(movedSmallFileContents, data.getBytes()));
 
         // mkdir
-        String dirName = "adirectory";
-        readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "mkdir " + home + "/" + dirName}));
-        String dirLs = readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "ls " + home + "/"}));
-        Assert.assertTrue("Mkdir exists", dirLs.contains(dirName));
+        Path directory = home.resolve("adirectory");
+        boolean mkdir = directory.toFile().mkdir();
+        boolean dirPresent = Stream.of(home.toFile().listFiles())
+                .map(f -> f.getName())
+                .filter(n -> n.equals(directory.getFileName().toString()))
+                .findAny()
+                .isPresent();
+        Assert.assertTrue("Mkdir exists", mkdir && dirPresent);
 
         //move a file to a different directory (calls rename)
-        readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "mv " + home + "/" + newFileName + " " + home + "/" + dirName + "/" + newFileName}));
-        String movedToDirSmallFileContents = readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "cat " + home + "/" + dirName + "/" + newFileName}));
-        Assert.assertTrue("Correct file contents after move to another directory", movedToDirSmallFileContents.equals(data));
+        Path inDir = directory.resolve(newFileName.getFileName().toString());
+        boolean moved = newFileName.toFile().renameTo(inDir.toFile());
+        byte[] movedToDirSmallFileContents = Serialize.readFully(new FileInputStream(inDir.toFile()));
+        Assert.assertTrue("Correct file contents after move to another directory", moved && Arrays.equals(movedToDirSmallFileContents, data.getBytes()));
     }
 
     @Test
     public void mediumFileTest() throws IOException {
         // write a medium file
-        byte[] tmp = new byte[5*1024*1024/2 + 128*1024]; // File size will be twice this
+        byte[] tmp = new byte[5*1024*1024 + 256*1024];
         new Random().nextBytes(tmp);
-        String mediumFileContents = ArrayOps.bytesToHex(tmp);
-        Path tmpFile = Files.createTempFile("" + System.currentTimeMillis(), "");
-        FileOutputStream fout = new FileOutputStream(tmpFile.toFile());
-        fout.write(mediumFileContents.getBytes());
+        Path mediumFile = home.resolve("data2.txt");
+        FileOutputStream fout = new FileOutputStream(mediumFile.toFile());
+        fout.write(tmp);
         fout.flush();
         fout.close();
-        readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "cp \""+tmpFile+"\" " + home + "/data2.txt"}));
-        String readMediumFileContents = readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "cat " + home + "/data2.txt"}));
-        Assert.assertTrue("Correct medium size file contents", mediumFileContents.equals(readMediumFileContents));
+        byte[] readMediumFileContents = Serialize.readFully(new FileInputStream(mediumFile.toFile()));
+        Assert.assertTrue("Correct medium size file contents", Arrays.equals(tmp, readMediumFileContents));
     }
 
     private static void runForAWhile() {

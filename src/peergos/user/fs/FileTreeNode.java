@@ -15,8 +15,7 @@ public class FileTreeNode {
 
     RetrievedFilePointer pointer;
     private FileProperties props;
-    Set<FileTreeNode> children = new HashSet<>();
-    Map<String, FileTreeNode> childrenByName = new HashMap<>();
+    Set<FileTreeNode> indirectChildren = new HashSet<>();
     String ownername;
     Set<String> readers;
     Set<String> writers;
@@ -47,24 +46,12 @@ public class FileTreeNode {
         return pointer.equals(((FileTreeNode)other).getPointer());
     }
 
-    public boolean hasChildByName(String name) {
-        return childrenByName.containsKey(name);
-    }
-
     public RetrievedFilePointer getPointer() {
         return pointer;
     }
 
     public void addChild(FileTreeNode child) throws IOException {
-        String name = child.getFileProperties().name;
-        if (childrenByName.containsKey(name)) {
-            if (pointer != null) {
-                throw new IllegalStateException("Child already exists with name: "+name);
-            } else
-                return;
-        }
-        children.add(child);
-        childrenByName.put(name, child);
+        indirectChildren.add(child);
     }
 
     public Optional<FileTreeNode> getDescendentByPath(String path, UserContext context) throws IOException {
@@ -91,9 +78,12 @@ public class FileTreeNode {
         return Optional.empty();
     }
 
+    public boolean hasChildWithName(String name, UserContext context) {
+        return indirectChildren.stream().filter(f -> props.name.equals(name)).findAny().isPresent()
+                || getChildren(context).stream().filter(c -> c.props.name.equals(name)).findAny().isPresent();
+    }
+
     public boolean removeChild(FileTreeNode child, UserContext context) throws IOException {
-        String name = child.getFileProperties().name;
-        children.remove(childrenByName.remove(name));
         return ((DirAccess)pointer.fileAccess).removeChild(child.getPointer(), pointer.filePointer, context);
     }
 
@@ -103,7 +93,7 @@ public class FileTreeNode {
         if (!this.isWritable())
             return false;
         String name = file.getFileProperties().name;
-        if (childrenByName.containsKey(name)) {
+        if (hasChildWithName(name, context)) {
             System.out.println("Child already exists with name: "+name);
             return false;
         }
@@ -139,11 +129,6 @@ public class FileTreeNode {
         return ((DirAccess)pointer.fileAccess).getChildrenLocations(pointer.filePointer.baseKey);
     }
 
-    public void clear() {
-        children.clear();
-        childrenByName.clear();
-    }
-
     public Optional<FileTreeNode> retrieveParent(UserContext context) throws IOException {
         if (pointer == null)
             return Optional.empty();
@@ -167,23 +152,15 @@ public class FileTreeNode {
 
     public Set<FileTreeNode> getChildren(UserContext context) {
         if (this == context.getTreeRoot())
-            return new HashSet<>(children);
+            return new HashSet<>(indirectChildren);
         try {
             Set<RetrievedFilePointer> childrenRFPs = retrieveChildren(context);
             Set<FileTreeNode> newChildren = childrenRFPs.stream().map(x -> new FileTreeNode(x, ownername, readers, writers, entryWriterKey)).collect(Collectors.toSet());
-            clear();
-            newChildren.forEach(c -> {
-                try {
-                    addChild(c);
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            });
-            return new HashSet<>(children);
+            return Stream.concat(indirectChildren.stream(), newChildren.stream()).collect(Collectors.toSet());
         } catch (Exception e) {
             e.printStackTrace();
             // directories we don't have read access to have children populated during tree creation
-            return new HashSet<>(children);
+            return new HashSet<>(indirectChildren);
         }
     }
 
@@ -309,7 +286,7 @@ public class FileTreeNode {
             return Optional.empty();
         if (!isLegalName(newFolderName))
             return Optional.empty();
-        if (childrenByName.containsKey(newFolderName)) {
+        if (hasChildWithName(newFolderName, context)) {
             System.out.println("Child already exists with name: "+newFolderName);
             return Optional.empty();
         }
@@ -322,7 +299,7 @@ public class FileTreeNode {
     public boolean rename(String newFilename, UserContext context, FileTreeNode parent) throws IOException {
         if (!this.isLegalName(newFilename))
             return false;
-        if (parent != null && parent.hasChildByName(newFilename))
+        if (parent != null && parent.hasChildWithName(newFilename, context))
             return false;
         //get current props
         ReadableFilePointer filePointer = pointer.filePointer;
@@ -341,7 +318,7 @@ public class FileTreeNode {
         String newName = updatedProperties.name;
         if (!isLegalName(newName))
             return false;
-        if (parent != null && parent.hasChildByName(newName) &&
+        if (parent != null && parent.hasChildWithName(newName, context) &&
                 !parent.getChildrenLocations().stream()
                         .map(l -> new ByteArrayWrapper(l.mapKey))
                         .collect(Collectors.toSet())
@@ -366,7 +343,7 @@ public class FileTreeNode {
     public boolean copyTo(FileTreeNode target, UserContext context) throws IOException {
         if (! target.isDirectory())
             throw new IllegalStateException("CopyTo target "+ target +" must be a directory");
-        if (target.hasChildByName(getFileProperties().name))
+        if (target.hasChildWithName(getFileProperties().name, context))
             return false;
         //make new FileTreeNode pointing to the same file, but with a different location
         byte[] newMapKey = TweetNaCl.securedRandom(32);
