@@ -14,6 +14,7 @@ import java.lang.reflect.*;
 import java.net.*;
 import java.nio.file.*;
 import java.util.*;
+import java.util.function.Supplier;
 import java.util.stream.*;
 
 public class FuseTests {
@@ -102,39 +103,46 @@ public class FuseTests {
 
         // write a small file
         Path filename1 = home.resolve("data.txt");
-        String data = "Hello Peergos!";
-        FileOutputStream fout1 = new FileOutputStream(filename1.toFile());
-        fout1.write(data.getBytes());
-        fout1.flush();
-        fout1.close();
-        byte[] smallFileContents = Serialize.readFully(new FileInputStream(filename1.toFile()));
-        Assert.assertTrue("Correct file contents: " + new String(smallFileContents), Arrays.equals(smallFileContents, data.getBytes()));
+        String msg = "Hello Peergos!";
 
-        // correct file size
-        Assert.assertTrue("Correct file size", filename1.toFile().length() == data.getBytes().length);
+        Files.write(filename1, msg.getBytes());
+
+        byte[] smallFileContents = Files.readAllBytes(filename1);
+        Assert.assertTrue("Correct file contents: " + msg, Arrays.equals(smallFileContents, msg.getBytes()));
+
 
         // rename a file
         Path newFileName = home.resolve("moredata.txt");
-        boolean renamed = filename1.toFile().renameTo(newFileName.toFile());
-        readStdout(Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "mv " + home + "/data.txt " + home + "/" + newFileName}));
-        byte[] movedSmallFileContents = Serialize.readFully(new FileInputStream(newFileName.toFile()));
-        Assert.assertTrue("Correct moved file contents", renamed && Arrays.equals(movedSmallFileContents, data.getBytes()));
+        boolean updatedFileAlreadyExists = newFileName.toFile().exists();
+        Assert.assertFalse("updated file "+  newFileName+" doesn't already exist", updatedFileAlreadyExists);
+
+        Files.move(filename1, newFileName);
+        byte[] movedContents  = Files.readAllBytes(newFileName);
+
+        Assert.assertTrue("Correct moved file contents", Arrays.equals(movedContents, msg.getBytes()));
 
         // mkdir
         Path directory = home.resolve("adirectory");
-        boolean mkdir = directory.toFile().mkdir();
-        boolean dirPresent = Stream.of(home.toFile().listFiles())
-                .map(f -> f.getName())
-                .filter(n -> n.equals(directory.getFileName().toString()))
-                .findAny()
-                .isPresent();
-        Assert.assertTrue("Mkdir exists", mkdir && dirPresent);
+
+        Supplier<Boolean> directoryExists = () -> directory.toFile().exists();
+        Assert.assertFalse("directory "+ directory +" doesn't already exist", directoryExists.get());
+
+        directory.toFile().mkdir();
+
+        Assert.assertTrue("Mkdir exists", directoryExists.get());
 
         //move a file to a different directory (calls rename)
-        Path inDir = directory.resolve(newFileName.getFileName().toString());
-        boolean moved = newFileName.toFile().renameTo(inDir.toFile());
-        byte[] movedToDirSmallFileContents = Serialize.readFully(new FileInputStream(inDir.toFile()));
-        Assert.assertTrue("Correct file contents after move to another directory", moved && Arrays.equals(movedToDirSmallFileContents, data.getBytes()));
+        Path inDir = directory.resolve(newFileName.getFileName());
+        Supplier<Boolean> inDirExists = () -> inDir.toFile().exists();
+        Assert.assertFalse("new file in directory "+ inDir +" doesn't already exist", inDirExists.get());
+
+        Files.move(newFileName, inDir);
+
+        Assert.assertTrue("new file in directory "+ inDir +" exist", inDirExists.get());
+
+        byte[] inDirContents =  Files.readAllBytes(inDir);
+
+        Assert.assertTrue("Correct file contents after move to another directory", Arrays.equals(inDirContents, msg.getBytes()));
     }
 
     private void fileTest(int length, Random random)  throws IOException {
@@ -150,12 +158,6 @@ public class FuseTests {
 
         Assert.assertTrue("Correct file contents for length "+ length, Arrays.equals(data, contents));
     }
-
-//    @Test
-//    public void mediumFileTest() throws IOException {
-//        int length = 5 * 1024 * 1024 + 256 * 1024;
-//        fileTest(length, new Random());
-//    }
 
     @Test
     public void readWriteTest() throws IOException {
