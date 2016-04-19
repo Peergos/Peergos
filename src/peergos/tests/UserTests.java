@@ -230,7 +230,7 @@ public class UserTests {
         assertTrue("retrieved same data", dataEquals);
     }
 
-    private static String randomString() {
+    public static String randomString() {
         return UUID.randomUUID().toString();
     }
 

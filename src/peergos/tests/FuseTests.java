@@ -24,6 +24,14 @@ public class FuseTests {
     public static Path mountPoint, home;
     public static FuseProcess fuseProcess;
 
+    public static void setWebPort(int webPort) {
+        WEB_PORT = webPort;
+    }
+
+    public static void setCorePort(int corePort) {
+        CORE_PORT = corePort;
+    }
+
     static void setFinalStatic(Field field, Object newValue) throws Exception {
         field.setAccessible(true);
 
@@ -44,6 +52,13 @@ public class FuseTests {
 
     @BeforeClass
     public static void init() throws Exception {
+        Random  random  = new Random();
+        int offset = random.nextInt(100);
+        setWebPort(8888 + offset);
+        setCorePort(7777 + offset);
+
+        System.out.println("Using web-port "+ WEB_PORT);
+        System.out.flush();
         // use insecure random otherwise tests take ages
         setFinalStatic(TweetNaCl.class.getDeclaredField("prng"), new Random(1));
 
@@ -122,19 +137,36 @@ public class FuseTests {
         Assert.assertTrue("Correct file contents after move to another directory", moved && Arrays.equals(movedToDirSmallFileContents, data.getBytes()));
     }
 
-    @Test
-    public void mediumFileTest() throws IOException {
-        // write a medium file
-        byte[] tmp = new byte[5*1024*1024 + 256*1024];
-        new Random().nextBytes(tmp);
-        Path mediumFile = home.resolve("data2.txt");
-        FileOutputStream fout = new FileOutputStream(mediumFile.toFile());
-        fout.write(tmp);
-        fout.flush();
-        fout.close();
-        byte[] readMediumFileContents = Serialize.readFully(new FileInputStream(mediumFile.toFile()));
-        Assert.assertTrue("Correct medium size file contents", Arrays.equals(tmp, readMediumFileContents));
+    private void fileTest(int length, Random random)  throws IOException {
+        byte[] data = new byte[length];
+        random.nextBytes(data);
+
+        String filename = UserTests.randomString();
+        Path path = home.resolve(filename);
+
+        Files.write(path, data);
+
+        byte[] contents = Files.readAllBytes(path);
+
+        Assert.assertTrue("Correct file contents for length "+ length, Arrays.equals(data, contents));
     }
+
+//    @Test
+//    public void mediumFileTest() throws IOException {
+//        int length = 5 * 1024 * 1024 + 256 * 1024;
+//        fileTest(length, new Random());
+//    }
+
+    @Test
+    public void readWriteTest() throws IOException {
+        Random  random =  new Random(666); // repeatable with same seed
+        for (int power = 5; power < 20; power++) {
+            int length =  (int) Math.pow(2, power);
+            length +=  random.nextInt(length);
+            fileTest(length, random);
+        }
+    }
+
 
     private static void runForAWhile() {
         for (int i=0; i < 600; i++)
