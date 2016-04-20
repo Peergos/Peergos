@@ -60,8 +60,8 @@ public class FuseTests {
     @BeforeClass
     public static void init() throws Exception {
         Random  random  = new Random();
-//        int offset = random.nextInt(100);
-        int offset = 0;
+        int offset = random.nextInt(100);
+//        int offset = 0;
         setWebPort(8888 + offset);
         setCorePort(7777 + offset);
 
@@ -238,66 +238,6 @@ public class FuseTests {
         }
 
         return resolve;
-    }
-
-
-    @Test
-    public void variousTests() throws IOException {
-        boolean homeExists = Stream.of(mountPoint.toFile().listFiles())
-                .map(f -> f.getName())
-                .filter(username::equals)
-                .findAny()
-                .isPresent();
-        Assert.assertTrue("Correct home directory: " + homeExists, homeExists);
-
-        Path home = mountPoint.resolve(username);
-
-        // write a small file
-        Path filename1 = home.resolve("data.txt");
-        String msg = "Hello Peergos!";
-
-        Files.write(filename1, msg.getBytes());
-
-        byte[] smallFileContents = Files.readAllBytes(filename1);
-        Assert.assertTrue("Correct file contents: " + msg, Arrays.equals(smallFileContents, msg.getBytes()));
-
-        // rename a file
-        Path newFileName = home.resolve("moredata.txt");
-        Supplier<Boolean> newPathExists = () -> newFileName.toFile().exists();
-        Assert.assertFalse("updated file "+  newFileName+" doesn't already exist", newPathExists.get());
-
-        Files.move(filename1, newFileName);
-        byte[] movedContents  = Files.readAllBytes(newFileName);
-
-        Assert.assertFalse("original file "+ filename1 +" present after move", filename1.toFile().exists());
-
-        Assert.assertTrue("updated file "+  newFileName+" exist", newPathExists.get());
-        Assert.assertTrue("Correct moved file contents", Arrays.equals(movedContents, msg.getBytes()));
-
-        // mkdir
-        Path directory = home.resolve("adirectory");
-
-        Supplier<Boolean> directoryExists = () -> directory.toFile().exists();
-        Assert.assertFalse("directory "+ directory +" doesn't already exist", directoryExists.get());
-
-        directory.toFile().mkdir();
-
-        Assert.assertTrue("Mkdir exists", directoryExists.get());
-
-        //move a file to a different directory (calls rename)
-        Path inDir = directory.resolve(newFileName.getFileName());
-        Supplier<Boolean> inDirExists = () -> inDir.toFile().exists();
-        Assert.assertFalse("new file in directory "+ inDir +" doesn't already exist", inDirExists.get());
-
-        Files.move(newFileName, inDir);
-
-        Assert.assertTrue("new file in directory "+ inDir +" exist", inDirExists.get());
-
-        Assert.assertFalse("previous file in directory "+ newFileName +" present after move op", newPathExists.get());
-
-        byte[] inDirContents =  Files.readAllBytes(inDir);
-
-        Assert.assertTrue("Correct file contents after move to another directory", Arrays.equals(inDirContents, msg.getBytes()));
     }
 
     private void fileTest(int length, Random random)  throws IOException {

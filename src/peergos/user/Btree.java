@@ -119,7 +119,7 @@ public interface Btree {
         public PairMultihash remove(UserPublicKey sharingKey, byte[] mapKey) throws IOException {
             HttpURLConnection conn = null;
             try {
-                conn = (HttpURLConnection) buildURL("btree/remove").openConnection();
+                conn = (HttpURLConnection) buildURL("btree/delete").openConnection();
                 conn.setDoInput(true);
                 conn.setDoOutput(true);
                 DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
@@ -134,6 +134,8 @@ public interface Btree {
                     throw new IOException("Couldn't add data to DHT!");
                 byte[] res = Serialize.deserializeByteArray(din, 512);
                 DataSource source = new DataSource(res);
+                // read header for byte array
+                source.readInt();
                 return new PairMultihash(MaybeMultihash.deserialize(source), MaybeMultihash.deserialize(source));
             } finally {
                 if (conn != null)

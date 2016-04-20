@@ -21,9 +21,8 @@ import java.io.InputStream;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.*;
-import java.util.Optional;
-import java.util.Set;
-import java.util.function.Function;
+import java.util.*;
+import java.util.function.*;
 
 /**
  * Nice FUSE API doc @
@@ -290,7 +289,9 @@ public class PeergosFS extends FuseStubFS {
 
     @Override
     public int ftruncate(String s, @off_t long l, FuseFileInfo fuseFileInfo) {
-        return unimp();
+        Path path = Paths.get(s);
+        String parentPath = path.getParent().toString();
+        return applyIfBothPresent(parentPath, s, (parent, file) -> truncate(parent, file, l));
     }
 
     @Override
@@ -412,6 +413,10 @@ public class PeergosFS extends FuseStubFS {
         return applyIf(path, isPresent, func, _default);
     }
 
+    private int applyIfBothPresent(String parentPath, String filePath, BiFunction<PeergosStat, PeergosStat,  Integer> func) {
+        int aDefault = 1;
+        return applyIfPresent(parentPath, parentStat -> applyIfPresent(filePath, fileStat -> func.apply(parentStat, fileStat)), aDefault);
+    }
 
     private int rmdir(PeergosStat stat) {
         FileTreeNode treeNode = stat.treeNode;
@@ -468,6 +473,27 @@ public class PeergosFS extends FuseStubFS {
         byte[] toWrite = new byte[size];
         pointer.get(0, toWrite, 0, size);
         return toWrite;
+    }
+
+    public int truncate(PeergosStat parent, PeergosStat file, long size) {
+
+        debug("TRUNCATE file %s, size %d", file.properties.name, size);
+
+        try {
+            if (size > Integer.MAX_VALUE)
+                throw new IllegalStateException("Trying to truncate/extend to > 4GiB! "+ size);
+
+            byte[] original = Serialize.readFully(file.treeNode.getInputStream(userContext, file.properties.size, l -> {}));
+            // TODO do this smarter by only writing the chunk containing the new endpoint, and deleting all following chunks
+            // or extending with 0s
+            byte[] truncated = Arrays.copyOfRange(original, 0, (int)size);
+            file.treeNode.remove(userContext, parent.treeNode);
+            boolean b = parent.treeNode.uploadFile(file.properties.name, new ByteArrayInputStream(truncated), truncated.length, userContext, l -> {});
+            return b ? (int) size : 1;
+        } catch (Throwable t) {
+            t.printStackTrace();
+            return 1;
+        }
     }
 
     public int write(PeergosStat parent, String name, byte[] toWrite, long size, long offset) {
