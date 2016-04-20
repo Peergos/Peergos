@@ -58,4 +58,15 @@ public class FileProperties {
     public FileProperties withModified(LocalDateTime modified) {
         return new FileProperties(name, size, modified, isHidden, thumbnail);
     }
+
+    @Override
+    public String toString() {
+        return "FileProperties{" +
+                "name='" + name + '\'' +
+                ", size=" + size +
+                ", modified=" + modified +
+                ", isHidden=" + isHidden +
+                ", thumbnail=" + thumbnail +
+                '}';
+    }
 }

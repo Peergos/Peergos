@@ -313,23 +313,32 @@ public class PeergosFS extends FuseStubFS {
         if (! parentOpt.isPresent())
             return aDefault;
 
-        return applyIfPresent(s, (stat) -> {
-            Timespec modified = timespecs[0], access = timespecs[1];
-            long epochSeconds = modified.tv_sec.get();
-            Instant instant = Instant.ofEpochSecond(epochSeconds);
-            LocalDateTime lastModified = LocalDateTime.ofInstant(instant, ZoneId.systemDefault());
+        // TODO: 20/04/16 this is broken in the jnr-fuse dependency (seg-faults the JVM accessing timespecs members!)
+        return 0;
 
-//            debug("UTIMENS %s, with %s, %d, %s", s, lastModified.toString(), epochSeconds, modified.toString());
-
-            FileProperties updated = stat.properties.withModified(lastModified);
-            try {
-                boolean isUpdated = stat.treeNode.setProperties(updated, userContext, parentOpt.get().treeNode);
-                return isUpdated ? 0 : 1;
-            } catch (IOException ex) {
-                ex.printStackTrace();
-                return 1;
-            }
-        }, aDefault);
+//        return applyIfPresent(s, (stat) -> {
+//
+//            Timespec modified = timespecs[0], access = timespecs[1];
+//            long epochSeconds = modified.tv_sec.longValue() * 1000;
+//            Instant instant = Instant.ofEpochSecond(epochSeconds);
+//            LocalDateTime lastModified = LocalDateTime.ofInstant(instant, ZoneId.systemDefault());
+//
+//            FileProperties updated = stat.properties.withModified(lastModified);
+//
+//            debug("utimens %s, with %s, %d, %s, updated %s", s,
+//                    lastModified.toString(),
+//                    epochSeconds,
+//                    modified.toString(),
+//                    updated.toString());
+//
+//            try {
+//                boolean isUpdated = stat.treeNode.setProperties(updated, userContext, parentOpt.get().treeNode);
+//                return isUpdated ? 0 : 1;
+//            } catch (IOException ex) {
+//                ex.printStackTrace();
+//                return 1;
+//            }
+//        }, aDefault);
 
     }
 
