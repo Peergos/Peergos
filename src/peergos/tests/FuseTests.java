@@ -109,7 +109,16 @@ public class FuseTests {
 
         byte[] initialData = Files.readAllBytes(initial);
 
-        Path target = initial.getParent().resolve(randomUUID().toString());
+
+        String[] stem = Stream.generate(() -> randomUUID().toString())
+                .limit(2)
+                .toArray(String[]::new);
+
+        Path targetDir = Paths.get(initial.getParent().toString(), stem);
+        targetDir.toFile().mkdirs();
+        assertTrue("target dir exists", targetDir.toFile().isDirectory());
+
+        Path target = targetDir.resolve(randomUUID().toString());
         assertFalse("target exists", target.toFile().exists());
 
         Files.move(initial, target);
@@ -184,7 +193,7 @@ public class FuseTests {
 
     @Test public void mkdirsTest() throws IOException {
 
-        String[] stem = Stream.generate(randomUUID()::toString)
+        String[] stem = Stream.generate(() -> randomUUID().toString())
                 .limit(10)
                 .toArray(String[]::new);
 
