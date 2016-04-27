@@ -114,7 +114,9 @@ public class TweetNaCl {
         byte[] c = new byte[SECRETBOX_OVERHEAD_BYTES + cipher.length];
         byte[] m = new byte[c.length];
         System.arraycopy(cipher, 0, c, SECRETBOX_OVERHEAD_BYTES, cipher.length);
-        boolean isValid = c.length >=32 && crypto_secretbox_open(m, c, c.length, nonce, key) != 0;
+        boolean validCipher = c.length >= 32;
+        boolean success = crypto_secretbox_open(m, c, c.length, nonce, key) == 0;
+        boolean isValid = validCipher && success;
 
         String exMsg = "Invalid encryption! ["+ cipher.length + "] = " +
                 ArrayOps.bytesToHex(Arrays.copyOfRange(cipher, 0, Math.min(cipher.length, 64))) + " ... " +
