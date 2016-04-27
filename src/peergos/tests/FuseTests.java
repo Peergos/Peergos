@@ -119,12 +119,12 @@ public class FuseTests {
         assertTrue("target dir exists", targetDir.toFile().isDirectory());
 
         Path target = targetDir.resolve(randomUUID().toString());
-        assertFalse("target exists", target.toFile().exists());
+        assertFalse("target exists before move", target.toFile().exists());
 
         Files.move(initial, target);
 
         assertFalse("initial still exists", initial.toFile().exists());
-        assertTrue("target exists", target.toFile().exists());
+        assertTrue("target exists aftter move", target.toFile().exists());
         byte[] targetData = Files.readAllBytes(target);
 
         assertTrue("target contents equal to iniital contents", Arrays.equals(initialData, targetData));
@@ -280,6 +280,7 @@ public class FuseTests {
 
     @AfterClass
     public static void shutdown() {
-        fuseProcess.close();
+        if (fuseProcess != null)
+            fuseProcess.close();
     }
 }
