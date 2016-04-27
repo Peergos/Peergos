@@ -149,9 +149,9 @@ public class FuseTests {
 
     @Test public  void removeTest() throws IOException {
         Path path = createRandomFile();
-        assertTrue("path exists", path.toFile().exists());
+        assertTrue("path exists before delete", path.toFile().exists());
         Files.delete(path);
-        assertFalse("path exists", path.toFile().exists());
+        assertFalse("path exists after delete", path.toFile().exists());
     }
 
     @Test public  void truncateTest() throws IOException {

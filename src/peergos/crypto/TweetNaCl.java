@@ -30,7 +30,12 @@ public class TweetNaCl {
     private static final int SECRETBOX_INTERNAL_OVERHEAD_BYTES = 32;
 
     public static class InvalidSignatureException extends RuntimeException {}
-    public static class InvalidCipherTextException extends RuntimeException {}
+    public static class InvalidCipherTextException extends IllegalStateException {
+        InvalidCipherTextException() {}
+        InvalidCipherTextException(String msg) {
+            super(msg);
+        }
+    }
 
     public static void crypto_sign_keypair(byte[] pk, byte[] sk, boolean isSeeded)
     {
@@ -109,11 +114,17 @@ public class TweetNaCl {
         byte[] c = new byte[SECRETBOX_OVERHEAD_BYTES + cipher.length];
         byte[] m = new byte[c.length];
         System.arraycopy(cipher, 0, c, SECRETBOX_OVERHEAD_BYTES, cipher.length);
-        if (c.length < 32) throw new IllegalStateException("Cipher too small!");
-        if (crypto_secretbox_open(m, c, c.length, nonce, key) != 0)
-            throw new IllegalStateException("Invalid encryption! ["+ cipher.length + "] = " +
-                    ArrayOps.bytesToHex(Arrays.copyOfRange(cipher, 0, Math.min(cipher.length, 64))) + " ... " +
-                    ArrayOps.bytesToHex(Arrays.copyOfRange(cipher, Math.max(0, cipher.length - 64), cipher.length)));
+        boolean isValid = c.length >=32 && crypto_secretbox_open(m, c, c.length, nonce, key) != 0;
+
+        String exMsg = "Invalid encryption! ["+ cipher.length + "] = " +
+                ArrayOps.bytesToHex(Arrays.copyOfRange(cipher, 0, Math.min(cipher.length, 64))) + " ... " +
+                ArrayOps.bytesToHex(Arrays.copyOfRange(cipher, Math.max(0, cipher.length - 64), cipher.length));
+
+        InvalidCipherTextException ex =  new InvalidCipherTextException(exMsg);
+
+        if (! isValid)
+            throw ex;
+
         return Arrays.copyOfRange(m, SECRETBOX_INTERNAL_OVERHEAD_BYTES, m.length);
     }
 
