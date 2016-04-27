@@ -209,12 +209,15 @@ public class FuseTests {
     }
 
     @Test public  void rmdirTest() throws IOException {
-        Path path = home.resolve(randomUUID().toString());
+        Path path = home
+                .resolve(randomUUID().toString())
+                .resolve(randomUUID().toString());
+
 
         assertFalse("dir exists initially",
                 path.toFile().exists());
 
-        path.toFile().mkdir();
+        path.toFile().mkdirs();
 
         assertTrue("dir exists after creation",
                 path.toFile().exists());
