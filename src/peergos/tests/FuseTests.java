@@ -164,6 +164,7 @@ public class FuseTests {
         Random rnd = new Random(666);
         rnd.nextBytes(tmp);
         raf.write(tmp);
+        raf.close();
         byte[] expected = Arrays.copyOfRange(initial, 0, 3*length);
         System.arraycopy(tmp, 0, expected, 2*length, length);
         byte[] extendedContents = Files.readAllBytes(path);
