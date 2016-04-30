@@ -147,14 +147,30 @@ public class FuseTests {
         assertTrue("initial and target contents equal", contentEquals);
     }
 
-    @Test public  void removeTest() throws IOException {
+    @Test public void removeTest() throws IOException {
         Path path = createRandomFile();
         assertTrue("path exists before delete", path.toFile().exists());
         Files.delete(path);
         assertFalse("path exists after delete", path.toFile().exists());
     }
 
-    @Test public  void truncateTest() throws IOException {
+    @Test public void writePastEnd() throws IOException {
+        int length = 10 * 1024;
+        Path path = createRandomFile(length);
+        byte[] initial = Files.readAllBytes(path);
+        RandomAccessFile raf = new RandomAccessFile(path.toFile(), "rw");
+        raf.seek(2*length);
+        byte[] tmp = new byte[length];
+        Random rnd = new Random(666);
+        rnd.nextBytes(tmp);
+        raf.write(tmp);
+        byte[] expected = Arrays.copyOfRange(initial, 0, 3*length);
+        System.arraycopy(tmp, 0, expected, 2*length, length);
+        byte[] extendedContents = Files.readAllBytes(path);
+        assertTrue("Correct contents", Arrays.equals(expected, extendedContents));
+    }
+
+    @Test public void truncateTest() throws IOException {
         int initialLength = 0x1000;
         Path path = createRandomFile(initialLength);
 

@@ -208,8 +208,14 @@ public class FileTreeNode {
             SymmetricKey baseKey = child.pointer.filePointer.baseKey;
 
             if (startIndex > filesSize) {
-                // TODO append with zeroes up to startIndex
-                throw new IllegalStateException("Unimplemented!");
+                // append with zeroes up until startIndex
+                uploadFile(filename, new InputStream() {
+                    @Override
+                    public int read() throws IOException {
+                        return 0;
+                    }
+                }, filesSize, startIndex, context, l -> {
+                });
             }
 
             if (endIndex == 10*1024*1024)
