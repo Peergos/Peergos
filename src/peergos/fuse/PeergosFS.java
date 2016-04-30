@@ -112,7 +112,22 @@ public class PeergosFS extends FuseStubFS {
 
     @Override
     public int unlink(String s) {
-        return unimp();
+        try {
+            Path requested = Paths.get(s);
+            Optional<FileTreeNode> file = userContext.getTreeRoot().getDescendentByPath(s, userContext);
+            if (!file.isPresent())
+                return 1;
+
+            Optional<FileTreeNode> parent = userContext.getTreeRoot().getDescendentByPath(requested.getParent().toString(), userContext);
+            if (!parent.isPresent())
+                return 1;
+
+            boolean removed = file.get().remove(userContext, parent.get());
+            return removed ? 0 : 1;
+        } catch (IOException ioe) {
+            ioe.printStackTrace();
+            return 1;
+        }
     }
 
     @Override
