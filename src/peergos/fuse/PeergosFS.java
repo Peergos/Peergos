@@ -141,7 +141,7 @@ public class PeergosFS extends FuseStubFS {
         return unimp();
     }
 
-    private int rename(PeergosStat source, PeergosStat sourceParent, String name) {
+    private int rename(PeergosStat source, PeergosStat sourceParent, String sourcePath, String name) {
         try {
             Path requested = Paths.get(name);
             Optional<FileTreeNode> newParent = userContext.getTreeRoot().getDescendentByPath(requested.getParent().toString(), userContext);
@@ -150,8 +150,13 @@ public class PeergosFS extends FuseStubFS {
 
             FileTreeNode parent = sourceParent.treeNode;
             source.treeNode.rename(requested.getFileName().toString(), userContext, parent);
+            // TODO clean up on error conditions
             if (!parent.equals(newParent.get())) {
-                boolean copyResult = source.treeNode.copyTo(newParent.get(), userContext);
+                Path renamedInPlacePath = Paths.get(sourcePath).getParent().resolve(requested.getFileName().toString());
+                Optional<FileTreeNode> renamedOriginal = userContext.getTreeRoot().getDescendentByPath(renamedInPlacePath.toString(), userContext);
+                if (!renamedOriginal.isPresent())
+                    return 1;
+                boolean copyResult = renamedOriginal.get().copyTo(newParent.get(), userContext);
                 boolean removed = source.treeNode.remove(userContext, parent);
                 if (!copyResult || !removed)
                     return 1;
@@ -165,7 +170,7 @@ public class PeergosFS extends FuseStubFS {
     @Override
     public int rename(String s, String s1) {
         Path source = Paths.get(s);
-        return applyIfPresent(s, (stat) -> applyIfPresent(source.getParent().toString(), parentStat -> rename(stat, parentStat, s1)));
+        return applyIfPresent(s, (stat) -> applyIfPresent(source.getParent().toString(), parentStat -> rename(stat, parentStat, s, s1)));
     }
 
     @Override
