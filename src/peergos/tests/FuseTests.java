@@ -257,7 +257,19 @@ public class FuseTests {
 
         byte[] contents = Files.readAllBytes(path);
 
-        Assert.assertTrue("Correct file contents for length "+ length, Arrays.equals(data, contents));
+        boolean equals = Arrays.equals(data, contents);
+        String diff = equals ? "" : "Different at index " + firstDifferentindex(data, contents);
+        Assert.assertTrue("Correct file contents: length("+ contents.length +") expected("+length+") "+ diff, equals);
+    }
+
+    public static int firstDifferentindex(byte[] src, byte[] target) {
+        for (int i=0; i < src.length; i++) {
+            if (i >= target.length)
+                return i;
+            if (src[i] != target[i])
+                return i;
+        }
+        return -1;
     }
 
     @Test
@@ -269,7 +281,6 @@ public class FuseTests {
             fileTest(length, random);
         }
     }
-
 
     private static void runForAWhile() {
         for (int i=0; i < 600; i++)
