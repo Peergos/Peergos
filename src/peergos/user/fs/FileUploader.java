@@ -75,7 +75,7 @@ public class FileUploader implements AutoCloseable {
         return res;
     }
 
-    public static void uploadChunk(User writer, FileProperties props, Location parentLocation, SymmetricKey parentparentKey,
+    public static boolean uploadChunk(User writer, FileProperties props, Location parentLocation, SymmetricKey parentparentKey,
                                    LocatedChunk chunk, int nOriginalFragments, int nAllowedFalures, Location nextChunkLocation,
                                    UserContext context, Consumer<Long> monitor) throws IOException {
         EncryptedChunk encryptedChunk = chunk.chunk.encrypt();
@@ -84,8 +84,7 @@ public class FileUploader implements AutoCloseable {
         List<Multihash> hashes = context.uploadFragments(fragments, chunk.location.owner, chunk.location.writer, chunk.chunk.mapKey(), monitor);
         FileRetriever retriever = new EncryptedChunkRetriever(chunk.chunk.nonce(), encryptedChunk.getAuth(), hashes, nextChunkLocation, nOriginalFragments, nAllowedFalures);
         FileAccess metaBlob = FileAccess.create(chunk.chunk.key(), SymmetricKey.random(), props, retriever, parentLocation, parentparentKey);
-        context.uploadChunk(metaBlob, chunk.location.owner, writer, chunk.chunk.mapKey(), hashes);
-        Location nextL = new Location(chunk.location.owner, chunk.location.writer, chunk.chunk.mapKey());
+        return context.uploadChunk(metaBlob, chunk.location.owner, writer, chunk.chunk.mapKey(), hashes);
     }
 
     public void close() throws IOException  {

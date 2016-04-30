@@ -476,6 +476,10 @@ public class PeergosFS extends FuseStubFS {
             is.skip(offset);
 
             for (long i = 0; i < size; i++) {
+                // N.B. Fuse seems to assume that a file must be an integral number of disk sectors,
+                // so need to tolerate EOFs up end of last sector (4KiB)
+                if (i + offset >= actualSize && i + offset < actualSize + 4096)
+                    continue;
                 int read = is.read();
                 if (read < 0)
                     return 1;
