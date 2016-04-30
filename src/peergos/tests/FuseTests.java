@@ -124,7 +124,7 @@ public class FuseTests {
         Files.move(initial, target);
 
         assertFalse("initial still exists", initial.toFile().exists());
-        assertTrue("target exists aftter move", target.toFile().exists());
+        assertTrue("target exists after move", target.toFile().exists());
         byte[] targetData = Files.readAllBytes(target);
 
         assertTrue("target contents equal to iniital contents", Arrays.equals(initialData, targetData));

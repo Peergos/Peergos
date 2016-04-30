@@ -132,7 +132,8 @@ public class PeergosFS extends FuseStubFS {
 
     @Override
     public int rmdir(String s) {
-        return applyIfPresent(s, (stat) -> rmdir(stat));
+        Path dir = Paths.get(s);
+        return applyIfPresent(s, (stat) -> applyIfPresent(dir.getParent().toString(), parentStat -> rmdir(stat, parentStat)));
     }
 
     @Override
@@ -140,22 +141,18 @@ public class PeergosFS extends FuseStubFS {
         return unimp();
     }
 
-    private int rename(PeergosStat stat, String name) {
+    private int rename(PeergosStat source, PeergosStat sourceParent, String name) {
         try {
             Path requested = Paths.get(name);
             Optional<FileTreeNode> newParent = userContext.getTreeRoot().getDescendentByPath(requested.getParent().toString(), userContext);
             if (!newParent.isPresent())
                 return 1;
 
-            Optional<FileTreeNode> treeNode = stat.treeNode.retrieveParent(userContext);
-            if (!treeNode.isPresent())
-                return 1;
-
-            FileTreeNode parent = treeNode.get();
-            stat.treeNode.rename(requested.getFileName().toString(), userContext, parent);
+            FileTreeNode parent = sourceParent.treeNode;
+            source.treeNode.rename(requested.getFileName().toString(), userContext, parent);
             if (!parent.equals(newParent.get())) {
-                boolean copyResult = stat.treeNode.copyTo(newParent.get(), userContext);
-                boolean removed = stat.treeNode.remove(userContext, parent);
+                boolean copyResult = source.treeNode.copyTo(newParent.get(), userContext);
+                boolean removed = source.treeNode.remove(userContext, parent);
                 if (!copyResult || !removed)
                     return 1;
             }
@@ -167,7 +164,8 @@ public class PeergosFS extends FuseStubFS {
     }
     @Override
     public int rename(String s, String s1) {
-        return applyIfPresent(s, (stat) -> rename(stat, s1));
+        Path source = Paths.get(s);
+        return applyIfPresent(s, (stat) -> applyIfPresent(source.getParent().toString(), parentStat -> rename(stat, parentStat, s1)));
     }
 
     @Override
@@ -442,12 +440,10 @@ public class PeergosFS extends FuseStubFS {
         return applyIfPresent(parentPath, parentStat -> applyIfPresent(filePath, fileStat -> func.apply(parentStat, fileStat)), aDefault);
     }
 
-    private int rmdir(PeergosStat stat) {
+    private int rmdir(PeergosStat stat, PeergosStat parentStat) {
         FileTreeNode treeNode = stat.treeNode;
         try {
-            Optional<FileTreeNode> opt = treeNode.retrieveParent(userContext);
-            treeNode.remove(userContext,
-                    opt.get());
+            treeNode.remove(userContext, parentStat.treeNode);
             return 0;
         } catch (IOException ioe) {
             ioe.printStackTrace();
