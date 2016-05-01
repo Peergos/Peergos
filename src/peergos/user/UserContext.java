@@ -53,23 +53,13 @@ public class UserContext {
 
     public void init() throws IOException {
         staticData.clear();
-        this.rootNode = FileTreeNode.createRoot();
+        rootNode = FileTreeNode.createRoot();
         createFileTree();
-        Set<FileTreeNode> children = rootNode.getChildren(this);
-        for (FileTreeNode child: children) {
-            if (child.getFileProperties().name.equals(username)) {
-                Set<FileTreeNode> ourdirs = child.getChildren(this);
-                for (FileTreeNode childNode: ourdirs) {
-                    if (childNode.getFileProperties().name.equals("shared")) {
-                        sharingFolder = childNode;
-                        usernames = corenodeClient.getAllUsernames().stream().collect(Collectors.toSet());
-                        return;
-                    }
-                }
-            }
+        Optional<FileTreeNode> sharedOpt = rootNode.getDescendentByPath(username + "/" + "shared", this);
+        if (!sharedOpt.isPresent())
             throw new IllegalStateException("Couldn't find shared folder!");
-        }
-        throw new IllegalStateException("No root directory found!");
+        sharingFolder = sharedOpt.get();
+        usernames = corenodeClient.getAllUsernames().stream().collect(Collectors.toSet());
     }
 
     public Set<String> getUsernames() {
@@ -448,12 +438,20 @@ public class UserContext {
         // download the metadata blobs for these entry points
         Map<EntryPoint, FileAccess> res = new HashMap<>();
         for (EntryPoint entry: entries) {
-            MaybeMultihash btreeValue = btree.get(entry.pointer.writer, entry.pointer.mapKey);
-            Optional<byte[]> value = dhtClient.get(btreeValue.get());
-            if (value.isPresent()) // otherwise this is a deleted directory
-                res.put(entry, FileAccess.deserialize(value.get()));
+            Optional<FileAccess> metablob = downloadEntryPoint(entry);
+            if (metablob.isPresent()) // otherwise this is a deleted directory
+                res.put(entry, metablob.get());
         }
         return res;
+    }
+
+    private Optional<FileAccess> downloadEntryPoint(EntryPoint entry) throws IOException {
+        // download the metadata blobs for this entry point
+        MaybeMultihash btreeValue = btree.get(entry.pointer.writer, entry.pointer.mapKey);
+        Optional<byte[]> value = dhtClient.get(btreeValue.get());
+        if (value.isPresent()) // otherwise this is a deleted directory
+            return Optional.of(FileAccess.deserialize(value.get()));
+        return Optional.empty();
     }
 
     public FileTreeNode getTreeRoot() {
