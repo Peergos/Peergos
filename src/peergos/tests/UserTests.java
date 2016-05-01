@@ -20,7 +20,6 @@ import java.util.logging.Logger;
 
 public class UserTests {
 
-    private static int N_CHUNKS = 10;
     public static int RANDOM_SEED = 666;
     public static int WEB_PORT = 9876;
     public static int CORE_PORT = 9753;

@@ -27,7 +27,6 @@ public class UserContext {
     private final SortedMap<UserPublicKey, EntryPoint> staticData = new TreeMap<>();
     private Set<String> usernames;
     private FileTreeNode rootNode;
-    private FileTreeNode sharingFolder;
 
     public UserContext(String username, User user, SymmetricKey root, DHTClient dht, Btree btree, CoreNode coreNode) throws IOException {
         this.username = username;
@@ -58,7 +57,6 @@ public class UserContext {
         Optional<FileTreeNode> sharedOpt = rootNode.getDescendentByPath(username + "/" + "shared", this);
         if (!sharedOpt.isPresent())
             throw new IllegalStateException("Couldn't find shared folder!");
-        sharingFolder = sharedOpt.get();
         usernames = corenodeClient.getAllUsernames().stream().collect(Collectors.toSet());
     }
 
@@ -67,7 +65,11 @@ public class UserContext {
     }
 
     public FileTreeNode getSharingFolder() {
-        return sharingFolder;
+        try {
+            return rootNode.getDescendentByPath(username + "/shared", this).get();
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     public boolean isRegistered() throws IOException {
