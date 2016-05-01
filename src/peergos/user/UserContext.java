@@ -342,12 +342,7 @@ public class UserContext {
                                 corenodeClient.removeFollowRequest(user.toUserPublicKey(), user.signMessage(freq.rawCipher));
                             } else {
                                 // add new entry to tree root
-                                FileTreeNode treenode = downloadEntryPoints(Stream.of(freq.entry.get()).collect(Collectors.toSet()))
-                                        .entrySet()
-                                        .stream()
-                                        .map(e -> new FileTreeNode(new RetrievedFilePointer(e.getKey().pointer, e.getValue()),
-                                                e.getKey().owner, e.getKey().readers, e.getKey().writers, e.getKey().pointer.writer))
-                                        .findAny().get();
+                                FileTreeNode treenode = retrieveEntryPoint(freq.entry.get()).get();
                                 getAncestorsAndAddToTree(treenode);
                             }
                             // add entry point to static data
@@ -416,12 +411,37 @@ public class UserContext {
         return true;
     }
 
+    public FileTreeNode getTreeRoot() {
+        return rootNode;
+    }
+
+    public FileTreeNode getUserRoot() {
+        try {
+            return getTreeRoot().getDescendentByPath(username, this).get();
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     private byte[] getStaticData() throws IOException {
         Multihash key = corenodeClient.getMetadataBlob(user.toUserPublicKey()).get();
         return dhtClient.get(key).get();
     }
 
-    private Map<EntryPoint, FileAccess> getRoots() throws IOException {
+    private void createFileTree() throws IOException {
+        Set<FileTreeNode> entrypoints = getEntryPoints().stream()
+                .map(e -> retrieveEntryPoint(e))
+                .filter(e -> e.isPresent())
+                .map(e -> e.get())
+                .collect(Collectors.toSet());
+        System.out.println("Entry points "+entrypoints);
+
+        for (FileTreeNode current: entrypoints) {
+            getAncestorsAndAddToTree(current);
+        }
+    }
+
+    private Set<EntryPoint> getEntryPoints() throws IOException {
         byte[] raw = getStaticData();
         DataSource source = new DataSource(raw);
 
@@ -433,44 +453,7 @@ public class UserContext {
             addToStaticData(entry);
         }
 
-        return downloadEntryPoints(res);
-    }
-
-    private Map<EntryPoint, FileAccess> downloadEntryPoints(Set<EntryPoint> entries) throws IOException {
-        // download the metadata blobs for these entry points
-        Map<EntryPoint, FileAccess> res = new HashMap<>();
-        for (EntryPoint entry: entries) {
-            Optional<FileAccess> metablob = downloadEntryPoint(entry);
-            if (metablob.isPresent()) // otherwise this is a deleted directory
-                res.put(entry, metablob.get());
-        }
         return res;
-    }
-
-    private Optional<FileAccess> downloadEntryPoint(EntryPoint entry) throws IOException {
-        // download the metadata blobs for this entry point
-        MaybeMultihash btreeValue = btree.get(entry.pointer.writer, entry.pointer.mapKey);
-        Optional<byte[]> value = dhtClient.get(btreeValue.get());
-        if (value.isPresent()) // otherwise this is a deleted directory
-            return Optional.of(FileAccess.deserialize(value.get()));
-        return Optional.empty();
-    }
-
-    public FileTreeNode getTreeRoot() {
-        return rootNode;
-    }
-
-    public FileTreeNode getUserRoot() {
-        FileTreeNode root = getTreeRoot();
-        Set<FileTreeNode> children = root.getChildren(this);
-
-        if (children.size() == 0)
-            throw new IllegalStateException("no children in user root!");
-        List<FileTreeNode> userRoots = children.stream()
-                .filter(e -> e.getFileProperties().name.equals(username)).collect(Collectors.toList());
-        if (userRoots.size() != 1)
-            throw new IllegalStateException("user has "+ userRoots.size() +" roots!");
-        return userRoots.get(0);
     }
 
     private void getAncestorsAndAddToTree(FileTreeNode treeNode) {
@@ -488,16 +471,22 @@ public class UserContext {
         }
     }
 
-    private void createFileTree() throws IOException {
-        Map<EntryPoint, FileAccess> roots = getRoots();
-        Set<FileTreeNode> entrypoints = roots.entrySet().stream()
-                .map(e -> new FileTreeNode(new RetrievedFilePointer(e.getKey().pointer, e.getValue()), e.getKey().owner,
-                        e.getKey().readers, e.getKey().writers, e.getKey().pointer.writer)).collect(Collectors.toSet());
-        System.out.println("Entry points "+entrypoints);
+    public Optional<FileTreeNode> retrieveEntryPoint(EntryPoint e) {
+        return downloadEntryPoint(e).map(fa -> new FileTreeNode(new RetrievedFilePointer(e.pointer, fa), e.owner,
+                        e.readers, e.writers, e.pointer.writer));
+    }
 
-        for (FileTreeNode current: entrypoints) {
-            getAncestorsAndAddToTree(current);
+    private Optional<FileAccess> downloadEntryPoint(EntryPoint entry) {
+        // download the metadata blob for this entry point
+        try {
+            MaybeMultihash btreeValue = btree.get(entry.pointer.writer, entry.pointer.mapKey);
+            Optional<byte[]> value = dhtClient.get(btreeValue.get());
+            if (value.isPresent()) // otherwise this is a deleted directory
+                return Optional.of(FileAccess.deserialize(value.get()));
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
         }
+        return Optional.empty();
     }
 
     public Map<ReadableFilePointer, FileAccess> retrieveAllMetadata(List<SymmetricLocationLink> links, SymmetricKey baseKey) throws IOException {
