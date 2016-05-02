@@ -12,11 +12,9 @@ import java.util.function.*;
 import java.util.stream.*;
 
 public class FileTreeNode {
-    public static final FileTreeNode ROOT = createRoot();
 
     RetrievedFilePointer pointer;
     private FileProperties props;
-    Set<FileTreeNode> indirectChildren = new HashSet<>();
     String ownername;
     Set<String> readers;
     Set<String> writers;
@@ -49,10 +47,6 @@ public class FileTreeNode {
 
     public RetrievedFilePointer getPointer() {
         return pointer;
-    }
-
-    public void addChild(FileTreeNode child) throws IOException {
-        indirectChildren.add(child);
     }
 
     public boolean isRoot() {
@@ -90,8 +84,7 @@ public class FileTreeNode {
     }
 
     public boolean hasChildWithName(String name, UserContext context) {
-        return indirectChildren.stream().filter(f -> props.name.equals(name)).findAny().isPresent()
-                || getChildren(context).stream().filter(c -> c.props.name.equals(name)).findAny().isPresent();
+        return getChildren(context).stream().filter(c -> c.props.name.equals(name)).findAny().isPresent();
     }
 
     public boolean removeChild(FileTreeNode child, UserContext context) throws IOException {
@@ -114,7 +107,6 @@ public class FileTreeNode {
         } else {
             ((DirAccess)pointer.fileAccess).addFile(loc, this.getKey(), file.getKey());
         }
-        this.addChild(file);
         return ((DirAccess)pointer.fileAccess).commit(pointer.filePointer.owner, (User)entryWriterKey, pointer.filePointer.mapKey, context);
     }
 
@@ -124,6 +116,14 @@ public class FileTreeNode {
 
     public boolean isWritable() {
         return entryWriterKey instanceof User;
+    }
+
+    public boolean isReadable() {
+        try {
+            pointer.fileAccess.getMetaKey(pointer.filePointer.baseKey);
+            return false;
+        } catch (Exception e) {}
+        return true;
     }
 
     public SymmetricKey getKey() {
@@ -147,7 +147,7 @@ public class FileTreeNode {
         try {
             RetrievedFilePointer parentRFP = pointer.fileAccess.getParent(parentKey, context);
             if (parentRFP == null)
-                return Optional.of(ROOT);
+                return Optional.of(createRoot());
             return Optional.of(new FileTreeNode(parentRFP, ownername, Collections.EMPTY_SET, Collections.EMPTY_SET, entryWriterKey));
         } catch (IOException e) {
             throw new IllegalStateException(e);
@@ -166,30 +166,28 @@ public class FileTreeNode {
     }
 
     public Set<FileTreeNode> getChildren(UserContext context) {
-        if (this == ROOT)
-            return new HashSet<>(indirectChildren);
-        try {
+        if (this.props.name.equals("/"))
+            return context.getChildren("/");
+        if (isReadable()) {
             Set<RetrievedFilePointer> childrenRFPs = retrieveChildren(context);
             Set<FileTreeNode> newChildren = childrenRFPs.stream().map(x -> new FileTreeNode(x, ownername, readers, writers, entryWriterKey)).collect(Collectors.toSet());
-            return Stream.concat(indirectChildren.stream(), newChildren.stream()).collect(Collectors.toSet());
-        } catch (Exception e) {
-            e.printStackTrace();
-            // directories we don't have read access to have children populated during tree creation
-            return new HashSet<>(indirectChildren);
+            return newChildren.stream().collect(Collectors.toSet());
         }
+        return context.getChildren(getPath(context));
     }
 
-    private Set<RetrievedFilePointer> retrieveChildren(UserContext context) throws IOException {
+    private Set<RetrievedFilePointer> retrieveChildren(UserContext context) {
         ReadableFilePointer filePointer = pointer.filePointer;
         FileAccess fileAccess = pointer.fileAccess;
         SymmetricKey rootDirKey = filePointer.baseKey;
-        boolean canGetChildren = true;
-        try {
-            fileAccess.getMetaKey(rootDirKey);
-            canGetChildren = false;
-        } catch (Exception e) {}
-        if (canGetChildren)
-            return ((DirAccess)fileAccess).getChildren(context, rootDirKey);
+
+        if (isReadable()) {
+            try {
+                return ((DirAccess) fileAccess).getChildren(context, rootDirKey);
+            } catch (IOException e) {
+                throw new IllegalStateException(e);
+            }
+        }
         throw new IllegalStateException("No credentials to retrieve children!");
     }
 

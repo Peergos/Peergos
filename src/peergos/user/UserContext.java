@@ -33,6 +33,7 @@ public class UserContext {
         Optional<EntryPoint> value = Optional.empty();
 
         public Optional<FileTreeNode> getByPath(String path, UserContext context) {
+            System.out.println("GetByPath: "+path);
             if (path.startsWith("/"))
                 path = path.substring(1);
             if (path.length() == 0) {
@@ -45,6 +46,21 @@ public class UserContext {
             if (!children.containsKey(elements[0]))
                 return context.retrieveEntryPoint(value.get()).get().getDescendentByPath(path, context);
             return children.get(elements[0]).getByPath(path.substring(elements[0].length()), context);
+        }
+
+        public Set<FileTreeNode> getChildren(String path, UserContext context) {
+            if (path.startsWith("/"))
+                path = path.substring(1);
+            if (path.length() == 0) {
+                if (!value.isPresent()) { // find a child entry and traverse parent links
+                    return children.values().stream().map(t -> t.getByPath("", context).get()).collect(Collectors.toSet());
+                }
+                return value.flatMap(e -> context.retrieveEntryPoint(e).map(f -> f.getChildren(context))).orElse(Collections.emptySet());
+            }
+            String[] elements = path.split("/");
+            if (!children.containsKey(elements[0]))
+                return context.retrieveEntryPoint(value.get()).get().getDescendentByPath(path, context).get().getChildren(context);
+            return children.get(elements[0]).getChildren(path.substring(elements[0].length()), context);
         }
 
         public void put(String path, EntryPoint e) {
@@ -452,6 +468,10 @@ public class UserContext {
         return true;
     }
 
+    public Set<FileTreeNode> getChildren(String path) {
+        return entrie.getChildren(path, this);
+    }
+
     public Optional<FileTreeNode> getByPath(String path) {
         return entrie.getByPath(path, this);
     }
@@ -557,7 +577,7 @@ public class UserContext {
         // remove our static data entry storing that we've granted them access
         removeFromStaticData(dir.get());
         Optional<FileTreeNode> entry = getByPath("/"+username);
-        entry.get().remove(this, FileTreeNode.ROOT);
+        entry.get().remove(this, FileTreeNode.createRoot());
     }
 
     public void removeFollower(String username) throws IOException {
