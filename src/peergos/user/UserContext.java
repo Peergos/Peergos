@@ -25,8 +25,46 @@ public class UserContext {
     public final Btree btree;
 
     private final SortedMap<UserPublicKey, EntryPoint> staticData = new TreeMap<>();
+    private final TrieNode entrie = new TrieNode(); // ba dum che!
     private Set<String> usernames;
-    private FileTreeNode rootNode;
+
+    private static class TrieNode {
+        Map<String, TrieNode> children = new HashMap<>();
+        Optional<EntryPoint> value = Optional.empty();
+
+        public Optional<FileTreeNode> getByPath(String path, UserContext context) {
+            if (path.startsWith("/"))
+                path = path.substring(1);
+            if (path.length() == 0) {
+                if (!value.isPresent()) { // find a child entry and traverse parent links
+                    return children.values().stream().findAny().get().getByPath("", context).get().retrieveParent(context);
+                }
+                return value.flatMap(e -> context.retrieveEntryPoint(e));
+            }
+            String[] elements = path.split("/");
+            if (!children.containsKey(elements[0]))
+                return context.retrieveEntryPoint(value.get()).get().getDescendentByPath(path, context);
+            return children.get(elements[0]).getByPath(path.substring(elements[0].length()), context);
+        }
+
+        public void put(String path, EntryPoint e) {
+            if (path.startsWith("/"))
+                path = path.substring(1);
+            if (path.length() == 0) {
+                value = Optional.of(e);
+                return;
+            }
+            String[] elements = path.split("/");
+            if (!children.containsKey(elements[0]))
+                children.put(elements[0], new TrieNode());
+            children.get(elements[0]).put(path.substring(elements[0].length()), e);
+        }
+
+        public void clear() {
+            children.clear();
+            value = Optional.empty();
+        }
+    }
 
     public UserContext(String username, User user, SymmetricKey root, DHTClient dht, Btree btree, CoreNode coreNode) throws IOException {
         this.username = username;
@@ -52,9 +90,8 @@ public class UserContext {
 
     public void init() throws IOException {
         staticData.clear();
-        rootNode = FileTreeNode.createRoot();
         createFileTree();
-        Optional<FileTreeNode> sharedOpt = rootNode.getDescendentByPath(username + "/" + "shared", this);
+        Optional<FileTreeNode> sharedOpt = getByPath("/"+username + "/" + "shared");
         if (!sharedOpt.isPresent())
             throw new IllegalStateException("Couldn't find shared folder!");
         usernames = corenodeClient.getAllUsernames().stream().collect(Collectors.toSet());
@@ -65,11 +102,7 @@ public class UserContext {
     }
 
     public FileTreeNode getSharingFolder() {
-        try {
-            return rootNode.getDescendentByPath(username + "/shared", this).get();
-        } catch (IOException e) {
-            throw new IllegalStateException(e);
-        }
+        return getByPath("/"+username + "/shared").get();
     }
 
     public boolean isRegistered() throws IOException {
@@ -130,7 +163,13 @@ public class UserContext {
     }
 
     public Set<FileTreeNode> getFriendRoots() {
-        return this.rootNode.getChildren(this).stream().filter(x -> !x.getOwner().equals(username)).collect(Collectors.toSet());
+        return entrie.children.keySet()
+                .stream()
+                .filter(p -> !p.startsWith(username))
+                .map(p -> getByPath(p))
+                .filter(op -> op.isPresent())
+                .map(op -> op.get())
+                .collect(Collectors.toSet());
     }
 
     public Set<String> getFollowers() {
@@ -342,8 +381,10 @@ public class UserContext {
                                 corenodeClient.removeFollowRequest(user.toUserPublicKey(), user.signMessage(freq.rawCipher));
                             } else {
                                 // add new entry to tree root
-                                FileTreeNode treenode = retrieveEntryPoint(freq.entry.get()).get();
-                                getAncestorsAndAddToTree(treenode);
+                                EntryPoint entry = freq.entry.get();
+                                FileTreeNode treenode = retrieveEntryPoint(entry).get();
+                                String path = treenode.getPath(this);
+                                entrie.put(path, entry);
                             }
                             // add entry point to static data
                             if (!Arrays.equals(freq.entry.get().pointer.baseKey.serialize(), SymmetricKey.createNull().serialize())) {
@@ -411,16 +452,12 @@ public class UserContext {
         return true;
     }
 
-    public FileTreeNode getTreeRoot() {
-        return rootNode;
+    public Optional<FileTreeNode> getByPath(String path) {
+        return entrie.getByPath(path, this);
     }
 
     public FileTreeNode getUserRoot() {
-        try {
-            return getTreeRoot().getDescendentByPath(username, this).get();
-        } catch (IOException e) {
-            throw new IllegalStateException(e);
-        }
+        return getByPath("/"+username).get();
     }
 
     private byte[] getStaticData() throws IOException {
@@ -429,16 +466,19 @@ public class UserContext {
     }
 
     private void createFileTree() throws IOException {
-        Set<FileTreeNode> entrypoints = getEntryPoints().stream()
-                .map(e -> retrieveEntryPoint(e))
-                .filter(e -> e.isPresent())
-                .map(e -> e.get())
-                .collect(Collectors.toSet());
-        System.out.println("Entry points "+entrypoints);
+        Set<EntryPoint> entryPoints = getEntryPoints();
+        Map<EntryPoint, FileTreeNode> retrieved = new HashMap<>();
+        entryPoints.forEach(e -> {
+            Optional<FileTreeNode> metadata = retrieveEntryPoint(e);
+            if (metadata.isPresent())
+                retrieved.put(e, metadata.get());
+        });
 
-        for (FileTreeNode current: entrypoints) {
-            getAncestorsAndAddToTree(current);
-        }
+        System.out.println("Entry points "+retrieved.values());
+
+        Map<FileTreeNode, String> paths = retrieved.values().stream().collect(Collectors.toMap(f -> f, f -> f.getPath(this)));
+
+        retrieved.entrySet().stream().forEach(e -> entrie.put(paths.get(e.getValue()), e.getKey()));
     }
 
     private Set<EntryPoint> getEntryPoints() throws IOException {
@@ -454,21 +494,6 @@ public class UserContext {
         }
 
         return res;
-    }
-
-    private void getAncestorsAndAddToTree(FileTreeNode treeNode) {
-        try {
-            // don't need to add our own files this way, as we'll find them going down from our root
-            if (treeNode.getOwner() == username && !treeNode.isWritable())
-                return;
-            Optional<FileTreeNode> parent = treeNode.retrieveParent(this);
-            if (!parent.isPresent())
-                return;
-            parent.get().addChild(treeNode);
-            getAncestorsAndAddToTree(parent.get());
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
     }
 
     public Optional<FileTreeNode> retrieveEntryPoint(EntryPoint e) {
@@ -528,23 +553,23 @@ public class UserContext {
     public void unfollow(String username) throws IOException {
         System.out.println("Unfollowing: "+username);
         // remove entry point from static data
-        Optional<FileTreeNode> dir = getTreeRoot().getDescendentByPath("/"+username+"/shared/"+username, this);
+        Optional<FileTreeNode> dir = getByPath("/"+username+"/shared/"+username);
         // remove our static data entry storing that we've granted them access
         removeFromStaticData(dir.get());
-        Optional<FileTreeNode> entry = getTreeRoot().getDescendentByPath("/"+username, this);
-        entry.get().remove(this, getTreeRoot());
+        Optional<FileTreeNode> entry = getByPath("/"+username);
+        entry.get().remove(this, FileTreeNode.ROOT);
     }
 
     public void removeFollower(String username) throws IOException {
         System.out.println("Remove follower: " + username);
         // remove /$us/shared/$them
-        Optional<FileTreeNode> dir = getTreeRoot().getDescendentByPath("/"+username+"/shared/"+username, this);
+        Optional<FileTreeNode> dir = getByPath("/"+username+"/shared/"+username);
         dir.get().remove(this, getSharingFolder());
         // remove our static data entry storing that we've granted them access
         removeFromStaticData(dir.get());
     }
 
     public void logout() {
-        rootNode = null;
+        entrie.clear();
     }
 }

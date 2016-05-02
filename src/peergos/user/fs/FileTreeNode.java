@@ -12,6 +12,7 @@ import java.util.function.*;
 import java.util.stream.*;
 
 public class FileTreeNode {
+    public static final FileTreeNode ROOT = createRoot();
 
     RetrievedFilePointer pointer;
     private FileProperties props;
@@ -54,8 +55,18 @@ public class FileTreeNode {
         indirectChildren.add(child);
     }
 
-    public Optional<FileTreeNode> getDescendentByPath(String path, UserContext context) throws IOException {
+    public boolean isRoot() {
+        return props.name.equals("/");
+    }
 
+    public String getPath(UserContext context) {
+        Optional<FileTreeNode> parent = retrieveParent(context);
+        if (!parent.isPresent() || parent.get().isRoot())
+            return "/"+props.name;
+        return parent.get().getPath(context) + "/" + props.name;
+    }
+
+    public Optional<FileTreeNode> getDescendentByPath(String path, UserContext context) {
         if (path.length() == 0)
             return Optional.of(this);
 
@@ -129,14 +140,18 @@ public class FileTreeNode {
         return ((DirAccess)pointer.fileAccess).getChildrenLocations(pointer.filePointer.baseKey);
     }
 
-    public Optional<FileTreeNode> retrieveParent(UserContext context) throws IOException {
+    public Optional<FileTreeNode> retrieveParent(UserContext context) {
         if (pointer == null)
             return Optional.empty();
         SymmetricKey parentKey = getParentKey();
-        RetrievedFilePointer parentRFP = pointer.fileAccess.getParent(parentKey, context);
-        if (parentRFP == null)
-            return Optional.of(context.getTreeRoot());
-        return Optional.of(new FileTreeNode(parentRFP, ownername, Collections.EMPTY_SET, Collections.EMPTY_SET, entryWriterKey));
+        try {
+            RetrievedFilePointer parentRFP = pointer.fileAccess.getParent(parentKey, context);
+            if (parentRFP == null)
+                return Optional.of(ROOT);
+            return Optional.of(new FileTreeNode(parentRFP, ownername, Collections.EMPTY_SET, Collections.EMPTY_SET, entryWriterKey));
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     public SymmetricKey getParentKey() {
@@ -151,7 +166,7 @@ public class FileTreeNode {
     }
 
     public Set<FileTreeNode> getChildren(UserContext context) {
-        if (this == context.getTreeRoot())
+        if (this == ROOT)
             return new HashSet<>(indirectChildren);
         try {
             Set<RetrievedFilePointer> childrenRFPs = retrieveChildren(context);

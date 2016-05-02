@@ -92,7 +92,7 @@ public class UserTests {
         assertTrue("Receive a follow request", u1Requests.size() > 0);
         u1.sendReplyFollowRequest(u1Requests.get(0), true, true);
         List<FollowRequest> u2FollowRequests = u2.getFollowRequests();
-        Optional<FileTreeNode> friendRoot = u2.getTreeRoot().getDescendentByPath("/" + u1.username, u2);
+        Optional<FileTreeNode> friendRoot = u2.getByPath("/" + u1.username);
         assertTrue("Friend root present after accepted follow request", friendRoot.isPresent());
         System.out.println();
     }
@@ -125,7 +125,7 @@ public class UserTests {
 
         // check file size
         assertTrue("File size", data2.length == userRoot.getDescendentByPath(filename, context).get().getFileProperties().size);
-        assertTrue("File size", data2.length == context.getTreeRoot().getDescendentByPath(username + "/" + filename, context).get().getFileProperties().size);
+        assertTrue("File size", data2.length == context.getByPath(username + "/" + filename).get().getFileProperties().size);
 
         // extend file within existing chunk
         byte[] data3 = new byte[128 * 1024];
@@ -145,10 +145,10 @@ public class UserTests {
         userRoot.getDescendentByPath(filename, context).get().rename(newname, context, userRoot);
         checkFileContents(data3, userRoot.getDescendentByPath(newname, context).get(), context);
         // check from the root as well
-        checkFileContents(data3, context.getTreeRoot().getDescendentByPath(username + "/" + newname, context).get(), context);
+        checkFileContents(data3, context.getByPath(username + "/" + newname).get(), context);
         // check from a fresh log in too
         UserContext context2 = ensureSignedUp(username, password);
-        checkFileContents(data3, context2.getTreeRoot().getDescendentByPath(username + "/" + newname, context2).get(), context);
+        checkFileContents(data3, context2.getByPath(username + "/" + newname).get(), context);
     }
 
     @Test
