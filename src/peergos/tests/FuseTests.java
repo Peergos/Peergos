@@ -292,13 +292,13 @@ public class FuseTests {
         }
     }
 
-//    @Test
+    @Test
     public void javascriptCompatibility() {
         runForAWhile();
     }
 
     private static void runForAWhile() {
-        for (int i=0; i < 600; i++)
+        for (int i=0; i < 60*30; i++)
             try {
                 Thread.sleep(1000);
             } catch (InterruptedException e) {}
