@@ -144,7 +144,7 @@ const UserOptions = React.createClass({
                 populateModalAndShow("Success!", "<p>Follow request sent!</p>")
         });
     },
-    
+
     getFriendRoots: function()  {
         return userContext.getFriendRoots().then(function(roots) {
             console.log("friend-roots "+ roots);
@@ -356,6 +356,77 @@ const UserOptions = React.createClass({
 	    name: 'usernames',
 	    source: substringMatcher(usernames)
 	});
+    }
+});
+
+const updatePasswordConfirmed = function() {
+        $('#change-password-feedback-modal').modal("hide");
+        $('#modal').modal("hide");
+        userContext.changePassword(document.getElementById('password-new').value).then(function (rootNode) {
+            $.toaster({
+                priority: "info",
+                message: "Password changed",
+                settings: {"timeout":  5000}
+            });
+
+        }.bind(this));
+        $.toaster({
+            priority: "info",
+            message: "Changing Password",
+            settings: {"timeout":  5000}
+        });
+
+};
+const updatePassword = function(confirmed) {
+
+    const oldPwd = document.getElementById("password-old").value;
+    const pw1 = document.getElementById("password-new").value;
+    const pw2 = document.getElementById("password-confirm").value;
+    document.getElementById("change-password-error").textContent = "";
+    if (pw1 != pw2) {
+        document.getElementById("change-password-error").textContent = "Passwords do not match";
+    }else{
+
+        var index = commonPasswords.indexOf(pw1);
+        var suffix = ["th", "st", "nd", "rd", "th", "th", "th", "th", "th", "th"][(index+1) % 10];
+        if (index != -1) {
+            document.getElementById("change-password-label").textContent = "Your password is the " + (index+1) + suffix + " most common password! Continue?";
+            $('#change-password-feedback-modal').modal("show")
+        }else {
+            if(pw1.length < 1) {
+                document.getElementById("change-password-error").textContent = "Password not set";
+            }else{
+                if(pw1.length < passwordWarningThreshold) {
+                    document.getElementById("change-password-label").textContent = "Passwords less than "+ passwordWarningThreshold +" characters are considered unsafe. Continue?";
+                    $('#change-password-feedback-modal').modal("show")
+                }else{
+                    updatePasswordConfirmed();
+                }
+            }
+        }
+    }
+};
+
+const SettingsOptions = React.createClass({
+
+    render: function() {
+        return (<div className="container form-change-password">
+                <h3>Change Password</h3>
+                <div className="form-group">
+                    <center>
+                        <label id="change-password-error" className= "alert-danger"></label>
+                    </center>
+                </div>
+                <div className="form-group">
+                    <label>Old password</label>
+                    <input id="password-old" className="form-control" type="password" autoFocus={true}/>
+                    <label>New password</label>
+                    <input id="password-new" className="form-control" type="password" />
+                    <label>Confirm password</label>
+                    <input id="password-confirm" className="form-control" type="password" />
+                </div>
+                <button className="btn btn-success" onClick={updatePassword}>Update</button>
+                </div>);
     }
 });
 
@@ -1168,12 +1239,17 @@ var Browser = React.createClass({
             if (! hasUsername) usernameInput.value = "";
             if (! hasPassword) passwordInput.value="";
 	    
-	    return this.loadFilesFromServer().then(clearInProgress).then(function() {
-                $("#logout").html("<button id=\"logoutButton\" class=\"btn btn-default\">"+
-                                  "<span class=\"glyphicon glyphicon-off\"/>  " +
-                                  displayName+
-                                  "</button>");
-                $("#logoutButton").click(this.logoutFunction);
+            return this.loadFilesFromServer().then(clearInProgress).then(function() {
+                $("#logout").html("<button id=\"logoutButton\" class=\"btn btn-default dropdown-toggle\" data-toggle=\"dropdown\" aria-haspopup=\"true\" aria-expanded=\"true\">"+
+                    "<span class=\"glyphicon glyphicon-off\"/>  " + displayName +"</button>" +
+                    "<ul id='settingsMenu' class='dropdown-menu' aria-labelledby='logoutButton' style='margin-top:-20px;'>" +
+                    "    <li><a id='changePasswordMenuItem'>Change Password</a></li>" +
+                    "    <li role='separator' class='divider'></li>" +
+                    "    <li><a id='logoutMenuItem'>Log out</a></li>" +
+                    "</ul>"
+                );
+                $("#changePasswordMenuItem").click(this.changePasswordFunction);
+                $("#logoutMenuItem").click(this.logoutFunction);
                 $("#login-form").css("display","none");
                 $("#signup-form").css("display","none");
             }.bind(this));
@@ -1202,6 +1278,20 @@ var Browser = React.createClass({
                     populateModalAndShow("Authentication Failure", "Invalid credentials.");
                     clearInProgress();
                 });
+    },
+
+    changePasswordFunction: function(evt) {
+        requireSignedIn(function()  {
+            $('#modal-title').html("Settings");
+            React.render(
+                <SettingsOptions />,
+                document.getElementById('change-password-body'),
+                    function() {
+                        $('#modal-body').html("");
+                        $('#modal').modal("show")
+                    }
+                );
+        }.bind(this));
     },
 
     logoutFunction: function(evt) {

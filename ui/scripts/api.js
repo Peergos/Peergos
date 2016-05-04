@@ -1017,18 +1017,50 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
 
     this.register = function() {
         console.log("claiming username: "+username);
-	var now = new Date();
-	// set claim expiry to two months from now
-	now.setMonth(now.getMonth() + 2);
-	var month = ""+now.getMonth();
-	if (month.length == 1)
-	    month = "0"+month;
-	var day = ""+now.getDate();
-	if (day.length == 1)
-	    day = "0"+day;
-	const expiry = now.getFullYear()+"-"+month+"-"+day; //YYYY-MM-DD
-        const claimChain = UserPublicKeyLink.createInitial(user, username, expiry);
-        return corenodeClient.updateChain(username, claimChain);
+        var now = new Date();
+        // set claim expiry to two months from now
+        now.setMonth(now.getMonth() + 2);
+        var month = ""+now.getMonth();
+        if (month.length == 1)
+            month = "0"+month;
+        var day = ""+now.getDate();
+        if (day.length == 1)
+            day = "0"+day;
+        const expiry = now.getFullYear()+"-"+month+"-"+day; //YYYY-MM-DD
+            const claimChain = UserPublicKeyLink.createInitial(user, username, expiry);
+            return corenodeClient.updateChain(username, claimChain);
+        }
+
+    this.changePassword = function(newPassword) {
+        console.log("changing password");
+        //return Promise.resolve(true);
+
+        var now = new Date();
+        // set claim expiry to two months from now
+        now.setMonth(now.getMonth() + 2);
+        var month = ""+now.getMonth();
+        if (month.length == 1)
+            month = "0"+month;
+        var day = ""+now.getDate();
+        if (day.length == 1)
+            day = "0"+day;
+        const expiry = now.getFullYear()+"-"+month+"-"+day; //YYYY-MM-DD
+        return Promise.resolve(generateKeyPairs(username, newPassword).then(function(updatedUser){
+            var oldUser = this.user;
+            this.user = updatedUser.user;
+            this.rootKey = updatedUser.root;
+            return Promise.resolve(this.commitStaticData().then(function(res){
+                const claimChain = UserPublicKeyLink.createChain(oldUser, updatedUser.user, username, expiry)
+                return Promise.resolve(corenodeClient.updateChain(username, claimChain).then(function(blah){
+
+                    this.context = new UserContext(username, updatedUser.user, updatedUser.root, dhtClient, corenodeClient);
+                    return Promise.resolve(this.context.init().then(function(text){
+                        return Promise.resolve(true);
+                    }.bind(this)))
+                }.bind(this)))
+            }.bind(this)))
+        }.bind(this))
+        );
     }
 
     this.createEntryDirectory = function(directoryName) {

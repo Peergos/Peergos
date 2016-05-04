@@ -76,10 +76,30 @@
                                         </div>
                                         <div id="modal-body" class="modal-body">
                                         </div>
+                                        <div id="change-password-body" class="modal-body">
+                                        </div>
                                 </div>
                         </div>
                 </div>
-		
+
+                <div id="change-password-feedback-modal" class="modal fade">
+                        <div class="modal-dialog">
+                                <div class="modal-content">
+                                        <div class="modal-header">
+                                                <h4 id="change-password-feedback-modal-title" class="modal-title">Warning</h4>
+                                        </div>
+                                        <div id="change-password-feedback-modal-body" class="modal-body">
+                                                <center>
+                                                        <label id="change-password-label"></label>
+                                                </center>
+                                        </div>
+                                        <div class="modal-footer">
+                                                <a href="#" data-dismiss="modal" class="btn">Cancel</a>
+                                                <a href="#" onclick="updatePasswordConfirmed();" class="btn btn-primary">Continue</a>
+                                        </div>
+                                </div>
+                        </div>
+                </div>
 		  <div id="tour" class="ui-corner-all pointer pointy pointy-active ui-state-active" style="position:absolute;z-index:1000;left:40%;bottom:40%;width:300px;padding:20px;display:none;">
 		     <div class="tour-text" style="text-align:center;font-size:18px;margin:5px;">
 		      The tour!
@@ -87,7 +107,7 @@
 		    <button type="button" class="close tour-continue" onclick="tourNext();" style="margin:5px;padding:10px;z-index:1001;display:inline;">Continue</button>
 		    <button type="button" class="close" onclick="endTour();" style="margin:5px;padding:10px;z-index:1001;display:inline;">Skip tour</button>
 		  </div>
-		
+
 
                 <input type="file" id="uploadInput" style="display:none;" multiple="" />
                 <script type="text/jsx;harmony=true" src="scripts/filesystem.js"></script>

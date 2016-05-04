@@ -1,3 +1,17 @@
+
+.modal:nth-of-type(even) {
+        z-index: 1040 !important;
+}
+.modal-backdrop.in:nth-of-type(even) {
+    z-index: 1042 !important;
+}
+
+.form-change-password {
+        max-width: 330px;
+        padding: 15px;
+        margin: 0 auto;
+}
+
 .form-signin {
         max-width: 330px;
         padding: 15px;
