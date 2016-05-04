@@ -66,7 +66,7 @@ public class PeergosFS extends FuseStubFS {
 
                 Instant instant = fileProperties.modified.toInstant(ZonedDateTime.now().getOffset());
                 long epochSecond = instant.getEpochSecond();
-                long nanoSeconds = (instant.toEpochMilli() % 1000) * 1000000;
+                long nanoSeconds = instant.getNano();
 
 
                 fileStat.st_mtim.tv_sec.set(epochSecond);
