@@ -292,21 +292,6 @@ public class FuseTests {
         }
     }
 
-    @Test
-    public void copyFromHostTest() throws IOException {
-        Random  random =  new Random(666);
-        Path source = Files.createTempFile("peergos", "" + (System.currentTimeMillis() % 1000));
-        byte[] data = new byte[(1024 + 128)*1024];
-        random.nextBytes(data);
-        Files.write(source, data);
-        Path target = home.resolve("Somefile.bin");
-        Files.copy(source, target);
-        byte[] copied = Files.readAllBytes(target);
-        boolean equals = Arrays.equals(data, copied);
-        String diff = equals ? "" : "Different at index " + firstDifferentindex(data, copied);
-        Assert.assertTrue("Correct file contents: length("+ copied.length +") expected("+data.length+") "+ diff, equals);
-    }
-
 //    @Test
     public void javascriptCompatibility() {
         runForAWhile();

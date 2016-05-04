@@ -14,6 +14,7 @@ import java.util.function.*;
 
 public class BTreeHandlers
 {
+    public static boolean LOG = false;
     private static final String PUT_STEM = "/btree/put";
     private static final String GET_STEM = "/btree/get";
     private static final String REMOVE_STEM = "/btree/delete";
@@ -32,7 +33,7 @@ public class BTreeHandlers
                 MerkleBTree btree = MerkleBTree.create(rootHash, dht);
                 MaybeMultihash res = btree.get(mapKey);
                 byte[] value = res.toBytes();
-                System.out.println("Btree::Get mapkey: "+new ByteArrayWrapper(mapKey) + " = "+ res);
+                log("Btree::Get mapkey: "+new ByteArrayWrapper(mapKey) + " = "+ res);
                 new GetSuccess(httpExchange).accept(value);
             } catch (Exception e) {
                 e.printStackTrace();
@@ -56,7 +57,7 @@ public class BTreeHandlers
                 MaybeMultihash rootHash = core.getMetadataBlob(UserPublicKey.fromByteArray(sharingKey));
                 MerkleBTree btree = MerkleBTree.create(rootHash, dht);
                 Multihash newRoot = btree.put(mapKey, value);
-                System.out.println("Btree::Put mapkey: " + new ByteArrayWrapper(mapKey) + " -> " + value + " newRoot="+newRoot);
+                log("Btree::Put mapkey: " + new ByteArrayWrapper(mapKey) + " -> " + value + " newRoot="+newRoot);
 
                 ByteArrayOutputStream bout = new ByteArrayOutputStream();
                 DataOutputStream dout = new DataOutputStream(bout);
@@ -78,7 +79,7 @@ public class BTreeHandlers
 
             byte[] sharingKey = Serialize.deserializeByteArray(din, UserPublicKey.MAX_SIZE);
             byte[] mapKey = Serialize.deserializeByteArray(din, 64);
-            System.out.println("Btree::Deleted mapkey: "+new ByteArrayWrapper(mapKey));
+            log("Btree::Deleted mapkey: "+new ByteArrayWrapper(mapKey));
             try {
                 MaybeMultihash rootHash = core.getMetadataBlob(UserPublicKey.fromByteArray(sharingKey));
                 MerkleBTree btree = MerkleBTree.create(rootHash, dht);
@@ -168,5 +169,10 @@ public class BTreeHandlers
                 e.printStackTrace();
             }
         }
+    }
+
+    private static void log(String msg) {
+        if (LOG)
+            System.out.println(msg);
     }
 }
