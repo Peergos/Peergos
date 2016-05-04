@@ -186,27 +186,20 @@ public class FuseTests {
         }
     }
 
-    //@Test broken in upstream dependency
+    @Test
     public  void lastModifiedTimeTest() throws IOException {
         Path path = createRandomFile();
-        FileTime lastModifiedTime = Files.getLastModifiedTime(path);
-        long epochMillis = lastModifiedTime.toMillis();
-        System.out.println("last modified time " + lastModifiedTime +" "+ new Date(epochMillis));
 
-        long currentTimeMillis = System.currentTimeMillis();
-        long delta = Math.abs(currentTimeMillis - epochMillis);
-        int tolerance = 1000*60*3;
-//        assertTrue("last modified time up to date", delta < tolerance);
+        ZonedDateTime now = ZonedDateTime.now();
+        ZonedDateTime limit =  now.minusMonths(1);
 
-        long yesterdayEpochMillis = ZonedDateTime.now().minusDays(1).toInstant().toEpochMilli();
-        FileTime updatedTimestamp = FileTime.fromMillis(yesterdayEpochMillis);
-        System.out.println("updated timestamp "+  updatedTimestamp);
 
-        Files.setLastModifiedTime(path, updatedTimestamp);
-//        path.toFile().setLastModified(yesterdayEpochMillis/);
-        FileTime updatedLastModifiedTime = Files.getLastModifiedTime(path);
-
-        assertEquals("last-modified  timestamp is set", updatedTimestamp, updatedLastModifiedTime);
+        for (ZonedDateTime zdt = now; zdt.isAfter(limit); zdt =  zdt.minusDays(1)) {
+            FileTime fileTime = FileTime.from(zdt.toInstant());
+            Path path1 = Files.setLastModifiedTime(path, fileTime);
+            FileTime found = Files.getLastModifiedTime(path);
+            assertEquals("get(set(time)) = time for time = "+ zdt, fileTime.toMillis() / 1000, found.toMillis() / 1000);
+        }
     }
 
 
@@ -300,7 +293,7 @@ public class FuseTests {
     }
 
     @Test
-    public void copyTest() throws IOException {
+    public void copyFromHostTest() throws IOException {
         Random  random =  new Random(666);
         Path source = Files.createTempFile("peergos", "" + (System.currentTimeMillis() % 1000));
         byte[] data = new byte[(1024 + 128)*1024];

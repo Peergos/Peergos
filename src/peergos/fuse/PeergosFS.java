@@ -1,7 +1,6 @@
 package peergos.fuse;
 
 import jnr.ffi.Pointer;
-import jnr.ffi.Struct;
 import jnr.ffi.types.*;
 import peergos.user.UserContext;
 import peergos.user.fs.FileProperties;
@@ -64,6 +63,17 @@ public class PeergosFS extends FuseStubFS {
 
                 fileStat.st_mode.set(mode);
                 fileStat.st_size.set(fileProperties.size);
+
+                Instant instant = fileProperties.modified.toInstant(ZonedDateTime.now().getOffset());
+                long epochSecond = instant.getEpochSecond();
+                long nanoSeconds = (instant.toEpochMilli() % 1000) * 1000000;
+
+
+                fileStat.st_mtim.tv_sec.set(epochSecond);
+                fileStat.st_mtim.tv_nsec.set(nanoSeconds);
+
+                fileStat.st_atim.tv_nsec.set(epochSecond);
+                fileStat.st_atim.tv_nsec.set(nanoSeconds);
                 return 0;
             } catch (Throwable t) {
                 t.printStackTrace();
@@ -323,7 +333,7 @@ public class PeergosFS extends FuseStubFS {
         return 0;
     }
 
-    @Override
+//    @Override
     public int utimens(String s, Timespec[] timespecs) {
         int aDefault = -ErrorCodes.ENOENT();
 
@@ -331,32 +341,31 @@ public class PeergosFS extends FuseStubFS {
         if (! parentOpt.isPresent())
             return aDefault;
 
-        // TODO: 20/04/16 this is broken in the jnr-fuse dependency (seg-faults the JVM accessing timespecs members!)
-        return 0;
+        return applyIfPresent(s, (stat) -> {
 
-//        return applyIfPresent(s, (stat) -> {
-//
-//            Timespec modified = timespecs[0], access = timespecs[1];
-//            long epochSeconds = modified.tv_sec.longValue() * 1000;
-//            Instant instant = Instant.ofEpochSecond(epochSeconds);
-//            LocalDateTime lastModified = LocalDateTime.ofInstant(instant, ZoneId.systemDefault());
-//
-//            FileProperties updated = stat.properties.withModified(lastModified);
-//
-//            debug("utimens %s, with %s, %d, %s, updated %s", s,
-//                    lastModified.toString(),
-//                    epochSeconds,
-//                    modified.toString(),
-//                    updated.toString());
-//
-//            try {
-//                boolean isUpdated = stat.treeNode.setProperties(updated, userContext, parentOpt.get().treeNode);
-//                return isUpdated ? 0 : 1;
-//            } catch (IOException ex) {
-//                ex.printStackTrace();
-//                return 1;
-//            }
-//        }, aDefault);
+            Timespec access = timespecs[0], modified = timespecs[1];
+            long epochSeconds = modified.tv_sec.longValue();
+            Instant instant = Instant.ofEpochSecond(epochSeconds);
+            LocalDateTime lastModified = LocalDateTime.ofInstant(instant, ZoneId.systemDefault());
+
+            FileProperties updated = stat.properties.withModified(lastModified);
+
+            /*
+            debug("utimens %s, with %s, %d, %s, updated %s", s,
+                    lastModified.toString(),
+                    epochSeconds,
+                    modified.toString(),
+                    updated.toString());
+                    */
+
+            try {
+                boolean isUpdated = stat.treeNode.setProperties(updated, userContext, parentOpt.get().treeNode);
+                return isUpdated ? 0 : 1;
+            } catch (IOException ex) {
+                ex.printStackTrace();
+                return 1;
+            }
+        }, aDefault);
 
     }
 
