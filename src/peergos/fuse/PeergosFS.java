@@ -530,8 +530,6 @@ public class PeergosFS extends FuseStubFS {
 
     public int write(PeergosStat parent, String name, byte[] toWrite, long size, long offset) {
 
-        debug("WRITE data %s, size %d, offset %d, parent %s, name %s", ArrayOps.bytesToHex(toWrite), size, offset, parent.properties.name, name);
-
         try {
             long updatedLength = size + offset;
             if (Integer.MAX_VALUE < updatedLength) {
