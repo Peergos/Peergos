@@ -3,6 +3,7 @@ package peergos.user.fs;
 import peergos.crypto.*;
 import peergos.crypto.symmetric.*;
 import peergos.user.*;
+import peergos.util.*;
 
 import java.io.*;
 import java.time.*;
@@ -13,8 +14,7 @@ import java.util.stream.*;
 public class FileTreeNode {
 
     RetrievedFilePointer pointer;
-    Set<FileTreeNode> children = new HashSet<>();
-    Map<String, FileTreeNode> childrenByName = new HashMap<>();
+    private FileProperties props;
     String ownername;
     Set<String> readers;
     Set<String> writers;
@@ -26,6 +26,15 @@ public class FileTreeNode {
         this.readers = readers;
         this.writers = writers;
         this.entryWriterKey = entryWriterKey;
+        if (pointer == null)
+            props = new FileProperties("/", 0, LocalDateTime.MIN, false, Optional.empty());
+        else
+            try {
+                SymmetricKey parentKey = this.getParentKey();
+                props = pointer.fileAccess.getFileProperties(parentKey);
+            } catch (IOException e) {
+                throw new IllegalStateException(e);
+            }
     }
 
     public boolean equals(Object other) {
@@ -36,29 +45,31 @@ public class FileTreeNode {
         return pointer.equals(((FileTreeNode)other).getPointer());
     }
 
-    public boolean hasChildByName(String name) {
-        return childrenByName.containsKey(name);
-    }
-
     public RetrievedFilePointer getPointer() {
         return pointer;
     }
 
-    public void addChild(FileTreeNode child) throws IOException {
-        String name = child.getFileProperties().name;
-        if (childrenByName.containsKey(name)) {
-            if (pointer != null) {
-                throw new IllegalStateException("Child already exists with name: "+name);
-            } else
-                return;
-        }
-        children.add(child);
-        childrenByName.put(name, child);
+    public boolean isRoot() {
+        return props.name.equals("/");
     }
 
-    public Optional<FileTreeNode> getDescendentByPath(String path, UserContext context) throws IOException {
+    public String getPath(UserContext context) {
+        Optional<FileTreeNode> parent = retrieveParent(context);
+        if (!parent.isPresent() || parent.get().isRoot())
+            return "/"+props.name;
+        return parent.get().getPath(context) + "/" + props.name;
+    }
+
+    public Optional<FileTreeNode> getDescendentByPath(String path, UserContext context) {
         if (path.length() == 0)
             return Optional.of(this);
+
+        if (path.equals("/"))
+            if (isDirectory())
+                return Optional.of(this);
+            else
+                return Optional.empty();
+
         if (path.startsWith("/"))
             path = path.substring(1);
         int slash = path.indexOf("/");
@@ -72,9 +83,11 @@ public class FileTreeNode {
         return Optional.empty();
     }
 
+    public boolean hasChildWithName(String name, UserContext context) {
+        return getChildren(context).stream().filter(c -> c.props.name.equals(name)).findAny().isPresent();
+    }
+
     public boolean removeChild(FileTreeNode child, UserContext context) throws IOException {
-        String name = child.getFileProperties().name;
-        children.remove(childrenByName.remove(name));
         return ((DirAccess)pointer.fileAccess).removeChild(child.getPointer(), pointer.filePointer, context);
     }
 
@@ -84,7 +97,7 @@ public class FileTreeNode {
         if (!this.isWritable())
             return false;
         String name = file.getFileProperties().name;
-        if (childrenByName.containsKey(name)) {
+        if (hasChildWithName(name, context)) {
             System.out.println("Child already exists with name: "+name);
             return false;
         }
@@ -94,7 +107,6 @@ public class FileTreeNode {
         } else {
             ((DirAccess)pointer.fileAccess).addFile(loc, this.getKey(), file.getKey());
         }
-        this.addChild(file);
         return ((DirAccess)pointer.fileAccess).commit(pointer.filePointer.owner, (User)entryWriterKey, pointer.filePointer.mapKey, context);
     }
 
@@ -104,6 +116,14 @@ public class FileTreeNode {
 
     public boolean isWritable() {
         return entryWriterKey instanceof User;
+    }
+
+    public boolean isReadable() {
+        try {
+            pointer.fileAccess.getMetaKey(pointer.filePointer.baseKey);
+            return false;
+        } catch (Exception e) {}
+        return true;
     }
 
     public SymmetricKey getKey() {
@@ -120,19 +140,18 @@ public class FileTreeNode {
         return ((DirAccess)pointer.fileAccess).getChildrenLocations(pointer.filePointer.baseKey);
     }
 
-    public void clear() {
-        children.clear();
-        childrenByName.clear();
-    }
-
-    public Optional<FileTreeNode> retrieveParent(UserContext context) throws IOException {
+    public Optional<FileTreeNode> retrieveParent(UserContext context) {
         if (pointer == null)
             return Optional.empty();
         SymmetricKey parentKey = getParentKey();
-        RetrievedFilePointer parentRFP = pointer.fileAccess.getParent(parentKey, context);
-        if (parentRFP == null)
-            return Optional.of(context.getTreeRoot());
-        return Optional.of(new FileTreeNode(parentRFP, ownername, Collections.EMPTY_SET, Collections.EMPTY_SET, entryWriterKey));
+        try {
+            RetrievedFilePointer parentRFP = pointer.fileAccess.getParent(parentKey, context);
+            if (parentRFP == null)
+                return Optional.of(createRoot());
+            return Optional.of(new FileTreeNode(parentRFP, ownername, Collections.EMPTY_SET, Collections.EMPTY_SET, entryWriterKey));
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     public SymmetricKey getParentKey() {
@@ -147,38 +166,28 @@ public class FileTreeNode {
     }
 
     public Set<FileTreeNode> getChildren(UserContext context) {
-        if (this == context.getTreeRoot())
-            return new HashSet<>(children);
-        try {
+        if (this.props.name.equals("/"))
+            return context.getChildren("/");
+        if (isReadable()) {
             Set<RetrievedFilePointer> childrenRFPs = retrieveChildren(context);
             Set<FileTreeNode> newChildren = childrenRFPs.stream().map(x -> new FileTreeNode(x, ownername, readers, writers, entryWriterKey)).collect(Collectors.toSet());
-            clear();
-            newChildren.forEach(c -> {
-                try {
-                    addChild(c);
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            });
-            return new HashSet<>(children);
-        } catch (Exception e) {
-            e.printStackTrace();
-            // directories we don't have read access to have children populated during tree creation
-            return new HashSet<>(children);
+            return newChildren.stream().collect(Collectors.toSet());
         }
+        return context.getChildren(getPath(context));
     }
 
-    private Set<RetrievedFilePointer> retrieveChildren(UserContext context) throws IOException {
+    private Set<RetrievedFilePointer> retrieveChildren(UserContext context) {
         ReadableFilePointer filePointer = pointer.filePointer;
         FileAccess fileAccess = pointer.fileAccess;
         SymmetricKey rootDirKey = filePointer.baseKey;
-        boolean canGetChildren = true;
-        try {
-            fileAccess.getMetaKey(rootDirKey);
-            canGetChildren = false;
-        } catch (Exception e) {}
-        if (canGetChildren)
-            return ((DirAccess)fileAccess).getChildren(context, rootDirKey);
+
+        if (isReadable()) {
+            try {
+                return ((DirAccess) fileAccess).getChildren(context, rootDirKey);
+            } catch (IOException e) {
+                throw new IllegalStateException(e);
+            }
+        }
         throw new IllegalStateException("No credentials to retrieve children!");
     }
 
@@ -187,36 +196,108 @@ public class FileTreeNode {
     }
 
     public boolean isDirectory() {
-        return pointer.fileAccess.isDirectory();
+        boolean isNull = pointer == null;
+        return isNull || pointer.fileAccess.isDirectory();
     }
 
-    public boolean uploadFile(String filename, File file, UserContext context, Consumer<Long> monitor) throws IOException {
-        if (!this.isLegalName(filename))
+    public boolean uploadFile(String filename, File f, UserContext context, Consumer<Long> monitor) throws IOException {
+        return uploadFile(filename, new ResetableFileInputStream(f), f.length(), context,  monitor);
+    }
+
+    public boolean uploadFile(String filename, InputStream fileData, long length, UserContext context, Consumer<Long> monitor) throws IOException {
+        return uploadFile(filename, fileData, 0, length, context, monitor);
+    }
+
+    public boolean uploadFile(String filename, InputStream fileData, long startIndex, long endIndex, UserContext context, Consumer<Long> monitor) throws IOException {
+        if (!isLegalName(filename))
             return false;
-        if (childrenByName.containsKey(filename)) {
-            System.out.println("Child already exists with name: "+filename);
-            return false;
+        Optional<FileTreeNode> childOpt = getChildren(context).stream().filter(f -> f.getFileProperties().name.equals(filename)).findAny();
+        if (childOpt.isPresent()) {
+            System.out.println("Overwriting section ["+Long.toHexString(startIndex)+", "+Long.toHexString(endIndex)+"] of child with name: "+filename);
+            FileTreeNode child = childOpt.get();
+            FileProperties childProps = child.getFileProperties();
+            long filesSize = childProps.size;
+            FileRetriever retriever = child.getRetriever();
+            SymmetricKey baseKey = child.pointer.filePointer.baseKey;
+
+            if (startIndex > filesSize) {
+                // append with zeroes up until startIndex
+                uploadFile(filename, new InputStream() {
+                    @Override
+                    public int read() throws IOException {
+                        return 0;
+                    }
+                }, filesSize, startIndex, context, l -> {
+                });
+            }
+
+            if (endIndex == 10*1024*1024)
+                System.nanoTime();
+
+            for (; startIndex < endIndex; startIndex = startIndex + Chunk.MAX_SIZE - (startIndex % Chunk.MAX_SIZE)) {
+
+                LocatedChunk currentOriginal = retriever.getChunkInputStream(context, baseKey, startIndex, filesSize, child.getLocation(), monitor).get();
+                Optional<Location> nextChunkLocationOpt = retriever.getLocationAt(child.getLocation(), startIndex + Chunk.MAX_SIZE, context);
+                Location nextChunkLocation = nextChunkLocationOpt.orElse(new Location(getLocation().owner, getLocation().writer, TweetNaCl.securedRandom(32)));
+
+                System.out.println("********** Writing to chunk at mapkey: "+ArrayOps.bytesToHex(currentOriginal.location.mapKey) + " next: "+nextChunkLocation);
+                // modify chunk, re-encrypt and upload
+                int internalStart = (int) (startIndex % Chunk.MAX_SIZE);
+                int internalEnd = endIndex - (startIndex - internalStart) > Chunk.MAX_SIZE ?
+                        Chunk.MAX_SIZE : (int)(endIndex - (startIndex - internalStart));
+                byte[] raw = currentOriginal.chunk.data();
+                // extend data array if necessary
+                if (raw.length < internalEnd)
+                    raw = Arrays.copyOfRange(raw, 0, internalEnd);
+                fileData.read(raw, internalStart, internalEnd - internalStart);
+                Chunk updated = new Chunk(raw, baseKey, currentOriginal.location.mapKey);
+                LocatedChunk located = new LocatedChunk(currentOriginal.location, updated);
+                FileProperties newProps = new FileProperties(childProps.name, endIndex > filesSize ? endIndex : filesSize,
+                        LocalDateTime.now(), childProps.isHidden, childProps.thumbnail);
+                FileUploader.uploadChunk((User)entryWriterKey, newProps, getLocation(), getParentKey(), located,
+                        EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES, nextChunkLocation, context, monitor);
+
+                //update indices to be relative to next chunk
+                if (startIndex + internalEnd - internalStart > filesSize) {
+                    filesSize = startIndex + internalEnd - internalStart;
+                    if (startIndex + internalEnd - internalStart > Chunk.MAX_SIZE) {
+                        // update file size in FileProperties of first chunk
+                        Optional<FileTreeNode> updatedChild = getChildren(context).stream().filter(f -> f.getFileProperties().name.equals(filename)).findAny();
+                        boolean b = updatedChild.get().setProperties(child.getFileProperties().withSize(endIndex), context, this);
+                        if (!b)
+                            throw new IllegalStateException("Failed to update file properties for "+child);
+                    }
+                }
+            }
+            return true;
+        }
+        if (startIndex > 0) {
+            // TODO if startIndex > 0 prepend with a zero section
+            throw new IllegalStateException("Unimplemented!");
         }
         SymmetricKey fileKey = SymmetricKey.random();
         SymmetricKey rootRKey = pointer.filePointer.baseKey;
-        UserPublicKey owner = pointer.filePointer.owner;
         byte[] dirMapKey = pointer.filePointer.mapKey;
-        UserPublicKey writer = pointer.filePointer.writer;
         DirAccess dirAccess = (DirAccess) pointer.fileAccess;
-        Location parentLocation = new Location(owner, writer, dirMapKey);
         SymmetricKey dirParentKey = dirAccess.getParentKey(rootRKey);
+        Location parentLocation = getLocation();
 
-        byte[] thumbData = generateThumbnail(new RandomAccessFile(file, "r"), filename);
-        FileProperties fileProps = new FileProperties(filename, file.length(), LocalDateTime.now(), false, Optional.of(thumbData));
-        FileUploader chunks = new FileUploader(filename, file, fileKey, parentLocation, dirParentKey, monitor, fileProps,
+        byte[] thumbData = generateThumbnail(fileData, filename);
+        FileProperties fileProps = new FileProperties(filename, endIndex, LocalDateTime.now(), false, Optional.of(thumbData));
+        FileUploader chunks = new FileUploader(filename, fileData, startIndex, endIndex, fileKey, parentLocation, dirParentKey, monitor, fileProps,
                 EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
-        Location fileLocation = chunks.upload(context, owner, (User)entryWriterKey);
+        Location nextChunkLocation = new Location(getLocation().owner, getLocation().writer, TweetNaCl.securedRandom(32));
+        Location fileLocation = chunks.upload(context, parentLocation.owner, (User)entryWriterKey, nextChunkLocation);
         dirAccess.addFile(fileLocation, rootRKey, fileKey);
-        return context.uploadChunk(dirAccess, owner, (User)entryWriterKey, dirMapKey, Collections.emptyList());
+        return context.uploadChunk(dirAccess, parentLocation.owner, (User)entryWriterKey, dirMapKey, Collections.emptyList());
     }
 
     static boolean isLegalName(String name) {
         return !name.contains("/");
+    }
+
+    public Optional<ReadableFilePointer> mkdir(String newFolderName, UserContext context, boolean isSystemFolder) throws IOException {
+        return mkdir(newFolderName, context, null, isSystemFolder);
     }
 
     public Optional<ReadableFilePointer> mkdir(String newFolderName, UserContext context, SymmetricKey requestedBaseSymmetricKey, boolean isSystemFolder) throws IOException {
@@ -224,7 +305,7 @@ public class FileTreeNode {
             return Optional.empty();
         if (!isLegalName(newFolderName))
             return Optional.empty();
-        if (childrenByName.containsKey(newFolderName)) {
+        if (hasChildWithName(newFolderName, context)) {
             System.out.println("Child already exists with name: "+newFolderName);
             return Optional.empty();
         }
@@ -234,10 +315,10 @@ public class FileTreeNode {
         return Optional.of(dirAccess.mkdir(newFolderName, context, (User)entryWriterKey, dirPointer.mapKey, rootDirKey, requestedBaseSymmetricKey, isSystemFolder));
     }
 
-    public boolean rename(String newName, UserContext context, FileTreeNode parent) throws IOException {
-        if (!this.isLegalName(newName))
+    public boolean rename(String newFilename, UserContext context, FileTreeNode parent) throws IOException {
+        if (!this.isLegalName(newFilename))
             return false;
-        if (parent != null && parent.hasChildByName(newName))
+        if (parent != null && parent.hasChildWithName(newFilename, context))
             return false;
         //get current props
         ReadableFilePointer filePointer = pointer.filePointer;
@@ -247,9 +328,24 @@ public class FileTreeNode {
         SymmetricKey key = this.isDirectory() ? fileAccess.getParentKey(baseKey) : baseKey;
         FileProperties currentProps = fileAccess.getFileProperties(key);
 
-        FileProperties newProps = new FileProperties(newName, currentProps.size, currentProps.modified, currentProps.isHidden, currentProps.thumbnail);
+        FileProperties newProps = new FileProperties(newFilename, currentProps.size, currentProps.modified, currentProps.isHidden, currentProps.thumbnail);
 
         return fileAccess.rename(writableFilePointer(), newProps, context);
+    }
+
+    public boolean setProperties(FileProperties updatedProperties, UserContext context, FileTreeNode parent) throws IOException {
+        String newName = updatedProperties.name;
+        if (!isLegalName(newName))
+            return false;
+        if (parent != null && parent.hasChildWithName(newName, context) &&
+                !parent.getChildrenLocations().stream()
+                        .map(l -> new ByteArrayWrapper(l.mapKey))
+                        .collect(Collectors.toSet())
+                        .contains(new ByteArrayWrapper(pointer.filePointer.getLocation().mapKey)))
+            return false;
+        FileAccess fileAccess = pointer.fileAccess;
+
+        return fileAccess.rename(writableFilePointer(), updatedProperties, context);
     }
 
     private ReadableFilePointer writableFilePointer() {
@@ -266,7 +362,7 @@ public class FileTreeNode {
     public boolean copyTo(FileTreeNode target, UserContext context) throws IOException {
         if (! target.isDirectory())
             throw new IllegalStateException("CopyTo target "+ target +" must be a directory");
-        if (target.hasChildByName(getFileProperties().name))
+        if (target.hasChildWithName(getFileProperties().name, context))
             return false;
         //make new FileTreeNode pointing to the same file, but with a different location
         byte[] newMapKey = TweetNaCl.securedRandom(32);
@@ -281,7 +377,7 @@ public class FileTreeNode {
         // upload new metadatablob
         RetrievedFilePointer newRetrievedFilePointer = new RetrievedFilePointer(newRFP, newAccess);
         FileTreeNode newFileTreeNode = new FileTreeNode(newRetrievedFilePointer, context.username,
-                Collections.EMPTY_SET, Collections.EMPTY_SET, target.getEntryWriterKey());
+                Collections.emptySet(), Collections.emptySet(), target.getEntryWriterKey());
         return target.addLinkTo(newFileTreeNode, context);
     }
 
@@ -291,32 +387,28 @@ public class FileTreeNode {
         return new RetrievedFilePointer(writableFilePointer(), pointer.fileAccess).remove(context, null);
     }
 
-    public InputStream getInputStream(UserContext context, long size, Consumer<Long> monitor) {
+    public InputStream getInputStream(UserContext context, long fileSize, Consumer<Long> monitor) throws IOException {
         SymmetricKey baseKey = pointer.filePointer.baseKey;
-        return pointer.fileAccess.retriever().getFile(context, baseKey, size, monitor);
+        return pointer.fileAccess.retriever().getFile(context, baseKey, fileSize, getLocation(), monitor);
     }
 
-    public FileProperties getFileProperties() throws IOException {
-        if (pointer == null)
-            return new FileProperties("/", 0, LocalDateTime.MIN, false, Optional.empty());
-        SymmetricKey parentKey = this.getParentKey();
-        return pointer.fileAccess.getFileProperties(parentKey);
+    private FileRetriever getRetriever() {
+        return pointer.fileAccess.retriever();
+    }
+
+    public FileProperties getFileProperties() {
+        return props;
     }
 
     public String toString() {
-        try {
-            return getFileProperties().name;
-        } catch (IOException ioe) {
-            ioe.printStackTrace();
-            return "InvalidFileTreeNode";
-        }
+        return getFileProperties().name;
     }
 
     public static FileTreeNode createRoot() {
         return new FileTreeNode(null, null, Collections.EMPTY_SET, Collections.EMPTY_SET, null);
     }
 
-    public byte[] generateThumbnail(RandomAccessFile imageBlob, String fileName) {
+    public byte[] generateThumbnail(InputStream imageBlob, String fileName) {
         byte[] data = new byte[20];
         byte[] BMP = new byte[]{66, 77};
         byte[] GIF = new byte[]{71, 73, 70};

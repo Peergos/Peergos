@@ -68,6 +68,9 @@ public class DirAccess extends FileAccess {
                             if (Arrays.equals(target.owner.getPublicKeys(), childRetrievedPointer.filePointer.owner.getPublicKeys()))
                                 keep = false;
                     return keep;
+                } catch (TweetNaCl.InvalidCipherTextException ex) {
+                    ex.printStackTrace();
+                    return false;
                 } catch (Exception f) {
                     return false;
                 }
@@ -83,6 +86,9 @@ public class DirAccess extends FileAccess {
                             if (Arrays.equals(target.owner.getPublicKeys(), childRetrievedPointer.filePointer.owner.getPublicKeys()))
                                 keep = false;
                     return keep;
+                } catch (TweetNaCl.InvalidCipherTextException ex) {
+                    ex.printStackTrace();
+                    return false;
                 } catch (Exception f) {
                     return false;
                 }

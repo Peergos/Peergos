@@ -12,12 +12,19 @@ public class EncryptedChunk {
 
     private final byte[] auth, cipher;
 
+    public EncryptedChunk(byte[] auth, byte[] cipher) {
+        this.auth = auth;
+        this.cipher = cipher;
+    }
+
     public EncryptedChunk(byte[] encrypted) {
-        this.auth = Arrays.copyOfRange(encrypted, 0, TweetNaCl.SECRETBOX_OVERHEAD_BYTES);
-        this.cipher = Arrays.copyOfRange(encrypted, TweetNaCl.SECRETBOX_OVERHEAD_BYTES, encrypted.length);
+        this(Arrays.copyOfRange(encrypted, 0, TweetNaCl.SECRETBOX_OVERHEAD_BYTES),
+        Arrays.copyOfRange(encrypted, TweetNaCl.SECRETBOX_OVERHEAD_BYTES, encrypted.length));
     }
 
     public List<Fragment> generateFragments(int nOriginalFragments, int nAllowedFailures) {
+        if (this.cipher.length == 0)
+            return Collections.emptyList();
         byte[][] bfrags = Erasure.split(this.cipher, nOriginalFragments, nAllowedFailures);
         List<Fragment> frags = new ArrayList<>();
         for (int i=0; i < bfrags.length; i++)
@@ -30,7 +37,13 @@ public class EncryptedChunk {
     }
 
     public byte[] decrypt(SymmetricKey key, byte[] nonce) {
+        if (cipher.length == 0)
+            return cipher;
         return key.decrypt(ArrayOps.concat(this.auth, this.cipher), nonce);
+    }
+
+    public EncryptedChunk truncateTo(int length) {
+        return new EncryptedChunk(auth, Arrays.copyOfRange(cipher, 0, length));
     }
 
     public static final Set<Integer> ALLOWED_ORIGINAL = Stream.of(5, 10, 20, 40, 80).collect(Collectors.toSet());

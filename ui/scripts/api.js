@@ -411,9 +411,10 @@ SymmetricKey.deserialize = function(raw) {
 }
 
 
-function FileProperties(name, size, modified, attr, thumbnail) {
+function FileProperties(name, sizeHi, sizeLo, modified, attr, thumbnail) {
     this.name = name;
-    this.size = size;
+    this.sizeHi = sizeHi;
+    this.sizeLo = sizeLo;
     this.modified = modified;
     this.attr = attr; //  | HIDDEN
     if (thumbnail == null)
@@ -423,7 +424,8 @@ function FileProperties(name, size, modified, attr, thumbnail) {
     this.serialize = function() {
         var buf = new ByteArrayOutputStream();
         buf.writeString(this.name);
-        buf.writeDouble(this.size);
+        buf.writeInt(this.sizeHi);
+        buf.writeInt(this.sizeLo);
 	buf.writeDouble(this.modified);
 	buf.writeByte(this.attr);
 	buf.writeArray(this.thumbnail);
@@ -455,11 +457,12 @@ function FileProperties(name, size, modified, attr, thumbnail) {
 FileProperties.deserialize = function(raw) {
     const buf = new ByteArrayInputStream(raw);
     var name = buf.readString();
-    var size = buf.readDouble();
+    var sizeHi = buf.readInt();
+    var sizeLo = buf.readInt();
     var modified = buf.readDouble();
     var attr = buf.readByte();
     var thumb = buf.readArray();
-    return new FileProperties(name, size, modified, attr, thumb);
+    return new FileProperties(name, sizeHi, sizeLo, modified, attr, thumb);
 }
 
 function asyncErasureEncode(original, originalBlobs, allowedFailures) {
@@ -525,7 +528,7 @@ Chunk.MAX_SIZE = 5*1024*1024;
 // string, File, SymmetricKey, Location, SymmetricKey -> 
 function FileUploader(name, file, key, parentLocation, parentparentKey, setProgressPercentage, fileProperties, nOriginalFragments, nAllowedFalures) {
     if (fileProperties == null)
-	this.props = new FileProperties(name, file.size, Date.now(), 0);
+	this.props = new FileProperties(name, 0, file.size, Date.now(), 0);
     else
 	this.props = fileProperties;
     if (key == null) key = SymmetricKey.random();
@@ -1041,7 +1044,7 @@ function UserContext(username, user, rootKey, dhtClient,  corenodeClient) {
         const entry = new EntryPoint(rootPointer, this.username, [], []);
         
         return this.addToStaticDataAndCommit(entry).then(function(res) {
-	    var root = DirAccess.create(rootRKey, new FileProperties(directoryName, 0, Date.now(), 0));
+	    var root = DirAccess.create(rootRKey, new FileProperties(directoryName, 0, 0, Date.now(), 0));
 	    return this.uploadChunk(root, this.user, writer, rootMapKey).then(function(res) {
 		if (res)
 		    return Promise.resolve(new RetrievedFilePointer(rootPointer, root));
@@ -1846,7 +1849,7 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 	const dirParentKey = dirAccess.getParentKey(rootRKey);
 	
 	return generateThumbnail(file, filename).then(function(thumbData) {
-	    const fileProps = new FileProperties(filename, file.size, Date.now(), 0, thumbData);
+	    const fileProps = new FileProperties(filename, 0, file.size, Date.now(), 0, thumbData);
 	    const chunks = new FileUploader(filename, file, fileKey, parentLocation, dirParentKey, setProgressPercentage, fileProps);
             return chunks.upload(context, owner, entryWriterKey).then(function(fileLocation) {
 		dirAccess.addFile(fileLocation, rootRKey, fileKey);
@@ -1889,7 +1892,7 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
         const key = this.isDirectory() ? fileAccess.getParentKey(baseKey) : baseKey; 
         const currentProps = fileAccess.getFileProperties(key);
 	
-        const newProps = new FileProperties(newName, currentProps.size, currentProps.modified, currentProps.attr, currentProps.thumbnail);
+        const newProps = new FileProperties(newName, currentProps.sizeHi, currentProps.sizeLo, currentProps.modified, currentProps.attr, currentProps.thumbnail);
 	
         return fileAccess.rename(writableFilePointer(), newProps, context);
     }
@@ -1946,7 +1949,7 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 
     this.getFileProperties = function() {
 	if (pointer == null)
-	    return new FileProperties("/", 0, 0, 0);
+	    return new FileProperties("/", 0, 0, 0, 0);
 	const parentKey = this.getParentKey();
 	return pointer.fileAccess.getFileProperties(parentKey);
     }.bind(this);
@@ -2421,7 +2424,7 @@ function DirAccess(subfolders2files, subfolders2parent, subfolders, files, paren
         const dirMapKey = window.nacl.randomBytes(32); // root will be stored under this in the core node
 	const ourParentKey = this.getParentKey(baseKey);
 	const ourLocation = new Location(userContext.user, writer, ourMapKey);
-        const dir = DirAccess.create(dirReadKey, new FileProperties(name, 0, Date.now(), (isSystemFolder == null || !isSystemFolder) ? 0 : 1), ourLocation, ourParentKey);
+        const dir = DirAccess.create(dirReadKey, new FileProperties(name, 0, 0, Date.now(), (isSystemFolder == null || !isSystemFolder) ? 0 : 1), ourLocation, ourParentKey);
 	const that = this;
 	return userContext.uploadChunk(dir, userContext.user, writer, dirMapKey)
             .then(function(success) {

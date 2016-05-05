@@ -4,31 +4,38 @@ import peergos.crypto.symmetric.*;
 import peergos.user.*;
 
 import java.io.*;
+import java.util.*;
 import java.util.function.*;
 
 public class LazyInputStreamCombiner extends InputStream {
     private final UserContext context;
     private final SymmetricKey dataKey;
     private final Consumer<Long> monitor;
+    private final long totalLength;
+    private long globalIndex = 0;
     private byte[] current;
     private int index;
     private Location next;
 
-    public LazyInputStreamCombiner(FileRetriever stream, UserContext context, SymmetricKey dataKey, byte[] chunk, Consumer<Long> monitor) {
+    public LazyInputStreamCombiner(FileRetriever stream, UserContext context, SymmetricKey dataKey, byte[] chunk, long totalLength, Consumer<Long> monitor) {
         this.context = context;
         this.dataKey = dataKey;
         this.current = chunk;
         this.index = 0;
         this.next = stream.getNext();
+        this.totalLength = totalLength;
         this.monitor = monitor;
     }
 
     public byte[] getNextStream(int len) throws IOException {
         if (this.next != null) {
-            FileAccess meta = context.getMetadata(this.next);
-            FileRetriever nextRet = meta.retriever();
-            next = nextRet.getNext();
-            return nextRet.getChunkInputStream(context, dataKey, len, monitor);
+            Location nextLocation = this.next;
+            Optional<FileAccess> meta = context.getMetadata(nextLocation);
+            if (!meta.isPresent())
+                throw new EOFException();
+            FileRetriever nextRet = meta.get().retriever();
+            this.next = nextRet.getNext();
+            return nextRet.getChunkInputStream(context, dataKey, 0, len, nextLocation, monitor).get().chunk.data();
         }
         throw new EOFException();
     }
@@ -41,7 +48,11 @@ public class LazyInputStreamCombiner extends InputStream {
         try {
             return this.current[this.index++];
         } catch (Exception e) {}
-        current = getNextStream(-1);
+        globalIndex += Chunk.MAX_SIZE;
+        if (globalIndex >= totalLength)
+            throw new EOFException();
+        int toRead = totalLength - globalIndex > Chunk.MAX_SIZE ? Chunk.MAX_SIZE : (int) (totalLength - globalIndex);
+        current = getNextStream(toRead);
         index = 0;
         return current[index++];
     }

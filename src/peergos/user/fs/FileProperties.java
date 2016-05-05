@@ -26,7 +26,7 @@ public class FileProperties {
     public byte[] serialize() {
         DataSink dout = new DataSink();
         dout.writeString(name);
-        dout.writeDouble(size);
+        dout.writeLong(size);
         dout.writeDouble(modified.toEpochSecond(ZoneOffset.UTC));
         dout.writeBoolean(isHidden);
         if (!thumbnail.isPresent())
@@ -40,7 +40,7 @@ public class FileProperties {
     public static FileProperties deserialize(byte[] raw) throws IOException {
         DataSource din = new DataSource(raw);
         String name = din.readString();
-        long size = (long) din.readDouble();
+        long size = din.readLong();
         double modified = din.readDouble();
         boolean isHidden = din.readBoolean();
         int length = din.readInt();
@@ -49,5 +49,24 @@ public class FileProperties {
                 Optional.of(Serialize.deserializeByteArray(din, ContentAddressedStorage.MAX_OBJECT_LENGTH));
 
         return new FileProperties(name, size, LocalDateTime.ofEpochSecond((int)modified, 0, ZoneOffset.UTC), isHidden, thumbnail);
+    }
+
+    public FileProperties withSize(long newSize) {
+        return new FileProperties(name, newSize, modified, isHidden, thumbnail);
+    }
+
+    public FileProperties withModified(LocalDateTime modified) {
+        return new FileProperties(name, size, modified, isHidden, thumbnail);
+    }
+
+    @Override
+    public String toString() {
+        return "FileProperties{" +
+                "name='" + name + '\'' +
+                ", size=" + size +
+                ", modified=" + modified +
+                ", isHidden=" + isHidden +
+                ", thumbnail=" + thumbnail +
+                '}';
     }
 }

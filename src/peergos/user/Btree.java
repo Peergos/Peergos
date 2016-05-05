@@ -105,7 +105,10 @@ public interface Btree {
                 byte[] res = Serialize.deserializeByteArray(din, 256);
                 if (res.length == 0)
                     return MaybeMultihash.EMPTY();
-                return new MaybeMultihash(new Multihash(new DataSource(res).readArray()));
+                byte[] multihash = new DataSource(res).readArray();
+                if (multihash.length == 0)
+                    return MaybeMultihash.EMPTY();
+                return new MaybeMultihash(new Multihash(multihash));
             } finally {
                 if (conn != null)
                     conn.disconnect();
@@ -116,7 +119,7 @@ public interface Btree {
         public PairMultihash remove(UserPublicKey sharingKey, byte[] mapKey) throws IOException {
             HttpURLConnection conn = null;
             try {
-                conn = (HttpURLConnection) buildURL("btree/remove").openConnection();
+                conn = (HttpURLConnection) buildURL("btree/delete").openConnection();
                 conn.setDoInput(true);
                 conn.setDoOutput(true);
                 DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
@@ -131,6 +134,8 @@ public interface Btree {
                     throw new IOException("Couldn't add data to DHT!");
                 byte[] res = Serialize.deserializeByteArray(din, 512);
                 DataSource source = new DataSource(res);
+                // read header for byte array
+                source.readInt();
                 return new PairMultihash(MaybeMultihash.deserialize(source), MaybeMultihash.deserialize(source));
             } finally {
                 if (conn != null)

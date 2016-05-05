@@ -1,16 +1,22 @@
 package peergos.tests;
 
-import org.junit.Test;
+import org.junit.*;
 import peergos.corenode.CoreNode;
 import peergos.corenode.UserPublicKeyLink;
-import peergos.crypto.User;
+import peergos.crypto.*;
 
 import java.time.LocalDate;
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
 
 
 public class UserPublicKeyLinkTests {
+
+    @BeforeClass
+    public static void init() throws Exception {
+        // use insecure random otherwise tests take ages
+        UserTests.setFinalStatic(TweetNaCl.class.getDeclaredField("prng"), new Random(1));
+    }
+
     @Test
     public void createInitial() {
         User user = User.random();

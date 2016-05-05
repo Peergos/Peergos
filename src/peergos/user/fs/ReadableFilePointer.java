@@ -6,6 +6,7 @@ import peergos.crypto.symmetric.SymmetricKey;
 import peergos.util.*;
 
 import java.io.*;
+import java.util.*;
 
 public class ReadableFilePointer {
     public final UserPublicKey owner, writer;
@@ -17,6 +18,10 @@ public class ReadableFilePointer {
         this.writer = writer;
         this.mapKey = mapKey;
         this.baseKey = baseKey;
+    }
+
+    public Location getLocation() {
+        return new Location(owner, writer, mapKey);
     }
 
     public byte[] serialize() {
@@ -55,6 +60,28 @@ public class ReadableFilePointer {
 
     public String toLink() {
         return "#" + Base58.encode(owner.getPublicKeys()) + "/" + Base58.encode(writer.getPublicKeys()) + "/" + Base58.encode(mapKey) + "/" + Base58.encode(baseKey.serialize());
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+
+        ReadableFilePointer that = (ReadableFilePointer) o;
+
+        if (owner != null ? !owner.equals(that.owner) : that.owner != null) return false;
+        if (writer != null ? !writer.equals(that.writer) : that.writer != null) return false;
+        if (!Arrays.equals(mapKey, that.mapKey)) return false;
+        return true;
+
+    }
+
+    @Override
+    public int hashCode() {
+        int result = owner != null ? owner.hashCode() : 0;
+        result = 31 * result + (writer != null ? writer.hashCode() : 0);
+        result = 31 * result + Arrays.hashCode(mapKey);
+        return result;
     }
 
     public static ReadableFilePointer fromLink(String keysString) {

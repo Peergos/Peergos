@@ -695,7 +695,7 @@ var File = React.createClass({
         var glyphClass = this.glyphClass();
         const style = this.sharedListStyle();
 	
-        var sizeString = this.props.isdir ? "" : File.sizeString(this.props.size);
+        var sizeString = this.props.isdir ? "" : File.sizeString(this.props.sizeLo);
         return (<tr id={this.props.id}>
                 <td>
                 <a onDoubleClick={this.props.onClick} style={{cursor: "pointer"}}><span id={this.props.id} draggable="true" onDragStart={this.props.onDragStart} onDragOver={this.props.onDragOver} onDrop={this.props.onDrop} style={style} className={glyphClass} />{this.props.name}</a>
@@ -721,7 +721,7 @@ File.id = function() {return (Math.pow(2,31) * Math.random())|0; }
 
 File.timeSort = function(left, right){return left.time - right.time;} 
 
-File.sizeSort = function(left, right){return left.size - right.size;} 
+File.sizeSort = function(left, right){return left.sizeLo - right.sizeLo;} 
 
 File.pathSort = function(left, right){return left.path.localeCompare(right.path);} 
 
@@ -806,7 +806,7 @@ var Browser = React.createClass({
                 const props = treeNode.getFileProperties();
                 const isDir = treeNode.isDirectory();
                 const name  = props.name;
-                const size = props.size;
+                const size = props.sizeLo;
 		
 		const hasThumb = props.hasThumbnail();
 		const thumbURL = props.getThumbURL();
@@ -877,7 +877,7 @@ var Browser = React.createClass({
                     onDrop : onDrop,
                     name: name,
                     isDir: isDir,
-                    size: size,
+                    sizeLo: size,
                     filePointer: treeNode,
                     hasThumb: hasThumb,
                     thumbURL: thumbURL
@@ -1245,7 +1245,7 @@ var Browser = React.createClass({
                 const props = treeNode.getFileProperties();
                 const name = props.name;
                 if (! treeNode.isDirectory()) {
-                    const size = props.size;
+                    const size = props.sizeLo;
                     $.toaster({
                         priority: "info",
                         message: "Downloading file "+ name, 
@@ -1421,7 +1421,7 @@ var Browser = React.createClass({
                     </div>);
 	
         const files = this.state.files.map(function(f) {
-            return (<File id={File.id()} gridView={this.state.gridView} onClick={f.onClick} onDragStart={f.onDragStart} onDragOver={f.onDragOver} onDrop={f.onDrop} name={f.name} isdir={f.isDir} size={f.size} browser={this} retrievedFilePointer={f.filePointer} hasThumb={f.hasThumb} thumbURL={f.thumbURL}/>)
+            return (<File id={File.id()} gridView={this.state.gridView} onClick={f.onClick} onDragStart={f.onDragStart} onDragOver={f.onDragOver} onDrop={f.onDrop} name={f.name} isdir={f.isDir} sizeLo={f.sizeLo} browser={this} retrievedFilePointer={f.filePointer} hasThumb={f.hasThumb} thumbURL={f.thumbURL}/>)
         }.bind(this)); 
 
         const jumbo = files.length != 0 ? (<div></div>) : 
