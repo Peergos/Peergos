@@ -122,7 +122,7 @@ public class Start
 
         Start.main(new String[] {"-corenode", "-domain", domain, "-corenodePath", Args.getArg("corenodePath", corenodePath)});
 
-        Start.main(new String[]{"-port", "443", "-logMessages", "-domain", domain, "-publicserver", "-corenodeURL", "http://localhost:"+corenodePort});
+        Start.main(new String[]{"-port", "443", "-logMessages", "-domain", domain, "-publicserver", "-corenodeURL", "http://"+domain+":"+corenodePort});
     }
 
     public static void local() throws Exception {
