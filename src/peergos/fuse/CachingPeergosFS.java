@@ -97,7 +97,7 @@ public class CachingPeergosFS extends PeergosFS {
         CacheEntry cacheEntry = entryMap.get(s);
         if  (cacheEntry != null) {
             cacheEntry.sync();
-            entryMap.remove(cacheEntry);
+            entryMap.remove(s);
         }
         return super.flush(s, fuseFileInfo);
     }
@@ -155,7 +155,7 @@ public class CachingPeergosFS extends PeergosFS {
             String parentPath = p.getParent().toString();
             String name = p.getFileName().toString();
 
-            applyIfPresent(parentPath, (parent) -> CachingPeergosFS.this.write(parent, name, data, offset, maxPos), -ErrorCodes.ENOENT());
+            applyIfPresent(parentPath, (parent) -> CachingPeergosFS.this.write(parent, name, data, maxPos, offset), -ErrorCodes.ENOENT());
         }
 
     }
@@ -177,7 +177,7 @@ public class CachingPeergosFS extends PeergosFS {
                 CacheEntry cacheEntry = entryMap.get(previousEntryKey);
                 if  (cacheEntry != null) {
                     cacheEntry.sync();
-                    entryMap.remove(cacheEntry);
+                    entryMap.remove(previousEntryKey);
                 }
             }
         }
