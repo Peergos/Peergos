@@ -97,17 +97,16 @@ public class CachingPeergosFS extends PeergosFS {
         CacheEntry cacheEntry = entryMap.get(s);
         if  (cacheEntry != null) {
             cacheEntry.sync();
-            entryMap.remove(s);
         }
         return super.flush(s, fuseFileInfo);
     }
 
     private boolean containedInOneChunk(long start, long end) {
-        return alignToChunkSize(start) == alignToChunkSize(end);
+        return alignToChunkSize(start) == alignToChunkSize(end-1);
     }
 
     private long alignToChunkSize(long pos) {
-        return (pos / Chunk.MAX_SIZE) * Chunk.MAX_SIZE;
+        return Math.max(0, pos / Chunk.MAX_SIZE) * Chunk.MAX_SIZE;
     }
     private int intraChunkOffset(long  pos) {
         return (int) pos % Chunk.MAX_SIZE;
