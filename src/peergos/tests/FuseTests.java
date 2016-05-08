@@ -294,7 +294,7 @@ public class FuseTests {
         }
     }
 
-//    @Test
+    @Test
     public void javascriptCompatibility() {
         runForAWhile();
     }
