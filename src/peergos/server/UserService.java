@@ -2,7 +2,6 @@ package peergos.server;
 
 import com.sun.net.httpserver.*;
 import peergos.corenode.*;
-import peergos.crypto.SSL;
 import org.bouncycastle.operator.OperatorCreationException;
 import peergos.server.net.*;
 import peergos.server.storage.ContentAddressedStorage;
@@ -87,7 +86,7 @@ public class UserService
                 SSLContext sslContext = SSLContext.getInstance("TLS");
 
                 char[] password = "storage".toCharArray();
-                KeyStore ks = SSL.getKeyStore(password);
+                KeyStore ks = getKeyStore("storage.p12", password);
 
                 KeyManagerFactory kmf = KeyManagerFactory.getInstance("SunX509");
                 kmf.init(ks, password);
@@ -153,5 +152,19 @@ public class UserService
         server.start();
 
         return true;
+    }
+
+    public static KeyStore getKeyStore(String filename, char[] password)
+            throws KeyStoreException, IOException, NoSuchAlgorithmException, CertificateException, InvalidKeyException,
+            NoSuchProviderException, SignatureException, OperatorCreationException
+    {
+        KeyStore ks = KeyStore.getInstance("PKCS12");
+        if (new File(filename).exists())
+        {
+            ks.load(new FileInputStream(filename), password);
+            return ks;
+        }
+
+        throw new IllegalStateException("SSL keystore file doesn't exist: "+filename);
     }
 }

@@ -2,14 +2,17 @@ package peergos.server;
 
 import peergos.corenode.*;
 import peergos.crypto.*;
+import peergos.fuse.*;
 import peergos.server.storage.*;
+import peergos.tests.*;
+import peergos.user.*;
 import peergos.util.*;
 
 import java.io.IOException;
-import java.net.InetSocketAddress;
+import java.net.*;
+import java.nio.file.*;
 import java.sql.SQLException;
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.*;
 import java.util.logging.*;
 
 public class Start
@@ -20,12 +23,17 @@ public class Start
     {
         OPTIONS.put("help", "Show this help.");
         OPTIONS.put("local", "Run an ephemeral localhost Peergos");
+        OPTIONS.put("fuse", "Mount a Peergos user's filesystem natively");
     }
     public static final Map<String, String> PARAMS = new LinkedHashMap();
     static
     {
-        PARAMS.put("port", " the I/O port to listen on.");
+        PARAMS.put("port", " the port to listen on.");
         PARAMS.put("useIPFS", "true/false use IPFS or an ephemeral RAM storage");
+        PARAMS.put("corenodeURL", "URL of a corenode e.g. https://demo.peergos.net");
+        PARAMS.put("mountPoint", "directory to mount Peergos in (used with -fuse)");
+        PARAMS.put("username", "user whose filesystem will be mounted (used with -fuse)");
+        PARAMS.put("password", "password for user filesystem to be mounted (used with -fuse)");
         PARAMS.put("corenodePath", "path to a local corenode sql file (created if it doesn't exist)");
         PARAMS.put("corenodePort", "port for the local core node to listen on");
     }
@@ -40,7 +48,8 @@ public class Start
         for (String k: PARAMS.keySet())
             System.out.println("-"+ k + "\t " + PARAMS.get(k));
     }
-    public static void main(String[] args) throws IOException
+
+    public static void main(String[] args) throws Exception
     {
         Args.parse(args);
         if (Args.hasArg("help"))
@@ -63,29 +72,12 @@ public class Start
             String path = Args.getArg("corenodePath", ":memory:");
             int corenodePort = Args.getInt("corenodePort", HTTPCoreNodeServer.PORT);
             System.out.println("Using core node path "+ path);
-            try {
-                SQLiteCoreNode coreNode = SQLiteCoreNode.build(path);
-                HTTPCoreNodeServer.createAndStart(keyfile, passphrase, corenodePort, coreNode);
-            } catch (SQLException sqle) {
-                throw new IllegalStateException(sqle);
-            }
-        }
-        else if (Args.hasArg("rootGen"))
-        {
-            SSL.generateAndSaveRootCertificate(Args.getArg("password").toCharArray());
-        }
-        else if (Args.hasArg("coreGen"))
-        {
-            String domain = Args.getArg("domain");
-            SSL.generateCSR(Args.getArg("password").toCharArray(), domain, Args.getArg("keyfile"), "core.csr");
-        }
-        else if (Args.hasArg("coreSign"))
-        {
-            SSL.signCertificate(Args.getArg("csr", "core.csr"), Args.getArg("rootPassword").toCharArray(), "Core");
+            SQLiteCoreNode coreNode = SQLiteCoreNode.build(path);
+            HTTPCoreNodeServer.createAndStart(keyfile, passphrase, corenodePort, coreNode);
         }
         else {
             int webPort = Args.getInt("port", 8000);
-            int corenodePort = Args.getInt("corenodePort", HTTPCoreNodeServer.PORT);
+            URL coreAddress = new URI(Args.getArg("corenodeURL", "http://localhost:"+HTTPCoreNodeServer.PORT)).toURL();
             String domain = Args.getArg("domain", "localhost");
             InetSocketAddress userAPIAddress = new InetSocketAddress(domain, webPort);
 
@@ -95,15 +87,35 @@ public class Start
             // start the User Service
             String hostname = Args.getArg("domain", "localhost");
 
-            InetSocketAddress httpsMessengerAddress = new InetSocketAddress(hostname, userAPIAddress.getPort());
-            CoreNode core = HTTPCoreNode.getInstance(corenodePort);
+            CoreNode core = HTTPCoreNode.getInstance(coreAddress);
             CoreNode pinner = new PinningCoreNode(core, dht);
 
+            InetSocketAddress httpsMessengerAddress = new InetSocketAddress(hostname, userAPIAddress.getPort());
             new UserService(httpsMessengerAddress, Logger.getLogger("IPFS"), dht, pinner);
+
+            if (Args.hasArg("fuse")) {
+                String username = Args.getArg("username", "test01");
+                String password = Args.getArg("password", "test01");
+                Path mount = Files.createTempDirectory("peergos");
+                String mountPath = Args.getArg("mountPoint", mount.toString());
+
+                Path path = Paths.get(mountPath);
+                path.toFile().mkdirs();
+
+                System.out.println("\n\nPeergos mounted at "+ path+"\n\n");
+
+                UserContext userContext = UserTests.ensureSignedUp(username, password);
+                PeergosFS peergosFS = new PeergosFS(userContext);
+                FuseProcess fuseProcess = new FuseProcess(peergosFS, path);
+
+                Runtime.getRuntime().addShutdownHook(new Thread(()  -> fuseProcess.close()));
+
+                fuseProcess.start();
+            }
         }
     }
 
-    public static void demo() throws IOException{
+    public static void demo() throws Exception {
         String domain = Args.getArg("domain", "demo.peergos.net");
         String corenodePath = Args.getArg("corenodePath", "core.sql");
 
@@ -112,11 +124,11 @@ public class Start
         Start.main(new String[]{"-port", "443", "-logMessages", "-domain", domain, "-publicserver"});
     }
 
-    public static void local() throws IOException{
+    public static void local() throws Exception {
         String domain = Args.getArg("domain", "localhost");
-        String corenodePath = Args.getArg("corenodePath", ":memory:");
         boolean useIPFS = Args.getBoolean("useIPFS", true);
         int webPort = Args.getInt("port", 8000);
+        String corenodePath = Args.getArg("corenodePath", ":memory:");
         int corenodePort = Args.getInt("corenodePort", HTTPCoreNodeServer.PORT);
 
         Start.main(new String[] {"-corenode", "-domain", domain, "-corenodePath", corenodePath, "-corenodePort", Integer.toString(corenodePort)});

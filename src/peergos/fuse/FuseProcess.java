@@ -85,8 +85,8 @@ public class FuseProcess implements Runnable, AutoCloseable {
     }
 
     public static void main(String[] args) throws Exception {
-        int WEB_PORT = 9876;
-        int CORE_PORT = 9753;
+        int WEB_PORT = 8000;
+        int CORE_PORT = 9999;
 
         Args.parse(new String[]{"useIPFS", "false",
                 "-port", Integer.toString(WEB_PORT),
@@ -94,7 +94,7 @@ public class FuseProcess implements Runnable, AutoCloseable {
 
         Start.local();
 
-        // use insecure random otherwise tests take ages
+        // TODO find a faster high quality randomness source
         setFinalStatic(TweetNaCl.class.getDeclaredField("prng"), new Random());
 
         Args.parse(args);
@@ -106,7 +106,7 @@ public class FuseProcess implements Runnable, AutoCloseable {
         path = path.resolve(UUID.randomUUID().toString());
         path.toFile().mkdirs();
 
-        System.out.println("\n\nMountpoint "+ path+"\n\n");
+        System.out.println("\n\nPeergos mounted at "+ path+"\n\n");
 
         UserContext userContext = UserTests.ensureSignedUp(username, password);
         PeergosFS peergosFS = new PeergosFS(userContext);
