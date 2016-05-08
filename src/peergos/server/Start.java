@@ -118,10 +118,11 @@ public class Start
     public static void demo() throws Exception {
         String domain = Args.getArg("domain", "demo.peergos.net");
         String corenodePath = Args.getArg("corenodePath", "core.sql");
+        int corenodePort = Args.getInt("corenodePort", HTTPCoreNodeServer.PORT);
 
         Start.main(new String[] {"-corenode", "-domain", domain, "-corenodePath", Args.getArg("corenodePath", corenodePath)});
 
-        Start.main(new String[]{"-port", "443", "-logMessages", "-domain", domain, "-publicserver"});
+        Start.main(new String[]{"-port", "443", "-logMessages", "-domain", domain, "-publicserver", "-corenodeURL", "http://localhost:"+corenodePort});
     }
 
     public static void local() throws Exception {
