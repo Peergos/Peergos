@@ -134,6 +134,6 @@ public class Start
         Start.main(new String[] {"-corenode", "-domain", domain, "-corenodePath", corenodePath, "-corenodePort", Integer.toString(corenodePort)});
 
         Start.main(new String[]{"-port", Integer.toString(webPort), "-logMessages", "-domain", domain, "-publicserver",
-                "-useIPFS", Boolean.toString(useIPFS), "-corenodePort", Integer.toString(corenodePort)});
+                "-useIPFS", Boolean.toString(useIPFS), "-corenodeURL", "http://localhost:"+corenodePort});
     }
 }
