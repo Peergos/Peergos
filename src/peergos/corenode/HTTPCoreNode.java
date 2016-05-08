@@ -77,6 +77,7 @@ public class HTTPCoreNode implements CoreNode
             DataInputStream din = new DataInputStream(conn.getInputStream());
             return Serialize.deserializeString(din, CoreNode.MAX_USERNAME_SIZE);
         } catch (IOException ioe) {
+            System.err.println("Couldn't connect to " + coreNodeURL);
             ioe.printStackTrace();
             return null;
         } finally {
