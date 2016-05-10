@@ -57,29 +57,45 @@ public class Erasure {
     public static byte[] recombine(GaloisField f, byte[][] encoded, int truncateTo, int originalBlobs, int allowedFailures)
     {
         long t1 = System.currentTimeMillis();
-        int n = originalBlobs + allowedFailures*2;
-        int encodeSize = (f.size()/n)*n;
-        int inputSize = encodeSize*originalBlobs/n;
-        int nec = encodeSize-inputSize;
-        int symbolSize = inputSize/originalBlobs;
-        if (encoded.length == 0)
-            return new byte[0];
-        int tbSize = encoded[0].length;
+        try {
+            int n = originalBlobs + allowedFailures * 2;
+            int encodeSize = (f.size() / n) * n;
+            int inputSize = encodeSize * originalBlobs / n;
+            int nec = encodeSize - inputSize;
+            int symbolSize = inputSize / originalBlobs;
+            if (encoded.length == 0)
+                return new byte[0];
+            int tbSize = encoded[0].length;
+            // don't bother in the case where we haven't lost any of the original fragments
+            for (int k = 0; k < originalBlobs; k++) {
+                if (encoded[k] == null || encoded[k].length == 0)
+                    break;
+                if (k == originalBlobs - 1) {
+                    // shortcut
+                    ByteArrayOutputStream res = new ByteArrayOutputStream();
+                    for (int i = 0; i < tbSize; i += symbolSize) {
+                        for (int j = 0; j < originalBlobs; j++)
+                            res.write(encoded[j], i, symbolSize);
+                    }
+                    return Arrays.copyOfRange(res.toByteArray(), 0, truncateTo);
+                }
+            }
 
-        ByteArrayOutputStream res = new ByteArrayOutputStream();
-        for (int i=0; i < tbSize; i+=symbolSize)
-        {
-            ByteArrayOutputStream bout = new ByteArrayOutputStream();
-            // take a symbol from each stream
-            for (int j=0; j < n; j++)
-                bout.write(encoded[j], i, symbolSize);
-            int[] decodedInts = GaloisPolynomial.decode(convert(bout.toByteArray(), f), nec, f);
-            byte[] raw = convert(decodedInts, f);
-            res.write(raw, 0, inputSize);
+            ByteArrayOutputStream res = new ByteArrayOutputStream();
+            for (int i = 0; i < tbSize; i += symbolSize) {
+                ByteArrayOutputStream bout = new ByteArrayOutputStream();
+                // take a symbol from each stream
+                for (int j = 0; j < n; j++)
+                    bout.write(encoded[j], i, symbolSize);
+                int[] decodedInts = GaloisPolynomial.decode(convert(bout.toByteArray(), f), nec, f);
+                byte[] raw = convert(decodedInts, f);
+                res.write(raw, 0, inputSize);
+            }
+            return Arrays.copyOfRange(res.toByteArray(), 0, truncateTo);
+        } finally {
+            long t2 = System.currentTimeMillis();
+            System.out.println("Erasure decoding took " + (t2 - t1) + " mS");
         }
-        long t2 = System.currentTimeMillis();
-        System.out.println("Erasure decoding took "+(t2-t1) + " mS");
-        return Arrays.copyOfRange(res.toByteArray(), 0, truncateTo);
     }
 
     public static int[] convert(byte[] in, GaloisField f)

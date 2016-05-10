@@ -85,7 +85,8 @@ public class FuseTests {
         home = mountPoint.resolve(username);
 
         System.out.println("\n\nMountpoint "+ mountPoint +"\n\n");
-        PeergosFS peergosFS = new PeergosFS(userContext);
+//        PeergosFS peergosFS = new PeergosFS(userContext);
+        PeergosFS peergosFS = new CachingPeergosFS(userContext);
         fuseProcess = new FuseProcess(peergosFS, mountPoint);
 
         Runtime.getRuntime().addShutdownHook(new Thread(()  -> fuseProcess.close()));
@@ -218,7 +219,8 @@ public class FuseTests {
         assertTrue("path is directory", path.toFile().isDirectory());
     }
 
-    @Test public  void rmdirTest() throws IOException {
+    @Test
+    public  void rmdirTest() throws IOException {
         Path path = home
                 .resolve(randomUUID().toString())
                 .resolve(randomUUID().toString());

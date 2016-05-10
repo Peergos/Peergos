@@ -29,9 +29,9 @@ import java.util.function.*;
  * also
  * https://github.com/libfuse/libfuse/blob/master/include/fuse.h
  */
-public class PeergosFS extends FuseStubFS {
+public class PeergosFS extends FuseStubFS implements AutoCloseable {
 
-    private static class PeergosStat {
+    protected static class PeergosStat {
         private final FileTreeNode treeNode;
         private final FileProperties properties;
 
@@ -43,15 +43,26 @@ public class PeergosFS extends FuseStubFS {
 
 
     private final UserContext userContext;
+    protected volatile boolean isClosed;
 
     public PeergosFS(UserContext userContext) {
         this.userContext = userContext;
     }
 
+    @Override
+    public void close() throws Exception {
+        ensureNotClosed();
+        this.isClosed = true;
+    }
 
+    private void ensureNotClosed() {
+        if  (isClosed)
+            throw new IllegalStateException(this +" is closed");
+    }
 
     @Override
     public int getattr(String s, FileStat fileStat) {
+        ensureNotClosed();
         int aDefault = -ErrorCodes.ENOENT();
         return applyIfPresent(s, (peergosStat) -> {
             try {
@@ -103,6 +114,7 @@ public class PeergosFS extends FuseStubFS {
     }
     @Override
     public int mkdir(String s, @mode_t long l) {
+        ensureNotClosed();
         Optional<PeergosStat> current = getByPath(s);
         if (current.isPresent())
             return 1;
@@ -122,6 +134,7 @@ public class PeergosFS extends FuseStubFS {
 
     @Override
     public int unlink(String s) {
+        ensureNotClosed();
         try {
             Path requested = Paths.get(s);
             Optional<FileTreeNode> file = userContext.getByPath(s);
@@ -142,6 +155,7 @@ public class PeergosFS extends FuseStubFS {
 
     @Override
     public int rmdir(String s) {
+        ensureNotClosed();
         Path dir = Paths.get(s);
         return applyIfPresent(s, (stat) -> applyIfPresent(dir.getParent().toString(), parentStat -> rmdir(stat, parentStat)));
     }
@@ -152,6 +166,7 @@ public class PeergosFS extends FuseStubFS {
     }
 
     private int rename(PeergosStat source, PeergosStat sourceParent, String sourcePath, String name) {
+        ensureNotClosed();
         try {
             Path requested = Paths.get(name);
             Optional<FileTreeNode> newParent = userContext.getByPath(requested.getParent().toString());
@@ -179,6 +194,7 @@ public class PeergosFS extends FuseStubFS {
     }
     @Override
     public int rename(String s, String s1) {
+        ensureNotClosed();
         Path source = Paths.get(s);
         return applyIfPresent(s, (stat) -> applyIfPresent(source.getParent().toString(), parentStat -> rename(stat, parentStat, s, s1)));
     }
@@ -200,24 +216,28 @@ public class PeergosFS extends FuseStubFS {
 
     @Override
     public int truncate(String s, @off_t long l) {
+        ensureNotClosed();
         //TODO
         return 0;
     }
 
     @Override
     public int open(String s, FuseFileInfo fuseFileInfo) {
+        ensureNotClosed();
         debug("OPEN %s", s);
         return 0;
     }
 
     @Override
     public int read(String s, Pointer pointer, @size_t long size, @off_t long offset, FuseFileInfo fuseFileInfo) {
+        ensureNotClosed();
         debug("READ %s, size %d  offset %d ", s, size, offset);
         return applyIfPresent(s, (stat) -> read(stat, pointer, size, offset));
     }
 
     @Override
     public int write(String s, Pointer pointer, @size_t long size, @off_t long offset, FuseFileInfo fuseFileInfo) {
+        ensureNotClosed();
         debug("WRITE %s, size %d  offset %d ", s, size, offset);
         Path path = Paths.get(s);
         String parentPath = path.getParent().toString();
@@ -227,6 +247,7 @@ public class PeergosFS extends FuseStubFS {
 
     @Override
     public int statfs(String s, Statvfs statvfs) {
+        ensureNotClosed();
         statvfs.f_bsize.set(128*1024L);
 //        return 0;
         return unimp();
@@ -234,6 +255,7 @@ public class PeergosFS extends FuseStubFS {
 
     @Override
     public int flush(String s, FuseFileInfo fuseFileInfo) {
+        ensureNotClosed();
         return 0;
     }
 
@@ -269,43 +291,49 @@ public class PeergosFS extends FuseStubFS {
 
     @Override
     public int opendir(String s, FuseFileInfo fuseFileInfo) {
+        ensureNotClosed();
         return  0;
     }
 
     @Override
     public int readdir(String s, Pointer pointer, FuseFillDir fuseFillDir, @off_t long l, FuseFileInfo fuseFileInfo) {
+        ensureNotClosed();
         return applyIfPresent(s, (stat) ->readdir(stat,  fuseFillDir, pointer));
     }
 
     @Override
     public int releasedir(String s, FuseFileInfo fuseFileInfo) {
+        ensureNotClosed();
         return 0;
     }
 
     @Override
     public int fsyncdir(String s, FuseFileInfo fuseFileInfo) {
+        ensureNotClosed();
         return 0;
     }
 
     @Override
     public Pointer init(Pointer pointer) {
+        ensureNotClosed();
         return pointer;
     }
 
     @Override
     public void destroy(Pointer pointer) {
-
+        ensureNotClosed();
     }
 
     @Override
     public int access(String s, int mask) {
+        ensureNotClosed();
         debug("ACCESS %s, mask %d", s, mask);
         return 0;
     }
 
     @Override
     public int create(String s, @mode_t long l, FuseFileInfo fuseFileInfo) {
-
+        ensureNotClosed();
         Path path = Paths.get(s);
         String parentPath = path.getParent().toString();
         String name = path.getFileName().toString();
@@ -317,6 +345,7 @@ public class PeergosFS extends FuseStubFS {
 
     @Override
     public int ftruncate(String s, @off_t long l, FuseFileInfo fuseFileInfo) {
+        ensureNotClosed();
         Path path = Paths.get(s);
         String parentPath = path.getParent().toString();
         return applyIfBothPresent(parentPath, s, (parent, file) -> truncate(parent, file, l));
@@ -324,17 +353,20 @@ public class PeergosFS extends FuseStubFS {
 
     @Override
     public int fgetattr(String s, FileStat fileStat, FuseFileInfo fuseFileInfo) {
+        ensureNotClosed();
         return getattr(s, fileStat);
     }
 
     @Override
     public int lock(String s, FuseFileInfo fuseFileInfo, int i, Flock flock) {
-        // TODO: 01/04/16  
+        // TODO: 01/04/16
+        ensureNotClosed();
         return 0;
     }
 
 //    @Override
     public int utimens(String s, Timespec[] timespecs) {
+        ensureNotClosed();
         int aDefault = -ErrorCodes.ENOENT();
 
         Optional<PeergosStat> parentOpt = getParentByPath(s);
@@ -411,7 +443,7 @@ public class PeergosFS extends FuseStubFS {
         throw ex;
     }
 
-    private Optional<PeergosStat> getByPath(String path) {
+    protected Optional<PeergosStat> getByPath(String path) {
         Optional<FileTreeNode> opt = userContext.getByPath(path);
         if (! opt.isPresent())
             return Optional.empty();
@@ -426,19 +458,19 @@ public class PeergosFS extends FuseStubFS {
         return getByPath(parentPath);
     }
 
-    private int applyIf(String path, boolean isPresent, Function<PeergosStat,  Integer> func, int _default) {
+    protected int applyIf(String path, boolean isPresent, Function<PeergosStat,  Integer> func, int _default) {
         Optional<PeergosStat> byPath = getByPath(path);
         if (byPath.isPresent() && isPresent)
             return func.apply(byPath.get());
         return _default;
     }
 
-    private int applyIfPresent(String path, Function<PeergosStat,  Integer> func) {
+    protected int applyIfPresent(String path, Function<PeergosStat,  Integer> func) {
         int aDefault = 1;
         return applyIfPresent(path, func, aDefault);
     }
 
-    private int applyIfPresent(String path, Function<PeergosStat,  Integer> func, int _default) {
+    protected int applyIfPresent(String path, Function<PeergosStat,  Integer> func, int _default) {
         boolean isPresent = true;
         return applyIf(path, isPresent, func, _default);
     }
@@ -467,15 +499,17 @@ public class PeergosFS extends FuseStubFS {
         return 0;
     }
 
-    public int read(PeergosStat stat, Pointer pointer, long requestedSize, long offset) {
+    protected Optional<byte[]> read(PeergosStat stat, long requestedSize, long offset) {
         long actualSize = stat.properties.size;
-        if (offset > actualSize) {
-            return 0;
-        }
-        long size = Math.min(actualSize, requestedSize);
-        try {
-            InputStream is = stat.treeNode.getInputStream(userContext, actualSize, (l) -> {});
 
+        if (offset > actualSize) {
+            Optional.empty();
+        }
+
+        long size = Math.min(actualSize, requestedSize);
+        byte[] data =  new byte[(int) size];
+
+        try (InputStream is = stat.treeNode.getInputStream(userContext, actualSize, (l) -> {})){
             is.skip(offset);
 
             for (long i = 0; i < size; i++) {
@@ -485,16 +519,28 @@ public class PeergosFS extends FuseStubFS {
                     continue;
                 int read = is.read();
                 if (read < 0)
-                    return 1;
-                pointer.putByte(i, (byte) read);
+                    Optional.empty();
+                data[(int) i] = (byte) read;
             }
 
+            return Optional.of(data);
         } catch (Exception  ioe) {
             ioe.printStackTrace();
-            return 1;
+            return Optional.empty();
         }
+    }
 
-        return (int) size;
+    public int read(PeergosStat stat, Pointer pointer, long requestedSize, long offset) {
+        Optional<byte[]> dataOpt = read(stat, requestedSize, offset);
+
+        if  (! dataOpt.isPresent())
+            return 1;
+
+        byte[] data = dataOpt.get();
+        for (int i = 0; i < data.length; i++) {
+            pointer.putByte(i, data[i]);
+        }
+        return data.length;
     }
 
     private byte[] getData(Pointer pointer, int size) {

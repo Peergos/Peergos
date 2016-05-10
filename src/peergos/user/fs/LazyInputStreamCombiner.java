@@ -44,13 +44,15 @@ public class LazyInputStreamCombiner extends InputStream {
         return this.current.length - this.index;
     }
 
+    private static final EOFException EOF = new EOFException();
+
     public byte readByte() throws IOException {
         try {
             return this.current[this.index++];
         } catch (Exception e) {}
         globalIndex += Chunk.MAX_SIZE;
         if (globalIndex >= totalLength)
-            throw new EOFException();
+            throw EOF;
         int toRead = totalLength - globalIndex > Chunk.MAX_SIZE ? Chunk.MAX_SIZE : (int) (totalLength - globalIndex);
         current = getNextStream(toRead);
         index = 0;
