@@ -116,7 +116,7 @@ public class CachingPeergosFS extends PeergosFS {
         private final String path;
         private final byte[] data;
         private final long offset;
-        private int maxPos;
+        private int maxDirtyPos;
 
 
         public CacheEntry(String path, long offset) {
@@ -126,7 +126,7 @@ public class CachingPeergosFS extends PeergosFS {
             //read current data into data view
             PeergosStat stat = getByPath(path).orElseThrow(() -> new IllegalStateException("missing" + path));
             byte[] readData = CachingPeergosFS.this.read(stat, data.length, offset).orElseThrow(() -> new IllegalStateException("missing" + path));
-            this.maxPos = readData.length;
+            this.maxDirtyPos = 0;
             System.arraycopy(readData, 0, data, 0, readData.length);
 
         }
@@ -144,7 +144,7 @@ public class CachingPeergosFS extends PeergosFS {
         public synchronized int write(Pointer pointer, int offset, int length) {
             ensureInBounds(offset, length);
             pointer.get(0, data, offset, length);
-            maxPos = Math.max(maxPos, offset+length);
+            maxDirtyPos = Math.max(maxDirtyPos, offset+length);
             return length;
         }
 
@@ -154,7 +154,7 @@ public class CachingPeergosFS extends PeergosFS {
             String parentPath = p.getParent().toString();
             String name = p.getFileName().toString();
 
-            applyIfPresent(parentPath, (parent) -> CachingPeergosFS.this.write(parent, name, data, maxPos, offset), -ErrorCodes.ENOENT());
+            applyIfPresent(parentPath, (parent) -> CachingPeergosFS.this.write(parent, name, data, maxDirtyPos, offset), -ErrorCodes.ENOENT());
         }
 
     }
