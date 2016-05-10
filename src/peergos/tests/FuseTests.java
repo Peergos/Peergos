@@ -294,8 +294,8 @@ public class FuseTests {
         }
     }
 
-//    @Test
-    public void javascriptCompatibility() {
+    public static void main(String[] args) throws Exception {
+        init();
         runForAWhile();
     }
 
