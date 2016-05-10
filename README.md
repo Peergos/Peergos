@@ -7,7 +7,9 @@ Peergos is a peer-to-peer encrypted filesystem with secure sharing of files desi
 
 The name Peergos comes from the Greek word Πύργος (Pyrgos), which means stronghold or tower, but phonetically spelt with the nice connection to being peer-to-peer. 
 
-There is a single machine demo running at [https://demo.peergos.net](https://demo.peergos.net). We would very much appreciate any help. 
+There is a single machine demo running at [https://demo.peergos.net](https://demo.peergos.net). 
+
+The slides of the first talk introducing Peergos are [here](https://speakerdeck.com/ianopolous/introducing-peergos).
 
 Peergos aims
 ------------
@@ -20,6 +22,7 @@ Peergos aims
  - Self hostable - A user should be able to easily run Peergos on a machine in their home and get their own Peergos storage space, and social communication platform from it. 
  - A secure web interface
  - To enable secure real time chat, and video conversations
+ - Plausibly deniable dual login to an account, ala Truecrypt
 
 Project anti-aims
 -----------------
@@ -41,27 +44,27 @@ Architecture
 
 3.0 Nodes
  - Types of node in decreasing order of reliability: Core node, 
- - The Core nodes are highly reliable nodes. They store the username <--> public key mapping and the encrypted pending follow requests
+ - The Core nodes are highly reliable nodes. They store the username <--> public key mapping and the encrypted pending follow requests. Eventually we hope to put this small amount of data in a blockchain for full decentralization.
  - A new node contacts a publc Peergos server to join the network
 
 4.0 Trust
- - There is a self-signed root certificate used to sign releases, which the user can choose to install
- - A user who trusts a public Peergos server can use the web interface over TLS
+ - New versions of the software will be delivered through Peergos itself. (Able to be turned off by the user if desired)
+ - A user who trusts a public Peergos server (and the SSL Certificate authority chain) can use the web interface over TLS
  - A less trusting user can run a Peergos server on their own machine and use the web interface over localhost
 
 4.0 Logging in
- - A user's username is salted with the hash of their password and then run through scrypt (with paramters 17, 8, 96, 1000) to generate a symmertic key, an encypting keypair and a signing keypair. This means that a user can log in from any machine without transfering any keys, and also that their keys are protected from a brute force attack.
+ - A user's username is salted with the hash of their password and then run through scrypt (with paramters 17, 8, 1, 96) to generate a symmertic key, an encrypting keypair and a signing keypair. This means that a user can log in from any machine without transfering any keys, and also that their keys are protected from a brute force attack (see slides above for cost estimate).
 
 5.0 Encryption
  - private keys never leave client node
  - encrypted files are duplicated locally, using erasure codes, into multiple fragments to distribute to the network
 
 6.0 Incentives
- - Amount of storage individuals are allowed to use is the amount they donate divided by the replication ratio. This amount takes a week of > 70% up-time to be usable, and will decrease if donated storage is ever online for less than 70% in the previous month (as measured by the network)
+ - Users will be able to earn storage space by donating storage space (through [FileCoin](http://filecoin.io/))
 
 7.0 Repair after node disappearance
  - User's client is responsible for ensuring enough fragments of their files remain (another incentive to stay online)
- - For paying users, we can keep a copy of the (encrypted) fragments on our servers to 100% guarantee availability
+ - For paying users, we can keep a copy of the (encrypted) fragments on our servers to 100% guarantee no data loss
 
 8.0 Friend network
  - Anyone can send anyone else a "friend request". This amounts to "following" someone and is a one way protocol. This is stored in the core codes, but the core nodes cannot see who is sending the friend request. 
@@ -76,7 +79,7 @@ Architecture
 
 Usage
 -----
-First install and run IPFS
+First install and run the [IPFS daemon](https://ipfs.io/docs/install/)
 
 The run with the following to find out available options:
 java -jar PeergosServer.jar -help
