@@ -258,9 +258,10 @@ public class HTTPCoreNodeServer
 
     public static void createAndStart(String keyfile, char[] passphrase, int port, CoreNode coreNode)
     {
-        // eventually will need our own keypair to sign traffic to other core nodes our register ourselves with directory servers
+        // eventually will need our own keypair to sign traffic to other core nodes
         try {
             String hostname = Args.getArg("domain", "localhost");
+            System.out.println("Starting core node server listening on: " + hostname+":"+port +" proxying to "+coreNode);
             InetSocketAddress address = new InetSocketAddress(hostname, port);
             HTTPCoreNodeServer server = new HTTPCoreNodeServer(coreNode, address);
             server.start();

@@ -89,7 +89,7 @@ public class FileAccess {
         if (!Arrays.equals(baseKey.serialize(), newBaseKey.serialize()))
             throw new IllegalStateException("FileAccess clone must have same base key as original!");
         FileProperties props = getFileProperties(baseKey);
-        FileAccess fa = FileAccess.create(newBaseKey, props, this.retriever, parentLocation, parentparentKey);
+        FileAccess fa = FileAccess.create(newBaseKey, SymmetricKey.random(), props, this.retriever, parentLocation, parentparentKey);
         context.uploadChunk(fa, context.user, entryWriterKey, newMapKey, Collections.emptyList()); //TODO get fragment hashes from retriever
         return fa;
     }
@@ -113,8 +113,8 @@ public class FileAccess {
         }
     }
 
-    public static FileAccess create(SymmetricKey parentKey, FileProperties props, FileRetriever retriever, Location parentLocation, SymmetricKey parentparentKey) {
-        SymmetricKey metaKey = SymmetricKey.random();
+    public static FileAccess create(SymmetricKey parentKey, SymmetricKey metaKey, FileProperties props,
+                                    FileRetriever retriever, Location parentLocation, SymmetricKey parentparentKey) {
         byte[] nonce = metaKey.createNonce();
         return new FileAccess(SymmetricLink.fromPair(parentKey, metaKey, parentKey.createNonce()),
                 ArrayOps.concat(nonce, metaKey.encrypt(props.serialize(), nonce)), retriever, SymmetricLocationLink.create(parentKey, parentparentKey, parentLocation));

@@ -421,7 +421,22 @@ GaloisPolynomial.create = function(coeffs, f) {
         const symbolSize = inputSize/originalBlobs;
         const tbSize = encoded[0].length;
 
-        const res = new ByteArrayOutputStream();
+	// don't bother in the case where we haven't lost any of the original fragments
+        for (var k = 0; k < originalBlobs; k++) {
+            if (encoded[k] == null || encoded[k].length == 0)
+                break;
+            if (k == originalBlobs - 1) {
+                // shortcut
+                const res = new ByteArrayOutputStream();
+                for (var i = 0; i < tbSize; i += symbolSize) {
+                    for (var j = 0; j < originalBlobs; j++)
+                        res.write(encoded[j], i, symbolSize);
+                }
+                return res.toByteArray().subarray(0, truncateTo);
+            }
+        }
+
+	const res = new ByteArrayOutputStream();
 	var bout = new ByteArrayOutputStream(symbolSize * n);
         for (var i=0; i < tbSize; i += symbolSize)
         {

@@ -17,8 +17,8 @@ public class HTTPCoreNode implements CoreNode
 {
     private final URL coreNodeURL;
 
-    public static CoreNode getInstance(int port) throws IOException {
-        return new HTTPCoreNode(new URL("http://"+ SSL.getCommonName(SSL.getCoreServerCertificates()[0])+":"+port+"/"));
+    public static CoreNode getInstance(URL coreURL) throws IOException {
+        return new HTTPCoreNode(coreURL);
     }
 
     public HTTPCoreNode(URL coreNodeURL)
@@ -77,6 +77,7 @@ public class HTTPCoreNode implements CoreNode
             DataInputStream din = new DataInputStream(conn.getInputStream());
             return Serialize.deserializeString(din, CoreNode.MAX_USERNAME_SIZE);
         } catch (IOException ioe) {
+            System.err.println("Couldn't connect to " + coreNodeURL);
             ioe.printStackTrace();
             return null;
         } finally {

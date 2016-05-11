@@ -114,8 +114,12 @@ public class DataSink implements DataOutput {
     }
 
     @Override
-    public void writeLong(long v) throws IOException {
-        dout.writeLong(v);
+    public void writeLong(long v) {
+        try {
+            dout.writeLong(v);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override

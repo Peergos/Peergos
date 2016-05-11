@@ -5,15 +5,22 @@ import peergos.user.*;
 import peergos.util.*;
 
 import java.io.*;
+import java.util.*;
 import java.util.function.*;
 
 public interface FileRetriever {
 
     Location getNext();
 
-    LazyInputStreamCombiner getFile(UserContext context, SymmetricKey dataKey, long len, Consumer<Long> monitor);
+    byte[] getNonce();
 
-    byte[] getChunkInputStream(UserContext context, SymmetricKey dataKey, long len, Consumer<Long> monitor);
+    LazyInputStreamCombiner getFile(UserContext context, SymmetricKey dataKey, long fileSize, Location ourLocation, Consumer<Long> monitor) throws IOException;
+
+    Optional<LocatedEncryptedChunk> getEncryptedChunk(long bytesRemainingUntilStart, long bytesRemainingUntilEnd, byte[] nonce, SymmetricKey dataKey, Location ourLocation, UserContext context, Consumer<Long> monitor) throws IOException;
+
+    Optional<Location> getLocationAt(Location startLocation, long offset, UserContext context) throws IOException;
+
+    Optional<LocatedChunk> getChunkInputStream(UserContext context, SymmetricKey dataKey, long startIndex, long truncateTo, Location ourLocation, Consumer<Long> monitor) throws IOException;
 
     void serialize(DataSink sink);
 

@@ -32,6 +32,10 @@ public class Location {
         return key.encrypt(serialize(), nonce);
     }
 
+    public String toString() {
+        return new ByteArrayWrapper(mapKey).toString();
+    }
+
     public static Location deserialize(DataSource din) {
         try {
             UserPublicKey ownerKey = UserPublicKey.fromByteArray(din.readArray());

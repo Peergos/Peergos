@@ -12,6 +12,7 @@ import peergos.user.fs.*;
 import peergos.util.*;
 
 import java.io.*;
+import java.lang.reflect.*;
 import java.net.*;
 import java.nio.file.*;
 import java.util.*;
@@ -19,7 +20,6 @@ import java.util.logging.Logger;
 
 public class UserTests {
 
-    private static int N_CHUNKS = 10;
     public static int RANDOM_SEED = 666;
     public static int WEB_PORT = 9876;
     public static int CORE_PORT = 9753;
@@ -29,9 +29,21 @@ public class UserTests {
     private static Random random = new Random(RANDOM_SEED);
 
     @BeforeClass
-    public static void startPeergos() throws IOException {
+    public static void startPeergos() throws Exception {
         Args.parse(new String[]{"useIPFS", "false", "-port", Integer.toString(WEB_PORT), "-corenodePort", Integer.toString(CORE_PORT)});
         Start.local();
+        // use insecure random otherwise tests take ages
+        setFinalStatic(TweetNaCl.class.getDeclaredField("prng"), new Random(1));
+    }
+
+    static void setFinalStatic(Field field, Object newValue) throws Exception {
+        field.setAccessible(true);
+
+        Field modifiersField = Field.class.getDeclaredField("modifiers");
+        modifiersField.setAccessible(true);
+        modifiersField.setInt(field, field.getModifiers() & ~Modifier.FINAL);
+
+        field.set(null, newValue);
     }
 
     @Test
@@ -62,7 +74,6 @@ public class UserTests {
         ensureSignedUp(username, newPassword);
 
     }
-
     @Test
     public void changePasswordFAIL() throws IOException {
         String username = "test" + (System.currentTimeMillis() % 10000);
@@ -76,7 +87,7 @@ public class UserTests {
 
     }
 
-    public UserContext ensureSignedUp(String username, String password) throws IOException {
+    public static UserContext ensureSignedUp(String username, String password) throws IOException {
         DHTClient.HTTP dht = new DHTClient.HTTP(new URL("http://localhost:"+ WEB_PORT +"/"));
         Btree.HTTP btree = new Btree.HTTP(new URL("http://localhost:"+ WEB_PORT +"/"));
         HTTPCoreNode coreNode = new HTTPCoreNode(new URL("http://localhost:"+ WEB_PORT +"/"));
@@ -93,7 +104,7 @@ public class UserTests {
         assertTrue("Receive a follow request", u1Requests.size() > 0);
         u1.sendReplyFollowRequest(u1Requests.get(0), true, true);
         List<FollowRequest> u2FollowRequests = u2.getFollowRequests();
-        Optional<FileTreeNode> friendRoot = u2.getTreeRoot().getDescendentByPath("/" + u1.username, u2);
+        Optional<FileTreeNode> friendRoot = u2.getByPath("/" + u1.username);
         assertTrue("Friend root present after accepted follow request", friendRoot.isPresent());
         System.out.println();
     }
@@ -104,6 +115,91 @@ public class UserTests {
 
     public  byte[] read(String path) {
         return null;
+    }
+
+    @Test
+    public void writeReadVariations() throws IOException {
+        String username = "test01";
+        String password = "test01";
+        UserContext context = ensureSignedUp(username, password);
+        FileTreeNode userRoot = context.getUserRoot();
+
+        String filename = "somedata.txt";
+        // write empty file
+        byte[] data = new byte[0];
+        userRoot.uploadFile(filename, new ByteArrayInputStream(data), data.length, context, l -> {});
+        checkFileContents(data, userRoot.getDescendentByPath(filename, context).get(), context);
+
+        // write small 1 chunk file
+        byte[] data2 = "This is a small amount of data".getBytes();
+        userRoot.uploadFile(filename, new ByteArrayInputStream(data2), 0, data2.length, context, l -> {});
+        checkFileContents(data2, userRoot.getDescendentByPath(filename, context).get(), context);
+
+        // check file size
+        assertTrue("File size", data2.length == userRoot.getDescendentByPath(filename, context).get().getFileProperties().size);
+        assertTrue("File size", data2.length == context.getByPath(username + "/" + filename).get().getFileProperties().size);
+
+        // extend file within existing chunk
+        byte[] data3 = new byte[128 * 1024];
+        new Random().nextBytes(data3);
+        userRoot.uploadFile(filename, new ByteArrayInputStream(data3), 0, data3.length, context, l -> {});
+        checkFileContents(data3, userRoot.getDescendentByPath(filename, context).get(), context);
+
+        // insert data in the middle
+        byte[] data4 = "some data to insert somewhere".getBytes();
+        int startIndex = 100 * 1024;
+        userRoot.uploadFile(filename, new ByteArrayInputStream(data4), startIndex, startIndex + data4.length, context, l -> {});
+        System.arraycopy(data4, 0, data3, startIndex, data4.length);
+        checkFileContents(data3, userRoot.getDescendentByPath(filename, context).get(), context);
+
+        //rename
+        String newname = "newname.txt";
+        userRoot.getDescendentByPath(filename, context).get().rename(newname, context, userRoot);
+        checkFileContents(data3, userRoot.getDescendentByPath(newname, context).get(), context);
+        // check from the root as well
+        checkFileContents(data3, context.getByPath(username + "/" + newname).get(), context);
+        // check from a fresh log in too
+        UserContext context2 = ensureSignedUp(username, password);
+        checkFileContents(data3, context2.getByPath(username + "/" + newname).get(), context);
+    }
+
+    @Test
+    public void mediumFileWrite() throws IOException {
+        String username = "test01";
+        String password = "test01";
+        UserContext context = ensureSignedUp(username, password);
+        FileTreeNode userRoot = context.getUserRoot();
+
+        String filename = "mediumfile.bin";
+        byte[] data = new byte[0];
+        userRoot.uploadFile(filename, new ByteArrayInputStream(data), data.length, context, l -> {});
+
+        //overwrite with 2 chunk file
+        byte[] data5 = new byte[10*1024*1024];
+        new Random().nextBytes(data5);
+        userRoot.uploadFile(filename, new ByteArrayInputStream(data5), 0, data5.length, context, l -> {});
+        checkFileContents(data5, userRoot.getDescendentByPath(filename, context).get(), context);
+        assertTrue("10MiB file size", data5.length == userRoot.getDescendentByPath(filename, context).get().getFileProperties().size);
+
+        // insert data in the middle of second chunk
+        System.out.println("\n***** Mid 2nd chunk write test");
+        byte[] dataInsert = "some data to insert somewhere else".getBytes();
+        int start = 5*1024*1024 + 4*1024;
+        userRoot.uploadFile(filename, new ByteArrayInputStream(dataInsert), start, start + dataInsert.length, context, l -> {});
+        System.arraycopy(dataInsert, 0, data5, start, dataInsert.length);
+        checkFileContents(data5, userRoot.getDescendentByPath(filename, context).get(), context);
+    }
+
+    private static void runForAWhile() {
+        for (int i=0; i < 600; i++)
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {}
+    }
+
+    private static void checkFileContents(byte[] expected, FileTreeNode f, UserContext context) throws IOException {
+        byte[] retrievedData = Serialize.readFully(f.getInputStream(context, f.getFileProperties().size, l-> {}));
+        assertTrue("Correct contents", Arrays.equals(retrievedData, expected));
     }
 
     @Test
@@ -121,7 +217,7 @@ public class UserTests {
 
         String name = randomString();
         Path tmpPath = createTmpFile(name);
-        byte[] data = randomData(0x1000);
+        byte[] data = randomData(10*1024*1024); // 2 chunks to test block chaining
         Files.write(tmpPath, data);
 
         boolean b = userRoot.uploadFile(name, tmpPath.toFile(), context, (l) -> {});
@@ -130,28 +226,22 @@ public class UserTests {
 
         Optional<FileTreeNode> opt = userRoot.getChildren(context)
                 .stream()
-                .filter(e -> {
-                    try {
-                        return e.getFileProperties().name.equals(name);
-                    } catch (IOException ioe) {
-                        ioe.printStackTrace();
-                        return false;
-                    }
-                }).findFirst();
+                .filter(e -> e.getFileProperties().name.equals(name))
+                .findFirst();
 
         assertTrue("found uploaded file", opt.isPresent());
 
         FileTreeNode fileTreeNode = opt.get();
         long size = fileTreeNode.getFileProperties().size;
         InputStream in = fileTreeNode.getInputStream(context, size, (l) -> {});
-        byte[] retrievedData = readFully(in);
+        byte[] retrievedData = Serialize.readFully(in);
 
         boolean  dataEquals = Arrays.equals(data, retrievedData);
 
         assertTrue("retrieved same data", dataEquals);
     }
 
-    private static String randomString() {
+    public static String randomString() {
         return UUID.randomUUID().toString();
     }
 
@@ -174,15 +264,5 @@ public class UserTests {
         file.createNewFile();
         file.deleteOnExit();
         return resolve;
-    }
-
-
-    private static byte[] readFully(InputStream in) throws IOException {
-        ByteArrayOutputStream bout =  new ByteArrayOutputStream();
-        byte[] b =  new  byte[0x1000];
-        int nRead = -1;
-        while ((nRead = in.read(b, 0, b.length)) != -1 )
-            bout.write(b, 0, nRead);
-        return bout.toByteArray();
     }
 }
