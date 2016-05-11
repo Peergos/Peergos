@@ -50,15 +50,15 @@ public class UserService
     private final CoreNode coreNode;
     private HttpServer server;
 
-    public UserService(InetSocketAddress local, Logger LOGGER, ContentAddressedStorage dht, CoreNode coreNode) throws IOException
+    public UserService(InetSocketAddress local, Logger LOGGER, ContentAddressedStorage dht, CoreNode coreNode, Args args) throws IOException
     {
         this.LOGGER = LOGGER;
         this.local = local;
         this.coreNode = coreNode;
-        init(dht);
+        init(dht, args);
     }
 
-    public boolean init(ContentAddressedStorage dht) throws IOException {
+    public boolean init(ContentAddressedStorage dht, Args args) throws IOException {
         boolean isLocal = this.local.getHostName().contains("local");
         if (!isLocal)
             try {
@@ -75,7 +75,7 @@ public class UserService
         if (isLocal) {
             System.out.println("Starting user server on localhost:"+local.getPort()+" only.");
             server = HttpServer.create(local, CONNECTION_BACKLOG);
-        } else if (Args.hasArg("publicserver")) {
+        } else if (args.hasArg("publicserver")) {
             System.out.println("Starting user server on all interfaces.");
             server = HttpsServer.create(new InetSocketAddress(InetAddress.getByName("::"), local.getPort()), CONNECTION_BACKLOG);
         } else
@@ -135,8 +135,8 @@ public class UserService
         }
 
         server.createContext(DHT_URL, new DHTHandler(dht));
-        server.createContext(SIGNUP_URL, new InverseProxyHandler("demo.peergos.net"));
-        server.createContext(ACTIVATION_URL, new InverseProxyHandler("demo.peergos.net"));
+        server.createContext(SIGNUP_URL, new InverseProxyHandler("demo.peergos.net", isLocal));
+        server.createContext(ACTIVATION_URL, new InverseProxyHandler("demo.peergos.net", isLocal));
         server.createContext(UI_URL, new StaticHandler(UI_DIR, false));
         server.createContext(HTTPCoreNodeServer.CORE_URL, new HTTPCoreNodeServer.CoreNodeHandler(coreNode));
 

@@ -3,6 +3,8 @@ package peergos.tests;
 import org.junit.*;
 import static org.junit.Assert.*;
 
+import org.junit.runner.*;
+import org.junit.runners.*;
 import peergos.corenode.*;
 import peergos.crypto.*;
 import peergos.crypto.symmetric.*;
@@ -18,22 +20,31 @@ import java.nio.file.*;
 import java.util.*;
 import java.util.logging.Logger;
 
+@RunWith(Parameterized.class)
 public class UserTests {
 
     public static int RANDOM_SEED = 666;
-    public static int WEB_PORT = 9876;
-    public static int CORE_PORT = 9753;
-
-    private static final Logger LOG = Logger.getGlobal();
+    private final int webPort;
+    private final int corePort;
 
     private static Random random = new Random(RANDOM_SEED);
 
-    @BeforeClass
-    public static void startPeergos() throws Exception {
-        Args.parse(new String[]{"useIPFS", "false", "-port", Integer.toString(WEB_PORT), "-corenodePort", Integer.toString(CORE_PORT)});
-        Start.local();
+    public UserTests(String useIPFS, Random r) throws Exception {
+        this.webPort = 9000 + r.nextInt(1000);
+        this.corePort = 10000 + r.nextInt(1000);
+        Args args = Args.parse(new String[]{"useIPFS", ""+useIPFS.equals("IPFS"), "-port", Integer.toString(webPort), "-corenodePort", Integer.toString(corePort)});
+        Start.local(args);
         // use insecure random otherwise tests take ages
         setFinalStatic(TweetNaCl.class.getDeclaredField("prng"), new Random(1));
+    }
+
+    @Parameterized.Parameters(name = "{index}: {0}")
+    public static Collection<Object[]> parameters() {
+        Random r = new Random(0);
+        return Arrays.asList(new Object[][] {
+                {"IPFS", r},
+                {"RAM", r}
+        });
     }
 
     static void setFinalStatic(Field field, Object newValue) throws Exception {
@@ -61,47 +72,47 @@ public class UserTests {
     public void randomSignup() throws IOException {
         String username = "test" + (System.currentTimeMillis() % 10000);
         String password = "password";
-        ensureSignedUp(username, password);
+        ensureSignedUp(username, password, webPort);
     }
 
     @Test
     public void changePassword() throws IOException {
         String username = "test" + (System.currentTimeMillis() % 10000);
         String password = "password";
-        UserContext userContext = ensureSignedUp(username, password);
+        UserContext userContext = ensureSignedUp(username, password, webPort);
         String newPassword = "newPassword";
         userContext.changePassword(newPassword);
-        ensureSignedUp(username, newPassword);
+        ensureSignedUp(username, newPassword, webPort);
 
     }
     @Test
     public void changePasswordFAIL() throws IOException {
         String username = "test" + (System.currentTimeMillis() % 10000);
         String password = "password";
-        UserContext userContext = ensureSignedUp(username, password);
+        UserContext userContext = ensureSignedUp(username, password, webPort);
         String newPassword = "passwordtest";
         UserContext newContext = userContext.changePassword(newPassword);
 
         try {
-            UserContext oldContext = ensureSignedUp(username, password);
+            UserContext oldContext = ensureSignedUp(username, password, webPort);
         } catch (IllegalStateException e) {
             if (!e.getMessage().contains("username already registered"))
                 throw e;
         }
     }
 
-    public static UserContext ensureSignedUp(String username, String password) throws IOException {
-        DHTClient.HTTP dht = new DHTClient.HTTP(new URL("http://localhost:"+ WEB_PORT +"/"));
-        Btree.HTTP btree = new Btree.HTTP(new URL("http://localhost:"+ WEB_PORT +"/"));
-        HTTPCoreNode coreNode = new HTTPCoreNode(new URL("http://localhost:"+ WEB_PORT +"/"));
+    public static UserContext ensureSignedUp(String username, String password, int webPort) throws IOException {
+        DHTClient.HTTP dht = new DHTClient.HTTP(new URL("http://localhost:"+ webPort +"/"));
+        Btree.HTTP btree = new Btree.HTTP(new URL("http://localhost:"+ webPort +"/"));
+        HTTPCoreNode coreNode = new HTTPCoreNode(new URL("http://localhost:"+ webPort +"/"));
         UserContext userContext = UserContext.ensureSignedUp(username, password, dht, btree, coreNode);
         return userContext;
     }
 
     @Test
     public void social() throws IOException {
-        UserContext u1 = ensureSignedUp("q", "q");
-        UserContext u2 = ensureSignedUp("w", "w");
+        UserContext u1 = ensureSignedUp("q", "q", webPort);
+        UserContext u2 = ensureSignedUp("w", "w", webPort);
         u2.sendFollowRequest(u1.username, SymmetricKey.random());
         List<FollowRequest> u1Requests = u1.getFollowRequests();
         assertTrue("Receive a follow request", u1Requests.size() > 0);
@@ -112,19 +123,11 @@ public class UserTests {
         System.out.println();
     }
 
-    public void add(String path) {
-
-    }
-
-    public  byte[] read(String path) {
-        return null;
-    }
-
     @Test
     public void writeReadVariations() throws IOException {
         String username = "test01";
         String password = "test01";
-        UserContext context = ensureSignedUp(username, password);
+        UserContext context = ensureSignedUp(username, password, webPort);
         FileTreeNode userRoot = context.getUserRoot();
 
         String filename = "somedata.txt";
@@ -162,7 +165,7 @@ public class UserTests {
         // check from the root as well
         checkFileContents(data3, context.getByPath(username + "/" + newname).get(), context);
         // check from a fresh log in too
-        UserContext context2 = ensureSignedUp(username, password);
+        UserContext context2 = ensureSignedUp(username, password, webPort);
         checkFileContents(data3, context2.getByPath(username + "/" + newname).get(), context);
     }
 
@@ -170,7 +173,7 @@ public class UserTests {
     public void mediumFileWrite() throws IOException {
         String username = "test01";
         String password = "test01";
-        UserContext context = ensureSignedUp(username, password);
+        UserContext context = ensureSignedUp(username, password, webPort);
         FileTreeNode userRoot = context.getUserRoot();
 
         String filename = "mediumfile.bin";
@@ -193,13 +196,6 @@ public class UserTests {
         checkFileContents(data5, userRoot.getDescendentByPath(filename, context).get(), context);
     }
 
-    private static void runForAWhile() {
-        for (int i=0; i < 600; i++)
-            try {
-                Thread.sleep(1000);
-            } catch (InterruptedException e) {}
-    }
-
     private static void checkFileContents(byte[] expected, FileTreeNode f, UserContext context) throws IOException {
         byte[] retrievedData = Serialize.readFully(f.getInputStream(context, f.getFileProperties().size, l-> {}));
         assertTrue("Correct contents", Arrays.equals(retrievedData, expected));
@@ -209,7 +205,7 @@ public class UserTests {
     public void readWriteTest() throws IOException {
         String username = "test01";
         String password = "test01";
-        UserContext context = ensureSignedUp(username, password);
+        UserContext context = ensureSignedUp(username, password, webPort);
         FileTreeNode userRoot = context.getUserRoot();
 
         Set<FileTreeNode> children = userRoot.getChildren(context);

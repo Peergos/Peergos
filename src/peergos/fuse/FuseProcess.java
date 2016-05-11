@@ -88,19 +88,19 @@ public class FuseProcess implements Runnable, AutoCloseable {
         int WEB_PORT = 8000;
         int CORE_PORT = 9999;
 
-        Args.parse(new String[]{"useIPFS", "false",
+        Args a = Args.parse(new String[]{"useIPFS", "false",
                 "-port", Integer.toString(WEB_PORT),
                 "-corenodePort", Integer.toString(CORE_PORT)});
 
-        Start.local();
+        Start.local(a);
 
         // TODO find a faster high quality randomness source
         setFinalStatic(TweetNaCl.class.getDeclaredField("prng"), new Random());
 
-        Args.parse(args);
-        String username = Args.getArg("username", "test01");
-        String password = Args.getArg("password", "test01");
-        String mountPath = Args.getArg("mountPoint", "/tmp/peergos/tmp");
+        a = Args.parse(args);
+        String username = a.getArg("username", "test01");
+        String password = a.getArg("password", "test01");
+        String mountPath = a.getArg("mountPoint", "/tmp/peergos/tmp");
 
         Path path = Paths.get(mountPath);
         path = path.resolve(UUID.randomUUID().toString());
@@ -108,7 +108,7 @@ public class FuseProcess implements Runnable, AutoCloseable {
 
         System.out.println("\n\nPeergos mounted at "+ path+"\n\n");
 
-        UserContext userContext = UserTests.ensureSignedUp(username, password);
+        UserContext userContext = UserTests.ensureSignedUp(username, password, WEB_PORT);
         PeergosFS peergosFS = new PeergosFS(userContext);
         FuseProcess fuseProcess = new FuseProcess(peergosFS, path);
 

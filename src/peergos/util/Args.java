@@ -4,11 +4,11 @@ import java.util.*;
 
 public class Args
 {
-    private static Map<String, String> params = new HashMap();
+    private final Map<String, String> params = new HashMap();
 
-    public static void parse(String[] args)
+    public static Args parse(String[] args)
     {
-        params.clear();
+        Args a = new Args();
         for (int i=0; i<args.length; i++)
         {
             String argName = args[i];
@@ -16,67 +16,68 @@ public class Args
                 argName = argName.substring(1);
 
             if ((i == args.length-1) || args[i+1].startsWith("-"))
-                params.put(argName, "true");
+                a.params.put(argName, "true");
             else
-                params.put(argName, args[++i]);
+                a.params.put(argName, args[++i]);
         }
+        return a;
     }
 
-    public static String getArg(String param, String def)
+    public String getArg(String param, String def)
     {
         if (!params.containsKey(param))
             return def;
         return params.get(param);
     }
 
-    public static String getArg(String param)
+    public String getArg(String param)
     {
         if (!params.containsKey(param))
             throw new IllegalStateException("No parameter: "+param);
         return params.get(param);
     }
 
-    public static boolean hasArg(String arg)
+    public boolean hasArg(String arg)
     {
         return params.containsKey(arg);
     }
 
-    public static boolean getBoolean(String param, boolean def)
+    public boolean getBoolean(String param, boolean def)
     {
         if (!params.containsKey(param))
             return def;
         return "true".equals(params.get(param));
     }
 
-    public static int getInt(String param, int def)
+    public int getInt(String param, int def)
     {
         if (!params.containsKey(param))
             return def;
         return Integer.parseInt(params.get(param));
     }
 
-    public static int getInt(String param)
+    public int getInt(String param)
     {
         if (!params.containsKey(param))
             throw new IllegalStateException("No parameter: "+param);
         return Integer.parseInt(params.get(param));
     }
 
-    public static long getLong(String param)
+    public  long getLong(String param)
     {
         if (!params.containsKey(param))
             throw new IllegalStateException("No parameter: "+param);
         return Long.parseLong(params.get(param));
     }
 
-    public static double getDouble(String param)
+    public double getDouble(String param)
     {
         if (!params.containsKey(param))
             throw new IllegalStateException("No parameter: "+param);
         return Double.parseDouble(params.get(param));
     }
 
-    public static String getFirstArg(String[] paramNames, String def)
+    public String getFirstArg(String[] paramNames, String def)
     {
         for (int i=0; i<paramNames.length; i++)
         {

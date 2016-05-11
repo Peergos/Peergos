@@ -10,16 +10,18 @@ import java.util.stream.*;
 
 public class InverseProxyHandler implements HttpHandler {
     private final String targetDomain;
+    private final boolean isLocal;
 
-    public InverseProxyHandler(String targetDomain) {
+    public InverseProxyHandler(String targetDomain, boolean isLocal) {
         this.targetDomain = targetDomain;
+        this.isLocal = isLocal;
     }
 
     @Override
     public void handle(HttpExchange httpExchange) throws IOException {
         try {
             HttpURLConnection conn;
-            if (!Args.getArg("domain", "localhost").equals("localhost")) {
+            if (!isLocal) {
                 System.out.println("Proxying to localhost..");
                 conn = (HttpURLConnection)new URL("http://localhost:8765" + httpExchange.getRequestURI().getPath()).openConnection();
             } else {
