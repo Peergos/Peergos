@@ -68,9 +68,11 @@ public class UserTests {
         String username = "test" + (System.currentTimeMillis() % 10000);
         String password = "password";
         UserContext userContext = ensureSignedUp(username, password);
-        String newPassword = "password";
+        String newPassword = "passwordtest";
         userContext.changePassword(newPassword);
         ensureSignedUp(username, newPassword);
+
+        ensureSignedUp(username, password);
 
     }
 

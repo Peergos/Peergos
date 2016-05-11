@@ -372,7 +372,7 @@ const updatePasswordConfirmed = function() {
         }.bind(this));
         $.toaster({
             priority: "info",
-            message: "Changing Password",
+            message: "Changing password",
             settings: {"timeout":  5000}
         });
 
@@ -1238,7 +1238,7 @@ var Browser = React.createClass({
 	    
             if (! hasUsername) usernameInput.value = "";
             if (! hasPassword) passwordInput.value="";
-	    
+
             return this.loadFilesFromServer().then(clearInProgress).then(function() {
                 $("#logout").html("<button id=\"logoutButton\" class=\"btn btn-default dropdown-toggle\" data-toggle=\"dropdown\" aria-haspopup=\"true\" aria-expanded=\"true\">"+
                     "<span class=\"glyphicon glyphicon-off\"/>  " + displayName +"</button>" +
@@ -1298,6 +1298,7 @@ var Browser = React.createClass({
         console.log("User logging out.");
         userContext.logout();
         requireSignedIn(function() {
+            $("#logout").css("display","none");
             userContext = null;
             this.setState(this.getInitialState(),
                           function() {
