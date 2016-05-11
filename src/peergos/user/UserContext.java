@@ -95,10 +95,13 @@ public class UserContext {
         UserWithRoot userWithRoot = UserUtil.generateUser(username, password);
         UserContext context = new UserContext(username, userWithRoot.getUser(), userWithRoot.getRoot(), dht, btree, coreNode);
         if (!context.isRegistered()) {
-            context.register();
-            RetrievedFilePointer userRoot = context.createEntryDirectory(username);
-            ReadableFilePointer shared = ((DirAccess) userRoot.fileAccess).mkdir(SHARED_DIR_NAME, context, (User) userRoot.filePointer.writer,
-                    userRoot.filePointer.mapKey, userRoot.filePointer.baseKey, null, true);
+            if (context.isAvailable()) {
+                context.register();
+                RetrievedFilePointer userRoot = context.createEntryDirectory(username);
+                ReadableFilePointer shared = ((DirAccess) userRoot.fileAccess).mkdir(SHARED_DIR_NAME, context, (User) userRoot.filePointer.writer,
+                        userRoot.filePointer.mapKey, userRoot.filePointer.baseKey, null, true);
+            } else
+                throw new IllegalStateException("username already registered with different public key!");
         }
         context.init();
         return context;
@@ -123,6 +126,11 @@ public class UserContext {
 
     public boolean isRegistered() throws IOException {
         return username.equals(corenodeClient.getUsername(user));
+    }
+
+    public boolean isAvailable() throws IOException {
+        Optional<UserPublicKey> publicKey = corenodeClient.getPublicKey(username);
+        return !publicKey.isPresent();
     }
 
     public byte[] serializeStatic() throws IOException {
@@ -286,7 +294,10 @@ public class UserContext {
         if (alreadyFollowed)
             return false;
 
-        UserPublicKey targetUser = corenodeClient.getPublicKey(targetUsername);
+        Optional<UserPublicKey> targetUserOpt = corenodeClient.getPublicKey(targetUsername);
+        if (!targetUserOpt.isPresent())
+            return false;
+        UserPublicKey targetUser = targetUserOpt.get();
         ReadableFilePointer friendRoot = sharing.mkdir(targetUsername, this, null, true).get();
 
         // add a note to our static data so we know who we sent the read access to

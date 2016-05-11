@@ -35,7 +35,7 @@ public class HTTPCoreNode implements CoreNode
         }
     }
 
-    @Override public UserPublicKey getPublicKey(String username) 
+    @Override public Optional<UserPublicKey> getPublicKey(String username)
     {
         HttpURLConnection conn = null;
         try
@@ -49,11 +49,13 @@ public class HTTPCoreNode implements CoreNode
             dout.flush();
 
             DataInputStream din = new DataInputStream(conn.getInputStream());
+            if (!din.readBoolean())
+                return Optional.empty();
             byte[] publicKey = deserializeByteArray(din);
-            return UserPublicKey.deserialize(new DataInputStream(new ByteArrayInputStream(publicKey)));
+            return Optional.of(UserPublicKey.deserialize(new DataInputStream(new ByteArrayInputStream(publicKey))));
         } catch (IOException ioe) {
             ioe.printStackTrace();
-            return null;
+            return Optional.empty();
         } finally {
             if (conn != null)
                 conn.disconnect();

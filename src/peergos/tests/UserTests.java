@@ -80,11 +80,14 @@ public class UserTests {
         String password = "password";
         UserContext userContext = ensureSignedUp(username, password);
         String newPassword = "passwordtest";
-        userContext.changePassword(newPassword);
-        ensureSignedUp(username, newPassword);
+        UserContext newContext = userContext.changePassword(newPassword);
 
-        ensureSignedUp(username, password);
-
+        try {
+            UserContext oldContext = ensureSignedUp(username, password);
+        } catch (IllegalStateException e) {
+            if (!e.getMessage().contains("username already registered"))
+                throw e;
+        }
     }
 
     public static UserContext ensureSignedUp(String username, String password) throws IOException {

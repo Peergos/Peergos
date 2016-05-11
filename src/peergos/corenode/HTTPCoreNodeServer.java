@@ -126,10 +126,11 @@ public class HTTPCoreNodeServer
         void getPublicKey(DataInputStream din, DataOutputStream dout) throws IOException
         {
             String username = deserializeString(din);
-            UserPublicKey k = coreNode.getPublicKey(username);
-            if (k == null)
+            Optional<UserPublicKey> k = coreNode.getPublicKey(username);
+            dout.writeBoolean(k.isPresent());
+            if (!k.isPresent())
                 return;
-            byte[] b = k.serialize();
+            byte[] b = k.get().serialize();
             dout.writeInt(b.length);
             dout.write(b);
         }

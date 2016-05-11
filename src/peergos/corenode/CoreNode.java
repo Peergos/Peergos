@@ -21,9 +21,11 @@ public interface CoreNode {
 
     boolean updateChain(String username, List<UserPublicKeyLink> chain);
 
-    default UserPublicKey getPublicKey(String username) throws IOException {
+    default Optional<UserPublicKey> getPublicKey(String username) throws IOException {
         List<UserPublicKeyLink> chain = getChain(username);
-        return chain.get(chain.size()-1).owner;
+        if (chain.size() == 0)
+            return Optional.empty();
+        return Optional.of(chain.get(chain.size()-1).owner);
     }
 
     byte[] getAllUsernamesGzip() throws IOException;
