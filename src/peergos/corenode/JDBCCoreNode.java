@@ -368,7 +368,11 @@ public class JDBCCoreNode implements CoreNode {
                 boolean next = resultSet.next();
                 if (! next)
                     return "";
-                return resultSet.getString(1);
+                String username = resultSet.getString(1);
+                List<UserPublicKeyLink> chain = getChain(username);
+                if (!chain.get(chain.size()-1).owner.equals(encodedKey))
+                    return "";
+                return username;
             }
         } catch (SQLException sqle) {
             throw new IllegalStateException(sqle);

@@ -74,6 +74,21 @@ public class UserTests {
         ensureSignedUp(username, newPassword);
 
     }
+    @Test
+    public void changePasswordFAIL() throws IOException {
+        String username = "test" + (System.currentTimeMillis() % 10000);
+        String password = "password";
+        UserContext userContext = ensureSignedUp(username, password);
+        String newPassword = "passwordtest";
+        UserContext newContext = userContext.changePassword(newPassword);
+
+        try {
+            UserContext oldContext = ensureSignedUp(username, password);
+        } catch (IllegalStateException e) {
+            if (!e.getMessage().contains("username already registered"))
+                throw e;
+        }
+    }
 
     public static UserContext ensureSignedUp(String username, String password) throws IOException {
         DHTClient.HTTP dht = new DHTClient.HTTP(new URL("http://localhost:"+ WEB_PORT +"/"));
