@@ -257,11 +257,11 @@ public class HTTPCoreNodeServer
         return Serialize.deserializeString(din, 1024);
     }
 
-    public static void createAndStart(String keyfile, char[] passphrase, int port, CoreNode coreNode)
+    public static void createAndStart(String keyfile, char[] passphrase, int port, CoreNode coreNode, Args args)
     {
         // eventually will need our own keypair to sign traffic to other core nodes
         try {
-            String hostname = Args.getArg("domain", "localhost");
+            String hostname = args.getArg("domain", "localhost");
             System.out.println("Starting core node server listening on: " + hostname+":"+port +" proxying to "+coreNode);
             InetSocketAddress address = new InetSocketAddress(hostname, port);
             HTTPCoreNodeServer server = new HTTPCoreNodeServer(coreNode, address);

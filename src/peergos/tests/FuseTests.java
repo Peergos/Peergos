@@ -70,14 +70,14 @@ public class FuseTests {
         // use insecure random otherwise tests take ages
         setFinalStatic(TweetNaCl.class.getDeclaredField("prng"), new Random(1));
 
-        Args.parse(new String[]{"useIPFS", "false",
+        Args args = Args.parse(new String[]{"useIPFS", "false",
                 "-port", Integer.toString(WEB_PORT),
                 "-corenodePort", Integer.toString(CORE_PORT)});
 
-        Start.local();
+        Start.local(args);
         UserContext userContext = ensureSignedUp(username, password);
 
-        String mountPath = Args.getArg("mountPoint", "/tmp/peergos/tmp");
+        String mountPath = args.getArg("mountPoint", "/tmp/peergos/tmp");
 
         mountPoint = Paths.get(mountPath);
         mountPoint = mountPoint.resolve(UUID.randomUUID().toString());
