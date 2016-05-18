@@ -93,7 +93,7 @@ public class CachingPeergosFS extends PeergosFS {
 
     @Override
     public int flush(String s, FuseFileInfo fuseFileInfo) {
-        CacheEntry cacheEntry = entryMap.get(s);
+        CacheEntry cacheEntry = entryMap.remove(s);
         if  (cacheEntry != null) {
             cacheEntry.sync();
         }
