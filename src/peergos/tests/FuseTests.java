@@ -132,7 +132,7 @@ public class FuseTests {
     }
 
     @Test public void copyFileTest() throws IOException  {
-        Path initial = createRandomFile(0x1000);
+        Path initial = createRandomFile(1024*1024*10);
         Path target = initial.getParent().resolve(randomUUID().toString());
 
         assertFalse("target exists", target.toFile().exists());

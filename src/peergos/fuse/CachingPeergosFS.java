@@ -15,7 +15,7 @@ import java.util.*;
 public class CachingPeergosFS extends PeergosFS {
 
     private static final int DEFAULT_SYNC_SLEEP = 1000*30;
-    private static final int DEFAULT_CACHE_SIZE = 1;
+    private static final int DEFAULT_CACHE_SIZE = 2;
 
     private final Map<String, CacheEntry> entryMap;
     private final int chunkCacheSize, syncSleep;
@@ -32,12 +32,12 @@ public class CachingPeergosFS extends PeergosFS {
         Map<String, CacheEntry> lruCache = new LinkedHashMap<String, CacheEntry>(chunkCacheSize, 0.75f, accessOrder) {
             @Override
             protected boolean removeEldestEntry(Map.Entry<String, CacheEntry> entry) {
-                if (size() > chunkCacheSize) {
+                boolean remove = size() > chunkCacheSize;
+                if (remove) {
                     CacheEntry cacheEntry = entry.getValue();
                     cacheEntry.sync();
-                    return true;
                 }
-                return false;
+                return remove;
             }
         };
 
@@ -56,16 +56,17 @@ public class CachingPeergosFS extends PeergosFS {
         CacheEntry cacheEntry = entryMap.get(s);
         long startPos = alignToChunkSize(offset);
         int chunkOffset  = intraChunkOffset(offset);
+        int iSize = (int) size;
 
         if (cacheEntry != null) {
             boolean isSameChunk = cacheEntry.offset == startPos;
             if (isSameChunk)
                 return cacheEntry.read(pointer, chunkOffset, (int) size);
-            else
-                return super.read(s, pointer, size, offset, fuseFileInfo);
         }
-        else
-            return super.read(s, pointer, size, offset, fuseFileInfo);
+        //add to cache
+        cacheEntry = new CacheEntry(s, startPos);
+        entryMap.put(s, cacheEntry);
+        return cacheEntry.read(pointer, chunkOffset, iSize);
     }
 
     @Override
@@ -83,8 +84,6 @@ public class CachingPeergosFS extends PeergosFS {
             boolean sameChunk  = startPos == cacheEntry.offset;
             if (sameChunk)
                 return cacheEntry.write(pointer, chunkOffset, iSize);
-            else
-                cacheEntry.sync();
         }
 
         cacheEntry = new CacheEntry(s, startPos);
