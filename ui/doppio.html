@@ -1,0 +1,21 @@
+<!doctype html>
+<html>
+<head>
+</head>
+    
+<body>
+<h1>Doppio examples</h1>
+<script type="text/javascript" src="javapoly/javapoly.js"></script>
+<script type="text/java" src="IPFS.jar"></script>
+<script type="text/java" src="scrypt-1.4.0.jar"></script>
+<script type="text/java" src="PeergosServer.jar"></script>
+
+<script type="text/javascript">
+  JavaPoly.type("peergos.user.UserContext").then(function(UserContext) {
+      return UserContext.ensureSignedUp("test02", "test02", 8000);
+  }).then(function(context) {
+      console.log(context);
+  });
+</script>
+</body>
+</html>
