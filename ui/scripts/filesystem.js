@@ -418,11 +418,11 @@ const SettingsOptions = React.createClass({
                     </center>
                 </div>
                 <div className="form-group">
-                    <label>Old password</label>
+                    <label>Existing password</label>
                     <input id="password-old" className="form-control" type="password" autoFocus={true}/>
                     <label>New password</label>
                     <input id="password-new" className="form-control" type="password" />
-                    <label>Confirm password</label>
+                    <label>Confirm new password</label>
                     <input id="password-confirm" className="form-control" type="password" />
                 </div>
                 <button className="btn btn-success" onClick={updatePassword}>Update</button>
