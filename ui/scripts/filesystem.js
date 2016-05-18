@@ -1041,7 +1041,7 @@ var Browser = React.createClass({
             }.bind(this);
             const className = index == this.state.retrievedFilePointerPath.length -1 ? "btn-primary" : "btn-default";
 	    
-            var style = {display: "block"};
+            var style = {};
             if(e.getOwner() !== userContext.username){
                 style = {background: "orangered"};
             }
