@@ -43,9 +43,15 @@
       </manifest>
       <fileset dir=".">
 	<include name="**/ui/**"/>
+	<exclude name="out/**"/>
+	<exclude name="ui/doppio/**"/>
+	<exclude name="ui/PeergosServer.jar"/>
       </fileset>
     </jar>
     <copy todir=".">
+      <fileset file="${dist}/PeergosServer.jar"/>
+    </copy>
+    <copy todir="ui/">
       <fileset file="${dist}/PeergosServer.jar"/>
     </copy>
   </target>

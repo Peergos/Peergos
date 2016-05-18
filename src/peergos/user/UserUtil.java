@@ -22,7 +22,8 @@ public class UserUtil {
         byte[] hash = Arrays.copyOfRange(Hash.sha256(password.getBytes()), 2, 34);
         byte[] salt = username.getBytes();
         try {
-
+            System.out.println("Starting Scrypt key generation");
+            System.setProperty("java.vm.specification.name", "Java");
             return SCrypt.scrypt(hash, salt, N, 8, 1, 96);
         } catch (GeneralSecurityException gse) {
             throw new IllegalStateException(gse);
