@@ -9,6 +9,7 @@ import peergos.user.fs.*;
 import peergos.util.*;
 
 import java.io.*;
+import java.net.*;
 import java.time.*;
 import java.util.*;
 import java.util.function.*;
@@ -89,6 +90,19 @@ public class UserContext {
         this.dhtClient = dht;
         this.corenodeClient = coreNode;
         this.btree = btree;
+    }
+
+    public static void main(String[] args) throws IOException {
+        ensureSignedUp("test02", "test02", 8000);
+        System.out.println("Signed up!");
+    }
+
+    public static UserContext ensureSignedUp(String username, String password, int webPort) throws IOException {
+        DHTClient.HTTP dht = new DHTClient.HTTP(new URL("http://localhost:"+ webPort +"/"));
+        Btree.HTTP btree = new Btree.HTTP(new URL("http://localhost:"+ webPort +"/"));
+        HTTPCoreNode coreNode = new HTTPCoreNode(new URL("http://localhost:"+ webPort +"/"));
+        UserContext userContext = UserContext.ensureSignedUp(username, password, dht, btree, coreNode);
+        return userContext;
     }
 
     public static UserContext ensureSignedUp(String username, String password, DHTClient dht, Btree btree, CoreNode coreNode) throws IOException {

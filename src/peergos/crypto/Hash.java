@@ -21,7 +21,11 @@ public class Hash {
             return multihash;
         } catch (NoSuchAlgorithmException e)
         {
-            throw new IllegalStateException("couldn't hash password");
+            // This is only here to work around a bug in Doppio JVM
+            Sha256 sha256 = new Sha256();
+            sha256.update(input);
+            byte[] hash = sha256.digest();
+            return hash;
         }
     }
 
