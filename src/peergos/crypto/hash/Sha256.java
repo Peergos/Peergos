@@ -1,4 +1,4 @@
-package peergos.crypto;
+package peergos.crypto.hash;
 
 /* Sha256.java --
 Copyright (C) 2003, 2006 Free Software Foundation, Inc.

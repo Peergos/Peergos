@@ -1,4 +1,4 @@
-package peergos.crypto;
+package peergos.crypto.hash;
 
 /* BaseHash.java --
    Copyright (C) 2001, 2002, 2006 Free Software Foundation, Inc.

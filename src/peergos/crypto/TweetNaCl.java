@@ -1267,11 +1267,7 @@ public class TweetNaCl {
     private static final Random prng = getSecureRandom();
 
     private static SecureRandom getSecureRandom() {
-        try {
-            return SecureRandom.getInstanceStrong();
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("Couldn't create SecureRandom!", e);
-        }
+        return new SecureRandom();
     }
 
     private static void randombytes(byte[] b, int len) {

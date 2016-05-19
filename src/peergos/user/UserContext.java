@@ -3,6 +3,7 @@ package peergos.user;
 import org.ipfs.api.*;
 import peergos.corenode.*;
 import peergos.crypto.*;
+import peergos.crypto.hash.*;
 import peergos.crypto.symmetric.SymmetricKey;
 import peergos.server.merklebtree.*;
 import peergos.user.fs.*;
@@ -24,6 +25,7 @@ public class UserContext {
     public final DHTClient dhtClient;
     public final CoreNode corenodeClient;
     public final Btree btree;
+    public final LoginHasher hasher;
 
     private final SortedMap<UserPublicKey, EntryPoint> staticData = new TreeMap<>();
     private final TrieNode entrie = new TrieNode(); // ba dum che!
@@ -83,13 +85,14 @@ public class UserContext {
         }
     }
 
-    public UserContext(String username, User user, SymmetricKey root, DHTClient dht, Btree btree, CoreNode coreNode) throws IOException {
+    public UserContext(String username, User user, SymmetricKey root, DHTClient dht, Btree btree, CoreNode coreNode, LoginHasher hasher) throws IOException {
         this.username = username;
         this.user = user;
         this.rootKey = root;
         this.dhtClient = dht;
         this.corenodeClient = coreNode;
         this.btree = btree;
+        this.hasher = hasher;
     }
 
     public static void main(String[] args) throws IOException {
@@ -98,16 +101,21 @@ public class UserContext {
     }
 
     public static UserContext ensureSignedUp(String username, String password, int webPort) throws IOException {
+        return ensureSignedUp(username, password, webPort, true);
+    }
+
+    public static UserContext ensureSignedUp(String username, String password, int webPort, boolean useJavaScrypt) throws IOException {
         DHTClient.HTTP dht = new DHTClient.HTTP(new URL("http://localhost:"+ webPort +"/"));
         Btree.HTTP btree = new Btree.HTTP(new URL("http://localhost:"+ webPort +"/"));
         HTTPCoreNode coreNode = new HTTPCoreNode(new URL("http://localhost:"+ webPort +"/"));
-        UserContext userContext = UserContext.ensureSignedUp(username, password, dht, btree, coreNode);
+        LoginHasher hasher = useJavaScrypt ? new ScryptJava() : new ScryptJS();
+        UserContext userContext = UserContext.ensureSignedUp(username, password, dht, btree, coreNode, hasher);
         return userContext;
     }
 
-    public static UserContext ensureSignedUp(String username, String password, DHTClient dht, Btree btree, CoreNode coreNode) throws IOException {
-        UserWithRoot userWithRoot = UserUtil.generateUser(username, password);
-        UserContext context = new UserContext(username, userWithRoot.getUser(), userWithRoot.getRoot(), dht, btree, coreNode);
+    public static UserContext ensureSignedUp(String username, String password, DHTClient dht, Btree btree, CoreNode coreNode, LoginHasher hasher) throws IOException {
+        UserWithRoot userWithRoot = UserUtil.generateUser(username, password, hasher);
+        UserContext context = new UserContext(username, userWithRoot.getUser(), userWithRoot.getRoot(), dht, btree, coreNode, hasher);
         if (!context.isRegistered()) {
             if (context.isAvailable()) {
                 context.register();
@@ -172,7 +180,7 @@ public class UserContext {
         LocalDate expiry = LocalDate.now();
         // set claim expiry to two months from now
         expiry.plusMonths(2);
-        UserWithRoot updatedUser = UserUtil.generateUser(username, newPassword);
+        UserWithRoot updatedUser = UserUtil.generateUser(username, newPassword, hasher);
         if(!commitStaticData(updatedUser.getUser(), staticData, updatedUser.getRoot(), dhtClient, corenodeClient))
             throw new IllegalStateException("Change Password Failed: couldn't upload new file system entry points!");
 
@@ -180,7 +188,7 @@ public class UserContext {
         if(!corenodeClient.updateChain(username, claimChain))
             throw new IllegalStateException("Couldn't register new public keys during password change!");
 
-        return UserContext.ensureSignedUp(username, newPassword, dhtClient, btree, corenodeClient);
+        return UserContext.ensureSignedUp(username, newPassword, dhtClient, btree, corenodeClient, hasher);
     }
 
     public RetrievedFilePointer createEntryDirectory(String directoryName) throws IOException {

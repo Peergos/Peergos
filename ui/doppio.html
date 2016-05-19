@@ -4,20 +4,17 @@
 </head>
     
 <body>
-<h1>Doppio examples</h1>
+<h1>Peergos in Doppio!</h1>
+<script type="text/javascript" src="scripts/nacl.js"></script>
+<script type="text/javascript" src="scripts/scrypt.js"></script>
 <script type="text/javascript" src="javapoly/javapoly.js"></script>
 <script type="text/java" src="IPFS.jar"></script>
 <script type="text/java" src="scrypt-1.4.0.jar"></script>
-<script type="text/java" src="doppio/vendor/java_home/lib/jce.jar"></script>
-<script type="text/java" src="doppio/vendor/java_home/lib/rt.jar"></script>
-<script type="text/java" src="doppio/vendor/java_home/lib/jsse.jar"></script>
-<script type="text/java" src="doppio/vendor/java_home/lib/ext/sunec.jar"></script>
-<script type="text/java" src="doppio/vendor/java_home/lib/ext/sunjce_provider.jar"></script>
 <script type="text/java" src="PeergosServer.jar"></script>
 
 <script type="text/javascript">
   JavaPoly.type("peergos.user.UserContext").then(function(UserContext) {
-      return UserContext.ensureSignedUp("test02", "test02", 8000);
+      return UserContext.ensureSignedUp("test02", "test02", 8000, false);
   }).then(function(context) {
       console.log(context);
   });

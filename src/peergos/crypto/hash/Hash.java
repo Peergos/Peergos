@@ -1,4 +1,4 @@
-package peergos.crypto;
+package peergos.crypto.hash;
 
 import java.io.UnsupportedEncodingException;
 import java.security.MessageDigest;
@@ -6,7 +6,6 @@ import java.security.NoSuchAlgorithmException;
 
 public class Hash {
     public static final String HASH = "SHA-256";
-    public static final int HASH_BYTES = 32;
 
     public static byte[] sha256(byte[] input)
     {

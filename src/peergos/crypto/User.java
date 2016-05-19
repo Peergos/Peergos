@@ -8,6 +8,7 @@ import peergos.crypto.asymmetric.curve25519.Curve25519PublicKey;
 import peergos.crypto.asymmetric.curve25519.Curve25519SecretKey;
 import peergos.crypto.asymmetric.curve25519.Ed25519PublicKey;
 import peergos.crypto.asymmetric.curve25519.Ed25519SecretKey;
+import peergos.crypto.hash.*;
 import peergos.user.UserUtil;
 import peergos.util.ArrayOps;
 
@@ -68,8 +69,8 @@ public class User extends UserPublicKey
         return ArrayOps.concat(secretSigningKey.serialize(), secretBoxingKey.serialize(), super.serialize());
     }
 
-    public static User generateUserCredentials(String username, String password) {
-        return UserUtil.generateUser(username, password).getUser();
+    public static User generateUserCredentials(String username, String password, LoginHasher hasher) {
+        return UserUtil.generateUser(username, password, hasher).getUser();
     }
 
 
@@ -109,18 +110,5 @@ public class User extends UserPublicKey
         rnd.nextBytes(publicBoxBytes);
         boolean isSeeded = true;
         return random(secretSignBytes, publicSignBytes, secretBoxBytes, publicBoxBytes, isSeeded);
-    }
-
-    public static void main(String[] args) {
-        User user = User.generateUserCredentials("Username", "password");
-        System.out.println("PublicKey: " + ArrayOps.bytesToHex(user.serialize()));
-        byte[] message = "G'day mate!".getBytes();
-        byte[] cipher = user.encryptMessageFor(message, user.secretBoxingKey);
-        System.out.println("Cipher: "+ArrayOps.bytesToHex(cipher));
-        byte[] clear = user.decryptMessage(cipher, user.publicBoxingKey);
-        assert (Arrays.equals(message, clear));
-
-        byte[] signed = user.signMessage(message);
-        assert (Arrays.equals(user.unsignMessage(signed), message));
     }
 }
