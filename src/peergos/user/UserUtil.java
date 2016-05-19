@@ -1,6 +1,8 @@
 package peergos.user;
 
 import com.lambdaworks.crypto.SCrypt;
+import com.sun.crypto.provider.*;
+import com.sun.net.ssl.internal.ssl.Provider;
 import peergos.crypto.Hash;
 import peergos.crypto.TweetNaCl;
 import peergos.crypto.User;
@@ -10,10 +12,12 @@ import peergos.crypto.asymmetric.curve25519.Ed25519PublicKey;
 import peergos.crypto.asymmetric.curve25519.Ed25519SecretKey;
 import peergos.crypto.symmetric.SymmetricKey;
 import peergos.crypto.symmetric.TweetNaClKey;
-import peergos.user.UserContext;
-import peergos.user.UserWithRoot;
+import sun.security.ec.*;
+import sun.security.jgss.*;
+import sun.security.provider.*;
+import sun.security.rsa.*;
 
-import java.security.GeneralSecurityException;
+import java.security.*;
 import java.util.Arrays;
 
 public class UserUtil {
@@ -23,7 +27,17 @@ public class UserUtil {
         byte[] salt = username.getBytes();
         try {
             System.out.println("Starting Scrypt key generation");
-            System.setProperty("java.vm.specification.name", "Java");
+//            System.setProperty("java.vm.specification.name", "Java");
+//            Security.addProvider(new Sun());
+//            Security.addProvider(new SunRsaSign());
+//            Security.addProvider(new SunEC());
+//            Security.addProvider(new Provider());
+//            Security.addProvider(new SunJCE());
+//            Security.addProvider(new SunProvider());
+//            Security.addProvider(new com.sun.security.sasl.Provider());
+//            Security.addProvider(new XMLDSigRI());
+//            Security.addProvider(new SunPCSC());
+//            System.out.println("Loaded crypto providers");
             return SCrypt.scrypt(hash, salt, N, 8, 1, 96);
         } catch (GeneralSecurityException gse) {
             throw new IllegalStateException(gse);

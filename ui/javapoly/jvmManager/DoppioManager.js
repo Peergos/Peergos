@@ -244,11 +244,11 @@ var DoppioManager = function () {
 
       var options = this.getOptions();
       var responsiveness = this.javapoly.isJavaPolyWorker ? 100 : 10;
+      this.classpath.unshift("/javapoly/classes/");
       this.bfsReady.then(function () {
         Promise.all(_this8.mountHub).then(function () {
           _this8.javapoly.jvm = new Doppio.VM.JVM({
-            doppioHomePath: options.doppioLibUrl,
-            bootstrapClasspath: ['/sys/vendor/java_home/lib/rt.jar', "/javapoly/classes"],
+            doppioHomePath: '/sys',
             classpath: _this8.classpath,
             javaHomePath: '/sys/vendor/java_home',
             extractionPath: '/tmp',
