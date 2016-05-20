@@ -1,10 +1,8 @@
 package peergos.crypto.symmetric;
 
-import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import peergos.crypto.TweetNaCl;
 
 import java.security.SecureRandom;
-import java.security.Security;
 
 public class TweetNaClKey implements SymmetricKey
 {
@@ -61,10 +59,5 @@ public class TweetNaClKey implements SymmetricKey
         byte[] key = new byte[KEY_BYTES];
         csprng.nextBytes(key);
         return new TweetNaClKey(key);
-    }
-
-    static
-    {
-        Security.addProvider(new BouncyCastleProvider());
     }
 }
