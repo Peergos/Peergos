@@ -13,7 +13,7 @@ registerNatives({
 	    scrypt(hash, salt, 17, 8, 96, 1000, function(keyBytes) {
 		console.log("JS Script complete in: "+ (Date.now()-t1)+"mS");
 		var hashedBytes = nacl.util.decodeBase64(keyBytes);
-		var i8Array = new Int8Array(hashedBytes);
+		var i8Array = new Int8Array(hashedBytes.buffer, hashedBytes.byteOffset, hashedBytes.byteLength);
 		var javaByteArray = Doppio.VM.Util.newArrayFromDataWithClass(thread, thread.getBsCl().getInitializedClass(thread, '[B'), i8Array);
 		thread.asyncReturn(javaByteArray);
 	    }, 'base64');
