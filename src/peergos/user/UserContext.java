@@ -105,12 +105,12 @@ public class UserContext {
     }
 
     public static UserContext ensureSignedUp(String username, String password, int webPort, boolean useJavaScrypt) throws IOException {
-        DHTClient.HTTP dht = new DHTClient.HTTP(new URL("http://localhost:"+ webPort +"/"));
-        Btree.HTTP btree = new Btree.HTTP(new URL("http://localhost:"+ webPort +"/"));
-        HTTPCoreNode coreNode = new HTTPCoreNode(new URL("http://localhost:"+ webPort +"/"));
-        LoginHasher hasher = useJavaScrypt ? new ScryptJava() : new ScryptJS();
-        UserContext userContext = UserContext.ensureSignedUp(username, password, dht, btree, coreNode, hasher);
-        return userContext;
+        LoginHasher hasher = useJavaScrypt ? new ScryptJS() : new ScryptJava();
+        HttpPoster poster = useJavaScrypt ? new JavaScriptPoster() : new HttpPoster.Java(new URL("http://localhost:" + webPort + "/"));
+        CoreNode coreNode = new HTTPCoreNode(poster);
+        Btree btree = new Btree.HTTP(poster);
+        DHTClient dht = new DHTClient.HTTP(poster);
+        return UserContext.ensureSignedUp(username, password, dht, btree, coreNode, hasher);
     }
 
     public static UserContext ensureSignedUp(String username, String password, DHTClient dht, Btree btree, CoreNode coreNode, LoginHasher hasher) throws IOException {

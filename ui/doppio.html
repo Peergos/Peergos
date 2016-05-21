@@ -15,7 +15,7 @@
 
 <script type="text/javascript">
   JavaPoly.type("peergos.user.UserContext").then(function(UserContext) {
-      return UserContext.ensureSignedUp("test02", "test02", 8000, false);
+      return UserContext.ensureSignedUp("test02", "test02", 8000, true);
   }).then(function(context) {
       console.log(context);
   });

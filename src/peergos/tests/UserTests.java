@@ -103,12 +103,7 @@ public class UserTests {
     }
 
     public static UserContext ensureSignedUp(String username, String password, int webPort) throws IOException {
-        DHTClient.HTTP dht = new DHTClient.HTTP(new URL("http://localhost:"+ webPort +"/"));
-        Btree.HTTP btree = new Btree.HTTP(new URL("http://localhost:"+ webPort +"/"));
-        HTTPCoreNode coreNode = new HTTPCoreNode(new URL("http://localhost:"+ webPort +"/"));
-        ScryptJava hasher = new ScryptJava();
-        UserContext userContext = UserContext.ensureSignedUp(username, password, dht, btree, coreNode, hasher);
-        return userContext;
+        return UserContext.ensureSignedUp(username, password, webPort, false);
     }
 
     @Test
