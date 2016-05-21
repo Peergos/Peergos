@@ -101,7 +101,7 @@ public class UserContext {
     }
 
     public static UserContext ensureSignedUp(String username, String password, int webPort) throws IOException {
-        return ensureSignedUp(username, password, webPort, true);
+        return ensureSignedUp(username, password, webPort, false);
     }
 
     public static UserContext ensureSignedUp(String username, String password, int webPort, boolean useJavaScrypt) throws IOException {
