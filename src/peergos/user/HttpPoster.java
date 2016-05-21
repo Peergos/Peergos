@@ -30,7 +30,7 @@ public interface HttpPoster {
             HttpURLConnection conn = null;
             try
             {
-                conn = (HttpURLConnection) buildURL("dht/put").openConnection();
+                conn = (HttpURLConnection) buildURL(url).openConnection();
                 conn.setDoInput(true);
                 conn.setDoOutput(true);
                 DataOutputStream dout = new DataOutputStream(conn.getOutputStream());

@@ -27,10 +27,8 @@ registerNatives({
 		    reject(Error("Network Error"));
 		};
 		
-		console.log(bodyData);
 		req.send(bodyData.array);
 	    }).then(function(res) {
-		console.log(res);
 		var i8Array = new Int8Array(res.buffer, res.byteOffset, res.byteLength);
 		var javaByteArray = Doppio.VM.Util.newArrayFromDataWithClass(thread, thread.getBsCl().getInitializedClass(thread, '[B'), i8Array);
 		thread.asyncReturn(javaByteArray);
