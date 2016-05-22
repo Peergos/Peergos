@@ -59,7 +59,11 @@ public class FileUploader implements AutoCloseable {
         byte[] data = new byte[length];
         Serialize.readFullArray(raf, data);
 
-		Chunk chunk = new Chunk(data, key);
+        byte[] mapKey = new byte[32];
+        context.random.randombytes(mapKey, 0, 32);
+        byte[] nonce = new byte[TweetNaCl.SECRETBOX_NONCE_BYTES];
+        context.random.randombytes(nonce, 0, nonce.length);
+		Chunk chunk = new Chunk(data, key, mapKey, nonce);
         LocatedChunk locatedChunk = new LocatedChunk(new Location(owner, writer, chunk.mapKey()), chunk);
         uploadChunk(writer, props, parentLocation, parentparentKey, locatedChunk, nOriginalFragments, nAllowedFalures, nextLocation, context, monitor);
         Location nextL = new Location(owner, writer, chunk.mapKey());

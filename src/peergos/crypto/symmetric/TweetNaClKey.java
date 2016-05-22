@@ -1,8 +1,6 @@
 package peergos.crypto.symmetric;
 
-import peergos.crypto.TweetNaCl;
-
-import java.security.SecureRandom;
+import peergos.crypto.random.*;
 
 public class TweetNaClKey implements SymmetricKey
 {
@@ -11,11 +9,13 @@ public class TweetNaClKey implements SymmetricKey
 
     private final byte[] secretKey;
     private final Salsa20Poly1305 implementation;
+    private final SafeRandom random;
 
-    public TweetNaClKey(byte[] encoded, Salsa20Poly1305 implementation)
+    public TweetNaClKey(byte[] encoded, Salsa20Poly1305 implementation, SafeRandom random)
     {
         this.secretKey = encoded;
         this.implementation = implementation;
+        this.random = random;
     }
 
     public Type type() {
@@ -57,19 +57,17 @@ public class TweetNaClKey implements SymmetricKey
         }
     }
 
-    private static SecureRandom csprng = new SecureRandom();
-
     public byte[] createNonce()
     {
         byte[] res = new byte[NONCE_BYTES];
-        csprng.nextBytes(res);
+        random.randombytes(res, 0, res.length);
         return res;
     }
 
-    public static TweetNaClKey random(Salsa20Poly1305 provider)
+    public static TweetNaClKey random(Salsa20Poly1305 provider, SafeRandom random)
     {
         byte[] key = new byte[KEY_BYTES];
-        csprng.nextBytes(key);
-        return new TweetNaClKey(key, provider);
+        random.randombytes(key, 0, key.length);
+        return new TweetNaClKey(key, provider, random);
     }
 }

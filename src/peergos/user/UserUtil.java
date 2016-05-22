@@ -7,13 +7,14 @@ import peergos.crypto.asymmetric.curve25519.Curve25519SecretKey;
 import peergos.crypto.asymmetric.curve25519.Ed25519PublicKey;
 import peergos.crypto.asymmetric.curve25519.Ed25519SecretKey;
 import peergos.crypto.hash.*;
+import peergos.crypto.random.*;
 import peergos.crypto.symmetric.*;
 
 import java.util.Arrays;
 
 public class UserUtil {
 
-    public static UserWithRoot generateUser(String username, String password, LoginHasher hasher, Salsa20Poly1305 provider) {
+    public static UserWithRoot generateUser(String username, String password, LoginHasher hasher, Salsa20Poly1305 provider, SafeRandom random) {
         byte[] keyBytes = hasher.hashToKeyBytes(username, password);
 
         byte[] signBytesSeed = Arrays.copyOfRange(keyBytes, 0, 32);
@@ -35,7 +36,7 @@ public class UserUtil {
                 new Ed25519PublicKey(publicSignBytes),
                 new Curve25519PublicKey(pubilcBoxBytes));
 
-        SymmetricKey root =  new TweetNaClKey(rootKeyBytes, provider);
+        SymmetricKey root =  new TweetNaClKey(rootKeyBytes, provider, random);
 
         return new UserWithRoot(user, root);
     }

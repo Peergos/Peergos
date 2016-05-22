@@ -9,6 +9,7 @@ import peergos.crypto.asymmetric.curve25519.Curve25519SecretKey;
 import peergos.crypto.asymmetric.curve25519.Ed25519PublicKey;
 import peergos.crypto.asymmetric.curve25519.Ed25519SecretKey;
 import peergos.crypto.hash.*;
+import peergos.crypto.random.*;
 import peergos.crypto.symmetric.*;
 import peergos.user.UserUtil;
 import peergos.util.ArrayOps;
@@ -70,19 +71,22 @@ public class User extends UserPublicKey
         return ArrayOps.concat(secretSigningKey.serialize(), secretBoxingKey.serialize(), super.serialize());
     }
 
-    public static User generateUserCredentials(String username, String password, LoginHasher hasher, Salsa20Poly1305 provider) {
-        return UserUtil.generateUser(username, password, hasher, provider).getUser();
+    public static User generateUserCredentials(String username, String password, LoginHasher hasher, Salsa20Poly1305 provider, SafeRandom random) {
+        return UserUtil.generateUser(username, password, hasher, provider, random).getUser();
     }
 
 
-    public static User random() {
+    public static User random(SafeRandom random) {
 
         byte[] secretSignBytes = new byte[64];
         byte[] publicSignBytes = new byte[32];
         byte[] secretBoxBytes = new byte[32];
         byte[] publicBoxBytes = new byte[32];
 
-        boolean isSeeded = false;
+        random.randombytes(secretBoxBytes, 0, 32);
+        random.randombytes(secretSignBytes, 0, 32);
+
+        boolean isSeeded = true;
         return random(secretSignBytes, publicSignBytes, secretBoxBytes, publicBoxBytes, isSeeded);
     }
 

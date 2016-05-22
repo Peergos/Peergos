@@ -1,6 +1,7 @@
 package peergos.user.fs;
 
 import peergos.crypto.*;
+import peergos.crypto.random.*;
 import peergos.crypto.symmetric.*;
 import peergos.user.*;
 import peergos.util.*;
@@ -238,7 +239,9 @@ public class FileTreeNode {
 
                 LocatedChunk currentOriginal = retriever.getChunkInputStream(context, baseKey, startIndex, filesSize, child.getLocation(), monitor).get();
                 Optional<Location> nextChunkLocationOpt = retriever.getLocationAt(child.getLocation(), startIndex + Chunk.MAX_SIZE, context);
-                Location nextChunkLocation = nextChunkLocationOpt.orElse(new Location(getLocation().owner, getLocation().writer, TweetNaCl.securedRandom(32)));
+                byte[] mapKey = new byte[32];
+                context.random.randombytes(mapKey, 0, 32);
+                Location nextChunkLocation = nextChunkLocationOpt.orElse(new Location(getLocation().owner, getLocation().writer, mapKey));
 
                 System.out.println("********** Writing to chunk at mapkey: "+ArrayOps.bytesToHex(currentOriginal.location.mapKey) + " next: "+nextChunkLocation);
                 // modify chunk, re-encrypt and upload
@@ -250,7 +253,10 @@ public class FileTreeNode {
                 if (raw.length < internalEnd)
                     raw = Arrays.copyOfRange(raw, 0, internalEnd);
                 fileData.read(raw, internalStart, internalEnd - internalStart);
-                Chunk updated = new Chunk(raw, baseKey, currentOriginal.location.mapKey);
+
+                byte[] nonce = new byte[TweetNaCl.SECRETBOX_NONCE_BYTES];
+                context.random.randombytes(nonce, 0, nonce.length);
+                Chunk updated = new Chunk(raw, baseKey, currentOriginal.location.mapKey, nonce);
                 LocatedChunk located = new LocatedChunk(currentOriginal.location, updated);
                 FileProperties newProps = new FileProperties(childProps.name, endIndex > filesSize ? endIndex : filesSize,
                         LocalDateTime.now(), childProps.isHidden, childProps.thumbnail);
@@ -286,7 +292,9 @@ public class FileTreeNode {
         FileProperties fileProps = new FileProperties(filename, endIndex, LocalDateTime.now(), false, Optional.of(thumbData));
         FileUploader chunks = new FileUploader(filename, fileData, startIndex, endIndex, fileKey, parentLocation, dirParentKey, monitor, fileProps,
                 EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
-        Location nextChunkLocation = new Location(getLocation().owner, getLocation().writer, TweetNaCl.securedRandom(32));
+        byte[] mapKey = new byte[32];
+        context.random.randombytes(mapKey, 0, 32);
+        Location nextChunkLocation = new Location(getLocation().owner, getLocation().writer, mapKey);
         Location fileLocation = chunks.upload(context, parentLocation.owner, (User)entryWriterKey, nextChunkLocation);
         dirAccess.addFile(fileLocation, rootRKey, fileKey);
         return context.uploadChunk(dirAccess, parentLocation.owner, (User)entryWriterKey, dirMapKey, Collections.emptyList());
@@ -296,11 +304,12 @@ public class FileTreeNode {
         return !name.contains("/");
     }
 
-    public Optional<ReadableFilePointer> mkdir(String newFolderName, UserContext context, boolean isSystemFolder) throws IOException {
-        return mkdir(newFolderName, context, null, isSystemFolder);
+    public Optional<ReadableFilePointer> mkdir(String newFolderName, UserContext context, boolean isSystemFolder, SafeRandom random) throws IOException {
+        return mkdir(newFolderName, context, null, isSystemFolder, random);
     }
 
-    public Optional<ReadableFilePointer> mkdir(String newFolderName, UserContext context, SymmetricKey requestedBaseSymmetricKey, boolean isSystemFolder) throws IOException {
+    public Optional<ReadableFilePointer> mkdir(String newFolderName, UserContext context, SymmetricKey requestedBaseSymmetricKey,
+                                               boolean isSystemFolder, SafeRandom random) throws IOException {
         if (!this.isDirectory())
             return Optional.empty();
         if (!isLegalName(newFolderName))
@@ -312,7 +321,8 @@ public class FileTreeNode {
         ReadableFilePointer dirPointer = pointer.filePointer;
         DirAccess dirAccess = (DirAccess)pointer.fileAccess;
         SymmetricKey rootDirKey = dirPointer.baseKey;
-        return Optional.of(dirAccess.mkdir(newFolderName, context, (User)entryWriterKey, dirPointer.mapKey, rootDirKey, requestedBaseSymmetricKey, isSystemFolder));
+        return Optional.of(dirAccess.mkdir(newFolderName, context, (User)entryWriterKey, dirPointer.mapKey, rootDirKey,
+                requestedBaseSymmetricKey, isSystemFolder, random));
     }
 
     public boolean rename(String newFilename, UserContext context, FileTreeNode parent) throws IOException {
@@ -365,7 +375,8 @@ public class FileTreeNode {
         if (target.hasChildWithName(getFileProperties().name, context))
             return false;
         //make new FileTreeNode pointing to the same file, but with a different location
-        byte[] newMapKey = TweetNaCl.securedRandom(32);
+        byte[] newMapKey = new byte[32];
+        context.random.randombytes(newMapKey, 0, 32);
         SymmetricKey ourBaseKey = this.getKey();
         // a file baseKey is the key for the chunk, which hasn't changed, so this must stay the same
         SymmetricKey newBaseKey = this.isDirectory() ? SymmetricKey.random() : ourBaseKey;

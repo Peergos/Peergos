@@ -1276,9 +1276,9 @@ public class TweetNaCl {
         System.arraycopy(r, 0, b, 0, len);
     }
 
-    public static byte[] securedRandom(int bytes) {
-        byte[] res = new byte[bytes];
-        prng.nextBytes(res);
-        return res;
+    public static void randomBytes(byte[] b, int offset, int len) {
+        byte[] r = new byte[len];
+        prng.nextBytes(r);
+        System.arraycopy(r, 0, b, offset, len);
     }
 }

@@ -1,5 +1,6 @@
 package peergos.crypto.symmetric;
 
+import peergos.crypto.random.*;
 import peergos.util.*;
 
 import java.io.*;
@@ -25,8 +26,14 @@ public interface SymmetricKey
 
     Map<Type, Salsa20Poly1305> PROVIDERS = new HashMap<>();
 
+    Map<Type, SafeRandom> RNG_PROVIDERS = new HashMap<>();
+
     static void addProvider(Type t, Salsa20Poly1305 provider) {
         PROVIDERS.put(t, provider);
+    }
+
+    static void setRng(Type t, SafeRandom rng) {
+        RNG_PROVIDERS.put(t, rng);
     }
 
     Type type();
@@ -53,7 +60,7 @@ public interface SymmetricKey
             case TweetNaCl:
                 byte[] key = new byte[32];
                 din.readFully(key);
-                return new TweetNaClKey(key, PROVIDERS.get(t));
+                return new TweetNaClKey(key, PROVIDERS.get(t), RNG_PROVIDERS.get(t));
             default: throw new IllegalStateException("Unknown Symmetric Key type: "+t.name());
         }
 
@@ -67,10 +74,10 @@ public interface SymmetricKey
     }
 
     static SymmetricKey random() {
-        return TweetNaClKey.random(PROVIDERS.get(Type.TweetNaCl));
+        return TweetNaClKey.random(PROVIDERS.get(Type.TweetNaCl), RNG_PROVIDERS.get(Type.TweetNaCl));
     }
 
     static SymmetricKey createNull() {
-        return new TweetNaClKey(new byte[32], PROVIDERS.get(Type.TweetNaCl));
+        return new TweetNaClKey(new byte[32], PROVIDERS.get(Type.TweetNaCl), RNG_PROVIDERS.get(Type.TweetNaCl));
     }
 }

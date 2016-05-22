@@ -1,6 +1,7 @@
 package peergos.user.fs;
 
 import peergos.crypto.*;
+import peergos.crypto.random.*;
 import peergos.crypto.symmetric.*;
 import peergos.user.*;
 import peergos.util.*;
@@ -128,9 +129,10 @@ public class DirAccess extends FileAccess {
 
     //String, UserContext, User ->
     public ReadableFilePointer mkdir(String name, UserContext userContext, User writer, byte[] ourMapKey,
-                                     SymmetricKey baseKey, SymmetricKey optionalBaseKey, boolean isSystemFolder) throws IOException {
+                                     SymmetricKey baseKey, SymmetricKey optionalBaseKey, boolean isSystemFolder, SafeRandom random) throws IOException {
         SymmetricKey dirReadKey = optionalBaseKey != null ? optionalBaseKey : SymmetricKey.random();
-        byte[] dirMapKey = TweetNaCl.securedRandom(32); // root will be stored under this in the core node
+        byte[] dirMapKey = new byte[32]; // root will be stored under this in the btree
+        random.randombytes(dirMapKey, 0, 32);
         SymmetricKey ourParentKey = this.getParentKey(baseKey);
         Location ourLocation = new Location(userContext.user, writer, ourMapKey);
         DirAccess dir = DirAccess.create(dirReadKey, new FileProperties(name, 0, LocalDateTime.now(), isSystemFolder, Optional.empty()), ourLocation, ourParentKey, null);
@@ -164,7 +166,8 @@ public class DirAccess extends FileAccess {
         // upload new metadata blob for each child and re-add child
         for (RetrievedFilePointer rfp: RFPs) {
             SymmetricKey newChildBaseKey = rfp.fileAccess.isDirectory() ? SymmetricKey.random() : rfp.filePointer.baseKey;
-            byte[] newChildMapKey = TweetNaCl.securedRandom(32);
+            byte[] newChildMapKey = new byte[32];
+            context.random.randombytes(newChildMapKey, 0, 32);
             Location newChildLocation = new Location(context.user, entryWriterKey, newChildMapKey);
             FileAccess newChildFileAccess = rfp.fileAccess.copyTo(rfp.filePointer.baseKey, newChildBaseKey,
                     ourNewLocation, ourNewParentKey, entryWriterKey, newChildMapKey, context);
