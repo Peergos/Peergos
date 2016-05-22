@@ -623,6 +623,12 @@ public class UserContext {
                 .collect(Collectors.toList());
     }
 
+    public byte[] randomBytes(int length) {
+        byte[] res = new byte[length];
+        random.randombytes(res, 0, length);
+        return res;
+    }
+
     public void unfollow(String username) throws IOException {
         System.out.println("Unfollowing: "+username);
         // remove entry point from static data
