@@ -31,7 +31,7 @@ public interface CoreNode {
     byte[] getAllUsernamesGzip() throws IOException;
 
     default List<String> getAllUsernames() throws IOException {
-        DataInput din = new DataInputStream(new GZIPInputStream(new ByteArrayInputStream(getAllUsernamesGzip())));
+        DataInput din = new DataInputStream(new ByteArrayInputStream(getAllUsernamesGzip()));
         List<String> res = new ArrayList<>();
         while (true) {
             try {

@@ -4,6 +4,7 @@ import peergos.util.*;
 
 import java.io.*;
 import java.net.*;
+import java.util.zip.*;
 
 public interface HttpPoster {
 
@@ -38,7 +39,9 @@ public interface HttpPoster {
                 dout.write(payload);
                 dout.flush();
 
-                DataInputStream din = new DataInputStream(conn.getInputStream());
+                String contentEncoding = conn.getContentEncoding();
+                boolean isGzipped = "gzip".equals(contentEncoding);
+                DataInputStream din = new DataInputStream(isGzipped ? new GZIPInputStream(conn.getInputStream()) : conn.getInputStream());
                 return Serialize.readFully(din);
             } finally {
                 if (conn != null)

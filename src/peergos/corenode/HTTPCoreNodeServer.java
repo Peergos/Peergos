@@ -6,6 +6,7 @@ import peergos.crypto.*;
 import java.net.*;
 import java.io.*;
 import java.util.*;
+import java.util.zip.*;
 
 import com.sun.net.httpserver.*;
 import peergos.server.merklebtree.MaybeMultihash;
@@ -147,7 +148,11 @@ public class HTTPCoreNodeServer
         void getAllUsernamesGzip(DataInputStream din, DataOutputStream dout) throws IOException
         {
             byte[] res = coreNode.getAllUsernamesGzip();
-            dout.write(res);
+            ByteArrayOutputStream bout = new ByteArrayOutputStream();
+            GZIPOutputStream gout = new GZIPOutputStream(bout);
+            gout.write(res);
+            gout.finish();
+            dout.write(bout.toByteArray());
         }
 
         void followRequest(DataInputStream din, DataOutputStream dout) throws IOException
