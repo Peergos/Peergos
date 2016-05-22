@@ -23,6 +23,12 @@ public interface SymmetricKey
         }
     }
 
+    Map<Type, Salsa20Poly1305> PROVIDERS = new HashMap<>();
+
+    static void addProvider(Type t, Salsa20Poly1305 provider) {
+        PROVIDERS.put(t, provider);
+    }
+
     Type type();
 
     byte[] getKey();
@@ -47,7 +53,7 @@ public interface SymmetricKey
             case TweetNaCl:
                 byte[] key = new byte[32];
                 din.readFully(key);
-                return new TweetNaClKey(key);
+                return new TweetNaClKey(key, PROVIDERS.get(t));
             default: throw new IllegalStateException("Unknown Symmetric Key type: "+t.name());
         }
 
@@ -61,10 +67,10 @@ public interface SymmetricKey
     }
 
     static SymmetricKey random() {
-        return TweetNaClKey.random();
+        return TweetNaClKey.random(PROVIDERS.get(Type.TweetNaCl));
     }
 
     static SymmetricKey createNull() {
-        return new TweetNaClKey(new byte[32]);
+        return new TweetNaClKey(new byte[32], PROVIDERS.get(Type.TweetNaCl));
     }
 }

@@ -9,6 +9,7 @@ import peergos.crypto.asymmetric.curve25519.Curve25519SecretKey;
 import peergos.crypto.asymmetric.curve25519.Ed25519PublicKey;
 import peergos.crypto.asymmetric.curve25519.Ed25519SecretKey;
 import peergos.crypto.hash.*;
+import peergos.crypto.symmetric.*;
 import peergos.user.UserUtil;
 import peergos.util.ArrayOps;
 
@@ -69,8 +70,8 @@ public class User extends UserPublicKey
         return ArrayOps.concat(secretSigningKey.serialize(), secretBoxingKey.serialize(), super.serialize());
     }
 
-    public static User generateUserCredentials(String username, String password, LoginHasher hasher) {
-        return UserUtil.generateUser(username, password, hasher).getUser();
+    public static User generateUserCredentials(String username, String password, LoginHasher hasher, Salsa20Poly1305 provider) {
+        return UserUtil.generateUser(username, password, hasher, provider).getUser();
     }
 
 

@@ -4,7 +4,7 @@ import org.ipfs.api.*;
 import peergos.corenode.*;
 import peergos.crypto.*;
 import peergos.crypto.hash.*;
-import peergos.crypto.symmetric.SymmetricKey;
+import peergos.crypto.symmetric.*;
 import peergos.server.merklebtree.*;
 import peergos.user.fs.*;
 import peergos.util.*;
@@ -26,6 +26,7 @@ public class UserContext {
     public final CoreNode corenodeClient;
     public final Btree btree;
     public final LoginHasher hasher;
+    public final Salsa20Poly1305 symmetricProvider;
 
     private final SortedMap<UserPublicKey, EntryPoint> staticData = new TreeMap<>();
     private final TrieNode entrie = new TrieNode(); // ba dum che!
@@ -85,7 +86,8 @@ public class UserContext {
         }
     }
 
-    public UserContext(String username, User user, SymmetricKey root, DHTClient dht, Btree btree, CoreNode coreNode, LoginHasher hasher) throws IOException {
+    public UserContext(String username, User user, SymmetricKey root, DHTClient dht, Btree btree, CoreNode coreNode,
+                       LoginHasher hasher, Salsa20Poly1305 provider) throws IOException {
         this.username = username;
         this.user = user;
         this.rootKey = root;
@@ -93,6 +95,7 @@ public class UserContext {
         this.corenodeClient = coreNode;
         this.btree = btree;
         this.hasher = hasher;
+        this.symmetricProvider = provider;
     }
 
     public static void main(String[] args) throws IOException {
@@ -110,12 +113,16 @@ public class UserContext {
         CoreNode coreNode = new HTTPCoreNode(poster);
         Btree btree = new Btree.HTTP(poster);
         DHTClient dht = new DHTClient.HTTP(poster);
-        return UserContext.ensureSignedUp(username, password, dht, btree, coreNode, hasher);
+        Salsa20Poly1305 provider = useJavaScrypt ? new SymmetricJS() : new Salsa20Poly1305.Java();
+        SymmetricKey.addProvider(SymmetricKey.Type.TweetNaCl, provider);
+        return UserContext.ensureSignedUp(username, password, dht, btree, coreNode, hasher, provider);
     }
 
-    public static UserContext ensureSignedUp(String username, String password, DHTClient dht, Btree btree, CoreNode coreNode, LoginHasher hasher) throws IOException {
-        UserWithRoot userWithRoot = UserUtil.generateUser(username, password, hasher);
-        UserContext context = new UserContext(username, userWithRoot.getUser(), userWithRoot.getRoot(), dht, btree, coreNode, hasher);
+    public static UserContext ensureSignedUp(String username, String password, DHTClient dht, Btree btree, CoreNode coreNode,
+                                             LoginHasher hasher, Salsa20Poly1305 provider) throws IOException {
+        UserWithRoot userWithRoot = UserUtil.generateUser(username, password, hasher, provider);
+        UserContext context = new UserContext(username, userWithRoot.getUser(), userWithRoot.getRoot(),
+                dht, btree, coreNode, hasher, provider);
         if (!context.isRegistered()) {
             if (context.isAvailable()) {
                 context.register();
@@ -180,7 +187,7 @@ public class UserContext {
         LocalDate expiry = LocalDate.now();
         // set claim expiry to two months from now
         expiry.plusMonths(2);
-        UserWithRoot updatedUser = UserUtil.generateUser(username, newPassword, hasher);
+        UserWithRoot updatedUser = UserUtil.generateUser(username, newPassword, hasher, symmetricProvider);
         if(!commitStaticData(updatedUser.getUser(), staticData, updatedUser.getRoot(), dhtClient, corenodeClient))
             throw new IllegalStateException("Change Password Failed: couldn't upload new file system entry points!");
 
@@ -188,7 +195,7 @@ public class UserContext {
         if(!corenodeClient.updateChain(username, claimChain))
             throw new IllegalStateException("Couldn't register new public keys during password change!");
 
-        return UserContext.ensureSignedUp(username, newPassword, dhtClient, btree, corenodeClient, hasher);
+        return UserContext.ensureSignedUp(username, newPassword, dhtClient, btree, corenodeClient, hasher, symmetricProvider);
     }
 
     public RetrievedFilePointer createEntryDirectory(String directoryName) throws IOException {

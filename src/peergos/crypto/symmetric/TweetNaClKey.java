@@ -10,10 +10,12 @@ public class TweetNaClKey implements SymmetricKey
     public static final int NONCE_BYTES = 24;
 
     private final byte[] secretKey;
+    private final Salsa20Poly1305 implementation;
 
-    public TweetNaClKey(byte[] encoded)
+    public TweetNaClKey(byte[] encoded, Salsa20Poly1305 implementation)
     {
         this.secretKey = encoded;
+        this.implementation = implementation;
     }
 
     public Type type() {
@@ -27,22 +29,32 @@ public class TweetNaClKey implements SymmetricKey
 
     public byte[] encrypt(byte[] data, byte[] nonce)
     {
-        return encrypt(secretKey, data, nonce);
+        return encrypt(secretKey, data, nonce, implementation);
     }
 
     public byte[] decrypt(byte[] data, byte[] nonce)
     {
-        return decrypt(secretKey, data, nonce);
+        return decrypt(secretKey, data, nonce, implementation);
     }
 
-    public static byte[] encrypt(byte[] key, byte[] data, byte[] nonce)
+    public static byte[] encrypt(byte[] key, byte[] data, byte[] nonce, Salsa20Poly1305 implementation)
     {
-        return TweetNaCl.secretbox(data, nonce, key);
+        long t1 = System.currentTimeMillis();
+        try {
+            return implementation.secretbox(data, nonce, key);
+        } finally {
+            System.out.println("Encryption took: "+ (System.currentTimeMillis() - t1) + "mS for " + data.length + " bytes");
+        }
     }
 
-    public static byte[] decrypt(byte[] key, byte[] cipher, byte[] nonce)
+    public static byte[] decrypt(byte[] key, byte[] cipher, byte[] nonce, Salsa20Poly1305 implementation)
     {
-        return TweetNaCl.secretbox_open(cipher, nonce, key);
+        long t1 = System.currentTimeMillis();
+        try {
+            return implementation.secretbox_open(cipher, nonce, key);
+        } finally {
+            System.out.println("Decryption took: "+ (System.currentTimeMillis() - t1) + "mS for " + cipher.length + " bytes");
+        }
     }
 
     private static SecureRandom csprng = new SecureRandom();
@@ -54,10 +66,10 @@ public class TweetNaClKey implements SymmetricKey
         return res;
     }
 
-    public static TweetNaClKey random()
+    public static TweetNaClKey random(Salsa20Poly1305 provider)
     {
         byte[] key = new byte[KEY_BYTES];
         csprng.nextBytes(key);
-        return new TweetNaClKey(key);
+        return new TweetNaClKey(key, provider);
     }
 }
