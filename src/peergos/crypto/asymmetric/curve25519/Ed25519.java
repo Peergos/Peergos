@@ -6,4 +6,5 @@ public interface Ed25519 {
 
     byte[] crypto_sign(byte[] message, byte[] secretSigningKey);
 
+    void crypto_sign_keypair(byte[] pk, byte[] sk);
 }

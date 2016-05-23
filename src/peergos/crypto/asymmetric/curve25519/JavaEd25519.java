@@ -13,4 +13,9 @@ public class JavaEd25519 implements Ed25519 {
     public byte[] crypto_sign(byte[] message, byte[] secretSigningKey) {
         return TweetNaCl.crypto_sign(message, secretSigningKey);
     }
+
+    @Override
+    public void crypto_sign_keypair(byte[] pk, byte[] sk) {
+        TweetNaCl.crypto_sign_keypair(pk, sk, true);
+    }
 }

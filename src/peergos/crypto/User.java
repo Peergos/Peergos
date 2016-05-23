@@ -47,7 +47,12 @@ public class User extends UserPublicKey
 
     public byte[] decryptMessage(byte[] cipher, PublicBoxingKey theirPublicBoxingKey)
     {
-        return secretBoxingKey.decryptMessage(cipher, theirPublicBoxingKey);
+        long t1 = System.currentTimeMillis();
+        try {
+            return secretBoxingKey.decryptMessage(cipher, theirPublicBoxingKey);
+        } finally {
+            System.out.println("Unboxing took " + (System.currentTimeMillis()-t1)+" mS");
+        }
     }
 
     public static UserPublicKey deserialize(DataInput din) {
@@ -89,14 +94,13 @@ public class User extends UserPublicKey
         random.randombytes(secretBoxBytes, 0, 32);
         random.randombytes(secretSignBytes, 0, 32);
 
-        boolean isSeeded = true;
-        return random(secretSignBytes, publicSignBytes, secretBoxBytes, publicBoxBytes, isSeeded, signer);
+        return random(secretSignBytes, publicSignBytes, secretBoxBytes, publicBoxBytes, signer);
     }
 
     private static User random(byte[] secretSignBytes, byte[] publicSignBytes, byte[] secretBoxBytes, byte[] publicBoxBytes,
-                               boolean isSeeded, Ed25519 signer) {
-        TweetNaCl.crypto_sign_keypair(publicSignBytes, secretSignBytes, isSeeded);
-        TweetNaCl.crypto_box_keypair(publicBoxBytes, secretBoxBytes, isSeeded);
+                               Ed25519 signer) {
+        signer.crypto_sign_keypair(publicSignBytes, secretSignBytes);
+        TweetNaCl.crypto_box_keypair(publicBoxBytes, secretBoxBytes, true);
 
         return new User(
                 new Ed25519SecretKey(secretSignBytes, signer),
@@ -117,7 +121,6 @@ public class User extends UserPublicKey
         rnd.nextBytes(publicSignBytes);
         rnd.nextBytes(secretBoxBytes);
         rnd.nextBytes(publicBoxBytes);
-        boolean isSeeded = true;
-        return random(secretSignBytes, publicSignBytes, secretBoxBytes, publicBoxBytes, isSeeded, new JavaEd25519());
+        return random(secretSignBytes, publicSignBytes, secretBoxBytes, publicBoxBytes, new JavaEd25519());
     }
 }
