@@ -19,7 +19,7 @@
 
   <target name="compile" depends="init"
         description="compile the source">
-    <javac includeantruntime="false" srcdir="${src}" destdir="${build}">
+    <javac includeantruntime="false" srcdir="${src}" destdir="${build}" debug="true" debuglevel="lines,vars,source">
       <classpath>
 	<fileset dir="lib">
           <include name="**/*.jar" />

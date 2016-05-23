@@ -40,7 +40,12 @@ public class User extends UserPublicKey
 
     public byte[] signMessage(byte[] message)
     {
-        return secretSigningKey.signMessage(message);
+        long t1 = System.currentTimeMillis();
+        try {
+            return secretSigningKey.signMessage(message);
+        } finally {
+            System.out.println("Signing took " + (System.currentTimeMillis()-t1)+" mS");
+        }
     }
 
     public byte[] decryptMessage(byte[] cipher, PublicBoxingKey theirPublicBoxingKey)

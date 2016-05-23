@@ -219,9 +219,12 @@ public class UserContext {
         ReadableFilePointer rootPointer = new ReadableFilePointer(this.user, writer, rootMapKey, rootRKey);
         EntryPoint entry = new EntryPoint(rootPointer, this.username, Collections.emptySet(), Collections.emptySet());
 
+        long t2 = System.currentTimeMillis();
         addToStaticDataAndCommit(entry);
+        System.out.println("Committing static data took " + (System.currentTimeMillis()-t2) + " mS");
         DirAccess root = DirAccess.create(rootRKey, new FileProperties(directoryName, 0, LocalDateTime.now(), false, Optional.empty()), (Location)null, null, null);
         boolean uploaded = this.uploadChunk(root, this.user, writer, rootMapKey, Collections.emptyList());
+        System.out.println("Uploading root dir metadata took " + (System.currentTimeMillis()-t2) + " mS");
         if (uploaded)
             return new RetrievedFilePointer(rootPointer, root);
         throw new IllegalStateException("Failed to create entry directory!");

@@ -137,7 +137,7 @@ public class UserService
         server.createContext(DHT_URL, new DHTHandler(dht));
         server.createContext(SIGNUP_URL, new InverseProxyHandler("demo.peergos.net", isLocal));
         server.createContext(ACTIVATION_URL, new InverseProxyHandler("demo.peergos.net", isLocal));
-        server.createContext(UI_URL, new StaticHandler(UI_DIR, false));
+        server.createContext(UI_URL, new StaticHandler(UI_DIR, true));
         server.createContext(HTTPCoreNodeServer.CORE_URL, new HTTPCoreNodeServer.CoreNodeHandler(coreNode));
 
         BTreeHandlers bTreeHandlers = new BTreeHandlers(coreNode, dht);

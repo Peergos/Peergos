@@ -17,27 +17,21 @@ public class StaticHandler implements HttpHandler
     public StaticHandler(String pathToRoot, boolean caching) throws IOException {
         this.caching = caching;
         this.pathToRoot = pathToRoot;
-        List<String> files = getResources(pathToRoot);
-        if (caching)
-            for(String s: files) {
-                data.put(s.substring(pathToRoot.length()), readResourceAndGzip(ClassLoader.getSystemClassLoader().getResourceAsStream(s)));
-            }
+        for (File f: new File(pathToRoot).listFiles())
+            processFile("", f);
     }
 
     @Override
     public void handle(HttpExchange httpExchange) throws IOException {
         String path = httpExchange.getRequestURI().getPath();
         path = path.substring(1);
+        path = path.replaceAll("//", "/");
         if (path.length() == 0)
             path = "index.html";
-        if (caching)
-            if (!data.containsKey(path))
-                httpExchange.sendResponseHeaders(404, 0);
 
         byte[] res = caching ? data.get(path) : readResourceAndGzip(new File(pathToRoot + path).exists() ?
                 new FileInputStream(pathToRoot + path)
                 : ClassLoader.getSystemClassLoader().getResourceAsStream(pathToRoot + path));
-
 
         httpExchange.getResponseHeaders().set("Content-Encoding", "gzip");
         if (path.endsWith(".js"))
@@ -48,9 +42,22 @@ public class StaticHandler implements HttpHandler
             httpExchange.getResponseHeaders().set("Content-Type", "text/css");
         else if (path.endsWith(".json"))
             httpExchange.getResponseHeaders().set("Content-Type", "application/json");
+        if (httpExchange.getRequestMethod().equals("HEAD")) {
+            httpExchange.getResponseHeaders().set("Content-Length", ""+res.length);
+            httpExchange.sendResponseHeaders(200, -1);
+            return;
+        }
         httpExchange.sendResponseHeaders(200, res.length);
         httpExchange.getResponseBody().write(res);
         httpExchange.getResponseBody().close();
+    }
+
+    private static void processFile(String path, File f) throws IOException {
+        if (!f.isDirectory())
+            data.put(path + f.getName(), readResourceAndGzip(new FileInputStream(f)));
+        if (f.isDirectory())
+            for (File sub: f.listFiles())
+                processFile(path + f.getName() + "/", sub);
     }
 
     private static byte[] readResourceAndGzip(InputStream in) throws IOException {
@@ -62,15 +69,6 @@ public class StaticHandler implements HttpHandler
             gout.write(tmp, 0, r);
         gout.flush();
         gout.close();
-        return bout.toByteArray();
-    }
-
-    private static byte[] readResource(InputStream in) throws IOException {
-        ByteArrayOutputStream bout = new ByteArrayOutputStream();
-        byte[] tmp = new byte[4096];
-        int r;
-        while ((r=in.read(tmp)) >= 0)
-            bout.write(tmp, 0, r);
         return bout.toByteArray();
     }
 
