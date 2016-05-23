@@ -4,6 +4,7 @@ import org.junit.*;
 import peergos.corenode.CoreNode;
 import peergos.corenode.UserPublicKeyLink;
 import peergos.crypto.*;
+import peergos.crypto.asymmetric.*;
 import peergos.crypto.asymmetric.curve25519.*;
 import peergos.crypto.random.*;
 
@@ -15,6 +16,7 @@ public class UserPublicKeyLinkTests {
 
     @BeforeClass
     public static void init() throws Exception {
+        PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, new JavaEd25519());
         // use insecure random otherwise tests take ages
         UserTests.setFinalStatic(TweetNaCl.class.getDeclaredField("prng"), new Random(1));
     }
