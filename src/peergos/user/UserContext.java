@@ -8,7 +8,7 @@ import peergos.crypto.asymmetric.curve25519.*;
 import peergos.crypto.hash.*;
 import peergos.crypto.random.*;
 import peergos.crypto.symmetric.*;
-import peergos.server.merklebtree.*;
+import peergos.merklebtree.*;
 import peergos.user.fs.*;
 import peergos.util.*;
 

@@ -1,4 +1,4 @@
-package peergos.server.merklebtree;
+package peergos.merklebtree;
 
 import org.ipfs.api.Multihash;
 import peergos.server.storage.ContentAddressedStorage;

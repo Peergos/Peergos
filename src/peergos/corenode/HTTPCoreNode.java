@@ -3,7 +3,7 @@ package peergos.corenode;
 
 import org.ipfs.api.Multihash;
 import peergos.crypto.*;
-import peergos.server.merklebtree.*;
+import peergos.merklebtree.*;
 import peergos.user.*;
 import peergos.util.*;
 

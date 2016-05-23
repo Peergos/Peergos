@@ -2,12 +2,11 @@ package peergos.user;
 
 import org.ipfs.api.Multihash;
 import peergos.crypto.UserPublicKey;
-import peergos.server.merklebtree.MaybeMultihash;
-import peergos.server.merklebtree.PairMultihash;
+import peergos.merklebtree.MaybeMultihash;
+import peergos.merklebtree.PairMultihash;
 import peergos.util.*;
 
 import java.io.*;
-import java.net.*;
 
 public interface Btree {
     /**

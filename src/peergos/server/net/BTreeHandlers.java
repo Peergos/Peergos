@@ -4,7 +4,7 @@ import com.sun.net.httpserver.*;
 import org.ipfs.api.Multihash;
 import peergos.corenode.*;
 import peergos.crypto.*;
-import peergos.server.merklebtree.*;
+import peergos.merklebtree.*;
 import peergos.server.storage.ContentAddressedStorage;
 import peergos.util.*;
 

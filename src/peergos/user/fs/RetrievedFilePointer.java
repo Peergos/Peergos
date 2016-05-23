@@ -1,7 +1,7 @@
 package peergos.user.fs;
 
 import peergos.crypto.*;
-import peergos.server.merklebtree.*;
+import peergos.merklebtree.*;
 import peergos.user.*;
 
 import java.io.*;

@@ -1,4 +1,4 @@
-package peergos.server.merklebtree;
+package peergos.merklebtree;
 
 import peergos.util.DataSink;
 

@@ -1,6 +1,5 @@
 package peergos.corenode;
 
-import org.ipfs.api.Multihash;
 import peergos.crypto.*;
 
 import java.net.*;
@@ -9,7 +8,7 @@ import java.util.*;
 import java.util.zip.*;
 
 import com.sun.net.httpserver.*;
-import peergos.server.merklebtree.MaybeMultihash;
+import peergos.merklebtree.MaybeMultihash;
 import peergos.util.Args;
 import peergos.util.Serialize;
 

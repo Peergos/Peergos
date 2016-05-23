@@ -1,15 +1,11 @@
-package peergos.server.merklebtree;
+package peergos.merklebtree;
 
 import org.ipfs.api.Multihash;
 import peergos.util.*;
 
 import java.io.DataInput;
-import java.io.DataInputStream;
 import java.io.DataOutput;
 import java.io.IOException;
-import java.time.temporal.ValueRange;
-import java.util.Arrays;
-import java.util.Optional;
 
 public class MaybeMultihash {
     private final Multihash hash;
