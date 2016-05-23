@@ -4,10 +4,7 @@ import peergos.crypto.asymmetric.PublicBoxingKey;
 import peergos.crypto.asymmetric.PublicSigningKey;
 import peergos.crypto.asymmetric.SecretBoxingKey;
 import peergos.crypto.asymmetric.SecretSigningKey;
-import peergos.crypto.asymmetric.curve25519.Curve25519PublicKey;
-import peergos.crypto.asymmetric.curve25519.Curve25519SecretKey;
-import peergos.crypto.asymmetric.curve25519.Ed25519PublicKey;
-import peergos.crypto.asymmetric.curve25519.Ed25519SecretKey;
+import peergos.crypto.asymmetric.curve25519.*;
 import peergos.crypto.hash.*;
 import peergos.crypto.random.*;
 import peergos.crypto.symmetric.*;
@@ -76,12 +73,13 @@ public class User extends UserPublicKey
         return ArrayOps.concat(secretSigningKey.serialize(), secretBoxingKey.serialize(), super.serialize());
     }
 
-    public static User generateUserCredentials(String username, String password, LoginHasher hasher, Salsa20Poly1305 provider, SafeRandom random) {
-        return UserUtil.generateUser(username, password, hasher, provider, random).getUser();
+    public static User generateUserCredentials(String username, String password, LoginHasher hasher, Salsa20Poly1305 provider,
+                                               SafeRandom random, Ed25519 signer) {
+        return UserUtil.generateUser(username, password, hasher, provider, random, signer).getUser();
     }
 
 
-    public static User random(SafeRandom random) {
+    public static User random(SafeRandom random, Ed25519 signer) {
 
         byte[] secretSignBytes = new byte[64];
         byte[] publicSignBytes = new byte[32];
@@ -92,17 +90,18 @@ public class User extends UserPublicKey
         random.randombytes(secretSignBytes, 0, 32);
 
         boolean isSeeded = true;
-        return random(secretSignBytes, publicSignBytes, secretBoxBytes, publicBoxBytes, isSeeded);
+        return random(secretSignBytes, publicSignBytes, secretBoxBytes, publicBoxBytes, isSeeded, signer);
     }
 
-    private static User random(byte[] secretSignBytes, byte[] publicSignBytes, byte[] secretBoxBytes, byte[] publicBoxBytes, boolean isSeeded) {
+    private static User random(byte[] secretSignBytes, byte[] publicSignBytes, byte[] secretBoxBytes, byte[] publicBoxBytes,
+                               boolean isSeeded, Ed25519 signer) {
         TweetNaCl.crypto_sign_keypair(publicSignBytes, secretSignBytes, isSeeded);
         TweetNaCl.crypto_box_keypair(publicBoxBytes, secretBoxBytes, isSeeded);
 
         return new User(
-                new Ed25519SecretKey(secretSignBytes),
+                new Ed25519SecretKey(secretSignBytes, signer),
                 new Curve25519SecretKey(secretBoxBytes),
-                new Ed25519PublicKey(publicSignBytes),
+                new Ed25519PublicKey(publicSignBytes, signer),
                 new Curve25519PublicKey(publicBoxBytes));
     }
 
@@ -119,6 +118,6 @@ public class User extends UserPublicKey
         rnd.nextBytes(secretBoxBytes);
         rnd.nextBytes(publicBoxBytes);
         boolean isSeeded = true;
-        return random(secretSignBytes, publicSignBytes, secretBoxBytes, publicBoxBytes, isSeeded);
+        return random(secretSignBytes, publicSignBytes, secretBoxBytes, publicBoxBytes, isSeeded, new JavaEd25519());
     }
 }

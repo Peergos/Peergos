@@ -85,7 +85,7 @@ public class JSUserPublicKey extends UserPublicKey
 
 
     public JSUserPublicKey(byte[] publicSigningKey, byte[] publicBoxingKey) {
-        super(new Ed25519PublicKey(publicSigningKey), new Curve25519PublicKey(publicBoxingKey));
+        super(new Ed25519PublicKey(publicSigningKey, new JavaEd25519()), new Curve25519PublicKey(publicBoxingKey));
     }
 
     public byte[] encryptMessageFor(byte[] input, byte[] ourSecretBoxingKey)
@@ -144,8 +144,8 @@ public class JSUserPublicKey extends UserPublicKey
         if (!Arrays.equals(publicSigningKey, Arrays.copyOfRange(secretSigningKey, 32, 64)))
             throw new IllegalStateException("Signing public key != second half of secret key!");
 
-        User juser = new User(new Ed25519SecretKey(secretSigningKey), new Curve25519SecretKey(secretBoxingKey),
-                new Ed25519PublicKey(publicSigningKey), new Curve25519PublicKey(publicBoxingKey));
+        User juser = new User(new Ed25519SecretKey(secretSigningKey, new JavaEd25519()), new Curve25519SecretKey(secretBoxingKey),
+                new Ed25519PublicKey(publicSigningKey, new JavaEd25519()), new Curve25519PublicKey(publicBoxingKey));
         JSUser jsuser = new JSUser(juser.getSecretSigningKey(), juser.getSecretBoxingKey(), juser.getPublicSigningKey(), juser.getPublicBoxingKey());
         byte[] message = "G'day mate!".getBytes();
 

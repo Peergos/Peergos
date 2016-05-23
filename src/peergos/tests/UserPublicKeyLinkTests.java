@@ -4,6 +4,7 @@ import org.junit.*;
 import peergos.corenode.CoreNode;
 import peergos.corenode.UserPublicKeyLink;
 import peergos.crypto.*;
+import peergos.crypto.asymmetric.curve25519.*;
 import peergos.crypto.random.*;
 
 import java.time.LocalDate;
@@ -20,7 +21,7 @@ public class UserPublicKeyLinkTests {
 
     @Test
     public void createInitial() {
-        User user = User.random(new SafeRandom.Java());
+        User user = User.random(new SafeRandom.Java(), new JavaEd25519());
         UserPublicKeyLink.UsernameClaim node = UserPublicKeyLink.UsernameClaim.create("someuser", user, LocalDate.now().plusYears(2));
         UserPublicKeyLink upl = new UserPublicKeyLink(user.toUserPublicKey(), node);
         testSerialization(upl);
@@ -36,8 +37,8 @@ public class UserPublicKeyLinkTests {
 
     @Test
     public void createChain() {
-        User oldUser = User.random(new SafeRandom.Java());
-        User newUser = User.random(new SafeRandom.Java());
+        User oldUser = User.random(new SafeRandom.Java(), new JavaEd25519());
+        User newUser = User.random(new SafeRandom.Java(), new JavaEd25519());
 
         List<UserPublicKeyLink> links = UserPublicKeyLink.createChain(oldUser, newUser, "someuser", LocalDate.now().plusYears(2));
         links.forEach(link -> testSerialization(link));

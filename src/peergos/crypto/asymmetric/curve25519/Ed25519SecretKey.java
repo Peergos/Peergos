@@ -1,6 +1,5 @@
 package peergos.crypto.asymmetric.curve25519;
 
-import peergos.crypto.TweetNaCl;
 import peergos.crypto.asymmetric.PublicSigningKey;
 import peergos.crypto.asymmetric.SecretSigningKey;
 
@@ -12,9 +11,11 @@ import java.util.Arrays;
 public class Ed25519SecretKey implements SecretSigningKey {
 
     private final byte[] secretKey;
+    private final Ed25519 implementation;
 
-    public Ed25519SecretKey(byte[] secretKey) {
+    public Ed25519SecretKey(byte[] secretKey, Ed25519 provider) {
         this.secretKey = secretKey;
+        this.implementation = provider;
     }
 
     public PublicSigningKey.Type type() {
@@ -53,7 +54,7 @@ public class Ed25519SecretKey implements SecretSigningKey {
     }
 
     public byte[] signMessage(byte[] message) {
-        return TweetNaCl.crypto_sign(message, secretKey);
+        return implementation.crypto_sign(message, secretKey);
     }
 
     public static byte[] getPublicSigningKey(byte[] secretSigningKey) {

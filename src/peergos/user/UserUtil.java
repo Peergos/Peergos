@@ -2,10 +2,7 @@ package peergos.user;
 
 import peergos.crypto.TweetNaCl;
 import peergos.crypto.User;
-import peergos.crypto.asymmetric.curve25519.Curve25519PublicKey;
-import peergos.crypto.asymmetric.curve25519.Curve25519SecretKey;
-import peergos.crypto.asymmetric.curve25519.Ed25519PublicKey;
-import peergos.crypto.asymmetric.curve25519.Ed25519SecretKey;
+import peergos.crypto.asymmetric.curve25519.*;
 import peergos.crypto.hash.*;
 import peergos.crypto.random.*;
 import peergos.crypto.symmetric.*;
@@ -14,7 +11,7 @@ import java.util.Arrays;
 
 public class UserUtil {
 
-    public static UserWithRoot generateUser(String username, String password, LoginHasher hasher, Salsa20Poly1305 provider, SafeRandom random) {
+    public static UserWithRoot generateUser(String username, String password, LoginHasher hasher, Salsa20Poly1305 provider, SafeRandom random, Ed25519 signer) {
         byte[] keyBytes = hasher.hashToKeyBytes(username, password);
 
         byte[] signBytesSeed = Arrays.copyOfRange(keyBytes, 0, 32);
@@ -31,9 +28,9 @@ public class UserUtil {
         TweetNaCl.crypto_box_keypair(pubilcBoxBytes, secretBoxBytes, isSeeded);
 
         User user = new User(
-                new Ed25519SecretKey(secretSignBytes),
+                new Ed25519SecretKey(secretSignBytes, signer),
                 new Curve25519SecretKey(secretBoxBytes),
-                new Ed25519PublicKey(publicSignBytes),
+                new Ed25519PublicKey(publicSignBytes, signer),
                 new Curve25519PublicKey(pubilcBoxBytes));
 
         SymmetricKey root =  new TweetNaClKey(rootKeyBytes, provider, random);

@@ -7,6 +7,7 @@ import org.junit.runner.*;
 import org.junit.runners.*;
 import peergos.corenode.*;
 import peergos.crypto.*;
+import peergos.crypto.asymmetric.curve25519.*;
 import peergos.crypto.hash.*;
 import peergos.crypto.random.*;
 import peergos.crypto.symmetric.*;
@@ -64,7 +65,8 @@ public class UserTests {
         String username = "test01";
         String password = "test01";
 
-        UserWithRoot userWithRoot = UserUtil.generateUser(username, password, new ScryptJava(), new Salsa20Poly1305.Java(), new SafeRandom.Java());
+        UserWithRoot userWithRoot = UserUtil.generateUser(username, password, new ScryptJava(), new Salsa20Poly1305.Java(),
+                new SafeRandom.Java(), new JavaEd25519());
         UserPublicKey expected = UserPublicKey.fromString("7HvEWP6yd1UD8rOorfFrieJ8S7yC8+l3VisV9kXNiHmI7Eav7+3GTRSVBRCymItrzebUUoCi39M6rdgeOU9sXXFD");
         if (! expected.equals(userWithRoot.getUser().toUserPublicKey()))
             throw new IllegalStateException("Generated user diferent from the Javascript! \n"+userWithRoot.getUser().toUserPublicKey() + " != \n"+expected);

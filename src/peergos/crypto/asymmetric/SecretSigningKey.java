@@ -20,7 +20,7 @@ public interface SecretSigningKey {
             case Ed25519:
                 byte[] key = new byte[64];
                 din.readFully(key);
-                return new Ed25519SecretKey(key);
+                return new Ed25519SecretKey(key, PublicSigningKey.PROVIDERS.get(t));
             default: throw new IllegalStateException("Unknown Secret Signing Key type: "+t.name());
         }
     }

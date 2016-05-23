@@ -18,6 +18,7 @@
       return UserContext.ensureSignedUp("test02", "test02", 8000, true);
   }).then(function(context) {
       console.log(context);
+      window.context = context;
   });
 </script>
 </body>
