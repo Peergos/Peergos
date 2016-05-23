@@ -39,22 +39,12 @@ public class TweetNaClKey implements SymmetricKey
 
     public static byte[] encrypt(byte[] key, byte[] data, byte[] nonce, Salsa20Poly1305 implementation)
     {
-        long t1 = System.currentTimeMillis();
-        try {
-            return implementation.secretbox(data, nonce, key);
-        } finally {
-            System.out.println("Encryption took: "+ (System.currentTimeMillis() - t1) + "mS for " + data.length + " bytes");
-        }
+        return implementation.secretbox(data, nonce, key);
     }
 
     public static byte[] decrypt(byte[] key, byte[] cipher, byte[] nonce, Salsa20Poly1305 implementation)
     {
-        long t1 = System.currentTimeMillis();
-        try {
-            return implementation.secretbox_open(cipher, nonce, key);
-        } finally {
-            System.out.println("Decryption took: "+ (System.currentTimeMillis() - t1) + "mS for " + cipher.length + " bytes");
-        }
+        return implementation.secretbox_open(cipher, nonce, key);
     }
 
     public byte[] createNonce()

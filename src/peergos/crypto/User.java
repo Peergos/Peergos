@@ -37,22 +37,12 @@ public class User extends UserPublicKey
 
     public byte[] signMessage(byte[] message)
     {
-        long t1 = System.currentTimeMillis();
-        try {
-            return secretSigningKey.signMessage(message);
-        } finally {
-            System.out.println("Signing took " + (System.currentTimeMillis()-t1)+" mS");
-        }
+        return secretSigningKey.signMessage(message);
     }
 
     public byte[] decryptMessage(byte[] cipher, PublicBoxingKey theirPublicBoxingKey)
     {
-        long t1 = System.currentTimeMillis();
-        try {
-            return secretBoxingKey.decryptMessage(cipher, theirPublicBoxingKey);
-        } finally {
-            System.out.println("Unboxing took " + (System.currentTimeMillis()-t1)+" mS");
-        }
+        return secretBoxingKey.decryptMessage(cipher, theirPublicBoxingKey);
     }
 
     public static UserPublicKey deserialize(DataInput din) {

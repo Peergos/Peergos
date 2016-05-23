@@ -1,6 +1,5 @@
 package peergos.user;
 
-import peergos.crypto.TweetNaCl;
 import peergos.crypto.User;
 import peergos.crypto.asymmetric.curve25519.*;
 import peergos.crypto.hash.*;
