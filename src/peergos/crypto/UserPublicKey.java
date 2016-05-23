@@ -118,6 +118,7 @@ public class UserPublicKey implements Comparable<UserPublicKey>
     public static UserPublicKey createNull() {
         return new UserPublicKey(
                 new Ed25519PublicKey(new byte[32], PublicSigningKey.PROVIDERS.get(PublicSigningKey.Type.Ed25519)),
-                new Curve25519PublicKey(new byte[32]));
+                new Curve25519PublicKey(new byte[32], PublicBoxingKey.PROVIDERS.get(PublicBoxingKey.Type.Curve25519),
+                        PublicBoxingKey.RNG_PROVIDERS.get(PublicBoxingKey.Type.Curve25519)));
     }
 }

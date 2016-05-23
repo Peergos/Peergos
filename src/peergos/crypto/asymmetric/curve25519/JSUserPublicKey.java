@@ -3,6 +3,7 @@ package peergos.crypto.asymmetric.curve25519;
 import peergos.crypto.TweetNaCl;
 import peergos.crypto.User;
 import peergos.crypto.UserPublicKey;
+import peergos.crypto.random.*;
 import peergos.util.ArrayOps;
 
 import javax.script.Invocable;
@@ -85,7 +86,7 @@ public class JSUserPublicKey extends UserPublicKey
 
 
     public JSUserPublicKey(byte[] publicSigningKey, byte[] publicBoxingKey) {
-        super(new Ed25519PublicKey(publicSigningKey, new JavaEd25519()), new Curve25519PublicKey(publicBoxingKey));
+        super(new Ed25519PublicKey(publicSigningKey, new JavaEd25519()), new Curve25519PublicKey(publicBoxingKey, new JavaCurve25519(), new SafeRandom.Java()));
     }
 
     public byte[] encryptMessageFor(byte[] input, byte[] ourSecretBoxingKey)
@@ -144,8 +145,8 @@ public class JSUserPublicKey extends UserPublicKey
         if (!Arrays.equals(publicSigningKey, Arrays.copyOfRange(secretSigningKey, 32, 64)))
             throw new IllegalStateException("Signing public key != second half of secret key!");
 
-        User juser = new User(new Ed25519SecretKey(secretSigningKey, new JavaEd25519()), new Curve25519SecretKey(secretBoxingKey),
-                new Ed25519PublicKey(publicSigningKey, new JavaEd25519()), new Curve25519PublicKey(publicBoxingKey));
+        User juser = new User(new Ed25519SecretKey(secretSigningKey, new JavaEd25519()), new Curve25519SecretKey(secretBoxingKey, new JavaCurve25519()),
+                new Ed25519PublicKey(publicSigningKey, new JavaEd25519()), new Curve25519PublicKey(publicBoxingKey, new JavaCurve25519(), new SafeRandom.Java()));
         JSUser jsuser = new JSUser(juser.getSecretSigningKey(), juser.getSecretBoxingKey(), juser.getPublicSigningKey(), juser.getPublicBoxingKey());
         byte[] message = "G'day mate!".getBytes();
 

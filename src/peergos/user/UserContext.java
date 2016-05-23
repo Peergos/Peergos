@@ -32,6 +32,7 @@ public class UserContext {
     public final Salsa20Poly1305 symmetricProvider;
     public final SafeRandom random;
     public final Ed25519 signer;
+    public final Curve25519 boxer;
 
     private final SortedMap<UserPublicKey, EntryPoint> staticData = new TreeMap<>();
     private final TrieNode entrie = new TrieNode(); // ba dum che!
@@ -92,7 +93,7 @@ public class UserContext {
     }
 
     public UserContext(String username, User user, SymmetricKey root, DHTClient dht, Btree btree, CoreNode coreNode,
-                       LoginHasher hasher, Salsa20Poly1305 provider, SafeRandom random, Ed25519 signer) throws IOException {
+                       LoginHasher hasher, Salsa20Poly1305 provider, SafeRandom random, Ed25519 signer, Curve25519 boxer) throws IOException {
         this.username = username;
         this.user = user;
         this.rootKey = root;
@@ -103,6 +104,7 @@ public class UserContext {
         this.symmetricProvider = provider;
         this.random = random;
         this.signer = signer;
+        this.boxer = boxer;
     }
 
     public static void main(String[] args) throws IOException {
@@ -126,14 +128,17 @@ public class UserContext {
         PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, signer);
         SafeRandom random = useJavaScrypt ? new JSRandom() : new SafeRandom.Java();
         SymmetricKey.setRng(SymmetricKey.Type.TweetNaCl, random);
-        return UserContext.ensureSignedUp(username, password, dht, btree, coreNode, hasher, provider, random, signer);
+        Curve25519 boxer = useJavaScrypt ? new JSCurve25519() : new JavaCurve25519();
+        PublicBoxingKey.addProvider(PublicBoxingKey.Type.Curve25519, boxer);
+        PublicBoxingKey.setRng(PublicBoxingKey.Type.Curve25519, random);
+        return UserContext.ensureSignedUp(username, password, dht, btree, coreNode, hasher, provider, random, signer, boxer);
     }
 
     public static UserContext ensureSignedUp(String username, String password, DHTClient dht, Btree btree, CoreNode coreNode,
-                                             LoginHasher hasher, Salsa20Poly1305 provider, SafeRandom random, Ed25519 signer) throws IOException {
-        UserWithRoot userWithRoot = UserUtil.generateUser(username, password, hasher, provider, random, signer);
+                                             LoginHasher hasher, Salsa20Poly1305 provider, SafeRandom random, Ed25519 signer, Curve25519 boxer) throws IOException {
+        UserWithRoot userWithRoot = UserUtil.generateUser(username, password, hasher, provider, random, signer, boxer);
         UserContext context = new UserContext(username, userWithRoot.getUser(), userWithRoot.getRoot(),
-                dht, btree, coreNode, hasher, provider, random, signer);
+                dht, btree, coreNode, hasher, provider, random, signer, boxer);
         if (!context.isRegistered()) {
             if (context.isAvailable()) {
                 context.register();
@@ -201,7 +206,7 @@ public class UserContext {
         LocalDate expiry = LocalDate.now();
         // set claim expiry to two months from now
         expiry.plusMonths(2);
-        UserWithRoot updatedUser = UserUtil.generateUser(username, newPassword, hasher, symmetricProvider, random, signer);
+        UserWithRoot updatedUser = UserUtil.generateUser(username, newPassword, hasher, symmetricProvider, random, signer, boxer);
         if(!commitStaticData(updatedUser.getUser(), staticData, updatedUser.getRoot(), dhtClient, corenodeClient))
             throw new IllegalStateException("Change Password Failed: couldn't upload new file system entry points!");
 
@@ -209,12 +214,12 @@ public class UserContext {
         if(!corenodeClient.updateChain(username, claimChain))
             throw new IllegalStateException("Couldn't register new public keys during password change!");
 
-        return UserContext.ensureSignedUp(username, newPassword, dhtClient, btree, corenodeClient, hasher, symmetricProvider, random, signer);
+        return UserContext.ensureSignedUp(username, newPassword, dhtClient, btree, corenodeClient, hasher, symmetricProvider, random, signer, boxer);
     }
 
     public RetrievedFilePointer createEntryDirectory(String directoryName) throws IOException {
         long t1 = System.currentTimeMillis();
-        User writer = User.random(random, signer);
+        User writer = User.random(random, signer, boxer);
         System.out.println("Random User generation took " + (System.currentTimeMillis()-t1) + " mS");
         byte[] rootMapKey = new byte[32]; // root will be stored under this in the core node
         random.randombytes(rootMapKey, 0, 32);
@@ -294,7 +299,7 @@ public class UserContext {
             byte[] plaintext = dout.toByteArray();
             UserPublicKey targetUser = initialRequest.entry.get().pointer.owner;
             // create a tmp keypair whose public key we can prepend to the request without leaking information
-            User tmp = User.random(random, signer);
+            User tmp = User.random(random, signer, boxer);
             byte[] payload = targetUser.encryptMessageFor(plaintext, tmp.secretBoxingKey);
 
             corenodeClient.followRequest(initialRequest.entry.get().pointer.owner, ArrayOps.concat(tmp.publicBoxingKey.toByteArray(), payload));
@@ -307,7 +312,7 @@ public class UserContext {
         UserPublicKey targetUser = initialRequest.entry.get().pointer.owner;
         addToStaticDataAndCommit(entry);
         // create a tmp keypair whose public key we can prepend to the request without leaking information
-        User tmp = User.random(random, signer);
+        User tmp = User.random(random, signer, boxer);
         DataSink dout = new DataSink();
         dout.writeArray(entry.serialize());
         if (! reciprocate) {
@@ -355,7 +360,7 @@ public class UserContext {
         addToStaticDataAndCommit(entry);
         // send details to allow friend to follow us, and optionally let us follow them
         // create a tmp keypair whose public key we can prepend to the request without leaking information
-        User tmp = User.random(random, signer);
+        User tmp = User.random(random, signer, boxer);
         DataSink buf = new DataSink();
         buf.writeArray(entry.serialize());
         buf.writeArray(requestedKey != null ? requestedKey.serialize() : new byte[0]);
@@ -370,7 +375,7 @@ public class UserContext {
 
     public boolean sendWriteAccess(UserPublicKey targetUser) throws IOException {
         // create sharing keypair and give it write access
-        User sharing = User.random(random, signer);
+        User sharing = User.random(random, signer, boxer);
         byte[] rootMapKey = new byte[32];
         random.randombytes(rootMapKey, 0, 32);
 
@@ -380,7 +385,7 @@ public class UserContext {
         EntryPoint entry = new EntryPoint(friendRoot, username, Collections.emptySet(), Stream.of(name).collect(Collectors.toSet()));
         addToStaticDataAndCommit(entry);
         // create a tmp keypair whose public key we can append to the request without leaking information
-        User tmp = User.random(random, signer);
+        User tmp = User.random(random, signer, boxer);
         byte[] payload = entry.serializeAndEncrypt(tmp, targetUser);
         return corenodeClient.followRequest(targetUser, ArrayOps.concat(tmp.publicBoxingKey.toByteArray(), payload));
     }

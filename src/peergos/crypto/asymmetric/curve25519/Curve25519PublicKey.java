@@ -3,6 +3,7 @@ package peergos.crypto.asymmetric.curve25519;
 import peergos.crypto.TweetNaCl;
 import peergos.crypto.asymmetric.PublicBoxingKey;
 import peergos.crypto.asymmetric.SecretBoxingKey;
+import peergos.crypto.random.*;
 import peergos.util.ArrayOps;
 
 import java.io.ByteArrayOutputStream;
@@ -14,10 +15,13 @@ import java.util.Random;
 
 public class Curve25519PublicKey implements PublicBoxingKey {
     private final byte[] publicKey;
-    private static final Random rnd = new Random(); // TODO make SecureRandom
+    private final Curve25519 implementation;
+    private final SafeRandom random;
 
-    public Curve25519PublicKey(byte[] publicKey) {
+    public Curve25519PublicKey(byte[] publicKey, Curve25519 provider, SafeRandom random) {
         this.publicKey = publicKey;
+        this.implementation = provider;
+        this.random = random;
     }
 
     public PublicBoxingKey.Type type() {
@@ -45,7 +49,7 @@ public class Curve25519PublicKey implements PublicBoxingKey {
 
     public byte[] encryptMessageFor(byte[] input, SecretBoxingKey from) {
         byte[] nonce = createNonce();
-        return ArrayOps.concat(TweetNaCl.crypto_box(input, nonce, publicKey, from.getSecretBoxingKey()), nonce);
+        return ArrayOps.concat(implementation.crypto_box(input, nonce, publicKey, from.getSecretBoxingKey()), nonce);
     }
 
     public void serialize(DataOutput dout) throws IOException {
@@ -55,7 +59,7 @@ public class Curve25519PublicKey implements PublicBoxingKey {
 
     public byte[] createNonce() {
         byte[] nonce = new byte[TweetNaCl.BOX_NONCE_BYTES];
-        rnd.nextBytes(nonce);
+        random.randombytes(nonce, 0, nonce.length);
         return nonce;
     }
 }

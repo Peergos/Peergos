@@ -11,7 +11,8 @@ import java.util.Arrays;
 
 public class UserUtil {
 
-    public static UserWithRoot generateUser(String username, String password, LoginHasher hasher, Salsa20Poly1305 provider, SafeRandom random, Ed25519 signer) {
+    public static UserWithRoot generateUser(String username, String password, LoginHasher hasher,
+                                            Salsa20Poly1305 provider, SafeRandom random, Ed25519 signer, Curve25519 boxer) {
         byte[] keyBytes = hasher.hashToKeyBytes(username, password);
 
         byte[] signBytesSeed = Arrays.copyOfRange(keyBytes, 0, 32);
@@ -21,17 +22,16 @@ public class UserUtil {
         byte[] secretSignBytes = Arrays.copyOf(signBytesSeed, 64);
         byte[] publicSignBytes = new byte[32];
 
-        boolean isSeeded = true;
-        TweetNaCl.crypto_sign_keypair(publicSignBytes, secretSignBytes, isSeeded);
+        signer.crypto_sign_keypair(publicSignBytes, secretSignBytes);
 
         byte[] pubilcBoxBytes = new byte[32];
-        TweetNaCl.crypto_box_keypair(pubilcBoxBytes, secretBoxBytes, isSeeded);
+        boxer.crypto_box_keypair(pubilcBoxBytes, secretBoxBytes);
 
         User user = new User(
                 new Ed25519SecretKey(secretSignBytes, signer),
-                new Curve25519SecretKey(secretBoxBytes),
+                new Curve25519SecretKey(secretBoxBytes, boxer),
                 new Ed25519PublicKey(publicSignBytes, signer),
-                new Curve25519PublicKey(pubilcBoxBytes));
+                new Curve25519PublicKey(pubilcBoxBytes, boxer, random));
 
         SymmetricKey root =  new TweetNaClKey(rootKeyBytes, provider, random);
 

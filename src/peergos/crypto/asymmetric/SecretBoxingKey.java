@@ -20,7 +20,7 @@ public interface SecretBoxingKey {
             case Curve25519:
                 byte[] key = new byte[32];
                 din.readFully(key);
-                return new Curve25519SecretKey(key);
+                return new Curve25519SecretKey(key, PublicBoxingKey.PROVIDERS.get(PublicBoxingKey.Type.Curve25519));
             default: throw new IllegalStateException("Unknown Secret Boxing Key type: "+t.name());
         }
     }
