@@ -1,6 +1,8 @@
 package peergos.server.net;
 
 import com.sun.net.httpserver.*;
+import peergos.crypto.hash.*;
+import peergos.util.*;
 
 import java.io.*;
 import java.net.*;
@@ -10,15 +12,26 @@ import java.util.zip.*;
 
 public class StaticHandler implements HttpHandler
 {
-    private static Map<String, byte[]> data = new HashMap<>();
-    private final boolean caching;
+    private static Map<String, Asset> data = new HashMap<>();
+    private final boolean caching, gzip;
     private final String pathToRoot;
 
-    public StaticHandler(String pathToRoot, boolean caching) throws IOException {
+    public StaticHandler(String pathToRoot, boolean caching, boolean gzip) throws IOException {
         this.caching = caching;
         this.pathToRoot = pathToRoot;
+        this.gzip = gzip;
         for (File f: new File(pathToRoot).listFiles())
-            processFile("", f);
+            processFile("", f, gzip);
+    }
+
+    private static class Asset {
+        public final byte[] data;
+        public final String hash;
+
+        public Asset(byte[] data) {
+            this.data = data;
+            this.hash = ArrayOps.bytesToHex(Arrays.copyOfRange(Hash.sha256(data), 0, 4));
+        }
     }
 
     @Override
@@ -29,11 +42,12 @@ public class StaticHandler implements HttpHandler
         if (path.length() == 0)
             path = "index.html";
 
-        byte[] res = caching ? data.get(path) : readResourceAndGzip(new File(pathToRoot + path).exists() ?
+        Asset res = caching ? data.get(path) : new Asset(readResource(new File(pathToRoot + path).exists() ?
                 new FileInputStream(pathToRoot + path)
-                : ClassLoader.getSystemClassLoader().getResourceAsStream(pathToRoot + path));
+                : ClassLoader.getSystemClassLoader().getResourceAsStream(pathToRoot + path), gzip));
 
-        httpExchange.getResponseHeaders().set("Content-Encoding", "gzip");
+        if (gzip)
+            httpExchange.getResponseHeaders().set("Content-Encoding", "gzip");
         if (path.endsWith(".js"))
             httpExchange.getResponseHeaders().set("Content-Type", "text/javascript");
         else if (path.endsWith(".html"))
@@ -43,26 +57,30 @@ public class StaticHandler implements HttpHandler
         else if (path.endsWith(".json"))
             httpExchange.getResponseHeaders().set("Content-Type", "application/json");
         if (httpExchange.getRequestMethod().equals("HEAD")) {
-            httpExchange.getResponseHeaders().set("Content-Length", ""+res.length);
+            httpExchange.getResponseHeaders().set("Content-Length", ""+res.data.length);
             httpExchange.sendResponseHeaders(200, -1);
             return;
         }
-        httpExchange.sendResponseHeaders(200, res.length);
-        httpExchange.getResponseBody().write(res);
+        if (res.data.length > 100*1024) {
+            httpExchange.getResponseHeaders().set("Cache-Control", "public, max-age=3600");
+            httpExchange.getResponseHeaders().set("ETag", res.hash);
+        }
+        httpExchange.sendResponseHeaders(200, res.data.length);
+        httpExchange.getResponseBody().write(res.data);
         httpExchange.getResponseBody().close();
     }
 
-    private static void processFile(String path, File f) throws IOException {
+    private static void processFile(String path, File f, boolean gzip) throws IOException {
         if (!f.isDirectory())
-            data.put(path + f.getName(), readResourceAndGzip(new FileInputStream(f)));
+            data.put(path + f.getName(), new Asset(readResource(new FileInputStream(f), gzip)));
         if (f.isDirectory())
             for (File sub: f.listFiles())
-                processFile(path + f.getName() + "/", sub);
+                processFile(path + f.getName() + "/", sub, gzip);
     }
 
-    private static byte[] readResourceAndGzip(InputStream in) throws IOException {
+    private static byte[] readResource(InputStream in, boolean gzip) throws IOException {
         ByteArrayOutputStream bout = new ByteArrayOutputStream();
-        GZIPOutputStream gout = new GZIPOutputStream(bout);
+        OutputStream gout = gzip ? new GZIPOutputStream(bout) : new DataOutputStream(bout);
         byte[] tmp = new byte[4096];
         int r;
         while ((r=in.read(tmp)) >= 0)
