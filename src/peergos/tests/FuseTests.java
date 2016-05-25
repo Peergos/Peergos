@@ -140,6 +140,27 @@ public class FuseTests {
         assertTrue("initial and target contents equal", contentEquals);
     }
 
+    @Test public void copyFileFromHostTest() throws IOException  {
+        Path initial = Files.createTempFile(UUID.randomUUID().toString(), "rw");
+        byte[] data = new byte[6*1024*1024];
+        new Random(0).nextBytes(data);
+        Files.write(initial, data);
+
+        Path target = home.resolve(randomUUID().toString());
+
+        assertFalse("target exists", target.toFile().exists());
+        Files.copy(initial, target);
+
+        assertTrue("initial exists", initial.toFile().exists());
+        assertTrue("target exists", target.toFile().exists());
+
+        boolean contentEquals = Arrays.equals(
+                Files.readAllBytes(initial),
+                Files.readAllBytes(target));
+
+        assertTrue("initial and target contents equal", contentEquals);
+    }
+
     @Test public void removeTest() throws IOException {
         Path path = createRandomFile();
         assertTrue("path exists before delete", path.toFile().exists());
