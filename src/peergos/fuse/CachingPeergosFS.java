@@ -5,7 +5,9 @@ import jnr.ffi.types.off_t;
 import jnr.ffi.types.size_t;
 import peergos.user.UserContext;
 import peergos.user.fs.Chunk;
+import peergos.user.fs.FileProperties;
 import ru.serce.jnrfuse.ErrorCodes;
+import ru.serce.jnrfuse.struct.FileStat;
 import ru.serce.jnrfuse.struct.FuseFileInfo;
 
 import java.nio.file.Path;
@@ -15,7 +17,7 @@ import java.util.*;
 public class CachingPeergosFS extends PeergosFS {
 
     private static final int DEFAULT_SYNC_SLEEP = 1000*30;
-    private static final int DEFAULT_CACHE_SIZE = 2;
+    private static final int DEFAULT_CACHE_SIZE = 1;
 
     private final Map<String, CacheEntry> entryMap;
     private final int chunkCacheSize, syncSleep;
@@ -62,6 +64,8 @@ public class CachingPeergosFS extends PeergosFS {
             boolean isSameChunk = cacheEntry.offset == startPos;
             if (isSameChunk)
                 return cacheEntry.read(pointer, chunkOffset, (int) size);
+            else
+                cacheEntry.sync();
         }
         //add to cache
         cacheEntry = new CacheEntry(s, startPos);
@@ -84,6 +88,8 @@ public class CachingPeergosFS extends PeergosFS {
             boolean sameChunk  = startPos == cacheEntry.offset;
             if (sameChunk)
                 return cacheEntry.write(pointer, chunkOffset, iSize);
+            else
+                cacheEntry.sync();
         }
 
         cacheEntry = new CacheEntry(s, startPos);
@@ -98,6 +104,20 @@ public class CachingPeergosFS extends PeergosFS {
             cacheEntry.sync();
         }
         return super.flush(s, fuseFileInfo);
+    }
+
+    @Override
+    protected int annotateAttributes(String fullPath, PeergosStat peergosStat, FileStat fileStat) {
+        CacheEntry cacheEntry = entryMap.get(fullPath);
+        if (cacheEntry != null) {
+            long maxSize = cacheEntry.offset + cacheEntry.maxDirtyPos;
+            if (peergosStat.properties.size < maxSize) {
+                FileProperties updated = peergosStat.properties.withSize(maxSize);
+                PeergosStat updatedStat = new PeergosStat(peergosStat.treeNode, updated);
+                peergosStat = updatedStat;
+            }
+        }
+        return super.annotateAttributes(fullPath, peergosStat, fileStat);
     }
 
     private boolean containedInOneChunk(long start, long end) {
@@ -153,9 +173,26 @@ public class CachingPeergosFS extends PeergosFS {
             String parentPath = p.getParent().toString();
             String name = p.getFileName().toString();
 
+            if (maxDirtyPos ==0)
+                return;
             applyIfPresent(parentPath, (parent) -> CachingPeergosFS.this.write(parent, name, data, maxDirtyPos, offset), -ErrorCodes.ENOENT());
         }
 
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+
+            CacheEntry that = (CacheEntry) o;
+
+            return path != null ? path.equals(that.path) : that.path == null;
+
+        }
+
+        @Override
+        public int hashCode() {
+            return path != null ? path.hashCode() : 0;
+        }
     }
 
     private class Syncher implements Runnable {

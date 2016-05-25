@@ -6,7 +6,6 @@ import peergos.user.UserContext;
 import peergos.user.fs.FileProperties;
 import peergos.user.fs.FileTreeNode;
 import peergos.user.fs.ReadableFilePointer;
-import peergos.util.ArrayOps;
 import peergos.util.Serialize;
 
 import ru.serce.jnrfuse.ErrorCodes;
@@ -32,8 +31,8 @@ import java.util.function.*;
 public class PeergosFS extends FuseStubFS implements AutoCloseable {
 
     protected static class PeergosStat {
-        private final FileTreeNode treeNode;
-        private final FileProperties properties;
+        public final FileTreeNode treeNode;
+        public final FileProperties properties;
 
         public PeergosStat(FileTreeNode treeNode, FileProperties properties) {
             this.treeNode = treeNode;
@@ -60,37 +59,40 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
             throw new IllegalStateException(this +" is closed");
     }
 
+    protected int annotateAttributes(String fullPath, PeergosStat peergosStat, FileStat fileStat) {
+        try {
+            FileTreeNode fileTreeNode = peergosStat.treeNode;
+            FileProperties fileProperties = peergosStat.properties;
+
+            int mode = fileTreeNode.isDirectory() ?
+                    FileStat.S_IFDIR | 0755 : FileStat.S_IFREG | 0644;
+
+            fileStat.st_mode.set(mode);
+            fileStat.st_size.set(fileProperties.size);
+
+            Instant instant = fileProperties.modified.toInstant(ZonedDateTime.now().getOffset());
+            long epochSecond = instant.getEpochSecond();
+            long nanoSeconds = instant.getNano();
+
+
+            fileStat.st_mtim.tv_sec.set(epochSecond);
+            fileStat.st_mtim.tv_nsec.set(nanoSeconds);
+
+            fileStat.st_atim.tv_nsec.set(epochSecond);
+            fileStat.st_atim.tv_nsec.set(nanoSeconds);
+            return 0;
+        } catch (Throwable t) {
+            t.printStackTrace();
+            return 1;
+        }
+    }
+
     @Override
     public int getattr(String s, FileStat fileStat) {
         ensureNotClosed();
         int aDefault = -ErrorCodes.ENOENT();
-        return applyIfPresent(s, (peergosStat) -> {
-            try {
-                FileTreeNode fileTreeNode = peergosStat.treeNode;
-                FileProperties fileProperties = peergosStat.properties;
-
-                int mode = fileTreeNode.isDirectory() ?
-                        FileStat.S_IFDIR | 0755 : FileStat.S_IFREG | 0644;
-
-                fileStat.st_mode.set(mode);
-                fileStat.st_size.set(fileProperties.size);
-
-                Instant instant = fileProperties.modified.toInstant(ZonedDateTime.now().getOffset());
-                long epochSecond = instant.getEpochSecond();
-                long nanoSeconds = instant.getNano();
-
-
-                fileStat.st_mtim.tv_sec.set(epochSecond);
-                fileStat.st_mtim.tv_nsec.set(nanoSeconds);
-
-                fileStat.st_atim.tv_nsec.set(epochSecond);
-                fileStat.st_atim.tv_nsec.set(nanoSeconds);
-                return 0;
-            } catch (Throwable t) {
-                t.printStackTrace();
-                return 1;
-            }
-        }, aDefault);
+        return applyIfPresent(s, (peergosStat) -> annotateAttributes(s,
+                peergosStat, fileStat), aDefault);
     }
 
     @Override
