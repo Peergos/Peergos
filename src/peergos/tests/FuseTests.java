@@ -161,6 +161,42 @@ public class FuseTests {
         assertTrue("initial and target contents equal", contentEquals);
     }
 
+    @Test public void randomReadTest() throws IOException  {
+        Path initial = Files.createTempFile(UUID.randomUUID().toString(), "rw");
+        byte[] data = new byte[6*1024*1024];
+        new Random(0).nextBytes(data);
+        Files.write(initial, data);
+
+        Path target = home.resolve(randomUUID().toString());
+
+        assertFalse("target exists", target.toFile().exists());
+        Files.copy(initial, target);
+
+        Random r = new Random(0);
+        for (int i=0; i < 20; i++) {
+            int size = r.nextInt(100*1024);
+            int offset = r.nextInt(data.length - size);
+
+            byte[] original = readBytes(initial, offset, size);
+            byte[] copy = readBytes(target, offset, size);
+
+            boolean equal = Arrays.equals(original, copy);
+
+            Assert.assertTrue("Same contents from " + offset, equal);
+        }
+    }
+
+    private byte[] readBytes(Path file, long offset, int size) throws IOException {
+        try (RandomAccessFile raf = new RandomAccessFile(file.toFile(), "r")) {
+            raf.seek(offset);
+            byte[] res = new byte[size];
+            int read = raf.read(res);
+            if (read != size)
+                throw new IllegalStateException("Only read " + read + " not " + size);
+            return res;
+        }
+    }
+
     @Test public void removeTest() throws IOException {
         Path path = createRandomFile();
         assertTrue("path exists before delete", path.toFile().exists());
