@@ -1,6 +1,5 @@
 package peergos.user.fs;
 
-import peergos.crypto.*;
 import peergos.crypto.symmetric.SymmetricKey;
 
 import java.util.*;
@@ -11,16 +10,13 @@ public class Chunk {
 
     private final SymmetricKey key;
     private final byte[] data, mapKey;
-    private final byte[] nonce = TweetNaCl.securedRandom(TweetNaCl.SECRETBOX_NONCE_BYTES);
+    private final byte[] nonce;
 
-    public Chunk(byte[] data, SymmetricKey key, byte[] mapKey) {
+    public Chunk(byte[] data, SymmetricKey key, byte[] mapKey, byte[] nonce) {
         this.data = data;
         this.key = key;
         this.mapKey = mapKey;
-    }
-
-    public Chunk(byte[] data, SymmetricKey key) {
-        this(data, key, TweetNaCl.securedRandom(32));
+        this.nonce = nonce;
     }
 
     public EncryptedChunk encrypt() {

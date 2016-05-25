@@ -3,9 +3,9 @@ package peergos.user;
 import org.ipfs.api.Multihash;
 import peergos.corenode.CoreNode;
 import peergos.crypto.UserPublicKey;
-import peergos.server.merklebtree.MaybeMultihash;
-import peergos.server.merklebtree.MerkleBTree;
-import peergos.server.merklebtree.PairMultihash;
+import peergos.merklebtree.MaybeMultihash;
+import peergos.merklebtree.MerkleBTree;
+import peergos.merklebtree.PairMultihash;
 import peergos.server.storage.ContentAddressedStorage;
 
 import java.io.IOException;

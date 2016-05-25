@@ -1,7 +1,7 @@
 package peergos.server.storage;
 
 import org.ipfs.api.*;
-import peergos.server.merklebtree.MerkleNode;
+import peergos.merklebtree.MerkleNode;
 
 import java.io.*;
 import java.util.*;

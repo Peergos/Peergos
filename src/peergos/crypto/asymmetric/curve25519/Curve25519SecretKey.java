@@ -12,9 +12,11 @@ import java.util.Arrays;
 public class Curve25519SecretKey implements SecretBoxingKey {
 
     private final byte[] secretKey;
+    private final Curve25519 implementation;
 
-    public Curve25519SecretKey(byte[] secretKey) {
+    public Curve25519SecretKey(byte[] secretKey, Curve25519 provider) {
         this.secretKey = secretKey;
+        this.implementation = provider;
     }
 
     public PublicBoxingKey.Type type() {
@@ -55,7 +57,7 @@ public class Curve25519SecretKey implements SecretBoxingKey {
     public byte[] decryptMessage(byte[] cipher, PublicBoxingKey from) {
         byte[] nonce = Arrays.copyOfRange(cipher, cipher.length - TweetNaCl.BOX_NONCE_BYTES, cipher.length);
         cipher = Arrays.copyOfRange(cipher, 0, cipher.length - TweetNaCl.BOX_NONCE_BYTES);
-        return TweetNaCl.crypto_box_open(cipher, nonce, from.getPublicBoxingKey(), secretKey);
+        return implementation.crypto_box_open(cipher, nonce, from.getPublicBoxingKey(), secretKey);
     }
 
     public static byte[] getPublicBoxingKey(byte[] secretBoxingKey) {

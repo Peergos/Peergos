@@ -17,72 +17,48 @@ public interface DHTClient {
 
     class HTTP implements DHTClient {
 
-        private final URL dht;
+        private final HttpPoster poster;
 
-        public HTTP(URL dht) {
-            this.dht = dht;
-        }
-
-        public URL buildURL(String method) throws IOException {
-            try {
-                return new URL(dht, method);
-            } catch (MalformedURLException mexican) {
-                throw new IOException(mexican);
-            }
+        public HTTP(HttpPoster poster) {
+            this.poster = poster;
         }
 
         @Override
         public Multihash put(byte[] value, UserPublicKey writer, List<Multihash> links) throws IOException {
-            HttpURLConnection conn = null;
-            try
-            {
-                conn = (HttpURLConnection) buildURL("dht/put").openConnection();
-                conn.setDoInput(true);
-                conn.setDoOutput(true);
-                DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
+            ByteArrayOutputStream bout  =new ByteArrayOutputStream();
+            DataOutputStream dout = new DataOutputStream(bout);
 
-                dout.writeInt(0); // PUT message
-                Serialize.serialize(value, dout);
-                Serialize.serialize(writer.toUserPublicKey().serialize(), dout);
-                dout.writeInt(links.size());
-                for (Multihash hash: links)
-                    Serialize.serialize(hash.toBytes(), dout);
-                dout.flush();
+            dout.writeInt(0); // PUT message
+            Serialize.serialize(value, dout);
+            Serialize.serialize(writer.toUserPublicKey().serialize(), dout);
+            dout.writeInt(links.size());
+            for (Multihash hash: links)
+                Serialize.serialize(hash.toBytes(), dout);
+            dout.flush();
 
-                DataInputStream din = new DataInputStream(conn.getInputStream());
-                int success = din.readInt();
-                if (success != 1)
-                    throw new IOException("Couldn't add data to DHT!");
-                return new Multihash(Serialize.deserializeByteArray(din, 256));
-            } finally {
-                if (conn != null)
-                    conn.disconnect();
-            }
+            byte[] res = poster.post("dht/put", bout.toByteArray());
+            DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
+            int success = din.readInt();
+            if (success != 1)
+                throw new IOException("Couldn't add data to DHT!");
+            return new Multihash(Serialize.deserializeByteArray(din, 256));
         }
 
         @Override
         public Optional<byte[]> get(Multihash key) throws IOException {
-            HttpURLConnection conn = null;
-            try
-            {
-                conn = (HttpURLConnection) buildURL("dht/get").openConnection();
-                conn.setDoInput(true);
-                conn.setDoOutput(true);
-                DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
+            ByteArrayOutputStream bout  =new ByteArrayOutputStream();
+            DataOutputStream dout = new DataOutputStream(bout);
 
-                dout.writeInt(1); // GET message
-                Serialize.serialize(key.toBytes(), dout);
-                dout.flush();
+            dout.writeInt(1); // GET message
+            Serialize.serialize(key.toBytes(), dout);
+            dout.flush();
 
-                DataInputStream din = new DataInputStream(conn.getInputStream());
-                int success = din.readInt();
-                if (success != 1)
-                    return Optional.empty();
-                return Optional.of(Serialize.deserializeByteArray(din, Chunk.MAX_SIZE));
-            } finally {
-                if (conn != null)
-                    conn.disconnect();
-            }
+            byte[] res = poster.post("dht/get", bout.toByteArray());
+            DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
+            int success = din.readInt();
+            if (success != 1)
+                return Optional.empty();
+            return Optional.of(Serialize.deserializeByteArray(din, Chunk.MAX_SIZE));
         }
     }
 }

@@ -1,6 +1,8 @@
 package peergos.server.net;
 
 import com.sun.net.httpserver.*;
+import peergos.crypto.hash.*;
+import peergos.util.*;
 
 import java.io.*;
 import java.net.*;
@@ -10,36 +12,42 @@ import java.util.zip.*;
 
 public class StaticHandler implements HttpHandler
 {
-    private static Map<String, byte[]> data = new HashMap<>();
-    private final boolean caching;
+    private static Map<String, Asset> data = new HashMap<>();
+    private final boolean caching, gzip;
     private final String pathToRoot;
 
-    public StaticHandler(String pathToRoot, boolean caching) throws IOException {
+    public StaticHandler(String pathToRoot, boolean caching, boolean gzip) throws IOException {
         this.caching = caching;
         this.pathToRoot = pathToRoot;
-        List<String> files = getResources(pathToRoot);
-        if (caching)
-            for(String s: files) {
-                data.put(s.substring(pathToRoot.length()), readResourceAndGzip(ClassLoader.getSystemClassLoader().getResourceAsStream(s)));
-            }
+        this.gzip = gzip;
+        for (File f: new File(pathToRoot).listFiles())
+            processFile("", f, gzip);
+    }
+
+    private static class Asset {
+        public final byte[] data;
+        public final String hash;
+
+        public Asset(byte[] data) {
+            this.data = data;
+            this.hash = ArrayOps.bytesToHex(Arrays.copyOfRange(Hash.sha256(data), 0, 4));
+        }
     }
 
     @Override
     public void handle(HttpExchange httpExchange) throws IOException {
         String path = httpExchange.getRequestURI().getPath();
         path = path.substring(1);
+        path = path.replaceAll("//", "/");
         if (path.length() == 0)
             path = "index.html";
-        if (caching)
-            if (!data.containsKey(path))
-                httpExchange.sendResponseHeaders(404, 0);
 
-        byte[] res = caching ? data.get(path) : readResourceAndGzip(new File(pathToRoot + path).exists() ?
+        Asset res = caching ? data.get(path) : new Asset(readResource(new File(pathToRoot + path).exists() ?
                 new FileInputStream(pathToRoot + path)
-                : ClassLoader.getSystemClassLoader().getResourceAsStream(pathToRoot + path));
+                : ClassLoader.getSystemClassLoader().getResourceAsStream(pathToRoot + path), gzip));
 
-
-        httpExchange.getResponseHeaders().set("Content-Encoding", "gzip");
+        if (gzip)
+            httpExchange.getResponseHeaders().set("Content-Encoding", "gzip");
         if (path.endsWith(".js"))
             httpExchange.getResponseHeaders().set("Content-Type", "text/javascript");
         else if (path.endsWith(".html"))
@@ -48,29 +56,37 @@ public class StaticHandler implements HttpHandler
             httpExchange.getResponseHeaders().set("Content-Type", "text/css");
         else if (path.endsWith(".json"))
             httpExchange.getResponseHeaders().set("Content-Type", "application/json");
-        httpExchange.sendResponseHeaders(200, res.length);
-        httpExchange.getResponseBody().write(res);
+        if (httpExchange.getRequestMethod().equals("HEAD")) {
+            httpExchange.getResponseHeaders().set("Content-Length", ""+res.data.length);
+            httpExchange.sendResponseHeaders(200, -1);
+            return;
+        }
+        if (res.data.length > 100*1024) {
+            httpExchange.getResponseHeaders().set("Cache-Control", "public, max-age=3600");
+            httpExchange.getResponseHeaders().set("ETag", res.hash);
+        }
+        httpExchange.sendResponseHeaders(200, res.data.length);
+        httpExchange.getResponseBody().write(res.data);
         httpExchange.getResponseBody().close();
     }
 
-    private static byte[] readResourceAndGzip(InputStream in) throws IOException {
+    private static void processFile(String path, File f, boolean gzip) throws IOException {
+        if (!f.isDirectory())
+            data.put(path + f.getName(), new Asset(readResource(new FileInputStream(f), gzip)));
+        if (f.isDirectory())
+            for (File sub: f.listFiles())
+                processFile(path + f.getName() + "/", sub, gzip);
+    }
+
+    private static byte[] readResource(InputStream in, boolean gzip) throws IOException {
         ByteArrayOutputStream bout = new ByteArrayOutputStream();
-        GZIPOutputStream gout = new GZIPOutputStream(bout);
+        OutputStream gout = gzip ? new GZIPOutputStream(bout) : new DataOutputStream(bout);
         byte[] tmp = new byte[4096];
         int r;
         while ((r=in.read(tmp)) >= 0)
             gout.write(tmp, 0, r);
         gout.flush();
         gout.close();
-        return bout.toByteArray();
-    }
-
-    private static byte[] readResource(InputStream in) throws IOException {
-        ByteArrayOutputStream bout = new ByteArrayOutputStream();
-        byte[] tmp = new byte[4096];
-        int r;
-        while ((r=in.read(tmp)) >= 0)
-            bout.write(tmp, 0, r);
         return bout.toByteArray();
     }
 

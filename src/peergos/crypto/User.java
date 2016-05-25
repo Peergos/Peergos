@@ -4,10 +4,10 @@ import peergos.crypto.asymmetric.PublicBoxingKey;
 import peergos.crypto.asymmetric.PublicSigningKey;
 import peergos.crypto.asymmetric.SecretBoxingKey;
 import peergos.crypto.asymmetric.SecretSigningKey;
-import peergos.crypto.asymmetric.curve25519.Curve25519PublicKey;
-import peergos.crypto.asymmetric.curve25519.Curve25519SecretKey;
-import peergos.crypto.asymmetric.curve25519.Ed25519PublicKey;
-import peergos.crypto.asymmetric.curve25519.Ed25519SecretKey;
+import peergos.crypto.asymmetric.curve25519.*;
+import peergos.crypto.hash.*;
+import peergos.crypto.random.*;
+import peergos.crypto.symmetric.*;
 import peergos.user.UserUtil;
 import peergos.util.ArrayOps;
 
@@ -68,31 +68,35 @@ public class User extends UserPublicKey
         return ArrayOps.concat(secretSigningKey.serialize(), secretBoxingKey.serialize(), super.serialize());
     }
 
-    public static User generateUserCredentials(String username, String password) {
-        return UserUtil.generateUser(username, password).getUser();
+    public static User generateUserCredentials(String username, String password, LoginHasher hasher, Salsa20Poly1305 provider,
+                                               SafeRandom random, Ed25519 signer, Curve25519 boxer) {
+        return UserUtil.generateUser(username, password, hasher, provider, random, signer, boxer).getUser();
     }
 
 
-    public static User random() {
+    public static User random(SafeRandom random, Ed25519 signer, Curve25519 boxer) {
 
         byte[] secretSignBytes = new byte[64];
         byte[] publicSignBytes = new byte[32];
         byte[] secretBoxBytes = new byte[32];
         byte[] publicBoxBytes = new byte[32];
 
-        boolean isSeeded = false;
-        return random(secretSignBytes, publicSignBytes, secretBoxBytes, publicBoxBytes, isSeeded);
+        random.randombytes(secretBoxBytes, 0, 32);
+        random.randombytes(secretSignBytes, 0, 32);
+
+        return random(secretSignBytes, publicSignBytes, secretBoxBytes, publicBoxBytes, signer, boxer, random);
     }
 
-    private static User random(byte[] secretSignBytes, byte[] publicSignBytes, byte[] secretBoxBytes, byte[] publicBoxBytes, boolean isSeeded) {
-        TweetNaCl.crypto_sign_keypair(publicSignBytes, secretSignBytes, isSeeded);
-        TweetNaCl.crypto_box_keypair(publicBoxBytes, secretBoxBytes, isSeeded);
+    private static User random(byte[] secretSignBytes, byte[] publicSignBytes, byte[] secretBoxBytes, byte[] publicBoxBytes,
+                               Ed25519 signer, Curve25519 boxer, SafeRandom random) {
+        signer.crypto_sign_keypair(publicSignBytes, secretSignBytes);
+        boxer.crypto_box_keypair(publicBoxBytes, secretBoxBytes);
 
         return new User(
-                new Ed25519SecretKey(secretSignBytes),
-                new Curve25519SecretKey(secretBoxBytes),
-                new Ed25519PublicKey(publicSignBytes),
-                new Curve25519PublicKey(publicBoxBytes));
+                new Ed25519SecretKey(secretSignBytes, signer),
+                new Curve25519SecretKey(secretBoxBytes, boxer),
+                new Ed25519PublicKey(publicSignBytes, signer),
+                new Curve25519PublicKey(publicBoxBytes, boxer, random));
     }
 
     public static User insecureRandom() {
@@ -107,20 +111,6 @@ public class User extends UserPublicKey
         rnd.nextBytes(publicSignBytes);
         rnd.nextBytes(secretBoxBytes);
         rnd.nextBytes(publicBoxBytes);
-        boolean isSeeded = true;
-        return random(secretSignBytes, publicSignBytes, secretBoxBytes, publicBoxBytes, isSeeded);
-    }
-
-    public static void main(String[] args) {
-        User user = User.generateUserCredentials("Username", "password");
-        System.out.println("PublicKey: " + ArrayOps.bytesToHex(user.serialize()));
-        byte[] message = "G'day mate!".getBytes();
-        byte[] cipher = user.encryptMessageFor(message, user.secretBoxingKey);
-        System.out.println("Cipher: "+ArrayOps.bytesToHex(cipher));
-        byte[] clear = user.decryptMessage(cipher, user.publicBoxingKey);
-        assert (Arrays.equals(message, clear));
-
-        byte[] signed = user.signMessage(message);
-        assert (Arrays.equals(user.unsignMessage(signed), message));
+        return random(secretSignBytes, publicSignBytes, secretBoxBytes, publicBoxBytes, new JavaEd25519(), new JavaCurve25519(), new SafeRandom.Java());
     }
 }

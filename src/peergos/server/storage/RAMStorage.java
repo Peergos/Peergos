@@ -1,8 +1,7 @@
 package peergos.server.storage;
 
 import org.ipfs.api.Multihash;
-import peergos.server.merklebtree.MerkleNode;
-import peergos.util.*;
+import peergos.merklebtree.MerkleNode;
 
 import java.security.*;
 import java.util.*;

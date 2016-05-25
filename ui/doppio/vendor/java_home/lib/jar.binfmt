@@ -1,0 +1,3 @@
+package openjdk-8
+interpreter /usr/bin/jexec
+magic PK\x03\x04

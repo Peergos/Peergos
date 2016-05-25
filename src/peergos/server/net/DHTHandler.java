@@ -2,9 +2,8 @@ package peergos.server.net;
 
 import org.ipfs.api.*;
 import peergos.crypto.*;
-import peergos.server.merklebtree.MerkleNode;
+import peergos.merklebtree.MerkleNode;
 import peergos.server.storage.ContentAddressedStorage;
-import peergos.user.fs.*;
 import peergos.util.*;
 import com.sun.net.httpserver.*;
 

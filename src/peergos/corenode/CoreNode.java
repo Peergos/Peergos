@@ -1,15 +1,12 @@
 package peergos.corenode;
 
-import org.ipfs.api.Multihash;
 import peergos.crypto.*;
-import peergos.server.merklebtree.*;
+import peergos.merklebtree.*;
 import peergos.util.*;
 
 import java.io.*;
 import java.sql.*;
-import java.time.*;
 import java.util.*;
-import java.util.zip.*;
 
 public interface CoreNode {
     int MAX_PENDING_FOLLOWERS = 100;
@@ -31,7 +28,7 @@ public interface CoreNode {
     byte[] getAllUsernamesGzip() throws IOException;
 
     default List<String> getAllUsernames() throws IOException {
-        DataInput din = new DataInputStream(new GZIPInputStream(new ByteArrayInputStream(getAllUsernamesGzip())));
+        DataInput din = new DataInputStream(new ByteArrayInputStream(getAllUsernamesGzip()));
         List<String> res = new ArrayList<>();
         while (true) {
             try {

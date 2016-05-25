@@ -2,6 +2,8 @@ package peergos.server;
 
 import peergos.corenode.*;
 import peergos.crypto.*;
+import peergos.crypto.asymmetric.*;
+import peergos.crypto.asymmetric.curve25519.*;
 import peergos.fuse.*;
 import peergos.server.storage.*;
 import peergos.tests.*;
@@ -52,6 +54,8 @@ public class Start
     public static void main(String[] args) throws Exception
     {
         Args a = Args.parse(args);
+        PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, new JavaEd25519());
+
         if (a.hasArg("help"))
         {
             printOptions();

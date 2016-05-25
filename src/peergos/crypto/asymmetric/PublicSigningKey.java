@@ -1,6 +1,6 @@
 package peergos.crypto.asymmetric;
 
-import peergos.crypto.asymmetric.curve25519.Ed25519PublicKey;
+import peergos.crypto.asymmetric.curve25519.*;
 
 import java.io.*;
 import java.util.HashMap;
@@ -23,6 +23,12 @@ public interface PublicSigningKey {
                 throw new IllegalStateException("Unknown public signing key type: " + String.format("%02x", val));
             return byValue.get(val);
         }
+    }
+
+    Map<Type, Ed25519> PROVIDERS = new HashMap<>();
+
+    static void addProvider(Type t, Ed25519 provider) {
+        PROVIDERS.put(t, provider);
     }
 
     Type type();
@@ -54,7 +60,7 @@ public interface PublicSigningKey {
             case Ed25519:
                 byte[] key = new byte[32];
                 din.readFully(key);
-                return new Ed25519PublicKey(key);
+                return new Ed25519PublicKey(key, PROVIDERS.get(t));
             default: throw new IllegalStateException("Unknown Public Signing Key type: "+t.name());
         }
     }

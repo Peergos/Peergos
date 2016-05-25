@@ -7,6 +7,9 @@ import org.junit.runner.*;
 import org.junit.runners.*;
 import peergos.corenode.*;
 import peergos.crypto.*;
+import peergos.crypto.asymmetric.curve25519.*;
+import peergos.crypto.hash.*;
+import peergos.crypto.random.*;
 import peergos.crypto.symmetric.*;
 import peergos.server.*;
 import peergos.user.*;
@@ -62,7 +65,8 @@ public class UserTests {
         String username = "test01";
         String password = "test01";
 
-        UserWithRoot userWithRoot = UserUtil.generateUser(username, password);
+        UserWithRoot userWithRoot = UserUtil.generateUser(username, password, new ScryptJava(), new Salsa20Poly1305.Java(),
+                new SafeRandom.Java(), new JavaEd25519(), new JavaCurve25519());
         UserPublicKey expected = UserPublicKey.fromString("7HvEWP6yd1UD8rOorfFrieJ8S7yC8+l3VisV9kXNiHmI7Eav7+3GTRSVBRCymItrzebUUoCi39M6rdgeOU9sXXFD");
         if (! expected.equals(userWithRoot.getUser().toUserPublicKey()))
             throw new IllegalStateException("Generated user diferent from the Javascript! \n"+userWithRoot.getUser().toUserPublicKey() + " != \n"+expected);
@@ -102,11 +106,7 @@ public class UserTests {
     }
 
     public static UserContext ensureSignedUp(String username, String password, int webPort) throws IOException {
-        DHTClient.HTTP dht = new DHTClient.HTTP(new URL("http://localhost:"+ webPort +"/"));
-        Btree.HTTP btree = new Btree.HTTP(new URL("http://localhost:"+ webPort +"/"));
-        HTTPCoreNode coreNode = new HTTPCoreNode(new URL("http://localhost:"+ webPort +"/"));
-        UserContext userContext = UserContext.ensureSignedUp(username, password, dht, btree, coreNode);
-        return userContext;
+        return UserContext.ensureSignedUp(username, password, webPort, false);
     }
 
     @Test

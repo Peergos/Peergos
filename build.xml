@@ -19,7 +19,7 @@
 
   <target name="compile" depends="init"
         description="compile the source">
-    <javac includeantruntime="false" srcdir="${src}" destdir="${build}">
+    <javac includeantruntime="false" srcdir="${src}" destdir="${build}" debug="true" debuglevel="lines,vars,source">
       <classpath>
 	<fileset dir="lib">
           <include name="**/*.jar" />
@@ -43,10 +43,21 @@
       </manifest>
       <fileset dir=".">
 	<include name="**/ui/**"/>
+	<exclude name="out/**"/>
+	<exclude name="ui/doppio/**"/>
+	<exclude name="ui/PeergosServer.jar"/>
       </fileset>
+    </jar>
+    <jar jarfile="${dist}/PeergosClient.jar" basedir="${build}" includes="peergos/corenode/**,peergos/crypto/**,peergos/user/**,peergos/util/**,peergos/merklebtree/**">
+      <manifest>
+	  <attribute name="Class-Path" value="${manifest_cp}"/>
+      </manifest>
     </jar>
     <copy todir=".">
       <fileset file="${dist}/PeergosServer.jar"/>
+    </copy>
+    <copy todir="ui/">
+      <fileset file="${dist}/PeergosClient.jar"/>
     </copy>
   </target>
 

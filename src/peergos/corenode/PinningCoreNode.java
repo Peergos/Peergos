@@ -2,7 +2,7 @@ package peergos.corenode;
 
 import org.ipfs.api.*;
 import peergos.crypto.*;
-import peergos.server.merklebtree.*;
+import peergos.merklebtree.*;
 import peergos.server.storage.*;
 import peergos.util.*;
 

@@ -1,36 +1,18 @@
 package peergos.user;
 
-import com.lambdaworks.crypto.SCrypt;
-import peergos.crypto.Hash;
-import peergos.crypto.TweetNaCl;
 import peergos.crypto.User;
-import peergos.crypto.asymmetric.curve25519.Curve25519PublicKey;
-import peergos.crypto.asymmetric.curve25519.Curve25519SecretKey;
-import peergos.crypto.asymmetric.curve25519.Ed25519PublicKey;
-import peergos.crypto.asymmetric.curve25519.Ed25519SecretKey;
-import peergos.crypto.symmetric.SymmetricKey;
-import peergos.crypto.symmetric.TweetNaClKey;
-import peergos.user.UserContext;
-import peergos.user.UserWithRoot;
+import peergos.crypto.asymmetric.curve25519.*;
+import peergos.crypto.hash.*;
+import peergos.crypto.random.*;
+import peergos.crypto.symmetric.*;
 
-import java.security.GeneralSecurityException;
 import java.util.Arrays;
 
 public class UserUtil {
-    private static final int N = 1 << 17;
-    private static byte[] generateKeys(String username, String password) {
-        byte[] hash = Arrays.copyOfRange(Hash.sha256(password.getBytes()), 2, 34);
-        byte[] salt = username.getBytes();
-        try {
 
-            return SCrypt.scrypt(hash, salt, N, 8, 1, 96);
-        } catch (GeneralSecurityException gse) {
-            throw new IllegalStateException(gse);
-        }
-    }
-
-    public static UserWithRoot generateUser(String username, String password) {
-        byte[] keyBytes = generateKeys(username, password);
+    public static UserWithRoot generateUser(String username, String password, LoginHasher hasher,
+                                            Salsa20Poly1305 provider, SafeRandom random, Ed25519 signer, Curve25519 boxer) {
+        byte[] keyBytes = hasher.hashToKeyBytes(username, password);
 
         byte[] signBytesSeed = Arrays.copyOfRange(keyBytes, 0, 32);
         byte[] secretBoxBytes = Arrays.copyOfRange(keyBytes, 32, 64);
@@ -39,19 +21,18 @@ public class UserUtil {
         byte[] secretSignBytes = Arrays.copyOf(signBytesSeed, 64);
         byte[] publicSignBytes = new byte[32];
 
-        boolean isSeeded = true;
-        TweetNaCl.crypto_sign_keypair(publicSignBytes, secretSignBytes, isSeeded);
+        signer.crypto_sign_keypair(publicSignBytes, secretSignBytes);
 
         byte[] pubilcBoxBytes = new byte[32];
-        TweetNaCl.crypto_box_keypair(pubilcBoxBytes, secretBoxBytes, isSeeded);
+        boxer.crypto_box_keypair(pubilcBoxBytes, secretBoxBytes);
 
         User user = new User(
-                new Ed25519SecretKey(secretSignBytes),
-                new Curve25519SecretKey(secretBoxBytes),
-                new Ed25519PublicKey(publicSignBytes),
-                new Curve25519PublicKey(pubilcBoxBytes));
+                new Ed25519SecretKey(secretSignBytes, signer),
+                new Curve25519SecretKey(secretBoxBytes, boxer),
+                new Ed25519PublicKey(publicSignBytes, signer),
+                new Curve25519PublicKey(pubilcBoxBytes, boxer, random));
 
-        SymmetricKey root =  new TweetNaClKey(rootKeyBytes);
+        SymmetricKey root =  new TweetNaClKey(rootKeyBytes, provider, random);
 
         return new UserWithRoot(user, root);
     }

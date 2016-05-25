@@ -1,6 +1,7 @@
 package peergos.user.fs;
 
 import org.ipfs.api.*;
+import peergos.crypto.*;
 import peergos.crypto.symmetric.*;
 import peergos.user.*;
 import peergos.user.fs.erasure.*;
@@ -87,13 +88,14 @@ public class EncryptedChunkRetriever implements FileRetriever {
         if (!fullEncryptedChunk.isPresent()) {
             Optional<Location> unwrittenChunkLocation = getLocationAt(ourLocation, startIndex, context);
             return unwrittenChunkLocation.map(l -> new LocatedChunk(l,
-                    new Chunk(new byte[Math.min(Chunk.MAX_SIZE, (int) (truncateTo - startIndex))], dataKey, l.mapKey)));
+                    new Chunk(new byte[Math.min(Chunk.MAX_SIZE, (int) (truncateTo - startIndex))], dataKey, l.mapKey,
+                            context.randomBytes(TweetNaCl.SECRETBOX_NONCE_BYTES))));
         }
 
         return fullEncryptedChunk.map(enc -> {
             try {
                 byte[] original = enc.chunk.decrypt(dataKey, enc.nonce);
-                return new LocatedChunk(enc.location, new Chunk(original, dataKey, enc.location.mapKey));
+                return new LocatedChunk(enc.location, new Chunk(original, dataKey, enc.location.mapKey, context.randomBytes(TweetNaCl.SECRETBOX_NONCE_BYTES)));
             } catch (IllegalStateException e) {
                 throw new IllegalStateException("Couldn't decrypt chunk at mapkey: "+new ByteArrayWrapper(enc.location.mapKey), e);
             }

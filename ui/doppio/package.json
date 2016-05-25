@@ -1,0 +1,129 @@
+{
+  "_args": [
+    [
+      "@hrj/doppiojvm-snapshot@^0.4.11",
+      "/home/ian/Desktop/JavaPoly"
+    ]
+  ],
+  "_from": "@hrj/doppiojvm-snapshot@>=0.4.11 <0.5.0",
+  "_id": "@hrj/doppiojvm-snapshot@0.4.11",
+  "_inCache": true,
+  "_location": "/@hrj/doppiojvm-snapshot",
+  "_nodeVersion": "5.7.1",
+  "_npmOperationalInternal": {
+    "host": "packages-16-east.internal.npmjs.com",
+    "tmp": "tmp/doppiojvm-snapshot-0.4.11.tgz_1463714164196_0.7901832396164536"
+  },
+  "_npmUser": {
+    "email": "hrjet9@gmail.com",
+    "name": "hrj"
+  },
+  "_npmVersion": "3.8.0",
+  "_phantomChildren": {},
+  "_requested": {
+    "name": "@hrj/doppiojvm-snapshot",
+    "raw": "@hrj/doppiojvm-snapshot@^0.4.11",
+    "rawSpec": "^0.4.11",
+    "scope": "@hrj",
+    "spec": ">=0.4.11 <0.5.0",
+    "type": "range"
+  },
+  "_requiredBy": [
+    "/"
+  ],
+  "_resolved": "https://registry.npmjs.org/@hrj/doppiojvm-snapshot/-/doppiojvm-snapshot-0.4.11.tgz",
+  "_shasum": "69781bcd32113f7723def8722d50ec99ad51d6d5",
+  "_shrinkwrap": null,
+  "_spec": "@hrj/doppiojvm-snapshot@^0.4.11",
+  "_where": "/home/ian/Desktop/JavaPoly",
+  "bin": {
+    "doppio": "./bin/doppio",
+    "doppio-dev": "./bin/doppio-dev",
+    "doppio-fast-dev": "./bin/doppio-fast-dev",
+    "doppioh": "./bin/doppioh"
+  },
+  "bugs": {
+    "url": "https://github.com/plasma-umass/doppio/issues"
+  },
+  "dependencies": {
+    "async": "^1.5.2",
+    "browserfs": "^0.5.12",
+    "glob": "^7.0.0",
+    "gunzip-maybe": "^1.3.1",
+    "optimist": "~0.6",
+    "pako": "^1.0.0",
+    "rimraf": "^2.5.2",
+    "source-map-support": "^0.4.0",
+    "tar-fs": "^1.10.0"
+  },
+  "description": "doppio: A JVM in TypeScript v0.3.1 ==================================",
+  "devDependencies": {
+    "bfs-buffer": "^0.1.1",
+    "bfs-path": "^0.1.1",
+    "bfs-process": "^0.1.5",
+    "cpr": "^1.0.0",
+    "escodegen": "^1.8.0",
+    "esprima": "^2.7.2",
+    "estraverse": "^4.1.0",
+    "grunt": "^1.0",
+    "grunt-cli": "^1.2",
+    "grunt-contrib-connect": "^1.0",
+    "grunt-contrib-copy": "^1.0",
+    "grunt-contrib-uglify": "^1.0",
+    "grunt-karma": "^1.0",
+    "grunt-lineending": "^0.2.4",
+    "grunt-merge-source-maps": "^0.1.0",
+    "grunt-newer": "^1.2.0",
+    "grunt-ts": "^5.5",
+    "grunt-webpack": "^1.0.11",
+    "imports-loader": "^0.6.5",
+    "jasmine-core": "^2.3.4",
+    "json-loader": "^0.5.4",
+    "karma": "^0.13.21",
+    "karma-chrome-launcher": "^1.0",
+    "karma-firefox-launcher": "^1.0",
+    "karma-ie-launcher": "^1.0",
+    "karma-jasmine": "^1.0",
+    "karma-opera-launcher": "^1.0",
+    "karma-safari-launcher": "^1.0",
+    "locate-java-home": "^0.1.4",
+    "semver": "^5.1.0",
+    "source-map-loader": "^0.1.5",
+    "typescript": "^1.8.2",
+    "uglify-js": "^2.6.2",
+    "underscore": "^1.8.3",
+    "webpack": "^1.13.0",
+    "webpack-dev-server": "^1.14.1"
+  },
+  "directories": {},
+  "dist": {
+    "shasum": "69781bcd32113f7723def8722d50ec99ad51d6d5",
+    "tarball": "https://registry.npmjs.org/@hrj/doppiojvm-snapshot/-/doppiojvm-snapshot-0.4.11.tgz"
+  },
+  "engine": "node >= 4.0.0",
+  "gitHead": "ec7a106b70a23b860e70ce9ff6688411aeadd966",
+  "homepage": "https://github.com/plasma-umass/doppio#readme",
+  "installable": true,
+  "license": "MIT",
+  "main": "dist/release/doppio.js",
+  "maintainers": [
+    {
+      "name": "hrj",
+      "email": "hrjet9@gmail.com"
+    }
+  ],
+  "name": "@hrj/doppiojvm-snapshot",
+  "optionalDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/plasma-umass/doppio.git"
+  },
+  "scripts": {
+    "appveyor-test": "grunt test-browser-appveyor",
+    "install": "node ./install.js",
+    "prepublish": "node ./prepublish.js",
+    "test": "grunt test"
+  },
+  "typings": "dist/typings/src/doppiojvm",
+  "version": "0.4.11"
+}

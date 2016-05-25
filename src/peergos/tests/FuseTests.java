@@ -49,14 +49,6 @@ public class FuseTests {
         field.set(null, newValue);
     }
 
-    public static UserContext ensureSignedUp(String username, String password) throws IOException {
-        DHTClient.HTTP dht = new DHTClient.HTTP(new URL("http://localhost:"+ WEB_PORT +"/"));
-        Btree.HTTP btree = new Btree.HTTP(new URL("http://localhost:"+ WEB_PORT +"/"));
-        HTTPCoreNode coreNode = new HTTPCoreNode(new URL("http://localhost:"+ WEB_PORT +"/"));
-        UserContext userContext = UserContext.ensureSignedUp(username, password, dht, btree, coreNode);
-        return userContext;
-    }
-
     @BeforeClass
     public static void init() throws Exception {
         Random  random  = new Random();
@@ -75,7 +67,7 @@ public class FuseTests {
                 "-corenodePort", Integer.toString(CORE_PORT)});
 
         Start.local(args);
-        UserContext userContext = ensureSignedUp(username, password);
+        UserContext userContext = UserContext.ensureSignedUp(username, password, WEB_PORT);
 
         String mountPath = args.getArg("mountPoint", "/tmp/peergos/tmp");
 

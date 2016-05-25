@@ -1,11 +1,11 @@
 package peergos.user.fs;
 
-import org.bouncycastle.util.Arrays;
 import peergos.crypto.*;
 import peergos.crypto.symmetric.SymmetricKey;
 import peergos.util.*;
 
 import java.io.*;
+import java.util.*;
 
 public class SymmetricLocationLink {
     public final byte[] link;

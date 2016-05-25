@@ -1,20 +1,18 @@
 package peergos.crypto.asymmetric.curve25519;
 
-import peergos.crypto.TweetNaCl;
 import peergos.crypto.asymmetric.PublicSigningKey;
 
-import java.io.ByteArrayOutputStream;
-import java.io.DataOutput;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.util.Arrays;
+import java.io.*;
+import java.util.*;
 
 public class Ed25519PublicKey implements PublicSigningKey {
 
     private final byte[] publicKey;
+    private final Ed25519 implementation;
 
-    public Ed25519PublicKey(byte[] publicKey) {
+    public Ed25519PublicKey(byte[] publicKey, Ed25519 provider) {
         this.publicKey = publicKey;
+        this.implementation = provider;
     }
 
     public PublicSigningKey.Type type() {
@@ -46,6 +44,6 @@ public class Ed25519PublicKey implements PublicSigningKey {
     }
 
     public byte[] unsignMessage(byte[] signed) {
-        return TweetNaCl.crypto_sign_open(signed, publicKey);
+        return implementation.crypto_sign_open(signed, publicKey);
     }
 }
