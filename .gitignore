@@ -1,6 +1,8 @@
 build/*
 log/*
-*.class
+dist/*
+out/*
+log/*
 *.hprof
 *hs_err_pid*
 *~
