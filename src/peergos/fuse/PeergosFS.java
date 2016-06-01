@@ -361,7 +361,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
 
     @Override
     public int lock(String s, FuseFileInfo fuseFileInfo, int i, Flock flock) {
-        // TODO: 01/04/16
+        System.out.println("LOCK: "+s);
         ensureNotClosed();
         return 0;
     }

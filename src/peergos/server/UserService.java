@@ -23,7 +23,7 @@ public class UserService
     public static final String UI_URL = "/";
     public static final String UI_DIR = "ui/";
 
-    public static final int THREADS = 200;
+    public static final int THREADS = 5;
     public static final int CONNECTION_BACKLOG = 100;
 
     static {

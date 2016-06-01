@@ -13,13 +13,15 @@ import ru.serce.jnrfuse.struct.FuseFileInfo;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.concurrent.*;
+import java.util.function.*;
 
 public class CachingPeergosFS extends PeergosFS {
 
     private static final int DEFAULT_SYNC_SLEEP = 1000*30;
     private static final int DEFAULT_CACHE_SIZE = 1;
 
-    private final Map<String, CacheEntry> entryMap;
+    private final ConcurrentMap<String, CacheEntryHolder> entryMap;
     private final int chunkCacheSize, syncSleep;
 //    private final Thread syncRunner;
 
@@ -30,22 +32,10 @@ public class CachingPeergosFS extends PeergosFS {
     public CachingPeergosFS(UserContext userContext, int chunkCacheSize, int syncSleep) {
         super(userContext);
 
-        boolean accessOrder = true;
-        Map<String, CacheEntry> lruCache = new LinkedHashMap<String, CacheEntry>(chunkCacheSize, 0.75f, accessOrder) {
-            @Override
-            protected boolean removeEldestEntry(Map.Entry<String, CacheEntry> entry) {
-                boolean remove = size() > chunkCacheSize;
-                if (remove) {
-                    CacheEntry cacheEntry = entry.getValue();
-                    cacheEntry.sync();
-                }
-                return remove;
-            }
-        };
-
         this.chunkCacheSize = chunkCacheSize;
         this.syncSleep = syncSleep;
-        this.entryMap = Collections.synchronizedMap(lruCache);
+        this.entryMap = new ConcurrentHashMap<>();
+        //TODO add GC thread to optimistically reduce size
 //        this.syncRunner = new Thread(new Syncher());
 //        this.syncRunner.start();
     }
@@ -55,22 +45,12 @@ public class CachingPeergosFS extends PeergosFS {
         if (!containedInOneChunk(offset, offset + size))
             throw new IllegalStateException("write op. straddles boundary : offset " + offset + " with size " + size);
 
-        CacheEntry cacheEntry = entryMap.get(s);
         long startPos = alignToChunkSize(offset);
         int chunkOffset  = intraChunkOffset(offset);
         int iSize = (int) size;
 
-        if (cacheEntry != null) {
-            boolean isSameChunk = cacheEntry.offset == startPos;
-            if (isSameChunk)
-                return cacheEntry.read(pointer, chunkOffset, (int) size);
-            else
-                cacheEntry.sync();
-        }
-        //add to cache
-        cacheEntry = new CacheEntry(s, startPos);
-        entryMap.put(s, cacheEntry);
-        return cacheEntry.read(pointer, chunkOffset, iSize);
+        CacheEntryHolder cacheEntryHolder = entryMap.computeIfAbsent(s, path -> new CacheEntryHolder(new CacheEntry(path, startPos)));
+        return cacheEntryHolder.apply(c -> c.offset == startPos, () -> new CacheEntry(s, startPos), ce -> ce.read(pointer, chunkOffset, iSize));
     }
 
     @Override
@@ -82,42 +62,34 @@ public class CachingPeergosFS extends PeergosFS {
         int  chunkOffset  = intraChunkOffset(offset);
         int iSize = (int) size;
 
-        CacheEntry cacheEntry = entryMap.get(s);
-
-        if (cacheEntry != null) {
-            boolean sameChunk  = startPos == cacheEntry.offset;
-            if (sameChunk)
-                return cacheEntry.write(pointer, chunkOffset, iSize);
-            else
-                cacheEntry.sync();
-        }
-
-        cacheEntry = new CacheEntry(s, startPos);
-        entryMap.put(s, cacheEntry);
-        return cacheEntry.write(pointer, chunkOffset, iSize);
+        CacheEntryHolder cacheEntry = entryMap.computeIfAbsent(s, path -> new CacheEntryHolder(new CacheEntry(path, startPos)));
+        return cacheEntry.apply(c -> c.offset == startPos, () -> new CacheEntry(s, startPos), ce -> ce.write(pointer, chunkOffset, iSize));
     }
 
     @Override
     public int flush(String s, FuseFileInfo fuseFileInfo) {
-        CacheEntry cacheEntry = entryMap.remove(s);
+        CacheEntryHolder cacheEntry = entryMap.get(s);
         if  (cacheEntry != null) {
-            cacheEntry.sync();
+            cacheEntry.syncAndClear();
         }
         return super.flush(s, fuseFileInfo);
     }
 
     @Override
     protected int annotateAttributes(String fullPath, PeergosStat peergosStat, FileStat fileStat) {
-        CacheEntry cacheEntry = entryMap.get(fullPath);
+        CacheEntryHolder cacheEntry = entryMap.get(fullPath);
+        Optional<PeergosStat> updatedStat = Optional.empty();
         if (cacheEntry != null) {
-            long maxSize = cacheEntry.offset + cacheEntry.maxDirtyPos;
-            if (peergosStat.properties.size < maxSize) {
-                FileProperties updated = peergosStat.properties.withSize(maxSize);
-                PeergosStat updatedStat = new PeergosStat(peergosStat.treeNode, updated);
-                peergosStat = updatedStat;
-            }
+            updatedStat = cacheEntry.applyIfPresent(ce -> {
+                long maxSize = ce.offset + ce.maxDirtyPos;
+                if (peergosStat.properties.size < maxSize) {
+                    FileProperties updated = peergosStat.properties.withSize(maxSize);
+                    return new PeergosStat(peergosStat.treeNode, updated);
+                }
+                return peergosStat;
+            });
         }
-        return super.annotateAttributes(fullPath, peergosStat, fileStat);
+        return super.annotateAttributes(fullPath, updatedStat.orElse(peergosStat), fileStat);
     }
 
     private boolean containedInOneChunk(long start, long end) {
@@ -129,6 +101,41 @@ public class CachingPeergosFS extends PeergosFS {
     }
     private int intraChunkOffset(long  pos) {
         return (int) pos % Chunk.MAX_SIZE;
+    }
+
+    private class CacheEntryHolder {
+        private CacheEntry entry;
+
+        public CacheEntryHolder(CacheEntry entry) {
+            this.entry = entry;
+        }
+
+        public synchronized <A> A apply(Predicate<CacheEntry> correctChunk, Supplier<CacheEntry> supplier, Function<CacheEntry, A> func) {
+            if (correctChunk.test(entry)) {
+                return func.apply(entry);
+            }
+            syncAndClear();
+            setEntry(supplier.get());
+            return func.apply(entry);
+        }
+
+        public synchronized <A> Optional<A> applyIfPresent(Function<CacheEntry, A> func) {
+            if (entry != null) {
+                return Optional.of(func.apply(entry));
+            }
+            return Optional.empty();
+        }
+
+        public synchronized void setEntry(CacheEntry entry) {
+            this.entry = entry;
+        }
+
+        public synchronized void syncAndClear() {
+            if (entry == null)
+                return;
+            entry.sync();
+            entry = null;
+        }
     }
 
     private class CacheEntry {
@@ -185,7 +192,7 @@ public class CachingPeergosFS extends PeergosFS {
 
             CacheEntry that = (CacheEntry) o;
 
-            return path != null ? path.equals(that.path) : that.path == null;
+            return Objects.equals(path, that.path);
 
         }
 
@@ -195,8 +202,10 @@ public class CachingPeergosFS extends PeergosFS {
         }
     }
 
-    private class Syncher implements Runnable {
+    private class GarbageCollector implements Runnable {
+
         private final Set<String> previousEntryKeys = new HashSet<>();
+
         @Override
         public void run() {
             while (! isClosed) {
@@ -208,13 +217,7 @@ public class CachingPeergosFS extends PeergosFS {
         }
 
         private void sync()  {
-            for (String previousEntryKey : previousEntryKeys) {
-                CacheEntry cacheEntry = entryMap.get(previousEntryKey);
-                if  (cacheEntry != null) {
-                    cacheEntry.sync();
-                    entryMap.remove(previousEntryKey);
-                }
-            }
+            for (String previousEntryKey : previousEntryKeys) {}
         }
     }
 

@@ -133,9 +133,12 @@ public class FuseTests {
         assertTrue("initial exists", initial.toFile().exists());
         assertTrue("target exists", target.toFile().exists());
 
-        boolean contentEquals = Arrays.equals(
-                Files.readAllBytes(initial),
-                Files.readAllBytes(target));
+        byte[] original = Files.readAllBytes(initial);
+        byte[] copy = Files.readAllBytes(target);
+        boolean contentEquals = Arrays.equals(original, copy);
+
+        int firstDifferentIndex = firstDifferentindex(original, copy, 0);
+        int lastDifferentIndex = lastDifferentindex(original, copy, original.length);
 
         assertTrue("initial and target contents equal", contentEquals);
     }
@@ -319,12 +322,22 @@ public class FuseTests {
         byte[] contents = Files.readAllBytes(path);
 
         boolean equals = Arrays.equals(data, contents);
-        String diff = equals ? "" : "Different at index " + firstDifferentindex(data, contents);
+        String diff = equals ? "" : "Different at index " + firstDifferentindex(data, contents, 0);
         Assert.assertTrue("Correct file contents: length("+ contents.length +") expected("+length+") "+ diff, equals);
     }
 
-    public static int firstDifferentindex(byte[] src, byte[] target) {
-        for (int i=0; i < src.length; i++) {
+    public static int lastDifferentindex(byte[] src, byte[] target, int start) {
+        for (int i=start-1; i >= 0; i--) {
+            if (i >= target.length)
+                return i;
+            if (src[i] != target[i])
+                return i;
+        }
+        return -1;
+    }
+
+    public static int firstDifferentindex(byte[] src, byte[] target, int start) {
+        for (int i=start; i < src.length; i++) {
             if (i >= target.length)
                 return i;
             if (src[i] != target[i])
