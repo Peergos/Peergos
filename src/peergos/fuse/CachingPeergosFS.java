@@ -49,7 +49,7 @@ public class CachingPeergosFS extends PeergosFS {
         int iSize = (int) size;
 
         CacheEntryHolder cacheEntryHolder = entryMap.computeIfAbsent(s, path -> new CacheEntryHolder(new CacheEntry(path, startPos)));
-        return cacheEntryHolder.apply(c -> c.offset == startPos, () -> new CacheEntry(s, startPos), ce -> ce.read(pointer, chunkOffset, iSize));
+        return cacheEntryHolder.apply(c -> c != null && c.offset == startPos, () -> new CacheEntry(s, startPos), ce -> ce.read(pointer, chunkOffset, iSize));
     }
 
     @Override
@@ -62,7 +62,7 @@ public class CachingPeergosFS extends PeergosFS {
         int iSize = (int) size;
 
         CacheEntryHolder cacheEntry = entryMap.computeIfAbsent(s, path -> new CacheEntryHolder(new CacheEntry(path, startPos)));
-        return cacheEntry.apply(c -> c.offset == startPos, () -> new CacheEntry(s, startPos), ce -> ce.write(pointer, chunkOffset, iSize));
+        return cacheEntry.apply(c -> c != null && c.offset == startPos, () -> new CacheEntry(s, startPos), ce -> ce.write(pointer, chunkOffset, iSize));
     }
 
     @Override
@@ -89,6 +89,8 @@ public class CachingPeergosFS extends PeergosFS {
         Optional<PeergosStat> updatedStat = Optional.empty();
         if (cacheEntry != null) {
             updatedStat = cacheEntry.applyIfPresent(ce -> {
+                if (ce == null)
+                    return peergosStat;
                 long maxSize = ce.offset + ce.maxDirtyPos;
                 if (peergosStat.properties.size < maxSize) {
                     FileProperties updated = peergosStat.properties.withSize(maxSize);
