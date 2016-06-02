@@ -121,11 +121,10 @@ public class CachingPeergosFS extends PeergosFS {
         }
 
         public synchronized <A> A apply(Predicate<CacheEntry> correctChunk, Supplier<CacheEntry> supplier, Function<CacheEntry, A> func) {
-            if (correctChunk.test(entry)) {
-                return func.apply(entry);
+            if (!correctChunk.test(entry)) {
+                syncAndClear();
+                setEntry(supplier.get());
             }
-            syncAndClear();
-            setEntry(supplier.get());
             return func.apply(entry);
         }
 
