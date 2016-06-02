@@ -7,8 +7,7 @@ import peergos.user.UserContext;
 import peergos.user.fs.Chunk;
 import peergos.user.fs.FileProperties;
 import ru.serce.jnrfuse.ErrorCodes;
-import ru.serce.jnrfuse.struct.FileStat;
-import ru.serce.jnrfuse.struct.FuseFileInfo;
+import ru.serce.jnrfuse.struct.*;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -64,6 +63,15 @@ public class CachingPeergosFS extends PeergosFS {
 
         CacheEntryHolder cacheEntry = entryMap.computeIfAbsent(s, path -> new CacheEntryHolder(new CacheEntry(path, startPos)));
         return cacheEntry.apply(c -> c.offset == startPos, () -> new CacheEntry(s, startPos), ce -> ce.write(pointer, chunkOffset, iSize));
+    }
+
+    @Override
+    public int lock(String s, FuseFileInfo fuseFileInfo, int i, Flock flock) {
+        System.out.println("LOCK: "+s);
+        CacheEntryHolder cacheEntryHolder = entryMap.get(s);
+        if (cacheEntryHolder != null)
+            cacheEntryHolder.syncAndClear();
+        return 0;
     }
 
     @Override
