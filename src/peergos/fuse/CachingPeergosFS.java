@@ -19,6 +19,7 @@ public class CachingPeergosFS extends PeergosFS {
 
     private static final int DEFAULT_SYNC_SLEEP = 1000*30;
     private static final int DEFAULT_CACHE_SIZE = 1;
+    private static final boolean DEBUG = true;
 
     private final ConcurrentMap<String, CacheEntryHolder> entryMap;
     private final int chunkCacheSize, syncSleep;
@@ -41,6 +42,8 @@ public class CachingPeergosFS extends PeergosFS {
 
     @Override
     public int read(String s, Pointer pointer, @size_t long size, @off_t long offset, FuseFileInfo fuseFileInfo) {
+        if (DEBUG)
+            System.out.printf("read(%s, offset=%d, size=%d)\n", s, offset, size);
         if (!containedInOneChunk(offset, offset + size))
             throw new IllegalStateException("write op. straddles boundary : offset " + offset + " with size " + size);
 
@@ -54,6 +57,8 @@ public class CachingPeergosFS extends PeergosFS {
 
     @Override
     public int write(String s, Pointer pointer, @size_t long size, @off_t long offset, FuseFileInfo fuseFileInfo) {
+        if (DEBUG)
+            System.out.printf("write(%s, offset=%d, size=%d)\n", s, offset, size);
         if  (! containedInOneChunk(offset, offset+size))
             throw new  IllegalStateException("write op. straddles boundary : offset "+ offset  +" with size "+ size);
 
@@ -67,7 +72,8 @@ public class CachingPeergosFS extends PeergosFS {
 
     @Override
     public int lock(String s, FuseFileInfo fuseFileInfo, int i, Flock flock) {
-        System.out.println("LOCK: "+s);
+        if (DEBUG)
+            System.out.printf("lock(%s)\n", s);
         CacheEntryHolder cacheEntryHolder = entryMap.get(s);
         if (cacheEntryHolder != null)
             cacheEntryHolder.syncAndClear();
@@ -76,6 +82,8 @@ public class CachingPeergosFS extends PeergosFS {
 
     @Override
     public int flush(String s, FuseFileInfo fuseFileInfo) {
+        if (DEBUG)
+            System.out.printf("flush(%s)\n", s);
         CacheEntryHolder cacheEntry = entryMap.get(s);
         if  (cacheEntry != null) {
             cacheEntry.syncAndClear();
@@ -85,6 +93,8 @@ public class CachingPeergosFS extends PeergosFS {
 
     @Override
     protected int annotateAttributes(String fullPath, PeergosStat peergosStat, FileStat fileStat) {
+        if (DEBUG)
+            System.out.printf("annotate(%s)\n", fullPath);
         CacheEntryHolder cacheEntry = entryMap.get(fullPath);
         Optional<PeergosStat> updatedStat = Optional.empty();
         if (cacheEntry != null) {
@@ -142,6 +152,8 @@ public class CachingPeergosFS extends PeergosFS {
         public synchronized void syncAndClear() {
             if (entry == null)
                 return;
+            if (DEBUG)
+                System.out.printf("fsync(%s)\n", entry.path);
             entry.sync();
             entry = null;
         }
