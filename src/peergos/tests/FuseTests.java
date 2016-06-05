@@ -140,6 +140,8 @@ public class FuseTests {
         int firstDifferentIndex = firstDifferentindex(original, copy, 0);
         int lastDifferentIndex = lastDifferentindex(original, copy, original.length);
 
+        byte[] diff = firstDifferentIndex > 0 ? Arrays.copyOfRange(copy, firstDifferentIndex, lastDifferentIndex) : new byte[0];
+
         assertTrue("initial and target contents equal", contentEquals);
     }
 

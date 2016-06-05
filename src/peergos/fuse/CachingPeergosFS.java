@@ -42,32 +42,58 @@ public class CachingPeergosFS extends PeergosFS {
 
     @Override
     public int read(String s, Pointer pointer, @size_t long size, @off_t long offset, FuseFileInfo fuseFileInfo) {
+        return read(s, pointer, 0, size, offset, fuseFileInfo);
+    }
+
+    public int read(String s, Pointer pointer, int pointerOffset, @size_t long size, @off_t long offset, FuseFileInfo fuseFileInfo) {
         if (DEBUG)
             System.out.printf("read(%s, offset=%d, size=%d)\n", s, offset, size);
-        if (!containedInOneChunk(offset, offset + size))
-            throw new IllegalStateException("write op. straddles boundary : offset " + offset + " with size " + size);
+        if (!containedInOneChunk(offset, offset + size)) {
+            long boundary = alignToChunkSize(offset + Chunk.MAX_SIZE);
+            int r1 = read(s, pointer, 0, boundary - offset, offset, fuseFileInfo);
+            if (r1 <= 0)
+                return r1;
+            int r2 = read(s, pointer, (int)(boundary - offset), size + offset - boundary, boundary, fuseFileInfo);
+            if (r2 <= 0)
+                return r2;
+            return r1 + r2;
+        }
 
         long startPos = alignToChunkSize(offset);
         int chunkOffset  = intraChunkOffset(offset);
         int iSize = (int) size;
 
         CacheEntryHolder cacheEntryHolder = entryMap.computeIfAbsent(s, path -> new CacheEntryHolder(new CacheEntry(path, startPos)));
-        return cacheEntryHolder.apply(c -> c != null && c.offset == startPos, () -> new CacheEntry(s, startPos), ce -> ce.read(pointer, chunkOffset, iSize));
+        return cacheEntryHolder.apply(c -> c != null && c.offset == startPos, () -> new CacheEntry(s, startPos),
+                ce -> ce.read(pointer, pointerOffset, chunkOffset, iSize));
     }
 
     @Override
     public int write(String s, Pointer pointer, @size_t long size, @off_t long offset, FuseFileInfo fuseFileInfo) {
+        return write(s, pointer, 0, size, offset, fuseFileInfo);
+    }
+
+    public int write(String s, Pointer pointer, int pointerOffset, @size_t long size, @off_t long offset, FuseFileInfo fuseFileInfo) {
         if (DEBUG)
             System.out.printf("write(%s, offset=%d, size=%d)\n", s, offset, size);
-        if  (! containedInOneChunk(offset, offset+size))
-            throw new  IllegalStateException("write op. straddles boundary : offset "+ offset  +" with size "+ size);
+        if  (! containedInOneChunk(offset, offset+size)) {
+            long boundary = alignToChunkSize(offset + Chunk.MAX_SIZE);
+            int w1 = write(s, pointer, 0, boundary - offset, offset, fuseFileInfo);
+            if (w1 <= 0)
+                return w1;
+            int w2 = write(s, pointer, (int)(boundary - offset), size + offset - boundary, boundary, fuseFileInfo);
+            if (w2 <= 0)
+                return w2;
+            return w1 + w2;
+        }
 
         long startPos  = alignToChunkSize(offset);
         int  chunkOffset  = intraChunkOffset(offset);
         int iSize = (int) size;
 
         CacheEntryHolder cacheEntry = entryMap.computeIfAbsent(s, path -> new CacheEntryHolder(new CacheEntry(path, startPos)));
-        return cacheEntry.apply(c -> c != null && c.offset == startPos, () -> new CacheEntry(s, startPos), ce -> ce.write(pointer, chunkOffset, iSize));
+        return cacheEntry.apply(c -> c != null && c.offset == startPos, () -> new CacheEntry(s, startPos),
+                ce -> ce.write(pointer, pointerOffset, chunkOffset, iSize));
     }
 
     @Override
@@ -183,15 +209,15 @@ public class CachingPeergosFS extends PeergosFS {
                 throw new  IllegalStateException("cannot op with offset "+ offset +" and length "+ length +" with length "+ data.length);
         }
 
-        public synchronized int read(Pointer pointer,  int offset, int length) {
-            ensureInBounds(offset, length);
-            pointer.put(0, data, offset, length);
+        public synchronized int read(Pointer pointer, int pointerOffset, int chunkOffset, int length) {
+            ensureInBounds(chunkOffset, length);
+            pointer.put(pointerOffset, data, chunkOffset, length);
             return length;
         }
-        public synchronized int write(Pointer pointer, int offset, int length) {
-            ensureInBounds(offset, length);
-            pointer.get(0, data, offset, length);
-            maxDirtyPos = Math.max(maxDirtyPos, offset+length);
+        public synchronized int write(Pointer pointer, int pointerOffset, int chunkOffset, int length) {
+            ensureInBounds(chunkOffset, length);
+            pointer.get(pointerOffset, data, chunkOffset, length);
+            maxDirtyPos = Math.max(maxDirtyPos, chunkOffset+length);
             return length;
         }
 
