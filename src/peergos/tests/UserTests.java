@@ -196,6 +196,27 @@ public class UserTests {
         checkFileContents(data5, userRoot.getDescendentByPath(filename, context).get(), context);
     }
 
+    @Test
+    public void writeTiming() throws IOException {
+        String username = "test01";
+        String password = "test01";
+        UserContext context = ensureSignedUp(username, password, webPort);
+        FileTreeNode userRoot = context.getUserRoot();
+
+        String filename = "mediumfile.bin";
+        byte[] data = new byte[0];
+        userRoot.uploadFile(filename, new ByteArrayInputStream(data), data.length, context, l -> {});
+
+        //overwrite with 2 chunk file
+        byte[] data5 = new byte[10*1024*1024];
+        new Random().nextBytes(data5);
+        long t1 = System.currentTimeMillis();
+        userRoot.uploadFile(filename, new ByteArrayInputStream(data5), 0, data5.length, context, l -> {});
+        long t2 = System.currentTimeMillis();
+        System.out.println("Write time per chunk " + (t2-t1)/2 + "mS");
+        Assert.assertTrue("Timely write", (t2-t1)/2 < 10000);
+    }
+
     private static void checkFileContents(byte[] expected, FileTreeNode f, UserContext context) throws IOException {
         byte[] retrievedData = Serialize.readFully(f.getInputStream(context, f.getFileProperties().size, l-> {}));
         assertTrue("Correct contents", Arrays.equals(retrievedData, expected));
