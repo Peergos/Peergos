@@ -100,9 +100,6 @@ public class CachingPeergosFS extends PeergosFS {
     public int lock(String s, FuseFileInfo fuseFileInfo, int i, Flock flock) {
         if (DEBUG)
             System.out.printf("lock(%s)\n", s);
-        CacheEntryHolder cacheEntryHolder = entryMap.get(s);
-        if (cacheEntryHolder != null)
-            cacheEntryHolder.syncAndClear();
         return 0;
     }
 
@@ -112,7 +109,7 @@ public class CachingPeergosFS extends PeergosFS {
             System.out.printf("flush(%s)\n", s);
         CacheEntryHolder cacheEntry = entryMap.get(s);
         if  (cacheEntry != null) {
-            cacheEntry.syncAndClear();
+            cacheEntry.sync();
         }
         return super.flush(s, fuseFileInfo);
     }
@@ -158,8 +155,11 @@ public class CachingPeergosFS extends PeergosFS {
 
         public synchronized <A> A apply(Predicate<CacheEntry> correctChunk, Supplier<CacheEntry> supplier, Function<CacheEntry, A> func) {
             if (!correctChunk.test(entry)) {
+                long oldOffset = entry.offset;
                 syncAndClear();
                 setEntry(supplier.get());
+                System.out.println("Ejecting chunk from " + entry.path + " " + oldOffset + " -> "+ entry.offset);
+
             }
             return func.apply(entry);
         }
@@ -173,6 +173,14 @@ public class CachingPeergosFS extends PeergosFS {
 
         public synchronized void setEntry(CacheEntry entry) {
             this.entry = entry;
+        }
+
+        public synchronized void sync() {
+            if (entry == null)
+                return;
+            if (DEBUG)
+                System.out.printf("sync(%s)\n", entry.path);
+            entry.sync();
         }
 
         public synchronized void syncAndClear() {
