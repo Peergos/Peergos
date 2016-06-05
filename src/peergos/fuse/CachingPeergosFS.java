@@ -100,6 +100,9 @@ public class CachingPeergosFS extends PeergosFS {
     public int lock(String s, FuseFileInfo fuseFileInfo, int i, Flock flock) {
         if (DEBUG)
             System.out.printf("lock(%s)\n", s);
+        CacheEntryHolder cacheEntryHolder = entryMap.get(s);
+        if (cacheEntryHolder != null)
+            cacheEntryHolder.syncAndClear();
         return 0;
     }
 
