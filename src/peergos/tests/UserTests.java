@@ -214,7 +214,7 @@ public class UserTests {
         userRoot.uploadFile(filename, new ByteArrayInputStream(data5), 0, data5.length, context, l -> {});
         long t2 = System.currentTimeMillis();
         System.out.println("Write time per chunk " + (t2-t1)/2 + "mS");
-        Assert.assertTrue("Timely write", (t2-t1)/2 < 10000);
+        Assert.assertTrue("Timely write", (t2-t1)/2 < 20000);
     }
 
     private static void checkFileContents(byte[] expected, FileTreeNode f, UserContext context) throws IOException {
