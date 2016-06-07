@@ -202,7 +202,6 @@ public class CachingPeergosFS extends PeergosFS {
         private final long offset;
         private int maxDirtyPos;
 
-
         public CacheEntry(String path, long offset) {
             this.path = path;
             this.offset = offset;
@@ -220,19 +219,19 @@ public class CachingPeergosFS extends PeergosFS {
                 throw new  IllegalStateException("cannot op with offset "+ offset +" and length "+ length +" with length "+ data.length);
         }
 
-        public synchronized int read(Pointer pointer, int pointerOffset, int chunkOffset, int length) {
+        public int read(Pointer pointer, int pointerOffset, int chunkOffset, int length) {
             ensureInBounds(chunkOffset, length);
             pointer.put(pointerOffset, data, chunkOffset, length);
             return length;
         }
-        public synchronized int write(Pointer pointer, int pointerOffset, int chunkOffset, int length) {
+        public int write(Pointer pointer, int pointerOffset, int chunkOffset, int length) {
             ensureInBounds(chunkOffset, length);
             pointer.get(pointerOffset, data, chunkOffset, length);
             maxDirtyPos = Math.max(maxDirtyPos, chunkOffset+length);
             return length;
         }
 
-        public synchronized void sync() {
+        public void sync() {
             Path p = Paths.get(path);
 
             String parentPath = p.getParent().toString();
