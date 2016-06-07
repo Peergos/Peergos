@@ -158,10 +158,10 @@ public class CachingPeergosFS extends PeergosFS {
 
         public synchronized <A> A apply(Predicate<CacheEntry> correctChunk, Supplier<CacheEntry> supplier, Function<CacheEntry, A> func) {
             if (!correctChunk.test(entry)) {
-                long oldOffset = entry.offset;
+//                long oldOffset = entry.offset;
                 syncAndClear();
                 setEntry(supplier.get());
-                System.out.println("Ejecting chunk from " + entry.path + " " + oldOffset + " -> "+ entry.offset);
+//                System.out.println("Ejecting chunk from " + entry.path + " " + oldOffset + " -> "+ entry.offset);
 
             }
             return func.apply(entry);
