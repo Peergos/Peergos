@@ -42,7 +42,12 @@ public class CachingPeergosFS extends PeergosFS {
 
     @Override
     public int read(String s, Pointer pointer, @size_t long size, @off_t long offset, FuseFileInfo fuseFileInfo) {
-        return read(s, pointer, 0, size, offset, fuseFileInfo);
+        try {
+            return read(s, pointer, 0, size, offset, fuseFileInfo);
+        } catch (Throwable t) {
+            t.printStackTrace();
+            throw t;
+        }
     }
 
     public int read(String s, Pointer pointer, int pointerOffset, @size_t long size, @off_t long offset, FuseFileInfo fuseFileInfo) {
@@ -70,7 +75,12 @@ public class CachingPeergosFS extends PeergosFS {
 
     @Override
     public int write(String s, Pointer pointer, @size_t long size, @off_t long offset, FuseFileInfo fuseFileInfo) {
-        return write(s, pointer, 0, size, offset, fuseFileInfo);
+        try {
+            return write(s, pointer, 0, size, offset, fuseFileInfo);
+        } catch (Throwable t) {
+            t.printStackTrace();
+            throw t;
+        }
     }
 
     public int write(String s, Pointer pointer, int pointerOffset, @size_t long size, @off_t long offset, FuseFileInfo fuseFileInfo) {
@@ -98,23 +108,33 @@ public class CachingPeergosFS extends PeergosFS {
 
     @Override
     public int lock(String s, FuseFileInfo fuseFileInfo, int i, Flock flock) {
-        if (DEBUG)
-            System.out.printf("lock(%s)\n", s);
-        CacheEntryHolder cacheEntryHolder = entryMap.get(s);
-        if (cacheEntryHolder != null)
-            cacheEntryHolder.syncAndClear();
-        return 0;
+        try {
+            if (DEBUG)
+                System.out.printf("lock(%s)\n", s);
+            CacheEntryHolder cacheEntryHolder = entryMap.get(s);
+            if (cacheEntryHolder != null)
+                cacheEntryHolder.syncAndClear();
+            return 0;
+        } catch (Throwable t) {
+            t.printStackTrace();
+            throw t;
+        }
     }
 
     @Override
     public int flush(String s, FuseFileInfo fuseFileInfo) {
-        if (DEBUG)
-            System.out.printf("flush(%s)\n", s);
-        CacheEntryHolder cacheEntry = entryMap.get(s);
-        if  (cacheEntry != null) {
-            cacheEntry.sync();
+        try {
+            if (DEBUG)
+                System.out.printf("flush(%s)\n", s);
+            CacheEntryHolder cacheEntry = entryMap.get(s);
+            if (cacheEntry != null) {
+                cacheEntry.sync();
+            }
+            return super.flush(s, fuseFileInfo);
+        } catch (Throwable t) {
+            t.printStackTrace();
+            throw t;
         }
-        return super.flush(s, fuseFileInfo);
     }
 
     @Override
