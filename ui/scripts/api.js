@@ -764,10 +764,8 @@ function DHTClient() {
     this.get = function(keyData) {
 	if (keyData.length == 0)
 	    throw "Invalid hash: length = 0";
-        var buffer = new ByteArrayOutputStream();
-        buffer.writeInt(1); // GET Message
-        buffer.writeArray(keyData);
-        return postProm("dht/get", buffer.toByteArray()).then(function(res) {
+        
+        return getProm("dht/get/ipfs/" + Base58.encode(keyData)).then(function(res) {
             var buf = new ByteArrayInputStream(res);
             var success = buf.readInt();
             if (success == 1)

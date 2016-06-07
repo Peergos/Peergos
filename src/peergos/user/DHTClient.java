@@ -46,14 +46,7 @@ public interface DHTClient {
 
         @Override
         public Optional<byte[]> get(Multihash key) throws IOException {
-            ByteArrayOutputStream bout  =new ByteArrayOutputStream();
-            DataOutputStream dout = new DataOutputStream(bout);
-
-            dout.writeInt(1); // GET message
-            Serialize.serialize(key.toBytes(), dout);
-            dout.flush();
-
-            byte[] res = poster.post("dht/get", bout.toByteArray());
+            byte[] res = poster.get("dht/get/ipfs/" + key.toBase58());
             DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
             int success = din.readInt();
             if (success != 1)

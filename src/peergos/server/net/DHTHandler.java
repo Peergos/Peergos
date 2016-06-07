@@ -23,32 +23,39 @@ public class DHTHandler implements HttpHandler
     @Override
     public void handle(HttpExchange httpExchange) throws IOException {
         try {
-            InputStream in = httpExchange.getRequestBody();
-            DataInputStream din = new DataInputStream(in);
-            int type = din.readInt();
-            if (type == 0) {
-                // PUT
-                byte[] value = Serialize.deserializeByteArray(din, ContentAddressedStorage.MAX_OBJECT_LENGTH);
-                byte[] owner = Serialize.deserializeByteArray(din, UserPublicKey.MAX_SIZE);
-                // TODO check we care about owner
-                List<Multihash> hashes = new ArrayList<>();
-                int nlinks = din.readInt();
-                for (int i = 0; i < nlinks; i++)
-                    hashes.add(new Multihash(Serialize.deserializeByteArray(din, 1024)));
-
-                SortedMap<String, Multihash> namedLinks = new TreeMap<>();
-                for (int i=0; i < hashes.size(); i++)
-                    namedLinks.put(Integer.toString(i), hashes.get(i));
-                MerkleNode obj = new MerkleNode(value, namedLinks);
-                byte[] put = dht.put(obj).toBytes();
-                new PutSuccess(httpExchange).accept(Optional.of(put));
-            } else if (type == 1) {
-                // GET
-                byte[] key = Serialize.deserializeByteArray(din, 64);
-                byte[] value = dht.get(new Multihash(key));
-                new GetSuccess(key, httpExchange).accept(value);
+            String path = httpExchange.getRequestURI().getPath();
+            if (path.startsWith("/dht/get")) {
+                String ipfsPrefix = "/dht/get/ipfs/";
+                if (!path.startsWith(ipfsPrefix))
+                    httpExchange.sendResponseHeaders(404, 0);
+                else {
+                    Multihash key = Multihash.fromBase58(path.substring(ipfsPrefix.length()));
+                    byte[] value = dht.get(key);
+                    new GetSuccess(key, httpExchange).accept(value);
+                }
             } else {
-                httpExchange.sendResponseHeaders(404, 0);
+                InputStream in = httpExchange.getRequestBody();
+                DataInputStream din = new DataInputStream(in);
+                int type = din.readInt();
+                if (type == 0) {
+                    // PUT
+                    byte[] value = Serialize.deserializeByteArray(din, ContentAddressedStorage.MAX_OBJECT_LENGTH);
+                    byte[] owner = Serialize.deserializeByteArray(din, UserPublicKey.MAX_SIZE);
+                    // TODO check we care about owner
+                    List<Multihash> hashes = new ArrayList<>();
+                    int nlinks = din.readInt();
+                    for (int i = 0; i < nlinks; i++)
+                        hashes.add(new Multihash(Serialize.deserializeByteArray(din, 1024)));
+
+                    SortedMap<String, Multihash> namedLinks = new TreeMap<>();
+                    for (int i = 0; i < hashes.size(); i++)
+                        namedLinks.put(Integer.toString(i), hashes.get(i));
+                    MerkleNode obj = new MerkleNode(value, namedLinks);
+                    byte[] put = dht.put(obj).toBytes();
+                    new PutSuccess(httpExchange).accept(Optional.of(put));
+                } else {
+                    httpExchange.sendResponseHeaders(404, 0);
+                }
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -85,9 +92,9 @@ public class DHTHandler implements HttpHandler
     private static class GetSuccess implements Consumer<byte[]>
     {
         private final HttpExchange exchange;
-        private final byte[] key;
+        private final Multihash key;
 
-        private GetSuccess(byte[] key, HttpExchange exchange)
+        private GetSuccess(Multihash key, HttpExchange exchange)
         {
             this.key = key;
             this.exchange = exchange;
@@ -96,6 +103,8 @@ public class DHTHandler implements HttpHandler
         @Override
         public void accept(byte[] value) {
             try {
+                exchange.getResponseHeaders().set("Cache-Control", "public, max-age=31622400 immutable");
+                exchange.getResponseHeaders().set("ETag", key.toBase58());
                 exchange.sendResponseHeaders(200, 0);
                 DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());
                 dout.writeInt(1); // success

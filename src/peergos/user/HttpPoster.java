@@ -10,6 +10,8 @@ public interface HttpPoster {
 
     byte[] post(String url, byte[] payload) throws IOException;
 
+    byte[] get(String url) throws IOException;
+
     class Java implements HttpPoster {
 
         private final URL dht;
@@ -38,6 +40,24 @@ public interface HttpPoster {
 
                 dout.write(payload);
                 dout.flush();
+
+                String contentEncoding = conn.getContentEncoding();
+                boolean isGzipped = "gzip".equals(contentEncoding);
+                DataInputStream din = new DataInputStream(isGzipped ? new GZIPInputStream(conn.getInputStream()) : conn.getInputStream());
+                return Serialize.readFully(din);
+            } finally {
+                if (conn != null)
+                    conn.disconnect();
+            }
+        }
+
+        @Override
+        public byte[] get(String url) throws IOException {
+            HttpURLConnection conn = null;
+            try
+            {
+                conn = (HttpURLConnection) buildURL(url).openConnection();
+                conn.setDoInput(true);
 
                 String contentEncoding = conn.getContentEncoding();
                 boolean isGzipped = "gzip".equals(contentEncoding);
