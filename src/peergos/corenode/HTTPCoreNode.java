@@ -139,7 +139,7 @@ public class HTTPCoreNode implements CoreNode
 
     @Override public byte[] getAllUsernamesGzip() throws IOException
     {
-        byte[] res = poster.post("core/getAllUsernamesGzip", new byte[0]);
+        byte[] res = poster.post("core/getAllUsernamesGzip", new byte[0], false);
         DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
         ByteArrayOutputStream bout = new ByteArrayOutputStream();
         byte[] tmp = new byte[4096];

@@ -534,12 +534,17 @@ public class JDBCCoreNode implements CoreNode {
             }
 
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
-            try (DataOutputStream dout = new DataOutputStream(new GZIPOutputStream(bout))) {
+            try (DataOutputStream dout = new DataOutputStream(bout)) {
 
                 for (String uname : list)
                     Serialize.serialize(uname, dout);
             }
-            byte[] res = bout.toByteArray();
+            ByteArrayOutputStream resBout = new ByteArrayOutputStream();
+            GZIPOutputStream gout = new GZIPOutputStream(resBout);
+            gout.write(bout.toByteArray());
+            gout.flush();
+            gout.close();
+            byte[] res = resBout.toByteArray();
             userSet.setUserSet(res);
             return res;
         } catch (SQLException sqe) {

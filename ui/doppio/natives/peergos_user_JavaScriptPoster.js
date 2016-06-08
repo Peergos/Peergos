@@ -4,7 +4,7 @@ var ThreadStatus = Doppio.VM.Enums.ThreadStatus;
 registerNatives({
     'peergos/user/JavaScriptPoster': {
 	
-	'post(Ljava/lang/String;[B)[B': function(thread, javaThis, url, bodyData) {
+	'post(Ljava/lang/String;[BZ)[B': function(thread, javaThis, url, bodyData, unzip) {
 	    thread.setStatus(ThreadStatus.ASYNC_WAITING);
 	    return new Promise(function(resolve, reject) {
 		console.log("HTTP Post to "+url);
@@ -34,7 +34,7 @@ registerNatives({
 		thread.asyncReturn(javaByteArray);
 	    });
 	},
-
+                
 	'get(Ljava/lang/String;)[B': function(thread, javaThis, url) {
 	    thread.setStatus(ThreadStatus.ASYNC_WAITING);
 	    return new Promise(function(resolve, reject) {

@@ -147,11 +147,7 @@ public class HTTPCoreNodeServer
         void getAllUsernamesGzip(DataInputStream din, DataOutputStream dout) throws IOException
         {
             byte[] res = coreNode.getAllUsernamesGzip();
-            ByteArrayOutputStream bout = new ByteArrayOutputStream();
-            GZIPOutputStream gout = new GZIPOutputStream(bout);
-            gout.write(res);
-            gout.finish();
-            dout.write(bout.toByteArray());
+            dout.write(res);
         }
 
         void followRequest(DataInputStream din, DataOutputStream dout) throws IOException

@@ -8,7 +8,11 @@ import java.util.zip.*;
 
 public interface HttpPoster {
 
-    byte[] post(String url, byte[] payload) throws IOException;
+    byte[] post(String url, byte[] payload, boolean unzip) throws IOException;
+
+    default byte[] post(String url, byte[] payload) throws IOException {
+        return post(url, payload, true);
+    }
 
     byte[] get(String url) throws IOException;
 
@@ -29,7 +33,7 @@ public interface HttpPoster {
         }
 
         @Override
-        public byte[] post(String url, byte[] payload) throws IOException {
+        public byte[] post(String url, byte[] payload, boolean unzip) throws IOException {
             HttpURLConnection conn = null;
             try
             {
@@ -43,7 +47,7 @@ public interface HttpPoster {
 
                 String contentEncoding = conn.getContentEncoding();
                 boolean isGzipped = "gzip".equals(contentEncoding);
-                DataInputStream din = new DataInputStream(isGzipped ? new GZIPInputStream(conn.getInputStream()) : conn.getInputStream());
+                DataInputStream din = new DataInputStream(isGzipped && unzip ? new GZIPInputStream(conn.getInputStream()) : conn.getInputStream());
                 return Serialize.readFully(din);
             } finally {
                 if (conn != null)
