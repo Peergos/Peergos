@@ -10239,6 +10239,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	        }
 	    };
 	    AbstractClasspathJar.prototype.loadClass = function (type, cb) {
+            //console.log("[Loaded " + type + " ]");
 	        var _this = this;
 	        this._wrapOp(function () {
 	            _this._fs.readFile('/' + type + '.class', cb);
@@ -10846,14 +10847,9 @@ return /******/ (function(modules) { // webpackBootstrap
 			"lib/rt.jar",
 			"lib/charsets.jar",
 			"lib/doppio.jar",
-			"lib/dt.jar",
 			"lib/jce.jar",
-			"lib/jconsole.jar",
 			"lib/jsse.jar",
-			"lib/management-agent.jar",
 			"lib/resources.jar",
-			"lib/sa-jdi.jar",
-			"lib/tools.jar"
 		]
 	};
 
