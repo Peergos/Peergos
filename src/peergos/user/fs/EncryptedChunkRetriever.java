@@ -130,12 +130,6 @@ public class EncryptedChunkRetriever implements FileRetriever {
             nextChunk = Location.deserialize(buf);
         int nOriginalFragments = buf.readInt();
         int nAllowedFailures = buf.readInt();
-        if (!EncryptedChunk.ALLOWED_ORIGINAL.contains(nOriginalFragments) || !EncryptedChunk.ALLOWED_FAILURES.contains(nAllowedFailures)) {
-            // backwards compatible with when these were not included
-            buf.skip(-8);
-            nOriginalFragments = EncryptedChunk.ERASURE_ORIGINAL;
-            nAllowedFailures = EncryptedChunk.ERASURE_ALLOWED_FAILURES;
-        }
 
         return new EncryptedChunkRetriever(chunkNonce, chunkAuth, hashes, nextChunk, nOriginalFragments, nAllowedFailures);
     }
