@@ -781,7 +781,11 @@ function CoreNodeClient() {
         var buffer = new ByteArrayOutputStream();
         buffer.writeString(username);
         return postProm("core/getPublicKey", buffer.toByteArray()).then(function(raw) {
-	    var arr = new ByteArrayInputStream(raw).readArray();
+	    var buf = new ByteArrayInputStream(raw);
+	    var present = buf.readByte();
+	    if (!present)
+		return Promise.reject("No such user");
+	    var arr = buf.readArray();
 	    var res = arr.length == 0 ? null : UserPublicKey.fromPublicKeys(arr);
 	    if (res == null)
 		return Promise.reject("No such user");
