@@ -12,6 +12,7 @@ import peergos.util.*;
 
 import java.io.*;
 import java.lang.reflect.*;
+import java.nio.file.*;
 import java.util.*;
 
 import static org.junit.Assert.assertTrue;
@@ -45,14 +46,48 @@ public class TwoUserTests {
     public static Collection<Object[]> parameters() {
         Random r = new Random(0);
         return Arrays.asList(new Object[][] {
-                {"IPFS", r},
                 {"RAM", r}
         });
     }
 
     @Test
-    public void shareAndUnshare() {
+    public void shareAndUnshare() throws IOException {
+        UserContext u1 = UserTests.ensureSignedUp("a", "a", webPort);
+        UserContext u2 = UserTests.ensureSignedUp("b", "b", webPort);
+        u2.sendFollowRequest(u1.username, SymmetricKey.random());
+        List<FollowRequest> u1Requests = u1.getFollowRequests();
+        u1.sendReplyFollowRequest(u1Requests.get(0), true, true);
+        List<FollowRequest> u2FollowRequests = u2.getFollowRequests();
 
+        // friends are connected
+        // share a file from u1 to u2
+        FileTreeNode u1Root = u1.getUserRoot();
+        String filename = "somefile.txt";
+        File f = File.createTempFile("peergos", "");
+        byte[] originalFileContents = "Hello Peergos friend!".getBytes();
+        Files.write(f.toPath(), originalFileContents);
+        boolean uploaded = u1Root.uploadFile(filename, f, u1, l -> {});
+        FileTreeNode file = u1.getByPath(u1.username + "/" + filename).get();
+        FileTreeNode u1ToU2 = u1.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + u2.username).get();
+        boolean success = u1ToU2.addLinkTo(file, u1);
+        Assert.assertTrue("Shared file", success);
+
+        Set<FileTreeNode> u2children = u2
+                .getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + u2.username)
+                .get()
+                .getChildren(u2);
+        Optional<FileTreeNode> fromParent = u2children.stream()
+                .filter(fn -> fn.getFileProperties().name.equals(filename))
+                .findAny();
+        Assert.assertTrue("shared file present via parent's children", fromParent.isPresent());
+
+        Optional<FileTreeNode> sharedFile = u2.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + u2.username + "/" + filename);
+        Assert.assertTrue("Shared file present via direct path", sharedFile.isPresent() && sharedFile.get().getFileProperties().name.equals(filename));
+
+        InputStream inputStream = sharedFile.get().getInputStream(u2, l -> {});
+
+        byte[] fileContents = Serialize.readFully(inputStream);
+        Assert.assertTrue("shared file contents correct", Arrays.equals(originalFileContents, fileContents));
     }
 
     @Test
