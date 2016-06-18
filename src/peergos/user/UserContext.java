@@ -307,7 +307,10 @@ public class UserContext {
             User tmp = User.random(random, signer, boxer);
             byte[] payload = targetUser.encryptMessageFor(plaintext, tmp.secretBoxingKey);
 
-            corenodeClient.followRequest(initialRequest.entry.get().pointer.owner, ArrayOps.concat(tmp.publicBoxingKey.toByteArray(), payload));
+            DataSink resp = new DataSink();
+            resp.writeArray(tmp.getPublicKeys());
+            resp.writeArray(payload);
+            corenodeClient.followRequest(initialRequest.entry.get().pointer.owner, resp.toByteArray());
             // remove pending follow request from them
             return corenodeClient.removeFollowRequest(user, user.signMessage(initialRequest.rawCipher));
         }
