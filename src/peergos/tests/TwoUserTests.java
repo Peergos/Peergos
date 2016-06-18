@@ -91,13 +91,29 @@ public class TwoUserTests {
     }
 
     @Test
-    public void social() throws IOException {
+    public void bidirectionalFriends() throws IOException {
         UserContext u1 = UserTests.ensureSignedUp("q", "q", webPort);
         UserContext u2 = UserTests.ensureSignedUp("w", "w", webPort);
         u2.sendFollowRequest(u1.username, SymmetricKey.random());
         List<FollowRequest> u1Requests = u1.getFollowRequests();
         assertTrue("Receive a follow request", u1Requests.size() > 0);
         u1.sendReplyFollowRequest(u1Requests.get(0), true, true);
+        List<FollowRequest> u2FollowRequests = u2.getFollowRequests();
+        Optional<FileTreeNode> u1ToU2 = u2.getByPath("/" + u1.username);
+        assertTrue("Friend root present after accepted follow request", u1ToU2.isPresent());
+
+        Optional<FileTreeNode> u2ToU1 = u1.getByPath("/" + u2.username);
+        assertTrue("Friend root present after accepted follow request", u2ToU1.isPresent());
+    }
+
+    @Test
+    public void unidirectionalFriends() throws IOException {
+        UserContext u1 = UserTests.ensureSignedUp("q", "q", webPort);
+        UserContext u2 = UserTests.ensureSignedUp("w", "w", webPort);
+        u2.sendFollowRequest(u1.username, SymmetricKey.random());
+        List<FollowRequest> u1Requests = u1.getFollowRequests();
+        assertTrue("Receive a follow request", u1Requests.size() > 0);
+        u1.sendReplyFollowRequest(u1Requests.get(0), true, false);
         List<FollowRequest> u2FollowRequests = u2.getFollowRequests();
         Optional<FileTreeNode> friendRoot = u2.getByPath("/" + u1.username);
         assertTrue("Friend root present after accepted follow request", friendRoot.isPresent());

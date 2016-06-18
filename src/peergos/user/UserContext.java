@@ -231,11 +231,13 @@ public class UserContext {
         EntryPoint entry = new EntryPoint(rootPointer, this.username, Collections.emptySet(), Collections.emptySet());
 
         long t2 = System.currentTimeMillis();
-        addToStaticDataAndCommit(entry);
-        System.out.println("Committing static data took " + (System.currentTimeMillis()-t2) + " mS");
         DirAccess root = DirAccess.create(rootRKey, new FileProperties(directoryName, 0, LocalDateTime.now(), false, Optional.empty()), (Location)null, null, null);
         boolean uploaded = this.uploadChunk(root, this.user, writer, rootMapKey, Collections.emptyList());
-        System.out.println("Uploading root dir metadata took " + (System.currentTimeMillis()-t2) + " mS");
+        long t3 = System.currentTimeMillis();
+        System.out.println("Uploading root dir metadata took " + (t3 - t2) + " mS");
+        addToStaticDataAndCommit(entry);
+        System.out.println("Committing static data took " + (System.currentTimeMillis()-t3) + " mS");
+
         if (uploaded)
             return new RetrievedFilePointer(rootPointer, root);
         throw new IllegalStateException("Failed to create entry directory!");
@@ -401,6 +403,7 @@ public class UserContext {
     public void addToStaticDataAndCommit(EntryPoint entry) throws IOException {
         addToStaticData(entry);
         commitStaticData(user, staticData, rootKey, dhtClient, corenodeClient);
+        addEntryPoint(entry);
     }
     private static boolean commitStaticData(User user, SortedMap<UserPublicKey, EntryPoint> staticData, SymmetricKey rootKey
             , DHTClient dhtClient, CoreNode corenodeClient) throws IOException {
@@ -553,19 +556,16 @@ public class UserContext {
     }
 
     private void createFileTree() throws IOException {
-        Set<EntryPoint> entryPoints = getEntryPoints();
-        Map<EntryPoint, FileTreeNode> retrieved = new HashMap<>();
-        entryPoints.forEach(e -> {
-            Optional<FileTreeNode> metadata = retrieveEntryPoint(e);
-            if (metadata.isPresent())
-                retrieved.put(e, metadata.get());
-        });
+        getEntryPoints().forEach( e -> addEntryPoint(e));
+    }
 
-        System.out.println("Entry points "+retrieved.values());
-
-        Map<FileTreeNode, String> paths = retrieved.values().stream().collect(Collectors.toMap(f -> f, f -> f.getPath(this)));
-
-        retrieved.entrySet().stream().forEach(e -> entrie.put(paths.get(e.getValue()), e.getKey()));
+    private void addEntryPoint(EntryPoint e) {
+        Optional<FileTreeNode> metadata = retrieveEntryPoint(e);
+        if (metadata.isPresent()) {
+            System.out.println("Added entry point: "+ metadata.get());
+            String path = metadata.get().getPath(this);
+            entrie.put(path, e);
+        }
     }
 
     private Set<EntryPoint> getEntryPoints() throws IOException {
