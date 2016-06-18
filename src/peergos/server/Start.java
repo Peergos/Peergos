@@ -51,71 +51,69 @@ public class Start
             System.out.println("-"+ k + "\t " + PARAMS.get(k));
     }
 
-    public static void main(String[] args) throws Exception
+    public static void main(String[] args)
     {
-        Args a = Args.parse(args);
-        PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, new JavaEd25519());
+        try {
+            Args a = Args.parse(args);
+            PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, new JavaEd25519());
 
-        if (a.hasArg("help"))
-        {
-            printOptions();
-            System.exit(0);
-        }
-        if (a.hasArg("local"))
-        {
-            local(a);
-        }
-        else if (a.hasArg("demo"))
-        {
-            demo(a);
-        }
-        else if (a.hasArg("corenode"))
-        {
-            String keyfile = a.getArg("keyfile", "core.key");
-            char[] passphrase = a.getArg("passphrase", "password").toCharArray();
-            String path = a.getArg("corenodePath", ":memory:");
-            int corenodePort = a.getInt("corenodePort", HTTPCoreNodeServer.PORT);
-            System.out.println("Using core node path "+ path);
-            SQLiteCoreNode coreNode = SQLiteCoreNode.build(path);
-            HTTPCoreNodeServer.createAndStart(keyfile, passphrase, corenodePort, coreNode, a);
-        }
-        else {
-            int webPort = a.getInt("port", 8000);
-            URL coreAddress = new URI(a.getArg("corenodeURL", "http://localhost:"+HTTPCoreNodeServer.PORT)).toURL();
-            String domain = a.getArg("domain", "localhost");
-            InetSocketAddress userAPIAddress = new InetSocketAddress(domain, webPort);
-
-            boolean useIPFS = a.getBoolean("useIPFS", true);
-            ContentAddressedStorage dht = useIPFS ? new IpfsDHT() : new RAMStorage();
-
-            // start the User Service
-            String hostname = a.getArg("domain", "localhost");
-
-            CoreNode core = HTTPCoreNode.getInstance(coreAddress);
-            CoreNode pinner = new PinningCoreNode(core, dht);
-
-            InetSocketAddress httpsMessengerAddress = new InetSocketAddress(hostname, userAPIAddress.getPort());
-            new UserService(httpsMessengerAddress, Logger.getLogger("IPFS"), dht, pinner, a);
-
-            if (a.hasArg("fuse")) {
-                String username = a.getArg("username", "test01");
-                String password = a.getArg("password", "test01");
-                Path mount = Files.createTempDirectory("peergos");
-                String mountPath = a.getArg("mountPoint", mount.toString());
-
-                Path path = Paths.get(mountPath);
-                path.toFile().mkdirs();
-
-                System.out.println("\n\nPeergos mounted at "+ path+"\n\n");
-
-                UserContext userContext = UserTests.ensureSignedUp(username, password, webPort);
-                PeergosFS peergosFS = new PeergosFS(userContext);
-                FuseProcess fuseProcess = new FuseProcess(peergosFS, path);
-
-                Runtime.getRuntime().addShutdownHook(new Thread(()  -> fuseProcess.close()));
-
-                fuseProcess.start();
+            if (a.hasArg("help")) {
+                printOptions();
+                System.exit(0);
             }
+            if (a.hasArg("local")) {
+                local(a);
+            } else if (a.hasArg("demo")) {
+                demo(a);
+            } else if (a.hasArg("corenode")) {
+                String keyfile = a.getArg("keyfile", "core.key");
+                char[] passphrase = a.getArg("passphrase", "password").toCharArray();
+                String path = a.getArg("corenodePath", ":memory:");
+                int corenodePort = a.getInt("corenodePort", HTTPCoreNodeServer.PORT);
+                System.out.println("Using core node path " + path);
+                SQLiteCoreNode coreNode = SQLiteCoreNode.build(path);
+                HTTPCoreNodeServer.createAndStart(keyfile, passphrase, corenodePort, coreNode, a);
+            } else {
+                int webPort = a.getInt("port", 8000);
+                URL coreAddress = new URI(a.getArg("corenodeURL", "http://localhost:" + HTTPCoreNodeServer.PORT)).toURL();
+                String domain = a.getArg("domain", "localhost");
+                InetSocketAddress userAPIAddress = new InetSocketAddress(domain, webPort);
+
+                boolean useIPFS = a.getBoolean("useIPFS", true);
+                ContentAddressedStorage dht = useIPFS ? new IpfsDHT() : new RAMStorage();
+
+                // start the User Service
+                String hostname = a.getArg("domain", "localhost");
+
+                CoreNode core = HTTPCoreNode.getInstance(coreAddress);
+                CoreNode pinner = new PinningCoreNode(core, dht);
+
+                InetSocketAddress httpsMessengerAddress = new InetSocketAddress(hostname, userAPIAddress.getPort());
+                new UserService(httpsMessengerAddress, Logger.getLogger("IPFS"), dht, pinner, a);
+
+                if (a.hasArg("fuse")) {
+                    String username = a.getArg("username", "test01");
+                    String password = a.getArg("password", "test01");
+                    Path mount = Files.createTempDirectory("peergos");
+                    String mountPath = a.getArg("mountPoint", mount.toString());
+
+                    Path path = Paths.get(mountPath);
+                    path.toFile().mkdirs();
+
+                    System.out.println("\n\nPeergos mounted at " + path + "\n\n");
+
+                    UserContext userContext = UserTests.ensureSignedUp(username, password, webPort);
+                    PeergosFS peergosFS = new PeergosFS(userContext);
+                    FuseProcess fuseProcess = new FuseProcess(peergosFS, path);
+
+                    Runtime.getRuntime().addShutdownHook(new Thread(() -> fuseProcess.close()));
+
+                    fuseProcess.start();
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            System.exit(-1);
         }
     }
 
