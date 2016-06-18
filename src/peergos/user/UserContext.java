@@ -53,8 +53,11 @@ public class UserContext {
                 return value.flatMap(e -> context.retrieveEntryPoint(e));
             }
             String[] elements = path.split("/");
-            if (!children.containsKey(elements[0]))
+            // There may be an entry point further down the tree, but it will have <= permission than this one
+            if (value.isPresent())
                 return context.retrieveEntryPoint(value.get()).get().getDescendentByPath(path, context);
+            if (!children.containsKey(elements[0]))
+                return Optional.empty();
             return children.get(elements[0]).getByPath(path.substring(elements[0].length()), context);
         }
 
@@ -320,7 +323,7 @@ public class UserContext {
         if (! reciprocate) {
             dout.writeArray(new byte[0]); // tell them we're not reciprocating
         } else {
-            // if reciprocate, add entry point to their shared dirctory (we follow them) and then
+            // if reciprocate, add entry point to their shared directory (we follow them) and then
             dout.writeArray(initialRequest.entry.get().pointer.baseKey.serialize()); // tell them we are reciprocating
         }
         byte[] plaintext = dout.toByteArray();
@@ -330,7 +333,8 @@ public class UserContext {
         resp.writeArray(tmp.getPublicKeys());
         resp.writeArray(payload);
         corenodeClient.followRequest(initialRequest.entry.get().pointer.owner.toUserPublicKey(), resp.toByteArray());
-        addToStaticDataAndCommit(initialRequest.entry.get());
+        if (reciprocate)
+            addToStaticDataAndCommit(initialRequest.entry.get());
         // remove original request
         return corenodeClient.removeFollowRequest(user.toUserPublicKey(), user.signMessage(initialRequest.rawCipher));
     }
@@ -405,6 +409,7 @@ public class UserContext {
         commitStaticData(user, staticData, rootKey, dhtClient, corenodeClient);
         addEntryPoint(entry);
     }
+
     private static boolean commitStaticData(User user, SortedMap<UserPublicKey, EntryPoint> staticData, SymmetricKey rootKey
             , DHTClient dhtClient, CoreNode corenodeClient) throws IOException {
         byte[] rawStatic = serializeStatic(staticData, rootKey);
@@ -458,7 +463,7 @@ public class UserContext {
                             // delete our folder if they didn't reciprocate
                             FileTreeNode ourDirForThem = followerRoots.get(freq.entry.get().owner);
                             byte[] ourKeyForThem = ourDirForThem.getKey().serialize();
-                            byte[] keyFromResponse = freq.key == null ? null : freq.key.get().serialize();
+                            byte[] keyFromResponse = freq.key.map(k -> k.serialize()).orElse(null);
                             if (keyFromResponse == null || !Arrays.equals(keyFromResponse, ourKeyForThem)) {
                                 ourDirForThem.remove(this, getSharingFolder());
                                 // remove entry point as well

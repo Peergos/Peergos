@@ -115,9 +115,11 @@ public class TwoUserTests {
         assertTrue("Receive a follow request", u1Requests.size() > 0);
         u1.sendReplyFollowRequest(u1Requests.get(0), true, false);
         List<FollowRequest> u2FollowRequests = u2.getFollowRequests();
-        Optional<FileTreeNode> friendRoot = u2.getByPath("/" + u1.username);
-        assertTrue("Friend root present after accepted follow request", friendRoot.isPresent());
-        System.out.println();
+        Optional<FileTreeNode> u1Tou2 = u2.getByPath("/" + u1.username);
+        assertTrue("Friend root present after accepted follow request", u1Tou2.isPresent());
+
+        Optional<FileTreeNode> u2Tou1 = u1.getByPath("/" + u2.username);
+        assertTrue("Friend root not present after non reciprocated follow request", !u2Tou1.isPresent());
     }
 
 }
