@@ -2202,8 +2202,9 @@ function SymmetricLocationLink(arr) {
 
     // SymmetricKey -> Location
     this.targetLocation = function(from) {
-        var nonce = slice(this.link, 0, SymmetricKey.NONCE_BYTES);
-        return Location.decrypt(from, nonce, this.loc);
+        var nonce = slice(this.loc, 0, SymmetricKey.NONCE_BYTES);
+	var rest = slice(this.loc, SymmetricKey.NONCE_BYTES, this.loc.length);
+        return Location.decrypt(from, nonce, rest);
     }
 
     this.target = function(from) {
@@ -2227,9 +2228,10 @@ function SymmetricLocationLink(arr) {
     }
 }
 SymmetricLocationLink.create = function(fromKey, toKey, location) {
-    var nonce = fromKey.createNonce();
-    var loc = location.encrypt(fromKey, nonce);
-    var link = concat(nonce, fromKey.encrypt(toKey.serialize(), nonce));
+    var locNonce = fromKey.createNonce();
+    var loc = concat(locNonce, location.encrypt(fromKey, locNonce));
+    var linkNonce = fromKey.createNonce();
+    var link = concat(linkNonce, fromKey.encrypt(toKey.serialize(), linkNonce));
     var buf = new ByteArrayOutputStream();
     buf.writeArray(link);
     buf.writeArray(loc);
