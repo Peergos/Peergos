@@ -293,7 +293,7 @@ public class UserContext {
     public boolean sendReplyFollowRequest(FollowRequest initialRequest, boolean accept, boolean reciprocate) throws IOException {
         String theirUsername = initialRequest.entry.get().owner;
         // if accept, create directory to share with them, note in entry points (they follow us)
-        if (!accept) {
+        if (!accept && !reciprocate) {
             // send a null entry and null key (full rejection)
 
             DataSink dout = new DataSink();
@@ -314,15 +314,21 @@ public class UserContext {
             // remove pending follow request from them
             return corenodeClient.removeFollowRequest(user, user.signMessage(initialRequest.rawCipher));
         }
-        ReadableFilePointer friendRoot = getSharingFolder().mkdir(theirUsername, this, initialRequest.key.get(), true, random).get();
-        // add a note to our static data so we know who we sent the read access to
-        EntryPoint entry = new EntryPoint(friendRoot.readOnly(), username, Stream.of(theirUsername).collect(Collectors.toSet()), Collections.EMPTY_SET);
-        UserPublicKey targetUser = initialRequest.entry.get().pointer.owner;
-        addToStaticDataAndCommit(entry);
-        // create a tmp keypair whose public key we can prepend to the request without leaking information
-        User tmp = User.random(random, signer, boxer);
+
         DataSink dout = new DataSink();
-        dout.writeArray(entry.serialize());
+        if (accept) {
+            ReadableFilePointer friendRoot = getSharingFolder().mkdir(theirUsername, this, initialRequest.key.get(), true, random).get();
+            // add a note to our static data so we know who we sent the read access to
+            EntryPoint entry = new EntryPoint(friendRoot.readOnly(), username, Stream.of(theirUsername).collect(Collectors.toSet()), Collections.EMPTY_SET);
+
+            addToStaticDataAndCommit(entry);
+
+            dout.writeArray(entry.serialize());
+        } else {
+            EntryPoint entry = new EntryPoint(ReadableFilePointer.createNull(), username, Collections.EMPTY_SET, Collections.EMPTY_SET);
+            dout.writeArray(entry.serialize());
+        }
+
         if (! reciprocate) {
             dout.writeArray(new byte[0]); // tell them we're not reciprocating
         } else {
@@ -330,6 +336,9 @@ public class UserContext {
             dout.writeArray(initialRequest.entry.get().pointer.baseKey.serialize()); // tell them we are reciprocating
         }
         byte[] plaintext = dout.toByteArray();
+        UserPublicKey targetUser = initialRequest.entry.get().pointer.owner;
+        // create a tmp keypair whose public key we can prepend to the request without leaking information
+        User tmp = User.random(random, signer, boxer);
         byte[] payload = targetUser.encryptMessageFor(plaintext, tmp.secretBoxingKey);
 
         DataSink resp = new DataSink();
@@ -473,6 +482,8 @@ public class UserContext {
                                 removeFromStaticData(ourDirForThem);
                                 // clear their response follow req too
                                 corenodeClient.removeFollowRequest(user.toUserPublicKey(), user.signMessage(freq.rawCipher));
+                            } else if (freq.entry.get().pointer.isNull()) {
+                                // They reciprocated, but didn't accept (they follow us, but we can't follow them)
                             } else {
                                 // add new entry to tree root
                                 EntryPoint entry = freq.entry.get();

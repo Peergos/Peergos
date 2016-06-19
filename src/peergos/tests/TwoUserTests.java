@@ -88,10 +88,12 @@ public class TwoUserTests {
 
         byte[] fileContents = Serialize.readFully(inputStream);
         Assert.assertTrue("shared file contents correct", Arrays.equals(originalFileContents, fileContents));
+
+        // TODO unshare
     }
 
     @Test
-    public void bidirectionalFriends() throws IOException {
+    public void acceptAndReciprocateFollowRequest() throws IOException {
         UserContext u1 = UserTests.ensureSignedUp("q", "q", webPort);
         UserContext u2 = UserTests.ensureSignedUp("w", "w", webPort);
         u2.sendFollowRequest(u1.username, SymmetricKey.random());
@@ -107,7 +109,7 @@ public class TwoUserTests {
     }
 
     @Test
-    public void unidirectionalFriends() throws IOException {
+    public void acceptButNotReciprocateFollowRequest() throws IOException {
         UserContext u1 = UserTests.ensureSignedUp("q", "q", webPort);
         UserContext u2 = UserTests.ensureSignedUp("w", "w", webPort);
         u2.sendFollowRequest(u1.username, SymmetricKey.random());
@@ -124,7 +126,7 @@ public class TwoUserTests {
 
 
     @Test
-    public void followRequestRejection() throws IOException {
+    public void rejectFollowRequest() throws IOException {
         UserContext u1 = UserTests.ensureSignedUp("q", "q", webPort);
         UserContext u2 = UserTests.ensureSignedUp("w", "w", webPort);
         u2.sendFollowRequest(u1.username, SymmetricKey.random());
@@ -137,5 +139,21 @@ public class TwoUserTests {
 
         Optional<FileTreeNode> u2Tou1 = u1.getByPath("/" + u2.username);
         assertTrue("Friend root not present after non reciprocated follow request", !u2Tou1.isPresent());
+    }
+
+    @Test
+    public void reciprocateButNotAcceptFollowRequest() throws IOException {
+        UserContext u1 = UserTests.ensureSignedUp("q", "q", webPort);
+        UserContext u2 = UserTests.ensureSignedUp("w", "w", webPort);
+        u2.sendFollowRequest(u1.username, SymmetricKey.random());
+        List<FollowRequest> u1Requests = u1.getFollowRequests();
+        assertTrue("Receive a follow request", u1Requests.size() > 0);
+        u1.sendReplyFollowRequest(u1Requests.get(0), false, true);
+        List<FollowRequest> u2FollowRequests = u2.getFollowRequests();
+        Optional<FileTreeNode> u1Tou2 = u2.getByPath("/" + u1.username);
+        assertTrue("Friend root not present after rejected follow request", ! u1Tou2.isPresent());
+
+        Optional<FileTreeNode> u2Tou1 = u1.getByPath("/" + u2.username);
+        assertTrue("Friend root present after reciprocated follow request", u2Tou1.isPresent());
     }
 }

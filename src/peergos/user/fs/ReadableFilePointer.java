@@ -84,6 +84,11 @@ public class ReadableFilePointer {
         return result;
     }
 
+    public boolean isNull() {
+        UserPublicKey nullUser = UserPublicKey.createNull();
+        return nullUser.equals(owner) && nullUser.equals(writer) && Arrays.equals(mapKey, new byte[32]) && baseKey.equals(SymmetricKey.createNull());
+    }
+
     public static ReadableFilePointer fromLink(String keysString) {
         String[] split = keysString.split("/");
         UserPublicKey owner = UserPublicKey.fromPublicKeys(Base58.decode(split[0]));
