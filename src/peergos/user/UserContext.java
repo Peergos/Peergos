@@ -25,18 +25,20 @@ public class UserContext {
     public final String username;
     public final User user;
     private final SymmetricKey rootKey;
-    public final DHTClient dhtClient;
-    public final CoreNode corenodeClient;
-    public final Btree btree;
-    public final LoginHasher hasher;
-    public final Salsa20Poly1305 symmetricProvider;
-    public final SafeRandom random;
-    public final Ed25519 signer;
-    public final Curve25519 boxer;
-
     private final SortedMap<UserPublicKey, EntryPoint> staticData = new TreeMap<>();
     private final TrieNode entrie = new TrieNode(); // ba dum che!
     private Set<String> usernames;
+
+    // Contact external world
+    public final DHTClient dhtClient;
+    public final CoreNode corenodeClient;
+    public final Btree btree;
+    // In process only
+    public final SafeRandom random;
+    private final LoginHasher hasher;
+    private final Salsa20Poly1305 symmetricProvider;
+    private final Ed25519 signer;
+    private final Curve25519 boxer;
 
     private static class TrieNode {
         Map<String, TrieNode> children = new HashMap<>();
@@ -110,11 +112,6 @@ public class UserContext {
         this.boxer = boxer;
     }
 
-    public static void main(String[] args) throws IOException {
-        ensureSignedUp("test02", "test02", 8000);
-        System.out.println("Signed up!");
-    }
-
     public static UserContext ensureSignedUp(String username, String password, int webPort) throws IOException {
         return ensureSignedUp(username, password, webPort, false);
     }
@@ -158,7 +155,7 @@ public class UserContext {
         return context;
     }
 
-    public void init() throws IOException {
+    private void init() throws IOException {
         staticData.clear();
         createFileTree();
         Optional<FileTreeNode> sharedOpt = getByPath("/"+username + "/" + "shared");
@@ -184,11 +181,7 @@ public class UserContext {
         return !publicKey.isPresent();
     }
 
-    public byte[] serializeStatic() throws IOException {
-        return serializeStatic(staticData, rootKey);
-    }
-
-    public static byte[] serializeStatic(SortedMap<UserPublicKey, EntryPoint> staticData, SymmetricKey rootKey) throws IOException {
+    private static byte[] serializeStatic(SortedMap<UserPublicKey, EntryPoint> staticData, SymmetricKey rootKey) throws IOException {
         DataSink sink = new DataSink();
         sink.writeInt(staticData.size());
         staticData.values().forEach(ep -> sink.writeArray(ep.serializeAndSymmetricallyEncrypt(rootKey)));
@@ -408,7 +401,7 @@ public class UserContext {
         return corenodeClient.followRequest(targetUser, ArrayOps.concat(tmp.publicBoxingKey.toByteArray(), payload));
     }
 
-    public boolean addToStaticData(EntryPoint entry) {
+    private boolean addToStaticData(EntryPoint entry) {
         for (int i=0; i < staticData.size(); i++)
             if (entry.equals(staticData.get(entry.pointer.writer)))
                 return true;
@@ -416,7 +409,7 @@ public class UserContext {
         return true;
     }
 
-    public void addToStaticDataAndCommit(EntryPoint entry) throws IOException {
+    private void addToStaticDataAndCommit(EntryPoint entry) throws IOException {
         addToStaticData(entry);
         commitStaticData(user, staticData, rootKey, dhtClient, corenodeClient);
         addEntryPoint(entry);
@@ -520,7 +513,7 @@ public class UserContext {
                 rawKey.length > 0 ? Optional.of(SymmetricKey.deserialize(rawKey)) : Optional.empty(), raw);
     }
 
-    public Multihash uploadFragment(Fragment f, UserPublicKey targetUser) throws IOException {
+    private Multihash uploadFragment(Fragment f, UserPublicKey targetUser) throws IOException {
         return dhtClient.put(f.data, targetUser, Collections.emptyList());
     }
 
@@ -602,7 +595,7 @@ public class UserContext {
         return res;
     }
 
-    public Optional<FileTreeNode> retrieveEntryPoint(EntryPoint e) {
+    private Optional<FileTreeNode> retrieveEntryPoint(EntryPoint e) {
         return downloadEntryPoint(e).map(fa -> new FileTreeNode(new RetrievedFilePointer(e.pointer, fa), e.owner,
                         e.readers, e.writers, e.pointer.writer));
     }
