@@ -1664,15 +1664,15 @@ function ReadableFilePointer(owner, writer, mapKey, baseKey) {
     }
 
     this.toLink = function() {
-	return "#" + Base58.encode(owner.getPublicKeys()) + "/" + Base58.encode(writer.getPublicKeys()) + "/" + Base58.encode(mapKey) + "/" + Base58.encode(baseKey.serialize());
+	return "#" + Base58.encode(writer.getPublicKeys()) + "/" + Base58.encode(mapKey) + "/" + Base58.encode(baseKey.serialize());
     }
 }
 ReadableFilePointer.fromLink = function(keysString) {
     const split = keysString.split("/");
-    const owner = UserPublicKey.fromPublicKeys(Base58.decode(split[0]));
-    const writer = UserPublicKey.fromPublicKeys(Base58.decode(split[1]));
-    const mapKey = Base58.decode(split[2]);
-    const baseKey = SymmetricKey.deserialize(Base58.decode(split[3]));
+    const owner = UserPublicKey.createNull();
+    const writer = UserPublicKey.fromPublicKeys(Base58.decode(split[0]));
+    const mapKey = Base58.decode(split[1]);
+    const baseKey = SymmetricKey.deserialize(Base58.decode(split[2]));
     return new ReadableFilePointer(owner, writer, mapKey, baseKey);
 }
 
