@@ -8,13 +8,7 @@ import java.util.Arrays;
 
 public class SymmetricLink
 {
-    final byte[] link, nonce;
-
-    public SymmetricLink(SymmetricKey from, SymmetricKey to, byte[] iv)
-    {
-        link = from.encrypt(to.getKey(), iv);
-        nonce = iv;
-    }
+    private final byte[] link, nonce;
 
     public SymmetricLink(byte[] link)
     {
@@ -27,18 +21,14 @@ public class SymmetricLink
         return ArrayOps.concat(nonce, link);
     }
 
-    public byte[] getNonce()
-    {
-        return nonce;
-    }
-
     public SymmetricKey target(SymmetricKey from)
     {
         byte[] encoded = from.decrypt(link, nonce);
         return SymmetricKey.deserialize(encoded);
     }
 
-    public static SymmetricLink fromPair(SymmetricKey from, SymmetricKey to, byte[] nonce) {
-    return new SymmetricLink(ArrayOps.concat(nonce, from.encrypt(to.serialize(), nonce)));
-}
+    public static SymmetricLink fromPair(SymmetricKey from, SymmetricKey to) {
+        byte[] nonce = from.createNonce();
+        return new SymmetricLink(ArrayOps.concat(nonce, from.encrypt(to.serialize(), nonce)));
+    }
 }
