@@ -87,6 +87,7 @@ public class StaticHandler implements HttpHandler
             gout.write(tmp, 0, r);
         gout.flush();
         gout.close();
+        in.close();
         return bout.toByteArray();
     }
 
