@@ -59,7 +59,7 @@ public class ReadableFilePointer {
     }
 
     public String toLink() {
-        return "#" + Base58.encode(owner.getPublicKeys()) + "/" + Base58.encode(writer.getPublicKeys()) + "/" + Base58.encode(mapKey) + "/" + Base58.encode(baseKey.serialize());
+        return "#" + Base58.encode(writer.getPublicKeys()) + "/" + Base58.encode(mapKey) + "/" + Base58.encode(baseKey.serialize());
     }
 
     @Override
@@ -82,6 +82,11 @@ public class ReadableFilePointer {
         result = 31 * result + (writer != null ? writer.hashCode() : 0);
         result = 31 * result + Arrays.hashCode(mapKey);
         return result;
+    }
+
+    public boolean isNull() {
+        UserPublicKey nullUser = UserPublicKey.createNull();
+        return nullUser.equals(owner) && nullUser.equals(writer) && Arrays.equals(mapKey, new byte[32]) && baseKey.equals(SymmetricKey.createNull());
     }
 
     public static ReadableFilePointer fromLink(String keysString) {

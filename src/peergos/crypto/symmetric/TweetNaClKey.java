@@ -2,6 +2,8 @@ package peergos.crypto.symmetric;
 
 import peergos.crypto.random.*;
 
+import java.util.*;
+
 public class TweetNaClKey implements SymmetricKey
 {
     public static final int KEY_BYTES = 32;
@@ -52,6 +54,22 @@ public class TweetNaClKey implements SymmetricKey
         byte[] res = new byte[NONCE_BYTES];
         random.randombytes(res, 0, res.length);
         return res;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+
+        TweetNaClKey that = (TweetNaClKey) o;
+
+        return Arrays.equals(secretKey, that.secretKey);
+
+    }
+
+    @Override
+    public int hashCode() {
+        return Arrays.hashCode(secretKey);
     }
 
     public static TweetNaClKey random(Salsa20Poly1305 provider, SafeRandom random)

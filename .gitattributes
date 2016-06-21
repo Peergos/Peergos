@@ -1,0 +1,6 @@
+ui/doppio/** linguist-vendored
+ui/javapoly/** linguist-vendored
+ui/browserfs/** linguist-vendored
+ui/scripts/jquery*.js linguist-vendored
+ui/scripts/react*.js linguist-vendored
+ui/scripts/JSX*.js linguist-vendored

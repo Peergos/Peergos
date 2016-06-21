@@ -398,6 +398,10 @@ public class FileTreeNode {
         return new RetrievedFilePointer(writableFilePointer(), pointer.fileAccess).remove(context, null);
     }
 
+    public InputStream getInputStream(UserContext context, Consumer<Long> monitor) throws IOException {
+        return getInputStream(context, getFileProperties().size, monitor);
+    }
+
     public InputStream getInputStream(UserContext context, long fileSize, Consumer<Long> monitor) throws IOException {
         SymmetricKey baseKey = pointer.filePointer.baseKey;
         return pointer.fileAccess.retriever().getFile(context, baseKey, fileSize, getLocation(), monitor);

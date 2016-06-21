@@ -781,7 +781,11 @@ function CoreNodeClient() {
         var buffer = new ByteArrayOutputStream();
         buffer.writeString(username);
         return postProm("core/getPublicKey", buffer.toByteArray()).then(function(raw) {
-	    var arr = new ByteArrayInputStream(raw).readArray();
+	    var buf = new ByteArrayInputStream(raw);
+	    var present = buf.readByte();
+	    if (!present)
+		return Promise.reject("No such user");
+	    var arr = buf.readArray();
 	    var res = arr.length == 0 ? null : UserPublicKey.fromPublicKeys(arr);
 	    if (res == null)
 		return Promise.reject("No such user");
@@ -1660,15 +1664,15 @@ function ReadableFilePointer(owner, writer, mapKey, baseKey) {
     }
 
     this.toLink = function() {
-	return "#" + Base58.encode(owner.getPublicKeys()) + "/" + Base58.encode(writer.getPublicKeys()) + "/" + Base58.encode(mapKey) + "/" + Base58.encode(baseKey.serialize());
+	return "#" + Base58.encode(writer.getPublicKeys()) + "/" + Base58.encode(mapKey) + "/" + Base58.encode(baseKey.serialize());
     }
 }
 ReadableFilePointer.fromLink = function(keysString) {
     const split = keysString.split("/");
-    const owner = UserPublicKey.fromPublicKeys(Base58.decode(split[0]));
-    const writer = UserPublicKey.fromPublicKeys(Base58.decode(split[1]));
-    const mapKey = Base58.decode(split[2]);
-    const baseKey = SymmetricKey.deserialize(Base58.decode(split[3]));
+    const owner = UserPublicKey.createNull();
+    const writer = UserPublicKey.fromPublicKeys(Base58.decode(split[0]));
+    const mapKey = Base58.decode(split[1]);
+    const baseKey = SymmetricKey.deserialize(Base58.decode(split[2]));
     return new ReadableFilePointer(owner, writer, mapKey, baseKey);
 }
 
@@ -2198,8 +2202,9 @@ function SymmetricLocationLink(arr) {
 
     // SymmetricKey -> Location
     this.targetLocation = function(from) {
-        var nonce = slice(this.link, 0, SymmetricKey.NONCE_BYTES);
-        return Location.decrypt(from, nonce, this.loc);
+        var nonce = slice(this.loc, 0, SymmetricKey.NONCE_BYTES);
+	var rest = slice(this.loc, SymmetricKey.NONCE_BYTES, this.loc.length);
+        return Location.decrypt(from, nonce, rest);
     }
 
     this.target = function(from) {
@@ -2223,9 +2228,10 @@ function SymmetricLocationLink(arr) {
     }
 }
 SymmetricLocationLink.create = function(fromKey, toKey, location) {
-    var nonce = fromKey.createNonce();
-    var loc = location.encrypt(fromKey, nonce);
-    var link = concat(nonce, fromKey.encrypt(toKey.serialize(), nonce));
+    var locNonce = fromKey.createNonce();
+    var loc = concat(locNonce, location.encrypt(fromKey, locNonce));
+    var linkNonce = fromKey.createNonce();
+    var link = concat(linkNonce, fromKey.encrypt(toKey.serialize(), linkNonce));
     var buf = new ByteArrayOutputStream();
     buf.writeArray(link);
     buf.writeArray(loc);

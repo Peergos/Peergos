@@ -110,20 +110,6 @@ public class UserTests {
     }
 
     @Test
-    public void social() throws IOException {
-        UserContext u1 = ensureSignedUp("q", "q", webPort);
-        UserContext u2 = ensureSignedUp("w", "w", webPort);
-        u2.sendFollowRequest(u1.username, SymmetricKey.random());
-        List<FollowRequest> u1Requests = u1.getFollowRequests();
-        assertTrue("Receive a follow request", u1Requests.size() > 0);
-        u1.sendReplyFollowRequest(u1Requests.get(0), true, true);
-        List<FollowRequest> u2FollowRequests = u2.getFollowRequests();
-        Optional<FileTreeNode> friendRoot = u2.getByPath("/" + u1.username);
-        assertTrue("Friend root present after accepted follow request", friendRoot.isPresent());
-        System.out.println();
-    }
-
-    @Test
     public void writeReadVariations() throws IOException {
         String username = "test01";
         String password = "test01";
@@ -277,6 +263,7 @@ public class UserTests {
         if (! dir.isDirectory() &&  ! dir.mkdirs())
             throw new IllegalStateException("Could not find or create specified tmp directory "+ TMP_DIR);
     }
+
     private static Path createTmpFile(String filename) throws IOException {
         ensureTmpDir();
         Path resolve = TMP_DIR.resolve(filename);

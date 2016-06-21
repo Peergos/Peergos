@@ -73,7 +73,7 @@ Architecture
 
 9.0 Sharing of a file (with another user, or publicly)
  - Once user A is being followed by user B, then A can share files with user B (B can revoke their following at any time)
- - based on [cryptree](http://boga.googlecode.com/svn/trunk/res/Docs/wuala-cryptree.pdf) system used by Wuala
+ - based on [cryptree](https://raw.githubusercontent.com/ianopolous/Peergos/master/papers/wuala-cryptree.pdf) system used by Wuala
  - sharing of a text file with another user could constitute a secure email
  - a public link can be generated to a file or a folder which can be shared with anyone through any medium
 

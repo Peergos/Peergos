@@ -17,14 +17,15 @@ public class SymmetricLocationLink {
     }
 
     public Location targetLocation(SymmetricKey from) {
-        byte[] nonce = Arrays.copyOfRange(link, 0, TweetNaCl.SECRETBOX_NONCE_BYTES);
-        return Location.decrypt(from, nonce, loc);
+        byte[] nonce = Arrays.copyOfRange(loc, 0, TweetNaCl.SECRETBOX_NONCE_BYTES);
+        byte[] rest = Arrays.copyOfRange(loc, TweetNaCl.SECRETBOX_NONCE_BYTES, loc.length);
+        return Location.decrypt(from, nonce, rest);
     }
 
     public SymmetricKey target(SymmetricKey from) {
-        byte[] nonce = Arrays.copyOfRange(link, 0, TweetNaCl.SECRETBOX_NONCE_BYTES);
+        byte[] linkNonce = Arrays.copyOfRange(link, 0, TweetNaCl.SECRETBOX_NONCE_BYTES);
         byte[] rest = Arrays.copyOfRange(link, TweetNaCl.SECRETBOX_NONCE_BYTES, link.length);
-        byte[] encoded = from.decrypt(rest, nonce);
+        byte[] encoded = from.decrypt(rest, linkNonce);
         return SymmetricKey.deserialize(encoded);
     }
 
@@ -47,9 +48,10 @@ public class SymmetricLocationLink {
     }
 
     public static SymmetricLocationLink create(SymmetricKey fromKey, SymmetricKey toKey, Location location) {
-        byte[] nonce = fromKey.createNonce();
-        byte[] loc = location.encrypt(fromKey, nonce);
-        byte[] link = ArrayOps.concat(nonce, fromKey.encrypt(toKey.serialize(), nonce));
+        byte[] locNonce = fromKey.createNonce();
+        byte[] loc = ArrayOps.concat(locNonce, location.encrypt(fromKey, locNonce));
+        byte[] linkNonce = fromKey.createNonce();
+        byte[] link = ArrayOps.concat(linkNonce, fromKey.encrypt(toKey.serialize(), linkNonce));
         return new SymmetricLocationLink(link, loc);
     }
 }
