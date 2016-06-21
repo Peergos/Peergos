@@ -8,12 +8,12 @@ import java.util.Arrays;
 
 public class SymmetricLink
 {
-    private final byte[] link, nonce;
+    private final byte[] nonce, link;
 
     public SymmetricLink(byte[] link)
     {
-        this.link = Arrays.copyOfRange(link, TweetNaClKey.NONCE_BYTES, link.length);
         this.nonce = Arrays.copyOfRange(link, 0, TweetNaClKey.NONCE_BYTES);
+        this.link = Arrays.copyOfRange(link, TweetNaClKey.NONCE_BYTES, link.length);
     }
 
     public byte[] serialize()
