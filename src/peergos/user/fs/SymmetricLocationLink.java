@@ -8,11 +8,11 @@ import java.io.*;
 import java.util.*;
 
 public class SymmetricLocationLink {
-    public final byte[] link;
+    public final SymmetricLink link;
     public final byte[] loc;
 
     public SymmetricLocationLink(byte[] link, byte[] location) {
-        this.link = link;
+        this.link = new SymmetricLink(link);
         this.loc = location;
     }
 
@@ -23,15 +23,12 @@ public class SymmetricLocationLink {
     }
 
     public SymmetricKey target(SymmetricKey from) {
-        byte[] linkNonce = Arrays.copyOfRange(link, 0, TweetNaCl.SECRETBOX_NONCE_BYTES);
-        byte[] rest = Arrays.copyOfRange(link, TweetNaCl.SECRETBOX_NONCE_BYTES, link.length);
-        byte[] encoded = from.decrypt(rest, linkNonce);
-        return SymmetricKey.deserialize(encoded);
+        return link.target(from);
     }
 
     public byte[] serialize() {
         DataSink buf = new DataSink();
-        buf.writeArray(link);
+        buf.writeArray(link.serialize());
         buf.writeArray(loc);
         return buf.toByteArray();
     }

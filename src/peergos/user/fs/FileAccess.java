@@ -116,7 +116,7 @@ public class FileAccess {
     public static FileAccess create(SymmetricKey parentKey, SymmetricKey metaKey, FileProperties props,
                                     FileRetriever retriever, Location parentLocation, SymmetricKey parentparentKey) {
         byte[] nonce = metaKey.createNonce();
-        return new FileAccess(SymmetricLink.fromPair(parentKey, metaKey, parentKey.createNonce()),
+        return new FileAccess(SymmetricLink.fromPair(parentKey, metaKey),
                 ArrayOps.concat(nonce, metaKey.encrypt(props.serialize(), nonce)), retriever, SymmetricLocationLink.create(parentKey, parentparentKey, parentLocation));
     }
 }

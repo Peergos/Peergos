@@ -203,10 +203,10 @@ public class DirAccess extends FileAccess {
         SymmetricKey filesKey = SymmetricKey.random();
         byte[] metaNonce = metaKey.createNonce();
         SymmetricLocationLink parentLink = parentLocation == null ? null : SymmetricLocationLink.create(parentKey, parentParentKey, parentLocation);
-        return new DirAccess(SymmetricLink.fromPair(subfoldersKey, filesKey, subfoldersKey.createNonce()),
-                SymmetricLink.fromPair(subfoldersKey, parentKey, subfoldersKey.createNonce()),
+        return new DirAccess(SymmetricLink.fromPair(subfoldersKey, filesKey),
+                SymmetricLink.fromPair(subfoldersKey, parentKey),
                 new ArrayList<>(), new ArrayList<>(),
-                SymmetricLink.fromPair(parentKey, metaKey, parentKey.createNonce()),
+                SymmetricLink.fromPair(parentKey, metaKey),
                 ArrayOps.concat(metaNonce, metaKey.encrypt(metadata.serialize(), metaNonce)),
                 null,
                 parentLink
