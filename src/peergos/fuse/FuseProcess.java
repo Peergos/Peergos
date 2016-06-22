@@ -41,7 +41,7 @@ public class FuseProcess implements Runnable, AutoCloseable {
         ensureNotFinished();
 
         boolean blocking = false;
-        boolean debug = false;
+        boolean debug = true;
         int transferBufferSize = 5*1024*1024;
         String[] fuseOpts = new String[]{"-o", "big_writes", "-o", "large_read",
                 "-o", "fsname=Peergos",
@@ -98,8 +98,8 @@ public class FuseProcess implements Runnable, AutoCloseable {
         setFinalStatic(TweetNaCl.class.getDeclaredField("prng"), new Random());
 
         a = Args.parse(args);
-        String username = a.getArg("username", "test02");
-        String password = a.getArg("password", "test02");
+        String username = a.getArg("username", "test01");
+        String password = a.getArg("password", "test01");
         String mountPath = a.getArg("mountPoint", "/tmp/peergos/tmp");
 
         Path path = Paths.get(mountPath);
@@ -109,7 +109,7 @@ public class FuseProcess implements Runnable, AutoCloseable {
         System.out.println("\n\nPeergos mounted at "+ path+"\n\n");
 
         UserContext userContext = UserTests.ensureSignedUp(username, password, WEB_PORT);
-        PeergosFS peergosFS = new CachingPeergosFS(userContext);
+        PeergosFS peergosFS = new CachingPeergosFS( userContext);
         FuseProcess fuseProcess = new FuseProcess(peergosFS, path);
 
         Runtime.getRuntime().addShutdownHook(new Thread(()  -> fuseProcess.close()));
