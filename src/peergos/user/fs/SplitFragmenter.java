@@ -2,15 +2,8 @@ package peergos.user.fs;
 
 import org.junit.Test;
 
-import java.io.ByteArrayOutputStream;
 import java.io.DataOutput;
 import java.io.IOException;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Random;
-
-
-import static org.junit.Assert.*;
 
 public class SplitFragmenter implements Fragmenter {
 
@@ -26,9 +19,7 @@ public class SplitFragmenter implements Fragmenter {
             int start = Chunk.MAX_SIZE * i;
             int end = Math.min(input.length, start + Chunk.MAX_SIZE);
             int length = end - start;
-            if (length <  0)
-                System.out.println();
-            byte[] b = new byte[length]; 
+            byte[] b = new byte[length];
             System.arraycopy(input, start, b, 0, length);
             split[i] = b;
         }
@@ -40,10 +31,13 @@ public class SplitFragmenter implements Fragmenter {
         dout.writeUTF(peergos.user.fs.Fragmenter.Type.SIMPLE.name());
     }
 
-    public byte[] recombine(byte[][] encoded) {
+    public byte[] recombine(byte[][] encoded, int l) {
          int length = 0;
          for (int i=0; i < encoded.length; i++) 
                  length += encoded[i].length;
+
+        if (length != l)
+            throw new IllegalStateException();
 
          byte[] output = new byte[length];
          int pos =  0;

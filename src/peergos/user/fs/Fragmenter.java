@@ -12,6 +12,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.Random;
+import java.util.stream.Stream;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -20,7 +21,7 @@ public interface Fragmenter {
 
     public byte[][] split(byte[] input);
 
-    public byte[] recombine(byte[][] encoded);
+    public byte[] recombine(byte[][] encoded, int inputLength);
 
     public void serialize(DataOutput dout) throws IOException;
 
@@ -53,20 +54,21 @@ public interface Fragmenter {
         @Parameterized.Parameters(name = "{0}")
         public static Collection<Object[]> parameters() {
             return Arrays.asList(new Object[][]{
-                    {new SplitFragmenter()}
+//                    {new SplitFragmenter()},
+                    {new peergos.user.fs.ErasureFragmenter(EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES)}
             });
         }
 
         @Test
         public void testSeries() throws IOException {
             for (int i = 0; i < 10; i++) {
-                int length = random.nextInt(Chunk.MAX_SIZE * 10);
+                int length = random.nextInt(Chunk.MAX_SIZE * i);
                 byte[] b = new byte[length];
                 test(b);
             }
         }
         @Test public void testBoundary()  throws IOException {
-            List<Integer> sizes = Arrays.asList(0, Chunk.MAX_SIZE, 2 * Chunk.MAX_SIZE);
+            List<Integer> sizes = Arrays.asList(Chunk.MAX_SIZE, 2 * Chunk.MAX_SIZE);
             for (Integer size : sizes) {
                 byte[] b = new byte[size];
                 test(b);
@@ -79,11 +81,11 @@ public interface Fragmenter {
 
             byte[][] split = fragmenter.split(input);
 
-            int nChunk  = input.length / Chunk.MAX_SIZE;
-            if (input.length % Chunk.MAX_SIZE > 0)
-                nChunk++;
-
-            assertEquals(split.length, nChunk);
+//            int nChunk  = input.length / Chunk.MAX_SIZE;
+//            if (input.length % Chunk.MAX_SIZE > 0)
+//                nChunk++;
+//
+//            assertEquals(split.length, nChunk);
 
             for (byte[] bytes : split) {
                 int length = bytes.length;
@@ -91,7 +93,7 @@ public interface Fragmenter {
                 assertTrue(length <= Chunk.MAX_SIZE);
             }
 
-            byte[] recombine = fragmenter.recombine(split);
+            byte[] recombine = fragmenter.recombine(split, input.length);
 
             assertTrue("recombine(split(input)) = input", Arrays.equals(input, recombine));
         }
