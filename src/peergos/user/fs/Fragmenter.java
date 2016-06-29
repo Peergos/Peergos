@@ -8,10 +8,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.List;
-import java.util.Random;
+import java.util.*;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.junit.Assert.assertEquals;
@@ -26,19 +24,41 @@ public interface Fragmenter {
     public void serialize(DataOutput dout) throws IOException;
 
     public static Fragmenter deserialize(DataInput din) throws IOException {
-        String type = din.readUTF();
-        Type valueOf = Type.valueOf(type);
-        switch (valueOf) {
+        int val = din.readInt();
+        Type type  = Type.ofVal(val);
+        switch (type) {
             case SIMPLE:
                 return new peergos.user.fs.SplitFragmenter();
+            case ERASURE_CODING:
+                int nOriginalFragments = din.readInt();
+                int nAllowedFailures = din.readInt();
+                return new peergos.user.fs.ErasureFragmenter(nOriginalFragments, nAllowedFailures);
             default:
                 throw new IllegalStateException();
         }
     }
 
     enum Type  {
-        SIMPLE,
-        ERASURE_CODING
+        SIMPLE(0),
+        ERASURE_CODING(1);
+
+        public final int val;
+
+        Type(int val) {
+            this.val = val;
+        }
+
+        private static Map<Integer, Type> MAP = Stream.of(values())
+                .collect(
+                        Collectors.toMap(
+                                e -> e.val,
+                                e -> e));
+        public static Type ofVal(int val) {
+            Type type = MAP.get(val);
+            if (type == null)
+                throw new IllegalStateException("No type for value "+ val);
+            return type;
+        }
     }
 
     @RunWith(Parameterized.class)

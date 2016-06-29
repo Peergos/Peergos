@@ -28,7 +28,7 @@ public class SplitFragmenter implements Fragmenter {
     }
 
     public void serialize(DataOutput dout) throws IOException {
-        dout.writeUTF(peergos.user.fs.Fragmenter.Type.SIMPLE.name());
+        dout.writeInt(peergos.user.fs.Fragmenter.Type.SIMPLE.val);
     }
 
     public byte[] recombine(byte[][] encoded, int l) {

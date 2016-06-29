@@ -27,9 +27,9 @@ public class ErasureFragmenter implements Fragmenter {
     }
 
     public void serialize(DataOutput dout) throws IOException {
-        dout.writeUTF(Type.ERASURE_CODING.name());
-        dout.writeInt(nAllowedFailures);
+        dout.writeInt(Type.ERASURE_CODING.val);
         dout.writeInt(nOriginalFragments);
+        dout.writeInt(nAllowedFailures);
     }
 
 }
