@@ -181,7 +181,9 @@ public class FileTreeNode {
             return context.getChildren("/");
         if (isReadable()) {
             Set<RetrievedFilePointer> childrenRFPs = retrieveChildren(context);
-            Set<FileTreeNode> newChildren = childrenRFPs.stream().map(x -> new FileTreeNode(x, ownername, readers, writers, entryWriterKey)).collect(Collectors.toSet());
+            Set<FileTreeNode> newChildren = childrenRFPs.stream()
+                    .map(x -> new FileTreeNode(x, ownername, readers, writers, entryWriterKey))
+                    .collect(Collectors.toSet());
             return newChildren.stream().collect(Collectors.toSet());
         }
         return context.getChildren(getPath(context));
@@ -230,6 +232,7 @@ public class FileTreeNode {
             long filesSize = childProps.size;
             FileRetriever retriever = child.getRetriever();
             SymmetricKey baseKey = child.pointer.filePointer.baseKey;
+            SymmetricKey dataKey = child.pointer.fileAccess.getMetaKey(baseKey);
 
             if (startIndex > filesSize) {
                 // append with zeroes up until startIndex
@@ -246,7 +249,7 @@ public class FileTreeNode {
 
             for (; startIndex < endIndex; startIndex = startIndex + Chunk.MAX_SIZE - (startIndex % Chunk.MAX_SIZE)) {
 
-                LocatedChunk currentOriginal = retriever.getChunkInputStream(context, baseKey, startIndex, filesSize, child.getLocation(), monitor).get();
+                LocatedChunk currentOriginal = retriever.getChunkInputStream(context, dataKey, startIndex, filesSize, child.getLocation(), monitor).get();
                 Optional<Location> nextChunkLocationOpt = retriever.getLocationAt(child.getLocation(), startIndex + Chunk.MAX_SIZE, context);
                 byte[] mapKey = new byte[32];
                 context.random.randombytes(mapKey, 0, 32);
@@ -265,11 +268,11 @@ public class FileTreeNode {
 
                 byte[] nonce = new byte[TweetNaCl.SECRETBOX_NONCE_BYTES];
                 context.random.randombytes(nonce, 0, nonce.length);
-                Chunk updated = new Chunk(raw, baseKey, currentOriginal.location.mapKey, nonce);
+                Chunk updated = new Chunk(raw, dataKey, currentOriginal.location.mapKey, nonce);
                 LocatedChunk located = new LocatedChunk(currentOriginal.location, updated);
                 FileProperties newProps = new FileProperties(childProps.name, endIndex > filesSize ? endIndex : filesSize,
                         LocalDateTime.now(), childProps.isHidden, childProps.thumbnail);
-                FileUploader.uploadChunk((User)entryWriterKey, newProps, getLocation(), getParentKey(), located,
+                FileUploader.uploadChunk((User)entryWriterKey, newProps, getLocation(), getParentKey(), baseKey, located,
                         EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES, nextChunkLocation, context, monitor);
 
                 //update indices to be relative to next chunk
@@ -291,6 +294,7 @@ public class FileTreeNode {
             throw new IllegalStateException("Unimplemented!");
         }
         SymmetricKey fileKey = SymmetricKey.random();
+        SymmetricKey fileMetaKey = SymmetricKey.random();
         SymmetricKey rootRKey = pointer.filePointer.baseKey;
         byte[] dirMapKey = pointer.filePointer.mapKey;
         DirAccess dirAccess = (DirAccess) pointer.fileAccess;
@@ -299,7 +303,7 @@ public class FileTreeNode {
 
         byte[] thumbData = generateThumbnail(fileData, filename);
         FileProperties fileProps = new FileProperties(filename, endIndex, LocalDateTime.now(), false, Optional.of(thumbData));
-        FileUploader chunks = new FileUploader(filename, fileData, startIndex, endIndex, fileKey, parentLocation, dirParentKey, monitor, fileProps,
+        FileUploader chunks = new FileUploader(filename, fileData, startIndex, endIndex, fileKey, fileMetaKey, parentLocation, dirParentKey, monitor, fileProps,
                 EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
         byte[] mapKey = new byte[32];
         context.random.randombytes(mapKey, 0, 32);
@@ -413,7 +417,8 @@ public class FileTreeNode {
 
     public InputStream getInputStream(UserContext context, long fileSize, Consumer<Long> monitor) throws IOException {
         SymmetricKey baseKey = pointer.filePointer.baseKey;
-        return pointer.fileAccess.retriever().getFile(context, baseKey, fileSize, getLocation(), monitor);
+        SymmetricKey dataKey = pointer.fileAccess.getMetaKey(baseKey);
+        return pointer.fileAccess.retriever().getFile(context, dataKey, fileSize, getLocation(), monitor);
     }
 
     private FileRetriever getRetriever() {

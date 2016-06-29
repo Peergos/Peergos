@@ -16,7 +16,7 @@ public class FileUploader implements AutoCloseable {
     private final String name;
     private final long offset, length;
     private final FileProperties props;
-    private final SymmetricKey key;
+    private final SymmetricKey baseKey, metaKey;
     private final long nchunks;
     private final Location parentLocation;
     private final SymmetricKey parentparentKey;
@@ -24,13 +24,13 @@ public class FileUploader implements AutoCloseable {
     private final int nOriginalFragments, nAllowedFalures;
     private final peergos.user.fs.Fragmenter fragmenter;
     private final InputStream raf; // resettable input stream
-    public FileUploader(String name, InputStream fileData, long offset, long length, SymmetricKey key, Location parentLocation, SymmetricKey parentparentKey,
+    public FileUploader(String name, InputStream fileData, long offset, long length, SymmetricKey baseKey, SymmetricKey metaKey, Location parentLocation, SymmetricKey parentparentKey,
                         Consumer<Long> monitor, FileProperties fileProperties, int nOriginalFragments, int nAllowedFalures) throws IOException {
         if (fileProperties == null)
             this.props = new FileProperties(name, length, LocalDateTime.now(), false, Optional.empty());
         else
             this.props = fileProperties;
-        if (key == null) key = SymmetricKey.random();
+        if (baseKey == null) baseKey = SymmetricKey.random();
 
         fragmenter = nAllowedFalures == 0 ?
                 new peergos.user.fs.SplitFragmenter() : new peergos.user.fs.ErasureFragmenter(nOriginalFragments, nAllowedFalures);
@@ -42,7 +42,8 @@ public class FileUploader implements AutoCloseable {
         this.offset = offset;
         this.length = length;
         this.raf = fileData;
-        this.key = key;
+        this.baseKey = baseKey;
+        this.metaKey = metaKey;
         this.parentLocation = parentLocation;
         this.parentparentKey = parentparentKey;
         this.monitor = monitor;
@@ -68,9 +69,9 @@ public class FileUploader implements AutoCloseable {
         context.random.randombytes(mapKey, 0, 32);
         byte[] nonce = new byte[TweetNaCl.SECRETBOX_NONCE_BYTES];
         context.random.randombytes(nonce, 0, nonce.length);
-        Chunk chunk = new Chunk(data, key, mapKey, nonce);
+		Chunk chunk = new Chunk(data, metaKey, mapKey, nonce);
         LocatedChunk locatedChunk = new LocatedChunk(new Location(owner, writer, chunk.mapKey()), chunk);
-        uploadChunk(writer, props, parentLocation, parentparentKey, locatedChunk, nOriginalFragments, nAllowedFalures, nextLocation, context, monitor);
+        uploadChunk(writer, props, parentLocation, parentparentKey, baseKey, locatedChunk, nOriginalFragments, nAllowedFalures, nextLocation, context, monitor);
         Location nextL = new Location(owner, writer, chunk.mapKey());
         if (chunkIndex > 0)
             return uploadChunk(context, owner, writer, chunkIndex-1, nextL, monitor);
@@ -85,8 +86,8 @@ public class FileUploader implements AutoCloseable {
     }
 
     public static boolean uploadChunk(User writer, FileProperties props, Location parentLocation, SymmetricKey parentparentKey,
-                                      LocatedChunk chunk, int nOriginalFragments, int nAllowedFalures, Location nextChunkLocation,
-                                      UserContext context, Consumer<Long> monitor) throws IOException {
+                                   SymmetricKey baseKey, LocatedChunk chunk, int nOriginalFragments, int nAllowedFalures, Location nextChunkLocation,
+                                   UserContext context, Consumer<Long> monitor) throws IOException {
         EncryptedChunk encryptedChunk = chunk.chunk.encrypt();
 
         peergos.user.fs.Fragmenter fragmenter = nAllowedFalures == 0 ?
@@ -97,7 +98,7 @@ public class FileUploader implements AutoCloseable {
         System.out.printf("Uploading chunk with %d fragments\n", fragments.size());
         List<Multihash> hashes = context.uploadFragments(fragments, chunk.location.owner, chunk.location.writer, chunk.chunk.mapKey(), monitor);
         FileRetriever retriever = new EncryptedChunkRetriever(chunk.chunk.nonce(), encryptedChunk.getAuth(), hashes, nextChunkLocation, nOriginalFragments, nAllowedFalures);
-        FileAccess metaBlob = FileAccess.create(chunk.chunk.key(), SymmetricKey.random(), props, retriever, parentLocation, parentparentKey);
+        FileAccess metaBlob = FileAccess.create(baseKey, chunk.chunk.key(), props, retriever, parentLocation, parentparentKey);
         return context.uploadChunk(metaBlob, chunk.location.owner, writer, chunk.chunk.mapKey(), hashes);
     }
 
