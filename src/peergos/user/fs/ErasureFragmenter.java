@@ -32,4 +32,22 @@ public class ErasureFragmenter implements Fragmenter {
         dout.writeInt(nAllowedFailures);
     }
 
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+
+        ErasureFragmenter that = (ErasureFragmenter) o;
+
+        if (nOriginalFragments != that.nOriginalFragments) return false;
+        return nAllowedFailures == that.nAllowedFailures;
+    }
+
+    @Override
+    public int hashCode() {
+        int result = nOriginalFragments;
+        result = 31 * result + nAllowedFailures;
+        return result;
+    }
 }

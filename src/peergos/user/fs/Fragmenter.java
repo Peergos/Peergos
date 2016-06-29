@@ -4,10 +4,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
-import java.io.ByteArrayOutputStream;
-import java.io.DataInput;
-import java.io.DataOutput;
-import java.io.IOException;
+import java.io.*;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -74,14 +71,14 @@ public interface Fragmenter {
         @Parameterized.Parameters(name = "{0}")
         public static Collection<Object[]> parameters() {
             return Arrays.asList(new Object[][]{
-//                    {new SplitFragmenter()},
+                    {new SplitFragmenter()},
                     {new peergos.user.fs.ErasureFragmenter(EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES)}
             });
         }
 
         @Test
         public void testSeries() throws IOException {
-            for (int i = 0; i < 10; i++) {
+            for (int i = 1; i < 10; i++) {
                 int length = random.nextInt(Chunk.MAX_SIZE * i);
                 byte[] b = new byte[length];
                 test(b);
@@ -116,6 +113,19 @@ public interface Fragmenter {
             byte[] recombine = fragmenter.recombine(split, input.length);
 
             assertTrue("recombine(split(input)) = input", Arrays.equals(input, recombine));
+        }
+
+
+        @Test public void serializationTest()  throws IOException {
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+            DataOutput dataOutput = new DataOutputStream(outputStream);
+            fragmenter.serialize(dataOutput);
+
+            Fragmenter deserialize = Fragmenter.deserialize(new DataInputStream(
+                    new ByteArrayInputStream(
+                            outputStream.toByteArray())));
+
+            assertEquals(fragmenter, deserialize);
         }
     }
 }

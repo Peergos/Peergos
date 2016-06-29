@@ -48,4 +48,15 @@ public class SplitFragmenter implements Fragmenter {
          }
          return output;
     }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        return  ! (o == null || getClass() != o.getClass());
+    }
+
+    @Override
+    public int hashCode() {
+        return 0;
+    }
 }
