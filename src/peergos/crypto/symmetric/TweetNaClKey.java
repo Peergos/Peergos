@@ -25,11 +25,6 @@ public class TweetNaClKey implements SymmetricKey
         this.random = random;
     }
 
-    public TweetNaClKey(byte[] encoded, Salsa20Poly1305 implementation, SafeRandom random)
-    {
-        this(Arrays.copyOfRange(encoded, 0, encoded.length - 1), encoded[encoded.length - 1] != 0, implementation, random);
-    }
-
     public Type type() {
         return Type.TweetNaCl;
     }
@@ -44,9 +39,7 @@ public class TweetNaClKey implements SymmetricKey
     }
 
     public SymmetricKey toDirty() {
-        byte[] combined = Arrays.copyOfRange(secretKey, 0, secretKey.length + 1);
-        combined[combined.length - 1] = (byte)1;
-        return new TweetNaClKey(combined, implementation, random);
+        return new TweetNaClKey(secretKey, true, implementation, random);
     }
 
     public byte[] encrypt(byte[] data, byte[] nonce)
@@ -97,8 +90,8 @@ public class TweetNaClKey implements SymmetricKey
 
     public static TweetNaClKey random(Salsa20Poly1305 provider, SafeRandom random)
     {
-        byte[] key = new byte[KEY_BYTES + 1];
+        byte[] key = new byte[KEY_BYTES];
         random.randombytes(key, 0, KEY_BYTES);
-        return new TweetNaClKey(key, provider, random);
+        return new TweetNaClKey(key, false, provider, random);
     }
 }
