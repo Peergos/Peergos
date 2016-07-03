@@ -47,21 +47,20 @@ public class UserContext {
 
         public Optional<FileTreeNode> getByPath(String path, UserContext context) {
             System.out.println("GetByPath: "+path);
-            if (path.startsWith("/"))
-                path = path.substring(1);
-            if (path.length() == 0) {
+            String finalPath = path.startsWith("/") ? path.substring(1) : path;
+            if (finalPath.length() == 0) {
                 if (!value.isPresent()) { // find a child entry and traverse parent links
                     return children.values().stream().findAny().get().getByPath("", context).get().retrieveParent(context);
                 }
                 return value.flatMap(e -> context.retrieveEntryPoint(e));
             }
-            String[] elements = path.split("/");
+            String[] elements = finalPath.split("/");
             // There may be an entry point further down the tree, but it will have <= permission than this one
             if (value.isPresent())
-                return context.retrieveEntryPoint(value.get()).get().getDescendentByPath(path, context);
+                return context.retrieveEntryPoint(value.get()).flatMap(e -> e.getDescendentByPath(finalPath, context));
             if (!children.containsKey(elements[0]))
                 return Optional.empty();
-            return children.get(elements[0]).getByPath(path.substring(elements[0].length()), context);
+            return children.get(elements[0]).getByPath(finalPath.substring(elements[0].length()), context);
         }
 
         public Set<FileTreeNode> getChildren(String path, UserContext context) {
@@ -612,9 +611,11 @@ public class UserContext {
         // download the metadata blob for this entry point
         try {
             MaybeMultihash btreeValue = btree.get(entry.pointer.writer, entry.pointer.mapKey);
-            Optional<byte[]> value = dhtClient.get(btreeValue.get());
-            if (value.isPresent()) // otherwise this is a deleted directory
-                return Optional.of(FileAccess.deserialize(value.get()));
+            if (btreeValue.isPresent()) {
+                Optional<byte[]> value = dhtClient.get(btreeValue.get());
+                if (value.isPresent()) // otherwise this is a deleted directory
+                    return Optional.of(FileAccess.deserialize(value.get()));
+            }
         } catch (IOException e) {
             throw new IllegalStateException(e);
         }

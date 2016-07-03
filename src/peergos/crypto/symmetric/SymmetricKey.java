@@ -48,6 +48,8 @@ public interface SymmetricKey
 
     boolean isDirty();
 
+    SymmetricKey makeDirty();
+
     static SymmetricKey deserialize(byte[] in) {
         try {
             return deserialize(new DataInputStream(new ByteArrayInputStream(in)));

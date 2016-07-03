@@ -38,7 +38,7 @@ public class TweetNaClKey implements SymmetricKey
         return isDirty;
     }
 
-    public SymmetricKey toDirty() {
+    public SymmetricKey makeDirty() {
         return new TweetNaClKey(secretKey, true, implementation, random);
     }
 

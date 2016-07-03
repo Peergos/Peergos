@@ -24,6 +24,10 @@ public class ReadableFilePointer {
         return new Location(owner, writer, mapKey);
     }
 
+    public ReadableFilePointer withBaseKey(SymmetricKey newBaseKey) {
+        return new ReadableFilePointer(owner, writer, mapKey, newBaseKey);
+    }
+
     public byte[] serialize() {
         try {
             DataSink bout = new DataSink();

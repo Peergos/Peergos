@@ -94,6 +94,32 @@ public class FileTreeNode {
         return Optional.empty();
     }
 
+    public FileTreeNode makeDirty(UserContext context, FileTreeNode parent, Set<String> readersToRemove) throws IOException {
+        if (!isWritable())
+            throw new IllegalStateException("You cannot mark a file as dirty without write access!");
+        if (isDirectory()) {
+            // create a new baseKey == subfoldersKey and make all descendants dirty
+            SymmetricKey newSubfoldersKEy = SymmetricKey.random();
+            // clean all keys except file dataKeys (lazily re-key and re-encrypt them)
+
+            throw new IllegalStateException("Unimplemented!");
+        } else {
+            // create a new baseKey == parentKey and mark the metaDataKey as dirty
+            SymmetricKey parentKey = SymmetricKey.random();
+            FileAccess newFileAccess = pointer.fileAccess.markDirty(pointer.filePointer, parentKey, context);
+
+            // changing readers here will only affect the returned FileTreeNode, as the readers is derived from th entry point
+            TreeSet<String> newReaders = new TreeSet<>(readers);
+            newReaders.removeAll(readersToRemove);
+            RetrievedFilePointer newPointer = new RetrievedFilePointer(this.pointer.filePointer.withBaseKey(parentKey), newFileAccess);
+
+            // update link from parent folder to file to have new baseKey
+            ((DirAccess) parent.pointer.fileAccess).updateChildLink(parent.pointer.filePointer, pointer, newPointer, context);
+
+            return new FileTreeNode(newPointer, ownername, newReaders, writers, entryWriterKey);
+        }
+    }
+
     public boolean hasChildWithName(String name, UserContext context) {
         return getChildren(context).stream().filter(c -> c.props.name.equals(name)).findAny().isPresent();
     }

@@ -76,12 +76,24 @@ public class FileAccess {
     public boolean rename(ReadableFilePointer writableFilePointer, FileProperties newProps, UserContext context) throws IOException {
         if (!writableFilePointer.isWritable())
             throw new IllegalStateException("Need a writable pointer!");
-        SymmetricKey metaKey;
-        metaKey = this.getMetaKey(writableFilePointer.baseKey);
+        SymmetricKey metaKey = this.getMetaKey(writableFilePointer.baseKey);
         byte[] nonce = metaKey.createNonce();
         FileAccess fa = new FileAccess(this.parent2meta, ArrayOps.concat(nonce, metaKey.encrypt(newProps.serialize(), nonce)), this.retriever, this.parentLink);
         return context.uploadChunk(fa, writableFilePointer.owner, (User) writableFilePointer.writer,
                 writableFilePointer.mapKey, Collections.emptyList()); //TODO get fragment hashes from retriever
+    }
+
+    public FileAccess markDirty(ReadableFilePointer writableFilePointer, SymmetricKey newParentKey, UserContext context) throws IOException {
+        // keep the same metakey, just marked as dirty
+        SymmetricKey metaKey = this.getMetaKey(writableFilePointer.baseKey).makeDirty();
+        SymmetricLink newParentToMeta = SymmetricLink.fromPair(newParentKey, metaKey);
+        SymmetricLocationLink newParentLink = SymmetricLocationLink.create(newParentKey,
+                parentLink.target(writableFilePointer.baseKey),
+                parentLink.targetLocation(writableFilePointer.baseKey));
+        FileAccess fa = new FileAccess(newParentToMeta, properties, this.retriever, newParentLink);
+        context.uploadChunk(fa, writableFilePointer.owner, (User) writableFilePointer.writer,
+                writableFilePointer.mapKey, Collections.emptyList()); //TODO get fragment hashes from retriever
+        return fa;
     }
 
     public FileAccess copyTo(SymmetricKey baseKey, SymmetricKey newBaseKey, Location parentLocation, SymmetricKey parentparentKey,
