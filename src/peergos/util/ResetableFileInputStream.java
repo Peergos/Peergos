@@ -53,4 +53,9 @@ public class ResetableFileInputStream extends InputStream {
     public int read(byte[] b) throws IOException {
         return super.read(b);
     }
+
+    @Override
+    public boolean markSupported() {
+        return true;
+    }
 }

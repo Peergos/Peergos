@@ -96,6 +96,10 @@ public class FileAccess {
         return fa;
     }
 
+    public boolean isDirty(SymmetricKey baseKey) {
+        return getMetaKey(baseKey).isDirty();
+    }
+
     public FileAccess copyTo(SymmetricKey baseKey, SymmetricKey newBaseKey, Location parentLocation, SymmetricKey parentparentKey,
                   User entryWriterKey, byte[] newMapKey, UserContext context) throws IOException {
         if (!Arrays.equals(baseKey.serialize(), newBaseKey.serialize()))

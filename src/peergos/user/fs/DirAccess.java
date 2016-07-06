@@ -37,6 +37,10 @@ public class DirAccess extends FileAccess {
         files.forEach(x -> bout.writeArray(x.serialize()));
     }
 
+    public boolean isDirty(SymmetricKey baseKey) {
+        throw new IllegalStateException("Unimplemented!");
+    }
+
     public boolean rename(ReadableFilePointer writableFilePointer, FileProperties newProps, UserContext context) throws IOException {
         if (!writableFilePointer.isWritable())
             throw new IllegalStateException("Need a writable pointer!");

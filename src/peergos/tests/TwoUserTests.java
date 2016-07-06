@@ -108,6 +108,14 @@ public class TwoUserTests {
         Optional<FileTreeNode> fileWithNewBaseKey = u1New.getByPath(u1New.username + "/" + filename);
         Assert.assertTrue(! updatedSharedFile.isPresent());
         Assert.assertTrue(fileWithNewBaseKey.isPresent());
+
+        // Now modify the file
+        byte[] suffix = "Some new data at the end".getBytes();
+        InputStream suffixStream = new ByteArrayInputStream(suffix);
+        parent.uploadFile(filename, suffixStream, fileContents.length, fileContents.length + suffix.length, Optional.empty(), u1New, l -> {});
+        InputStream extendedContents = u1New.getByPath(u1.username + "/" + filename).get().getInputStream(u1New, l -> {});
+        byte[] newFileContents = Serialize.readFully(extendedContents);
+        Assert.assertTrue(Arrays.equals(newFileContents, ArrayOps.concat(fileContents, suffix)));
     }
 
     @Test

@@ -26,6 +26,8 @@ public class FileUploader implements AutoCloseable {
     private final InputStream raf; // resettable input stream
     public FileUploader(String name, InputStream fileData, long offset, long length, SymmetricKey baseKey, SymmetricKey metaKey, Location parentLocation, SymmetricKey parentparentKey,
                         Consumer<Long> monitor, FileProperties fileProperties, int nOriginalFragments, int nAllowedFalures) throws IOException {
+//        if (! fileData.markSupported())
+//            throw new IllegalStateException("InputStream needs to be resettable!");
         if (fileProperties == null)
             this.props = new FileProperties(name, length, LocalDateTime.now(), false, Optional.empty());
         else
@@ -37,7 +39,7 @@ public class FileUploader implements AutoCloseable {
 
 
         // Process and upload chunk by chunk to avoid running out of RAM, in reverse order to build linked list
-        this.nchunks = (long) Math.ceil((double) (length + 1) / Chunk.MAX_SIZE);
+        this.nchunks = length > 0 ? (length + Chunk.MAX_SIZE - 1) / Chunk.MAX_SIZE : 1;
         this.name = name;
         this.offset = offset;
         this.length = length;
@@ -56,8 +58,8 @@ public class FileUploader implements AutoCloseable {
         System.out.println("uploading chunk: "+chunkIndex + " of "+name);
 
         long position = chunkIndex * Chunk.MAX_SIZE;
-        raf.reset();
-        raf.skip(position);
+//        raf.reset();
+//        raf.skip(position);
 
         long fileLength = length;
         boolean isLastChunk = fileLength < position + Chunk.MAX_SIZE;
