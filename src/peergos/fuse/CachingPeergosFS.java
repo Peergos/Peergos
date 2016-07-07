@@ -35,9 +35,6 @@ public class CachingPeergosFS extends PeergosFS {
         this.chunkCacheSize = chunkCacheSize;
         this.syncSleep = syncSleep;
         this.entryMap = new ConcurrentHashMap<>();
-        //TODO add GC thread to optimistically reduce size
-//        this.syncRunner = new Thread(new Syncher());
-//        this.syncRunner.start();
     }
 
     @Override
@@ -244,6 +241,7 @@ public class CachingPeergosFS extends PeergosFS {
             pointer.put(pointerOffset, data, chunkOffset, length);
             return length;
         }
+
         public int write(Pointer pointer, int pointerOffset, int chunkOffset, int length) {
             ensureInBounds(chunkOffset, length);
             pointer.get(pointerOffset, data, chunkOffset, length);
@@ -276,25 +274,6 @@ public class CachingPeergosFS extends PeergosFS {
         @Override
         public int hashCode() {
             return path != null ? path.hashCode() : 0;
-        }
-    }
-
-    private class GarbageCollector implements Runnable {
-
-        private final Set<String> previousEntryKeys = new HashSet<>();
-
-        @Override
-        public void run() {
-            while (! isClosed) {
-                try {
-                    Thread.sleep(syncSleep);
-                } catch (InterruptedException ie){}
-            }
-
-        }
-
-        private void sync()  {
-            for (String previousEntryKey : previousEntryKeys) {}
         }
     }
 
