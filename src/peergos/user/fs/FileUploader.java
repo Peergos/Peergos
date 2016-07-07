@@ -54,12 +54,10 @@ public class FileUploader implements AutoCloseable {
     }
 
     public Location uploadChunk(UserContext context, UserPublicKey owner, User writer, long chunkIndex,
-                                Location nextLocation, Consumer<Long> monitor) throws IOException {
-        System.out.println("uploading chunk: "+chunkIndex + " of "+name);
+                                Location currentLocation, Consumer<Long> monitor) throws IOException {
+	    System.out.println("uploading chunk: "+chunkIndex + " of "+name);
 
         long position = chunkIndex * Chunk.MAX_SIZE;
-//        raf.reset();
-//        raf.skip(position);
 
         long fileLength = length;
         boolean isLastChunk = fileLength < position + Chunk.MAX_SIZE;
@@ -67,24 +65,23 @@ public class FileUploader implements AutoCloseable {
         byte[] data = new byte[length];
         Serialize.readFullArray(raf, data);
 
-        byte[] mapKey = new byte[32];
-        context.random.randombytes(mapKey, 0, 32);
-        byte[] nonce = new byte[TweetNaCl.SECRETBOX_NONCE_BYTES];
-        context.random.randombytes(nonce, 0, nonce.length);
-		Chunk chunk = new Chunk(data, metaKey, mapKey, nonce);
+        byte[] nonce = context.randomBytes(TweetNaCl.SECRETBOX_NONCE_BYTES);
+        Chunk chunk = new Chunk(data, metaKey, currentLocation.mapKey, nonce);
         LocatedChunk locatedChunk = new LocatedChunk(new Location(owner, writer, chunk.mapKey()), chunk);
+        byte[] mapKey = context.randomBytes(32);
+        Location nextLocation = new Location(owner, writer, mapKey);
         uploadChunk(writer, props, parentLocation, parentparentKey, baseKey, locatedChunk, nOriginalFragments, nAllowedFalures, nextLocation, context, monitor);
-        Location nextL = new Location(owner, writer, chunk.mapKey());
-        if (chunkIndex > 0)
-            return uploadChunk(context, owner, writer, chunkIndex-1, nextL, monitor);
-        return nextL;
+        return nextLocation;
     }
 
-    public Location upload(UserContext context, UserPublicKey owner, User writer, Location nextChunk) throws IOException {
+    public Location upload(UserContext context, UserPublicKey owner, User writer, Location currentChunk) throws IOException {
         long t1 = System.currentTimeMillis();
-        Location res = uploadChunk(context, owner, writer, this.nchunks-1, nextChunk, l -> {});
+        Location originalChunk = currentChunk;
+
+        for (int i=0; i < nchunks; i++)
+            currentChunk = uploadChunk(context, owner, writer, i, currentChunk, l -> {});
         System.out.println("File encryption, erasure coding and upload took: " +(System.currentTimeMillis()-t1) + " mS");
-        return res;
+        return originalChunk;
     }
 
     public static boolean uploadChunk(User writer, FileProperties props, Location parentLocation, SymmetricKey parentparentKey,

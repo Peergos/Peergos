@@ -120,7 +120,7 @@ public class FuseTests {
         assertTrue("target exists after move", target.toFile().exists());
         byte[] targetData = Files.readAllBytes(target);
 
-        assertTrue("target contents equal to iniital contents", Arrays.equals(initialData, targetData));
+        assertTrue("target contents equal to initial contents", Arrays.equals(initialData, targetData));
     }
 
     @Test public void copyFileTest() throws IOException  {

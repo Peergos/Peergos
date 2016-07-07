@@ -301,8 +301,7 @@ public class FileTreeNode {
         FileProperties fileProps = new FileProperties(filename, endIndex, LocalDateTime.now(), false, Optional.of(thumbData));
         FileUploader chunks = new FileUploader(filename, fileData, startIndex, endIndex, fileKey, fileMetaKey, parentLocation, dirParentKey, monitor, fileProps,
                 EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
-        byte[] mapKey = new byte[32];
-        context.random.randombytes(mapKey, 0, 32);
+        byte[] mapKey = context.randomBytes(32);
         Location nextChunkLocation = new Location(getLocation().owner, getLocation().writer, mapKey);
         Location fileLocation = chunks.upload(context, parentLocation.owner, (User)entryWriterKey, nextChunkLocation);
         dirAccess.addFile(fileLocation, rootRKey, fileKey);
@@ -330,16 +329,12 @@ public class FileTreeNode {
             }, filesSize, startIndex, context, l -> {}, fragmenter);
         }
 
-        if (endIndex == 10*1024*1024)
-            System.nanoTime();
-
         for (; startIndex < endIndex; startIndex = startIndex + Chunk.MAX_SIZE - (startIndex % Chunk.MAX_SIZE)) {
 
             LocatedChunk currentOriginal = retriever.getChunkInputStream(context, dataKey, startIndex, filesSize, child.getLocation(), monitor).get();
             Optional<Location> nextChunkLocationOpt = retriever.getLocationAt(child.getLocation(), startIndex + Chunk.MAX_SIZE, context);
-            byte[] mapKey = new byte[32];
-            context.random.randombytes(mapKey, 0, 32);
-            Location nextChunkLocation = nextChunkLocationOpt.orElse(new Location(getLocation().owner, getLocation().writer, mapKey));
+            Supplier<Location> locationSupplier = () -> new Location(getLocation().owner, getLocation().writer, context.randomBytes(32));
+            Location nextChunkLocation = nextChunkLocationOpt.orElseGet(locationSupplier);
 
             System.out.println("********** Writing to chunk at mapkey: "+ArrayOps.bytesToHex(currentOriginal.location.mapKey) + " next: "+nextChunkLocation);
             // modify chunk, re-encrypt and upload
