@@ -526,18 +526,20 @@ function Chunk(data, key) {
 
 Chunk.MAX_SIZE = 5*1024*1024;
 // string, File, SymmetricKey, Location, SymmetricKey -> 
-function FileUploader(name, file, key, parentLocation, parentparentKey, setProgressPercentage, fileProperties, nOriginalFragments, nAllowedFalures) {
+function FileUploader(name, file, baseKey, metaKey, parentLocation, parentparentKey, setProgressPercentage, fileProperties, nOriginalFragments, nAllowedFalures) {
     if (fileProperties == null)
 	this.props = new FileProperties(name, 0, file.size, Date.now(), 0);
     else
 	this.props = fileProperties;
-    if (key == null) key = SymmetricKey.random();
+    if (baseKey == null) baseKey = SymmetricKey.random();
+    if (metaKey == null) metaKey = SymmetricKey.random();
 
     // Process and upload chunk by chunk to avoid running out of RAM, in reverse order to build linked list
     this.nchunks = Math.ceil(file.size/Chunk.MAX_SIZE);
     
     this.file = file;
-    this.key = key;
+    this.baseKey = baseKey;
+    this.metaKey = metaKey;
     this.parentLocation = parentLocation;
     this.parentparentKey = parentparentKey;
     this.setProgressPercentage = setProgressPercentage;
@@ -552,13 +554,13 @@ function FileUploader(name, file, key, parentLocation, parentparentKey, setProgr
 	    filereader.file_name = file.name;
 	    filereader.onload = function(){
 		const data = new Uint8Array(this.result);
-		var chunk = new Chunk(data, key)
+		var chunk = new Chunk(data, metaKey)
 		const encryptedChunk = chunk.encrypt();
 		encryptedChunk.generateFragments(that.nOriginalFragments, that.nAllowedFalures).then(function(fragments){
                     console.log("Uploading chunk with %d fragments\n", fragments.length);
 		    context.uploadFragments(fragments, owner, writer, chunk.mapKey, setProgressPercentage).then(function(hashes){
 			const retriever = new EncryptedChunkRetriever(chunk.nonce, encryptedChunk.getAuth(), hashes, nextLocation, that.nOriginalFragments, that.nAllowedFalures);
-			const metaBlob = FileAccess.create(chunk.key, that.props, retriever, parentLocation, parentparentKey);
+			const metaBlob = FileAccess.create(baseKey, that.props, retriever, parentLocation, parentparentKey, metaKey);
 			context.uploadChunk(metaBlob, owner, writer, chunk.mapKey, hashes).then(function() {
 			    resolve(new Location(owner, writer, chunk.mapKey));
 			});
@@ -1874,6 +1876,7 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 	    return Promise.resolve(false)
 	}
 	const fileKey = SymmetricKey.random();
+	const metaKey = SymmetricKey.random();
         const rootRKey = pointer.filePointer.baseKey;
         const owner = pointer.filePointer.owner;
         const dirMapKey = pointer.filePointer.mapKey;
@@ -1884,7 +1887,7 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 	
 	return generateThumbnail(file, filename).then(function(thumbData) {
 	    const fileProps = new FileProperties(filename, 0, file.size, Date.now(), 0, thumbData);
-	    const chunks = new FileUploader(filename, file, fileKey, parentLocation, dirParentKey, setProgressPercentage, fileProps);
+	    const chunks = new FileUploader(filename, file, fileKey, metaKey, parentLocation, dirParentKey, setProgressPercentage, fileProps);
             return chunks.upload(context, owner, entryWriterKey).then(function(fileLocation) {
 		dirAccess.addFile(fileLocation, rootRKey, fileKey);
 		return context.uploadChunk(dirAccess, owner, entryWriterKey, dirMapKey);
@@ -2320,7 +2323,7 @@ function FileAccess(parent2meta, properties, retriever, parentLink) {
 	if (!arraysEqual(baseKey.serialize(), newBaseKey.serialize()))
 	    throw "FileAcess clone must have same base key as original!";
 	const props = this.getFileProperties(baseKey);
-	const fa = FileAccess.create(newBaseKey, props, this.retriever, parentLocation, parentparentKey);
+	const fa = FileAccess.create(newBaseKey, props, this.retriever, parentLocation, parentparentKey, isDirectory() ? SymmetricKey.random() : getMetaKey(baseKey));
 	return context.uploadChunk(fa, context.user, entryWriterKey, newMapKey).then(function(res) {
 	    return Promise.resolve(fa);
 	});
@@ -2345,8 +2348,8 @@ FileAccess.deserialize = function(raw) {
     }
 }
 
-FileAccess.create = function(parentKey, props, retriever, parentLocation, parentparentKey) {
-    var metaKey = SymmetricKey.random();
+FileAccess.create = function(parentKey, props, retriever, parentLocation, parentparentKey, metaKey) {
+    if (metaKey == null) metaKey = SymmetricKey.random();
     var nonce = metaKey.createNonce();
     return new FileAccess(SymmetricLink.fromPair(parentKey, metaKey, parentKey.createNonce()),
 			  concat(nonce, metaKey.encrypt(props.serialize(), nonce)), retriever, SymmetricLocationLink.create(parentKey, parentparentKey, parentLocation));
