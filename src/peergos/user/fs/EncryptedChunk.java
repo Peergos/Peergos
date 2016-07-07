@@ -22,10 +22,11 @@ public class EncryptedChunk {
         Arrays.copyOfRange(encrypted, TweetNaCl.SECRETBOX_OVERHEAD_BYTES, encrypted.length));
     }
 
-    public List<Fragment> generateFragments(int nOriginalFragments, int nAllowedFailures) {
+    public List<Fragment> generateFragments(peergos.user.fs.Fragmenter  fragmenter) {
         if (this.cipher.length == 0)
             return Collections.emptyList();
-        byte[][] bfrags = Erasure.split(this.cipher, nOriginalFragments, nAllowedFailures);
+
+        byte[][] bfrags = fragmenter.split(cipher);
         List<Fragment> frags = new ArrayList<>();
         for (int i=0; i < bfrags.length; i++)
             frags.add(new Fragment(bfrags[i]));

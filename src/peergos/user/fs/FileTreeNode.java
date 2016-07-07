@@ -201,15 +201,15 @@ public class FileTreeNode {
         return isNull || pointer.fileAccess.isDirectory();
     }
 
-    public boolean uploadFile(String filename, File f, UserContext context, Consumer<Long> monitor) throws IOException {
-        return uploadFile(filename, new ResetableFileInputStream(f), f.length(), context,  monitor);
+    public boolean uploadFile(String filename, File f, UserContext context, Consumer<Long> monitor, peergos.user.fs.Fragmenter fragmenter) throws IOException {
+        return uploadFile(filename, new ResetableFileInputStream(f), f.length(), context,  monitor, fragmenter);
     }
 
-    public boolean uploadFile(String filename, InputStream fileData, long length, UserContext context, Consumer<Long> monitor) throws IOException {
-        return uploadFile(filename, fileData, 0, length, context, monitor);
+    public boolean uploadFile(String filename, InputStream fileData, long length, UserContext context, Consumer<Long> monitor, peergos.user.fs.Fragmenter fragmenter) throws IOException {
+        return uploadFile(filename, fileData, 0, length, context, monitor, fragmenter);
     }
 
-    public boolean uploadFile(String filename, InputStream fileData, long startIndex, long endIndex, UserContext context, Consumer<Long> monitor) throws IOException {
+    public boolean uploadFile(String filename, InputStream fileData, long startIndex, long endIndex, UserContext context, Consumer<Long> monitor, peergos.user.fs.Fragmenter fragmenter) throws IOException {
         if (!isLegalName(filename))
             return false;
         Optional<FileTreeNode> childOpt = getChildren(context).stream().filter(f -> f.getFileProperties().name.equals(filename)).findAny();
@@ -228,8 +228,7 @@ public class FileTreeNode {
                     public int read() throws IOException {
                         return 0;
                     }
-                }, filesSize, startIndex, context, l -> {
-                });
+                }, filesSize, startIndex, context, l -> {}, fragmenter);
             }
 
             if (endIndex == 10*1024*1024)

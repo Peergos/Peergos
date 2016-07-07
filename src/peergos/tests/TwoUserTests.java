@@ -66,7 +66,7 @@ public class TwoUserTests {
         File f = File.createTempFile("peergos", "");
         byte[] originalFileContents = "Hello Peergos friend!".getBytes();
         Files.write(f.toPath(), originalFileContents);
-        boolean uploaded = u1Root.uploadFile(filename, f, u1, l -> {});
+        boolean uploaded = u1Root.uploadFile(filename, f, u1, l -> {}, u1.fragmenter());
         FileTreeNode file = u1.getByPath(u1.username + "/" + filename).get();
         FileTreeNode u1ToU2 = u1.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + u2.username).get();
         boolean success = u1ToU2.addLinkTo(file, u1);

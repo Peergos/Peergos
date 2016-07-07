@@ -18,6 +18,7 @@ public class EncryptedChunkRetriever implements FileRetriever {
     private final int nOriginalFragments, nAllowedFailures;
     private final List<Multihash> fragmentHashes;
     private final Location nextChunk;
+    private final peergos.user.fs.Fragmenter fragmenter;
 
     public EncryptedChunkRetriever(byte[] chunkNonce, byte[] chunkAuth, List<Multihash> fragmentHashes, Location nextChunk, int nOriginalFragments, int nAllowedFailures) {
         this.chunkNonce = chunkNonce;
@@ -26,6 +27,9 @@ public class EncryptedChunkRetriever implements FileRetriever {
         this.nAllowedFailures = nAllowedFailures;
         this.fragmentHashes = fragmentHashes;
         this.nextChunk = nextChunk;
+
+        fragmenter = nAllowedFailures == 0 ?
+                new peergos.user.fs.SplitFragmenter() : new peergos.user.fs.ErasureFragmenter(nOriginalFragments, nAllowedFailures);
     }
 
     public LazyInputStreamCombiner getFile(UserContext context, SymmetricKey dataKey, long fileSize, Location ourLocation, Consumer<Long> monitor) throws IOException {
@@ -37,8 +41,8 @@ public class EncryptedChunkRetriever implements FileRetriever {
         if (bytesRemainingUntilStart < Chunk.MAX_SIZE) {
             List<FragmentWithHash> fragments = context.downloadFragments(fragmentHashes, monitor);
             fragments = reorder(fragments, fragmentHashes);
-            byte[] cipherText = Erasure.recombine(fragments.stream().map(f -> f.fragment.data).collect(Collectors.toList()),
-                    Chunk.MAX_SIZE, nOriginalFragments, nAllowedFailures);
+            byte[][] collect = fragments.stream().map(f -> f.fragment.data).toArray(byte[][]::new);
+            byte[] cipherText = fragmenter.recombine(collect, Chunk.MAX_SIZE);
             EncryptedChunk fullEncryptedChunk = new EncryptedChunk(ArrayOps.concat(chunkAuth, cipherText));
             if (truncateTo < Chunk.MAX_SIZE)
                 fullEncryptedChunk = fullEncryptedChunk.truncateTo((int)truncateTo);

@@ -28,6 +28,7 @@ public class UserContext {
     private final SortedMap<UserPublicKey, EntryPoint> staticData = new TreeMap<>();
     private final TrieNode entrie = new TrieNode(); // ba dum che!
     private Set<String> usernames;
+    private final Fragmenter fragmenter;
 
     // Contact external world
     public final DHTClient dhtClient;
@@ -99,6 +100,12 @@ public class UserContext {
 
     public UserContext(String username, User user, SymmetricKey root, DHTClient dht, Btree btree, CoreNode coreNode,
                        LoginHasher hasher, Salsa20Poly1305 provider, SafeRandom random, Ed25519 signer, Curve25519 boxer) throws IOException {
+        this(username, user, root, dht, btree, coreNode, hasher, provider, random, signer, boxer, new ErasureFragmenter(40, 10));
+    }
+
+    public UserContext(String username, User user, SymmetricKey root, DHTClient dht, Btree btree, CoreNode coreNode,
+                       LoginHasher hasher, Salsa20Poly1305 provider, SafeRandom random, Ed25519 signer,
+                       Curve25519 boxer, Fragmenter fragmenter) throws IOException {
         this.username = username;
         this.user = user;
         this.rootKey = root;
@@ -110,6 +117,7 @@ public class UserContext {
         this.random = random;
         this.signer = signer;
         this.boxer = boxer;
+        this.fragmenter = fragmenter;
     }
 
     public static UserContext ensureSignedUp(String username, String password, int webPort) throws IOException {
@@ -676,5 +684,9 @@ public class UserContext {
 
     public void logout() {
         entrie.clear();
+    }
+
+    public Fragmenter fragmenter() {
+        return fragmenter;
     }
 }
