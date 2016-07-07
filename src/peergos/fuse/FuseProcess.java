@@ -41,7 +41,7 @@ public class FuseProcess implements Runnable, AutoCloseable {
         ensureNotFinished();
 
         boolean blocking = false;
-        boolean debug = true;
+        boolean debug = false;
         int transferBufferSize = 5*1024*1024;
         String[] fuseOpts = new String[]{"-o", "big_writes", "-o", "large_read",
                 "-o", "fsname=Peergos",
