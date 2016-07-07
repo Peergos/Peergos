@@ -1978,7 +1978,8 @@ function FileTreeNode(pointer, ownername, readers, writers, entryWriterKey) {
 
     this.getInputStream = function(context, size, setProgressPercentage) {
 	const baseKey = pointer.filePointer.baseKey;
-	return pointer.fileAccess.retriever.getFile(context, baseKey, size, setProgressPercentage)
+	const metaKey = pointer.fileAccess.getMetaKey(baseKey);
+	return pointer.fileAccess.retriever.getFile(context, metaKey, size, setProgressPercentage)
     }
 
     this.getFileProperties = function() {
