@@ -2,6 +2,7 @@ package peergos.user.fs;
 
 
 import peergos.user.fs.erasure.Erasure;
+import peergos.util.*;
 
 import java.io.DataOutput;
 import java.io.IOException;
@@ -26,12 +27,11 @@ public class ErasureFragmenter implements Fragmenter {
         return Erasure.recombine(encoded, truncateLength, nOriginalFragments, nAllowedFailures);
     }
 
-    public void serialize(DataOutput dout) throws IOException {
+    public void serialize(DataSink dout) {
         dout.writeInt(Type.ERASURE_CODING.val);
         dout.writeInt(nOriginalFragments);
         dout.writeInt(nAllowedFailures);
     }
-
 
     @Override
     public boolean equals(Object o) {

@@ -15,21 +15,16 @@ import java.util.stream.*;
 public class EncryptedChunkRetriever implements FileRetriever {
 
     private final byte[] chunkNonce, chunkAuth;
-    private final int nOriginalFragments, nAllowedFailures;
     private final List<Multihash> fragmentHashes;
     private final Location nextChunk;
     private final peergos.user.fs.Fragmenter fragmenter;
 
-    public EncryptedChunkRetriever(byte[] chunkNonce, byte[] chunkAuth, List<Multihash> fragmentHashes, Location nextChunk, int nOriginalFragments, int nAllowedFailures) {
+    public EncryptedChunkRetriever(byte[] chunkNonce, byte[] chunkAuth, List<Multihash> fragmentHashes, Location nextChunk, Fragmenter fragmenter) {
         this.chunkNonce = chunkNonce;
         this.chunkAuth = chunkAuth;
-        this.nOriginalFragments = nOriginalFragments;
-        this.nAllowedFailures = nAllowedFailures;
         this.fragmentHashes = fragmentHashes;
         this.nextChunk = nextChunk;
-
-        fragmenter = nAllowedFailures == 0 ?
-                new peergos.user.fs.SplitFragmenter() : new peergos.user.fs.ErasureFragmenter(nOriginalFragments, nAllowedFailures);
+        this.fragmenter = fragmenter;
     }
 
     public LazyInputStreamCombiner getFile(UserContext context, SymmetricKey dataKey, long fileSize, Location ourLocation, Consumer<Long> monitor) throws IOException {
@@ -114,8 +109,7 @@ public class EncryptedChunkRetriever implements FileRetriever {
         buf.writeByte(this.nextChunk != null ? (byte)1 : 0);
         if (this.nextChunk != null)
             buf.write(this.nextChunk.serialize());
-        buf.writeInt(this.nOriginalFragments);
-        buf.writeInt(this.nAllowedFailures);
+        fragmenter.serialize(buf);
     }
 
     public static EncryptedChunkRetriever deserialize(DataSource buf) throws IOException {
@@ -132,10 +126,9 @@ public class EncryptedChunkRetriever implements FileRetriever {
         Location nextChunk = null;
         if (hasNext)
             nextChunk = Location.deserialize(buf);
-        int nOriginalFragments = buf.readInt();
-        int nAllowedFailures = buf.readInt();
+        Fragmenter fragmenter = Fragmenter.deserialize(buf);
 
-        return new EncryptedChunkRetriever(chunkNonce, chunkAuth, hashes, nextChunk, nOriginalFragments, nAllowedFailures);
+        return new EncryptedChunkRetriever(chunkNonce, chunkAuth, hashes, nextChunk, fragmenter);
     }
 
     private static List<FragmentWithHash> reorder(List<FragmentWithHash> fragments, List<Multihash> hashes) {
