@@ -6,6 +6,9 @@ import peergos.crypto.symmetric.*;
 import peergos.user.*;
 import peergos.util.*;
 
+import javax.imageio.ImageIO;
+import java.awt.*;
+import java.awt.image.BufferedImage;
 import java.io.*;
 import java.time.*;
 import java.util.*;
@@ -13,6 +16,13 @@ import java.util.function.*;
 import java.util.stream.*;
 
 public class FileTreeNode {
+
+    final static byte[] BMP = new byte[]{66, 77};
+    final static byte[] GIF = new byte[]{71, 73, 70};
+    final static byte[] JPEG = new byte[]{(byte)255, (byte)216};
+    final static byte[] PNG = new byte[]{(byte)137, 80, 78, 71, 13, 10, 26, 10};
+    final static int HEADER_BYTES_TO_IDENTIFY_IMAGE_FILE = 8;
+    final static int THUMBNAIL_SIZE = 100;
 
     RetrievedFilePointer pointer;
     private FileProperties props;
@@ -108,7 +118,7 @@ public class FileTreeNode {
         } else {
             ((DirAccess)pointer.fileAccess).addFile(loc, this.getKey(), file.getKey());
         }
-        return ((DirAccess)pointer.fileAccess).commit(pointer.filePointer.owner, (User)entryWriterKey, pointer.filePointer.mapKey, context);
+        return ((DirAccess)pointer.fileAccess).commit(pointer.filePointer.owner, (User) entryWriterKey, pointer.filePointer.mapKey, context);
     }
 
     public String toLink() {
@@ -296,7 +306,7 @@ public class FileTreeNode {
         Location nextChunkLocation = new Location(getLocation().owner, getLocation().writer, mapKey);
         Location fileLocation = chunks.upload(context, parentLocation.owner, (User)entryWriterKey, nextChunkLocation);
         dirAccess.addFile(fileLocation, rootRKey, fileKey);
-        return context.uploadChunk(dirAccess, parentLocation.owner, (User)entryWriterKey, dirMapKey, Collections.emptyList());
+        return context.uploadChunk(dirAccess, parentLocation.owner, (User) entryWriterKey, dirMapKey, Collections.emptyList());
     }
 
     static boolean isLegalName(String name) {
@@ -314,13 +324,13 @@ public class FileTreeNode {
         if (!isLegalName(newFolderName))
             return Optional.empty();
         if (hasChildWithName(newFolderName, context)) {
-            System.out.println("Child already exists with name: "+newFolderName);
+            System.out.println("Child already exists with name: " + newFolderName);
             return Optional.empty();
         }
         ReadableFilePointer dirPointer = pointer.filePointer;
         DirAccess dirAccess = (DirAccess)pointer.fileAccess;
         SymmetricKey rootDirKey = dirPointer.baseKey;
-        return Optional.of(dirAccess.mkdir(newFolderName, context, (User)entryWriterKey, dirPointer.mapKey, rootDirKey,
+        return Optional.of(dirAccess.mkdir(newFolderName, context, (User) entryWriterKey, dirPointer.mapKey, rootDirKey,
                 requestedBaseSymmetricKey, isSystemFolder, random));
     }
 
@@ -423,18 +433,53 @@ public class FileTreeNode {
     }
 
     public byte[] generateThumbnail(InputStream imageBlob, String fileName) {
-        byte[] data = new byte[20];
-        byte[] BMP = new byte[]{66, 77};
-        byte[] GIF = new byte[]{71, 73, 70};
-        byte[] JPEG = new byte[]{(byte)255, (byte)216};
-        byte[] PNG = new byte[]{(byte)137, 80, 78, 71, 13, 10, 26, 10};
-        if (!Arrays.equals(Arrays.copyOfRange(data, 0, BMP.length), BMP)
-                && !Arrays.equals(Arrays.copyOfRange(data, 0, GIF.length), GIF)
-                && !Arrays.equals(Arrays.copyOfRange(data, 0, PNG.length), PNG)
-                && !Arrays.equals(Arrays.copyOfRange(data, 0, 2), JPEG))
-            return new byte[0];
-        int width = 100, height = 100;
-	    //TODO
+        try {
+            if(!isImage(imageBlob)) {
+                return new byte[0];
+            }
+            BufferedImage image = ImageIO.read(imageBlob);
+            BufferedImage thumbnailImage = new BufferedImage(THUMBNAIL_SIZE, THUMBNAIL_SIZE, image.getType());
+            Graphics2D g = thumbnailImage.createGraphics();
+            g.setComposite(AlphaComposite.Src);
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g.drawImage(image, 0, 0, THUMBNAIL_SIZE, THUMBNAIL_SIZE, null);
+            g.dispose();
+
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            ImageIO.write(thumbnailImage, "JPG", baos);
+            baos.close();
+            return baos.toByteArray();
+        }
+        catch (IOException ioe) {
+            ioe.printStackTrace();
+        }
         return new byte[0];
+    }
+
+    private boolean isImage(InputStream imageBlob)
+    {
+        try {
+            byte[] data = new byte[HEADER_BYTES_TO_IDENTIFY_IMAGE_FILE];
+            if(imageBlob.read(data, 0, HEADER_BYTES_TO_IDENTIFY_IMAGE_FILE) < HEADER_BYTES_TO_IDENTIFY_IMAGE_FILE) {
+                return false;
+            }
+            if (!Arrays.equals(Arrays.copyOfRange(data, 0, BMP.length), BMP)
+                    && !Arrays.equals(Arrays.copyOfRange(data, 0, GIF.length), GIF)
+                    && !Arrays.equals(Arrays.copyOfRange(data, 0, PNG.length), PNG)
+                    && !Arrays.equals(Arrays.copyOfRange(data, 0, 2), JPEG))
+                return false;
+            return true;
+        } catch (IOException ex) {
+            ex.printStackTrace();
+        }	finally {
+            try{
+                if(imageBlob != null) {
+                    imageBlob.reset();
+                }
+            }catch(Exception e){}
+        }
+        return false;
     }
 }
