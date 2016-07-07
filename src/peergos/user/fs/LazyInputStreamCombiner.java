@@ -12,6 +12,8 @@ public class LazyInputStreamCombiner extends InputStream {
     private final SymmetricKey dataKey;
     private final Consumer<Long> monitor;
     private final long totalLength;
+    private final byte[] original;
+    private final Location originalNext;
     private long globalIndex = 0;
     private byte[] current;
     private int index;
@@ -25,6 +27,8 @@ public class LazyInputStreamCombiner extends InputStream {
         this.next = stream.getNext();
         this.totalLength = totalLength;
         this.monitor = monitor;
+        this.original = chunk;
+        this.originalNext = next;
     }
 
     public byte[] getNextStream(int len) throws IOException {
@@ -57,6 +61,18 @@ public class LazyInputStreamCombiner extends InputStream {
         current = getNextStream(toRead);
         index = 0;
         return current[index++];
+    }
+
+    @Override
+    public void reset() {
+        index = 0;
+        current = original;
+        next = originalNext;
+    }
+
+    @Override
+    public boolean markSupported() {
+        return true;
     }
 
     @Override

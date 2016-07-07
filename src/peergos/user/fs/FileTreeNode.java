@@ -298,6 +298,7 @@ public class FileTreeNode {
         Location parentLocation = getLocation();
 
         byte[] thumbData = generateThumbnail(fileData, filename);
+        fileData.reset();
         FileProperties fileProps = new FileProperties(filename, endIndex, LocalDateTime.now(), false, Optional.of(thumbData));
         FileUploader chunks = new FileUploader(filename, fileData, startIndex, endIndex, fileKey, fileMetaKey, parentLocation, dirParentKey, monitor, fileProps,
                 EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
