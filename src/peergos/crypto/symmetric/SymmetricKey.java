@@ -46,6 +46,10 @@ public interface SymmetricKey
 
     byte[] createNonce();
 
+    boolean isDirty();
+
+    SymmetricKey makeDirty();
+
     static SymmetricKey deserialize(byte[] in) {
         try {
             return deserialize(new DataInputStream(new ByteArrayInputStream(in)));
@@ -58,9 +62,10 @@ public interface SymmetricKey
         Type t = Type.byValue(din.read());
         switch (t) {
             case TweetNaCl:
-                byte[] key = new byte[32];
+                byte[] key = new byte[TweetNaClKey.KEY_BYTES];
                 din.readFully(key);
-                return new TweetNaClKey(key, PROVIDERS.get(t), RNG_PROVIDERS.get(t));
+                boolean isDirty = din.readBoolean();
+                return new TweetNaClKey(key, isDirty, PROVIDERS.get(t), RNG_PROVIDERS.get(t));
             default: throw new IllegalStateException("Unknown Symmetric Key type: "+t.name());
         }
 
@@ -70,6 +75,7 @@ public interface SymmetricKey
         DataSink sink = new DataSink();
         sink.write(type().value);
         sink.write(getKey());
+        sink.writeBoolean(isDirty());
         return sink.toByteArray();
     }
 
@@ -78,6 +84,6 @@ public interface SymmetricKey
     }
 
     static SymmetricKey createNull() {
-        return new TweetNaClKey(new byte[32], PROVIDERS.get(Type.TweetNaCl), RNG_PROVIDERS.get(Type.TweetNaCl));
+        return new TweetNaClKey(new byte[TweetNaClKey.KEY_BYTES], false, PROVIDERS.get(Type.TweetNaCl), RNG_PROVIDERS.get(Type.TweetNaCl));
     }
 }

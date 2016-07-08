@@ -8,23 +8,23 @@ public class Chunk {
     public static final int ERASURE_ORIGINAL= 40;
     public static final int MAX_SIZE = Fragment.MAX_LENGTH * ERASURE_ORIGINAL;
 
-    private final SymmetricKey key;
+    private final SymmetricKey dataKey;
     private final byte[] data, mapKey;
     private final byte[] nonce;
 
-    public Chunk(byte[] data, SymmetricKey key, byte[] mapKey, byte[] nonce) {
+    public Chunk(byte[] data, SymmetricKey dataKey, byte[] mapKey, byte[] nonce) {
         this.data = data;
-        this.key = key;
+        this.dataKey = dataKey;
         this.mapKey = mapKey;
         this.nonce = nonce;
     }
 
     public EncryptedChunk encrypt() {
-        return new EncryptedChunk(key.encrypt(data, nonce));
+        return new EncryptedChunk(dataKey.encrypt(data, nonce));
     }
 
     public SymmetricKey key() {
-        return key;
+        return dataKey;
     }
 
     public byte[] mapKey() {

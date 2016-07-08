@@ -3,6 +3,7 @@ package peergos.user.fs;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
+import peergos.util.*;
 
 import java.io.*;
 import java.util.*;
@@ -14,13 +15,13 @@ import static org.junit.Assert.assertTrue;
 
 public interface Fragmenter {
 
-    public byte[][] split(byte[] input);
+    byte[][] split(byte[] input);
 
-    public byte[] recombine(byte[][] encoded, int inputLength);
+    byte[] recombine(byte[][] encoded, int inputLength);
 
-    public void serialize(DataOutput dout) throws IOException;
+    void serialize(DataSink dout);
 
-    public static Fragmenter deserialize(DataInput din) throws IOException {
+    static Fragmenter deserialize(DataInput din) throws IOException {
         int val = din.readInt();
         Type type  = Type.ofVal(val);
         switch (type) {
@@ -59,7 +60,7 @@ public interface Fragmenter {
     }
 
     @RunWith(Parameterized.class)
-    public static class FragmenterTest  {
+    class FragmenterTest  {
         private static Random random = new Random(666);
 
         private final Fragmenter  fragmenter;
@@ -117,13 +118,11 @@ public interface Fragmenter {
 
 
         @Test public void serializationTest()  throws IOException {
-            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-            DataOutput dataOutput = new DataOutputStream(outputStream);
-            fragmenter.serialize(dataOutput);
+            DataSink sink = new DataSink();
+            fragmenter.serialize(sink);
 
             Fragmenter deserialize = Fragmenter.deserialize(new DataInputStream(
-                    new ByteArrayInputStream(
-                            outputStream.toByteArray())));
+                    new ByteArrayInputStream(sink.toByteArray())));
 
             assertEquals(fragmenter, deserialize);
         }

@@ -94,6 +94,32 @@ public class FileTreeNode {
         return Optional.empty();
     }
 
+    public FileTreeNode makeDirty(UserContext context, FileTreeNode parent, Set<String> readersToRemove) throws IOException {
+        if (!isWritable())
+            throw new IllegalStateException("You cannot mark a file as dirty without write access!");
+        if (isDirectory()) {
+            // create a new baseKey == subfoldersKey and make all descendants dirty
+            SymmetricKey newSubfoldersKEy = SymmetricKey.random();
+            // clean all keys except file dataKeys (lazily re-key and re-encrypt them)
+
+            throw new IllegalStateException("Unimplemented!");
+        } else {
+            // create a new baseKey == parentKey and mark the metaDataKey as dirty
+            SymmetricKey parentKey = SymmetricKey.random();
+            FileAccess newFileAccess = pointer.fileAccess.markDirty(pointer.filePointer, parentKey, context);
+
+            // changing readers here will only affect the returned FileTreeNode, as the readers is derived from th entry point
+            TreeSet<String> newReaders = new TreeSet<>(readers);
+            newReaders.removeAll(readersToRemove);
+            RetrievedFilePointer newPointer = new RetrievedFilePointer(this.pointer.filePointer.withBaseKey(parentKey), newFileAccess);
+
+            // update link from parent folder to file to have new baseKey
+            ((DirAccess) parent.pointer.fileAccess).updateChildLink(parent.pointer.filePointer, pointer, newPointer, context);
+
+            return new FileTreeNode(newPointer, ownername, newReaders, writers, entryWriterKey);
+        }
+    }
+
     public boolean hasChildWithName(String name, UserContext context) {
         return getChildren(context).stream().filter(c -> c.props.name.equals(name)).findAny().isPresent();
     }
@@ -181,7 +207,9 @@ public class FileTreeNode {
             return context.getChildren("/");
         if (isReadable()) {
             Set<RetrievedFilePointer> childrenRFPs = retrieveChildren(context);
-            Set<FileTreeNode> newChildren = childrenRFPs.stream().map(x -> new FileTreeNode(x, ownername, readers, writers, entryWriterKey)).collect(Collectors.toSet());
+            Set<FileTreeNode> newChildren = childrenRFPs.stream()
+                    .map(x -> new FileTreeNode(x, ownername, readers, writers, entryWriterKey))
+                    .collect(Collectors.toSet());
             return newChildren.stream().collect(Collectors.toSet());
         }
         return context.getChildren(getPath(context));
@@ -216,81 +244,53 @@ public class FileTreeNode {
     }
 
     public boolean uploadFile(String filename, InputStream fileData, long length, UserContext context, Consumer<Long> monitor, peergos.user.fs.Fragmenter fragmenter) throws IOException {
-        return uploadFile(filename, fileData, 0, length, context, monitor, fragmenter);
+        return uploadFile(filename, fileData, 0, length, Optional.empty(), context, monitor, fragmenter);
     }
 
-    public boolean uploadFile(String filename, InputStream fileData, long startIndex, long endIndex, UserContext context, Consumer<Long> monitor, peergos.user.fs.Fragmenter fragmenter) throws IOException {
+    public boolean isDirty() {
+        return pointer.fileAccess.isDirty(pointer.filePointer.baseKey);
+    }
+
+    public FileTreeNode clean(UserContext context, FileTreeNode parent, peergos.user.fs.Fragmenter fragmenter) throws IOException {
+        if (!isDirty())
+            return this;
+        if (isDirectory()) {
+            throw new IllegalStateException("Unimplemented directory cleaning!");
+        } else {
+            FileProperties props = getFileProperties();
+            SymmetricKey baseKey = pointer.filePointer.baseKey;
+            // stream download and re-encrypt with new metaKey
+            InputStream in = getInputStream(context, l -> {});
+            byte[] tmp = new byte[16];
+            new Random().nextBytes(tmp);
+            String tmpFilename = ArrayOps.bytesToHex(tmp) + ".tmp";
+
+            boolean upload = parent.uploadFile(tmpFilename, in, 0, props.size, Optional.of(baseKey), context, l -> {}, fragmenter);
+            Optional<FileTreeNode> tmpChild = parent.getDescendentByPath(tmpFilename, context);
+            boolean rename = tmpChild.get().rename(props.name, context, parent, true);
+            return parent.getDescendentByPath(props.name, context).get();
+        }
+    }
+
+    public boolean uploadFile(String filename, InputStream fileData, long startIndex, long endIndex,
+                              UserContext context, Consumer<Long> monitor, peergos.user.fs.Fragmenter fragmenter) throws IOException {
+        return uploadFile(filename, fileData, startIndex, endIndex, Optional.empty(), context, monitor, fragmenter);
+    }
+
+    public boolean uploadFile(String filename, InputStream fileData, long startIndex, long endIndex, Optional<SymmetricKey> baseKey,
+                              UserContext context, Consumer<Long> monitor, peergos.user.fs.Fragmenter fragmenter) throws IOException {
         if (!isLegalName(filename))
             return false;
-        Optional<FileTreeNode> childOpt = getChildren(context).stream().filter(f -> f.getFileProperties().name.equals(filename)).findAny();
+        Optional<FileTreeNode> childOpt = getDescendentByPath(filename, context);
         if (childOpt.isPresent()) {
-            System.out.println("Overwriting section ["+Long.toHexString(startIndex)+", "+Long.toHexString(endIndex)+"] of child with name: "+filename);
-            FileTreeNode child = childOpt.get();
-            FileProperties childProps = child.getFileProperties();
-            long filesSize = childProps.size;
-            FileRetriever retriever = child.getRetriever();
-            SymmetricKey baseKey = child.pointer.filePointer.baseKey;
-
-            if (startIndex > filesSize) {
-                // append with zeroes up until startIndex
-                uploadFile(filename, new InputStream() {
-                    @Override
-                    public int read() throws IOException {
-                        return 0;
-                    }
-                }, filesSize, startIndex, context, l -> {}, fragmenter);
-            }
-
-            if (endIndex == 10*1024*1024)
-                System.nanoTime();
-
-            for (; startIndex < endIndex; startIndex = startIndex + Chunk.MAX_SIZE - (startIndex % Chunk.MAX_SIZE)) {
-
-                LocatedChunk currentOriginal = retriever.getChunkInputStream(context, baseKey, startIndex, filesSize, child.getLocation(), monitor).get();
-                Optional<Location> nextChunkLocationOpt = retriever.getLocationAt(child.getLocation(), startIndex + Chunk.MAX_SIZE, context);
-                byte[] mapKey = new byte[32];
-                context.random.randombytes(mapKey, 0, 32);
-                Location nextChunkLocation = nextChunkLocationOpt.orElse(new Location(getLocation().owner, getLocation().writer, mapKey));
-
-                System.out.println("********* Writing to chunk at mapkey: "+ArrayOps.bytesToHex(currentOriginal.location.mapKey) + " next: "+nextChunkLocation);
-                // modify chunk, re-encrypt and upload
-                int internalStart = (int) (startIndex % Chunk.MAX_SIZE);
-                int internalEnd = endIndex - (startIndex - internalStart) > Chunk.MAX_SIZE ?
-                        Chunk.MAX_SIZE : (int)(endIndex - (startIndex - internalStart));
-                byte[] raw = currentOriginal.chunk.data();
-                // extend data array if necessary
-                if (raw.length < internalEnd)
-                    raw = Arrays.copyOfRange(raw, 0, internalEnd);
-                fileData.read(raw, internalStart, internalEnd - internalStart);
-
-                byte[] nonce = new byte[TweetNaCl.SECRETBOX_NONCE_BYTES];
-                context.random.randombytes(nonce, 0, nonce.length);
-                Chunk updated = new Chunk(raw, baseKey, currentOriginal.location.mapKey, nonce);
-                LocatedChunk located = new LocatedChunk(currentOriginal.location, updated);
-                FileProperties newProps = new FileProperties(childProps.name, endIndex > filesSize ? endIndex : filesSize,
-                        LocalDateTime.now(), childProps.isHidden, childProps.thumbnail);
-                FileUploader.uploadChunk((User)entryWriterKey, newProps, getLocation(), getParentKey(), located,
-                        EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES, nextChunkLocation, context, monitor);
-
-                //update indices to be relative to next chunk
-                if (startIndex + internalEnd - internalStart > filesSize) {
-                    filesSize = startIndex + internalEnd - internalStart;
-                    if (startIndex + internalEnd - internalStart > Chunk.MAX_SIZE) {
-                        // update file size in FileProperties of first chunk
-                        Optional<FileTreeNode> updatedChild = getChildren(context).stream().filter(f -> f.getFileProperties().name.equals(filename)).findAny();
-                        boolean b = updatedChild.get().setProperties(child.getFileProperties().withSize(endIndex), context, this);
-                        if (!b)
-                            throw new IllegalStateException("Failed to update file properties for "+child);
-                    }
-                }
-            }
-            return true;
+            return updateExistingChild(childOpt.get(), fileData, startIndex, endIndex, context, monitor, fragmenter);
         }
         if (startIndex > 0) {
             // TODO if startIndex > 0 prepend with a zero section
             throw new IllegalStateException("Unimplemented!");
         }
-        SymmetricKey fileKey = SymmetricKey.random();
+        SymmetricKey fileKey = baseKey.orElseGet(() -> SymmetricKey.random());
+        SymmetricKey fileMetaKey = SymmetricKey.random();
         SymmetricKey rootRKey = pointer.filePointer.baseKey;
         byte[] dirMapKey = pointer.filePointer.mapKey;
         DirAccess dirAccess = (DirAccess) pointer.fileAccess;
@@ -298,15 +298,78 @@ public class FileTreeNode {
         Location parentLocation = getLocation();
 
         byte[] thumbData = generateThumbnail(fileData, filename);
+        fileData.reset();
         FileProperties fileProps = new FileProperties(filename, endIndex, LocalDateTime.now(), false, Optional.of(thumbData));
-        FileUploader chunks = new FileUploader(filename, fileData, startIndex, endIndex, fileKey, parentLocation, dirParentKey, monitor, fileProps,
+        FileUploader chunks = new FileUploader(filename, fileData, startIndex, endIndex, fileKey, fileMetaKey, parentLocation, dirParentKey, monitor, fileProps,
                 EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
-        byte[] mapKey = new byte[32];
-        context.random.randombytes(mapKey, 0, 32);
+        byte[] mapKey = context.randomBytes(32);
         Location nextChunkLocation = new Location(getLocation().owner, getLocation().writer, mapKey);
         Location fileLocation = chunks.upload(context, parentLocation.owner, (User)entryWriterKey, nextChunkLocation);
         dirAccess.addFile(fileLocation, rootRKey, fileKey);
         return context.uploadChunk(dirAccess, parentLocation.owner, (User) entryWriterKey, dirMapKey, Collections.emptyList());
+    }
+
+    private boolean updateExistingChild(FileTreeNode existingChild, InputStream fileData, long startIndex, long endIndex, UserContext context,
+                                     Consumer<Long> monitor, peergos.user.fs.Fragmenter fragmenter) throws IOException {
+        String filename = existingChild.getFileProperties().name;
+        System.out.println("Overwriting section ["+Long.toHexString(startIndex)+", "+Long.toHexString(endIndex)+"] of child with name: "+filename);
+        FileTreeNode child = existingChild.isDirty() ? existingChild.clean(context, this, fragmenter) : existingChild;
+        FileProperties childProps = child.getFileProperties();
+        long filesSize = childProps.size;
+        FileRetriever retriever = child.getRetriever();
+        SymmetricKey baseKey = child.pointer.filePointer.baseKey;
+        SymmetricKey dataKey = child.pointer.fileAccess.getMetaKey(baseKey);
+
+        if (startIndex > filesSize) {
+            // append with zeroes up until startIndex
+            updateExistingChild(existingChild, new InputStream() {
+                @Override
+                public int read() throws IOException {
+                    return 0;
+                }
+            }, filesSize, startIndex, context, l -> {}, fragmenter);
+        }
+
+        for (; startIndex < endIndex; startIndex = startIndex + Chunk.MAX_SIZE - (startIndex % Chunk.MAX_SIZE)) {
+
+            LocatedChunk currentOriginal = retriever.getChunkInputStream(context, dataKey, startIndex, filesSize, child.getLocation(), monitor).get();
+            Optional<Location> nextChunkLocationOpt = retriever.getLocationAt(child.getLocation(), startIndex + Chunk.MAX_SIZE, context);
+            Supplier<Location> locationSupplier = () -> new Location(getLocation().owner, getLocation().writer, context.randomBytes(32));
+            Location nextChunkLocation = nextChunkLocationOpt.orElseGet(locationSupplier);
+
+            System.out.println("********** Writing to chunk at mapkey: "+ArrayOps.bytesToHex(currentOriginal.location.mapKey) + " next: "+nextChunkLocation);
+            // modify chunk, re-encrypt and upload
+            int internalStart = (int) (startIndex % Chunk.MAX_SIZE);
+            int internalEnd = endIndex - (startIndex - internalStart) > Chunk.MAX_SIZE ?
+                    Chunk.MAX_SIZE : (int)(endIndex - (startIndex - internalStart));
+            byte[] raw = currentOriginal.chunk.data();
+            // extend data array if necessary
+            if (raw.length < internalEnd)
+                raw = Arrays.copyOfRange(raw, 0, internalEnd);
+            fileData.read(raw, internalStart, internalEnd - internalStart);
+
+            byte[] nonce = new byte[TweetNaCl.SECRETBOX_NONCE_BYTES];
+            context.random.randombytes(nonce, 0, nonce.length);
+            Chunk updated = new Chunk(raw, dataKey, currentOriginal.location.mapKey, nonce);
+            LocatedChunk located = new LocatedChunk(currentOriginal.location, updated);
+            FileProperties newProps = new FileProperties(childProps.name, endIndex > filesSize ? endIndex : filesSize,
+                    LocalDateTime.now(), childProps.isHidden, childProps.thumbnail);
+            FileUploader.uploadChunk((User)entryWriterKey, newProps, getLocation(), getParentKey(), baseKey, located,
+                    EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES, nextChunkLocation, context, monitor);
+
+            //update indices to be relative to next chunk
+            if (startIndex + internalEnd - internalStart > filesSize) {
+                filesSize = startIndex + internalEnd - internalStart;
+                if (startIndex + internalEnd - internalStart > Chunk.MAX_SIZE) {
+                    // update file size in FileProperties of first chunk
+                    Optional<FileTreeNode> updatedChild = getChildren(context).stream().filter(f -> f.getFileProperties().name.equals(filename)).findAny();
+                    boolean b = updatedChild.get().setProperties(child.getFileProperties().withSize(endIndex), context, this);
+                    if (!b)
+                        throw new IllegalStateException("Failed to update file properties for "+child);
+                }
+            }
+        }
+        return true;
     }
 
     static boolean isLegalName(String name) {
@@ -335,10 +398,19 @@ public class FileTreeNode {
     }
 
     public boolean rename(String newFilename, UserContext context, FileTreeNode parent) throws IOException {
-        if (!this.isLegalName(newFilename))
+        return rename(newFilename, context, parent, false);
+    }
+
+    public boolean rename(String newFilename, UserContext context, FileTreeNode parent, boolean overwrite) throws IOException {
+        if (! isLegalName(newFilename))
             return false;
-        if (parent != null && parent.hasChildWithName(newFilename, context))
+        Optional<FileTreeNode> existing = parent == null ? Optional.empty() : parent.getDescendentByPath(newFilename, context);
+        if (existing.isPresent() && ! overwrite)
             return false;
+
+        if (overwrite && existing.isPresent())
+            existing.get().remove(context, parent);
+
         //get current props
         ReadableFilePointer filePointer = pointer.filePointer;
         SymmetricKey baseKey = filePointer.baseKey;
@@ -413,7 +485,8 @@ public class FileTreeNode {
 
     public InputStream getInputStream(UserContext context, long fileSize, Consumer<Long> monitor) throws IOException {
         SymmetricKey baseKey = pointer.filePointer.baseKey;
-        return pointer.fileAccess.retriever().getFile(context, baseKey, fileSize, getLocation(), monitor);
+        SymmetricKey dataKey = pointer.fileAccess.getMetaKey(baseKey);
+        return pointer.fileAccess.retriever().getFile(context, dataKey, fileSize, getLocation(), monitor);
     }
 
     private FileRetriever getRetriever() {

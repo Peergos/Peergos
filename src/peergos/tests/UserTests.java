@@ -45,7 +45,7 @@ public class UserTests {
     public static Collection<Object[]> parameters() {
         Random r = new Random(0);
         return Arrays.asList(new Object[][] {
-//                {"IPFS", r},
+                {"IPFS", r},
                 {"RAM", r}
         });
     }

@@ -37,6 +37,10 @@ public class DirAccess extends FileAccess {
         files.forEach(x -> bout.writeArray(x.serialize()));
     }
 
+    public boolean isDirty(SymmetricKey baseKey) {
+        throw new IllegalStateException("Unimplemented!");
+    }
+
     public boolean rename(ReadableFilePointer writableFilePointer, FileProperties newProps, UserContext context) throws IOException {
         if (!writableFilePointer.isWritable())
             throw new IllegalStateException("Need a writable pointer!");
@@ -58,11 +62,21 @@ public class DirAccess extends FileAccess {
         this.files.add(SymmetricLocationLink.create(filesKey, targetParent, location));
     }
 
-    public boolean removeChild(RetrievedFilePointer childRetrievedPointer, ReadableFilePointer readablePointer, UserContext context) throws IOException {
+    public void updateChildLink(ReadableFilePointer ourPointer, RetrievedFilePointer original, RetrievedFilePointer modified, UserContext context) throws IOException {
+        removeChild(original, ourPointer, context);
+        Location loc = modified.filePointer.getLocation();
+        if (modified.fileAccess.isDirectory())
+            addSubdir(loc, ourPointer.baseKey, modified.filePointer.baseKey);
+        else
+            addFile(loc, ourPointer.baseKey, modified.filePointer.baseKey);
+        context.uploadChunk(this, ourPointer.owner, (User) ourPointer.writer, ourPointer.mapKey, Collections.EMPTY_LIST);
+    }
+
+    public boolean removeChild(RetrievedFilePointer childRetrievedPointer, ReadableFilePointer ourPointer, UserContext context) throws IOException {
         if (childRetrievedPointer.fileAccess.isDirectory()) {
             this.subfolders = subfolders.stream().filter(e -> {
                 try {
-                    Location target = e.targetLocation(readablePointer.baseKey);
+                    Location target = e.targetLocation(ourPointer.baseKey);
                     boolean keep = true;
                     if (Arrays.equals(target.mapKey, childRetrievedPointer.filePointer.mapKey))
                         if (Arrays.equals(target.writer.getPublicKeys(), childRetrievedPointer.filePointer.writer.getPublicKeys()))
@@ -78,7 +92,7 @@ public class DirAccess extends FileAccess {
             }).collect(Collectors.toList());
         } else {
             files = files.stream().filter(e -> {
-            SymmetricKey filesKey = subfolders2files.target(readablePointer.baseKey);
+            SymmetricKey filesKey = subfolders2files.target(ourPointer.baseKey);
                 try {
                     Location target = e.targetLocation(filesKey);
                     boolean keep = true;
@@ -95,7 +109,7 @@ public class DirAccess extends FileAccess {
                 }
             }).collect(Collectors.toList());
         }
-        return context.uploadChunk(this, readablePointer.owner, (User) readablePointer.writer, readablePointer.mapKey, Collections.EMPTY_LIST);
+        return context.uploadChunk(this, ourPointer.owner, (User) ourPointer.writer, ourPointer.mapKey, Collections.EMPTY_LIST);
     }
 
     // 0=FILE, 1=DIR

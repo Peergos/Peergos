@@ -32,7 +32,7 @@ public class UserUtil {
                 new Ed25519PublicKey(publicSignBytes, signer),
                 new Curve25519PublicKey(pubilcBoxBytes, boxer, random));
 
-        SymmetricKey root =  new TweetNaClKey(rootKeyBytes, provider, random);
+        SymmetricKey root =  new TweetNaClKey(rootKeyBytes, false, provider, random);
 
         return new UserWithRoot(user, root);
     }

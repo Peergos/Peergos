@@ -1,5 +1,6 @@
 package peergos.crypto.symmetric;
 
+import peergos.crypto.*;
 import peergos.crypto.random.*;
 
 import java.util.*;
@@ -10,12 +11,16 @@ public class TweetNaClKey implements SymmetricKey
     public static final int NONCE_BYTES = 24;
 
     private final byte[] secretKey;
+    private final boolean isDirty;
     private final Salsa20Poly1305 implementation;
     private final SafeRandom random;
 
-    public TweetNaClKey(byte[] encoded, Salsa20Poly1305 implementation, SafeRandom random)
+    public TweetNaClKey(byte[] secretKey, boolean isDirty, Salsa20Poly1305 implementation, SafeRandom random)
     {
-        this.secretKey = encoded;
+        if (secretKey.length != TweetNaCl.SECRETBOX_KEY_BYTES)
+            throw new IllegalStateException("Incorrect key size! ("+secretKey.length+")");
+        this.secretKey = secretKey;
+        this.isDirty = isDirty;
         this.implementation = implementation;
         this.random = random;
     }
@@ -27,6 +32,14 @@ public class TweetNaClKey implements SymmetricKey
     public byte[] getKey()
     {
         return secretKey;
+    }
+
+    public boolean isDirty() {
+        return isDirty;
+    }
+
+    public SymmetricKey makeDirty() {
+        return new TweetNaClKey(secretKey, true, implementation, random);
     }
 
     public byte[] encrypt(byte[] data, byte[] nonce)
@@ -63,19 +76,22 @@ public class TweetNaClKey implements SymmetricKey
 
         TweetNaClKey that = (TweetNaClKey) o;
 
+        if (isDirty != that.isDirty) return false;
         return Arrays.equals(secretKey, that.secretKey);
 
     }
 
     @Override
     public int hashCode() {
-        return Arrays.hashCode(secretKey);
+        int result = Arrays.hashCode(secretKey);
+        result = 31 * result + (isDirty ? 1 : 0);
+        return result;
     }
 
     public static TweetNaClKey random(Salsa20Poly1305 provider, SafeRandom random)
     {
         byte[] key = new byte[KEY_BYTES];
-        random.randombytes(key, 0, key.length);
-        return new TweetNaClKey(key, provider, random);
+        random.randombytes(key, 0, KEY_BYTES);
+        return new TweetNaClKey(key, false, provider, random);
     }
 }

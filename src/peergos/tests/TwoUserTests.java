@@ -14,6 +14,7 @@ import java.io.*;
 import java.lang.reflect.*;
 import java.nio.file.*;
 import java.util.*;
+import java.util.stream.*;
 
 import static org.junit.Assert.assertTrue;
 
@@ -89,7 +90,33 @@ public class TwoUserTests {
         byte[] fileContents = Serialize.readFully(inputStream);
         Assert.assertTrue("shared file contents correct", Arrays.equals(originalFileContents, fileContents));
 
-        // TODO unshare
+        // unshare
+        UserContext u1New = UserTests.ensureSignedUp("a", "a", webPort);
+        UserContext u2New = UserTests.ensureSignedUp("b", "b", webPort);
+        // remove link from shared directory
+        FileTreeNode u1Shared = u1New.getByPath(u1New.username + "/" + UserContext.SHARED_DIR_NAME).get();
+        u1ToU2.remove(u1New, u1Shared);
+
+        // mark file as dirty
+        FileTreeNode parent = u1New.getByPath(u1New.username).get();
+        FileTreeNode newFile = file.makeDirty(u1New, parent, Stream.of(u2New.username).collect(Collectors.toSet()));
+
+        //test that u2 cannot access it from scratch
+        Optional<FileTreeNode> updatedSharedFile = u2New.getByPath(u1New.username + "/" + UserContext.SHARED_DIR_NAME + "/" + u2New.username + "/" + filename);
+
+        // test that u1 can still access the original file
+        Optional<FileTreeNode> fileWithNewBaseKey = u1New.getByPath(u1New.username + "/" + filename);
+        Assert.assertTrue(! updatedSharedFile.isPresent());
+        Assert.assertTrue(fileWithNewBaseKey.isPresent());
+
+        // Now modify the file
+        byte[] suffix = "Some new data at the end".getBytes();
+        InputStream suffixStream = new ByteArrayInputStream(suffix);
+        parent.uploadFile(filename, suffixStream, fileContents.length, fileContents.length + suffix.length, Optional.empty(), u1New, l -> {}, u1New.fragmenter());
+        InputStream extendedContents = u1New.getByPath(u1.username + "/" + filename).get().getInputStream(u1New, l -> {});
+        byte[] newFileContents = Serialize.readFully(extendedContents);
+
+        Assert.assertTrue(Arrays.equals(newFileContents, ArrayOps.concat(fileContents, suffix)));
     }
 
     @Test

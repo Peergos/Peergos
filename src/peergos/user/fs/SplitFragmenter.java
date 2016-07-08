@@ -1,9 +1,6 @@
 package peergos.user.fs;
 
-import org.junit.Test;
-
-import java.io.DataOutput;
-import java.io.IOException;
+import peergos.util.*;
 
 public class SplitFragmenter implements Fragmenter {
 
@@ -27,7 +24,7 @@ public class SplitFragmenter implements Fragmenter {
 
     }
 
-    public void serialize(DataOutput dout) throws IOException {
+    public void serialize(DataSink dout) {
         dout.writeInt(peergos.user.fs.Fragmenter.Type.SIMPLE.val);
     }
 
