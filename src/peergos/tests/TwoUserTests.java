@@ -71,6 +71,7 @@ public class TwoUserTests {
         FileTreeNode file = u1.getByPath(u1.username + "/" + filename).get();
         FileTreeNode u1ToU2 = u1.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + u2.username).get();
         boolean success = u1ToU2.addLinkTo(file, u1);
+        FileTreeNode ownerViewOfLink = u1.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + u2.username + "/" + filename).get();
         Assert.assertTrue("Shared file", success);
 
         Set<FileTreeNode> u2children = u2
@@ -91,12 +92,12 @@ public class TwoUserTests {
         Assert.assertTrue("shared file contents correct", Arrays.equals(originalFileContents, fileContents));
 
         // unshare
-        UserContext u1New = UserTests.ensureSignedUp("a", "a", webPort);
-        UserContext u2New = UserTests.ensureSignedUp("b", "b", webPort);
-
         u1.unShare(Paths.get("a", filename), "b");
 
         //test that u2 cannot access it from scratch
+        UserContext u1New = UserTests.ensureSignedUp("a", "a", webPort);
+        UserContext u2New = UserTests.ensureSignedUp("b", "b", webPort);
+
         Optional<FileTreeNode> updatedSharedFile = u2New.getByPath(u1New.username + "/" + UserContext.SHARED_DIR_NAME + "/" + u2New.username + "/" + filename);
 
         // test that u1 can still access the original file

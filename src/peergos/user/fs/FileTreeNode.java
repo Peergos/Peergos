@@ -99,7 +99,7 @@ public class FileTreeNode {
             throw new IllegalStateException("You cannot mark a file as dirty without write access!");
         if (isDirectory()) {
             // create a new baseKey == subfoldersKey and make all descendants dirty
-            SymmetricKey newSubfoldersKEy = SymmetricKey.random();
+            SymmetricKey newSubfoldersKey = SymmetricKey.random();
             // clean all keys except file dataKeys (lazily re-key and re-encrypt them)
 
             throw new IllegalStateException("Unimplemented!");
@@ -108,7 +108,7 @@ public class FileTreeNode {
             SymmetricKey parentKey = SymmetricKey.random();
             FileAccess newFileAccess = pointer.fileAccess.markDirty(pointer.filePointer, parentKey, context);
 
-            // changing readers here will only affect the returned FileTreeNode, as the readers is derived from th entry point
+            // changing readers here will only affect the returned FileTreeNode, as the readers is derived from the entry point
             TreeSet<String> newReaders = new TreeSet<>(readers);
             newReaders.removeAll(readersToRemove);
             RetrievedFilePointer newPointer = new RetrievedFilePointer(this.pointer.filePointer.withBaseKey(parentKey), newFileAccess);

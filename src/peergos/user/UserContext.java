@@ -424,7 +424,7 @@ public class UserContext {
             if (!opt.isPresent())
                 continue;
             FileTreeNode sharedRoot = opt.get();
-            file.remove(this, sharedRoot);
+            sharedRoot.removeChild(file, this);
         }
 
         // now change to new base keys, clean some keys and mark others as dirty
