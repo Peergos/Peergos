@@ -14,6 +14,7 @@ import peergos.util.*;
 
 import java.io.*;
 import java.net.*;
+import java.nio.file.*;
 import java.time.*;
 import java.util.*;
 import java.util.function.*;
@@ -406,6 +407,33 @@ public class UserContext {
         User tmp = User.random(random, signer, boxer);
         byte[] payload = entry.serializeAndEncrypt(tmp, targetUser);
         return corenodeClient.followRequest(targetUser, ArrayOps.concat(tmp.publicBoxingKey.toByteArray(), payload));
+    }
+
+    public void unShare(Path path, String readerToRemove) throws IOException {
+        unShare(path, Stream.of(readerToRemove).collect(Collectors.toSet()));
+    }
+
+    public void unShare(Path path, Set<String> readersToRemove) throws IOException {
+        Optional<FileTreeNode> f = getByPath(path.toString());
+        if (! f.isPresent())
+            return;
+        FileTreeNode file = f.get();
+        // first remove links from shared directory
+        for (String friendName: readersToRemove) {
+            Optional<FileTreeNode> opt = getByPath("/" + username + "/shared/" + friendName);
+            if (!opt.isPresent())
+                continue;
+            FileTreeNode sharedRoot = opt.get();
+            file.remove(this, sharedRoot);
+        }
+
+        // now change to new base keys, clean some keys and mark others as dirty
+        if (file.isDirectory()) {
+            throw new IllegalStateException("Unimplemented!");
+        } else {
+            FileTreeNode parent = getByPath(path.getParent().toString()).get();
+            file.makeDirty(this, parent, readersToRemove);
+        }
     }
 
     private boolean addToStaticData(EntryPoint entry) {
