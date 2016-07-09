@@ -428,12 +428,8 @@ public class UserContext {
         }
 
         // now change to new base keys, clean some keys and mark others as dirty
-        if (file.isDirectory()) {
-            throw new IllegalStateException("Unimplemented!");
-        } else {
-            FileTreeNode parent = getByPath(path.getParent().toString()).get();
-            file.makeDirty(this, parent, readersToRemove);
-        }
+        FileTreeNode parent = getByPath(path.getParent().toString()).get();
+        file.makeDirty(this, parent, readersToRemove);
     }
 
     private boolean addToStaticData(EntryPoint entry) {
@@ -576,6 +572,8 @@ public class UserContext {
         System.out.println("Storing metadata blob of " + metaBlob.length + " bytes. to mapKey: "+ArrayOps.bytesToHex(mapKey));
         Multihash blobHash = dhtClient.put(metaBlob, owner, linkHashes);
         PairMultihash newBtreeRootCAS = btree.put(sharer, mapKey, blobHash);
+        if (newBtreeRootCAS.left.equals(newBtreeRootCAS.right))
+            return true;
         byte[] signed = sharer.signMessage(newBtreeRootCAS.toByteArray());
         boolean added =  corenodeClient.setMetadataBlob(owner, sharer, signed);
         if (!added) {

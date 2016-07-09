@@ -100,9 +100,37 @@ public class FileTreeNode {
         if (isDirectory()) {
             // create a new baseKey == subfoldersKey and make all descendants dirty
             SymmetricKey newSubfoldersKey = SymmetricKey.random();
-            // clean all keys except file dataKeys (lazily re-key and re-encrypt them)
+            SymmetricKey newParentKey = SymmetricKey.random();
+            FileProperties props = getFileProperties();
 
-            throw new IllegalStateException("Unimplemented!");
+            // Create new DirAccess, but don't upload it
+            DirAccess newDirAccess = DirAccess.create(newSubfoldersKey, props, parent.pointer.filePointer.getLocation(),
+                    parent.getParentKey(), newParentKey);
+            // re add children
+            DirAccess existing = (DirAccess) pointer.fileAccess;
+            for (SymmetricLocationLink link: existing.getSubfolders()) {
+                newDirAccess.addSubdir(link.targetLocation(pointer.filePointer.baseKey), newSubfoldersKey, link.target(pointer.filePointer.baseKey));
+            }
+            SymmetricKey filesKey = existing.getFilesKey(pointer.filePointer.baseKey);
+            for (SymmetricLocationLink link: existing.getFiles()) {
+                newDirAccess.addFile(link.targetLocation(filesKey), newSubfoldersKey, link.target(filesKey));
+            }
+
+            ReadableFilePointer ourNewFilePointer = pointer.filePointer.withBaseKey(newSubfoldersKey);
+            readers.removeAll(readersToRemove);
+            RetrievedFilePointer ourNewPointer = new RetrievedFilePointer(ourNewFilePointer, newDirAccess);
+            FileTreeNode theNewUs = new FileTreeNode(ourNewPointer, ownername, readers, writers, entryWriterKey);
+
+            // clean all subtree keys except file dataKeys (lazily re-key and re-encrypt them)
+            Set<FileTreeNode> children = getChildren(context);
+            for (FileTreeNode child: children) {
+                child.makeDirty(context, theNewUs, readersToRemove);
+            }
+
+            // update pointer from parent to us
+            ((DirAccess) parent.pointer.fileAccess).updateChildLink(parent.pointer.filePointer, this.pointer, ourNewPointer, context);
+
+            return theNewUs;
         } else {
             // create a new baseKey == parentKey and mark the metaDataKey as dirty
             SymmetricKey parentKey = SymmetricKey.random();

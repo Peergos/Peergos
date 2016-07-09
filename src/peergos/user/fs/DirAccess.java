@@ -13,7 +13,7 @@ import java.util.stream.*;
 
 public class DirAccess extends FileAccess {
 
-    private final SymmetricLink subfolders2files, subfolders2parent;
+    public final SymmetricLink subfolders2files, subfolders2parent;
     private List<SymmetricLocationLink> subfolders, files;
 
     public DirAccess(SymmetricLink subfolders2files, SymmetricLink subfolders2parent, List<SymmetricLocationLink> subfolders,
@@ -35,6 +35,14 @@ public class DirAccess extends FileAccess {
         subfolders.forEach(x -> bout.writeArray(x.serialize()));
         bout.writeInt(this.files.size());
         files.forEach(x -> bout.writeArray(x.serialize()));
+    }
+
+    public List<SymmetricLocationLink> getSubfolders() {
+        return Collections.unmodifiableList(subfolders);
+    }
+
+    public List<SymmetricLocationLink> getFiles() {
+        return Collections.unmodifiableList(files);
     }
 
     public boolean isDirty(SymmetricKey baseKey) {
