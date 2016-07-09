@@ -2566,6 +2566,7 @@ FileRetriever.deserialize = function(bin) {
     }
 }
 
+ERASURE_TYPE = 1;
 function EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChunk, nOriginalFragments, nAllowedFailures) {
     this.chunkNonce = chunkNonce;
     this.chunkAuth = chunkAuth;
@@ -2606,10 +2607,13 @@ function EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChun
         buf.writeByte(this.nextChunk != null ? 1 : 0);
         if (this.nextChunk != null)
             buf.write(this.nextChunk.serialize());
+    buf.writeInt(ERASURE_TYPE);
 	buf.writeInt(this.nOriginalFragments);
 	buf.writeInt(this.nAllowedFailures);
     }.bind(this)
 }
+
+
 EncryptedChunkRetriever.deserialize = function(buf) {
     var chunkNonce = buf.readArray();
     var chunkAuth = buf.readArray();
@@ -2619,6 +2623,10 @@ EncryptedChunkRetriever.deserialize = function(buf) {
     var nextChunk = null;
     if (hasNext == 1)
         nextChunk = Location.deserialize(buf);
+    var type = buf.readInt();
+    if (type != ERASURE_TYPE)
+            throw Error("fragmenter type "+ type +" is not ERASURE_TYPE "+ ERASURE_TYPE);
+
     var nOriginalFragments = buf.readInt();
     var nAllowedFailures = buf.readInt();
     if (!EncryptedChunk.ALLOWED_ORIGINAL.includes(nOriginalFragments) || !EncryptedChunk.ALLOWED_FAILURES.includes(nAllowedFailures)) {
