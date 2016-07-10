@@ -6,7 +6,6 @@ import peergos.user.fs.*;
 import peergos.util.*;
 
 import java.io.*;
-import java.net.*;
 import java.util.*;
 
 public interface DHTClient {
@@ -52,6 +51,33 @@ public interface DHTClient {
             if (success != 1)
                 return Optional.empty();
             return Optional.of(Serialize.deserializeByteArray(din, Chunk.MAX_SIZE));
+        }
+    }
+
+    class CachingDHTClient implements DHTClient {
+        private final LRUCache<Multihash, byte[]> cache;
+        private final DHTClient target;
+        private final int maxValueSize;
+
+        public CachingDHTClient(DHTClient target, int cacheSize, int maxValueSize) {
+            this.target = target;
+            this.cache = new LRUCache<>(cacheSize);
+            this.maxValueSize = maxValueSize;
+        }
+
+        @Override
+        public Multihash put(byte[] value, UserPublicKey writer, List<Multihash> links) throws IOException {
+            return target.put(value, writer, links);
+        }
+
+        @Override
+        public Optional<byte[]> get(Multihash key) throws IOException {
+            if (cache.containsKey(key))
+                return Optional.of(cache.get(key));
+            Optional<byte[]> value = target.get(key);
+            if (value.isPresent() && value.get().length < maxValueSize)
+                cache.put(key, value.get());
+            return value;
         }
     }
 }

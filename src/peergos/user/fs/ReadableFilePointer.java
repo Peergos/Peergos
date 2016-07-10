@@ -88,6 +88,11 @@ public class ReadableFilePointer {
         return result;
     }
 
+    @Override
+    public String toString() {
+        return ArrayOps.bytesToHex(mapKey);
+    }
+
     public boolean isNull() {
         UserPublicKey nullUser = UserPublicKey.createNull();
         return nullUser.equals(owner) && nullUser.equals(writer) && Arrays.equals(mapKey, new byte[32]) && baseKey.equals(SymmetricKey.createNull());
