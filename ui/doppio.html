@@ -20,10 +20,18 @@
   JavaPoly.type("peergos.user.UserContext").then(function(UserContext) {
       return UserContext.ensureSignedUp("test02", "test02", 8000, true);
   }).then(function(context) {
-      console.log(context);
+      console.log(context);      
       window.context = context;
       console.log("Signing in/up took " + (Date.now()-window.pageStart)+" mS from page start");
       console.log("Signing in/up took " + (Date.now()-creationStart)+" mS from function call");
+      return context.getByPath("/test02");
+  }).then(function(rootDir) {
+      // now upload a file
+      var size = 200*1024;
+      context.randomBytes(size).then(function(contents) {
+          var din = new java.io.ByteArrayInputStream(contents);
+          rootDir.uploadFile("Somefile", din, 0, size, window.context, null, window.context.getFragmenter());
+      });
   });
 </script>
 </body>
