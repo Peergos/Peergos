@@ -205,7 +205,7 @@ public class UserTests {
     }
 
     // This one takes a while, so disable most of the time
-    @Test
+//    @Test
     public void hugeFolder() throws IOException {
         String username = "test01";
         String password = "test01";
