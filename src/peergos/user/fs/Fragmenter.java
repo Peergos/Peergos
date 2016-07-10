@@ -80,13 +80,13 @@ public interface Fragmenter {
         @Test
         public void testSeries() throws IOException {
             for (int i = 1; i < 10; i++) {
-                int length = random.nextInt(Chunk.MAX_SIZE * i);
+                int length = random.nextInt(Chunk.MAX_SIZE);
                 byte[] b = new byte[length];
                 test(b);
             }
         }
         @Test public void testBoundary()  throws IOException {
-            List<Integer> sizes = Arrays.asList(Chunk.MAX_SIZE, 2 * Chunk.MAX_SIZE);
+            List<Integer> sizes = Arrays.asList(Fragment.MAX_LENGTH, 2 * Fragment.MAX_LENGTH);
             for (Integer size : sizes) {
                 byte[] b = new byte[size];
                 test(b);
@@ -108,7 +108,7 @@ public interface Fragmenter {
             for (byte[] bytes : split) {
                 int length = bytes.length;
                 assertTrue(length > 0);
-                assertTrue(length <= Chunk.MAX_SIZE);
+                assertTrue(length <= Fragment.MAX_LENGTH);
             }
 
             byte[] recombine = fragmenter.recombine(split, input.length);
