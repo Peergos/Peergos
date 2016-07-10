@@ -2704,13 +2704,18 @@ function LazyInputStreamCombiner(stream, context, dataKey, chunk, setProgressPer
 
 function reorder(fragments, hashes) {
     var hashMap = new Map(); //ba dum che
-    for (var i=0; i < hashes.length; i++)
-        hashMap.set(nacl.util.encodeBase64(hashes[i]), i); // Seems Map can't handle array contents equality
+    for (var i=0; i < hashes.length; i++) {
+	var key = nacl.util.encodeBase64(hashes[i]);
+	if (hashMap.get(key) == null)
+	    hashMap.set(key, []);
+        hashMap.get(key).push(i); // Seems Map can't handle array contents equality
+    }
     var res = [];
     for (var i=0; i < fragments.length; i++) {
         var hash = nacl.util.encodeBase64(fragments[i].hash);
-        var index = hashMap.get(hash);
-        res[index] = fragments[i].data;
+        var indices = hashMap.get(hash);
+	for (var j=0; j < indices.length; j++)
+            res[indices[j]] = fragments[i].data;
     }
     return res;
 }
