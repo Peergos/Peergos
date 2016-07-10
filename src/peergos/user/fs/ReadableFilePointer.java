@@ -28,6 +28,10 @@ public class ReadableFilePointer {
         return new ReadableFilePointer(owner, writer, mapKey, newBaseKey);
     }
 
+    public ReadableFilePointer withWritingKey(UserPublicKey writingKey) {
+        return new ReadableFilePointer(owner, writingKey, mapKey, baseKey);
+    }
+
     public byte[] serialize() {
         try {
             DataSink bout = new DataSink();

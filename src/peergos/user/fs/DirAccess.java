@@ -13,7 +13,7 @@ import java.util.stream.*;
 
 public class DirAccess extends FileAccess {
 
-    public static final int MAX_CHILD_LINKS_PER_BLOB = 10;
+    public static final int MAX_CHILD_LINKS_PER_BLOB = 1000;
     public final SymmetricLink subfolders2files, subfolders2parent;
     private List<SymmetricLocationLink> subfolders, files;
     private final Optional<SymmetricLocationLink> moreFolderContents;
@@ -111,7 +111,7 @@ public class DirAccess extends FileAccess {
                 Map.Entry<ReadableFilePointer, DirAccess> pair = nextMetablob.get(0);
                 ReadableFilePointer nextPointer = pair.getKey();
                 DirAccess nextBlob = pair.getValue();
-                nextBlob.addSubdir(location, ourSubfolders, targetBaseKey, nextPointer, context);
+                nextBlob.addSubdir(location, nextPointer.baseKey, targetBaseKey, nextPointer.withWritingKey((User)ourPointer.writer), context);
                 nextBlob.commit(nextPointer.owner, (User)ourPointer.writer, nextPointer.mapKey, context);
             } else {
                 // create and upload new metadata blob
