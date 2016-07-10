@@ -60,12 +60,10 @@ public interface Btree {
             dout.flush();
 
             byte[] res = poster.post("btree/put", bout.toByteArray());
-            DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
-            int success = din.readInt();
+            DataSource source = new DataSource(res);
+            int success = source.readInt();
             if (success != 1)
                 throw new IOException("Couldn't add value to BTree!");
-            byte[] pair = Serialize.deserializeByteArray(din, 512);
-            DataSource source = new DataSource(pair);
             return new PairMultihash(MaybeMultihash.deserialize(source), MaybeMultihash.deserialize(source));
         }
 
@@ -79,14 +77,11 @@ public interface Btree {
             dout.flush();
 
             byte[] res = poster.post("btree/get", bout.toByteArray());
-            DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
-            int success = din.readInt();
+            DataSource source = new DataSource(res);
+            int success = source.readInt();
             if (success != 1)
                 throw new IOException("Couldn't get value from BTree!");
-            byte[] raw = Serialize.deserializeByteArray(din, 256);
-            if (raw.length == 0)
-                return MaybeMultihash.EMPTY();
-            byte[] multihash = new DataSource(raw).readArray();
+            byte[] multihash = source.readArray();
             if (multihash.length == 0)
                 return MaybeMultihash.EMPTY();
             return new MaybeMultihash(new Multihash(multihash));
@@ -102,14 +97,10 @@ public interface Btree {
             dout.flush();
 
             byte[] res = poster.post("btree/delete", bout.toByteArray());
-            DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
-            int success = din.readInt();
+            DataSource source = new DataSource(res);
+            int success = source.readInt();
             if (success != 1)
                 throw new IOException("Couldn't add data to DHT!");
-            byte[] raw = Serialize.deserializeByteArray(din, 512);
-            DataSource source = new DataSource(raw);
-            // read header for byte array
-            source.readInt();
             return new PairMultihash(MaybeMultihash.deserialize(source), MaybeMultihash.deserialize(source));
         }
     }

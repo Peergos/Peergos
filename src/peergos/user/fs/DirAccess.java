@@ -13,7 +13,7 @@ import java.util.stream.*;
 
 public class DirAccess extends FileAccess {
 
-    public static final int MAX_CHILD_LINKS_PER_BLOB = 1000;
+    public static final int MAX_CHILD_LINKS_PER_BLOB = 500;
     public final SymmetricLink subfolders2files, subfolders2parent;
     private List<SymmetricLocationLink> subfolders, files;
     private final Optional<SymmetricLocationLink> moreFolderContents;

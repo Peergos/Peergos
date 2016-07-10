@@ -78,13 +78,10 @@ public class BTreeHandlers
             log("Btree::Deleted mapkey: "+new ByteArrayWrapper(mapKey));
             try {
                 PairMultihash rootCAS = btree.remove(UserPublicKey.fromByteArray(sharingKey), mapKey);
-                ByteArrayOutputStream bout = new ByteArrayOutputStream();
-                DataOutputStream dout = new DataOutputStream(bout);
-                Serialize.serialize(rootCAS.left.toBytes(),
-                        dout);
-                Serialize.serialize(rootCAS.right.toBytes(),
-                        dout);
-                new ModifySuccess(httpExchange).accept(Optional.of(bout.toByteArray()));
+                DataSink sink = new DataSink();
+                rootCAS.left.serialize(sink);
+                rootCAS.right.serialize(sink);
+                new ModifySuccess(httpExchange).accept(Optional.of(sink.toByteArray()));
             } catch (Exception e) {
                 e.printStackTrace();
                 new ModifySuccess(httpExchange).accept(Optional.empty());
@@ -128,7 +125,7 @@ public class BTreeHandlers
                 DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());
                 dout.writeInt(result.isPresent() ? 1 : 0); // success
                 if (result.isPresent())
-                    Serialize.serialize(result.get(), dout);
+                    dout.write(result.get());
                 dout.flush();
                 dout.close();
             } catch (IOException e)
@@ -153,7 +150,7 @@ public class BTreeHandlers
                 exchange.sendResponseHeaders(200, 0);
                 DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());
                 dout.writeInt(1); // success
-                Serialize.serialize(value == null ? new byte[0] : value, dout);
+                dout.write(value == null ? new byte[0] : value);
                 dout.flush();
                 dout.close();
             } catch (IOException e)
