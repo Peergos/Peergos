@@ -12,6 +12,7 @@
 <script type="text/javascript" src="scripts/nacl.js"></script>
 <script type="text/javascript" src="scripts/scrypt.js"></script>
 <script type="text/javascript" src="javapoly/javapoly.js"></script>
+<script type="text/javascript" src="scripts/buffer.js"></script>
 <script type="text/java" src="IPFS.jar"></script>
 <script type="text/java" src="PeergosClient.jar"></script>
 
@@ -25,12 +26,16 @@
       console.log("Signing in/up took " + (Date.now()-window.pageStart)+" mS from page start");
       console.log("Signing in/up took " + (Date.now()-creationStart)+" mS from function call");
       return context.getByPath("/test02");
-  }).then(function(rootDir) {
+  }).then(function(rootDirOpt) {
       // now upload a file
-      var size = 200*1024;
-      context.randomBytes(size).then(function(contents) {
-          var din = new java.io.ByteArrayInputStream(contents);
-          rootDir.uploadFile("Somefile", din, 0, size, window.context, null, window.context.getFragmenter());
+      var s = "Text to include in the file.";
+      var bout = new ByteArrayOutputStream();
+      for (var i=0; i < 2048; i++)
+          bout.writeString(s);
+      var arr = bout.toByteArray();
+      var din = new java.io.ByteArrayInputStream(arr);
+      rootDirOpt.get().then(function(rootDir) {
+          rootDir.uploadFile("Somefile", din, 0, arr.length, window.context, null, window.context.fragmenter());
       });
   });
 </script>
