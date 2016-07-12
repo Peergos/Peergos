@@ -150,7 +150,9 @@ public class UserContext {
                 dht, btree, coreNode, hasher, provider, random, signer, boxer);
         if (!context.isRegistered()) {
             if (context.isAvailable()) {
-                context.register();
+                boolean register = context.register();
+                if (!register)
+                    throw new IllegalStateException("Couldn't register username: "+username);
                 System.out.println("Creating user's root directory");
                 long t1 = System.currentTimeMillis();
                 RetrievedFilePointer userRoot = context.createEntryDirectory(username);
@@ -198,10 +200,10 @@ public class UserContext {
     }
 
     public boolean register() {
-        System.out.println("claiming username: "+username);
-        LocalDate expiry = LocalDate.now();
+        LocalDate now = LocalDate.now();
         // set claim expiry to two months from now
-        expiry.plusMonths(2);
+        LocalDate expiry = now.plusMonths(2);
+        System.out.println("claiming username: "+username + " with expiry " + expiry);
         List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createInitial(user, username, expiry);
         return corenodeClient.updateChain(username, claimChain);
     }
