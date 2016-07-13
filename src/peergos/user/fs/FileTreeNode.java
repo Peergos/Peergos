@@ -302,6 +302,12 @@ public class FileTreeNode {
         }
     }
 
+    public boolean uploadTestFile(String filename, int size, UserContext context) throws IOException {
+        byte[] data = new byte[size];
+        new Random().nextBytes(data);
+        return uploadFile(filename, new ByteArrayInputStream(data), 0, size, context, l -> {}, context.fragmenter());
+    }
+
     public boolean uploadFile(String filename, InputStream fileData, long startIndex, long endIndex,
                               UserContext context, Consumer<Long> monitor, peergos.user.fs.Fragmenter fragmenter) throws IOException {
         return uploadFile(filename, fileData, startIndex, endIndex, Optional.empty(), context, monitor, fragmenter);

@@ -28,14 +28,14 @@
       return context.getByPath("/test02");
   }).then(function(rootDirOpt) {
       // now upload a file
-      var s = "Text to include in the file.";
-      var bout = new ByteArrayOutputStream();
-      for (var i=0; i < 2048; i++)
-          bout.writeString(s);
-      var arr = bout.toByteArray();
-      var din = new java.io.ByteArrayInputStream(arr);
+      var size = 64*1024;
+      var filename = "Somefile";
       rootDirOpt.get().then(function(rootDir) {
-          rootDir.uploadFile("Somefile", din, 0, arr.length, window.context, null, window.context.fragmenter());
+          return rootDir.uploadTestFile(filename, size, window.context);
+      }).then(function(res) {}
+          return window.context.getByPath("/test02/"+filename);
+      ).then(function(file){
+          console.log(file);
       });
   });
 </script>
