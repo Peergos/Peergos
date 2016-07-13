@@ -124,19 +124,20 @@ public class UserContext {
         return ensureSignedUp(username, password, webPort, false);
     }
 
-    public static UserContext ensureSignedUp(String username, String password, int webPort, boolean useJavaScrypt) throws IOException {
-        LoginHasher hasher = useJavaScrypt ? new ScryptJS() : new ScryptJava();
-        HttpPoster poster = useJavaScrypt ? new JavaScriptPoster() : new HttpPoster.Java(new URL("http://localhost:" + webPort + "/"));
+    public static UserContext ensureSignedUp(String username, String password, int webPort, boolean useJavaScript) throws IOException {
+        LoginHasher hasher = useJavaScript ? new ScryptJS() : new ScryptJava();
+        HttpPoster poster = useJavaScript ? new JavaScriptPoster() : new HttpPoster.Java(new URL("http://localhost:" + webPort + "/"));
         CoreNode coreNode = new HTTPCoreNode(poster);
+        DHTClient dht = new DHTClient.CachingDHTClient(new DHTClient.HTTP(poster), 1000, 50*1024);
         Btree btree = new Btree.HTTP(poster);
-        DHTClient dht = new DHTClient.HTTP(poster);
-        Salsa20Poly1305 provider = useJavaScrypt ? new SymmetricJS() : new Salsa20Poly1305.Java();
+//        Btree btree = new BtreeImpl(coreNode, dht);
+        Salsa20Poly1305 provider = useJavaScript ? new SymmetricJS() : new Salsa20Poly1305.Java();
         SymmetricKey.addProvider(SymmetricKey.Type.TweetNaCl, provider);
-        Ed25519 signer = useJavaScrypt ? new JSEd25519() : new JavaEd25519();
+        Ed25519 signer = useJavaScript ? new JSEd25519() : new JavaEd25519();
         PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, signer);
-        SafeRandom random = useJavaScrypt ? new JSRandom() : new SafeRandom.Java();
+        SafeRandom random = useJavaScript ? new JSRandom() : new SafeRandom.Java();
         SymmetricKey.setRng(SymmetricKey.Type.TweetNaCl, random);
-        Curve25519 boxer = useJavaScrypt ? new JSCurve25519() : new JavaCurve25519();
+        Curve25519 boxer = useJavaScript ? new JSCurve25519() : new JavaCurve25519();
         PublicBoxingKey.addProvider(PublicBoxingKey.Type.Curve25519, boxer);
         PublicBoxingKey.setRng(PublicBoxingKey.Type.Curve25519, random);
         return UserContext.ensureSignedUp(username, password, dht, btree, coreNode, hasher, provider, random, signer, boxer);
@@ -149,7 +150,9 @@ public class UserContext {
                 dht, btree, coreNode, hasher, provider, random, signer, boxer);
         if (!context.isRegistered()) {
             if (context.isAvailable()) {
-                context.register();
+                boolean register = context.register();
+                if (!register)
+                    throw new IllegalStateException("Couldn't register username: "+username);
                 System.out.println("Creating user's root directory");
                 long t1 = System.currentTimeMillis();
                 RetrievedFilePointer userRoot = context.createEntryDirectory(username);
@@ -197,10 +200,10 @@ public class UserContext {
     }
 
     public boolean register() {
-        System.out.println("claiming username: "+username);
-        LocalDate expiry = LocalDate.now();
+        LocalDate now = LocalDate.now();
         // set claim expiry to two months from now
-        expiry.plusMonths(2);
+        LocalDate expiry = now.plusMonths(2);
+        System.out.println("claiming username: "+username + " with expiry " + expiry);
         List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createInitial(user, username, expiry);
         return corenodeClient.updateChain(username, claimChain);
     }

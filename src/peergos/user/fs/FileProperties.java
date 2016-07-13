@@ -9,6 +9,8 @@ import java.time.*;
 import java.util.Optional;
 
 public class FileProperties {
+    public static final FileProperties EMPTY = new FileProperties("", 0, LocalDateTime.MIN, false, Optional.empty());
+
     public final String name;
     public final long size;
     public final LocalDateTime modified;

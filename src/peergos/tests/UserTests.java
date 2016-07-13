@@ -22,6 +22,7 @@ import java.net.*;
 import java.nio.file.*;
 import java.util.*;
 import java.util.logging.Logger;
+import java.util.stream.*;
 
 @RunWith(Parameterized.class)
 public class UserTests {
@@ -201,6 +202,21 @@ public class UserTests {
         long t2 = System.currentTimeMillis();
         System.out.println("Write time per chunk " + (t2-t1)/2 + "mS");
         Assert.assertTrue("Timely write", (t2-t1)/2 < 20000);
+    }
+
+    // This one takes a while, so disable most of the time
+//    @Test
+    public void hugeFolder() throws IOException {
+        String username = "test01";
+        String password = "test01";
+        UserContext context = ensureSignedUp(username, password, webPort);
+        FileTreeNode userRoot = context.getUserRoot();
+        List<String> names = new ArrayList<>();
+        IntStream.range(0, 2000).forEach(i -> names.add(randomString()));
+
+        for (String filename: names) {
+            userRoot.mkdir(filename, context, false, context.random);
+        }
     }
 
     private static void checkFileContents(byte[] expected, FileTreeNode f, UserContext context) throws IOException {

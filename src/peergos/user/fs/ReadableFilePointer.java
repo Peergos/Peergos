@@ -28,6 +28,10 @@ public class ReadableFilePointer {
         return new ReadableFilePointer(owner, writer, mapKey, newBaseKey);
     }
 
+    public ReadableFilePointer withWritingKey(UserPublicKey writingKey) {
+        return new ReadableFilePointer(owner, writingKey, mapKey, baseKey);
+    }
+
     public byte[] serialize() {
         try {
             DataSink bout = new DataSink();
@@ -86,6 +90,11 @@ public class ReadableFilePointer {
         result = 31 * result + (writer != null ? writer.hashCode() : 0);
         result = 31 * result + Arrays.hashCode(mapKey);
         return result;
+    }
+
+    @Override
+    public String toString() {
+        return ArrayOps.bytesToHex(mapKey);
     }
 
     public boolean isNull() {

@@ -80,7 +80,9 @@ public class Start
                 InetSocketAddress userAPIAddress = new InetSocketAddress(domain, webPort);
 
                 boolean useIPFS = a.getBoolean("useIPFS", true);
-                ContentAddressedStorage dht = useIPFS ? new IpfsDHT() : new RAMStorage();
+                int dhtCacheEntries = 1000;
+                int maxValueSizeToCache = 50 * 1024;
+                ContentAddressedStorage dht = useIPFS ? new CachingStorage(new IpfsDHT(), dhtCacheEntries, maxValueSizeToCache) : new RAMStorage();
 
                 // start the User Service
                 String hostname = a.getArg("domain", "localhost");

@@ -100,6 +100,7 @@ public class FileTreeNode {
         if (isDirectory()) {
             // create a new baseKey == subfoldersKey and make all descendants dirty
             SymmetricKey newSubfoldersKey = SymmetricKey.random();
+            ReadableFilePointer ourNewPointer = pointer.filePointer.withBaseKey(newSubfoldersKey);
             SymmetricKey newParentKey = SymmetricKey.random();
             FileProperties props = getFileProperties();
 
@@ -109,17 +110,17 @@ public class FileTreeNode {
             // re add children
             DirAccess existing = (DirAccess) pointer.fileAccess;
             for (SymmetricLocationLink link: existing.getSubfolders()) {
-                newDirAccess.addSubdir(link.targetLocation(pointer.filePointer.baseKey), newSubfoldersKey, link.target(pointer.filePointer.baseKey));
+                newDirAccess = newDirAccess.addSubdir(link.targetLocation(pointer.filePointer.baseKey), newSubfoldersKey,
+                        link.target(pointer.filePointer.baseKey), ourNewPointer, context);
             }
             SymmetricKey filesKey = existing.getFilesKey(pointer.filePointer.baseKey);
             for (SymmetricLocationLink link: existing.getFiles()) {
-                newDirAccess.addFile(link.targetLocation(filesKey), newSubfoldersKey, link.target(filesKey));
+                newDirAccess.addFile(link.targetLocation(filesKey), newSubfoldersKey, link.target(filesKey), ourNewPointer, context);
             }
 
-            ReadableFilePointer ourNewFilePointer = pointer.filePointer.withBaseKey(newSubfoldersKey);
             readers.removeAll(readersToRemove);
-            RetrievedFilePointer ourNewPointer = new RetrievedFilePointer(ourNewFilePointer, newDirAccess);
-            FileTreeNode theNewUs = new FileTreeNode(ourNewPointer, ownername, readers, writers, entryWriterKey);
+            RetrievedFilePointer ourNewRetrievedPointer = new RetrievedFilePointer(ourNewPointer, newDirAccess);
+            FileTreeNode theNewUs = new FileTreeNode(ourNewRetrievedPointer, ownername, readers, writers, entryWriterKey);
 
             // clean all subtree keys except file dataKeys (lazily re-key and re-encrypt them)
             Set<FileTreeNode> children = getChildren(context);
@@ -128,7 +129,7 @@ public class FileTreeNode {
             }
 
             // update pointer from parent to us
-            ((DirAccess) parent.pointer.fileAccess).updateChildLink(parent.pointer.filePointer, this.pointer, ourNewPointer, context);
+            ((DirAccess) parent.pointer.fileAccess).updateChildLink(parent.pointer.filePointer, this.pointer, ourNewRetrievedPointer, context);
 
             return theNewUs;
         } else {
@@ -167,12 +168,13 @@ public class FileTreeNode {
             return false;
         }
         Location loc = file.getLocation();
+        DirAccess toUpdate = (DirAccess)pointer.fileAccess;
         if (file.isDirectory()) {
-            ((DirAccess)pointer.fileAccess).addSubdir(loc, this.getKey(), file.getKey());
+            toUpdate = toUpdate.addSubdir(loc, this.getKey(), file.getKey(), pointer.filePointer, context);
         } else {
-            ((DirAccess)pointer.fileAccess).addFile(loc, this.getKey(), file.getKey());
+            toUpdate.addFile(loc, this.getKey(), file.getKey(), pointer.filePointer, context);
         }
-        return ((DirAccess)pointer.fileAccess).commit(pointer.filePointer.owner, (User) entryWriterKey, pointer.filePointer.mapKey, context);
+        return toUpdate.commit(pointer.filePointer.owner, (User) entryWriterKey, pointer.filePointer.mapKey, context);
     }
 
     public String toLink() {
@@ -300,6 +302,12 @@ public class FileTreeNode {
         }
     }
 
+    public boolean uploadTestFile(String filename, int size, UserContext context) throws IOException {
+        byte[] data = new byte[size];
+        new Random().nextBytes(data);
+        return uploadFile(filename, new ByteArrayInputStream(data), 0, size, context, l -> {}, context.fragmenter());
+    }
+
     public boolean uploadFile(String filename, InputStream fileData, long startIndex, long endIndex,
                               UserContext context, Consumer<Long> monitor, peergos.user.fs.Fragmenter fragmenter) throws IOException {
         return uploadFile(filename, fileData, startIndex, endIndex, Optional.empty(), context, monitor, fragmenter);
@@ -333,7 +341,7 @@ public class FileTreeNode {
         byte[] mapKey = context.randomBytes(32);
         Location nextChunkLocation = new Location(getLocation().owner, getLocation().writer, mapKey);
         Location fileLocation = chunks.upload(context, parentLocation.owner, (User)entryWriterKey, nextChunkLocation);
-        dirAccess.addFile(fileLocation, rootRKey, fileKey);
+        dirAccess.addFile(fileLocation, rootRKey, fileKey, pointer.filePointer, context);
         return context.uploadChunk(dirAccess, parentLocation.owner, (User) entryWriterKey, dirMapKey, Collections.emptyList());
     }
 
@@ -421,8 +429,11 @@ public class FileTreeNode {
         ReadableFilePointer dirPointer = pointer.filePointer;
         DirAccess dirAccess = (DirAccess)pointer.fileAccess;
         SymmetricKey rootDirKey = dirPointer.baseKey;
-        return Optional.of(dirAccess.mkdir(newFolderName, context, (User) entryWriterKey, dirPointer.mapKey, rootDirKey,
-                requestedBaseSymmetricKey, isSystemFolder, random));
+        ReadableFilePointer newChild = dirAccess.mkdir(newFolderName, context, (User) entryWriterKey, dirPointer.mapKey, rootDirKey,
+                requestedBaseSymmetricKey, isSystemFolder, random);
+        // update our DirAccess
+        this.pointer = new RetrievedFilePointer(pointer.filePointer, context.getMetadata(pointer.filePointer.getLocation()).get());
+        return Optional.of(newChild);
     }
 
     public boolean rename(String newFilename, UserContext context, FileTreeNode parent) throws IOException {

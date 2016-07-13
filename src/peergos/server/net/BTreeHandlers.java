@@ -6,6 +6,7 @@ import peergos.corenode.*;
 import peergos.crypto.*;
 import peergos.merklebtree.*;
 import peergos.server.storage.ContentAddressedStorage;
+import peergos.user.*;
 import peergos.util.*;
 
 import java.io.*;
@@ -29,9 +30,7 @@ public class BTreeHandlers
             byte[] mapKey = Serialize.deserializeByteArray(din, 64);
 
             try {
-                MaybeMultihash rootHash = core.getMetadataBlob(UserPublicKey.fromByteArray(sharingKey));
-                MerkleBTree btree = MerkleBTree.create(rootHash, dht);
-                MaybeMultihash res = btree.get(mapKey);
+                MaybeMultihash res = btree.get(UserPublicKey.fromByteArray(sharingKey), mapKey);
                 byte[] value = res.toBytes();
                 log("Btree::Get mapkey: "+new ByteArrayWrapper(mapKey) + " = "+ res);
                 new GetSuccess(httpExchange).accept(value);
@@ -39,7 +38,6 @@ public class BTreeHandlers
                 e.printStackTrace();
                 new GetSuccess(httpExchange).accept(new byte[0]);
             }
-
         }
     }
 
@@ -54,15 +52,13 @@ public class BTreeHandlers
             Multihash value = new Multihash(valueRaw);
 
             try {
-                MaybeMultihash rootHash = core.getMetadataBlob(UserPublicKey.fromByteArray(sharingKey));
-                MerkleBTree btree = MerkleBTree.create(rootHash, dht);
-                Multihash newRoot = btree.put(mapKey, value);
-                log("Btree::Put mapkey: " + new ByteArrayWrapper(mapKey) + " -> " + value + " newRoot="+newRoot);
+                PairMultihash rootCAS = btree.put(UserPublicKey.fromByteArray(sharingKey), mapKey, value);
+                log("Btree::Put mapkey: " + new ByteArrayWrapper(mapKey) + " -> " + value + " newRoot="+rootCAS.right);
 
                 ByteArrayOutputStream bout = new ByteArrayOutputStream();
                 DataOutputStream dout = new DataOutputStream(bout);
-                rootHash.serialize(dout);
-                Serialize.serialize(newRoot.toBytes(), dout);
+                rootCAS.left.serialize(dout);
+                rootCAS.right.serialize(dout);
                 new ModifySuccess(httpExchange).accept(Optional.of(bout.toByteArray()));
             } catch (Exception e) {
                 e.printStackTrace();
@@ -81,16 +77,11 @@ public class BTreeHandlers
             byte[] mapKey = Serialize.deserializeByteArray(din, 64);
             log("Btree::Deleted mapkey: "+new ByteArrayWrapper(mapKey));
             try {
-                MaybeMultihash rootHash = core.getMetadataBlob(UserPublicKey.fromByteArray(sharingKey));
-                MerkleBTree btree = MerkleBTree.create(rootHash, dht);
-                Multihash newRoot = btree.delete(mapKey);
-                ByteArrayOutputStream bout = new ByteArrayOutputStream();
-                DataOutputStream dout = new DataOutputStream(bout);
-                Serialize.serialize(rootHash.toBytes(),
-                        dout);
-                Serialize.serialize(newRoot.toBytes(),
-                        dout);
-                new ModifySuccess(httpExchange).accept(Optional.of(bout.toByteArray()));
+                PairMultihash rootCAS = btree.remove(UserPublicKey.fromByteArray(sharingKey), mapKey);
+                DataSink sink = new DataSink();
+                rootCAS.left.serialize(sink);
+                rootCAS.right.serialize(sink);
+                new ModifySuccess(httpExchange).accept(Optional.of(sink.toByteArray()));
             } catch (Exception e) {
                 e.printStackTrace();
                 new ModifySuccess(httpExchange).accept(Optional.empty());
@@ -99,14 +90,12 @@ public class BTreeHandlers
         }
     }
 
-    private final CoreNode core;
-    private final ContentAddressedStorage dht;
+    private final Btree btree;
     private final Map<String, HttpHandler> handlerMap;
 
     public BTreeHandlers(CoreNode core, ContentAddressedStorage dht) throws IOException
     {
-        this.core = core;
-        this.dht = dht;
+        this.btree = new BtreeImpl(core, dht);
 
         Map<String, HttpHandler> map = new HashMap<>();
         map.put(PUT_STEM, new PutHandler());
@@ -136,7 +125,7 @@ public class BTreeHandlers
                 DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());
                 dout.writeInt(result.isPresent() ? 1 : 0); // success
                 if (result.isPresent())
-                    Serialize.serialize(result.get(), dout);
+                    dout.write(result.get());
                 dout.flush();
                 dout.close();
             } catch (IOException e)
@@ -161,7 +150,7 @@ public class BTreeHandlers
                 exchange.sendResponseHeaders(200, 0);
                 DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());
                 dout.writeInt(1); // success
-                Serialize.serialize(value == null ? new byte[0] : value, dout);
+                dout.write(value == null ? new byte[0] : value);
                 dout.flush();
                 dout.close();
             } catch (IOException e)
