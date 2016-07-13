@@ -1252,6 +1252,7 @@ var Browser = React.createClass({
                 $("#logoutMenuItem").click(this.logoutFunction);
                 $("#login-form").css("display","none");
                 $("#signup-form").css("display","none");
+                $("#logout").css("display","block");
             }.bind(this));
         }.bind(this);
 	
