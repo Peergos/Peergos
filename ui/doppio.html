@@ -32,9 +32,9 @@
       var filename = "Somefile";
       rootDirOpt.get().then(function(rootDir) {
           return rootDir.uploadTestFile(filename, size, window.context);
-      }).then(function(res) {}
+      }).then(function(res) {
           return window.context.getByPath("/test02/"+filename);
-      ).then(function(file){
+      }).then(function(file){
           console.log(file);
       });
   });

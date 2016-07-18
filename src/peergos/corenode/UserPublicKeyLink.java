@@ -1,6 +1,5 @@
 package peergos.corenode;
 
-import org.junit.*;
 import peergos.crypto.*;
 import peergos.util.*;
 
@@ -11,6 +10,7 @@ import java.util.stream.*;
 
 public class UserPublicKeyLink {
     public static final int MAX_SIZE = 2*1024*1024;
+    public static final int MAX_USERNAME_SIZE = 64;
 
     public final UserPublicKey owner;
     public final UsernameClaim claim;
@@ -193,6 +193,8 @@ public class UserPublicKeyLink {
 
     static boolean validClaim(UserPublicKeyLink from, String username) {
         if (username.contains(" ") || username.contains("\t") || username.contains("\n"))
+            return false;
+        if (username.length() > MAX_USERNAME_SIZE)
             return false;
         if (!from.claim.username.equals(username) || from.claim.expiry.isBefore(LocalDate.now()))
             return false;
