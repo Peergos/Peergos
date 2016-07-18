@@ -16,13 +16,13 @@ Peergos aims
  - To allow individuals to securely and privately store files in a peer to peer network which has no central node and is generally difficult to disrupt or surveil
  - To allow secure sharing of such files with other users of the network without visible meta-data (who shares with who)
  - To have a beautiful user interface that any computer or mobile user can understand
- - To have super fast file transfers by transferring fragments in parallel to/from different sources
  - To enable a new secure form of email
  - To be independent of the central SSL CA trust architecture
  - Self hostable - A user should be able to easily run Peergos on a machine in their home and get their own Peergos storage space, and social communication platform from it. 
  - A secure web interface
- - To enable secure real time chat, and video conversations
+ - To enable secure real time chat
  - Plausibly deniable dual login to an account, ala Truecrypt
+ - Optional use of U2F for securing login
 
 Project anti-aims
 -----------------
@@ -43,17 +43,17 @@ Architecture
  - The rest is coded to run on JVM to get portability and speed, predominantly Java
 
 3.0 Nodes
- - Types of node in decreasing order of reliability: Core node, 
  - The Core nodes are highly reliable nodes. They store the username <--> public key mapping and the encrypted pending follow requests. Eventually we hope to put this small amount of data in a blockchain for full decentralization.
- - A new node contacts a publc Peergos server to join the network
+ - A new node contacts any public Peergos server to join the network
 
 4.0 Trust
  - New versions of the software will be delivered through Peergos itself. (Able to be turned off by the user if desired)
  - A user who trusts a public Peergos server (and the SSL Certificate authority chain) can use the web interface over TLS
  - A less trusting user can run a Peergos server on their own machine and use the web interface over localhost
+ - A paranoid user can run a Peergos server on their own machine and use the native GUI, and optionally a U2F device
 
 4.0 Logging in
- - A user's username is salted with the hash of their password and then run through scrypt (with paramters 17, 8, 1, 96) to generate a symmertic key, an encrypting keypair and a signing keypair. This means that a user can log in from any machine without transfering any keys, and also that their keys are protected from a brute force attack (see slides above for cost estimate).
+ - A user's username is salted with the hash of their password and then run through scrypt (with parameters 17, 8, 1, 96) to generate a symmetric key, an encrypting keypair and a signing keypair. This means that a user can log in from any machine without transfering any keys, and also that their keys are protected from a brute force attack (see slides above for cost estimate).
 
 5.0 Encryption
  - private keys never leave client node
@@ -69,7 +69,7 @@ Architecture
 8.0 Friend network
  - Anyone can send anyone else a "friend request". This amounts to "following" someone and is a one way protocol. This is stored in the core codes, but the core nodes cannot see who is sending the friend request. 
  - The target user can respond to friend requests with their own friend request to make it bi-directional (the usual concept of a friend). 
- - There is no way for the core nodes to deduce the friendship graph (who is friends with who). The plan is to send follow requests over tor, so even an adversary monitoring the network in realtime couldn't deduce the friendship graph
+ - There is no way for the core nodes to deduce the friendship graph (who is friends with who). The plan is to send follow requests over Tor/I2P/Riffle, so even an adversary monitoring the network in realtime couldn't deduce the friendship graph
 
 9.0 Sharing of a file (with another user, or publicly)
  - Once user A is being followed by user B, then A can share files with user B (B can revoke their following at any time)
