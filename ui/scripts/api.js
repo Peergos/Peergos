@@ -2321,7 +2321,7 @@ function FileAccess(parent2meta, properties, retriever, parentLink) {
 	if (!arraysEqual(baseKey.serialize(), newBaseKey.serialize()))
 	    throw "FileAcess clone must have same base key as original!";
 	const props = this.getFileProperties(baseKey);
-	const fa = FileAccess.create(newBaseKey, props, this.retriever, parentLocation, parentparentKey, isDirectory() ? SymmetricKey.random() : getMetaKey(baseKey));
+	const fa = FileAccess.create(newBaseKey, props, this.retriever, parentLocation, parentparentKey, this.isDirectory() ? SymmetricKey.random() : this.getMetaKey(baseKey));
 	return context.uploadChunk(fa, context.user, entryWriterKey, newMapKey).then(function(res) {
 	    return Promise.resolve(fa);
 	});
