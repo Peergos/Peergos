@@ -1,14 +1,16 @@
 package peergos.user.fs.erasure;
 
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.util.*;
 
 public class Erasure {
 
-    public static byte[][] split(byte[] input, int originalBlobs, int allowedFailures)
-    {
-        return split(input, new GaloisField256(), originalBlobs, allowedFailures);
-    }
+    native public static byte[][] split(byte[] input, int originalBlobs, int allowedFailures);
+    //{
+    //    return split(input, new GaloisField256(), originalBlobs, allowedFailures);
+    //}
+
 
     public static byte[][] split(byte[] input, GaloisField f, int originalBlobs, int allowedFailures)
     {
@@ -44,6 +46,7 @@ public class Erasure {
         return res;
     }
 
+    //native public static byte[] recombine(byte[][] encoded, int truncateTo, int originalBlobs, int allowedFailures);
     public static byte[] recombine(byte[][] encoded, int truncateTo, int originalBlobs, int allowedFailures)
     {
         return recombine(new GaloisField256(), encoded, truncateTo, originalBlobs, allowedFailures);
