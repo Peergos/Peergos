@@ -1,7 +1,7 @@
 {"doppio.js":null,"doppio.js.map":null,"listings.json":null,"natives":{"classes_doppio.js":null,"java_io.js":null,"java_lang.js":null,"java_net.js":null
 ,"java_nio.js":null,"java_security.js":null,"java_util.js":null,"peergos_crypto_asymmetric_curve25519_JSCurve25519.js":null
 ,"peergos_crypto_asymmetric_curve25519_JSEd25519.js":null,"peergos_crypto_hash_ScryptJS.js":null,"peergos_crypto_random_JSRandom.js":null
-,"peergos_crypto_symmetric_SymmetricJS.js":null,"peergos_user_JavaScriptPoster.js":null,"peergos_user_fs_erasure_Erasure.js":null,"sun_font.js":null,"sun_management.js":null,"sun_misc.js":null
+,"peergos_crypto_symmetric_SymmetricJS.js":null,"peergos_user_JavaScriptPoster.js":null,"sun_font.js":null,"sun_management.js":null,"sun_misc.js":null
 ,"sun_net.js":null,"sun_nio.js":null,"sun_reflect.js":null},"package.json":null,"vendor":{"java_home":{"ASSEMBLY_EXCEPTION":null,"THIRD_PARTY_README":null
 ,"jdk.json":null,"jdk.json.d.ts":null,"lib":{"accessibility.properties":null,"calendars.properties":null,"charsets.jar":null,"classlist":null
   ,"cmm":{"CIEXYZ.pf":null,"GRAY.pf":null,"LINEAR_RGB.pf":null,"PYCC.pf":null,"sRGB.pf":null},"content-types.properties":null,"currency.data":null

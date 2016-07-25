@@ -28,7 +28,7 @@
       return context.getByPath("/test02");
   }).then(function(rootDirOpt) {
       // now upload a file
-      var size = 5*1024*1024;
+      var size = 64*1024;
       var filename = "Somefile";
       rootDirOpt.get().then(function(rootDir) {
           return rootDir.uploadTestFile(filename, size, window.context);
