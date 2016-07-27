@@ -23,10 +23,14 @@ public class TwoUserTests {
 
     private final int webPort;
     private final int corePort;
-
-    public TwoUserTests(String useIPFS, Random r) throws Exception {
+    private final int userCount;
+    public TwoUserTests(String useIPFS, Random r, int userCount) throws Exception {
         this.webPort = 9000 + r.nextInt(1000);
         this.corePort = 10000 + r.nextInt(1000);
+        this.userCount = userCount;
+        if (userCount  < 2)
+            throw new IllegalStateException();
+
         Args args = Args.parse(new String[]{"useIPFS", ""+useIPFS.equals("IPFS"), "-port", Integer.toString(webPort), "-corenodePort", Integer.toString(corePort)});
         Start.local(args);
         // use insecure random otherwise tests take ages
@@ -47,18 +51,49 @@ public class TwoUserTests {
     public static Collection<Object[]> parameters() {
         Random r = new Random(0);
         return Arrays.asList(new Object[][] {
-                {"RAM", r}
+                {"RAM", r, 2}
         });
+    }
+
+    private static String username(int i){
+        return "username_"+i;
+    }
+
+    private List<UserContext> getUserContexts(int size) {
+        return IntStream.of(size)
+                .mapToObj(e -> {
+                    String username = username(e);
+                    try {
+                        return UserTests.ensureSignedUp(username, username, webPort);
+                    } catch (IOException ioe) {
+                        throw new IllegalStateException(ioe);
+                    }}).collect(Collectors.toList());
     }
 
     @Test
     public void shareAndUnshare() throws IOException {
         UserContext u1 = UserTests.ensureSignedUp("a", "a", webPort);
-        UserContext u2 = UserTests.ensureSignedUp("b", "b", webPort);
-        u2.sendFollowRequest(u1.username, SymmetricKey.random());
+
+//        UserContext u2 = UserTests.ensureSignedUp("b", "b", webPort);
+//        u2.sendFollowRequest(u1.username, SymmetricKey.random());
+
+        List<UserContext> userContexts = getUserContexts(userCount);
+        for (UserContext userContext : userContexts) {
+            userContext.sendFollowRequest(u1.username, SymmetricKey.random());
+        }
+
         List<FollowRequest> u1Requests = u1.getFollowRequests();
-        u1.sendReplyFollowRequest(u1Requests.get(0), true, true);
-        List<FollowRequest> u2FollowRequests = u2.getFollowRequests();
+        for (FollowRequest u1Request : u1Requests) {
+            boolean accept = true;
+            boolean reciprocate = true;
+            u1.sendReplyFollowRequest(u1Request, accept, reciprocate);
+        }
+
+
+        for (UserContext userContext : userContexts) {
+            userContext.getFollowRequests();//needed for side effect
+        }
+
 
         // friends are connected
         // share a file from u1 to u2
@@ -69,36 +104,57 @@ public class TwoUserTests {
         Files.write(f.toPath(), originalFileContents);
         boolean uploaded = u1Root.uploadFile(filename, f, u1, l -> {}, u1.fragmenter());
         FileTreeNode file = u1.getByPath(u1.username + "/" + filename).get();
-        FileTreeNode u1ToU2 = u1.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + u2.username).get();
-        boolean success = u1ToU2.addLinkTo(file, u1);
-        FileTreeNode ownerViewOfLink = u1.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + u2.username + "/" + filename).get();
-        Assert.assertTrue("Shared file", success);
+        byte[] fileContents  = null;
 
-        Set<FileTreeNode> u2children = u2
-                .getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + u2.username)
-                .get()
-                .getChildren(u2);
-        Optional<FileTreeNode> fromParent = u2children.stream()
-                .filter(fn -> fn.getFileProperties().name.equals(filename))
-                .findAny();
-        Assert.assertTrue("shared file present via parent's children", fromParent.isPresent());
+        for (UserContext userContext : userContexts) {
+            FileTreeNode u1ToU2 = u1.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + userContext.username).get();
+            boolean success = u1ToU2.addLinkTo(file, u1);
+            FileTreeNode ownerViewOfLink = u1.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + userContext.username + "/" + filename).get();
+            Assert.assertTrue("Shared file", success);
 
-        Optional<FileTreeNode> sharedFile = u2.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + u2.username + "/" + filename);
-        Assert.assertTrue("Shared file present via direct path", sharedFile.isPresent() && sharedFile.get().getFileProperties().name.equals(filename));
+            Set<FileTreeNode> u2children = userContext
+                    .getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + userContext.username)
+                    .get()
+                    .getChildren(userContext);
 
-        InputStream inputStream = sharedFile.get().getInputStream(u2, l -> {});
+            Optional<FileTreeNode> fromParent = u2children.stream()
+                    .filter(fn -> fn.getFileProperties().name.equals(filename))
+                    .findAny();
+            Assert.assertTrue("shared file present via parent's children", fromParent.isPresent());
 
-        byte[] fileContents = Serialize.readFully(inputStream);
-        Assert.assertTrue("shared file contents correct", Arrays.equals(originalFileContents, fileContents));
+            Optional<FileTreeNode> sharedFile = userContext.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + userContext.username + "/" + filename);
+            Assert.assertTrue("Shared file present via direct path", sharedFile.isPresent() && sharedFile.get().getFileProperties().name.equals(filename));
 
-        // unshare
-        u1.unShare(Paths.get("a", filename), "b");
+            InputStream inputStream = sharedFile.get().getInputStream(userContext, l -> {
+            });
+
+            fileContents = Serialize.readFully(inputStream);
+            Assert.assertTrue("shared file contents correct", Arrays.equals(originalFileContents, fileContents));
+        }
+
 
         //test that u2 cannot access it from scratch
         UserContext u1New = UserTests.ensureSignedUp("a", "a", webPort);
-        UserContext u2New = UserTests.ensureSignedUp("b", "b", webPort);
 
-        Optional<FileTreeNode> updatedSharedFile = u2New.getByPath(u1New.username + "/" + UserContext.SHARED_DIR_NAME + "/" + u2New.username + "/" + filename);
+        List<UserContext> userContexts1 = getUserContexts(userCount);
+
+        UserContext userToUnshareWith = userContexts1.stream().findFirst().get();
+
+        // unshare
+        u1.unShare(Paths.get("a", filename), userToUnshareWith.username);
+
+        List<UserContext> remainingUsers = userContexts1.stream()
+                .skip(1)
+                .collect(Collectors.toList());
+
+
+
+//        UserContext u2New = UserTests.ensureSignedUp("b", "b", webPort);
+        for (UserContext userContext : remainingUsers) {
+            Optional<FileTreeNode> updatedSharedFile = userContext.getByPath(u1New.username + "/" +
+                    UserContext.SHARED_DIR_NAME + "/" + userContext.username + "/" + filename);
+        }
+
 
         // test that u1 can still access the original file
         Optional<FileTreeNode> fileWithNewBaseKey = u1New.getByPath(u1New.username + "/" + filename);
