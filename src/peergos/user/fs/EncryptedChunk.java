@@ -22,11 +22,11 @@ public class EncryptedChunk {
         Arrays.copyOfRange(encrypted, TweetNaCl.SECRETBOX_OVERHEAD_BYTES, encrypted.length));
     }
 
-    public List<Fragment> generateFragments(peergos.user.fs.Fragmenter  fragmenter) {
+    public List<Fragment> generateFragments(peergos.user.fs.Fragmenter  fragmenter, boolean isJavaScript) {
         if (this.cipher.length == 0)
             return Collections.emptyList();
 
-        byte[][] bfrags = fragmenter.split(cipher);
+        byte[][] bfrags = fragmenter.split(cipher, isJavaScript);
         List<Fragment> frags = new ArrayList<>();
         for (int i=0; i < bfrags.length; i++)
             frags.add(new Fragment(bfrags[i]));

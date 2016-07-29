@@ -93,7 +93,7 @@ public class FileUploader implements AutoCloseable {
                 new peergos.user.fs.SplitFragmenter() :
                 new peergos.user.fs.ErasureFragmenter(nOriginalFragments, nAllowedFalures);
 
-        List<Fragment> fragments = encryptedChunk.generateFragments(fragmenter);
+        List<Fragment> fragments = encryptedChunk.generateFragments(fragmenter, context.isJavaScript());
         System.out.printf("Uploading chunk with %d fragments\n", fragments.size());
         List<Multihash> hashes = context.uploadFragments(fragments, chunk.location.owner, chunk.location.writer, chunk.chunk.mapKey(), monitor);
         FileRetriever retriever = new EncryptedChunkRetriever(chunk.chunk.nonce(), encryptedChunk.getAuth(), hashes, nextChunkLocation, fragmenter);

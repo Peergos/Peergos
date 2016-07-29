@@ -4,7 +4,7 @@ import peergos.util.*;
 
 public class SplitFragmenter implements Fragmenter {
 
-    public byte[][] split(byte[] input) {
+    public byte[][] split(byte[] input, boolean isJavaScript) {
 
         int remainder  = input.length % Fragment.MAX_LENGTH;
 

@@ -15,7 +15,7 @@ import static org.junit.Assert.assertTrue;
 
 public interface Fragmenter {
 
-    byte[][] split(byte[] input);
+    byte[][] split(byte[] input, boolean isJavascript);
 
     byte[] recombine(byte[][] encoded, int inputLength);
 
@@ -97,7 +97,7 @@ public interface Fragmenter {
             random.nextBytes(input);
 
 
-            byte[][] split = fragmenter.split(input);
+            byte[][] split = fragmenter.split(input, false);
 
 //            int nChunk  = input.length / Chunk.MAX_SIZE;
 //            if (input.length % Chunk.MAX_SIZE > 0)

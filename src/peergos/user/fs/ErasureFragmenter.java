@@ -18,8 +18,8 @@ public class ErasureFragmenter implements Fragmenter {
         this.nAllowedFailures = nAllowedFailures;
     }
 
-    public byte[][] split(byte[] input) {
-        return Erasure.split(input, nOriginalFragments, nAllowedFailures);
+    public byte[][] split(byte[] input, boolean isJavaScript) {
+        return Erasure.split(input, nOriginalFragments, nAllowedFailures, isJavaScript);
     }
 
     public byte[] recombine(byte[][] encoded, int truncateLength) {
