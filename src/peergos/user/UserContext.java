@@ -413,7 +413,7 @@ public class UserContext {
     }
 
     public void unShare(Path path, String readerToRemove) throws IOException {
-        unShare(path, Stream.of(readerToRemove).collect(Collectors.toSet()));
+        unShare(path, Collections.singleton(readerToRemove));
     }
 
     public void unShare(Path path, Set<String> readersToRemove) throws IOException {
@@ -421,8 +421,9 @@ public class UserContext {
         if (! f.isPresent())
             return;
         FileTreeNode file = f.get();
+        Set<String> sharees = sharedWith(file);
         // first remove links from shared directory
-        for (String friendName: readersToRemove) {
+        for (String friendName: sharees) {
             Optional<FileTreeNode> opt = getByPath("/" + username + "/shared/" + friendName);
             if (!opt.isPresent())
                 continue;
@@ -433,6 +434,23 @@ public class UserContext {
         // now change to new base keys, clean some keys and mark others as dirty
         FileTreeNode parent = getByPath(path.getParent().toString()).get();
         file.makeDirty(this, parent, readersToRemove);
+
+        // now re-share new keys with remaining users
+        Set<String> remainingReaders = sharees.stream().filter(name -> !readersToRemove.contains(name)).collect(Collectors.toSet());
+        share(path, remainingReaders);
+    }
+
+    public Set<String> sharedWith(FileTreeNode file) {
+        FileTreeNode sharedDir = getByPath("/" + username + "/shared").get();
+        Set<FileTreeNode> friendDirs = sharedDir.getChildren(this);
+        return friendDirs.stream()
+                .filter(friendDir -> friendDir.getChildren(this)
+                        .stream()
+                        .filter(f -> f.getLocation().equals(file.getLocation()))
+                        .findAny()
+                        .isPresent())
+                .map(u -> u.getFileProperties().name)
+                .collect(Collectors.toSet());
     }
 
     public void share(Path path, Set<String> readersToAdd) throws IOException {

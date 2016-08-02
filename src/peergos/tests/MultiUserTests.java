@@ -120,7 +120,7 @@ public class MultiUserTests {
         UserContext userToUnshareWith = userContexts.stream().findFirst().get();
 
         // unshare with a single user
-        u1.unShare(Paths.get("a", filename), userToUnshareWith.username);
+        u1.unShare(Paths.get(u1.username, filename), userToUnshareWith.username);
 
         List<UserContext> updatedUserContexts = getUserContexts(userCount);
 
