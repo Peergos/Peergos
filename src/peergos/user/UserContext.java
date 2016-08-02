@@ -435,6 +435,20 @@ public class UserContext {
         file.makeDirty(this, parent, readersToRemove);
     }
 
+    public void share(Path path, Set<String> readersToAdd) throws IOException {
+        Optional<FileTreeNode> f = getByPath(path.toString());
+        if (!f.isPresent())
+            return;
+        FileTreeNode file = f.get();
+        for (String friendName: readersToAdd) {
+            Optional<FileTreeNode> opt = getByPath("/" + username + "/shared/" + friendName);
+            if (!opt.isPresent())
+                continue;
+            FileTreeNode sharedRoot = opt.get();
+            boolean success = sharedRoot.addLinkTo(file, this);
+        }
+    }
+
     private boolean addToStaticData(EntryPoint entry) {
         for (int i=0; i < staticData.size(); i++)
             if (entry.equals(staticData.get(entry.pointer.writer)))

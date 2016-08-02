@@ -19,12 +19,12 @@ import java.util.stream.*;
 import static org.junit.Assert.assertTrue;
 
 @RunWith(Parameterized.class)
-public class TwoUserTests {
+public class MultiUserTests {
 
     private final int webPort;
     private final int corePort;
     private final int userCount;
-    public TwoUserTests(String useIPFS, Random r, int userCount) throws Exception {
+    public MultiUserTests(String useIPFS, Random r, int userCount) throws Exception {
         this.webPort = 9000 + r.nextInt(1000);
         this.corePort = 10000 + r.nextInt(1000);
         this.userCount = userCount;
@@ -60,7 +60,7 @@ public class TwoUserTests {
     }
 
     private List<UserContext> getUserContexts(int size) {
-        return IntStream.of(size)
+        return IntStream.range(0, size)
                 .mapToObj(e -> {
                     String username = username(e);
                     try {
@@ -71,17 +71,16 @@ public class TwoUserTests {
     }
 
     @Test
-    public void shareAndUnshare() throws IOException {
+    public void shareAndUnshareFile() throws IOException {
         UserContext u1 = UserTests.ensureSignedUp("a", "a", webPort);
 
-//        UserContext u2 = UserTests.ensureSignedUp("b", "b", webPort);
-//        u2.sendFollowRequest(u1.username, SymmetricKey.random());
-
+        // send follow requests from each other user to "a"
         List<UserContext> userContexts = getUserContexts(userCount);
         for (UserContext userContext : userContexts) {
             userContext.sendFollowRequest(u1.username, SymmetricKey.random());
         }
 
+        // make "a" reciprocate all the follow requests
         List<FollowRequest> u1Requests = u1.getFollowRequests();
         for (FollowRequest u1Request : u1Requests) {
             boolean accept = true;
@@ -89,87 +88,73 @@ public class TwoUserTests {
             u1.sendReplyFollowRequest(u1Request, accept, reciprocate);
         }
 
-
+        // complete the friendship connection
         for (UserContext userContext : userContexts) {
             userContext.getFollowRequests();//needed for side effect
         }
 
-
-        // friends are connected
-        // share a file from u1 to u2
+        // upload a file to "a"'s space
         FileTreeNode u1Root = u1.getUserRoot();
         String filename = "somefile.txt";
         File f = File.createTempFile("peergos", "");
         byte[] originalFileContents = "Hello Peergos friend!".getBytes();
         Files.write(f.toPath(), originalFileContents);
         boolean uploaded = u1Root.uploadFile(filename, f, u1, l -> {}, u1.fragmenter());
-        FileTreeNode file = u1.getByPath(u1.username + "/" + filename).get();
-        byte[] fileContents  = null;
 
+        // share the file from "a" to each of the others
+        FileTreeNode u1File = u1.getByPath(u1.username + "/" + filename).get();
+        u1.share(Paths.get(u1.username, filename), userContexts.stream().map(u -> u.username).collect(Collectors.toSet()));
+
+        // check other users can read the file
         for (UserContext userContext : userContexts) {
-            FileTreeNode u1ToU2 = u1.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + userContext.username).get();
-            boolean success = u1ToU2.addLinkTo(file, u1);
-            FileTreeNode ownerViewOfLink = u1.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + userContext.username + "/" + filename).get();
-            Assert.assertTrue("Shared file", success);
+            Optional<FileTreeNode> sharedFile = userContext.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME +
+                    "/" + userContext.username + "/" + filename);
+            Assert.assertTrue("shared file present", sharedFile.isPresent());
 
-            Set<FileTreeNode> u2children = userContext
-                    .getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + userContext.username)
-                    .get()
-                    .getChildren(userContext);
+            InputStream inputStream = sharedFile.get().getInputStream(userContext, l -> {});
 
-            Optional<FileTreeNode> fromParent = u2children.stream()
-                    .filter(fn -> fn.getFileProperties().name.equals(filename))
-                    .findAny();
-            Assert.assertTrue("shared file present via parent's children", fromParent.isPresent());
-
-            Optional<FileTreeNode> sharedFile = userContext.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + userContext.username + "/" + filename);
-            Assert.assertTrue("Shared file present via direct path", sharedFile.isPresent() && sharedFile.get().getFileProperties().name.equals(filename));
-
-            InputStream inputStream = sharedFile.get().getInputStream(userContext, l -> {
-            });
-
-            fileContents = Serialize.readFully(inputStream);
+            byte[] fileContents = Serialize.readFully(inputStream);
             Assert.assertTrue("shared file contents correct", Arrays.equals(originalFileContents, fileContents));
         }
 
+        UserContext userToUnshareWith = userContexts.stream().findFirst().get();
 
-        //test that u2 cannot access it from scratch
-        UserContext u1New = UserTests.ensureSignedUp("a", "a", webPort);
-
-        List<UserContext> userContexts1 = getUserContexts(userCount);
-
-        UserContext userToUnshareWith = userContexts1.stream().findFirst().get();
-
-        // unshare
+        // unshare with a single user
         u1.unShare(Paths.get("a", filename), userToUnshareWith.username);
 
-        List<UserContext> remainingUsers = userContexts1.stream()
+        List<UserContext> updatedUserContexts = getUserContexts(userCount);
+
+        //test that the other user cannot access it from scratch
+        Optional<FileTreeNode> otherUserView = updatedUserContexts.get(0).getByPath(u1.username + "/" + filename);
+        Assert.assertTrue(! otherUserView.isPresent());
+
+        List<UserContext> remainingUsers = updatedUserContexts.stream()
                 .skip(1)
                 .collect(Collectors.toList());
 
+        UserContext u1New = UserTests.ensureSignedUp("a", "a", webPort);
 
-
-//        UserContext u2New = UserTests.ensureSignedUp("b", "b", webPort);
+        // check remaining users can still read it
         for (UserContext userContext : remainingUsers) {
-            Optional<FileTreeNode> updatedSharedFile = userContext.getByPath(u1New.username + "/" +
-                    UserContext.SHARED_DIR_NAME + "/" + userContext.username + "/" + filename);
+            Optional<FileTreeNode> sharedFile = userContext.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME +
+                    "/" + userContext.username + "/" + filename);
+            Assert.assertTrue(sharedFile.isPresent());
         }
 
-
         // test that u1 can still access the original file
-        Optional<FileTreeNode> fileWithNewBaseKey = u1New.getByPath(u1New.username + "/" + filename);
-        Assert.assertTrue(! updatedSharedFile.isPresent());
+        Optional<FileTreeNode> fileWithNewBaseKey = u1New.getByPath(u1.username + "/" + filename);
         Assert.assertTrue(fileWithNewBaseKey.isPresent());
 
         // Now modify the file
         byte[] suffix = "Some new data at the end".getBytes();
         InputStream suffixStream = new ByteArrayInputStream(suffix);
         FileTreeNode parent = u1New.getByPath(u1New.username).get();
-        parent.uploadFile(filename, suffixStream, fileContents.length, fileContents.length + suffix.length, Optional.empty(), u1New, l -> {}, u1New.fragmenter());
+        parent.uploadFile(filename, suffixStream, originalFileContents.length, originalFileContents.length + suffix.length,
+                Optional.empty(), u1New, l -> {}, u1New.fragmenter());
         InputStream extendedContents = u1New.getByPath(u1.username + "/" + filename).get().getInputStream(u1New, l -> {});
         byte[] newFileContents = Serialize.readFully(extendedContents);
 
-        Assert.assertTrue(Arrays.equals(newFileContents, ArrayOps.concat(fileContents, suffix)));
+        Assert.assertTrue(Arrays.equals(newFileContents, ArrayOps.concat(originalFileContents, suffix)));
     }
 
     @Test
