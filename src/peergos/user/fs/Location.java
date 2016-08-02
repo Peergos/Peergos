@@ -5,6 +5,7 @@ import peergos.crypto.symmetric.SymmetricKey;
 import peergos.util.*;
 
 import java.io.*;
+import java.util.*;
 
 public class Location {
     public static final int MAP_KEY_LENGTH = 32;
@@ -50,5 +51,26 @@ public class Location {
     public static Location decrypt(SymmetricKey fromKey, byte[] nonce, byte[] location) {
         byte[] bytes = fromKey.decrypt(location, nonce);
         return Location.deserialize(new DataSource(bytes));
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+
+        Location location = (Location) o;
+
+        if (owner != null ? !owner.equals(location.owner) : location.owner != null) return false;
+        if (writer != null ? !writer.equals(location.writer) : location.writer != null) return false;
+        return Arrays.equals(mapKey, location.mapKey);
+
+    }
+
+    @Override
+    public int hashCode() {
+        int result = owner != null ? owner.hashCode() : 0;
+        result = 31 * result + (writer != null ? writer.hashCode() : 0);
+        result = 31 * result + Arrays.hashCode(mapKey);
+        return result;
     }
 }

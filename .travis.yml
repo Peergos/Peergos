@@ -9,6 +9,7 @@ notifications:
   email:
     - christoph.boddy@gmail.com
     - ianopolous@gmail.com
+    - kevodwyer@gmail.com
 
 sudo: required
 before_install:
