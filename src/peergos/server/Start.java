@@ -26,6 +26,9 @@ public class Start
         OPTIONS.put("help", "Show this help.");
         OPTIONS.put("local", "Run an ephemeral localhost Peergos");
         OPTIONS.put("fuse", "Mount a Peergos user's filesystem natively");
+        OPTIONS.put("corenode", "start a corenode");
+        OPTIONS.put("demo", "run in demo mode");
+        OPTIONS.put("public server", "listen on all network interfaces, not just localhost");
     }
     public static final Map<String, String> PARAMS = new LinkedHashMap();
     static
@@ -38,6 +41,11 @@ public class Start
         PARAMS.put("password", "password for user filesystem to be mounted (used with -fuse)");
         PARAMS.put("corenodePath", "path to a local corenode sql file (created if it doesn't exist)");
         PARAMS.put("corenodePort", "port for the local core node to listen on");
+        PARAMS.put("webroot", "the path to the directory to serve as the web root");
+        PARAMS.put("domain", "the domain name of the machine that this Peergos server is running on");
+        PARAMS.put("mountPoint", "the directory to mount the Peergos filesystem in");
+        PARAMS.put("username", "only used for fuse");
+        PARAMS.put("password", "only used for fuse");
     }
 
     public static void printOptions()
@@ -126,7 +134,7 @@ public class Start
 
         Start.main(new String[] {"-corenode", "-domain", domain, "-corenodePath", a.getArg("corenodePath", corenodePath)});
 
-        Start.main(new String[]{"-port", "443", "-logMessages", "-domain", domain, "-publicserver", "-corenodeURL", "http://"+domain+":"+corenodePort});
+        Start.main(new String[]{"-port", "443", "-domain", domain, "-publicserver", "-corenodeURL", "http://"+domain+":"+corenodePort});
     }
 
     public static void local(Args a) throws Exception {
@@ -138,7 +146,7 @@ public class Start
 
         Start.main(new String[] {"-corenode", "-domain", domain, "-corenodePath", corenodePath, "-corenodePort", Integer.toString(corenodePort)});
 
-        Start.main(new String[]{"-port", Integer.toString(webPort), "-logMessages", "-domain", domain, "-publicserver",
+        Start.main(new String[]{"-port", Integer.toString(webPort), "-domain", domain, "-publicserver",
                 "-useIPFS", Boolean.toString(useIPFS), "-corenodeURL", "http://localhost:"+corenodePort});
     }
 }
