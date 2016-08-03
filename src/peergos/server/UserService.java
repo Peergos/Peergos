@@ -59,6 +59,7 @@ public class UserService
     }
 
     public boolean init(ContentAddressedStorage dht, Args args) throws IOException {
+        String webroot = args.getArg("webroot", UI_DIR);
         boolean isLocal = this.local.getHostName().contains("local");
         if (!isLocal)
             try {
@@ -138,7 +139,7 @@ public class UserService
         server.createContext(SIGNUP_URL, new InverseProxyHandler("demo.peergos.net", isLocal));
         server.createContext(ACTIVATION_URL, new InverseProxyHandler("demo.peergos.net", isLocal));
         boolean caching = args.hasArg("webCache");
-        server.createContext(UI_URL, new StaticHandler(UI_DIR, caching, true));
+        server.createContext(UI_URL, new StaticHandler(webroot, caching, true));
         server.createContext(HTTPCoreNodeServer.CORE_URL, new HTTPCoreNodeServer.CoreNodeHandler(coreNode));
 
         BTreeHandlers bTreeHandlers = new BTreeHandlers(coreNode, dht);
