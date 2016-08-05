@@ -28,7 +28,7 @@ public class Start
         OPTIONS.put("fuse", "Mount a Peergos user's filesystem natively");
         OPTIONS.put("corenode", "start a corenode");
         OPTIONS.put("demo", "run in demo mode");
-        OPTIONS.put("public server", "listen on all network interfaces, not just localhost");
+        OPTIONS.put("publicserver", "listen on all network interfaces, not just localhost");
     }
     public static final Map<String, String> PARAMS = new LinkedHashMap();
     static
