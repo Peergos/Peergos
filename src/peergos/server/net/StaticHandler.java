@@ -18,7 +18,7 @@ public class StaticHandler implements HttpHandler
 
     public StaticHandler(String pathToRoot, boolean caching, boolean gzip) throws IOException {
         this.caching = caching;
-        this.pathToRoot = pathToRoot;
+        this.pathToRoot = pathToRoot.endsWith("/") ? pathToRoot : pathToRoot + "/";
         this.gzip = gzip;
 
         File[] files = new File(pathToRoot).listFiles();
@@ -41,37 +41,45 @@ public class StaticHandler implements HttpHandler
     @Override
     public void handle(HttpExchange httpExchange) throws IOException {
         String path = httpExchange.getRequestURI().getPath();
-        path = path.substring(1);
-        path = path.replaceAll("//", "/");
-        if (path.length() == 0)
-            path = "index.html";
+        try {
+            path = path.substring(1);
+            path = path.replaceAll("//", "/");
+            if (path.length() == 0)
+                path = "index.html";
 
-        Asset res = caching ? data.get(path) : new Asset(readResource(new File(pathToRoot + path).exists() ?
-                new FileInputStream(pathToRoot + path)
-                : ClassLoader.getSystemClassLoader().getResourceAsStream(pathToRoot + path), gzip));
+            boolean fromFile = new File(pathToRoot + path).exists();
+            InputStream in = fromFile ? new FileInputStream(pathToRoot + path)
+                    : ClassLoader.getSystemClassLoader().getResourceAsStream(pathToRoot + path);
+            Asset res = caching ? data.get(path) : new Asset(readResource(in, gzip));
 
-        if (gzip)
-            httpExchange.getResponseHeaders().set("Content-Encoding", "gzip");
-        if (path.endsWith(".js"))
-            httpExchange.getResponseHeaders().set("Content-Type", "text/javascript");
-        else if (path.endsWith(".html"))
-            httpExchange.getResponseHeaders().set("Content-Type", "text/html");
-        else if (path.endsWith(".css"))
-            httpExchange.getResponseHeaders().set("Content-Type", "text/css");
-        else if (path.endsWith(".json"))
-            httpExchange.getResponseHeaders().set("Content-Type", "application/json");
-        if (httpExchange.getRequestMethod().equals("HEAD")) {
-            httpExchange.getResponseHeaders().set("Content-Length", ""+res.data.length);
-            httpExchange.sendResponseHeaders(200, -1);
-            return;
+            if (gzip)
+                httpExchange.getResponseHeaders().set("Content-Encoding", "gzip");
+            if (path.endsWith(".js"))
+                httpExchange.getResponseHeaders().set("Content-Type", "text/javascript");
+            else if (path.endsWith(".html"))
+                httpExchange.getResponseHeaders().set("Content-Type", "text/html");
+            else if (path.endsWith(".css"))
+                httpExchange.getResponseHeaders().set("Content-Type", "text/css");
+            else if (path.endsWith(".json"))
+                httpExchange.getResponseHeaders().set("Content-Type", "application/json");
+            if (httpExchange.getRequestMethod().equals("HEAD")) {
+                httpExchange.getResponseHeaders().set("Content-Length", "" + res.data.length);
+                httpExchange.sendResponseHeaders(200, -1);
+                return;
+            }
+            if (res.data.length > 100 * 1024) {
+                httpExchange.getResponseHeaders().set("Cache-Control", "public, max-age=3600");
+                httpExchange.getResponseHeaders().set("ETag", res.hash);
+            }
+            httpExchange.sendResponseHeaders(200, res.data.length);
+            httpExchange.getResponseBody().write(res.data);
+            httpExchange.getResponseBody().close();
+        } catch (NullPointerException t) {
+            System.err.println("Error retrieving: " + path);
+        } catch (Throwable t) {
+            System.err.println("Error retrieving: " + path);
+            t.printStackTrace();
         }
-        if (res.data.length > 100*1024) {
-            httpExchange.getResponseHeaders().set("Cache-Control", "public, max-age=3600");
-            httpExchange.getResponseHeaders().set("ETag", res.hash);
-        }
-        httpExchange.sendResponseHeaders(200, res.data.length);
-        httpExchange.getResponseBody().write(res.data);
-        httpExchange.getResponseBody().close();
     }
 
     private static void processFile(String path, File f, boolean gzip) throws IOException {
