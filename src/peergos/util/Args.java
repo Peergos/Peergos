@@ -4,7 +4,7 @@ import java.util.*;
 
 public class Args
 {
-    private final Map<String, String> params = new HashMap();
+    private final Map<String, String> params = new HashMap<>();
 
     public static Args parse(String[] args)
     {
@@ -35,6 +35,26 @@ public class Args
         if (!params.containsKey(param))
             throw new IllegalStateException("No parameter: "+param);
         return params.get(param);
+    }
+
+    public String setArg(String param, String value)
+    {
+        return params.put(param, value);
+    }
+
+    public String setParameter(String param)
+    {
+        return params.put(param, "true");
+    }
+
+    public String removeParameter(String param)
+    {
+        return params.remove(param);
+    }
+
+    public String removeArg(String param)
+    {
+        return params.remove(param);
     }
 
     public boolean hasArg(String arg)

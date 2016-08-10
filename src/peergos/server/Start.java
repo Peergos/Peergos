@@ -59,10 +59,12 @@ public class Start
             System.out.println("-"+ k + "\t " + PARAMS.get(k));
     }
 
-    public static void main(String[] args)
-    {
+    public static void main(String[] args) {
+        run(Args.parse(args));
+    }
+
+    public static void run(Args a) {
         try {
-            Args a = Args.parse(args);
             PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, new JavaEd25519());
 
             if (a.hasArg("help")) {
@@ -134,19 +136,22 @@ public class Start
 
         Start.main(new String[] {"-corenode", "-domain", domain, "-corenodePath", a.getArg("corenodePath", corenodePath)});
 
-        Start.main(new String[]{"-port", "443", "-domain", domain, "-publicserver", "-corenodeURL", "http://"+domain+":"+corenodePort});
+        a.setArg("port", "443");
+        a.setArg("corenodeURL", "http://" + domain + ":"+corenodePort);
+        a.setParameter("publicserver");
+        a.removeArg("demo");
+        run(a);
     }
 
     public static void local(Args a) throws Exception {
         String domain = a.getArg("domain", "localhost");
-        boolean useIPFS = a.getBoolean("useIPFS", true);
-        int webPort = a.getInt("port", 8000);
         String corenodePath = a.getArg("corenodePath", ":memory:");
         int corenodePort = a.getInt("corenodePort", HTTPCoreNodeServer.PORT);
 
-        Start.main(new String[] {"-corenode", "-domain", domain, "-corenodePath", corenodePath, "-corenodePort", Integer.toString(corenodePort)});
+        run(Args.parse(new String[] {"-corenode", "-domain", domain, "-corenodePath", corenodePath, "-corenodePort", Integer.toString(corenodePort)}));
 
-        Start.main(new String[]{"-port", Integer.toString(webPort), "-domain", domain, "-publicserver",
-                "-useIPFS", Boolean.toString(useIPFS), "-corenodeURL", "http://localhost:"+corenodePort});
+        a.setArg("corenodeURL", "http://localhost:"+corenodePort);
+        a.removeArg("local");
+        run(a);
     }
 }

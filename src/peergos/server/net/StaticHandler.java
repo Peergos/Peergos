@@ -20,7 +20,11 @@ public class StaticHandler implements HttpHandler
         this.caching = caching;
         this.pathToRoot = pathToRoot;
         this.gzip = gzip;
-        for (File f: new File(pathToRoot).listFiles())
+
+        File[] files = new File(pathToRoot).listFiles();
+        if (files == null)
+            throw new IllegalStateException("Couldn't find webroot: "+pathToRoot);
+        for (File f: files)
             processFile("", f, gzip);
     }
 

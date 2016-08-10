@@ -60,6 +60,7 @@ public class UserService
 
     public boolean init(ContentAddressedStorage dht, Args args) throws IOException {
         String webroot = args.getArg("webroot", UI_DIR);
+        System.out.println("Using webroot: " + webroot);
         boolean isLocal = this.local.getHostName().contains("local");
         if (!isLocal)
             try {
