@@ -536,6 +536,14 @@ public class FileTreeNode {
         return props;
     }
 
+    public String getName() {
+        return getFileProperties().name;
+    }
+
+    public long getSize() {
+        return getFileProperties().size;
+    }
+
     public String toString() {
         return getFileProperties().name;
     }
