@@ -1,6 +1,6 @@
 package peergos.user;
 
-import org.ipfs.api.*;
+import org.ipfs.api.Multihash;
 import peergos.corenode.*;
 import peergos.crypto.*;
 import peergos.crypto.asymmetric.*;
