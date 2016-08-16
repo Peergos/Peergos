@@ -1,11 +1,9 @@
 package peergos.server.storage;
 
-import org.ipfs.api.*;
-import peergos.merklebtree.MerkleNode;
-import peergos.util.*;
-
-import java.security.*;
-import java.util.*;
+import peergos.shared.ipfs.api.Multihash;
+import peergos.shared.merklebtree.MerkleNode;
+import peergos.shared.storage.ContentAddressedStorage;
+import peergos.shared.util.*;
 
 public class CachingStorage implements ContentAddressedStorage {
     private final ContentAddressedStorage target;

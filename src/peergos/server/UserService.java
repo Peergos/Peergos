@@ -1,11 +1,14 @@
 package peergos.server;
 
 import com.sun.net.httpserver.*;
-import peergos.corenode.*;
+import peergos.shared.corenode.*;
+import peergos.shared.storage.ContentAddressedStorage;
+
 import org.bouncycastle.operator.OperatorCreationException;
+
+import peergos.server.corenode.HTTPCoreNodeServer;
 import peergos.server.net.*;
-import peergos.server.storage.ContentAddressedStorage;
-import peergos.util.*;
+import peergos.shared.util.*;
 
 import javax.net.ssl.*;
 import java.io.*;

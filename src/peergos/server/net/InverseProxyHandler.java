@@ -1,7 +1,6 @@
 package peergos.server.net;
 
 import com.sun.net.httpserver.*;
-import peergos.util.*;
 
 import java.io.*;
 import java.net.*;

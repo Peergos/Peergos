@@ -1,8 +1,8 @@
 package peergos.server.net;
 
 import com.sun.net.httpserver.*;
-import peergos.crypto.hash.*;
-import peergos.util.*;
+import peergos.shared.crypto.hash.*;
+import peergos.shared.util.*;
 
 import java.io.*;
 import java.net.*;

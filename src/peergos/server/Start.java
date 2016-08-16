@@ -1,19 +1,20 @@
 package peergos.server;
 
-import peergos.corenode.*;
-import peergos.crypto.*;
-import peergos.crypto.asymmetric.*;
-import peergos.crypto.asymmetric.curve25519.*;
-import peergos.fuse.*;
+import peergos.shared.corenode.*;
+import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.crypto.asymmetric.curve25519.*;
+import peergos.shared.storage.ContentAddressedStorage;
+import peergos.server.corenode.HTTPCoreNodeServer;
+import peergos.server.corenode.PinningCoreNode;
+import peergos.server.corenode.SQLiteCoreNode;
+import peergos.server.fuse.*;
 import peergos.server.storage.*;
-import peergos.tests.*;
-import peergos.user.*;
-import peergos.util.*;
+import peergos.server.tests.*;
+import peergos.shared.user.*;
+import peergos.shared.util.*;
 
-import java.io.IOException;
 import java.net.*;
 import java.nio.file.*;
-import java.sql.SQLException;
 import java.util.*;
 import java.util.logging.*;
 

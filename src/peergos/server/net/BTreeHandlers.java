@@ -1,13 +1,13 @@
 package peergos.server.net;
 
 import com.sun.net.httpserver.*;
-import org.ipfs.api.Multihash;
-import peergos.corenode.*;
-import peergos.crypto.*;
-import peergos.merklebtree.*;
-import peergos.server.storage.ContentAddressedStorage;
-import peergos.user.*;
-import peergos.util.*;
+import peergos.shared.corenode.*;
+import peergos.shared.crypto.*;
+import peergos.shared.ipfs.api.Multihash;
+import peergos.shared.merklebtree.*;
+import peergos.shared.storage.ContentAddressedStorage;
+import peergos.shared.user.*;
+import peergos.shared.util.*;
 
 import java.io.*;
 import java.util.*;

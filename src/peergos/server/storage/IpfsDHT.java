@@ -1,7 +1,10 @@
 package peergos.server.storage;
 
-import org.ipfs.api.*;
-import peergos.merklebtree.MerkleNode;
+import peergos.shared.ipfs.api.IPFS;
+import peergos.shared.ipfs.api.MultiAddress;
+import peergos.shared.ipfs.api.Multihash;
+import peergos.shared.merklebtree.MerkleNode;
+import peergos.shared.storage.ContentAddressedStorage;
 
 import java.io.*;
 import java.util.*;
@@ -35,7 +38,7 @@ public class IpfsDHT implements ContentAddressedStorage {
     @Override
     public Multihash put(MerkleNode object) {
         try {
-            org.ipfs.api.MerkleNode data = ipfs.object.patch(EMPTY, "set-data", Optional.of(object.data), Optional.empty(), Optional.empty());
+            peergos.shared.ipfs.api.MerkleNode data = ipfs.object.patch(EMPTY, "set-data", Optional.of(object.data), Optional.empty(), Optional.empty());
             Multihash current = data.hash;
             for (Map.Entry<String, Multihash> e : object.links.entrySet())
                 current = ipfs.object.patch(current, "add-link", Optional.empty(), Optional.of(e.getKey()), Optional.of(e.getValue())).hash;
