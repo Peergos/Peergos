@@ -157,14 +157,39 @@ public class MultiUserTests {
         Assert.assertTrue(Arrays.equals(newFileContents, ArrayOps.concat(originalFileContents, suffix)));
     }
 
-    @Test
-    public void shareAndUnshareFolder() throws IOException {
-        UserContext u1 = UserTests.ensureSignedUp("a", "a", webPort);
-        UserContext u2 = UserTests.ensureSignedUp("b", "b", webPort);
-        u2.sendFollowRequest(u1.username, SymmetricKey.random());
+    private String random() {
+        return UUID.randomUUID().toString();
+    }
+    public void shareAndUnshareFolder(int userCount) throws IOException {
+        Assert.assertTrue(0 < userCount);
+
+        String u1nameAndPasword = "a";
+        UserContext u1 = UserTests.ensureSignedUp(u1nameAndPasword, u1nameAndPasword, webPort);
+//        UserContext u2 = UserTests.ensureSignedUp("b", "b", webPort);
+        List<UserContext> users = new ArrayList<>();
+        List<String>  userNames =  new ArrayList<>(), userPasswords = new ArrayList<>();
+        for (int i = 0; i < userCount; i++) {
+            userNames.add(random());
+            userPasswords.add(random());
+        }
+
+        for (int i = 0; i < userCount; i++)
+            users.add(UserTests.ensureSignedUp(userNames.get(i), userPasswords.get(i), webPort));
+
+        for (UserContext user : users)
+            user.sendFollowRequest(u1.username, SymmetricKey.random());
+
+
         List<FollowRequest> u1Requests = u1.getFollowRequests();
-        u1.sendReplyFollowRequest(u1Requests.get(0), true, true);
-        List<FollowRequest> u2FollowRequests = u2.getFollowRequests();
+        for (FollowRequest u1Request : u1Requests) {
+            boolean accept = true;
+            boolean reciprocate = true;
+            u1.sendReplyFollowRequest(u1Request, accept, reciprocate);
+        }
+
+        for (UserContext user : users) {
+            user.getFollowRequests();
+        }
 
         // friends are connected
         // share a file from u1 to u2
@@ -177,53 +202,100 @@ public class MultiUserTests {
         u1Root.mkdir(folderName, u1, SymmetricKey.random(), false, u1.random);
         FileTreeNode folder = u1.getByPath("/a/" + folderName).get();
         boolean uploaded = folder.uploadFile(filename, f, u1, l -> {}, u1.fragmenter());
-        FileTreeNode file = u1.getByPath(u1.username + "/" + folderName + "/" + filename).get();
-        FileTreeNode u1ToU2 = u1.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + u2.username).get();
-        boolean success = u1ToU2.addLinkTo(folder, u1);
-        FileTreeNode ownerViewOfLink = u1.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + u2.username + "/" + folderName).get();
-        Assert.assertTrue("Shared file", success);
+        String originalPath = u1.username + "/" + folderName + "/" + filename;
+        FileTreeNode file = u1.getByPath(originalPath).get();
 
-        Set<FileTreeNode> u2children = u2
-                .getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + u2.username)
-                .get()
-                .getChildren(u2);
-        Optional<FileTreeNode> fromParent = u2children.stream()
-                .filter(fn -> fn.getFileProperties().name.equals(folderName))
-                .findAny();
-        Assert.assertTrue("shared file present via parent's children", fromParent.isPresent());
+        byte[] fileContents = null;
 
-        Optional<FileTreeNode> sharedFolder = u2.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + u2.username + "/" + folderName);
-        Assert.assertTrue("Shared folder present via direct path", sharedFolder.isPresent() && sharedFolder.get().getFileProperties().name.equals(folderName));
+        for (UserContext user : users) {
+            String path = u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + user.username;
+            FileTreeNode u1ToU2 = u1.getByPath(path).get();
+            boolean success = u1ToU2.addLinkTo(folder, u1);
+            FileTreeNode ownerViewOfLink = u1.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + user.username + "/" + folderName).get();
+            Assert.assertTrue("Shared file", success);
 
-        FileTreeNode sharedFile = u2.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + u2.username + "/" + folderName + "/" + filename).get();
-        InputStream inputStream = sharedFile.getInputStream(u2, l -> {});
+            Set<FileTreeNode> u2children = user
+                    .getByPath(path)
+                    .get()
+                    .getChildren(user);
+            Optional<FileTreeNode> fromParent = u2children.stream()
+                    .filter(fn -> fn.getFileProperties().name.equals(folderName))
+                    .findAny();
+            Assert.assertTrue("shared file present via parent's children", fromParent.isPresent());
 
-        byte[] fileContents = Serialize.readFully(inputStream);
-        Assert.assertTrue("shared file contents correct", Arrays.equals(originalFileContents, fileContents));
+
+            Optional<FileTreeNode> sharedFolder = user.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + user.username + "/" + folderName);
+            Assert.assertTrue("Shared folder present via direct path", sharedFolder.isPresent() && sharedFolder.get().getFileProperties().name.equals(folderName));
+
+            FileTreeNode sharedFile = user.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + user.username + "/" + folderName + "/" + filename).get();
+            InputStream inputStream = sharedFile.getInputStream(user, l -> {
+            });
+
+            byte[] contents = Serialize.readFully(inputStream);
+            if (fileContents != null)
+                Assert.assertTrue(
+                        Arrays.equals(contents, fileContents)); //users share same view of data
+
+            fileContents = contents;
+
+            Assert.assertTrue("shared file contents correct", Arrays.equals(originalFileContents, fileContents));
+        }
 
         // unshare
-        u1.unShare(Paths.get("a", folderName), "b");
+//        for (UserContext user : users) {
+//            u1.unShare(Paths.get(u1nameAndPasword, folderName), user.username);
+//        }
 
         //test that u2 cannot access it from scratch
-        UserContext u1New = UserTests.ensureSignedUp("a", "a", webPort);
-        UserContext u2New = UserTests.ensureSignedUp("b", "b", webPort);
+        UserContext u1New = UserTests.ensureSignedUp(u1nameAndPasword, u1nameAndPasword, webPort);
 
-        Optional<FileTreeNode> updatedSharedFolder = u2New.getByPath(u1New.username + "/" + UserContext.SHARED_DIR_NAME + "/" + u2New.username + "/" + folderName);
+        List<UserContext>  usersNew = new ArrayList<>();
+        for (int i = 0; i < userCount; i++)
+            usersNew.add(UserTests.ensureSignedUp(userNames.get(i), userPasswords.get(i), webPort));
 
-        // test that u1 can still access the original file
-        Optional<FileTreeNode> fileWithNewBaseKey = u1New.getByPath(u1New.username + "/" + folderName + "/" + filename);
-        Assert.assertTrue(! updatedSharedFolder.isPresent());
-        Assert.assertTrue(fileWithNewBaseKey.isPresent());
+        for (int i = 0; i < usersNew.size(); i++) {
+            UserContext user = usersNew.get(i);
+            u1.unShare(Paths.get(u1nameAndPasword, folderName), user.username);
 
-        // Now modify the file
-        byte[] suffix = "Some new data at the end".getBytes();
-        InputStream suffixStream = new ByteArrayInputStream(suffix);
-        FileTreeNode parent = u1New.getByPath(u1New.username+"/"+folderName).get();
-        parent.uploadFile(filename, suffixStream, fileContents.length, fileContents.length + suffix.length, Optional.empty(), u1New, l -> {}, u1New.fragmenter());
-        InputStream extendedContents = u1New.getByPath(u1.username + "/" + folderName + "/" + filename).get().getInputStream(u1New, l -> {});
-        byte[] newFileContents = Serialize.readFully(extendedContents);
+            Optional<FileTreeNode> updatedSharedFolder = user.getByPath(u1New.username + "/" + UserContext.SHARED_DIR_NAME + "/" + user.username + "/" + folderName);
 
-        Assert.assertTrue(Arrays.equals(newFileContents, ArrayOps.concat(fileContents, suffix)));
+            // test that u1 can still access the original file
+            Optional<FileTreeNode> fileWithNewBaseKey = u1New.getByPath(u1New.username + "/" + folderName + "/" + filename);
+            Assert.assertTrue(!updatedSharedFolder.isPresent());
+            Assert.assertTrue(fileWithNewBaseKey.isPresent());
+
+            // Now modify the file
+            byte[] suffix = "Some new data at the end".getBytes();
+            InputStream suffixStream = new ByteArrayInputStream(suffix);
+            FileTreeNode parent = u1New.getByPath(u1New.username + "/" + folderName).get();
+            parent.uploadFile(filename, suffixStream, fileContents.length, fileContents.length + suffix.length, Optional.empty(), u1New, l -> {
+            }, u1New.fragmenter());
+            InputStream extendedContents = u1New.getByPath(originalPath).get().getInputStream(u1New, l -> {
+            });
+            byte[] newFileContents = Serialize.readFully(extendedContents);
+
+            Assert.assertTrue(Arrays.equals(newFileContents, ArrayOps.concat(fileContents, suffix)));
+
+            //test remaining users  can still see shared file and  folder
+            for (int j = i+1; j < usersNew.size(); j++) {
+                UserContext otherUser = usersNew.get(j);
+
+                Optional<FileTreeNode> sharedFolder = otherUser.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + otherUser.username + "/" + folderName);
+                Assert.assertTrue("Shared folder present via direct path", sharedFolder.isPresent() && sharedFolder.get().getFileProperties().name.equals(folderName));
+
+                FileTreeNode sharedFile = otherUser.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + otherUser.username + "/" + folderName + "/" + filename).get();
+                InputStream inputStream = sharedFile.getInputStream(otherUser, l -> {
+                });
+
+                byte[] contents = Serialize.readFully(inputStream);
+                Assert.assertTrue(Arrays.equals(contents, newFileContents)); //remaining users share latest view of same data
+            }
+        }
+    }
+
+    @Test
+    public void shareAndUnshareFolder() throws IOException {
+        shareAndUnshareFolder(4);
     }
 
     @Test
