@@ -273,6 +273,10 @@ public class FileTreeNode {
         return uploadFile(filename, new ResetableFileInputStream(f), f.length(), context,  monitor, fragmenter);
     }
 
+    public boolean uploadFile(String filename, InputStream fileData, long length, UserContext context, Consumer<Long> monitor) throws IOException {
+        return uploadFile(filename, fileData, length, context, monitor, context.fragmenter());
+    }
+
     public boolean uploadFile(String filename, InputStream fileData, long length, UserContext context, Consumer<Long> monitor, peergos.user.fs.Fragmenter fragmenter) throws IOException {
         return uploadFile(filename, fileData, 0, length, Optional.empty(), context, monitor, fragmenter);
     }
