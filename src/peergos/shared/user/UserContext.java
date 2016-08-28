@@ -20,6 +20,8 @@ import java.util.*;
 import java.util.function.*;
 import java.util.stream.*;
 
+import jsinterop.annotations.*;
+
 public class UserContext {
     public static final String SHARED_DIR_NAME = "shared";
 
@@ -120,6 +122,7 @@ public class UserContext {
         this.fragmenter = fragmenter;
     }
 
+    @JsMethod
     public static UserContext ensureSignedUp(String username, String password, int webPort) throws IOException {
         LoginHasher hasher = new ScryptJava();
         HttpPoster poster = new HttpPoster.Java(new URL("http://localhost:" + webPort + "/"));
@@ -205,6 +208,7 @@ public class UserContext {
         return corenodeClient.updateChain(username, claimChain);
     }
 
+    @JsMethod
     public UserContext changePassword(String newPassword) throws IOException{
         System.out.println("changing password");
         LocalDate expiry = LocalDate.now();
@@ -619,6 +623,7 @@ public class UserContext {
         return entrie.getChildren(path, this);
     }
 
+    @JsMethod
     public Optional<FileTreeNode> getByPath(String path) {
         return entrie.getByPath(path, this);
     }

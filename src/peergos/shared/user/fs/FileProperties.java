@@ -1,5 +1,6 @@
 package peergos.shared.user.fs;
 
+import jsinterop.annotations.*;
 import peergos.shared.storage.ContentAddressedStorage;
 import peergos.shared.util.*;
 
@@ -7,6 +8,7 @@ import java.io.*;
 import java.time.*;
 import java.util.Optional;
 
+@JsType
 public class FileProperties {
     public static final FileProperties EMPTY = new FileProperties("", 0, LocalDateTime.MIN, false, Optional.empty());
 

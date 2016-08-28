@@ -1,5 +1,6 @@
 package peergos.shared.user.fs;
 
+import jsinterop.annotations.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
@@ -232,6 +233,7 @@ public class FileTreeNode {
         return parentKey;
     }
 
+    @JsMethod
     public Set<FileTreeNode> getChildren(UserContext context) {
         if (this.props.name.equals("/"))
             return context.getChildren("/");
@@ -497,6 +499,7 @@ public class FileTreeNode {
         return entryWriterKey;
     }
 
+    @JsMethod
     public boolean copyTo(FileTreeNode target, UserContext context) throws IOException {
         if (! target.isDirectory())
             throw new IllegalStateException("CopyTo target "+ target +" must be a directory");
@@ -540,6 +543,7 @@ public class FileTreeNode {
         return pointer.fileAccess.retriever();
     }
 
+    @JsMethod
     public FileProperties getFileProperties() {
         return props;
     }

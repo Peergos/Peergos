@@ -4,8 +4,6 @@ import com.sun.net.httpserver.*;
 import peergos.shared.corenode.*;
 import peergos.shared.storage.ContentAddressedStorage;
 
-import org.bouncycastle.operator.OperatorCreationException;
-
 import peergos.server.corenode.HTTPCoreNodeServer;
 import peergos.server.net.*;
 import peergos.shared.util.*;
@@ -130,7 +128,7 @@ public class UserService
                 });
             }
             catch (NoSuchAlgorithmException | InvalidKeyException | KeyStoreException | CertificateException |
-                    NoSuchProviderException | SignatureException | OperatorCreationException |
+                    NoSuchProviderException | SignatureException |
                     UnrecoverableKeyException | KeyManagementException ex)
             {
                 System.err.println("Failed to create HTTPS port");
@@ -162,7 +160,7 @@ public class UserService
 
     public static KeyStore getKeyStore(String filename, char[] password)
             throws KeyStoreException, IOException, NoSuchAlgorithmException, CertificateException, InvalidKeyException,
-            NoSuchProviderException, SignatureException, OperatorCreationException
+            NoSuchProviderException, SignatureException
     {
         KeyStore ks = KeyStore.getInstance("PKCS12");
         if (new File(filename).exists())

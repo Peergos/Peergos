@@ -1,132 +1,153 @@
-<project name="Peergos" default="dist" basedir=".">
-  <description>
-    Building Peergos
-  </description>
+<?xml version="1.0" encoding="utf-8" ?>
+<project name="Peergos" default="build" basedir=".">
+  <!-- Arguments to gwtc and devmode targets -->
+  <property name="gwt.args" value="" />
 
-  <property name="src" location="src"/>
-  <property name="build" location="build"/>
-  <property name="dist" location="dist"/>
+  <!-- Configure path to GWT SDK -->
+  <property name="gwt.sdk" location="/home/ian/gwt-2.8.0-rc1" />
 
-  <path id="dep.runtime">
-    <fileset dir="./lib">
-        <include name="**/*.jar" />
-    </fileset>
+  <path id="project.class.path">
+    <pathelement location="war/WEB-INF/classes"/>
+    <pathelement location="${gwt.sdk}/gwt-user.jar"/>
+    <pathelement location="${gwt.sdk}/gwt-dev.jar"/>
+    <pathelement location="${gwt.sdk}/validation-api-1.0.0.GA.jar"/>
+    <pathelement location="${gwt.sdk}/validation-api-1.0.0.GA-sources.jar"/>
+    <fileset dir="war/WEB-INF/lib" includes="**/*.jar"/>
+    <!-- Add any additional non-server libs (such as JUnit) here -->
+    <pathelement location="lib/junit-4.11.jar"/>
+    <pathelement location="lib/hamcrest-core-1.3.jar"/>
   </path>
 
-  <target name="init">
-    <mkdir dir="${build}"/>
+  <target name="libs" description="Copy libs to WEB-INF/lib">
+    <mkdir dir="war/WEB-INF/lib" />
+    <copy todir="war/WEB-INF/lib" file="${gwt.sdk}/gwt-servlet.jar" />
+    <copy todir="war/WEB-INF/lib" file="${gwt.sdk}/gwt-servlet-deps.jar" />
+    <!-- Add any additional server libs that need to be copied -->
+    <copy todir="war/WEB-INF/lib" file="lib/jnr-fuse-0.3-all.jar" />
+    <copy todir="war/WEB-INF/lib" file="lib/orchid-1.0.0.jar" />
   </target>
 
-  <target name="compile" depends="init"
-        description="compile the source">
-    <javac includeantruntime="false" srcdir="${src}" destdir="${build}" debug="true" debuglevel="lines,vars,source">
+  <target name="javac" depends="libs" description="Compile java source to bytecode">
+    <mkdir dir="war/WEB-INF/classes"/>
+    <javac srcdir="src" includes="**" encoding="utf-8"
+        destdir="war/WEB-INF/classes"
+        source="1.8" target="1.8" nowarn="true"
+        debug="true" debuglevel="lines,vars,source">
+      <classpath refid="project.class.path"/>
+    </javac>
+    <copy todir="war/WEB-INF/classes">
+      <fileset dir="src" excludes="**/*.java"/>
+    </copy>
+  </target>
+
+  <target name="gwtc" depends="javac" description="GWT compile to JavaScript (production mode)">
+    <java failonerror="true" fork="true" classname="com.google.gwt.dev.Compiler" maxmemory="512m">
       <classpath>
-	<fileset dir="lib">
-          <include name="**/*.jar" />
-        </fileset>
+        <pathelement location="src"/>
+        <path refid="project.class.path"/>
       </classpath>
+      <arg line="-war"/>
+      <arg value="war"/>
+      <!-- Additional arguments like -style PRETTY or -logLevel DEBUG -->
+      <arg line="-generateJsInteropExports"/>
+      <arg line="${gwt.args}"/>
+      <arg value="peergos.Peergos"/>
+    </java>
+  </target>
+
+  <target name="devmode" depends="javac" description="Run development mode (pass -Dgwt.args=-nosuperDevMode to fallback to classic DevMode)">
+    <java failonerror="true" fork="true" classname="com.google.gwt.dev.DevMode" maxmemory="1g">
+      <classpath>
+        <pathelement location="src"/>
+        <path refid="project.class.path"/>
+        <pathelement location="${gwt.sdk}/gwt-codeserver.jar"/>
+      </classpath>
+      <arg value="-startupUrl"/>
+      <arg value="Peergos.html"/>
+      <arg line="-war"/>
+      <arg value="war"/>
+      <!-- Additional arguments like -style PRETTY, -logLevel DEBUG or -nosuperDevMode -->
+      <arg line="-generateJsInteropExports"/>
+      <arg line="${gwt.args}"/>
+      <arg value="peergos.Peergos"/>
+      <arg value="peergos.Peergos"/>
+    </java>
+  </target>
+
+<!--
+Test targets suppressed because -junit argument was not specified when running webAppCreator.
+
+  <target name="javac.tests" depends="javac" description="Compiles test code">
+    <javac srcdir="test" includes="**" encoding="utf-8"
+      source="1.8" target="1.8" nowarn="true"
+      destdir="war/WEB-INF/classes"
+      debug="true" debuglevel="lines,vars,source">
+      <classpath location="path_to_the_junit_jar"/>
+      <classpath refid="project.class.path"/>
     </javac>
   </target>
-
-  <target name="dist" depends="compile" description="generate the distribution">
-    <mkdir dir="${dist}/lib"/>
-    <copy todir="${dist}/lib">
-      <fileset dir="lib"/>
-    </copy>
-    <manifestclasspath property="manifest_cp" jarfile="myjar.jar">
-      <classpath refid="dep.runtime" />
-    </manifestclasspath>
-    <jar jarfile="${dist}/PeergosServer.jar" basedir="${build}">
-      <manifest>
-	  <attribute name="Class-Path" value="${manifest_cp}"/>
-	  <attribute name="Main-Class" value="peergos.server.Start"/>
-      </manifest>
-      <fileset dir=".">
-	<include name="**/ui/**"/>
-	<exclude name="out/**"/>
-	<exclude name="ui/doppio/**"/>
-	<exclude name="ui/PeergosServer.jar"/>
-      </fileset>
-    </jar>
-    <jar jarfile="${dist}/PeergosClient.jar" basedir="${build}" includes="peergos/corenode/**,peergos/crypto/**,peergos/user/**,peergos/util/**,peergos/merklebtree/**">
-      <manifest>
-	  <attribute name="Class-Path" value="${manifest_cp}"/>
-      </manifest>
-    </jar>
-    <copy todir=".">
-      <fileset file="${dist}/PeergosServer.jar"/>
-    </copy>
-    <copy todir="ui/">
-      <fileset file="${dist}/PeergosClient.jar"/>
-    </copy>
-  </target>
-
-
-  <target name="userTest" depends="compile,dist">
-    <junit printsummary="yes" fork="true" haltonfailure="yes">
-      <jvmarg value="-Xmx1g"/>
+  
+  <target name="test.dev" depends="javac.tests" description="Run development mode tests">
+    <mkdir dir="reports/htmlunit.dev" />
+    <junit fork="yes" printsummary="yes" haltonfailure="yes" maxmemory="256m">
+      <sysproperty key="gwt.args" value="-logLevel WARN -war www-test" />
+      <sysproperty key="java.awt.headless" value="true" />
       <classpath>
-	<pathelement location="lib/junit-4.11.jar" />
-	<pathelement location="lib/hamcrest-core-1.3.jar" />
-	<pathelement location="PeergosServer.jar" />
+        <pathelement location="src" />
+        <pathelement location="test" />
+        <path refid="project.class.path" />
+        <pathelement location="/home/ian/gwt-2.8.0-rc1/validation-api-1.0.0.GA.jar" />
+        <pathelement location="/home/ian/gwt-2.8.0-rc1/validation-api-1.0.0.GA-sources.jar" />
+        <pathelement location="path_to_the_junit_jar" />
       </classpath>
-      <test name="peergos.tests.UserTests" haltonfailure="yes">
-	<formatter type="plain"/>
-	<formatter type="xml"/>
-      </test>
-      </junit>
+      <batchtest todir="reports/htmlunit.dev" >
+        <fileset dir="test" >
+          <include name="**/*Suite.java" />
+        </fileset>
+      </batchtest>
+      <formatter type="plain" />
+      <formatter type="xml" />
+    </junit>
   </target>
 
-  <target name="multiUserTests" depends="compile,dist">
-    <junit printsummary="yes" fork="true" haltonfailure="yes">
-      <jvmarg value="-Xmx1g"/>
+  <target name="test.prod" depends="javac.tests" description="Run production mode tests">
+    <mkdir dir="reports/htmlunit.prod" />
+    <junit fork="yes" printsummary="yes" haltonfailure="yes" maxmemory="256m">
+      <sysproperty key="gwt.args" value="-prod -logLevel WARN -war www-test" />
+      <sysproperty key="java.awt.headless" value="true" />
       <classpath>
-	<pathelement location="lib/junit-4.11.jar" />
-	<pathelement location="lib/hamcrest-core-1.3.jar" />
-	<pathelement location="PeergosServer.jar" />
+        <pathelement location="src" />
+        <pathelement location="test" />
+        <path refid="project.class.path" />
+        <pathelement location="/home/ian/gwt-2.8.0-rc1/validation-api-1.0.0.GA.jar" />
+        <pathelement location="/home/ian/gwt-2.8.0-rc1/validation-api-1.0.0.GA-sources.jar" />
+        <pathelement location="path_to_the_junit_jar" />
       </classpath>
-      <test name="peergos.tests.MultiUserTests" haltonfailure="yes">
-	<formatter type="plain"/>
-	<formatter type="xml"/>
-      </test>
-      </junit>
+      <batchtest todir="reports/htmlunit.prod" >
+        <fileset dir="test" >
+          <include name="**/*Suite.java" />
+        </fileset>
+      </batchtest>
+      <formatter type="plain" />
+      <formatter type="xml" />
+    </junit>
   </target>
 
-  <target name="publicLinkTest" depends="compile,dist">
-    <junit printsummary="yes" fork="true" haltonfailure="yes">
-      <jvmarg value="-Xmx1g"/>
-      <classpath>
-	<pathelement location="lib/junit-4.11.jar" />
-	<pathelement location="lib/hamcrest-core-1.3.jar" />
-	<pathelement location="PeergosServer.jar" />
-      </classpath>
-      <test name="peergos.tests.UserPublicKeyLinkTests" haltonfailure="yes">
-	<formatter type="plain"/>
-	<formatter type="xml"/>
-      </test>
-      </junit>
+  <target name="test" description="Run development and production mode tests">
+    <antcall target="test.dev" />
+    <antcall target="test.prod" />
+  </target>
+-->
+
+  <target name="build" depends="gwtc" description="Build this project" />
+
+  <target name="war" depends="build" description="Create a war file">
+    <zip destfile="Peergos.war" basedir="war"/>
   </target>
 
-  <target name="fuseTest" depends="compile,dist">
-    <junit printsummary="yes" fork="true" haltonfailure="yes">
-      <jvmarg value="-Xmx1g"/>
-      <classpath>
-	<pathelement location="lib/junit-4.11.jar" />
-	<pathelement location="lib/hamcrest-core-1.3.jar" />
-	<pathelement location="PeergosServer.jar" />
-      </classpath>
-      <test name="peergos.tests.FuseTests" haltonfailure="yes">
-	<formatter type="plain"/>
-	<formatter type="xml"/>
-      </test>
-      </junit>
+  <target name="clean" description="Cleans this project">
+    <delete dir="war/WEB-INF/classes" failonerror="false" />
+    <delete dir="war/peergos" failonerror="false" />
   </target>
 
-  <target name="test" depends="compile,dist,userTest,multiUserTests,fuseTest,publicLinkTest">
-  </target> 
-
-  <target name="clean" description="clean up">
-    <delete dir="${build}"/>
-    <delete dir="${dist}"/>
-  </target>
 </project>
