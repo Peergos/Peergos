@@ -1,7 +1,10 @@
 package java.time;
 
-import java.time.chrono.ChronoLocalDateTime;
+import jsinterop.annotations.*;
 
+import java.time.chrono.ChronoLocalDateTime;
+@JsType
+@SuppressWarnings("unusable-by-js")
 public class LocalDateTime {
 
 	private LocalDate date;
@@ -45,6 +48,7 @@ public class LocalDateTime {
         LocalTime time = LocalTime.ofNanoOfDay(secsOfDay * NANOS_PER_SECOND + nanoOfSecond);
         return new LocalDateTime(date, time);
     }
+    @JsIgnore
     public static LocalDateTime now(Clock clock) {
         final Instant now = clock.instant();  // called once
         ZoneOffset offset = clock.getZone().getRules().getOffset(now);
