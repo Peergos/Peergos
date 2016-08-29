@@ -5,8 +5,7 @@
 	
 	<inherits name='com.google.gwt.user.User'/>
 	<inherits name='com.google.gwt.user.theme.clean.Clean'/>
-	<entry-point class='peergos.client.Peergos'/>
-  
+	  
   	<public path="gwt/resources"/>
 	<super-source path="gwt/emu" />
 	<source path="gwt">

@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <project name="Peergos" default="build" basedir=".">
   <!-- Arguments to gwtc and devmode targets -->
-  <property name="gwt.args" value="" />
+  <property name="gwt.args" value="-generateJsInteropExports" />
 
   <!-- Configure path to GWT SDK -->
-  <property name="gwt.sdk" location="/home/ian/gwt-2.8.0-rc1" />
+  <!--<property name="gwt.sdk" location="/home/ian/gwt-2.8.0-rc1" />-->
+  <property name="gwt.sdk" location="/home/ian/gwt-0.0.0" />
 
   <path id="project.class.path">
     <pathelement location="war/WEB-INF/classes"/>
@@ -49,7 +50,6 @@
       <arg line="-war"/>
       <arg value="war"/>
       <!-- Additional arguments like -style PRETTY or -logLevel DEBUG -->
-      <arg line="-generateJsInteropExports"/>
       <arg line="${gwt.args}"/>
       <arg value="peergos.Peergos"/>
     </java>
@@ -67,7 +67,6 @@
       <arg line="-war"/>
       <arg value="war"/>
       <!-- Additional arguments like -style PRETTY, -logLevel DEBUG or -nosuperDevMode -->
-      <arg line="-generateJsInteropExports"/>
       <arg line="${gwt.args}"/>
       <arg value="peergos.Peergos"/>
       <arg value="peergos.Peergos"/>
