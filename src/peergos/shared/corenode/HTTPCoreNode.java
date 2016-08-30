@@ -1,6 +1,7 @@
 
 package peergos.shared.corenode;
 
+import peergos.client.*;
 import peergos.shared.ipfs.api.*;
 import peergos.shared.crypto.*;
 import peergos.shared.merklebtree.*;
@@ -51,13 +52,16 @@ public class HTTPCoreNode implements CoreNode
     {
         try
         {
+            ConsolePrintStream console = new ConsolePrintStream();
+            console.println("HttpCoreNode.getUsername");
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
             DataOutputStream dout = new DataOutputStream(bout);
 
             Serialize.serialize(publicKey.toUserPublicKey().serialize(), dout);
             dout.flush();
-
+            console.println("HttpCoreNode.getUsername2");
             byte[] res = poster.post("core/getUsername", bout.toByteArray());
+            console.println("HttpCoreNode.getUsername3");
             DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
             return Serialize.deserializeString(din, CoreNode.MAX_USERNAME_SIZE);
         } catch (IOException ioe) {

@@ -1,5 +1,6 @@
 package peergos.shared.user;
 
+import peergos.client.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
@@ -43,6 +44,7 @@ public class UserContext {
     private final Salsa20Poly1305 symmetricProvider;
     private final Ed25519 signer;
     private final Curve25519 boxer;
+    private final boolean useJavaScript;
 
     private static class TrieNode {
         Map<String, TrieNode> children = new HashMap<>();
@@ -101,13 +103,13 @@ public class UserContext {
     }
 
     public UserContext(String username, User user, SymmetricKey root, DHTClient dht, Btree btree, CoreNode coreNode,
-                       LoginHasher hasher, Salsa20Poly1305 provider, SafeRandom random, Ed25519 signer, Curve25519 boxer) throws IOException {
-        this(username, user, root, dht, btree, coreNode, hasher, provider, random, signer, boxer, new ErasureFragmenter(40, 10));
+                       LoginHasher hasher, Salsa20Poly1305 provider, SafeRandom random, Ed25519 signer, Curve25519 boxer, boolean useJavaScript) throws IOException {
+        this(username, user, root, dht, btree, coreNode, hasher, provider, random, signer, boxer, new ErasureFragmenter(40, 10), useJavaScript);
     }
 
     public UserContext(String username, User user, SymmetricKey root, DHTClient dht, Btree btree, CoreNode coreNode,
                        LoginHasher hasher, Salsa20Poly1305 provider, SafeRandom random, Ed25519 signer,
-                       Curve25519 boxer, Fragmenter fragmenter) throws IOException {
+                       Curve25519 boxer, Fragmenter fragmenter, boolean useJavaScript) throws IOException {
         this.username = username;
         this.user = user;
         this.rootKey = root;
@@ -120,40 +122,49 @@ public class UserContext {
         this.signer = signer;
         this.boxer = boxer;
         this.fragmenter = fragmenter;
+        this.useJavaScript = useJavaScript;
     }
 
     @JsMethod
     public static UserContext ensureSignedUp(String username, String password, int webPort) throws IOException {
-        LoginHasher hasher = new ScryptJava();
-        HttpPoster poster = new HttpPoster.Java(new URL("http://localhost:" + webPort + "/"));
+        return ensureSignedUp(username, password, webPort, false);
+    }
+
+    public static UserContext ensureSignedUp(String username, String password, int webPort, boolean useJavaScript) throws IOException {
+        LoginHasher hasher = useJavaScript ? new ScryptJS() : new ScryptJava();
+        HttpPoster poster = useJavaScript ? new JavaScriptPoster() : new HttpPoster.Java(new URL("http://localhost:" + webPort + "/"));
         CoreNode coreNode = new HTTPCoreNode(poster);
         DHTClient dht = new DHTClient.CachingDHTClient(new DHTClient.HTTP(poster), 1000, 50*1024);
         Btree btree = new Btree.HTTP(poster);
 //        Btree btree = new BtreeImpl(coreNode, dht);
-        Salsa20Poly1305 provider = new Salsa20Poly1305.Java();
+        Salsa20Poly1305 provider = useJavaScript ? new SymmetricJS() : new Salsa20Poly1305.Java();
         SymmetricKey.addProvider(SymmetricKey.Type.TweetNaCl, provider);
-        Ed25519 signer = new JavaEd25519();
+        Ed25519 signer = useJavaScript ? new JSEd25519() : new JavaEd25519();
         PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, signer);
-        SafeRandom random = new SafeRandom.Java();
+        SafeRandom random = useJavaScript ? new JSRandom() : new SafeRandom.Java();
         SymmetricKey.setRng(SymmetricKey.Type.TweetNaCl, random);
-        Curve25519 boxer = new JavaCurve25519();
+        Curve25519 boxer = useJavaScript ? new JSCurve25519() : new JavaCurve25519();
         PublicBoxingKey.addProvider(PublicBoxingKey.Type.Curve25519, boxer);
         PublicBoxingKey.setRng(PublicBoxingKey.Type.Curve25519, random);
-        return UserContext.ensureSignedUp(username, password, dht, btree, coreNode, hasher, provider, random, signer, boxer);
+        return UserContext.ensureSignedUp(username, password, dht, btree, coreNode, hasher, provider, random, signer, boxer, useJavaScript);
     }
 
     public static UserContext ensureSignedUp(String username, String password, DHTClient dht, Btree btree, CoreNode coreNode,
                                              LoginHasher hasher, Salsa20Poly1305 provider, SafeRandom random,
-                                             Ed25519 signer, Curve25519 boxer) throws IOException {
+                                             Ed25519 signer, Curve25519 boxer, boolean useJavaScript) throws IOException {
         UserWithRoot userWithRoot = UserUtil.generateUser(username, password, hasher, provider, random, signer, boxer);
         UserContext context = new UserContext(username, userWithRoot.getUser(), userWithRoot.getRoot(),
-                dht, btree, coreNode, hasher, provider, random, signer, boxer);
+                dht, btree, coreNode, hasher, provider, random, signer, boxer, useJavaScript);
+        ConsolePrintStream console = new ConsolePrintStream();
+        console.println("made user context");
         if (!context.isRegistered()) {
+            console.println("User is not registered");
             if (context.isAvailable()) {
+                console.println("Registering username "+username);
                 boolean register = context.register();
                 if (!register)
                     throw new IllegalStateException("Couldn't register username: "+username);
-                System.out.println("Creating user's root directory");
+                console.println("Creating user's root directory");
                 long t1 = System.currentTimeMillis();
                 RetrievedFilePointer userRoot = context.createEntryDirectory(username);
                 System.out.println("Creating root directory took " + (System.currentTimeMillis()-t1) + " mS");
@@ -162,6 +173,7 @@ public class UserContext {
             } else
                 throw new IllegalStateException("username already registered with different public key!");
         }
+        console.println("Initializing context..");
         context.init();
         return context;
     }
@@ -183,10 +195,16 @@ public class UserContext {
         return getByPath("/"+username + "/shared").get();
     }
 
+    @JsMethod
     public boolean isRegistered() throws IOException {
-        return username.equals(corenodeClient.getUsername(user));
+        ConsolePrintStream console = new ConsolePrintStream();
+        console.println("isRegistered");
+        String registeredUsername = corenodeClient.getUsername(user);
+        console.println("got username "+ registeredUsername);
+        return this.username.equals(registeredUsername);
     }
 
+    @JsMethod
     public boolean isAvailable() throws IOException {
         Optional<UserPublicKey> publicKey = corenodeClient.getPublicKey(username);
         return !publicKey.isPresent();
@@ -199,6 +217,7 @@ public class UserContext {
         return sink.toByteArray();
     }
 
+    @JsMethod
     public boolean register() {
         LocalDate now = LocalDate.now();
         // set claim expiry to two months from now
@@ -222,7 +241,7 @@ public class UserContext {
         if(!corenodeClient.updateChain(username, claimChain))
             throw new IllegalStateException("Couldn't register new public keys during password change!");
 
-        return UserContext.ensureSignedUp(username, newPassword, dhtClient, btree, corenodeClient, hasher, symmetricProvider, random, signer, boxer);
+        return UserContext.ensureSignedUp(username, newPassword, dhtClient, btree, corenodeClient, hasher, symmetricProvider, random, signer, boxer, useJavaScript);
     }
 
     public RetrievedFilePointer createEntryDirectory(String directoryName) throws IOException {
