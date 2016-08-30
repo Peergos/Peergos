@@ -13,17 +13,31 @@ public class FileProperties {
     public static final FileProperties EMPTY = new FileProperties("", 0, LocalDateTime.MIN, false, Optional.empty());
 
     public final String name;
+    @JsIgnore
     public final long size;
     public final LocalDateTime modified;
     public final boolean isHidden;
     public final Optional<byte[]> thumbnail;
 
-    public FileProperties(String name, long size, LocalDateTime modified, boolean isHidden, Optional<byte[]> thumbnail) {
+    public FileProperties(String name, int sizeHi, int sizeLo, LocalDateTime modified, boolean isHidden, Optional<byte[]> thumbnail) {
         this.name = name;
-        this.size = size;
+        this.size = sizeLo | ((sizeHi | 0L) << 32);
         this.modified = modified;
         this.isHidden = isHidden;
         this.thumbnail = thumbnail;
+    }
+
+    @JsIgnore
+    public FileProperties(String name, long size, LocalDateTime modified, boolean isHidden, Optional<byte[]> thumbnail) {
+        this(name, (int)(size >> 32), (int) size, modified, isHidden, thumbnail);
+    }
+
+    public int sizeLow() {
+        return (int) size;
+    }
+
+    public int sizeHigh() {
+        return (int) (size >> 32);
     }
 
     public byte[] serialize() {
@@ -54,6 +68,7 @@ public class FileProperties {
         return new FileProperties(name, size, LocalDateTime.ofEpochSecond((int)modified, 0, ZoneOffset.UTC), isHidden, thumbnail);
     }
 
+    @JsIgnore
     public FileProperties withSize(long newSize) {
         return new FileProperties(name, newSize, modified, isHidden, thumbnail);
     }
