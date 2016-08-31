@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <project name="Peergos" default="build" basedir=".">
   <!-- Arguments to gwtc and devmode targets -->
-  <property name="gwt.args" value="-generateJsInteropExports" />
+  <property name="gwt.args" value="-generateJsInteropExports -style Detailed" />
 
   <!-- Configure path to GWT SDK -->
   <!--<property name="gwt.sdk" location="/home/ian/gwt-2.8.0-rc1" />-->

@@ -23,6 +23,11 @@ public class JavaPoster implements HttpPoster {
     }
 
     @Override
+    public byte[] postUnzip(String url, byte[] payload) throws IOException {
+        return post(url, payload, true);
+    }
+
+    @Override
     public byte[] post(String url, byte[] payload, boolean unzip) throws IOException {
         HttpURLConnection conn = null;
         try

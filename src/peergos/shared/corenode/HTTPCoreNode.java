@@ -60,7 +60,7 @@ public class HTTPCoreNode implements CoreNode
             Serialize.serialize(publicKey.toUserPublicKey().serialize(), dout);
             dout.flush();
             console.println("HttpCoreNode.getUsername2");
-            byte[] res = poster.postUnzip("core/getUsername", bout.toByteArray());
+            byte[] res = poster.post("core/getUsername", bout.toByteArray(), true);
             console.println("HttpCoreNode.getUsername3");
             DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
             return Serialize.deserializeString(din, CoreNode.MAX_USERNAME_SIZE);

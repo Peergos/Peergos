@@ -127,7 +127,7 @@ public class UserContext {
 
     @JsMethod
     public static UserContext ensureSignedUp(String username, String password, int webPort) throws IOException {
-        return ensureSignedUp(username, password, webPort, false);
+        return ensureSignedUp(username, password, webPort, true);
     }
 
     public static UserContext ensureSignedUp(String username, String password, int webPort, boolean useJavaScript) throws IOException {
@@ -139,11 +139,11 @@ public class UserContext {
 //        Btree btree = new BtreeImpl(coreNode, dht);
         Salsa20Poly1305 provider = useJavaScript ? new SymmetricJS() : new Salsa20Poly1305.Java();
         SymmetricKey.addProvider(SymmetricKey.Type.TweetNaCl, provider);
-        Ed25519 signer = useJavaScript ? new JSEd25519() : new JavaEd25519();
+        Ed25519 signer = /*useJavaScript ? new JSEd25519() :*/ new JavaEd25519();
         PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, signer);
-        SafeRandom random = useJavaScript ? new JSRandom() : new SafeRandom.Java();
+        SafeRandom random = /*useJavaScript ? new JSRandom() :*/ new SafeRandom.Java();
         SymmetricKey.setRng(SymmetricKey.Type.TweetNaCl, random);
-        Curve25519 boxer = useJavaScript ? new JSCurve25519() : new JavaCurve25519();
+        Curve25519 boxer = /*useJavaScript ? new JSCurve25519() :*/ new JavaCurve25519();
         PublicBoxingKey.addProvider(PublicBoxingKey.Type.Curve25519, boxer);
         PublicBoxingKey.setRng(PublicBoxingKey.Type.Curve25519, random);
         return UserContext.ensureSignedUp(username, password, dht, btree, coreNode, hasher, provider, random, signer, boxer, useJavaScript);
