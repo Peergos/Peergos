@@ -4,13 +4,15 @@ import java.io.*;
 
 public class JavaScriptPoster implements HttpPoster {
 
+    NativeJSHttp http = new NativeJSHttp();
+
     @Override
     public byte[] post(String url, byte[] payload, boolean unzip) throws IOException {
-        throw new IllegalStateException("Unimplemented JavaScriptPoster!");
+        return http.post(url, payload);
     }
 
     @Override
     public byte[] get(String url) throws IOException {
-        throw new IllegalStateException("Unimplemented JavaScriptPoster!");
+        return http.get(url);
     }
 }

@@ -17,7 +17,7 @@ public class HTTPCoreNode implements CoreNode
     private final HttpPoster poster;
 
     public static CoreNode getInstance(URL coreURL) throws IOException {
-        return new HTTPCoreNode(new HttpPoster.Java(coreURL));
+        return new HTTPCoreNode(new JavaPoster(coreURL));
     }
 
     public HTTPCoreNode(HttpPoster poster)
@@ -35,7 +35,7 @@ public class HTTPCoreNode implements CoreNode
             Serialize.serialize(username, dout);
             dout.flush();
 
-            byte[] res = poster.post("core/getPublicKey", bout.toByteArray());
+            byte[] res = poster.postUnzip("core/getPublicKey", bout.toByteArray());
             DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
             
             if (!din.readBoolean())
@@ -60,7 +60,7 @@ public class HTTPCoreNode implements CoreNode
             Serialize.serialize(publicKey.toUserPublicKey().serialize(), dout);
             dout.flush();
             console.println("HttpCoreNode.getUsername2");
-            byte[] res = poster.post("core/getUsername", bout.toByteArray());
+            byte[] res = poster.postUnzip("core/getUsername", bout.toByteArray());
             console.println("HttpCoreNode.getUsername3");
             DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
             return Serialize.deserializeString(din, CoreNode.MAX_USERNAME_SIZE);
@@ -80,7 +80,7 @@ public class HTTPCoreNode implements CoreNode
             Serialize.serialize(username, dout);
             dout.flush();
 
-            byte[] res = poster.post("core/getChain", bout.toByteArray());
+            byte[] res = poster.postUnzip("core/getChain", bout.toByteArray());
             DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
             int count = din.readInt();
             List<UserPublicKeyLink> result = new ArrayList<>();
@@ -109,7 +109,7 @@ public class HTTPCoreNode implements CoreNode
             }
             dout.flush();
 
-            byte[] res = poster.post("core/updateChain", bout.toByteArray());
+            byte[] res = poster.postUnzip("core/updateChain", bout.toByteArray());
             DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
             return din.readBoolean();
         } catch (IOException ioe) {
@@ -129,7 +129,7 @@ public class HTTPCoreNode implements CoreNode
             Serialize.serialize(encryptedPermission, dout);
             dout.flush();
 
-            byte[] res = poster.post("core/followRequest", bout.toByteArray());
+            byte[] res = poster.postUnzip("core/followRequest", bout.toByteArray());
             DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
             return din.readBoolean();
         } catch (IOException ioe) {
@@ -162,7 +162,7 @@ public class HTTPCoreNode implements CoreNode
             Serialize.serialize(owner.toUserPublicKey().serialize(), dout);
             dout.flush();
 
-            byte[] res = poster.post("core/getFollowRequests", bout.toByteArray());
+            byte[] res = poster.postUnzip("core/getFollowRequests", bout.toByteArray());
             DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
             return CoreNodeUtils.deserializeByteArray(din);
         } catch (IOException ioe) {
@@ -182,7 +182,7 @@ public class HTTPCoreNode implements CoreNode
             Serialize.serialize(signedRequest, dout);
             dout.flush();
 
-            byte[] res = poster.post("core/removeFollowRequest", bout.toByteArray());
+            byte[] res = poster.postUnzip("core/removeFollowRequest", bout.toByteArray());
             DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
             return din.readBoolean();
         } catch (IOException ioe) {
@@ -203,7 +203,7 @@ public class HTTPCoreNode implements CoreNode
             Serialize.serialize(sharingKeySignedPayload, dout);
             dout.flush();
 
-            byte[] res = poster.post("core/addMetadataBlob", bout.toByteArray());
+            byte[] res = poster.postUnzip("core/addMetadataBlob", bout.toByteArray());
             DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
             return din.readBoolean();
         } catch (IOException ioe) {
@@ -223,7 +223,7 @@ public class HTTPCoreNode implements CoreNode
             Serialize.serialize(sharingKeySignedPayload, dout);
             dout.flush();
 
-            byte[] res = poster.post("core/removeMetadataBlob", bout.toByteArray());
+            byte[] res = poster.postUnzip("core/removeMetadataBlob", bout.toByteArray());
             DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
             return din.readBoolean();
         } catch (IOException ioe) {
@@ -243,7 +243,7 @@ public class HTTPCoreNode implements CoreNode
             Serialize.serialize(encodedSharingKey.toUserPublicKey().serialize(), dout);
             dout.flush();
 
-            byte[] res = poster.post("core/getMetadataBlob", bout.toByteArray());
+            byte[] res = poster.postUnzip("core/getMetadataBlob", bout.toByteArray());
             DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
             byte[] meta = CoreNodeUtils.deserializeByteArray(din);
             if (meta.length == 0)

@@ -35,7 +35,7 @@ public interface DHTClient {
                 Serialize.serialize(hash.toBytes(), dout);
             dout.flush();
 
-            byte[] res = poster.post("dht/put", bout.toByteArray());
+            byte[] res = poster.postUnzip("dht/put", bout.toByteArray());
             DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
             int success = din.readInt();
             if (success != 1)

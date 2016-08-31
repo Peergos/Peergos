@@ -3,16 +3,14 @@
   "http://gwtproject.org/doctype/2.8.0-rc1/gwt-module.dtd">
 <module rename-to='peergos'>
 	
-	<inherits name='com.google.gwt.user.User'/>
-	<inherits name='com.google.gwt.user.theme.clean.Clean'/>
-	  
-  	<public path="gwt/resources"/>
-	<super-source path="gwt/emu" />
-	<source path="gwt">
-		<exclude name="**/emu/**" />
-	</source>
-  	<source path='client'/>
-  	<source path='shared'/>
-	<set-property name="user.agent" value="safari" />
-  	<add-linker name="xsiframe"/>
+  <inherits name='com.google.gwt.user.User'/>
+  
+  <public path="gwt/resources"/>
+  <super-source path="gwt/emu" />
+  <source path="gwt">
+    <exclude name="**/emu/**" />
+  </source>
+  <source path='client'/>
+  <source path='shared'/>
+  <set-property name="user.agent" value="safari" />
 </module>

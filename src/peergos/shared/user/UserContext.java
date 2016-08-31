@@ -132,7 +132,7 @@ public class UserContext {
 
     public static UserContext ensureSignedUp(String username, String password, int webPort, boolean useJavaScript) throws IOException {
         LoginHasher hasher = useJavaScript ? new ScryptJS() : new ScryptJava();
-        HttpPoster poster = useJavaScript ? new JavaScriptPoster() : new HttpPoster.Java(new URL("http://localhost:" + webPort + "/"));
+        HttpPoster poster = useJavaScript ? new JavaScriptPoster() : new JavaPoster(new URL("http://localhost:" + webPort + "/"));
         CoreNode coreNode = new HTTPCoreNode(poster);
         DHTClient dht = new DHTClient.CachingDHTClient(new DHTClient.HTTP(poster), 1000, 50*1024);
         Btree btree = new Btree.HTTP(poster);

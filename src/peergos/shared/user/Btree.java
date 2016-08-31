@@ -59,7 +59,7 @@ public interface Btree {
             Serialize.serialize(value.toBytes(), dout);
             dout.flush();
 
-            byte[] res = poster.post("btree/put", bout.toByteArray());
+            byte[] res = poster.postUnzip("btree/put", bout.toByteArray());
             DataSource source = new DataSource(res);
             int success = source.readInt();
             if (success != 1)
@@ -76,7 +76,7 @@ public interface Btree {
             Serialize.serialize(mapKey, dout);
             dout.flush();
 
-            byte[] res = poster.post("btree/get", bout.toByteArray());
+            byte[] res = poster.postUnzip("btree/get", bout.toByteArray());
             DataSource source = new DataSource(res);
             int success = source.readInt();
             if (success != 1)
@@ -96,7 +96,7 @@ public interface Btree {
             Serialize.serialize(mapKey, dout);
             dout.flush();
 
-            byte[] res = poster.post("btree/delete", bout.toByteArray());
+            byte[] res = poster.postUnzip("btree/delete", bout.toByteArray());
             DataSource source = new DataSource(res);
             int success = source.readInt();
             if (success != 1)
