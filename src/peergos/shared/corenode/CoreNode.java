@@ -7,51 +7,56 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.sql.*;
 import java.util.*;
+import java.util.concurrent.*;
 
 public interface CoreNode {
     int MAX_PENDING_FOLLOWERS = 100;
     int MAX_USERNAME_SIZE = 100;
 
-    String getUsername(UserPublicKey key) throws IOException;
+    CompletableFuture<String> getUsername(UserPublicKey key);
 
-    List<UserPublicKeyLink> getChain(String username);
+    CompletableFuture<List<UserPublicKeyLink>> getChain(String username);
 
-    boolean updateChain(String username, List<UserPublicKeyLink> chain);
+    CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> chain);
 
-    default Optional<UserPublicKey> getPublicKey(String username) throws IOException {
-        List<UserPublicKeyLink> chain = getChain(username);
-        if (chain.size() == 0)
-            return Optional.empty();
-        return Optional.of(chain.get(chain.size()-1).owner);
+    default CompletableFuture<Optional<UserPublicKey>> getPublicKey(String username) {
+        return getChain(username).thenApply(chain -> {
+            if (chain.size() == 0)
+                return Optional.empty();
+            else
+                return Optional.of(chain.get(chain.size() - 1).owner);
+        });
     }
 
-    byte[] getAllUsernamesGzip() throws IOException;
+    CompletableFuture<byte[]> getAllUsernamesGzip();
 
-    default List<String> getAllUsernames() throws IOException {
-        DataInput din = new DataInputStream(new ByteArrayInputStream(getAllUsernamesGzip()));
-        List<String> res = new ArrayList<>();
-        while (true) {
-            try {
-                String uname = Serialize.deserializeString(din, MAX_USERNAME_SIZE);
-                res.add(uname);
-            } catch (IOException e) {
-                break;
+    default CompletableFuture<List<String>> getAllUsernames() {
+        return getAllUsernamesGzip().thenApply(gzip -> {
+            DataInput din = new DataInputStream(new ByteArrayInputStream(gzip));
+            List<String> res = new ArrayList<>();
+            while (true) {
+                try {
+                    String uname = Serialize.deserializeString(din, MAX_USERNAME_SIZE);
+                    res.add(uname);
+                } catch (IOException e) {
+                    break;
+                }
             }
-        }
-        return res;
+            return res;
+        });
     }
 
-    boolean followRequest(UserPublicKey target, byte[] encryptedPermission);
+    CompletableFuture<Boolean> followRequest(UserPublicKey target, byte[] encryptedPermission);
 
-    byte[] getFollowRequests(UserPublicKey owner);
+    CompletableFuture<byte[]> getFollowRequests(UserPublicKey owner);
 
-    boolean removeFollowRequest(UserPublicKey owner, byte[] data);
+    CompletableFuture<Boolean> removeFollowRequest(UserPublicKey owner, byte[] data);
 
-    boolean setMetadataBlob(UserPublicKey ownerPublicKey, UserPublicKey encodedSharingPublicKey, byte[] sharingKeySignedBtreeRootHash) throws IOException;
+    CompletableFuture<Boolean> setMetadataBlob(UserPublicKey ownerPublicKey, UserPublicKey encodedSharingPublicKey, byte[] sharingKeySignedBtreeRootHash);
 
-    boolean removeMetadataBlob(UserPublicKey encodedSharingPublicKey, byte[] sharingKeySignedMapKeyPlusBlob) throws IOException;
+    CompletableFuture<Boolean> removeMetadataBlob(UserPublicKey encodedSharingPublicKey, byte[] sharingKeySignedMapKeyPlusBlob);
 
-    MaybeMultihash getMetadataBlob(UserPublicKey encodedSharingKey);
+    CompletableFuture<MaybeMultihash> getMetadataBlob(UserPublicKey encodedSharingKey);
 
     void close() throws IOException;
 

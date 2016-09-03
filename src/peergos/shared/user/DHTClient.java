@@ -7,12 +7,13 @@ import peergos.shared.util.*;
 
 import java.io.*;
 import java.util.*;
+import java.util.concurrent.*;
 
 public interface DHTClient {
 
-    Multihash put(byte[] value, UserPublicKey writer, List<Multihash> links) throws IOException;
+    CompletableFuture<Multihash> put(byte[] value, UserPublicKey writer, List<Multihash> links) throws IOException;
 
-    Optional<byte[]> get(Multihash key) throws IOException;
+    CompletableFuture<Optional<byte[]>> get(Multihash key) throws IOException;
 
     class HTTP implements DHTClient {
 
@@ -23,7 +24,7 @@ public interface DHTClient {
         }
 
         @Override
-        public Multihash put(byte[] value, UserPublicKey writer, List<Multihash> links) throws IOException {
+        public CompletableFuture<Multihash> put(byte[] value, UserPublicKey writer, List<Multihash> links) throws IOException {
             ByteArrayOutputStream bout  =new ByteArrayOutputStream();
             DataOutputStream dout = new DataOutputStream(bout);
 
@@ -35,22 +36,32 @@ public interface DHTClient {
                 Serialize.serialize(hash.toBytes(), dout);
             dout.flush();
 
-            byte[] res = poster.postUnzip("dht/put", bout.toByteArray());
-            DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
-            int success = din.readInt();
-            if (success != 1)
-                throw new IOException("Couldn't add data to DHT!");
-            return new Multihash(Serialize.deserializeByteArray(din, 256));
+            return poster.postUnzip("dht/put", bout.toByteArray()).thenApply(res -> {
+                DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
+                try {
+                    int success = din.readInt();
+                    if (success != 1)
+                        throw new IOException("Couldn't add data to DHT!");
+                    return new Multihash(Serialize.deserializeByteArray(din, 256));
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            });
         }
 
         @Override
-        public Optional<byte[]> get(Multihash key) throws IOException {
-            byte[] res = poster.get("dht/get/ipfs/" + key.toBase58());
-            DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
-            int success = din.readInt();
-            if (success != 1)
-                return Optional.empty();
-            return Optional.of(Serialize.deserializeByteArray(din, Chunk.MAX_SIZE));
+        public CompletableFuture<Optional<byte[]>> get(Multihash key) throws IOException {
+            return poster.get("dht/get/ipfs/" + key.toBase58()).thenApply(res -> {
+                DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
+                try {
+                    int success = din.readInt();
+                    if (success != 1)
+                        return Optional.empty();
+                    return Optional.of(Serialize.deserializeByteArray(din, Chunk.MAX_SIZE));
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            });
         }
     }
 
@@ -66,18 +77,19 @@ public interface DHTClient {
         }
 
         @Override
-        public Multihash put(byte[] value, UserPublicKey writer, List<Multihash> links) throws IOException {
+        public CompletableFuture<Multihash> put(byte[] value, UserPublicKey writer, List<Multihash> links) throws IOException {
             return target.put(value, writer, links);
         }
 
         @Override
-        public Optional<byte[]> get(Multihash key) throws IOException {
+        public CompletableFuture<Optional<byte[]>> get(Multihash key) throws IOException {
             if (cache.containsKey(key))
-                return Optional.of(cache.get(key));
-            Optional<byte[]> value = target.get(key);
-            if (value.isPresent() && value.get().length < maxValueSize)
-                cache.put(key, value.get());
-            return value;
+                return CompletableFuture.completedFuture(Optional.of(cache.get(key)));
+            return target.get(key).thenApply(value -> {
+                if (value.isPresent() && value.get().length < maxValueSize)
+                    cache.put(key, value.get());
+                return value;
+            });
         }
     }
 }

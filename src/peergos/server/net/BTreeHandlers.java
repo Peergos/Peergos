@@ -30,10 +30,11 @@ public class BTreeHandlers
             byte[] mapKey = Serialize.deserializeByteArray(din, 64);
 
             try {
-                MaybeMultihash res = btree.get(UserPublicKey.fromByteArray(sharingKey), mapKey);
-                byte[] value = res.toBytes();
-                log("Btree::Get mapkey: "+new ByteArrayWrapper(mapKey) + " = "+ res);
-                new GetSuccess(httpExchange).accept(value);
+                btree.get(UserPublicKey.fromByteArray(sharingKey), mapKey).thenAccept(res -> {
+                    byte[] value = res.toBytes();
+                    log("Btree::Get mapkey: " + new ByteArrayWrapper(mapKey) + " = " + res);
+                    new GetSuccess(httpExchange).accept(value);
+                });
             } catch (Exception e) {
                 e.printStackTrace();
                 new GetSuccess(httpExchange).accept(new byte[0]);
@@ -52,14 +53,19 @@ public class BTreeHandlers
             Multihash value = new Multihash(valueRaw);
 
             try {
-                PairMultihash rootCAS = btree.put(UserPublicKey.fromByteArray(sharingKey), mapKey, value);
-                log("Btree::Put mapkey: " + new ByteArrayWrapper(mapKey) + " -> " + value + " newRoot="+rootCAS.right);
+                btree.put(UserPublicKey.fromByteArray(sharingKey), mapKey, value).thenAccept(rootCAS -> {
+                    log("Btree::Put mapkey: " + new ByteArrayWrapper(mapKey) + " -> " + value + " newRoot=" + rootCAS.right);
 
-                ByteArrayOutputStream bout = new ByteArrayOutputStream();
-                DataOutputStream dout = new DataOutputStream(bout);
-                rootCAS.left.serialize(dout);
-                rootCAS.right.serialize(dout);
-                new ModifySuccess(httpExchange).accept(Optional.of(bout.toByteArray()));
+                    ByteArrayOutputStream bout = new ByteArrayOutputStream();
+                    DataOutputStream dout = new DataOutputStream(bout);
+                    try {
+                        rootCAS.left.serialize(dout);
+                        rootCAS.right.serialize(dout);
+                        new ModifySuccess(httpExchange).accept(Optional.of(bout.toByteArray()));
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                });
             } catch (Exception e) {
                 e.printStackTrace();
                 new ModifySuccess(httpExchange).accept(Optional.empty());
@@ -77,11 +83,16 @@ public class BTreeHandlers
             byte[] mapKey = Serialize.deserializeByteArray(din, 64);
             log("Btree::Deleted mapkey: "+new ByteArrayWrapper(mapKey));
             try {
-                PairMultihash rootCAS = btree.remove(UserPublicKey.fromByteArray(sharingKey), mapKey);
-                DataSink sink = new DataSink();
-                rootCAS.left.serialize(sink);
-                rootCAS.right.serialize(sink);
-                new ModifySuccess(httpExchange).accept(Optional.of(sink.toByteArray()));
+                btree.remove(UserPublicKey.fromByteArray(sharingKey), mapKey).thenAccept(rootCAS -> {
+                    DataSink sink = new DataSink();
+                    try {
+                        rootCAS.left.serialize(sink);
+                        rootCAS.right.serialize(sink);
+                        new ModifySuccess(httpExchange).accept(Optional.of(sink.toByteArray()));
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                });
             } catch (Exception e) {
                 e.printStackTrace();
                 new ModifySuccess(httpExchange).accept(Optional.empty());

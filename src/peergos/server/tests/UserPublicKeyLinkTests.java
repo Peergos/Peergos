@@ -55,24 +55,24 @@ public class UserPublicKeyLinkTests {
         // register the username
         UserPublicKeyLink.UsernameClaim node = UserPublicKeyLink.UsernameClaim.create(username, user, LocalDate.now().plusYears(2));
         UserPublicKeyLink upl = new UserPublicKeyLink(user.toUserPublicKey(), node);
-        boolean success = core.updateChain(username, Arrays.asList(upl));
-        List<UserPublicKeyLink> chain = core.getChain(username);
+        boolean success = core.updateChain(username, Arrays.asList(upl)).get();
+        List<UserPublicKeyLink> chain = core.getChain(username).get();
         if (chain.size() != 1 || !chain.get(0).equals(upl))
             throw new IllegalStateException("Retrieved chain element different "+chain +" != "+Arrays.asList(upl));
 
         // now change the expiry
         UserPublicKeyLink.UsernameClaim node2 = UserPublicKeyLink.UsernameClaim.create(username, user, LocalDate.now().plusYears(3));
         UserPublicKeyLink upl2 = new UserPublicKeyLink(user.toUserPublicKey(), node2);
-        boolean success2 = core.updateChain(username, Arrays.asList(upl2));
-        List<UserPublicKeyLink> chain2 = core.getChain(username);
+        boolean success2 = core.updateChain(username, Arrays.asList(upl2)).get();
+        List<UserPublicKeyLink> chain2 = core.getChain(username).get();
         if (chain2.size() != 1 || !chain2.get(0).equals(upl2))
             throw new IllegalStateException("Retrieved chain element different "+chain2 +" != "+Arrays.asList(upl2));
 
         // now change the keys
         User user2 = User.insecureRandom();
         List<UserPublicKeyLink> chain3 = UserPublicKeyLink.createChain(user, user2, username, LocalDate.now().plusWeeks(1));
-        boolean success3 = core.updateChain(username, chain3);
-        List<UserPublicKeyLink> chain3Retrieved = core.getChain(username);
+        boolean success3 = core.updateChain(username, chain3).get();
+        List<UserPublicKeyLink> chain3Retrieved = core.getChain(username).get();
         if (!chain3.equals(chain3Retrieved))
             throw new IllegalStateException("Retrieved chain element different");
 
@@ -80,13 +80,13 @@ public class UserPublicKeyLinkTests {
         UserPublicKeyLink.UsernameClaim node4 = UserPublicKeyLink.UsernameClaim.create(username, user2, LocalDate.now().plusWeeks(2));
         UserPublicKeyLink upl4 = new UserPublicKeyLink(user2.toUserPublicKey(), node4);
         List<UserPublicKeyLink> chain4 = Arrays.asList(upl4);
-        boolean success4 = core.updateChain(username, chain4);
-        List<UserPublicKeyLink> chain4Retrieved = core.getChain(username);
+        boolean success4 = core.updateChain(username, chain4).get();
+        List<UserPublicKeyLink> chain4Retrieved = core.getChain(username).get();
         if (!chain4.equals(Arrays.asList(chain4Retrieved.get(chain4Retrieved.size()-1))))
             throw new IllegalStateException("Retrieved chain element different after expiry update");
 
         // check username lookup
-        String uname = core.getUsername(user2.toUserPublicKey());
+        String uname = core.getUsername(user2.toUserPublicKey()).get();
         if (!uname.equals(username))
             throw new IllegalStateException("Returned username is different! "+uname + " != "+username);
 
@@ -95,7 +95,7 @@ public class UserPublicKeyLinkTests {
         UserPublicKeyLink.UsernameClaim node3 = UserPublicKeyLink.UsernameClaim.create(username, user3, LocalDate.now().plusYears(2));
         UserPublicKeyLink upl3 = new UserPublicKeyLink(user3.toUserPublicKey(), node3);
         try {
-            boolean shouldFail = core.updateChain(username, Arrays.asList(upl3));
+            boolean shouldFail = core.updateChain(username, Arrays.asList(upl3)).get();
             throw new RuntimeException("Should have failed before here!");
         } catch (IllegalStateException e) {}
     }

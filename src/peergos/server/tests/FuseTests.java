@@ -64,7 +64,7 @@ public class FuseTests {
                 "-corenodePort", Integer.toString(CORE_PORT)});
 
         Start.local(args);
-        UserContext userContext = UserContext.ensureSignedUp(username, password, WEB_PORT);
+        UserContext userContext = UserContext.ensureSignedUp(username, password, WEB_PORT).get();
 
         String mountPath = args.getArg("mountPoint", "/tmp/peergos/tmp");
 

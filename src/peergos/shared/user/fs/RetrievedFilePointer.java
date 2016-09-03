@@ -1,11 +1,13 @@
 package peergos.shared.user.fs;
 
 import peergos.shared.crypto.*;
+import peergos.shared.ipfs.api.*;
 import peergos.shared.merklebtree.*;
 import peergos.shared.user.*;
 
 import java.io.*;
 import java.util.*;
+import java.util.concurrent.*;
 
 public class RetrievedFilePointer {
     public final ReadableFilePointer filePointer;
@@ -26,29 +28,45 @@ public class RetrievedFilePointer {
         return filePointer.equals(((RetrievedFilePointer)that).filePointer);
     }
 
-    public boolean remove(UserContext context, RetrievedFilePointer parentRetrievedFilePointer) throws IOException {
+    public CompletableFuture<Boolean> remove(UserContext context, RetrievedFilePointer parentRetrievedFilePointer) {
         if (!this.filePointer.isWritable())
-            return false;
+            return CompletableFuture.completedFuture(false);
         if (!this.fileAccess.isDirectory()) {
             this.fileAccess.removeFragments(context);
-            PairMultihash treeRootHashCAS = context.btree.remove(this.filePointer.writer, this.filePointer.mapKey);
-            byte[] signed = ((User)filePointer.writer).signMessage(treeRootHashCAS.toByteArray());
-            context.corenodeClient.setMetadataBlob(this.filePointer.owner, this.filePointer.writer, signed);
-            // remove from parent
-            if (parentRetrievedFilePointer != null)
-                ((DirAccess)parentRetrievedFilePointer.fileAccess).removeChild(this, parentRetrievedFilePointer.filePointer, context);
-            return true;
+            CompletableFuture<Boolean> result = new CompletableFuture<>();
+            context.btree.remove(this.filePointer.writer, this.filePointer.mapKey).thenAccept(treeRootHashCAS -> {
+                try {
+                    byte[] signed = ((User) filePointer.writer).signMessage(treeRootHashCAS.toByteArray());
+                    context.corenodeClient.setMetadataBlob(this.filePointer.owner, this.filePointer.writer, signed);
+                    // remove from parent
+                    if (parentRetrievedFilePointer != null)
+                        ((DirAccess) parentRetrievedFilePointer.fileAccess).removeChild(this, parentRetrievedFilePointer.filePointer, context);
+                    result.complete(true);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            });
+            return result;
         }
-        Set<RetrievedFilePointer> files = ((DirAccess)fileAccess).getChildren(context, this.filePointer.baseKey);
-        for (RetrievedFilePointer file: files)
-            file.remove(context, null);
-        PairMultihash treeRootHashCAS = context.btree.remove(this.filePointer.writer, this.filePointer.mapKey);
-        byte[] signed = ((User)filePointer.writer).signMessage(treeRootHashCAS.toByteArray());
-        boolean res = context.corenodeClient.setMetadataBlob(this.filePointer.owner, this.filePointer.writer, signed);
-        // remove from parent
-        if (parentRetrievedFilePointer != null)
-            ((DirAccess)parentRetrievedFilePointer.fileAccess).removeChild(this, parentRetrievedFilePointer.filePointer, context);
-        return res;
+        return ((DirAccess)fileAccess).getChildren(context, this.filePointer.baseKey).thenCompose(files -> {
+            for (RetrievedFilePointer file : files)
+                file.remove(context, null);
+            CompletableFuture<Boolean> result = new CompletableFuture<>();
+            context.btree.remove(this.filePointer.writer, this.filePointer.mapKey).thenAccept(treeRootHashCAS -> {
+                try {
+                    byte[] signed = ((User) filePointer.writer).signMessage(treeRootHashCAS.toByteArray());
+                    context.corenodeClient.setMetadataBlob(this.filePointer.owner, this.filePointer.writer, signed).thenAccept(res -> {
+                        // remove from parent
+                        if (parentRetrievedFilePointer != null)
+                            ((DirAccess) parentRetrievedFilePointer.fileAccess).removeChild(this, parentRetrievedFilePointer.filePointer, context);
+                        result.complete(res);
+                    });
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            });
+            return result;
+        });
     }
 
     public RetrievedFilePointer withWriter(UserPublicKey writer) {

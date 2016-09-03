@@ -10,6 +10,7 @@ import peergos.shared.util.*;
 
 import java.io.*;
 import java.util.*;
+import java.util.concurrent.*;
 
 public class PinningCoreNode implements CoreNode {
     private final CoreNode target;
@@ -21,75 +22,85 @@ public class PinningCoreNode implements CoreNode {
     }
 
     @Override
-    public String getUsername(UserPublicKey publicKey) throws IOException {
+    public CompletableFuture<String> getUsername(UserPublicKey publicKey) {
         return target.getUsername(publicKey);
     }
 
     @Override
-    public List<UserPublicKeyLink> getChain(String username) {
+    public CompletableFuture<List<UserPublicKeyLink>> getChain(String username) {
         return target.getChain(username);
     }
 
     @Override
-    public boolean updateChain(String username, List<UserPublicKeyLink> chain) {
+    public CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> chain) {
         return target.updateChain(username, chain);
     }
 
     @Override
-    public byte[] getAllUsernamesGzip() throws IOException {
+    public CompletableFuture<byte[]> getAllUsernamesGzip() {
         return target.getAllUsernamesGzip();
     }
 
     @Override
-    public boolean followRequest(UserPublicKey target, byte[] encryptedPermission) {
+    public CompletableFuture<Boolean> followRequest(UserPublicKey target, byte[] encryptedPermission) {
         return this.target.followRequest(target, encryptedPermission);
     }
 
     @Override
-    public byte[] getFollowRequests(UserPublicKey owner) {
+    public CompletableFuture<byte[]> getFollowRequests(UserPublicKey owner) {
         return target.getFollowRequests(owner);
     }
 
     @Override
-    public boolean removeFollowRequest(UserPublicKey owner, byte[] data) {
+    public CompletableFuture<Boolean> removeFollowRequest(UserPublicKey owner, byte[] data) {
         return target.removeFollowRequest(owner, data);
     }
 
     @Override
-    public boolean setMetadataBlob(UserPublicKey ownerPublicKey, UserPublicKey signer, byte[] sharingKeySignedBtreeRootHashes) throws IOException {
+    public CompletableFuture<Boolean> setMetadataBlob(UserPublicKey ownerPublicKey, UserPublicKey signer, byte[] sharingKeySignedBtreeRootHashes) {
         // first pin new root
         byte[] message = signer.unsignMessage(sharingKeySignedBtreeRootHashes);
         DataInputStream din = new DataInputStream(new ByteArrayInputStream(message));
-        byte[] rawOldRoot = Serialize.deserializeByteArray(din, 256);
-        Optional<Multihash> oldRoot = rawOldRoot.length > 0 ? Optional.of(new Multihash(rawOldRoot)) : Optional.empty();
-        Multihash newRoot = new Multihash(Serialize.deserializeByteArray(din, 256));
-        if (!storage.recursivePin(newRoot))
-            return false;
-        boolean b = target.setMetadataBlob(ownerPublicKey, signer, sharingKeySignedBtreeRootHashes);
-        if (!b)
-            return false;
-        // unpin old root
-        return !oldRoot.isPresent() || storage.recursiveUnpin(oldRoot.get());
+        try {
+            byte[] rawOldRoot = Serialize.deserializeByteArray(din, 256);
+            Optional<Multihash> oldRoot = rawOldRoot.length > 0 ? Optional.of(new Multihash(rawOldRoot)) : Optional.empty();
+            Multihash newRoot = new Multihash(Serialize.deserializeByteArray(din, 256));
+            if (!storage.recursivePin(newRoot))
+                return CompletableFuture.completedFuture(false);
+            return target.setMetadataBlob(ownerPublicKey, signer, sharingKeySignedBtreeRootHashes).thenApply(b -> {
+                if (!b)
+                    return false;
+                // unpin old root
+                return !oldRoot.isPresent() || storage.recursiveUnpin(oldRoot.get());
+            });
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override
-    public boolean removeMetadataBlob(UserPublicKey sharer, byte[] sharingKeySignedMapKeyPlusBlob) throws IOException {
+    public CompletableFuture<Boolean> removeMetadataBlob(UserPublicKey sharer, byte[] sharingKeySignedMapKeyPlusBlob) {
         // first pin new root
         byte[] message = sharer.unsignMessage(sharingKeySignedMapKeyPlusBlob);
         DataInputStream din = new DataInputStream(new ByteArrayInputStream(message));
-        Multihash oldRoot = new Multihash(Serialize.deserializeByteArray(din, 256));
-        Multihash newRoot = new Multihash(Serialize.deserializeByteArray(din, 256));
-        if (!storage.recursivePin(newRoot))
-            return false;
-        boolean b = target.removeMetadataBlob(sharer, sharingKeySignedMapKeyPlusBlob);
-        if (!b)
-            return false;
-        // unpin old root
-        return storage.recursiveUnpin(oldRoot);
+        try {
+            Multihash oldRoot = new Multihash(Serialize.deserializeByteArray(din, 256));
+            Multihash newRoot = new Multihash(Serialize.deserializeByteArray(din, 256));
+            if (!storage.recursivePin(newRoot))
+                return CompletableFuture.completedFuture(false);
+            return target.removeMetadataBlob(sharer, sharingKeySignedMapKeyPlusBlob).thenApply(b -> {
+                if (!b)
+                    return false;
+                // unpin old root
+                return storage.recursiveUnpin(oldRoot);
+            });
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override
-    public MaybeMultihash getMetadataBlob(UserPublicKey encodedSharingKey) {
+    public CompletableFuture<MaybeMultihash> getMetadataBlob(UserPublicKey encodedSharingKey) {
         return target.getMetadataBlob(encodedSharingKey);
     }
 

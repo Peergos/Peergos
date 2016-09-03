@@ -1,13 +1,14 @@
 package peergos.shared.user;
 
 import java.io.*;
+import java.util.concurrent.*;
 
 public interface HttpPoster {
 
-    byte[] post(String url, byte[] payload, boolean unzip) throws IOException;
+    CompletableFuture<byte[]> post(String url, byte[] payload, boolean unzip);
 
-    byte[] postUnzip(String url, byte[] payload) throws IOException;
+    CompletableFuture<byte[]> postUnzip(String url, byte[] payload);
 
-    byte[] get(String url) throws IOException;
+    CompletableFuture<byte[]> get(String url) throws IOException;
 
 }

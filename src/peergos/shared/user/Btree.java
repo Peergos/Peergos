@@ -7,6 +7,7 @@ import peergos.shared.merklebtree.PairMultihash;
 import peergos.shared.util.*;
 
 import java.io.*;
+import java.util.concurrent.*;
 
 public interface Btree {
     /**
@@ -17,9 +18,7 @@ public interface Btree {
      * @return the new root hash of the btree
      * @throws IOException
      */
-    PairMultihash put(UserPublicKey sharingKey,
-                      byte[] mapKey,
-                      Multihash value) throws IOException;
+    CompletableFuture<PairMultihash> put(UserPublicKey sharingKey, byte[] mapKey, Multihash value);
 
     /**
      *
@@ -28,8 +27,7 @@ public interface Btree {
      * @return  the value stored under mapKey for sharingKey
      * @throws IOException
      */
-    MaybeMultihash get(UserPublicKey sharingKey,
-                                 byte[] mapKey) throws IOException;
+    CompletableFuture<MaybeMultihash> get(UserPublicKey sharingKey, byte[] mapKey);
 
     /**
      *
@@ -38,8 +36,7 @@ public interface Btree {
      * @return  hash(sharingKey.metadata) | the new root hash of the btree
      * @throws IOException
      */
-    PairMultihash remove(UserPublicKey sharingKey,
-                            byte[] mapKey) throws IOException;
+    CompletableFuture<PairMultihash> remove(UserPublicKey sharingKey, byte[] mapKey);
 
     class HTTP implements Btree {
 
@@ -50,58 +47,85 @@ public interface Btree {
         }
 
         @Override
-        public PairMultihash put(UserPublicKey sharingKey, byte[] mapKey, Multihash value) throws IOException {
+        public CompletableFuture<PairMultihash> put(UserPublicKey sharingKey, byte[] mapKey, Multihash value) {
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
             DataOutputStream dout = new DataOutputStream(bout);
 
-            Serialize.serialize(sharingKey.toUserPublicKey().serialize(), dout);
-            Serialize.serialize(mapKey, dout);
-            Serialize.serialize(value.toBytes(), dout);
-            dout.flush();
+            try {
+                Serialize.serialize(sharingKey.toUserPublicKey().serialize(), dout);
+                Serialize.serialize(mapKey, dout);
+                Serialize.serialize(value.toBytes(), dout);
+                dout.flush();
 
-            byte[] res = poster.postUnzip("btree/put", bout.toByteArray());
-            DataSource source = new DataSource(res);
-            int success = source.readInt();
-            if (success != 1)
-                throw new IOException("Couldn't add value to BTree!");
-            return new PairMultihash(MaybeMultihash.deserialize(source), MaybeMultihash.deserialize(source));
+                return poster.postUnzip("btree/put", bout.toByteArray()).thenApply(res -> {
+                    DataSource source = new DataSource(res);
+                    try {
+                        int success = source.readInt();
+                        if (success != 1)
+                            throw new IOException("Couldn't add value to BTree!");
+                        return new PairMultihash(MaybeMultihash.deserialize(source), MaybeMultihash.deserialize(source));
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                });
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
         }
 
         @Override
-        public MaybeMultihash get(UserPublicKey sharingKey, byte[] mapKey) throws IOException {
+        public CompletableFuture<MaybeMultihash> get(UserPublicKey sharingKey, byte[] mapKey) {
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
             DataOutputStream dout = new DataOutputStream(bout);
 
-            Serialize.serialize(sharingKey.toUserPublicKey().serialize(), dout);
-            Serialize.serialize(mapKey, dout);
-            dout.flush();
+            try {
+                Serialize.serialize(sharingKey.toUserPublicKey().serialize(), dout);
+                Serialize.serialize(mapKey, dout);
+                dout.flush();
 
-            byte[] res = poster.postUnzip("btree/get", bout.toByteArray());
-            DataSource source = new DataSource(res);
-            int success = source.readInt();
-            if (success != 1)
-                throw new IOException("Couldn't get value from BTree!");
-            byte[] multihash = source.readArray();
-            if (multihash.length == 0)
-                return MaybeMultihash.EMPTY();
-            return new MaybeMultihash(new Multihash(multihash));
+                return poster.postUnzip("btree/get", bout.toByteArray()).thenApply(res -> {
+                    DataSource source = new DataSource(res);
+                    try {
+                        int success = source.readInt();
+                        if (success != 1)
+                            throw new IOException("Couldn't get value from BTree!");
+                        byte[] multihash = source.readArray();
+                        if (multihash.length == 0)
+                            return MaybeMultihash.EMPTY();
+                        return new MaybeMultihash(new Multihash(multihash));
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                });
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
         }
 
         @Override
-        public PairMultihash remove(UserPublicKey sharingKey, byte[] mapKey) throws IOException {
+        public CompletableFuture<PairMultihash> remove(UserPublicKey sharingKey, byte[] mapKey) {
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
             DataOutputStream dout = new DataOutputStream(bout);
 
-            Serialize.serialize(sharingKey.toUserPublicKey().serialize(), dout);
-            Serialize.serialize(mapKey, dout);
-            dout.flush();
+            try {
+                Serialize.serialize(sharingKey.toUserPublicKey().serialize(), dout);
+                Serialize.serialize(mapKey, dout);
+                dout.flush();
 
-            byte[] res = poster.postUnzip("btree/delete", bout.toByteArray());
-            DataSource source = new DataSource(res);
-            int success = source.readInt();
-            if (success != 1)
-                throw new IOException("Couldn't add data to DHT!");
-            return new PairMultihash(MaybeMultihash.deserialize(source), MaybeMultihash.deserialize(source));
+                return poster.postUnzip("btree/delete", bout.toByteArray()).thenApply(res -> {
+                    DataSource source = new DataSource(res);
+                    try {
+                        int success = source.readInt();
+                        if (success != 1)
+                            throw new IOException("Couldn't add data to DHT!");
+                        return new PairMultihash(MaybeMultihash.deserialize(source), MaybeMultihash.deserialize(source));
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                });
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
         }
     }
 }

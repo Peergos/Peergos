@@ -4,6 +4,7 @@ import peergos.shared.util.*;
 
 import java.io.*;
 import java.net.*;
+import java.util.concurrent.*;
 import java.util.zip.*;
 
 public class JavaPoster implements HttpPoster {
@@ -23,13 +24,14 @@ public class JavaPoster implements HttpPoster {
     }
 
     @Override
-    public byte[] postUnzip(String url, byte[] payload) throws IOException {
+    public CompletableFuture<byte[]> postUnzip(String url, byte[] payload) {
         return post(url, payload, true);
     }
 
     @Override
-    public byte[] post(String url, byte[] payload, boolean unzip) throws IOException {
+    public CompletableFuture<byte[]> post(String url, byte[] payload, boolean unzip) {
         HttpURLConnection conn = null;
+        CompletableFuture<byte[]> res = new CompletableFuture<>();
         try
         {
             conn = (HttpURLConnection) buildURL(url).openConnection();
@@ -43,15 +45,18 @@ public class JavaPoster implements HttpPoster {
             String contentEncoding = conn.getContentEncoding();
             boolean isGzipped = "gzip".equals(contentEncoding);
             DataInputStream din = new DataInputStream(isGzipped && unzip ? new GZIPInputStream(conn.getInputStream()) : conn.getInputStream());
-            return Serialize.readFully(din);
+            res.complete(Serialize.readFully(din));
+        } catch (IOException e) {
+            res.completeExceptionally(e);
         } finally {
             if (conn != null)
                 conn.disconnect();
         }
+        return res;
     }
 
     @Override
-    public byte[] get(String url) throws IOException {
+    public CompletableFuture<byte[]> get(String url) throws IOException {
         HttpURLConnection conn = null;
         try
         {
@@ -61,7 +66,7 @@ public class JavaPoster implements HttpPoster {
             String contentEncoding = conn.getContentEncoding();
             boolean isGzipped = "gzip".equals(contentEncoding);
             DataInputStream din = new DataInputStream(isGzipped ? new GZIPInputStream(conn.getInputStream()) : conn.getInputStream());
-            return Serialize.readFully(din);
+            return CompletableFuture.completedFuture(Serialize.readFully(din));
         } finally {
             if (conn != null)
                 conn.disconnect();

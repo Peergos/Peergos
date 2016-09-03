@@ -65,13 +65,13 @@ public class MultiUserTests {
                     String username = username(e);
                     try {
                         return UserTests.ensureSignedUp(username, username, webPort);
-                    } catch (IOException ioe) {
+                    } catch (Exception ioe) {
                         throw new IllegalStateException(ioe);
                     }}).collect(Collectors.toList());
     }
 
     @Test
-    public void shareAndUnshareFile() throws IOException {
+    public void shareAndUnshareFile() throws Exception {
         UserContext u1 = UserTests.ensureSignedUp("a", "a", webPort);
 
         // send follow requests from each other user to "a"
@@ -99,7 +99,7 @@ public class MultiUserTests {
         File f = File.createTempFile("peergos", "");
         byte[] originalFileContents = "Hello Peergos friend!".getBytes();
         Files.write(f.toPath(), originalFileContents);
-        boolean uploaded = u1Root.uploadFile(filename, f, u1, l -> {}, u1.fragmenter());
+        boolean uploaded = u1Root.uploadFile(filename, f, u1, l -> {}, u1.fragmenter()).get();
 
         // share the file from "a" to each of the others
         FileTreeNode u1File = u1.getByPath(u1.username + "/" + filename).get();
@@ -160,7 +160,7 @@ public class MultiUserTests {
     private String random() {
         return UUID.randomUUID().toString();
     }
-    public void shareAndUnshareFolder(int userCount) throws IOException {
+    public void shareAndUnshareFolder(int userCount) throws Exception {
         Assert.assertTrue(0 < userCount);
 
         String u1nameAndPasword = "a";
@@ -201,7 +201,7 @@ public class MultiUserTests {
         String folderName = "afolder";
         u1Root.mkdir(folderName, u1, SymmetricKey.random(), false, u1.random);
         FileTreeNode folder = u1.getByPath("/a/" + folderName).get();
-        boolean uploaded = folder.uploadFile(filename, f, u1, l -> {}, u1.fragmenter());
+        boolean uploaded = folder.uploadFile(filename, f, u1, l -> {}, u1.fragmenter()).get();
         String originalPath = u1.username + "/" + folderName + "/" + filename;
         FileTreeNode file = u1.getByPath(originalPath).get();
 
@@ -210,7 +210,7 @@ public class MultiUserTests {
         for (UserContext user : users) {
             String path = u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + user.username;
             FileTreeNode u1ToU2 = u1.getByPath(path).get();
-            boolean success = u1ToU2.addLinkTo(folder, u1);
+            boolean success = u1ToU2.addLinkTo(folder, u1).get();
             FileTreeNode ownerViewOfLink = u1.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + user.username + "/" + folderName).get();
             Assert.assertTrue("Shared file", success);
 
@@ -294,12 +294,12 @@ public class MultiUserTests {
     }
 
     @Test
-    public void shareAndUnshareFolder() throws IOException {
+    public void shareAndUnshareFolder() throws Exception {
         shareAndUnshareFolder(4);
     }
 
     @Test
-    public void acceptAndReciprocateFollowRequest() throws IOException {
+    public void acceptAndReciprocateFollowRequest() throws Exception {
         UserContext u1 = UserTests.ensureSignedUp("q", "q", webPort);
         UserContext u2 = UserTests.ensureSignedUp("w", "w", webPort);
         u2.sendFollowRequest(u1.username, SymmetricKey.random());
@@ -315,7 +315,7 @@ public class MultiUserTests {
     }
 
     @Test
-    public void acceptButNotReciprocateFollowRequest() throws IOException {
+    public void acceptButNotReciprocateFollowRequest() throws Exception {
         UserContext u1 = UserTests.ensureSignedUp("q", "q", webPort);
         UserContext u2 = UserTests.ensureSignedUp("w", "w", webPort);
         u2.sendFollowRequest(u1.username, SymmetricKey.random());
@@ -332,7 +332,7 @@ public class MultiUserTests {
 
 
     @Test
-    public void rejectFollowRequest() throws IOException {
+    public void rejectFollowRequest() throws Exception {
         UserContext u1 = UserTests.ensureSignedUp("q", "q", webPort);
         UserContext u2 = UserTests.ensureSignedUp("w", "w", webPort);
         u2.sendFollowRequest(u1.username, SymmetricKey.random());
@@ -348,7 +348,7 @@ public class MultiUserTests {
     }
 
     @Test
-    public void reciprocateButNotAcceptFollowRequest() throws IOException {
+    public void reciprocateButNotAcceptFollowRequest() throws Exception {
         UserContext u1 = UserTests.ensureSignedUp("q", "q", webPort);
         UserContext u2 = UserTests.ensureSignedUp("w", "w", webPort);
         u2.sendFollowRequest(u1.username, SymmetricKey.random());

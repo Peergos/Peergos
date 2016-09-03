@@ -71,14 +71,14 @@ public class UserTests {
     }
 
     @Test
-    public void randomSignup() throws IOException {
+    public void randomSignup() throws Exception {
         String username = "test" + (System.currentTimeMillis() % 10000);
         String password = "password";
         ensureSignedUp(username, password, webPort);
     }
 
     @Test
-    public void changePassword() throws IOException {
+    public void changePassword() throws Exception {
         String username = "test" + (System.currentTimeMillis() % 10000);
         String password = "password";
         UserContext userContext = ensureSignedUp(username, password, webPort);
@@ -88,12 +88,12 @@ public class UserTests {
 
     }
     @Test
-    public void changePasswordFAIL() throws IOException {
+    public void changePasswordFAIL() throws Exception {
         String username = "test" + (System.currentTimeMillis() % 10000);
         String password = "password";
         UserContext userContext = ensureSignedUp(username, password, webPort);
         String newPassword = "passwordtest";
-        UserContext newContext = userContext.changePassword(newPassword);
+        UserContext newContext = userContext.changePassword(newPassword).get();
 
         try {
             UserContext oldContext = ensureSignedUp(username, password, webPort);
@@ -103,12 +103,12 @@ public class UserTests {
         }
     }
 
-    public static UserContext ensureSignedUp(String username, String password, int webPort) throws IOException {
-        return UserContext.ensureSignedUp(username, password, webPort);
+    public static UserContext ensureSignedUp(String username, String password, int webPort) throws Exception {
+        return UserContext.ensureSignedUp(username, password, webPort).get();
     }
 
     @Test
-    public void writeReadVariations() throws IOException {
+    public void writeReadVariations() throws Exception {
         String username = "test01";
         String password = "test01";
         UserContext context = ensureSignedUp(username, password, webPort);
@@ -154,7 +154,7 @@ public class UserTests {
     }
 
     @Test
-    public void mediumFileWrite() throws IOException {
+    public void mediumFileWrite() throws Exception {
         String username = "test01";
         String password = "test01";
         UserContext context = ensureSignedUp(username, password, webPort);
@@ -181,7 +181,7 @@ public class UserTests {
     }
 
     @Test
-    public void writeTiming() throws IOException {
+    public void writeTiming() throws Exception {
         String username = "test01";
         String password = "test01";
         UserContext context = ensureSignedUp(username, password, webPort);
@@ -203,7 +203,7 @@ public class UserTests {
 
     // This one takes a while, so disable most of the time
 //    @Test
-    public void hugeFolder() throws IOException {
+    public void hugeFolder() throws Exception {
         String username = "test01";
         String password = "test01";
         UserContext context = ensureSignedUp(username, password, webPort);
@@ -222,7 +222,7 @@ public class UserTests {
     }
 
     @Test
-    public void readWriteTest() throws IOException {
+    public void readWriteTest() throws Exception {
         String username = "test01";
         String password = "test01";
         UserContext context = ensureSignedUp(username, password, webPort);
@@ -239,7 +239,7 @@ public class UserTests {
         byte[] data = randomData(10*1024*1024); // 2 chunks to test block chaining
         Files.write(tmpPath, data);
 
-        boolean b = userRoot.uploadFile(name, tmpPath.toFile(), context, (l) -> {}, context.fragmenter());
+        boolean b = userRoot.uploadFile(name, tmpPath.toFile(), context, (l) -> {}, context.fragmenter()).get();
 
         assertTrue("file upload", b);
 

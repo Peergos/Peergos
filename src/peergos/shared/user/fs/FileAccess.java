@@ -7,6 +7,7 @@ import peergos.shared.util.*;
 
 import java.io.*;
 import java.util.*;
+import java.util.concurrent.*;
 
 public class FileAccess {
     protected final SymmetricLink parent2meta;
@@ -54,26 +55,31 @@ public class FileAccess {
         return true;
     }
 
-    public FileProperties getFileProperties(SymmetricKey parentKey) throws IOException {
-        byte[] nonce = Arrays.copyOfRange(properties, 0, TweetNaCl.SECRETBOX_NONCE_BYTES);
-        byte[] cipher = Arrays.copyOfRange(properties, TweetNaCl.SECRETBOX_NONCE_BYTES, this.properties.length);
-        return FileProperties.deserialize(getMetaKey(parentKey).decrypt(cipher, nonce));
+    public FileProperties getFileProperties(SymmetricKey parentKey) {
+        try {
+            byte[] nonce = Arrays.copyOfRange(properties, 0, TweetNaCl.SECRETBOX_NONCE_BYTES);
+            byte[] cipher = Arrays.copyOfRange(properties, TweetNaCl.SECRETBOX_NONCE_BYTES, this.properties.length);
+            return FileProperties.deserialize(getMetaKey(parentKey).decrypt(cipher, nonce));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
-    public RetrievedFilePointer getParent(SymmetricKey parentKey, UserContext context) throws IOException {
+    public CompletableFuture<RetrievedFilePointer> getParent(SymmetricKey parentKey, UserContext context) {
         if (this.parentLink == null)
             return null;
-        Map<ReadableFilePointer, FileAccess> res = context.retrieveAllMetadata(Arrays.asList(parentLink), parentKey);
-        RetrievedFilePointer retrievedFilePointer = res.entrySet().stream()
-                .map(entry -> new RetrievedFilePointer(entry.getKey(),  entry.getValue())).findAny().get();
-        return retrievedFilePointer;
+        return context.retrieveAllMetadata(Arrays.asList(parentLink), parentKey).thenApply(res -> {
+            RetrievedFilePointer retrievedFilePointer = res.entrySet().stream()
+                    .map(entry -> new RetrievedFilePointer(entry.getKey(), entry.getValue())).findAny().get();
+            return retrievedFilePointer;
+        });
     }
 
     public FileRetriever retriever() {
         return retriever;
     }
 
-    public boolean rename(ReadableFilePointer writableFilePointer, FileProperties newProps, UserContext context) throws IOException {
+    public CompletableFuture<Boolean> rename(ReadableFilePointer writableFilePointer, FileProperties newProps, UserContext context) {
         if (!writableFilePointer.isWritable())
             throw new IllegalStateException("Need a writable pointer!");
         SymmetricKey metaKey = this.getMetaKey(writableFilePointer.baseKey);
@@ -100,14 +106,14 @@ public class FileAccess {
         return getMetaKey(baseKey).isDirty();
     }
 
-    public FileAccess copyTo(SymmetricKey baseKey, SymmetricKey newBaseKey, Location parentLocation, SymmetricKey parentparentKey,
-                  User entryWriterKey, byte[] newMapKey, UserContext context) throws IOException {
+    public CompletableFuture<? extends FileAccess> copyTo(SymmetricKey baseKey, SymmetricKey newBaseKey, Location parentLocation, SymmetricKey parentparentKey,
+                  User entryWriterKey, byte[] newMapKey, UserContext context) {
         if (!Arrays.equals(baseKey.serialize(), newBaseKey.serialize()))
             throw new IllegalStateException("FileAccess clone must have same base key as original!");
         FileProperties props = getFileProperties(baseKey);
         FileAccess fa = FileAccess.create(newBaseKey, isDirectory() ? SymmetricKey.random() : getMetaKey(baseKey), props, this.retriever, parentLocation, parentparentKey);
-        context.uploadChunk(fa, context.user, entryWriterKey, newMapKey, Collections.emptyList()); //TODO get fragment hashes from retriever
-        return fa;
+        //TODO get fragment hashes from retriever
+        return context.uploadChunk(fa, context.user, entryWriterKey, newMapKey, Collections.emptyList()).thenApply(b -> fa);
     }
 
     public static FileAccess deserialize(byte[] raw) throws IOException {

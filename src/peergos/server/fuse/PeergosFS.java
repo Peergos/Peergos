@@ -147,9 +147,9 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
             if (!parent.isPresent())
                 return 1;
 
-            boolean removed = file.get().remove(userContext, parent.get());
+            boolean removed = file.get().remove(userContext, parent.get()).get();
             return removed ? 0 : 1;
-        } catch (IOException ioe) {
+        } catch (Exception ioe) {
             ioe.printStackTrace();
             return 1;
         }
@@ -183,13 +183,13 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
                 Optional<FileTreeNode> renamedOriginal = userContext.getByPath(renamedInPlacePath.toString());
                 if (!renamedOriginal.isPresent())
                     return 1;
-                boolean copyResult = renamedOriginal.get().copyTo(newParent.get(), userContext);
-                boolean removed = source.treeNode.remove(userContext, parent);
+                boolean copyResult = renamedOriginal.get().copyTo(newParent.get(), userContext).get();
+                boolean removed = source.treeNode.remove(userContext, parent).get();
                 if (!copyResult || !removed)
                     return 1;
             }
             return 0;
-        } catch (IOException ioe) {
+        } catch (Exception ioe) {
             ioe.printStackTrace();
             return 1;
         }
@@ -393,9 +393,9 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
                     */
 
             try {
-                boolean isUpdated = stat.treeNode.setProperties(updated, userContext, parentOpt.get().treeNode);
+                boolean isUpdated = stat.treeNode.setProperties(updated, userContext, parentOpt.get().treeNode).get();
                 return isUpdated ? 0 : 1;
-            } catch (IOException ex) {
+            } catch (Exception ex) {
                 ex.printStackTrace();
                 return 1;
             }
@@ -568,7 +568,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
             // or extending with 0s
             byte[] truncated = Arrays.copyOfRange(original, 0, (int)size);
             file.treeNode.remove(userContext, parent.treeNode);
-            boolean b = parent.treeNode.uploadFile(file.properties.name, new ByteArrayInputStream(truncated), truncated.length, userContext, l -> {}, userContext.fragmenter());
+            boolean b = parent.treeNode.uploadFile(file.properties.name, new ByteArrayInputStream(truncated), truncated.length, userContext, l -> {}, userContext.fragmenter()).get();
             return b ? (int) size : 1;
         } catch (Throwable t) {
             t.printStackTrace();
@@ -584,7 +584,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
                 throw new IllegalStateException("Cannot write more than " + Integer.MAX_VALUE + " bytes");
             }
 
-            boolean b = parent.treeNode.uploadFile(name, new ByteArrayInputStream(toWrite), offset, offset + size, userContext, l -> {}, userContext.fragmenter());
+            boolean b = parent.treeNode.uploadFile(name, new ByteArrayInputStream(toWrite), offset, offset + size, userContext, l -> {}, userContext.fragmenter()).get();
             return b ? (int) size : 1;
         } catch (Throwable t) {
             t.printStackTrace();

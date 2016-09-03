@@ -1,6 +1,5 @@
 package peergos.shared.user.fs;
 
-import peergos.shared.ipfs.api.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.symmetric.SymmetricKey;
 import peergos.shared.ipfs.api.Base58;

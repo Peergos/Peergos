@@ -9,12 +9,15 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.time.*;
 import java.util.*;
+import java.util.concurrent.*;
+import java.util.function.*;
 import java.util.stream.*;
 
 public class DirAccess extends FileAccess {
 
     public static final int MAX_CHILD_LINKS_PER_BLOB = 500;
-    public final SymmetricLink subfolders2files, subfolders2parent;
+
+    private final SymmetricLink subfolders2files, subfolders2parent;
     private List<SymmetricLocationLink> subfolders, files;
     private final Optional<SymmetricLocationLink> moreFolderContents;
 
@@ -55,7 +58,7 @@ public class DirAccess extends FileAccess {
         throw new IllegalStateException("Unimplemented!");
     }
 
-    public boolean rename(ReadableFilePointer writableFilePointer, FileProperties newProps, UserContext context) throws IOException {
+    public CompletableFuture<Boolean> rename(ReadableFilePointer writableFilePointer, FileProperties newProps, UserContext context) throws IOException {
         if (!writableFilePointer.isWritable())
             throw new IllegalStateException("Need a writable pointer!");
         SymmetricKey metaKey;
@@ -72,90 +75,95 @@ public class DirAccess extends FileAccess {
         return context.uploadChunk(dira, writableFilePointer.owner, (User)writableFilePointer.writer, writableFilePointer.mapKey, Collections.EMPTY_LIST);
     }
 
-    public void addFile(Location location, SymmetricKey ourSubfolders, SymmetricKey targetParent, ReadableFilePointer ourPointer,
-                        UserContext context) throws IOException {
+    public CompletableFuture<DirAccess> addFileAndCommit(Location location, SymmetricKey ourSubfolders, SymmetricKey targetParent,
+                                                         ReadableFilePointer ourPointer, UserContext context) {
         if (subfolders.size() + files.size() >= MAX_CHILD_LINKS_PER_BLOB) {
-            List<Map.Entry<ReadableFilePointer, DirAccess>> nextMetablob = getNextMetablob(ourSubfolders, context);
-            if (nextMetablob.size() >= 1) {
-                Map.Entry<ReadableFilePointer, DirAccess> pair = nextMetablob.get(0);
-                ReadableFilePointer nextPointer = pair.getKey();
-                DirAccess nextBlob = pair.getValue();
-                nextBlob.addFile(location, ourSubfolders, targetParent, nextPointer, context);
-            } else {
-                // create and upload new metadata blob
-                SymmetricKey nextSubfoldersKey = SymmetricKey.random();
-                SymmetricKey ourParentKey = subfolders2parent.target(ourSubfolders);
-                DirAccess next = DirAccess.create(nextSubfoldersKey, FileProperties.EMPTY,
-                        parentLink.targetLocation(ourParentKey), parentLink.target(ourParentKey), ourParentKey);
-                byte[] nextMapKey = context.randomBytes(32);
-                ReadableFilePointer nextPointer = new ReadableFilePointer(ourPointer.owner, ourPointer.writer, nextMapKey, nextSubfoldersKey);
-                next.addFile(location, nextSubfoldersKey, targetParent, nextPointer, context);
-                next.commit(ourPointer.owner, (User)ourPointer.writer, nextMapKey, context);
-                // re-upload us with the link to the next DirAccess
-                DirAccess newUs = new DirAccess(subfolders2files, subfolders2parent, subfolders, files, parent2meta, properties, retriever,
-                        parentLink, Optional.of(SymmetricLocationLink.create(ourSubfolders, nextSubfoldersKey, nextPointer.getLocation())));
-                newUs.commit(ourPointer.owner, (User)ourPointer.writer, ourPointer.mapKey, context);
-            }
+            return getNextMetablob(ourSubfolders, context).thenCompose(nextMetablob -> {
+                if (nextMetablob.size() >= 1) {
+                    Map.Entry<ReadableFilePointer, DirAccess> pair = nextMetablob.get(0);
+                    ReadableFilePointer nextPointer = pair.getKey();
+                    DirAccess nextBlob = pair.getValue();
+                    return nextBlob.addFileAndCommit(location, ourSubfolders, targetParent, nextPointer, context);
+                } else {
+                    // create and upload new metadata blob
+                    SymmetricKey nextSubfoldersKey = SymmetricKey.random();
+                    SymmetricKey ourParentKey = subfolders2parent.target(ourSubfolders);
+                    DirAccess next = DirAccess.create(nextSubfoldersKey, FileProperties.EMPTY,
+                            parentLink.targetLocation(ourParentKey), parentLink.target(ourParentKey), ourParentKey);
+                    byte[] nextMapKey = context.randomBytes(32);
+                    ReadableFilePointer nextPointer = new ReadableFilePointer(ourPointer.owner, ourPointer.writer, nextMapKey, nextSubfoldersKey);
+                    next.addFileAndCommit(location, nextSubfoldersKey, targetParent, nextPointer, context);
+                    next.commit(ourPointer.owner, (User) ourPointer.writer, nextMapKey, context);
+                    // re-upload us with the link to the next DirAccess
+                    DirAccess newUs = new DirAccess(subfolders2files, subfolders2parent, subfolders, files, parent2meta, properties, retriever,
+                            parentLink, Optional.of(SymmetricLocationLink.create(ourSubfolders, nextSubfoldersKey, nextPointer.getLocation())));
+                    return newUs.commit(ourPointer.owner, (User) ourPointer.writer, ourPointer.mapKey, context);
+                }
+            });
         } else {
             SymmetricKey filesKey = this.subfolders2files.target(ourSubfolders);
             this.files.add(SymmetricLocationLink.create(filesKey, targetParent, location));
+            return commit(ourPointer.owner, (User) ourPointer.writer, ourPointer.mapKey, context)
+                    .thenApply(x -> this);
         }
     }
 
     // returns new version of this directory
-    public DirAccess addSubdir(Location location, SymmetricKey ourSubfolders, SymmetricKey targetBaseKey, ReadableFilePointer ourPointer,
-                          UserContext context) throws IOException {
+    public CompletableFuture<DirAccess> addSubdirAndCommit(Location location, SymmetricKey ourSubfolders, SymmetricKey targetBaseKey, ReadableFilePointer ourPointer,
+                                                           UserContext context) {
         if (subfolders.size() + files.size() >= MAX_CHILD_LINKS_PER_BLOB) {
-            List<Map.Entry<ReadableFilePointer, DirAccess>> nextMetablob = getNextMetablob(ourSubfolders, context);
-            if (nextMetablob.size() >= 1) {
-                Map.Entry<ReadableFilePointer, DirAccess> pair = nextMetablob.get(0);
-                ReadableFilePointer nextPointer = pair.getKey();
-                DirAccess nextBlob = pair.getValue();
-                nextBlob.addSubdir(location, nextPointer.baseKey, targetBaseKey, nextPointer.withWritingKey((User)ourPointer.writer), context);
-                nextBlob.commit(nextPointer.owner, (User)ourPointer.writer, nextPointer.mapKey, context);
-            } else {
-                // create and upload new metadata blob
-                SymmetricKey nextSubfoldersKey = SymmetricKey.random();
-                SymmetricKey ourParentKey = subfolders2parent.target(ourSubfolders);
-                DirAccess next = DirAccess.create(nextSubfoldersKey, FileProperties.EMPTY,
-                        parentLink != null ? parentLink.targetLocation(ourParentKey) : null,
-                        parentLink != null ? parentLink.target(ourParentKey) : null, ourParentKey);
-                byte[] nextMapKey = context.randomBytes(32);
-                ReadableFilePointer nextPointer = new ReadableFilePointer(ourPointer.owner, ourPointer.writer, nextMapKey, nextSubfoldersKey);
-                next.addSubdir(location, nextSubfoldersKey, targetBaseKey, nextPointer, context);
-                next.commit(ourPointer.owner, (User)ourPointer.writer, nextMapKey, context);
-                // re-upload us with the link to the next DirAccess
-                DirAccess newUs = new DirAccess(subfolders2files, subfolders2parent, subfolders, files, parent2meta, properties, retriever,
-                        parentLink, Optional.of(SymmetricLocationLink.create(ourSubfolders, nextSubfoldersKey, nextPointer.getLocation())));
-                return newUs;
-            }
+            return getNextMetablob(ourSubfolders, context).thenCompose(nextMetablob -> {
+                if (nextMetablob.size() >= 1) {
+                    Map.Entry<ReadableFilePointer, DirAccess> pair = nextMetablob.get(0);
+                    ReadableFilePointer nextPointer = pair.getKey();
+                    DirAccess nextBlob = pair.getValue();
+                    return nextBlob.addSubdirAndCommit(location, nextPointer.baseKey, targetBaseKey, nextPointer.withWritingKey((User) ourPointer.writer), context);
+                } else {
+                    // create and upload new metadata blob
+                    SymmetricKey nextSubfoldersKey = SymmetricKey.random();
+                    SymmetricKey ourParentKey = subfolders2parent.target(ourSubfolders);
+                    DirAccess next = DirAccess.create(nextSubfoldersKey, FileProperties.EMPTY,
+                            parentLink != null ? parentLink.targetLocation(ourParentKey) : null,
+                            parentLink != null ? parentLink.target(ourParentKey) : null, ourParentKey);
+                    byte[] nextMapKey = context.randomBytes(32);
+                    ReadableFilePointer nextPointer = new ReadableFilePointer(ourPointer.owner, ourPointer.writer, nextMapKey, nextSubfoldersKey);
+                    next.addSubdirAndCommit(location, nextSubfoldersKey, targetBaseKey, nextPointer, context);
+                    // re-upload us with the link to the next DirAccess
+                    DirAccess newUs = new DirAccess(subfolders2files, subfolders2parent, subfolders, files, parent2meta, properties, retriever,
+                            parentLink, Optional.of(SymmetricLocationLink.create(ourSubfolders, nextSubfoldersKey, nextPointer.getLocation())));
+                    return newUs.commit(ourPointer.owner, (User) ourPointer.writer, ourPointer.mapKey, context);
+                }
+            });
         } else {
             this.subfolders.add(SymmetricLocationLink.create(ourSubfolders, targetBaseKey, location));
+            return commit(ourPointer.owner, (User) ourPointer.writer, ourPointer.mapKey, context);
         }
-        return this;
     }
 
-    private List<Map.Entry<ReadableFilePointer, DirAccess>> getNextMetablob(SymmetricKey subfoldersKey, UserContext context) throws IOException {
+    private CompletableFuture<List<Map.Entry<ReadableFilePointer, DirAccess>>> getNextMetablob(SymmetricKey subfoldersKey, UserContext context) {
         if (!moreFolderContents.isPresent())
-            return Collections.emptyList();
-        Map<ReadableFilePointer, FileAccess> retrieved = context.retrieveAllMetadata(Arrays.asList(moreFolderContents.get()), subfoldersKey);
-        return retrieved.entrySet().stream()
-                .map(e -> new AbstractMap.SimpleEntry<>(e.getKey(), (DirAccess) e.getValue()))
-                .collect(Collectors.toList());
+            return CompletableFuture.completedFuture(Collections.emptyList());
+        return context.retrieveAllMetadata(Arrays.asList(moreFolderContents.get()), subfoldersKey)
+                .thenApply(retrieved -> retrieved.entrySet().stream()
+                        .map(e -> new AbstractMap.SimpleEntry<>(e.getKey(), (DirAccess) e.getValue()))
+                        .collect(Collectors.toList()));
     }
 
     public void updateChildLink(ReadableFilePointer ourPointer, RetrievedFilePointer original, RetrievedFilePointer modified, UserContext context) throws IOException {
         removeChild(original, ourPointer, context);
         Location loc = modified.filePointer.getLocation();
-        DirAccess toUpdate = this;
+        CompletableFuture<DirAccess> toUpdate;
         if (modified.fileAccess.isDirectory())
-            toUpdate = addSubdir(loc, ourPointer.baseKey, modified.filePointer.baseKey, ourPointer, context);
-        else
-            addFile(loc, ourPointer.baseKey, modified.filePointer.baseKey, ourPointer, context);
-        context.uploadChunk(toUpdate, ourPointer.owner, (User) ourPointer.writer, ourPointer.mapKey, Collections.EMPTY_LIST);
+            toUpdate = addSubdirAndCommit(loc, ourPointer.baseKey, modified.filePointer.baseKey, ourPointer, context);
+        else {
+            addFileAndCommit(loc, ourPointer.baseKey, modified.filePointer.baseKey, ourPointer, context);
+            toUpdate = CompletableFuture.completedFuture(this);
+        }
+        toUpdate.thenApply(newDirAccess -> context.uploadChunk(newDirAccess, ourPointer.owner,
+                (User) ourPointer.writer, ourPointer.mapKey, Collections.EMPTY_LIST));
     }
 
-    public boolean removeChild(RetrievedFilePointer childRetrievedPointer, ReadableFilePointer ourPointer, UserContext context) throws IOException {
+    public CompletableFuture<Boolean> removeChild(RetrievedFilePointer childRetrievedPointer, ReadableFilePointer ourPointer, UserContext context) {
         if (childRetrievedPointer.fileAccess.isDirectory()) {
             this.subfolders = subfolders.stream().filter(e -> {
                 try {
@@ -201,25 +209,33 @@ public class DirAccess extends FileAccess {
     }
 
     // returns [RetrievedFilePointer]
-    public Set<RetrievedFilePointer> getChildren(UserContext context, SymmetricKey baseKey) throws IOException {
-        Map<ReadableFilePointer, FileAccess> subdirs = context.retrieveAllMetadata(this.subfolders, baseKey);
-        Map<ReadableFilePointer, FileAccess> files = context.retrieveAllMetadata(this.files, this.subfolders2files.target(baseKey));
-        Map<ReadableFilePointer, FileAccess> moreChildrenSource = moreFolderContents.isPresent() ?
-                context.retrieveAllMetadata(Arrays.asList(moreFolderContents.get()), baseKey) : Collections.emptyMap();
-        Stream<RetrievedFilePointer> moreChildren = moreChildrenSource.entrySet().stream().flatMap(e -> {
-            try {
-                return ((DirAccess) e.getValue()).getChildren(context, e.getKey().baseKey).stream();
-            } catch (IOException ex) {
-                return Stream.empty();
-            }
-        });
-        return Stream.concat(
-                Stream.concat(
-                        subdirs.entrySet().stream(),
-                        files.entrySet().stream())
-                        .map(e -> new RetrievedFilePointer(e.getKey(), e.getValue())),
-                moreChildren)
-                .collect(Collectors.toSet());
+    public CompletableFuture<Set<RetrievedFilePointer>> getChildren(UserContext context, SymmetricKey baseKey) {
+        CompletableFuture<Map<ReadableFilePointer, FileAccess>> subdirsFuture = context.retrieveAllMetadata(this.subfolders, baseKey);
+        CompletableFuture<Map<ReadableFilePointer, FileAccess>> filesFuture = context.retrieveAllMetadata(this.files, this.subfolders2files.target(baseKey));
+
+        CompletableFuture<Map<ReadableFilePointer, FileAccess>> moreChildrenFuture = moreFolderContents.isPresent() ?
+                context.retrieveAllMetadata(Arrays.asList(moreFolderContents.get()), baseKey) :
+                CompletableFuture.completedFuture(Collections.emptyMap());
+
+        return subdirsFuture.thenCompose(subdirs -> filesFuture.thenCompose(files -> moreChildrenFuture.thenCompose(moreChildrenSource -> {
+            // this only has one or zero elements
+            Optional<Pair<ReadableFilePointer, DirAccess>> any = moreChildrenSource.entrySet()
+                    .stream().findAny().map(x -> new Pair<>(x.getKey(), (DirAccess)x.getValue()));
+            CompletableFuture<Set<RetrievedFilePointer>> moreChildren = any.map(d -> d.right.getChildren(context, d.left.baseKey))
+                    .orElse(CompletableFuture.completedFuture(Collections.emptySet()));
+            return moreChildren.thenApply(moreRetrievedChildren -> {
+                Set<RetrievedFilePointer> results = Stream.concat(
+                        Stream.concat(
+                                subdirs.entrySet().stream(),
+                                files.entrySet().stream())
+                                .map(en -> new RetrievedFilePointer(en.getKey(), en.getValue())),
+                        moreRetrievedChildren.stream())
+                        .collect(Collectors.toSet());
+                return results;
+            });
+        })
+        )
+        );
     }
 
     public Set<Location> getChildrenLocations(SymmetricKey baseKey) {
@@ -238,54 +254,60 @@ public class DirAccess extends FileAccess {
     }
 
     // returns pointer to new child directory
-    public ReadableFilePointer mkdir(String name, UserContext userContext, User writer, byte[] ourMapKey,
-                                     SymmetricKey baseKey, SymmetricKey optionalBaseKey, boolean isSystemFolder, SafeRandom random) throws IOException {
+    public CompletableFuture<ReadableFilePointer> mkdir(String name, UserContext userContext, User writer, byte[] ourMapKey,
+                                                       SymmetricKey baseKey, SymmetricKey optionalBaseKey, boolean isSystemFolder, SafeRandom random) throws IOException {
         SymmetricKey dirReadKey = optionalBaseKey != null ? optionalBaseKey : SymmetricKey.random();
         byte[] dirMapKey = new byte[32]; // root will be stored under this in the btree
         random.randombytes(dirMapKey, 0, 32);
         SymmetricKey ourParentKey = this.getParentKey(baseKey);
         Location ourLocation = new Location(userContext.user, writer, ourMapKey);
         DirAccess dir = DirAccess.create(dirReadKey, new FileProperties(name, 0, LocalDateTime.now(), isSystemFolder, Optional.empty()), ourLocation, ourParentKey, null);
-        boolean success = userContext.uploadChunk(dir, userContext.user, writer, dirMapKey, Collections.EMPTY_LIST);
-        if (success) {
-            ReadableFilePointer ourPointer = new ReadableFilePointer(userContext.user, writer, ourMapKey, baseKey);
-            DirAccess modified = addSubdir(new Location(userContext.user, writer, dirMapKey), baseKey, dirReadKey, ourPointer, userContext);
-            // now upload the changed metadata blob for dir
-            modified.commit(userContext.user, writer, ourMapKey, userContext);
-            return new ReadableFilePointer(userContext.user, writer, dirMapKey, dirReadKey);
-        }
-        throw new IllegalStateException("Couldn't upload directory metadata!");
+        CompletableFuture<ReadableFilePointer> result = new CompletableFuture<>();
+        userContext.uploadChunk(dir, userContext.user, writer, dirMapKey, Collections.emptyList()).thenAccept(success -> {
+            if (success) {
+                ReadableFilePointer ourPointer = new ReadableFilePointer(userContext.user, writer, ourMapKey, baseKey);
+                addSubdirAndCommit(new Location(userContext.user, writer, dirMapKey), baseKey, dirReadKey, ourPointer, userContext)
+                        .thenAccept(modified -> result.complete(new ReadableFilePointer(userContext.user, writer, dirMapKey, dirReadKey)));
+            } else
+                result.completeExceptionally(new IllegalStateException("Couldn't upload directory metadata!"));
+        });
+        return result;
     }
 
-    public boolean commit(UserPublicKey owner, User writer, byte[] ourMapKey, UserContext userContext) throws IOException {
-        return userContext.uploadChunk(this, userContext.user, writer, ourMapKey, Collections.EMPTY_LIST);
+    public CompletableFuture<DirAccess> commit(UserPublicKey owner, User writer, byte[] ourMapKey, UserContext userContext) {
+        return userContext.uploadChunk(this, userContext.user, writer, ourMapKey, Collections.emptyList())
+                .thenApply(x -> this);
     }
 
-    public DirAccess copyTo(SymmetricKey baseKey, SymmetricKey newBaseKey, Location parentLocation,
-                            SymmetricKey parentparentKey, User entryWriterKey, byte[] newMapKey, UserContext context) throws IOException {
+    public CompletableFuture<DirAccess> copyTo(SymmetricKey baseKey, SymmetricKey newBaseKey, Location parentLocation,
+                            SymmetricKey parentparentKey, User entryWriterKey, byte[] newMapKey, UserContext context) {
         SymmetricKey parentKey = getParentKey(baseKey);
         FileProperties props = getFileProperties(parentKey);
         DirAccess da = DirAccess.create(newBaseKey, props, parentLocation, parentparentKey, parentKey);
         SymmetricKey ourNewParentKey = da.getParentKey(newBaseKey);
         Location ourNewLocation = new Location(context.user, entryWriterKey, newMapKey);
 
-        Set<RetrievedFilePointer> RFPs = this.getChildren(context, baseKey);
-        // upload new metadata blob for each child and re-add child
-        for (RetrievedFilePointer rfp: RFPs) {
-            SymmetricKey newChildBaseKey = rfp.fileAccess.isDirectory() ? SymmetricKey.random() : rfp.filePointer.baseKey;
-            byte[] newChildMapKey = new byte[32];
-            context.random.randombytes(newChildMapKey, 0, 32);
-            Location newChildLocation = new Location(context.user, entryWriterKey, newChildMapKey);
-            FileAccess newChildFileAccess = rfp.fileAccess.copyTo(rfp.filePointer.baseKey, newChildBaseKey,
-                    ourNewLocation, ourNewParentKey, entryWriterKey, newChildMapKey, context);
-            ReadableFilePointer ourNewPointer = new ReadableFilePointer(ourNewLocation.owner, entryWriterKey, newMapKey, newBaseKey);
-            if (newChildFileAccess.isDirectory())
-                da = da.addSubdir(newChildLocation, newBaseKey, newChildBaseKey, ourNewPointer, context);
-            else
-                da.addFile(newChildLocation, newBaseKey, newChildBaseKey, ourNewPointer, context);
-        }
-        context.uploadChunk(da, context.user, entryWriterKey, newMapKey, Collections.EMPTY_LIST);
-        return da;
+        return this.getChildren(context, baseKey).thenCompose(RFPs -> {
+            // upload new metadata blob for each child and re-add child
+            CompletableFuture<DirAccess> reduce = RFPs.stream().reduce(CompletableFuture.completedFuture(da), (dirFuture, rfp) -> {
+                SymmetricKey newChildBaseKey = rfp.fileAccess.isDirectory() ? SymmetricKey.random() : rfp.filePointer.baseKey;
+                byte[] newChildMapKey = new byte[32];
+                context.random.randombytes(newChildMapKey, 0, 32);
+                Location newChildLocation = new Location(context.user, entryWriterKey, newChildMapKey);
+                return rfp.fileAccess.copyTo(rfp.filePointer.baseKey, newChildBaseKey,
+                        ourNewLocation, ourNewParentKey, entryWriterKey, newChildMapKey, context)
+                        .thenCompose(newChildFileAccess -> {
+                            ReadableFilePointer ourNewPointer = new ReadableFilePointer(ourNewLocation.owner, entryWriterKey, newMapKey, newBaseKey);
+                            if (newChildFileAccess.isDirectory())
+                                return dirFuture.thenCompose(dirAccess ->
+                                        dirAccess.addSubdirAndCommit(newChildLocation, newBaseKey, newChildBaseKey, ourNewPointer, context));
+                            else
+                                return dirFuture.thenCompose(dirAccess ->
+                                        dirAccess.addFileAndCommit(newChildLocation, newBaseKey, newChildBaseKey, ourNewPointer, context));
+                        });
+            }, (a, b) -> a.thenCompose(x -> b)); // TODO Think about this combiner function
+            return reduce;
+        }).thenCompose(finalDir -> finalDir.commit(parentLocation.owner, entryWriterKey, newMapKey, context));
     }
 
     public static DirAccess deserialize(FileAccess base, DataSource bin) throws IOException {

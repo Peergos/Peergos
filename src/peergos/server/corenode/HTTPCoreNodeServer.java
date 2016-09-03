@@ -98,11 +98,11 @@ public class HTTPCoreNodeServer
 
         }
 
-        void getChain(DataInputStream din, DataOutputStream dout) throws IOException
+        void getChain(DataInputStream din, DataOutputStream dout) throws Exception
         {
             String username = CoreNodeUtils.deserializeString(din);
 
-            List<UserPublicKeyLink> chain = coreNode.getChain(username);
+            List<UserPublicKeyLink> chain = coreNode.getChain(username).get();
             dout.writeInt(chain.size());
             for (UserPublicKeyLink link : chain) {
                 link.owner.serialize(dout);
@@ -110,7 +110,7 @@ public class HTTPCoreNodeServer
             }
         }
 
-        void updateChain(DataInputStream din, DataOutputStream dout) throws IOException
+        void updateChain(DataInputStream din, DataOutputStream dout) throws Exception
         {
             String username = CoreNodeUtils.deserializeString(din);
             int count = din.readInt();
@@ -119,15 +119,15 @@ public class HTTPCoreNodeServer
                 UserPublicKey owner = UserPublicKey.deserialize(din);
                 res.add(UserPublicKeyLink.fromByteArray(owner, Serialize.deserializeByteArray(din, UserPublicKeyLink.MAX_SIZE)));
             }
-            boolean isAdded = coreNode.updateChain(username, res);
+            boolean isAdded = coreNode.updateChain(username, res).get();
 
             dout.writeBoolean(isAdded);
         }
 
-        void getPublicKey(DataInputStream din, DataOutputStream dout) throws IOException
+        void getPublicKey(DataInputStream din, DataOutputStream dout) throws Exception
         {
             String username = CoreNodeUtils.deserializeString(din);
-            Optional<UserPublicKey> k = coreNode.getPublicKey(username);
+            Optional<UserPublicKey> k = coreNode.getPublicKey(username).get();
             dout.writeBoolean(k.isPresent());
             if (!k.isPresent())
                 return;
@@ -136,48 +136,48 @@ public class HTTPCoreNodeServer
             dout.write(b);
         }
 
-        void getUsername(DataInputStream din, DataOutputStream dout) throws IOException
+        void getUsername(DataInputStream din, DataOutputStream dout) throws Exception
         {
             byte[] publicKey = CoreNodeUtils.deserializeByteArray(din);
-            String k = coreNode.getUsername(UserPublicKey.fromByteArray(publicKey));
+            String k = coreNode.getUsername(UserPublicKey.fromByteArray(publicKey)).get();
             if (k == null)
                 k="";
             Serialize.serialize(k, dout);
         }
 
-        void getAllUsernamesGzip(DataInputStream din, DataOutputStream dout) throws IOException
+        void getAllUsernamesGzip(DataInputStream din, DataOutputStream dout) throws Exception
         {
-            byte[] res = coreNode.getAllUsernamesGzip();
+            byte[] res = coreNode.getAllUsernamesGzip().get();
             dout.write(res);
         }
 
-        void followRequest(DataInputStream din, DataOutputStream dout) throws IOException
+        void followRequest(DataInputStream din, DataOutputStream dout) throws Exception
         {
             byte[] encodedKey = Serialize.deserializeByteArray(din, UserPublicKey.MAX_SIZE);
             UserPublicKey target = UserPublicKey.deserialize(new DataInputStream(new ByteArrayInputStream(encodedKey)));
             byte[] encodedSharingPublicKey = CoreNodeUtils.deserializeByteArray(din);
 
-            boolean followRequested = coreNode.followRequest(target, encodedSharingPublicKey);
+            boolean followRequested = coreNode.followRequest(target, encodedSharingPublicKey).get();
             dout.writeBoolean(followRequested);
         }
-        void getFollowRequests(DataInputStream din, DataOutputStream dout) throws IOException
+        void getFollowRequests(DataInputStream din, DataOutputStream dout) throws Exception
         {
             byte[] encodedKey = Serialize.deserializeByteArray(din, UserPublicKey.MAX_SIZE);
             UserPublicKey ownerPublicKey = UserPublicKey.deserialize(new DataInputStream(new ByteArrayInputStream(encodedKey)));
-            byte[] res = coreNode.getFollowRequests(ownerPublicKey);
+            byte[] res = coreNode.getFollowRequests(ownerPublicKey).get();
             Serialize.serialize(res, dout);
         }
-        void removeFollowRequest(DataInputStream din, DataOutputStream dout) throws IOException
+        void removeFollowRequest(DataInputStream din, DataOutputStream dout) throws Exception
         {
             byte[] encodedKey = Serialize.deserializeByteArray(din, UserPublicKey.MAX_SIZE);
             UserPublicKey owner = UserPublicKey.deserialize(new DataInputStream(new ByteArrayInputStream(encodedKey)));
             byte[] signedFollowRequest = CoreNodeUtils.deserializeByteArray(din);
 
-            boolean isRemoved = coreNode.removeFollowRequest(owner, signedFollowRequest);
+            boolean isRemoved = coreNode.removeFollowRequest(owner, signedFollowRequest).get();
             dout.writeBoolean(isRemoved);
         }
 
-        void addMetadataBlob(DataInputStream din, DataOutputStream dout) throws IOException
+        void addMetadataBlob(DataInputStream din, DataOutputStream dout) throws Exception
         {
             byte[] ownerPublicKey = CoreNodeUtils.deserializeByteArray(din);
             byte[] encodedSharingPublicKey = CoreNodeUtils.deserializeByteArray(din);
@@ -185,25 +185,25 @@ public class HTTPCoreNodeServer
             boolean isAdded = coreNode.setMetadataBlob(
                     UserPublicKey.fromByteArray(ownerPublicKey),
                     UserPublicKey.fromByteArray(encodedSharingPublicKey),
-                    signedPayload);
+                    signedPayload).get();
             dout.writeBoolean(isAdded);
         }
 
-        void removeMetadataBlob(DataInputStream din, DataOutputStream dout) throws IOException
+        void removeMetadataBlob(DataInputStream din, DataOutputStream dout) throws Exception
         {
             byte[] encodedWriterPublicKey = CoreNodeUtils.deserializeByteArray(din);
             byte[] signedPayload = CoreNodeUtils.deserializeByteArray(din);
             boolean isAdded = coreNode.removeMetadataBlob(
                     UserPublicKey.fromByteArray(encodedWriterPublicKey),
-                    signedPayload);
+                    signedPayload).get();
             dout.writeBoolean(isAdded);
         }
 
-        void getMetadataBlob(DataInputStream din, DataOutputStream dout) throws IOException
+        void getMetadataBlob(DataInputStream din, DataOutputStream dout) throws Exception
         {
             byte[] encodedSharingKey = CoreNodeUtils.deserializeByteArray(din);
             MaybeMultihash metadataBlob = coreNode.getMetadataBlob(
-                    UserPublicKey.fromByteArray(encodedSharingKey));
+                    UserPublicKey.fromByteArray(encodedSharingKey)).get();
 
             metadataBlob.serialize(dout);
         }
