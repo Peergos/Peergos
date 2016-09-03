@@ -59,16 +59,15 @@ public class HTTPCoreNode implements CoreNode
     {
         try
         {
-            ConsolePrintStream console = new ConsolePrintStream();
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
             DataOutputStream dout = new DataOutputStream(bout);
 
             Serialize.serialize(publicKey.toUserPublicKey().serialize(), dout);
             dout.flush();
-            console.println("HttpCoreNode.getUsername");
+            System.out.println("HttpCoreNode.getUsername");
             CompletableFuture<byte[]> fut = poster.post("core/getUsername", bout.toByteArray(), true);
             return fut.thenApply(res -> {
-                console.println("HttpCoreNode.getUsername2");
+                System.out.println("HttpCoreNode.getUsername2");
                 DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
                 try {
                     String username = Serialize.deserializeString(din, CoreNode.MAX_USERNAME_SIZE);

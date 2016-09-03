@@ -51,7 +51,7 @@ public class UserContext {
         Map<String, TrieNode> children = new HashMap<>();
         Optional<EntryPoint> value = Optional.empty();
 
-        public Optional<FileTreeNode> getByPath(String path, UserContext context) {
+        public CompletableFuture<Optional<FileTreeNode>> getByPath(String path, UserContext context) {
             System.out.println("GetByPath: "+path);
             String finalPath = path.startsWith("/") ? path.substring(1) : path;
             if (finalPath.length() == 0) {
@@ -69,7 +69,7 @@ public class UserContext {
             return children.get(elements[0]).getByPath(finalPath.substring(elements[0].length()), context);
         }
 
-        public Set<FileTreeNode> getChildren(String path, UserContext context) {
+        public CompletableFuture<Set<FileTreeNode>> getChildren(String path, UserContext context) {
             if (path.startsWith("/"))
                 path = path.substring(1);
             if (path.length() == 0) {
@@ -132,6 +132,9 @@ public class UserContext {
     }
 
     public static CompletableFuture<UserContext> ensureSignedUp(String username, String password, int webPort, boolean useJavaScript) throws IOException {
+        if (useJavaScript) {
+            System.setOut(new ConsolePrintStream());
+        }
         LoginHasher hasher = useJavaScript ? new ScryptJS() : new ScryptJava();
         HttpPoster poster = useJavaScript ? new JavaScriptPoster() : new JavaPoster(new URL("http://localhost:" + webPort + "/"));
         CoreNode coreNode = new HTTPCoreNode(poster);
@@ -156,20 +159,19 @@ public class UserContext {
         UserWithRoot userWithRoot = UserUtil.generateUser(username, password, hasher, provider, random, signer, boxer);
         UserContext context = new UserContext(username, userWithRoot.getUser(), userWithRoot.getRoot(),
                 dht, btree, coreNode, hasher, provider, random, signer, boxer, useJavaScript);
-        ConsolePrintStream console = new ConsolePrintStream();
-        console.println("made user context");
+        System.out.println("made user context");
         CompletableFuture<UserContext> result = new CompletableFuture<>();
         context.isRegistered().thenAccept(registered -> {
             if (!registered) {
-                console.println("User is not registered");
+                System.out.println("User is not registered");
 
                 context.isAvailable().thenAccept(available -> {
                     if (available) {
-                        console.println("Registering username " + username);
+                        System.out.println("Registering username " + username);
                         boolean register = context.register();
                         if (!register)
                             throw new IllegalStateException("Couldn't register username: " + username);
-                        console.println("Creating user's root directory");
+                        System.out.println("Creating user's root directory");
                         long t1 = System.currentTimeMillis();
                         try {
                             context.createEntryDirectory(username).thenAccept(userRoot -> {
@@ -218,10 +220,9 @@ public class UserContext {
 
     @JsMethod
     public CompletableFuture<Boolean> isRegistered() {
-        ConsolePrintStream console = new ConsolePrintStream();
-        console.println("isRegistered");
+        System.out.println("isRegistered");
         return corenodeClient.getUsername(user).thenApply(registeredUsername -> {
-            console.println("got username " + registeredUsername);
+            System.out.println("got username " + registeredUsername);
             return this.username.equals(registeredUsername);
         });
     }
@@ -769,7 +770,7 @@ public class UserContext {
         return res;
     }
 
-    public Optional<FileAccess> getMetadata(Location loc) throws IOException {
+    public CompletableFuture<Optional<FileAccess>> getMetadata(Location loc) {
         if (loc == null)
             return Optional.empty();
         MaybeMultihash blobHash = btree.get(loc.writer, loc.mapKey);

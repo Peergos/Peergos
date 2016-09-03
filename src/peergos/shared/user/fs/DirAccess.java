@@ -58,7 +58,7 @@ public class DirAccess extends FileAccess {
         throw new IllegalStateException("Unimplemented!");
     }
 
-    public CompletableFuture<Boolean> rename(ReadableFilePointer writableFilePointer, FileProperties newProps, UserContext context) throws IOException {
+    public CompletableFuture<Boolean> rename(ReadableFilePointer writableFilePointer, FileProperties newProps, UserContext context) {
         if (!writableFilePointer.isWritable())
             throw new IllegalStateException("Need a writable pointer!");
         SymmetricKey metaKey;
@@ -72,7 +72,7 @@ public class DirAccess extends FileAccess {
                 parentLink,
                 moreFolderContents
         );
-        return context.uploadChunk(dira, writableFilePointer.owner, (User)writableFilePointer.writer, writableFilePointer.mapKey, Collections.EMPTY_LIST);
+        return context.uploadChunk(dira, writableFilePointer.owner, (User)writableFilePointer.writer, writableFilePointer.mapKey, Collections.emptyList());
     }
 
     public CompletableFuture<DirAccess> addFileAndCommit(Location location, SymmetricKey ourSubfolders, SymmetricKey targetParent,
@@ -255,7 +255,8 @@ public class DirAccess extends FileAccess {
 
     // returns pointer to new child directory
     public CompletableFuture<ReadableFilePointer> mkdir(String name, UserContext userContext, User writer, byte[] ourMapKey,
-                                                       SymmetricKey baseKey, SymmetricKey optionalBaseKey, boolean isSystemFolder, SafeRandom random) throws IOException {
+                                                       SymmetricKey baseKey, SymmetricKey optionalBaseKey,
+                                                        boolean isSystemFolder, SafeRandom random) {
         SymmetricKey dirReadKey = optionalBaseKey != null ? optionalBaseKey : SymmetricKey.random();
         byte[] dirMapKey = new byte[32]; // root will be stored under this in the btree
         random.randombytes(dirMapKey, 0, 32);

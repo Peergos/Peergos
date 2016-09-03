@@ -42,13 +42,10 @@ public class FileTreeNode {
         this.entryWriterKey = entryWriterKey;
         if (pointer == null)
             props = new FileProperties("/", 0, LocalDateTime.MIN, false, Optional.empty());
-        else
-            try {
-                SymmetricKey parentKey = this.getParentKey();
-                props = pointer.fileAccess.getFileProperties(parentKey);
-            } catch (IOException e) {
-                throw new IllegalStateException(e);
-            }
+        else {
+            SymmetricKey parentKey = this.getParentKey();
+            props = pointer.fileAccess.getFileProperties(parentKey);
+        }
     }
 
     public boolean equals(Object other) {
@@ -67,34 +64,36 @@ public class FileTreeNode {
         return props.name.equals("/");
     }
 
-    public String getPath(UserContext context) {
-        Optional<FileTreeNode> parent = retrieveParent(context);
-        if (!parent.isPresent() || parent.get().isRoot())
-            return "/"+props.name;
-        return parent.get().getPath(context) + "/" + props.name;
+    public CompletableFuture<String> getPath(UserContext context) {
+        return retrieveParent(context).thenApply(parent -> {
+            if (!parent.isPresent() || parent.get().isRoot())
+                return "/" + props.name;
+            return parent.get().getPath(context) + "/" + props.name;
+        });
     }
 
-    public Optional<FileTreeNode> getDescendentByPath(String path, UserContext context) {
+    public CompletableFuture<Optional<FileTreeNode>> getDescendentByPath(String path, UserContext context) {
         if (path.length() == 0)
-            return Optional.of(this);
+            return CompletableFuture.completedFuture(Optional.of(this));
 
         if (path.equals("/"))
             if (isDirectory())
-                return Optional.of(this);
+                return CompletableFuture.completedFuture(Optional.of(this));
             else
-                return Optional.empty();
+                return CompletableFuture.completedFuture(Optional.empty());
 
         if (path.startsWith("/"))
             path = path.substring(1);
         int slash = path.indexOf("/");
         String prefix = slash > 0 ? path.substring(0, slash) : path;
         String suffix = slash > 0 ? path.substring(slash + 1) : "";
-        Set<FileTreeNode> children = getChildren(context);
-        for (FileTreeNode child: children)
-            if (child.getFileProperties().name.equals(prefix)) {
-                return child.getDescendentByPath(suffix, context);
-            }
-        return Optional.empty();
+        return getChildren(context).thenCompose(children -> {
+            for (FileTreeNode child : children)
+                if (child.getFileProperties().name.equals(prefix)) {
+                    return child.getDescendentByPath(suffix, context);
+                }
+            return CompletableFuture.completedFuture(Optional.empty());
+        });
     }
 
     public FileTreeNode makeDirty(UserContext context, FileTreeNode parent, Set<String> readersToRemove) throws IOException {
@@ -152,11 +151,12 @@ public class FileTreeNode {
         }
     }
 
-    public boolean hasChildWithName(String name, UserContext context) {
-        return getChildren(context).stream().filter(c -> c.props.name.equals(name)).findAny().isPresent();
+    public CompletableFuture<Boolean> hasChildWithName(String name, UserContext context) {
+        return getChildren(context)
+                .thenApply(children -> children.stream().filter(c -> c.props.name.equals(name)).findAny().isPresent());
     }
 
-    public CompletableFuture<Boolean> removeChild(FileTreeNode child, UserContext context) throws IOException {
+    public CompletableFuture<Boolean> removeChild(FileTreeNode child, UserContext context) {
         return ((DirAccess)pointer.fileAccess).removeChild(child.getPointer(), pointer.filePointer, context);
     }
 
@@ -167,16 +167,18 @@ public class FileTreeNode {
             return error;
         }
         String name = file.getFileProperties().name;
-        if (hasChildWithName(name, context)) {
-            error.completeExceptionally(new IllegalStateException("Child already exists with name: "+name));
-            return error;
-        }
-        Location loc = file.getLocation();
-        DirAccess toUpdate = (DirAccess)pointer.fileAccess;
-        return (file.isDirectory() ?
-                toUpdate.addSubdirAndCommit(loc, this.getKey(), file.getKey(), pointer.filePointer, context) :
-                toUpdate.addFileAndCommit(loc, this.getKey(), file.getKey(), pointer.filePointer, context))
-                .thenApply(dirAccess -> new FileTreeNode(this.pointer, ownername, readers, writers, entryWriterKey));
+        return hasChildWithName(name, context).thenCompose(hasChild -> {
+            if (hasChild) {
+                error.completeExceptionally(new IllegalStateException("Child already exists with name: " + name));
+                return error;
+            }
+            Location loc = file.getLocation();
+            DirAccess toUpdate = (DirAccess) pointer.fileAccess;
+            return (file.isDirectory() ?
+                    toUpdate.addSubdirAndCommit(loc, this.getKey(), file.getKey(), pointer.filePointer, context) :
+                    toUpdate.addFileAndCommit(loc, this.getKey(), file.getKey(), pointer.filePointer, context))
+                    .thenApply(dirAccess -> new FileTreeNode(this.pointer, ownername, readers, writers, entryWriterKey));
+        });
     }
 
     public String toLink() {
@@ -243,7 +245,7 @@ public class FileTreeNode {
                 return newChildren.stream().collect(Collectors.toSet());
             });
         }
-        return context.getChildren(getPath(context));
+        return getPath(context).thenCompose(path -> context.getChildren(path));
     }
 
     private CompletableFuture<Set<RetrievedFilePointer>> retrieveChildren(UserContext context) {
@@ -281,165 +283,198 @@ public class FileTreeNode {
         return pointer.fileAccess.isDirty(pointer.filePointer.baseKey);
     }
 
-    public CompletableFuture<FileTreeNode> clean(UserContext context, FileTreeNode parent, peergos.shared.user.fs.Fragmenter fragmenter) throws IOException {
+    public CompletableFuture<FileTreeNode> clean(UserContext context, FileTreeNode parent, peergos.shared.user.fs.Fragmenter fragmenter) {
         if (!isDirty())
             return CompletableFuture.completedFuture(this);
         if (isDirectory()) {
             throw new IllegalStateException("Unimplemented directory cleaning!");
         } else {
-            FileProperties props = getFileProperties();
-            SymmetricKey baseKey = pointer.filePointer.baseKey;
-            // stream download and re-encrypt with new metaKey
-            InputStream in = getInputStream(context, l -> {});
-            byte[] tmp = new byte[16];
-            new Random().nextBytes(tmp);
-            String tmpFilename = ArrayOps.bytesToHex(tmp) + ".tmp";
+            try {
+                FileProperties props = getFileProperties();
+                SymmetricKey baseKey = pointer.filePointer.baseKey;
+                // stream download and re-encrypt with new metaKey
+                InputStream in = getInputStream(context, l -> {
+                });
+                byte[] tmp = new byte[16];
+                new Random().nextBytes(tmp);
+                String tmpFilename = ArrayOps.bytesToHex(tmp) + ".tmp";
 
-            return parent.uploadFile(tmpFilename, in, 0, props.size, Optional.of(baseKey), context, l -> {}, fragmenter).thenApply(upload -> {
-                Optional<FileTreeNode> tmpChild = parent.getDescendentByPath(tmpFilename, context);
-                return tmpChild.get().rename(props.name, context, parent, true).thenApply(
-                        rename -> parent.getDescendentByPath(props.name, context).get());
-            });
+                CompletableFuture<Boolean> reuploaded = parent.uploadFile(tmpFilename, in, 0, props.size,
+                        Optional.of(baseKey), context, l -> {
+                        }, fragmenter);
+                return reuploaded.thenCompose(upload -> parent.getDescendentByPath(tmpFilename, context))
+                        .thenCompose(tmpChild -> tmpChild.get().rename(props.name, context, parent, true))
+                        .thenCompose(rename -> parent.getDescendentByPath(props.name, context))
+                        .thenApply(fileOpt -> fileOpt.get());
+            } catch (IOException e) {
+                CompletableFuture<FileTreeNode> result = new CompletableFuture<>();
+                result.completeExceptionally(e);
+                return result;
+            }
         }
     }
 
-    public CompletableFuture<Boolean> uploadTestFile(String filename, int size, UserContext context) throws IOException {
+    public CompletableFuture<Boolean> uploadTestFile(String filename, int size, UserContext context) {
         byte[] data = new byte[size];
         new Random().nextBytes(data);
         return uploadFile(filename, new ByteArrayInputStream(data), 0, size, context, l -> {}, context.fragmenter());
     }
 
     public CompletableFuture<Boolean> uploadFile(String filename, InputStream fileData, long startIndex, long endIndex,
-                              UserContext context, Consumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) throws IOException {
+                              UserContext context, Consumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) {
         return uploadFile(filename, fileData, startIndex, endIndex, Optional.empty(), context, monitor, fragmenter);
     }
 
     public CompletableFuture<Boolean> uploadFile(String filename, InputStream fileData, long startIndex, long endIndex, Optional<SymmetricKey> baseKey,
-                       UserContext context, Consumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) throws IOException {
+                       UserContext context, Consumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) {
         if (!isLegalName(filename))
             return CompletableFuture.completedFuture(false);
-        Optional<FileTreeNode> childOpt = getDescendentByPath(filename, context);
-        if (childOpt.isPresent()) {
-            return updateExistingChild(childOpt.get(), fileData, startIndex, endIndex, context, monitor, fragmenter);
-        }
-        if (startIndex > 0) {
-            // TODO if startIndex > 0 prepend with a zero section
-            throw new IllegalStateException("Unimplemented!");
-        }
-        SymmetricKey fileKey = baseKey.orElseGet(() -> SymmetricKey.random());
-        SymmetricKey fileMetaKey = SymmetricKey.random();
-        SymmetricKey rootRKey = pointer.filePointer.baseKey;
-        byte[] dirMapKey = pointer.filePointer.mapKey;
-        DirAccess dirAccess = (DirAccess) pointer.fileAccess;
-        SymmetricKey dirParentKey = dirAccess.getParentKey(rootRKey);
-        Location parentLocation = getLocation();
+        return getDescendentByPath(filename, context).thenCompose(childOpt -> {
+            if (childOpt.isPresent()) {
+                return updateExistingChild(childOpt.get(), fileData, startIndex, endIndex, context, monitor, fragmenter);
+            }
+            if (startIndex > 0) {
+                // TODO if startIndex > 0 prepend with a zero section
+                throw new IllegalStateException("Unimplemented!");
+            }
+            SymmetricKey fileKey = baseKey.orElseGet(SymmetricKey::random);
+            SymmetricKey fileMetaKey = SymmetricKey.random();
+            SymmetricKey rootRKey = pointer.filePointer.baseKey;
+            byte[] dirMapKey = pointer.filePointer.mapKey;
+            DirAccess dirAccess = (DirAccess) pointer.fileAccess;
+            SymmetricKey dirParentKey = dirAccess.getParentKey(rootRKey);
+            Location parentLocation = getLocation();
 
-        byte[] thumbData = generateThumbnail(fileData, filename);
-        fileData.reset();
-        FileProperties fileProps = new FileProperties(filename, endIndex, LocalDateTime.now(), false, Optional.of(thumbData));
-        FileUploader chunks = new FileUploader(filename, fileData, startIndex, endIndex, fileKey, fileMetaKey, parentLocation, dirParentKey, monitor, fileProps,
-                EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
-        byte[] mapKey = context.randomBytes(32);
-        Location nextChunkLocation = new Location(getLocation().owner, getLocation().writer, mapKey);
-        Location fileLocation = chunks.upload(context, parentLocation.owner, (User)entryWriterKey, nextChunkLocation);
-        dirAccess.addFileAndCommit(fileLocation, rootRKey, fileKey, pointer.filePointer, context);
-        return context.uploadChunk(dirAccess, parentLocation.owner, (User) entryWriterKey, dirMapKey, Collections.emptyList());
+            byte[] thumbData = generateThumbnail(fileData, filename);
+            try {
+                fileData.reset();
+                FileProperties fileProps = new FileProperties(filename, endIndex, LocalDateTime.now(), false, Optional.of(thumbData));
+                FileUploader chunks = new FileUploader(filename, fileData, startIndex, endIndex, fileKey, fileMetaKey, parentLocation, dirParentKey, monitor, fileProps,
+                        EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
+                byte[] mapKey = context.randomBytes(32);
+                Location nextChunkLocation = new Location(getLocation().owner, getLocation().writer, mapKey);
+                Location fileLocation = chunks.upload(context, parentLocation.owner, (User) entryWriterKey, nextChunkLocation);
+                dirAccess.addFileAndCommit(fileLocation, rootRKey, fileKey, pointer.filePointer, context);
+                return context.uploadChunk(dirAccess, parentLocation.owner, (User) entryWriterKey, dirMapKey, Collections.emptyList());
+            } catch (IOException e) {
+                CompletableFuture<Boolean> result = new CompletableFuture<>();
+                result.completeExceptionally(e);
+                return result;
+            }
+        });
     }
 
     private CompletableFuture<Boolean> updateExistingChild(FileTreeNode existingChild, InputStream fileData,
-                                                           long startIndex, long endIndex, UserContext context,
-                                                           Consumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) throws IOException {
+                                                           long inputStartIndex, long endIndex, UserContext context,
+                                                           Consumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) {
         String filename = existingChild.getFileProperties().name;
-        System.out.println("Overwriting section ["+Long.toHexString(startIndex)+", "+Long.toHexString(endIndex)+"] of child with name: "+filename);
-        FileTreeNode child = existingChild.isDirty() ? existingChild.clean(context, this, fragmenter) : existingChild;
-        FileProperties childProps = child.getFileProperties();
-        long filesSize = childProps.size;
-        FileRetriever retriever = child.getRetriever();
-        SymmetricKey baseKey = child.pointer.filePointer.baseKey;
-        SymmetricKey dataKey = child.pointer.fileAccess.getMetaKey(baseKey);
+        System.out.println("Overwriting section ["+Long.toHexString(inputStartIndex)+", "+Long.toHexString(endIndex)+"] of child with name: "+filename);
 
-        if (startIndex > filesSize) {
-            // append with zeroes up until startIndex
-            updateExistingChild(existingChild, new InputStream() {
-                @Override
-                public int read() throws IOException {
-                    return 0;
-                }
-            }, filesSize, startIndex, context, l -> {}, fragmenter);
-        }
+        return (existingChild.isDirty() ? existingChild.clean(context, this, fragmenter) :
+                CompletableFuture.completedFuture(existingChild))
+                .thenCompose(child -> {
+                    FileProperties childProps = child.getFileProperties();
+                    long filesSize = childProps.size;
+                    FileRetriever retriever = child.getRetriever();
+                    SymmetricKey baseKey = child.pointer.filePointer.baseKey;
+                    SymmetricKey dataKey = child.pointer.fileAccess.getMetaKey(baseKey);
+                    long startIndex = inputStartIndex;
 
-        for (; startIndex < endIndex; startIndex = startIndex + Chunk.MAX_SIZE - (startIndex % Chunk.MAX_SIZE)) {
+                    if (startIndex > filesSize) {
+                        // append with zeroes up until startIndex
+                        updateExistingChild(existingChild, new InputStream() {
+                            @Override
+                            public int read() throws IOException {
+                                return 0;
+                            }
+                        }, filesSize, startIndex, context, l -> {
+                        }, fragmenter);
+                    }
 
-            LocatedChunk currentOriginal = retriever.getChunkInputStream(context, dataKey, startIndex, filesSize, child.getLocation(), monitor).get();
-            Optional<Location> nextChunkLocationOpt = retriever.getLocationAt(child.getLocation(), startIndex + Chunk.MAX_SIZE, context);
-            Supplier<Location> locationSupplier = () -> new Location(getLocation().owner, getLocation().writer, context.randomBytes(32));
-            Location nextChunkLocation = nextChunkLocationOpt.orElseGet(locationSupplier);
+                    try {
+                        for (; startIndex < endIndex; startIndex = startIndex + Chunk.MAX_SIZE - (startIndex % Chunk.MAX_SIZE)) {
 
-            System.out.println("********** Writing to chunk at mapkey: "+ArrayOps.bytesToHex(currentOriginal.location.mapKey) + " next: "+nextChunkLocation);
-            // modify chunk, re-encrypt and upload
-            int internalStart = (int) (startIndex % Chunk.MAX_SIZE);
-            int internalEnd = endIndex - (startIndex - internalStart) > Chunk.MAX_SIZE ?
-                    Chunk.MAX_SIZE : (int)(endIndex - (startIndex - internalStart));
-            byte[] raw = currentOriginal.chunk.data();
-            // extend data array if necessary
-            if (raw.length < internalEnd)
-                raw = Arrays.copyOfRange(raw, 0, internalEnd);
-            fileData.read(raw, internalStart, internalEnd - internalStart);
+                            LocatedChunk currentOriginal = retriever.getChunkInputStream(context, dataKey, startIndex, filesSize, child.getLocation(), monitor).get();
+                            Optional<Location> nextChunkLocationOpt = retriever.getLocationAt(child.getLocation(), startIndex + Chunk.MAX_SIZE, context);
+                            Supplier<Location> locationSupplier = () -> new Location(getLocation().owner, getLocation().writer, context.randomBytes(32));
+                            Location nextChunkLocation = nextChunkLocationOpt.orElseGet(locationSupplier);
 
-            byte[] nonce = new byte[TweetNaCl.SECRETBOX_NONCE_BYTES];
-            context.random.randombytes(nonce, 0, nonce.length);
-            Chunk updated = new Chunk(raw, dataKey, currentOriginal.location.mapKey, nonce);
-            LocatedChunk located = new LocatedChunk(currentOriginal.location, updated);
-            FileProperties newProps = new FileProperties(childProps.name, endIndex > filesSize ? endIndex : filesSize,
-                    LocalDateTime.now(), childProps.isHidden, childProps.thumbnail);
-            FileUploader.uploadChunk((User)entryWriterKey, newProps, getLocation(), getParentKey(), baseKey, located,
-                    EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES, nextChunkLocation, context, monitor);
+                            System.out.println("********** Writing to chunk at mapkey: " + ArrayOps.bytesToHex(currentOriginal.location.mapKey) + " next: " + nextChunkLocation);
+                            // modify chunk, re-encrypt and upload
+                            int internalStart = (int) (startIndex % Chunk.MAX_SIZE);
+                            int internalEnd = endIndex - (startIndex - internalStart) > Chunk.MAX_SIZE ?
+                                    Chunk.MAX_SIZE : (int) (endIndex - (startIndex - internalStart));
+                            byte[] raw = currentOriginal.chunk.data();
+                            // extend data array if necessary
+                            if (raw.length < internalEnd)
+                                raw = Arrays.copyOfRange(raw, 0, internalEnd);
+                            fileData.read(raw, internalStart, internalEnd - internalStart);
 
-            //update indices to be relative to next chunk
-            if (startIndex + internalEnd - internalStart > filesSize) {
-                filesSize = startIndex + internalEnd - internalStart;
-                if (startIndex + internalEnd - internalStart > Chunk.MAX_SIZE) {
-                    // update file size in FileProperties of first chunk
-                    Optional<FileTreeNode> updatedChild = getChildren(context).stream().filter(f -> f.getFileProperties().name.equals(filename)).findAny();
-                    boolean b = updatedChild.get().setProperties(child.getFileProperties().withSize(endIndex), context, this);
-                    if (!b)
-                        throw new IllegalStateException("Failed to update file properties for "+child);
-                }
-            }
-        }
-        return CompletableFuture.completedFuture(true);
+                            byte[] nonce = new byte[TweetNaCl.SECRETBOX_NONCE_BYTES];
+                            context.random.randombytes(nonce, 0, nonce.length);
+                            Chunk updated = new Chunk(raw, dataKey, currentOriginal.location.mapKey, nonce);
+                            LocatedChunk located = new LocatedChunk(currentOriginal.location, updated);
+                            FileProperties newProps = new FileProperties(childProps.name, endIndex > filesSize ? endIndex : filesSize,
+                                    LocalDateTime.now(), childProps.isHidden, childProps.thumbnail);
+
+                            CompletableFuture<Boolean> chunkUploaded = FileUploader.uploadChunk((User) entryWriterKey, newProps, getLocation(), getParentKey(), baseKey, located,
+                                    EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES, nextChunkLocation, context, monitor);
+
+                            //update indices to be relative to next chunk
+                            if (startIndex + internalEnd - internalStart > filesSize) {
+                                filesSize = startIndex + internalEnd - internalStart;
+                                if (startIndex + internalEnd - internalStart > Chunk.MAX_SIZE) {
+                                    // update file size in FileProperties of first chunk
+                                    Optional<FileTreeNode> updatedChild = getChildren(context).stream().filter(f -> f.getFileProperties().name.equals(filename)).findAny();
+                                    boolean b = updatedChild.get().setProperties(child.getFileProperties().withSize(endIndex), context, this);
+                                    if (!b)
+                                        throw new IllegalStateException("Failed to update file properties for " + child);
+                                }
+                            }
+                        }
+                        return CompletableFuture.completedFuture(true);
+                    } catch (IOException e) {
+                        CompletableFuture<Boolean> result = new CompletableFuture<>();
+                        result.completeExceptionally(e);
+                        return result;
+                    }
+                });
     }
 
     static boolean isLegalName(String name) {
         return !name.contains("/");
     }
 
-    public Optional<ReadableFilePointer> mkdir(String newFolderName, UserContext context, boolean isSystemFolder) throws IOException {
+    public CompletableFuture<ReadableFilePointer> mkdir(String newFolderName, UserContext context, boolean isSystemFolder) throws IOException {
         return mkdir(newFolderName, context, isSystemFolder, context.random);
     }
 
-    public Optional<ReadableFilePointer> mkdir(String newFolderName, UserContext context, boolean isSystemFolder, SafeRandom random) throws IOException {
+    public CompletableFuture<ReadableFilePointer> mkdir(String newFolderName, UserContext context, boolean isSystemFolder, SafeRandom random) throws IOException {
         return mkdir(newFolderName, context, null, isSystemFolder, random);
     }
 
-    public Optional<ReadableFilePointer> mkdir(String newFolderName, UserContext context, SymmetricKey requestedBaseSymmetricKey,
-                                               boolean isSystemFolder, SafeRandom random) throws IOException {
-        if (!this.isDirectory())
-            return Optional.empty();
-        if (!isLegalName(newFolderName))
-            return Optional.empty();
-        if (hasChildWithName(newFolderName, context)) {
-            System.out.println("Child already exists with name: " + newFolderName);
-            return Optional.empty();
+    public CompletableFuture<ReadableFilePointer> mkdir(String newFolderName, UserContext context, SymmetricKey requestedBaseSymmetricKey,
+                                               boolean isSystemFolder, SafeRandom random) {
+        CompletableFuture<ReadableFilePointer> result = new CompletableFuture<>();
+        if (!this.isDirectory()) {
+            result.completeExceptionally(new IllegalStateException("Cannot mkdir in a file!"));
+            return result;
         }
-        ReadableFilePointer dirPointer = pointer.filePointer;
-        DirAccess dirAccess = (DirAccess)pointer.fileAccess;
-        SymmetricKey rootDirKey = dirPointer.baseKey;
-        ReadableFilePointer newChild = dirAccess.mkdir(newFolderName, context, (User) entryWriterKey, dirPointer.mapKey, rootDirKey,
-                requestedBaseSymmetricKey, isSystemFolder, random);
-        // update our DirAccess
-        this.pointer = new RetrievedFilePointer(pointer.filePointer, context.getMetadata(pointer.filePointer.getLocation()).get());
-        return Optional.of(newChild);
+        if (!isLegalName(newFolderName)) {
+            result.completeExceptionally(new IllegalStateException("Illegal directory name: " + newFolderName));
+            return result;
+        }
+        return hasChildWithName(newFolderName, context).thenCompose(hasChild -> {
+            if (hasChild) {
+                result.completeExceptionally(new IllegalStateException("Child already exists with name: " + newFolderName));
+                return result;
+            }
+            ReadableFilePointer dirPointer = pointer.filePointer;
+            DirAccess dirAccess = (DirAccess) pointer.fileAccess;
+            SymmetricKey rootDirKey = dirPointer.baseKey;
+            return dirAccess.mkdir(newFolderName, context, (User) entryWriterKey, dirPointer.mapKey, rootDirKey,
+                    requestedBaseSymmetricKey, isSystemFolder, random);
+        });
     }
 
     public CompletableFuture<Boolean> rename(String newFilename, UserContext context, FileTreeNode parent) throws IOException {
@@ -449,24 +484,31 @@ public class FileTreeNode {
     public CompletableFuture<Boolean> rename(String newFilename, UserContext context, FileTreeNode parent, boolean overwrite) {
         if (! isLegalName(newFilename))
             return CompletableFuture.completedFuture(false);
-        Optional<FileTreeNode> existing = parent == null ? Optional.empty() : parent.getDescendentByPath(newFilename, context);
-        if (existing.isPresent() && ! overwrite)
-            return CompletableFuture.completedFuture(false);
+        CompletableFuture<Optional<FileTreeNode>> childExists = parent == null ?
+                CompletableFuture.completedFuture(Optional.empty()) :
+                parent.getDescendentByPath(newFilename, context);
+        return childExists
+                .thenCompose(existing -> {
+                    if (existing.isPresent() && !overwrite)
+                        return CompletableFuture.completedFuture(false);
 
-        if (overwrite && existing.isPresent())
-            existing.get().remove(context, parent);
+                    return ((overwrite && existing.isPresent()) ?
+                            existing.get().remove(context, parent) :
+                            CompletableFuture.completedFuture(true)).thenCompose(res -> {
 
-        //get current props
-        ReadableFilePointer filePointer = pointer.filePointer;
-        SymmetricKey baseKey = filePointer.baseKey;
-        FileAccess fileAccess = pointer.fileAccess;
+                        //get current props
+                        ReadableFilePointer filePointer = pointer.filePointer;
+                        SymmetricKey baseKey = filePointer.baseKey;
+                        FileAccess fileAccess = pointer.fileAccess;
 
-        SymmetricKey key = this.isDirectory() ? fileAccess.getParentKey(baseKey) : baseKey;
-        FileProperties currentProps = fileAccess.getFileProperties(key);
+                        SymmetricKey key = this.isDirectory() ? fileAccess.getParentKey(baseKey) : baseKey;
+                        FileProperties currentProps = fileAccess.getFileProperties(key);
 
-        FileProperties newProps = new FileProperties(newFilename, currentProps.size, currentProps.modified, currentProps.isHidden, currentProps.thumbnail);
+                        FileProperties newProps = new FileProperties(newFilename, currentProps.size, currentProps.modified, currentProps.isHidden, currentProps.thumbnail);
 
-        return fileAccess.rename(writableFilePointer(), newProps, context);
+                        return fileAccess.rename(writableFilePointer(), newProps, context);
+                    });
+                });
     }
 
     public CompletableFuture<Boolean> setProperties(FileProperties updatedProperties, UserContext context, FileTreeNode parent) {
@@ -476,17 +518,18 @@ public class FileTreeNode {
             result.completeExceptionally(new IllegalArgumentException("Illegal file name: " + newName));
             return result;
         }
-        if (parent != null && parent.hasChildWithName(newName, context) &&
-                !parent.getChildrenLocations().stream()
-                        .map(l -> new ByteArrayWrapper(l.mapKey))
-                        .collect(Collectors.toSet())
-                        .contains(new ByteArrayWrapper(pointer.filePointer.getLocation().mapKey))) {
-            result.completeExceptionally(new IllegalStateException("Cannot rename to same name as an existing file"));
-            return result;
-        }
-        FileAccess fileAccess = pointer.fileAccess;
+        return (parent == null ? CompletableFuture.completedFuture(false) : parent.hasChildWithName(newName, context)).thenCompose(hasChild -> {
+            if (hasChild && parent!= null && !parent.getChildrenLocations().stream()
+                    .map(l -> new ByteArrayWrapper(l.mapKey))
+                    .collect(Collectors.toSet())
+                    .contains(new ByteArrayWrapper(pointer.filePointer.getLocation().mapKey))) {
+                result.completeExceptionally(new IllegalStateException("Cannot rename to same name as an existing file"));
+                return result;
+            }
+            FileAccess fileAccess = pointer.fileAccess;
 
-        return fileAccess.rename(writableFilePointer(), updatedProperties, context);
+            return fileAccess.rename(writableFilePointer(), updatedProperties, context);
+        });
     }
 
     private ReadableFilePointer writableFilePointer() {
@@ -507,31 +550,33 @@ public class FileTreeNode {
             result.completeExceptionally(new IllegalStateException("CopyTo target " + target + " must be a directory"));
             return result;
         }
-        if (target.hasChildWithName(getFileProperties().name, context)) {
-            result.completeExceptionally(new IllegalStateException("CopyTo target " + target + " already has child with name " + getFileProperties().name));
-            return result;
-        }
-        //make new FileTreeNode pointing to the same file, but with a different location
-        byte[] newMapKey = new byte[32];
-        context.random.randombytes(newMapKey, 0, 32);
-        SymmetricKey ourBaseKey = this.getKey();
-        // a file baseKey is the key for the chunk, which hasn't changed, so this must stay the same
-        SymmetricKey newBaseKey = this.isDirectory() ? SymmetricKey.random() : ourBaseKey;
-        ReadableFilePointer newRFP = new ReadableFilePointer(context.user, target.getEntryWriterKey(), newMapKey, newBaseKey);
-        Location newParentLocation = target.getLocation();
-        SymmetricKey newParentParentKey = target.getParentKey();
+        return target.hasChildWithName(getFileProperties().name, context).thenCompose(childExists -> {
+            if (childExists) {
+                result.completeExceptionally(new IllegalStateException("CopyTo target " + target + " already has child with name " + getFileProperties().name));
+                return result;
+            }
+            //make new FileTreeNode pointing to the same file, but with a different location
+            byte[] newMapKey = new byte[32];
+            context.random.randombytes(newMapKey, 0, 32);
+            SymmetricKey ourBaseKey = this.getKey();
+            // a file baseKey is the key for the chunk, which hasn't changed, so this must stay the same
+            SymmetricKey newBaseKey = this.isDirectory() ? SymmetricKey.random() : ourBaseKey;
+            ReadableFilePointer newRFP = new ReadableFilePointer(context.user, target.getEntryWriterKey(), newMapKey, newBaseKey);
+            Location newParentLocation = target.getLocation();
+            SymmetricKey newParentParentKey = target.getParentKey();
 
-        return pointer.fileAccess.copyTo(ourBaseKey, newBaseKey, newParentLocation, newParentParentKey, (User)target.getEntryWriterKey(), newMapKey, context)
-                .thenCompose(newAccess -> {
-                    // upload new metadatablob
-                    RetrievedFilePointer newRetrievedFilePointer = new RetrievedFilePointer(newRFP, newAccess);
-                    FileTreeNode newFileTreeNode = new FileTreeNode(newRetrievedFilePointer, context.username,
-                            Collections.emptySet(), Collections.emptySet(), target.getEntryWriterKey());
-                    return target.addLinkTo(newFileTreeNode, context);
-                });
+            return pointer.fileAccess.copyTo(ourBaseKey, newBaseKey, newParentLocation, newParentParentKey, (User) target.getEntryWriterKey(), newMapKey, context)
+                    .thenCompose(newAccess -> {
+                        // upload new metadatablob
+                        RetrievedFilePointer newRetrievedFilePointer = new RetrievedFilePointer(newRFP, newAccess);
+                        FileTreeNode newFileTreeNode = new FileTreeNode(newRetrievedFilePointer, context.username,
+                                Collections.emptySet(), Collections.emptySet(), target.getEntryWriterKey());
+                        return target.addLinkTo(newFileTreeNode, context);
+                    });
+        });
     }
 
-    public CompletableFuture<Boolean> remove(UserContext context, FileTreeNode parent) throws IOException {
+    public CompletableFuture<Boolean> remove(UserContext context, FileTreeNode parent) {
         if (parent != null)
             parent.removeChild(this, context);
         return new RetrievedFilePointer(writableFilePointer(), pointer.fileAccess).remove(context, null);

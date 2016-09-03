@@ -20,6 +20,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.*;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.function.*;
 
 /**
@@ -108,8 +109,8 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
     private Optional<ReadableFilePointer> mkdir(String name, FileTreeNode node)  {
         boolean isSystemFolder = false;
         try {
-            return node.mkdir(name, userContext, isSystemFolder, userContext.random);
-        } catch (IOException ioe) {
+            return Optional.of(node.mkdir(name, userContext, isSystemFolder, userContext.random).get());
+        } catch (Exception ioe) {
             ioe.printStackTrace();
             return Optional.empty();
         }
@@ -183,9 +184,9 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
                 Optional<FileTreeNode> renamedOriginal = userContext.getByPath(renamedInPlacePath.toString());
                 if (!renamedOriginal.isPresent())
                     return 1;
-                boolean copyResult = renamedOriginal.get().copyTo(newParent.get(), userContext).get();
+                renamedOriginal.get().copyTo(newParent.get(), userContext).get();
                 boolean removed = source.treeNode.remove(userContext, parent).get();
-                if (!copyResult || !removed)
+                if (!removed)
                     return 1;
             }
             return 0;
@@ -485,20 +486,25 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
     private int rmdir(PeergosStat stat, PeergosStat parentStat) {
         FileTreeNode treeNode = stat.treeNode;
         try {
-            treeNode.remove(userContext, parentStat.treeNode);
+            Boolean removed = treeNode.remove(userContext, parentStat.treeNode).get();
             return 0;
-        } catch (IOException ioe) {
+        } catch (Exception ioe) {
             ioe.printStackTrace();
             return 1;
         }
     }
 
     private int readdir(PeergosStat stat, FuseFillDir fuseFillDir, Pointer pointer) {
-        Set<FileTreeNode> children = stat.treeNode.getChildren(userContext);
-        children.stream()
-                .map(e ->  e.getFileProperties().name)
-                .forEach(e ->  fuseFillDir.apply(pointer, e,  null, 0));
-        return 0;
+        try {
+            Set<FileTreeNode> children = stat.treeNode.getChildren(userContext).get();
+            children.stream()
+                    .map(e -> e.getFileProperties().name)
+                    .forEach(e -> fuseFillDir.apply(pointer, e, null, 0));
+            return 0;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return 1;
+        }
     }
 
     protected Optional<byte[]> read(PeergosStat stat, long requestedSize, long offset) {

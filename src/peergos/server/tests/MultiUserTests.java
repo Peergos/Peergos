@@ -210,14 +210,13 @@ public class MultiUserTests {
         for (UserContext user : users) {
             String path = u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + user.username;
             FileTreeNode u1ToU2 = u1.getByPath(path).get();
-            boolean success = u1ToU2.addLinkTo(folder, u1).get();
+            FileTreeNode fileTreeNode = u1ToU2.addLinkTo(folder, u1).get();
             FileTreeNode ownerViewOfLink = u1.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + user.username + "/" + folderName).get();
-            Assert.assertTrue("Shared file", success);
 
             Set<FileTreeNode> u2children = user
                     .getByPath(path)
                     .get()
-                    .getChildren(user);
+                    .getChildren(user).get();
             Optional<FileTreeNode> fromParent = u2children.stream()
                     .filter(fn -> fn.getFileProperties().name.equals(folderName))
                     .findAny();
