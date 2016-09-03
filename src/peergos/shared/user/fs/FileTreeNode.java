@@ -96,7 +96,16 @@ public class FileTreeNode {
         });
     }
 
-    public FileTreeNode makeDirty(UserContext context, FileTreeNode parent, Set<String> readersToRemove) throws IOException {
+    /** Marks a file/directory and all its descendants as dirty. Directories are immediately cleaned,
+     * but files have all their keys except the actual data key cleaned. That is cleaned lazily, the next time it is modified
+     *
+     * @param context
+     * @param parent
+     * @param readersToRemove
+     * @return
+     * @throws IOException
+     */
+    public CompletableFuture<FileTreeNode> makeDirty(UserContext context, FileTreeNode parent, Set<String> readersToRemove) throws IOException {
         if (!isWritable())
             throw new IllegalStateException("You cannot mark a file as dirty without write access!");
         if (isDirectory()) {

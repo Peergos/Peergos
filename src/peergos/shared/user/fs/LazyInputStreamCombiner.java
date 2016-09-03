@@ -5,6 +5,7 @@ import peergos.shared.user.*;
 
 import java.io.*;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.function.*;
 
 public class LazyInputStreamCombiner extends InputStream {
@@ -31,24 +32,31 @@ public class LazyInputStreamCombiner extends InputStream {
         this.originalNext = next;
     }
 
-    public byte[] getNextStream(int len) throws IOException {
+    public CompletableFuture<byte[]> getNextStream(int len) {
         if (this.next != null) {
             Location nextLocation = this.next;
-            Optional<FileAccess> meta = context.getMetadata(nextLocation);
-            if (!meta.isPresent())
-                throw new EOFException();
-            FileRetriever nextRet = meta.get().retriever();
-            this.next = nextRet.getNext();
-            return nextRet.getChunkInputStream(context, dataKey, 0, len, nextLocation, monitor).get().chunk.data();
+            return context.getMetadata(nextLocation).thenCompose(meta -> {
+                if (!meta.isPresent()) {
+                    CompletableFuture<byte[]> err = new CompletableFuture<>();
+                    err.completeExceptionally(new EOFException());
+                    return err;
+                }
+                FileRetriever nextRet = meta.get().retriever();
+                this.next = nextRet.getNext();
+                return nextRet.getChunkInputStream(context, dataKey, 0, len, nextLocation, monitor)
+                        .thenApply(x -> x.get().chunk.data());
+            });
         }
-        throw new EOFException();
+        CompletableFuture<byte[]> err = new CompletableFuture<>();
+        err.completeExceptionally(new EOFException());
+        return err;
     }
 
     public int bytesReady() {
         return this.current.length - this.index;
     }
 
-    private static final EOFException EOF = new EOFException();
+    private static final class EndOfChunkException extends RuntimeException {};
 
     public byte readByte() throws IOException {
         try {
@@ -56,11 +64,8 @@ public class LazyInputStreamCombiner extends InputStream {
         } catch (Exception e) {}
         globalIndex += Chunk.MAX_SIZE;
         if (globalIndex >= totalLength)
-            throw EOF;
-        int toRead = totalLength - globalIndex > Chunk.MAX_SIZE ? Chunk.MAX_SIZE : (int) (totalLength - globalIndex);
-        current = getNextStream(toRead);
-        index = 0;
-        return current[index++];
+            throw new EOFException();
+        throw new EndOfChunkException();
     }
 
     @Override
@@ -84,20 +89,37 @@ public class LazyInputStreamCombiner extends InputStream {
         }
     }
 
-    public byte[] readArray(int len, byte[] res, int offset) throws IOException {
-        if (res == null) {
-            res = new byte[len];
-            offset = 0;
-        }
+    public CompletableFuture<byte[]> readArray(int len, byte[] res, int offset) {
         int available = bytesReady();
         int toRead = Math.min(available, len);
-        for (int i=0; i < toRead; i++)
-            res[offset + i] = readByte();
+        for (int i=0; i < toRead; i++) {
+            try {
+                res[offset + i] = readByte();
+            } catch (EndOfChunkException e) {
+                int remainingToRead = totalLength - globalIndex > Chunk.MAX_SIZE ? Chunk.MAX_SIZE : (int) (totalLength - globalIndex);
+                byte[] result = res;
+                int offsetAdd = i;
+                return getNextStream(remainingToRead).thenCompose(nextChunk -> {
+                    current = nextChunk;
+                    index = 0;
+                    return readArray(remainingToRead, result, offset + offsetAdd);
+                });
+            } catch (IOException e) {
+                CompletableFuture<byte[]> err = new CompletableFuture<>();
+                err.completeExceptionally(e);
+                return err;
+            }
+        }
         if (available >= len)
-            return res;
+            return CompletableFuture.completedFuture(res);
         int nextSize = len - toRead > Chunk.MAX_SIZE ? Chunk.MAX_SIZE : (len-toRead) % Chunk.MAX_SIZE;
-        current = this.getNextStream(nextSize);
-        index = 0;
-        return readArray(len-toRead, res, offset + toRead);
+        int newOffset = offset;
+        return getNextStream(nextSize).thenCompose(nextCurrent -> {
+            this.current = nextCurrent;
+            index = 0;
+            byte[] result = new byte[len];
+
+            return readArray(len - toRead, result, newOffset + toRead);
+        });
     }
 }

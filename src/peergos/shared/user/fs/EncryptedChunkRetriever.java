@@ -8,6 +8,7 @@ import peergos.shared.util.*;
 
 import java.io.*;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.function.*;
 import java.util.stream.*;
 
@@ -26,12 +27,15 @@ public class EncryptedChunkRetriever implements FileRetriever {
         this.fragmenter = fragmenter;
     }
 
-    public LazyInputStreamCombiner getFile(UserContext context, SymmetricKey dataKey, long fileSize, Location ourLocation, Consumer<Long> monitor) throws IOException {
-        Optional<LocatedChunk> chunk = getChunkInputStream(context, dataKey, 0, fileSize, ourLocation, monitor);
-        return new LazyInputStreamCombiner(this, context, dataKey, chunk.get().chunk.data(), fileSize, monitor);
+    public CompletableFuture<LazyInputStreamCombiner> getFile(UserContext context, SymmetricKey dataKey, long fileSize,
+                                                              Location ourLocation, Consumer<Long> monitor) {
+        return getChunkInputStream(context, dataKey, 0, fileSize, ourLocation, monitor)
+                .thenApply(chunk -> new LazyInputStreamCombiner(this, context, dataKey, chunk.get().chunk.data(), fileSize, monitor));
     }
 
-    public Optional<LocatedEncryptedChunk> getEncryptedChunk(long bytesRemainingUntilStart, long truncateTo, byte[] nonce, SymmetricKey dataKey, Location ourLocation, UserContext context, Consumer<Long> monitor) throws IOException {
+    public CompletableFuture<Optional<LocatedEncryptedChunk>> getEncryptedChunk(long bytesRemainingUntilStart, long truncateTo,
+                                                                                byte[] nonce, SymmetricKey dataKey,
+                                                                                Location ourLocation, UserContext context, Consumer<Long> monitor) {
         if (bytesRemainingUntilStart < Chunk.MAX_SIZE) {
             List<FragmentWithHash> fragments = context.downloadFragments(fragmentHashes, monitor);
             fragments = reorder(fragments, fragmentHashes);
@@ -40,36 +44,28 @@ public class EncryptedChunkRetriever implements FileRetriever {
             EncryptedChunk fullEncryptedChunk = new EncryptedChunk(ArrayOps.concat(chunkAuth, cipherText));
             if (truncateTo < Chunk.MAX_SIZE)
                 fullEncryptedChunk = fullEncryptedChunk.truncateTo((int)truncateTo);
-            return Optional.of(new LocatedEncryptedChunk(ourLocation, fullEncryptedChunk, nonce));
+            return CompletableFuture.completedFuture(Optional.of(new LocatedEncryptedChunk(ourLocation, fullEncryptedChunk, nonce)));
         }
-        Optional<FileAccess> meta = context.getMetadata(getNext());
-        return meta.flatMap(m -> {
-            try {
-                FileRetriever nextRet = m.retriever();
-                return nextRet.getEncryptedChunk(bytesRemainingUntilStart - Chunk.MAX_SIZE, truncateTo - Chunk.MAX_SIZE, nextRet.getNonce(), dataKey, getNext(), context, monitor);
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });
+        return context.getMetadata(getNext()).thenCompose(meta ->
+             !meta.isPresent() ? CompletableFuture.completedFuture(Optional.empty()) :
+                     meta.get().retriever().getEncryptedChunk(bytesRemainingUntilStart - Chunk.MAX_SIZE,
+                             truncateTo - Chunk.MAX_SIZE, meta.get().retriever().getNonce(), dataKey, getNext(), context, monitor)
+            );
     }
 
-    public Optional<Location> getLocationAt(Location startLocation, long offset, UserContext context) throws IOException {
+    public CompletableFuture<Optional<Location>> getLocationAt(Location startLocation, long offset, UserContext context) {
         if (offset < Chunk.MAX_SIZE)
-            return Optional.of(startLocation);
+            return CompletableFuture.completedFuture(Optional.of(startLocation));
         Location next = getNext();
         if (next == null)
-            return Optional.empty();
+            return CompletableFuture.completedFuture(Optional.empty());
         if (offset < 2*Chunk.MAX_SIZE)
-            return Optional.of(next); // chunk at this location hasn't been written yet, only referenced by previous chunk
-        Optional<FileAccess> meta = context.getMetadata(next);
-        return meta.flatMap(m -> {
-            try {
-                FileRetriever nextRet = m.retriever();
-                return nextRet.getLocationAt(next, offset - Chunk.MAX_SIZE, context);
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });
+            return CompletableFuture.completedFuture(Optional.of(next)); // chunk at this location hasn't been written yet, only referenced by previous chunk
+        return context.getMetadata(next)
+                .thenCompose(meta -> meta.isPresent() ?
+                        meta.get().retriever().getLocationAt(next, offset - Chunk.MAX_SIZE, context) :
+                        CompletableFuture.completedFuture(Optional.empty())
+                );
     }
 
     public Location getNext() {
@@ -80,22 +76,29 @@ public class EncryptedChunkRetriever implements FileRetriever {
         return chunkNonce;
     }
 
-    public Optional<LocatedChunk> getChunkInputStream(UserContext context, SymmetricKey dataKey, long startIndex, long truncateTo, Location ourLocation, Consumer<Long> monitor) throws IOException {
-        Optional<LocatedEncryptedChunk> fullEncryptedChunk = getEncryptedChunk(startIndex, truncateTo, chunkNonce, dataKey, ourLocation, context, monitor);
+    public CompletableFuture<Optional<LocatedChunk>> getChunkInputStream(UserContext context, SymmetricKey dataKey,
+                                                                         long startIndex, long truncateTo,
+                                                                         Location ourLocation, Consumer<Long> monitor) {
+        return getEncryptedChunk(startIndex, truncateTo, chunkNonce, dataKey, ourLocation, context, monitor).thenCompose(fullEncryptedChunk -> {
 
-        if (!fullEncryptedChunk.isPresent()) {
-            Optional<Location> unwrittenChunkLocation = getLocationAt(ourLocation, startIndex, context);
-            return unwrittenChunkLocation.map(l -> new LocatedChunk(l,
-                    new Chunk(new byte[Math.min(Chunk.MAX_SIZE, (int) (truncateTo - startIndex))], dataKey, l.mapKey,
-                            context.randomBytes(TweetNaCl.SECRETBOX_NONCE_BYTES))));
-        }
+            if (!fullEncryptedChunk.isPresent()) {
+                return getLocationAt(ourLocation, startIndex, context).thenApply(unwrittenChunkLocation ->
+                        !unwrittenChunkLocation.isPresent() ? Optional.empty() :
+                                Optional.of(new LocatedChunk(unwrittenChunkLocation.get(),
+                                        new Chunk(new byte[Math.min(Chunk.MAX_SIZE, (int) (truncateTo - startIndex))],
+                                                dataKey, unwrittenChunkLocation.get().mapKey,
+                                                context.randomBytes(TweetNaCl.SECRETBOX_NONCE_BYTES)))));
+            }
 
-        return fullEncryptedChunk.map(enc -> {
+            if (!fullEncryptedChunk.isPresent())
+                return CompletableFuture.completedFuture(Optional.empty());
+
             try {
-                byte[] original = enc.chunk.decrypt(dataKey, enc.nonce);
-                return new LocatedChunk(enc.location, new Chunk(original, dataKey, enc.location.mapKey, context.randomBytes(TweetNaCl.SECRETBOX_NONCE_BYTES)));
+                byte[] original = fullEncryptedChunk.get().chunk.decrypt(dataKey, fullEncryptedChunk.get().nonce);
+                return CompletableFuture.completedFuture(Optional.of(new LocatedChunk(fullEncryptedChunk.get().location,
+                        new Chunk(original, dataKey, fullEncryptedChunk.get().location.mapKey, context.randomBytes(TweetNaCl.SECRETBOX_NONCE_BYTES)))));
             } catch (IllegalStateException e) {
-                throw new IllegalStateException("Couldn't decrypt chunk at mapkey: "+new ByteArrayWrapper(enc.location.mapKey), e);
+                throw new IllegalStateException("Couldn't decrypt chunk at mapkey: " + new ByteArrayWrapper(fullEncryptedChunk.get().location.mapKey), e);
             }
         });
     }
