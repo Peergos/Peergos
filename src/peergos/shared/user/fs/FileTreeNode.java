@@ -415,7 +415,7 @@ public class FileTreeNode {
                             Supplier<Location> locationSupplier = () -> new Location(getLocation().owner, getLocation().writer, context.randomBytes(32));
                             Location nextChunkLocation = nextChunkLocationOpt.orElseGet(locationSupplier);
 
-                            System.out.println("********** Writing to chunk at mapkey: " + ArrayOps.bytesToHex(currentOriginal.location.mapKey) + " next: " + nextChunkLocation);
+                            System.out.println("********** Writing to chunk at mapkey: " + ArrayOps.bytesToHex(currentOriginal.location.getMapKey()) + " next: " + nextChunkLocation);
                             // modify chunk, re-encrypt and upload
                             int internalStart = (int) (startIndex % Chunk.MAX_SIZE);
                             int internalEnd = endIndex - (startIndex - internalStart) > Chunk.MAX_SIZE ?
@@ -428,7 +428,7 @@ public class FileTreeNode {
 
                             byte[] nonce = new byte[TweetNaCl.SECRETBOX_NONCE_BYTES];
                             context.random.randombytes(nonce, 0, nonce.length);
-                            Chunk updated = new Chunk(raw, dataKey, currentOriginal.location.mapKey, nonce);
+                            Chunk updated = new Chunk(raw, dataKey, currentOriginal.location.getMapKey(), nonce);
                             LocatedChunk located = new LocatedChunk(currentOriginal.location, updated);
                             FileProperties newProps = new FileProperties(childProps.name, endIndex > filesSize ? endIndex : filesSize,
                                     LocalDateTime.now(), childProps.isHidden, childProps.thumbnail);
@@ -441,11 +441,12 @@ public class FileTreeNode {
                                 filesSize = startIndex + internalEnd - internalStart;
                                 if (startIndex + internalEnd - internalStart > Chunk.MAX_SIZE) {
                                     // update file size in FileProperties of first chunk
-                                    Optional<FileTreeNode> updatedChild = getChildren(context).stream()
-                                            .filter(f -> f.getFileProperties().name.equals(filename)).findAny();
-                                    boolean b = updatedChild.get().setProperties(child.getFileProperties().withSize(endIndex), context, this);
-                                    if (!b)
-                                        throw new IllegalStateException("Failed to update file properties for " + child);
+                                    CompletableFuture<Boolean> updatedSize = getChildren(context).thenCompose(children -> {
+                                        Optional<FileTreeNode> updatedChild = children.stream()
+                                                .filter(f -> f.getFileProperties().name.equals(filename))
+                                                .findAny();
+                                        return updatedChild.get().setProperties(child.getFileProperties().withSize(endIndex), context, this);
+                                    });
                                 }
                             }
                         }

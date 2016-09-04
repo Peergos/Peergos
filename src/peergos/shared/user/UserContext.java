@@ -56,32 +56,46 @@ public class UserContext {
             String finalPath = path.startsWith("/") ? path.substring(1) : path;
             if (finalPath.length() == 0) {
                 if (!value.isPresent()) { // find a child entry and traverse parent links
-                    return children.values().stream().findAny().get().getByPath("", context).get().retrieveParent(context);
+                    return children.values().stream().findAny().get()
+                            .getByPath("", context)
+                            .thenCompose(child -> child.get().retrieveParent(context));
                 }
-                return value.flatMap(e -> context.retrieveEntryPoint(e));
+                return !value.isPresent() ?
+                        CompletableFuture.completedFuture(Optional.empty()) :
+                        context.retrieveEntryPoint(value.get());
             }
             String[] elements = finalPath.split("/");
             // There may be an entry point further down the tree, but it will have <= permission than this one
             if (value.isPresent())
-                return context.retrieveEntryPoint(value.get()).flatMap(e -> e.getDescendentByPath(finalPath, context));
+                return context.retrieveEntryPoint(value.get())
+                        .thenCompose(dir -> dir.get().getDescendentByPath(finalPath, context));
             if (!children.containsKey(elements[0]))
-                return Optional.empty();
+                return CompletableFuture.completedFuture(Optional.empty());
             return children.get(elements[0]).getByPath(finalPath.substring(elements[0].length()), context);
         }
 
         public CompletableFuture<Set<FileTreeNode>> getChildren(String path, UserContext context) {
-            if (path.startsWith("/"))
-                path = path.substring(1);
-            if (path.length() == 0) {
+            String trimmedPath = path.startsWith("/") ? path.substring(1) : path;
+            if (trimmedPath.length() == 0) {
                 if (!value.isPresent()) { // find a child entry and traverse parent links
-                    return children.values().stream().map(t -> t.getByPath("", context).get()).collect(Collectors.toSet());
+                    Set<CompletableFuture<Optional<FileTreeNode>>> kids = children.values().stream()
+                            .map(t -> t.getByPath("", context)).collect(Collectors.toSet());
+                    CompletableFuture<Set<FileTreeNode>> identity = CompletableFuture.completedFuture(Collections.emptySet());
+                    return kids.stream().reduce(identity,
+                            (a, b) -> b.thenCompose(opt ->
+                                    a.thenApply(set -> Stream.concat(set.stream(), Stream.of(opt.get())).collect(Collectors.toSet()))),
+                            (a, b) -> b.thenCompose(setb ->
+                                    a.thenApply(seta -> Stream.concat(seta.stream(), setb.stream()).collect(Collectors.toSet()))));
                 }
-                return value.flatMap(e -> context.retrieveEntryPoint(e).map(f -> f.getChildren(context))).orElse(Collections.emptySet());
+                return context.retrieveEntryPoint(value.get())
+                        .thenCompose(dir -> dir.get().getChildren(context));
             }
-            String[] elements = path.split("/");
+            String[] elements = trimmedPath.split("/");
             if (!children.containsKey(elements[0]))
-                return context.retrieveEntryPoint(value.get()).get().getDescendentByPath(path, context).get().getChildren(context);
-            return children.get(elements[0]).getChildren(path.substring(elements[0].length()), context);
+                return context.retrieveEntryPoint(value.get())
+                        .thenCompose(dir -> dir.get().getDescendentByPath(trimmedPath, context)
+                                .thenCompose(parent -> parent.get().getChildren(context)));
+            return children.get(elements[0]).getChildren(trimmedPath.substring(elements[0].length()), context);
         }
 
         public void put(String path, EntryPoint e) {
@@ -739,12 +753,13 @@ public class UserContext {
         return res;
     }
 
-    private Optional<FileTreeNode> retrieveEntryPoint(EntryPoint e) {
-        return downloadEntryPoint(e).map(fa -> new FileTreeNode(new RetrievedFilePointer(e.pointer, fa), e.owner,
-                        e.readers, e.writers, e.pointer.writer));
+    private CompletableFuture<Optional<FileTreeNode>> retrieveEntryPoint(EntryPoint e) {
+        return downloadEntryPoint(e)
+                .thenApply(faOpt ->faOpt.map(fa -> new FileTreeNode(new RetrievedFilePointer(e.pointer, fa), e.owner,
+                        e.readers, e.writers, e.pointer.location.writer)));
     }
 
-    private Optional<FileAccess> downloadEntryPoint(EntryPoint entry) {
+    private CompletableFuture<Optional<FileAccess>> downloadEntryPoint(EntryPoint entry) {
         // download the metadata blob for this entry point
         try {
             MaybeMultihash btreeValue = btree.get(entry.pointer.writer, entry.pointer.mapKey);

@@ -69,8 +69,7 @@ public class FileAccess {
         if (this.parentLink == null)
             return null;
         return context.retrieveAllMetadata(Arrays.asList(parentLink), parentKey).thenApply(res -> {
-            RetrievedFilePointer retrievedFilePointer = res.entrySet().stream()
-                    .map(entry -> new RetrievedFilePointer(entry.getKey(), entry.getValue())).findAny().get();
+            RetrievedFilePointer retrievedFilePointer = res.stream().findAny().get();
             return retrievedFilePointer;
         });
     }
