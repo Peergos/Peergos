@@ -35,16 +35,12 @@ public class RetrievedFilePointer {
             this.fileAccess.removeFragments(context);
             CompletableFuture<Boolean> result = new CompletableFuture<>();
             context.btree.remove(this.filePointer.location.writer, this.filePointer.location.getMapKey()).thenAccept(treeRootHashCAS -> {
-                try {
-                    byte[] signed = ((User) filePointer.location.writer).signMessage(treeRootHashCAS.toByteArray());
-                    context.corenodeClient.setMetadataBlob(this.filePointer.location.owner, this.filePointer.location.writer, signed);
-                    // remove from parent
-                    if (parentRetrievedFilePointer != null)
-                        ((DirAccess) parentRetrievedFilePointer.fileAccess).removeChild(this, parentRetrievedFilePointer.filePointer, context);
-                    result.complete(true);
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
+                byte[] signed = ((User) filePointer.location.writer).signMessage(treeRootHashCAS.toByteArray());
+                context.corenodeClient.setMetadataBlob(this.filePointer.location.owner, this.filePointer.location.writer, signed);
+                // remove from parent
+                if (parentRetrievedFilePointer != null)
+                    ((DirAccess) parentRetrievedFilePointer.fileAccess).removeChild(this, parentRetrievedFilePointer.filePointer, context);
+                result.complete(true);
             });
             return result;
         }
@@ -53,17 +49,13 @@ public class RetrievedFilePointer {
                 file.remove(context, null);
             CompletableFuture<Boolean> result = new CompletableFuture<>();
             context.btree.remove(this.filePointer.location.writer, this.filePointer.location.getMapKey()).thenAccept(treeRootHashCAS -> {
-                try {
-                    byte[] signed = ((User) filePointer.location.writer).signMessage(treeRootHashCAS.toByteArray());
-                    context.corenodeClient.setMetadataBlob(this.filePointer.location.owner, this.filePointer.location.writer, signed).thenAccept(res -> {
-                        // remove from parent
-                        if (parentRetrievedFilePointer != null)
-                            ((DirAccess) parentRetrievedFilePointer.fileAccess).removeChild(this, parentRetrievedFilePointer.filePointer, context);
-                        result.complete(res);
-                    });
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
+                byte[] signed = ((User) filePointer.location.writer).signMessage(treeRootHashCAS.toByteArray());
+                context.corenodeClient.setMetadataBlob(this.filePointer.location.owner, this.filePointer.location.writer, signed).thenAccept(res -> {
+                    // remove from parent
+                    if (parentRetrievedFilePointer != null)
+                        ((DirAccess) parentRetrievedFilePointer.fileAccess).removeChild(this, parentRetrievedFilePointer.filePointer, context);
+                    result.complete(res);
+                });
             });
             return result;
         });

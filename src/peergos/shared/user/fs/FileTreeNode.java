@@ -383,7 +383,7 @@ public class FileTreeNode {
     private CompletableFuture<Boolean> updateExistingChild(FileTreeNode existingChild, InputStream fileData,
                                                            long inputStartIndex, long endIndex, UserContext context,
                                                            Consumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) {
-        String filename = existingChild.getFileProperties().name;
+        /*String filename = existingChild.getFileProperties().name;
         System.out.println("Overwriting section ["+Long.toHexString(inputStartIndex)+", "+Long.toHexString(endIndex)+"] of child with name: "+filename);
 
         return (existingChild.isDirty() ? existingChild.clean(context, this, fragmenter) :
@@ -403,8 +403,7 @@ public class FileTreeNode {
                             public int read() throws IOException {
                                 return 0;
                             }
-                        }, filesSize, startIndex, context, l -> {
-                        }, fragmenter);
+                        }, filesSize, startIndex, context, l -> {}, fragmenter);
                     }
 
                     try {
@@ -456,7 +455,8 @@ public class FileTreeNode {
                         result.completeExceptionally(e);
                         return result;
                     }
-                });
+                });*/
+        throw new IllegalStateException("Unimplemented!");
     }
 
     static boolean isLegalName(String name) {
