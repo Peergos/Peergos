@@ -759,7 +759,7 @@ public class UserContext {
         return Optional.empty();
     }
 
-    public CompletableFuture<Map<ReadableFilePointer, FileAccess>> retrieveAllMetadata(List<SymmetricLocationLink> links, SymmetricKey baseKey) {
+    public CompletableFuture<List<RetrievedFilePointer>> retrieveAllMetadata(List<SymmetricLocationLink> links, SymmetricKey baseKey) {
         Map<ReadableFilePointer, FileAccess> res = new HashMap<>();
         for (SymmetricLocationLink link: links) {
             Location loc = link.targetLocation(baseKey);
