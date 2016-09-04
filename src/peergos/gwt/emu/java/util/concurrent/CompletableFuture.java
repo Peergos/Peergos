@@ -25,4 +25,6 @@ public class CompletableFuture<T> implements CompletionStage<T> {
     @JsMethod(name = "resolve")
     public native boolean complete(T value);
 
+    @JsMethod(name = "resolve")
+    public static native CompletableFuture<Void> runAsync(Runnable runnable);
 }
