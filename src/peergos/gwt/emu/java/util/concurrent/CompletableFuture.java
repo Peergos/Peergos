@@ -1,5 +1,6 @@
 package java.util.concurrent;
 
+import com.google.gwt.user.client.*;
 import jsinterop.annotations.*;
 
 import java.util.function.*;
@@ -25,6 +26,8 @@ public class CompletableFuture<T> implements CompletionStage<T> {
     @JsMethod(name = "resolve")
     public native boolean complete(T value);
 
-    @JsMethod(name = "resolve")
-    public static native CompletableFuture<Void> runAsync(Runnable runnable);
+    public T get() throws InterruptedException, ExecutionException {
+        Window.alert("Calling synchronous get() on CompletableFuture is not possibile in Javascript!");
+        throw new IllegalStateException("Unimplemented!");
+    }
 }

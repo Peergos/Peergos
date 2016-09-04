@@ -729,13 +729,16 @@ public class UserContext {
                 .thenAccept(entryPoints -> entryPoints.forEach(e -> addEntryPoint(e)));
     }
 
-    private CompletableFuture<Void> addEntryPoint(EntryPoint e) {
+    private CompletableFuture<Boolean> addEntryPoint(EntryPoint e) {
         return retrieveEntryPoint(e).thenCompose(metadata -> {
             if (metadata.isPresent()) {
                 System.out.println("Added entry point: " + metadata.get());
-                return metadata.get().getPath(this).thenAccept(path -> entrie.put(path, e));
+                return metadata.get().getPath(this).thenApply(path -> {
+                    entrie.put(path, e);
+                    return true;
+                });
             }
-            return CompletableFuture.runAsync(() -> {});
+            return CompletableFuture.completedFuture(false);
         });
     }
 

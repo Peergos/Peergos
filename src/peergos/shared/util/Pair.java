@@ -38,6 +38,6 @@ public class Pair<L,R> {
 
     @Override
     public String toString() {
-        return String.format("(%s, %s)", left.toString(), right.toString());
+        return "(" + left.toString() + ", " + right.toString() + ")";
     }
 }
