@@ -114,22 +114,27 @@ public class FileAccess {
         return context.uploadChunk(fa, new Location(context.user, entryWriterKey, newMapKey), Collections.emptyList()).thenApply(b -> fa);
     }
 
-    public static FileAccess deserialize(byte[] raw) throws IOException {
-        DataSource buf = new DataSource(raw);
-        byte[] p2m = buf.readArray();
-        byte[] properties = buf.readArray();
-        boolean hasRetreiver = buf.readBoolean();
-        FileRetriever retriever =  hasRetreiver ? FileRetriever.deserialize(buf) : null;
-        boolean hasParent = buf.readBoolean();
-        SymmetricLocationLink parentLink =  hasParent ? SymmetricLocationLink.deserialize(buf.readArray()) : null;
-        byte type = buf.readByte();
-        FileAccess fileAccess = new FileAccess(new SymmetricLink(p2m), properties, retriever, parentLink);
-        switch(type) {
-            case 0:
-                return fileAccess;
-            case 1:
-                return DirAccess.deserialize(fileAccess, buf);
-            default: throw new Error("Unknown Metadata type: "+type);
+    public static FileAccess deserialize(byte[] raw) {
+        try {
+            DataSource buf = new DataSource(raw);
+            byte[] p2m = buf.readArray();
+            byte[] properties = buf.readArray();
+            boolean hasRetreiver = buf.readBoolean();
+            FileRetriever retriever = hasRetreiver ? FileRetriever.deserialize(buf) : null;
+            boolean hasParent = buf.readBoolean();
+            SymmetricLocationLink parentLink = hasParent ? SymmetricLocationLink.deserialize(buf.readArray()) : null;
+            byte type = buf.readByte();
+            FileAccess fileAccess = new FileAccess(new SymmetricLink(p2m), properties, retriever, parentLink);
+            switch (type) {
+                case 0:
+                    return fileAccess;
+                case 1:
+                    return DirAccess.deserialize(fileAccess, buf);
+                default:
+                    throw new Error("Unknown Metadata type: " + type);
+            }
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         }
     }
 

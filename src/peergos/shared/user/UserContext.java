@@ -473,7 +473,7 @@ public class UserContext {
 
         // add a note to our static data so we know who we sent the private key to
         ReadableFilePointer friendRoot = new ReadableFilePointer(user, sharing, rootMapKey, SymmetricKey.random());
-        return corenodeClient.getUsername(targetUser).thenApply(name -> {
+        return corenodeClient.getUsername(targetUser).thenCompose(name -> {
             EntryPoint entry = new EntryPoint(friendRoot, username, Collections.emptySet(), Stream.of(name).collect(Collectors.toSet()));
             try {
                 addToStaticDataAndCommit(entry);
@@ -557,25 +557,22 @@ public class UserContext {
     }
 
     private static CompletableFuture<Boolean> commitStaticData(User user, SortedMap<UserPublicKey, EntryPoint> staticData, SymmetricKey rootKey
-            , DHTClient dhtClient, CoreNode corenodeClient) throws IOException {
+            , DHTClient dhtClient, CoreNode corenodeClient) {
         byte[] rawStatic = serializeStatic(staticData, rootKey);
-        return dhtClient.put(rawStatic, user, Collections.emptyList()).thenApply(blobHash -> {
-            MaybeMultihash currentHash = corenodeClient.getMetadataBlob(user);
-            DataSink bout = new DataSink();
-            try {
-                currentHash.serialize(bout);
-                bout.writeArray(blobHash.toBytes());
-                byte[] signed = user.signMessage(bout.toByteArray());
-                boolean added = corenodeClient.setMetadataBlob(user, user, signed);
-                if (!added) {
-                    System.out.println("Static data store failed.");
-                    return false;
-                }
-                return true;
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });
+        return dhtClient.put(rawStatic, user, Collections.emptyList())
+                .thenCompose(blobHash -> corenodeClient.getMetadataBlob(user)
+                        .thenCompose(currentHash -> {
+                            DataSink bout = new DataSink();
+                            try {
+                                currentHash.serialize(bout);
+                                bout.writeArray(blobHash.toBytes());
+                                byte[] signed = user.signMessage(bout.toByteArray());
+                                return corenodeClient.setMetadataBlob(user, user, signed);
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
+                            }
+                        })
+                );
     }
 
     private CompletableFuture<Boolean> removeFromStaticData(FileTreeNode fileTreeNode) throws IOException {
@@ -773,25 +770,33 @@ public class UserContext {
     }
 
     public CompletableFuture<List<RetrievedFilePointer>> retrieveAllMetadata(List<SymmetricLocationLink> links, SymmetricKey baseKey) {
-        Map<ReadableFilePointer, FileAccess> res = new HashMap<>();
-        for (SymmetricLocationLink link: links) {
+        List<CompletableFuture<Optional<RetrievedFilePointer>>> all = links.stream().map(link -> {
             Location loc = link.targetLocation(baseKey);
-            MaybeMultihash key = btree.get(loc.writer, loc.mapKey);
-            byte[] data = dhtClient.get(key.get()).get();
-            if (data.length > 0)
-                res.put(link.toReadableFilePointer(baseKey), FileAccess.deserialize(data));
-        }
-        return res;
+            return btree.get(loc.writer, loc.getMapKey())
+                    .thenCompose(key -> dhtClient.get(key.get())
+                            .thenApply(dataOpt -> {
+                                if (!dataOpt.isPresent() || dataOpt.get().length == 0)
+                                    return Optional.empty();
+                                return dataOpt.map(data -> new RetrievedFilePointer(link.toReadableFilePointer(baseKey), FileAccess.deserialize(data)));
+                            })
+                    );
+        }).collect(Collectors.toList());
+
+        return Futures.combineAll(all).thenApply(optSet -> optSet.stream()
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .collect(Collectors.toList()));
     }
 
     public CompletableFuture<Optional<FileAccess>> getMetadata(Location loc) {
         if (loc == null)
-            return Optional.empty();
-        MaybeMultihash blobHash = btree.get(loc.writer, loc.mapKey);
-        if (!blobHash.isPresent())
-            return Optional.empty();
-        byte[] raw = dhtClient.get(blobHash.get()).get();
-        return Optional.of(FileAccess.deserialize(raw));
+            return CompletableFuture.completedFuture(Optional.empty());
+        return btree.get(loc.writer, loc.getMapKey()).thenCompose(blobHash -> {
+            if (!blobHash.isPresent())
+                return CompletableFuture.completedFuture(Optional.empty());
+            return dhtClient.get(blobHash.get())
+                    .thenApply(rawOpt -> rawOpt.map(FileAccess::deserialize));
+        });
     };
 
     public List<FragmentWithHash> downloadFragments(List<Multihash> hashes, Consumer<Long> monitor) {

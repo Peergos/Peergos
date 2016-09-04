@@ -81,7 +81,7 @@ public class MultiUserTests {
         }
 
         // make "a" reciprocate all the follow requests
-        List<FollowRequest> u1Requests = u1.getFollowRequests();
+        List<FollowRequest> u1Requests = u1.getFollowRequests().get();
         for (FollowRequest u1Request : u1Requests) {
             boolean accept = true;
             boolean reciprocate = true;
@@ -180,7 +180,7 @@ public class MultiUserTests {
             user.sendFollowRequest(u1.username, SymmetricKey.random());
 
 
-        List<FollowRequest> u1Requests = u1.getFollowRequests();
+        List<FollowRequest> u1Requests = u1.getFollowRequests().get();
         for (FollowRequest u1Request : u1Requests) {
             boolean accept = true;
             boolean reciprocate = true;
@@ -299,10 +299,10 @@ public class MultiUserTests {
         UserContext u1 = UserTests.ensureSignedUp("q", "q", webPort);
         UserContext u2 = UserTests.ensureSignedUp("w", "w", webPort);
         u2.sendFollowRequest(u1.username, SymmetricKey.random());
-        List<FollowRequest> u1Requests = u1.getFollowRequests();
+        List<FollowRequest> u1Requests = u1.getFollowRequests().get();
         assertTrue("Receive a follow request", u1Requests.size() > 0);
         u1.sendReplyFollowRequest(u1Requests.get(0), true, true);
-        List<FollowRequest> u2FollowRequests = u2.getFollowRequests();
+        List<FollowRequest> u2FollowRequests = u2.getFollowRequests().get();
         Optional<FileTreeNode> u1ToU2 = u2.getByPath("/" + u1.username).get();
         assertTrue("Friend root present after accepted follow request", u1ToU2.isPresent());
 
@@ -315,10 +315,10 @@ public class MultiUserTests {
         UserContext u1 = UserTests.ensureSignedUp("q", "q", webPort);
         UserContext u2 = UserTests.ensureSignedUp("w", "w", webPort);
         u2.sendFollowRequest(u1.username, SymmetricKey.random());
-        List<FollowRequest> u1Requests = u1.getFollowRequests();
+        List<FollowRequest> u1Requests = u1.getFollowRequests().get();
         assertTrue("Receive a follow request", u1Requests.size() > 0);
         u1.sendReplyFollowRequest(u1Requests.get(0), true, false);
-        List<FollowRequest> u2FollowRequests = u2.getFollowRequests();
+        List<FollowRequest> u2FollowRequests = u2.getFollowRequests().get();
         Optional<FileTreeNode> u1Tou2 = u2.getByPath("/" + u1.username).get();
         assertTrue("Friend root present after accepted follow request", u1Tou2.isPresent());
 
@@ -332,10 +332,10 @@ public class MultiUserTests {
         UserContext u1 = UserTests.ensureSignedUp("q", "q", webPort);
         UserContext u2 = UserTests.ensureSignedUp("w", "w", webPort);
         u2.sendFollowRequest(u1.username, SymmetricKey.random());
-        List<FollowRequest> u1Requests = u1.getFollowRequests();
+        List<FollowRequest> u1Requests = u1.getFollowRequests().get();
         assertTrue("Receive a follow request", u1Requests.size() > 0);
         u1.sendReplyFollowRequest(u1Requests.get(0), false, false);
-        List<FollowRequest> u2FollowRequests = u2.getFollowRequests();
+        List<FollowRequest> u2FollowRequests = u2.getFollowRequests().get();
         Optional<FileTreeNode> u1Tou2 = u2.getByPath("/" + u1.username).get();
         assertTrue("Friend root not present after rejected follow request", ! u1Tou2.isPresent());
 
@@ -348,10 +348,10 @@ public class MultiUserTests {
         UserContext u1 = UserTests.ensureSignedUp("q", "q", webPort);
         UserContext u2 = UserTests.ensureSignedUp("w", "w", webPort);
         u2.sendFollowRequest(u1.username, SymmetricKey.random());
-        List<FollowRequest> u1Requests = u1.getFollowRequests();
+        List<FollowRequest> u1Requests = u1.getFollowRequests().get();
         assertTrue("Receive a follow request", u1Requests.size() > 0);
         u1.sendReplyFollowRequest(u1Requests.get(0), false, true);
-        List<FollowRequest> u2FollowRequests = u2.getFollowRequests();
+        List<FollowRequest> u2FollowRequests = u2.getFollowRequests().get();
         Optional<FileTreeNode> u1Tou2 = u2.getByPath("/" + u1.username).get();
         assertTrue("Friend root not present after rejected follow request", ! u1Tou2.isPresent());
 

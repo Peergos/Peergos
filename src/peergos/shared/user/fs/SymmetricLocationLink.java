@@ -33,7 +33,7 @@ public class SymmetricLocationLink {
         return buf.toByteArray();
     }
 
-    public ReadableFilePointer toReadableFilePointer(SymmetricKey baseKey) throws IOException {
+    public ReadableFilePointer toReadableFilePointer(SymmetricKey baseKey) {
        Location loc =  targetLocation(baseKey);
        SymmetricKey key = target(baseKey);
        return new ReadableFilePointer(loc.owner, loc.writer, loc.getMapKey(), key);
