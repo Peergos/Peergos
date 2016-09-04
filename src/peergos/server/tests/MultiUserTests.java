@@ -94,7 +94,7 @@ public class MultiUserTests {
         }
 
         // upload a file to "a"'s space
-        FileTreeNode u1Root = u1.getUserRoot();
+        FileTreeNode u1Root = u1.getUserRoot().get();
         String filename = "somefile.txt";
         File f = File.createTempFile("peergos", "");
         byte[] originalFileContents = "Hello Peergos friend!".getBytes();
@@ -102,13 +102,13 @@ public class MultiUserTests {
         boolean uploaded = u1Root.uploadFile(filename, f, u1, l -> {}, u1.fragmenter()).get();
 
         // share the file from "a" to each of the others
-        FileTreeNode u1File = u1.getByPath(u1.username + "/" + filename).get();
+        FileTreeNode u1File = u1.getByPath(u1.username + "/" + filename).get().get();
         u1.share(Paths.get(u1.username, filename), userContexts.stream().map(u -> u.username).collect(Collectors.toSet()));
 
         // check other users can read the file
         for (UserContext userContext : userContexts) {
             Optional<FileTreeNode> sharedFile = userContext.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME +
-                    "/" + userContext.username + "/" + filename);
+                    "/" + userContext.username + "/" + filename).get();
             Assert.assertTrue("shared file present", sharedFile.isPresent());
 
             InputStream inputStream = sharedFile.get().getInputStream(userContext, l -> {}).get();
@@ -125,7 +125,7 @@ public class MultiUserTests {
         List<UserContext> updatedUserContexts = getUserContexts(userCount);
 
         //test that the other user cannot access it from scratch
-        Optional<FileTreeNode> otherUserView = updatedUserContexts.get(0).getByPath(u1.username + "/" + filename);
+        Optional<FileTreeNode> otherUserView = updatedUserContexts.get(0).getByPath(u1.username + "/" + filename).get();
         Assert.assertTrue(! otherUserView.isPresent());
 
         List<UserContext> remainingUsers = updatedUserContexts.stream()
@@ -137,21 +137,21 @@ public class MultiUserTests {
         // check remaining users can still read it
         for (UserContext userContext : remainingUsers) {
             Optional<FileTreeNode> sharedFile = userContext.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME +
-                    "/" + userContext.username + "/" + filename);
+                    "/" + userContext.username + "/" + filename).get();
             Assert.assertTrue(sharedFile.isPresent());
         }
 
         // test that u1 can still access the original file
-        Optional<FileTreeNode> fileWithNewBaseKey = u1New.getByPath(u1.username + "/" + filename);
+        Optional<FileTreeNode> fileWithNewBaseKey = u1New.getByPath(u1.username + "/" + filename).get();
         Assert.assertTrue(fileWithNewBaseKey.isPresent());
 
         // Now modify the file
         byte[] suffix = "Some new data at the end".getBytes();
         InputStream suffixStream = new ByteArrayInputStream(suffix);
-        FileTreeNode parent = u1New.getByPath(u1New.username).get();
+        FileTreeNode parent = u1New.getByPath(u1New.username).get().get();
         parent.uploadFile(filename, suffixStream, originalFileContents.length, originalFileContents.length + suffix.length,
                 Optional.empty(), u1New, l -> {}, u1New.fragmenter());
-        InputStream extendedContents = u1New.getByPath(u1.username + "/" + filename).get().getInputStream(u1New, l -> {}).get();
+        InputStream extendedContents = u1New.getByPath(u1.username + "/" + filename).get().get().getInputStream(u1New, l -> {}).get();
         byte[] newFileContents = Serialize.readFully(extendedContents);
 
         Assert.assertTrue(Arrays.equals(newFileContents, ArrayOps.concat(originalFileContents, suffix)));
@@ -193,29 +193,29 @@ public class MultiUserTests {
 
         // friends are connected
         // share a file from u1 to u2
-        FileTreeNode u1Root = u1.getUserRoot();
+        FileTreeNode u1Root = u1.getUserRoot().get();
         String filename = "somefile.txt";
         File f = File.createTempFile("peergos", "");
         byte[] originalFileContents = "Hello Peergos friend!".getBytes();
         Files.write(f.toPath(), originalFileContents);
         String folderName = "afolder";
         u1Root.mkdir(folderName, u1, SymmetricKey.random(), false, u1.random);
-        FileTreeNode folder = u1.getByPath("/a/" + folderName).get();
+        FileTreeNode folder = u1.getByPath("/a/" + folderName).get().get();
         boolean uploaded = folder.uploadFile(filename, f, u1, l -> {}, u1.fragmenter()).get();
         String originalPath = u1.username + "/" + folderName + "/" + filename;
-        FileTreeNode file = u1.getByPath(originalPath).get();
+        FileTreeNode file = u1.getByPath(originalPath).get().get();
 
         byte[] fileContents = null;
 
         for (UserContext user : users) {
             String path = u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + user.username;
-            FileTreeNode u1ToU2 = u1.getByPath(path).get();
+            FileTreeNode u1ToU2 = u1.getByPath(path).get().get();
             FileTreeNode fileTreeNode = u1ToU2.addLinkTo(folder, u1).get();
-            FileTreeNode ownerViewOfLink = u1.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + user.username + "/" + folderName).get();
+            FileTreeNode ownerViewOfLink = u1.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + user.username + "/" + folderName).get().get();
 
             Set<FileTreeNode> u2children = user
                     .getByPath(path)
-                    .get()
+                    .get().get()
                     .getChildren(user).get();
             Optional<FileTreeNode> fromParent = u2children.stream()
                     .filter(fn -> fn.getFileProperties().name.equals(folderName))
@@ -223,10 +223,10 @@ public class MultiUserTests {
             Assert.assertTrue("shared file present via parent's children", fromParent.isPresent());
 
 
-            Optional<FileTreeNode> sharedFolder = user.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + user.username + "/" + folderName);
+            Optional<FileTreeNode> sharedFolder = user.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + user.username + "/" + folderName).get();
             Assert.assertTrue("Shared folder present via direct path", sharedFolder.isPresent() && sharedFolder.get().getFileProperties().name.equals(folderName));
 
-            FileTreeNode sharedFile = user.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + user.username + "/" + folderName + "/" + filename).get();
+            FileTreeNode sharedFile = user.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + user.username + "/" + folderName + "/" + filename).get().get();
             InputStream inputStream = sharedFile.getInputStream(user, l -> {}).get();
 
             byte[] contents = Serialize.readFully(inputStream);
@@ -255,20 +255,20 @@ public class MultiUserTests {
             UserContext user = usersNew.get(i);
             u1.unShare(Paths.get(u1nameAndPasword, folderName), user.username);
 
-            Optional<FileTreeNode> updatedSharedFolder = user.getByPath(u1New.username + "/" + UserContext.SHARED_DIR_NAME + "/" + user.username + "/" + folderName);
+            Optional<FileTreeNode> updatedSharedFolder = user.getByPath(u1New.username + "/" + UserContext.SHARED_DIR_NAME + "/" + user.username + "/" + folderName).get();
 
             // test that u1 can still access the original file
-            Optional<FileTreeNode> fileWithNewBaseKey = u1New.getByPath(u1New.username + "/" + folderName + "/" + filename);
+            Optional<FileTreeNode> fileWithNewBaseKey = u1New.getByPath(u1New.username + "/" + folderName + "/" + filename).get();
             Assert.assertTrue(!updatedSharedFolder.isPresent());
             Assert.assertTrue(fileWithNewBaseKey.isPresent());
 
             // Now modify the file
             byte[] suffix = "Some new data at the end".getBytes();
             InputStream suffixStream = new ByteArrayInputStream(suffix);
-            FileTreeNode parent = u1New.getByPath(u1New.username + "/" + folderName).get();
+            FileTreeNode parent = u1New.getByPath(u1New.username + "/" + folderName).get().get();
             parent.uploadFile(filename, suffixStream, fileContents.length, fileContents.length + suffix.length, Optional.empty(), u1New, l -> {
             }, u1New.fragmenter());
-            InputStream extendedContents = u1New.getByPath(originalPath).get().getInputStream(u1New, l -> {}).get();
+            InputStream extendedContents = u1New.getByPath(originalPath).get().get().getInputStream(u1New, l -> {}).get();
             byte[] newFileContents = Serialize.readFully(extendedContents);
 
             Assert.assertTrue(Arrays.equals(newFileContents, ArrayOps.concat(fileContents, suffix)));
@@ -277,10 +277,10 @@ public class MultiUserTests {
             for (int j = i+1; j < usersNew.size(); j++) {
                 UserContext otherUser = usersNew.get(j);
 
-                Optional<FileTreeNode> sharedFolder = otherUser.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + otherUser.username + "/" + folderName);
+                Optional<FileTreeNode> sharedFolder = otherUser.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + otherUser.username + "/" + folderName).get();
                 Assert.assertTrue("Shared folder present via direct path", sharedFolder.isPresent() && sharedFolder.get().getFileProperties().name.equals(folderName));
 
-                FileTreeNode sharedFile = otherUser.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + otherUser.username + "/" + folderName + "/" + filename).get();
+                FileTreeNode sharedFile = otherUser.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + otherUser.username + "/" + folderName + "/" + filename).get().get();
                 InputStream inputStream = sharedFile.getInputStream(otherUser, l -> {}).get();
 
                 byte[] contents = Serialize.readFully(inputStream);
@@ -303,10 +303,10 @@ public class MultiUserTests {
         assertTrue("Receive a follow request", u1Requests.size() > 0);
         u1.sendReplyFollowRequest(u1Requests.get(0), true, true);
         List<FollowRequest> u2FollowRequests = u2.getFollowRequests();
-        Optional<FileTreeNode> u1ToU2 = u2.getByPath("/" + u1.username);
+        Optional<FileTreeNode> u1ToU2 = u2.getByPath("/" + u1.username).get();
         assertTrue("Friend root present after accepted follow request", u1ToU2.isPresent());
 
-        Optional<FileTreeNode> u2ToU1 = u1.getByPath("/" + u2.username);
+        Optional<FileTreeNode> u2ToU1 = u1.getByPath("/" + u2.username).get();
         assertTrue("Friend root present after accepted follow request", u2ToU1.isPresent());
     }
 
@@ -319,10 +319,10 @@ public class MultiUserTests {
         assertTrue("Receive a follow request", u1Requests.size() > 0);
         u1.sendReplyFollowRequest(u1Requests.get(0), true, false);
         List<FollowRequest> u2FollowRequests = u2.getFollowRequests();
-        Optional<FileTreeNode> u1Tou2 = u2.getByPath("/" + u1.username);
+        Optional<FileTreeNode> u1Tou2 = u2.getByPath("/" + u1.username).get();
         assertTrue("Friend root present after accepted follow request", u1Tou2.isPresent());
 
-        Optional<FileTreeNode> u2Tou1 = u1.getByPath("/" + u2.username);
+        Optional<FileTreeNode> u2Tou1 = u1.getByPath("/" + u2.username).get();
         assertTrue("Friend root not present after non reciprocated follow request", !u2Tou1.isPresent());
     }
 
@@ -336,10 +336,10 @@ public class MultiUserTests {
         assertTrue("Receive a follow request", u1Requests.size() > 0);
         u1.sendReplyFollowRequest(u1Requests.get(0), false, false);
         List<FollowRequest> u2FollowRequests = u2.getFollowRequests();
-        Optional<FileTreeNode> u1Tou2 = u2.getByPath("/" + u1.username);
+        Optional<FileTreeNode> u1Tou2 = u2.getByPath("/" + u1.username).get();
         assertTrue("Friend root not present after rejected follow request", ! u1Tou2.isPresent());
 
-        Optional<FileTreeNode> u2Tou1 = u1.getByPath("/" + u2.username);
+        Optional<FileTreeNode> u2Tou1 = u1.getByPath("/" + u2.username).get();
         assertTrue("Friend root not present after non reciprocated follow request", !u2Tou1.isPresent());
     }
 
@@ -352,10 +352,10 @@ public class MultiUserTests {
         assertTrue("Receive a follow request", u1Requests.size() > 0);
         u1.sendReplyFollowRequest(u1Requests.get(0), false, true);
         List<FollowRequest> u2FollowRequests = u2.getFollowRequests();
-        Optional<FileTreeNode> u1Tou2 = u2.getByPath("/" + u1.username);
+        Optional<FileTreeNode> u1Tou2 = u2.getByPath("/" + u1.username).get();
         assertTrue("Friend root not present after rejected follow request", ! u1Tou2.isPresent());
 
-        Optional<FileTreeNode> u2Tou1 = u1.getByPath("/" + u2.username);
+        Optional<FileTreeNode> u2Tou1 = u1.getByPath("/" + u2.username).get();
         assertTrue("Friend root present after reciprocated follow request", u2Tou1.isPresent());
     }
 }

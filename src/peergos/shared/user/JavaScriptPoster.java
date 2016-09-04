@@ -1,6 +1,5 @@
 package peergos.shared.user;
 
-import java.io.*;
 import java.util.concurrent.*;
 
 public class JavaScriptPoster implements HttpPoster {
@@ -17,7 +16,7 @@ public class JavaScriptPoster implements HttpPoster {
     }
 
     @Override
-    public CompletableFuture<byte[]> get(String url) throws IOException {
+    public CompletableFuture<byte[]> get(String url) {
         return http.get(url);
     }
 }

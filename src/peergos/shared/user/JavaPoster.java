@@ -56,7 +56,7 @@ public class JavaPoster implements HttpPoster {
     }
 
     @Override
-    public CompletableFuture<byte[]> get(String url) throws IOException {
+    public CompletableFuture<byte[]> get(String url) {
         HttpURLConnection conn = null;
         try
         {
@@ -67,6 +67,10 @@ public class JavaPoster implements HttpPoster {
             boolean isGzipped = "gzip".equals(contentEncoding);
             DataInputStream din = new DataInputStream(isGzipped ? new GZIPInputStream(conn.getInputStream()) : conn.getInputStream());
             return CompletableFuture.completedFuture(Serialize.readFully(din));
+        } catch (IOException e) {
+            CompletableFuture<byte[]> res = new CompletableFuture<>();
+            res.completeExceptionally(e);
+            return res;
         } finally {
             if (conn != null)
                 conn.disconnect();

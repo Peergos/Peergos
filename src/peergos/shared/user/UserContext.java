@@ -182,21 +182,23 @@ public class UserContext {
                 context.isAvailable().thenAccept(available -> {
                     if (available) {
                         System.out.println("Registering username " + username);
-                        boolean register = context.register();
-                        if (!register)
-                            throw new IllegalStateException("Couldn't register username: " + username);
-                        System.out.println("Creating user's root directory");
-                        long t1 = System.currentTimeMillis();
-                        try {
-                            context.createEntryDirectory(username).thenAccept(userRoot -> {
-                                System.out.println("Creating root directory took " + (System.currentTimeMillis() - t1) + " mS");
-                                ReadableFilePointer shared = ((DirAccess) userRoot.fileAccess).mkdir(SHARED_DIR_NAME, context, (User) userRoot.filePointer.writer,
-                                        userRoot.filePointer.mapKey, userRoot.filePointer.baseKey, null, true, random);
-                                result.complete(context);
-                            });
-                        } catch (IOException e) {
-                            result.completeExceptionally(e);
-                        }
+                        context.register().thenAccept(completed -> {
+                            if (!registered)
+                                throw new IllegalStateException("Couldn't register username: " + username);
+                            System.out.println("Creating user's root directory");
+                            long t1 = System.currentTimeMillis();
+                            try {
+                                context.createEntryDirectory(username).thenAccept(userRoot -> {
+                                    System.out.println("Creating root directory took " + (System.currentTimeMillis() - t1) + " mS");
+                                    ((DirAccess) userRoot.fileAccess).mkdir(SHARED_DIR_NAME, context,
+                                            (User) userRoot.filePointer.location.writer,
+                                            userRoot.filePointer.location.getMapKey(), userRoot.filePointer.baseKey, null, true, random)
+                                            .thenApply(x -> result.complete(context));
+                                });
+                            } catch (IOException e) {
+                                result.completeExceptionally(e);
+                            }
+                        });
                     } else
                         result.completeExceptionally(new IllegalStateException("username already registered with different public key!"));
                 });
@@ -205,7 +207,7 @@ public class UserContext {
         });
 
         return result.thenApply(ctx -> {
-            console.println("Initializing context..");
+            System.out.println("Initializing context..");
             ctx.init();
             return context;
         });
@@ -218,18 +220,19 @@ public class UserContext {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-        Optional<FileTreeNode> sharedOpt = getByPath("/"+username + "/" + "shared");
-        if (!sharedOpt.isPresent())
-            throw new IllegalStateException("Couldn't find shared folder!");
-        return corenodeClient.getAllUsernames().thenAccept(x -> usernames = x.stream().collect(Collectors.toSet()));
+        return getByPath("/"+username + "/" + "shared").thenCompose(sharedOpt -> {
+            if (!sharedOpt.isPresent())
+                throw new IllegalStateException("Couldn't find shared folder!");
+            return corenodeClient.getAllUsernames().thenAccept(x -> usernames = x.stream().collect(Collectors.toSet()));
+        });
     }
 
     public Set<String> getUsernames() {
         return usernames;
     }
 
-    public FileTreeNode getSharingFolder() {
-        return getByPath("/"+username + "/shared").get();
+    public CompletableFuture<FileTreeNode> getSharingFolder() {
+        return getByPath("/"+username + "/shared").thenApply(opt -> opt.get());
     }
 
     @JsMethod
@@ -255,7 +258,7 @@ public class UserContext {
     }
 
     @JsMethod
-    public boolean register() {
+    public CompletableFuture<Boolean> register() {
         LocalDate now = LocalDate.now();
         // set claim expiry to two months from now
         LocalDate expiry = now.plusMonths(2);
@@ -328,12 +331,6 @@ public class UserContext {
                 .collect(Collectors.toSet());
     }
 
-    public Set<String> getFollowers() {
-        return getSharingFolder().getChildren(this).stream()
-                .flatMap(f -> Stream.of(f.getFileProperties().name))
-                .sorted(UserContext::humanSort).collect(Collectors.toSet());
-    }
-
     private static int humanSort(String a, String b) {
         return a.toLowerCase().compareTo(b.toLowerCase());
     }
@@ -374,7 +371,7 @@ public class UserContext {
             dout.writeArray(entry.serialize());
             dout.writeArray(new byte[0]); // tell them we're not reciprocating
             byte[] plaintext = dout.toByteArray();
-            UserPublicKey targetUser = initialRequest.entry.get().pointer.owner;
+            UserPublicKey targetUser = initialRequest.entry.get().pointer.location.owner;
             // create a tmp keypair whose public key we can prepend to the request without leaking information
             User tmp = User.random(random, signer, boxer);
             byte[] payload = targetUser.encryptMessageFor(plaintext, tmp.secretBoxingKey);
@@ -382,7 +379,7 @@ public class UserContext {
             DataSink resp = new DataSink();
             resp.writeArray(tmp.getPublicKeys());
             resp.writeArray(payload);
-            corenodeClient.followRequest(initialRequest.entry.get().pointer.owner, resp.toByteArray());
+            corenodeClient.followRequest(initialRequest.entry.get().pointer.location.owner, resp.toByteArray());
             // remove pending follow request from them
             return corenodeClient.removeFollowRequest(user, user.signMessage(initialRequest.rawCipher));
         }
@@ -408,7 +405,7 @@ public class UserContext {
             dout.writeArray(initialRequest.entry.get().pointer.baseKey.serialize()); // tell them we are reciprocating
         }
         byte[] plaintext = dout.toByteArray();
-        UserPublicKey targetUser = initialRequest.entry.get().pointer.owner;
+        UserPublicKey targetUser = initialRequest.entry.get().pointer.location.owner;
         // create a tmp keypair whose public key we can prepend to the request without leaking information
         User tmp = User.random(random, signer, boxer);
         byte[] payload = targetUser.encryptMessageFor(plaintext, tmp.secretBoxingKey);
@@ -416,7 +413,7 @@ public class UserContext {
         DataSink resp = new DataSink();
         resp.writeArray(tmp.getPublicKeys());
         resp.writeArray(payload);
-        corenodeClient.followRequest(initialRequest.entry.get().pointer.owner.toUserPublicKey(), resp.toByteArray());
+        corenodeClient.followRequest(initialRequest.entry.get().pointer.location.owner.toUserPublicKey(), resp.toByteArray());
         if (reciprocate)
             addToStaticDataAndCommit(initialRequest.entry.get());
         // remove original request
@@ -547,9 +544,9 @@ public class UserContext {
 
     private boolean addToStaticData(EntryPoint entry) {
         for (int i=0; i < staticData.size(); i++)
-            if (entry.equals(staticData.get(entry.pointer.writer)))
+            if (entry.equals(staticData.get(entry.pointer.location.writer)))
                 return true;
-        staticData.put(entry.pointer.writer, entry);
+        staticData.put(entry.pointer.location.writer, entry);
         return true;
     }
 
@@ -712,17 +709,18 @@ public class UserContext {
     }
 
     @JsMethod
-    public Optional<FileTreeNode> getByPath(String path) {
+    public CompletableFuture<Optional<FileTreeNode>> getByPath(String path) {
         return entrie.getByPath(path, this);
     }
 
-    public FileTreeNode getUserRoot() {
-        return getByPath("/"+username).get();
+    public CompletableFuture<FileTreeNode> getUserRoot() {
+        return getByPath("/"+username).thenApply(opt -> opt.get());
     }
 
-    private byte[] getStaticData() throws IOException {
-        Multihash key = corenodeClient.getMetadataBlob(user.toUserPublicKey()).get();
-        return dhtClient.get(key).get();
+    private CompletableFuture<byte[]> getStaticData() throws IOException {
+        return corenodeClient.getMetadataBlob(user.toUserPublicKey())
+                .thenCompose(key -> dhtClient.get(key.get())
+                        .thenApply(opt -> opt.get()));
     }
 
     private void createFileTree() throws IOException {

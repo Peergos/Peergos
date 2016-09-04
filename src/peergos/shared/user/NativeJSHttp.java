@@ -10,5 +10,5 @@ public class NativeJSHttp {
 
     public native CompletableFuture<byte[]> post(String url, byte[] payload);
 
-    public native CompletableFuture<byte[]> get(String url) throws IOException;
+    public native CompletableFuture<byte[]> get(String url);
 }

@@ -112,7 +112,7 @@ public class UserTests {
         String username = "test01";
         String password = "test01";
         UserContext context = ensureSignedUp(username, password, webPort);
-        FileTreeNode userRoot = context.getUserRoot();
+        FileTreeNode userRoot = context.getUserRoot().get();
 
         String filename = "somedata.txt";
         // write empty file
@@ -127,7 +127,7 @@ public class UserTests {
 
         // check file size
         assertTrue("File size", data2.length == userRoot.getDescendentByPath(filename, context).get().get().getFileProperties().size);
-        assertTrue("File size", data2.length == context.getByPath(username + "/" + filename).get().getFileProperties().size);
+        assertTrue("File size", data2.length == context.getByPath(username + "/" + filename).get().get().getFileProperties().size);
 
         // extend file within existing chunk
         byte[] data3 = new byte[128 * 1024];
@@ -147,10 +147,10 @@ public class UserTests {
         userRoot.getDescendentByPath(filename, context).get().get().rename(newname, context, userRoot);
         checkFileContents(data3, userRoot.getDescendentByPath(newname, context).get().get(), context);
         // check from the root as well
-        checkFileContents(data3, context.getByPath(username + "/" + newname).get(), context);
+        checkFileContents(data3, context.getByPath(username + "/" + newname).get().get(), context);
         // check from a fresh log in too
         UserContext context2 = ensureSignedUp(username, password, webPort);
-        checkFileContents(data3, context2.getByPath(username + "/" + newname).get(), context);
+        checkFileContents(data3, context2.getByPath(username + "/" + newname).get().get(), context);
     }
 
     @Test
@@ -158,7 +158,7 @@ public class UserTests {
         String username = "test01";
         String password = "test01";
         UserContext context = ensureSignedUp(username, password, webPort);
-        FileTreeNode userRoot = context.getUserRoot();
+        FileTreeNode userRoot = context.getUserRoot().get();
 
         String filename = "mediumfile.bin";
         byte[] data = new byte[0];
@@ -185,7 +185,7 @@ public class UserTests {
         String username = "test01";
         String password = "test01";
         UserContext context = ensureSignedUp(username, password, webPort);
-        FileTreeNode userRoot = context.getUserRoot();
+        FileTreeNode userRoot = context.getUserRoot().get();
 
         String filename = "mediumfile.bin";
         byte[] data = new byte[0];
@@ -207,7 +207,7 @@ public class UserTests {
         String username = "test01";
         String password = "test01";
         UserContext context = ensureSignedUp(username, password, webPort);
-        FileTreeNode userRoot = context.getUserRoot();
+        FileTreeNode userRoot = context.getUserRoot().get();
         List<String> names = new ArrayList<>();
         IntStream.range(0, 2000).forEach(i -> names.add(randomString()));
 
@@ -226,7 +226,7 @@ public class UserTests {
         String username = "test01";
         String password = "test01";
         UserContext context = ensureSignedUp(username, password, webPort);
-        FileTreeNode userRoot = context.getUserRoot();
+        FileTreeNode userRoot = context.getUserRoot().get();
 
         Set<FileTreeNode> children = userRoot.getChildren(context).get();
 

@@ -1,6 +1,5 @@
 package peergos.shared.user;
 
-import java.io.*;
 import java.util.concurrent.*;
 
 public interface HttpPoster {
@@ -9,6 +8,6 @@ public interface HttpPoster {
 
     CompletableFuture<byte[]> postUnzip(String url, byte[] payload);
 
-    CompletableFuture<byte[]> get(String url) throws IOException;
+    CompletableFuture<byte[]> get(String url);
 
 }

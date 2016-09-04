@@ -11,9 +11,9 @@ import java.util.concurrent.*;
 
 public interface DHTClient {
 
-    CompletableFuture<Multihash> put(byte[] value, UserPublicKey writer, List<Multihash> links) throws IOException;
+    CompletableFuture<Multihash> put(byte[] value, UserPublicKey writer, List<Multihash> links);
 
-    CompletableFuture<Optional<byte[]>> get(Multihash key) throws IOException;
+    CompletableFuture<Optional<byte[]>> get(Multihash key);
 
     class HTTP implements DHTClient {
 
@@ -24,18 +24,23 @@ public interface DHTClient {
         }
 
         @Override
-        public CompletableFuture<Multihash> put(byte[] value, UserPublicKey writer, List<Multihash> links) throws IOException {
+        public CompletableFuture<Multihash> put(byte[] value, UserPublicKey writer, List<Multihash> links) {
             ByteArrayOutputStream bout  =new ByteArrayOutputStream();
             DataOutputStream dout = new DataOutputStream(bout);
 
-            dout.writeInt(0); // PUT message
-            Serialize.serialize(value, dout);
-            Serialize.serialize(writer.toUserPublicKey().serialize(), dout);
-            dout.writeInt(links.size());
-            for (Multihash hash: links)
-                Serialize.serialize(hash.toBytes(), dout);
-            dout.flush();
-
+            try {
+                dout.writeInt(0); // PUT message
+                Serialize.serialize(value, dout);
+                Serialize.serialize(writer.toUserPublicKey().serialize(), dout);
+                dout.writeInt(links.size());
+                for (Multihash hash : links)
+                    Serialize.serialize(hash.toBytes(), dout);
+                dout.flush();
+            } catch (IOException e) {
+                CompletableFuture<Multihash> err = new CompletableFuture<>();
+                err.completeExceptionally(e);
+                return err;
+            }
             return poster.postUnzip("dht/put", bout.toByteArray()).thenApply(res -> {
                 DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
                 try {
@@ -50,7 +55,7 @@ public interface DHTClient {
         }
 
         @Override
-        public CompletableFuture<Optional<byte[]>> get(Multihash key) throws IOException {
+        public CompletableFuture<Optional<byte[]>> get(Multihash key) {
             return poster.get("dht/get/ipfs/" + key.toBase58()).thenApply(res -> {
                 DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
                 try {
@@ -77,12 +82,12 @@ public interface DHTClient {
         }
 
         @Override
-        public CompletableFuture<Multihash> put(byte[] value, UserPublicKey writer, List<Multihash> links) throws IOException {
+        public CompletableFuture<Multihash> put(byte[] value, UserPublicKey writer, List<Multihash> links) {
             return target.put(value, writer, links);
         }
 
         @Override
-        public CompletableFuture<Optional<byte[]>> get(Multihash key) throws IOException {
+        public CompletableFuture<Optional<byte[]>> get(Multihash key) {
             if (cache.containsKey(key))
                 return CompletableFuture.completedFuture(Optional.of(cache.get(key)));
             return target.get(key).thenApply(value -> {

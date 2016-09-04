@@ -140,11 +140,11 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
         ensureNotClosed();
         try {
             Path requested = Paths.get(s);
-            Optional<FileTreeNode> file = userContext.getByPath(s);
+            Optional<FileTreeNode> file = userContext.getByPath(s).get();
             if (!file.isPresent())
                 return 1;
 
-            Optional<FileTreeNode> parent = userContext.getByPath(requested.getParent().toString());
+            Optional<FileTreeNode> parent = userContext.getByPath(requested.getParent().toString()).get();;
             if (!parent.isPresent())
                 return 1;
 
@@ -172,7 +172,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
         ensureNotClosed();
         try {
             Path requested = Paths.get(name);
-            Optional<FileTreeNode> newParent = userContext.getByPath(requested.getParent().toString());
+            Optional<FileTreeNode> newParent = userContext.getByPath(requested.getParent().toString()).get();;
             if (!newParent.isPresent())
                 return 1;
 
@@ -181,7 +181,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
             // TODO clean up on error conditions
             if (!parent.equals(newParent.get())) {
                 Path renamedInPlacePath = Paths.get(sourcePath).getParent().resolve(requested.getFileName().toString());
-                Optional<FileTreeNode> renamedOriginal = userContext.getByPath(renamedInPlacePath.toString());
+                Optional<FileTreeNode> renamedOriginal = userContext.getByPath(renamedInPlacePath.toString()).get();;
                 if (!renamedOriginal.isPresent())
                     return 1;
                 renamedOriginal.get().copyTo(newParent.get(), userContext).get();
@@ -447,13 +447,18 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
     }
 
     protected Optional<PeergosStat> getByPath(String path) {
-        Optional<FileTreeNode> opt = userContext.getByPath(path);
-        if (! opt.isPresent())
-            return Optional.empty();
-        FileTreeNode treeNode = opt.get();
-        FileProperties fileProperties = treeNode.getFileProperties();
+        try {
+            Optional<FileTreeNode> opt = userContext.getByPath(path).get();
+            ;
+            if (!opt.isPresent())
+                return Optional.empty();
+            FileTreeNode treeNode = opt.get();
+            FileProperties fileProperties = treeNode.getFileProperties();
 
-        return Optional.of(new PeergosStat(treeNode, fileProperties));
+            return Optional.of(new PeergosStat(treeNode, fileProperties));
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private Optional<PeergosStat> getParentByPath(String  path) {
