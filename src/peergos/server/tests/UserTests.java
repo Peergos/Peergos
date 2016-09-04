@@ -216,8 +216,8 @@ public class UserTests {
         }
     }
 
-    private static void checkFileContents(byte[] expected, FileTreeNode f, UserContext context) throws IOException {
-        byte[] retrievedData = Serialize.readFully(f.getInputStream(context, f.getFileProperties().size, l-> {}));
+    private static void checkFileContents(byte[] expected, FileTreeNode f, UserContext context) throws Exception {
+        byte[] retrievedData = Serialize.readFully(f.getInputStream(context, f.getFileProperties().size, l-> {}).get());
         assertTrue("Correct contents", Arrays.equals(retrievedData, expected));
     }
 
@@ -252,7 +252,7 @@ public class UserTests {
 
         FileTreeNode fileTreeNode = opt.get();
         long size = fileTreeNode.getFileProperties().size;
-        InputStream in = fileTreeNode.getInputStream(context, size, (l) -> {});
+        InputStream in = fileTreeNode.getInputStream(context, size, (l) -> {}).get();
         byte[] retrievedData = Serialize.readFully(in);
 
         boolean  dataEquals = Arrays.equals(data, retrievedData);

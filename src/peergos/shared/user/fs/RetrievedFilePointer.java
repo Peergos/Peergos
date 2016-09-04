@@ -34,10 +34,10 @@ public class RetrievedFilePointer {
         if (!this.fileAccess.isDirectory()) {
             this.fileAccess.removeFragments(context);
             CompletableFuture<Boolean> result = new CompletableFuture<>();
-            context.btree.remove(this.filePointer.writer, this.filePointer.mapKey).thenAccept(treeRootHashCAS -> {
+            context.btree.remove(this.filePointer.location.writer, this.filePointer.location.getMapKey()).thenAccept(treeRootHashCAS -> {
                 try {
-                    byte[] signed = ((User) filePointer.writer).signMessage(treeRootHashCAS.toByteArray());
-                    context.corenodeClient.setMetadataBlob(this.filePointer.owner, this.filePointer.writer, signed);
+                    byte[] signed = ((User) filePointer.location.writer).signMessage(treeRootHashCAS.toByteArray());
+                    context.corenodeClient.setMetadataBlob(this.filePointer.location.owner, this.filePointer.location.writer, signed);
                     // remove from parent
                     if (parentRetrievedFilePointer != null)
                         ((DirAccess) parentRetrievedFilePointer.fileAccess).removeChild(this, parentRetrievedFilePointer.filePointer, context);
@@ -52,10 +52,10 @@ public class RetrievedFilePointer {
             for (RetrievedFilePointer file : files)
                 file.remove(context, null);
             CompletableFuture<Boolean> result = new CompletableFuture<>();
-            context.btree.remove(this.filePointer.writer, this.filePointer.mapKey).thenAccept(treeRootHashCAS -> {
+            context.btree.remove(this.filePointer.location.writer, this.filePointer.location.getMapKey()).thenAccept(treeRootHashCAS -> {
                 try {
-                    byte[] signed = ((User) filePointer.writer).signMessage(treeRootHashCAS.toByteArray());
-                    context.corenodeClient.setMetadataBlob(this.filePointer.owner, this.filePointer.writer, signed).thenAccept(res -> {
+                    byte[] signed = ((User) filePointer.location.writer).signMessage(treeRootHashCAS.toByteArray());
+                    context.corenodeClient.setMetadataBlob(this.filePointer.location.owner, this.filePointer.location.writer, signed).thenAccept(res -> {
                         // remove from parent
                         if (parentRetrievedFilePointer != null)
                             ((DirAccess) parentRetrievedFilePointer.fileAccess).removeChild(this, parentRetrievedFilePointer.filePointer, context);
@@ -70,6 +70,7 @@ public class RetrievedFilePointer {
     }
 
     public RetrievedFilePointer withWriter(UserPublicKey writer) {
-        return new RetrievedFilePointer(new ReadableFilePointer(this.filePointer.owner, writer, this.filePointer.mapKey, this.filePointer.baseKey), this.fileAccess);
+        return new RetrievedFilePointer(new ReadableFilePointer(this.filePointer.location.owner, writer,
+                this.filePointer.location.getMapKey(), this.filePointer.baseKey), this.fileAccess);
     }
 }

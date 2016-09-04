@@ -669,18 +669,19 @@ public class UserContext {
                 .collect(Collectors.toList());
     }
 
-    public CompletableFuture<Boolean> uploadChunk(FileAccess metadata, UserPublicKey owner, User sharer, byte[] mapKey, List<Multihash> linkHashes) {
+    public CompletableFuture<Boolean> uploadChunk(FileAccess metadata, Location location, List<Multihash> linkHashes) {
         DataSink dout = new DataSink();
         try {
             metadata.serialize(dout);
             byte[] metaBlob = dout.toByteArray();
-            System.out.println("Storing metadata blob of " + metaBlob.length + " bytes. to mapKey: " + ArrayOps.bytesToHex(mapKey));
-            return dhtClient.put(metaBlob, owner, linkHashes).thenApply(blobHash -> {
-                PairMultihash newBtreeRootCAS = btree.put(sharer, mapKey, blobHash);
+            System.out.println("Storing metadata blob of " + metaBlob.length + " bytes. to mapKey: " + location.toString());
+            return dhtClient.put(metaBlob, location.owner, linkHashes).thenApply(blobHash -> {
+                User sharer = (User) location.writer;
+                PairMultihash newBtreeRootCAS = btree.put(sharer, location.getMapKey(), blobHash);
                 if (newBtreeRootCAS.left.equals(newBtreeRootCAS.right))
                     return true;
                 byte[] signed = sharer.signMessage(newBtreeRootCAS.toByteArray());
-                boolean added = corenodeClient.setMetadataBlob(owner, sharer, signed);
+                boolean added = corenodeClient.setMetadataBlob(location.owner, sharer, signed);
                 if (!added) {
                     System.out.println("Meta blob store failed.");
                     return false;

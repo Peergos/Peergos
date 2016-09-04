@@ -68,7 +68,7 @@ public class FileUploader implements AutoCloseable {
         Serialize.readFullArray(raf, data);
 
         byte[] nonce = context.randomBytes(TweetNaCl.SECRETBOX_NONCE_BYTES);
-        Chunk chunk = new Chunk(data, metaKey, currentLocation.mapKey, nonce);
+        Chunk chunk = new Chunk(data, metaKey, currentLocation.getMapKey(), nonce);
         LocatedChunk locatedChunk = new LocatedChunk(new Location(owner, writer, chunk.mapKey()), chunk);
         byte[] mapKey = context.randomBytes(32);
         Location nextLocation = new Location(owner, writer, mapKey);
@@ -100,7 +100,7 @@ public class FileUploader implements AutoCloseable {
         List<Multihash> hashes = context.uploadFragments(fragments, chunk.location.owner, chunk.location.writer, chunk.chunk.mapKey(), monitor);
         FileRetriever retriever = new EncryptedChunkRetriever(chunk.chunk.nonce(), encryptedChunk.getAuth(), hashes, nextChunkLocation, fragmenter);
         FileAccess metaBlob = FileAccess.create(baseKey, chunk.chunk.key(), props, retriever, parentLocation, parentparentKey);
-        return context.uploadChunk(metaBlob, chunk.location.owner, writer, chunk.chunk.mapKey(), hashes);
+        return context.uploadChunk(metaBlob, new Location(chunk.location.owner, writer, chunk.chunk.mapKey()), hashes);
     }
 
     public void close() throws IOException  {

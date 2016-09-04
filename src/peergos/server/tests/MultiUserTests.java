@@ -111,7 +111,7 @@ public class MultiUserTests {
                     "/" + userContext.username + "/" + filename);
             Assert.assertTrue("shared file present", sharedFile.isPresent());
 
-            InputStream inputStream = sharedFile.get().getInputStream(userContext, l -> {});
+            InputStream inputStream = sharedFile.get().getInputStream(userContext, l -> {}).get();
 
             byte[] fileContents = Serialize.readFully(inputStream);
             Assert.assertTrue("shared file contents correct", Arrays.equals(originalFileContents, fileContents));
@@ -151,7 +151,7 @@ public class MultiUserTests {
         FileTreeNode parent = u1New.getByPath(u1New.username).get();
         parent.uploadFile(filename, suffixStream, originalFileContents.length, originalFileContents.length + suffix.length,
                 Optional.empty(), u1New, l -> {}, u1New.fragmenter());
-        InputStream extendedContents = u1New.getByPath(u1.username + "/" + filename).get().getInputStream(u1New, l -> {});
+        InputStream extendedContents = u1New.getByPath(u1.username + "/" + filename).get().getInputStream(u1New, l -> {}).get();
         byte[] newFileContents = Serialize.readFully(extendedContents);
 
         Assert.assertTrue(Arrays.equals(newFileContents, ArrayOps.concat(originalFileContents, suffix)));
@@ -227,8 +227,7 @@ public class MultiUserTests {
             Assert.assertTrue("Shared folder present via direct path", sharedFolder.isPresent() && sharedFolder.get().getFileProperties().name.equals(folderName));
 
             FileTreeNode sharedFile = user.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + user.username + "/" + folderName + "/" + filename).get();
-            InputStream inputStream = sharedFile.getInputStream(user, l -> {
-            });
+            InputStream inputStream = sharedFile.getInputStream(user, l -> {}).get();
 
             byte[] contents = Serialize.readFully(inputStream);
             if (fileContents != null)
@@ -269,8 +268,7 @@ public class MultiUserTests {
             FileTreeNode parent = u1New.getByPath(u1New.username + "/" + folderName).get();
             parent.uploadFile(filename, suffixStream, fileContents.length, fileContents.length + suffix.length, Optional.empty(), u1New, l -> {
             }, u1New.fragmenter());
-            InputStream extendedContents = u1New.getByPath(originalPath).get().getInputStream(u1New, l -> {
-            });
+            InputStream extendedContents = u1New.getByPath(originalPath).get().getInputStream(u1New, l -> {}).get();
             byte[] newFileContents = Serialize.readFully(extendedContents);
 
             Assert.assertTrue(Arrays.equals(newFileContents, ArrayOps.concat(fileContents, suffix)));
@@ -283,8 +281,7 @@ public class MultiUserTests {
                 Assert.assertTrue("Shared folder present via direct path", sharedFolder.isPresent() && sharedFolder.get().getFileProperties().name.equals(folderName));
 
                 FileTreeNode sharedFile = otherUser.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + otherUser.username + "/" + folderName + "/" + filename).get();
-                InputStream inputStream = sharedFile.getInputStream(otherUser, l -> {
-                });
+                InputStream inputStream = sharedFile.getInputStream(otherUser, l -> {}).get();
 
                 byte[] contents = Serialize.readFully(inputStream);
                 Assert.assertTrue(Arrays.equals(contents, newFileContents)); //remaining users share latest view of same data

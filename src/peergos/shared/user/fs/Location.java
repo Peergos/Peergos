@@ -11,7 +11,7 @@ public class Location {
     public static final int MAP_KEY_LENGTH = 32;
 
     public final UserPublicKey owner, writer;
-    public final byte[] mapKey;
+    private final byte[] mapKey;
 
     public Location(UserPublicKey owner, UserPublicKey writer, byte[] mapKey) {
         if (mapKey.length != MAP_KEY_LENGTH)
@@ -33,6 +33,10 @@ public class Location {
         return key.encrypt(serialize(), nonce);
     }
 
+    public byte[] getMapKey() {
+        return Arrays.copyOf(mapKey, mapKey.length);
+    }
+
     public String toString() {
         return new ByteArrayWrapper(mapKey).toString();
     }
@@ -51,6 +55,14 @@ public class Location {
     public static Location decrypt(SymmetricKey fromKey, byte[] nonce, byte[] location) {
         byte[] bytes = fromKey.decrypt(location, nonce);
         return Location.deserialize(new DataSource(bytes));
+    }
+
+    public Location withWriter(UserPublicKey newWriter) {
+        return new Location(owner, newWriter, mapKey);
+    }
+
+    public Location withMapKey(byte[] newMapKey) {
+        return new Location(owner, writer, newMapKey);
     }
 
     @Override

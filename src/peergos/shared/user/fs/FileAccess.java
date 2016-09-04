@@ -85,11 +85,10 @@ public class FileAccess {
         SymmetricKey metaKey = this.getMetaKey(writableFilePointer.baseKey);
         byte[] nonce = metaKey.createNonce();
         FileAccess fa = new FileAccess(this.parent2meta, ArrayOps.concat(nonce, metaKey.encrypt(newProps.serialize(), nonce)), this.retriever, this.parentLink);
-        return context.uploadChunk(fa, writableFilePointer.owner, (User) writableFilePointer.writer,
-                writableFilePointer.mapKey, Collections.emptyList()); //TODO get fragment hashes from retriever
+        return context.uploadChunk(fa, writableFilePointer.location, Collections.emptyList()); //TODO get fragment hashes from retriever
     }
 
-    public FileAccess markDirty(ReadableFilePointer writableFilePointer, SymmetricKey newParentKey, UserContext context) throws IOException {
+    public CompletableFuture<FileAccess> markDirty(ReadableFilePointer writableFilePointer, SymmetricKey newParentKey, UserContext context) {
         // keep the same metakey, just marked as dirty
         SymmetricKey metaKey = this.getMetaKey(writableFilePointer.baseKey).makeDirty();
         SymmetricLink newParentToMeta = SymmetricLink.fromPair(newParentKey, metaKey);
@@ -97,9 +96,9 @@ public class FileAccess {
                 parentLink.target(writableFilePointer.baseKey),
                 parentLink.targetLocation(writableFilePointer.baseKey));
         FileAccess fa = new FileAccess(newParentToMeta, properties, this.retriever, newParentLink);
-        context.uploadChunk(fa, writableFilePointer.owner, (User) writableFilePointer.writer,
-                writableFilePointer.mapKey, Collections.emptyList()); //TODO get fragment hashes from retriever
-        return fa;
+        return context.uploadChunk(fa, writableFilePointer.location, //TODO get fragment hashes from retriever
+                Collections.emptyList())
+                .thenApply(x -> fa);
     }
 
     public boolean isDirty(SymmetricKey baseKey) {
@@ -113,7 +112,7 @@ public class FileAccess {
         FileProperties props = getFileProperties(baseKey);
         FileAccess fa = FileAccess.create(newBaseKey, isDirectory() ? SymmetricKey.random() : getMetaKey(baseKey), props, this.retriever, parentLocation, parentparentKey);
         //TODO get fragment hashes from retriever
-        return context.uploadChunk(fa, context.user, entryWriterKey, newMapKey, Collections.emptyList()).thenApply(b -> fa);
+        return context.uploadChunk(fa, new Location(context.user, entryWriterKey, newMapKey), Collections.emptyList()).thenApply(b -> fa);
     }
 
     public static FileAccess deserialize(byte[] raw) throws IOException {

@@ -86,7 +86,7 @@ public class EncryptedChunkRetriever implements FileRetriever {
                         !unwrittenChunkLocation.isPresent() ? Optional.empty() :
                                 Optional.of(new LocatedChunk(unwrittenChunkLocation.get(),
                                         new Chunk(new byte[Math.min(Chunk.MAX_SIZE, (int) (truncateTo - startIndex))],
-                                                dataKey, unwrittenChunkLocation.get().mapKey,
+                                                dataKey, unwrittenChunkLocation.get().getMapKey(),
                                                 context.randomBytes(TweetNaCl.SECRETBOX_NONCE_BYTES)))));
             }
 
@@ -96,9 +96,9 @@ public class EncryptedChunkRetriever implements FileRetriever {
             try {
                 byte[] original = fullEncryptedChunk.get().chunk.decrypt(dataKey, fullEncryptedChunk.get().nonce);
                 return CompletableFuture.completedFuture(Optional.of(new LocatedChunk(fullEncryptedChunk.get().location,
-                        new Chunk(original, dataKey, fullEncryptedChunk.get().location.mapKey, context.randomBytes(TweetNaCl.SECRETBOX_NONCE_BYTES)))));
+                        new Chunk(original, dataKey, fullEncryptedChunk.get().location.getMapKey(), context.randomBytes(TweetNaCl.SECRETBOX_NONCE_BYTES)))));
             } catch (IllegalStateException e) {
-                throw new IllegalStateException("Couldn't decrypt chunk at mapkey: " + new ByteArrayWrapper(fullEncryptedChunk.get().location.mapKey), e);
+                throw new IllegalStateException("Couldn't decrypt chunk at mapkey: " + new ByteArrayWrapper(fullEncryptedChunk.get().location.getMapKey()), e);
             }
         });
     }

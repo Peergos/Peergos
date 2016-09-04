@@ -517,7 +517,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
         long size = Math.min(actualSize, requestedSize);
         byte[] data =  new byte[(int) size];
 
-        try (InputStream is = stat.treeNode.getInputStream(userContext, actualSize, (l) -> {})){
+        try (InputStream is = stat.treeNode.getInputStream(userContext, actualSize, (l) -> {}).get()){
             is.skip(offset);
 
             for (long i = 0; i < size; i++) {
@@ -569,7 +569,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
             if (size > Integer.MAX_VALUE)
                 throw new IllegalStateException("Trying to truncate/extend to > 4GiB! "+ size);
 
-            byte[] original = Serialize.readFully(file.treeNode.getInputStream(userContext, file.properties.size, l -> {}));
+            byte[] original = Serialize.readFully(file.treeNode.getInputStream(userContext, file.properties.size, l -> {}).get());
             // TODO do this smarter by only writing the chunk containing the new endpoint, and deleting all following chunks
             // or extending with 0s
             byte[] truncated = Arrays.copyOfRange(original, 0, (int)size);
