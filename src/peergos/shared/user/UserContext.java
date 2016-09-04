@@ -80,12 +80,11 @@ public class UserContext {
                 if (!value.isPresent()) { // find a child entry and traverse parent links
                     Set<CompletableFuture<Optional<FileTreeNode>>> kids = children.values().stream()
                             .map(t -> t.getByPath("", context)).collect(Collectors.toSet());
-                    CompletableFuture<Set<FileTreeNode>> identity = CompletableFuture.completedFuture(Collections.emptySet());
-                    return kids.stream().reduce(identity,
-                            (a, b) -> b.thenCompose(opt ->
-                                    a.thenApply(set -> Stream.concat(set.stream(), Stream.of(opt.get())).collect(Collectors.toSet()))),
-                            (a, b) -> b.thenCompose(setb ->
-                                    a.thenApply(seta -> Stream.concat(seta.stream(), setb.stream()).collect(Collectors.toSet()))));
+                    return Futures.combineAll(kids)
+                            .thenApply(set -> set.stream()
+                                    .filter(opt -> opt.isPresent())
+                                    .map(opt -> opt.get())
+                                    .collect(Collectors.toSet()));
                 }
                 return context.retrieveEntryPoint(value.get())
                         .thenCompose(dir -> dir.get().getChildren(context));
@@ -280,12 +279,14 @@ public class UserContext {
                 return result.completeExceptionally(new IllegalStateException("Change Password Failed: couldn't upload new file system entry points!"));
 
             List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createChain(user, updatedUser.getUser(), username, expiry);
-            if (!corenodeClient.updateChain(username, claimChain))
-                return result.completeExceptionally(new IllegalStateException("Couldn't register new public keys during password change!"));
+            return corenodeClient.updateChain(username, claimChain).thenApply(updatedChain -> {
+                if (!updatedChain)
+                    return result.completeExceptionally(new IllegalStateException("Couldn't register new public keys during password change!"));
 
-            return UserContext.ensureSignedUp(username, newPassword, dhtClient, btree, corenodeClient,
-                    hasher, symmetricProvider, random, signer, boxer, useJavaScript)
-                    .thenApply(context -> result.complete(context));
+                return UserContext.ensureSignedUp(username, newPassword, dhtClient, btree, corenodeClient,
+                        hasher, symmetricProvider, random, signer, boxer, useJavaScript)
+                        .thenApply(context -> result.complete(context));
+            });
         });
         return result;
     }
@@ -305,7 +306,8 @@ public class UserContext {
 
         long t2 = System.currentTimeMillis();
         DirAccess root = DirAccess.create(rootRKey, new FileProperties(directoryName, 0, LocalDateTime.now(), false, Optional.empty()), (Location)null, null, null);
-        return this.uploadChunk(root, this.user, writer, rootMapKey, Collections.emptyList()).thenApply(uploaded -> {
+        Location rootLocation = new Location(this.user, writer, rootMapKey);
+        return this.uploadChunk(root, rootLocation, Collections.emptyList()).thenApply(uploaded -> {
             long t3 = System.currentTimeMillis();
             System.out.println("Uploading root dir metadata took " + (t3 - t2) + " mS");
             try {
@@ -321,37 +323,35 @@ public class UserContext {
         });
     }
 
-    public Set<FileTreeNode> getFriendRoots() {
-        return entrie.children.keySet()
+    public CompletableFuture<Set<FileTreeNode>> getFriendRoots() {
+        List<CompletableFuture<Optional<FileTreeNode>>> friendRoots = entrie.children.keySet()
                 .stream()
                 .filter(p -> !p.startsWith(username))
-                .map(p -> getByPath(p))
-                .filter(op -> op.isPresent())
-                .map(op -> op.get())
-                .collect(Collectors.toSet());
+                .map(p -> getByPath(p)).collect(Collectors.toList());
+        return Futures.combineAll(friendRoots)
+                .thenApply(set -> set.stream().filter(opt -> opt.isPresent()).map(opt -> opt.get()).collect(Collectors.toSet()));
     }
 
-    private static int humanSort(String a, String b) {
-        return a.toLowerCase().compareTo(b.toLowerCase());
+    public CompletableFuture<Set<String>> getFollowing() {
+        return getFriendRoots()
+                .thenApply(set -> set.stream()
+                        .map(froot -> froot.getOwner())
+                        .filter(name -> !name.equals(username))
+                        .collect(Collectors.toSet()));
     }
 
-    public Set<String> getFollowing() {
-        return getFriendRoots().stream().map(froot -> froot.getOwner()).filter(name -> !name.equals(username)).collect(Collectors.toSet());
-    }
-
-    Map<String, FileTreeNode> getFollowerRoots() {
+    public CompletableFuture<Map<String, FileTreeNode>> getFollowerRoots() {
         return getSharingFolder()
-                .getChildren(this)
-                .stream()
-                .flatMap(e -> Stream.of(new AbstractMap.SimpleEntry<>(e.getFileProperties().name, e)))
-                .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue()));
+                .thenCompose(sharing -> sharing.getChildren(this))
+                .thenApply(children -> children.stream()
+                        .collect(Collectors.toMap(e -> e.getFileProperties().name, e -> e)));
     }
 
-    public SocialState getSocialState() throws IOException {
-        List<FollowRequest> pending = getFollowRequests();
-        Map<String, FileTreeNode> followerRoots = getFollowerRoots();
-        Set<FileTreeNode> followingRoots = getFriendRoots();
-        return new SocialState(pending, followerRoots, followingRoots);
+    public CompletableFuture<SocialState> getSocialState() throws IOException {
+        return getFollowRequests()
+                .thenCompose(pending -> getFollowerRoots()
+                        .thenCompose(followerRoots -> getFriendRoots()
+                                .thenApply(followingRoots -> new SocialState(pending, followerRoots, followingRoots))));
     }
 
     public CompletableFuture<Boolean> sendInitialFollowRequest(String targetUsername) throws IOException {
@@ -592,7 +592,7 @@ public class UserContext {
         return CompletableFuture.completedFuture(true);
     };
 
-    public List<FollowRequest> getFollowRequests() throws IOException {
+    public CompletableFuture<List<FollowRequest>> getFollowRequests() throws IOException {
         byte[] reqs = corenodeClient.getFollowRequests(user.toUserPublicKey());
         DataSource din = new DataSource(reqs);
         int n = din.readInt();
