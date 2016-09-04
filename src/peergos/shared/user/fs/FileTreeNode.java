@@ -434,7 +434,8 @@ public class FileTreeNode {
                                 filesSize = startIndex + internalEnd - internalStart;
                                 if (startIndex + internalEnd - internalStart > Chunk.MAX_SIZE) {
                                     // update file size in FileProperties of first chunk
-                                    Optional<FileTreeNode> updatedChild = getChildren(context).stream().filter(f -> f.getFileProperties().name.equals(filename)).findAny();
+                                    Optional<FileTreeNode> updatedChild = getChildren(context).stream()
+                                            .filter(f -> f.getFileProperties().name.equals(filename)).findAny();
                                     boolean b = updatedChild.get().setProperties(child.getFileProperties().withSize(endIndex), context, this);
                                     if (!b)
                                         throw new IllegalStateException("Failed to update file properties for " + child);
@@ -591,11 +592,11 @@ public class FileTreeNode {
         return new RetrievedFilePointer(writableFilePointer(), pointer.fileAccess).remove(context, null);
     }
 
-    public InputStream getInputStream(UserContext context, Consumer<Long> monitor) throws IOException {
+    public CompletableFuture<? extends InputStream> getInputStream(UserContext context, Consumer<Long> monitor) throws IOException {
         return getInputStream(context, getFileProperties().size, monitor);
     }
 
-    public InputStream getInputStream(UserContext context, long fileSize, Consumer<Long> monitor) throws IOException {
+    public CompletableFuture<? extends InputStream> getInputStream(UserContext context, long fileSize, Consumer<Long> monitor) throws IOException {
         SymmetricKey baseKey = pointer.filePointer.baseKey;
         SymmetricKey dataKey = pointer.fileAccess.getMetaKey(baseKey);
         return pointer.fileAccess.retriever().getFile(context, dataKey, fileSize, getLocation(), monitor);
