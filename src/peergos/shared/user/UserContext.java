@@ -249,7 +249,7 @@ public class UserContext {
                 .thenApply(publicKey -> !publicKey.isPresent());
     }
 
-    private static byte[] serializeStatic(SortedMap<UserPublicKey, EntryPoint> staticData, SymmetricKey rootKey) throws IOException {
+    private static byte[] serializeStatic(SortedMap<UserPublicKey, EntryPoint> staticData, SymmetricKey rootKey) {
         DataSink sink = new DataSink();
         sink.writeInt(staticData.size());
         staticData.values().forEach(ep -> sink.writeArray(ep.serializeAndSymmetricallyEncrypt(rootKey)));
@@ -359,8 +359,8 @@ public class UserContext {
     }
 
     // FollowRequest, boolean, boolean
-    public boolean sendReplyFollowRequest(FollowRequest initialRequest, boolean accept, boolean reciprocate) throws IOException {
-        String theirUsername = initialRequest.entry.get().owner;
+    public CompletableFuture<Boolean> sendReplyFollowRequest(FollowRequest initialRequest, boolean accept, boolean reciprocate) {
+        /*String theirUsername = initialRequest.entry.get().owner;
         // if accept, create directory to share with them, note in entry points (they follow us)
         if (!accept && !reciprocate) {
             // send a null entry and null key (full rejection)
@@ -417,12 +417,13 @@ public class UserContext {
         if (reciprocate)
             addToStaticDataAndCommit(initialRequest.entry.get());
         // remove original request
-        return corenodeClient.removeFollowRequest(user.toUserPublicKey(), user.signMessage(initialRequest.rawCipher));
+        return corenodeClient.removeFollowRequest(user.toUserPublicKey(), user.signMessage(initialRequest.rawCipher));*/
+        throw new IllegalStateException("Unimplemented!");
     }
 
     // string, RetrievedFilePointer, SymmetricKey
     public CompletableFuture<Boolean> sendFollowRequest(String targetUsername, SymmetricKey requestedKey) throws IOException {
-        FileTreeNode sharing = getSharingFolder();
+        /*FileTreeNode sharing = getSharingFolder();
         Set<FileTreeNode> children = sharing.getChildren(this);
         boolean alreadyFollowed = children.stream()
                 .filter(f -> f.getFileProperties().name.equals(targetUsername))
@@ -462,10 +463,12 @@ public class UserContext {
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
-        });
+        });*/
+        throw new IllegalStateException("Unimplemented!");
     };
 
     public CompletableFuture<Boolean> sendWriteAccess(UserPublicKey targetUser) throws IOException {
+        /*
         // create sharing keypair and give it write access
         User sharing = User.random(random, signer, boxer);
         byte[] rootMapKey = new byte[32];
@@ -484,7 +487,8 @@ public class UserContext {
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
-        });
+        });*/
+        throw new IllegalStateException("Unimplemented!");
     }
 
     public void unShare(Path path, String readerToRemove) throws IOException {
@@ -492,6 +496,7 @@ public class UserContext {
     }
 
     public void unShare(Path path, Set<String> readersToRemove) throws IOException {
+        /*
         Optional<FileTreeNode> f = getByPath(path.toString());
         if (! f.isPresent())
             return;
@@ -512,10 +517,12 @@ public class UserContext {
 
         // now re-share new keys with remaining users
         Set<String> remainingReaders = sharees.stream().filter(name -> !readersToRemove.contains(name)).collect(Collectors.toSet());
-        share(path, remainingReaders);
+        share(path, remainingReaders);*/
+        throw new IllegalStateException("Unimplemented!");
     }
 
-    public Set<String> sharedWith(FileTreeNode file) {
+    public CompletableFuture<Set<String>> sharedWith(FileTreeNode file) {
+        /*
         FileTreeNode sharedDir = getByPath("/" + username + "/shared").get();
         Set<FileTreeNode> friendDirs = sharedDir.getChildren(this);
         return friendDirs.stream()
@@ -525,10 +532,12 @@ public class UserContext {
                         .findAny()
                         .isPresent())
                 .map(u -> u.getFileProperties().name)
-                .collect(Collectors.toSet());
+                .collect(Collectors.toSet());*/
+        throw new IllegalStateException("Unimplemented!");
     }
 
     public void share(Path path, Set<String> readersToAdd) throws IOException {
+        /*
         Optional<FileTreeNode> f = getByPath(path.toString());
         if (!f.isPresent())
             return;
@@ -539,7 +548,8 @@ public class UserContext {
                 continue;
             FileTreeNode sharedRoot = opt.get();
             sharedRoot.addLinkTo(file, this);
-        }
+        }*/
+        throw new IllegalStateException("Unimplemented!");
     }
 
     private boolean addToStaticData(EntryPoint entry) {
@@ -589,7 +599,8 @@ public class UserContext {
         return CompletableFuture.completedFuture(true);
     };
 
-    public CompletableFuture<List<FollowRequest>> getFollowRequests() throws IOException {
+    public CompletableFuture<List<FollowRequest>> getFollowRequests() {
+        /*
         byte[] reqs = corenodeClient.getFollowRequests(user.toUserPublicKey());
         DataSource din = new DataSource(reqs);
         int n = din.readInt();
@@ -641,7 +652,8 @@ public class UserContext {
                     }
                 })
                 .collect(Collectors.toList());
-        return initialRequests;
+        return initialRequests;*/
+        throw new IllegalStateException("Unimplemented!");
     }
 
     private FollowRequest decodeFollowRequest(byte[] raw) throws IOException {
@@ -660,15 +672,16 @@ public class UserContext {
         return dhtClient.put(f.data, targetUser, Collections.emptyList());
     }
 
-    public List<Multihash> uploadFragments(List<Fragment> fragments, UserPublicKey owner, UserPublicKey sharer, byte[] mapKey, Consumer<Long> progressCounter) {
-        return Futures.combineAll(fragments.stream()
+    public CompletableFuture<List<Multihash>> uploadFragments(List<Fragment> fragments, UserPublicKey owner, UserPublicKey sharer, byte[] mapKey, Consumer<Long> progressCounter) {
+        List<CompletableFuture<Multihash>> futures = fragments.stream()
                 .map(f -> uploadFragment(f, owner)
                         .thenApply(hash -> {
                             if (progressCounter != null)
                                 progressCounter.accept(1L);
                             return hash;
                         }))
-                .collect(Collectors.toList()))
+                .collect(Collectors.toList());
+        return Futures.combineAll(futures)
                 .thenApply(set -> set.stream().collect(Collectors.toList()));
     }
 
@@ -765,13 +778,12 @@ public class UserContext {
                 .map(link -> {
                     Location loc = link.targetLocation(baseKey);
                     return btree.get(loc.writer, loc.getMapKey())
-                            .thenCompose(key -> dhtClient.get(key.get())
-                                    .thenApply(dataOpt -> {
-                                        if (!dataOpt.isPresent() || dataOpt.get().length == 0)
-                                            return Optional.empty();
-                                        return dataOpt.map(data -> new RetrievedFilePointer(link.toReadableFilePointer(baseKey), FileAccess.deserialize(data)));
-                                    })
-                            );
+                            .thenCompose(key -> dhtClient.get(key.get()))
+                            .thenApply(dataOpt -> {
+                                if (!dataOpt.isPresent() || dataOpt.get().length == 0)
+                                    return Optional.<RetrievedFilePointer>empty();
+                                return dataOpt.map(data -> new RetrievedFilePointer(link.toReadableFilePointer(baseKey), FileAccess.deserialize(data)));
+                            });
                 }).collect(Collectors.toList());
 
         return Futures.combineAll(all).thenApply(optSet -> optSet.stream()
@@ -811,22 +823,26 @@ public class UserContext {
     }
 
     public void unfollow(String username) throws IOException {
+        /*
         System.out.println("Unfollowing: "+username);
         // remove entry point from static data
         Optional<FileTreeNode> dir = getByPath("/"+username+"/shared/"+username);
         // remove our static data entry storing that we've granted them access
         removeFromStaticData(dir.get());
         Optional<FileTreeNode> entry = getByPath("/"+username);
-        entry.get().remove(this, FileTreeNode.createRoot());
+        entry.get().remove(this, FileTreeNode.createRoot());*/
+        throw new IllegalStateException("Unimplemented!");
     }
 
     public void removeFollower(String username) throws IOException {
+        /*
         System.out.println("Remove follower: " + username);
         // remove /$us/shared/$them
         Optional<FileTreeNode> dir = getByPath("/"+username+"/shared/"+username);
         dir.get().remove(this, getSharingFolder());
         // remove our static data entry storing that we've granted them access
-        removeFromStaticData(dir.get());
+        removeFromStaticData(dir.get());*/
+        throw new IllegalStateException("Unimplemented!");
     }
 
     public void logout() {
