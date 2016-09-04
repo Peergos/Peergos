@@ -17,10 +17,14 @@ public class PairMultihash {
         right.serialize(dout);
     }
 
-    public byte[] toByteArray() throws IOException {
-        DataSink sink = new DataSink();
-        serialize(sink);
-        return sink.toByteArray();
+    public byte[] toByteArray() {
+        try {
+            DataSink sink = new DataSink();
+            serialize(sink);
+            return sink.toByteArray();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public static PairMultihash deserialize(DataInput din) throws IOException {

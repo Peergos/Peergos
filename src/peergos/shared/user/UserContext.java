@@ -656,25 +656,20 @@ public class UserContext {
                 rawKey.length > 0 ? Optional.of(SymmetricKey.deserialize(rawKey)) : Optional.empty(), raw);
     }
 
-    private CompletableFuture<Multihash> uploadFragment(Fragment f, UserPublicKey targetUser) throws IOException {
+    private CompletableFuture<Multihash> uploadFragment(Fragment f, UserPublicKey targetUser) {
         return dhtClient.put(f.data, targetUser, Collections.emptyList());
     }
 
-    public List<Multihash> uploadFragments(List<Fragment> fragments, UserPublicKey owner, UserPublicKey sharer, byte[] mapKey, Consumer<Long> progressCounter) throws IOException {
-        // now upload fragments to DHT
-
-        return fragments.stream()
-                .flatMap(f -> {
-                    try {
-                        Multihash result = uploadFragment(f, owner);
-                        if (progressCounter != null)
-                            progressCounter.accept(1L);
-                        return Stream.of(result);
-                    } catch (IOException ioe) {
-                        return Stream.empty();
-                    }
-                })
-                .collect(Collectors.toList());
+    public List<Multihash> uploadFragments(List<Fragment> fragments, UserPublicKey owner, UserPublicKey sharer, byte[] mapKey, Consumer<Long> progressCounter) {
+        return Futures.combineAll(fragments.stream()
+                .map(f -> uploadFragment(f, owner)
+                        .thenApply(hash -> {
+                            if (progressCounter != null)
+                                progressCounter.accept(1L);
+                            return hash;
+                        }))
+                .collect(Collectors.toList()))
+                .thenApply(set -> set.stream().collect(Collectors.toList()));
     }
 
     public CompletableFuture<Boolean> uploadChunk(FileAccess metadata, Location location, List<Multihash> linkHashes) {
@@ -683,18 +678,14 @@ public class UserContext {
             metadata.serialize(dout);
             byte[] metaBlob = dout.toByteArray();
             System.out.println("Storing metadata blob of " + metaBlob.length + " bytes. to mapKey: " + location.toString());
-            return dhtClient.put(metaBlob, location.owner, linkHashes).thenApply(blobHash -> {
+            return dhtClient.put(metaBlob, location.owner, linkHashes).thenCompose(blobHash -> {
                 User sharer = (User) location.writer;
-                PairMultihash newBtreeRootCAS = btree.put(sharer, location.getMapKey(), blobHash);
-                if (newBtreeRootCAS.left.equals(newBtreeRootCAS.right))
-                    return true;
-                byte[] signed = sharer.signMessage(newBtreeRootCAS.toByteArray());
-                boolean added = corenodeClient.setMetadataBlob(location.owner, sharer, signed);
-                if (!added) {
-                    System.out.println("Meta blob store failed.");
-                    return false;
-                }
-                return true;
+                return btree.put(sharer, location.getMapKey(), blobHash).thenCompose(newBtreeRootCAS -> {
+                    if (newBtreeRootCAS.left.equals(newBtreeRootCAS.right))
+                        return CompletableFuture.completedFuture(true);
+                    byte[] signed = sharer.signMessage(newBtreeRootCAS.toByteArray());
+                    return corenodeClient.setMetadataBlob(location.owner, sharer, signed);
+                });
             });
         } catch (IOException e) {
             throw new RuntimeException(e);
@@ -720,32 +711,37 @@ public class UserContext {
                         .thenApply(opt -> opt.get()));
     }
 
-    private void createFileTree() throws IOException {
-        getEntryPoints().forEach( e -> addEntryPoint(e));
+    private CompletableFuture<Void> createFileTree() throws IOException {
+        return getEntryPoints()
+                .thenAccept(entryPoints -> entryPoints.forEach(e -> addEntryPoint(e)));
     }
 
-    private void addEntryPoint(EntryPoint e) {
-        Optional<FileTreeNode> metadata = retrieveEntryPoint(e);
-        if (metadata.isPresent()) {
-            System.out.println("Added entry point: "+ metadata.get());
-            String path = metadata.get().getPath(this);
-            entrie.put(path, e);
-        }
+    private CompletableFuture<Void> addEntryPoint(EntryPoint e) {
+        return retrieveEntryPoint(e).thenCompose(metadata -> {
+            if (metadata.isPresent()) {
+                System.out.println("Added entry point: " + metadata.get());
+                return metadata.get().getPath(this).thenAccept(path -> entrie.put(path, e));
+            }
+            return CompletableFuture.runAsync(() -> {});
+        });
     }
 
-    private Set<EntryPoint> getEntryPoints() throws IOException {
-        byte[] raw = getStaticData();
-        DataSource source = new DataSource(raw);
-
-        int count = source.readInt();
-        Set<EntryPoint> res = new HashSet<>();
-        for (int i=0; i < count; i++) {
-            EntryPoint entry = EntryPoint.symmetricallyDecryptAndDeserialize(source.readArray(), rootKey);
-            res.add(entry);
-            addToStaticData(entry);
-        }
-
-        return res;
+    private CompletableFuture<Set<EntryPoint>> getEntryPoints() throws IOException {
+        return getStaticData().thenApply(raw -> {
+            try {
+                DataSource source = new DataSource(raw);
+                int count = source.readInt();
+                Set<EntryPoint> res = new HashSet<>();
+                for (int i = 0; i < count; i++) {
+                    EntryPoint entry = EntryPoint.symmetricallyDecryptAndDeserialize(source.readArray(), rootKey);
+                    res.add(entry);
+                    addToStaticData(entry);
+                }
+                return res;
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
     }
 
     private CompletableFuture<Optional<FileTreeNode>> retrieveEntryPoint(EntryPoint e) {
@@ -756,31 +752,27 @@ public class UserContext {
 
     private CompletableFuture<Optional<FileAccess>> downloadEntryPoint(EntryPoint entry) {
         // download the metadata blob for this entry point
-        try {
-            MaybeMultihash btreeValue = btree.get(entry.pointer.writer, entry.pointer.mapKey);
-            if (btreeValue.isPresent()) {
-                Optional<byte[]> value = dhtClient.get(btreeValue.get());
-                if (value.isPresent()) // otherwise this is a deleted directory
-                    return Optional.of(FileAccess.deserialize(value.get()));
-            }
-        } catch (IOException e) {
-            throw new IllegalStateException(e);
-        }
-        return Optional.empty();
+        return btree.get(entry.pointer.location.writer, entry.pointer.location.getMapKey()).thenCompose(btreeValue -> {
+            if (btreeValue.isPresent())
+                return dhtClient.get(btreeValue.get())
+                        .thenApply(value -> value.map(FileAccess::deserialize));
+            return CompletableFuture.completedFuture(Optional.empty());
+        });
     }
 
     public CompletableFuture<List<RetrievedFilePointer>> retrieveAllMetadata(List<SymmetricLocationLink> links, SymmetricKey baseKey) {
-        List<CompletableFuture<Optional<RetrievedFilePointer>>> all = links.stream().map(link -> {
-            Location loc = link.targetLocation(baseKey);
-            return btree.get(loc.writer, loc.getMapKey())
-                    .thenCompose(key -> dhtClient.get(key.get())
-                            .thenApply(dataOpt -> {
-                                if (!dataOpt.isPresent() || dataOpt.get().length == 0)
-                                    return Optional.empty();
-                                return dataOpt.map(data -> new RetrievedFilePointer(link.toReadableFilePointer(baseKey), FileAccess.deserialize(data)));
-                            })
-                    );
-        }).collect(Collectors.toList());
+        List<CompletableFuture<Optional<RetrievedFilePointer>>> all = links.stream()
+                .map(link -> {
+                    Location loc = link.targetLocation(baseKey);
+                    return btree.get(loc.writer, loc.getMapKey())
+                            .thenCompose(key -> dhtClient.get(key.get())
+                                    .thenApply(dataOpt -> {
+                                        if (!dataOpt.isPresent() || dataOpt.get().length == 0)
+                                            return Optional.empty();
+                                        return dataOpt.map(data -> new RetrievedFilePointer(link.toReadableFilePointer(baseKey), FileAccess.deserialize(data)));
+                                    })
+                            );
+                }).collect(Collectors.toList());
 
         return Futures.combineAll(all).thenApply(optSet -> optSet.stream()
                 .filter(Optional::isPresent)
@@ -799,18 +791,17 @@ public class UserContext {
         });
     };
 
-    public List<FragmentWithHash> downloadFragments(List<Multihash> hashes, Consumer<Long> monitor) {
-        return hashes.stream()
-                .flatMap(h -> {
-                    try {
-                        Fragment f = new Fragment(dhtClient.get(h).get());
-                        monitor.accept(1L);
-                        return Stream.of(new FragmentWithHash(f, h));
-                    } catch (IOException e) {
-                        return Stream.empty();
-                    }
-                })
+    public CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Multihash> hashes, Consumer<Long> monitor) {
+        List<CompletableFuture<Optional<FragmentWithHash>>> futures = hashes.stream()
+                .map(h -> dhtClient.get(h)
+                        .thenApply(dataOpt -> {
+                            monitor.accept(1L);
+                            return dataOpt.map(data -> new FragmentWithHash(new Fragment(data), h));
+                        }))
                 .collect(Collectors.toList());
+
+        return Futures.combineAll(futures)
+                .thenApply(set -> set.stream().filter(Optional::isPresent).map(Optional::get).collect(Collectors.toList()));
     }
 
     public byte[] randomBytes(int length) {

@@ -37,14 +37,15 @@ public class EncryptedChunkRetriever implements FileRetriever {
                                                                                 byte[] nonce, SymmetricKey dataKey,
                                                                                 Location ourLocation, UserContext context, Consumer<Long> monitor) {
         if (bytesRemainingUntilStart < Chunk.MAX_SIZE) {
-            List<FragmentWithHash> fragments = context.downloadFragments(fragmentHashes, monitor);
-            fragments = reorder(fragments, fragmentHashes);
-            byte[][] collect = fragments.stream().map(f -> f.fragment.data).toArray(byte[][]::new);
-            byte[] cipherText = fragmenter.recombine(collect, Chunk.MAX_SIZE);
-            EncryptedChunk fullEncryptedChunk = new EncryptedChunk(ArrayOps.concat(chunkAuth, cipherText));
-            if (truncateTo < Chunk.MAX_SIZE)
-                fullEncryptedChunk = fullEncryptedChunk.truncateTo((int)truncateTo);
-            return CompletableFuture.completedFuture(Optional.of(new LocatedEncryptedChunk(ourLocation, fullEncryptedChunk, nonce)));
+            return context.downloadFragments(fragmentHashes, monitor).thenCompose(fragments -> {
+                fragments = reorder(fragments, fragmentHashes);
+                byte[][] collect = fragments.stream().map(f -> f.fragment.data).toArray(byte[][]::new);
+                byte[] cipherText = fragmenter.recombine(collect, Chunk.MAX_SIZE);
+                EncryptedChunk fullEncryptedChunk = new EncryptedChunk(ArrayOps.concat(chunkAuth, cipherText));
+                if (truncateTo < Chunk.MAX_SIZE)
+                    fullEncryptedChunk = fullEncryptedChunk.truncateTo((int) truncateTo);
+                return CompletableFuture.completedFuture(Optional.of(new LocatedEncryptedChunk(ourLocation, fullEncryptedChunk, nonce)));
+            });
         }
         return context.getMetadata(getNext()).thenCompose(meta ->
              !meta.isPresent() ? CompletableFuture.completedFuture(Optional.empty()) :
