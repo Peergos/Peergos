@@ -238,7 +238,7 @@ public class UserContext {
     public CompletableFuture<Boolean> isRegistered() {
         System.out.println("isRegistered");
         return corenodeClient.getUsername(user).thenApply(registeredUsername -> {
-            System.out.println("got username " + registeredUsername);
+            System.out.println("got username \"" + registeredUsername + "\"l");
             return this.username.equals(registeredUsername);
         });
     }
