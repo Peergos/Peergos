@@ -154,7 +154,7 @@ public class UserContext {
         DHTClient dht = new DHTClient.CachingDHTClient(new DHTClient.HTTP(poster), 1000, 50*1024);
         Btree btree = new Btree.HTTP(poster);
 //        Btree btree = new BtreeImpl(coreNode, dht);
-        Salsa20Poly1305 provider = useJavaScript ? new SymmetricJS() : new Salsa20Poly1305.Java();
+        Salsa20Poly1305 provider = /*useJavaScript ? new SymmetricJS() :*/ new Salsa20Poly1305.Java();
         SymmetricKey.addProvider(SymmetricKey.Type.TweetNaCl, provider);
         Ed25519 signer = /*useJavaScript ? new JSEd25519() :*/ new JavaEd25519();
         PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, signer);
@@ -197,7 +197,7 @@ public class UserContext {
                                             userRoot.filePointer.location.getMapKey(), userRoot.filePointer.baseKey, null, true, random)
                                             .thenApply(x -> result.complete(context));
                                 });
-                            } catch (IOException e) {
+                            } catch (Throwable e) {
                                 result.completeExceptionally(e);
                             }
                         });
@@ -309,6 +309,7 @@ public class UserContext {
         long t2 = System.currentTimeMillis();
         DirAccess root = DirAccess.create(rootRKey, new FileProperties(directoryName, 0, LocalDateTime.now(), false, Optional.empty()), (Location)null, null, null);
         Location rootLocation = new Location(this.user, writer, rootMapKey);
+        System.out.println("Uploading entry point directory");
         return this.uploadChunk(root, rootLocation, Collections.emptyList()).thenApply(uploaded -> {
             long t3 = System.currentTimeMillis();
             System.out.println("Uploading root dir metadata took " + (t3 - t2) + " mS");
@@ -703,6 +704,7 @@ public class UserContext {
                 });
             });
         } catch (IOException e) {
+            System.out.println(e.getMessage());
             throw new RuntimeException(e);
         }
     }
