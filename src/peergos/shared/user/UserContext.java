@@ -201,8 +201,8 @@ public class UserContext {
                     } else
                         result.completeExceptionally(new IllegalStateException("username already registered with different public key!"));
                 });
-            }
-            result.complete(context);
+            } else
+                result.complete(context);
         });
 
         return result.thenApply(ctx -> {
@@ -215,15 +215,14 @@ public class UserContext {
     private CompletableFuture<Void> init() {
         staticData.clear();
         try {
-            createFileTree();
+            return createFileTree().thenCompose(y -> getByPath("/"+username + "/" + "shared").thenCompose(sharedOpt -> {
+                if (!sharedOpt.isPresent())
+                    throw new IllegalStateException("Couldn't find shared folder!");
+                return corenodeClient.getAllUsernames().thenAccept(x -> usernames = x.stream().collect(Collectors.toSet()));
+            }));
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-        return getByPath("/"+username + "/" + "shared").thenCompose(sharedOpt -> {
-            if (!sharedOpt.isPresent())
-                throw new IllegalStateException("Couldn't find shared folder!");
-            return corenodeClient.getAllUsernames().thenAccept(x -> usernames = x.stream().collect(Collectors.toSet()));
-        });
     }
 
     public Set<String> getUsernames() {
@@ -238,7 +237,7 @@ public class UserContext {
     public CompletableFuture<Boolean> isRegistered() {
         System.out.println("isRegistered");
         return corenodeClient.getUsername(user).thenApply(registeredUsername -> {
-            System.out.println("got username \"" + registeredUsername + "\"l");
+            System.out.println("got username \"" + registeredUsername + "\"");
             return this.username.equals(registeredUsername);
         });
     }
