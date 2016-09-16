@@ -181,9 +181,12 @@ public class UserContext {
                 context.isAvailable().thenAccept(available -> {
                     if (available) {
                         System.out.println("Registering username " + username);
-                        context.register().thenAccept(completed -> {
-                            if (!registered)
-                                throw new IllegalStateException("Couldn't register username: " + username);
+                        context.register().thenAccept(successfullyRegistered -> {
+                            if (! successfullyRegistered) {
+                                System.out.println("Couldn't register username");
+                                result.completeExceptionally(new IllegalStateException("Couldn't register username: " + username));
+                                return;
+                            }
                             System.out.println("Creating user's root directory");
                             long t1 = System.currentTimeMillis();
                             try {
