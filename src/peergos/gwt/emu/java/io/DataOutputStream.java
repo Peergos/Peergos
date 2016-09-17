@@ -16,8 +16,6 @@
 
 package java.io;
 
-import com.google.gwt.corp.compatibility.Numbers;
-
 public class DataOutputStream extends OutputStream implements DataOutput {
 
 	OutputStream os;
@@ -60,7 +58,7 @@ public class DataOutputStream extends OutputStream implements DataOutput {
 	}
 
 	public void writeFloat (float v) throws IOException {
-		writeInt(Numbers.floatToIntBits(v));
+		writeInt(Float.floatToIntBits(v));
 	}
 
 	public void writeInt (int v) throws IOException {

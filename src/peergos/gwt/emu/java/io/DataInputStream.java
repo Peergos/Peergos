@@ -16,8 +16,6 @@
 
 package java.io;
 
-import com.google.gwt.corp.compatibility.Numbers;
-
 public class DataInputStream extends InputStream implements DataInput {
 
 	private final InputStream is;
@@ -54,7 +52,7 @@ public class DataInputStream extends InputStream implements DataInput {
 	}
 
 	public float readFloat () throws IOException {
-		return Numbers.intBitsToFloat(readInt());
+		return Float.intBitsToFloat(readInt());
 	}
 
 	public void readFully (byte[] b) throws IOException {
