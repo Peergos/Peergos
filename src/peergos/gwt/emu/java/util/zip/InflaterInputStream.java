@@ -20,8 +20,6 @@ package java.util.zip;
 import java.io.IOException;
 import java.io.InputStream;
 
-import com.badlogic.gdx.utils.GdxRuntimeException;
-
 /** Dummy emulation. Throws a GdxRuntimeException on first read.
  * @author hneuer */
 public class InflaterInputStream extends InputStream {
@@ -33,7 +31,7 @@ public class InflaterInputStream extends InputStream {
 
 	@Override
 	public int read () throws IOException {
-		throw new GdxRuntimeException("InflaterInputStream not supported in GWT");
+		throw new IOException("InflaterInputStream not supported in GWT");
 	}
 
 	@Override
