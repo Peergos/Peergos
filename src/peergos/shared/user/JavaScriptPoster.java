@@ -1,5 +1,7 @@
 package peergos.shared.user;
 
+import jsinterop.annotations.*;
+
 import java.util.concurrent.*;
 
 public class JavaScriptPoster implements HttpPoster {
@@ -18,5 +20,14 @@ public class JavaScriptPoster implements HttpPoster {
     @Override
     public CompletableFuture<byte[]> get(String url) {
         return http.get(url);
+    }
+
+    // This is an ugly hack to convert Uint8Array to a valid byte[]
+    @JsMethod
+    public static byte[] convertToBytes(short[] uints) {
+        byte[] res = new byte[uints.length];
+        for (int i=0; i < res.length; i++)
+            res[i] = (byte) uints[i];
+        return res;
     }
 }

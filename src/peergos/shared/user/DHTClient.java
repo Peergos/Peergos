@@ -48,7 +48,8 @@ public interface DHTClient {
                     if (success != 1)
                         throw new IOException("Couldn't add data to DHT!");
                     return new Multihash(Serialize.deserializeByteArray(din, 256));
-                } catch (IOException e) {
+                } catch (Exception e) {
+                    System.out.println(e.getMessage());
                     throw new RuntimeException(e);
                 }
             });

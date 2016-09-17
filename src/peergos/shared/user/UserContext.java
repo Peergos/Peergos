@@ -703,7 +703,7 @@ public class UserContext {
                     return corenodeClient.setMetadataBlob(location.owner, sharer, signed);
                 });
             });
-        } catch (IOException e) {
+        } catch (Exception e) {
             System.out.println(e.getMessage());
             throw new RuntimeException(e);
         }
