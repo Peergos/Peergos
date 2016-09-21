@@ -24,8 +24,8 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
     private final List<CompletableFuture> applyFutures = new ArrayList<>();
     private final List<Function<? super T, ? extends CompletionStage<? extends Object>>> composers = new ArrayList<>();
     private final List<CompletableFuture<? extends Object>> composeFutures = new ArrayList<>();
-    private final List<Function<? super Throwable, ? extends Object>> errors = new ArrayList<>();
-    private final List<CompletableFuture> errorFutures = new ArrayList<>();
+    private final List<Function<? super Throwable, ? extends T>> errors = new ArrayList<>();
+    private final List<CompletableFuture<T>> errorFutures = new ArrayList<>();
     private T value;
     private Throwable reason;
     private boolean isDone;
@@ -146,6 +146,7 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
 
     @JsMethod
     public boolean completeExceptionally(Throwable err) {
+        err.printStackTrace();
         this.reason = err;
         this.isDone = true;
         for (int i=0; i < applies.size(); i++) {
@@ -172,6 +173,17 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
                 future.completeExceptionally(t);
             }
         }
+        for (int i=0; i < errors.size(); i++) {
+            CompletableFuture<T> future = errorFutures.get(i);
+            Function<? super Throwable, ? extends T> function = errors.get(i);
+            try {
+                future.complete(function.apply(err));
+            } catch (Throwable t) {
+                future.completeExceptionally(t);
+            }
+        }
+        errors.clear();
+        errorFutures.clear();
         composers.clear();
         composeFutures.clear();
         consumers.clear();

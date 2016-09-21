@@ -219,14 +219,17 @@ public class UserContext {
 
     private CompletableFuture<Boolean> init() {
         staticData.clear();
-        return createFileTree().thenCompose(y -> getByPath("/"+username + "/" + "shared").thenCompose(sharedOpt -> {
-            if (!sharedOpt.isPresent())
-                throw new IllegalStateException("Couldn't find shared folder!");
-            return corenodeClient.getAllUsernames().thenApply(x -> {
-                usernames = x.stream().collect(Collectors.toSet());
-                return true;
-            });
-        }));
+        return createFileTree()
+                .thenCompose(y -> getByPath("/"+username + "/" + "shared")
+                        .thenCompose(sharedOpt -> {
+                            if (!sharedOpt.isPresent())
+                                throw new IllegalStateException("Couldn't find shared folder!");
+                            return corenodeClient.getAllUsernames()
+                                    .thenApply(x -> {
+                                        usernames = x.stream().collect(Collectors.toSet());
+                                        return true;
+                                    });
+                        }));
     }
 
     public Set<String> getUsernames() {
