@@ -34,7 +34,11 @@ public class BTreeHandlers
                     byte[] value = res.toBytes();
                     log("Btree::Get mapkey: " + new ByteArrayWrapper(mapKey) + " = " + res);
                     new GetSuccess(httpExchange).accept(value);
+                }).exceptionally(ex -> {
+                    ex.printStackTrace();
+                    return null;
                 });
+
             } catch (Exception e) {
                 e.printStackTrace();
                 new GetSuccess(httpExchange).accept(new byte[0]);
