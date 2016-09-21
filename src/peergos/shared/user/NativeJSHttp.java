@@ -5,14 +5,14 @@ import jsinterop.annotations.*;
 import java.io.*;
 import java.util.concurrent.*;
 
-@JsType(namespace = "http")
+@JsType(namespace = "http", isNative = true)
 public class NativeJSHttp {
 
-    public static <T> CompletableFuture<T> incomplete() {
-        return new CompletableFuture<>();
-    }
+//    public static <T> CompletableFuture<T> incomplete() {
+//        return new CompletableFuture<>();
+//    }
 
-    public native CompletableFuture<byte[]> post(String url, byte[] payload) /*-{
+    public native CompletableFuture<byte[]> post(String url, byte[] payload) ;/*-{
         console.log("postProm");
         var future = this.incomplete();
         new Promise(function(resolve, reject) {
@@ -46,7 +46,7 @@ public class NativeJSHttp {
         return future;
     }-*/;
 
-    public native CompletableFuture<byte[]> get(String url) /*-{
+    public native CompletableFuture<byte[]> get(String url) ;/*-{
         console.log("getProm");
         var future = this.incomplete();
         new Promise(function(resolve, reject) {
