@@ -457,7 +457,9 @@ public class FileTreeNode {
                         return result;
                     }
                 });*/
-        throw new IllegalStateException("Unimplemented!");
+        IllegalStateException ex = new IllegalStateException("Unimplemented!");
+        ex.printStackTrace();
+        throw ex;
     }
 
     static boolean isLegalName(String name) {
