@@ -201,7 +201,7 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
         return this;
     }
 
-    public CompletionStage<T> exceptionally(Function<Throwable, ? extends T> handler) {
+    public CompletableFuture<T> exceptionally(Function<Throwable, ? extends T> handler) {
         CompletableFuture<T> fut = new CompletableFuture<>();
         errorFutures.add(fut);
         errors.add(handler);
