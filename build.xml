@@ -55,7 +55,7 @@
     <manifestclasspath property="manifest_cp" jarfile="myjar.jar">
       <classpath refid="dep.runtime" />
     </manifestclasspath>
-    <jar jarfile="${dist}/PeergosServer.jar" basedir="${build}">
+    <jar jarfile="${dist}/PeergosServer.jar" basedir="${build}" includes="peergos/server/**,peergos/shared/**,peergos/client/**">
       <manifest>
 	  <attribute name="Class-Path" value="${manifest_cp}"/>
 	  <attribute name="Main-Class" value="peergos.server.Start"/>
@@ -67,7 +67,7 @@
 	<exclude name="ui/PeergosServer.jar"/>
       </fileset>
     </jar>
-    <jar jarfile="${dist}/PeergosClient.jar" basedir="${build}" includes="peergos/corenode/**,peergos/crypto/**,peergos/user/**,peergos/util/**,peergos/merklebtree/**">
+    <jar jarfile="${dist}/PeergosClient.jar" basedir="${build}" includes="peergos/server/**,peergos/shared/**,peergos/client/**">
       <manifest>
 	  <attribute name="Class-Path" value="${manifest_cp}"/>
       </manifest>
