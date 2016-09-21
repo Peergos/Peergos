@@ -98,6 +98,7 @@ public class UserContext {
         }
 
         public void put(String path, EntryPoint e) {
+            System.out.println("Entrie.put("+path+")");
             if (path.startsWith("/"))
                 path = path.substring(1);
             if (path.length() == 0) {
@@ -208,10 +209,9 @@ public class UserContext {
                 result.complete(context);
         });
 
-        return result.thenApply(ctx -> {
+        return result.thenCompose(ctx -> {
             System.out.println("Initializing context..");
-            ctx.init();
-            return context;
+            return ctx.init().thenApply(Void -> context);
         });
     }
 
@@ -730,7 +730,8 @@ public class UserContext {
 
     private CompletableFuture<Void> createFileTree() throws IOException {
         return getEntryPoints()
-                .thenAccept(entryPoints -> entryPoints.forEach(e -> addEntryPoint(e)));
+                .thenAccept(entryPoints -> entryPoints.forEach(e -> addEntryPoint(e)))
+                .exceptionally(Futures::logError);
     }
 
     private CompletableFuture<Boolean> addEntryPoint(EntryPoint e) {
@@ -743,10 +744,7 @@ public class UserContext {
                 });
             }
             return CompletableFuture.completedFuture(false);
-        }).exceptionally(err -> {
-            err.printStackTrace();
-            return null;
-        });
+        }).exceptionally(Futures::logError);
     }
 
     private CompletableFuture<Set<EntryPoint>> getEntryPoints() throws IOException {
@@ -754,6 +752,7 @@ public class UserContext {
             try {
                 DataSource source = new DataSource(raw);
                 int count = source.readInt();
+                System.out.println("Found "+count+" entry points");
                 Set<EntryPoint> res = new HashSet<>();
                 for (int i = 0; i < count; i++) {
                     EntryPoint entry = EntryPoint.symmetricallyDecryptAndDeserialize(source.readArray(), rootKey);

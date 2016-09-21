@@ -15,4 +15,9 @@ public class Futures {
                 (a, b) -> b.thenCompose(setb ->
                         a.thenApply(seta -> Stream.concat(seta.stream(), setb.stream()).collect(Collectors.toSet()))));
     }
+
+    public static <T> T logError(Throwable t) {
+        t.printStackTrace();
+        return null;
+    }
 }
