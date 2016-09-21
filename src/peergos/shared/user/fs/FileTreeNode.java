@@ -230,7 +230,8 @@ public class FileTreeNode {
         if (pointer == null)
             return CompletableFuture.completedFuture(Optional.empty());
         SymmetricKey parentKey = getParentKey();
-        return pointer.fileAccess.getParent(parentKey, context).thenApply(parentRFP -> {
+        CompletableFuture<RetrievedFilePointer> parent = pointer.fileAccess.getParent(parentKey, context);
+        return parent.thenApply(parentRFP -> {
             if (parentRFP == null)
                 return Optional.of(createRoot());
             return Optional.of(new FileTreeNode(parentRFP, ownername, Collections.emptySet(), Collections.emptySet(), entryWriterKey));

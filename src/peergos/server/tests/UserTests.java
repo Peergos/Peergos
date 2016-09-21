@@ -104,7 +104,8 @@ public class UserTests {
     }
 
     public static UserContext ensureSignedUp(String username, String password, int webPort) throws Exception {
-        return UserContext.ensureSignedUp(username, password, webPort).get();
+        boolean useJavaScript = false;
+        return UserContext.ensureSignedUp(username, password, webPort, useJavaScript).get();
     }
 
     @Test

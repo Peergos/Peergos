@@ -67,7 +67,8 @@ public class FileAccess {
 
     public CompletableFuture<RetrievedFilePointer> getParent(SymmetricKey parentKey, UserContext context) {
         if (this.parentLink == null)
-            return null;
+            return CompletableFuture.completedFuture(null);
+
         return context.retrieveAllMetadata(Arrays.asList(parentLink), parentKey).thenApply(res -> {
             RetrievedFilePointer retrievedFilePointer = res.stream().findAny().get();
             return retrievedFilePointer;

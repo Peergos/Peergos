@@ -743,6 +743,9 @@ public class UserContext {
                 });
             }
             return CompletableFuture.completedFuture(false);
+        }).exceptionally(err -> {
+            err.printStackTrace();
+            return null;
         });
     }
 
