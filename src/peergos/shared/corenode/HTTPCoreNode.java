@@ -64,10 +64,8 @@ public class HTTPCoreNode implements CoreNode
 
             Serialize.serialize(publicKey.toUserPublicKey().serialize(), dout);
             dout.flush();
-            System.out.println("HttpCoreNode.getUsername");
             CompletableFuture<byte[]> fut = poster.post("core/getUsername", bout.toByteArray(), true);
             return fut.thenApply(res -> {
-                System.out.println("HttpCoreNode.getUsername2");
                 DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
                 try {
                     String username = Serialize.deserializeString(din, CoreNode.MAX_USERNAME_SIZE);

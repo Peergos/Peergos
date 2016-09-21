@@ -211,21 +211,22 @@ public class UserContext {
 
         return result.thenCompose(ctx -> {
             System.out.println("Initializing context..");
-            return ctx.init().thenApply(Void -> context);
+            return ctx.init()
+                    .thenApply(res -> ctx)
+                    .exceptionally(Futures::logError);
         });
     }
 
-    private CompletableFuture<Void> init() {
+    private CompletableFuture<Boolean> init() {
         staticData.clear();
-        try {
-            return createFileTree().thenCompose(y -> getByPath("/"+username + "/" + "shared").thenCompose(sharedOpt -> {
-                if (!sharedOpt.isPresent())
-                    throw new IllegalStateException("Couldn't find shared folder!");
-                return corenodeClient.getAllUsernames().thenAccept(x -> usernames = x.stream().collect(Collectors.toSet()));
-            }));
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+        return createFileTree().thenCompose(y -> getByPath("/"+username + "/" + "shared").thenCompose(sharedOpt -> {
+            if (!sharedOpt.isPresent())
+                throw new IllegalStateException("Couldn't find shared folder!");
+            return corenodeClient.getAllUsernames().thenApply(x -> {
+                usernames = x.stream().collect(Collectors.toSet());
+                return true;
+            });
+        }));
     }
 
     public Set<String> getUsernames() {
@@ -722,16 +723,18 @@ public class UserContext {
         return getByPath("/"+username).thenApply(opt -> opt.get());
     }
 
-    private CompletableFuture<byte[]> getStaticData() throws IOException {
+    private CompletableFuture<byte[]> getStaticData() {
         return corenodeClient.getMetadataBlob(user.toUserPublicKey())
                 .thenCompose(key -> dhtClient.get(key.get())
                         .thenApply(opt -> opt.get()));
     }
 
-    private CompletableFuture<Void> createFileTree() throws IOException {
+    private CompletableFuture<Boolean> createFileTree() {
         return getEntryPoints()
-                .thenAccept(entryPoints -> entryPoints.forEach(e -> addEntryPoint(e)))
-                .exceptionally(Futures::logError);
+                .thenApply(entryPoints -> {
+                    entryPoints.forEach(e -> addEntryPoint(e));
+                    return true;
+                }).exceptionally(Futures::logError);
     }
 
     private CompletableFuture<Boolean> addEntryPoint(EntryPoint e) {
@@ -747,7 +750,7 @@ public class UserContext {
         }).exceptionally(Futures::logError);
     }
 
-    private CompletableFuture<Set<EntryPoint>> getEntryPoints() throws IOException {
+    private CompletableFuture<Set<EntryPoint>> getEntryPoints() {
         return getStaticData().thenApply(raw -> {
             try {
                 DataSource source = new DataSource(raw);
