@@ -280,6 +280,7 @@ public class FileTreeNode {
         return ownername;
     }
 
+    @JsMethod
     public boolean isDirectory() {
         boolean isNull = pointer == null;
         return isNull || pointer.fileAccess.isDirectory();
