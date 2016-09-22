@@ -469,6 +469,7 @@ public class FileTreeNode {
         return !name.contains("/");
     }
 
+    @JsMethod
     public CompletableFuture<ReadableFilePointer> mkdir(String newFolderName, UserContext context, boolean isSystemFolder) throws IOException {
         return mkdir(newFolderName, context, isSystemFolder, context.random);
     }
