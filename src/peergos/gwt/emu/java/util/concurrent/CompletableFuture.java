@@ -135,6 +135,17 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
                 future.completeExceptionally(t);
             }
         }
+        for (int i=0; i < errors.size(); i++) {
+            CompletableFuture<T> future = errorFutures.get(i);
+            Function<? super Throwable, ? extends T> function = errors.get(i);
+            try {
+                future.complete(value);
+            } catch (Throwable t) {
+                future.completeExceptionally(t);
+            }
+        }
+        errors.clear();
+        errorFutures.clear();
         composers.clear();
         composeFutures.clear();
         consumers.clear();
