@@ -200,10 +200,12 @@ public class FileTreeNode {
         return pointer.filePointer.toLink();
     }
 
+    @JsMethod
     public boolean isWritable() {
         return entryWriterKey instanceof User;
     }
 
+    @JsMethod
     public boolean isReadable() {
         try {
             pointer.fileAccess.getMetaKey(pointer.filePointer.baseKey);
