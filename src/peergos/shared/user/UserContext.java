@@ -734,10 +734,10 @@ public class UserContext {
 
     private CompletableFuture<Boolean> createFileTree() {
         return getEntryPoints()
-                .thenApply(entryPoints -> {
-                    entryPoints.forEach(e -> addEntryPoint(e));
-                    return true;
-                }).exceptionally(Futures::logError);
+                .thenCompose(entryPoints ->
+                        Futures.combineAll(entryPoints.stream().map(e -> addEntryPoint(e)).collect(Collectors.toList()))
+                            .thenApply(res -> true)
+                ).exceptionally(Futures::logError);
     }
 
     private CompletableFuture<Boolean> addEntryPoint(EntryPoint e) {

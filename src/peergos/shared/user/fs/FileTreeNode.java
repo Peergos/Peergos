@@ -276,6 +276,7 @@ public class FileTreeNode {
         throw new IllegalStateException("No credentials to retrieve children!");
     }
 
+    @JsMethod
     public String getOwner() {
         return ownername;
     }
