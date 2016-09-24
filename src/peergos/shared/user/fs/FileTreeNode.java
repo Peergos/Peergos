@@ -601,6 +601,7 @@ public class FileTreeNode {
         });
     }
 
+    @JsMethod
     public CompletableFuture<Boolean> remove(UserContext context, FileTreeNode parent) {
         if (parent != null)
             parent.removeChild(this, context);
