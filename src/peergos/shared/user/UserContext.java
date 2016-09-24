@@ -27,6 +27,7 @@ import jsinterop.annotations.*;
 public class UserContext {
     public static final String SHARED_DIR_NAME = "shared";
 
+    @JsProperty
     public final String username;
     public final User user;
     private final SymmetricKey rootKey;
