@@ -35,7 +35,10 @@ public class MerkleBTree
             Multihash put = dht.put(newRoot.toMerkleNode());
             return new MerkleBTree(newRoot, put, dht, MAX_NODE_CHILDREN);
         }
-        return new MerkleBTree(TreeNode.deserialize(dht.get(rootHash.get())), rootHash, dht, MAX_NODE_CHILDREN);
+        byte[] raw = dht.get(rootHash.get());
+        if (raw == null)
+            throw new IllegalStateException("Null byte[] returned by DHT for hash: " + rootHash.get());
+        return new MerkleBTree(TreeNode.deserialize(raw), rootHash, dht, MAX_NODE_CHILDREN);
     }
 
     /**

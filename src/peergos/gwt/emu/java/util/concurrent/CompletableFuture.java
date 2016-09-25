@@ -87,6 +87,7 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
     }
 
     @Override
+    @JsMethod
     public <U> CompletableFuture<U> thenCompose(Function<? super T, ? extends CompletionStage<U>> fn) {
         CompletableFuture<U> fut = new CompletableFuture<>();
         if (isDone()) {
