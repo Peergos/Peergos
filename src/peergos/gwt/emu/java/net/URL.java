@@ -24,4 +24,8 @@ public class URL {
     public final InputStream openStream() throws java.io.IOException {
     	return null;
     }
+    
+    public String getPath() {
+        return null;
+    }
 }
