@@ -13,6 +13,7 @@ import peergos.shared.util.ArrayOps;
 
 import java.io.*;
 import java.util.Random;
+import java.util.concurrent.CompletableFuture;
 
 public class User extends UserPublicKey
 {
@@ -67,9 +68,11 @@ public class User extends UserPublicKey
         return ArrayOps.concat(secretSigningKey.serialize(), secretBoxingKey.serialize(), super.serialize());
     }
 
-    public static User generateUserCredentials(String username, String password, LoginHasher hasher, Salsa20Poly1305 provider,
+    public static CompletableFuture<User> generateUserCredentials(String username, String password, LoginHasher hasher, Salsa20Poly1305 provider,
                                                SafeRandom random, Ed25519 signer, Curve25519 boxer) {
-        return UserUtil.generateUser(username, password, hasher, provider, random, signer, boxer).getUser();
+        return UserUtil.generateUser(username, password, hasher, provider, random, signer, boxer).thenApply(user -> {
+        	return user.getUser();
+        });
     }
 
 

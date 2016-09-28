@@ -171,43 +171,47 @@ public class UserContext {
     public static CompletableFuture<UserContext> ensureSignedUp(String username, String password, DHTClient dht, Btree btree, CoreNode coreNode,
                                              LoginHasher hasher, Salsa20Poly1305 provider, SafeRandom random,
                                              Ed25519 signer, Curve25519 boxer, boolean useJavaScript) {
-        UserWithRoot userWithRoot = UserUtil.generateUser(username, password, hasher, provider, random, signer, boxer);
-        UserContext context = new UserContext(username, userWithRoot.getUser(), userWithRoot.getRoot(),
-                dht, btree, coreNode, hasher, provider, random, signer, boxer, useJavaScript);
-        System.out.println("made user context");
-        CompletableFuture<UserContext> result = new CompletableFuture<>();
-        context.isRegistered().thenAccept(registered -> {
-            if (!registered) {
-                System.out.println("User is not registered");
 
-                context.isAvailable().thenAccept(available -> {
-                    if (available) {
-                        System.out.println("Registering username " + username);
-                        context.register().thenAccept(successfullyRegistered -> {
-                            if (! successfullyRegistered) {
-                                System.out.println("Couldn't register username");
-                                result.completeExceptionally(new IllegalStateException("Couldn't register username: " + username));
-                                return;
-                            }
-                            System.out.println("Creating user's root directory");
-                            long t1 = System.currentTimeMillis();
-                            try {
-                                context.createEntryDirectory(username).thenAccept(userRoot -> {
-                                    System.out.println("Creating root directory took " + (System.currentTimeMillis() - t1) + " mS");
-                                    ((DirAccess) userRoot.fileAccess).mkdir(SHARED_DIR_NAME, context,
-                                            (User) userRoot.filePointer.location.writer,
-                                            userRoot.filePointer.location.getMapKey(), userRoot.filePointer.baseKey, null, true, random)
-                                            .thenApply(x -> result.complete(context));
-                                });
-                            } catch (Throwable e) {
-                                result.completeExceptionally(e);
-                            }
-                        });
-                    } else
-                        result.completeExceptionally(new IllegalStateException("username already registered with different public key!"));
-                });
-            } else
-                result.complete(context);
+        CompletableFuture<UserContext> result = new CompletableFuture<>();
+        
+        UserUtil.generateUser(username, password, hasher, provider, random, signer, boxer).thenAccept(userWithRoot -> {
+            UserContext context = new UserContext(username, userWithRoot.getUser(), userWithRoot.getRoot(),
+                    dht, btree, coreNode, hasher, provider, random, signer, boxer, useJavaScript);
+            System.out.println("made user context");
+            
+            context.isRegistered().thenAccept(registered -> {
+                if (!registered) {
+                    System.out.println("User is not registered");
+
+                    context.isAvailable().thenAccept(available -> {
+                        if (available) {
+                            System.out.println("Registering username " + username);
+                            context.register().thenAccept(successfullyRegistered -> {
+                                if (! successfullyRegistered) {
+                                    System.out.println("Couldn't register username");
+                                    result.completeExceptionally(new IllegalStateException("Couldn't register username: " + username));
+                                    return;
+                                }
+                                System.out.println("Creating user's root directory");
+                                long t1 = System.currentTimeMillis();
+                                try {
+                                    context.createEntryDirectory(username).thenAccept(userRoot -> {
+                                        System.out.println("Creating root directory took " + (System.currentTimeMillis() - t1) + " mS");
+                                        ((DirAccess) userRoot.fileAccess).mkdir(SHARED_DIR_NAME, context,
+                                                (User) userRoot.filePointer.location.writer,
+                                                userRoot.filePointer.location.getMapKey(), userRoot.filePointer.baseKey, null, true, random)
+                                                .thenApply(x -> result.complete(context));
+                                    });
+                                } catch (Throwable e) {
+                                    result.completeExceptionally(e);
+                                }
+                            });
+                        } else
+                            result.completeExceptionally(new IllegalStateException("username already registered with different public key!"));
+                    });
+                } else
+                    result.complete(context);
+            });
         });
 
         return result.thenCompose(ctx -> {
@@ -279,21 +283,23 @@ public class UserContext {
         LocalDate expiry = LocalDate.now();
         // set claim expiry to two months from now
         expiry.plusMonths(2);
-        UserWithRoot updatedUser = UserUtil.generateUser(username, newPassword, hasher, symmetricProvider, random, signer, boxer);
+
         CompletableFuture<UserContext> result = new CompletableFuture<>();
-        commitStaticData(updatedUser.getUser(), staticData, updatedUser.getRoot(), dhtClient, corenodeClient).thenApply(updated -> {
-            if (!updated)
-                return result.completeExceptionally(new IllegalStateException("Change Password Failed: couldn't upload new file system entry points!"));
-
-            List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createChain(user, updatedUser.getUser(), username, expiry);
-            return corenodeClient.updateChain(username, claimChain).thenApply(updatedChain -> {
-                if (!updatedChain)
-                    return result.completeExceptionally(new IllegalStateException("Couldn't register new public keys during password change!"));
-
-                return UserContext.ensureSignedUp(username, newPassword, dhtClient, btree, corenodeClient,
-                        hasher, symmetricProvider, random, signer, boxer, useJavaScript)
-                        .thenApply(context -> result.complete(context));
-            });
+        UserUtil.generateUser(username, newPassword, hasher, symmetricProvider, random, signer, boxer).thenAccept(updatedUser -> {
+	        commitStaticData(updatedUser.getUser(), staticData, updatedUser.getRoot(), dhtClient, corenodeClient).thenApply(updated -> {
+	            if (!updated)
+	                return result.completeExceptionally(new IllegalStateException("Change Password Failed: couldn't upload new file system entry points!"));
+	
+	            List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createChain(user, updatedUser.getUser(), username, expiry);
+	            return corenodeClient.updateChain(username, claimChain).thenApply(updatedChain -> {
+	                if (!updatedChain)
+	                    return result.completeExceptionally(new IllegalStateException("Couldn't register new public keys during password change!"));
+	
+	                return UserContext.ensureSignedUp(username, newPassword, dhtClient, btree, corenodeClient,
+	                        hasher, symmetricProvider, random, signer, boxer, useJavaScript)
+	                        .thenApply(context -> result.complete(context));
+	            });
+	        });
         });
         return result;
     }
