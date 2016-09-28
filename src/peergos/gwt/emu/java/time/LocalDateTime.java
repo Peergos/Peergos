@@ -3,6 +3,8 @@ package java.time;
 import jsinterop.annotations.*;
 
 import java.time.chrono.ChronoLocalDateTime;
+import java.time.format.DateTimeFormatter;
+
 @JsType
 @SuppressWarnings("unusable-by-js")
 public class LocalDateTime {
@@ -66,7 +68,7 @@ public class LocalDateTime {
     public static LocalDateTime ofInstant(Instant instant, ZoneId zone) {
     	return null;
     }
-    
+
     public Instant toInstant(ZoneOffset offset) {
         return null;
     }
@@ -90,4 +92,8 @@ public class LocalDateTime {
         return date.hashCode() ^ time.hashCode();
     }
 
+    @Override
+    public String toString() {
+        return date.toString() +"T"+ time.toString();
+    }
 }

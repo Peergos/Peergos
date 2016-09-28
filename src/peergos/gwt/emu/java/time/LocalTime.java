@@ -92,4 +92,8 @@ public class LocalTime {
         return (int) (nod ^ (nod >>> 32));
     }
 
+    @Override
+    public String toString() {
+        return hour +":"+minute+":"+second;
+    }
 }
