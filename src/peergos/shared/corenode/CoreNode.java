@@ -1,6 +1,7 @@
 package peergos.shared.corenode;
 
 import peergos.shared.crypto.*;
+import peergos.shared.ipfs.api.*;
 import peergos.shared.merklebtree.*;
 import peergos.shared.util.*;
 
@@ -28,22 +29,10 @@ public interface CoreNode {
         });
     }
 
-    CompletableFuture<byte[]> getAllUsernamesGzip();
+    CompletableFuture<byte[]> getUsernamesGzip(String prefix);
 
-    default CompletableFuture<List<String>> getAllUsernames() {
-        return getAllUsernamesGzip().thenApply(gzip -> {
-            DataInput din = new DataInputStream(new ByteArrayInputStream(gzip));
-            List<String> res = new ArrayList<>();
-            while (true) {
-                try {
-                    String uname = Serialize.deserializeString(din, MAX_USERNAME_SIZE);
-                    res.add(uname);
-                } catch (IOException e) {
-                    break;
-                }
-            }
-            return res;
-        });
+    default CompletableFuture<List<String>> getUsernames(String prefix) {
+        return getUsernamesGzip(prefix).thenApply(gzip -> (List) JSONParser.parse(new String(gzip)));
     }
 
     CompletableFuture<Boolean> followRequest(UserPublicKey target, byte[] encryptedPermission);

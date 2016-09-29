@@ -37,8 +37,8 @@ public class PinningCoreNode implements CoreNode {
     }
 
     @Override
-    public CompletableFuture<byte[]> getAllUsernamesGzip() {
-        return target.getAllUsernamesGzip();
+    public CompletableFuture<byte[]> getUsernamesGzip(String prefix) {
+        return target.getUsernamesGzip(prefix);
     }
 
     @Override

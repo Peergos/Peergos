@@ -18,7 +18,7 @@ public class HTTPCoreNodeServer
 {
     private static final int CONNECTION_BACKLOG = 100;
     
-    public static final String CORE_URL = "/core/";
+    public static final String CORE_URL = "core/";
     public static final int PORT = 9999;
 
     public static class CoreNodeHandler implements HttpHandler
@@ -39,8 +39,9 @@ public class HTTPCoreNodeServer
             String path = exchange.getRequestURI().getPath();
             if (path.startsWith("/"))
                 path = path.substring(1);
-            String method = path.substring(path.lastIndexOf("/") + 1);
-            //System.out.println("method "+ method +" from path "+ path);
+            String[] subComponents = path.substring(CORE_URL.length()).split("/");
+            String method = subComponents[0];
+//            System.out.println("core method "+ method +" from path "+ path);
 
             try {
                 switch (method)
@@ -57,10 +58,10 @@ public class HTTPCoreNodeServer
                     case "getUsername":
                         getUsername(din, dout);
                         break;
-                    case "getAllUsernamesGzip":
+                    case "getUsernamesGzip":
                         exchange.getResponseHeaders().set("Content-Encoding", "gzip");
                         exchange.getResponseHeaders().set("Content-Type", "application/octet-stream");
-                        getAllUsernamesGzip(din, dout);
+                        getAllUsernamesGzip(subComponents.length > 1 ? subComponents[1] : "", din, dout);
                         break;
                     case "followRequest":
                         followRequest(din, dout);
@@ -145,9 +146,9 @@ public class HTTPCoreNodeServer
             Serialize.serialize(k, dout);
         }
 
-        void getAllUsernamesGzip(DataInputStream din, DataOutputStream dout) throws Exception
+        void getAllUsernamesGzip(String prefix, DataInputStream din, DataOutputStream dout) throws Exception
         {
-            byte[] res = coreNode.getAllUsernamesGzip().get();
+            byte[] res = coreNode.getUsernamesGzip(prefix).get();
             dout.write(res);
         }
 
@@ -226,7 +227,7 @@ public class HTTPCoreNodeServer
         else
             server = HttpServer.create(new InetSocketAddress(InetAddress.getLocalHost(), address.getPort()), CONNECTION_BACKLOG);
         ch = new CoreNodeHandler(coreNode);
-        server.createContext(CORE_URL, ch);
+        server.createContext("/" + CORE_URL, ch);
         //server.setExecutor(Executors.newFixedThreadPool(HANDLER_THREAD_COUNT));
         server.setExecutor(null);
     }

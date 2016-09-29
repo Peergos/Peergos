@@ -163,9 +163,9 @@ public class HTTPCoreNode implements CoreNode
         }
     }
 
-    @Override public CompletableFuture<byte[]> getAllUsernamesGzip()
+    @Override public CompletableFuture<byte[]> getUsernamesGzip(String prefix)
     {
-        return poster.post("core/getAllUsernamesGzip", new byte[0], false).thenApply(res -> {
+        return poster.post("core/getUsernamesGzip/"+prefix, new byte[0], false).thenApply(res -> {
             DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
             byte[] tmp = new byte[4096];

@@ -33,13 +33,14 @@ public class UserContext {
     private final SymmetricKey rootKey;
     private final SortedMap<UserPublicKey, EntryPoint> staticData = new TreeMap<>();
     private final TrieNode entrie = new TrieNode(); // ba dum che!
-    private Set<String> usernames;
+    private List<String> usernames;
     private final Fragmenter fragmenter;
 
     // Contact external world
     public final DHTClient dhtClient;
     public final CoreNode corenodeClient;
     public final Btree btree;
+
     // In process only
     public final SafeRandom random;
     private final LoginHasher hasher;
@@ -142,30 +143,41 @@ public class UserContext {
     }
 
     @JsMethod
-    public static CompletableFuture<UserContext> ensureSignedUp(String username, String password, int webPort) throws IOException {
+    public static CompletableFuture<UserContext> signIn(String username, String password) {
+        return ensureSignedUp(username, password, -1, true);
+    }
+
+    @JsMethod
+    public static CompletableFuture<UserContext> ensureSignedUp(String username, String password, int webPort) {
         return ensureSignedUp(username, password, webPort, true);
     }
 
-    public static CompletableFuture<UserContext> ensureSignedUp(String username, String password, int webPort, boolean useJavaScript) throws IOException {
+    public static CompletableFuture<UserContext> ensureSignedUp(String username, String password, int webPort, boolean useJavaScript) {
         if (useJavaScript) {
             System.setOut(new ConsolePrintStream());
         }
-        LoginHasher hasher = useJavaScript ? new ScryptJS() : new ScryptJava();
-        HttpPoster poster = useJavaScript ? new JavaScriptPoster() : new JavaPoster(new URL("http://localhost:" + webPort + "/"));
-        CoreNode coreNode = new HTTPCoreNode(poster);
-        DHTClient dht = new DHTClient.CachingDHTClient(new DHTClient.HTTP(poster), 1000, 50*1024);
-        Btree btree = new Btree.HTTP(poster);
+        try {
+            LoginHasher hasher = useJavaScript ? new ScryptJS() : new ScryptJava();
+            HttpPoster poster = useJavaScript ? new JavaScriptPoster() : new JavaPoster(new URL("http://localhost:" + webPort + "/"));
+            CoreNode coreNode = new HTTPCoreNode(poster);
+            DHTClient dht = new DHTClient.CachingDHTClient(new DHTClient.HTTP(poster), 1000, 50 * 1024);
+            Btree btree = new Btree.HTTP(poster);
 //        Btree btree = new BtreeImpl(coreNode, dht);
-        Salsa20Poly1305 provider = /*useJavaScript ? new SymmetricJS() :*/ new Salsa20Poly1305.Java();
-        SymmetricKey.addProvider(SymmetricKey.Type.TweetNaCl, provider);
-        Ed25519 signer = /*useJavaScript ? new JSEd25519() :*/ new JavaEd25519();
-        PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, signer);
-        SafeRandom random = /*useJavaScript ? new JSRandom() :*/ new SafeRandom.Java();
-        SymmetricKey.setRng(SymmetricKey.Type.TweetNaCl, random);
-        Curve25519 boxer = /*useJavaScript ? new JSCurve25519() :*/ new JavaCurve25519();
-        PublicBoxingKey.addProvider(PublicBoxingKey.Type.Curve25519, boxer);
-        PublicBoxingKey.setRng(PublicBoxingKey.Type.Curve25519, random);
-        return UserContext.ensureSignedUp(username, password, dht, btree, coreNode, hasher, provider, random, signer, boxer, useJavaScript);
+            Salsa20Poly1305 provider = /*useJavaScript ? new SymmetricJS() :*/ new Salsa20Poly1305.Java();
+            SymmetricKey.addProvider(SymmetricKey.Type.TweetNaCl, provider);
+            Ed25519 signer = /*useJavaScript ? new JSEd25519() :*/ new JavaEd25519();
+            PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, signer);
+            SafeRandom random = /*useJavaScript ? new JSRandom() :*/ new SafeRandom.Java();
+            SymmetricKey.setRng(SymmetricKey.Type.TweetNaCl, random);
+            Curve25519 boxer = /*useJavaScript ? new JSCurve25519() :*/ new JavaCurve25519();
+            PublicBoxingKey.addProvider(PublicBoxingKey.Type.Curve25519, boxer);
+            PublicBoxingKey.setRng(PublicBoxingKey.Type.Curve25519, random);
+            return UserContext.ensureSignedUp(username, password, dht, btree, coreNode, hasher, provider, random, signer, boxer, useJavaScript);
+        } catch (Throwable t) {
+            CompletableFuture<UserContext> failure = new CompletableFuture<>();
+            failure.completeExceptionally(t);
+            return failure;
+        }
     }
 
     public static CompletableFuture<UserContext> ensureSignedUp(String username, String password, DHTClient dht, Btree btree, CoreNode coreNode,
@@ -229,15 +241,15 @@ public class UserContext {
                         .thenCompose(sharedOpt -> {
                             if (!sharedOpt.isPresent())
                                 throw new IllegalStateException("Couldn't find shared folder!");
-                            return corenodeClient.getAllUsernames()
+                            return corenodeClient.getUsernames("")
                                     .thenApply(x -> {
-                                        usernames = x.stream().collect(Collectors.toSet());
+                                        usernames = x;
                                         return true;
                                     });
                         }));
     }
 
-    public Set<String> getUsernames() {
+    public List<String> getUsernames() {
         return usernames;
     }
 

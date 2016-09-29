@@ -142,7 +142,7 @@ public class UserService
         server.createContext(ACTIVATION_URL, new InverseProxyHandler("demo.peergos.net", isLocal));
         boolean caching = args.hasArg("webCache");
         server.createContext(UI_URL, new StaticHandler(webroot, caching, true));
-        server.createContext(HTTPCoreNodeServer.CORE_URL, new HTTPCoreNodeServer.CoreNodeHandler(coreNode));
+        server.createContext("/" + HTTPCoreNodeServer.CORE_URL, new HTTPCoreNodeServer.CoreNodeHandler(coreNode));
 
         BTreeHandlers bTreeHandlers = new BTreeHandlers(coreNode, dht);
 

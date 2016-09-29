@@ -523,12 +523,13 @@ public class JDBCCoreNode implements CoreNode {
     }
 
     @Override
-    public CompletableFuture<byte[]> getAllUsernamesGzip() {
+    public CompletableFuture<byte[]> getUsernamesGzip(String prefix) {
         Optional<byte[]> cached = userSet.getMostRecent();
         if (cached.isPresent())
             return CompletableFuture.completedFuture(cached.get());
-        try (PreparedStatement stmt = conn.prepareStatement("select name from usernames"))
+        try (PreparedStatement stmt = conn.prepareStatement("select name from usernames where name like ?"))
         {
+            stmt.setString(1, prefix + "%");
             ResultSet rs = stmt.executeQuery();
             List<String> list = new ArrayList<>();
             while (rs.next())
@@ -538,11 +539,8 @@ public class JDBCCoreNode implements CoreNode {
             }
 
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
-            try (DataOutputStream dout = new DataOutputStream(bout)) {
+            bout.write(JSONParser.toString(list).getBytes());
 
-                for (String uname : list)
-                    Serialize.serialize(uname, dout);
-            }
             ByteArrayOutputStream resBout = new ByteArrayOutputStream();
             GZIPOutputStream gout = new GZIPOutputStream(resBout);
             gout.write(bout.toByteArray());
