@@ -42,16 +42,16 @@ public class JDBCCoreNode implements CoreNode {
     private final UserSetCache userSet = new UserSetCache();
 
     private static class UserSetCache {
-        private volatile byte[] userSet = null;
+        private volatile List<String> userSet = null;
         private volatile LocalDateTime nextExpiry = LocalDateTime.MIN;
 
-        public Optional<byte[]> getMostRecent() {
+        public Optional<List<String>> getMostRecent() {
             if (LocalDateTime.now().isBefore(nextExpiry))
                 return Optional.of(userSet);
             return Optional.empty();
         }
 
-        public void setUserSet(byte[] set) {
+        public void setUserSet(List<String> set) {
             userSet = set;
             nextExpiry = LocalDateTime.now().plusNanos(MIN_USERNAME_SET_REFRESH_PERIOD);
         }
@@ -523,8 +523,8 @@ public class JDBCCoreNode implements CoreNode {
     }
 
     @Override
-    public CompletableFuture<byte[]> getUsernamesGzip(String prefix) {
-        Optional<byte[]> cached = userSet.getMostRecent();
+    public CompletableFuture<List<String>> getUsernames(String prefix) {
+        Optional<List<String>> cached = userSet.getMostRecent();
         if (cached.isPresent())
             return CompletableFuture.completedFuture(cached.get());
         try (PreparedStatement stmt = conn.prepareStatement("select name from usernames where name like ?"))
@@ -538,18 +538,9 @@ public class JDBCCoreNode implements CoreNode {
                 list.add(username);
             }
 
-            ByteArrayOutputStream bout = new ByteArrayOutputStream();
-            bout.write(JSONParser.toString(list).getBytes());
-
-            ByteArrayOutputStream resBout = new ByteArrayOutputStream();
-            GZIPOutputStream gout = new GZIPOutputStream(resBout);
-            gout.write(bout.toByteArray());
-            gout.flush();
-            gout.close();
-            byte[] res = resBout.toByteArray();
-            userSet.setUserSet(res);
-            return CompletableFuture.completedFuture(res);
-        } catch (IOException | SQLException e) {
+            userSet.setUserSet(list);
+            return CompletableFuture.completedFuture(list);
+        } catch (SQLException e) {
             throw new RuntimeException(e);
         }
     }

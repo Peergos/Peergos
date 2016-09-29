@@ -9,7 +9,6 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.ipfs.api.Multihash;
-import peergos.shared.merklebtree.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
@@ -32,7 +31,7 @@ public class UserContext {
     public final User user;
     private final SymmetricKey rootKey;
     private final SortedMap<UserPublicKey, EntryPoint> staticData = new TreeMap<>();
-    private final TrieNode entrie = new TrieNode(); // ba dum che!
+    private TrieNode entrie = new TrieNode(); // ba dum che!
     private List<String> usernames;
     private final Fragmenter fragmenter;
 
@@ -48,76 +47,6 @@ public class UserContext {
     private final Ed25519 signer;
     private final Curve25519 boxer;
     private final boolean useJavaScript;
-
-    private static class TrieNode {
-        Map<String, TrieNode> children = new HashMap<>();
-        Optional<EntryPoint> value = Optional.empty();
-
-        public CompletableFuture<Optional<FileTreeNode>> getByPath(String path, UserContext context) {
-            System.out.println("GetByPath: "+path);
-            String finalPath = path.startsWith("/") ? path.substring(1) : path;
-            if (finalPath.length() == 0) {
-                if (!value.isPresent()) { // find a child entry and traverse parent links
-                    return children.values().stream().findAny().get()
-                            .getByPath("", context)
-                            .thenCompose(child -> child.get().retrieveParent(context));
-                }
-                return !value.isPresent() ?
-                        CompletableFuture.completedFuture(Optional.empty()) :
-                        context.retrieveEntryPoint(value.get());
-            }
-            String[] elements = finalPath.split("/");
-            // There may be an entry point further down the tree, but it will have <= permission than this one
-            if (value.isPresent())
-                return context.retrieveEntryPoint(value.get())
-                        .thenCompose(dir -> dir.get().getDescendentByPath(finalPath, context));
-            if (!children.containsKey(elements[0]))
-                return CompletableFuture.completedFuture(Optional.empty());
-            return children.get(elements[0]).getByPath(finalPath.substring(elements[0].length()), context);
-        }
-
-        public CompletableFuture<Set<FileTreeNode>> getChildren(String path, UserContext context) {
-            String trimmedPath = path.startsWith("/") ? path.substring(1) : path;
-            if (trimmedPath.length() == 0) {
-                if (!value.isPresent()) { // find a child entry and traverse parent links
-                    Set<CompletableFuture<Optional<FileTreeNode>>> kids = children.values().stream()
-                            .map(t -> t.getByPath("", context)).collect(Collectors.toSet());
-                    return Futures.combineAll(kids)
-                            .thenApply(set -> set.stream()
-                                    .filter(opt -> opt.isPresent())
-                                    .map(opt -> opt.get())
-                                    .collect(Collectors.toSet()));
-                }
-                return context.retrieveEntryPoint(value.get())
-                        .thenCompose(dir -> dir.get().getChildren(context));
-            }
-            String[] elements = trimmedPath.split("/");
-            if (!children.containsKey(elements[0]))
-                return context.retrieveEntryPoint(value.get())
-                        .thenCompose(dir -> dir.get().getDescendentByPath(trimmedPath, context)
-                                .thenCompose(parent -> parent.get().getChildren(context)));
-            return children.get(elements[0]).getChildren(trimmedPath.substring(elements[0].length()), context);
-        }
-
-        public void put(String path, EntryPoint e) {
-            System.out.println("Entrie.put("+path+")");
-            if (path.startsWith("/"))
-                path = path.substring(1);
-            if (path.length() == 0) {
-                value = Optional.of(e);
-                return;
-            }
-            String[] elements = path.split("/");
-            if (!children.containsKey(elements[0]))
-                children.put(elements[0], new TrieNode());
-            children.get(elements[0]).put(path.substring(elements[0].length()), e);
-        }
-
-        public void clear() {
-            children.clear();
-            value = Optional.empty();
-        }
-    }
 
     public UserContext(String username, User user, SymmetricKey root, DHTClient dht, Btree btree, CoreNode coreNode,
                        LoginHasher hasher, Salsa20Poly1305 provider, SafeRandom random, Ed25519 signer, Curve25519 boxer, boolean useJavaScript) {
@@ -155,6 +84,7 @@ public class UserContext {
     public static CompletableFuture<UserContext> ensureSignedUp(String username, String password, int webPort, boolean useJavaScript) {
         if (useJavaScript) {
             System.setOut(new ConsolePrintStream());
+            System.setErr(new ConsolePrintStream());
         }
         try {
             LoginHasher hasher = useJavaScript ? new ScryptJS() : new ScryptJava();
@@ -229,24 +159,26 @@ public class UserContext {
         return result.thenCompose(ctx -> {
             System.out.println("Initializing context..");
             return ctx.init()
-                    .thenApply(res -> ctx)
-                    .exceptionally(Futures::logError);
-        });
+                    .thenApply(res -> ctx);
+        }).exceptionally(Futures::logError);
     }
 
     private CompletableFuture<Boolean> init() {
         staticData.clear();
         return createFileTree()
-                .thenCompose(y -> getByPath("/"+username + "/" + "shared")
-                        .thenCompose(sharedOpt -> {
-                            if (!sharedOpt.isPresent())
-                                throw new IllegalStateException("Couldn't find shared folder!");
-                            return corenodeClient.getUsernames("")
-                                    .thenApply(x -> {
-                                        usernames = x;
-                                        return true;
-                                    });
-                        }));
+                .thenCompose(root -> {
+                    this.entrie = root;
+                    return getByPath("/" + username + "/" + "shared")
+                            .thenCompose(sharedOpt -> {
+                                if (!sharedOpt.isPresent())
+                                    throw new IllegalStateException("Couldn't find shared folder!");
+                                return corenodeClient.getUsernames("")
+                                        .thenApply(x -> {
+                                            usernames = x;
+                                            return true;
+                                        });
+                            });
+                });
     }
 
     public List<String> getUsernames() {
@@ -350,7 +282,7 @@ public class UserContext {
     }
 
     public CompletableFuture<Set<FileTreeNode>> getFriendRoots() {
-        List<CompletableFuture<Optional<FileTreeNode>>> friendRoots = entrie.children.keySet()
+        List<CompletableFuture<Optional<FileTreeNode>>> friendRoots = entrie.getChildNames()
                 .stream()
                 .filter(p -> !p.startsWith(username))
                 .map(p -> getByPath(p)).collect(Collectors.toList());
@@ -586,14 +518,16 @@ public class UserContext {
         return true;
     }
 
-    private void addToStaticDataAndCommit(EntryPoint entry) throws IOException {
+    private CompletableFuture<TrieNode> addToStaticDataAndCommit(EntryPoint entry) throws IOException {
         addToStaticData(entry);
-        commitStaticData(user, staticData, rootKey, dhtClient, corenodeClient);
-        addEntryPoint(entry);
+        return commitStaticData(user, staticData, rootKey, dhtClient, corenodeClient)
+                .thenCompose(res -> addEntryPoint(entrie, entry));
     }
 
-    private static CompletableFuture<Boolean> commitStaticData(User user, SortedMap<UserPublicKey, EntryPoint> staticData, SymmetricKey rootKey
-            , DHTClient dhtClient, CoreNode corenodeClient) {
+    private static CompletableFuture<Boolean> commitStaticData(User user,
+                                                               SortedMap<UserPublicKey, EntryPoint> staticData,
+                                                               SymmetricKey rootKey,
+                                                               DHTClient dhtClient, CoreNode corenodeClient) {
         byte[] rawStatic = serializeStatic(staticData, rootKey);
         return dhtClient.put(rawStatic, user, Collections.emptyList())
                 .thenCompose(blobHash -> corenodeClient.getMetadataBlob(user)
@@ -751,24 +685,24 @@ public class UserContext {
                         .thenApply(opt -> opt.get()));
     }
 
-    private CompletableFuture<Boolean> createFileTree() {
+    /**
+     *
+     * @return TrieNode for root of filesystem
+     */
+    private CompletableFuture<TrieNode> createFileTree() {
         return getEntryPoints()
                 .thenCompose(entryPoints ->
-                        Futures.combineAll(entryPoints.stream().map(e -> addEntryPoint(e)).collect(Collectors.toList()))
-                            .thenApply(res -> true)
+                        Futures.reduceAll(entryPoints, entrie, (t, e) -> addEntryPoint(t, e), (a, b) -> a)
                 ).exceptionally(Futures::logError);
     }
 
-    private CompletableFuture<Boolean> addEntryPoint(EntryPoint e) {
+    private CompletableFuture<TrieNode> addEntryPoint(TrieNode root, EntryPoint e) {
         return retrieveEntryPoint(e).thenCompose(metadata -> {
             if (metadata.isPresent()) {
                 System.out.println("Added entry point: " + metadata.get());
-                return metadata.get().getPath(this).thenApply(path -> {
-                    entrie.put(path, e);
-                    return true;
-                });
+                return metadata.get().getPath(this).thenApply(path -> root.put(path, e));
             }
-            return CompletableFuture.completedFuture(false);
+            throw new IllegalStateException("Metadata blob not Present!");
         }).exceptionally(Futures::logError);
     }
 
@@ -791,7 +725,7 @@ public class UserContext {
         });
     }
 
-    private CompletableFuture<Optional<FileTreeNode>> retrieveEntryPoint(EntryPoint e) {
+    protected CompletableFuture<Optional<FileTreeNode>> retrieveEntryPoint(EntryPoint e) {
         return downloadEntryPoint(e)
                 .thenApply(faOpt ->faOpt.map(fa -> new FileTreeNode(new RetrievedFilePointer(e.pointer, fa), e.owner,
                         e.readers, e.writers, e.pointer.location.writer)));
@@ -880,7 +814,7 @@ public class UserContext {
     }
 
     public void logout() {
-        entrie.clear();
+        entrie = entrie.clear();
     }
 
     public Fragmenter fragmenter() {

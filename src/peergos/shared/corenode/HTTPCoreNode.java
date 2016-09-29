@@ -163,23 +163,10 @@ public class HTTPCoreNode implements CoreNode
         }
     }
 
-    @Override public CompletableFuture<byte[]> getUsernamesGzip(String prefix)
+    @Override public CompletableFuture<List<String>> getUsernames(String prefix)
     {
-        return poster.post("core/getUsernamesGzip/"+prefix, new byte[0], false).thenApply(res -> {
-            DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
-            ByteArrayOutputStream bout = new ByteArrayOutputStream();
-            byte[] tmp = new byte[4096];
-            int r;
-
-            try {
-                while ((r = din.read(tmp)) >= 0) {
-                    bout.write(tmp, 0, r);
-                }
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-            return bout.toByteArray();
-        });
+        return poster.postUnzip("core/getUsernamesGzip/"+prefix, new byte[0])
+                .thenApply(raw -> (List) JSONParser.parse(new String(raw)));
     }
 
     @Override public CompletableFuture<byte[]> getFollowRequests(UserPublicKey owner)

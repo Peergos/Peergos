@@ -8,8 +8,10 @@ import peergos.shared.crypto.*;
 import java.net.*;
 import java.io.*;
 import java.util.*;
+import java.util.zip.*;
 
 import com.sun.net.httpserver.*;
+import peergos.shared.ipfs.api.*;
 import peergos.shared.merklebtree.MaybeMultihash;
 import peergos.shared.util.Args;
 import peergos.shared.util.Serialize;
@@ -60,7 +62,7 @@ public class HTTPCoreNodeServer
                         break;
                     case "getUsernamesGzip":
                         exchange.getResponseHeaders().set("Content-Encoding", "gzip");
-                        exchange.getResponseHeaders().set("Content-Type", "application/octet-stream");
+                        exchange.getResponseHeaders().set("Content-Type", "application/json");
                         getAllUsernamesGzip(subComponents.length > 1 ? subComponents[1] : "", din, dout);
                         break;
                     case "followRequest":
@@ -148,8 +150,13 @@ public class HTTPCoreNodeServer
 
         void getAllUsernamesGzip(String prefix, DataInputStream din, DataOutputStream dout) throws Exception
         {
-            byte[] res = coreNode.getUsernamesGzip(prefix).get();
-            dout.write(res);
+            List<String> res = coreNode.getUsernames(prefix).get();
+            ByteArrayOutputStream bout = new ByteArrayOutputStream();
+            GZIPOutputStream gout = new GZIPOutputStream(bout);
+            gout.write(JSONParser.toString(res).getBytes());
+            gout.flush();
+            gout.close();
+            dout.write(bout.toByteArray());
         }
 
         void followRequest(DataInputStream din, DataOutputStream dout) throws Exception

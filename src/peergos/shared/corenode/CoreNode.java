@@ -9,6 +9,7 @@ import java.io.*;
 import java.sql.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.zip.*;
 
 public interface CoreNode {
     int MAX_PENDING_FOLLOWERS = 100;
@@ -29,11 +30,7 @@ public interface CoreNode {
         });
     }
 
-    CompletableFuture<byte[]> getUsernamesGzip(String prefix);
-
-    default CompletableFuture<List<String>> getUsernames(String prefix) {
-        return getUsernamesGzip(prefix).thenApply(gzip -> (List) JSONParser.parse(new String(gzip)));
-    }
+    CompletableFuture<List<String>> getUsernames(String prefix);
 
     CompletableFuture<Boolean> followRequest(UserPublicKey target, byte[] encryptedPermission);
 
