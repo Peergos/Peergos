@@ -1,5 +1,6 @@
 package peergos.server;
 
+import peergos.shared.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
@@ -115,7 +116,8 @@ public class Start
 
                     System.out.println("\n\nPeergos mounted at " + path + "\n\n");
 
-                    UserContext userContext = UserTests.ensureSignedUp(username, password, webPort);
+                    NetworkAccess network = NetworkAccess.buildJava(webPort);
+                    UserContext userContext = UserTests.ensureSignedUp(username, password, network);
                     PeergosFS peergosFS = new PeergosFS(userContext);
                     FuseProcess fuseProcess = new FuseProcess(peergosFS, path);
 

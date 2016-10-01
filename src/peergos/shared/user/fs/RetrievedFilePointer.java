@@ -34,9 +34,9 @@ public class RetrievedFilePointer {
         if (!this.fileAccess.isDirectory()) {
             this.fileAccess.removeFragments(context);
             CompletableFuture<Boolean> result = new CompletableFuture<>();
-            context.btree.remove(this.filePointer.location.writer, this.filePointer.location.getMapKey()).thenAccept(treeRootHashCAS -> {
+            context.network.btree.remove(this.filePointer.location.writer, this.filePointer.location.getMapKey()).thenAccept(treeRootHashCAS -> {
                 byte[] signed = ((User) filePointer.location.writer).signMessage(treeRootHashCAS.toByteArray());
-                context.corenodeClient.setMetadataBlob(this.filePointer.location.owner, this.filePointer.location.writer, signed);
+                context.network.coreNode.setMetadataBlob(this.filePointer.location.owner, this.filePointer.location.writer, signed);
                 // remove from parent
                 if (parentRetrievedFilePointer != null)
                     ((DirAccess) parentRetrievedFilePointer.fileAccess).removeChild(this, parentRetrievedFilePointer.filePointer, context);
@@ -48,9 +48,9 @@ public class RetrievedFilePointer {
             for (RetrievedFilePointer file : files)
                 file.remove(context, null);
             CompletableFuture<Boolean> result = new CompletableFuture<>();
-            context.btree.remove(this.filePointer.location.writer, this.filePointer.location.getMapKey()).thenAccept(treeRootHashCAS -> {
+            context.network.btree.remove(this.filePointer.location.writer, this.filePointer.location.getMapKey()).thenAccept(treeRootHashCAS -> {
                 byte[] signed = ((User) filePointer.location.writer).signMessage(treeRootHashCAS.toByteArray());
-                context.corenodeClient.setMetadataBlob(this.filePointer.location.owner, this.filePointer.location.writer, signed).thenAccept(res -> {
+                context.network.coreNode.setMetadataBlob(this.filePointer.location.owner, this.filePointer.location.writer, signed).thenAccept(res -> {
                     // remove from parent
                     if (parentRetrievedFilePointer != null)
                         ((DirAccess) parentRetrievedFilePointer.fileAccess).removeChild(this, parentRetrievedFilePointer.filePointer, context);

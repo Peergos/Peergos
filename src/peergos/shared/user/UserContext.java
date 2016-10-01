@@ -1,6 +1,6 @@
 package peergos.shared.user;
 
-import peergos.client.*;
+import peergos.shared.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
@@ -13,7 +13,6 @@ import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
 import java.io.*;
-import java.net.*;
 import java.nio.file.*;
 import java.time.*;
 import java.util.*;
@@ -36,9 +35,7 @@ public class UserContext {
     private final Fragmenter fragmenter;
 
     // Contact external world
-    public final DHTClient dhtClient;
-    public final CoreNode corenodeClient;
-    public final Btree btree;
+    public final NetworkAccess network;
 
     // In process only
     public final SafeRandom random;
@@ -46,53 +43,41 @@ public class UserContext {
     private final Salsa20Poly1305 symmetricProvider;
     private final Ed25519 signer;
     private final Curve25519 boxer;
-    private final boolean useJavaScript;
 
-    public UserContext(String username, User user, SymmetricKey root, DHTClient dht, Btree btree, CoreNode coreNode,
-                       LoginHasher hasher, Salsa20Poly1305 provider, SafeRandom random, Ed25519 signer, Curve25519 boxer, boolean useJavaScript) {
-        this(username, user, root, dht, btree, coreNode, hasher, provider, random, signer, boxer, new ErasureFragmenter(40, 10), useJavaScript);
+    public UserContext(String username, User user, SymmetricKey root, NetworkAccess network,
+                       LoginHasher hasher, Salsa20Poly1305 provider, SafeRandom random, Ed25519 signer, Curve25519 boxer) {
+        this(username, user, root, network, hasher, provider, random, signer, boxer, new ErasureFragmenter(40, 10));
     }
 
-    public UserContext(String username, User user, SymmetricKey root, DHTClient dht, Btree btree, CoreNode coreNode,
+    public UserContext(String username, User user, SymmetricKey root, NetworkAccess network,
                        LoginHasher hasher, Salsa20Poly1305 provider, SafeRandom random, Ed25519 signer,
-                       Curve25519 boxer, Fragmenter fragmenter, boolean useJavaScript) {
+                       Curve25519 boxer, Fragmenter fragmenter) {
         this.username = username;
         this.user = user;
         this.rootKey = root;
-        this.dhtClient = dht;
-        this.corenodeClient = coreNode;
-        this.btree = btree;
+        this.network = network;
         this.hasher = hasher;
         this.symmetricProvider = provider;
         this.random = random;
         this.signer = signer;
         this.boxer = boxer;
         this.fragmenter = fragmenter;
-        this.useJavaScript = useJavaScript;
     }
 
     @JsMethod
-    public static CompletableFuture<UserContext> signIn(String username, String password) {
-        return ensureSignedUp(username, password, -1, true);
+    public static CompletableFuture<UserContext> signIn(String username, String password, NetworkAccess network) {
+        return ensureSignedUp(username, password);
     }
 
     @JsMethod
-    public static CompletableFuture<UserContext> ensureSignedUp(String username, String password, int webPort) {
-        return ensureSignedUp(username, password, webPort, true);
+    public static CompletableFuture<UserContext> ensureSignedUp(String username, String password) {
+        return ensureSignedUp(username, password, NetworkAccess.buildJS(), true);
     }
 
-    public static CompletableFuture<UserContext> ensureSignedUp(String username, String password, int webPort, boolean useJavaScript) {
-        if (useJavaScript) {
-            System.setOut(new ConsolePrintStream());
-            System.setErr(new ConsolePrintStream());
-        }
+    public static CompletableFuture<UserContext> ensureSignedUp(String username, String password, NetworkAccess network, boolean useJavaScript) {
         try {
             LoginHasher hasher = useJavaScript ? new ScryptJS() : new ScryptJava();
-            HttpPoster poster = useJavaScript ? new JavaScriptPoster() : new JavaPoster(new URL("http://localhost:" + webPort + "/"));
-            CoreNode coreNode = new HTTPCoreNode(poster);
-            DHTClient dht = new DHTClient.CachingDHTClient(new DHTClient.HTTP(poster), 1000, 50 * 1024);
-            Btree btree = new Btree.HTTP(poster);
-//        Btree btree = new BtreeImpl(coreNode, dht);
+
             Salsa20Poly1305 provider = /*useJavaScript ? new SymmetricJS() :*/ new Salsa20Poly1305.Java();
             SymmetricKey.addProvider(SymmetricKey.Type.TweetNaCl, provider);
             Ed25519 signer = /*useJavaScript ? new JSEd25519() :*/ new JavaEd25519();
@@ -102,7 +87,7 @@ public class UserContext {
             Curve25519 boxer = /*useJavaScript ? new JSCurve25519() :*/ new JavaCurve25519();
             PublicBoxingKey.addProvider(PublicBoxingKey.Type.Curve25519, boxer);
             PublicBoxingKey.setRng(PublicBoxingKey.Type.Curve25519, random);
-            return UserContext.ensureSignedUp(username, password, dht, btree, coreNode, hasher, provider, random, signer, boxer, useJavaScript);
+            return UserContext.ensureSignedUp(username, password, network, hasher, provider, random, signer, boxer);
         } catch (Throwable t) {
             CompletableFuture<UserContext> failure = new CompletableFuture<>();
             failure.completeExceptionally(t);
@@ -110,15 +95,15 @@ public class UserContext {
         }
     }
 
-    public static CompletableFuture<UserContext> ensureSignedUp(String username, String password, DHTClient dht, Btree btree, CoreNode coreNode,
+    public static CompletableFuture<UserContext> ensureSignedUp(String username, String password, NetworkAccess network,
                                              LoginHasher hasher, Salsa20Poly1305 provider, SafeRandom random,
-                                             Ed25519 signer, Curve25519 boxer, boolean useJavaScript) {
+                                             Ed25519 signer, Curve25519 boxer) {
 
         CompletableFuture<UserContext> result = new CompletableFuture<>();
         
         UserUtil.generateUser(username, password, hasher, provider, random, signer, boxer).thenAccept(userWithRoot -> {
             UserContext context = new UserContext(username, userWithRoot.getUser(), userWithRoot.getRoot(),
-                    dht, btree, coreNode, hasher, provider, random, signer, boxer, useJavaScript);
+                    network, hasher, provider, random, signer, boxer);
             System.out.println("made user context");
             
             context.isRegistered().thenAccept(registered -> {
@@ -172,7 +157,7 @@ public class UserContext {
                             .thenCompose(sharedOpt -> {
                                 if (!sharedOpt.isPresent())
                                     throw new IllegalStateException("Couldn't find shared folder!");
-                                return corenodeClient.getUsernames("")
+                                return network.coreNode.getUsernames("")
                                         .thenApply(x -> {
                                             usernames = x;
                                             return true;
@@ -192,7 +177,7 @@ public class UserContext {
     @JsMethod
     public CompletableFuture<Boolean> isRegistered() {
         System.out.println("isRegistered");
-        return corenodeClient.getUsername(user).thenApply(registeredUsername -> {
+        return network.coreNode.getUsername(user).thenApply(registeredUsername -> {
             System.out.println("got username \"" + registeredUsername + "\"");
             return this.username.equals(registeredUsername);
         });
@@ -200,7 +185,7 @@ public class UserContext {
 
     @JsMethod
     public CompletableFuture<Boolean> isAvailable() {
-        return corenodeClient.getPublicKey(username)
+        return network.coreNode.getPublicKey(username)
                 .thenApply(publicKey -> !publicKey.isPresent());
     }
 
@@ -218,7 +203,7 @@ public class UserContext {
         LocalDate expiry = now.plusMonths(2);
         System.out.println("claiming username: "+username + " with expiry " + expiry);
         List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createInitial(user, username, expiry);
-        return corenodeClient.updateChain(username, claimChain);
+        return network.coreNode.updateChain(username, claimChain);
     }
 
     @JsMethod
@@ -230,17 +215,17 @@ public class UserContext {
 
         CompletableFuture<UserContext> result = new CompletableFuture<>();
         UserUtil.generateUser(username, newPassword, hasher, symmetricProvider, random, signer, boxer).thenAccept(updatedUser -> {
-	        commitStaticData(updatedUser.getUser(), staticData, updatedUser.getRoot(), dhtClient, corenodeClient).thenApply(updated -> {
+	        commitStaticData(updatedUser.getUser(), staticData, updatedUser.getRoot(), network).thenApply(updated -> {
 	            if (!updated)
 	                return result.completeExceptionally(new IllegalStateException("Change Password Failed: couldn't upload new file system entry points!"));
 	
 	            List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createChain(user, updatedUser.getUser(), username, expiry);
-	            return corenodeClient.updateChain(username, claimChain).thenApply(updatedChain -> {
+	            return network.coreNode.updateChain(username, claimChain).thenApply(updatedChain -> {
 	                if (!updatedChain)
 	                    return result.completeExceptionally(new IllegalStateException("Couldn't register new public keys during password change!"));
 	
-	                return UserContext.ensureSignedUp(username, newPassword, dhtClient, btree, corenodeClient,
-	                        hasher, symmetricProvider, random, signer, boxer, useJavaScript)
+	                return UserContext.ensureSignedUp(username, newPassword, network,
+	                        hasher, symmetricProvider, random, signer, boxer)
 	                        .thenApply(context -> result.complete(context));
 	            });
 	        });
@@ -520,24 +505,24 @@ public class UserContext {
 
     private CompletableFuture<TrieNode> addToStaticDataAndCommit(EntryPoint entry) throws IOException {
         addToStaticData(entry);
-        return commitStaticData(user, staticData, rootKey, dhtClient, corenodeClient)
+        return commitStaticData(user, staticData, rootKey, network)
                 .thenCompose(res -> addEntryPoint(entrie, entry));
     }
 
     private static CompletableFuture<Boolean> commitStaticData(User user,
                                                                SortedMap<UserPublicKey, EntryPoint> staticData,
                                                                SymmetricKey rootKey,
-                                                               DHTClient dhtClient, CoreNode corenodeClient) {
+                                                               NetworkAccess network) {
         byte[] rawStatic = serializeStatic(staticData, rootKey);
-        return dhtClient.put(rawStatic, user, Collections.emptyList())
-                .thenCompose(blobHash -> corenodeClient.getMetadataBlob(user)
+        return network.dhtClient.put(rawStatic, user, Collections.emptyList())
+                .thenCompose(blobHash -> network.coreNode.getMetadataBlob(user)
                         .thenCompose(currentHash -> {
                             DataSink bout = new DataSink();
                             try {
                                 currentHash.serialize(bout);
                                 bout.writeArray(blobHash.toBytes());
                                 byte[] signed = user.signMessage(bout.toByteArray());
-                                return corenodeClient.setMetadataBlob(user, user, signed);
+                                return network.coreNode.setMetadataBlob(user, user, signed);
                             } catch (IOException e) {
                                 throw new RuntimeException(e);
                             }
@@ -553,7 +538,7 @@ public class UserContext {
             Map.Entry<UserPublicKey, EntryPoint> entry = iter.next();
             if (entry.getValue().pointer.equals(pointer)) {
                 iter.remove();
-                return commitStaticData(user, staticData, rootKey, dhtClient, corenodeClient);
+                return commitStaticData(user, staticData, rootKey, network);
             }
         }
         return CompletableFuture.completedFuture(true);
@@ -629,7 +614,7 @@ public class UserContext {
     }
 
     private CompletableFuture<Multihash> uploadFragment(Fragment f, UserPublicKey targetUser) {
-        return dhtClient.put(f.data, targetUser, Collections.emptyList());
+        return network.dhtClient.put(f.data, targetUser, Collections.emptyList());
     }
 
     public CompletableFuture<List<Multihash>> uploadFragments(List<Fragment> fragments, UserPublicKey owner, UserPublicKey sharer, byte[] mapKey, Consumer<Long> progressCounter) {
@@ -651,13 +636,13 @@ public class UserContext {
             metadata.serialize(dout);
             byte[] metaBlob = dout.toByteArray();
             System.out.println("Storing metadata blob of " + metaBlob.length + " bytes. to mapKey: " + location.toString());
-            return dhtClient.put(metaBlob, location.owner, linkHashes).thenCompose(blobHash -> {
+            return network.dhtClient.put(metaBlob, location.owner, linkHashes).thenCompose(blobHash -> {
                 User sharer = (User) location.writer;
-                return btree.put(sharer, location.getMapKey(), blobHash).thenCompose(newBtreeRootCAS -> {
+                return network.btree.put(sharer, location.getMapKey(), blobHash).thenCompose(newBtreeRootCAS -> {
                     if (newBtreeRootCAS.left.equals(newBtreeRootCAS.right))
                         return CompletableFuture.completedFuture(true);
                     byte[] signed = sharer.signMessage(newBtreeRootCAS.toByteArray());
-                    return corenodeClient.setMetadataBlob(location.owner, sharer, signed);
+                    return network.coreNode.setMetadataBlob(location.owner, sharer, signed);
                 });
             });
         } catch (Exception e) {
@@ -680,8 +665,8 @@ public class UserContext {
     }
 
     private CompletableFuture<byte[]> getStaticData() {
-        return corenodeClient.getMetadataBlob(user.toUserPublicKey())
-                .thenCompose(key -> dhtClient.get(key.get())
+        return network.coreNode.getMetadataBlob(user.toUserPublicKey())
+                .thenCompose(key -> network.dhtClient.get(key.get())
                         .thenApply(opt -> opt.get()));
     }
 
@@ -733,9 +718,9 @@ public class UserContext {
 
     private CompletableFuture<Optional<FileAccess>> downloadEntryPoint(EntryPoint entry) {
         // download the metadata blob for this entry point
-        return btree.get(entry.pointer.location.writer, entry.pointer.location.getMapKey()).thenCompose(btreeValue -> {
+        return network.btree.get(entry.pointer.location.writer, entry.pointer.location.getMapKey()).thenCompose(btreeValue -> {
             if (btreeValue.isPresent())
-                return dhtClient.get(btreeValue.get())
+                return network.dhtClient.get(btreeValue.get())
                         .thenApply(value -> value.map(FileAccess::deserialize));
             return CompletableFuture.completedFuture(Optional.empty());
         });
@@ -745,8 +730,8 @@ public class UserContext {
         List<CompletableFuture<Optional<RetrievedFilePointer>>> all = links.stream()
                 .map(link -> {
                     Location loc = link.targetLocation(baseKey);
-                    return btree.get(loc.writer, loc.getMapKey())
-                            .thenCompose(key -> dhtClient.get(key.get()))
+                    return network.btree.get(loc.writer, loc.getMapKey())
+                            .thenCompose(key -> network.dhtClient.get(key.get()))
                             .thenApply(dataOpt -> {
                                 if (!dataOpt.isPresent() || dataOpt.get().length == 0)
                                     return Optional.<RetrievedFilePointer>empty();
@@ -763,17 +748,17 @@ public class UserContext {
     public CompletableFuture<Optional<FileAccess>> getMetadata(Location loc) {
         if (loc == null)
             return CompletableFuture.completedFuture(Optional.empty());
-        return btree.get(loc.writer, loc.getMapKey()).thenCompose(blobHash -> {
+        return network.btree.get(loc.writer, loc.getMapKey()).thenCompose(blobHash -> {
             if (!blobHash.isPresent())
                 return CompletableFuture.completedFuture(Optional.empty());
-            return dhtClient.get(blobHash.get())
+            return network.dhtClient.get(blobHash.get())
                     .thenApply(rawOpt -> rawOpt.map(FileAccess::deserialize));
         });
     };
 
     public CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Multihash> hashes, Consumer<Long> monitor) {
         List<CompletableFuture<Optional<FragmentWithHash>>> futures = hashes.stream()
-                .map(h -> dhtClient.get(h)
+                .map(h -> network.dhtClient.get(h)
                         .thenApply(dataOpt -> {
                             monitor.accept(1L);
                             return dataOpt.map(data -> new FragmentWithHash(new Fragment(data), h));

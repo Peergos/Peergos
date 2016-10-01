@@ -3,6 +3,7 @@ package peergos.server.tests;
 import org.junit.*;
 import org.junit.runner.*;
 import org.junit.runners.*;
+import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.server.*;
@@ -12,6 +13,7 @@ import peergos.shared.util.*;
 
 import java.io.*;
 import java.lang.reflect.*;
+import java.net.*;
 import java.nio.file.*;
 import java.util.*;
 import java.util.stream.*;
@@ -21,12 +23,12 @@ import static org.junit.Assert.assertTrue;
 @RunWith(Parameterized.class)
 public class MultiUserTests {
 
-    private final int webPort;
-    private final int corePort;
+    private final NetworkAccess network;
     private final int userCount;
     public MultiUserTests(String useIPFS, Random r, int userCount) throws Exception {
-        this.webPort = 9000 + r.nextInt(1000);
-        this.corePort = 10000 + r.nextInt(1000);
+        int webPort = 9000 + r.nextInt(1000);
+        int corePort = 10000 + r.nextInt(1000);
+        this.network = NetworkAccess.buildJava(new URL("http://localhost:" + webPort));
         this.userCount = userCount;
         if (userCount  < 2)
             throw new IllegalStateException();
@@ -64,7 +66,7 @@ public class MultiUserTests {
                 .mapToObj(e -> {
                     String username = username(e);
                     try {
-                        return UserTests.ensureSignedUp(username, username, webPort);
+                        return UserTests.ensureSignedUp(username, username, network);
                     } catch (Exception ioe) {
                         throw new IllegalStateException(ioe);
                     }}).collect(Collectors.toList());
@@ -72,7 +74,7 @@ public class MultiUserTests {
 
     @Test
     public void shareAndUnshareFile() throws Exception {
-        UserContext u1 = UserTests.ensureSignedUp("a", "a", webPort);
+        UserContext u1 = UserTests.ensureSignedUp("a", "a", network);
 
         // send follow requests from each other user to "a"
         List<UserContext> userContexts = getUserContexts(userCount);
@@ -132,7 +134,7 @@ public class MultiUserTests {
                 .skip(1)
                 .collect(Collectors.toList());
 
-        UserContext u1New = UserTests.ensureSignedUp("a", "a", webPort);
+        UserContext u1New = UserTests.ensureSignedUp("a", "a", network);
 
         // check remaining users can still read it
         for (UserContext userContext : remainingUsers) {
@@ -164,7 +166,7 @@ public class MultiUserTests {
         Assert.assertTrue(0 < userCount);
 
         String u1nameAndPasword = "a";
-        UserContext u1 = UserTests.ensureSignedUp(u1nameAndPasword, u1nameAndPasword, webPort);
+        UserContext u1 = UserTests.ensureSignedUp(u1nameAndPasword, u1nameAndPasword, network);
 //        UserContext u2 = UserTests.ensureSignedUp("b", "b", webPort);
         List<UserContext> users = new ArrayList<>();
         List<String>  userNames =  new ArrayList<>(), userPasswords = new ArrayList<>();
@@ -174,7 +176,7 @@ public class MultiUserTests {
         }
 
         for (int i = 0; i < userCount; i++)
-            users.add(UserTests.ensureSignedUp(userNames.get(i), userPasswords.get(i), webPort));
+            users.add(UserTests.ensureSignedUp(userNames.get(i), userPasswords.get(i), network));
 
         for (UserContext user : users)
             user.sendFollowRequest(u1.username, SymmetricKey.random());
@@ -245,11 +247,11 @@ public class MultiUserTests {
 //        }
 
         //test that u2 cannot access it from scratch
-        UserContext u1New = UserTests.ensureSignedUp(u1nameAndPasword, u1nameAndPasword, webPort);
+        UserContext u1New = UserTests.ensureSignedUp(u1nameAndPasword, u1nameAndPasword, network);
 
         List<UserContext>  usersNew = new ArrayList<>();
         for (int i = 0; i < userCount; i++)
-            usersNew.add(UserTests.ensureSignedUp(userNames.get(i), userPasswords.get(i), webPort));
+            usersNew.add(UserTests.ensureSignedUp(userNames.get(i), userPasswords.get(i), network));
 
         for (int i = 0; i < usersNew.size(); i++) {
             UserContext user = usersNew.get(i);
@@ -296,8 +298,8 @@ public class MultiUserTests {
 
     @Test
     public void acceptAndReciprocateFollowRequest() throws Exception {
-        UserContext u1 = UserTests.ensureSignedUp("q", "q", webPort);
-        UserContext u2 = UserTests.ensureSignedUp("w", "w", webPort);
+        UserContext u1 = UserTests.ensureSignedUp("q", "q", network);
+        UserContext u2 = UserTests.ensureSignedUp("w", "w", network);
         u2.sendFollowRequest(u1.username, SymmetricKey.random());
         List<FollowRequest> u1Requests = u1.getFollowRequests().get();
         assertTrue("Receive a follow request", u1Requests.size() > 0);
@@ -312,8 +314,8 @@ public class MultiUserTests {
 
     @Test
     public void acceptButNotReciprocateFollowRequest() throws Exception {
-        UserContext u1 = UserTests.ensureSignedUp("q", "q", webPort);
-        UserContext u2 = UserTests.ensureSignedUp("w", "w", webPort);
+        UserContext u1 = UserTests.ensureSignedUp("q", "q", network);
+        UserContext u2 = UserTests.ensureSignedUp("w", "w", network);
         u2.sendFollowRequest(u1.username, SymmetricKey.random());
         List<FollowRequest> u1Requests = u1.getFollowRequests().get();
         assertTrue("Receive a follow request", u1Requests.size() > 0);
@@ -329,8 +331,8 @@ public class MultiUserTests {
 
     @Test
     public void rejectFollowRequest() throws Exception {
-        UserContext u1 = UserTests.ensureSignedUp("q", "q", webPort);
-        UserContext u2 = UserTests.ensureSignedUp("w", "w", webPort);
+        UserContext u1 = UserTests.ensureSignedUp("q", "q", network);
+        UserContext u2 = UserTests.ensureSignedUp("w", "w", network);
         u2.sendFollowRequest(u1.username, SymmetricKey.random());
         List<FollowRequest> u1Requests = u1.getFollowRequests().get();
         assertTrue("Receive a follow request", u1Requests.size() > 0);
@@ -345,8 +347,8 @@ public class MultiUserTests {
 
     @Test
     public void reciprocateButNotAcceptFollowRequest() throws Exception {
-        UserContext u1 = UserTests.ensureSignedUp("q", "q", webPort);
-        UserContext u2 = UserTests.ensureSignedUp("w", "w", webPort);
+        UserContext u1 = UserTests.ensureSignedUp("q", "q", network);
+        UserContext u2 = UserTests.ensureSignedUp("w", "w", network);
         u2.sendFollowRequest(u1.username, SymmetricKey.random());
         List<FollowRequest> u1Requests = u1.getFollowRequests().get();
         assertTrue("Receive a follow request", u1Requests.size() > 0);

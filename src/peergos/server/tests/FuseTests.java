@@ -4,6 +4,7 @@ import org.junit.*;
 import static org.junit.Assert.*;
 import static java.util.UUID.*;
 
+import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.server.fuse.*;
 import peergos.server.Start;
@@ -64,7 +65,8 @@ public class FuseTests {
                 "-corenodePort", Integer.toString(CORE_PORT)});
 
         Start.local(args);
-        UserContext userContext = UserContext.ensureSignedUp(username, password, WEB_PORT).get();
+        NetworkAccess network = NetworkAccess.buildJava(WEB_PORT);
+        UserContext userContext = UserContext.ensureSignedUp(username, password, network, false).get();
 
         String mountPath = args.getArg("mountPoint", "/tmp/peergos/tmp");
 

@@ -5,6 +5,7 @@ import static org.junit.Assert.*;
 
 import org.junit.runner.*;
 import org.junit.runners.*;
+import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
 import peergos.shared.crypto.hash.*;
@@ -17,6 +18,7 @@ import peergos.shared.util.*;
 
 import java.io.*;
 import java.lang.reflect.*;
+import java.net.*;
 import java.nio.file.*;
 import java.util.*;
 import java.util.stream.*;
@@ -25,16 +27,16 @@ import java.util.stream.*;
 public class UserTests {
 
     public static int RANDOM_SEED = 666;
-    private final int webPort;
-    private final int corePort;
+    private final NetworkAccess network;
 
     private static Random random = new Random(RANDOM_SEED);
 
     public UserTests(String useIPFS, Random r) throws Exception {
-        this.webPort = 9000 + r.nextInt(1000);
-        this.corePort = 10000 + r.nextInt(1000);
+        int webPort = 9000 + r.nextInt(1000);
+        int corePort = 10000 + r.nextInt(1000);
         Args args = Args.parse(new String[]{"useIPFS", ""+useIPFS.equals("IPFS"), "-port", Integer.toString(webPort), "-corenodePort", Integer.toString(corePort)});
         Start.local(args);
+        this.network = NetworkAccess.buildJava(new URL("http://localhost:" + webPort));
         // use insecure random otherwise tests take ages
         setFinalStatic(TweetNaCl.class.getDeclaredField("prng"), new Random(1));
     }
@@ -75,45 +77,45 @@ public class UserTests {
     public void randomSignup() throws Exception {
         String username = "test" + (System.currentTimeMillis() % 10000);
         String password = "password";
-        ensureSignedUp(username, password, webPort);
+        ensureSignedUp(username, password, network);
     }
 
     @Test
     public void changePassword() throws Exception {
         String username = "test" + (System.currentTimeMillis() % 10000);
         String password = "password";
-        UserContext userContext = ensureSignedUp(username, password, webPort);
+        UserContext userContext = ensureSignedUp(username, password, network);
         String newPassword = "newPassword";
         userContext.changePassword(newPassword);
-        ensureSignedUp(username, newPassword, webPort);
+        ensureSignedUp(username, newPassword, network);
 
     }
     @Test
     public void changePasswordFAIL() throws Exception {
         String username = "test" + (System.currentTimeMillis() % 10000);
         String password = "password";
-        UserContext userContext = ensureSignedUp(username, password, webPort);
+        UserContext userContext = ensureSignedUp(username, password, network);
         String newPassword = "passwordtest";
         UserContext newContext = userContext.changePassword(newPassword).get();
 
         try {
-            UserContext oldContext = ensureSignedUp(username, password, webPort);
+            UserContext oldContext = ensureSignedUp(username, password, network);
         } catch (IllegalStateException e) {
             if (!e.getMessage().contains("username already registered"))
                 throw e;
         }
     }
 
-    public static UserContext ensureSignedUp(String username, String password, int webPort) throws Exception {
+    public static UserContext ensureSignedUp(String username, String password, NetworkAccess network) throws Exception {
         boolean useJavaScript = false;
-        return UserContext.ensureSignedUp(username, password, webPort, useJavaScript).get();
+        return UserContext.ensureSignedUp(username, password, network, useJavaScript).get();
     }
 
     @Test
     public void writeReadVariations() throws Exception {
         String username = "test01";
         String password = "test01";
-        UserContext context = ensureSignedUp(username, password, webPort);
+        UserContext context = ensureSignedUp(username, password, network);
         FileTreeNode userRoot = context.getUserRoot().get();
 
         String filename = "somedata.txt";
@@ -151,7 +153,7 @@ public class UserTests {
         // check from the root as well
         checkFileContents(data3, context.getByPath(username + "/" + newname).get().get(), context);
         // check from a fresh log in too
-        UserContext context2 = ensureSignedUp(username, password, webPort);
+        UserContext context2 = ensureSignedUp(username, password, network);
         checkFileContents(data3, context2.getByPath(username + "/" + newname).get().get(), context);
     }
 
@@ -159,7 +161,7 @@ public class UserTests {
     public void mediumFileWrite() throws Exception {
         String username = "test01";
         String password = "test01";
-        UserContext context = ensureSignedUp(username, password, webPort);
+        UserContext context = ensureSignedUp(username, password, network);
         FileTreeNode userRoot = context.getUserRoot().get();
 
         String filename = "mediumfile.bin";
@@ -186,7 +188,7 @@ public class UserTests {
     public void writeTiming() throws Exception {
         String username = "test01";
         String password = "test01";
-        UserContext context = ensureSignedUp(username, password, webPort);
+        UserContext context = ensureSignedUp(username, password, network);
         FileTreeNode userRoot = context.getUserRoot().get();
 
         String filename = "mediumfile.bin";
@@ -208,7 +210,7 @@ public class UserTests {
     public void hugeFolder() throws Exception {
         String username = "test01";
         String password = "test01";
-        UserContext context = ensureSignedUp(username, password, webPort);
+        UserContext context = ensureSignedUp(username, password, network);
         FileTreeNode userRoot = context.getUserRoot().get();
         List<String> names = new ArrayList<>();
         IntStream.range(0, 2000).forEach(i -> names.add(randomString()));
@@ -227,7 +229,7 @@ public class UserTests {
     public void readWriteTest() throws Exception {
         String username = "test01";
         String password = "test01";
-        UserContext context = ensureSignedUp(username, password, webPort);
+        UserContext context = ensureSignedUp(username, password, network);
         FileTreeNode userRoot = context.getUserRoot().get();
 
         Set<FileTreeNode> children = userRoot.getChildren(context).get();
