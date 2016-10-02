@@ -465,7 +465,7 @@ public class UserContext {
                 );
     }
 
-    private CompletableFuture<Boolean> removeFromStaticData(FileTreeNode fileTreeNode) throws IOException {
+    private CompletableFuture<Boolean> removeFromStaticData(FileTreeNode fileTreeNode) {
         ReadableFilePointer pointer = fileTreeNode.getPointer().filePointer;
         // find and remove matching entry point
         Iterator<Map.Entry<UserPublicKey, EntryPoint>> iter = staticData.entrySet().iterator();
@@ -710,27 +710,27 @@ public class UserContext {
         return res;
     }
 
-    public void unfollow(String username) throws IOException {
-        /*
-        System.out.println("Unfollowing: "+username);
+    public CompletableFuture<Boolean> unfollow(String friendName) throws IOException {
+        System.out.println("Unfollowing: "+friendName);
         // remove entry point from static data
-        Optional<FileTreeNode> dir = getByPath("/"+username+"/shared/"+username);
-        // remove our static data entry storing that we've granted them access
-        removeFromStaticData(dir.get());
-        Optional<FileTreeNode> entry = getByPath("/"+username);
-        entry.get().remove(this, FileTreeNode.createRoot());*/
-        throw new IllegalStateException("Unimplemented!");
+        String friendPath = "/" + friendName + "/shared/" + username;
+        return getByPath(friendPath)
+                // remove our static data entry storing that they've granted us access
+                .thenCompose(dir -> removeFromStaticData(dir.get()))
+                .thenApply(b -> {
+                    entrie = entrie.removeEntry(friendPath);
+                    return true;
+                });
     }
 
-    public void removeFollower(String username) throws IOException {
-        /*
+    public CompletableFuture<Boolean> removeFollower(String username) throws IOException {
         System.out.println("Remove follower: " + username);
         // remove /$us/shared/$them
-        Optional<FileTreeNode> dir = getByPath("/"+username+"/shared/"+username);
-        dir.get().remove(this, getSharingFolder());
-        // remove our static data entry storing that we've granted them access
-        removeFromStaticData(dir.get());*/
-        throw new IllegalStateException("Unimplemented!");
+        return getSharingFolder()
+                .thenCompose(sharing -> getByPath("/"+this.username+"/shared/"+username)
+                                .thenCompose(dir -> dir.get().remove(this, sharing)
+                                        // remove our static data entry storing that we've granted them access
+                                        .thenCompose(b -> removeFromStaticData(dir.get()))));
     }
 
     public void logout() {

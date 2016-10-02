@@ -86,6 +86,29 @@ class TrieNode {
         return new TrieNode(newChildren, value);
     }
 
+    public TrieNode removeEntry(String path) {
+        System.out.println("Entrie.put(" + path + ")");
+        if (path.startsWith("/"))
+            path = path.substring(1);
+        if (path.length() == 0) {
+            return new TrieNode(children, Optional.empty());
+        }
+        String[] elements = path.split("/");
+        TrieNode existing = children.getOrDefault(elements[0], new TrieNode());
+        TrieNode newChild = existing.removeEntry(path.substring(elements[0].length()));
+
+        HashMap<String, TrieNode> newChildren = new HashMap<>(children);
+        if (newChild.isEmpty())
+            newChildren.remove(elements[0], newChild);
+        else
+            newChildren.put(elements[0], newChild);
+        return new TrieNode(newChildren, value);
+    }
+
+    public boolean isEmpty() {
+        return children.size() == 0 && !value.isPresent();
+    }
+
     public TrieNode clear() {
         return new TrieNode();
     }
