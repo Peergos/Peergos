@@ -3,10 +3,6 @@ package peergos.shared.user;
 import peergos.shared.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
-import peergos.shared.crypto.asymmetric.*;
-import peergos.shared.crypto.asymmetric.curve25519.*;
-import peergos.shared.crypto.hash.*;
-import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.ipfs.api.Multihash;
 import peergos.shared.user.fs.*;
@@ -85,11 +81,6 @@ public class UserContext {
                         });
                     });
                 }).exceptionally(Futures::logError);
-    }
-
-    @JsMethod
-    public static CompletableFuture<UserContext> ensureSignedUp(String username, String password) {
-        return NetworkAccess.buildJS().thenCompose(network -> ensureSignedUp(username, password, network, Crypto.initJS()));
     }
 
     public static CompletableFuture<UserContext> ensureSignedUp(String username, String password, NetworkAccess network, Crypto crypto) {
