@@ -71,7 +71,7 @@ public class UserContext {
 
     @JsMethod
     public static CompletableFuture<UserContext> ensureSignedUp(String username, String password) {
-        return ensureSignedUp(username, password, NetworkAccess.buildJS(), true);
+        return NetworkAccess.buildJS().thenCompose(network -> ensureSignedUp(username, password, network, true));
     }
 
     public static CompletableFuture<UserContext> ensureSignedUp(String username, String password, NetworkAccess network, boolean useJavaScript) {
@@ -154,20 +154,12 @@ public class UserContext {
                 .thenCompose(root -> {
                     this.entrie = root;
                     return getByPath("/" + username + "/" + "shared")
-                            .thenCompose(sharedOpt -> {
+                            .thenApply(sharedOpt -> {
                                 if (!sharedOpt.isPresent())
                                     throw new IllegalStateException("Couldn't find shared folder!");
-                                return network.coreNode.getUsernames("")
-                                        .thenApply(x -> {
-                                            usernames = x;
-                                            return true;
-                                        });
+                                return true;
                             });
                 });
-    }
-
-    public List<String> getUsernames() {
-        return usernames;
     }
 
     public CompletableFuture<FileTreeNode> getSharingFolder() {

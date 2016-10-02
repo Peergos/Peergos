@@ -28,7 +28,7 @@ public class MultiUserTests {
     public MultiUserTests(String useIPFS, Random r, int userCount) throws Exception {
         int webPort = 9000 + r.nextInt(1000);
         int corePort = 10000 + r.nextInt(1000);
-        this.network = NetworkAccess.buildJava(new URL("http://localhost:" + webPort));
+        this.network = NetworkAccess.buildJava(new URL("http://localhost:" + webPort)).get();
         this.userCount = userCount;
         if (userCount  < 2)
             throw new IllegalStateException();
