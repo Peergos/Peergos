@@ -185,19 +185,17 @@ public class UserContext {
         DirAccess root = DirAccess.create(rootRKey, new FileProperties(directoryName, 0, LocalDateTime.now(), false, Optional.empty()), (Location)null, null, null);
         Location rootLocation = new Location(this.user, writer, rootMapKey);
         System.out.println("Uploading entry point directory");
-        return this.uploadChunk(root, rootLocation, Collections.emptyList()).thenApply(uploaded -> {
+        return this.uploadChunk(root, rootLocation, Collections.emptyList()).thenCompose(uploaded -> {
             long t3 = System.currentTimeMillis();
             System.out.println("Uploading root dir metadata took " + (t3 - t2) + " mS");
-            try {
-                addToStaticDataAndCommit(entry);
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-            System.out.println("Committing static data took " + (System.currentTimeMillis() - t3) + " mS");
+            return addToStaticDataAndCommit(entry)
+                    .thenApply(x -> {
+                        System.out.println("Committing static data took " + (System.currentTimeMillis() - t3) + " mS");
 
-            if (uploaded)
-                return new RetrievedFilePointer(rootPointer, root);
-            throw new IllegalStateException("Failed to create entry directory!");
+                        if (uploaded)
+                            return new RetrievedFilePointer(rootPointer, root);
+                        throw new IllegalStateException("Failed to create entry directory!");
+                    });
         });
     }
 
@@ -238,11 +236,10 @@ public class UserContext {
 
     // FollowRequest, boolean, boolean
     public CompletableFuture<Boolean> sendReplyFollowRequest(FollowRequest initialRequest, boolean accept, boolean reciprocate) {
-        /*String theirUsername = initialRequest.entry.get().owner;
+        String theirUsername = initialRequest.entry.get().owner;
         // if accept, create directory to share with them, note in entry points (they follow us)
         if (!accept && !reciprocate) {
             // send a null entry and null key (full rejection)
-
             DataSink dout = new DataSink();
             // write a null entry point
             EntryPoint entry = new EntryPoint(ReadableFilePointer.createNull(), username, Collections.EMPTY_SET, Collections.EMPTY_SET);
@@ -251,98 +248,107 @@ public class UserContext {
             byte[] plaintext = dout.toByteArray();
             UserPublicKey targetUser = initialRequest.entry.get().pointer.location.owner;
             // create a tmp keypair whose public key we can prepend to the request without leaking information
-            User tmp = User.random(random, signer, boxer);
+            User tmp = User.random(crypto.random, crypto.signer, crypto.boxer);
             byte[] payload = targetUser.encryptMessageFor(plaintext, tmp.secretBoxingKey);
 
             DataSink resp = new DataSink();
             resp.writeArray(tmp.getPublicKeys());
             resp.writeArray(payload);
-            corenodeClient.followRequest(initialRequest.entry.get().pointer.location.owner, resp.toByteArray());
+            network.coreNode.followRequest(initialRequest.entry.get().pointer.location.owner, resp.toByteArray());
             // remove pending follow request from them
-            return corenodeClient.removeFollowRequest(user, user.signMessage(initialRequest.rawCipher));
+            return network.coreNode.removeFollowRequest(user, user.signMessage(initialRequest.rawCipher));
         }
 
-        DataSink dout = new DataSink();
-        if (accept) {
-            ReadableFilePointer friendRoot = getSharingFolder().mkdir(theirUsername, this, initialRequest.key.get(), true, random).get();
-            // add a note to our static data so we know who we sent the read access to
-            EntryPoint entry = new EntryPoint(friendRoot.readOnly(), username, Stream.of(theirUsername).collect(Collectors.toSet()), Collections.EMPTY_SET);
 
-            addToStaticDataAndCommit(entry);
+        return CompletableFuture.completedFuture(true).thenCompose(b -> {
+            DataSink dout = new DataSink();
+            if (accept) {
+                return getSharingFolder().thenCompose(sharing -> {
+                    return sharing.mkdir(theirUsername, this, initialRequest.key.get(), true, crypto.random)
+                            .thenCompose(friendRoot -> {
+                                // add a note to our static data so we know who we sent the read access to
+                                EntryPoint entry = new EntryPoint(friendRoot.readOnly(), username, Stream.of(theirUsername).collect(Collectors.toSet()), Collections.EMPTY_SET);
 
-            dout.writeArray(entry.serialize());
-        } else {
-            EntryPoint entry = new EntryPoint(ReadableFilePointer.createNull(), username, Collections.EMPTY_SET, Collections.EMPTY_SET);
-            dout.writeArray(entry.serialize());
-        }
+                                return addToStaticDataAndCommit(entry).thenApply(trie -> {
+                                    dout.writeArray(entry.serialize());
+                                    return dout;
+                                });
+                            });
+                });
+            } else {
+                EntryPoint entry = new EntryPoint(ReadableFilePointer.createNull(), username, Collections.emptySet(), Collections.emptySet());
+                dout.writeArray(entry.serialize());
+                return CompletableFuture.completedFuture(dout);
+            }
+        }).thenCompose(dout -> {
 
-        if (! reciprocate) {
-            dout.writeArray(new byte[0]); // tell them we're not reciprocating
-        } else {
-            // if reciprocate, add entry point to their shared directory (we follow them) and then
-            dout.writeArray(initialRequest.entry.get().pointer.baseKey.serialize()); // tell them we are reciprocating
-        }
-        byte[] plaintext = dout.toByteArray();
-        UserPublicKey targetUser = initialRequest.entry.get().pointer.location.owner;
-        // create a tmp keypair whose public key we can prepend to the request without leaking information
-        User tmp = User.random(random, signer, boxer);
-        byte[] payload = targetUser.encryptMessageFor(plaintext, tmp.secretBoxingKey);
+            if (!reciprocate) {
+                dout.writeArray(new byte[0]); // tell them we're not reciprocating
+            } else {
+                // if reciprocate, add entry point to their shared directory (we follow them) and then
+                dout.writeArray(initialRequest.entry.get().pointer.baseKey.serialize()); // tell them we are reciprocating
+            }
+            byte[] plaintext = dout.toByteArray();
+            UserPublicKey targetUser = initialRequest.entry.get().pointer.location.owner;
+            // create a tmp keypair whose public key we can prepend to the request without leaking information
+            User tmp = User.random(crypto.random, crypto.signer, crypto.boxer);
+            byte[] payload = targetUser.encryptMessageFor(plaintext, tmp.secretBoxingKey);
 
-        DataSink resp = new DataSink();
-        resp.writeArray(tmp.getPublicKeys());
-        resp.writeArray(payload);
-        corenodeClient.followRequest(initialRequest.entry.get().pointer.location.owner.toUserPublicKey(), resp.toByteArray());
-        if (reciprocate)
-            addToStaticDataAndCommit(initialRequest.entry.get());
-        // remove original request
-        return corenodeClient.removeFollowRequest(user.toUserPublicKey(), user.signMessage(initialRequest.rawCipher));*/
-        throw new IllegalStateException("Unimplemented!");
+            DataSink resp = new DataSink();
+            resp.writeArray(tmp.getPublicKeys());
+            resp.writeArray(payload);
+            return network.coreNode.followRequest(initialRequest.entry.get().pointer.location.owner.toUserPublicKey(), resp.toByteArray());
+        }).thenCompose(b -> {
+            if (reciprocate)
+                return addToStaticDataAndCommit(initialRequest.entry.get());
+            return CompletableFuture.completedFuture(entrie);
+        }).thenCompose(trie ->
+                // remove original request
+                network.coreNode.removeFollowRequest(user.toUserPublicKey(), user.signMessage(initialRequest.rawCipher)));
     }
 
-    // string, RetrievedFilePointer, SymmetricKey
     public CompletableFuture<Boolean> sendFollowRequest(String targetUsername, SymmetricKey requestedKey) throws IOException {
-        /*FileTreeNode sharing = getSharingFolder();
-        Set<FileTreeNode> children = sharing.getChildren(this);
-        boolean alreadyFollowed = children.stream()
-                .filter(f -> f.getFileProperties().name.equals(targetUsername))
-                .findAny()
-                .isPresent();
-        if (alreadyFollowed)
-            return CompletableFuture.completedFuture(false);
-        // check for them not reciprocating
-        Set<String> following = getFollowing();
-        alreadyFollowed = following.stream().filter(x -> x.equals(targetUsername)).findAny().isPresent();
-        if (alreadyFollowed)
-            return CompletableFuture.completedFuture(false);
+        return getSharingFolder().thenCompose(sharing -> {
+            return sharing.getChildren(this).thenCompose(children -> {
+                boolean alreadySentRequest = children.stream()
+                        .filter(f -> f.getFileProperties().name.equals(targetUsername))
+                        .findAny()
+                        .isPresent();
+                if (alreadySentRequest)
+                    return CompletableFuture.completedFuture(false);
+                // check for them not reciprocating
+                return getFollowing().thenCompose(following -> {
+                    boolean alreadyFollowing = following.stream().filter(x -> x.equals(targetUsername)).findAny().isPresent();
+                    if (alreadyFollowing)
+                        return CompletableFuture.completedFuture(false);
 
-        return corenodeClient.getPublicKey(targetUsername).thenApply(targetUserOpt -> {
-            if (!targetUserOpt.isPresent())
-                return false;
-            try {
-                UserPublicKey targetUser = targetUserOpt.get();
-                ReadableFilePointer friendRoot = sharing.mkdir(targetUsername, this, null, true, random).get();
+                    return network.coreNode.getPublicKey(targetUsername).thenCompose(targetUserOpt -> {
+                        if (!targetUserOpt.isPresent())
+                            return CompletableFuture.completedFuture(false);
+                        UserPublicKey targetUser = targetUserOpt.get();
+                        return sharing.mkdir(targetUsername, this, null, true, crypto.random).thenCompose(friendRoot -> {
 
-                // add a note to our static data so we know who we sent the read access to
-                EntryPoint entry = new EntryPoint(friendRoot.readOnly(), username, Stream.of(targetUsername).collect(Collectors.toSet()), Collections.EMPTY_SET);
-                addToStaticDataAndCommit(entry);
-                // send details to allow friend to follow us, and optionally let us follow them
-                // create a tmp keypair whose public key we can prepend to the request without leaking information
-                User tmp = User.random(random, signer, boxer);
-                DataSink buf = new DataSink();
-                buf.writeArray(entry.serialize());
-                buf.writeArray(requestedKey != null ? requestedKey.serialize() : new byte[0]);
-                byte[] plaintext = buf.toByteArray();
-                byte[] payload = targetUser.encryptMessageFor(plaintext, tmp.secretBoxingKey);
+                            // add a note to our static data so we know who we sent the read access to
+                            EntryPoint entry = new EntryPoint(friendRoot.readOnly(), username, Stream.of(targetUsername).collect(Collectors.toSet()), Collections.EMPTY_SET);
+                            addToStaticDataAndCommit(entry);
+                            // send details to allow friend to follow us, and optionally let us follow them
+                            // create a tmp keypair whose public key we can prepend to the request without leaking information
+                            User tmp = User.random(crypto.random, crypto.signer, crypto.boxer);
+                            DataSink buf = new DataSink();
+                            buf.writeArray(entry.serialize());
+                            buf.writeArray(requestedKey != null ? requestedKey.serialize() : new byte[0]);
+                            byte[] plaintext = buf.toByteArray();
+                            byte[] payload = targetUser.encryptMessageFor(plaintext, tmp.secretBoxingKey);
 
-                DataSink res = new DataSink();
-                res.writeArray(tmp.getPublicKeys());
-                res.writeArray(payload);
-                return corenodeClient.followRequest(targetUser.toUserPublicKey(), res.toByteArray());
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });*/
-        throw new IllegalStateException("Unimplemented!");
+                            DataSink res = new DataSink();
+                            res.writeArray(tmp.getPublicKeys());
+                            res.writeArray(payload);
+                            return network.coreNode.followRequest(targetUser.toUserPublicKey(), res.toByteArray());
+                        });
+                    });
+                });
+            });
+        });
     };
 
     public CompletableFuture<Boolean> sendWriteAccess(UserPublicKey targetUser) throws IOException {
@@ -438,7 +444,7 @@ public class UserContext {
         return true;
     }
 
-    private CompletableFuture<TrieNode> addToStaticDataAndCommit(EntryPoint entry) throws IOException {
+    private CompletableFuture<TrieNode> addToStaticDataAndCommit(EntryPoint entry) {
         addToStaticData(entry);
         return commitStaticData(user, staticData, rootKey, network)
                 .thenCompose(res -> addEntryPoint(entrie, entry));

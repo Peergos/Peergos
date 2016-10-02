@@ -28,6 +28,7 @@ public class UserTests {
 
     public static int RANDOM_SEED = 666;
     private final NetworkAccess network;
+    private final Crypto crypto = Crypto.initJava();
 
     private static Random random = new Random(RANDOM_SEED);
 
@@ -77,44 +78,44 @@ public class UserTests {
     public void randomSignup() throws Exception {
         String username = "test" + (System.currentTimeMillis() % 10000);
         String password = "password";
-        ensureSignedUp(username, password, network);
+        ensureSignedUp(username, password, network, crypto);
     }
 
     @Test
     public void changePassword() throws Exception {
         String username = "test" + (System.currentTimeMillis() % 10000);
         String password = "password";
-        UserContext userContext = ensureSignedUp(username, password, network);
+        UserContext userContext = ensureSignedUp(username, password, network, crypto);
         String newPassword = "newPassword";
         userContext.changePassword(newPassword);
-        ensureSignedUp(username, newPassword, network);
+        ensureSignedUp(username, newPassword, network, crypto);
 
     }
     @Test
     public void changePasswordFAIL() throws Exception {
         String username = "test" + (System.currentTimeMillis() % 10000);
         String password = "password";
-        UserContext userContext = ensureSignedUp(username, password, network);
+        UserContext userContext = ensureSignedUp(username, password, network, crypto);
         String newPassword = "passwordtest";
         UserContext newContext = userContext.changePassword(newPassword).get();
 
         try {
-            UserContext oldContext = ensureSignedUp(username, password, network);
+            UserContext oldContext = ensureSignedUp(username, password, network, crypto);
         } catch (IllegalStateException e) {
             if (!e.getMessage().contains("username already registered"))
                 throw e;
         }
     }
 
-    public static UserContext ensureSignedUp(String username, String password, NetworkAccess network) throws Exception {
-        return UserContext.ensureSignedUp(username, password, network, Crypto.initJava()).get();
+    public static UserContext ensureSignedUp(String username, String password, NetworkAccess network, Crypto crypto) throws Exception {
+        return UserContext.ensureSignedUp(username, password, network, crypto).get();
     }
 
     @Test
     public void writeReadVariations() throws Exception {
         String username = "test01";
         String password = "test01";
-        UserContext context = ensureSignedUp(username, password, network);
+        UserContext context = ensureSignedUp(username, password, network, crypto);
         FileTreeNode userRoot = context.getUserRoot().get();
 
         String filename = "somedata.txt";
@@ -152,7 +153,7 @@ public class UserTests {
         // check from the root as well
         checkFileContents(data3, context.getByPath(username + "/" + newname).get().get(), context);
         // check from a fresh log in too
-        UserContext context2 = ensureSignedUp(username, password, network);
+        UserContext context2 = ensureSignedUp(username, password, network, crypto);
         checkFileContents(data3, context2.getByPath(username + "/" + newname).get().get(), context);
     }
 
@@ -160,7 +161,7 @@ public class UserTests {
     public void mediumFileWrite() throws Exception {
         String username = "test01";
         String password = "test01";
-        UserContext context = ensureSignedUp(username, password, network);
+        UserContext context = ensureSignedUp(username, password, network, crypto);
         FileTreeNode userRoot = context.getUserRoot().get();
 
         String filename = "mediumfile.bin";
@@ -187,7 +188,7 @@ public class UserTests {
     public void writeTiming() throws Exception {
         String username = "test01";
         String password = "test01";
-        UserContext context = ensureSignedUp(username, password, network);
+        UserContext context = ensureSignedUp(username, password, network, crypto);
         FileTreeNode userRoot = context.getUserRoot().get();
 
         String filename = "mediumfile.bin";
@@ -209,7 +210,7 @@ public class UserTests {
     public void hugeFolder() throws Exception {
         String username = "test01";
         String password = "test01";
-        UserContext context = ensureSignedUp(username, password, network);
+        UserContext context = ensureSignedUp(username, password, network, crypto);
         FileTreeNode userRoot = context.getUserRoot().get();
         List<String> names = new ArrayList<>();
         IntStream.range(0, 2000).forEach(i -> names.add(randomString()));
@@ -228,7 +229,7 @@ public class UserTests {
     public void readWriteTest() throws Exception {
         String username = "test01";
         String password = "test01";
-        UserContext context = ensureSignedUp(username, password, network);
+        UserContext context = ensureSignedUp(username, password, network, crypto);
         FileTreeNode userRoot = context.getUserRoot().get();
 
         Set<FileTreeNode> children = userRoot.getChildren(context).get();

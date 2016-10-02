@@ -117,7 +117,8 @@ public class Start
                     System.out.println("\n\nPeergos mounted at " + path + "\n\n");
 
                     NetworkAccess network = NetworkAccess.buildJava(webPort).get();
-                    UserContext userContext = UserTests.ensureSignedUp(username, password, network);
+                    Crypto crypto = Crypto.initJava();
+                    UserContext userContext = UserTests.ensureSignedUp(username, password, network, crypto);
                     PeergosFS peergosFS = new PeergosFS(userContext);
                     FuseProcess fuseProcess = new FuseProcess(peergosFS, path);
 

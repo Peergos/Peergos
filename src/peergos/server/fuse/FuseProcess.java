@@ -109,7 +109,8 @@ public class FuseProcess implements Runnable, AutoCloseable {
         System.out.println("\n\nPeergos mounted at "+ path+"\n\n");
 
         NetworkAccess network = NetworkAccess.buildJava(WEB_PORT).get();
-        UserContext userContext = UserTests.ensureSignedUp(username, password, network);
+        Crypto crypto = Crypto.initJava();
+        UserContext userContext = UserTests.ensureSignedUp(username, password, network, crypto);
         PeergosFS peergosFS = new CachingPeergosFS( userContext);
         FuseProcess fuseProcess = new FuseProcess(peergosFS, path);
 

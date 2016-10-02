@@ -51,6 +51,6 @@ public class Crypto {
         Salsa20Poly1305.Java symmetricProvider = new Salsa20Poly1305.Java();
         JavaEd25519 signer = new JavaEd25519();
         JavaCurve25519 boxer = new JavaCurve25519();
-        return init(new Crypto(random, new ScryptJS(), symmetricProvider, signer, boxer));
+        return init(new Crypto(random, new ScryptJava(), symmetricProvider, signer, boxer));
     }
 }
