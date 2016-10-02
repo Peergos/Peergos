@@ -107,8 +107,7 @@ public class UserTests {
     }
 
     public static UserContext ensureSignedUp(String username, String password, NetworkAccess network) throws Exception {
-        boolean useJavaScript = false;
-        return UserContext.ensureSignedUp(username, password, network, useJavaScript).get();
+        return UserContext.ensureSignedUp(username, password, network, Crypto.initJava()).get();
     }
 
     @Test
@@ -216,7 +215,7 @@ public class UserTests {
         IntStream.range(0, 2000).forEach(i -> names.add(randomString()));
 
         for (String filename: names) {
-            userRoot.mkdir(filename, context, false, context.random);
+            userRoot.mkdir(filename, context, false, context.crypto.random);
         }
     }
 

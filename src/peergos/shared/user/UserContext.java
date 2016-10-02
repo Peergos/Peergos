@@ -31,121 +31,74 @@ public class UserContext {
     private final SymmetricKey rootKey;
     private final SortedMap<UserPublicKey, EntryPoint> staticData = new TreeMap<>();
     private TrieNode entrie = new TrieNode(); // ba dum che!
-    private List<String> usernames;
     private final Fragmenter fragmenter;
 
     // Contact external world
     public final NetworkAccess network;
 
     // In process only
-    public final SafeRandom random;
-    private final LoginHasher hasher;
-    private final Salsa20Poly1305 symmetricProvider;
-    private final Ed25519 signer;
-    private final Curve25519 boxer;
+    public final Crypto crypto;
 
-    public UserContext(String username, User user, SymmetricKey root, NetworkAccess network,
-                       LoginHasher hasher, Salsa20Poly1305 provider, SafeRandom random, Ed25519 signer, Curve25519 boxer) {
-        this(username, user, root, network, hasher, provider, random, signer, boxer, new ErasureFragmenter(40, 10));
+    public UserContext(String username, User user, SymmetricKey root, NetworkAccess network, Crypto crypto) {
+        this(username, user, root, network, crypto, new ErasureFragmenter(40, 10));
     }
 
     public UserContext(String username, User user, SymmetricKey root, NetworkAccess network,
-                       LoginHasher hasher, Salsa20Poly1305 provider, SafeRandom random, Ed25519 signer,
-                       Curve25519 boxer, Fragmenter fragmenter) {
+                       Crypto crypto, Fragmenter fragmenter) {
         this.username = username;
         this.user = user;
         this.rootKey = root;
         this.network = network;
-        this.hasher = hasher;
-        this.symmetricProvider = provider;
-        this.random = random;
-        this.signer = signer;
-        this.boxer = boxer;
+        this.crypto = crypto;
         this.fragmenter = fragmenter;
     }
 
     @JsMethod
-    public static CompletableFuture<UserContext> signIn(String username, String password, NetworkAccess network) {
-        return ensureSignedUp(username, password);
+    public static CompletableFuture<UserContext> signIn(String username, String password, NetworkAccess network, Crypto crypto) {
+        return UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer)
+                .thenApply(userWithRoot -> new UserContext(username, userWithRoot.getUser(), userWithRoot.getRoot(), network, crypto))
+                .thenCompose(ctx -> {
+                    System.out.println("Initializing context..");
+                    return ctx.init()
+                            .thenApply(res -> ctx);
+                }).exceptionally(Futures::logError);
+    }
+
+    @JsMethod
+    public static CompletableFuture<UserContext> signUp(String username, String password, NetworkAccess network, Crypto crypto) {
+        return UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer)
+                .thenCompose(userWithRoot -> {
+                    UserContext context = new UserContext(username, userWithRoot.getUser(), userWithRoot.getRoot(), network, crypto);
+                    System.out.println("Registering username " + username);
+                    return context.register().thenCompose(successfullyRegistered -> {
+                        if (!successfullyRegistered) {
+                            System.out.println("Couldn't register username");
+                            throw new IllegalStateException("Couldn't register username: " + username);
+                        }
+                        System.out.println("Creating user's root directory");
+                        long t1 = System.currentTimeMillis();
+                        return context.createEntryDirectory(username).thenCompose(userRoot -> {
+                            System.out.println("Creating root directory took " + (System.currentTimeMillis() - t1) + " mS");
+                            return ((DirAccess) userRoot.fileAccess).mkdir(SHARED_DIR_NAME, context, (User) userRoot.filePointer.location.writer,
+                                    userRoot.filePointer.location.getMapKey(), userRoot.filePointer.baseKey, null, true, crypto.random)
+                                    .thenCompose(x -> context.init().thenApply(inited -> context));
+                        });
+                    });
+                }).exceptionally(Futures::logError);
     }
 
     @JsMethod
     public static CompletableFuture<UserContext> ensureSignedUp(String username, String password) {
-        return NetworkAccess.buildJS().thenCompose(network -> ensureSignedUp(username, password, network, true));
+        return NetworkAccess.buildJS().thenCompose(network -> ensureSignedUp(username, password, network, Crypto.initJS()));
     }
 
-    public static CompletableFuture<UserContext> ensureSignedUp(String username, String password, NetworkAccess network, boolean useJavaScript) {
-        try {
-            LoginHasher hasher = useJavaScript ? new ScryptJS() : new ScryptJava();
+    public static CompletableFuture<UserContext> ensureSignedUp(String username, String password, NetworkAccess network, Crypto crypto) {
 
-            Salsa20Poly1305 provider = /*useJavaScript ? new SymmetricJS() :*/ new Salsa20Poly1305.Java();
-            SymmetricKey.addProvider(SymmetricKey.Type.TweetNaCl, provider);
-            Ed25519 signer = /*useJavaScript ? new JSEd25519() :*/ new JavaEd25519();
-            PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, signer);
-            SafeRandom random = /*useJavaScript ? new JSRandom() :*/ new SafeRandom.Java();
-            SymmetricKey.setRng(SymmetricKey.Type.TweetNaCl, random);
-            Curve25519 boxer = /*useJavaScript ? new JSCurve25519() :*/ new JavaCurve25519();
-            PublicBoxingKey.addProvider(PublicBoxingKey.Type.Curve25519, boxer);
-            PublicBoxingKey.setRng(PublicBoxingKey.Type.Curve25519, random);
-            return UserContext.ensureSignedUp(username, password, network, hasher, provider, random, signer, boxer);
-        } catch (Throwable t) {
-            CompletableFuture<UserContext> failure = new CompletableFuture<>();
-            failure.completeExceptionally(t);
-            return failure;
-        }
-    }
-
-    public static CompletableFuture<UserContext> ensureSignedUp(String username, String password, NetworkAccess network,
-                                             LoginHasher hasher, Salsa20Poly1305 provider, SafeRandom random,
-                                             Ed25519 signer, Curve25519 boxer) {
-
-        CompletableFuture<UserContext> result = new CompletableFuture<>();
-        
-        UserUtil.generateUser(username, password, hasher, provider, random, signer, boxer).thenAccept(userWithRoot -> {
-            UserContext context = new UserContext(username, userWithRoot.getUser(), userWithRoot.getRoot(),
-                    network, hasher, provider, random, signer, boxer);
-            System.out.println("made user context");
-            
-            context.isRegistered().thenAccept(registered -> {
-                if (!registered) {
-                    System.out.println("User is not registered");
-
-                    context.isAvailable().thenAccept(available -> {
-                        if (available) {
-                            System.out.println("Registering username " + username);
-                            context.register().thenAccept(successfullyRegistered -> {
-                                if (! successfullyRegistered) {
-                                    System.out.println("Couldn't register username");
-                                    result.completeExceptionally(new IllegalStateException("Couldn't register username: " + username));
-                                    return;
-                                }
-                                System.out.println("Creating user's root directory");
-                                long t1 = System.currentTimeMillis();
-                                try {
-                                    context.createEntryDirectory(username).thenAccept(userRoot -> {
-                                        System.out.println("Creating root directory took " + (System.currentTimeMillis() - t1) + " mS");
-                                        ((DirAccess) userRoot.fileAccess).mkdir(SHARED_DIR_NAME, context,
-                                                (User) userRoot.filePointer.location.writer,
-                                                userRoot.filePointer.location.getMapKey(), userRoot.filePointer.baseKey, null, true, random)
-                                                .thenApply(x -> result.complete(context));
-                                    });
-                                } catch (Throwable e) {
-                                    result.completeExceptionally(e);
-                                }
-                            });
-                        } else
-                            result.completeExceptionally(new IllegalStateException("username already registered with different public key!"));
-                    });
-                } else
-                    result.complete(context);
-            });
+        return network.isUsernameRegistered(username).thenCompose(isRegistered -> {
+            if (isRegistered)
+                return signIn(username, password, network, crypto);
+            return signUp(username, password, network, crypto);
         });
-
-        return result.thenCompose(ctx -> {
-            System.out.println("Initializing context..");
-            return ctx.init()
-                    .thenApply(res -> ctx);
-        }).exceptionally(Futures::logError);
     }
 
     private CompletableFuture<Boolean> init() {
@@ -206,7 +159,7 @@ public class UserContext {
         expiry.plusMonths(2);
 
         CompletableFuture<UserContext> result = new CompletableFuture<>();
-        UserUtil.generateUser(username, newPassword, hasher, symmetricProvider, random, signer, boxer).thenAccept(updatedUser -> {
+        UserUtil.generateUser(username, newPassword, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer).thenAccept(updatedUser -> {
 	        commitStaticData(updatedUser.getUser(), staticData, updatedUser.getRoot(), network).thenApply(updated -> {
 	            if (!updated)
 	                return result.completeExceptionally(new IllegalStateException("Change Password Failed: couldn't upload new file system entry points!"));
@@ -216,8 +169,7 @@ public class UserContext {
 	                if (!updatedChain)
 	                    return result.completeExceptionally(new IllegalStateException("Couldn't register new public keys during password change!"));
 	
-	                return UserContext.ensureSignedUp(username, newPassword, network,
-	                        hasher, symmetricProvider, random, signer, boxer)
+	                return UserContext.ensureSignedUp(username, newPassword, network, crypto)
 	                        .thenApply(context -> result.complete(context));
 	            });
 	        });
@@ -225,12 +177,12 @@ public class UserContext {
         return result;
     }
 
-    public CompletableFuture<RetrievedFilePointer> createEntryDirectory(String directoryName) throws IOException {
+    public CompletableFuture<RetrievedFilePointer> createEntryDirectory(String directoryName) {
         long t1 = System.currentTimeMillis();
-        User writer = User.random(random, signer, boxer);
+        User writer = User.random(crypto.random, crypto.signer, crypto.boxer);
         System.out.println("Random User generation took " + (System.currentTimeMillis()-t1) + " mS");
         byte[] rootMapKey = new byte[32]; // root will be stored under this in the core node
-        random.randombytes(rootMapKey, 0, 32);
+        crypto.random.randombytes(rootMapKey, 0, 32);
         SymmetricKey rootRKey = SymmetricKey.random();
         System.out.println("Random keys generation took " + (System.currentTimeMillis()-t1) + " mS");
 
@@ -763,7 +715,7 @@ public class UserContext {
 
     public byte[] randomBytes(int length) {
         byte[] res = new byte[length];
-        random.randombytes(res, 0, length);
+        crypto.random.randombytes(res, 0, length);
         return res;
     }
 

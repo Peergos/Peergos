@@ -66,7 +66,7 @@ public class FuseTests {
 
         Start.local(args);
         NetworkAccess network = NetworkAccess.buildJava(WEB_PORT).get();
-        UserContext userContext = UserContext.ensureSignedUp(username, password, network, false).get();
+        UserContext userContext = UserContext.ensureSignedUp(username, password, network, Crypto.initJava()).get();
 
         String mountPath = args.getArg("mountPoint", "/tmp/peergos/tmp");
 

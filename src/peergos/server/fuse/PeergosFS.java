@@ -109,7 +109,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
     private Optional<ReadableFilePointer> mkdir(String name, FileTreeNode node)  {
         boolean isSystemFolder = false;
         try {
-            return Optional.of(node.mkdir(name, userContext, isSystemFolder, userContext.random).get());
+            return Optional.of(node.mkdir(name, userContext, isSystemFolder, userContext.crypto.random).get());
         } catch (Exception ioe) {
             ioe.printStackTrace();
             return Optional.empty();

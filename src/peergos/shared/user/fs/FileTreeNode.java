@@ -472,7 +472,7 @@ public class FileTreeNode {
 
     @JsMethod
     public CompletableFuture<ReadableFilePointer> mkdir(String newFolderName, UserContext context, boolean isSystemFolder) throws IOException {
-        return mkdir(newFolderName, context, isSystemFolder, context.random);
+        return mkdir(newFolderName, context, isSystemFolder, context.crypto.random);
     }
 
     public CompletableFuture<ReadableFilePointer> mkdir(String newFolderName, UserContext context, boolean isSystemFolder, SafeRandom random) throws IOException {
@@ -582,7 +582,7 @@ public class FileTreeNode {
             }
             //make new FileTreeNode pointing to the same file, but with a different location
             byte[] newMapKey = new byte[32];
-            context.random.randombytes(newMapKey, 0, 32);
+            context.crypto.random.randombytes(newMapKey, 0, 32);
             SymmetricKey ourBaseKey = this.getKey();
             // a file baseKey is the key for the chunk, which hasn't changed, so this must stay the same
             SymmetricKey newBaseKey = this.isDirectory() ? SymmetricKey.random() : ourBaseKey;

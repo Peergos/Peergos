@@ -316,7 +316,7 @@ public class DirAccess extends FileAccess {
             CompletableFuture<DirAccess> reduce = RFPs.stream().reduce(CompletableFuture.completedFuture(da), (dirFuture, rfp) -> {
                 SymmetricKey newChildBaseKey = rfp.fileAccess.isDirectory() ? SymmetricKey.random() : rfp.filePointer.baseKey;
                 byte[] newChildMapKey = new byte[32];
-                context.random.randombytes(newChildMapKey, 0, 32);
+                context.crypto.random.randombytes(newChildMapKey, 0, 32);
                 Location newChildLocation = new Location(context.user, entryWriterKey, newChildMapKey);
                 return rfp.fileAccess.copyTo(rfp.filePointer.baseKey, newChildBaseKey,
                         ourNewLocation, ourNewParentKey, entryWriterKey, newChildMapKey, context)

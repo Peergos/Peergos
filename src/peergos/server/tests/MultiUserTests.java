@@ -201,7 +201,7 @@ public class MultiUserTests {
         byte[] originalFileContents = "Hello Peergos friend!".getBytes();
         Files.write(f.toPath(), originalFileContents);
         String folderName = "afolder";
-        u1Root.mkdir(folderName, u1, SymmetricKey.random(), false, u1.random);
+        u1Root.mkdir(folderName, u1, SymmetricKey.random(), false, u1.crypto.random);
         FileTreeNode folder = u1.getByPath("/a/" + folderName).get().get();
         boolean uploaded = folder.uploadFile(filename, f, u1, l -> {}, u1.fragmenter()).get();
         String originalPath = u1.username + "/" + folderName + "/" + filename;
