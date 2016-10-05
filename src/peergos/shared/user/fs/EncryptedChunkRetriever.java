@@ -135,10 +135,10 @@ public class EncryptedChunkRetriever implements FileRetriever {
     }
 
     private static List<FragmentWithHash> reorder(List<FragmentWithHash> fragments, List<Multihash> hashes) {
-        List<FragmentWithHash> res = new ArrayList<>();
+        FragmentWithHash[] res = new FragmentWithHash[fragments.size()];
         for (FragmentWithHash f: fragments)
-            res.add(hashes.indexOf(f.hash), f);
-        return res;
+            res[hashes.indexOf(f.hash)] = f;
+        return Arrays.asList(res);
     }
 
     private static List<byte[]> split(byte[] arr, int size) {
