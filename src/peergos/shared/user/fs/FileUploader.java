@@ -88,7 +88,7 @@ public class FileUploader implements AutoCloseable {
 
     public static CompletableFuture<Boolean> uploadChunk(User writer, FileProperties props, Location parentLocation, SymmetricKey parentparentKey,
                         SymmetricKey baseKey, LocatedChunk chunk, int nOriginalFragments, int nAllowedFalures, Location nextChunkLocation,
-                        UserContext context, Consumer<Long> monitor) throws IOException {
+                        UserContext context, Consumer<Long> monitor) {
         EncryptedChunk encryptedChunk = chunk.chunk.encrypt();
 
         peergos.shared.user.fs.Fragmenter fragmenter = nAllowedFalures == 0 ?

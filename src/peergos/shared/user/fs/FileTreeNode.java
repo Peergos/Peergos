@@ -15,6 +15,7 @@ import java.time.*;
 import java.util.*;
 import java.util.List;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.*;
 import java.util.stream.*;
 
@@ -388,82 +389,110 @@ public class FileTreeNode {
     private CompletableFuture<Boolean> updateExistingChild(FileTreeNode existingChild, InputStream fileData,
                                                            long inputStartIndex, long endIndex, UserContext context,
                                                            Consumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) {
-        /*String filename = existingChild.getFileProperties().name;
-        System.out.println("Overwriting section ["+Long.toHexString(inputStartIndex)+", "+Long.toHexString(endIndex)+"] of child with name: "+filename);
 
-        return (existingChild.isDirty() ? existingChild.clean(context, this, fragmenter) :
-                CompletableFuture.completedFuture(existingChild))
+        String filename = existingChild.getFileProperties().name;
+        System.out.println("Overwriting section [" + Long.toHexString(inputStartIndex) + ", " + Long.toHexString(endIndex) + "] of child with name: " + filename);
+
+        if (existingChild.isDirty()) {
+            CompletableFuture<FileTreeNode> clean = existingChild.clean(context, this, fragmenter);
+            boolean isExceptionally = clean.isCompletedExceptionally();
+            return CompletableFuture.completedFuture(isExceptionally);
+        }
+
+        Supplier<Location> locationSupplier = () -> new Location(getLocation().owner, getLocation().writer, context.randomBytes(32));
+
+        return CompletableFuture.completedFuture(existingChild)
                 .thenCompose(child -> {
                     FileProperties childProps = child.getFileProperties();
-                    long filesSize = childProps.size;
+                    final AtomicLong filesSize = new AtomicLong(childProps.size);
                     FileRetriever retriever = child.getRetriever();
                     SymmetricKey baseKey = child.pointer.filePointer.baseKey;
                     SymmetricKey dataKey = child.pointer.fileAccess.getMetaKey(baseKey);
-                    long startIndex = inputStartIndex;
 
-                    if (startIndex > filesSize) {
-                        // append with zeroes up until startIndex
-                        updateExistingChild(existingChild, new InputStream() {
-                            @Override
-                            public int read() throws IOException {
-                                return 0;
-                            }
-                        }, filesSize, startIndex, context, l -> {}, fragmenter);
-                    }
+                    List<Long> startIndexes = new ArrayList<>();
 
-                    try {
-                        for (; startIndex < endIndex; startIndex = startIndex + Chunk.MAX_SIZE - (startIndex % Chunk.MAX_SIZE)) {
+                    for (long startIndex = inputStartIndex; startIndex < endIndex; startIndex = startIndex + Chunk.MAX_SIZE - (startIndex % Chunk.MAX_SIZE))
+                        startIndexes.add(startIndex);
 
-                            LocatedChunk currentOriginal = retriever.getChunkInputStream(context, dataKey, startIndex, filesSize, child.getLocation(), monitor).get();
-                            Optional<Location> nextChunkLocationOpt = retriever.getLocationAt(child.getLocation(), startIndex + Chunk.MAX_SIZE, context);
-                            Supplier<Location> locationSupplier = () -> new Location(getLocation().owner, getLocation().writer, context.randomBytes(32));
-                            Location nextChunkLocation = nextChunkLocationOpt.orElseGet(locationSupplier);
 
-                            System.out.println("********** Writing to chunk at mapkey: " + ArrayOps.bytesToHex(currentOriginal.location.getMapKey()) + " next: " + nextChunkLocation);
-                            // modify chunk, re-encrypt and upload
-                            int internalStart = (int) (startIndex % Chunk.MAX_SIZE);
-                            int internalEnd = endIndex - (startIndex - internalStart) > Chunk.MAX_SIZE ?
-                                    Chunk.MAX_SIZE : (int) (endIndex - (startIndex - internalStart));
-                            byte[] raw = currentOriginal.chunk.data();
-                            // extend data array if necessary
-                            if (raw.length < internalEnd)
-                                raw = Arrays.copyOfRange(raw, 0, internalEnd);
-                            fileData.read(raw, internalStart, internalEnd - internalStart);
+                    boolean identity = true;
 
-                            byte[] nonce = new byte[TweetNaCl.SECRETBOX_NONCE_BYTES];
-                            context.random.randombytes(nonce, 0, nonce.length);
-                            Chunk updated = new Chunk(raw, dataKey, currentOriginal.location.getMapKey(), nonce);
-                            LocatedChunk located = new LocatedChunk(currentOriginal.location, updated);
-                            FileProperties newProps = new FileProperties(childProps.name, endIndex > filesSize ? endIndex : filesSize,
-                                    LocalDateTime.now(), childProps.isHidden, childProps.thumbnail);
+                    BiFunction<Boolean, Long, CompletableFuture<Boolean>> composer = (id, startIndex) -> {
+                        return retriever.getChunkInputStream(context, dataKey, startIndex, filesSize.get(), child.getLocation(), monitor)
+                                .thenCompose(currentLocation -> {
+                                            CompletableFuture<Optional<Location>> locationAt = retriever.getLocationAt(child.getLocation(), startIndex + Chunk.MAX_SIZE, context);
+                                            return locationAt.thenCompose(location ->
+                                                    CompletableFuture.completedFuture(new Pair<>(currentLocation, location)));
+                                        }
+                                ).thenCompose(pair -> {
 
-                            CompletableFuture<Boolean> chunkUploaded = FileUploader.uploadChunk((User) entryWriterKey, newProps, getLocation(), getParentKey(), baseKey, located,
-                                    EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES, nextChunkLocation, context, monitor);
+                                    if (!pair.left.isPresent()) {
+                                        CompletableFuture<Boolean> result = new CompletableFuture<>();
+                                        result.completeExceptionally(new IllegalStateException("Current chunk not present"));
+                                        return result;
+                                    }
 
-                            //update indices to be relative to next chunk
-                            if (startIndex + internalEnd - internalStart > filesSize) {
-                                filesSize = startIndex + internalEnd - internalStart;
-                                if (startIndex + internalEnd - internalStart > Chunk.MAX_SIZE) {
-                                    // update file size in FileProperties of first chunk
-                                    CompletableFuture<Boolean> updatedSize = getChildren(context).thenCompose(children -> {
-                                        Optional<FileTreeNode> updatedChild = children.stream()
-                                                .filter(f -> f.getFileProperties().name.equals(filename))
-                                                .findAny();
-                                        return updatedChild.get().setProperties(child.getFileProperties().withSize(endIndex), context, this);
+                                    LocatedChunk currentOriginal = pair.left.get();
+                                    Optional<Location> nextChunkLocationOpt = pair.right;
+                                    Location nextChunkLocation = nextChunkLocationOpt.orElseGet(locationSupplier);
+                                    System.out.println("********** Writing to chunk at mapkey: " + ArrayOps.bytesToHex(currentOriginal.location.getMapKey()) + " next: " + nextChunkLocation);
+
+                                    // modify chunk, re-encrypt and upload
+                                    int internalStart = (int) (startIndex % Chunk.MAX_SIZE);
+                                    int internalEnd = endIndex - (startIndex - internalStart) > Chunk.MAX_SIZE ?
+                                            Chunk.MAX_SIZE : (int) (endIndex - (startIndex - internalStart));
+                                    byte[] raw = currentOriginal.chunk.data();
+                                    // extend data array if necessary
+                                    if (raw.length < internalEnd)
+                                        raw = Arrays.copyOfRange(raw, 0, internalEnd);
+
+                                    try {
+                                        fileData.read(raw, internalStart, internalEnd - internalStart);
+                                    } catch (IOException ioe) {
+                                        CompletableFuture<Boolean> result = new CompletableFuture<>();
+                                        result.completeExceptionally(ioe);
+                                        return result;
+                                    }
+
+                                    byte[] nonce = context.randomBytes(TweetNaCl.SECRETBOX_NONCE_BYTES);
+
+                                    Chunk updated = new Chunk(raw, dataKey, currentOriginal.location.getMapKey(), nonce);
+                                    LocatedChunk located = new LocatedChunk(currentOriginal.location, updated);
+                                    long currentSize = filesSize.get();
+                                    FileProperties newProps = new FileProperties(childProps.name, endIndex > currentSize? endIndex : currentSize,
+                                            LocalDateTime.now(), childProps.isHidden, childProps.thumbnail);
+
+                                    CompletableFuture<Boolean> chunkUploaded = FileUploader.uploadChunk((User) entryWriterKey, newProps, getLocation(), getParentKey(), baseKey, located,
+                                            EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES, nextChunkLocation, context, monitor);
+
+                                    return chunkUploaded.thenCompose(isUploaded -> {
+                                        if (!isUploaded)
+                                            return CompletableFuture.completedFuture(false);
+
+
+                                        //update indices to be relative to next chunk
+                                        long updatedLength = startIndex + internalEnd - internalStart;
+                                        if (updatedLength > filesSize.get()) {
+                                            filesSize.set(updatedLength);
+
+                                            if (updatedLength > Chunk.MAX_SIZE) {
+                                                // update file size in FileProperties of first chunk
+                                                CompletableFuture<Boolean> updatedSize = getChildren(context).thenCompose(children -> {
+                                                    Optional<FileTreeNode> updatedChild = children.stream()
+                                                            .filter(f -> f.getFileProperties().name.equals(filename))
+                                                            .findAny();
+                                                    return updatedChild.get().setProperties(child.getFileProperties().withSize(endIndex), context, this);
+                                                });
+                                            }
+                                        }
+                                        return CompletableFuture.completedFuture(true);
                                     });
-                                }
-                            }
-                        }
-                        return CompletableFuture.completedFuture(true);
-                    } catch (IOException e) {
-                        CompletableFuture<Boolean> result = new CompletableFuture<>();
-                        result.completeExceptionally(e);
-                        return result;
-                    }
-                });*/
-        IllegalStateException ex = new IllegalStateException("Unimplemented!");
-        ex.printStackTrace();
-        throw ex;
+                                });
+                    };
+
+                    BiFunction<Boolean, Boolean, Boolean> combiner = (left, right) -> left && right;
+                    return Futures.reduceAll(startIndexes, identity, composer, combiner);
+                });
     }
 
     static boolean isLegalName(String name) {
@@ -480,7 +509,7 @@ public class FileTreeNode {
     }
 
     public CompletableFuture<ReadableFilePointer> mkdir(String newFolderName, UserContext context, SymmetricKey requestedBaseSymmetricKey,
-                                               boolean isSystemFolder, SafeRandom random) {
+                                                        boolean isSystemFolder, SafeRandom random) {
         CompletableFuture<ReadableFilePointer> result = new CompletableFuture<>();
         if (!this.isDirectory()) {
             result.completeExceptionally(new IllegalStateException("Cannot mkdir in a file!"));
@@ -693,4 +722,11 @@ public class FileTreeNode {
         }
         return false;
     }
+
+    private static InputStream NULL_STREAM = new InputStream() {
+        @Override
+        public int read() throws IOException {
+            return 0;
+        }
+    };
 }
