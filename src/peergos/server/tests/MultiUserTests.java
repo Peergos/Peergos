@@ -320,15 +320,15 @@ public class MultiUserTests {
     public void acceptButNotReciprocateFollowRequest() throws Exception {
         UserContext u1 = UserTests.ensureSignedUp("q", "q", network, crypto);
         UserContext u2 = UserTests.ensureSignedUp("w", "w", network, crypto);
-        u2.sendFollowRequest(u1.username, SymmetricKey.random());
+        u2.sendFollowRequest(u1.username, SymmetricKey.random()).get();
         List<FollowRequest> u1Requests = u1.processFollowRequests().get();
         assertTrue("Receive a follow request", u1Requests.size() > 0);
-        u1.sendReplyFollowRequest(u1Requests.get(0), true, false);
+        u1.sendReplyFollowRequest(u1Requests.get(0), true, false).get();
         List<FollowRequest> u2FollowRequests = u2.processFollowRequests().get();
         Optional<FileTreeNode> u1Tou2 = u2.getByPath("/" + u1.username).get();
-        assertTrue("Friend root present after accepted follow request", u1Tou2.isPresent());
-
         Optional<FileTreeNode> u2Tou1 = u1.getByPath("/" + u2.username).get();
+
+        assertTrue("Friend root present after accepted follow request", u1Tou2.isPresent());
         assertTrue("Friend root not present after non reciprocated follow request", !u2Tou1.isPresent());
     }
 

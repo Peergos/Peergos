@@ -344,7 +344,10 @@ public class UserContext {
                             DataSink res = new DataSink();
                             res.writeArray(tmp.getPublicKeys());
                             res.writeArray(payload);
-                            return addToStatic.thenCompose(b -> network.coreNode.followRequest(targetUser.toUserPublicKey(), res.toByteArray()));
+                            return addToStatic.thenCompose(newRoot -> {
+                                entrie = newRoot;
+                                return network.coreNode.followRequest(targetUser.toUserPublicKey(), res.toByteArray());
+                            });
                         });
                     });
                 });
@@ -446,9 +449,13 @@ public class UserContext {
     }
 
     private CompletableFuture<TrieNode> addToStaticDataAndCommit(EntryPoint entry) {
+        return addToStaticDataAndCommit(entrie, entry);
+    }
+
+    private CompletableFuture<TrieNode> addToStaticDataAndCommit(TrieNode root, EntryPoint entry) {
         addToStaticData(entry);
         return commitStaticData(user, staticData, rootKey, network)
-                .thenCompose(res -> addEntryPoint(entrie, entry));
+                .thenCompose(res -> addEntryPoint(root, entry));
     }
 
     private static CompletableFuture<Boolean> commitStaticData(User user,
@@ -522,12 +529,16 @@ public class UserContext {
                             .filter(freq -> followerRoots.containsKey(freq.entry.get().owner))
                             .collect(Collectors.toList());
 
-                    Function<FollowRequest, CompletableFuture<Boolean>> addToStatic = freq -> {
+                    BiFunction<TrieNode, FollowRequest, CompletableFuture<TrieNode>> addToStatic = (root, freq) -> {
                         if (!Arrays.equals(freq.entry.get().pointer.baseKey.serialize(), SymmetricKey.createNull().serialize())) {
-                            addToStaticDataAndCommit(freq.entry.get());
-                            return network.coreNode.removeFollowRequest(user.toUserPublicKey(), user.signMessage(freq.rawCipher));
+                            CompletableFuture<TrieNode> updatedRoot = addToStaticDataAndCommit(root, freq.entry.get());
+                            return updatedRoot.thenCompose(newRoot -> {
+                                entrie = newRoot;
+                                return network.coreNode.removeFollowRequest(user.toUserPublicKey(), user.signMessage(freq.rawCipher))
+                                        .thenApply(b -> newRoot);
+                            });
                         }
-                        return CompletableFuture.completedFuture(true);
+                        return CompletableFuture.completedFuture(root);
                     };
 
                     BiFunction<TrieNode, FollowRequest, CompletableFuture<TrieNode>> mozart = (trie, freq) -> {
@@ -541,7 +552,8 @@ public class UserContext {
                             CompletableFuture<Boolean> cleanStatic = removeFromStaticData(ourDirForThem);
                             // clear their response follow req too
                             CompletableFuture<Boolean> clearPending = network.coreNode.removeFollowRequest(user.toUserPublicKey(), user.signMessage(freq.rawCipher));
-                            return CompletableFuture.allOf(removeDir, cleanStatic, clearPending).thenApply(b -> trie);
+                            return CompletableFuture.allOf(removeDir, cleanStatic, clearPending)
+                                    .thenCompose(b -> addToStatic.apply(trie, freq));
                         } else if (freq.entry.get().pointer.isNull()) {
                             // They reciprocated, but didn't accept (they follow us, but we can't follow them)
                             return CompletableFuture.completedFuture(trie);
@@ -551,7 +563,7 @@ public class UserContext {
                             return retrieveEntryPoint(entry).thenCompose(treeNode ->
                                     treeNode.get().getPath(this)).thenApply(path ->
                                     trie.put(path, entry)
-                            ).thenCompose(trieres -> addToStatic.apply(freq).thenApply(b -> trieres));
+                            ).thenCompose(trieres -> addToStatic.apply(trieres, freq).thenApply(b -> trieres));
                         }
                     };
                     List<FollowRequest> initialRequests = all.stream()
