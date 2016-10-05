@@ -65,10 +65,10 @@ public class FileTreeNode {
     }
 
     public CompletableFuture<String> getPath(UserContext context) {
-        return retrieveParent(context).thenApply(parent -> {
+        return retrieveParent(context).thenCompose(parent -> {
             if (!parent.isPresent() || parent.get().isRoot())
-                return "/" + props.name;
-            return parent.get().getPath(context) + "/" + props.name;
+                return CompletableFuture.completedFuture("/" + props.name);
+            return parent.get().getPath(context).thenApply(parentPath -> parentPath + "/" + props.name);
         });
     }
 

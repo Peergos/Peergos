@@ -87,7 +87,7 @@ class TrieNode {
     }
 
     public TrieNode removeEntry(String path) {
-        System.out.println("Entrie.put(" + path + ")");
+        System.out.println("Entrie.rm(" + path + ")");
         if (path.startsWith("/"))
             path = path.substring(1);
         if (path.length() == 0) {
