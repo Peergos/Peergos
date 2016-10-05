@@ -259,7 +259,6 @@ public class UserContext {
             return network.coreNode.removeFollowRequest(user, user.signMessage(initialRequest.rawCipher));
         }
 
-
         return CompletableFuture.completedFuture(true).thenCompose(b -> {
             DataSink dout = new DataSink();
             if (accept) {
@@ -302,9 +301,11 @@ public class UserContext {
             if (reciprocate)
                 return addToStaticDataAndCommit(initialRequest.entry.get());
             return CompletableFuture.completedFuture(entrie);
-        }).thenCompose(trie ->
-                // remove original request
-                network.coreNode.removeFollowRequest(user.toUserPublicKey(), user.signMessage(initialRequest.rawCipher)));
+        }).thenCompose(trie -> {
+            // remove original request
+            entrie = trie;
+            return network.coreNode.removeFollowRequest(user.toUserPublicKey(), user.signMessage(initialRequest.rawCipher));
+        });
     }
 
     public CompletableFuture<Boolean> sendFollowRequest(String targetUsername, SymmetricKey requestedKey) throws IOException {
