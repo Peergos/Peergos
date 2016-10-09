@@ -25,7 +25,7 @@ public class UserContext {
     public final String username;
     public final User user;
     private final SymmetricKey rootKey;
-    private final SortedMap<UserPublicKey, EntryPoint> staticData = new TreeMap<>();
+    private final UserStaticData staticData;
     private TrieNode entrie = new TrieNode(); // ba dum che!
     private final Fragmenter fragmenter;
 
@@ -47,6 +47,7 @@ public class UserContext {
         this.network = network;
         this.crypto = crypto;
         this.fragmenter = fragmenter;
+        this.staticData =  new UserStaticData();
     }
 
     @JsMethod
@@ -151,7 +152,7 @@ public class UserContext {
 
         CompletableFuture<UserContext> result = new CompletableFuture<>();
         UserUtil.generateUser(username, newPassword, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer).thenAccept(updatedUser -> {
-	        commitStaticData(updatedUser.getUser(), staticData, updatedUser.getRoot(), network).thenApply(updated -> {
+	        commit(updatedUser.getUser(), updatedUser.getRoot(), network).thenApply(updated -> {
 	            if (!updated)
 	                return result.completeExceptionally(new IllegalStateException("Change Password Failed: couldn't upload new file system entry points!"));
 	
@@ -224,7 +225,7 @@ public class UserContext {
     }
 
     public CompletableFuture<SocialState> getSocialState() throws IOException {
-        return getFollowRequests()
+        return processFollowRequests()
                 .thenCompose(pending -> getFollowerRoots()
                         .thenCompose(followerRoots -> getFriendRoots()
                                 .thenApply(followingRoots -> new SocialState(pending, followerRoots, followingRoots))));
@@ -258,7 +259,6 @@ public class UserContext {
             // remove pending follow request from them
             return network.coreNode.removeFollowRequest(user, user.signMessage(initialRequest.rawCipher));
         }
-
 
         return CompletableFuture.completedFuture(true).thenCompose(b -> {
             DataSink dout = new DataSink();
@@ -302,9 +302,11 @@ public class UserContext {
             if (reciprocate)
                 return addToStaticDataAndCommit(initialRequest.entry.get());
             return CompletableFuture.completedFuture(entrie);
-        }).thenCompose(trie ->
-                // remove original request
-                network.coreNode.removeFollowRequest(user.toUserPublicKey(), user.signMessage(initialRequest.rawCipher)));
+        }).thenCompose(trie -> {
+            // remove original request
+            entrie = trie;
+            return network.coreNode.removeFollowRequest(user.toUserPublicKey(), user.signMessage(initialRequest.rawCipher));
+        });
     }
 
     public CompletableFuture<Boolean> sendFollowRequest(String targetUsername, SymmetricKey requestedKey) throws IOException {
@@ -330,7 +332,7 @@ public class UserContext {
 
                             // add a note to our static data so we know who we sent the read access to
                             EntryPoint entry = new EntryPoint(friendRoot.readOnly(), username, Stream.of(targetUsername).collect(Collectors.toSet()), Collections.EMPTY_SET);
-                            addToStaticDataAndCommit(entry);
+                            CompletableFuture<TrieNode> addToStatic = addToStaticDataAndCommit(entry);
                             // send details to allow friend to follow us, and optionally let us follow them
                             // create a tmp keypair whose public key we can prepend to the request without leaking information
                             User tmp = User.random(crypto.random, crypto.signer, crypto.boxer);
@@ -343,7 +345,10 @@ public class UserContext {
                             DataSink res = new DataSink();
                             res.writeArray(tmp.getPublicKeys());
                             res.writeArray(payload);
-                            return network.coreNode.followRequest(targetUser.toUserPublicKey(), res.toByteArray());
+                            return addToStatic.thenCompose(newRoot -> {
+                                entrie = newRoot;
+                                return network.coreNode.followRequest(targetUser.toUserPublicKey(), res.toByteArray());
+                            });
                         });
                     });
                 });
@@ -436,25 +441,21 @@ public class UserContext {
         throw new IllegalStateException("Unimplemented!");
     }
 
-    private boolean addToStaticData(EntryPoint entry) {
-        for (int i=0; i < staticData.size(); i++)
-            if (entry.equals(staticData.get(entry.pointer.location.writer)))
-                return true;
-        staticData.put(entry.pointer.location.writer, entry);
-        return true;
-    }
-
     private CompletableFuture<TrieNode> addToStaticDataAndCommit(EntryPoint entry) {
-        addToStaticData(entry);
-        return commitStaticData(user, staticData, rootKey, network)
-                .thenCompose(res -> addEntryPoint(entrie, entry));
+        return addToStaticDataAndCommit(entrie, entry);
     }
 
-    private static CompletableFuture<Boolean> commitStaticData(User user,
-                                                               SortedMap<UserPublicKey, EntryPoint> staticData,
-                                                               SymmetricKey rootKey,
-                                                               NetworkAccess network) {
-        byte[] rawStatic = serializeStatic(staticData, rootKey);
+    private CompletableFuture<TrieNode> addToStaticDataAndCommit(TrieNode root, EntryPoint entry) {
+        staticData.add(entry);
+        return commit(user, rootKey, network)
+                .thenCompose(res -> addEntryPoint(root, entry));
+    }
+
+    private CompletableFuture<Boolean> commit(User user,
+                                             SymmetricKey rootKey,
+                                             NetworkAccess network) {
+
+        byte[] rawStatic = staticData.serialize(rootKey);
         return network.dhtClient.put(rawStatic, user, Collections.emptyList())
                 .thenCompose(blobHash -> network.coreNode.getMetadataBlob(user)
                         .thenCompose(currentHash -> {
@@ -473,73 +474,96 @@ public class UserContext {
 
     private CompletableFuture<Boolean> removeFromStaticData(FileTreeNode fileTreeNode) {
         ReadableFilePointer pointer = fileTreeNode.getPointer().filePointer;
-        // find and remove matching entry point
-        Iterator<Map.Entry<UserPublicKey, EntryPoint>> iter = staticData.entrySet().iterator();
-        for (;iter.hasNext();) {
-            Map.Entry<UserPublicKey, EntryPoint> entry = iter.next();
-            if (entry.getValue().pointer.equals(pointer)) {
-                iter.remove();
-                return commitStaticData(user, staticData, rootKey, network);
-            }
-        }
-        return CompletableFuture.completedFuture(true);
+
+        boolean isRemoved = staticData.remove(pointer);
+
+        return isRemoved ? commit(user, rootKey, network) :
+            CompletableFuture.completedFuture(true);
     };
 
-    public CompletableFuture<List<FollowRequest>> getFollowRequests() {
-        /*
-        byte[] reqs = corenodeClient.getFollowRequests(user.toUserPublicKey());
-        DataSource din = new DataSource(reqs);
-        int n = din.readInt();
-        List<FollowRequest> all = IntStream.range(0, n)
-                .mapToObj(i -> i)
-                .flatMap(i -> {
-                    try {
-                        return Stream.of(decodeFollowRequest(din.readArray()));
-                    } catch (IOException ioe) {
-                        return Stream.empty();
-                    }
-                })
-                .collect(Collectors.toList());
-        Map<String, FileTreeNode> followerRoots = getFollowerRoots();
-        List<FollowRequest> initialRequests = all.stream()
-                .filter(freq -> {
-                    try {
-                        if (followerRoots.containsKey(freq.entry.get().owner)) {
-                            // delete our folder if they didn't reciprocate
-                            FileTreeNode ourDirForThem = followerRoots.get(freq.entry.get().owner);
-                            byte[] ourKeyForThem = ourDirForThem.getKey().serialize();
-                            byte[] keyFromResponse = freq.key.map(k -> k.serialize()).orElse(null);
-                            if (keyFromResponse == null || !Arrays.equals(keyFromResponse, ourKeyForThem)) {
-                                ourDirForThem.remove(this, getSharingFolder());
-                                // remove entry point as well
-                                removeFromStaticData(ourDirForThem);
-                                // clear their response follow req too
-                                corenodeClient.removeFollowRequest(user.toUserPublicKey(), user.signMessage(freq.rawCipher));
-                            } else if (freq.entry.get().pointer.isNull()) {
-                                // They reciprocated, but didn't accept (they follow us, but we can't follow them)
-                            } else {
-                                // add new entry to tree root
-                                EntryPoint entry = freq.entry.get();
-                                FileTreeNode treenode = retrieveEntryPoint(entry).get();
-                                String path = treenode.getPath(this);
-                                entrie.put(path, entry);
+    /**
+     * Process any responses to our follow requests.
+     *
+     * @return initial follow requests
+     */
+    public CompletableFuture<List<FollowRequest>> processFollowRequests() {
+        return network.coreNode.getFollowRequests(user.toUserPublicKey()).thenCompose(reqs -> {
+            DataSource din = new DataSource(reqs);
+            List<FollowRequest> all;
+            try {
+                int n = din.readInt();
+                all = IntStream.range(0, n)
+                        .mapToObj(i -> i)
+                        .flatMap(i -> {
+                            try {
+                                return Stream.of(decodeFollowRequest(din.readArray()));
+                            } catch (IOException ioe) {
+                                return Stream.empty();
                             }
-                            // add entry point to static data
-                            if (!Arrays.equals(freq.entry.get().pointer.baseKey.serialize(), SymmetricKey.createNull().serialize())) {
-                                addToStaticDataAndCommit(freq.entry.get());
-                                return corenodeClient.removeFollowRequest(user.toUserPublicKey(), user.signMessage(freq.rawCipher));
-                            }
-                            return false;
+                        })
+                        .collect(Collectors.toList());
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+
+            return processFollowRequests(all);
+        });
+    }
+
+    private CompletableFuture<List<FollowRequest>> processFollowRequests(List<FollowRequest> all) {
+        return getSharingFolder().thenCompose(sharing ->
+                getFollowerRoots().thenCompose(followerRoots -> {
+                    List<FollowRequest> replies = all.stream()
+                            .filter(freq -> followerRoots.containsKey(freq.entry.get().owner))
+                            .collect(Collectors.toList());
+
+                    BiFunction<TrieNode, FollowRequest, CompletableFuture<TrieNode>> addToStatic = (root, freq) -> {
+                        if (!Arrays.equals(freq.entry.get().pointer.baseKey.serialize(), SymmetricKey.createNull().serialize())) {
+                            CompletableFuture<TrieNode> updatedRoot = addToStaticDataAndCommit(root, freq.entry.get());
+                            return updatedRoot.thenCompose(newRoot -> {
+                                entrie = newRoot;
+                                return network.coreNode.removeFollowRequest(user.toUserPublicKey(), user.signMessage(freq.rawCipher))
+                                        .thenApply(b -> newRoot);
+                            });
                         }
-                        return !followerRoots.containsKey(freq.entry.get().owner);
-                    } catch (IOException ioe) {
-                        ioe.printStackTrace();
-                        return false;
-                    }
+                        return CompletableFuture.completedFuture(root);
+                    };
+
+                    BiFunction<TrieNode, FollowRequest, CompletableFuture<TrieNode>> mozart = (trie, freq) -> {
+                        // delete our folder if they didn't reciprocate
+                        FileTreeNode ourDirForThem = followerRoots.get(freq.entry.get().owner);
+                        byte[] ourKeyForThem = ourDirForThem.getKey().serialize();
+                        byte[] keyFromResponse = freq.key.map(k -> k.serialize()).orElse(null);
+                        if (keyFromResponse == null || !Arrays.equals(keyFromResponse, ourKeyForThem)) {
+                            CompletableFuture<Boolean> removeDir = ourDirForThem.remove(this, sharing);
+                            // remove entry point as well
+                            CompletableFuture<Boolean> cleanStatic = removeFromStaticData(ourDirForThem);
+                            // clear their response follow req too
+                            CompletableFuture<Boolean> clearPending = network.coreNode.removeFollowRequest(user.toUserPublicKey(), user.signMessage(freq.rawCipher));
+                            return CompletableFuture.allOf(removeDir, cleanStatic, clearPending)
+                                    .thenCompose(b -> addToStatic.apply(trie, freq));
+                        } else if (freq.entry.get().pointer.isNull()) {
+                            // They reciprocated, but didn't accept (they follow us, but we can't follow them)
+                            return CompletableFuture.completedFuture(trie);
+                        } else {
+                            // add new entry to tree root
+                            EntryPoint entry = freq.entry.get();
+                            return retrieveEntryPoint(entry).thenCompose(treeNode ->
+                                    treeNode.get().getPath(this)).thenApply(path ->
+                                    trie.put(path, entry)
+                            ).thenCompose(trieres -> addToStatic.apply(trieres, freq).thenApply(b -> trieres));
+                        }
+                    };
+                    List<FollowRequest> initialRequests = all.stream()
+                            .filter(freq -> !followerRoots.containsKey(freq.entry.get().owner))
+                            .collect(Collectors.toList());
+                    return Futures.reduceAll(replies, entrie, mozart, (a, b) -> a)
+                            .thenApply(newRoot -> {
+                                entrie = newRoot;
+                                return initialRequests;
+                            });
                 })
-                .collect(Collectors.toList());
-        return initialRequests;*/
-        throw new IllegalStateException("Unimplemented!");
+        );
     }
 
     private FollowRequest decodeFollowRequest(byte[] raw) throws IOException {
@@ -637,13 +661,12 @@ public class UserContext {
                 DataSource source = new DataSource(raw);
                 int count = source.readInt();
                 System.out.println("Found "+count+" entry points");
-                Set<EntryPoint> res = new HashSet<>();
+
                 for (int i = 0; i < count; i++) {
                     EntryPoint entry = EntryPoint.symmetricallyDecryptAndDeserialize(source.readArray(), rootKey);
-                    res.add(entry);
-                    addToStaticData(entry);
+                    staticData.add(entry);
                 }
-                return res;
+                return staticData.getEntryPoints();
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }

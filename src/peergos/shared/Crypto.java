@@ -7,9 +7,12 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 
+import java.util.function.*;
+
 public class Crypto {
 
     private static Crypto INSTANCE;
+    private static boolean isJava;
 
     public final SafeRandom random;
     public final LoginHasher hasher;
@@ -25,10 +28,14 @@ public class Crypto {
         this.boxer = boxer;
     }
 
-    private static synchronized Crypto init(Crypto instance) {
+    private static synchronized Crypto init(Supplier<Crypto> instanceCreator, boolean isJava) {
+        if (INSTANCE != null && Crypto.isJava ^ isJava)
+            throw new IllegalStateException("Crypto is already initialized to a different type!");
         if (INSTANCE != null)
-            throw new IllegalStateException("Cannot initialize Crypto twice!");
+            return INSTANCE;
+        Crypto instance = instanceCreator.get();
         INSTANCE = instance;
+        Crypto.isJava = isJava;
         SymmetricKey.addProvider(SymmetricKey.Type.TweetNaCl, instance.symmetricProvider);
         PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, instance.signer);
         SymmetricKey.setRng(SymmetricKey.Type.TweetNaCl, instance.random);
@@ -43,7 +50,7 @@ public class Crypto {
         Salsa20Poly1305.Java symmetricProvider = new Salsa20Poly1305.Java(); // TODO use nacl
         JavaEd25519 signer = new JavaEd25519(); // TODO use nacl
         JavaCurve25519 boxer = new JavaCurve25519(); // TODO use nacl
-        return init(new Crypto(random, new ScryptJS(), symmetricProvider, signer, boxer));
+        return init(() -> new Crypto(random, new ScryptJS(), symmetricProvider, signer, boxer), false);
     }
 
     public static Crypto initJava() {
@@ -51,6 +58,6 @@ public class Crypto {
         Salsa20Poly1305.Java symmetricProvider = new Salsa20Poly1305.Java();
         JavaEd25519 signer = new JavaEd25519();
         JavaCurve25519 boxer = new JavaCurve25519();
-        return init(new Crypto(random, new ScryptJava(), symmetricProvider, signer, boxer));
+        return init(() -> new Crypto(random, new ScryptJava(), symmetricProvider, signer, boxer), true);
     }
 }
