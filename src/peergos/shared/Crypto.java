@@ -35,6 +35,7 @@ public class Crypto {
             return INSTANCE;
         Crypto instance = instanceCreator.get();
         INSTANCE = instance;
+        Crypto.isJava = isJava;
         SymmetricKey.addProvider(SymmetricKey.Type.TweetNaCl, instance.symmetricProvider);
         PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, instance.signer);
         SymmetricKey.setRng(SymmetricKey.Type.TweetNaCl, instance.random);

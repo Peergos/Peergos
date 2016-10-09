@@ -57,6 +57,29 @@ public class EntryPoint {
         return new EntryPoint(pointer, owner, readers, writers);
     }
 
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+
+        EntryPoint that = (EntryPoint) o;
+
+        if (pointer != null ? !pointer.equals(that.pointer) : that.pointer != null) return false;
+        if (owner != null ? !owner.equals(that.owner) : that.owner != null) return false;
+        if (readers != null ? !readers.equals(that.readers) : that.readers != null) return false;
+        return writers != null ? writers.equals(that.writers) : that.writers == null;
+
+    }
+
+    @Override
+    public int hashCode() {
+        int result = pointer != null ? pointer.hashCode() : 0;
+        result = 31 * result + (owner != null ? owner.hashCode() : 0);
+        result = 31 * result + (readers != null ? readers.hashCode() : 0);
+        result = 31 * result + (writers != null ? writers.hashCode() : 0);
+        return result;
+    }
+
     static EntryPoint symmetricallyDecryptAndDeserialize(byte[] input, SymmetricKey key) throws IOException {
         byte[] nonce = Arrays.copyOfRange(input, 0, 24);
         byte[] raw = key.decrypt(Arrays.copyOfRange(input, 24, input.length), nonce);
@@ -73,4 +96,5 @@ public class EntryPoint {
             writers.add(Serialize.deserializeString(din, CoreNode.MAX_USERNAME_SIZE));
         return new EntryPoint(pointer, owner, readers, writers);
     }
+
 }

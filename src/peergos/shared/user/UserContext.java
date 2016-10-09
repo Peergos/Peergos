@@ -25,7 +25,7 @@ public class UserContext {
     public final String username;
     public final User user;
     private final SymmetricKey rootKey;
-    private final SortedMap<UserPublicKey, EntryPoint> staticData = new TreeMap<>();
+    private final UserStaticData staticData;
     private TrieNode entrie = new TrieNode(); // ba dum che!
     private final Fragmenter fragmenter;
 
@@ -47,6 +47,7 @@ public class UserContext {
         this.network = network;
         this.crypto = crypto;
         this.fragmenter = fragmenter;
+        this.staticData =  new UserStaticData();
     }
 
     @JsMethod
@@ -151,7 +152,7 @@ public class UserContext {
 
         CompletableFuture<UserContext> result = new CompletableFuture<>();
         UserUtil.generateUser(username, newPassword, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer).thenAccept(updatedUser -> {
-	        commitStaticData(updatedUser.getUser(), staticData, updatedUser.getRoot(), network).thenApply(updated -> {
+	        commit(updatedUser.getUser(), updatedUser.getRoot(), network).thenApply(updated -> {
 	            if (!updated)
 	                return result.completeExceptionally(new IllegalStateException("Change Password Failed: couldn't upload new file system entry points!"));
 	
@@ -440,29 +441,21 @@ public class UserContext {
         throw new IllegalStateException("Unimplemented!");
     }
 
-    private boolean addToStaticData(EntryPoint entry) {
-        for (int i=0; i < staticData.size(); i++)
-            if (entry.equals(staticData.get(entry.pointer.location.writer)))
-                return true;
-        staticData.put(entry.pointer.location.writer, entry);
-        return true;
-    }
-
     private CompletableFuture<TrieNode> addToStaticDataAndCommit(EntryPoint entry) {
         return addToStaticDataAndCommit(entrie, entry);
     }
 
     private CompletableFuture<TrieNode> addToStaticDataAndCommit(TrieNode root, EntryPoint entry) {
-        addToStaticData(entry);
-        return commitStaticData(user, staticData, rootKey, network)
+        staticData.add(entry);
+        return commit(user, rootKey, network)
                 .thenCompose(res -> addEntryPoint(root, entry));
     }
 
-    private static CompletableFuture<Boolean> commitStaticData(User user,
-                                                               SortedMap<UserPublicKey, EntryPoint> staticData,
-                                                               SymmetricKey rootKey,
-                                                               NetworkAccess network) {
-        byte[] rawStatic = serializeStatic(staticData, rootKey);
+    private CompletableFuture<Boolean> commit(User user,
+                                             SymmetricKey rootKey,
+                                             NetworkAccess network) {
+
+        byte[] rawStatic = staticData.serialize(rootKey);
         return network.dhtClient.put(rawStatic, user, Collections.emptyList())
                 .thenCompose(blobHash -> network.coreNode.getMetadataBlob(user)
                         .thenCompose(currentHash -> {
@@ -481,16 +474,11 @@ public class UserContext {
 
     private CompletableFuture<Boolean> removeFromStaticData(FileTreeNode fileTreeNode) {
         ReadableFilePointer pointer = fileTreeNode.getPointer().filePointer;
-        // find and remove matching entry point
-        Iterator<Map.Entry<UserPublicKey, EntryPoint>> iter = staticData.entrySet().iterator();
-        for (;iter.hasNext();) {
-            Map.Entry<UserPublicKey, EntryPoint> entry = iter.next();
-            if (entry.getValue().pointer.equals(pointer)) {
-                iter.remove();
-                return commitStaticData(user, staticData, rootKey, network);
-            }
-        }
-        return CompletableFuture.completedFuture(true);
+
+        boolean isRemoved = staticData.remove(pointer);
+
+        return isRemoved ? commit(user, rootKey, network) :
+            CompletableFuture.completedFuture(true);
     };
 
     /**
@@ -674,13 +662,12 @@ public class UserContext {
                 DataSource source = new DataSource(raw);
                 int count = source.readInt();
                 System.out.println("Found "+count+" entry points");
-                Set<EntryPoint> res = new HashSet<>();
+
                 for (int i = 0; i < count; i++) {
                     EntryPoint entry = EntryPoint.symmetricallyDecryptAndDeserialize(source.readArray(), rootKey);
-                    res.add(entry);
-                    addToStaticData(entry);
+                    staticData.add(entry);
                 }
-                return res;
+                return staticData.getEntryPoints();
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
