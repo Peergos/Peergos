@@ -3,9 +3,7 @@ package peergos.server.fuse;
 import jnr.ffi.Pointer;
 import jnr.ffi.types.*;
 import peergos.shared.user.UserContext;
-import peergos.shared.user.fs.FileProperties;
-import peergos.shared.user.fs.FileTreeNode;
-import peergos.shared.user.fs.ReadableFilePointer;
+import peergos.shared.user.fs.*;
 import peergos.shared.util.Serialize;
 
 import ru.serce.jnrfuse.ErrorCodes;
@@ -522,19 +520,17 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
         long size = Math.min(actualSize, requestedSize);
         byte[] data =  new byte[(int) size];
 
-        try (InputStream is = stat.treeNode.getInputStream(userContext, actualSize, (l) -> {}).get()){
-            is.skip(offset);
 
-            for (long i = 0; i < size; i++) {
-                // N.B. Fuse seems to assume that a file must be an integral number of disk sectors,
-                // so need to tolerate EOFs up end of last sector (4KiB)
-                if (i + offset >= actualSize && i + offset < actualSize + 4096)
-                    continue;
-                int read = is.read();
-                if (read < 0)
-                    Optional.empty();
-                data[(int) i] = (byte) read;
-            }
+        try (LazyArrayReader lazyArrayReader = stat.treeNode.getInputStream(userContext, actualSize, (l) -> {}).get()){
+            lazyArrayReader.seek(offset).get();
+
+            // N.B. Fuse seems to assume that a file must be an integral number of disk sectors,
+            // so need to tolerate EOFs up end of last sector (4KiB)
+            if (offset + size >= actualSize + 4096)
+                return Optional.empty();
+
+            int sizeToRead = offset + size >= actualSize ? (int) (actualSize - offset) : (int) size;
+            int read = lazyArrayReader.readIntoArray(data, 0, sizeToRead).get();
 
             return Optional.of(data);
         } catch (Exception  ioe) {
@@ -574,12 +570,14 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
             if (size > Integer.MAX_VALUE)
                 throw new IllegalStateException("Trying to truncate/extend to > 4GiB! "+ size);
 
-            byte[] original = Serialize.readFully(file.treeNode.getInputStream(userContext, file.properties.size, l -> {}).get());
+            byte[] original = new byte[(int)file.properties.size];
+            Serialize.readFullArray(file.treeNode.getInputStream(userContext, l -> {}).get(), original);
             // TODO do this smarter by only writing the chunk containing the new endpoint, and deleting all following chunks
             // or extending with 0s
             byte[] truncated = Arrays.copyOfRange(original, 0, (int)size);
             file.treeNode.remove(userContext, parent.treeNode);
-            boolean b = parent.treeNode.uploadFile(file.properties.name, new ByteArrayInputStream(truncated), truncated.length, userContext, l -> {}, userContext.fragmenter()).get();
+            boolean b = parent.treeNode.uploadFile(file.properties.name, new LazyArrayReader.ArrayBacked(truncated),
+                    truncated.length, userContext, l -> {}, userContext.fragmenter()).get();
             return b ? (int) size : 1;
         } catch (Throwable t) {
             t.printStackTrace();
@@ -595,7 +593,8 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
                 throw new IllegalStateException("Cannot write more than " + Integer.MAX_VALUE + " bytes");
             }
 
-            boolean b = parent.treeNode.uploadFile(name, new ByteArrayInputStream(toWrite), offset, offset + size, userContext, l -> {}, userContext.fragmenter()).get();
+            boolean b = parent.treeNode.uploadFile(name, new LazyArrayReader.ArrayBacked(toWrite), offset, offset + size,
+                    userContext, l -> {}, userContext.fragmenter()).get();
             return b ? (int) size : 1;
         } catch (Throwable t) {
             t.printStackTrace();

@@ -1,8 +1,12 @@
 package peergos.shared.util;
 
-import java.io.*;
+import jnr.ffi.annotations.*;
+import peergos.shared.user.fs.*;
 
-public class ResetableFileInputStream extends InputStream {
+import java.io.*;
+import java.util.concurrent.*;
+
+public class ResetableFileInputStream implements LazyArrayReader {
 
     private final RandomAccessFile raf;
     private long currentIndex = 0;
@@ -16,46 +20,49 @@ public class ResetableFileInputStream extends InputStream {
     }
 
     @Override
-    public int read() throws IOException {
-        currentIndex++;
-        return raf.read();
+    public CompletableFuture<Boolean> seek(long offset) {
+        try {
+            raf.seek(offset);
+            return CompletableFuture.completedFuture(true);
+        } catch (IOException e) {
+            CompletableFuture<Boolean> err = new CompletableFuture<>();
+            err.completeExceptionally(e);
+            return err;
+        }
     }
 
     @Override
-    public synchronized void reset() throws IOException {
-        raf.seek(0);
-        currentIndex = 0;
+    public CompletableFuture<Integer> readIntoArray(byte[] res, int offset, int length) {
+        try {
+            int read = raf.read(res, offset, length);
+            return CompletableFuture.completedFuture(read);
+        } catch (IOException e) {
+            CompletableFuture<Integer> err = new CompletableFuture<>();
+            err.completeExceptionally(e);
+            return err;
+        }
     }
 
     @Override
-    public void close() throws IOException {
-        raf.close();
-        super.close();
+    public synchronized CompletableFuture<Boolean> reset() {
+        try {
+            raf.seek(0);
+            currentIndex = 0;
+            return CompletableFuture.completedFuture(true);
+        } catch (IOException e) {
+            CompletableFuture<Boolean> err = new CompletableFuture<>();
+            err.completeExceptionally(e);
+            return err;
+        }
     }
 
     @Override
-    public int available() throws IOException {
-        return 0;
+    public void close() {
+        try {
+            raf.close();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
-    @Override
-    public long skip(long n) throws IOException {
-        raf.seek(n + currentIndex);
-        return n;
-    }
-
-    @Override
-    public int read(byte[] b, int off, int len) throws IOException {
-        return super.read(b, off, len);
-    }
-
-    @Override
-    public int read(byte[] b) throws IOException {
-        return super.read(b);
-    }
-
-    @Override
-    public boolean markSupported() {
-        return true;
-    }
 }

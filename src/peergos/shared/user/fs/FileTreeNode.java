@@ -292,11 +292,11 @@ public class FileTreeNode {
         return uploadFile(filename, new ResetableFileInputStream(f), f.length(), context,  monitor, fragmenter);
     }
 
-    public CompletableFuture<Boolean> uploadFile(String filename, InputStream fileData, long length, UserContext context, Consumer<Long> monitor) throws IOException {
+    public CompletableFuture<Boolean> uploadFile(String filename, LazyArrayReader fileData, long length, UserContext context, Consumer<Long> monitor) throws IOException {
         return uploadFile(filename, fileData, length, context, monitor, context.fragmenter());
     }
 
-    public CompletableFuture<Boolean> uploadFile(String filename, InputStream fileData, long length, UserContext context, Consumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) throws IOException {
+    public CompletableFuture<Boolean> uploadFile(String filename, LazyArrayReader fileData, long length, UserContext context, Consumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) throws IOException {
         return uploadFile(filename, fileData, 0, length, Optional.empty(), context, monitor, fragmenter);
     }
 
@@ -310,43 +310,31 @@ public class FileTreeNode {
         if (isDirectory()) {
             throw new IllegalStateException("Unimplemented directory cleaning!");
         } else {
-            try {
-                FileProperties props = getFileProperties();
-                SymmetricKey baseKey = pointer.filePointer.baseKey;
-                // stream download and re-encrypt with new metaKey
-                return getInputStream(context, l -> {}).thenCompose(in -> {
-                    byte[] tmp = new byte[16];
-                    new Random().nextBytes(tmp);
-                    String tmpFilename = ArrayOps.bytesToHex(tmp) + ".tmp";
+            FileProperties props = getFileProperties();
+            SymmetricKey baseKey = pointer.filePointer.baseKey;
+            // stream download and re-encrypt with new metaKey
+            return getInputStream(context, l -> {}).thenCompose(in -> {
+                byte[] tmp = new byte[16];
+                new Random().nextBytes(tmp);
+                String tmpFilename = ArrayOps.bytesToHex(tmp) + ".tmp";
 
-                    CompletableFuture<Boolean> reuploaded = parent.uploadFile(tmpFilename, in, 0, props.size,
-                            Optional.of(baseKey), context, l -> {
-                            }, fragmenter);
-                    return reuploaded.thenCompose(upload -> parent.getDescendentByPath(tmpFilename, context))
-                            .thenCompose(tmpChild -> tmpChild.get().rename(props.name, context, parent, true))
-                            .thenCompose(rename -> parent.getDescendentByPath(props.name, context))
-                            .thenApply(fileOpt -> fileOpt.get());
-                });
-            } catch (IOException e) {
-                CompletableFuture<FileTreeNode> result = new CompletableFuture<>();
-                result.completeExceptionally(e);
-                return result;
-            }
+                CompletableFuture<Boolean> reuploaded = parent.uploadFile(tmpFilename, in, 0, props.size,
+                        Optional.of(baseKey), context, l -> {
+                        }, fragmenter);
+                return reuploaded.thenCompose(upload -> parent.getDescendentByPath(tmpFilename, context))
+                        .thenCompose(tmpChild -> tmpChild.get().rename(props.name, context, parent, true))
+                        .thenCompose(rename -> parent.getDescendentByPath(props.name, context))
+                        .thenApply(fileOpt -> fileOpt.get());
+            });
         }
     }
 
-    public CompletableFuture<Boolean> uploadTestFile(String filename, int size, UserContext context) {
-        byte[] data = new byte[size];
-        new Random().nextBytes(data);
-        return uploadFile(filename, new ByteArrayInputStream(data), 0, size, context, l -> {}, context.fragmenter());
-    }
-
-    public CompletableFuture<Boolean> uploadFile(String filename, InputStream fileData, long startIndex, long endIndex,
+    public CompletableFuture<Boolean> uploadFile(String filename, LazyArrayReader fileData, long startIndex, long endIndex,
                               UserContext context, Consumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) {
         return uploadFile(filename, fileData, startIndex, endIndex, Optional.empty(), context, monitor, fragmenter);
     }
 
-    public CompletableFuture<Boolean> uploadFile(String filename, InputStream fileData, long startIndex, long endIndex, Optional<SymmetricKey> baseKey,
+    public CompletableFuture<Boolean> uploadFile(String filename, LazyArrayReader fileData, long startIndex, long endIndex, Optional<SymmetricKey> baseKey,
                        UserContext context, Consumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) {
         if (!isLegalName(filename))
             return CompletableFuture.completedFuture(false);
@@ -386,7 +374,7 @@ public class FileTreeNode {
         });
     }
 
-    private CompletableFuture<Boolean> updateExistingChild(FileTreeNode existingChild, InputStream fileData,
+    private CompletableFuture<Boolean> updateExistingChild(FileTreeNode existingChild, LazyArrayReader fileData,
                                                            long inputStartIndex, long endIndex, UserContext context,
                                                            Consumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) {
 
@@ -441,51 +429,47 @@ public class FileTreeNode {
                                     int internalStart = (int) (startIndex % Chunk.MAX_SIZE);
                                     int internalEnd = endIndex - (startIndex - internalStart) > Chunk.MAX_SIZE ?
                                             Chunk.MAX_SIZE : (int) (endIndex - (startIndex - internalStart));
-                                    byte[] raw = currentOriginal.chunk.data();
+                                    byte[] rawData = currentOriginal.chunk.data();
                                     // extend data array if necessary
-                                    if (raw.length < internalEnd)
-                                        raw = Arrays.copyOfRange(raw, 0, internalEnd);
+                                    if (rawData.length < internalEnd)
+                                        rawData = Arrays.copyOfRange(rawData, 0, internalEnd);
+                                    byte[] raw = rawData;
 
-                                    try {
-                                        fileData.read(raw, internalStart, internalEnd - internalStart);
-                                    } catch (IOException ioe) {
-                                        CompletableFuture<Boolean> result = new CompletableFuture<>();
-                                        result.completeExceptionally(ioe);
-                                        return result;
-                                    }
+                                    return fileData.readIntoArray(raw, internalStart, internalEnd - internalStart).thenCompose(read -> {
 
-                                    byte[] nonce = context.randomBytes(TweetNaCl.SECRETBOX_NONCE_BYTES);
+                                        byte[] nonce = context.randomBytes(TweetNaCl.SECRETBOX_NONCE_BYTES);
 
-                                    Chunk updated = new Chunk(raw, dataKey, currentOriginal.location.getMapKey(), nonce);
-                                    LocatedChunk located = new LocatedChunk(currentOriginal.location, updated);
-                                    long currentSize = filesSize.get();
-                                    FileProperties newProps = new FileProperties(childProps.name, endIndex > currentSize? endIndex : currentSize,
-                                            LocalDateTime.now(), childProps.isHidden, childProps.thumbnail);
+                                        Chunk updated = new Chunk(raw, dataKey, currentOriginal.location.getMapKey(), nonce);
+                                        LocatedChunk located = new LocatedChunk(currentOriginal.location, updated);
+                                        long currentSize = filesSize.get();
+                                        FileProperties newProps = new FileProperties(childProps.name, endIndex > currentSize ? endIndex : currentSize,
+                                                LocalDateTime.now(), childProps.isHidden, childProps.thumbnail);
 
-                                    CompletableFuture<Boolean> chunkUploaded = FileUploader.uploadChunk((User) entryWriterKey, newProps, getLocation(), getParentKey(), baseKey, located,
-                                            EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES, nextChunkLocation, context, monitor);
+                                        CompletableFuture<Boolean> chunkUploaded = FileUploader.uploadChunk((User) entryWriterKey, newProps, getLocation(), getParentKey(), baseKey, located,
+                                                EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES, nextChunkLocation, context, monitor);
 
-                                    return chunkUploaded.thenCompose(isUploaded -> {
-                                        if (!isUploaded)
-                                            return CompletableFuture.completedFuture(false);
+                                        return chunkUploaded.thenCompose(isUploaded -> {
+                                            if (!isUploaded)
+                                                return CompletableFuture.completedFuture(false);
 
 
-                                        //update indices to be relative to next chunk
-                                        long updatedLength = startIndex + internalEnd - internalStart;
-                                        if (updatedLength > filesSize.get()) {
-                                            filesSize.set(updatedLength);
+                                            //update indices to be relative to next chunk
+                                            long updatedLength = startIndex + internalEnd - internalStart;
+                                            if (updatedLength > filesSize.get()) {
+                                                filesSize.set(updatedLength);
 
-                                            if (updatedLength > Chunk.MAX_SIZE) {
-                                                // update file size in FileProperties of first chunk
-                                                CompletableFuture<Boolean> updatedSize = getChildren(context).thenCompose(children -> {
-                                                    Optional<FileTreeNode> updatedChild = children.stream()
-                                                            .filter(f -> f.getFileProperties().name.equals(filename))
-                                                            .findAny();
-                                                    return updatedChild.get().setProperties(child.getFileProperties().withSize(endIndex), context, this);
-                                                });
+                                                if (updatedLength > Chunk.MAX_SIZE) {
+                                                    // update file size in FileProperties of first chunk
+                                                    CompletableFuture<Boolean> updatedSize = getChildren(context).thenCompose(children -> {
+                                                        Optional<FileTreeNode> updatedChild = children.stream()
+                                                                .filter(f -> f.getFileProperties().name.equals(filename))
+                                                                .findAny();
+                                                        return updatedChild.get().setProperties(child.getFileProperties().withSize(endIndex), context, this);
+                                                    });
+                                                }
                                             }
-                                        }
-                                        return CompletableFuture.completedFuture(true);
+                                            return CompletableFuture.completedFuture(true);
+                                        });
                                     });
                                 });
                     };
@@ -637,11 +621,11 @@ public class FileTreeNode {
         return new RetrievedFilePointer(writableFilePointer(), pointer.fileAccess).remove(context, null);
     }
 
-    public CompletableFuture<? extends InputStream> getInputStream(UserContext context, Consumer<Long> monitor) throws IOException {
+    public CompletableFuture<? extends LazyArrayReader> getInputStream(UserContext context, Consumer<Long> monitor) {
         return getInputStream(context, getFileProperties().size, monitor);
     }
 
-    public CompletableFuture<? extends InputStream> getInputStream(UserContext context, long fileSize, Consumer<Long> monitor) throws IOException {
+    public CompletableFuture<? extends LazyArrayReader> getInputStream(UserContext context, long fileSize, Consumer<Long> monitor) {
         SymmetricKey baseKey = pointer.filePointer.baseKey;
         SymmetricKey dataKey = pointer.fileAccess.getMetaKey(baseKey);
         return pointer.fileAccess.retriever().getFile(context, dataKey, fileSize, getLocation(), monitor);
@@ -672,7 +656,8 @@ public class FileTreeNode {
         return new FileTreeNode(null, null, Collections.EMPTY_SET, Collections.EMPTY_SET, null);
     }
 
-    public byte[] generateThumbnail(InputStream imageBlob, String fileName) {
+    public byte[] generateThumbnail(LazyArrayReader imageBlob, String fileName) {
+        /* TODO
         try {
             if(!isImage(imageBlob)) {
                 return new byte[0];
@@ -694,7 +679,7 @@ public class FileTreeNode {
         }
         catch (IOException ioe) {
             ioe.printStackTrace();
-        }
+        }*/
         return new byte[0];
     }
 

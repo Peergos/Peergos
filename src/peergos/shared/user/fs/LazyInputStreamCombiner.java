@@ -8,7 +8,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
 
-public class LazyInputStreamCombiner extends InputStream {
+public class LazyInputStreamCombiner implements LazyArrayReader {
     private final UserContext context;
     private final SymmetricKey dataKey;
     private final Consumer<Long> monitor;
@@ -52,74 +52,48 @@ public class LazyInputStreamCombiner extends InputStream {
         return err;
     }
 
+    @Override
+    public CompletableFuture<Boolean> seek(long offset) {
+        throw new IllegalStateException("Unimplemented!");
+    }
+
     public int bytesReady() {
         return this.current.length - this.index;
     }
 
-    private static final class EndOfChunkException extends RuntimeException {};
+    public void close() {}
 
-    public byte readByte() throws IOException {
-        try {
-            return this.current[this.index++];
-        } catch (Exception e) {}
-        globalIndex += Chunk.MAX_SIZE;
-        if (globalIndex >= totalLength)
-            throw new EOFException();
-        throw new EndOfChunkException();
-    }
-
-    @Override
-    public void reset() {
+    public CompletableFuture<Boolean> reset() {
         index = 0;
         current = original;
         next = originalNext;
+        return CompletableFuture.completedFuture(true);
     }
 
-    @Override
-    public boolean markSupported() {
-        return true;
-    }
-
-    @Override
-    public int read() throws IOException {
-        try {
-            return readByte() & 0xff;
-        } catch (EOFException eofe) {
-            return -1;
-        }
-    }
-
-    public CompletableFuture<byte[]> readArray(int len, byte[] res, int offset) {
+    /**
+     *
+     * @param res array to store data in
+     * @param offset initial index to store data in res
+     * @param length number of bytes to read
+     * @return number of bytes read
+     */
+    public CompletableFuture<Integer> readIntoArray(byte[] res, int offset, int length) {
         int available = bytesReady();
-        int toRead = Math.min(available, len);
-        for (int i=0; i < toRead; i++) {
-            try {
-                res[offset + i] = readByte();
-            } catch (EndOfChunkException e) {
-                int remainingToRead = totalLength - globalIndex > Chunk.MAX_SIZE ? Chunk.MAX_SIZE : (int) (totalLength - globalIndex);
-                byte[] result = res;
-                int offsetAdd = i;
-                return getNextStream(remainingToRead).thenCompose(nextChunk -> {
-                    current = nextChunk;
-                    index = 0;
-                    return readArray(remainingToRead, result, offset + offsetAdd);
-                });
-            } catch (IOException e) {
-                CompletableFuture<byte[]> err = new CompletableFuture<>();
-                err.completeExceptionally(e);
-                return err;
-            }
+        int toRead = Math.min(available, length);
+        System.arraycopy(current, index, res, offset, toRead);
+        globalIndex += toRead;
+        if (available >= length) // we are done
+            return CompletableFuture.completedFuture(length);
+        if (globalIndex >= totalLength) {
+            CompletableFuture<Integer> err=  new CompletableFuture<>();
+            err.completeExceptionally(new EOFException());
+            return err;
         }
-        if (available >= len)
-            return CompletableFuture.completedFuture(res);
-        int nextSize = len - toRead > Chunk.MAX_SIZE ? Chunk.MAX_SIZE : (len-toRead) % Chunk.MAX_SIZE;
-        int newOffset = offset;
-        return getNextStream(nextSize).thenCompose(nextCurrent -> {
-            this.current = nextCurrent;
+        int remainingToRead = totalLength - globalIndex > Chunk.MAX_SIZE ? Chunk.MAX_SIZE : (int) (totalLength - globalIndex);
+        return getNextStream(remainingToRead).thenCompose(nextChunk -> {
+            current = nextChunk;
             index = 0;
-            byte[] result = new byte[len];
-
-            return readArray(len - toRead, result, newOffset + toRead);
+            return readIntoArray(res, offset + toRead, length - toRead).thenApply(bytesRead -> bytesRead + toRead);
         });
     }
 }

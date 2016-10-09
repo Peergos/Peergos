@@ -1,7 +1,10 @@
 package peergos.shared.util;
 
+import peergos.shared.user.fs.*;
+
 import java.io.*;
 import java.util.Arrays;
+import java.util.concurrent.*;
 
 public class Serialize
 {
@@ -56,14 +59,13 @@ public class Serialize
         return bout.toByteArray();
     }
 
-    public static void readFullArray(InputStream in, byte[] result) throws IOException {
-        byte[] b =  new  byte[0x1000];
-        int nRead;
-        int offset = 0;
-        while (offset < result.length && (nRead = in.read(b, 0, Math.min(result.length - offset, b.length))) != -1) {
-            System.arraycopy(b, 0, result, offset, nRead);
-            offset += nRead;
-        }
+    public static CompletableFuture<byte[]> readFully(LazyArrayReader in, long size) {
+        byte[] res = new byte[(int)size];
+        return in.readIntoArray(res, 0, (int) size).thenApply(i -> res);
+    }
+
+    public static CompletableFuture<Boolean> readFullArray(LazyArrayReader in, byte[] result) throws IOException {
+        return in.readIntoArray(result, 0, result.length).thenApply(b -> true);
     }
 
     public static byte[] ensureSize(byte[] data, int  size) {
