@@ -136,8 +136,11 @@ public class EncryptedChunkRetriever implements FileRetriever {
 
     private static List<FragmentWithHash> reorder(List<FragmentWithHash> fragments, List<Multihash> hashes) {
         FragmentWithHash[] res = new FragmentWithHash[fragments.size()];
-        for (FragmentWithHash f: fragments)
-            res[hashes.indexOf(f.hash)] = f;
+        for (FragmentWithHash f: fragments) {
+            for (int index = 0; index < res.length; index++)
+                if (hashes.get(index).equals(f.hash))
+                    res[index] = f;
+        }
         return Arrays.asList(res);
     }
 

@@ -728,8 +728,8 @@ public class UserContext {
                         }))
                 .collect(Collectors.toList());
 
-        return Futures.combineAll(futures)
-                .thenApply(set -> set.stream().filter(Optional::isPresent).map(Optional::get).collect(Collectors.toList()));
+        return Futures.combineAllInOrder(futures)
+                .thenApply(optList -> optList.stream().filter(Optional::isPresent).map(Optional::get).collect(Collectors.toList()));
     }
 
     public byte[] randomBytes(int length) {
