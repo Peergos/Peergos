@@ -567,8 +567,7 @@ public class UserContext {
                             return hash;
                         }))
                 .collect(Collectors.toList());
-        return Futures.combineAll(futures)
-                .thenApply(set -> set.stream().collect(Collectors.toList()));
+        return Futures.combineAllInOrder(futures);
     }
 
     public CompletableFuture<Boolean> uploadChunk(FileAccess metadata, Location location, List<Multihash> linkHashes) {
