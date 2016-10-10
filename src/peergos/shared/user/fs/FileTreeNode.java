@@ -288,10 +288,6 @@ public class FileTreeNode {
         return isNull || pointer.fileAccess.isDirectory();
     }
 
-    public CompletableFuture<Boolean> uploadFile(String filename, File f, UserContext context, Consumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) throws IOException {
-        return uploadFile(filename, new ResetableFileInputStream(f), f.length(), context,  monitor, fragmenter);
-    }
-
     public CompletableFuture<Boolean> uploadFile(String filename, LazyArrayReader fileData, long length, UserContext context, Consumer<Long> monitor) throws IOException {
         return uploadFile(filename, fileData, length, context, monitor, context.fragmenter());
     }

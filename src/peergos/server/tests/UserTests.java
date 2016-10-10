@@ -5,6 +5,7 @@ import static org.junit.Assert.*;
 
 import org.junit.runner.*;
 import org.junit.runners.*;
+import peergos.server.storage.ResetableFileInputStream;
 import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
@@ -243,7 +244,9 @@ public class UserTests {
         byte[] data = randomData(10*1024*1024); // 2 chunks to test block chaining
         Files.write(tmpPath, data);
 
-        boolean b = userRoot.uploadFile(name, tmpPath.toFile(), context, (l) -> {}, context.fragmenter()).get();
+        File tmpFile = tmpPath.toFile();
+        ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(tmpFile);
+        boolean b = userRoot.uploadFile(name, resetableFileInputStream, tmpFile.length(), context, (l) -> {}, context.fragmenter()).get();
 
         assertTrue("file upload", b);
 

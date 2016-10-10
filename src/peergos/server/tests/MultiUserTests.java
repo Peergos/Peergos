@@ -3,6 +3,7 @@ package peergos.server.tests;
 import org.junit.*;
 import org.junit.runner.*;
 import org.junit.runners.*;
+import peergos.server.storage.ResetableFileInputStream;
 import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.symmetric.*;
@@ -105,7 +106,8 @@ public class MultiUserTests {
         File f = File.createTempFile("peergos", "");
         byte[] originalFileContents = "Hello Peergos friend!".getBytes();
         Files.write(f.toPath(), originalFileContents);
-        boolean uploaded = u1Root.uploadFile(filename, f, u1, l -> {}, u1.fragmenter()).get();
+        ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(f);
+        boolean uploaded = u1Root.uploadFile(filename, resetableFileInputStream, f.length(), u1, l -> {}, u1.fragmenter()).get();
 
         // share the file from "a" to each of the others
         FileTreeNode u1File = u1.getByPath(u1.username + "/" + filename).get().get();
@@ -207,7 +209,8 @@ public class MultiUserTests {
         String folderName = "afolder";
         u1Root.mkdir(folderName, u1, SymmetricKey.random(), false, u1.crypto.random);
         FileTreeNode folder = u1.getByPath("/a/" + folderName).get().get();
-        boolean uploaded = folder.uploadFile(filename, f, u1, l -> {}, u1.fragmenter()).get();
+        ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(f);
+        boolean uploaded = folder.uploadFile(filename, resetableFileInputStream, f.length(), u1, l -> {}, u1.fragmenter()).get();
         String originalPath = u1.username + "/" + folderName + "/" + filename;
         FileTreeNode file = u1.getByPath(originalPath).get().get();
 

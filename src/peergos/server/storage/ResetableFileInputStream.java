@@ -1,4 +1,4 @@
-package peergos.shared.util;
+package peergos.server.storage;
 
 import jnr.ffi.annotations.*;
 import peergos.shared.user.fs.*;
