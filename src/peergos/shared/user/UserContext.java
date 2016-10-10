@@ -540,7 +540,9 @@ public class UserContext {
                             CompletableFuture<Boolean> cleanStatic = removeFromStaticData(ourDirForThem);
                             // clear their response follow req too
                             CompletableFuture<Boolean> clearPending = network.coreNode.removeFollowRequest(user.toUserPublicKey(), user.signMessage(freq.rawCipher));
-                            return CompletableFuture.allOf(removeDir, cleanStatic, clearPending)
+
+                            return removeDir.thenCompose(x -> cleanStatic)
+                                    .thenCompose(x -> clearPending)
                                     .thenCompose(b -> addToStatic.apply(trie, freq));
                         } else if (freq.entry.get().pointer.isNull()) {
                             // They reciprocated, but didn't accept (they follow us, but we can't follow them)
