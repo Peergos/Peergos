@@ -383,8 +383,7 @@ public class FileTreeNode {
 
         if (existingChild.isDirty()) {
             CompletableFuture<FileTreeNode> clean = existingChild.clean(context, this, fragmenter);
-            boolean isExceptionally = clean.isCompletedExceptionally();
-            return CompletableFuture.completedFuture(isExceptionally);
+            return clean.thenCompose(x -> CompletableFuture.completedFuture(true));
         }
 
         Supplier<Location> locationSupplier = () -> new Location(getLocation().owner, getLocation().writer, context.randomBytes(32));
