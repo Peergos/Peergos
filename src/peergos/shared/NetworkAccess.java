@@ -28,7 +28,9 @@ public class NetworkAccess {
 
     @JsMethod
     public CompletableFuture<Boolean> isUsernameRegistered(String username) {
-        return CompletableFuture.completedFuture(usernames.contains(username));
+        if (usernames.contains(username))
+            return CompletableFuture.completedFuture(true);
+        return coreNode.getChain(username).thenApply(chain -> chain.size() > 0);
     }
 
     public static CompletableFuture<NetworkAccess> build(HttpPoster poster) {

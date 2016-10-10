@@ -155,7 +155,8 @@ public class UserTests {
         checkFileContents(data3, context.getByPath(username + "/" + newname).get().get(), context);
         // check from a fresh log in too
         UserContext context2 = ensureSignedUp(username, password, network, crypto);
-        checkFileContents(data3, context2.getByPath(username + "/" + newname).get().get(), context);
+        Optional<FileTreeNode> renamed = context2.getByPath(username + "/" + newname).get();
+        checkFileContents(data3, renamed.get(), context);
     }
 
     @Test

@@ -55,7 +55,7 @@ public class MultiUserTests {
 
     @Parameterized.Parameters(name = "{index}: {0}")
     public static Collection<Object[]> parameters() {
-        Random r = new Random(0);
+        Random r = new Random(1);
         Crypto crypto = Crypto.initJava();
         return Arrays.asList(new Object[][] {
                 {"RAM", r, 2, crypto}
