@@ -200,6 +200,7 @@ public class UserContext {
         });
     }
 
+    @JsMethod
     public CompletableFuture<Set<FileTreeNode>> getFriendRoots() {
         List<CompletableFuture<Optional<FileTreeNode>>> friendRoots = entrie.getChildNames()
                 .stream()
@@ -209,6 +210,7 @@ public class UserContext {
                 .thenApply(set -> set.stream().filter(opt -> opt.isPresent()).map(opt -> opt.get()).collect(Collectors.toSet()));
     }
 
+    @JsMethod
     public CompletableFuture<Set<String>> getFollowing() {
         return getFriendRoots()
                 .thenApply(set -> set.stream()
@@ -231,11 +233,11 @@ public class UserContext {
                                 .thenApply(followingRoots -> new SocialState(pending, followerRoots, followingRoots))));
     }
 
+    @JsMethod
     public CompletableFuture<Boolean> sendInitialFollowRequest(String targetUsername) throws IOException {
         return sendFollowRequest(targetUsername, SymmetricKey.random());
     }
 
-    // FollowRequest, boolean, boolean
     public CompletableFuture<Boolean> sendReplyFollowRequest(FollowRequest initialRequest, boolean accept, boolean reciprocate) {
         String theirUsername = initialRequest.entry.get().owner;
         // if accept, create directory to share with them, note in entry points (they follow us)
