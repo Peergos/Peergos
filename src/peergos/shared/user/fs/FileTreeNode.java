@@ -7,9 +7,6 @@ import peergos.shared.crypto.symmetric.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
-import javax.imageio.ImageIO;
-import java.awt.*;
-import java.awt.image.BufferedImage;
 import java.io.*;
 import java.time.*;
 import java.util.*;
@@ -288,11 +285,11 @@ public class FileTreeNode {
         return isNull || pointer.fileAccess.isDirectory();
     }
 
-    public CompletableFuture<Boolean> uploadFile(String filename, LazyArrayReader fileData, long length, UserContext context, Consumer<Long> monitor) throws IOException {
+    public CompletableFuture<Boolean> uploadFile(String filename, AsyncReader fileData, long length, UserContext context, Consumer<Long> monitor) throws IOException {
         return uploadFile(filename, fileData, length, context, monitor, context.fragmenter());
     }
 
-    public CompletableFuture<Boolean> uploadFile(String filename, LazyArrayReader fileData, long length, UserContext context, Consumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) throws IOException {
+    public CompletableFuture<Boolean> uploadFile(String filename, AsyncReader fileData, long length, UserContext context, Consumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) throws IOException {
         return uploadFile(filename, fileData, 0, length, Optional.empty(), context, monitor, fragmenter);
     }
 
@@ -325,13 +322,13 @@ public class FileTreeNode {
         }
     }
 
-    public CompletableFuture<Boolean> uploadFile(String filename, LazyArrayReader fileData, long startIndex, long endIndex,
-                              UserContext context, Consumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) {
+    public CompletableFuture<Boolean> uploadFile(String filename, AsyncReader fileData, long startIndex, long endIndex,
+                                                 UserContext context, Consumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) {
         return uploadFile(filename, fileData, startIndex, endIndex, Optional.empty(), context, monitor, fragmenter);
     }
 
-    public CompletableFuture<Boolean> uploadFile(String filename, LazyArrayReader fileData, long startIndex, long endIndex, Optional<SymmetricKey> baseKey,
-                       UserContext context, Consumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) {
+    public CompletableFuture<Boolean> uploadFile(String filename, AsyncReader fileData, long startIndex, long endIndex, Optional<SymmetricKey> baseKey,
+                                                 UserContext context, Consumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) {
         if (!isLegalName(filename))
             return CompletableFuture.completedFuture(false);
         return getDescendentByPath(filename, context).thenCompose(childOpt -> {
@@ -370,7 +367,7 @@ public class FileTreeNode {
         });
     }
 
-    private CompletableFuture<Boolean> updateExistingChild(FileTreeNode existingChild, LazyArrayReader fileData,
+    private CompletableFuture<Boolean> updateExistingChild(FileTreeNode existingChild, AsyncReader fileData,
                                                            long inputStartIndex, long endIndex, UserContext context,
                                                            Consumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) {
 
@@ -616,11 +613,11 @@ public class FileTreeNode {
         return new RetrievedFilePointer(writableFilePointer(), pointer.fileAccess).remove(context, null);
     }
 
-    public CompletableFuture<? extends LazyArrayReader> getInputStream(UserContext context, Consumer<Long> monitor) {
+    public CompletableFuture<? extends AsyncReader> getInputStream(UserContext context, Consumer<Long> monitor) {
         return getInputStream(context, getFileProperties().size, monitor);
     }
 
-    public CompletableFuture<? extends LazyArrayReader> getInputStream(UserContext context, long fileSize, Consumer<Long> monitor) {
+    public CompletableFuture<? extends AsyncReader> getInputStream(UserContext context, long fileSize, Consumer<Long> monitor) {
         SymmetricKey baseKey = pointer.filePointer.baseKey;
         SymmetricKey dataKey = pointer.fileAccess.getMetaKey(baseKey);
         return pointer.fileAccess.retriever().getFile(context, dataKey, fileSize, getLocation(), monitor);
@@ -651,7 +648,7 @@ public class FileTreeNode {
         return new FileTreeNode(null, null, Collections.EMPTY_SET, Collections.EMPTY_SET, null);
     }
 
-    public byte[] generateThumbnail(LazyArrayReader imageBlob, String fileName) {
+    public byte[] generateThumbnail(AsyncReader imageBlob, String fileName) {
         /* TODO
         try {
             if(!isImage(imageBlob)) {

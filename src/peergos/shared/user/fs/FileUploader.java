@@ -2,7 +2,6 @@ package peergos.shared.user.fs;
 
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.symmetric.*;
-import peergos.shared.ipfs.api.Multihash;
 import peergos.shared.user.*;
 import peergos.shared.util.Serialize;
 import peergos.shared.util.StringUtils;
@@ -25,8 +24,8 @@ public class FileUploader implements AutoCloseable {
     private final Consumer<Long> monitor;
     private final int nOriginalFragments, nAllowedFalures;
     private final peergos.shared.user.fs.Fragmenter fragmenter;
-    private final LazyArrayReader raf; // resettable input stream
-    public FileUploader(String name, LazyArrayReader fileData, long offset, long length, SymmetricKey baseKey, SymmetricKey metaKey, Location parentLocation, SymmetricKey parentparentKey,
+    private final AsyncReader raf; // resettable input stream
+    public FileUploader(String name, AsyncReader fileData, long offset, long length, SymmetricKey baseKey, SymmetricKey metaKey, Location parentLocation, SymmetricKey parentparentKey,
                         Consumer<Long> monitor, FileProperties fileProperties, int nOriginalFragments, int nAllowedFalures) throws IOException {
 //        if (! fileData.markSupported())
 //            throw new IllegalStateException("InputStream needs to be resettable!");

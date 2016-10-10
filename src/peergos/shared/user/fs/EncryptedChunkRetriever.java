@@ -27,8 +27,8 @@ public class EncryptedChunkRetriever implements FileRetriever {
         this.fragmenter = fragmenter;
     }
 
-    public CompletableFuture<LazyArrayReader> getFile(UserContext context, SymmetricKey dataKey, long fileSize,
-                                                              Location ourLocation, Consumer<Long> monitor) {
+    public CompletableFuture<AsyncReader> getFile(UserContext context, SymmetricKey dataKey, long fileSize,
+                                                  Location ourLocation, Consumer<Long> monitor) {
         return getChunkInputStream(context, dataKey, 0, fileSize, ourLocation, monitor)
                 .thenApply(chunk -> new LazyInputStreamCombiner(this, context, dataKey, chunk.get().chunk.data(), fileSize, monitor));
     }

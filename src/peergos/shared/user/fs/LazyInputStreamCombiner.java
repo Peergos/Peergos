@@ -4,11 +4,10 @@ import peergos.shared.crypto.symmetric.*;
 import peergos.shared.user.*;
 
 import java.io.*;
-import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
 
-public class LazyInputStreamCombiner implements LazyArrayReader {
+public class LazyInputStreamCombiner implements AsyncReader {
     private final UserContext context;
     private final SymmetricKey dataKey;
     private final Consumer<Long> monitor;

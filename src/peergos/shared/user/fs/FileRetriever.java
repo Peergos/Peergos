@@ -15,8 +15,8 @@ public interface FileRetriever {
 
     byte[] getNonce();
 
-    CompletableFuture<LazyArrayReader> getFile(UserContext context, SymmetricKey dataKey, long fileSize,
-                                                       Location ourLocation, Consumer<Long> monitor);
+    CompletableFuture<AsyncReader> getFile(UserContext context, SymmetricKey dataKey, long fileSize,
+                                           Location ourLocation, Consumer<Long> monitor);
 
     CompletableFuture<Optional<LocatedEncryptedChunk>> getEncryptedChunk(long bytesRemainingUntilStart,
                                                                          long bytesRemainingUntilEnd, byte[] nonce,

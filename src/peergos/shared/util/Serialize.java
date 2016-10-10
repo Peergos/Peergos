@@ -59,12 +59,12 @@ public class Serialize
         return bout.toByteArray();
     }
 
-    public static CompletableFuture<byte[]> readFully(LazyArrayReader in, long size) {
+    public static CompletableFuture<byte[]> readFully(AsyncReader in, long size) {
         byte[] res = new byte[(int)size];
         return in.readIntoArray(res, 0, (int) size).thenApply(i -> res);
     }
 
-    public static CompletableFuture<Boolean> readFullArray(LazyArrayReader in, byte[] result) throws IOException {
+    public static CompletableFuture<Boolean> readFullArray(AsyncReader in, byte[] result) throws IOException {
         return in.readIntoArray(result, 0, result.length).thenApply(b -> true);
     }
 

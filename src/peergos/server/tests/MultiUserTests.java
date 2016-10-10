@@ -119,7 +119,7 @@ public class MultiUserTests {
                     "/" + userContext.username + "/" + filename).get();
             Assert.assertTrue("shared file present", sharedFile.isPresent());
 
-            LazyArrayReader inputStream = sharedFile.get().getInputStream(userContext, l -> {}).get();
+            AsyncReader inputStream = sharedFile.get().getInputStream(userContext, l -> {}).get();
 
             byte[] fileContents = Serialize.readFully(inputStream, sharedFile.get().getFileProperties().size).get();
             Assert.assertTrue("shared file contents correct", Arrays.equals(originalFileContents, fileContents));
@@ -155,11 +155,11 @@ public class MultiUserTests {
 
         // Now modify the file
         byte[] suffix = "Some new data at the end".getBytes();
-        LazyArrayReader suffixStream = new LazyArrayReader.ArrayBacked(suffix);
+        AsyncReader suffixStream = new AsyncReader.ArrayBacked(suffix);
         FileTreeNode parent = u1New.getByPath(u1New.username).get().get();
         parent.uploadFile(filename, suffixStream, originalFileContents.length, originalFileContents.length + suffix.length,
                 Optional.empty(), u1New, l -> {}, u1New.fragmenter());
-        LazyArrayReader extendedContents = u1New.getByPath(u1.username + "/" + filename).get().get().getInputStream(u1New, l -> {}).get();
+        AsyncReader extendedContents = u1New.getByPath(u1.username + "/" + filename).get().get().getInputStream(u1New, l -> {}).get();
         byte[] newFileContents = Serialize.readFully(extendedContents, originalFileContents.length + suffix.length).get();
 
         Assert.assertTrue(Arrays.equals(newFileContents, ArrayOps.concat(originalFileContents, suffix)));
@@ -236,7 +236,7 @@ public class MultiUserTests {
             Assert.assertTrue("Shared folder present via direct path", sharedFolder.isPresent() && sharedFolder.get().getFileProperties().name.equals(folderName));
 
             FileTreeNode sharedFile = user.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + user.username + "/" + folderName + "/" + filename).get().get();
-            LazyArrayReader inputStream = sharedFile.getInputStream(user, l -> {}).get();
+            AsyncReader inputStream = sharedFile.getInputStream(user, l -> {}).get();
 
             byte[] contents = Serialize.readFully(inputStream, sharedFile.getSize()).get();
             if (fileContents != null)
@@ -273,11 +273,11 @@ public class MultiUserTests {
 
             // Now modify the file
             byte[] suffix = "Some new data at the end".getBytes();
-            LazyArrayReader suffixStream = new LazyArrayReader.ArrayBacked(suffix);
+            AsyncReader suffixStream = new AsyncReader.ArrayBacked(suffix);
             FileTreeNode parent = u1New.getByPath(u1New.username + "/" + folderName).get().get();
             parent.uploadFile(filename, suffixStream, fileContents.length, fileContents.length + suffix.length, Optional.empty(), u1New, l -> {}, u1New.fragmenter());
             FileTreeNode extendedFile = u1New.getByPath(originalPath).get().get();
-            LazyArrayReader extendedContents = extendedFile.getInputStream(u1New, l -> {}).get();
+            AsyncReader extendedContents = extendedFile.getInputStream(u1New, l -> {}).get();
             byte[] newFileContents = Serialize.readFully(extendedContents, extendedFile.getSize()).get();
 
             Assert.assertTrue(Arrays.equals(newFileContents, ArrayOps.concat(fileContents, suffix)));
@@ -290,7 +290,7 @@ public class MultiUserTests {
                 Assert.assertTrue("Shared folder present via direct path", sharedFolder.isPresent() && sharedFolder.get().getFileProperties().name.equals(folderName));
 
                 FileTreeNode sharedFile = otherUser.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + otherUser.username + "/" + folderName + "/" + filename).get().get();
-                LazyArrayReader inputStream = sharedFile.getInputStream(otherUser, l -> {}).get();
+                AsyncReader inputStream = sharedFile.getInputStream(otherUser, l -> {}).get();
 
                 byte[] contents = Serialize.readFully(inputStream, sharedFile.getSize()).get();
                 Assert.assertTrue(Arrays.equals(contents, newFileContents)); //remaining users share latest view of same data

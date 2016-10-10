@@ -122,12 +122,12 @@ public class UserTests {
         String filename = "somedata.txt";
         // write empty file
         byte[] data = new byte[0];
-        userRoot.uploadFile(filename, new LazyArrayReader.ArrayBacked(data), data.length, context, l -> {}, context.fragmenter()).get();
+        userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length, context, l -> {}, context.fragmenter()).get();
         checkFileContents(data, userRoot.getDescendentByPath(filename, context).get().get(), context);
 
         // write small 1 chunk file
         byte[] data2 = "This is a small amount of data".getBytes();
-        userRoot.uploadFile(filename, new LazyArrayReader.ArrayBacked(data2), 0, data2.length, context, l -> {}, context.fragmenter()).get();
+        userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data2), 0, data2.length, context, l -> {}, context.fragmenter()).get();
         checkFileContents(data2, userRoot.getDescendentByPath(filename, context).get().get(), context);
 
         // check file size
@@ -137,13 +137,13 @@ public class UserTests {
         // extend file within existing chunk
         byte[] data3 = new byte[128 * 1024];
         new Random().nextBytes(data3);
-        userRoot.uploadFile(filename, new LazyArrayReader.ArrayBacked(data3), 0, data3.length, context, l -> {}, context.fragmenter()).get();
+        userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data3), 0, data3.length, context, l -> {}, context.fragmenter()).get();
         checkFileContents(data3, userRoot.getDescendentByPath(filename, context).get().get(), context);
 
         // insert data in the middle
         byte[] data4 = "some data to insert somewhere".getBytes();
         int startIndex = 100 * 1024;
-        userRoot.uploadFile(filename, new LazyArrayReader.ArrayBacked(data4), startIndex, startIndex + data4.length, context, l -> {}, context.fragmenter()).get();
+        userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data4), startIndex, startIndex + data4.length, context, l -> {}, context.fragmenter()).get();
         System.arraycopy(data4, 0, data3, startIndex, data4.length);
         checkFileContents(data3, userRoot.getDescendentByPath(filename, context).get().get(), context);
 
@@ -168,12 +168,12 @@ public class UserTests {
 
         String filename = "mediumfile.bin";
         byte[] data = new byte[0];
-        userRoot.uploadFile(filename, new LazyArrayReader.ArrayBacked(data), data.length, context, l -> {}, context.fragmenter());
+        userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length, context, l -> {}, context.fragmenter());
 
         //overwrite with 2 chunk file
         byte[] data5 = new byte[10*1024*1024];
         new Random().nextBytes(data5);
-        userRoot.uploadFile(filename, new LazyArrayReader.ArrayBacked(data5), 0, data5.length, context, l -> {} , context.fragmenter());
+        userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data5), 0, data5.length, context, l -> {} , context.fragmenter());
         checkFileContents(data5, userRoot.getDescendentByPath(filename, context).get().get(), context);
         assertTrue("10MiB file size", data5.length == userRoot.getDescendentByPath(filename, context).get().get().getFileProperties().size);
 
@@ -181,7 +181,7 @@ public class UserTests {
         System.out.println("\n***** Mid 2nd chunk write test");
         byte[] dataInsert = "some data to insert somewhere else".getBytes();
         int start = 5*1024*1024 + 4*1024;
-        userRoot.uploadFile(filename, new LazyArrayReader.ArrayBacked(dataInsert), start, start + dataInsert.length, context, l -> {}, context.fragmenter());
+        userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(dataInsert), start, start + dataInsert.length, context, l -> {}, context.fragmenter());
         System.arraycopy(dataInsert, 0, data5, start, dataInsert.length);
         checkFileContents(data5, userRoot.getDescendentByPath(filename, context).get().get(), context);
     }
@@ -195,13 +195,13 @@ public class UserTests {
 
         String filename = "mediumfile.bin";
         byte[] data = new byte[0];
-        userRoot.uploadFile(filename, new LazyArrayReader.ArrayBacked(data), data.length, context, l -> {}, context.fragmenter());
+        userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length, context, l -> {}, context.fragmenter());
 
         //overwrite with 2 chunk file
         byte[] data5 = new byte[10*1024*1024];
         new Random().nextBytes(data5);
         long t1 = System.currentTimeMillis();
-        userRoot.uploadFile(filename, new LazyArrayReader.ArrayBacked(data5), 0, data5.length, context, l -> {}, context.fragmenter());
+        userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data5), 0, data5.length, context, l -> {}, context.fragmenter());
         long t2 = System.currentTimeMillis();
         System.out.println("Write time per chunk " + (t2-t1)/2 + "mS");
         Assert.assertTrue("Timely write", (t2-t1)/2 < 20000);
@@ -260,7 +260,7 @@ public class UserTests {
 
         FileTreeNode fileTreeNode = opt.get();
         long size = fileTreeNode.getFileProperties().size;
-        LazyArrayReader in = fileTreeNode.getInputStream(context, size, (l) -> {}).get();
+        AsyncReader in = fileTreeNode.getInputStream(context, size, (l) -> {}).get();
         byte[] retrievedData = Serialize.readFully(in, fileTreeNode.getSize()).get();
 
         boolean  dataEquals = Arrays.equals(data, retrievedData);

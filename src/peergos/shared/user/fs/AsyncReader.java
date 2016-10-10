@@ -2,7 +2,7 @@ package peergos.shared.user.fs;
 
 import java.util.concurrent.*;
 
-public interface LazyArrayReader extends AutoCloseable {
+public interface AsyncReader extends AutoCloseable {
 
     CompletableFuture<Boolean> seek(long offset);
 
@@ -26,7 +26,7 @@ public interface LazyArrayReader extends AutoCloseable {
      */
     void close();
 
-    class ArrayBacked implements LazyArrayReader {
+    class ArrayBacked implements AsyncReader {
         private final byte[] data;
         private int index = 0;
 

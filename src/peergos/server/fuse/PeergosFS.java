@@ -11,14 +11,10 @@ import ru.serce.jnrfuse.FuseFillDir;
 import ru.serce.jnrfuse.FuseStubFS;
 import ru.serce.jnrfuse.struct.*;
 
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.io.InputStream;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.*;
 import java.util.*;
-import java.util.concurrent.*;
 import java.util.function.*;
 
 /**
@@ -521,8 +517,8 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
         byte[] data =  new byte[(int) size];
 
 
-        try (LazyArrayReader lazyArrayReader = stat.treeNode.getInputStream(userContext, actualSize, (l) -> {}).get()){
-            lazyArrayReader.seek(offset).get();
+        try (AsyncReader asyncReader = stat.treeNode.getInputStream(userContext, actualSize, (l) -> {}).get()){
+            asyncReader.seek(offset).get();
 
             // N.B. Fuse seems to assume that a file must be an integral number of disk sectors,
             // so need to tolerate EOFs up end of last sector (4KiB)
@@ -530,7 +526,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
                 return Optional.empty();
 
             int sizeToRead = offset + size >= actualSize ? (int) (actualSize - offset) : (int) size;
-            int read = lazyArrayReader.readIntoArray(data, 0, sizeToRead).get();
+            int read = asyncReader.readIntoArray(data, 0, sizeToRead).get();
 
             return Optional.of(data);
         } catch (Exception  ioe) {
@@ -576,7 +572,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
             // or extending with 0s
             byte[] truncated = Arrays.copyOfRange(original, 0, (int)size);
             file.treeNode.remove(userContext, parent.treeNode);
-            boolean b = parent.treeNode.uploadFile(file.properties.name, new LazyArrayReader.ArrayBacked(truncated),
+            boolean b = parent.treeNode.uploadFile(file.properties.name, new AsyncReader.ArrayBacked(truncated),
                     truncated.length, userContext, l -> {}, userContext.fragmenter()).get();
             return b ? (int) size : 1;
         } catch (Throwable t) {
@@ -593,7 +589,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
                 throw new IllegalStateException("Cannot write more than " + Integer.MAX_VALUE + " bytes");
             }
 
-            boolean b = parent.treeNode.uploadFile(name, new LazyArrayReader.ArrayBacked(toWrite), offset, offset + size,
+            boolean b = parent.treeNode.uploadFile(name, new AsyncReader.ArrayBacked(toWrite), offset, offset + size,
                     userContext, l -> {}, userContext.fragmenter()).get();
             return b ? (int) size : 1;
         } catch (Throwable t) {

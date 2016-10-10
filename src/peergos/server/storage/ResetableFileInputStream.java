@@ -1,12 +1,11 @@
 package peergos.server.storage;
 
-import jnr.ffi.annotations.*;
 import peergos.shared.user.fs.*;
 
 import java.io.*;
 import java.util.concurrent.*;
 
-public class ResetableFileInputStream implements LazyArrayReader {
+public class ResetableFileInputStream implements AsyncReader {
 
     private final RandomAccessFile raf;
     private long currentIndex = 0;
