@@ -4,7 +4,7 @@ import jsinterop.annotations.*;
 
 import java.util.concurrent.*;
 
-@JsType(isNative = true)
+@JsType(isNative = true, namespace = "browserio")
 public class BrowserFileReader implements AsyncReader {
 
     public native CompletableFuture<Boolean> seek(int high32, int low32);
