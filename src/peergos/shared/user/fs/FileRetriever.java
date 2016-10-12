@@ -16,17 +16,17 @@ public interface FileRetriever {
     byte[] getNonce();
 
     CompletableFuture<AsyncReader> getFile(UserContext context, SymmetricKey dataKey, long fileSize,
-                                           Location ourLocation, Consumer<Long> monitor);
+                                           Location ourLocation, ProgressConsumer<Long> monitor);
 
     CompletableFuture<Optional<LocatedEncryptedChunk>> getEncryptedChunk(long bytesRemainingUntilStart,
                                                                          long bytesRemainingUntilEnd, byte[] nonce,
                                                                          SymmetricKey dataKey, Location ourLocation,
-                                                                         UserContext context, Consumer<Long> monitor);
+                                                                         UserContext context, ProgressConsumer<Long> monitor);
 
     CompletableFuture<Optional<Location>> getLocationAt(Location startLocation, long offset, UserContext context);
 
     CompletableFuture<Optional<LocatedChunk>> getChunkInputStream(UserContext context, SymmetricKey dataKey, long startIndex,
-                                               long truncateTo, Location ourLocation, Consumer<Long> monitor);
+                                               long truncateTo, Location ourLocation, ProgressConsumer<Long> monitor);
 
     void serialize(DataSink sink);
 

@@ -586,7 +586,8 @@ public class UserContext {
         return network.dhtClient.put(f.data, targetUser, Collections.emptyList());
     }
 
-    public CompletableFuture<List<Multihash>> uploadFragments(List<Fragment> fragments, UserPublicKey owner, UserPublicKey sharer, byte[] mapKey, Consumer<Long> progressCounter) {
+    public CompletableFuture<List<Multihash>> uploadFragments(List<Fragment> fragments, UserPublicKey owner,
+                                                              UserPublicKey sharer, byte[] mapKey, ProgressConsumer<Long> progressCounter) {
         List<CompletableFuture<Multihash>> futures = fragments.stream()
                 .map(f -> uploadFragment(f, owner)
                         .thenApply(hash -> {
@@ -723,7 +724,7 @@ public class UserContext {
         });
     };
 
-    public CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Multihash> hashes, Consumer<Long> monitor) {
+    public CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Multihash> hashes, ProgressConsumer<Long> monitor) {
         List<CompletableFuture<Optional<FragmentWithHash>>> futures = hashes.stream()
                 .map(h -> network.dhtClient.get(h)
                         .thenApply(dataOpt -> {

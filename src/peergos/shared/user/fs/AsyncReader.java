@@ -1,7 +1,10 @@
 package peergos.shared.user.fs;
 
+import jsinterop.annotations.*;
+
 import java.util.concurrent.*;
 
+@JsType
 public interface AsyncReader extends AutoCloseable {
 
     CompletableFuture<Boolean> seek(int high32, int low32);

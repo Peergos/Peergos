@@ -2,6 +2,7 @@ package peergos.shared.user.fs;
 
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.user.*;
+import peergos.shared.util.*;
 
 import java.io.*;
 import java.util.concurrent.*;
@@ -10,7 +11,7 @@ import java.util.function.*;
 public class LazyInputStreamCombiner implements AsyncReader {
     private final UserContext context;
     private final SymmetricKey dataKey;
-    private final Consumer<Long> monitor;
+    private final ProgressConsumer<Long> monitor;
     private final long totalLength;
     private final byte[] original;
     private final Location originalNext;
@@ -19,7 +20,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
     private int index;
     private Location next;
 
-    public LazyInputStreamCombiner(FileRetriever stream, UserContext context, SymmetricKey dataKey, byte[] chunk, long totalLength, Consumer<Long> monitor) {
+    public LazyInputStreamCombiner(FileRetriever stream, UserContext context, SymmetricKey dataKey, byte[] chunk, long totalLength, ProgressConsumer<Long> monitor) {
         this.context = context;
         this.dataKey = dataKey;
         this.current = chunk;

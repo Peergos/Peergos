@@ -285,11 +285,13 @@ public class FileTreeNode {
         return isNull || pointer.fileAccess.isDirectory();
     }
 
-    public CompletableFuture<Boolean> uploadFile(String filename, AsyncReader fileData, long length, UserContext context, Consumer<Long> monitor) throws IOException {
-        return uploadFile(filename, fileData, length, context, monitor, context.fragmenter());
+    @JsMethod
+    public CompletableFuture<Boolean> uploadFile(String filename, AsyncReader fileData, int legthHi, int lengthLow, UserContext context, ProgressConsumer<Long> monitor) {
+        return uploadFile(filename, fileData, lengthLow + ((legthHi & 0xFFFFFFFFL) << 32), context, monitor, context.fragmenter());
     }
 
-    public CompletableFuture<Boolean> uploadFile(String filename, AsyncReader fileData, long length, UserContext context, Consumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) throws IOException {
+    public CompletableFuture<Boolean> uploadFile(String filename, AsyncReader fileData, long length, UserContext context,
+                                                 ProgressConsumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) {
         return uploadFile(filename, fileData, 0, length, Optional.empty(), context, monitor, fragmenter);
     }
 
@@ -323,12 +325,12 @@ public class FileTreeNode {
     }
 
     public CompletableFuture<Boolean> uploadFile(String filename, AsyncReader fileData, long startIndex, long endIndex,
-                                                 UserContext context, Consumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) {
+                                                 UserContext context, ProgressConsumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) {
         return uploadFile(filename, fileData, startIndex, endIndex, Optional.empty(), context, monitor, fragmenter);
     }
 
     public CompletableFuture<Boolean> uploadFile(String filename, AsyncReader fileData, long startIndex, long endIndex, Optional<SymmetricKey> baseKey,
-                                                 UserContext context, Consumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) {
+                                                 UserContext context, ProgressConsumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) {
         if (!isLegalName(filename))
             return CompletableFuture.completedFuture(false);
         return getDescendentByPath(filename, context).thenCompose(childOpt -> {
@@ -369,7 +371,7 @@ public class FileTreeNode {
 
     private CompletableFuture<Boolean> updateExistingChild(FileTreeNode existingChild, AsyncReader fileData,
                                                            long inputStartIndex, long endIndex, UserContext context,
-                                                           Consumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) {
+                                                           ProgressConsumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) {
 
         String filename = existingChild.getFileProperties().name;
         System.out.println("Overwriting section [" + Long.toHexString(inputStartIndex) + ", " + Long.toHexString(endIndex) + "] of child with name: " + filename);
@@ -613,11 +615,11 @@ public class FileTreeNode {
         return new RetrievedFilePointer(writableFilePointer(), pointer.fileAccess).remove(context, null);
     }
 
-    public CompletableFuture<? extends AsyncReader> getInputStream(UserContext context, Consumer<Long> monitor) {
+    public CompletableFuture<? extends AsyncReader> getInputStream(UserContext context, ProgressConsumer<Long> monitor) {
         return getInputStream(context, getFileProperties().size, monitor);
     }
 
-    public CompletableFuture<? extends AsyncReader> getInputStream(UserContext context, long fileSize, Consumer<Long> monitor) {
+    public CompletableFuture<? extends AsyncReader> getInputStream(UserContext context, long fileSize, ProgressConsumer<Long> monitor) {
         SymmetricKey baseKey = pointer.filePointer.baseKey;
         SymmetricKey dataKey = pointer.fileAccess.getMetaKey(baseKey);
         return pointer.fileAccess.retriever().getFile(context, dataKey, fileSize, getLocation(), monitor);

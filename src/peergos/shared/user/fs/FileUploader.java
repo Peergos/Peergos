@@ -3,8 +3,7 @@ package peergos.shared.user.fs;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.user.*;
-import peergos.shared.util.Serialize;
-import peergos.shared.util.StringUtils;
+import peergos.shared.util.*;
 
 import java.io.*;
 import java.time.*;
@@ -21,12 +20,12 @@ public class FileUploader implements AutoCloseable {
     private final long nchunks;
     private final Location parentLocation;
     private final SymmetricKey parentparentKey;
-    private final Consumer<Long> monitor;
+    private final ProgressConsumer<Long> monitor;
     private final int nOriginalFragments, nAllowedFalures;
     private final peergos.shared.user.fs.Fragmenter fragmenter;
     private final AsyncReader raf; // resettable input stream
     public FileUploader(String name, AsyncReader fileData, long offset, long length, SymmetricKey baseKey, SymmetricKey metaKey, Location parentLocation, SymmetricKey parentparentKey,
-                        Consumer<Long> monitor, FileProperties fileProperties, int nOriginalFragments, int nAllowedFalures) throws IOException {
+                        ProgressConsumer<Long> monitor, FileProperties fileProperties, int nOriginalFragments, int nAllowedFalures) throws IOException {
 //        if (! fileData.markSupported())
 //            throw new IllegalStateException("InputStream needs to be resettable!");
         if (fileProperties == null)
@@ -55,7 +54,7 @@ public class FileUploader implements AutoCloseable {
     }
 
     public Location uploadChunk(UserContext context, UserPublicKey owner, User writer, long chunkIndex,
-                                Location currentLocation, Consumer<Long> monitor) throws IOException {
+                                Location currentLocation, ProgressConsumer<Long> monitor) throws IOException {
 	    System.out.println("uploading chunk: "+chunkIndex + " of "+name);
 
         long position = chunkIndex * Chunk.MAX_SIZE;
@@ -87,7 +86,7 @@ public class FileUploader implements AutoCloseable {
 
     public static CompletableFuture<Boolean> uploadChunk(User writer, FileProperties props, Location parentLocation, SymmetricKey parentparentKey,
                         SymmetricKey baseKey, LocatedChunk chunk, int nOriginalFragments, int nAllowedFalures, Location nextChunkLocation,
-                        UserContext context, Consumer<Long> monitor) {
+                        UserContext context, ProgressConsumer<Long> monitor) {
         EncryptedChunk encryptedChunk = chunk.chunk.encrypt();
 
         peergos.shared.user.fs.Fragmenter fragmenter = nAllowedFalures == 0 ?
