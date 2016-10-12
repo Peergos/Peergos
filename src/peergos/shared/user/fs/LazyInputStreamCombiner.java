@@ -21,6 +21,8 @@ public class LazyInputStreamCombiner implements AsyncReader {
     private Location next;
 
     public LazyInputStreamCombiner(FileRetriever stream, UserContext context, SymmetricKey dataKey, byte[] chunk, long totalLength, ProgressConsumer<Long> monitor) {
+        if (chunk == null)
+            throw new IllegalStateException("Null initial chunk!");
         this.context = context;
         this.dataKey = dataKey;
         this.current = chunk;

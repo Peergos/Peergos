@@ -286,8 +286,8 @@ public class FileTreeNode {
     }
 
     @JsMethod
-    public CompletableFuture<Boolean> uploadFile(String filename, AsyncReader fileData, int legthHi, int lengthLow, UserContext context, ProgressConsumer<Long> monitor) {
-        return uploadFile(filename, fileData, lengthLow + ((legthHi & 0xFFFFFFFFL) << 32), context, monitor, context.fragmenter());
+    public CompletableFuture<Boolean> uploadFile(String filename, AsyncReader fileData, int lengthHi, int lengthLow, UserContext context, ProgressConsumer<Long> monitor) {
+        return uploadFile(filename, fileData, lengthLow + ((lengthHi & 0xFFFFFFFFL) << 32), context, monitor, context.fragmenter());
     }
 
     public CompletableFuture<Boolean> uploadFile(String filename, AsyncReader fileData, long length, UserContext context,
@@ -350,22 +350,18 @@ public class FileTreeNode {
             Location parentLocation = getLocation();
 
             byte[] thumbData = generateThumbnail(fileData, filename);
-            try {
-                fileData.reset();
-                FileProperties fileProps = new FileProperties(filename, endIndex, LocalDateTime.now(), false, Optional.of(thumbData));
-                FileUploader chunks = new FileUploader(filename, fileData, startIndex, endIndex, fileKey, fileMetaKey, parentLocation, dirParentKey, monitor, fileProps,
-                        EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
-                byte[] mapKey = context.randomBytes(32);
-                Location nextChunkLocation = new Location(getLocation().owner, getLocation().writer, mapKey);
-                Location fileLocation = chunks.upload(context, parentLocation.owner, (User) entryWriterKey, nextChunkLocation);
-                ReadableFilePointer filePointer = new ReadableFilePointer(fileLocation, fileKey);
-                dirAccess.addFileAndCommit(filePointer, rootRKey, pointer.filePointer, context);
-                return context.uploadChunk(dirAccess, new Location(parentLocation.owner, entryWriterKey, dirMapKey), Collections.emptyList());
-            } catch (IOException e) {
-                CompletableFuture<Boolean> result = new CompletableFuture<>();
-                result.completeExceptionally(e);
-                return result;
-            }
+            fileData.reset();
+            FileProperties fileProps = new FileProperties(filename, endIndex, LocalDateTime.now(), false, Optional.of(thumbData));
+            FileUploader chunks = new FileUploader(filename, fileData, startIndex, endIndex, fileKey, fileMetaKey, parentLocation, dirParentKey, monitor, fileProps,
+                    EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
+            byte[] mapKey = context.randomBytes(32);
+            Location nextChunkLocation = new Location(getLocation().owner, getLocation().writer, mapKey);
+            return chunks.upload(context, parentLocation.owner, (User) entryWriterKey, nextChunkLocation)
+                    .thenCompose(fileLocation -> {
+                        ReadableFilePointer filePointer = new ReadableFilePointer(fileLocation, fileKey);
+                        dirAccess.addFileAndCommit(filePointer, rootRKey, pointer.filePointer, context);
+                        return context.uploadChunk(dirAccess, new Location(parentLocation.owner, entryWriterKey, dirMapKey), Collections.emptyList());
+                    });
         });
     }
 

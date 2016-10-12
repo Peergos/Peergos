@@ -64,7 +64,7 @@ public class Serialize
         return in.readIntoArray(res, 0, (int) size).thenApply(i -> res);
     }
 
-    public static CompletableFuture<Boolean> readFullArray(AsyncReader in, byte[] result) throws IOException {
+    public static CompletableFuture<Boolean> readFullArray(AsyncReader in, byte[] result) {
         return in.readIntoArray(result, 0, result.length).thenApply(b -> true);
     }
 

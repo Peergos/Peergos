@@ -10,6 +10,7 @@ import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
+import java.util.stream.*;
 
 public class FileUploader implements AutoCloseable {
 
@@ -25,7 +26,7 @@ public class FileUploader implements AutoCloseable {
     private final peergos.shared.user.fs.Fragmenter fragmenter;
     private final AsyncReader raf; // resettable input stream
     public FileUploader(String name, AsyncReader fileData, long offset, long length, SymmetricKey baseKey, SymmetricKey metaKey, Location parentLocation, SymmetricKey parentparentKey,
-                        ProgressConsumer<Long> monitor, FileProperties fileProperties, int nOriginalFragments, int nAllowedFalures) throws IOException {
+                        ProgressConsumer<Long> monitor, FileProperties fileProperties, int nOriginalFragments, int nAllowedFalures) {
 //        if (! fileData.markSupported())
 //            throw new IllegalStateException("InputStream needs to be resettable!");
         if (fileProperties == null)
@@ -53,8 +54,8 @@ public class FileUploader implements AutoCloseable {
         this.nAllowedFalures = nAllowedFalures != -1 ? nAllowedFalures : EncryptedChunk.ERASURE_ALLOWED_FAILURES;
     }
 
-    public Location uploadChunk(UserContext context, UserPublicKey owner, User writer, long chunkIndex,
-                                Location currentLocation, ProgressConsumer<Long> monitor) throws IOException {
+    public CompletableFuture<Location> uploadChunk(UserContext context, UserPublicKey owner, User writer, long chunkIndex,
+                                Location currentLocation, ProgressConsumer<Long> monitor) {
 	    System.out.println("uploading chunk: "+chunkIndex + " of "+name);
 
         long position = chunkIndex * Chunk.MAX_SIZE;
@@ -63,25 +64,27 @@ public class FileUploader implements AutoCloseable {
         boolean isLastChunk = fileLength < position + Chunk.MAX_SIZE;
         int length =  isLastChunk ? (int)(fileLength -  position) : Chunk.MAX_SIZE;
         byte[] data = new byte[length];
-        Serialize.readFullArray(raf, data);
-
-        byte[] nonce = context.randomBytes(TweetNaCl.SECRETBOX_NONCE_BYTES);
-        Chunk chunk = new Chunk(data, metaKey, currentLocation.getMapKey(), nonce);
-        LocatedChunk locatedChunk = new LocatedChunk(new Location(owner, writer, chunk.mapKey()), chunk);
-        byte[] mapKey = context.randomBytes(32);
-        Location nextLocation = new Location(owner, writer, mapKey);
-        uploadChunk(writer, props, parentLocation, parentparentKey, baseKey, locatedChunk, nOriginalFragments, nAllowedFalures, nextLocation, context, monitor);
-        return nextLocation;
+        return Serialize.readFullArray(raf, data).thenApply(b -> {
+            byte[] nonce = context.randomBytes(TweetNaCl.SECRETBOX_NONCE_BYTES);
+            Chunk chunk = new Chunk(data, metaKey, currentLocation.getMapKey(), nonce);
+            LocatedChunk locatedChunk = new LocatedChunk(new Location(owner, writer, chunk.mapKey()), chunk);
+            byte[] mapKey = context.randomBytes(32);
+            Location nextLocation = new Location(owner, writer, mapKey);
+            uploadChunk(writer, props, parentLocation, parentparentKey, baseKey, locatedChunk, nOriginalFragments, nAllowedFalures, nextLocation, context, monitor);
+            return nextLocation;
+        });
     }
 
-    public Location upload(UserContext context, UserPublicKey owner, User writer, Location currentChunk) throws IOException {
+    public CompletableFuture<Location> upload(UserContext context, UserPublicKey owner, User writer, Location currentChunk) {
         long t1 = System.currentTimeMillis();
         Location originalChunk = currentChunk;
 
-        for (int i=0; i < nchunks; i++)
-            currentChunk = uploadChunk(context, owner, writer, i, currentChunk, l -> {});
-        System.out.println("File encryption, erasure coding and upload took: " +(System.currentTimeMillis()-t1) + " mS");
-        return originalChunk;
+        List<Integer> input = IntStream.range(0, (int) nchunks).mapToObj(i -> Integer.valueOf(i)).collect(Collectors.toList());
+        return Futures.reduceAll(input, currentChunk, (loc, i) -> uploadChunk(context, owner, writer, i, loc, l -> {}), (a, b) -> b)
+                .thenApply(loc -> {
+                    System.out.println("File encryption, erasure coding and upload took: " +(System.currentTimeMillis()-t1) + " mS");
+                    return originalChunk;
+                });
     }
 
     public static CompletableFuture<Boolean> uploadChunk(User writer, FileProperties props, Location parentLocation, SymmetricKey parentparentKey,
