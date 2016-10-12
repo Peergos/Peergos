@@ -52,7 +52,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
     }
 
     @Override
-    public CompletableFuture<Boolean> seek(long offset) {
+    public CompletableFuture<Boolean> seek(int hi32, int low32) {
         throw new IllegalStateException("Unimplemented!");
     }
 

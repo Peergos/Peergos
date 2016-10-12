@@ -4,7 +4,7 @@ import java.util.concurrent.*;
 
 public interface AsyncReader extends AutoCloseable {
 
-    CompletableFuture<Boolean> seek(long offset);
+    CompletableFuture<Boolean> seek(int high32, int low32);
 
     /**
      *
@@ -35,8 +35,10 @@ public interface AsyncReader extends AutoCloseable {
         }
 
         @Override
-        public CompletableFuture<Boolean> seek(long offset) {
-            index += (int) offset;
+        public CompletableFuture<Boolean> seek(int high32, int low32) {
+            if (high32 != 0)
+                throw new IllegalArgumentException("Cannot have arrays larger than 4GiB!");
+            index += low32;
             return CompletableFuture.completedFuture(true);
         }
 

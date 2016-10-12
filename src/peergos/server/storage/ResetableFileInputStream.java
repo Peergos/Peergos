@@ -19,9 +19,9 @@ public class ResetableFileInputStream implements AsyncReader {
     }
 
     @Override
-    public CompletableFuture<Boolean> seek(long offset) {
+    public CompletableFuture<Boolean> seek(int high32, int low32) {
         try {
-            raf.seek(offset);
+            raf.seek(low32 + (high32 & 0xFFFFFFFFL) << 32);
             return CompletableFuture.completedFuture(true);
         } catch (IOException e) {
             CompletableFuture<Boolean> err = new CompletableFuture<>();

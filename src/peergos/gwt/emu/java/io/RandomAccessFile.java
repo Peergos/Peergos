@@ -39,7 +39,11 @@ public class RandomAccessFile implements Closeable/* implements DataOutput, Data
 	public int read (byte b[]) throws IOException {
 		return -1;
 	}
-	
+
+	public int read (byte b[], int offset, int len) throws IOException {
+		return -1;
+	}
+
 	public void seek (long pos) throws IOException {
 	}
 	
