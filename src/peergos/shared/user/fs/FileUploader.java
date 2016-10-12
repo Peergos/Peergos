@@ -9,7 +9,6 @@ import java.io.*;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.function.*;
 import java.util.stream.*;
 
 public class FileUploader implements AutoCloseable {
@@ -24,7 +23,7 @@ public class FileUploader implements AutoCloseable {
     private final ProgressConsumer<Long> monitor;
     private final int nOriginalFragments, nAllowedFalures;
     private final peergos.shared.user.fs.Fragmenter fragmenter;
-    private final AsyncReader raf; // resettable input stream
+    private final AsyncReader reader; // resettable input stream
     public FileUploader(String name, AsyncReader fileData, long offset, long length, SymmetricKey baseKey, SymmetricKey metaKey, Location parentLocation, SymmetricKey parentparentKey,
                         ProgressConsumer<Long> monitor, FileProperties fileProperties, int nOriginalFragments, int nAllowedFalures) {
 //        if (! fileData.markSupported())
@@ -44,7 +43,7 @@ public class FileUploader implements AutoCloseable {
         this.name = name;
         this.offset = offset;
         this.length = length;
-        this.raf = fileData;
+        this.reader = fileData;
         this.baseKey = baseKey;
         this.metaKey = metaKey;
         this.parentLocation = parentLocation;
@@ -64,14 +63,14 @@ public class FileUploader implements AutoCloseable {
         boolean isLastChunk = fileLength < position + Chunk.MAX_SIZE;
         int length =  isLastChunk ? (int)(fileLength -  position) : Chunk.MAX_SIZE;
         byte[] data = new byte[length];
-        return Serialize.readFullArray(raf, data).thenApply(b -> {
+        return reader.readIntoArray(data, 0, data.length).thenCompose(b -> {
             byte[] nonce = context.randomBytes(TweetNaCl.SECRETBOX_NONCE_BYTES);
             Chunk chunk = new Chunk(data, metaKey, currentLocation.getMapKey(), nonce);
             LocatedChunk locatedChunk = new LocatedChunk(new Location(owner, writer, chunk.mapKey()), chunk);
             byte[] mapKey = context.randomBytes(32);
             Location nextLocation = new Location(owner, writer, mapKey);
-            uploadChunk(writer, props, parentLocation, parentparentKey, baseKey, locatedChunk, nOriginalFragments, nAllowedFalures, nextLocation, context, monitor);
-            return nextLocation;
+            return uploadChunk(writer, props, parentLocation, parentparentKey, baseKey, locatedChunk,
+                    nOriginalFragments, nAllowedFalures, nextLocation, context, monitor).thenApply(c -> nextLocation);
         });
     }
 
@@ -106,6 +105,6 @@ public class FileUploader implements AutoCloseable {
     }
 
     public void close() throws IOException  {
-        raf.close();
+        reader.close();
     }
 }

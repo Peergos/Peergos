@@ -285,16 +285,6 @@ public class FileTreeNode {
         return isNull || pointer.fileAccess.isDirectory();
     }
 
-    @JsMethod
-    public CompletableFuture<Boolean> uploadFile(String filename, AsyncReader fileData, int lengthHi, int lengthLow, UserContext context, ProgressConsumer<Long> monitor) {
-        return uploadFile(filename, fileData, lengthLow + ((lengthHi & 0xFFFFFFFFL) << 32), context, monitor, context.fragmenter());
-    }
-
-    public CompletableFuture<Boolean> uploadFile(String filename, AsyncReader fileData, long length, UserContext context,
-                                                 ProgressConsumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) {
-        return uploadFile(filename, fileData, 0, length, Optional.empty(), context, monitor, fragmenter);
-    }
-
     public boolean isDirty() {
         return pointer.fileAccess.isDirty(pointer.filePointer.baseKey);
     }
@@ -322,6 +312,16 @@ public class FileTreeNode {
                         .thenApply(fileOpt -> fileOpt.get());
             });
         }
+    }
+
+    @JsMethod
+    public CompletableFuture<Boolean> uploadFile(String filename, AsyncReader fileData, int lengthHi, int lengthLow, UserContext context, ProgressConsumer<Long> monitor) {
+        return uploadFile(filename, fileData, lengthLow + ((lengthHi & 0xFFFFFFFFL) << 32), context, monitor, context.fragmenter());
+    }
+
+    public CompletableFuture<Boolean> uploadFile(String filename, AsyncReader fileData, long length, UserContext context,
+                                                 ProgressConsumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) {
+        return uploadFile(filename, fileData, 0, length, Optional.empty(), context, monitor, fragmenter);
     }
 
     public CompletableFuture<Boolean> uploadFile(String filename, AsyncReader fileData, long startIndex, long endIndex,
