@@ -1,0 +1,11 @@
+/* Common measurements used in the app. */
+@def FIELDWIDTH 30em;
+
+.editField {
+  display: inline;
+  width: FIELDWIDTH;
+}
+
+.rightAlign {
+  text-align: right;
+}

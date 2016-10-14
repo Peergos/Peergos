@@ -1,0 +1,386 @@
+<pre>  /**
+   * The UiBinder interface used by this example.
+   */
+  interface Binder extends UiBinder&lt;Widget, CwCellSampler&gt; {
+  }
+
+  /**
+   * The constants used in this Content Widget.
+   */
+  public static interface CwConstants extends Constants {
+    String cwCellSamplerDescription();
+
+    String cwCellSamplerName();
+  }
+
+  /**
+   * The images used for this example.
+   */
+  static interface Images extends ClientBundle {
+    ImageResource contactsGroup();
+  }
+
+  /**
+   * Get a cell value from a record.
+   * 
+   * @param &lt;C&gt; the cell type
+   */
+  private static interface GetValue&lt;C&gt; {
+    C getValue(ContactInfo contact);
+  }
+
+  /**
+   * A pending change to a {@link ContactInfo}. Changes aren't committed
+   * immediately to illustrate that cells can remember their pending changes.
+   * 
+   * @param &lt;T&gt; the data type being changed
+   */
+  private abstract static class PendingChange&lt;T&gt; {
+    private final ContactInfo contact;
+    private final T value;
+
+    public PendingChange(ContactInfo contact, T value) {
+      this.contact = contact;
+      this.value = value;
+    }
+
+    /**
+     * Commit the change to the contact.
+     */
+    public void commit() {
+      doCommit(contact, value);
+    }
+
+    /**
+     * Update the appropriate field in the {@link ContactInfo}.
+     * 
+     * @param contact the contact to update
+     * @param value the new value
+     */
+    protected abstract void doCommit(ContactInfo contact, T value);
+  }
+
+  /**
+   * Updates the birthday.
+   */
+  private static class BirthdayChange extends PendingChange&lt;Date&gt; {
+
+    public BirthdayChange(ContactInfo contact, Date value) {
+      super(contact, value);
+    }
+
+    @Override
+    protected void doCommit(ContactInfo contact, Date value) {
+      contact.setBirthday(value);
+    }
+  }
+
+  /**
+   * Updates the category.
+   */
+  private static class CategoryChange extends PendingChange&lt;Category&gt; {
+
+    public CategoryChange(ContactInfo contact, Category value) {
+      super(contact, value);
+    }
+
+    @Override
+    protected void doCommit(ContactInfo contact, Category value) {
+      contact.setCategory(value);
+    }
+  }
+
+  /**
+   * Updates the first name.
+   */
+  private static class FirstNameChange extends PendingChange&lt;String&gt; {
+
+    public FirstNameChange(ContactInfo contact, String value) {
+      super(contact, value);
+    }
+
+    @Override
+    protected void doCommit(ContactInfo contact, String value) {
+      contact.setFirstName(value);
+    }
+  }
+
+  /**
+   * Updates the last name.
+   */
+  private static class LastNameChange extends PendingChange&lt;String&gt; {
+
+    public LastNameChange(ContactInfo contact, String value) {
+      super(contact, value);
+    }
+
+    @Override
+    protected void doCommit(ContactInfo contact, String value) {
+      contact.setLastName(value);
+    }
+  }
+
+  /**
+   * The main CellTable.
+   */
+  @UiField(provided = true)
+  DataGrid&lt;ContactInfo&gt; contactList;
+
+  /**
+   * The commit button.
+   */
+  @UiField
+  Button commitButton;
+
+  /**
+   * The redraw button.
+   */
+  @UiField
+  Button redrawButton;
+
+  /**
+   * The list of cells that are editable.
+   */
+  private List&lt;AbstractEditableCell&lt;?, ?&gt;&gt; editableCells;
+
+  /**
+   * The list of pending changes.
+   */
+  private List&lt;PendingChange&lt;?&gt;&gt; pendingChanges = new ArrayList&lt;PendingChange&lt;?&gt;&gt;();
+
+  /**
+   * Initialize this example.
+   */
+  @Override
+  public Widget onInitialize() {
+    Images images = GWT.create(Images.class);
+
+    // Create the table.
+    editableCells = new ArrayList&lt;AbstractEditableCell&lt;?, ?&gt;&gt;();
+    contactList = new DataGrid&lt;ContactInfo&gt;(25, ContactInfo.KEY_PROVIDER);
+    contactList.setMinimumTableWidth(140, Unit.EM);
+    ContactDatabase.get().addDataDisplay(contactList);
+
+    // CheckboxCell.
+    final Category[] categories = ContactDatabase.get().queryCategories();
+    addColumn(new CheckboxCell(), "Checkbox", new GetValue&lt;Boolean&gt;() {
+      @Override
+      public Boolean getValue(ContactInfo contact) {
+        // Checkbox indicates that the contact is a relative.
+        // Index 0 = Family.
+        return contact.getCategory() == categories[0];
+      }
+    }, new FieldUpdater&lt;ContactInfo, Boolean&gt;() {
+      @Override
+      public void update(int index, ContactInfo object, Boolean value) {
+        if (value) {
+          // If a relative, use the Family Category.
+          pendingChanges.add(new CategoryChange(object, categories[0]));
+        } else {
+          // If not a relative, use the Contacts Category.
+          pendingChanges.add(new CategoryChange(object, categories[categories.length - 1]));
+        }
+      }
+    });
+
+    // TextCell.
+    addColumn(new TextCell(), "Text", new GetValue&lt;String&gt;() {
+      @Override
+      public String getValue(ContactInfo contact) {
+        return contact.getFullName();
+      }
+    }, null);
+
+    // EditTextCell.
+    Column&lt;ContactInfo, String&gt; editTextColumn =
+        addColumn(new EditTextCell(), "EditText", new GetValue&lt;String&gt;() {
+          @Override
+          public String getValue(ContactInfo contact) {
+            return contact.getFirstName();
+          }
+        }, new FieldUpdater&lt;ContactInfo, String&gt;() {
+          @Override
+          public void update(int index, ContactInfo object, String value) {
+            pendingChanges.add(new FirstNameChange(object, value));
+          }
+        });
+    contactList.setColumnWidth(editTextColumn, 16.0, Unit.EM);
+
+    // TextInputCell.
+    Column&lt;ContactInfo, String&gt; textInputColumn =
+        addColumn(new TextInputCell(), "TextInput", new GetValue&lt;String&gt;() {
+          @Override
+          public String getValue(ContactInfo contact) {
+            return contact.getLastName();
+          }
+        }, new FieldUpdater&lt;ContactInfo, String&gt;() {
+          @Override
+          public void update(int index, ContactInfo object, String value) {
+            pendingChanges.add(new LastNameChange(object, value));
+          }
+        });
+    contactList.setColumnWidth(textInputColumn, 16.0, Unit.EM);
+
+    // ClickableTextCell.
+    addColumn(new ClickableTextCell(), "ClickableText", new GetValue&lt;String&gt;() {
+      @Override
+      public String getValue(ContactInfo contact) {
+        return "Click " + contact.getFirstName();
+      }
+    }, new FieldUpdater&lt;ContactInfo, String&gt;() {
+      @Override
+      public void update(int index, ContactInfo object, String value) {
+        Window.alert("You clicked " + object.getFullName());
+      }
+    });
+
+    // ActionCell.
+    addColumn(new ActionCell&lt;ContactInfo&gt;("Click Me", new ActionCell.Delegate&lt;ContactInfo&gt;() {
+      @Override
+      public void execute(ContactInfo contact) {
+        Window.alert("You clicked " + contact.getFullName());
+      }
+    }), "Action", new GetValue&lt;ContactInfo&gt;() {
+      @Override
+      public ContactInfo getValue(ContactInfo contact) {
+        return contact;
+      }
+    }, null);
+
+    // ButtonCell.
+    addColumn(new ButtonCell(), "Button", new GetValue&lt;String&gt;() {
+      @Override
+      public String getValue(ContactInfo contact) {
+        return "Click " + contact.getFirstName();
+      }
+    }, new FieldUpdater&lt;ContactInfo, String&gt;() {
+      @Override
+      public void update(int index, ContactInfo object, String value) {
+        Window.alert("You clicked " + object.getFullName());
+      }
+    });
+
+    // DateCell.
+    DateTimeFormat dateFormat = DateTimeFormat.getFormat(PredefinedFormat.DATE_MEDIUM);
+    addColumn(new DateCell(dateFormat), "Date", new GetValue&lt;Date&gt;() {
+      @Override
+      public Date getValue(ContactInfo contact) {
+        return contact.getBirthday();
+      }
+    }, null);
+
+    // DatePickerCell.
+    addColumn(new DatePickerCell(dateFormat), "DatePicker", new GetValue&lt;Date&gt;() {
+      @Override
+      public Date getValue(ContactInfo contact) {
+        return contact.getBirthday();
+      }
+    }, new FieldUpdater&lt;ContactInfo, Date&gt;() {
+      @Override
+      public void update(int index, ContactInfo object, Date value) {
+        pendingChanges.add(new BirthdayChange(object, value));
+      }
+    });
+
+    // NumberCell.
+    Column&lt;ContactInfo, Number&gt; numberColumn =
+        addColumn(new NumberCell(), "Number", new GetValue&lt;Number&gt;() {
+          @Override
+          public Number getValue(ContactInfo contact) {
+            return contact.getAge();
+          }
+        }, null);
+    numberColumn.setHorizontalAlignment(HasHorizontalAlignment.ALIGN_LOCALE_END);
+
+    // IconCellDecorator.
+    addColumn(new IconCellDecorator&lt;String&gt;(images.contactsGroup(), new TextCell()), "Icon",
+        new GetValue&lt;String&gt;() {
+          @Override
+          public String getValue(ContactInfo contact) {
+            return contact.getCategory().getDisplayName();
+          }
+        }, null);
+
+    // ImageCell.
+    addColumn(new ImageCell(), "Image", new GetValue&lt;String&gt;() {
+      @Override
+      public String getValue(ContactInfo contact) {
+        return "contact.jpg";
+      }
+    }, null);
+
+    // SelectionCell.
+    List&lt;String&gt; options = new ArrayList&lt;String&gt;();
+    for (Category category : categories) {
+      options.add(category.getDisplayName());
+    }
+    addColumn(new SelectionCell(options), "Selection", new GetValue&lt;String&gt;() {
+      @Override
+      public String getValue(ContactInfo contact) {
+        return contact.getCategory().getDisplayName();
+      }
+    }, new FieldUpdater&lt;ContactInfo, String&gt;() {
+      @Override
+      public void update(int index, ContactInfo object, String value) {
+        for (Category category : categories) {
+          if (category.getDisplayName().equals(value)) {
+            pendingChanges.add(new CategoryChange(object, category));
+            break;
+          }
+        }
+      }
+    });
+
+    // Create the UiBinder.
+    Binder uiBinder = GWT.create(Binder.class);
+    Widget widget = uiBinder.createAndBindUi(this);
+
+    // Add handlers to redraw or refresh the table.
+    redrawButton.addClickHandler(new ClickHandler() {
+      @Override
+      public void onClick(ClickEvent event) {
+        contactList.redraw();
+      }
+    });
+    commitButton.addClickHandler(new ClickHandler() {
+      @Override
+      public void onClick(ClickEvent event) {
+        // Commit the changes.
+        for (PendingChange&lt;?&gt; pendingChange : pendingChanges) {
+          pendingChange.commit();
+        }
+        pendingChanges.clear();
+
+        // Push the changes to the views.
+        ContactDatabase.get().refreshDisplays();
+      }
+    });
+
+    return widget;
+  }
+
+  /**
+   * Add a column with a header.
+   * 
+   * @param &lt;C&gt; the cell type
+   * @param cell the cell used to render the column
+   * @param headerText the header string
+   * @param getter the value getter for the cell
+   */
+  private &lt;C&gt; Column&lt;ContactInfo, C&gt; addColumn(Cell&lt;C&gt; cell, String headerText,
+      final GetValue&lt;C&gt; getter, FieldUpdater&lt;ContactInfo, C&gt; fieldUpdater) {
+    Column&lt;ContactInfo, C&gt; column = new Column&lt;ContactInfo, C&gt;(cell) {
+      @Override
+      public C getValue(ContactInfo object) {
+        return getter.getValue(object);
+      }
+    };
+    column.setFieldUpdater(fieldUpdater);
+    if (cell instanceof AbstractEditableCell&lt;?, ?&gt;) {
+      editableCells.add((AbstractEditableCell&lt;?, ?&gt;) cell);
+    }
+    contactList.addColumn(column, headerText);
+    return column;
+  }
+
+</pre>

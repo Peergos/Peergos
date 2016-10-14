@@ -1,0 +1,2 @@
+serviceClass: com.google.gwt.sample.dynatable.client.SchoolCalendarService
+path: D88D09200E9EE8E012BE674C0ED09672.gwt.rpc

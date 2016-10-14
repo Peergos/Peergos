@@ -1,0 +1,44 @@
+<ui:UiBinder xmlns:ui='urn:ui:com.google.gwt.uibinder' 
+    xmlns:dt='urn:import:com.google.gwt.sample.dynatablerf.client.widgets'
+    xmlns:g='urn:import:com.google.gwt.user.client.ui'
+    xmlns:e='urn:import:com.google.gwt.editor.ui.client'>
+  <ui:style src="../common.gss">
+    
+  </ui:style>
+  <g:HTMLPanel>
+    <div class="{style.rightAlign}">
+      Street:
+      <e:ValueBoxEditorDecorator ui:field="street"
+        stylePrimaryName="{style.editField}">
+        <e:valuebox>
+          <g:TextBox stylePrimaryName="{style.editField}" />
+        </e:valuebox>
+      </e:ValueBoxEditorDecorator>
+      <br />
+      City:
+      <e:ValueBoxEditorDecorator ui:field="city"
+        stylePrimaryName="{style.editField}">
+        <e:valuebox>
+          <g:TextBox stylePrimaryName="{style.editField}" />
+        </e:valuebox>
+      </e:ValueBoxEditorDecorator>
+      <br />
+      State:
+      <e:ValueBoxEditorDecorator ui:field="state"
+        stylePrimaryName="{style.editField}">
+        <e:valuebox>
+          <g:TextBox stylePrimaryName="{style.editField}" />
+        </e:valuebox>
+      </e:ValueBoxEditorDecorator>
+      <br />
+      Zip:
+      <e:ValueBoxEditorDecorator ui:field="zip"
+        stylePrimaryName="{style.editField}">
+        <e:valuebox>
+          <dt:ZipPlusFourBox stylePrimaryName="{style.editField}" />
+        </e:valuebox>
+      </e:ValueBoxEditorDecorator>
+      <br />
+    </div>
+  </g:HTMLPanel>
+</ui:UiBinder>

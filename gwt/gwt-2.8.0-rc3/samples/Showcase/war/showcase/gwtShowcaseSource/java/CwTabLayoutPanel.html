@@ -1,0 +1,52 @@
+<pre>  /**
+   * The constants used in this Content Widget.
+   */
+  public static interface CwConstants extends Constants {
+    String cwTabPanelDescription();
+
+    String cwTabPanelName();
+
+    String cwTabPanelTab0();
+
+    String cwTabPanelTab2();
+
+    String[] cwTabPanelTabs();
+  }
+
+  /**
+   * An instance of the constants.
+   */
+  private final CwConstants constants;
+
+  /**
+   * Initialize this example.
+   */
+  @Override
+  public Widget onInitialize() {
+    // Create a tab panel
+    TabLayoutPanel tabPanel = new TabLayoutPanel(2.5, Unit.EM);
+    tabPanel.setAnimationDuration(1000);
+    tabPanel.getElement().getStyle().setMarginBottom(10.0, Unit.PX);
+
+    // Add a home tab
+    String[] tabTitles = constants.cwTabPanelTabs();
+    HTML homeText = new HTML(constants.cwTabPanelTab0());
+    tabPanel.add(homeText, tabTitles[0]);
+
+    // Add a tab with an image
+    SimplePanel imageContainer = new SimplePanel();
+    imageContainer.setWidget(new Image(Showcase.images.gwtLogo()));
+    tabPanel.add(imageContainer, tabTitles[1]);
+
+    // Add a tab
+    HTML moreInfo = new HTML(constants.cwTabPanelTab2());
+    tabPanel.add(moreInfo, tabTitles[2]);
+
+    // Return the content
+    tabPanel.selectTab(0);
+    tabPanel.ensureDebugId("cwTabPanel");
+
+    return tabPanel;
+  }
+
+</pre>

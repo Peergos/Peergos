@@ -1,0 +1,31 @@
+<pre>&lt;!DOCTYPE ui:UiBinder SYSTEM "http://dl.google.com/gwt/DTD/xhtml.ent"&gt;
+&lt;ui:UiBinder
+  xmlns:ui="urn:ui:com.google.gwt.uibinder"
+  xmlns:g="urn:import:com.google.gwt.user.client.ui"
+  xmlns:c='urn:import:com.google.gwt.user.cellview.client'&gt;
+
+  &lt;ui:style&gt;
+    .browser {
+      height: 200px;
+      border: 1px solid #ccc;
+    }
+
+  &lt;/ui:style&gt;
+
+  &lt;g:HTMLPanel&gt;
+    &lt;c:CellBrowser
+      addStyleNames='{style.browser}'
+      defaultColumnWidth='300'
+      ui:field='cellBrowser' /&gt;
+
+    &lt;b&gt;
+      &lt;ui:msg
+        key='cwCellBrowserSelected'&gt;Selected:&lt;/ui:msg&gt;
+    &lt;/b&gt;
+    &lt;br /&gt;
+
+    &lt;g:Label
+      ui:field='selectedLabel' /&gt;
+  &lt;/g:HTMLPanel&gt;
+&lt;/ui:UiBinder&gt;
+</pre>

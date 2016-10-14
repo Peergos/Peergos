@@ -1,0 +1,40 @@
+<pre>&lt;!DOCTYPE ui:UiBinder SYSTEM "http://dl.google.com/gwt/DTD/xhtml.ent"&gt;
+&lt;ui:UiBinder
+  xmlns:ui="urn:ui:com.google.gwt.uibinder"
+  xmlns:g="urn:import:com.google.gwt.user.client.ui"
+  xmlns:c='urn:import:com.google.gwt.user.cellview.client'&gt;
+
+  &lt;ui:style&gt;
+    .buttonPanel {
+      padding: 8px 20px;
+      border-top: 1px solid #ccc;
+    }
+
+  &lt;/ui:style&gt;
+
+  &lt;g:DockLayoutPanel
+    unit="EM"&gt;
+    &lt;g:center&gt;
+      &lt;c:DataGrid
+        ui:field='contactList' /&gt;
+    &lt;/g:center&gt;
+
+    &lt;g:south
+      size="4"&gt;
+      &lt;g:HTMLPanel
+        addStyleNames="{style.buttonPanel}"&gt;
+        &lt;g:Button
+          ui:field='redrawButton'&gt;
+          &lt;ui:msg
+            key='cwCellSampleRedrawButton'&gt;Redraw Table&lt;/ui:msg&gt;
+        &lt;/g:Button&gt;
+        &lt;g:Button
+          ui:field='commitButton'&gt;
+          &lt;ui:msg
+            key='cwCellSampleCommitButton'&gt;Commit Changes&lt;/ui:msg&gt;
+        &lt;/g:Button&gt;
+      &lt;/g:HTMLPanel&gt;
+    &lt;/g:south&gt;
+  &lt;/g:DockLayoutPanel&gt;
+&lt;/ui:UiBinder&gt;
+</pre>

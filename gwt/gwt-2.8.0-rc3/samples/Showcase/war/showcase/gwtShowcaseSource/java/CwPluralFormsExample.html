@@ -1,0 +1,101 @@
+<pre>  /**
+   * The constants used in this Content Widget.
+   */
+  public static interface CwConstants extends Constants {
+    String cwPluralFormsExampleArg0Label();
+
+    String cwPluralFormsExampleDescription();
+
+    String cwPluralFormsExampleFormattedLabel();
+
+    String cwPluralFormsExampleLinkText();
+
+    String cwPluralFormsExampleName();
+  }
+
+  /**
+   * The {@link TextBox} where the user enters argument 0.
+   */
+  private TextBox arg0Box = null;
+
+  /**
+   * An instance of the constants.
+   */
+  private final CwConstants constants;
+
+  /**
+   * The {@link Label} used to display the message.
+   */
+  private Label formattedMessage = null;
+
+  /**
+   * The plural messages used in this example.
+   */
+  private PluralMessages pluralMessages = null;
+
+  /**
+   * Initialize this example.
+   */
+  @Override
+  public Widget onInitialize() {
+    // Create the internationalized error messages
+    pluralMessages = GWT.create(PluralMessages.class);
+
+    // Use a FlexTable to layout the content
+    FlexTable layout = new FlexTable();
+    FlexCellFormatter formatter = layout.getFlexCellFormatter();
+    layout.setCellSpacing(5);
+
+    // Add a link to the source code of the Interface
+    final String rawFile = getSimpleName(PluralMessages.class);
+    Anchor link = new Anchor(rawFile);
+    link.addClickHandler(new ClickHandler() {
+      public void onClick(ClickEvent event) {
+        fireRawSourceRequest(rawFile + ".java");
+      }
+    });
+    HorizontalPanel linkPanel = new HorizontalPanel();
+    linkPanel.setSpacing(3);
+    linkPanel.add(new HTML(constants.cwPluralFormsExampleLinkText()));
+    linkPanel.add(link);
+    layout.setWidget(0, 0, linkPanel);
+    formatter.setColSpan(0, 0, 2);
+
+    // Add argument 0
+    arg0Box = new TextBox();
+    arg0Box.setText("13");
+    layout.setHTML(2, 0, constants.cwPluralFormsExampleArg0Label());
+    layout.setWidget(2, 1, arg0Box);
+
+    // Add the formatted message
+    formattedMessage = new Label();
+    layout.setHTML(5, 0, constants.cwPluralFormsExampleFormattedLabel());
+    layout.setWidget(5, 1, formattedMessage);
+    formatter.setVerticalAlignment(5, 0, HasVerticalAlignment.ALIGN_TOP);
+
+    // Add handlers to all of the argument boxes
+    KeyUpHandler keyUpHandler = new KeyUpHandler() {
+      public void onKeyUp(KeyUpEvent event) {
+        updateMessage();
+      }
+    };
+    arg0Box.addKeyUpHandler(keyUpHandler);
+
+    // Return the layout Widget
+    updateMessage();
+    return layout;
+  }
+
+  /**
+   * Update the formatted message.
+   */
+  private void updateMessage() {
+    try {
+      int count = Integer.parseInt(arg0Box.getText().trim());
+      formattedMessage.setText(pluralMessages.treeCount(count));
+    } catch (NumberFormatException e) {
+      // Ignore.
+    }
+  }
+
+</pre>
