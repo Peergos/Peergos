@@ -4,10 +4,18 @@ import jsinterop.annotations.*;
 
 import java.util.concurrent.*;
 
-@JsType(isNative = true, namespace = "browserio")
 public class BrowserFileReader implements AsyncReader {
 
-    public native CompletableFuture<Boolean> seek(int high32, int low32);
+    private final JSFileReader reader;
+
+    @JsConstructor
+    public BrowserFileReader(JSFileReader reader) {
+        this.reader = reader;
+    }
+
+    public CompletableFuture<Boolean> seek(int high32, int low32) {
+        return reader.seek(high32, low32);
+    }
 
     /**
      *
@@ -16,17 +24,22 @@ public class BrowserFileReader implements AsyncReader {
      * @param length number of bytes to read
      * @return number of bytes read
      */
-    public native CompletableFuture<Integer> readIntoArray(byte[] res, int offset, int length);
+    public CompletableFuture<Integer> readIntoArray(byte[] res, int offset, int length) {
+        return reader.readIntoArray(res, offset, length);
+    }
 
     /**
      *  reset to original starting position
      * @return
      */
-    public native CompletableFuture<Boolean> reset();
+    public CompletableFuture<Boolean> reset() {
+        return reader.reset();
+    }
 
     /**
      * Close and dispose of any resources
      */
-    public native void close();
-
+    public void close() {
+        reader.close();
+    }
 }

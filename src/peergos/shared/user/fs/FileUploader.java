@@ -1,5 +1,7 @@
 package peergos.shared.user.fs;
 
+import com.google.gwt.user.client.ui.*;
+import jsinterop.annotations.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.user.*;
@@ -24,10 +26,12 @@ public class FileUploader implements AutoCloseable {
     private final int nOriginalFragments, nAllowedFalures;
     private final peergos.shared.user.fs.Fragmenter fragmenter;
     private final AsyncReader reader; // resettable input stream
-    public FileUploader(String name, AsyncReader fileData, long offset, long length, SymmetricKey baseKey, SymmetricKey metaKey, Location parentLocation, SymmetricKey parentparentKey,
+
+    @JsConstructor
+    public FileUploader(String name, AsyncReader fileData, int offsetHi, int offsetLow, int lengthHi, int lengthLow,
+                        SymmetricKey baseKey, SymmetricKey metaKey, Location parentLocation, SymmetricKey parentparentKey,
                         ProgressConsumer<Long> monitor, FileProperties fileProperties, int nOriginalFragments, int nAllowedFalures) {
-//        if (! fileData.markSupported())
-//            throw new IllegalStateException("InputStream needs to be resettable!");
+        long length = lengthLow + ((lengthHi & 0xFFFFFFFFL) << 32);
         if (fileProperties == null)
             this.props = new FileProperties(name, length, LocalDateTime.now(), false, Optional.empty());
         else
@@ -37,6 +41,7 @@ public class FileUploader implements AutoCloseable {
         fragmenter = nAllowedFalures == 0 ?
                 new peergos.shared.user.fs.SplitFragmenter() : new peergos.shared.user.fs.ErasureFragmenter(nOriginalFragments, nAllowedFalures);
 
+        long offset = offsetLow + ((offsetHi & 0xFFFFFFFFL) << 32);
 
         // Process and upload chunk by chunk to avoid running out of RAM, in reverse order to build linked list
         this.nchunks = length > 0 ? (length + Chunk.MAX_SIZE - 1) / Chunk.MAX_SIZE : 1;
@@ -51,6 +56,12 @@ public class FileUploader implements AutoCloseable {
         this.monitor = monitor;
         this.nOriginalFragments = nOriginalFragments != -1 ? nOriginalFragments : EncryptedChunk.ERASURE_ORIGINAL;
         this.nAllowedFalures = nAllowedFalures != -1 ? nAllowedFalures : EncryptedChunk.ERASURE_ALLOWED_FAILURES;
+    }
+
+    public FileUploader(String name, AsyncReader fileData, long offset, long length, SymmetricKey baseKey, SymmetricKey metaKey, Location parentLocation, SymmetricKey parentparentKey,
+                        ProgressConsumer<Long> monitor, FileProperties fileProperties, int nOriginalFragments, int nAllowedFalures) {
+        this(name, fileData, (int)(offset >> 32), (int) offset, (int) (length >> 32), (int) length,
+                baseKey, metaKey, parentLocation, parentparentKey, monitor, fileProperties, nOriginalFragments, nAllowedFalures);
     }
 
     public CompletableFuture<Location> uploadChunk(UserContext context, UserPublicKey owner, User writer, long chunkIndex,

@@ -1,5 +1,6 @@
 package peergos.shared.crypto;
 
+import jsinterop.annotations.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
 import peergos.shared.util.*;
@@ -11,9 +12,12 @@ public class UserPublicKey implements Comparable<UserPublicKey>
 {
     public static final int MAX_SIZE = 1024*1024;
 
+    @JsProperty
     public final PublicSigningKey publicSigningKey;
+    @JsProperty
     public final PublicBoxingKey publicBoxingKey;
 
+    @JsConstructor
     public UserPublicKey(PublicSigningKey publicSigningKey, PublicBoxingKey publicBoxingKey)
     {
         this.publicSigningKey = publicSigningKey;
@@ -35,6 +39,7 @@ public class UserPublicKey implements Comparable<UserPublicKey>
         publicBoxingKey.serialize(dout);
     }
 
+    @JsMethod
     public static UserPublicKey fromByteArray(byte[] raw) {
         return deserialize(new DataInputStream(new ByteArrayInputStream(raw)));
     }
@@ -43,6 +48,7 @@ public class UserPublicKey implements Comparable<UserPublicKey>
         return fromByteArray(raw);
     }
 
+    @JsMethod
     public byte[] serialize()
     {
         return ArrayOps.concat(publicSigningKey.toByteArray(), publicBoxingKey.toByteArray());
@@ -69,11 +75,13 @@ public class UserPublicKey implements Comparable<UserPublicKey>
         }
     }
 
+    @JsMethod
     public byte[] encryptMessageFor(byte[] input, SecretBoxingKey ourSecretBoxingKey)
     {
         return publicBoxingKey.encryptMessageFor(input, ourSecretBoxingKey);
     }
 
+    @JsMethod
     public byte[] unsignMessage(byte[] signed)
     {
         return publicSigningKey.unsignMessage(signed);

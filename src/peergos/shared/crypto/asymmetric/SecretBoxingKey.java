@@ -1,5 +1,6 @@
 package peergos.shared.crypto.asymmetric;
 
+import jsinterop.annotations.*;
 import peergos.shared.crypto.asymmetric.curve25519.Curve25519SecretKey;
 
 import java.io.*;
@@ -10,8 +11,10 @@ public interface SecretBoxingKey {
 
     byte[] serialize();
 
+    @JsMethod
     byte[] getSecretBoxingKey();
 
+    @JsMethod
     byte[] decryptMessage(byte[] cipher, PublicBoxingKey from);
 
     static SecretBoxingKey deserialize(DataInput din) throws IOException {

@@ -1,5 +1,6 @@
 package peergos.shared.user.fs;
 
+import jsinterop.annotations.*;
 import peergos.shared.crypto.UserPublicKey;
 import peergos.shared.crypto.symmetric.SymmetricKey;
 import peergos.shared.util.*;
@@ -10,6 +11,7 @@ import java.util.*;
 public class Location {
     public static final int MAP_KEY_LENGTH = 32;
 
+    @JsProperty
     public final UserPublicKey owner, writer;
     private final byte[] mapKey;
 
@@ -21,6 +23,7 @@ public class Location {
         this.mapKey = mapKey;
     }
 
+    @JsMethod
     public byte[] serialize() {
         DataSink sink = new DataSink();
         sink.writeArray(owner.getPublicKeys());
@@ -29,10 +32,12 @@ public class Location {
         return sink.toByteArray();
     }
 
+    @JsMethod
     public byte[] encrypt(SymmetricKey key, byte[] nonce) {
         return key.encrypt(serialize(), nonce);
     }
 
+    @JsMethod
     public byte[] getMapKey() {
         return Arrays.copyOf(mapKey, mapKey.length);
     }

@@ -1,5 +1,6 @@
 package peergos.shared.crypto.symmetric;
 
+import jsinterop.annotations.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.util.*;
 
@@ -40,16 +41,22 @@ public interface SymmetricKey
 
     byte[] getKey();
 
+    @JsMethod
     byte[] encrypt(byte[] data, byte[] nonce);
 
+    @JsMethod
     byte[] decrypt(byte[] data, byte[] nonce);
 
+    @JsMethod
     byte[] createNonce();
 
+    @JsMethod
     boolean isDirty();
 
+    @JsMethod
     SymmetricKey makeDirty();
 
+    @JsMethod
     static SymmetricKey deserialize(byte[] in) {
         try {
             return deserialize(new DataInputStream(new ByteArrayInputStream(in)));
@@ -71,6 +78,7 @@ public interface SymmetricKey
 
     }
 
+    @JsMethod
     default byte[] serialize() {
         DataSink sink = new DataSink();
         sink.write(type().value);
@@ -79,6 +87,7 @@ public interface SymmetricKey
         return sink.toByteArray();
     }
 
+    @JsMethod
     static SymmetricKey random() {
         return TweetNaClKey.random(PROVIDERS.get(Type.TweetNaCl), RNG_PROVIDERS.get(Type.TweetNaCl));
     }

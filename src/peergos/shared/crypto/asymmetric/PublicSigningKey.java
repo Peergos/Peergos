@@ -1,5 +1,6 @@
 package peergos.shared.crypto.asymmetric;
 
+import jsinterop.annotations.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
 import peergos.shared.util.StringUtils;
 
@@ -34,12 +35,15 @@ public interface PublicSigningKey {
 
     Type type();
 
+    @JsMethod
     byte[] getPublicSigningKey();
 
+    @JsMethod
     byte[] unsignMessage(byte[] signed);
 
     void serialize(DataOutput dout) throws IOException;
 
+    @JsMethod
     default byte[] toByteArray() {
         try {
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
@@ -51,6 +55,7 @@ public interface PublicSigningKey {
         }
     }
 
+    @JsMethod
     static PublicSigningKey fromByteArray(byte[] raw) throws IOException {
         return deserialize(new DataInputStream(new ByteArrayInputStream(raw)));
     }
