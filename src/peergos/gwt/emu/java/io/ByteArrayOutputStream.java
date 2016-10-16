@@ -32,9 +32,7 @@ public class ByteArrayOutputStream extends OutputStream {
 	@Override
 	public void write (int b) {
 		if (buf.length == count) {
-			byte[] newBuf = new byte[buf.length * 3 / 2];
-			System.arraycopy(buf, 0, newBuf, 0, count);
-			buf = newBuf;
+			grow(count + 1);
 		}
 
 		buf[count++] = (byte)b;
@@ -46,8 +44,35 @@ public class ByteArrayOutputStream extends OutputStream {
             ((off + len) - b.length > 0)) {
             throw new IndexOutOfBoundsException();
         }
+        if (count + len > buf.length) {
+			grow(count + len);
+		}
         System.arraycopy(b, off, buf, count, len);
         count += len;
+    }
+
+    private void grow(int required) {
+        int current = this.buf.length;
+        int newSize = current << 1;
+        if(newSize - required < 0) {
+            newSize = required;
+        }
+
+        if(newSize - 2147483639 > 0) {
+            newSize = hugeCapacity(required);
+        }
+
+        byte[] newBuf = new byte[newSize];
+		System.arraycopy(buf, 0, newBuf, 0, count);
+        this.buf = newBuf;
+    }
+
+    private static int hugeCapacity(int size) {
+        if(size < 0) {
+            throw new OutOfMemoryError();
+        } else {
+            return size > 2147483639 ? 2147483647 : 2147483639;
+        }
     }
     
 	public byte[] toByteArray () {
