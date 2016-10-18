@@ -615,6 +615,12 @@ public class FileTreeNode {
         return getInputStream(context, getFileProperties().size, monitor);
     }
 
+    @JsMethod
+    public CompletableFuture<? extends AsyncReader> getInputStream(UserContext context, int fileSizeHi, int fileSizeLow,
+                                                                   ProgressConsumer<Long> monitor) {
+        return getInputStream(context, fileSizeLow + ((fileSizeHi & 0xFFFFFFFFL) << 32), monitor);
+    }
+
     public CompletableFuture<? extends AsyncReader> getInputStream(UserContext context, long fileSize, ProgressConsumer<Long> monitor) {
         SymmetricKey baseKey = pointer.filePointer.baseKey;
         SymmetricKey dataKey = pointer.fileAccess.getMetaKey(baseKey);

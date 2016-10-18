@@ -1,5 +1,6 @@
 package peergos.shared.util;
 
+import jsinterop.annotations.*;
 import peergos.shared.user.fs.*;
 
 import java.io.*;
@@ -8,6 +9,11 @@ import java.util.concurrent.*;
 
 public class Serialize
 {
+
+    @JsMethod
+    public static byte[] newByteArray(int len) {
+        return new byte[len];
+    }
 
     public static void serialize(byte[] b, DataOutput dout) throws IOException
     {
