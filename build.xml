@@ -14,11 +14,11 @@
   </path>
 
   <!-- Arguments to gwtc and devmode targets -->
-  <property name="gwt.args" value="-generateJsInteropExports -style Detailed" />
+  <property name="gwt.args" value="-generateJsInteropExports -style Pretty -strict" />
 
   <!-- Configure path to GWT SDK -->
   <!--<property name="gwt.sdk" location="/home/ian/gwt-2.8.0-rc1" />-->
-  <property name="gwt.sdk" location="gwt/gwt-0.0.0" />
+  <property name="gwt.sdk" location="gwt/gwt-2.8.0-rc3" />
 
 
 

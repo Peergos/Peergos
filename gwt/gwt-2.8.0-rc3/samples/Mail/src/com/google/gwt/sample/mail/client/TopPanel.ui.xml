@@ -1,0 +1,43 @@
+<!DOCTYPE ui:UiBinder 
+  SYSTEM "http://dl.google.com/gwt/DTD/xhtml.ent"
+>
+<ui:UiBinder
+  xmlns:ui='urn:ui:com.google.gwt.uibinder'
+  xmlns:g='urn:import:com.google.gwt.user.client.ui'
+  xmlns:mail='urn:import:com.google.gwt.sample.mail.client'>
+
+  <ui:image field='logo' src='logo.png'/>
+
+  <ui:style>
+  .statusDiv {
+    text-align: right;
+    margin: 1em;
+  }
+
+  .linksDiv {
+    text-align: right;
+  }
+
+  .logo {
+    gwt-sprite: "logo";
+    position: absolute;
+  }
+
+  </ui:style>
+
+  <g:HTMLPanel>
+    <div class='{style.logo}'/>
+
+    <div class="{style.statusDiv}">
+      <div>
+        <b>Welcome back, foo@example.com</b>
+      </div>
+
+      <div class='{style.linksDiv}'>
+        <g:Anchor href='javascript:;' ui:field='signOutLink'>Sign Out</g:Anchor>
+        &nbsp;
+        <g:Anchor href='javascript:;' ui:field='aboutLink'>About</g:Anchor>
+      </div>
+    </div>
+  </g:HTMLPanel>
+</ui:UiBinder>

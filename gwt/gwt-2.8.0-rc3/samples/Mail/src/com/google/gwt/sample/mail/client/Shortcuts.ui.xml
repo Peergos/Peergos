@@ -1,0 +1,63 @@
+<ui:UiBinder
+  xmlns:ui='urn:ui:com.google.gwt.uibinder'
+  xmlns:g='urn:import:com.google.gwt.user.client.ui'
+  xmlns:mail='urn:import:com.google.gwt.sample.mail.client'>
+
+  <ui:style>
+  .shortcuts {
+    border-left: 1px solid #999;
+    border-right: 1px solid #999;
+    border-bottom: 1px solid #999;
+  }
+
+  .stackHeader {
+    gwt-sprite: "gradient";
+    background-color: #b4b6bc;
+    cursor: pointer;
+    text-shadow: rgba(255, 255, 255, 1) 0 1px 1px;
+    font-size: 1.2em;
+    font-weight: bold;
+    color: #000;
+    padding: 0.7em 0.5em 0 0.6em;
+    border-top: 1px solid #888;
+  }
+
+  .mailboxesIcon {
+    gwt-sprite: "mailboxesgroup";
+    float: left;
+  }
+
+  .tasksIcon {
+    gwt-sprite: "tasksgroup";
+    float: left;
+  }
+
+  .contactsIcon {
+    gwt-sprite: "contactsgroup";
+    float: left;
+  }
+
+  </ui:style>
+
+  <ui:image field='mailboxesgroup' src='mailboxesgroup.png'/>
+  <ui:image field='contactsgroup' src='contactsgroup.png'/>
+  <ui:image field='tasksgroup' src='tasksgroup.png'/>
+  <ui:image field='gradient' src='gradient_bg_dark.png' repeatStyle='Horizontal'/>
+
+  <g:StackLayoutPanel styleName='{style.shortcuts}' unit='EM'>
+    <g:stack>
+      <g:header size='3'><div class='{style.stackHeader}'><div class='{style.mailboxesIcon}'/> Mailboxes</div></g:header>
+      <mail:Mailboxes ui:field='mailboxes'/>
+    </g:stack>
+
+    <g:stack>
+      <g:header size='3'><div class='{style.stackHeader}'><div class='{style.tasksIcon}'/> Tasks</div></g:header>
+      <mail:Tasks ui:field='tasks'/>
+    </g:stack>
+
+    <g:stack>
+      <g:header size='3'><div class='{style.stackHeader}'><div class='{style.contactsIcon}'/> Contacts</div></g:header>
+      <mail:Contacts ui:field='contacts'/>
+    </g:stack>
+  </g:StackLayoutPanel>
+</ui:UiBinder>

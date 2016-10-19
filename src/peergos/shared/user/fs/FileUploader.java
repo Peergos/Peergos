@@ -1,16 +1,17 @@
 package peergos.shared.user.fs;
 
+import com.google.gwt.user.client.ui.*;
+import jsinterop.annotations.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.user.*;
-import peergos.shared.util.Serialize;
-import peergos.shared.util.StringUtils;
+import peergos.shared.util.*;
 
 import java.io.*;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.function.*;
+import java.util.stream.*;
 
 public class FileUploader implements AutoCloseable {
 
@@ -21,14 +22,16 @@ public class FileUploader implements AutoCloseable {
     private final long nchunks;
     private final Location parentLocation;
     private final SymmetricKey parentparentKey;
-    private final Consumer<Long> monitor;
+    private final ProgressConsumer<Long> monitor;
     private final int nOriginalFragments, nAllowedFalures;
     private final peergos.shared.user.fs.Fragmenter fragmenter;
-    private final AsyncReader raf; // resettable input stream
-    public FileUploader(String name, AsyncReader fileData, long offset, long length, SymmetricKey baseKey, SymmetricKey metaKey, Location parentLocation, SymmetricKey parentparentKey,
-                        Consumer<Long> monitor, FileProperties fileProperties, int nOriginalFragments, int nAllowedFalures) throws IOException {
-//        if (! fileData.markSupported())
-//            throw new IllegalStateException("InputStream needs to be resettable!");
+    private final AsyncReader reader; // resettable input stream
+
+    @JsConstructor
+    public FileUploader(String name, AsyncReader fileData, int offsetHi, int offsetLow, int lengthHi, int lengthLow,
+                        SymmetricKey baseKey, SymmetricKey metaKey, Location parentLocation, SymmetricKey parentparentKey,
+                        ProgressConsumer<Long> monitor, FileProperties fileProperties, int nOriginalFragments, int nAllowedFalures) {
+        long length = lengthLow + ((lengthHi & 0xFFFFFFFFL) << 32);
         if (fileProperties == null)
             this.props = new FileProperties(name, length, LocalDateTime.now(), false, Optional.empty());
         else
@@ -38,13 +41,14 @@ public class FileUploader implements AutoCloseable {
         fragmenter = nAllowedFalures == 0 ?
                 new peergos.shared.user.fs.SplitFragmenter() : new peergos.shared.user.fs.ErasureFragmenter(nOriginalFragments, nAllowedFalures);
 
+        long offset = offsetLow + ((offsetHi & 0xFFFFFFFFL) << 32);
 
         // Process and upload chunk by chunk to avoid running out of RAM, in reverse order to build linked list
         this.nchunks = length > 0 ? (length + Chunk.MAX_SIZE - 1) / Chunk.MAX_SIZE : 1;
         this.name = name;
         this.offset = offset;
         this.length = length;
-        this.raf = fileData;
+        this.reader = fileData;
         this.baseKey = baseKey;
         this.metaKey = metaKey;
         this.parentLocation = parentLocation;
@@ -54,8 +58,14 @@ public class FileUploader implements AutoCloseable {
         this.nAllowedFalures = nAllowedFalures != -1 ? nAllowedFalures : EncryptedChunk.ERASURE_ALLOWED_FAILURES;
     }
 
-    public Location uploadChunk(UserContext context, UserPublicKey owner, User writer, long chunkIndex,
-                                Location currentLocation, Consumer<Long> monitor) throws IOException {
+    public FileUploader(String name, AsyncReader fileData, long offset, long length, SymmetricKey baseKey, SymmetricKey metaKey, Location parentLocation, SymmetricKey parentparentKey,
+                        ProgressConsumer<Long> monitor, FileProperties fileProperties, int nOriginalFragments, int nAllowedFalures) {
+        this(name, fileData, (int)(offset >> 32), (int) offset, (int) (length >> 32), (int) length,
+                baseKey, metaKey, parentLocation, parentparentKey, monitor, fileProperties, nOriginalFragments, nAllowedFalures);
+    }
+
+    public CompletableFuture<Location> uploadChunk(UserContext context, UserPublicKey owner, User writer, long chunkIndex,
+                                Location currentLocation, ProgressConsumer<Long> monitor) {
 	    System.out.println("uploading chunk: "+chunkIndex + " of "+name);
 
         long position = chunkIndex * Chunk.MAX_SIZE;
@@ -64,30 +74,32 @@ public class FileUploader implements AutoCloseable {
         boolean isLastChunk = fileLength < position + Chunk.MAX_SIZE;
         int length =  isLastChunk ? (int)(fileLength -  position) : Chunk.MAX_SIZE;
         byte[] data = new byte[length];
-        Serialize.readFullArray(raf, data);
-
-        byte[] nonce = context.randomBytes(TweetNaCl.SECRETBOX_NONCE_BYTES);
-        Chunk chunk = new Chunk(data, metaKey, currentLocation.getMapKey(), nonce);
-        LocatedChunk locatedChunk = new LocatedChunk(new Location(owner, writer, chunk.mapKey()), chunk);
-        byte[] mapKey = context.randomBytes(32);
-        Location nextLocation = new Location(owner, writer, mapKey);
-        uploadChunk(writer, props, parentLocation, parentparentKey, baseKey, locatedChunk, nOriginalFragments, nAllowedFalures, nextLocation, context, monitor);
-        return nextLocation;
+        return reader.readIntoArray(data, 0, data.length).thenCompose(b -> {
+            byte[] nonce = context.randomBytes(TweetNaCl.SECRETBOX_NONCE_BYTES);
+            Chunk chunk = new Chunk(data, metaKey, currentLocation.getMapKey(), nonce);
+            LocatedChunk locatedChunk = new LocatedChunk(new Location(owner, writer, chunk.mapKey()), chunk);
+            byte[] mapKey = context.randomBytes(32);
+            Location nextLocation = new Location(owner, writer, mapKey);
+            return uploadChunk(writer, props, parentLocation, parentparentKey, baseKey, locatedChunk,
+                    nOriginalFragments, nAllowedFalures, nextLocation, context, monitor).thenApply(c -> nextLocation);
+        });
     }
 
-    public Location upload(UserContext context, UserPublicKey owner, User writer, Location currentChunk) throws IOException {
+    public CompletableFuture<Location> upload(UserContext context, UserPublicKey owner, User writer, Location currentChunk) {
         long t1 = System.currentTimeMillis();
         Location originalChunk = currentChunk;
 
-        for (int i=0; i < nchunks; i++)
-            currentChunk = uploadChunk(context, owner, writer, i, currentChunk, l -> {});
-        System.out.println("File encryption, erasure coding and upload took: " +(System.currentTimeMillis()-t1) + " mS");
-        return originalChunk;
+        List<Integer> input = IntStream.range(0, (int) nchunks).mapToObj(i -> Integer.valueOf(i)).collect(Collectors.toList());
+        return Futures.reduceAll(input, currentChunk, (loc, i) -> uploadChunk(context, owner, writer, i, loc, l -> {}), (a, b) -> b)
+                .thenApply(loc -> {
+                    System.out.println("File encryption, erasure coding and upload took: " +(System.currentTimeMillis()-t1) + " mS");
+                    return originalChunk;
+                });
     }
 
     public static CompletableFuture<Boolean> uploadChunk(User writer, FileProperties props, Location parentLocation, SymmetricKey parentparentKey,
                         SymmetricKey baseKey, LocatedChunk chunk, int nOriginalFragments, int nAllowedFalures, Location nextChunkLocation,
-                        UserContext context, Consumer<Long> monitor) {
+                        UserContext context, ProgressConsumer<Long> monitor) {
         EncryptedChunk encryptedChunk = chunk.chunk.encrypt();
 
         peergos.shared.user.fs.Fragmenter fragmenter = nAllowedFalures == 0 ?
@@ -104,6 +116,6 @@ public class FileUploader implements AutoCloseable {
     }
 
     public void close() throws IOException  {
-        raf.close();
+        reader.close();
     }
 }

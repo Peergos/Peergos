@@ -1,0 +1,42 @@
+<ui:UiBinder xmlns:ui='urn:ui:com.google.gwt.uibinder' xmlns:g='urn:import:com.google.gwt.user.client.ui'
+  xmlns:dt='urn:import:com.google.gwt.sample.dynatablerf.client.widgets'
+  xmlns:e='urn:import:com.google.gwt.editor.ui.client'>
+  <ui:style src="../common.gss">
+    
+  </ui:style>
+  <g:HTMLPanel>
+    <div class="{style.rightAlign}">
+      Name:
+      <e:ValueBoxEditorDecorator ui:field="name"
+        stylePrimaryName="{style.editField}">
+        <e:valuebox>
+          <g:TextBox ui:field="nameBox" stylePrimaryName="{style.editField}" />
+        </e:valuebox>
+      </e:ValueBoxEditorDecorator>
+      <br />
+      Description:
+      <e:ValueBoxEditorDecorator ui:field="description"
+        stylePrimaryName="{style.editField}">
+        <e:valuebox>
+          <g:TextBox stylePrimaryName="{style.editField}" />
+        </e:valuebox>
+      </e:ValueBoxEditorDecorator>
+      <br />
+      Note:
+      <e:ValueBoxEditorDecorator ui:field="note"
+        stylePrimaryName="{style.editField}">
+        <e:valuebox>
+          <g:TextArea stylePrimaryName="{style.editField}" />
+        </e:valuebox>
+      </e:ValueBoxEditorDecorator>
+      <br />
+    </div>
+    Address:
+    <dt:AddressEditor ui:field="address" stylePrimaryName="{style.editField}" />
+    Mentor:
+    <dt:MentorSelector ui:field="mentor" stylePrimaryName="{style.editField}" />
+    <br />
+    Schedule:
+    <dt:ScheduleEditor ui:field="classSchedule" stylePrimaryName="{style.editField}" />
+  </g:HTMLPanel>
+</ui:UiBinder>

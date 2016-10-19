@@ -1,0 +1,61 @@
+<pre>  /**
+   * The constants used in this Content Widget.
+   */
+  public static interface CwConstants extends Constants {
+    String cwSplitLayoutPanelCenter();
+
+    String cwSplitLayoutPanelDescription();
+
+    String cwSplitLayoutPanelEast();
+
+    String cwSplitLayoutPanelName();
+
+    String cwSplitLayoutPanelNorth1();
+
+    String cwSplitLayoutPanelNorth2();
+
+    String cwSplitLayoutPanelSouth1();
+
+    String cwSplitLayoutPanelSouth2();
+
+    String cwSplitLayoutPanelWest();
+  }
+
+  /**
+   * An instance of the constants.
+   */
+  private final CwConstants constants;
+
+  /**
+   * Initialize this example.
+   */
+  @Override
+  public Widget onInitialize() {
+    // Create a Split Panel
+    SplitLayoutPanel splitPanel = new SplitLayoutPanel(5);
+    splitPanel.ensureDebugId("cwSplitLayoutPanel");
+    splitPanel.getElement().getStyle()
+        .setProperty("border", "3px solid #e7e7e7");
+
+    // Add text all around.
+    splitPanel.addNorth(new Label(constants.cwSplitLayoutPanelNorth1()), 50);
+    splitPanel.addSouth(new Label(constants.cwSplitLayoutPanelSouth1()), 50);
+    splitPanel.addEast(new Label(constants.cwSplitLayoutPanelEast()), 100);
+    splitPanel.addWest(new Label(constants.cwSplitLayoutPanelWest()), 100);
+    splitPanel.addNorth(new Label(constants.cwSplitLayoutPanelNorth2()), 50);
+    splitPanel.addSouth(new Label(constants.cwSplitLayoutPanelSouth2()), 50);
+
+    // Add scrollable text to the center.
+    String centerText = constants.cwSplitLayoutPanelCenter();
+    for (int i = 0; i &lt; 3; i++) {
+      centerText += " " + centerText;
+    }
+    Label centerLabel = new Label(centerText);
+    ScrollPanel centerScrollable = new ScrollPanel(centerLabel);
+    splitPanel.add(centerScrollable);
+
+    // Return the content
+    return splitPanel;
+  }
+
+</pre>

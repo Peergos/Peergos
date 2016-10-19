@@ -1,0 +1,48 @@
+<pre>  /**
+   * The constants used in this Content Widget.
+   */
+  public static interface CwConstants extends Constants {
+    String cwBidiInputRtlAreaLabel();
+
+    String cwBidiInputBidiAreaLabel();
+
+    String cwBidiInputDescription();
+
+    String cwBidiInputName();
+  }
+
+  /**
+   * An instance of the constants.
+   */
+  private final CwConstants constants;
+
+  /**
+   * Initialize this example.
+   */
+  @Override
+  public Widget onInitialize() {
+    // Create a panel to layout the widgets
+    VerticalPanel vpanel = new VerticalPanel();
+    vpanel.setSpacing(10);
+
+    // Add a bidi-disabled TextArea
+    vpanel.add(new HTML(constants.cwBidiInputRtlAreaLabel()));
+    TextArea disabled = new TextArea();
+    disabled.setDirectionEstimator(false);
+    disabled.setDirection(Direction.RTL);
+    vpanel.add(disabled);
+
+    // Add a bidi-enabled TextArea
+    vpanel.add(new HTML(constants.cwBidiInputBidiAreaLabel()));
+    TextArea enabled = new TextArea();
+    // Since this application includes at least one RTL locale, this TextArea
+    // has automatic direction handling on by default.
+    assert enabled.getDirectionEstimator() != null;
+    enabled.setText("كم عدد حبات الرمل في الشاطئ?");
+    vpanel.add(enabled);
+
+    // Return the panel
+    return vpanel;
+  }
+
+</pre>

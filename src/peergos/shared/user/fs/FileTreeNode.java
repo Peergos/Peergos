@@ -286,14 +286,6 @@ public class FileTreeNode {
         return isNull || pointer.fileAccess.isDirectory();
     }
 
-    public CompletableFuture<Boolean> uploadFile(String filename, AsyncReader fileData, long length, UserContext context, Consumer<Long> monitor) throws IOException {
-        return uploadFile(filename, fileData, length, context, monitor, context.fragmenter());
-    }
-
-    public CompletableFuture<Boolean> uploadFile(String filename, AsyncReader fileData, long length, UserContext context, Consumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) throws IOException {
-        return uploadFile(filename, fileData, 0, length, Optional.empty(), context, monitor, fragmenter);
-    }
-
     public boolean isDirty() {
         return pointer.fileAccess.isDirty(pointer.filePointer.baseKey);
     }
@@ -323,13 +315,23 @@ public class FileTreeNode {
         }
     }
 
+    @JsMethod
+    public CompletableFuture<Boolean> uploadFile(String filename, AsyncReader fileData, int lengthHi, int lengthLow, UserContext context, ProgressConsumer<Long> monitor) {
+        return uploadFile(filename, fileData, lengthLow + ((lengthHi & 0xFFFFFFFFL) << 32), context, monitor, context.fragmenter());
+    }
+
+    public CompletableFuture<Boolean> uploadFile(String filename, AsyncReader fileData, long length, UserContext context,
+                                                 ProgressConsumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) {
+        return uploadFile(filename, fileData, 0, length, Optional.empty(), context, monitor, fragmenter);
+    }
+
     public CompletableFuture<Boolean> uploadFile(String filename, AsyncReader fileData, long startIndex, long endIndex,
-                                                 UserContext context, Consumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) {
+                                                 UserContext context, ProgressConsumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) {
         return uploadFile(filename, fileData, startIndex, endIndex, Optional.empty(), context, monitor, fragmenter);
     }
 
     public CompletableFuture<Boolean> uploadFile(String filename, AsyncReader fileData, long startIndex, long endIndex, Optional<SymmetricKey> baseKey,
-                                                 UserContext context, Consumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) {
+                                                 UserContext context, ProgressConsumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) {
         if (!isLegalName(filename))
             return CompletableFuture.completedFuture(false);
         return getDescendentByPath(filename, context).thenCompose(childOpt -> {
@@ -350,24 +352,26 @@ public class FileTreeNode {
 
             CompletableFuture<Boolean> result = new CompletableFuture<>();
             generateThumbnail(context, fileData, filename).thenAccept(thumbData -> {
-	            try {
+            	//try {
 	                fileData.reset();
 	                FileProperties fileProps = new FileProperties(filename, endIndex, LocalDateTime.now(), false, Optional.of(thumbData));
 	                FileUploader chunks = new FileUploader(filename, fileData, startIndex, endIndex, fileKey, fileMetaKey, parentLocation, dirParentKey, monitor, fileProps,
 	                        EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
 	                byte[] mapKey = context.randomBytes(32);
 	                Location nextChunkLocation = new Location(getLocation().owner, getLocation().writer, mapKey);
-	                Location fileLocation = chunks.upload(context, parentLocation.owner, (User) entryWriterKey, nextChunkLocation);
-	                ReadableFilePointer filePointer = new ReadableFilePointer(fileLocation, fileKey);
-	                dirAccess.addFileAndCommit(filePointer, rootRKey, pointer.filePointer, context);
-	                context.uploadChunk(dirAccess
-	                		, new Location(parentLocation.owner, entryWriterKey, dirMapKey)
-	                		, Collections.emptyList()).thenAccept(uploadResult -> {
-	                			result.complete(uploadResult);    			 	    				 
-	                		});
-	            } catch (IOException e) {
-	                result.completeExceptionally(e);
-	            }
+	                chunks.upload(context, parentLocation.owner, (User) entryWriterKey, nextChunkLocation)
+	                        .thenAccept(fileLocation -> {
+	                        	ReadableFilePointer filePointer = new ReadableFilePointer(fileLocation, fileKey);
+	                            dirAccess.addFileAndCommit(filePointer, rootRKey, pointer.filePointer, context);
+	                            context.uploadChunk(dirAccess
+	                                                , new Location(parentLocation.owner, entryWriterKey, dirMapKey)
+	                                                , Collections.emptyList()).thenAccept(uploadResult -> {
+	                                result.complete(uploadResult);    			 	    				 
+	                            });
+                    });
+	            //} catch (IOException e) {
+	            //    result.completeExceptionally(e);
+	            //}
             });
             return result;
         });
@@ -375,7 +379,7 @@ public class FileTreeNode {
 
     private CompletableFuture<Boolean> updateExistingChild(FileTreeNode existingChild, AsyncReader fileData,
                                                            long inputStartIndex, long endIndex, UserContext context,
-                                                           Consumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) {
+                                                           ProgressConsumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) {
 
         String filename = existingChild.getFileProperties().name;
         System.out.println("Overwriting section [" + Long.toHexString(inputStartIndex) + ", " + Long.toHexString(endIndex) + "] of child with name: " + filename);
@@ -619,11 +623,11 @@ public class FileTreeNode {
         return new RetrievedFilePointer(writableFilePointer(), pointer.fileAccess).remove(context, null);
     }
 
-    public CompletableFuture<? extends AsyncReader> getInputStream(UserContext context, Consumer<Long> monitor) {
+    public CompletableFuture<? extends AsyncReader> getInputStream(UserContext context, ProgressConsumer<Long> monitor) {
         return getInputStream(context, getFileProperties().size, monitor);
     }
 
-    public CompletableFuture<? extends AsyncReader> getInputStream(UserContext context, long fileSize, Consumer<Long> monitor) {
+    public CompletableFuture<? extends AsyncReader> getInputStream(UserContext context, long fileSize, ProgressConsumer<Long> monitor) {
         SymmetricKey baseKey = pointer.filePointer.baseKey;
         SymmetricKey dataKey = pointer.fileAccess.getMetaKey(baseKey);
         return pointer.fileAccess.retriever().getFile(context, dataKey, fileSize, getLocation(), monitor);

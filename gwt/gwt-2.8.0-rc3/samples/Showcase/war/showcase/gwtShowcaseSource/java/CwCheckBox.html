@@ -1,0 +1,49 @@
+<pre>  /**
+   * The constants used in this Content Widget.
+   */
+  public static interface CwConstants extends Constants {
+    String cwCheckBoxCheckAll();
+
+    String[] cwCheckBoxDays();
+
+    String cwCheckBoxDescription();
+
+    String cwCheckBoxName();
+  }
+
+  /**
+   * An instance of the constants.
+   */
+  private final CwConstants constants;
+
+  /**
+   * Initialize this example.
+   */
+  @Override
+  public Widget onInitialize() {
+    // Create a vertical panel to align the check boxes
+    VerticalPanel vPanel = new VerticalPanel();
+    HTML label = new HTML(constants.cwCheckBoxCheckAll());
+    label.ensureDebugId("cwCheckBox-label");
+    vPanel.add(label);
+
+    // Add a checkbox for each day of the week
+    String[] daysOfWeek = constants.cwCheckBoxDays();
+    for (int i = 0; i &lt; daysOfWeek.length; i++) {
+      String day = daysOfWeek[i];
+      CheckBox checkBox = new CheckBox(day);
+      checkBox.ensureDebugId("cwCheckBox-" + day);
+
+      // Disable the weekends
+      if (i &gt;= 5) {
+        checkBox.setEnabled(false);
+      }
+
+      vPanel.add(checkBox);
+    }
+
+    // Return the panel of checkboxes
+    return vPanel;
+  }
+
+</pre>

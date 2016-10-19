@@ -1,0 +1,36 @@
+<ui:UiBinder xmlns:ui='urn:ui:com.google.gwt.uibinder' xmlns:g='urn:import:com.google.gwt.user.client.ui'
+  xmlns:cv='urn:import:com.google.gwt.user.cellview.client'>
+  <ui:style src="../common.gss"
+    type="com.google.gwt.sample.dynatablerf.client.widgets.SummaryWidget.Style">
+      .displayInline {
+      	display: inline;
+      }
+      
+      .table {
+      	width: 100%;
+      	table-layout: fixed;
+      }
+    </ui:style>
+  <g:DockLayoutPanel ui:field="dock" unit="EX">
+    <g:north size="6">
+      <g:DockLayoutPanel unit="PCT">
+        <g:east size="45">
+          <g:SimplePanel stylePrimaryName="{style.rightAlign}">
+            <cv:SimplePager ui:field="pager" stylePrimaryName="{style.displayInline}"
+              display="{table}" />
+          </g:SimplePanel>
+        </g:east>
+        <g:west size="45">
+          <g:SimplePanel>
+            <g:Button stylePrimaryName="{style.displayInline}"
+              ui:field="create">New
+              Person</g:Button>
+          </g:SimplePanel>
+        </g:west>
+      </g:DockLayoutPanel>
+    </g:north>
+    <g:center>
+      <cv:DataGrid ui:field="table" stylePrimaryName="{style.table}" />
+    </g:center>
+  </g:DockLayoutPanel>
+</ui:UiBinder>

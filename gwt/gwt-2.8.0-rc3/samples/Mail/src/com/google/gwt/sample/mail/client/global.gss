@@ -1,0 +1,70 @@
+@external 'gwt-*' 'dialog*' Caption;
+
+body, table {
+  font-size: small;
+}
+body {
+  font-family: Helvetica, Arial, sans-serif;
+  color: #000;
+  background: #fff;
+}
+a:link, a:visited, a:hover, a:active {
+  color: #000;
+}
+
+/* Dialog boxes */
+.dialogTopLeftInner, .dialogMiddleLeftInner, .dialogBottomLeftInner,
+.dialogTopRightInner, .dialogMiddleRightInner, .dialogBottomRightInner {
+  display: none;
+}
+.gwt-DialogBox {
+  background-color: white;
+  border: 1px solid #666;
+  z-index: 2;
+}
+.gwt-DialogBox .Caption {
+  background: #d3d6dd url(gradient_bg_th.png) repeat-x bottom left;
+  font-weight: bold;
+  text-shadow: #fff 0 2px 2px;
+  cursor: default;
+  padding: 5px 10px;
+  border-bottom: 1px solid #999;
+  text-align: left;
+}
+.gwt-DialogBox .dialogContent {
+}
+.gwt-DialogBox .gwt-Button {
+  margin: 10px;
+}
+.gwt-PopupPanelGlass {
+  background-color: #000;
+  opacity: 0.3;
+  filter: alpha(opacity=30);
+  z-index: 2;
+}
+
+/* GWT Tree */
+.gwt-Tree {
+}
+.gwt-Tree .gwt-TreeItem {
+  padding: 0;
+  cursor: hand;
+  cursor: pointer;
+  display: block !important;
+}
+.gwt-Tree .gwt-TreeItem-selected {
+  background: #ccc;
+}
+
+/* Splitters */
+.gwt-SplitLayoutPanel-HDragger, .gwt-SplitLayoutPanel-VDragger {
+  background-color: white;
+}
+
+.gwt-SplitLayoutPanel-HDragger {
+  cursor: col-resize;
+}
+
+.gwt-SplitLayoutPanel-VDragger {
+  cursor: row-resize;
+}

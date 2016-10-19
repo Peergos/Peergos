@@ -1,0 +1,66 @@
+<pre>  /**
+   * The UiBinder interface used by this example.
+   */
+  interface Binder extends UiBinder&lt;Widget, CwCellTree&gt; {
+  }
+
+  /**
+   * The constants used in this Content Widget.
+   */
+  public static interface CwConstants extends Constants {
+    String cwCellTreeDescription();
+
+    String cwCellTreeName();
+  }
+
+  /**
+   * The CellTree.
+   */
+  @UiField(provided = true)
+  CellTree cellTree;
+
+  /**
+   * The label that shows selected names.
+   */
+  @UiField
+  Label selectedLabel;
+
+  /**
+   * Initialize this example.
+   */
+  @Override
+  public Widget onInitialize() {
+    final MultiSelectionModel&lt;ContactInfo&gt; selectionModel =
+      new MultiSelectionModel&lt;ContactInfo&gt;(ContactDatabase.ContactInfo.KEY_PROVIDER);
+    selectionModel.addSelectionChangeHandler(
+        new SelectionChangeEvent.Handler() {
+          public void onSelectionChange(SelectionChangeEvent event) {
+            StringBuilder sb = new StringBuilder();
+            boolean first = true;
+            List&lt;ContactInfo&gt; selected = new ArrayList&lt;ContactInfo&gt;(
+                selectionModel.getSelectedSet());
+            Collections.sort(selected);
+            for (ContactInfo value : selected) {
+              if (first) {
+                first = false;
+              } else {
+                sb.append(", ");
+              }
+              sb.append(value.getFullName());
+            }
+            selectedLabel.setText(sb.toString());
+          }
+        });
+
+    CellTree.Resources res = GWT.create(CellTree.BasicResources.class);
+    cellTree = new CellTree(
+        new ContactTreeViewModel(selectionModel), null, res);
+    cellTree.setAnimationEnabled(true);
+
+    // Create the UiBinder.
+    Binder uiBinder = GWT.create(Binder.class);
+    Widget widget = uiBinder.createAndBindUi(this);
+    return widget;
+  }
+
+</pre>

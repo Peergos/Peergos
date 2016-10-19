@@ -28,14 +28,14 @@ public class EncryptedChunkRetriever implements FileRetriever {
     }
 
     public CompletableFuture<AsyncReader> getFile(UserContext context, SymmetricKey dataKey, long fileSize,
-                                                  Location ourLocation, Consumer<Long> monitor) {
+                                                  Location ourLocation, ProgressConsumer<Long> monitor) {
         return getChunkInputStream(context, dataKey, 0, fileSize, ourLocation, monitor)
                 .thenApply(chunk -> new LazyInputStreamCombiner(this, context, dataKey, chunk.get().chunk.data(), fileSize, monitor));
     }
 
     public CompletableFuture<Optional<LocatedEncryptedChunk>> getEncryptedChunk(long bytesRemainingUntilStart, long truncateTo,
                                                                                 byte[] nonce, SymmetricKey dataKey,
-                                                                                Location ourLocation, UserContext context, Consumer<Long> monitor) {
+                                                                                Location ourLocation, UserContext context, ProgressConsumer<Long> monitor) {
         if (bytesRemainingUntilStart < Chunk.MAX_SIZE) {
             return context.downloadFragments(fragmentHashes, monitor).thenCompose(fragments -> {
                 fragments = reorder(fragments, fragmentHashes);
@@ -79,7 +79,7 @@ public class EncryptedChunkRetriever implements FileRetriever {
 
     public CompletableFuture<Optional<LocatedChunk>> getChunkInputStream(UserContext context, SymmetricKey dataKey,
                                                                          long startIndex, long truncateTo,
-                                                                         Location ourLocation, Consumer<Long> monitor) {
+                                                                         Location ourLocation, ProgressConsumer<Long> monitor) {
         return getEncryptedChunk(startIndex, truncateTo, chunkNonce, dataKey, ourLocation, context, monitor).thenCompose(fullEncryptedChunk -> {
 
             if (!fullEncryptedChunk.isPresent()) {

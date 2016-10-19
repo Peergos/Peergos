@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<web-app xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://java.sun.com/xml/ns/javaee 
+              http://java.sun.com/xml/ns/javaee/web-app_2_5.xsd"
+         version="2.5"
+         xmlns="http://java.sun.com/xml/ns/javaee">
+
+  <!--
+    Require login. We only require login for the MobileWebApp.html page (instead of *.html) because
+    we do not want to require login for the compiled GWT javascript files, which also end in .html.
+  -->
+  <security-constraint>
+    <display-name>
+      Redirect to the login page if needed before showing
+      the host html page.
+    </display-name>
+    <web-resource-collection>
+      <web-resource-name>Login required</web-resource-name>
+      <url-pattern>/MobileWebApp.html</url-pattern>
+    </web-resource-collection>
+    <auth-constraint>
+      <role-name>*</role-name>
+    </auth-constraint>
+  </security-constraint>
+
+  <!-- RequestFactory -->
+  <servlet>
+    <servlet-name>requestFactoryServlet</servlet-name>
+    <servlet-class>com.google.web.bindery.requestfactory.server.RequestFactoryServlet</servlet-class>
+  </servlet>
+
+  <servlet-mapping>
+    <servlet-name>requestFactoryServlet</servlet-name>
+    <url-pattern>/gwtRequest</url-pattern>
+  </servlet-mapping>
+
+  <filter>
+    <filter-name>GaeAuthFilter</filter-name>
+    <!--
+      This filter demonstrates making GAE authentication
+      services visible to a RequestFactory client.
+    -->
+    <filter-class>com.google.gwt.sample.gaerequest.server.GaeAuthFilter</filter-class>
+  </filter>
+  <filter>
+    <!--
+      Objectify requires a filter to clean up any thread-local transaction contexts and pending 
+      asynchronous operations that remain at the end of a request.
+    -->
+    <filter-name>ObjectifyFilter</filter-name>
+    <filter-class>com.googlecode.objectify.ObjectifyFilter</filter-class>
+  </filter>
+  <filter-mapping>
+    <filter-name>GaeAuthFilter</filter-name>
+    <url-pattern>/gwtRequest/*</url-pattern>
+  </filter-mapping>
+  <filter-mapping>
+    <filter-name>ObjectifyFilter</filter-name>
+    <url-pattern>/*</url-pattern>
+  </filter-mapping>
+
+  <!-- Default page to serve -->
+  <welcome-file-list>
+    <welcome-file>MobileWebApp.html</welcome-file>
+  </welcome-file-list>
+
+  <!-- Set the correct mime-type of media files. -->
+  <mime-mapping>
+    <extension>ogg</extension>
+    <mime-type>audio/ogg</mime-type>
+  </mime-mapping>
+  <mime-mapping>
+    <extension>mp3</extension>
+    <mime-type>audio/mp3</mime-type>
+  </mime-mapping>
+  <mime-mapping>
+    <extension>wav</extension>
+    <mime-type>audio/wav</mime-type>
+  </mime-mapping>
+  <mime-mapping>
+    <extension>ogv</extension>
+    <mime-type>video/ogg</mime-type>
+  </mime-mapping>
+  <mime-mapping>
+    <extension>mp4</extension>
+    <mime-type>video/mp4</mime-type>
+  </mime-mapping>
+
+  <!-- Set the HTML5 appcache mime type -->
+  <mime-mapping>
+    <extension>manifest</extension>        
+    <mime-type>text/cache-manifest</mime-type>        
+  </mime-mapping>
+
+</web-app>

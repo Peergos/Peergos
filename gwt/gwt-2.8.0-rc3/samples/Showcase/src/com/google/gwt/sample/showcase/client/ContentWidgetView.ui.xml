@@ -1,0 +1,39 @@
+<!DOCTYPE ui:UiBinder SYSTEM "http://dl.google.com/gwt/DTD/xhtml.ent">
+<ui:UiBinder
+  xmlns:ui="urn:ui:com.google.gwt.uibinder"
+  xmlns:g="urn:import:com.google.gwt.user.client.ui">
+
+  <ui:style>
+    .name {
+      color: #4b4a4a;
+      font-size: 17pt;
+      font-weight: bold;
+      margin: 10px 10px 0;
+    }
+
+    .description {
+      color: #4b4a4a;
+      padding: 10px 0;
+      border-bottom: 1px solid #6f7277;
+      margin: 0 10px 12px 10px;
+    }
+
+  </ui:style>
+
+  <g:HeaderPanel>
+    <!-- Header. -->
+    <g:HTMLPanel>
+      <div
+        class='{style.name}'
+        ui:field='nameElem'>Name</div>
+      <div
+        class='{style.description}'
+        ui:field='descElem'>Description</div>
+    </g:HTMLPanel>
+
+    <!-- Content. -->
+    <g:SimplePanel
+      ui:field='examplePanel' />
+  </g:HeaderPanel>
+
+</ui:UiBinder> 

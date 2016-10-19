@@ -1,0 +1,13 @@
+.childCell {
+  padding-left: 30px;
+  border: 2px solid #eee !important;
+  background: #eee !important;
+}
+
+.groupHeaderCell {
+  padding: 1px 15px;
+  color: #4b4a4a;
+  text-shadow: #ddf 1px 1px 0;
+  font-size: 130%;
+  background: #eee;
+}
