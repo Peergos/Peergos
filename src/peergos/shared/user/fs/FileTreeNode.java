@@ -194,6 +194,7 @@ public class FileTreeNode {
         });
     }
 
+    @JsMethod
     public String toLink() {
         return pointer.filePointer.toLink();
     }
