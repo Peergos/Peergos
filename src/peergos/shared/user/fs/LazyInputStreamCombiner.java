@@ -57,7 +57,8 @@ public class LazyInputStreamCombiner implements AsyncReader {
         long available = (long) bytesReady();
 
         if (skip <= available) {
-            index = (int) skip;
+            index += (int) skip;
+            globalIndex += skip;
             return CompletableFuture.completedFuture(true);
         }
 
