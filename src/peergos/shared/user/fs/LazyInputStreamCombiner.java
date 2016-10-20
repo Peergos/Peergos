@@ -66,7 +66,11 @@ public class LazyInputStreamCombiner implements AsyncReader {
 
         int remainingToRead = totalLength - globalIndex > Chunk.MAX_SIZE ? Chunk.MAX_SIZE : (int) (totalLength - globalIndex);
         return getNextStream(remainingToRead)
-                .thenCompose(x -> skip(skip - remainingToRead));
+                .thenCompose(nextChunk -> {
+                    current = nextChunk;
+                    index = 0;
+                    return skip(skip - remainingToRead);
+                });
     }
 
     @Override
