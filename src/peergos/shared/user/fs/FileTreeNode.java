@@ -506,7 +506,8 @@ public class FileTreeNode {
         });
     }
 
-    public CompletableFuture<Boolean> rename(String newFilename, UserContext context, FileTreeNode parent) throws IOException {
+    @JsMethod
+    public CompletableFuture<Boolean> rename(String newFilename, UserContext context, FileTreeNode parent) {
         return rename(newFilename, context, parent, false);
     }
 
