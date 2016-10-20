@@ -18,13 +18,13 @@ import java.util.stream.*;
 
 public class FileTreeNode {
 
-    final static byte[] BMP = new byte[]{66, 77};
-    final static byte[] GIF = new byte[]{71, 73, 70};
-    final static byte[] JPEG = new byte[]{(byte)255, (byte)216};
-    final static byte[] PNG = new byte[]{(byte)137, 80, 78, 71, 13, 10, 26, 10};
+    final static int[] BMP = new int[]{66, 77};
+    final static int[] GIF = new int[]{71, 73, 70};
+    final static int[] JPEG = new int[]{255, 216};
+    final static int[] PNG = new int[]{137, 80, 78, 71, 13, 10, 26, 10};
     final static int HEADER_BYTES_TO_IDENTIFY_IMAGE_FILE = 8;
     final static int THUMBNAIL_SIZE = 100;
-    final static NativeJSThumbnail thumbnail = new NativeJSThumbnail();
+    final NativeJSThumbnail thumbnail;
     
     RetrievedFilePointer pointer;
     private FileProperties props;
@@ -45,6 +45,7 @@ public class FileTreeNode {
             SymmetricKey parentKey = this.getParentKey();
             props = pointer.fileAccess.getFileProperties(parentKey);
         }
+        thumbnail = new NativeJSThumbnail();
     }
 
     public boolean equals(Object other) {
@@ -349,30 +350,26 @@ public class FileTreeNode {
             DirAccess dirAccess = (DirAccess) pointer.fileAccess;
             SymmetricKey dirParentKey = dirAccess.getParentKey(rootRKey);
             Location parentLocation = getLocation();
-
             CompletableFuture<Boolean> result = new CompletableFuture<>();
-            generateThumbnail(context, fileData, filename).thenAccept(thumbData -> {
-            	//try {
-	                fileData.reset();
-	                FileProperties fileProps = new FileProperties(filename, endIndex, LocalDateTime.now(), false, Optional.of(thumbData));
-	                FileUploader chunks = new FileUploader(filename, fileData, startIndex, endIndex, fileKey, fileMetaKey, parentLocation, dirParentKey, monitor, fileProps,
-	                        EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
-	                byte[] mapKey = context.randomBytes(32);
-	                Location nextChunkLocation = new Location(getLocation().owner, getLocation().writer, mapKey);
-	                chunks.upload(context, parentLocation.owner, (User) entryWriterKey, nextChunkLocation)
-	                        .thenAccept(fileLocation -> {
-	                        	ReadableFilePointer filePointer = new ReadableFilePointer(fileLocation, fileKey);
-	                            dirAccess.addFileAndCommit(filePointer, rootRKey, pointer.filePointer, context);
-	                            context.uploadChunk(dirAccess
-	                                                , new Location(parentLocation.owner, entryWriterKey, dirMapKey)
-	                                                , Collections.emptyList()).thenAccept(uploadResult -> {
-	                                result.complete(uploadResult);    			 	    				 
-	                            });
+            int thumbnailSrcImageSize = 0;//startIndex == 0 && endIndex < Integer.MAX_VALUE ? (int)endIndex : 0;
+            byte[] thumbData2= new byte[0];//{1 , 2, 3, 4, 5, 6 ,7 ,8 ,9};
+                generateThumbnail(context, fileData, thumbnailSrcImageSize, filename).thenAccept(thumbData -> {
+                    fileData.reset().thenAccept(resetResult -> {
+                    FileProperties fileProps = new FileProperties(filename, endIndex, LocalDateTime.now(), false, Optional.of(thumbData2));
+                    FileUploader chunks = new FileUploader(filename, fileData, startIndex, endIndex, fileKey, fileMetaKey, parentLocation, dirParentKey, monitor, fileProps,
+                                                           EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
+                    byte[] mapKey = context.randomBytes(32);
+                    Location nextChunkLocation = new Location(getLocation().owner, getLocation().writer, mapKey);
+                    chunks.upload(context, parentLocation.owner, (User) entryWriterKey, nextChunkLocation).thenAccept(fileLocation -> {
+                        ReadableFilePointer filePointer = new ReadableFilePointer(fileLocation, fileKey);
+                        dirAccess.addFileAndCommit(filePointer, rootRKey, pointer.filePointer, context);
+                        context.uploadChunk(dirAccess, new Location(parentLocation.owner, entryWriterKey, dirMapKey)
+                                            , Collections.emptyList()).thenAccept(uploadResult -> {
+                            result.complete(uploadResult);    			 	    				 
+                        });
                     });
-	            //} catch (IOException e) {
-	            //    result.completeExceptionally(e);
-	            //}
-            });
+                    });
+                });
             return result;
         });
     }
@@ -664,25 +661,23 @@ public class FileTreeNode {
         return new FileTreeNode(null, null, Collections.EMPTY_SET, Collections.EMPTY_SET, null);
     }
 
-    private CompletableFuture<byte[]> generateThumbnail(UserContext context, AsyncReader fileData, String filename)
+    private CompletableFuture<byte[]> generateThumbnail(UserContext context, AsyncReader fileData, int fileSize, String filename)
     {
-    	int fileSize = -1; //kev temp
-		CompletableFuture<byte[]> fut = new CompletableFuture<>();
-    	if(context.isJavascript() && fileSize > -1) {
-    		isImage(fileData).thenAccept(isThumbnail -> {
-	    		 if(isThumbnail) {
-	    			 thumbnail.generateThumbnail(fileData, fileSize, filename).thenAccept(bytes -> {
-	 		    		fut.complete(bytes);    			 	    				 
-	    			 });
-	    		 } else{
-		    		fut.complete(new byte[0]);    			 
-	    		 }
-    		});
-    	} else {
-    		fut.complete(new byte[0]);
-    		return fut;
-    	}
-    	return fut;
+        CompletableFuture<byte[]> fut = new CompletableFuture<>();
+        if(context.isJavascript() && fileSize > 0) {
+            isImage(fileData).thenAccept(isThumbnail -> {
+                if(isThumbnail) {
+                    thumbnail.generateThumbnail(fileData, fileSize, filename).thenAccept(bytes -> {
+                        fut.complete(bytes);    			 	    				 
+                    });
+                } else{
+                    fut.complete(new byte[0]);    			 
+                }
+            });
+        } else {
+            fut.complete(new byte[0]);
+        }
+        return fut;
     }
 
     private CompletableFuture<Boolean> isImage(AsyncReader imageBlob)
@@ -694,10 +689,11 @@ public class FileTreeNode {
 	            if(numBytesRead < HEADER_BYTES_TO_IDENTIFY_IMAGE_FILE) {
 	            	result.complete(false);
 	            }else {
-	            	if (!Arrays.equals(Arrays.copyOfRange(data, 0, BMP.length), BMP)
-	                    && !Arrays.equals(Arrays.copyOfRange(data, 0, GIF.length), GIF)
-	                    && !Arrays.equals(Arrays.copyOfRange(data, 0, PNG.length), PNG)
-	                    && !Arrays.equals(Arrays.copyOfRange(data, 0, 2), JPEG)) {
+                    byte[] tempBytes = Arrays.copyOfRange(data, 0, 2);
+	            	if (!compareArrayContents(Arrays.copyOfRange(data, 0, BMP.length), BMP)
+	                    && !compareArrayContents(Arrays.copyOfRange(data, 0, GIF.length), GIF)
+	                    && !compareArrayContents(Arrays.copyOfRange(data, 0, PNG.length), PNG)
+	                    && !compareArrayContents(Arrays.copyOfRange(data, 0, 2), JPEG)) {
 	            		result.complete(false);
 	            	}else {
             			result.complete(true);
@@ -708,6 +704,22 @@ public class FileTreeNode {
     	return result;
     }
 
+    private boolean compareArrayContents(byte[] a, int[] a2) {
+        if (a==null || a2==null){
+            return false;
+        }
+        int length = a.length;
+        if (a2.length != length){
+            return false;
+        }
+        
+        for (int i=0; i<length; i++) {
+            if (a[i] != a2[i]) {
+                return false;
+            }
+        }
+        return true;
+    }
     private static InputStream NULL_STREAM = new InputStream() {
         @Override
         public int read() throws IOException {
