@@ -388,7 +388,6 @@ public class UserContext {
 
     public CompletableFuture<Boolean> unShare(Path path, Set<String> readersToRemove) throws IOException {
         String pathString = path.toString();
-        String parentPathString = path.getParent().toString();
         CompletableFuture<Optional<FileTreeNode>> byPath = getByPath(pathString);
         return byPath.thenCompose(opt -> {
             //
@@ -403,7 +402,7 @@ public class UserContext {
                             return CompletableFuture.completedFuture(empty);
                         FileTreeNode sharedRoot = sharedWithOpt.get();
                         return sharedRoot.removeChild(sharedPath, this)
-                                .thenCompose(x -> CompletableFuture.completedFuture(Optional.of(username)));
+                                .thenCompose(x -> CompletableFuture.completedFuture(Optional.of(user)));
                     });
 
             return sharedWith(sharedPath)
@@ -419,22 +418,15 @@ public class UserContext {
                                 .flatMap(e -> e.isPresent() ? Stream.of(e.get()) : Stream.empty())
                                 .collect(Collectors.toList());
 
-                        // now change to new base keys, clean some keys and mark others as dirty
-                        CompletableFuture<Optional<FileTreeNode>> parentOpt = getByPath(parentPathString);
-                        return parentOpt.thenCompose(opt2 -> {
-                            FileTreeNode parentFileTreeNode = opt2.orElseThrow(() -> new IllegalStateException("parent of " + pathString + " does not exist!"));
-                            return parentFileTreeNode.makeDirty(this, parentFileTreeNode, readersToRemove);
-                        }).thenCompose(newFileTreeNode -> {
+                        Set<String> remainingReaders = allSharees.stream()
+                                .filter(reader -> ! readersToRemove.contains(reader))
+                                .collect(Collectors.toSet());
 
-                            Set<String> remainingReaders = allSharees.stream()
-                                    .filter(reader -> ! readersToRemove.contains(reader))
-                                    .collect(Collectors.toSet());
-                            try {
-                                return share(path, remainingReaders);
-                            } catch (IOException ioe) {
-                                throw new IllegalStateException(ioe);
-                            }
-                        });
+                        try {
+                            return share(path, remainingReaders);
+                        } catch (IOException ioe) {
+                            throw new IllegalStateException(ioe);
+                        }
                     });
         });
 

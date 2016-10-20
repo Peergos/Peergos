@@ -111,7 +111,7 @@ public class MultiUserTests {
 
         // share the file from "a" to each of the others
         FileTreeNode u1File = u1.getByPath(u1.username + "/" + filename).get().get();
-        u1.share(Paths.get(u1.username, filename), userContexts.stream().map(u -> u.username).collect(Collectors.toSet())).get()
+        u1.share(Paths.get(u1.username, filename), userContexts.stream().map(u -> u.username).collect(Collectors.toSet())).get();
 
         // check other users can read the file
         for (UserContext userContext : userContexts) {
@@ -144,9 +144,10 @@ public class MultiUserTests {
 
         // check remaining users can still read it
         for (UserContext userContext : remainingUsers) {
-            Optional<FileTreeNode> sharedFile = userContext.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME +
-                    "/" + userContext.username + "/" + filename).get();
-            Assert.assertTrue(sharedFile.isPresent());
+            String path = u1.username + "/" + UserContext.SHARED_DIR_NAME +
+                    "/" + userContext.username + "/" + filename;
+            Optional<FileTreeNode> sharedFile = userContext.getByPath(path).get();
+            Assert.assertTrue("path '"+ path +"' is still available", sharedFile.isPresent());
         }
 
         // test that u1 can still access the original file
