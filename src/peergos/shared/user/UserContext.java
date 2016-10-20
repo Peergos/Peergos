@@ -390,7 +390,7 @@ public class UserContext {
         String pathString = path.toString();
         String parentPathString = path.getParent().toString();
         CompletableFuture<Optional<FileTreeNode>> byPath = getByPath(pathString);
-        byPath.thenCompose(opt -> {
+        return byPath.thenCompose(opt -> {
             //
             // first remove links from shared directory
             //
@@ -406,7 +406,7 @@ public class UserContext {
                                 .thenCompose(x -> CompletableFuture.completedFuture(Optional.of(username)));
                     });
 
-            CompletableFuture<Set<String>> setCompletableFuture = sharedWith(sharedPath)
+            return sharedWith(sharedPath)
                     .thenCompose(sharedWithUsers -> {
 
                         Set<CompletableFuture<Optional<String>>> collect = sharedWithUsers.stream()
@@ -421,11 +421,19 @@ public class UserContext {
 
                         // now change to new base keys, clean some keys and mark others as dirty
                         CompletableFuture<Optional<FileTreeNode>> parentOpt = getByPath(parentPathString);
-                        parentOpt.thenCompose(opt2 -> {
+                        return parentOpt.thenCompose(opt2 -> {
                             FileTreeNode parentFileTreeNode = opt2.orElseThrow(() -> new IllegalStateException("parent of " + pathString + " does not exist!"));
                             return parentFileTreeNode.makeDirty(this, parentFileTreeNode, readersToRemove);
                         }).thenCompose(newFileTreeNode -> {
 
+                            Set<String> remainingReaders = allSharees.stream()
+                                    .filter(reader -> ! readersToRemove.contains(reader))
+                                    .collect(Collectors.toSet());
+                            try {
+                                return share(path, remainingReaders);
+                            } catch (IOException ioe) {
+                                throw new IllegalStateException(ioe);
+                            }
                         });
                     });
         });

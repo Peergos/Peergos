@@ -84,7 +84,7 @@ public class MultiUserTests {
         // send follow requests from each other user to "a"
         List<UserContext> userContexts = getUserContexts(userCount);
         for (UserContext userContext : userContexts) {
-            userContext.sendFollowRequest(u1.username, SymmetricKey.random());
+            userContext.sendFollowRequest(u1.username, SymmetricKey.random()).get();
         }
 
         // make "a" reciprocate all the follow requests
@@ -92,12 +92,12 @@ public class MultiUserTests {
         for (FollowRequest u1Request : u1Requests) {
             boolean accept = true;
             boolean reciprocate = true;
-            u1.sendReplyFollowRequest(u1Request, accept, reciprocate);
+            u1.sendReplyFollowRequest(u1Request, accept, reciprocate).get();
         }
 
         // complete the friendship connection
         for (UserContext userContext : userContexts) {
-            userContext.processFollowRequests();//needed for side effect
+            userContext.processFollowRequests().get();//needed for side effect
         }
 
         // upload a file to "a"'s space
@@ -111,7 +111,7 @@ public class MultiUserTests {
 
         // share the file from "a" to each of the others
         FileTreeNode u1File = u1.getByPath(u1.username + "/" + filename).get().get();
-        u1.share(Paths.get(u1.username, filename), userContexts.stream().map(u -> u.username).collect(Collectors.toSet()));
+        u1.share(Paths.get(u1.username, filename), userContexts.stream().map(u -> u.username).collect(Collectors.toSet())).get()
 
         // check other users can read the file
         for (UserContext userContext : userContexts) {
@@ -128,7 +128,7 @@ public class MultiUserTests {
         UserContext userToUnshareWith = userContexts.stream().findFirst().get();
 
         // unshare with a single user
-        u1.unShare(Paths.get(u1.username, filename), userToUnshareWith.username);
+        u1.unShare(Paths.get(u1.username, filename), userToUnshareWith.username).get();
 
         List<UserContext> updatedUserContexts = getUserContexts(userCount);
 
