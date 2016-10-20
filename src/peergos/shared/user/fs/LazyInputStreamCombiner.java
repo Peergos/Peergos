@@ -6,7 +6,6 @@ import peergos.shared.util.*;
 
 import java.io.*;
 import java.util.concurrent.*;
-import java.util.function.*;
 
 public class LazyInputStreamCombiner implements AsyncReader {
     private final UserContext context;
@@ -54,9 +53,25 @@ public class LazyInputStreamCombiner implements AsyncReader {
         return err;
     }
 
+    private CompletableFuture skip(long skip) {
+        if (skip == 0)
+            return CompletableFuture.completedFuture(true);
+        long available = (long) bytesReady();
+        long toRead = Math.min(available, skip);
+        globalIndex += toRead;
+        long remainingToRead = totalLength - globalIndex > Chunk.MAX_SIZE ? Chunk.MAX_SIZE : totalLength - globalIndex;
+        return skip(remainingToRead);
+    }
+
     @Override
     public CompletableFuture<Boolean> seek(int hi32, int low32) {
-        throw new IllegalStateException("Unimplemented!");
+        long seek = ((long) (hi32) << 32) | low32;
+
+        if (totalLength < seek)
+            throw new IllegalStateException("Cannot seek to position "+ seek);
+        globalIndex = 0;
+        return skip(seek);
+
     }
 
     public int bytesReady() {
