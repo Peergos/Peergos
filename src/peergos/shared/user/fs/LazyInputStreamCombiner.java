@@ -54,13 +54,19 @@ public class LazyInputStreamCombiner implements AsyncReader {
     }
 
     private CompletableFuture skip(long skip) {
-        if (skip == 0)
-            return CompletableFuture.completedFuture(true);
         long available = (long) bytesReady();
+
+        if (skip <= available) {
+            index = (int) skip;
+            return CompletableFuture.completedFuture(true);
+        }
+
         long toRead = Math.min(available, skip);
         globalIndex += toRead;
-        long remainingToRead = totalLength - globalIndex > Chunk.MAX_SIZE ? Chunk.MAX_SIZE : totalLength - globalIndex;
-        return skip(remainingToRead);
+
+        int remainingToRead = totalLength - globalIndex > Chunk.MAX_SIZE ? Chunk.MAX_SIZE : (int) (totalLength - globalIndex);
+        return getNextStream(remainingToRead)
+                .thenCompose(x -> skip(skip - remainingToRead));
     }
 
     @Override
@@ -70,8 +76,8 @@ public class LazyInputStreamCombiner implements AsyncReader {
         if (totalLength < seek)
             throw new IllegalStateException("Cannot seek to position "+ seek);
         globalIndex = 0;
-        return skip(seek);
-
+        return reset()
+                .thenCompose(x -> skip(seek));
     }
 
     public int bytesReady() {
