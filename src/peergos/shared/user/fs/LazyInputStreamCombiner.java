@@ -69,7 +69,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
                 .thenCompose(nextChunk -> {
                     current = nextChunk;
                     index = 0;
-                    return skip(skip - remainingToRead);
+                    return skip(skip - toRead);
                 });
     }
 
