@@ -50,6 +50,10 @@ public class UserContext {
         this.staticData =  new UserStaticData();
     }
 
+    public boolean isJavascript() {
+    	return this.network.isJavascript();
+    }
+    
     @JsMethod
     public static CompletableFuture<UserContext> signIn(String username, String password, NetworkAccess network, Crypto crypto) {
         return UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer)
@@ -456,6 +460,7 @@ public class UserContext {
 
     }
 
+    @JsMethod
     public CompletableFuture<Set<String>> sharedWith(FileTreeNode file) {
 
         Location fileLocation = file.getLocation();
