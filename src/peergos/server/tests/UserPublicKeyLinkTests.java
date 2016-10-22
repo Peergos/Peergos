@@ -10,6 +10,7 @@ import peergos.shared.crypto.random.*;
 
 import java.time.LocalDate;
 import java.util.*;
+import java.util.concurrent.*;
 
 
 public class UserPublicKeyLinkTests {
@@ -97,6 +98,6 @@ public class UserPublicKeyLinkTests {
         try {
             boolean shouldFail = core.updateChain(username, Arrays.asList(upl3)).get();
             throw new RuntimeException("Should have failed before here!");
-        } catch (IllegalStateException e) {}
+        } catch (ExecutionException e) {}
     }
 }

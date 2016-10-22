@@ -156,19 +156,19 @@ public class UserContext {
 
         CompletableFuture<UserContext> result = new CompletableFuture<>();
         UserUtil.generateUser(username, newPassword, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer).thenAccept(updatedUser -> {
-	        commit(updatedUser.getUser(), updatedUser.getRoot(), network).thenApply(updated -> {
-	            if (!updated)
-	                return result.completeExceptionally(new IllegalStateException("Change Password Failed: couldn't upload new file system entry points!"));
-	
-	            List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createChain(user, updatedUser.getUser(), username, expiry);
-	            return network.coreNode.updateChain(username, claimChain).thenApply(updatedChain -> {
-	                if (!updatedChain)
-	                    return result.completeExceptionally(new IllegalStateException("Couldn't register new public keys during password change!"));
-	
-	                return UserContext.ensureSignedUp(username, newPassword, network, crypto)
-	                        .thenApply(context -> result.complete(context));
-	            });
-	        });
+            commit(updatedUser.getUser(), updatedUser.getRoot(), network).thenApply(updated -> {
+                if (!updated)
+                    return result.completeExceptionally(new IllegalStateException("Change Password Failed: couldn't upload new file system entry points!"));
+
+                List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createChain(user, updatedUser.getUser(), username, expiry);
+                return network.coreNode.updateChain(username, claimChain).thenApply(updatedChain -> {
+                    if (!updatedChain)
+                        return result.completeExceptionally(new IllegalStateException("Couldn't register new public keys during password change!"));
+
+                    return UserContext.ensureSignedUp(username, newPassword, network, crypto)
+                            .thenApply(context -> result.complete(context));
+                });
+            });
         });
         return result;
     }
@@ -386,11 +386,55 @@ public class UserContext {
         throw new IllegalStateException("Unimplemented!");
     }
 
-    public void unShare(Path path, String readerToRemove) throws IOException {
-        unShare(path, Collections.singleton(readerToRemove));
+    public CompletableFuture<Boolean> unShare(Path path, String readerToRemove) throws IOException {
+        return unShare(path, Collections.singleton(readerToRemove));
     }
 
-    public void unShare(Path path, Set<String> readersToRemove) throws IOException {
+    public CompletableFuture<Boolean> unShare(Path path, Set<String> readersToRemove) throws IOException {
+        String pathString = path.toString();
+        CompletableFuture<Optional<FileTreeNode>> byPath = getByPath(pathString);
+        return byPath.thenCompose(opt -> {
+            //
+            // first remove links from shared directory
+            //
+            FileTreeNode sharedPath = opt.orElseThrow(() -> new IllegalStateException("Specified un-share path " + pathString + " does not exist"));
+            Optional<String> empty = Optional.empty();
+
+            Function<String, CompletableFuture<Optional<String>>> unshareWith = user -> getByPath("/" + username + "/shared/" + user)
+                    .thenCompose(sharedWithOpt -> {
+                        if (!sharedWithOpt.isPresent())
+                            return CompletableFuture.completedFuture(empty);
+                        FileTreeNode sharedRoot = sharedWithOpt.get();
+                        return sharedRoot.removeChild(sharedPath, this)
+                                .thenCompose(x -> CompletableFuture.completedFuture(Optional.of(user)));
+                    });
+
+            return sharedWith(sharedPath)
+                    .thenCompose(sharedWithUsers -> {
+
+                        Set<CompletableFuture<Optional<String>>> collect = sharedWithUsers.stream()
+                                .map(unshareWith::apply) //remove link from shared directory
+                                .collect(Collectors.toSet());
+
+                        return Futures.combineAll(collect);
+                    }).thenCompose(x -> {
+                        List<String> allSharees = x.stream()
+                                .flatMap(e -> e.isPresent() ? Stream.of(e.get()) : Stream.empty())
+                                .collect(Collectors.toList());
+
+                        Set<String> remainingReaders = allSharees.stream()
+                                .filter(reader -> ! readersToRemove.contains(reader))
+                                .collect(Collectors.toSet());
+
+                        try {
+                            return share(path, remainingReaders);
+                        } catch (IOException ioe) {
+                            throw new IllegalStateException(ioe);
+                        }
+                    });
+        });
+
+
         /*
         Optional<FileTreeNode> f = getByPath(path.toString());
         if (! f.isPresent())
@@ -413,10 +457,44 @@ public class UserContext {
         // now re-share new keys with remaining users
         Set<String> remainingReaders = sharees.stream().filter(name -> !readersToRemove.contains(name)).collect(Collectors.toSet());
         share(path, remainingReaders);*/
-        throw new IllegalStateException("Unimplemented!");
+
     }
 
     public CompletableFuture<Set<String>> sharedWith(FileTreeNode file) {
+
+        Location fileLocation = file.getLocation();
+        String path = "/" + username + "/shared";
+
+        Function<FileTreeNode, CompletableFuture<Optional<String>>> func = sharedUserDir -> {
+            CompletableFuture<Set<FileTreeNode>> children = sharedUserDir.getChildren(this);
+            return children.thenCompose(e -> {
+                boolean present = e.stream()
+                        .filter(sharedFile -> sharedFile.getLocation().equals(fileLocation))
+                        .findFirst()
+                        .isPresent();
+                String userName = present ? sharedUserDir.getFileProperties().name : null;
+                return CompletableFuture.completedFuture(Optional.ofNullable(userName));
+            });
+        };
+
+        return getByPath(path)
+                .thenCompose(sharedDirOpt -> {
+                    FileTreeNode sharedDir = sharedDirOpt.orElseThrow(() -> new IllegalStateException("No such directory" + path));
+                    return sharedDir.getChildren(this)
+                            .thenCompose(sharedUserDirs -> {
+                                List<CompletableFuture<Optional<String>>> collect = sharedUserDirs.stream()
+                                        .map(func::apply)
+                                        .collect(Collectors.toList());
+
+                                return Futures.combineAll(collect);
+                            }).thenCompose(optSet -> {
+                                Set<String> sharedWith = optSet.stream()
+                                        .flatMap(e -> e.isPresent() ? Stream.of(e.get()) : Stream.empty())
+                                        .collect(Collectors.toSet());
+                                return CompletableFuture.completedFuture(sharedWith);
+                            });
+                });
+
         /*
         FileTreeNode sharedDir = getByPath("/" + username + "/shared").get();
         Set<FileTreeNode> friendDirs = sharedDir.getChildren(this);
@@ -428,10 +506,31 @@ public class UserContext {
                         .isPresent())
                 .map(u -> u.getFileProperties().name)
                 .collect(Collectors.toSet());*/
-        throw new IllegalStateException("Unimplemented!");
+//        throw new IllegalStateException("Unimplemented!");
     }
 
-    public void share(Path path, Set<String> readersToAdd) throws IOException {
+    public CompletableFuture<Boolean> share(Path path, Set<String> readersToAdd) throws IOException {
+
+        return getByPath(path.toString())
+                .thenCompose(e -> {
+                    FileTreeNode fileTreeNode = e.orElseThrow(() -> new IllegalStateException("Could not find path " + path.toString()));
+
+                    BiFunction<Boolean, String, CompletableFuture<Boolean>> func = (x, user) -> getByPath("/" + username + "/shared/" + user)
+                            .thenCompose(shared -> {
+                                if (!shared.isPresent())
+                                    return CompletableFuture.completedFuture(true);
+                                FileTreeNode sharedTreeNode = shared.get();
+                                return sharedTreeNode.addLinkTo(fileTreeNode, this)
+                                        .thenCompose(ee -> CompletableFuture.completedFuture(true));
+                            });
+
+
+                    return Futures.reduceAll(readersToAdd,
+                            true,
+                            func,
+                            (a, b) -> a && b);
+                });
+
         /*
         Optional<FileTreeNode> f = getByPath(path.toString());
         if (!f.isPresent())
@@ -444,8 +543,8 @@ public class UserContext {
             FileTreeNode sharedRoot = opt.get();
             sharedRoot.addLinkTo(file, this);
         }*/
-        throw new IllegalStateException("Unimplemented!");
     }
+
 
     private CompletableFuture<TrieNode> addToStaticDataAndCommit(EntryPoint entry) {
         return addToStaticDataAndCommit(entrie, entry);
@@ -458,8 +557,8 @@ public class UserContext {
     }
 
     private CompletableFuture<Boolean> commit(User user,
-                                             SymmetricKey rootKey,
-                                             NetworkAccess network) {
+                                              SymmetricKey rootKey,
+                                              NetworkAccess network) {
 
         byte[] rawStatic = staticData.serialize(rootKey);
         return network.dhtClient.put(rawStatic, user, Collections.emptyList())
@@ -484,7 +583,7 @@ public class UserContext {
         boolean isRemoved = staticData.remove(pointer);
 
         return isRemoved ? commit(user, rootKey, network) :
-            CompletableFuture.completedFuture(true);
+                CompletableFuture.completedFuture(true);
     };
 
     /**
@@ -765,9 +864,9 @@ public class UserContext {
         // remove /$us/shared/$them
         return getSharingFolder()
                 .thenCompose(sharing -> getByPath("/"+this.username+"/shared/"+username)
-                                .thenCompose(dir -> dir.get().remove(this, sharing)
-                                        // remove our static data entry storing that we've granted them access
-                                        .thenCompose(b -> removeFromStaticData(dir.get()))));
+                        .thenCompose(dir -> dir.get().remove(this, sharing)
+                                // remove our static data entry storing that we've granted them access
+                                .thenCompose(b -> removeFromStaticData(dir.get()))));
     }
 
     public void logout() {

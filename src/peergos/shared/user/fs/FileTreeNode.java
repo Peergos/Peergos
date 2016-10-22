@@ -196,6 +196,7 @@ public class FileTreeNode {
         });
     }
 
+    @JsMethod
     public String toLink() {
         return pointer.filePointer.toLink();
     }
@@ -515,7 +516,8 @@ public class FileTreeNode {
         });
     }
 
-    public CompletableFuture<Boolean> rename(String newFilename, UserContext context, FileTreeNode parent) throws IOException {
+    @JsMethod
+    public CompletableFuture<Boolean> rename(String newFilename, UserContext context, FileTreeNode parent) {
         return rename(newFilename, context, parent, false);
     }
 

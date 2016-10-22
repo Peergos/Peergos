@@ -1,5 +1,6 @@
 package peergos.shared.corenode;
 
+import peergos.server.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.ipfs.api.*;
 import peergos.shared.merklebtree.*;
@@ -47,12 +48,10 @@ public interface CoreNode {
     void close() throws IOException;
 
     static CoreNode getDefault() {
-    	/* todo-fix
         try {
             return SQLiteCoreNode.build(":memory:");
         } catch (SQLException s) {
             throw new IllegalStateException(s);
-        }*/
-    	return null;
+        }
     }
 }
