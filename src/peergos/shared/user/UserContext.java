@@ -88,6 +88,17 @@ public class UserContext {
                 }).exceptionally(Futures::logError);
     }
 
+    @JsMethod
+    public static CompletableFuture<UserContext> fromPublicLink(String link, NetworkAccess network, Crypto crypto) {
+        ReadableFilePointer entryPoint = ReadableFilePointer.fromLink(link);
+        EntryPoint entry = new EntryPoint(entryPoint, "", Collections.emptySet(), Collections.emptySet());
+        UserContext context = new UserContext(null, null, null, network, crypto);
+        return context.addEntryPoint(context.entrie, entry).thenApply(trieNode -> {
+            context.entrie = trieNode;
+            return context;
+        });
+    }
+
     public static CompletableFuture<UserContext> ensureSignedUp(String username, String password, NetworkAccess network, Crypto crypto) {
 
         return network.isUsernameRegistered(username).thenCompose(isRegistered -> {

@@ -104,11 +104,13 @@ public class ReadableFilePointer {
     }
 
     public static ReadableFilePointer fromLink(String keysString) {
+        if (keysString.startsWith("#"))
+            keysString = keysString.substring(1);
         String[] split = keysString.split("/");
-        UserPublicKey owner = UserPublicKey.fromPublicKeys(Base58.decode(split[0]));
-        UserPublicKey writer = UserPublicKey.fromPublicKeys(Base58.decode(split[1]));
-        byte[] mapKey = Base58.decode(split[2]);
-        SymmetricKey baseKey = SymmetricKey.deserialize(Base58.decode(split[3]));
+        UserPublicKey owner = UserPublicKey.createNull();
+        UserPublicKey writer = UserPublicKey.fromPublicKeys(Base58.decode(split[0]));
+        byte[] mapKey = Base58.decode(split[1]);
+        SymmetricKey baseKey = SymmetricKey.deserialize(Base58.decode(split[2]));
         return new ReadableFilePointer(owner, writer, mapKey, baseKey);
     }
 

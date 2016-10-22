@@ -210,6 +210,27 @@ public class UserTests {
         Assert.assertTrue("Timely write", (t2-t1)/2 < 20000);
     }
 
+    @Test
+    public void publicLinkToFile() throws Exception {
+        String username = "test01";
+        String password = "test01";
+        UserContext context = ensureSignedUp(username, password, network, crypto);
+        FileTreeNode userRoot = context.getUserRoot().get();
+
+        String filename = "mediumfile.bin";
+        byte[] data = new byte[128*1024];
+        new Random().nextBytes(data);
+        long t1 = System.currentTimeMillis();
+        userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data), 0, data.length, context, l -> {}, context.fragmenter());
+        long t2 = System.currentTimeMillis();
+        String path = "/" + username + "/" + filename;
+        FileTreeNode file = context.getByPath(path).get().get();
+        String link = file.toLink();
+        UserContext linkContext = UserContext.fromPublicLink(link, network, crypto).get();
+        Optional<FileTreeNode> fileThroughLink = linkContext.getByPath(path).get();
+        Assert.assertTrue("File present through link", fileThroughLink.isPresent());
+    }
+
     // This one takes a while, so disable most of the time
 //    @Test
     public void hugeFolder() throws Exception {
