@@ -349,6 +349,54 @@ public class UserTests {
     }
 
 
+    @Test
+    public void deleteDirectoryTest() throws Exception {
+        String username = "test01";
+        String password = "test01";
+        UserContext context = ensureSignedUp(username, password, network, crypto);
+        FileTreeNode userRoot = context.getUserRoot().get();
+
+        Set<FileTreeNode> children = userRoot.getChildren(context).get();
+
+        children.stream()
+                .map(FileTreeNode::toString)
+                .forEach(System.out::println);
+
+        String folderName = "a_folder";
+        boolean isSystemFolder = false;
+
+        //create the directory
+        userRoot.mkdir(folderName, context, isSystemFolder).get();
+
+        FileTreeNode folderTreeNode = userRoot.getChildren(context)
+                .get()
+                .stream()
+                .filter(e -> e.getFileProperties().name.equals(folderName))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("Missing created folder " + folderName));
+
+        //remove the directory
+        folderTreeNode.remove(context, userRoot).get();
+
+        //ensure folder directory not  present
+        boolean isPresent = userRoot.getChildren(context)
+                .get()
+                .stream()
+                .filter(e -> e.getFileProperties().name.equals(folderName))
+                .findFirst()
+                .isPresent();
+
+        Assert.assertFalse("folder not present after remove", isPresent);
+
+        //can sign-in again
+        try {
+            UserContext context2 = ensureSignedUp(username, password, network, crypto);
+            FileTreeNode userRoot2 = context2.getUserRoot().get();
+        } catch (Exception ex) {
+            fail("Failed to log-in and see user-root " + ex.getMessage());
+        }
+
+    }
 
 
 
