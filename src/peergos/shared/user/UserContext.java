@@ -460,6 +460,7 @@ public class UserContext {
 
     }
 
+    @JsMethod
     public CompletableFuture<Set<String>> sharedWith(FileTreeNode file) {
 
         Location fileLocation = file.getLocation();
