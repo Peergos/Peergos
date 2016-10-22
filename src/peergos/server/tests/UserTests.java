@@ -22,6 +22,7 @@ import java.lang.reflect.*;
 import java.net.*;
 import java.nio.file.*;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Supplier;
 import java.util.stream.*;
@@ -294,6 +295,8 @@ public class UserTests {
         ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(tmpFile);
 
         boolean b = userRoot.uploadFile(name, resetableFileInputStream, tmpFile.length(), context, (l) -> {}, context.fragmenter()).get();
+        String otherName = name + ".other";
+        boolean b2 = userRoot.uploadFile(otherName, resetableFileInputStream, tmpFile.length(), context, (l) -> {}, context.fragmenter()).get();
 
         assertTrue("file upload", b);
 
@@ -330,7 +333,24 @@ public class UserTests {
 
         Assert.assertFalse("uploaded file is deleted", isPresent);
 
+
+        //check content of other file in same directory that was not removed
+        FileTreeNode otherFileTreeNode = userRoot2.getChildren(context2).get()
+                .stream()
+                .filter(e -> e.getFileProperties().name.equals(otherName))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("Missing other file"));
+
+        AsyncReader asyncReader = otherFileTreeNode.getInputStream(context2, l -> {}).get();
+
+        byte[] otherRetrievedData = Serialize.readFully(asyncReader, otherFileTreeNode.getSize()).get();
+        boolean  otherDataEquals = Arrays.equals(data, otherRetrievedData);
+        Assert.assertTrue("other file data is  intact", otherDataEquals);
     }
+
+
+
+
 
     public static String randomString() {
         return UUID.randomUUID().toString();
