@@ -15,7 +15,8 @@ public class NetworkAccess {
     public final CoreNode coreNode;
     public final DHTClient dhtClient;
     public final Btree btree;
-    private final List<String> usernames;
+    @JsProperty
+    public final List<String> usernames;
     private final LocalDateTime creationTime;
     private final boolean isJavascript;
 

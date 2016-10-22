@@ -14,7 +14,9 @@ public class SocialState {
 
     public SocialState(List<FollowRequest> pending, Map<String, FileTreeNode> followerRoots, Set<FileTreeNode> followingRoots) {
         this.pending = pending;
-        this.followerRoots = followerRoots;
-        this.followingRoots = followingRoots;
+        this.followerRoots = new TreeMap<>(followerRoots);
+        TreeSet<FileTreeNode> sortedByName = new TreeSet<>((a, b) -> a.getName().compareTo(b.getName()));
+        sortedByName.addAll(followingRoots);
+        this.followingRoots = sortedByName;
     }
 }

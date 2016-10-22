@@ -30,6 +30,7 @@ public class UserContext {
     private final Fragmenter fragmenter;
 
     // Contact external world
+    @JsProperty
     public final NetworkAccess network;
 
     // In process only
