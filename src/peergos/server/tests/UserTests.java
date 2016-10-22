@@ -318,7 +318,7 @@ public class UserTests {
 
         //re-create user-context
         UserContext context2 = ensureSignedUp(username, password, network, crypto);
-        FileTreeNode userRoot2 = context.getUserRoot().get();
+        FileTreeNode userRoot2 = context2.getUserRoot().get();
 
 
         //check the file is no longer present
