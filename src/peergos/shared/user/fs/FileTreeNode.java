@@ -483,7 +483,8 @@ public class FileTreeNode {
         return mkdir(newFolderName, context, null, isSystemFolder, random);
     }
 
-    public CompletableFuture<ReadableFilePointer> mkdir(String newFolderName, UserContext context, SymmetricKey requestedBaseSymmetricKey,
+    public CompletableFuture<ReadableFilePointer>
+    mkdir(String newFolderName, UserContext context, SymmetricKey requestedBaseSymmetricKey,
                                                         boolean isSystemFolder, SafeRandom random) {
         CompletableFuture<ReadableFilePointer> result = new CompletableFuture<>();
         if (!this.isDirectory()) {
@@ -608,9 +609,13 @@ public class FileTreeNode {
 
     @JsMethod
     public CompletableFuture<Boolean> remove(UserContext context, FileTreeNode parent) {
-        if (parent != null)
-            parent.removeChild(this, context);
-        return new RetrievedFilePointer(writableFilePointer(), pointer.fileAccess).remove(context, null);
+        Supplier<CompletableFuture<Boolean>> supplier = () -> new RetrievedFilePointer(writableFilePointer(), pointer.fileAccess).remove(context, null);
+
+        if (parent != null) {
+            return parent.removeChild(this, context)
+                    .thenCompose(x -> supplier.get());
+        }
+        return supplier.get();
     }
 
     public CompletableFuture<? extends AsyncReader> getInputStream(UserContext context, ProgressConsumer<Long> monitor) {
