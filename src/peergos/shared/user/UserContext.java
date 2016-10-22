@@ -861,7 +861,8 @@ public class UserContext {
         return res;
     }
 
-    public CompletableFuture<Boolean> unfollow(String friendName) throws IOException {
+    @JsMethod
+    public CompletableFuture<Boolean> unfollow(String friendName) {
         System.out.println("Unfollowing: "+friendName);
         // remove entry point from static data
         String friendPath = "/" + friendName + "/shared/" + username;
@@ -874,7 +875,8 @@ public class UserContext {
                 });
     }
 
-    public CompletableFuture<Boolean> removeFollower(String username) throws IOException {
+    @JsMethod
+    public CompletableFuture<Boolean> removeFollower(String username) {
         System.out.println("Remove follower: " + username);
         // remove /$us/shared/$them
         return getSharingFolder()
