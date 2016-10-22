@@ -2,15 +2,12 @@ package peergos.shared.corenode;
 
 import peergos.server.corenode.*;
 import peergos.shared.crypto.*;
-import peergos.shared.ipfs.api.*;
 import peergos.shared.merklebtree.*;
-import peergos.shared.util.*;
 
 import java.io.*;
-import java.sql.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.zip.*;
+
 
 public interface CoreNode {
     int MAX_PENDING_FOLLOWERS = 100;
@@ -47,11 +44,4 @@ public interface CoreNode {
 
     void close() throws IOException;
 
-    static CoreNode getDefault() {
-        try {
-            return SQLiteCoreNode.build(":memory:");
-        } catch (SQLException s) {
-            throw new IllegalStateException(s);
-        }
-    }
 }

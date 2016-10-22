@@ -1,6 +1,7 @@
 package peergos.server.tests;
 
 import org.junit.*;
+import peergos.server.corenode.SQLiteCoreNode;
 import peergos.shared.corenode.CoreNode;
 import peergos.shared.corenode.UserPublicKeyLink;
 import peergos.shared.crypto.*;
@@ -8,6 +9,7 @@ import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
 import peergos.shared.crypto.random.*;
 
+import java.sql.SQLException;
 import java.time.LocalDate;
 import java.util.*;
 import java.util.concurrent.*;
@@ -49,7 +51,7 @@ public class UserPublicKeyLinkTests {
 
     @Test
     public void coreNode() throws Exception {
-        CoreNode core = CoreNode.getDefault();
+        CoreNode core = getDefaultCoreNode();
         User user = User.insecureRandom();
         String username = "someuser";
 
@@ -99,5 +101,13 @@ public class UserPublicKeyLinkTests {
             boolean shouldFail = core.updateChain(username, Arrays.asList(upl3)).get();
             throw new RuntimeException("Should have failed before here!");
         } catch (ExecutionException e) {}
+    }
+
+    static CoreNode getDefaultCoreNode() {
+        try {
+            return SQLiteCoreNode.build(":memory:");
+        } catch (SQLException s) {
+            throw new IllegalStateException(s);
+        }
     }
 }
