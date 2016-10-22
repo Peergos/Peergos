@@ -22,6 +22,8 @@ import java.lang.reflect.*;
 import java.net.*;
 import java.nio.file.*;
 import java.util.*;
+import java.util.concurrent.ExecutionException;
+import java.util.function.Supplier;
 import java.util.stream.*;
 
 @RunWith(Parameterized.class)
@@ -227,6 +229,7 @@ public class UserTests {
         assertTrue("Correct contents", Arrays.equals(retrievedData, expected));
     }
 
+
     @Test
     public void readWriteTest() throws Exception {
         String username = "test01";
@@ -266,6 +269,67 @@ public class UserTests {
         boolean  dataEquals = Arrays.equals(data, retrievedData);
 
         assertTrue("retrieved same data", dataEquals);
+    }
+
+
+    @Test
+    public void deleteTest() throws Exception {
+        String username = "test01";
+        String password = "test01";
+        UserContext context = ensureSignedUp(username, password, network, crypto);
+        FileTreeNode userRoot = context.getUserRoot().get();
+
+        Set<FileTreeNode> children = userRoot.getChildren(context).get();
+
+        children.stream()
+                .map(FileTreeNode::toString)
+                .forEach(System.out::println);
+
+        String name = randomString();
+        Path tmpPath = createTmpFile(name);
+        byte[] data = randomData(10*1024*1024); // 2 chunks to test block chaining
+        Files.write(tmpPath, data);
+
+        File tmpFile = tmpPath.toFile();
+        ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(tmpFile);
+
+        boolean b = userRoot.uploadFile(name, resetableFileInputStream, tmpFile.length(), context, (l) -> {}, context.fragmenter()).get();
+
+        assertTrue("file upload", b);
+
+        Optional<FileTreeNode> opt = userRoot.getChildren(context).get()
+                        .stream()
+                        .filter(e -> e.getFileProperties().name.equals(name))
+                        .findFirst();
+
+        assertTrue("found uploaded file", opt.isPresent());
+
+        FileTreeNode fileTreeNode = opt.get();
+        long size = fileTreeNode.getFileProperties().size;
+        AsyncReader in = fileTreeNode.getInputStream(context, size, (l) -> {}).get();
+        byte[] retrievedData = Serialize.readFully(in, fileTreeNode.getSize()).get();
+
+        boolean  dataEquals = Arrays.equals(data, retrievedData);
+
+        assertTrue("retrieved same data", dataEquals);
+
+        //delete the file
+        fileTreeNode.remove(context, userRoot).get();
+
+        //re-create user-context
+        UserContext context2 = ensureSignedUp(username, password, network, crypto);
+        FileTreeNode userRoot2 = context.getUserRoot().get();
+
+
+        //check the file is no longer present
+        boolean isPresent = userRoot2.getChildren(context2).get()
+                .stream()
+                .filter(e -> e.getFileProperties().name.equals(name))
+                .findFirst()
+                .isPresent();
+
+        Assert.assertFalse("uploaded file is deleted", isPresent);
+
     }
 
     public static String randomString() {
