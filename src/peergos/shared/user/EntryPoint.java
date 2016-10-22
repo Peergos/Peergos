@@ -1,5 +1,6 @@
 package peergos.shared.user;
 
+import jsinterop.annotations.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.symmetric.*;
@@ -9,6 +10,7 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.util.*;
 
+@JsType
 public class EntryPoint {
 
     public final ReadableFilePointer pointer;

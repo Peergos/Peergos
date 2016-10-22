@@ -1,9 +1,11 @@
 package peergos.shared.user;
 
+import jsinterop.annotations.*;
 import peergos.shared.crypto.symmetric.*;
 
 import java.util.*;
 
+@JsType
 public class FollowRequest {
 
     public final Optional<EntryPoint> entry;

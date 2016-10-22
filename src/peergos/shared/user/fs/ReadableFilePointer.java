@@ -1,5 +1,6 @@
 package peergos.shared.user.fs;
 
+import jsinterop.annotations.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.symmetric.SymmetricKey;
 import peergos.shared.ipfs.api.Base58;
@@ -12,6 +13,7 @@ public class ReadableFilePointer {
     public final Location location;
     public final SymmetricKey baseKey;
 
+    @JsConstructor
     public ReadableFilePointer(Location location, SymmetricKey baseKey) {
         this.location = location;
         this.baseKey = baseKey;

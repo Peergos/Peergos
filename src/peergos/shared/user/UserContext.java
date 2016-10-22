@@ -241,7 +241,8 @@ public class UserContext {
                         .collect(Collectors.toMap(e -> e.getFileProperties().name, e -> e)));
     }
 
-    public CompletableFuture<SocialState> getSocialState() throws IOException {
+    @JsMethod
+    public CompletableFuture<SocialState> getSocialState() {
         return processFollowRequests()
                 .thenCompose(pending -> getFollowerRoots()
                         .thenCompose(followerRoots -> getFriendRoots()
