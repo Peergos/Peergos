@@ -255,6 +255,7 @@ public class UserContext {
         return sendFollowRequest(targetUsername, SymmetricKey.random());
     }
 
+    @JsMethod
     public CompletableFuture<Boolean> sendReplyFollowRequest(FollowRequest initialRequest, boolean accept, boolean reciprocate) {
         String theirUsername = initialRequest.entry.get().owner;
         // if accept, create directory to share with them, note in entry points (they follow us)
