@@ -235,6 +235,11 @@ public class UserContext {
                         .collect(Collectors.toSet()));
     }
 
+    @JsMethod
+    public CompletableFuture<Set<String>> getFollowerNames() {
+        return getFollowerRoots().thenApply(m -> m.keySet());
+    }
+
     public CompletableFuture<Map<String, FileTreeNode>> getFollowerRoots() {
         return getSharingFolder()
                 .thenCompose(sharing -> sharing.getChildren(this))
@@ -411,7 +416,7 @@ public class UserContext {
             //
             // first remove links from shared directory
             //
-            FileTreeNode sharedPath = opt.orElseThrow(() -> new IllegalStateException("Specified un-share path " + pathString + " does not exist"));
+            FileTreeNode sharedPath = opt.orElseThrow(() -> new IllegalStateException("Specified un-shareWith path " + pathString + " does not exist"));
             Optional<String> empty = Optional.empty();
 
             Function<String, CompletableFuture<Optional<String>>> unshareWith = user -> getByPath("/" + username + "/shared/" + user)
@@ -440,11 +445,7 @@ public class UserContext {
                                 .filter(reader -> ! readersToRemove.contains(reader))
                                 .collect(Collectors.toSet());
 
-                        try {
-                            return share(path, remainingReaders);
-                        } catch (IOException ioe) {
-                            throw new IllegalStateException(ioe);
-                        }
+                        return shareWith(path, remainingReaders);
                     });
         });
 
@@ -524,42 +525,29 @@ public class UserContext {
 //        throw new IllegalStateException("Unimplemented!");
     }
 
-    public CompletableFuture<Boolean> share(Path path, Set<String> readersToAdd) throws IOException {
-
+    public CompletableFuture<Boolean> shareWith(Path path, Set<String> readersToAdd) {
         return getByPath(path.toString())
-                .thenCompose(e -> {
-                    FileTreeNode fileTreeNode = e.orElseThrow(() -> new IllegalStateException("Could not find path " + path.toString()));
-
-                    BiFunction<Boolean, String, CompletableFuture<Boolean>> func = (x, user) -> getByPath("/" + username + "/shared/" + user)
-                            .thenCompose(shared -> {
-                                if (!shared.isPresent())
-                                    return CompletableFuture.completedFuture(true);
-                                FileTreeNode sharedTreeNode = shared.get();
-                                return sharedTreeNode.addLinkTo(fileTreeNode, this)
-                                        .thenCompose(ee -> CompletableFuture.completedFuture(true));
-                            });
-
-
-                    return Futures.reduceAll(readersToAdd,
-                            true,
-                            func,
-                            (a, b) -> a && b);
-                });
-
-        /*
-        Optional<FileTreeNode> f = getByPath(path.toString());
-        if (!f.isPresent())
-            return;
-        FileTreeNode file = f.get();
-        for (String friendName: readersToAdd) {
-            Optional<FileTreeNode> opt = getByPath("/" + username + "/shared/" + friendName);
-            if (!opt.isPresent())
-                continue;
-            FileTreeNode sharedRoot = opt.get();
-            sharedRoot.addLinkTo(file, this);
-        }*/
+                .thenCompose(file -> shareWithAll(file.orElseThrow(() -> new IllegalStateException("Could not find path " + path.toString())), readersToAdd));
     }
 
+    public CompletableFuture<Boolean> shareWithAll(FileTreeNode file, Set<String> readersToAdd) {
+        return Futures.reduceAll(readersToAdd,
+                true,
+                (x, username) -> shareWith(file, username),
+                (a, b) -> a && b);
+    }
+
+    @JsMethod
+    public CompletableFuture<Boolean> shareWith(FileTreeNode file, String usernameToGrantReadAccess) {
+        return getByPath("/" + username + "/shared/" + usernameToGrantReadAccess)
+                .thenCompose(shared -> {
+                    if (!shared.isPresent())
+                        return CompletableFuture.completedFuture(true);
+                    FileTreeNode sharedTreeNode = shared.get();
+                    return sharedTreeNode.addLinkTo(file, this)
+                            .thenCompose(ee -> CompletableFuture.completedFuture(true));
+                });
+    }
 
     private CompletableFuture<TrieNode> addToStaticDataAndCommit(EntryPoint entry) {
         return addToStaticDataAndCommit(entrie, entry);

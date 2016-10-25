@@ -111,7 +111,7 @@ public class MultiUserTests {
 
         // share the file from "a" to each of the others
         FileTreeNode u1File = u1.getByPath(u1.username + "/" + filename).get().get();
-        u1.share(Paths.get(u1.username, filename), userContexts.stream().map(u -> u.username).collect(Collectors.toSet())).get();
+        u1.shareWith(Paths.get(u1.username, filename), userContexts.stream().map(u -> u.username).collect(Collectors.toSet())).get();
 
         // check other users can read the file
         for (UserContext userContext : userContexts) {
