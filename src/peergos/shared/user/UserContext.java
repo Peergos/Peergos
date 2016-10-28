@@ -295,6 +295,7 @@ public class UserContext {
                                 EntryPoint entry = new EntryPoint(friendRoot.readOnly(), username, Stream.of(theirUsername).collect(Collectors.toSet()), Collections.EMPTY_SET);
 
                                 return addToStaticDataAndCommit(entry).thenApply(trie -> {
+                                    this.entrie = trie;
                                     dout.writeArray(entry.serialize());
                                     return dout;
                                 });

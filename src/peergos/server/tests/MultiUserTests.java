@@ -318,6 +318,16 @@ public class MultiUserTests {
 
         Optional<FileTreeNode> u2ToU1 = u1.getByPath("/" + u2.username).get();
         assertTrue("Friend root present after accepted follow request", u2ToU1.isPresent());
+
+        Set<String> u1Following = UserTests.ensureSignedUp("q", "q", network, crypto).getSocialState().get()
+                .followingRoots.stream().map(f -> f.getName())
+                .collect(Collectors.toSet());
+        assertTrue("Following correct", u1Following.contains(u2.username));
+
+        Set<String> u2Following = UserTests.ensureSignedUp("w", "w", network, crypto).getSocialState().get()
+                .followingRoots.stream().map(f -> f.getName())
+                .collect(Collectors.toSet());
+        assertTrue("Following correct", u2Following.contains(u1.username));
     }
 
     @Test
