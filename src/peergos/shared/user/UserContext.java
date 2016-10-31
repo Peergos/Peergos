@@ -100,6 +100,28 @@ public class UserContext {
         });
     }
 
+    @JsMethod
+    public CompletableFuture<String> getEntryPath() {
+        if (username != null)
+            return CompletableFuture.completedFuture("/");
+
+        CompletableFuture<Optional<FileTreeNode>> dir = getByPath("/");
+        return dir.thenCompose(opt -> getLinkPath(opt.get()))
+                .thenApply(path -> path.substring(1)); // strip off extra slash at root
+    }
+
+    private CompletableFuture<String> getLinkPath(FileTreeNode file) {
+        if (! file.isDirectory())
+            return CompletableFuture.completedFuture("");
+        return file.getChildren(this)
+                .thenCompose(children -> {
+                    if (children.size() != 1)
+                        return CompletableFuture.completedFuture("");
+                    return getLinkPath(children.stream().findAny().get())
+                            .thenApply(p -> file.getName() + (p.length() > 0 ? "/" + p : ""));
+                });
+    }
+
     public static CompletableFuture<UserContext> ensureSignedUp(String username, String password, NetworkAccess network, Crypto crypto) {
 
         return network.isUsernameRegistered(username).thenCompose(isRegistered -> {
