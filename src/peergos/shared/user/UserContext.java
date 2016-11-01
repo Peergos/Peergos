@@ -182,7 +182,7 @@ public class UserContext {
     }
 
     @JsMethod
-    public CompletableFuture<UserContext> changePassword(String newPassword) throws IOException{
+    public CompletableFuture<UserContext> changePassword(String newPassword) {
         System.out.println("changing password");
         LocalDate expiry = LocalDate.now();
         // set claim expiry to two months from now
@@ -278,7 +278,7 @@ public class UserContext {
     }
 
     @JsMethod
-    public CompletableFuture<Boolean> sendInitialFollowRequest(String targetUsername) throws IOException {
+    public CompletableFuture<Boolean> sendInitialFollowRequest(String targetUsername) {
         return sendFollowRequest(targetUsername, SymmetricKey.random());
     }
 
@@ -357,7 +357,7 @@ public class UserContext {
         });
     }
 
-    public CompletableFuture<Boolean> sendFollowRequest(String targetUsername, SymmetricKey requestedKey) throws IOException {
+    public CompletableFuture<Boolean> sendFollowRequest(String targetUsername, SymmetricKey requestedKey) {
         return getSharingFolder().thenCompose(sharing -> {
             return sharing.getChildren(this).thenCompose(children -> {
                 boolean alreadySentRequest = children.stream()
@@ -404,7 +404,7 @@ public class UserContext {
         });
     };
 
-    public CompletableFuture<Boolean> sendWriteAccess(UserPublicKey targetUser) throws IOException {
+    public CompletableFuture<Boolean> sendWriteAccess(UserPublicKey targetUser) {
         /*
         // create sharing keypair and give it write access
         User sharing = User.random(random, signer, boxer);
@@ -428,11 +428,11 @@ public class UserContext {
         throw new IllegalStateException("Unimplemented!");
     }
 
-    public CompletableFuture<Boolean> unShare(Path path, String readerToRemove) throws IOException {
+    public CompletableFuture<Boolean> unShare(Path path, String readerToRemove) {
         return unShare(path, Collections.singleton(readerToRemove));
     }
 
-    public CompletableFuture<Boolean> unShare(Path path, Set<String> readersToRemove) throws IOException {
+    public CompletableFuture<Boolean> unShare(Path path, Set<String> readersToRemove) {
         String pathString = path.toString();
         CompletableFuture<Optional<FileTreeNode>> byPath = getByPath(pathString);
         return byPath.thenCompose(opt -> {
