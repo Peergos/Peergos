@@ -306,4 +306,7 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
 
     public <U> CompletionStage<U> handleAsync(BiFunction<? super T, Throwable, ? extends U> fn, Executor executor) {     throw new IllegalStateException("Unimplemented!");   }
 
+    public boolean isCompletedExceptionally() {
+        throw new IllegalStateException("Unimplemented!");
+    }
 }

@@ -729,7 +729,7 @@ public class UserContext {
                 .map(f -> uploadFragment(f, owner)
                         .thenApply(hash -> {
                             if (progressCounter != null)
-                                progressCounter.accept(1L);
+                                progressCounter.accept((long)f.data.length);
                             return hash;
                         }))
                 .collect(Collectors.toList());

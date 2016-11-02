@@ -90,7 +90,7 @@ public class FileUploader implements AutoCloseable {
         Location originalChunk = currentChunk;
 
         List<Integer> input = IntStream.range(0, (int) nchunks).mapToObj(i -> Integer.valueOf(i)).collect(Collectors.toList());
-        return Futures.reduceAll(input, currentChunk, (loc, i) -> uploadChunk(context, owner, writer, i, loc, l -> {}), (a, b) -> b)
+        return Futures.reduceAll(input, currentChunk, (loc, i) -> uploadChunk(context, owner, writer, i, loc, monitor), (a, b) -> b)
                 .thenApply(loc -> {
                     System.out.println("File encryption, erasure coding and upload took: " +(System.currentTimeMillis()-t1) + " mS");
                     return originalChunk;
