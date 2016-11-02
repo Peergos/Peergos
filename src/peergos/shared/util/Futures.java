@@ -63,6 +63,6 @@ public class Futures {
 
     public static <T> T logError(Throwable t) {
         t.printStackTrace();
-        return null;
+        throw new RuntimeException(t);
     }
 }

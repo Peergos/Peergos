@@ -86,6 +86,17 @@ public class UserTests {
     }
 
     @Test
+    public void singleSignUp() throws Exception {
+        // This is ensure a user can't accidentally sign in rather than login and overwrite all their data
+        String username = "test" + (System.currentTimeMillis() % 10000);
+        String password = "password";
+        ensureSignedUp(username, password, network, crypto);
+        CompletableFuture<UserContext> secondSignup = UserContext.signUp(username, password, network, crypto);
+
+        Assert.assertTrue("Second sign up fails", secondSignup.isCompletedExceptionally());
+    }
+
+    @Test
     public void changePassword() throws Exception {
         String username = "test" + (System.currentTimeMillis() % 10000);
         String password = "password";

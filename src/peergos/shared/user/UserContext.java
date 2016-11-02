@@ -173,12 +173,16 @@ public class UserContext {
 
     @JsMethod
     public CompletableFuture<Boolean> register() {
-        LocalDate now = LocalDate.now();
-        // set claim expiry to two months from now
-        LocalDate expiry = now.plusMonths(2);
-        System.out.println("claiming username: "+username + " with expiry " + expiry);
-        List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createInitial(user, username, expiry);
-        return network.coreNode.updateChain(username, claimChain);
+        return isRegistered().thenCompose(exists -> {
+            if (exists)
+                throw new IllegalStateException("Account already exists with username: " + username);
+            LocalDate now = LocalDate.now();
+            // set claim expiry to two months from now
+            LocalDate expiry = now.plusMonths(2);
+            System.out.println("claiming username: " + this.username + " with expiry " + expiry);
+            List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createInitial(user, this.username, expiry);
+            return network.coreNode.updateChain(this.username, claimChain);
+        });
     }
 
     @JsMethod
