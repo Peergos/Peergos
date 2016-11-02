@@ -48,9 +48,9 @@ public class FileProperties {
         dout.writeBoolean(isHidden);
         if (!thumbnail.isPresent())
             dout.writeInt(0);
-        else
+        else {
             dout.writeArray(thumbnail.get());
-
+        }
         return dout.toByteArray();
     }
 
@@ -63,7 +63,7 @@ public class FileProperties {
         int length = din.readInt();
         Optional<byte[]> thumbnail = length == 0 ?
                 Optional.empty() :
-                Optional.of(Serialize.deserializeByteArray(din, ContentAddressedStorage.MAX_OBJECT_LENGTH));
+                Optional.of(Serialize.deserializeByteArray(length, din, length));
 
         return new FileProperties(name, size, LocalDateTime.ofEpochSecond((int)modified, 0, ZoneOffset.UTC), isHidden, thumbnail);
     }

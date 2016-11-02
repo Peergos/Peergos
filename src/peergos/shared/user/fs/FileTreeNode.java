@@ -352,25 +352,24 @@ public class FileTreeNode {
             SymmetricKey dirParentKey = dirAccess.getParentKey(rootRKey);
             Location parentLocation = getLocation();
             CompletableFuture<Boolean> result = new CompletableFuture<>();
-            int thumbnailSrcImageSize = 0;//startIndex == 0 && endIndex < Integer.MAX_VALUE ? (int)endIndex : 0;
-            byte[] thumbData2= new byte[0];//{1 , 2, 3, 4, 5, 6 ,7 ,8 ,9};
-                generateThumbnail(context, fileData, thumbnailSrcImageSize, filename).thenAccept(thumbData -> {
-                    fileData.reset().thenAccept(resetResult -> {
-                    FileProperties fileProps = new FileProperties(filename, endIndex, LocalDateTime.now(), false, Optional.of(thumbData2));
-                    FileUploader chunks = new FileUploader(filename, fileData, startIndex, endIndex, fileKey, fileMetaKey, parentLocation, dirParentKey, monitor, fileProps,
-                                                           EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
-                    byte[] mapKey = context.randomBytes(32);
-                    Location nextChunkLocation = new Location(getLocation().owner, getLocation().writer, mapKey);
-                    chunks.upload(context, parentLocation.owner, (User) entryWriterKey, nextChunkLocation).thenAccept(fileLocation -> {
-                        ReadableFilePointer filePointer = new ReadableFilePointer(fileLocation, fileKey);
-                        dirAccess.addFileAndCommit(filePointer, rootRKey, pointer.filePointer, context);
-                        context.uploadChunk(dirAccess, new Location(parentLocation.owner, entryWriterKey, dirMapKey)
-                                            , Collections.emptyList()).thenAccept(uploadResult -> {
-                            result.complete(uploadResult);    			 	    				 
-                        });
-                    });
+            int thumbnailSrcImageSize = startIndex == 0 && endIndex < Integer.MAX_VALUE ? (int)endIndex : 0;
+            generateThumbnail(context, fileData, thumbnailSrcImageSize, filename).thenAccept(thumbData -> {
+                fileData.reset().thenAccept(resetResult -> {
+                FileProperties fileProps = new FileProperties(filename, endIndex, LocalDateTime.now(), false, Optional.of(thumbData));
+                FileUploader chunks = new FileUploader(filename, fileData, startIndex, endIndex, fileKey, fileMetaKey, parentLocation, dirParentKey, monitor, fileProps,
+                                                       EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
+                byte[] mapKey = context.randomBytes(32);
+                Location nextChunkLocation = new Location(getLocation().owner, getLocation().writer, mapKey);
+                chunks.upload(context, parentLocation.owner, (User) entryWriterKey, nextChunkLocation).thenAccept(fileLocation -> {
+                    ReadableFilePointer filePointer = new ReadableFilePointer(fileLocation, fileKey);
+                    dirAccess.addFileAndCommit(filePointer, rootRKey, pointer.filePointer, context);
+                    context.uploadChunk(dirAccess, new Location(parentLocation.owner, entryWriterKey, dirMapKey)
+                                        , Collections.emptyList()).thenAccept(uploadResult -> {
+                        result.complete(uploadResult);
                     });
                 });
+                });
+            });
             return result;
         });
     }
@@ -648,6 +647,17 @@ public class FileTreeNode {
     }
 
     @JsMethod
+    public String getBase64Thumbnail() {
+        Optional<byte[]> thumbnail = props.thumbnail;
+        if(thumbnail.isPresent()){
+            String base64Data = Base64.getEncoder().encodeToString(thumbnail.get());
+            return "data:image/png;base64," + base64Data;
+        }else{
+            return "";
+        }
+    }
+
+    @JsMethod
     public FileProperties getFileProperties() {
         return props;
     }
@@ -674,8 +684,9 @@ public class FileTreeNode {
         if(context.isJavascript() && fileSize > 0) {
             isImage(fileData).thenAccept(isThumbnail -> {
                 if(isThumbnail) {
-                    thumbnail.generateThumbnail(fileData, fileSize, filename).thenAccept(bytes -> {
-                        fut.complete(bytes);    			 	    				 
+                    thumbnail.generateThumbnail(fileData, fileSize, filename).thenAccept(base64Str -> {
+                        byte[] bytesOfData = Base64.getDecoder().decode(base64Str);
+                        fut.complete(bytesOfData);
                     });
                 } else{
                     fut.complete(new byte[0]);    			 

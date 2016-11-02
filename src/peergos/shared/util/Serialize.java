@@ -38,6 +38,16 @@ public class Serialize
         return new String(b);
     }
 
+    public static byte[] deserializeByteArray(int length, DataInput din, int maxLength) throws IOException
+    {
+        if (length == 0)
+            return new byte[0];
+
+        byte[] b = getByteArray(length, maxLength);
+        din.readFully(b);
+        return b;
+    }
+
     public static byte[] deserializeByteArray(DataInput din, int maxLength) throws IOException
     {
         int l = din.readInt();
