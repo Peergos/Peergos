@@ -182,29 +182,33 @@ public class UserContext {
     }
 
     @JsMethod
-    public CompletableFuture<UserContext> changePassword(String newPassword) {
+    public CompletableFuture<UserContext> changePassword(String oldPassword, String newPassword) {
         System.out.println("changing password");
         LocalDate expiry = LocalDate.now();
         // set claim expiry to two months from now
         expiry.plusMonths(2);
 
-        CompletableFuture<UserContext> result = new CompletableFuture<>();
-        UserUtil.generateUser(username, newPassword, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer).thenAccept(updatedUser -> {
-            commit(updatedUser.getUser(), updatedUser.getRoot(), network).thenApply(updated -> {
-                if (!updated)
-                    return result.completeExceptionally(new IllegalStateException("Change Password Failed: couldn't upload new file system entry points!"));
+        return UserUtil.generateUser(username, oldPassword, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer)
+                .thenCompose(existingUser -> {
+                    if (!existingUser.getUser().equals(this.user))
+                        throw new IllegalArgumentException("Incorrect existing password during change password attempt!");
+                    return UserUtil.generateUser(username, newPassword, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer)
+                            .thenCompose(updatedUser -> {
+                                return commit(updatedUser.getUser(), updatedUser.getRoot(), network)
+                                        .thenCompose(updated -> {
+                                            if (!updated)
+                                                throw new IllegalStateException("Change Password Failed: couldn't upload new file system entry points!");
 
-                List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createChain(user, updatedUser.getUser(), username, expiry);
-                return network.coreNode.updateChain(username, claimChain).thenApply(updatedChain -> {
-                    if (!updatedChain)
-                        return result.completeExceptionally(new IllegalStateException("Couldn't register new public keys during password change!"));
+                                            List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createChain(user, updatedUser.getUser(), username, expiry);
+                                            return network.coreNode.updateChain(username, claimChain).thenCompose(updatedChain -> {
+                                                if (!updatedChain)
+                                                    throw new IllegalStateException("Couldn't register new public keys during password change!");
 
-                    return UserContext.ensureSignedUp(username, newPassword, network, crypto)
-                            .thenApply(context -> result.complete(context));
+                                                return UserContext.ensureSignedUp(username, newPassword, network, crypto);
+                                            });
+                                        });
+                            });
                 });
-            });
-        });
-        return result;
     }
 
     public CompletableFuture<RetrievedFilePointer> createEntryDirectory(String directoryName) {

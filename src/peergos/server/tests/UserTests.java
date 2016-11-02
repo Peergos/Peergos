@@ -91,7 +91,7 @@ public class UserTests {
         String password = "password";
         UserContext userContext = ensureSignedUp(username, password, network, crypto);
         String newPassword = "newPassword";
-        userContext.changePassword(newPassword);
+        userContext.changePassword(password, newPassword);
         ensureSignedUp(username, newPassword, network, crypto);
 
     }
@@ -101,7 +101,7 @@ public class UserTests {
         String password = "password";
         UserContext userContext = ensureSignedUp(username, password, network, crypto);
         String newPassword = "passwordtest";
-        UserContext newContext = userContext.changePassword(newPassword).get();
+        UserContext newContext = userContext.changePassword(password, newPassword).get();
 
         try {
             UserContext oldContext = ensureSignedUp(username, password, network, crypto);
