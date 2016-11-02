@@ -878,7 +878,7 @@ public class UserContext {
         List<CompletableFuture<Optional<FragmentWithHash>>> futures = hashes.stream()
                 .map(h -> network.dhtClient.get(h)
                         .thenApply(dataOpt -> {
-                            monitor.accept(1L);
+                            dataOpt.ifPresent(bytes -> monitor.accept((long)bytes.length));
                             return dataOpt.map(data -> new FragmentWithHash(new Fragment(data), h));
                         }))
                 .collect(Collectors.toList());
