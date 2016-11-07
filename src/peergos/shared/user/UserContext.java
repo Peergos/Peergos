@@ -116,8 +116,11 @@ public class UserContext {
         return file.getChildren(this)
                 .thenCompose(children -> {
                     if (children.size() != 1)
-                        return CompletableFuture.completedFuture("");
-                    return getLinkPath(children.stream().findAny().get())
+                        return CompletableFuture.completedFuture(file.getName());
+                    FileTreeNode child = children.stream().findAny().get();
+                    if (child.isReadable()) // case where a directory was shared with exactly one direct child
+                        return CompletableFuture.completedFuture(file.getName() + "/" + child.getName());
+                    return getLinkPath(child)
                             .thenApply(p -> file.getName() + (p.length() > 0 ? "/" + p : ""));
                 });
     }

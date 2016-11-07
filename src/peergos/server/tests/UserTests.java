@@ -256,9 +256,12 @@ public class UserTests {
         String dirName = "subdir";
         userRoot.mkdir(dirName, context, false).get();
         FileTreeNode subdir = context.getByPath("/" + username + "/" + dirName).get().get();
-        subdir.uploadFile(filename, new AsyncReader.ArrayBacked(data), 0, data.length, context, l -> {}, context.fragmenter());
+        String anotherDirName = "anotherDir";
+        subdir.mkdir(anotherDirName, context, false).get();
+        FileTreeNode anotherDir = context.getByPath("/" + username + "/" + dirName + "/" + anotherDirName).get().get();
+        anotherDir.uploadFile(filename, new AsyncReader.ArrayBacked(data), 0, data.length, context, l -> {}, context.fragmenter());
         long t2 = System.currentTimeMillis();
-        String path = "/" + username + "/" + dirName;
+        String path = "/" + username + "/" + dirName + "/" + anotherDirName;
         FileTreeNode theDir = context.getByPath(path).get().get();
         String link = theDir.toLink();
         UserContext linkContext = UserContext.fromPublicLink(link, network, crypto).get();
