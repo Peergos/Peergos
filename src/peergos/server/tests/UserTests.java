@@ -242,6 +242,33 @@ public class UserTests {
         Assert.assertTrue("File present through link", fileThroughLink.isPresent());
     }
 
+    @Test
+    public void publicLinkToDir() throws Exception {
+        String username = "test01";
+        String password = "test01";
+        UserContext context = ensureSignedUp(username, password, network, crypto);
+        FileTreeNode userRoot = context.getUserRoot().get();
+
+        String filename = "mediumfile.bin";
+        byte[] data = new byte[128*1024];
+        new Random().nextBytes(data);
+        long t1 = System.currentTimeMillis();
+        String dirName = "subdir";
+        userRoot.mkdir(dirName, context, false).get();
+        FileTreeNode subdir = context.getByPath("/" + username + "/" + dirName).get().get();
+        subdir.uploadFile(filename, new AsyncReader.ArrayBacked(data), 0, data.length, context, l -> {}, context.fragmenter());
+        long t2 = System.currentTimeMillis();
+        String path = "/" + username + "/" + dirName;
+        FileTreeNode theDir = context.getByPath(path).get().get();
+        String link = theDir.toLink();
+        UserContext linkContext = UserContext.fromPublicLink(link, network, crypto).get();
+        String entryPath = linkContext.getEntryPath().get();
+        Assert.assertTrue("public link to folder has correct entry path", entryPath.equals(path));
+
+        Optional<FileTreeNode> fileThroughLink = linkContext.getByPath(path + "/" + filename).get();
+        Assert.assertTrue("File present through link", fileThroughLink.isPresent());
+    }
+
     // This one takes a while, so disable most of the time
 //    @Test
     public void hugeFolder() throws Exception {
