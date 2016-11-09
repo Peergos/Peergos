@@ -44,7 +44,7 @@ public class FileProperties {
         DataSink dout = new DataSink();
         dout.writeString(name);
         dout.writeLong(size);
-        dout.writeDouble(modified.toEpochSecond(ZoneOffset.UTC));
+        dout.writeLong(modified.toEpochSecond(ZoneOffset.UTC));
         dout.writeBoolean(isHidden);
         if (!thumbnail.isPresent())
             dout.writeInt(0);
@@ -58,14 +58,14 @@ public class FileProperties {
         DataSource din = new DataSource(raw);
         String name = din.readString();
         long size = din.readLong();
-        double modified = din.readDouble();
+        long modified = din.readLong();
         boolean isHidden = din.readBoolean();
         int length = din.readInt();
         Optional<byte[]> thumbnail = length == 0 ?
                 Optional.empty() :
                 Optional.of(Serialize.deserializeByteArray(length, din, length));
 
-        return new FileProperties(name, size, LocalDateTime.ofEpochSecond((int)modified, 0, ZoneOffset.UTC), isHidden, thumbnail);
+        return new FileProperties(name, size, LocalDateTime.ofEpochSecond(modified, 0, ZoneOffset.UTC), isHidden, thumbnail);
     }
 
     @JsIgnore
