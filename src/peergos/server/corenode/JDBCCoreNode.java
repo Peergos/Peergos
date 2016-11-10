@@ -446,6 +446,12 @@ public class JDBCCoreNode implements CoreNode {
                         chain.setString(2, username);
                         chain.execute();
                         conn.commit();
+                        // updated cached list of usernames
+                        List<String> updatedUsernames = Stream.concat(
+                                Stream.of(username),
+                                userSet.getMostRecent().orElse(Collections.emptyList()).stream()
+                        ).sorted().collect(Collectors.toList());
+                        userSet.setUserSet(updatedUsernames);
                         return true;
                     } catch (SQLException sqe) {
                         throw new IllegalStateException(sqe);
