@@ -32,12 +32,6 @@ public interface ContentAddressedStorage {
         return put(new MerkleNode(data, Collections.emptyMap()));
     }
 
-    /**
-     *
-     * @param key the hash of a value previously stored
-     */
-    void remove(Multihash key);
-
     boolean recursivePin(Multihash h);
 
     boolean recursiveUnpin(Multihash h);

@@ -48,12 +48,6 @@ public class IpfsDHT implements ContentAddressedStorage {
         }
     }
 
-
-    @Override
-    public void remove(Multihash key) {
-        // do nothing as removal is handled by GC and only the roots are pinned
-    }
-
     @Override
     public boolean recursivePin(Multihash h) {
         try {
