@@ -113,6 +113,6 @@ public class User extends UserPublicKey
         rnd.nextBytes(publicSignBytes);
         rnd.nextBytes(secretBoxBytes);
         rnd.nextBytes(publicBoxBytes);
-        return random(secretSignBytes, publicSignBytes, secretBoxBytes, publicBoxBytes, new JavaEd25519(), new JavaCurve25519(), new SafeRandom.Java());
+        return random(secretSignBytes, publicSignBytes, secretBoxBytes, publicBoxBytes, new Ed25519.Java(), new Curve25519.Java(), new SafeRandom.Java());
     }
 }
