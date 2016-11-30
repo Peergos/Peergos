@@ -9,20 +9,13 @@ import java.util.stream.*;
 public interface ContentAddressedStorage {
 
     int MAX_OBJECT_LENGTH  = 1024*256;
+
     /**
      *
      * @param object
      * @return a hash of the stored object
      */
     Multihash put(MerkleNode object);
-
-    default Multihash put(byte[] data, List<Multihash> links) {
-        return put(new MerkleNode(data, links.stream().collect(Collectors.toMap(m -> m.toString(), m -> m))));
-    }
-
-    default Multihash put(byte[] data) {
-        return put(new MerkleNode(data, Collections.emptyMap()));
-    }
 
     /**
      *
@@ -31,11 +24,13 @@ public interface ContentAddressedStorage {
      */
     byte[] get(Multihash key);
 
-    /**
-     *
-     * @param key the hash of a value previously stored
-     */
-    void remove(Multihash key);
+    default Multihash put(byte[] data, List<Multihash> links) {
+        return put(new MerkleNode(data, links.stream().collect(Collectors.toMap(m -> m.toString(), m -> m))));
+    }
+
+    default Multihash put(byte[] data) {
+        return put(new MerkleNode(data, Collections.emptyMap()));
+    }
 
     boolean recursivePin(Multihash h);
 

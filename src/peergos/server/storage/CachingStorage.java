@@ -32,11 +32,6 @@ public class CachingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public void remove(Multihash key) {
-        target.remove(key);
-    }
-
-    @Override
     public boolean recursivePin(Multihash h) {
         return target.recursivePin(h);
     }

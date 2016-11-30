@@ -60,8 +60,6 @@ public class MerkleBTree
      */
     public Multihash put(byte[] rawKey, Multihash value) throws IOException {
         TreeNode newRoot = root.put(new ByteArrayWrapper(rawKey), value, storage, maxChildren);
-        if (root.hash.isPresent() && ! root.hash.equals(newRoot.hash))
-            storage.remove(root.hash.get());
         if (!newRoot.hash.isPresent()) {
             root = new TreeNode(newRoot.keys, storage.put(newRoot.toMerkleNode()));
         } else
@@ -77,8 +75,6 @@ public class MerkleBTree
      */
     public Multihash delete(byte[] rawKey) throws IOException {
         TreeNode newRoot = root.delete(new ByteArrayWrapper(rawKey), storage, maxChildren);
-        if (root.hash.isPresent())
-            storage.remove(root.hash.get());
         if (!newRoot.hash.isPresent()) {
             root = new TreeNode(newRoot.keys, storage.put(newRoot.toMerkleNode()));
         } else

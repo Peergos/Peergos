@@ -24,7 +24,7 @@ public class UserService
     public static final String UI_URL = "/";
     public static final String UI_DIR = "ui/";
 
-    public static final int THREADS = 5;
+    public static final int HANDLER_THREADS = 100;
     public static final int CONNECTION_BACKLOG = 100;
 
     static {
@@ -152,7 +152,7 @@ public class UserService
                 .forEach(e -> server.createContext(e.getKey(), e.getValue()));
 
 
-        server.setExecutor(Executors.newFixedThreadPool(THREADS));
+        server.setExecutor(Executors.newFixedThreadPool(HANDLER_THREADS));
         server.start();
 
         return true;

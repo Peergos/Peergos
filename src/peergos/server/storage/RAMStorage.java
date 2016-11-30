@@ -24,11 +24,6 @@ public class RAMStorage implements ContentAddressedStorage {
         return storage.get(key);
     }
 
-    @Override
-    public void remove(Multihash key) {
-        // ToDo implement a proper GC and pin tracker ala IPFS
-    }
-
     public void clear() {
         storage.clear();
     }
