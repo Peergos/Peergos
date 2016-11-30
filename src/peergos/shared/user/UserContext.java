@@ -598,7 +598,7 @@ public class UserContext {
                                               NetworkAccess network) {
 
         byte[] rawStatic = staticData.serialize(rootKey);
-        return network.dhtClient.put(rawStatic, user, Collections.emptyList())
+        return network.dhtClient.put(user, rawStatic, Collections.emptyList())
                 .thenCompose(blobHash -> network.coreNode.getMetadataBlob(user)
                         .thenCompose(currentHash -> {
                             DataSink bout = new DataSink();
@@ -723,7 +723,7 @@ public class UserContext {
     }
 
     private CompletableFuture<Multihash> uploadFragment(Fragment f, UserPublicKey targetUser) {
-        return network.dhtClient.put(f.data, targetUser, Collections.emptyList());
+        return network.dhtClient.put(targetUser, f.data, Collections.emptyList());
     }
 
     public CompletableFuture<List<Multihash>> uploadFragments(List<Fragment> fragments, UserPublicKey owner,
@@ -745,7 +745,7 @@ public class UserContext {
             metadata.serialize(dout);
             byte[] metaBlob = dout.toByteArray();
             System.out.println("Storing metadata blob of " + metaBlob.length + " bytes. to mapKey: " + location.toString());
-            return network.dhtClient.put(metaBlob, location.owner, linkHashes).thenCompose(blobHash -> {
+            return network.dhtClient.put(location.owner, metaBlob, linkHashes).thenCompose(blobHash -> {
                 User sharer = (User) location.writer;
                 return network.btree.put(sharer, location.getMapKey(), blobHash).thenCompose(newBtreeRootCAS -> {
                     if (newBtreeRootCAS.left.equals(newBtreeRootCAS.right))

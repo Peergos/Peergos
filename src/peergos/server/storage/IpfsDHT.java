@@ -1,5 +1,6 @@
 package peergos.server.storage;
 
+import peergos.shared.crypto.*;
 import peergos.shared.ipfs.api.IPFS;
 import peergos.shared.ipfs.api.MultiAddress;
 import peergos.shared.ipfs.api.Multihash;
@@ -8,6 +9,7 @@ import peergos.shared.storage.ContentAddressedStorage;
 
 import java.io.*;
 import java.util.*;
+import java.util.concurrent.*;
 
 public class IpfsDHT implements ContentAddressedStorage {
     private final IPFS ipfs;
@@ -27,54 +29,54 @@ public class IpfsDHT implements ContentAddressedStorage {
     }
 
     @Override
-    public byte[] get(Multihash key) {
+    public CompletableFuture<Optional<byte[]>> get(Multihash key) {
         try {
-            return ipfs.object.data(key);
+            return CompletableFuture.completedFuture(Optional.of(ipfs.object.data(key)));
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
     }
 
     @Override
-    public Multihash put(MerkleNode object) {
+    public CompletableFuture<Multihash> put(UserPublicKey writer, MerkleNode object) {
         try {
             peergos.shared.ipfs.api.MerkleNode data = ipfs.object.patch(EMPTY, "set-data", Optional.of(object.data), Optional.empty(), Optional.empty());
             Multihash current = data.hash;
             for (Map.Entry<String, Multihash> e : object.links.entrySet())
                 current = ipfs.object.patch(current, "add-link", Optional.empty(), Optional.of(e.getKey()), Optional.of(e.getValue())).hash;
-            return current;
+            return CompletableFuture.completedFuture(current);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
     }
 
     @Override
-    public boolean recursivePin(Multihash h) {
+    public CompletableFuture<Boolean> recursivePin(Multihash h) {
         try {
             List<Multihash> added = ipfs.pin.add(h);
-            return added.contains(h);
+            return CompletableFuture.completedFuture(added.contains(h));
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
     }
 
     @Override
-    public boolean recursiveUnpin(Multihash h) {
+    public CompletableFuture<Boolean> recursiveUnpin(Multihash h) {
         try {
             List<Multihash> added = ipfs.pin.rm(h, true);
-            return added.contains(h);
+            return CompletableFuture.completedFuture(added.contains(h));
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
     }
 
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) throws Exception {
         IpfsDHT dht = new IpfsDHT();
         byte[] val1 = new byte[57];
         MerkleNode val = new MerkleNode(val1);
         new Random().nextBytes(val1);
-        Multihash put = dht.put(val);
-        byte[] val2 = dht.get(put);
+        Multihash put = dht.put(UserPublicKey.createNull(), val).get();
+        byte[] val2 = dht.get(put).get().get();
         boolean equals = Arrays.equals(val1, val2);
         System.out.println(equals);
     }

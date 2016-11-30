@@ -65,13 +65,18 @@ public class PinningCoreNode implements CoreNode {
             byte[] rawOldRoot = Serialize.deserializeByteArray(din, 256);
             Optional<Multihash> oldRoot = rawOldRoot.length > 0 ? Optional.of(new Multihash(rawOldRoot)) : Optional.empty();
             Multihash newRoot = new Multihash(Serialize.deserializeByteArray(din, 256));
-            if (!storage.recursivePin(newRoot))
-                return CompletableFuture.completedFuture(false);
-            return target.setMetadataBlob(ownerPublicKey, signer, sharingKeySignedBtreeRootHashes).thenApply(b -> {
-                if (!b)
-                    return false;
-                // unpin old root
-                return !oldRoot.isPresent() || storage.recursiveUnpin(oldRoot.get());
+            return storage.recursivePin(newRoot).thenCompose(pinNew -> {
+                if (!pinNew)
+                    return CompletableFuture.completedFuture(false);
+                return target.setMetadataBlob(ownerPublicKey, signer, sharingKeySignedBtreeRootHashes)
+                        .thenCompose(b -> {
+                            if (!b)
+                                return CompletableFuture.completedFuture(false);
+                            // unpin old root
+                            return !oldRoot.isPresent() ?
+                                    CompletableFuture.completedFuture(true) :
+                                    storage.recursiveUnpin(oldRoot.get());
+                        });
             });
         } catch (IOException e) {
             throw new RuntimeException(e);
@@ -86,13 +91,16 @@ public class PinningCoreNode implements CoreNode {
         try {
             Multihash oldRoot = new Multihash(Serialize.deserializeByteArray(din, 256));
             Multihash newRoot = new Multihash(Serialize.deserializeByteArray(din, 256));
-            if (!storage.recursivePin(newRoot))
-                return CompletableFuture.completedFuture(false);
-            return target.removeMetadataBlob(sharer, sharingKeySignedMapKeyPlusBlob).thenApply(b -> {
-                if (!b)
-                    return false;
-                // unpin old root
-                return storage.recursiveUnpin(oldRoot);
+            return storage.recursivePin(newRoot).thenCompose(newPin -> {
+                if (!newPin)
+                    return CompletableFuture.completedFuture(false);
+                return target.removeMetadataBlob(sharer, sharingKeySignedMapKeyPlusBlob)
+                        .thenCompose(b -> {
+                            if (!b)
+                                return CompletableFuture.completedFuture(false);
+                            // unpin old root
+                            return storage.recursiveUnpin(oldRoot);
+                        });
             });
         } catch (IOException e) {
             throw new RuntimeException(e);
