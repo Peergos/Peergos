@@ -4,7 +4,6 @@ import peergos.shared.crypto.*;
 import peergos.shared.ipfs.api.Multihash;
 import peergos.shared.storage.ContentAddressedStorage;
 import peergos.shared.util.*;
-import sun.reflect.generics.tree.*;
 
 import java.io.*;
 import java.util.*;
@@ -177,7 +176,7 @@ public class TreeNode {
                     KeyElement updated = new KeyElement(finalNextSmallest.key, finalNextSmallest.valueHash, modifiedChild.hash.get());
                     keys.remove(finalNextSmallest);
                     keys.add(updated);
-                    return storage.put(writer, this.toMerkleNode()).thenApply(multihash -> new TreeNode(this, hash));
+                    return storage.put(writer, this.toMerkleNode()).thenApply(multihash -> new TreeNode(this, multihash));
                 });
     }
 
@@ -185,7 +184,7 @@ public class TreeNode {
         return Futures.reduceAll(keys, keys.size() - 1, (total, key) -> key.targetHash.isPresent() ?
                 storage.get(key.targetHash.get())
                         .thenCompose(rawOpt -> TreeNode.deserialize(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present!")))
-                                .size(storage)) :
+                                .size(storage)).thenApply(subTreeTotal -> subTreeTotal + total) :
                 CompletableFuture.completedFuture(total), (a, b) -> a + b);
     }
 

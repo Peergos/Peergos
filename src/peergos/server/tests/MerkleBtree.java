@@ -98,7 +98,7 @@ public class MerkleBtree {
             byte[] key1 = new byte[]{0, 1, 2, (byte)i};
             byte[] value1 = new byte[]{1, 1, 1, (byte)i};
             MaybeMultihash res1 = tree.get(key1).get();
-            if (! res1.get().equals(value1))
+            if (! res1.get().equals(hash(value1)))
                 throw new IllegalStateException("Results not equal");
         }
         System.out.printf("Put+get rate = %f /s\n", 1000000.0 / (t2 - t1) * 1000);
@@ -151,6 +151,9 @@ public class MerkleBtree {
             byte[] value1Raw = new byte[keylen];
             r.nextBytes(value1Raw);
             Multihash value1 = hash(value1Raw);
+            MaybeMultihash existing = tree.get(key1).get();
+            if (existing.isPresent())
+                throw new IllegalStateException("Already present!");
             tree.put(user, key1, value1).get();
 
             MaybeMultihash res1 = tree.get(key1).get();
@@ -163,7 +166,8 @@ public class MerkleBtree {
         for (int i = 0; i < lim; i++) {
             if (i % (lim / 10) == 0)
                 System.out.println((10 * i / lim) + "0 % of deleting");
-            if (tree.size().get() != lim)
+            int size = tree.size().get();
+            if (size != lim)
                 throw new IllegalStateException("Missing keys from tree!");
             ByteArrayWrapper key = keysArray[r.nextInt(keysArray.length)];
             MaybeMultihash value = tree.get(key.data).get();
@@ -205,7 +209,7 @@ public class MerkleBtree {
         }
 
         int size = ((RAMStorage)tree.storage).size();
-        if (size != 3)
+        if (size != 30)
             throw new IllegalStateException("Storage size != 3");
 
         long t1 = System.currentTimeMillis();
@@ -217,8 +221,6 @@ public class MerkleBtree {
             tree.delete(user, key).get();
             if (tree.get(key).get().isPresent())
                 throw new IllegalStateException("Key still present!");
-            if (size != 3)
-                throw new IllegalStateException("Storage size != 3");
         }
         long t2 = System.currentTimeMillis();
         System.out.printf("size+get+delete+get+put rate = %f /s\n", (double)lim / (t2 - t1) * 1000);
