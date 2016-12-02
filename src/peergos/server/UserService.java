@@ -18,7 +18,7 @@ import java.util.logging.Logger;
 
 public class UserService
 {
-    public static final String DHT_URL = "/dht/";
+    public static final String DHT_URL = "/api/v0/";
     public static final String SIGNUP_URL = "/signup/";
     public static final String ACTIVATION_URL = "/activation/";
     public static final String UI_URL = "/";

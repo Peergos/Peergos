@@ -31,8 +31,8 @@ public class DHTHandler implements HttpHandler
                 else {
                     Multihash key = Multihash.fromBase58(path.substring(ipfsPrefix.length()));
                     throw new IllegalStateException("TODO");
-//                    byte[] value = dht.get(key);
-//                    new GetSuccess(key, httpExchange).accept(value);
+                    byte[] value = dht.get(key);
+                    new GetSuccess(key, httpExchange).accept(value);
                 }
             } else {
                 InputStream in = httpExchange.getRequestBody();
@@ -53,8 +53,8 @@ public class DHTHandler implements HttpHandler
                         namedLinks.put(Integer.toString(i), hashes.get(i));
                     MerkleNode obj = new MerkleNode(value, namedLinks);
                     throw new IllegalStateException("TODO");
-//                    byte[] put = dht.put(obj).toBytes();
-//                    new PutSuccess(httpExchange).accept(Optional.of(put));
+                    byte[] put = dht.put(obj).toBytes();
+                    new PutSuccess(httpExchange).accept(Optional.of(put));
                 } else {
                     httpExchange.sendResponseHeaders(404, 0);
                 }

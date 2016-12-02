@@ -13,8 +13,29 @@ public class RAMStorage implements ContentAddressedStorage {
     private Map<Multihash, byte[]> storage = new HashMap<>();
 
     @Override
+    public CompletableFuture<Multihash> _new(UserPublicKey writer) {
+        return put(writer, new MerkleNode(new byte[0]));
+    }
+
+    @Override
+    public CompletableFuture<Multihash> setData(UserPublicKey writer, Multihash object, byte[] data) {
+        return put(writer, getObject(object).setData(data));
+    }
+
+    @Override
+    public CompletableFuture<Multihash> addLink(UserPublicKey writer, Multihash object, String label, Multihash linkTarget) {
+        return put(writer, getObject(object).addLink(label, linkTarget));
+    }
+
+    public MerkleNode getObject(Multihash hash) {
+        if (!storage.containsKey(hash))
+            throw new IllegalStateException("Hash not present! "+ hash);
+        return MerkleNode.deserialize(storage.get(hash));
+    }
+
+    @Override
     public CompletableFuture<Multihash> put(UserPublicKey writer, MerkleNode object) {
-        byte[] value = object.data;
+        byte[] value = object.serialize();
         byte[] hash = hash(value);
         Multihash multihash = new Multihash(Multihash.Type.sha2_256, hash);
         storage.put(multihash, value);
@@ -22,7 +43,7 @@ public class RAMStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> get(Multihash key) {
+    public CompletableFuture<Optional<byte[]>> getData(Multihash key) {
         if (!storage.containsKey(key))
             return CompletableFuture.completedFuture(Optional.empty());
         return CompletableFuture.completedFuture(Optional.of(storage.get(key)));
