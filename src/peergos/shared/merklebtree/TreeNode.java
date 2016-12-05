@@ -436,7 +436,6 @@ public class TreeNode {
                 din.readFully(key);
                 MaybeMultihash valueHash = MaybeMultihash.deserialize(din);
                 MaybeMultihash targetHash = MaybeMultihash.deserialize(din);
-                ;
                 keys.add(new KeyElement(new ByteArrayWrapper(key), valueHash, targetHash));
             }
             return new TreeNode(keys);

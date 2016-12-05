@@ -69,12 +69,12 @@ public class RAMStorage implements ContentAddressedStorage {
 
     @Override
     public CompletableFuture<List<Multihash>> recursivePin(Multihash h) {
-        return CompletableFuture.completedFuture(Arrays.asList());
+        return CompletableFuture.completedFuture(Arrays.asList(h));
     }
 
     @Override
     public CompletableFuture<List<Multihash>> recursiveUnpin(Multihash h) {
-        return CompletableFuture.completedFuture(Arrays.asList());
+        return CompletableFuture.completedFuture(Arrays.asList(h));
     }
 
     public static byte[] hash(byte[] input)

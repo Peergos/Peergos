@@ -236,6 +236,8 @@ public class UserContext {
         Location rootLocation = new Location(this.user, writer, rootMapKey);
         System.out.println("Uploading entry point directory");
         return this.uploadChunk(root, rootLocation, Collections.emptyList()).thenCompose(uploaded -> {
+            if (!uploaded)
+                throw new IllegalStateException("Failed to upload root dir!");
             long t3 = System.currentTimeMillis();
             System.out.println("Uploading root dir metadata took " + (t3 - t2) + " mS");
             return addToStaticDataAndCommit(entry)
