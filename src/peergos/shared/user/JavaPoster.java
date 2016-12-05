@@ -60,7 +60,7 @@ public class JavaPoster implements HttpPoster {
     @Override
     public CompletableFuture<byte[]> postMultipart(String url, List<byte[]> files) {
         try {
-            Multipart mPost = new Multipart(url, "UTF-8");
+            Multipart mPost = new Multipart(buildURL(url).toString(), "UTF-8");
             for (byte[] file : files)
                 mPost.addFilePart("file", new NamedStreamable.ByteArrayWrapper(file));
             return CompletableFuture.completedFuture(mPost.finish().getBytes());

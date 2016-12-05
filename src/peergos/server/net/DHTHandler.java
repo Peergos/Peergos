@@ -13,10 +13,16 @@ import java.util.stream.*;
 public class DHTHandler implements HttpHandler
 {
     private final ContentAddressedStorage dht;
+    private final String apiPrefix;
 
-    public DHTHandler(ContentAddressedStorage dht) throws IOException
+    public DHTHandler(ContentAddressedStorage dht, String apiPrefix) throws IOException
     {
         this.dht = dht;
+        this.apiPrefix = apiPrefix;
+    }
+
+    public DHTHandler(ContentAddressedStorage dht) throws IOException {
+        this(dht, "/api/v0/");
     }
 
     private Map<String, List<String>> parseQuery(String query) {
@@ -38,6 +44,9 @@ public class DHTHandler implements HttpHandler
     public void handle(HttpExchange httpExchange) throws IOException {
         try {
             String path = httpExchange.getRequestURI().getPath();
+            if (! path.startsWith(apiPrefix))
+                throw new IllegalStateException("Unsupported api version, required: " + apiPrefix);
+            path = path.substring(apiPrefix.length());
             Map<String, List<String>> params = parseQuery(httpExchange.getRequestURI().getQuery());
             List<String> args = params.get("arg");
             Function<String, String> last = key -> params.get(key).get(params.get(key).size() - 1);
@@ -81,6 +90,7 @@ public class DHTHandler implements HttpHandler
                         json.put("Hash", h.toBase58());
                         replyJson(httpExchange, JSONParser.toString(json), Optional.empty());
                     });
+                    break;
                 }
                 case "object/get":{
                     Multihash hash = Multihash.fromBase58(args.get(0));
@@ -120,8 +130,7 @@ public class DHTHandler implements HttpHandler
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
-            throw e;
+            throw new RuntimeException(e);
         }
     }
 
