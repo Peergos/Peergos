@@ -4,10 +4,7 @@ import peergos.shared.ipfs.api.*;
 import peergos.shared.util.*;
 
 import java.io.*;
-import java.util.Collections;
-import java.util.Map;
-import java.util.SortedMap;
-import java.util.TreeMap;
+import java.util.*;
 
 public class MerkleNode {
     public final byte[] data;
@@ -19,7 +16,7 @@ public class MerkleNode {
     }
 
     public MerkleNode(byte[] data) {
-        this(data, Collections.EMPTY_MAP);
+        this(data, Collections.emptyMap());
     }
 
     public MerkleNode addLink(String label, Multihash linkTarget) {
@@ -30,6 +27,22 @@ public class MerkleNode {
 
     public MerkleNode setData(byte[] newData) {
         return new MerkleNode(newData, links);
+    }
+
+    public String toJson(Optional<Multihash> ourHash) {
+        Map result = new TreeMap();
+        if (ourHash.isPresent())
+            result.put("Hash", ourHash.get().toBase58());
+        result.put("Data", new String(data));
+        List<Object> linksList = new ArrayList<>();
+        links.entrySet().forEach(e -> {
+            Map linkNode = new TreeMap();
+            linkNode.put("Name", e.getKey());
+            linkNode.put("Hash", e.getValue().toBase58());
+            linksList.add(linkNode);
+        });
+        result.put("Links", linksList);
+        return JSONParser.toString(result);
     }
 
     public byte[] serialize() {

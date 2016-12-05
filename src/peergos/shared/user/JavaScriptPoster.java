@@ -2,6 +2,7 @@ package peergos.shared.user;
 
 import jsinterop.annotations.*;
 
+import java.util.*;
 import java.util.concurrent.*;
 
 public class JavaScriptPoster implements HttpPoster {
@@ -15,6 +16,11 @@ public class JavaScriptPoster implements HttpPoster {
     @Override
     public CompletableFuture<byte[]> postUnzip(String url, byte[] payload) {
         return post(url, payload, true);
+    }
+
+    @Override
+    public CompletableFuture<byte[]> postMultipart(String url, List<byte[]> files) {
+        throw new IllegalStateException("Unimplemented JavaScriptPoster.postMulitpart()!");
     }
 
     @Override

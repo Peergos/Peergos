@@ -72,7 +72,7 @@ public class TreeNode {
         if (! nextSmallest.targetHash.isPresent())
             return CompletableFuture.completedFuture(MaybeMultihash.EMPTY());
 
-        return storage.get(nextSmallest.targetHash.get())
+        return storage.getData(nextSmallest.targetHash.get())
                 .thenCompose(rawOpt -> TreeNode.deserialize(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present!")))
                         .get(key, storage));
     }
@@ -130,7 +130,7 @@ public class TreeNode {
         }
 
         final KeyElement finalNextSmallest = nextSmallest;
-        return storage.get(nextSmallest.targetHash.get())
+        return storage.getData(nextSmallest.targetHash.get())
                 .thenApply(rawOpt -> TreeNode.deserialize(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present!"))))
                 .thenCompose(modifiedChild -> modifiedChild.withHash(finalNextSmallest.targetHash).put(writer, key, value, storage, maxChildren))
                 .thenCompose(modifiedChild -> {
@@ -182,7 +182,7 @@ public class TreeNode {
 
     public CompletableFuture<Integer> size(ContentAddressedStorage storage) {
         return Futures.reduceAll(keys, keys.size() - 1, (total, key) -> key.targetHash.isPresent() ?
-                storage.get(key.targetHash.get())
+                storage.getData(key.targetHash.get())
                         .thenCompose(rawOpt -> TreeNode.deserialize(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present!")))
                                 .size(storage)).thenApply(subTreeTotal -> subTreeTotal + total) :
                 CompletableFuture.completedFuture(total), (a, b) -> a + b);
@@ -196,7 +196,7 @@ public class TreeNode {
         MaybeMultihash targetHash = keys.first().targetHash;
         if (! targetHash.isPresent())
             return CompletableFuture.completedFuture(keys.toArray(new KeyElement[keys.size()])[1].key);
-        return storage.get(targetHash.get())
+        return storage.getData(targetHash.get())
                 .thenCompose(rawOpt -> TreeNode.deserialize(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present!")))
                         .smallestKey(storage));
     }
@@ -224,7 +224,7 @@ public class TreeNode {
             } else {
                 Multihash multihash = nextSmallest.targetHash.get();
                 final KeyElement finalNextSmallest = nextSmallest;
-                return storage.get(multihash)
+                return storage.getData(multihash)
                         .thenApply(rawOpt -> TreeNode.deserialize(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present!")))
                                 .withHash(finalNextSmallest.targetHash))
                         .thenCompose(child -> {
@@ -252,7 +252,7 @@ public class TreeNode {
         if (! nextSmallest.targetHash.isPresent())
             return CompletableFuture.completedFuture(new TreeNode(this.keys));
         final KeyElement finalNextSmallest = nextSmallest;
-        return storage.get(nextSmallest.targetHash.get())
+        return storage.getData(nextSmallest.targetHash.get())
                 .thenCompose(rawOpt -> TreeNode.deserialize(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present!")))
                         .withHash(finalNextSmallest.targetHash).delete(writer, key, storage, maxChildren))
                 .thenCompose(child -> {
@@ -286,7 +286,7 @@ public class TreeNode {
         Function<Optional<KeyElement>, CompletableFuture<Optional<TreeNode>>> keyToNode = key -> {
             if (! key.isPresent())
                 return CompletableFuture.completedFuture(Optional.empty());
-            return storage.get(key.get().targetHash.get())
+            return storage.getData(key.get().targetHash.get())
                     .thenApply(rawOpt -> rawOpt.map(raw -> TreeNode.deserialize(raw)));
         };
 
@@ -387,7 +387,7 @@ public class TreeNode {
                 tab += "   ";
             w.print(StringUtils.format(tab + "[%d/%d] %s : %s\n", index++, keys.size(), e.key.toString(), new ByteArrayWrapper(e.valueHash.toBytes()).toString()));
             if (e.targetHash.isPresent())
-                TreeNode.deserialize(storage.get(e.targetHash.get()).get().get()).print(w, depth + 1, storage);
+                TreeNode.deserialize(storage.getData(e.targetHash.get()).get().get()).print(w, depth + 1, storage);
         }
     }
 

@@ -35,7 +35,7 @@ public class MerkleBTree
             TreeNode newRoot = new TreeNode(new TreeSet<>());
             return dht.put(writer, newRoot.toMerkleNode()).thenApply(put -> new MerkleBTree(newRoot, put, dht, MAX_NODE_CHILDREN));
         }
-        return dht.get(rootHash.get()).thenApply(rawOpt -> {
+        return dht.getData(rootHash.get()).thenApply(rawOpt -> {
             if (! rawOpt.isPresent())
                 throw new IllegalStateException("Null byte[] returned by DHT for hash: " + rootHash.get());
             return new MerkleBTree(TreeNode.deserialize(rawOpt.get()), rootHash, dht, MAX_NODE_CHILDREN);

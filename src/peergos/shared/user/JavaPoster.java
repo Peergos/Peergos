@@ -1,9 +1,11 @@
 package peergos.shared.user;
 
+import peergos.shared.ipfs.api.*;
 import peergos.shared.util.*;
 
 import java.io.*;
 import java.net.*;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.zip.*;
 
@@ -53,6 +55,18 @@ public class JavaPoster implements HttpPoster {
                 conn.disconnect();
         }
         return res;
+    }
+
+    @Override
+    public CompletableFuture<byte[]> postMultipart(String url, List<byte[]> files) {
+        try {
+            Multipart mPost = new Multipart(url, "UTF-8");
+            for (byte[] file : files)
+                mPost.addFilePart("file", new NamedStreamable.ByteArrayWrapper(file));
+            return CompletableFuture.completedFuture(mPost.finish().getBytes());
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override

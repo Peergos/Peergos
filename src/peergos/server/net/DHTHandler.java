@@ -1,15 +1,14 @@
 package peergos.server.net;
 
 import peergos.shared.crypto.*;
-import peergos.shared.ipfs.api.Multihash;
-import peergos.shared.merklebtree.MerkleNode;
+import peergos.shared.ipfs.api.*;
 import peergos.shared.storage.ContentAddressedStorage;
-import peergos.shared.util.*;
 import com.sun.net.httpserver.*;
 
 import java.io.*;
 import java.util.*;
 import java.util.function.*;
+import java.util.stream.*;
 
 public class DHTHandler implements HttpHandler
 {
@@ -20,42 +19,103 @@ public class DHTHandler implements HttpHandler
         this.dht = dht;
     }
 
+    private Map<String, List<String>> parseQuery(String query) {
+        if (query.startsWith("?"))
+            query = query.substring(1);
+        String[] parts = query.split("&");
+        Map<String, List<String>> res = new HashMap<>();
+        for (String part: parts) {
+            int sep = part.indexOf("=");
+            String key = part.substring(0, sep);
+            String value = part.substring(sep + 1);
+            res.putIfAbsent(key, new ArrayList<>());
+            res.get(key).add(value);
+        }
+        return res;
+    }
+
     @Override
     public void handle(HttpExchange httpExchange) throws IOException {
         try {
             String path = httpExchange.getRequestURI().getPath();
-            if (path.startsWith("/dht/get")) {
-                String ipfsPrefix = "/dht/get/ipfs/";
-                if (!path.startsWith(ipfsPrefix))
-                    httpExchange.sendResponseHeaders(404, 0);
-                else {
-                    Multihash key = Multihash.fromBase58(path.substring(ipfsPrefix.length()));
-                    throw new IllegalStateException("TODO");
-                    byte[] value = dht.get(key);
-                    new GetSuccess(key, httpExchange).accept(value);
-                }
-            } else {
-                InputStream in = httpExchange.getRequestBody();
-                DataInputStream din = new DataInputStream(in);
-                int type = din.readInt();
-                if (type == 0) {
-                    // PUT
-                    byte[] value = Serialize.deserializeByteArray(din, ContentAddressedStorage.MAX_OBJECT_LENGTH);
-                    byte[] owner = Serialize.deserializeByteArray(din, UserPublicKey.MAX_SIZE);
-                    // TODO check we care about owner
-                    List<Multihash> hashes = new ArrayList<>();
-                    int nlinks = din.readInt();
-                    for (int i = 0; i < nlinks; i++)
-                        hashes.add(new Multihash(Serialize.deserializeByteArray(din, 1024)));
+            Map<String, List<String>> params = parseQuery(httpExchange.getRequestURI().getQuery());
+            List<String> args = params.get("arg");
+            Function<String, String> last = key -> params.get(key).get(params.get(key).size() - 1);
 
-                    SortedMap<String, Multihash> namedLinks = new TreeMap<>();
-                    for (int i = 0; i < hashes.size(); i++)
-                        namedLinks.put(Integer.toString(i), hashes.get(i));
-                    MerkleNode obj = new MerkleNode(value, namedLinks);
-                    throw new IllegalStateException("TODO");
-                    byte[] put = dht.put(obj).toBytes();
-                    new PutSuccess(httpExchange).accept(Optional.of(put));
-                } else {
+            switch (path) {
+                case "object/new":{
+                    UserPublicKey writer = UserPublicKey.fromString(last.apply("writer"));
+                    dht._new(writer).thenAccept(newHash -> {
+                        Map res = new HashMap();
+                        res.put("Hash", newHash.toBase58());
+                        // don't cache EMPTY multihash as it will change if the internal IPFS serialization format changes
+                        replyJson(httpExchange, JSONParser.toString(res), Optional.empty());
+                    });
+                    break;
+                }
+                case "object/patch/add-link":{
+                    UserPublicKey writer = UserPublicKey.fromString(last.apply("writer"));
+                    Multihash hash = Multihash.fromBase58(args.get(0));
+                    String label = args.get(1);
+                    Multihash targetHash = Multihash.fromBase58(args.get(2));
+                    dht.addLink(writer, hash, label, targetHash)
+                            .thenAccept(resultHash -> {
+                                Map res = new HashMap();
+                                res.put("Hash", resultHash.toBase58());
+                                replyJson(httpExchange, JSONParser.toString(res), Optional.empty());
+                            });
+                    break;
+                }
+                case "object/patch/set-data": {
+                    UserPublicKey writer = UserPublicKey.fromString(last.apply("writer"));
+                    Multihash hash = Multihash.fromBase58(args.get(0));
+                    String boundary = httpExchange.getRequestHeaders().get("Content-Type")
+                            .stream()
+                            .filter(s -> s.contains("boundary="))
+                            .map(s -> s.substring(s.indexOf("=") + 1))
+                            .findAny()
+                            .get();
+                    byte[] data = MultipartReceiver.extractFile(httpExchange.getRequestBody(), boundary);
+                    dht.setData(writer, hash, data).thenAccept(h -> {
+                        Map<String, Object> json = new TreeMap<>();
+                        json.put("Hash", h.toBase58());
+                        replyJson(httpExchange, JSONParser.toString(json), Optional.empty());
+                    });
+                }
+                case "object/get":{
+                    Multihash hash = Multihash.fromBase58(args.get(0));
+                    dht.getObject(hash)
+                            .thenAccept(opt -> replyJson(httpExchange,
+                                    opt.map(m -> m.toJson(Optional.of(hash))).orElse(""), Optional.of(hash)));
+                    break;
+                }
+                case "object/data": {
+                    Multihash hash = Multihash.fromBase58(args.get(0));
+                    dht.getData(hash).thenAccept(opt -> replyBytes(httpExchange, opt.orElse(new byte[0]), Optional.of(hash)));
+                    break;
+                }
+                case "pin/add": {
+                    Multihash hash = Multihash.fromBase58(args.get(0));
+                    dht.recursivePin(hash).thenAccept(pinned -> {
+                        Map<String, Object> json = new TreeMap<>();
+                        json.put("Pins", pinned.stream().map(h -> h.toBase58()).collect(Collectors.toList()));
+                        replyJson(httpExchange, JSONParser.toString(json), Optional.empty());
+                    });
+                    break;
+                }
+                case "pin/rm": {
+                    boolean recursive = params.containsKey("r") && Boolean.parseBoolean(last.apply("r"));
+                    if (!recursive)
+                        throw new IllegalStateException("Unimplemented: non recursive unpin!");
+                    Multihash hash = Multihash.fromBase58(args.get(0));
+                    dht.recursiveUnpin(hash).thenAccept(unpinned -> {
+                        Map<String, Object> json = new TreeMap<>();
+                        json.put("Pins", unpinned.stream().map(h -> h.toBase58()).collect(Collectors.toList()));
+                        replyJson(httpExchange, JSONParser.toString(json), Optional.empty());
+                    });
+                    break;
+                }
+                default: {
                     httpExchange.sendResponseHeaders(404, 0);
                 }
             }
@@ -65,58 +125,37 @@ public class DHTHandler implements HttpHandler
         }
     }
 
-    private static class PutSuccess implements Consumer<Optional<byte[]>>
-    {
-        private final HttpExchange exchange;
-
-        private PutSuccess(HttpExchange exchange)
-        {
-            this.exchange = exchange;
-        }
-
-        @Override
-        public void accept(Optional<byte[]> result) {
-            try {
-                exchange.sendResponseHeaders(200, 0);
-                DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());
-                dout.writeInt(result.isPresent() ? 1 : 0); // success
-                if (result.isPresent())
-                    Serialize.serialize(result.get(), dout);
-                dout.flush();
-                dout.close();
-            } catch (IOException e)
-            {
-                e.printStackTrace();
+    private static void replyJson(HttpExchange exchange, String json, Optional<Multihash> key) {
+        try {
+            if (key.isPresent()) {
+                exchange.getResponseHeaders().set("Cache-Control", "public, max-age=31622400 immutable");
+                exchange.getResponseHeaders().set("ETag", key.get().toBase58());
             }
+            exchange.sendResponseHeaders(200, 0);
+            DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());
+            dout.write(json.getBytes());
+            dout.flush();
+            dout.close();
+        } catch (IOException e)
+        {
+            e.printStackTrace();
         }
     }
 
-    private static class GetSuccess implements Consumer<byte[]>
-    {
-        private final HttpExchange exchange;
-        private final Multihash key;
-
-        private GetSuccess(Multihash key, HttpExchange exchange)
-        {
-            this.key = key;
-            this.exchange = exchange;
-        }
-
-        @Override
-        public void accept(byte[] value) {
-            try {
+    private static void replyBytes(HttpExchange exchange, byte[] body, Optional<Multihash> key) {
+        try {
+            if (key.isPresent()) {
                 exchange.getResponseHeaders().set("Cache-Control", "public, max-age=31622400 immutable");
-                exchange.getResponseHeaders().set("ETag", key.toBase58());
-                exchange.sendResponseHeaders(200, 0);
-                DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());
-                dout.writeInt(1); // success
-                Serialize.serialize(value, dout);
-                dout.flush();
-                dout.close();
-            } catch (IOException e)
-            {
-                e.printStackTrace();
+                exchange.getResponseHeaders().set("ETag", key.get().toBase58());
             }
+            exchange.sendResponseHeaders(200, 0);
+            DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());
+            dout.write(body);
+            dout.flush();
+            dout.close();
+        } catch (IOException e)
+        {
+            e.printStackTrace();
         }
     }
 }

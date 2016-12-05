@@ -2,13 +2,10 @@ package peergos.shared.storage;
 
 import peergos.shared.crypto.*;
 import peergos.shared.ipfs.api.*;
-import peergos.shared.merklebtree.*;
 import peergos.shared.merklebtree.MerkleNode;
 import peergos.shared.user.*;
-import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
-import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
@@ -51,9 +48,9 @@ public interface ContentAddressedStorage {
         return put(writer, new MerkleNode(data, Collections.emptyMap()));
     }
 
-    CompletableFuture<Boolean> recursivePin(Multihash h);
+    CompletableFuture<List<Multihash>> recursivePin(Multihash h);
 
-    CompletableFuture<Boolean> recursiveUnpin(Multihash h);
+    CompletableFuture<List<Multihash>> recursiveUnpin(Multihash h);
 
     class HTTP implements ContentAddressedStorage {
 
@@ -88,18 +85,22 @@ public interface ContentAddressedStorage {
 
         @Override
         public CompletableFuture<Multihash> _new(UserPublicKey writer) {
-            return poster.get(apiPrefix + "object/new?stream-channels=true")
+            return poster.get(apiPrefix + "object/new?stream-channels=true"+ "&writer=" + writer.toUserPublicKey().toString())
                     .thenApply(HTTP::getObjectHash);
         }
 
         @Override
         public CompletableFuture<Multihash> setData(UserPublicKey writer, Multihash base, byte[] data) {
-            throw new IllegalStateException("Unimplemented!");
+            return poster.postMultipart(apiPrefix + "object/patch/set-data?arg=" + base.toBase58()
+                    + "&writer=" + writer.toUserPublicKey().toString(), Arrays.asList(data))
+                    .thenApply(HTTP::getObjectHash);
         }
 
         @Override
         public CompletableFuture<Multihash> addLink(UserPublicKey writer, Multihash base, String label, Multihash linkTarget) {
-            return poster.get(apiPrefix + "object/patch/add-link?arg=" + base.toBase58() + "&arg=" + label + "&arg=" + linkTarget.toBase58())
+            return poster.get(apiPrefix + "object/patch/add-link?arg=" + base.toBase58()
+                    + "&arg=" + label + "&arg=" + linkTarget.toBase58()
+                    + "&writer=" + writer.toUserPublicKey().toString())
                     .thenApply(HTTP::getObjectHash);
         }
 
@@ -115,21 +116,28 @@ public interface ContentAddressedStorage {
                     .thenApply(bytes -> Optional.of(bytes));
         }
 
-        @Override
-        public CompletableFuture<Multihash> put(UserPublicKey writer, MerkleNode object) {
-            throw new IllegalStateException("Unimplemented!");
-        }
+//        @Override
+//        public CompletableFuture<Multihash> put(UserPublicKey writer, MerkleNode object) {
+//            // TODO implement using CBOR to save round trips
+//            throw new IllegalStateException("Unimplemented!");
+//        }
 
         @Override
-        public CompletableFuture<Boolean> recursivePin(Multihash hash) {
+        public CompletableFuture<List<Multihash>> recursivePin(Multihash hash) {
             return poster.get(apiPrefix + "pin/add?stream-channels=true&arg=" + hash.toBase58())
-                    .thenApply(resp -> true);
+                    .thenApply(this::getPins);
         }
 
         @Override
-        public CompletableFuture<Boolean> recursiveUnpin(Multihash hash) {
+        public CompletableFuture<List<Multihash>> recursiveUnpin(Multihash hash) {
             return poster.get(apiPrefix + "pin/rm?stream-channels=true&r=true&arg=" + hash.toBase58())
-                    .thenApply(resp -> true);
+                    .thenApply(this::getPins);
+        }
+
+        private List<Multihash> getPins(byte[] raw) {
+            Map res = (Map)JSONParser.parse(new String(raw));
+            List<String> pins = (List<String>)res.get("Pins");
+            return pins.stream().map(Multihash::fromBase58).collect(Collectors.toList());
         }
     }
 
@@ -178,12 +186,12 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<Boolean> recursivePin(Multihash h) {
+        public CompletableFuture<List<Multihash>> recursivePin(Multihash h) {
             return target.recursivePin(h);
         }
 
         @Override
-        public CompletableFuture<Boolean> recursiveUnpin(Multihash h) {
+        public CompletableFuture<List<Multihash>> recursiveUnpin(Multihash h) {
             return target.recursiveUnpin(h);
         }
     }

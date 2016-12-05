@@ -65,8 +65,8 @@ public class PinningCoreNode implements CoreNode {
             byte[] rawOldRoot = Serialize.deserializeByteArray(din, 256);
             Optional<Multihash> oldRoot = rawOldRoot.length > 0 ? Optional.of(new Multihash(rawOldRoot)) : Optional.empty();
             Multihash newRoot = new Multihash(Serialize.deserializeByteArray(din, 256));
-            return storage.recursivePin(newRoot).thenCompose(pinNew -> {
-                if (!pinNew)
+            return storage.recursivePin(newRoot).thenCompose(pins -> {
+                if (!pins.contains(newRoot))
                     return CompletableFuture.completedFuture(false);
                 return target.setMetadataBlob(ownerPublicKey, signer, sharingKeySignedBtreeRootHashes)
                         .thenCompose(b -> {
@@ -75,7 +75,7 @@ public class PinningCoreNode implements CoreNode {
                             // unpin old root
                             return !oldRoot.isPresent() ?
                                     CompletableFuture.completedFuture(true) :
-                                    storage.recursiveUnpin(oldRoot.get());
+                                    storage.recursiveUnpin(oldRoot.get()).thenApply(unpins -> unpins.contains(oldRoot.get()));
                         });
             });
         } catch (IOException e) {
@@ -91,15 +91,15 @@ public class PinningCoreNode implements CoreNode {
         try {
             Multihash oldRoot = new Multihash(Serialize.deserializeByteArray(din, 256));
             Multihash newRoot = new Multihash(Serialize.deserializeByteArray(din, 256));
-            return storage.recursivePin(newRoot).thenCompose(newPin -> {
-                if (!newPin)
+            return storage.recursivePin(newRoot).thenCompose(pins -> {
+                if (!pins.contains(newRoot))
                     return CompletableFuture.completedFuture(false);
                 return target.removeMetadataBlob(sharer, sharingKeySignedMapKeyPlusBlob)
                         .thenCompose(b -> {
                             if (!b)
                                 return CompletableFuture.completedFuture(false);
                             // unpin old root
-                            return storage.recursiveUnpin(oldRoot);
+                            return storage.recursiveUnpin(oldRoot).thenApply(unpins -> unpins.contains(oldRoot));
                         });
             });
         } catch (IOException e) {

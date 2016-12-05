@@ -90,20 +90,20 @@ public class IpfsDHT implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Boolean> recursivePin(Multihash h) {
+    public CompletableFuture<List<Multihash>> recursivePin(Multihash h) {
         try {
             List<Multihash> added = ipfs.pin.add(h);
-            return CompletableFuture.completedFuture(added.contains(h));
+            return CompletableFuture.completedFuture(added);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
     }
 
     @Override
-    public CompletableFuture<Boolean> recursiveUnpin(Multihash h) {
+    public CompletableFuture<List<Multihash>> recursiveUnpin(Multihash h) {
         try {
-            List<Multihash> added = ipfs.pin.rm(h, true);
-            return CompletableFuture.completedFuture(added.contains(h));
+            List<Multihash> removed = ipfs.pin.rm(h, true);
+            return CompletableFuture.completedFuture(removed);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

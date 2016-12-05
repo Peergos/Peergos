@@ -775,7 +775,7 @@ public class UserContext {
 
     private CompletableFuture<byte[]> getStaticData() {
         return network.coreNode.getMetadataBlob(user.toUserPublicKey())
-                .thenCompose(key -> network.dhtClient.get(key.get())
+                .thenCompose(key -> network.dhtClient.getData(key.get())
                         .thenApply(opt -> opt.get()));
     }
 
@@ -844,7 +844,7 @@ public class UserContext {
         // download the metadata blob for this entry point
         return network.btree.get(entry.pointer.location.writer, entry.pointer.location.getMapKey()).thenCompose(btreeValue -> {
             if (btreeValue.isPresent())
-                return network.dhtClient.get(btreeValue.get())
+                return network.dhtClient.getData(btreeValue.get())
                         .thenApply(value -> value.map(FileAccess::deserialize));
             return CompletableFuture.completedFuture(Optional.empty());
         });
@@ -855,7 +855,7 @@ public class UserContext {
                 .map(link -> {
                     Location loc = link.targetLocation(baseKey);
                     return network.btree.get(loc.writer, loc.getMapKey())
-                            .thenCompose(key -> network.dhtClient.get(key.get()))
+                            .thenCompose(key -> network.dhtClient.getData(key.get()))
                             .thenApply(dataOpt -> {
                                 if (!dataOpt.isPresent() || dataOpt.get().length == 0)
                                     return Optional.<RetrievedFilePointer>empty();
@@ -875,14 +875,14 @@ public class UserContext {
         return network.btree.get(loc.writer, loc.getMapKey()).thenCompose(blobHash -> {
             if (!blobHash.isPresent())
                 return CompletableFuture.completedFuture(Optional.empty());
-            return network.dhtClient.get(blobHash.get())
+            return network.dhtClient.getData(blobHash.get())
                     .thenApply(rawOpt -> rawOpt.map(FileAccess::deserialize));
         });
     };
 
     public CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Multihash> hashes, ProgressConsumer<Long> monitor) {
         List<CompletableFuture<Optional<FragmentWithHash>>> futures = hashes.stream()
-                .map(h -> network.dhtClient.get(h)
+                .map(h -> network.dhtClient.getData(h)
                         .thenApply(dataOpt -> {
                             dataOpt.ifPresent(bytes -> monitor.accept((long)bytes.length));
                             return dataOpt.map(data -> new FragmentWithHash(new Fragment(data), h));

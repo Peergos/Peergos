@@ -5,6 +5,7 @@ import peergos.shared.ipfs.api.*;
 import peergos.shared.merklebtree.MerkleNode;
 import peergos.shared.storage.ContentAddressedStorage;
 
+import java.io.*;
 import java.security.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -19,18 +20,27 @@ public class RAMStorage implements ContentAddressedStorage {
 
     @Override
     public CompletableFuture<Multihash> setData(UserPublicKey writer, Multihash object, byte[] data) {
-        return put(writer, getObject(object).setData(data));
+        return put(writer, getAndParseObject(object).setData(data));
     }
 
     @Override
     public CompletableFuture<Multihash> addLink(UserPublicKey writer, Multihash object, String label, Multihash linkTarget) {
-        return put(writer, getObject(object).addLink(label, linkTarget));
+        return put(writer, getAndParseObject(object).addLink(label, linkTarget));
     }
 
-    public MerkleNode getObject(Multihash hash) {
+    @Override
+    public CompletableFuture<Optional<MerkleNode>> getObject(Multihash object) {
+        return CompletableFuture.completedFuture(Optional.of(getAndParseObject(object)));
+    }
+
+    public MerkleNode getAndParseObject(Multihash hash) {
         if (!storage.containsKey(hash))
             throw new IllegalStateException("Hash not present! "+ hash);
-        return MerkleNode.deserialize(storage.get(hash));
+        try {
+            return MerkleNode.deserialize(storage.get(hash));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override
@@ -58,13 +68,13 @@ public class RAMStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Boolean> recursivePin(Multihash h) {
-        return CompletableFuture.completedFuture(true);
+    public CompletableFuture<List<Multihash>> recursivePin(Multihash h) {
+        return CompletableFuture.completedFuture(Arrays.asList());
     }
 
     @Override
-    public CompletableFuture<Boolean> recursiveUnpin(Multihash h) {
-        return CompletableFuture.completedFuture(true);
+    public CompletableFuture<List<Multihash>> recursiveUnpin(Multihash h) {
+        return CompletableFuture.completedFuture(Arrays.asList());
     }
 
     public static byte[] hash(byte[] input)
