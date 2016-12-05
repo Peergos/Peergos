@@ -56,7 +56,11 @@ public class RAMStorage implements ContentAddressedStorage {
     public CompletableFuture<Optional<byte[]>> getData(Multihash key) {
         if (!storage.containsKey(key))
             return CompletableFuture.completedFuture(Optional.empty());
-        return CompletableFuture.completedFuture(Optional.of(storage.get(key)));
+        try {
+            return CompletableFuture.completedFuture(Optional.of(MerkleNode.deserialize(storage.get(key)).data));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public void clear() {

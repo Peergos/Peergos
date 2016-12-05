@@ -51,7 +51,7 @@ public class MerkleNode {
         sink.writeInt(links.size());
         for (String label: links.keySet()) {
             sink.writeString(label);
-            sink.writeArray(links.get(label).toBytes());
+            sink.write(links.get(label).toBytes());
         }
         return sink.toByteArray();
     }
