@@ -54,8 +54,9 @@ public class MerkleNode {
         try {
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
             CborEncoder encoder = new CborEncoder(bout);
+            encoder.writeMapStart(1 + links.size());
+            encoder.writeTextString("Data");
             encoder.writeByteString(data);
-            encoder.writeInt8(links.size());
             for (Link link: links) {
                 encoder.writeTextString(link.label);
                 encoder.writeByteString(link.target.toBytes());
@@ -74,10 +75,11 @@ public class MerkleNode {
      */
     public static MerkleNode deserialize(byte[] in) throws IOException {
         CborDecoder decoder = new CborDecoder(new ByteArrayInputStream(in));
+        long elements = decoder.readMapLength();
+        String dataLabel = decoder.readTextString();
         byte[] data = decoder.readByteString();
         List<Link> links = new ArrayList<>();
-        int nLinks = decoder.readInt8();
-        for (int i = 0; i < nLinks; i++) {
+        for (int i = 0; i < elements - 1; i++) {
             String label = decoder.readTextString();
             Multihash target = Multihash.deserialize(new DataSource(decoder.readByteString()));
             links.add(new Link(label, target));
