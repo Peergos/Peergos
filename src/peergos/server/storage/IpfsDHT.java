@@ -60,7 +60,9 @@ public class IpfsDHT implements ContentAddressedStorage {
     public CompletableFuture<Optional<MerkleNode>> getObject(Multihash hash) {
         try {
             peergos.shared.ipfs.api.MerkleNode merkleNode = ipfs.object.get(hash);
-            Map<String, Multihash> links = merkleNode.links.stream().collect(Collectors.toMap(m -> m.name.get(), m -> m.hash));
+            List<MerkleNode.Link> links = merkleNode.links.stream()
+                    .map(m -> new MerkleNode.Link(m.name.get(), m.hash))
+                    .collect(Collectors.toList());
             return CompletableFuture.completedFuture(Optional.of(new MerkleNode(merkleNode.data.orElse(new byte[0]), links)));
         } catch (IOException e) {
             throw new RuntimeException(e);
@@ -81,8 +83,8 @@ public class IpfsDHT implements ContentAddressedStorage {
         try {
             peergos.shared.ipfs.api.MerkleNode data = ipfs.object.patch(EMPTY, "set-data", Optional.of(object.data), Optional.empty(), Optional.empty());
             Multihash current = data.hash;
-            for (Map.Entry<String, Multihash> e : object.links.entrySet())
-                current = ipfs.object.patch(current, "add-link", Optional.empty(), Optional.of(e.getKey()), Optional.of(e.getValue())).hash;
+            for (MerkleNode.Link e : object.links)
+                current = ipfs.object.patch(current, "add-link", Optional.empty(), Optional.of(e.label), Optional.of(e.target)).hash;
             return CompletableFuture.completedFuture(current);
         } catch (IOException e) {
             throw new RuntimeException(e);

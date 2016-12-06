@@ -9,20 +9,36 @@ import java.util.*;
 
 public class MerkleNode {
     public final byte[] data;
-    public final SortedMap<String, Multihash> links;
+    public final List<Link> links;
 
-    public MerkleNode(byte[] data, Map<String, Multihash> links) {
+    public MerkleNode(byte[] data, List<Link> links) {
         this.data = data;
-        this.links = new TreeMap<>(links);
+        this.links = links;
+        Collections.sort(this.links);
     }
 
     public MerkleNode(byte[] data) {
-        this(data, Collections.emptyMap());
+        this(data, Collections.emptyList());
+    }
+
+    public static class Link implements Comparable<Link> {
+        public final String label;
+        public final Multihash target;
+
+        public Link(String label, Multihash target) {
+            this.label = label;
+            this.target = target;
+        }
+
+        @Override
+        public int compareTo(Link link) {
+            return label.compareTo(link.label);
+        }
     }
 
     public MerkleNode addLink(String label, Multihash linkTarget) {
-        SortedMap<String, Multihash> tmp = new TreeMap<>(links);
-        tmp.put(label, linkTarget);
+        List<Link> tmp = new ArrayList<>(links);
+        tmp.add(new Link(label, linkTarget));
         return new MerkleNode(data, tmp);
     }
 
@@ -40,9 +56,9 @@ public class MerkleNode {
             CborEncoder encoder = new CborEncoder(bout);
             encoder.writeByteString(data);
             encoder.writeInt8(links.size());
-            for (String label : links.keySet()) {
-                encoder.writeTextString(label);
-                encoder.writeByteString(links.get(label).toBytes());
+            for (Link link: links) {
+                encoder.writeTextString(link.label);
+                encoder.writeByteString(link.target.toBytes());
             }
             return bout.toByteArray();
         } catch (IOException e) {
@@ -59,12 +75,12 @@ public class MerkleNode {
     public static MerkleNode deserialize(byte[] in) throws IOException {
         CborDecoder decoder = new CborDecoder(new ByteArrayInputStream(in));
         byte[] data = decoder.readByteString();
-        SortedMap<String, Multihash> links = new TreeMap<>();
+        List<Link> links = new ArrayList<>();
         int nLinks = decoder.readInt8();
         for (int i = 0; i < nLinks; i++) {
             String label = decoder.readTextString();
             Multihash target = Multihash.deserialize(new DataSource(decoder.readByteString()));
-            links.put(label, target);
+            links.add(new Link(label, target));
         }
         return new MerkleNode(data, links);
     }

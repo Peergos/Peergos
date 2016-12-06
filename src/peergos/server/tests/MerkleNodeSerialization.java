@@ -10,7 +10,7 @@ public class MerkleNodeSerialization {
 
     @Test
     public void inverses() throws IOException {
-        MerkleNode original = new MerkleNode(new byte[0], Collections.emptyMap());
+        MerkleNode original = new MerkleNode(new byte[0], Collections.emptyList());
 
         byte[] cbor = original.serialize();
 

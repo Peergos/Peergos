@@ -34,19 +34,22 @@ public interface ContentAddressedStorage {
         return _new(writer)
                 .thenCompose(EMPTY -> setData(writer, EMPTY, object.data))
                 .thenCompose(hash -> Futures.reduceAll(
-                        object.links.entrySet(),
+                        object.links,
                         hash,
-                        (h, e) -> addLink(writer, h, e.getKey(), e.getValue()),
+                        (h, e) -> addLink(writer, h, e.label, e.target),
                         (a, b) -> {throw new IllegalStateException();}
         ));
     }
 
     default CompletableFuture<Multihash> put(UserPublicKey writer, byte[] data, List<Multihash> links) {
-        return put(writer, new MerkleNode(data, links.stream().collect(Collectors.toMap(m -> m.toString(), m -> m))));
+        return put(writer, new MerkleNode(data,
+                links.stream()
+                        .map(l -> new MerkleNode.Link(l.toBase58(), l))
+                        .collect(Collectors.toList())));
     }
 
     default CompletableFuture<Multihash> put(UserPublicKey writer, byte[] data) {
-        return put(writer, new MerkleNode(data, Collections.emptyMap()));
+        return put(writer, new MerkleNode(data, Collections.emptyList()));
     }
 
     CompletableFuture<List<Multihash>> recursivePin(Multihash h);

@@ -409,14 +409,15 @@ public class TreeNode {
     }
 
     public MerkleNode toMerkleNode() {
-        Map<String, Multihash> links = Stream.concat(
+        List<MerkleNode.Link> links = Stream.concat(
                 keys.stream()
                         .filter(k -> k.targetHash.isPresent())
                         .map(k -> k.targetHash.get()),
                 keys.stream()
                         .filter(k -> k.valueHash.isPresent())
                         .map(k -> k.valueHash.get()))
-                .collect(Collectors.toMap(h -> h.toString(), h -> h));
+                .map(h -> new MerkleNode.Link(h.toBase58(), h))
+                .collect(Collectors.toList());
         return new MerkleNode(serialize(), links);
     }
 
