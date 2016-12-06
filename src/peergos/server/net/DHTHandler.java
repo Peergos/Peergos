@@ -95,8 +95,8 @@ public class DHTHandler implements HttpHandler
                 case "object/get":{
                     Multihash hash = Multihash.fromBase58(args.get(0));
                     dht.getObject(hash)
-                            .thenAccept(opt -> replyJson(httpExchange,
-                                    opt.map(m -> m.toJson(Optional.of(hash))).orElse(""), Optional.of(hash)));
+                            .thenAccept(opt -> replyBytes(httpExchange,
+                                    opt.map(m -> m.serialize()).orElse(new byte[0]), Optional.of(hash)));
                     break;
                 }
                 case "object/data": {

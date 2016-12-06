@@ -13,6 +13,8 @@ import java.util.concurrent.*;
 public class RAMStorage implements ContentAddressedStorage {
     private Map<Multihash, byte[]> storage = new HashMap<>();
 
+    private final Set<Multihash> pinnedRoots = new HashSet<>();
+
     @Override
     public CompletableFuture<Multihash> _new(UserPublicKey writer) {
         return put(writer, new MerkleNode(new byte[0]));
@@ -56,11 +58,7 @@ public class RAMStorage implements ContentAddressedStorage {
     public CompletableFuture<Optional<byte[]>> getData(Multihash key) {
         if (!storage.containsKey(key))
             return CompletableFuture.completedFuture(Optional.empty());
-        try {
-            return CompletableFuture.completedFuture(Optional.of(MerkleNode.deserialize(storage.get(key)).data));
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+        return CompletableFuture.completedFuture(Optional.of(getAndParseObject(key).data));
     }
 
     public void clear() {

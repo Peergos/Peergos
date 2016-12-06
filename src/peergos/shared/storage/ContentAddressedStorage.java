@@ -6,6 +6,7 @@ import peergos.shared.merklebtree.MerkleNode;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
+import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
@@ -70,17 +71,11 @@ public interface ContentAddressedStorage {
         }
 
         private static MerkleNode getObject(byte[] raw) {
-            Map json = (Map)JSONParser.parse(new String(raw));
-            List<Map<String, Object>> linksRaw = json.containsKey("Links") ? (List<Map<String, Object>>) json.get("Links") : Collections.emptyList();
-            Optional<byte[]> data = json.containsKey("Data") ? Optional.of(((String)json.get("Data")).getBytes()): Optional.empty();
-            SortedMap<String, Multihash> linkMap = new TreeMap<>();
-            linksRaw.stream().forEach(map -> {
-                String hash = (String)json.get("Hash");
-                if (hash == null)
-                    hash = (String)json.get("Key");
-                linkMap.put((String)map.get("Name"), Multihash.fromBase58(hash));
-            });
-            return new MerkleNode(data.orElse(new byte[0]), linkMap);
+            try {
+                return MerkleNode.deserialize(raw);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
         }
 
         @Override
