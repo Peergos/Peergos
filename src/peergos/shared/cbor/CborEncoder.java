@@ -152,7 +152,8 @@ public class CborEncoder {
      * @throws IOException in case of I/O problems writing the CBOR-encoded value to the underlying output stream.
      */
     public void writeDouble(double value) throws IOException {
-        writeUInt64(TYPE_FLOAT_SIMPLE << 5, Double.doubleToRawLongBits(value));
+        throw new IllegalStateException("Unimplemented!");
+//        writeUInt64(TYPE_FLOAT_SIMPLE << 5, Double.doubleToRawLongBits(value));
     }
 
     /**
@@ -162,7 +163,8 @@ public class CborEncoder {
      * @throws IOException in case of I/O problems writing the CBOR-encoded value to the underlying output stream.
      */
     public void writeFloat(float value) throws IOException {
-        writeUInt32(TYPE_FLOAT_SIMPLE << 5, Float.floatToRawIntBits(value));
+        throw new IllegalStateException("Unimplemented!");
+//        writeUInt32(TYPE_FLOAT_SIMPLE << 5, Float.floatToRawIntBits(value));
     }
 
     /**

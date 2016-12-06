@@ -33,7 +33,7 @@ public class CborDecoder {
     }
 
     private static void fail(String msg, Object... args) throws IOException {
-        throw new IOException(String.format(msg, args));
+        throw new IOException(msg + args);
     }
 
     private static String lengthToString(int len) {
