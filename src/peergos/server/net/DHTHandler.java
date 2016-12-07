@@ -4,6 +4,7 @@ import peergos.shared.crypto.*;
 import peergos.shared.ipfs.api.*;
 import peergos.shared.storage.ContentAddressedStorage;
 import com.sun.net.httpserver.*;
+import peergos.shared.util.*;
 
 import java.io.*;
 import java.util.*;
@@ -59,7 +60,7 @@ public class DHTHandler implements HttpHandler
                         res.put("Hash", newHash.toBase58());
                         // don't cache EMPTY multihash as it will change if the internal IPFS serialization format changes
                         replyJson(httpExchange, JSONParser.toString(res), Optional.empty());
-                    });
+                    }).exceptionally(Futures::logError);
                     break;
                 }
                 case "object/patch/add-link":{
@@ -72,7 +73,7 @@ public class DHTHandler implements HttpHandler
                                 Map res = new HashMap();
                                 res.put("Hash", resultHash.toBase58());
                                 replyJson(httpExchange, JSONParser.toString(res), Optional.empty());
-                            });
+                            }).exceptionally(Futures::logError);
                     break;
                 }
                 case "object/patch/set-data": {
@@ -89,19 +90,21 @@ public class DHTHandler implements HttpHandler
                         Map<String, Object> json = new TreeMap<>();
                         json.put("Hash", h.toBase58());
                         replyJson(httpExchange, JSONParser.toString(json), Optional.empty());
-                    });
+                    }).exceptionally(Futures::logError);
                     break;
                 }
                 case "object/get":{
                     Multihash hash = Multihash.fromBase58(args.get(0));
                     dht.getObject(hash)
                             .thenAccept(opt -> replyBytes(httpExchange,
-                                    opt.map(m -> m.serialize()).orElse(new byte[0]), Optional.of(hash)));
+                                    opt.map(m -> m.serialize()).orElse(new byte[0]), Optional.of(hash)))
+                            .exceptionally(Futures::logError);
                     break;
                 }
                 case "object/data": {
                     Multihash hash = Multihash.fromBase58(args.get(0));
-                    dht.getData(hash).thenAccept(opt -> replyBytes(httpExchange, opt.orElse(new byte[0]), Optional.of(hash)));
+                    dht.getData(hash).thenAccept(opt -> replyBytes(httpExchange, opt.orElse(new byte[0]), Optional.of(hash)))
+                            .exceptionally(Futures::logError);
                     break;
                 }
                 case "pin/add": {
@@ -110,7 +113,7 @@ public class DHTHandler implements HttpHandler
                         Map<String, Object> json = new TreeMap<>();
                         json.put("Pins", pinned.stream().map(h -> h.toBase58()).collect(Collectors.toList()));
                         replyJson(httpExchange, JSONParser.toString(json), Optional.empty());
-                    });
+                    }).exceptionally(Futures::logError);
                     break;
                 }
                 case "pin/rm": {
@@ -122,7 +125,7 @@ public class DHTHandler implements HttpHandler
                         Map<String, Object> json = new TreeMap<>();
                         json.put("Pins", unpinned.stream().map(h -> h.toBase58()).collect(Collectors.toList()));
                         replyJson(httpExchange, JSONParser.toString(json), Optional.empty());
-                    });
+                    }).exceptionally(Futures::logError);
                     break;
                 }
                 default: {
@@ -130,6 +133,7 @@ public class DHTHandler implements HttpHandler
                 }
             }
         } catch (Exception e) {
+            e.printStackTrace();
             throw new RuntimeException(e);
         }
     }

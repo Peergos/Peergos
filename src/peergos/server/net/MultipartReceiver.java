@@ -12,8 +12,8 @@ public class MultipartReceiver {
                 throw new IllegalStateException("Incorrect boundary! " + boundary + " != " + first.substring(2));
             String filenameLine = readLine(in);
             String contentType = readLine(in);
-            String encoding = readLine(in);
-            String blank = readLine(in);
+            String encoding = contentType.length() > 0 ? readLine(in) : "";
+            String blank = encoding.length() > 0 ? readLine(in) : "";
 
             ByteArrayOutputStream file = new ByteArrayOutputStream();
             byte[] buffer = new byte[4096];
