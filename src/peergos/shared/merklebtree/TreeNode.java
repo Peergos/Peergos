@@ -92,8 +92,6 @@ public class TreeNode {
             keys.add(modified);
             // commit this node to storage
             Multihash multiHash = storage.put(this.toMerkleNode());
-            if (! multiHash.equals(this.hash.get()))
-                storage.remove(this.hash.get());
             return new TreeNode(this.keys, multiHash);
         }
         if (! nextSmallest.targetHash.isPresent()) {
@@ -101,8 +99,6 @@ public class TreeNode {
                 keys.add(new KeyElement(key,  MaybeMultihash.of(value), MaybeMultihash.EMPTY()));
                 // commit this node to storage
                 Multihash hash = storage.put(this.toMerkleNode());
-                if (this.hash.isPresent())
-                    storage.remove(this.hash.get());
                 return new TreeNode(this.keys, MaybeMultihash.of(hash));
             }
             // split into two and make new parent
@@ -124,13 +120,10 @@ public class TreeNode {
             TreeSet holder = new TreeSet<>();
             KeyElement newParent = new KeyElement(median.key, median.valueHash, MaybeMultihash.of(rightChildHash));
             holder.add(newParent);
-            storage.remove(this.hash.get());
             return new TreeNode(MaybeMultihash.of(leftChildHash), holder);
         }
 
         TreeNode modifiedChild = TreeNode.deserialize(storage.get(nextSmallest.targetHash.get())).withHash(nextSmallest.targetHash).put(key, value, storage, maxChildren);
-        if (!modifiedChild.hash.isPresent() || ! modifiedChild.hash.equals(nextSmallest.targetHash))
-            storage.remove(nextSmallest.targetHash.get());
         if (!modifiedChild.hash.isPresent()) {
             // we split a child and need to add the median to our keys
             if (keys.size() < maxChildren) {
@@ -139,7 +132,6 @@ public class TreeNode {
                 keys.add(replacementNextSmallest);
                 keys.add(modifiedChild.keys.last());
                 Multihash hash = storage.put(this.toMerkleNode());
-                storage.remove(this.hash.get());
                 return new TreeNode(this.keys, MaybeMultihash.of(hash));
             }
             // we need to split as well, merge in new key and two pointers first
@@ -167,7 +159,6 @@ public class TreeNode {
             TreeSet holder = new TreeSet<>();
             KeyElement newParent = new KeyElement(median.key, median.valueHash, MaybeMultihash.of(rightChildHash));
             holder.add(newParent);
-            storage.remove(this.hash.get());
             return new TreeNode(leftChildHash, holder);
         }
         // update pointer to child (child element wasn't split)
@@ -175,8 +166,6 @@ public class TreeNode {
         keys.remove(nextSmallest);
         keys.add(updated);
         Multihash hash = storage.put(this.toMerkleNode());
-        if (! hash.equals(this.hash.get()))
-            storage.remove(this.hash.get());
         return new TreeNode(this, hash);
     }
 
@@ -215,7 +204,6 @@ public class TreeNode {
             if (! nextSmallest.targetHash.isPresent()) {
                 // we are a leaf
                 keys.remove(nextSmallest);
-                storage.remove(this.hash.get());
                 if (keys.size() >= maxChildren/2) {
                     Multihash hash = storage.put(this.toMerkleNode());
                     return new TreeNode(this.keys, hash);
@@ -231,10 +219,8 @@ public class TreeNode {
 
                 Multihash childHash = storage.put(newChild.toMerkleNode());
                 keys.remove(nextSmallest);
-                storage.remove(multihash);
                 KeyElement replacement = new KeyElement(smallestKey, value, childHash);
                 keys.add(replacement);
-                storage.remove(this.hash.get());
                 if (newChild.keys.size() >= maxChildren/2) {
                     Multihash hash = storage.put(this.toMerkleNode());
                     return new TreeNode(this, hash);
@@ -247,8 +233,6 @@ public class TreeNode {
         if (! nextSmallest.targetHash.isPresent())
             return new TreeNode(this.keys);
         TreeNode child = TreeNode.deserialize(storage.get(nextSmallest.targetHash.get())).withHash(nextSmallest.targetHash).delete(key, storage, maxChildren);
-        if (!child.hash.isPresent() || !  child.hash.equals(nextSmallest.targetHash))
-            storage.remove(nextSmallest.targetHash.get());
         // update pointer
         if (child.hash.isPresent()) {
             keys.remove(nextSmallest);
@@ -259,7 +243,6 @@ public class TreeNode {
             return rebalance(this, child, nextSmallest.targetHash.get(), storage, maxChildren);
         }
         Multihash hash = storage.put(this.toMerkleNode());
-        storage.remove(this.hash.get());
         return new TreeNode(this, hash);
     }
 
@@ -294,9 +277,6 @@ public class TreeNode {
             parent.keys.add(new KeyElement(centerKey.key, centerKey.valueHash, newChildHash));
             parent.keys.add(new KeyElement(newSeparator.key, newSeparator.valueHash, newRightHash));
             Multihash hash = storage.put(parent.toMerkleNode());
-            if (child.hash.isPresent())
-                storage.remove(child.hash.get());
-            storage.remove(parent.hash.get());
             return new TreeNode(parent, hash);
         } else if (leftSibling.isPresent() && leftSibling.get().keys.size() > maxChildren/2) {
             // rotate right
@@ -316,9 +296,6 @@ public class TreeNode {
             parent.keys.add(new KeyElement(leftKey.get().key, leftKey.get().valueHash, newLeftHash));
             parent.keys.add(new KeyElement(newSeparator.key, newSeparator.valueHash, newChildHash));
             Multihash hash = storage.put(parent.toMerkleNode());
-            if (child.hash.isPresent())
-                storage.remove(child.hash.get());
-            storage.remove(parent.hash.get());
             return new TreeNode(parent, hash);
         } else {
             if (rightSibling.isPresent()) {
@@ -333,9 +310,6 @@ public class TreeNode {
                 parent.keys.remove(rightKey.get());
                 parent.keys.remove(centerKey);
                 parent.keys.add(new KeyElement(centerKey.key, centerKey.valueHash, combinedHash));
-                if (child.hash.isPresent())
-                    storage.remove(child.hash.get());
-                storage.remove(parent.hash.get());
                 if (parent.keys.size() >= maxChildren/2) {
                     Multihash hash = storage.put(parent.toMerkleNode());
                     return new TreeNode(parent, hash);
@@ -353,9 +327,6 @@ public class TreeNode {
                 parent.keys.remove(leftKey.get());
                 parent.keys.remove(centerKey);
                 parent.keys.add(new KeyElement(leftKey.get().key, leftKey.get().valueHash, combinedHash));
-                if (child.hash.isPresent())
-                    storage.remove(child.hash.get());
-                storage.remove(parent.hash.get());
                 if (parent.keys.size() >= maxChildren/2) {
                     Multihash hash = storage.put(parent.toMerkleNode());
                     return new TreeNode(parent, hash);

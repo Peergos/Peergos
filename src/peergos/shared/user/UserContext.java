@@ -796,17 +796,11 @@ public class UserContext {
                 return metadata.get().getPath(this)
                         .thenCompose(path -> {
                             System.out.println("Added entry point: " + metadata.get() + " at path " + path);
-                            if (!path.contains(SHARED_DIR_NAME))
+                            String[] parts = path.split("/");
+                            if (parts.length < 3 || ! parts[2].equals(SHARED_DIR_NAME))
                                 return CompletableFuture.completedFuture(root.put(path, e));
-                            // Things in the shared directory are direct links, so give them their correct path
-                            TrieNode withSharedDirectory = root.put(path, e);
-                            return metadata.get().getChildren(this)
-                                    .thenCompose(children -> Futures.reduceAll(children, withSharedDirectory,
-                                            (trieNode, fileTreeNode) -> fileTreeNode.getPath(this)
-                                                    .thenApply(realPath -> trieNode.put(realPath,
-                                                            new EntryPoint(fileTreeNode.getPointer().filePointer, e.owner, e.readers, e.writers))),
-                                            (a, b) -> a
-                                    ));
+                            TrieNode rootWithMapping = parts[1].equals(username) ? root : root.addPathMapping("/" + parts[1], path);
+                            return CompletableFuture.completedFuture(rootWithMapping.put(path, e));
                         });
             }
             throw new IllegalStateException("Metadata blob not Present!");
@@ -829,6 +823,15 @@ public class UserContext {
                 throw new RuntimeException(e);
             }
         });
+    }
+
+    public CompletableFuture<Set<FileTreeNode>> retrieveAll(List<EntryPoint> entries) {
+        return Futures.reduceAll(entries, Collections.emptySet(),
+                (set, entry) -> retrieveEntryPoint(entry)
+                        .thenApply(opt ->
+                                opt.map(f -> Stream.concat(set.stream(), Stream.of(f)).collect(Collectors.toSet()))
+                                        .orElse(set)),
+                (a, b) -> Stream.concat(a.stream(), b.stream()).collect(Collectors.toSet()));
     }
 
     protected CompletableFuture<Optional<FileTreeNode>> retrieveEntryPoint(EntryPoint e) {

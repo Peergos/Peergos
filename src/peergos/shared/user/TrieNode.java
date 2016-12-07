@@ -10,18 +10,25 @@ import java.util.stream.*;
 class TrieNode {
     private final Map<String, TrieNode> children;
     private final Optional<EntryPoint> value;
+    private final Map<String, String> pathMappings;
 
-    public TrieNode(Map<String, TrieNode> children, Optional<EntryPoint> value) {
+    public TrieNode(Map<String, TrieNode> children, Optional<EntryPoint> value, Map<String, String> pathMappings) {
         this.children = Collections.unmodifiableMap(children);
         this.value = value;
+        this.pathMappings = Collections.unmodifiableMap(pathMappings);
     }
 
     public TrieNode() {
-        this(Collections.emptyMap(), Optional.empty());
+        this(Collections.emptyMap(), Optional.empty(), Collections.emptyMap());
     }
 
     public CompletableFuture<Optional<FileTreeNode>> getByPath(String path, UserContext context) {
         System.out.println("GetByPath: " + path);
+        for (String prefix: pathMappings.keySet()) {
+            if (path.startsWith(prefix)) {
+                path = pathMappings.get(prefix) + path.substring(prefix.length());
+            }
+        }
         String finalPath = path.startsWith("/") ? path.substring(1) : path;
         if (finalPath.length() == 0) {
             if (!value.isPresent()) { // find a child entry and traverse parent links
@@ -75,7 +82,7 @@ class TrieNode {
         if (path.startsWith("/"))
             path = path.substring(1);
         if (path.length() == 0) {
-            return new TrieNode(children, Optional.of(e));
+            return new TrieNode(children, Optional.of(e), pathMappings);
         }
         String[] elements = path.split("/");
         TrieNode existing = children.getOrDefault(elements[0], new TrieNode());
@@ -83,7 +90,7 @@ class TrieNode {
 
         HashMap<String, TrieNode> newChildren = new HashMap<>(children);
         newChildren.put(elements[0], newChild);
-        return new TrieNode(newChildren, value);
+        return new TrieNode(newChildren, value, pathMappings);
     }
 
     public TrieNode removeEntry(String path) {
@@ -91,7 +98,7 @@ class TrieNode {
         if (path.startsWith("/"))
             path = path.substring(1);
         if (path.length() == 0) {
-            return new TrieNode(children, Optional.empty());
+            return new TrieNode(children, Optional.empty(), pathMappings);
         }
         String[] elements = path.split("/");
         TrieNode existing = children.getOrDefault(elements[0], new TrieNode());
@@ -102,7 +109,13 @@ class TrieNode {
             newChildren.remove(elements[0], newChild);
         else
             newChildren.put(elements[0], newChild);
-        return new TrieNode(newChildren, value);
+        return new TrieNode(newChildren, value, pathMappings);
+    }
+
+    public TrieNode addPathMapping(String prefix, String target) {
+        Map<String, String> newLinks = new HashMap<>(pathMappings);
+        newLinks.put(prefix, target);
+        return new TrieNode(children, value, newLinks);
     }
 
     public boolean isEmpty() {

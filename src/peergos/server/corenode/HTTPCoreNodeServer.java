@@ -8,6 +8,7 @@ import peergos.shared.crypto.*;
 import java.net.*;
 import java.io.*;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.zip.*;
 
 import com.sun.net.httpserver.*;
@@ -19,7 +20,8 @@ import peergos.shared.util.Serialize;
 public class HTTPCoreNodeServer
 {
     private static final int CONNECTION_BACKLOG = 100;
-    
+    private static final int HANDLER_THREAD_COUNT = 1000;
+
     public static final String CORE_URL = "core/";
     public static final int PORT = 9999;
 
@@ -235,8 +237,7 @@ public class HTTPCoreNodeServer
             server = HttpServer.create(new InetSocketAddress(InetAddress.getLocalHost(), address.getPort()), CONNECTION_BACKLOG);
         ch = new CoreNodeHandler(coreNode);
         server.createContext("/" + CORE_URL, ch);
-        //server.setExecutor(Executors.newFixedThreadPool(HANDLER_THREAD_COUNT));
-        server.setExecutor(null);
+        server.setExecutor(Executors.newFixedThreadPool(HANDLER_THREAD_COUNT));
     }
 
     public void start() throws IOException
