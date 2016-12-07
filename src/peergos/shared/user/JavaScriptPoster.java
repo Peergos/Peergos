@@ -20,7 +20,7 @@ public class JavaScriptPoster implements HttpPoster {
 
     @Override
     public CompletableFuture<byte[]> postMultipart(String url, List<byte[]> files) {
-        throw new IllegalStateException("Unimplemented JavaScriptPoster.postMulitpart()!");
+        return http.postMultipart(url, files);
     }
 
     @Override
