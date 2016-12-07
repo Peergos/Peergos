@@ -32,25 +32,23 @@ public interface Ed25519 {
 
         @Override
         public byte[] crypto_sign_open(byte[] signed, byte[] publicSigningKey) {
-            //return TweetNaCl.crypto_sign_open(signed, publicSigningKey);
             return scriptJS.crypto_sign_open(signed, publicSigningKey);
         }
 
         @Override
         public byte[] crypto_sign(byte[] message, byte[] secretSigningKey) {
-            //return TweetNaCl.crypto_sign(message, secretSigningKey);
             return scriptJS.crypto_sign(message, secretSigningKey);
         }
 
         @Override
         public void crypto_sign_keypair(byte[] pk, byte[] sk) {
-            TweetNaCl.crypto_sign_keypair(pk, sk, true);
-            /*
-            byte[] bytes = scriptJS.crypto_sign_keypair(sk);
-            for(int i=0; i < bytes.length; i++) {
-                pk[i] = bytes[i];
-            }*/
-            //scriptJS.crypto_sign_keypair(pk, sk);
+            byte[][] bytes = scriptJS.crypto_sign_keypair(pk, sk);
+            for(int i=0; i < bytes[0].length; i++) {
+                pk[i] = bytes[0][i];
+            }
+            for(int i=0; i < bytes[1].length; i++) {
+                sk[i] = bytes[1][i];
+            }
         }
 
     }

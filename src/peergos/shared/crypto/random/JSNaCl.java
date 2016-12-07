@@ -11,5 +11,10 @@ public class JSNaCl {
 
     native public byte[] crypto_sign_open(byte[] signed, byte[] publicSigningKey);
     native public byte[] crypto_sign(byte[] message, byte[] secretSigningKey);
-    native public void crypto_sign_keypair(byte[] pk, byte[] sk);
+    native public byte[][] crypto_sign_keypair(byte[] pk, byte[] sk);
+
+    native public byte[] crypto_box_open(byte[] cipher, byte[] nonce, byte[] theirPublicBoxingKey, byte[] secretBoxingKey);
+    native public byte[] crypto_box(byte[] message, byte[] nonce, byte[] theirPublicBoxingKey, byte[] ourSecretBoxingKey);
+    native public byte[] crypto_box_keypair(byte[] pk, byte[] sk);
+
 }
