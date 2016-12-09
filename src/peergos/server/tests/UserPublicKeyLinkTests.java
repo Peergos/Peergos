@@ -19,14 +19,14 @@ public class UserPublicKeyLinkTests {
 
     @BeforeClass
     public static void init() throws Exception {
-        PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, new JavaEd25519());
+        PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, new Ed25519.Java());
         // use insecure random otherwise tests take ages
         UserTests.setFinalStatic(TweetNaCl.class.getDeclaredField("prng"), new Random(1));
     }
 
     @Test
     public void createInitial() {
-        User user = User.random(new SafeRandom.Java(), new JavaEd25519(), new JavaCurve25519());
+        User user = User.random(new SafeRandom.Java(), new Ed25519.Java(), new Curve25519.Java());
         UserPublicKeyLink.UsernameClaim node = UserPublicKeyLink.UsernameClaim.create("someuser", user, LocalDate.now().plusYears(2));
         UserPublicKeyLink upl = new UserPublicKeyLink(user.toUserPublicKey(), node);
         testSerialization(upl);
@@ -42,8 +42,8 @@ public class UserPublicKeyLinkTests {
 
     @Test
     public void createChain() {
-        User oldUser = User.random(new SafeRandom.Java(), new JavaEd25519(), new JavaCurve25519());
-        User newUser = User.random(new SafeRandom.Java(), new JavaEd25519(), new JavaCurve25519());
+        User oldUser = User.random(new SafeRandom.Java(), new Ed25519.Java(), new Curve25519.Java());
+        User newUser = User.random(new SafeRandom.Java(), new Ed25519.Java(), new Curve25519.Java());
 
         List<UserPublicKeyLink> links = UserPublicKeyLink.createChain(oldUser, newUser, "someuser", LocalDate.now().plusYears(2));
         links.forEach(link -> testSerialization(link));

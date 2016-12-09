@@ -46,18 +46,18 @@ public class Crypto {
 
     @JsMethod
     public static Crypto initJS() {
-        SafeRandom.Java random = new SafeRandom.Java(); // TODO use nacl.randomBytes()
-        Salsa20Poly1305.Java symmetricProvider = new Salsa20Poly1305.Java(); // TODO use nacl
-        JavaEd25519 signer = new JavaEd25519(); // TODO use nacl
-        JavaCurve25519 boxer = new JavaCurve25519(); // TODO use nacl
+        SafeRandom.Javascript random = new SafeRandom.Javascript();
+        Salsa20Poly1305.Javascript symmetricProvider = new Salsa20Poly1305.Javascript();
+        Ed25519.Javascript signer = new Ed25519.Javascript();
+        Curve25519.Javascript boxer = new Curve25519.Javascript();
         return init(() -> new Crypto(random, new ScryptJS(), symmetricProvider, signer, boxer), false);
     }
 
     public static Crypto initJava() {
         SafeRandom.Java random = new SafeRandom.Java();
         Salsa20Poly1305.Java symmetricProvider = new Salsa20Poly1305.Java();
-        JavaEd25519 signer = new JavaEd25519();
-        JavaCurve25519 boxer = new JavaCurve25519();
+        Ed25519.Java signer = new Ed25519.Java();
+        Curve25519 boxer = new Curve25519.Java();
         return init(() -> new Crypto(random, new ScryptJava(), symmetricProvider, signer, boxer), true);
     }
 }
