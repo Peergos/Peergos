@@ -48,8 +48,8 @@ public class NetworkAccess {
     public static CompletableFuture<NetworkAccess> build(HttpPoster poster, boolean isJavascript) {
         CoreNode coreNode = new HTTPCoreNode(poster);
         ContentAddressedStorage dht = new ContentAddressedStorage.CachingDHTClient(new ContentAddressedStorage.HTTP(poster), 1000, 50 * 1024);
-        Btree btree = new Btree.HTTP(poster);
-//        Btree btree = new BtreeImpl(coreNode, dht);
+//        Btree btree = new Btree.HTTP(poster);
+        Btree btree = new BtreeImpl(coreNode, dht);
         return coreNode.getUsernames("").thenApply(usernames -> new NetworkAccess(coreNode, dht, btree, usernames, isJavascript));
     }
 

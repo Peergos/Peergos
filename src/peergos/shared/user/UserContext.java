@@ -805,7 +805,7 @@ public class UserContext {
                             return CompletableFuture.completedFuture(rootWithMapping.put(path, e));
                         });
             }
-            throw new IllegalStateException("Metadata blob not Present!");
+            throw new IllegalStateException("Metadata blob not Present downloading entry point!");
         }).exceptionally(Futures::logError);
     }
 

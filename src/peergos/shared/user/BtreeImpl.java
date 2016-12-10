@@ -21,24 +21,26 @@ public class BtreeImpl implements Btree {
 
     @Override
     public CompletableFuture<PairMultihash> put(UserPublicKey sharingKey, byte[] mapKey, Multihash value) {
-        return coreNode.getMetadataBlob(sharingKey).thenCompose(rootHash -> MerkleBTree.create(sharingKey, rootHash, dht)
-                .thenCompose(btree -> btree.put(sharingKey, mapKey, value))
-                .thenApply(multihash -> new PairMultihash(rootHash, MaybeMultihash.of(multihash)))
-        );
+        UserPublicKey publicSharingKey = sharingKey.toUserPublicKey();
+        return coreNode.getMetadataBlob(publicSharingKey).thenCompose(rootHash -> MerkleBTree.create(publicSharingKey, rootHash, dht)
+                .thenCompose(btree -> btree.put(publicSharingKey, mapKey, value))
+                .thenApply(multihash -> new PairMultihash(rootHash, MaybeMultihash.of(multihash))));
     }
 
     @Override
     public CompletableFuture<MaybeMultihash> get(UserPublicKey sharingKey, byte[] mapKey) {
-        return coreNode.getMetadataBlob(sharingKey)
-                .thenCompose(rootHash -> MerkleBTree.create(sharingKey, rootHash, dht))
+        UserPublicKey publicSharingKey = sharingKey.toUserPublicKey();
+        return coreNode.getMetadataBlob(publicSharingKey)
+                .thenCompose(rootHash -> MerkleBTree.create(publicSharingKey, rootHash, dht))
                 .thenCompose(btree -> btree.get(mapKey));
     }
 
     @Override
     public CompletableFuture<PairMultihash> remove(UserPublicKey sharingKey, byte[] mapKey) {
-        return coreNode.getMetadataBlob(sharingKey)
-                .thenCompose(rootHash -> MerkleBTree.create(sharingKey, rootHash, dht)
-                        .thenCompose(btree -> btree.delete(sharingKey, mapKey))
+        UserPublicKey publicSharingKey = sharingKey.toUserPublicKey();
+        return coreNode.getMetadataBlob(publicSharingKey)
+                .thenCompose(rootHash -> MerkleBTree.create(publicSharingKey, rootHash, dht)
+                        .thenCompose(btree -> btree.delete(publicSharingKey, mapKey))
                         .thenApply(newRoot -> new PairMultihash(rootHash, MaybeMultihash.of(newRoot))));
     }
 }
