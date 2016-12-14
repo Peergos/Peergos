@@ -7,13 +7,14 @@ public class MultipartReceiver {
 
     public static byte[] extractFile(InputStream in, String boundary) {
         try {
-            String first = readLine(in);
+            int maxLineSize = 1024;
+            String first = readLine(in, maxLineSize);
             if (!first.substring(2).equals(boundary))
                 throw new IllegalStateException("Incorrect boundary! " + boundary + " != " + first.substring(2));
-            String filenameLine = readLine(in);
-            String contentType = readLine(in);
-            String encoding = contentType.length() > 0 ? readLine(in) : "";
-            String blank = encoding.length() > 0 ? readLine(in) : "";
+            String filenameLine = readLine(in, maxLineSize);
+            String contentType = readLine(in, maxLineSize);
+            String encoding = contentType.length() > 0 ? readLine(in, maxLineSize) : "";
+            String blank = encoding.length() > 0 ? readLine(in, maxLineSize) : "";
 
             ByteArrayOutputStream file = new ByteArrayOutputStream();
             byte[] buffer = new byte[4096];
@@ -28,18 +29,22 @@ public class MultipartReceiver {
         }
     }
 
-    public static String readLine(InputStream in) throws IOException {
+    public static String readLine(InputStream in, int maxSize) throws IOException {
         ByteArrayOutputStream bout = new ByteArrayOutputStream();
-        int r;
+        int r, total = 0;
         while ((r = in.read()) >= 0) {
+            total++;
+
             if (r == '\r') {
                 int next = in.read();
                 if (next == '\n')
-                    return new String(bout.toByteArray());
+                    break;
                 bout.write(r);
                 bout.write(next);
             } else
                 bout.write(r);
+            if (total > maxSize)
+                break;
         }
         return new String(bout.toByteArray());
     }
