@@ -71,7 +71,7 @@ public class UserTests {
         String password = "test01";
 
         UserUtil.generateUser(username, password, new ScryptJava(), new Salsa20Poly1305.Java(),
-                new SafeRandom.Java(), new JavaEd25519(), new JavaCurve25519()).thenAccept(userWithRoot -> {
+                new SafeRandom.Java(), new Ed25519.Java(), new Curve25519.Java()).thenAccept(userWithRoot -> {
 		    UserPublicKey expected = UserPublicKey.fromString("7HvEWP6yd1UD8rOorfFrieJ8S7yC8+l3VisV9kXNiHmI7Eav7+3GTRSVBRCymItrzebUUoCi39M6rdgeOU9sXXFD");
 		    if (! expected.equals(userWithRoot.getUser().toUserPublicKey()))
 		        throw new IllegalStateException("Generated user diferent from the Javascript! \n"+userWithRoot.getUser().toUserPublicKey() + " != \n"+expected);

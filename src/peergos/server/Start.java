@@ -67,7 +67,7 @@ public class Start
 
     public static void run(Args a) {
         try {
-            PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, new JavaEd25519());
+            PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, new Ed25519.Java());
 
             if (a.hasArg("help")) {
                 printOptions();
