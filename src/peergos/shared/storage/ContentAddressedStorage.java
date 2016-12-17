@@ -7,6 +7,7 @@ import peergos.shared.user.*;
 import peergos.shared.util.*;
 
 import java.io.*;
+import java.net.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
@@ -81,16 +82,24 @@ public interface ContentAddressedStorage {
             }
         }
 
+        private static String encode(String component) {
+            try {
+                return URLEncoder.encode(component, "UTF-8");
+            } catch (UnsupportedEncodingException e) {
+                throw new RuntimeException(e);
+            }
+        }
+
         @Override
         public CompletableFuture<Multihash> _new(UserPublicKey writer) {
-            return poster.get(apiPrefix + "object/new?stream-channels=true"+ "&writer=" + writer.toUserPublicKey().toString())
+            return poster.get(apiPrefix + "object/new?stream-channels=true"+ "&writer=" + encode(writer.toUserPublicKey().toString()))
                     .thenApply(HTTP::getObjectHash);
         }
 
         @Override
         public CompletableFuture<Multihash> setData(UserPublicKey writer, Multihash base, byte[] data) {
             return poster.postMultipart(apiPrefix + "object/patch/set-data?arg=" + base.toBase58()
-                    + "&writer=" + writer.toUserPublicKey().toString(), Arrays.asList(data))
+                    + "&writer=" + encode(writer.toUserPublicKey().toString()), Arrays.asList(data))
                     .thenApply(HTTP::getObjectHash);
         }
 
@@ -98,7 +107,7 @@ public interface ContentAddressedStorage {
         public CompletableFuture<Multihash> addLink(UserPublicKey writer, Multihash base, String label, Multihash linkTarget) {
             return poster.get(apiPrefix + "object/patch/add-link?arg=" + base.toBase58()
                     + "&arg=" + label + "&arg=" + linkTarget.toBase58()
-                    + "&writer=" + writer.toUserPublicKey().toString())
+                    + "&writer=" + encode(writer.toUserPublicKey().toString()))
                     .thenApply(HTTP::getObjectHash);
         }
 

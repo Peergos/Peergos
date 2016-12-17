@@ -7,6 +7,7 @@ import com.sun.net.httpserver.*;
 import peergos.shared.util.*;
 
 import java.io.*;
+import java.net.*;
 import java.util.*;
 import java.util.function.*;
 import java.util.stream.*;
@@ -31,7 +32,7 @@ public class DHTHandler implements HttpHandler
             query = query.substring(1);
         String[] parts = query.split("&");
         Map<String, List<String>> res = new HashMap<>();
-        for (String part: parts) {
+        for (String part : parts) {
             int sep = part.indexOf("=");
             String key = part.substring(0, sep);
             String value = part.substring(sep + 1);
@@ -48,6 +49,7 @@ public class DHTHandler implements HttpHandler
             if (! path.startsWith(apiPrefix))
                 throw new IllegalStateException("Unsupported api version, required: " + apiPrefix);
             path = path.substring(apiPrefix.length());
+            // N.B. URI.getQuery() decodes the query string
             Map<String, List<String>> params = parseQuery(httpExchange.getRequestURI().getQuery());
             List<String> args = params.get("arg");
             Function<String, String> last = key -> params.get(key).get(params.get(key).size() - 1);
@@ -133,8 +135,23 @@ public class DHTHandler implements HttpHandler
                 }
             }
         } catch (Exception e) {
+            System.err.println("Error handling " +httpExchange.getRequestURI());
             e.printStackTrace();
-            throw new RuntimeException(e);
+            replyError(httpExchange, e);
+        }
+    }
+
+    private static void replyError(HttpExchange exchange, Throwable t) {
+        try {
+            exchange.sendResponseHeaders(500, 0);
+            DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());
+            String body = t.getMessage();
+            dout.write(body.getBytes());
+            dout.flush();
+            dout.close();
+        } catch (IOException e)
+        {
+            e.printStackTrace();
         }
     }
 
