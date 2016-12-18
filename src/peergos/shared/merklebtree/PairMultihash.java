@@ -34,4 +34,9 @@ public class PairMultihash {
 
         return new PairMultihash(left, right);
     }
+
+    @Override
+    public String toString() {
+        return "["+left+", "+right+"]";
+    }
 }
