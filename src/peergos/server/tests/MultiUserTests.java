@@ -186,18 +186,18 @@ public class MultiUserTests {
             users.add(UserTests.ensureSignedUp(userNames.get(i), userPasswords.get(i), network, crypto));
 
         for (UserContext user : users)
-            user.sendFollowRequest(u1.username, SymmetricKey.random());
+            user.sendFollowRequest(u1.username, SymmetricKey.random()).get();
 
 
         List<FollowRequest> u1Requests = u1.processFollowRequests().get();
         for (FollowRequest u1Request : u1Requests) {
             boolean accept = true;
             boolean reciprocate = true;
-            u1.sendReplyFollowRequest(u1Request, accept, reciprocate);
+            u1.sendReplyFollowRequest(u1Request, accept, reciprocate).get();
         }
 
         for (UserContext user : users) {
-            user.processFollowRequests();
+            user.processFollowRequests().get();
         }
 
         // friends are connected
@@ -208,7 +208,7 @@ public class MultiUserTests {
         byte[] originalFileContents = "Hello Peergos friend!".getBytes();
         Files.write(f.toPath(), originalFileContents);
         String folderName = "afolder";
-        u1Root.mkdir(folderName, u1, SymmetricKey.random(), false, u1.crypto.random);
+        u1Root.mkdir(folderName, u1, SymmetricKey.random(), false, u1.crypto.random).get();
         FileTreeNode folder = u1.getByPath("/a/" + folderName).get().get();
         ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(f);
         boolean uploaded = folder.uploadFile(filename, resetableFileInputStream, f.length(), u1, l -> {}, u1.fragmenter()).get();
