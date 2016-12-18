@@ -30,7 +30,7 @@ public class IpfsDHT implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Multihash> _new(UserPublicKey writer) {
+    public CompletableFuture<Multihash> emptyObject(UserPublicKey writer) {
         try {
             return CompletableFuture.completedFuture(ipfs.object._new(Optional.empty()).hash);
         } catch (IOException e) {

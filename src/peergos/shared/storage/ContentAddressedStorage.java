@@ -16,7 +16,7 @@ public interface ContentAddressedStorage {
 
     int MAX_OBJECT_LENGTH  = 1024*256;
 
-    CompletableFuture<Multihash> _new(UserPublicKey writer);
+    CompletableFuture<Multihash> emptyObject(UserPublicKey writer);
 
     CompletableFuture<Multihash> setData(UserPublicKey writer, Multihash object, byte[] data);
 
@@ -32,7 +32,7 @@ public interface ContentAddressedStorage {
      * @return a hash of the stored object
      */
     default CompletableFuture<Multihash> put(UserPublicKey writer, MerkleNode object) {
-        return _new(writer)
+        return emptyObject(writer)
                 .thenCompose(EMPTY -> setData(writer, EMPTY, object.data))
                 .thenCompose(hash -> Futures.reduceAll(
                         object.links,
@@ -91,7 +91,7 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<Multihash> _new(UserPublicKey writer) {
+        public CompletableFuture<Multihash> emptyObject(UserPublicKey writer) {
             return poster.get(apiPrefix + "object/new?stream-channels=true"+ "&writer=" + encode(writer.toUserPublicKey().toString()))
                     .thenApply(HTTP::getObjectHash);
         }
@@ -160,8 +160,8 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<Multihash> _new(UserPublicKey writer) {
-            return target._new(writer);
+        public CompletableFuture<Multihash> emptyObject(UserPublicKey writer) {
+            return target.emptyObject(writer);
         }
 
         @Override

@@ -21,7 +21,7 @@ public class CachingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Multihash> _new(UserPublicKey writer) {
+    public CompletableFuture<Multihash> emptyObject(UserPublicKey writer) {
         return put(writer, new MerkleNode(new byte[0]));
     }
 

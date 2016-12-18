@@ -7,7 +7,6 @@ import com.sun.net.httpserver.*;
 import peergos.shared.util.*;
 
 import java.io.*;
-import java.net.*;
 import java.util.*;
 import java.util.function.*;
 import java.util.stream.*;
@@ -57,7 +56,7 @@ public class DHTHandler implements HttpHandler
             switch (path) {
                 case "object/new":{
                     UserPublicKey writer = UserPublicKey.fromString(last.apply("writer"));
-                    dht._new(writer).thenAccept(newHash -> {
+                    dht.emptyObject(writer).thenAccept(newHash -> {
                         Map res = new HashMap();
                         res.put("Hash", newHash.toBase58());
                         // don't cache EMPTY multihash as it will change if the internal IPFS serialization format changes
