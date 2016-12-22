@@ -23,7 +23,7 @@ public class Multipart {
         httpConn.setDoOutput(true);
         httpConn.setDoInput(true);
         httpConn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
-        httpConn.setRequestProperty("User-Agent", "Java IPFS CLient");
+        httpConn.setRequestProperty("User-Agent", "Java IPFS Client");
         out = httpConn.getOutputStream();
         writer = new PrintWriter(new OutputStreamWriter(out, charset), true);
     }

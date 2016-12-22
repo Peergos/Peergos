@@ -2,7 +2,7 @@ package peergos.shared.user;
 
 import jsinterop.annotations.*;
 
-import java.io.*;
+import java.util.*;
 import java.util.concurrent.*;
 
 @JsType(namespace = "http", isNative = true)
@@ -77,4 +77,6 @@ public class NativeJSHttp {
         });
         return future;
     }-*/;
+
+    public native CompletableFuture<byte[]> postMultipart(String url, List<byte[]> payload) ;
 }

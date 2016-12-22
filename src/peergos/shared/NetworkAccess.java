@@ -3,6 +3,7 @@ package peergos.shared;
 import jsinterop.annotations.*;
 import peergos.client.*;
 import peergos.shared.corenode.*;
+import peergos.shared.storage.*;
 import peergos.shared.user.*;
 
 import java.net.*;
@@ -13,18 +14,18 @@ import java.util.concurrent.*;
 public class NetworkAccess {
 
     public final CoreNode coreNode;
-    public final DHTClient dhtClient;
+    public final ContentAddressedStorage dhtClient;
     public final Btree btree;
     @JsProperty
     public final List<String> usernames;
     private final LocalDateTime creationTime;
     private final boolean isJavascript;
 
-    public NetworkAccess(CoreNode coreNode, DHTClient dhtClient, Btree btree, List<String> usernames) {
+    public NetworkAccess(CoreNode coreNode, ContentAddressedStorage dhtClient, Btree btree, List<String> usernames) {
         this(coreNode,dhtClient,btree, usernames, false);
     }
 
-    public NetworkAccess(CoreNode coreNode, DHTClient dhtClient, Btree btree, List<String> usernames, boolean isJavascript) {
+    public NetworkAccess(CoreNode coreNode, ContentAddressedStorage dhtClient, Btree btree, List<String> usernames, boolean isJavascript) {
         this.coreNode = coreNode;
         this.dhtClient = dhtClient;
         this.btree = btree;
@@ -45,10 +46,10 @@ public class NetworkAccess {
     }
 
     public static CompletableFuture<NetworkAccess> build(HttpPoster poster, boolean isJavascript) {
-        CoreNode coreNode = new HTTPCoreNode(poster);
-        DHTClient dht = new DHTClient.CachingDHTClient(new DHTClient.HTTP(poster), 1000, 50 * 1024);
-        Btree btree = new Btree.HTTP(poster);
-//        Btree btree = new BtreeImpl(coreNode, dht);
+        CoreNode coreNode = new CachingCoreNode(new HTTPCoreNode(poster), 5_000);
+        ContentAddressedStorage dht = new ContentAddressedStorage.CachingDHTClient(new ContentAddressedStorage.HTTP(poster), 1000, 50 * 1024);
+//        Btree btree = new Btree.HTTP(poster);
+        Btree btree = new BtreeImpl(coreNode, dht);
         return coreNode.getUsernames("").thenApply(usernames -> new NetworkAccess(coreNode, dht, btree, usernames, isJavascript));
     }
 

@@ -236,6 +236,8 @@ public class UserContext {
         Location rootLocation = new Location(this.user, writer, rootMapKey);
         System.out.println("Uploading entry point directory");
         return this.uploadChunk(root, rootLocation, Collections.emptyList()).thenCompose(uploaded -> {
+            if (!uploaded)
+                throw new IllegalStateException("Failed to upload root dir!");
             long t3 = System.currentTimeMillis();
             System.out.println("Uploading root dir metadata took " + (t3 - t2) + " mS");
             return addToStaticDataAndCommit(entry)
@@ -598,7 +600,7 @@ public class UserContext {
                                               NetworkAccess network) {
 
         byte[] rawStatic = staticData.serialize(rootKey);
-        return network.dhtClient.put(rawStatic, user, Collections.emptyList())
+        return network.dhtClient.put(user, rawStatic, Collections.emptyList())
                 .thenCompose(blobHash -> network.coreNode.getMetadataBlob(user)
                         .thenCompose(currentHash -> {
                             DataSink bout = new DataSink();
@@ -723,7 +725,7 @@ public class UserContext {
     }
 
     private CompletableFuture<Multihash> uploadFragment(Fragment f, UserPublicKey targetUser) {
-        return network.dhtClient.put(f.data, targetUser, Collections.emptyList());
+        return network.dhtClient.put(targetUser, f.data, Collections.emptyList());
     }
 
     public CompletableFuture<List<Multihash>> uploadFragments(List<Fragment> fragments, UserPublicKey owner,
@@ -745,7 +747,7 @@ public class UserContext {
             metadata.serialize(dout);
             byte[] metaBlob = dout.toByteArray();
             System.out.println("Storing metadata blob of " + metaBlob.length + " bytes. to mapKey: " + location.toString());
-            return network.dhtClient.put(metaBlob, location.owner, linkHashes).thenCompose(blobHash -> {
+            return network.dhtClient.put(location.owner, metaBlob, linkHashes).thenCompose(blobHash -> {
                 User sharer = (User) location.writer;
                 return network.btree.put(sharer, location.getMapKey(), blobHash).thenCompose(newBtreeRootCAS -> {
                     if (newBtreeRootCAS.left.equals(newBtreeRootCAS.right))
@@ -775,7 +777,7 @@ public class UserContext {
 
     private CompletableFuture<byte[]> getStaticData() {
         return network.coreNode.getMetadataBlob(user.toUserPublicKey())
-                .thenCompose(key -> network.dhtClient.get(key.get())
+                .thenCompose(key -> network.dhtClient.getData(key.get())
                         .thenApply(opt -> opt.get()));
     }
 
@@ -803,7 +805,7 @@ public class UserContext {
                             return CompletableFuture.completedFuture(rootWithMapping.put(path, e));
                         });
             }
-            throw new IllegalStateException("Metadata blob not Present!");
+            throw new IllegalStateException("Metadata blob not Present downloading entry point!");
         }).exceptionally(Futures::logError);
     }
 
@@ -844,7 +846,7 @@ public class UserContext {
         // download the metadata blob for this entry point
         return network.btree.get(entry.pointer.location.writer, entry.pointer.location.getMapKey()).thenCompose(btreeValue -> {
             if (btreeValue.isPresent())
-                return network.dhtClient.get(btreeValue.get())
+                return network.dhtClient.getData(btreeValue.get())
                         .thenApply(value -> value.map(FileAccess::deserialize));
             return CompletableFuture.completedFuture(Optional.empty());
         });
@@ -855,7 +857,7 @@ public class UserContext {
                 .map(link -> {
                     Location loc = link.targetLocation(baseKey);
                     return network.btree.get(loc.writer, loc.getMapKey())
-                            .thenCompose(key -> network.dhtClient.get(key.get()))
+                            .thenCompose(key -> network.dhtClient.getData(key.get()))
                             .thenApply(dataOpt -> {
                                 if (!dataOpt.isPresent() || dataOpt.get().length == 0)
                                     return Optional.<RetrievedFilePointer>empty();
@@ -875,14 +877,14 @@ public class UserContext {
         return network.btree.get(loc.writer, loc.getMapKey()).thenCompose(blobHash -> {
             if (!blobHash.isPresent())
                 return CompletableFuture.completedFuture(Optional.empty());
-            return network.dhtClient.get(blobHash.get())
+            return network.dhtClient.getData(blobHash.get())
                     .thenApply(rawOpt -> rawOpt.map(FileAccess::deserialize));
         });
     };
 
     public CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Multihash> hashes, ProgressConsumer<Long> monitor) {
         List<CompletableFuture<Optional<FragmentWithHash>>> futures = hashes.stream()
-                .map(h -> network.dhtClient.get(h)
+                .map(h -> network.dhtClient.getData(h)
                         .thenApply(dataOpt -> {
                             dataOpt.ifPresent(bytes -> monitor.accept((long)bytes.length));
                             return dataOpt.map(data -> new FragmentWithHash(new Fragment(data), h));

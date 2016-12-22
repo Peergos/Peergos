@@ -1,11 +1,13 @@
 package peergos.shared.merklebtree;
 
+import peergos.shared.crypto.*;
 import peergos.shared.ipfs.api.*;
 import peergos.shared.storage.ContentAddressedStorage;
 import peergos.shared.util.*;
 
 import java.io.*;
 import java.util.*;
+import java.util.concurrent.*;
 
 public class MerkleBTree
 {
@@ -24,21 +26,20 @@ public class MerkleBTree
         this(root, MaybeMultihash.of(rootHash), storage, maxChildren);
     }
 
-    public static MerkleBTree create(Multihash rootHash, ContentAddressedStorage dht) throws IOException {
-        return create(MaybeMultihash.of(rootHash),
-                dht);
+    public static CompletableFuture<MerkleBTree> create(UserPublicKey writer, Multihash rootHash, ContentAddressedStorage dht) {
+        return create(writer, MaybeMultihash.of(rootHash), dht);
     }
 
-    public static MerkleBTree create(MaybeMultihash rootHash, ContentAddressedStorage dht) throws IOException {
+    public static CompletableFuture<MerkleBTree> create(UserPublicKey writer, MaybeMultihash rootHash, ContentAddressedStorage dht) {
         if (!  rootHash.isPresent()) {
             TreeNode newRoot = new TreeNode(new TreeSet<>());
-            Multihash put = dht.put(newRoot.toMerkleNode());
-            return new MerkleBTree(newRoot, put, dht, MAX_NODE_CHILDREN);
+            return dht.put(writer, newRoot.toMerkleNode()).thenApply(put -> new MerkleBTree(newRoot, put, dht, MAX_NODE_CHILDREN));
         }
-        byte[] raw = dht.get(rootHash.get());
-        if (raw == null)
-            throw new IllegalStateException("Null byte[] returned by DHT for hash: " + rootHash.get());
-        return new MerkleBTree(TreeNode.deserialize(raw), rootHash, dht, MAX_NODE_CHILDREN);
+        return dht.getData(rootHash.get()).thenApply(rawOpt -> {
+            if (! rawOpt.isPresent())
+                throw new IllegalStateException("Null byte[] returned by DHT for hash: " + rootHash.get());
+            return new MerkleBTree(TreeNode.deserialize(rawOpt.get()), rootHash, dht, MAX_NODE_CHILDREN);
+        });
     }
 
     /**
@@ -47,7 +48,7 @@ public class MerkleBTree
      * @return value stored under rawKey
      * @throws IOException
      */
-    public MaybeMultihash get(byte[] rawKey) throws IOException {
+    public CompletableFuture<MaybeMultihash> get(byte[] rawKey) {
         return root.get(new ByteArrayWrapper(rawKey), storage);
     }
 
@@ -58,13 +59,9 @@ public class MerkleBTree
      * @return hash of new tree root
      * @throws IOException
      */
-    public Multihash put(byte[] rawKey, Multihash value) throws IOException {
-        TreeNode newRoot = root.put(new ByteArrayWrapper(rawKey), value, storage, maxChildren);
-        if (!newRoot.hash.isPresent()) {
-            root = new TreeNode(newRoot.keys, storage.put(newRoot.toMerkleNode()));
-        } else
-            root = newRoot;
-        return root.hash.get();
+    public CompletableFuture<Multihash> put(UserPublicKey writer, byte[] rawKey, Multihash value) {
+        return root.put(writer, new ByteArrayWrapper(rawKey), value, storage, maxChildren)
+                .thenCompose(newRoot -> commit(writer, newRoot));
     }
 
     /**
@@ -73,13 +70,20 @@ public class MerkleBTree
      * @return hash of new tree root
      * @throws IOException
      */
-    public Multihash delete(byte[] rawKey) throws IOException {
-        TreeNode newRoot = root.delete(new ByteArrayWrapper(rawKey), storage, maxChildren);
-        if (!newRoot.hash.isPresent()) {
-            root = new TreeNode(newRoot.keys, storage.put(newRoot.toMerkleNode()));
-        } else
+    public CompletableFuture<Multihash> delete(UserPublicKey writer, byte[] rawKey) {
+        return root.delete(writer, new ByteArrayWrapper(rawKey), storage, maxChildren)
+                .thenCompose(newRoot -> commit(writer, newRoot));
+    }
+
+    private CompletableFuture<Multihash> commit(UserPublicKey writer, TreeNode newRoot) {
+        if (newRoot.hash.isPresent()) {
             root = newRoot;
-        return root.hash.get();
+            return CompletableFuture.completedFuture(newRoot.hash.get());
+        }
+        return storage.put(writer, newRoot.toMerkleNode()).thenApply(newRootHash -> {
+            root = new TreeNode(newRoot.keys, newRootHash);
+            return newRootHash;
+        });
     }
 
     /**
@@ -87,11 +91,11 @@ public class MerkleBTree
      * @return number of keys stored in tree
      * @throws IOException
      */
-    public int size() throws IOException {
+    public CompletableFuture<Integer> size() {
         return root.size(storage);
     }
 
-    public void print(PrintStream w) throws IOException {
+    public void print(PrintStream w) throws Exception {
         root.print(w, 0, storage);
     }
 }
