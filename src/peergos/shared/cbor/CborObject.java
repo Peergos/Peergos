@@ -35,7 +35,7 @@ public interface CborObject {
                 case CborConstants.TYPE_FLOAT_SIMPLE:
                     if (type.getAdditionalInfo() == CborConstants.NULL)
                         return new CborNull();
-                    throw new IllegalStateException("Unimplemented simple type!");
+                    throw new IllegalStateException("Unimplemented simple type! " + type.getAdditionalInfo());
                 case CborConstants.TYPE_MAP: {
                     long nValues = decoder.readMapLength();
                     SortedMap<CborObject, CborObject> result = new TreeMap<>();
@@ -92,7 +92,7 @@ public interface CborObject {
     }
 
     final class CborByteArray implements CborObject, Comparable<CborByteArray> {
-        private final byte[] value;
+        public final byte[] value;
 
         public CborByteArray(byte[] value) {
             this.value = value;
