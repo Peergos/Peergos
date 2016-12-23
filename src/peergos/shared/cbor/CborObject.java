@@ -33,8 +33,18 @@ public interface CborObject {
                 case CborConstants.TYPE_NEGATIVE_INTEGER:
                     return new CborLong(decoder.readInt());
                 case CborConstants.TYPE_FLOAT_SIMPLE:
-                    if (type.getAdditionalInfo() == CborConstants.NULL)
+                    if (type.getAdditionalInfo() == CborConstants.NULL) {
+                        decoder.readNull();
                         return new CborNull();
+                    }
+                    if (type.getAdditionalInfo() == CborConstants.TRUE) {
+                        decoder.readBoolean();
+                        return new CborBoolean(true);
+                    }
+                    if (type.getAdditionalInfo() == CborConstants.FALSE) {
+                        decoder.readBoolean();
+                        return new CborBoolean(false);
+                    }
                     throw new IllegalStateException("Unimplemented simple type! " + type.getAdditionalInfo());
                 case CborConstants.TYPE_MAP: {
                     long nValues = decoder.readMapLength();
@@ -132,6 +142,46 @@ public interface CborObject {
         }
     }
 
+    final class CborBoolean implements CborObject {
+        public final boolean value;
+
+        public CborBoolean(boolean value) {
+            this.value = value;
+        }
+
+        @Override
+        public void serialize(CborEncoder encoder) {
+            try {
+                encoder.writeBoolean(value);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+
+            CborBoolean that = (CborBoolean) o;
+
+            return value == that.value;
+
+        }
+
+        @Override
+        public int hashCode() {
+            return (value ? 1 : 0);
+        }
+
+        @Override
+        public String toString() {
+            return "CborBoolean{" +
+                    value +
+                    '}';
+        }
+    }
+
     final class CborByteArray implements CborObject, Comparable<CborByteArray> {
         public final byte[] value;
 
@@ -207,6 +257,13 @@ public interface CborObject {
         public int hashCode() {
             return value.hashCode();
         }
+
+        @Override
+        public String toString() {
+            return "CborString{\"" +
+                    value +
+                    "\"}";
+        }
     }
 
     final class CborLong implements CborObject, Comparable<CborLong> {
@@ -245,6 +302,13 @@ public interface CborObject {
         public int hashCode() {
             return (int) (value ^ (value >>> 32));
         }
+
+        @Override
+        public String toString() {
+            return "CborLong{" +
+                    value +
+                    '}';
+        }
     }
 
     final class CborNull implements CborObject, Comparable<CborNull> {
@@ -275,6 +339,11 @@ public interface CborObject {
         @Override
         public int hashCode() {
             return 0;
+        }
+
+        @Override
+        public String toString() {
+            return "CborNull{}";
         }
     }
 }
