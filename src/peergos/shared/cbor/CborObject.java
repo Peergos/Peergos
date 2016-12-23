@@ -46,6 +46,12 @@ public interface CborObject {
                     }
                     return new CborMap(result);
                 }
+                case CborConstants.TYPE_ARRAY:
+                    long nItems = decoder.readArrayLength();
+                    List<CborObject> res = new ArrayList<>((int) nItems);
+                    for (long i=0; i < nItems; i++)
+                        res.add(deserialize(decoder));
+                    return new CborList(res);
                 default:
                     throw new IllegalStateException("Unimplemented cbor type: " + type);
             }
@@ -88,6 +94,41 @@ public interface CborObject {
         @Override
         public int hashCode() {
             return values != null ? values.hashCode() : 0;
+        }
+    }
+
+    final class CborList implements CborObject {
+        public final List<CborObject> value;
+
+        public CborList(List<CborObject> value) {
+            this.value = value;
+        }
+
+        @Override
+        public void serialize(CborEncoder encoder) {
+            try {
+                encoder.writeArrayStart(value.size());
+                for (CborObject object : value) {
+                    object.serialize(encoder);
+                }
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+
+            CborList cborList = (CborList) o;
+
+            return value != null ? value.equals(cborList.value) : cborList.value == null;
+        }
+
+        @Override
+        public int hashCode() {
+            return value != null ? value.hashCode() : 0;
         }
     }
 

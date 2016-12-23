@@ -61,6 +61,16 @@ public class CborObjects {
         compatibleAndIdempotentSerialization(cborMap);
     }
 
+    @Test
+    public void cborList() {
+        List<CborObject> list = new ArrayList<>();
+        list.add(new CborObject.CborString("A value"));
+        list.add(new CborObject.CborByteArray("A value".getBytes()));
+        list.add(new CborObject.CborNull());
+        CborObject.CborList cborList = new CborObject.CborList(list);
+        compatibleAndIdempotentSerialization(cborList);
+    }
+
     public void compatibleAndIdempotentSerialization(CborObject value) {
         byte[] raw = value.toByteArray();
         CborObject deserialized = CborObject.fromByteArray(raw);
