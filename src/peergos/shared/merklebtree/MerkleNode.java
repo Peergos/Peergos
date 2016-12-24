@@ -7,7 +7,7 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.util.*;
 
-public class MerkleNode {
+public class MerkleNode implements Cborable {
     public final byte[] data;
     public final List<Link> links;
 
@@ -46,25 +46,28 @@ public class MerkleNode {
         return new MerkleNode(newData, links);
     }
 
-    /**
-     *
-     * @return a byte[] of the CBOR serialization of this merkle node
-     */
-    public byte[] serialize() {
-        try {
-            ByteArrayOutputStream bout = new ByteArrayOutputStream();
-            CborEncoder encoder = new CborEncoder(bout);
-            encoder.writeMapStart(1 + links.size());
-            encoder.writeTextString("Data");
-            encoder.writeByteString(data);
-            for (Link link: links) {
-                encoder.writeTextString(link.label);
-                encoder.writeByteString(link.target.toBytes());
-            }
-            return bout.toByteArray();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+    public CborObject.CborMap toCbor() {
+        SortedMap<CborObject, CborObject> cbor = new TreeMap<>();
+        cbor.put(new CborObject.CborString("Data"), new CborObject.CborByteArray(data));
+        for (Link link: links) {
+            cbor.put(new CborObject.CborString(link.label), new CborObject.CborMerkleLink(link.target));
         }
+        return new CborObject.CborMap(cbor);
+    }
+
+    public static MerkleNode fromCbor(CborObject obj) {
+        CborObject.CborMap map = (CborObject.CborMap) obj;
+        CborObject.CborString dataLabel = new CborObject.CborString("Data");
+        CborObject.CborByteArray data = (CborObject.CborByteArray) map.values.get(dataLabel);
+        List<Link> links = new ArrayList<>(map.values.size() - 1);
+        for (Map.Entry<CborObject, CborObject> entry : map.values.entrySet()) {
+            if (entry.getKey().equals(dataLabel))
+                continue;
+            String label = ((CborObject.CborString) entry.getKey()).value;
+            Multihash value = ((CborObject.CborMerkleLink) entry.getValue()).target;
+            links.add(new Link(label, value));
+        }
+        return new MerkleNode(data.value, links);
     }
 
     /**
@@ -75,16 +78,8 @@ public class MerkleNode {
      */
     public static MerkleNode deserialize(byte[] in) throws IOException {
         CborDecoder decoder = new CborDecoder(new ByteArrayInputStream(in));
-        long elements = decoder.readMapLength();
-        String dataLabel = decoder.readTextString();
-        byte[] data = decoder.readByteString();
-        List<Link> links = new ArrayList<>();
-        for (int i = 0; i < elements - 1; i++) {
-            String label = decoder.readTextString();
-            Multihash target = Multihash.deserialize(new DataSource(decoder.readByteString()));
-            links.add(new Link(label, target));
-        }
-        return new MerkleNode(data, links);
+        CborObject cbor = CborObject.deserialize(decoder);
+        return fromCbor(cbor);
     }
 
     @Override
