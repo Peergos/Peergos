@@ -1,5 +1,6 @@
 package peergos.shared.cbor;
 
+import peergos.shared.ipfs.api.*;
 import peergos.shared.util.*;
 
 import java.io.*;
@@ -15,6 +16,8 @@ public interface CborObject {
         serialize(encoder);
         return bout.toByteArray();
     }
+
+    CborString MERKLE_LINK_KEY = new CborString("/");
 
     static CborObject fromByteArray(byte[] cbor) {
         return deserialize(new CborDecoder(new ByteArrayInputStream(cbor)));
@@ -53,6 +56,14 @@ public interface CborObject {
                         CborObject key = deserialize(decoder);
                         CborObject value = deserialize(decoder);
                         result.put(key, value);
+                    }
+                    if (nValues == 1 && result.containsKey(MERKLE_LINK_KEY)) {
+                        // This is the IPLD encoding for a merkle link
+                        CborObject value = result.get(MERKLE_LINK_KEY);
+                        if (! (value instanceof CborByteArray))
+                            throw new IllegalStateException("Merkle links in cbor must be byte arrays!");
+                        CborByteArray target = (CborByteArray) value;
+                        return new CborMerkleLink(Multihash.deserialize(new DataSource(target.value)));
                     }
                     return new CborMap(result);
                 }
@@ -104,6 +115,41 @@ public interface CborObject {
         @Override
         public int hashCode() {
             return values != null ? values.hashCode() : 0;
+        }
+    }
+
+    final class CborMerkleLink implements CborObject {
+        public final Multihash target;
+
+        public CborMerkleLink(Multihash target) {
+            this.target = target;
+        }
+
+        @Override
+        public void serialize(CborEncoder encoder) {
+            try {
+                encoder.writeMapStart(1);
+                encoder.writeTextString("/");
+                encoder.writeByteString(target.toBytes());
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+
+            CborMerkleLink that = (CborMerkleLink) o;
+
+            return target != null ? target.equals(that.target) : that.target == null;
+
+        }
+
+        @Override
+        public int hashCode() {
+            return target != null ? target.hashCode() : 0;
         }
     }
 

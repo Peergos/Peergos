@@ -2,6 +2,7 @@ package peergos.server.tests;
 
 import org.junit.*;
 import peergos.shared.cbor.*;
+import peergos.shared.ipfs.api.*;
 
 import java.util.*;
 
@@ -58,17 +59,27 @@ public class CborObjects {
     }
 
     @Test
+    public void cborMerkleLink() {
+        Multihash h = Multihash.fromBase58("QmPZ9gcCEpqKTo6aq61g2nXGUhM4iCL3ewB6LDXZCtioEB");
+        CborObject.CborMerkleLink link = new CborObject.CborMerkleLink(h);
+        compatibleAndIdempotentSerialization(link);
+    }
+
+    @Test
     public void cborMap() {
         SortedMap<CborObject, CborObject> map = new TreeMap<>();
         map.put(new CborObject.CborString("KEY 1"), new CborObject.CborString("A value"));
         map.put(new CborObject.CborString("KEY 2"), new CborObject.CborByteArray("Another value".getBytes()));
         map.put(new CborObject.CborString("KEY 3"), new CborObject.CborNull());
         map.put(new CborObject.CborString("KEY 4"), new CborObject.CborBoolean(true));
+        Multihash h = Multihash.fromBase58("QmPZ9gcCEpqKTo6aq61g2nXGUhM4iCL3ewB6LDXZCtioEB");
+        CborObject.CborMerkleLink link = new CborObject.CborMerkleLink(h);
+        map.put(new CborObject.CborString("Key 5"), link);
         List<CborObject> list = new ArrayList<>();
         list.add(new CborObject.CborBoolean(true));
         list.add(new CborObject.CborNull());
         list.add(new CborObject.CborLong(256));
-        map.put(new CborObject.CborString("KEY 5"), new CborObject.CborList(list));
+        map.put(new CborObject.CborString("KEY 6"), new CborObject.CborList(list));
         CborObject.CborMap cborMap = new CborObject.CborMap(map);
         compatibleAndIdempotentSerialization(cborMap);
     }
