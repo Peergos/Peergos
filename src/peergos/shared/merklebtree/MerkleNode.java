@@ -50,28 +50,24 @@ public class MerkleNode implements Cborable {
         SortedMap<CborObject, CborObject> cbor = new TreeMap<>();
         cbor.put(new CborObject.CborString("Data"), new CborObject.CborByteArray(data));
         for (Link link: links) {
-            cbor.put(new CborObject.CborString(link.label), new CborObject.CborByteArray(link.target.toBytes()));
+            cbor.put(new CborObject.CborString(link.label), new CborObject.CborMerkleLink(link.target));
         }
         return new CborObject.CborMap(cbor);
     }
 
     public static MerkleNode fromCbor(CborObject obj) {
-        try {
-            CborObject.CborMap map = (CborObject.CborMap) obj;
-            CborObject.CborString dataLabel = new CborObject.CborString("Data");
-            CborObject.CborByteArray data = (CborObject.CborByteArray) map.values.get(dataLabel);
-            List<Link> links = new ArrayList<>(map.values.size() - 1);
-            for (Map.Entry<CborObject, CborObject> entry : map.values.entrySet()) {
-                if (entry.getKey().equals(dataLabel))
-                    continue;
-                String label = ((CborObject.CborString) entry.getKey()).value;
-                byte[] value = ((CborObject.CborByteArray) entry.getValue()).value;
-                links.add(new Link(label, Multihash.deserialize(new DataSource(value))));
-            }
-            return new MerkleNode(data.value, links);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+        CborObject.CborMap map = (CborObject.CborMap) obj;
+        CborObject.CborString dataLabel = new CborObject.CborString("Data");
+        CborObject.CborByteArray data = (CborObject.CborByteArray) map.values.get(dataLabel);
+        List<Link> links = new ArrayList<>(map.values.size() - 1);
+        for (Map.Entry<CborObject, CborObject> entry : map.values.entrySet()) {
+            if (entry.getKey().equals(dataLabel))
+                continue;
+            String label = ((CborObject.CborString) entry.getKey()).value;
+            Multihash value = ((CborObject.CborMerkleLink) entry.getValue()).target;
+            links.add(new Link(label, value));
         }
+        return new MerkleNode(data.value, links);
     }
 
     /**
