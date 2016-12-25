@@ -7,6 +7,10 @@ public class MultiAddress
 {
     private final byte[] raw;
 
+    public MultiAddress(Multihash hash) {
+        this("/ipfs/" + hash.toBase58());
+    }
+
     public MultiAddress(String address) {
         this(decodeFromString(address));
     }

@@ -17,7 +17,7 @@ public interface CborObject {
         return bout.toByteArray();
     }
 
-    CborString MERKLE_LINK_KEY = new CborString("/");
+    int LINK_TAG = 258;
 
     static CborObject fromByteArray(byte[] cbor) {
         return deserialize(new CborDecoder(new ByteArrayInputStream(cbor)));
@@ -57,14 +57,6 @@ public interface CborObject {
                         CborObject value = deserialize(decoder);
                         result.put(key, value);
                     }
-                    if (nValues == 1 && result.containsKey(MERKLE_LINK_KEY)) {
-                        // This is the IPLD encoding for a merkle link
-                        CborObject value = result.get(MERKLE_LINK_KEY);
-                        if (! (value instanceof CborByteArray))
-                            throw new IllegalStateException("Merkle links in cbor must be byte arrays!");
-                        CborByteArray target = (CborByteArray) value;
-                        return new CborMerkleLink(Multihash.deserialize(new DataSource(target.value)));
-                    }
                     return new CborMap(result);
                 }
                 case CborConstants.TYPE_ARRAY:
@@ -73,6 +65,17 @@ public interface CborObject {
                     for (long i=0; i < nItems; i++)
                         res.add(deserialize(decoder));
                     return new CborList(res);
+                case CborConstants.TYPE_TAG:
+                    long tag = decoder.readTag();
+                    if (tag == LINK_TAG) {
+                        CborObject value = deserialize(decoder);
+                        if (value instanceof CborString)
+                            return new CborMerkleLink(new MultiAddress(((CborString) value).value));
+                        if (value instanceof CborByteArray)
+                            return new CborMerkleLink(new MultiAddress(((CborByteArray) value).value));
+                        throw new IllegalStateException("Invalid type for merkle link: " + value);
+                    }
+                    throw new IllegalStateException("Unknown TAG in CBOR: " + type.getAdditionalInfo());
                 default:
                     throw new IllegalStateException("Unimplemented cbor type: " + type);
             }
@@ -119,21 +122,28 @@ public interface CborObject {
     }
 
     final class CborMerkleLink implements CborObject {
-        public final Multihash target;
+        public final MultiAddress target;
 
-        public CborMerkleLink(Multihash target) {
+        public CborMerkleLink(MultiAddress target) {
             this.target = target;
         }
 
         @Override
         public void serialize(CborEncoder encoder) {
             try {
-                encoder.writeMapStart(1);
-                encoder.writeTextString("/");
-                encoder.writeByteString(target.toBytes());
+                encoder.writeTag(LINK_TAG);
+                if (isInvertible(target))
+                    encoder.writeByteString(target.getBytes());
+                else
+                    encoder.writeTextString(target.toString());
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
+        }
+
+        // use binary encoding if addr string -> bytes -> addr string == identity
+        private boolean isInvertible(MultiAddress addr) {
+            return addr.toString().equals(new MultiAddress(addr.getBytes()).toString());
         }
 
         @Override

@@ -60,8 +60,8 @@ public class CborObjects {
 
     @Test
     public void cborMerkleLink() {
-        Multihash h = Multihash.fromBase58("QmPZ9gcCEpqKTo6aq61g2nXGUhM4iCL3ewB6LDXZCtioEB");
-        CborObject.CborMerkleLink link = new CborObject.CborMerkleLink(h);
+        MultiAddress addr = new MultiAddress("/ipfs/QmPZ9gcCEpqKTo6aq61g2nXGUhM4iCL3ewB6LDXZCtioEB");
+        CborObject.CborMerkleLink link = new CborObject.CborMerkleLink(addr);
         compatibleAndIdempotentSerialization(link);
     }
 
@@ -72,8 +72,8 @@ public class CborObjects {
         map.put(new CborObject.CborString("KEY 2"), new CborObject.CborByteArray("Another value".getBytes()));
         map.put(new CborObject.CborString("KEY 3"), new CborObject.CborNull());
         map.put(new CborObject.CborString("KEY 4"), new CborObject.CborBoolean(true));
-        Multihash h = Multihash.fromBase58("QmPZ9gcCEpqKTo6aq61g2nXGUhM4iCL3ewB6LDXZCtioEB");
-        CborObject.CborMerkleLink link = new CborObject.CborMerkleLink(h);
+        MultiAddress addr = new MultiAddress("/ipfs/QmPZ9gcCEpqKTo6aq61g2nXGUhM4iCL3ewB6LDXZCtioEB");
+        CborObject.CborMerkleLink link = new CborObject.CborMerkleLink(addr);
         map.put(new CborObject.CborString("Key 5"), link);
         List<CborObject> list = new ArrayList<>();
         list.add(new CborObject.CborBoolean(true));
