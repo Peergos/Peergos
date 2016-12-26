@@ -3,7 +3,8 @@ package peergos.shared.ipfs.api;
 import java.io.*;
 import java.util.*;
 
-import peergos.shared.util.StringUtils;
+import peergos.shared.cbor.*;
+import peergos.shared.util.*;
 
 public class Multihash {
     public enum Type {
@@ -62,13 +63,23 @@ public class Multihash {
         dout.write(toBytes());
     }
 
-    public static Multihash deserialize(DataInput din) throws IOException {
-        int type = din.readUnsignedByte();
-        int len = din.readUnsignedByte();
-        Type t = Type.lookup(type);
-        byte[] hash = new byte[len];
-        din.readFully(hash);
-        return new Multihash(t, hash);
+    public static Multihash deserialize(DataInput din) {
+        try {
+            int type = din.readUnsignedByte();
+            int len = din.readUnsignedByte();
+            Type t = Type.lookup(type);
+            byte[] hash = new byte[len];
+            din.readFully(hash);
+            return new Multihash(t, hash);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static Multihash fromCbor(CborObject cbor) {
+        if (! (cbor instanceof CborObject.CborByteArray))
+            throw new IllegalStateException("Multihash cbor must be a byte[]! " + cbor);
+        return deserialize(new DataSource(((CborObject.CborByteArray) cbor).value));
     }
 
     @Override

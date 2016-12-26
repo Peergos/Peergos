@@ -1,6 +1,7 @@
 package peergos.shared.crypto;
 
 import jsinterop.annotations.*;
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
 import peergos.shared.util.*;
@@ -46,6 +47,12 @@ public class UserPublicKey implements Comparable<UserPublicKey>
 
     public static UserPublicKey fromPublicKeys(byte[] raw) {
         return fromByteArray(raw);
+    }
+
+    public static UserPublicKey fromCbor(CborObject cbor) {
+        if (! (cbor instanceof CborObject.CborByteArray))
+            throw new IllegalStateException("UserPublicKEy cbor must be a byte[]! " + cbor);
+        return fromByteArray(((CborObject.CborByteArray) cbor).value);
     }
 
     @JsMethod

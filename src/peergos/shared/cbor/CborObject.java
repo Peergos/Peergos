@@ -5,6 +5,7 @@ import peergos.shared.util.*;
 
 import java.io.*;
 import java.util.*;
+import java.util.stream.*;
 
 public interface CborObject {
 
@@ -89,6 +90,16 @@ public interface CborObject {
 
         public CborMap(SortedMap<CborObject, CborObject> values) {
             this.values = values;
+        }
+
+        public static CborMap build(Map<String, CborObject> values) {
+            SortedMap<CborObject, CborObject> transformed = values.entrySet()
+                    .stream()
+                    .collect(Collectors.toMap(
+                            e -> new CborString(e.getKey()),
+                            e -> e.getValue(),
+                            (a, b) -> a, TreeMap::new));
+            return new CborMap(transformed);
         }
 
         @Override

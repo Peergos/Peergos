@@ -1,5 +1,6 @@
 package peergos.shared.user;
 
+import peergos.shared.cbor.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -23,5 +24,21 @@ public class UserGenerationAlgorithm {
                 throw new IllegalStateException("Unknown User Generation Algorithm type: " + StringUtils.format("%02x", val));
             return byValue.get(val);
         }
+    }
+
+    public final Type type;
+
+    public UserGenerationAlgorithm(Type type) {
+        this.type = type;
+    }
+
+    public static UserGenerationAlgorithm getDefault() {
+        return new UserGenerationAlgorithm(Type.ScryptEd25519Curve25519);
+    }
+
+    public static UserGenerationAlgorithm fromCbor(CborObject cbor) {
+        if (! (cbor instanceof CborObject.CborLong))
+            throw new IllegalStateException("Incorrec cbor type for UserGenerationAlgorithm: " + cbor);
+        return new UserGenerationAlgorithm(Type.byValue((int)((CborObject.CborLong) cbor).value));
     }
 }

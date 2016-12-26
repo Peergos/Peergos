@@ -1,6 +1,7 @@
 package peergos.shared.user.fs;
 
 import jsinterop.annotations.*;
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.symmetric.SymmetricKey;
 import peergos.shared.ipfs.api.Base58;
@@ -9,7 +10,7 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.util.*;
 
-public class ReadableFilePointer {
+public class ReadableFilePointer implements Cborable {
     public final Location location;
     public final SymmetricKey baseKey;
 
@@ -49,13 +50,28 @@ public class ReadableFilePointer {
         }
     }
 
-    public static ReadableFilePointer deserialize(byte[] arr) throws IOException {
-        DataSource bin = new DataSource(arr);
-        UserPublicKey owner = UserPublicKey.fromByteArray(bin.readArray());
-        UserPublicKey writer = User.deserialize(bin);
-        byte[] mapKey = bin.readArray();
-        byte[] rootDirKeySecret = bin.readArray();
-        return new ReadableFilePointer(owner, writer, mapKey, SymmetricKey.deserialize(rootDirKeySecret));
+    public static ReadableFilePointer deserialize(byte[] arr) {
+        try {
+            DataSource bin = new DataSource(arr);
+            UserPublicKey owner = UserPublicKey.fromByteArray(bin.readArray());
+            UserPublicKey writer = User.deserialize(bin);
+            byte[] mapKey = bin.readArray();
+            byte[] rootDirKeySecret = bin.readArray();
+            return new ReadableFilePointer(owner, writer, mapKey, SymmetricKey.deserialize(rootDirKeySecret));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public CborObject toCbor() {
+        return new CborObject.CborByteArray(serialize());
+    }
+
+    public static ReadableFilePointer fromCbor(CborObject raw) {
+        if (! (raw instanceof CborObject.CborByteArray))
+            throw new IllegalStateException("ReadableFilePointer cbor must be a byte[]!" + raw);
+        return deserialize(((CborObject.CborByteArray) raw).value);
     }
 
     public ReadableFilePointer readOnly() {
