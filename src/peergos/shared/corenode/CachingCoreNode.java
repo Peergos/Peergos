@@ -24,31 +24,34 @@ public class CachingCoreNode implements CoreNode {
 
     @Override
     public CompletableFuture<MaybeMultihash> getMetadataBlob(UserPublicKey writerKey) {
+        UserPublicKey publicWriter = writerKey.toUserPublicKey();
         synchronized (cache) {
-            Pair<MaybeMultihash, Long> cached = cache.get(writerKey);
+            Pair<MaybeMultihash, Long> cached = cache.get(publicWriter);
             if (cached != null && System.currentTimeMillis() - cached.right < cacheTTL)
                 return CompletableFuture.completedFuture(cached.left);
         }
-        return target.getMetadataBlob(writerKey).thenApply(m -> {
-            cache.put(writerKey, new Pair<>(m, System.currentTimeMillis()));
+        return target.getMetadataBlob(publicWriter).thenApply(m -> {
+            cache.put(publicWriter, new Pair<>(m, System.currentTimeMillis()));
             return m;
         });
     }
 
     @Override
     public CompletableFuture<Boolean> setMetadataBlob(UserPublicKey ownerPublicKey, UserPublicKey writerKey, byte[] sharingKeySignedBtreeRootHash) {
+        UserPublicKey publicWriter = writerKey.toUserPublicKey();
         synchronized (cache) {
-            cache.remove(writerKey);
+            cache.remove(publicWriter);
         }
-        return target.setMetadataBlob(ownerPublicKey, writerKey, sharingKeySignedBtreeRootHash);
+        return target.setMetadataBlob(ownerPublicKey, publicWriter, sharingKeySignedBtreeRootHash);
     }
 
     @Override
     public CompletableFuture<Boolean> removeMetadataBlob(UserPublicKey writerKey, byte[] sharingKeySignedMapKeyPlusBlob) {
+        UserPublicKey publicWriter = writerKey.toUserPublicKey();
         synchronized (cache) {
-            cache.remove(writerKey);
+            cache.remove(publicWriter);
         }
-        return target.removeMetadataBlob(writerKey, sharingKeySignedMapKeyPlusBlob);
+        return target.removeMetadataBlob(publicWriter, sharingKeySignedMapKeyPlusBlob);
     }
 
     @Override
