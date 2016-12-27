@@ -166,13 +166,6 @@ public class UserContext {
                 .thenApply(publicKey -> !publicKey.isPresent());
     }
 
-    private static byte[] serializeStatic(SortedMap<UserPublicKey, EntryPoint> staticData, SymmetricKey rootKey) {
-        DataSink sink = new DataSink();
-        sink.writeInt(staticData.size());
-        staticData.values().forEach(ep -> sink.writeArray(ep.serializeAndSymmetricallyEncrypt(rootKey)));
-        return sink.toByteArray();
-    }
-
     @JsMethod
     public CompletableFuture<Boolean> register() {
         return isRegistered().thenCompose(exists -> {
@@ -720,12 +713,7 @@ public class UserContext {
             System.out.println("Storing metadata blob of " + metaBlob.length + " bytes. to mapKey: " + location.toString());
             return network.dhtClient.put(location.owner, metaBlob, linkHashes).thenCompose(blobHash -> {
                 User sharer = (User) location.writer;
-                return network.btree.put(sharer, location.getMapKey(), blobHash).thenCompose(newBtreeRootCAS -> {
-                    if (newBtreeRootCAS.left.equals(newBtreeRootCAS.right))
-                        return CompletableFuture.completedFuture(true);
-                    byte[] signed = sharer.signMessage(newBtreeRootCAS.toByteArray());
-                    return network.coreNode.setMetadataBlob(location.owner, sharer, signed);
-                });
+                return network.btree.put(sharer, location.getMapKey(), blobHash);
             });
         } catch (Exception e) {
             System.out.println(e.getMessage());

@@ -2,9 +2,11 @@ package peergos.shared.user;
 
 import peergos.shared.*;
 import peergos.shared.cbor.*;
+import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.ipfs.api.*;
+import peergos.shared.storage.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
@@ -49,6 +51,22 @@ public class WriterData implements Cborable {
         this.btree = btree;
     }
 
+    public WriterData withBtree(Multihash treeRoot) {
+        return new WriterData(generationAlgorithm, publicData, ownedKeys, staticData, Optional.of(treeRoot));
+    }
+
+    public static WriterData buildSubtree(Multihash btreeRoot) {
+        return new WriterData(Optional.empty(), Optional.empty(), Collections.emptySet(), Optional.empty(), Optional.of(btreeRoot));
+    }
+
+    public static WriterData createEmpty() {
+        return new WriterData(Optional.empty(),
+                Optional.empty(),
+                Collections.emptySet(),
+                Optional.empty(),
+                Optional.empty());
+    }
+
     public static WriterData createEmpty(SymmetricKey rootKey) {
         return new WriterData(Optional.of(UserGenerationAlgorithm.getDefault()),
                 Optional.empty(),
@@ -76,16 +94,20 @@ public class WriterData implements Cborable {
     }
 
     public CompletableFuture<Boolean> commit(User user, NetworkAccess network) {
+        return commit(user, network.coreNode, network.dhtClient);
+    }
+
+    public CompletableFuture<Boolean> commit(User user, CoreNode coreNode, ContentAddressedStorage dhtClient) {
         byte[] raw = serialize();
-        return network.dhtClient.put(user, raw, Collections.emptyList())
-                .thenCompose(blobHash -> network.coreNode.getMetadataBlob(user)
+        return dhtClient.put(user, raw, Collections.emptyList())
+                .thenCompose(blobHash -> coreNode.getMetadataBlob(user)
                         .thenCompose(currentHash -> {
                             DataSink bout = new DataSink();
                             try {
                                 currentHash.serialize(bout);
                                 bout.writeArray(blobHash.toBytes());
                                 byte[] signed = user.signMessage(bout.toByteArray());
-                                return network.coreNode.setMetadataBlob(user, user, signed);
+                                return coreNode.setMetadataBlob(user, user, signed);
                             } catch (IOException e) {
                                 throw new RuntimeException(e);
                             }
@@ -120,7 +142,7 @@ public class WriterData implements Cborable {
         CborObject.CborList ownedList = (CborObject.CborList) map.values.get(new CborObject.CborString("owned"));
         Set<UserPublicKey> owned = ownedList.value.stream().map(UserPublicKey::fromCbor).collect(Collectors.toSet());
         Optional<UserStaticData> staticData = extract.apply("static").map(raw -> UserStaticData.fromCbor(raw, rootKey));
-        Optional<Multihash> btree = extract.apply("btree").map(Multihash::fromCbor);
+        Optional<Multihash> btree = extract.apply("btree").map(val -> Multihash.fromMultiAddress(((CborObject.CborMerkleLink)val).target));
         return new WriterData(algo, publicData, owned, staticData, btree);
     }
 }

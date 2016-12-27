@@ -82,6 +82,13 @@ public class Multihash {
         return deserialize(new DataSource(((CborObject.CborByteArray) cbor).value));
     }
 
+    public static Multihash fromMultiAddress(MultiAddress addr) {
+        String s = addr.toString();
+        if (s.startsWith("/ipfs/"))
+            return Multihash.fromBase58(s.split("/")[2]);
+        throw new IllegalStateException("Cannot convert a non content addressed multiaddr to a multihash! " + s);
+    }
+
     @Override
     public String toString() {
         return toBase58();
