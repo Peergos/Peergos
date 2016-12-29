@@ -22,7 +22,7 @@ import java.lang.reflect.*;
 import java.net.*;
 import java.nio.file.*;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.*;
 import java.util.stream.*;
 
 @RunWith(Parameterized.class)
@@ -134,8 +134,8 @@ public class UserTests {
 
         try {
             UserContext oldContext = ensureSignedUp(username, password, network, crypto);
-        } catch (IllegalStateException e) {
-            if (!e.getMessage().contains("username already registered"))
+        } catch (Exception e) {
+            if (! e.getMessage().contains("Invalid encryption!"))
                 throw e;
         }
     }
