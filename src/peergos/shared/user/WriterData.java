@@ -55,6 +55,10 @@ public class WriterData implements Cborable {
         return new WriterData(generationAlgorithm, publicData, ownedKeys, staticData, Optional.of(treeRoot));
     }
 
+    public WriterData withOwnedKeys(Set<UserPublicKey> owned) {
+        return new WriterData(generationAlgorithm, publicData, owned, staticData, btree);
+    }
+
     public static WriterData buildSubtree(Multihash btreeRoot) {
         return new WriterData(Optional.empty(), Optional.empty(), Collections.emptySet(), Optional.empty(), Optional.of(btreeRoot));
     }

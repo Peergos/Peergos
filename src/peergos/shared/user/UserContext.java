@@ -243,6 +243,7 @@ public class UserContext {
             long t3 = System.currentTimeMillis();
             System.out.println("Uploading root dir metadata took " + (t3 - t2) + " mS");
             return addToStaticDataAndCommit(entry)
+                    .thenCompose(x -> addOwnedKeyAndCommit(entry.pointer.location.writer))
                     .thenApply(x -> {
                         System.out.println("Committing static data took " + (System.currentTimeMillis() - t3) + " mS");
 
@@ -251,6 +252,14 @@ public class UserContext {
                         throw new IllegalStateException("Failed to create entry directory!");
                     });
         });
+    }
+
+    private CompletableFuture<WriterData> addOwnedKeyAndCommit(UserPublicKey owned) {
+        Set<UserPublicKey> updated = Stream.concat(userData.ownedKeys.stream(), Stream.of(owned))
+                .collect(Collectors.toSet());
+
+        WriterData writerData = userData.withOwnedKeys(updated);
+        return writerData.commit(user, network).thenApply(b -> writerData);
     }
 
     @JsMethod
