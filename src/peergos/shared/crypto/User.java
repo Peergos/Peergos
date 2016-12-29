@@ -68,14 +68,6 @@ public class User extends UserPublicKey
         return ArrayOps.concat(secretSigningKey.serialize(), secretBoxingKey.serialize(), super.serialize());
     }
 
-    public static CompletableFuture<User> generateUserCredentials(String username, String password, LoginHasher hasher, Salsa20Poly1305 provider,
-                                               SafeRandom random, Ed25519 signer, Curve25519 boxer) {
-        return UserUtil.generateUser(username, password, hasher, provider, random, signer, boxer).thenApply(user -> {
-        	return user.getUser();
-        });
-    }
-
-
     public static User random(SafeRandom random, Ed25519 signer, Curve25519 boxer) {
 
         byte[] secretSignBytes = new byte[64];

@@ -23,8 +23,6 @@ import java.net.*;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.function.Supplier;
 import java.util.stream.*;
 
 @RunWith(Parameterized.class)
@@ -66,12 +64,32 @@ public class UserTests {
     }
 
     @Test
+    public void differentLoginTypes() throws Exception {
+        String username = "name";
+        String password = "letmein";
+        Crypto crypto = Crypto.initJava();
+        List<ScryptEd25519Curve25519> params = Arrays.asList(
+                new ScryptEd25519Curve25519(17, 8, 1, 96),
+                new ScryptEd25519Curve25519(18, 8, 1, 96),
+                new ScryptEd25519Curve25519(19, 8, 1, 96),
+                new ScryptEd25519Curve25519(17, 9, 1, 96)
+        );
+        for (ScryptEd25519Curve25519 p: params) {
+            long t1 = System.currentTimeMillis();
+            UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer, p).get();
+            long t2 = System.currentTimeMillis();
+            System.out.println("User gen took " + (t2 - t1) + " mS");
+            System.gc();
+        }
+    }
+
+    @Test
     public void javascriptCompatible() throws IOException {
         String username = "test01";
         String password = "test01";
 
         UserUtil.generateUser(username, password, new ScryptJava(), new Salsa20Poly1305.Java(),
-                new SafeRandom.Java(), new Ed25519.Java(), new Curve25519.Java()).thenAccept(userWithRoot -> {
+                new SafeRandom.Java(), new Ed25519.Java(), new Curve25519.Java(), UserGenerationAlgorithm.getDefault()).thenAccept(userWithRoot -> {
 		    UserPublicKey expected = UserPublicKey.fromString("7HvEWP6yd1UD8rOorfFrieJ8S7yC8+l3VisV9kXNiHmI7Eav7+3GTRSVBRCymItrzebUUoCi39M6rdgeOU9sXXFD");
 		    if (! expected.equals(userWithRoot.getUser().toUserPublicKey()))
 		        throw new IllegalStateException("Generated user diferent from the Javascript! \n"+userWithRoot.getUser().toUserPublicKey() + " != \n"+expected);
@@ -102,7 +120,7 @@ public class UserTests {
         String password = "password";
         UserContext userContext = ensureSignedUp(username, password, network, crypto);
         String newPassword = "newPassword";
-        userContext.changePassword(password, newPassword);
+        userContext.changePassword(password, newPassword, UserGenerationAlgorithm.getDefault(), UserGenerationAlgorithm.getDefault());
         ensureSignedUp(username, newPassword, network, crypto);
 
     }
@@ -112,7 +130,7 @@ public class UserTests {
         String password = "password";
         UserContext userContext = ensureSignedUp(username, password, network, crypto);
         String newPassword = "passwordtest";
-        UserContext newContext = userContext.changePassword(password, newPassword).get();
+        UserContext newContext = userContext.changePassword(password, newPassword, UserGenerationAlgorithm.getDefault(), UserGenerationAlgorithm.getDefault()).get();
 
         try {
             UserContext oldContext = ensureSignedUp(username, password, network, crypto);

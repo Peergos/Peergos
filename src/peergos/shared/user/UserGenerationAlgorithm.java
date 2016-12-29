@@ -1,13 +1,15 @@
 package peergos.shared.user;
 
+import jsinterop.annotations.*;
 import peergos.shared.cbor.*;
 import peergos.shared.util.*;
 
 import java.util.*;
 
-public class UserGenerationAlgorithm {
-    static final Map<Integer, Type> byValue = new HashMap<>();
-    public enum Type {
+public interface UserGenerationAlgorithm extends Cborable {
+    Map<Integer, Type> byValue = new HashMap<>();
+    @JsType
+    enum Type {
         Random(0x0),
         ScryptEd25519Curve25519(0x1);
         // TODO find a post-quantum algorithm
@@ -26,19 +28,21 @@ public class UserGenerationAlgorithm {
         }
     }
 
-    public final Type type;
+    @JsMethod
+    Type getType();
 
-    public UserGenerationAlgorithm(Type type) {
-        this.type = type;
+    static UserGenerationAlgorithm getDefault() {
+        return new ScryptEd25519Curve25519(ScryptEd25519Curve25519.MIN_MEMORY_COST, 8, 1, 96);
     }
 
-    public static UserGenerationAlgorithm getDefault() {
-        return new UserGenerationAlgorithm(Type.ScryptEd25519Curve25519);
-    }
-
-    public static UserGenerationAlgorithm fromCbor(CborObject cbor) {
-        if (! (cbor instanceof CborObject.CborLong))
-            throw new IllegalStateException("Incorrec cbor type for UserGenerationAlgorithm: " + cbor);
-        return new UserGenerationAlgorithm(Type.byValue((int)((CborObject.CborLong) cbor).value));
+    static UserGenerationAlgorithm fromCbor(CborObject cbor) {
+        if (! (cbor instanceof CborObject.CborMap))
+            throw new IllegalStateException("Incorrect cbor type for UserGenerationAlgorithm: " + cbor);
+        Type type = Type.byValue((int)((CborObject.CborLong) ((CborObject.CborMap) cbor).values.get(new CborObject.CborString("type"))).value);
+        if (type == Type.ScryptEd25519Curve25519)
+            return ScryptEd25519Curve25519.fromCbor(cbor);
+        if (type == Type.Random)
+            return new RandomUserType();
+        throw new IllegalStateException("Unimplemented UserGeneration type algorithm: " + type);
     }
 }

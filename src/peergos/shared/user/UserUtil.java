@@ -11,9 +11,15 @@ import java.util.concurrent.CompletableFuture;
 
 public class UserUtil {
 
-    public static CompletableFuture<UserWithRoot> generateUser(String username, String password, LoginHasher hasher,
-                                            Salsa20Poly1305 provider, SafeRandom random, Ed25519 signer, Curve25519 boxer) {
-    	CompletableFuture<byte[]> fut = hasher.hashToKeyBytes(username, password);
+    public static CompletableFuture<UserWithRoot> generateUser(String username,
+															   String password,
+															   LoginHasher hasher,
+															   Salsa20Poly1305 provider,
+															   SafeRandom random,
+															   Ed25519 signer,
+															   Curve25519 boxer,
+															   UserGenerationAlgorithm algorithm) {
+    	CompletableFuture<byte[]> fut = hasher.hashToKeyBytes(username, password, algorithm);
     	return fut.thenApply(keyBytes -> {
 	        byte[] signBytesSeed = Arrays.copyOfRange(keyBytes, 0, 32);
 	        byte[] secretBoxBytes = Arrays.copyOfRange(keyBytes, 32, 64);

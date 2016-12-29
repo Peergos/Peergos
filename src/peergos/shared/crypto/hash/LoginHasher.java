@@ -1,8 +1,10 @@
 package peergos.shared.crypto.hash;
 
+import peergos.shared.user.*;
+
 import java.util.concurrent.CompletableFuture;
 
 public interface LoginHasher {
 
-    public CompletableFuture<byte[]> hashToKeyBytes(String username, String password);
+    CompletableFuture<byte[]> hashToKeyBytes(String username, String password, UserGenerationAlgorithm algorithm);
 }

@@ -56,7 +56,11 @@ public class UserContext {
     
     @JsMethod
     public static CompletableFuture<UserContext> signIn(String username, String password, NetworkAccess network, Crypto crypto) {
-        return UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer)
+        return signInGeneral(username, password, network, crypto, UserGenerationAlgorithm.getDefault());
+    }
+
+    public static CompletableFuture<UserContext> signInGeneral(String username, String password, NetworkAccess network, Crypto crypto, UserGenerationAlgorithm algorithm) {
+        return UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer, algorithm)
                 .thenCompose(userWithRoot -> getWriterData(network, userWithRoot.getUser(), userWithRoot.getRoot()).thenApply(writerData ->
                     new UserContext(username, userWithRoot.getUser(), network, crypto, writerData))
                 ).thenCompose(ctx -> {
@@ -68,7 +72,11 @@ public class UserContext {
 
     @JsMethod
     public static CompletableFuture<UserContext> signUp(String username, String password, NetworkAccess network, Crypto crypto) {
-        return UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer)
+        return signUpGeneral(username, password, network, crypto, UserGenerationAlgorithm.getDefault());
+    }
+
+    public static CompletableFuture<UserContext> signUpGeneral(String username, String password, NetworkAccess network, Crypto crypto, UserGenerationAlgorithm algorithm) {
+        return UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer, algorithm)
                 .thenCompose(userWithRoot -> {
                     UserContext context = new UserContext(username, userWithRoot.getUser(), network, crypto, WriterData.createEmpty(userWithRoot.getRoot()));
                     System.out.println("Registering username " + username);
@@ -181,17 +189,19 @@ public class UserContext {
     }
 
     @JsMethod
-    public CompletableFuture<UserContext> changePassword(String oldPassword, String newPassword) {
+    public CompletableFuture<UserContext> changePassword(String oldPassword, String newPassword,
+                                                         UserGenerationAlgorithm existingAlgorithm,
+                                                         UserGenerationAlgorithm newAlgorithm) {
         System.out.println("changing password");
         LocalDate expiry = LocalDate.now();
         // set claim expiry to two months from now
         expiry.plusMonths(2);
 
-        return UserUtil.generateUser(username, oldPassword, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer)
+        return UserUtil.generateUser(username, oldPassword, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer, existingAlgorithm)
                 .thenCompose(existingUser -> {
                     if (!existingUser.getUser().equals(this.user))
                         throw new IllegalArgumentException("Incorrect existing password during change password attempt!");
-                    return UserUtil.generateUser(username, newPassword, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer)
+                    return UserUtil.generateUser(username, newPassword, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer, newAlgorithm)
                             .thenCompose(updatedUser ->
                                     userData.changeKeys(updatedUser.getUser(), updatedUser.getRoot(), network)
                                             .thenCompose(userData -> {

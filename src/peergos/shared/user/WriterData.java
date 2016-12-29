@@ -119,7 +119,7 @@ public class WriterData implements Cborable {
     public CborObject toCbor() {
         Map<String, CborObject> result = new TreeMap<>();
 
-        generationAlgorithm.ifPresent(alg -> result.put("algorithm", new CborObject.CborLong(alg.type.value)));
+        generationAlgorithm.ifPresent(alg -> result.put("algorithm", alg.toCbor()));
         publicData.ifPresent(rfp -> result.put("public", rfp.toCbor()));
         List<CborObject> ownedKeyStrings = ownedKeys.stream().map(k -> new CborObject.CborString(k.toString())).collect(Collectors.toList());
         result.put("owned", new CborObject.CborList(ownedKeyStrings));
