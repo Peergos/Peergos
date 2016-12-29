@@ -56,18 +56,20 @@ public class UserContext {
     
     @JsMethod
     public static CompletableFuture<UserContext> signIn(String username, String password, NetworkAccess network, Crypto crypto) {
-        return signInGeneral(username, password, network, crypto, UserGenerationAlgorithm.getDefault());
-    }
-
-    public static CompletableFuture<UserContext> signInGeneral(String username, String password, NetworkAccess network, Crypto crypto, UserGenerationAlgorithm algorithm) {
-        return UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer, algorithm)
-                .thenCompose(userWithRoot -> getWriterData(network, userWithRoot.getUser(), userWithRoot.getRoot()).thenApply(writerData ->
-                    new UserContext(username, userWithRoot.getUser(), network, crypto, writerData))
-                ).thenCompose(ctx -> {
-                    System.out.println("Initializing context..");
-                    return ctx.init()
-                            .thenApply(res -> ctx);
-                }).exceptionally(Futures::logError);
+        return getWriterDataCbor(network, username)
+                .thenCompose(cbor -> {
+                    UserGenerationAlgorithm algorithm = WriterData.extractUserGenerationAlgorithm(cbor).get();
+                    return UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider,
+                            crypto.random, crypto.signer, crypto.boxer, algorithm)
+                            .thenApply(userWithRoot ->
+                                    new UserContext(username, userWithRoot.getUser(), network, crypto,
+                                            WriterData.fromCbor(cbor, userWithRoot.getRoot()))
+                            ).thenCompose(ctx -> {
+                                System.out.println("Initializing context..");
+                                return ctx.init()
+                                        .thenApply(res -> ctx);
+                            }).exceptionally(Futures::logError);
+                });
     }
 
     @JsMethod
@@ -773,11 +775,12 @@ public class UserContext {
         }).exceptionally(Futures::logError);
     }
 
-    private static CompletableFuture<WriterData> getWriterData(NetworkAccess network, User user, SymmetricKey rootKey) {
-        return network.coreNode.getMetadataBlob(user.toUserPublicKey())
-                .thenCompose(key -> network.dhtClient.getData(key.get())
-                        .thenApply(opt -> opt.get()))
-                .thenApply(raw -> WriterData.fromCbor(CborObject.fromByteArray(raw), rootKey));
+    private static CompletableFuture<CborObject> getWriterDataCbor(NetworkAccess network, String username) {
+        return network.coreNode.getPublicKey(username)
+                .thenCompose(pubKey -> network.coreNode.getMetadataBlob(pubKey.get()))
+                .thenCompose(key -> network.dhtClient.getData(key.get()))
+                .thenApply(Optional::get)
+                .thenApply(CborObject::fromByteArray);
     }
 
     public CompletableFuture<Set<FileTreeNode>> retrieveAll(List<EntryPoint> entries) {

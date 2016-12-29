@@ -128,6 +128,15 @@ public class WriterData implements Cborable {
         return CborObject.CborMap.build(result);
     }
 
+    public static Optional<UserGenerationAlgorithm> extractUserGenerationAlgorithm(CborObject cbor) {
+        CborObject.CborMap map = (CborObject.CborMap) cbor;
+        Function<String, Optional<CborObject>> extract = key -> {
+            CborObject.CborString cborKey = new CborObject.CborString(key);
+            return map.values.containsKey(cborKey) ? Optional.of(map.values.get(cborKey)) : Optional.empty();
+        };
+        return extract.apply("algorithm").map(UserGenerationAlgorithm::fromCbor);
+    }
+
     public static WriterData fromCbor(CborObject cbor, SymmetricKey rootKey) {
         if (! ( cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Cbor for WriterData should be a map! " + cbor);
@@ -137,7 +146,8 @@ public class WriterData implements Cborable {
             CborObject.CborString cborKey = new CborObject.CborString(key);
             return map.values.containsKey(cborKey) ? Optional.of(map.values.get(cborKey)) : Optional.empty();
         };
-        Optional<UserGenerationAlgorithm> algo  = extract.apply("algorithm").map(UserGenerationAlgorithm::fromCbor);
+
+        Optional<UserGenerationAlgorithm> algo  = extractUserGenerationAlgorithm(cbor);
         Optional<ReadableFilePointer> publicData = extract.apply("public").map(ReadableFilePointer::fromCbor);
         CborObject.CborList ownedList = (CborObject.CborList) map.values.get(new CborObject.CborString("owned"));
         Set<UserPublicKey> owned = ownedList.value.stream().map(UserPublicKey::fromCbor).collect(Collectors.toSet());
