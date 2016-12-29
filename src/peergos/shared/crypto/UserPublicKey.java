@@ -9,7 +9,7 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.util.*;
 
-public class UserPublicKey implements Comparable<UserPublicKey>
+public class UserPublicKey implements Cborable, Comparable<UserPublicKey>
 {
     public static final int MAX_SIZE = 1024*1024;
 
@@ -47,6 +47,11 @@ public class UserPublicKey implements Comparable<UserPublicKey>
 
     public static UserPublicKey fromPublicKeys(byte[] raw) {
         return fromByteArray(raw);
+    }
+
+    @Override
+    public CborObject toCbor() {
+        return new CborObject.CborByteArray(serialize());
     }
 
     public static UserPublicKey fromCbor(CborObject cbor) {

@@ -125,7 +125,7 @@ public class WriterData implements Cborable {
 
         generationAlgorithm.ifPresent(alg -> result.put("algorithm", alg.toCbor()));
         publicData.ifPresent(rfp -> result.put("public", rfp.toCbor()));
-        List<CborObject> ownedKeyStrings = ownedKeys.stream().map(k -> new CborObject.CborString(k.toString())).collect(Collectors.toList());
+        List<CborObject> ownedKeyStrings = ownedKeys.stream().map(Cborable::toCbor).collect(Collectors.toList());
         result.put("owned", new CborObject.CborList(ownedKeyStrings));
         staticData.ifPresent(sd -> result.put("static", sd.toCbor()));
         btree.ifPresent(btree -> result.put("btree", new CborObject.CborMerkleLink(new MultiAddress(btree))));

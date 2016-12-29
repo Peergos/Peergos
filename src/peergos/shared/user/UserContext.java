@@ -255,7 +255,7 @@ public class UserContext {
     }
 
     private CompletableFuture<WriterData> addOwnedKeyAndCommit(UserPublicKey owned) {
-        Set<UserPublicKey> updated = Stream.concat(userData.ownedKeys.stream(), Stream.of(owned))
+        Set<UserPublicKey> updated = Stream.concat(userData.ownedKeys.stream(), Stream.of(owned.toUserPublicKey()))
                 .collect(Collectors.toSet());
 
         WriterData writerData = userData.withOwnedKeys(updated);
