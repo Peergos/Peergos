@@ -76,11 +76,7 @@ public interface ContentAddressedStorage {
         }
 
         private static MerkleNode getObject(byte[] raw) {
-            try {
-                return MerkleNode.deserialize(raw);
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
+            return MerkleNode.deserialize(raw);
         }
 
         private static String encode(String component) {
@@ -150,7 +146,7 @@ public interface ContentAddressedStorage {
     }
 
     class CachingDHTClient implements ContentAddressedStorage {
-        private final LRUCache<Multihash, byte[]> cache;
+        private final LRUCache<String, byte[]> cache;
         private final ContentAddressedStorage target;
         private final int maxValueSize;
 
@@ -177,12 +173,17 @@ public interface ContentAddressedStorage {
 
         @Override
         public CompletableFuture<Optional<MerkleNode>> getObject(Multihash hash) {
+            // somehow enabling this ram cache slows down logging by 3-4X...
+            /*String cacheKey = hash.toBase58();
+            if (cache.containsKey(cacheKey))
+                return CompletableFuture.completedFuture(Optional.of(MerkleNode.deserialize(cache.get(cacheKey))));
+                */
             return target.getObject(hash).thenApply(object -> {
-                if (object.isPresent()) {
+                /*if (object.isPresent()) {
                     byte[] raw = object.get().serialize();
                     if (raw.length < maxValueSize)
-                        cache.put(hash, raw);
-                }
+                        cache.put(cacheKey, raw);
+                }*/
                 return object;
             });
         }
