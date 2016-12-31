@@ -293,12 +293,21 @@ public class UserContext {
                         .collect(Collectors.toMap(e -> e.getFileProperties().name, e -> e)));
     }
 
+    private Set<String> getFollowers() {
+        return userData.staticData.get()
+                .getEntryPoints()
+                .stream()
+                .map(e -> e.owner)
+                .filter(name -> ! name.equals(username))
+                .collect(Collectors.toSet());
+    }
+
     @JsMethod
     public CompletableFuture<SocialState> getSocialState() {
         return processFollowRequests()
                 .thenCompose(pending -> getFollowerRoots()
                         .thenCompose(followerRoots -> getFriendRoots()
-                                .thenApply(followingRoots -> new SocialState(pending, followerRoots, followingRoots))));
+                                .thenApply(followingRoots -> new SocialState(pending, getFollowers(), followerRoots, followingRoots))));
     }
 
     @JsMethod
@@ -338,7 +347,7 @@ public class UserContext {
                     return sharing.mkdir(theirUsername, this, initialRequest.key.get(), true, crypto.random)
                             .thenCompose(friendRoot -> {
                                 // add a note to our static data so we know who we sent the read access to
-                                EntryPoint entry = new EntryPoint(friendRoot.readOnly(), username, Stream.of(theirUsername).collect(Collectors.toSet()), Collections.EMPTY_SET);
+                                EntryPoint entry = new EntryPoint(friendRoot.readOnly(), username, Collections.singleton(theirUsername), Collections.emptySet());
 
                                 return addToStaticDataAndCommit(entry).thenApply(trie -> {
                                     this.entrie = trie;
@@ -402,9 +411,9 @@ public class UserContext {
                         UserPublicKey targetUser = targetUserOpt.get();
                         return sharing.mkdir(targetUsername, this, null, true, crypto.random).thenCompose(friendRoot -> {
 
-                            // add a note to our static data so we know who we sent the read access to
-                            EntryPoint entry = new EntryPoint(friendRoot.readOnly(), username, Stream.of(targetUsername).collect(Collectors.toSet()), Collections.EMPTY_SET);
-                            CompletableFuture<TrieNode> addToStatic = addToStaticDataAndCommit(entry);
+                            // if they accept the request we will add a note to our static data so we know who we sent the read access to
+                            EntryPoint entry = new EntryPoint(friendRoot.readOnly(), username, Collections.singleton(targetUsername), Collections.emptySet());
+
                             // send details to allow friend to follow us, and optionally let us follow them
                             // create a tmp keypair whose public key we can prepend to the request without leaking information
                             User tmp = User.random(crypto.random, crypto.signer, crypto.boxer);
@@ -417,10 +426,7 @@ public class UserContext {
                             DataSink res = new DataSink();
                             res.writeArray(tmp.getPublicKeys());
                             res.writeArray(payload);
-                            return addToStatic.thenCompose(newRoot -> {
-                                entrie = newRoot;
-                                return network.coreNode.followRequest(targetUser.toUserPublicKey(), res.toByteArray());
-                            });
+                            return network.coreNode.followRequest(targetUser.toUserPublicKey(), res.toByteArray());
                         });
                     });
                 });
@@ -664,6 +670,7 @@ public class UserContext {
                         byte[] ourKeyForThem = ourDirForThem.getKey().serialize();
                         byte[] keyFromResponse = freq.key.map(k -> k.serialize()).orElse(null);
                         if (keyFromResponse == null || !Arrays.equals(keyFromResponse, ourKeyForThem)) {
+                            // They didn't reciprocate (follow us)
                             CompletableFuture<Boolean> removeDir = ourDirForThem.remove(this, sharing);
                             // remove entry point as well
                             CompletableFuture<Boolean> cleanStatic = removeFromStaticData(ourDirForThem);
@@ -675,14 +682,23 @@ public class UserContext {
                                     .thenCompose(b -> addToStatic.apply(trie, freq));
                         } else if (freq.entry.get().pointer.isNull()) {
                             // They reciprocated, but didn't accept (they follow us, but we can't follow them)
-                            return CompletableFuture.completedFuture(trie);
+                            // add entry point to static data to signify their acceptance
+                            EntryPoint entryWeSentToThem = new EntryPoint(ourDirForThem.getPointer().filePointer.readOnly(),
+                                    username, Collections.singleton(ourDirForThem.getName()), Collections.emptySet());
+                            return addToStaticDataAndCommit(trie, entryWeSentToThem);
                         } else {
-                            // add new entry to tree root
+                            // they accepted and reciprocated
+                            // add entry point to static data to signify their acceptance
+                            EntryPoint entryWeSentToThem = new EntryPoint(ourDirForThem.getPointer().filePointer.readOnly(),
+                                    username, Collections.singleton(ourDirForThem.getName()), Collections.emptySet());
+
+                            // add new entry point to tree root
                             EntryPoint entry = freq.entry.get();
-                            return retrieveEntryPoint(entry).thenCompose(treeNode ->
-                                    treeNode.get().getPath(this)).thenApply(path ->
-                                    trie.put(path, entry)
-                            ).thenCompose(trieres -> addToStatic.apply(trieres, freq).thenApply(b -> trieres));
+                            return addToStaticDataAndCommit(trie, entryWeSentToThem)
+                                    .thenCompose(newRoot -> retrieveEntryPoint(entry).thenCompose(treeNode ->
+                                            treeNode.get().getPath(this)).thenApply(path ->
+                                            newRoot.put(path, entry)
+                                    ).thenCompose(trieres -> addToStatic.apply(trieres, freq).thenApply(b -> trieres)));
                         }
                     };
                     List<FollowRequest> initialRequests = all.stream()
