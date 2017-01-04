@@ -21,7 +21,7 @@ public class MultipartReceiver {
                 byte[] file = readUntil(boundaryBytes, in);
                 files.add(file);
                 byte[] headers = readUntil("\r\n\r\n".getBytes(), in);
-                if (Arrays.equals(headers, "--".getBytes()))
+                if (headers.length == 0 || Arrays.equals(headers, "--".getBytes()))
                     return files;
             }
         } catch (IOException e) {
