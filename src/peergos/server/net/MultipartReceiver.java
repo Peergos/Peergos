@@ -5,9 +5,10 @@ import java.util.*;
 
 public class MultipartReceiver {
 
-    public static List<byte[]> extractFiles(InputStream in, String boundary) {
+    public static List<byte[]> extractFiles(InputStream rawIn, String boundary) {
         try {
             int maxLineSize = 1024;
+            InputStream in = new BufferedInputStream(rawIn);
             String first = readLine(in, maxLineSize);
             if (!first.substring(2).equals(boundary))
                 throw new IllegalStateException("Incorrect boundary! " + boundary + " != " + first.substring(2));
