@@ -54,49 +54,26 @@ public class DHTHandler implements HttpHandler
             Function<String, String> last = key -> params.get(key).get(params.get(key).size() - 1);
 
             switch (path) {
-                case "object/new":{
+                case "block/put": {
                     UserPublicKey writer = UserPublicKey.fromString(last.apply("writer"));
-                    dht.emptyObject(writer).thenAccept(newHash -> {
-                        Map res = new HashMap();
-                        res.put("Hash", newHash.toBase58());
-                        // don't cache EMPTY multihash as it will change if the internal IPFS serialization format changes
-                        replyJson(httpExchange, JSONParser.toString(res), Optional.empty());
-                    }).exceptionally(Futures::logError);
-                    break;
-                }
-                case "object/patch/add-link":{
-                    UserPublicKey writer = UserPublicKey.fromString(last.apply("writer"));
-                    Multihash hash = Multihash.fromBase58(args.get(0));
-                    String label = args.get(1);
-                    Multihash targetHash = Multihash.fromBase58(args.get(2));
-                    dht.addLink(writer, hash, label, targetHash)
-                            .thenAccept(resultHash -> {
-                                Map res = new HashMap();
-                                res.put("Hash", resultHash.toBase58());
-                                replyJson(httpExchange, JSONParser.toString(res), Optional.empty());
-                            }).exceptionally(Futures::logError);
-                    break;
-                }
-                case "object/patch/set-data": {
-                    UserPublicKey writer = UserPublicKey.fromString(last.apply("writer"));
-                    Multihash hash = Multihash.fromBase58(args.get(0));
                     String boundary = httpExchange.getRequestHeaders().get("Content-Type")
                             .stream()
                             .filter(s -> s.contains("boundary="))
                             .map(s -> s.substring(s.indexOf("=") + 1))
                             .findAny()
                             .get();
-                    byte[] data = MultipartReceiver.extractFile(httpExchange.getRequestBody(), boundary);
-                    dht.setData(writer, hash, data).thenAccept(h -> {
-                        Map<String, Object> json = new TreeMap<>();
-                        json.put("Hash", h.toBase58());
-                        replyJson(httpExchange, JSONParser.toString(json), Optional.empty());
+                    List<byte[]> data = MultipartReceiver.extractFiles(httpExchange.getRequestBody(), boundary);
+                    dht.put(writer, data).thenAccept(hashes -> {
+                        List<Object> json = hashes.stream().map(h -> wrapHash(h)).collect(Collectors.toList());
+                        // make stream of JSON objects
+                        String jsonStream = json.stream().map(m -> JSONParser.toString(m)).reduce("", (a, b) -> a + b);
+                        replyJson(httpExchange, jsonStream, Optional.empty());
                     }).exceptionally(Futures::logError);
                     break;
                 }
-                case "object/get":{
+                case "block/get":{
                     Multihash hash = Multihash.fromBase58(args.get(0));
-                    dht.getObject(hash)
+                    dht.get(hash)
                             .thenAccept(opt -> replyBytes(httpExchange,
                                     opt.map(m -> m.serialize()).orElse(new byte[0]), Optional.of(hash)))
                             .exceptionally(Futures::logError);
@@ -138,6 +115,12 @@ public class DHTHandler implements HttpHandler
             e.printStackTrace();
             replyError(httpExchange, e);
         }
+    }
+
+    private static Object wrapHash(Multihash h) {
+        Map<String, Object> json = new TreeMap<>();
+        json.put("Hash", h.toBase58());
+        return json;
     }
 
     private static void replyError(HttpExchange exchange, Throwable t) {

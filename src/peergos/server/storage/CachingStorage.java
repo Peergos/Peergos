@@ -21,23 +21,13 @@ public class CachingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Multihash> emptyObject(UserPublicKey writer) {
-        return put(writer, new MerkleNode(new byte[0]));
+    public CompletableFuture<List<Multihash>> put(UserPublicKey writer, List<byte[]> blocks) {
+        return target.put(writer, blocks);
     }
 
     @Override
-    public CompletableFuture<Multihash> setData(UserPublicKey writer, Multihash object, byte[] data) {
-        return target.setData(writer, object, data);
-    }
-
-    @Override
-    public CompletableFuture<Multihash> addLink(UserPublicKey writer, Multihash object, String label, Multihash linkTarget) {
-        return target.addLink(writer, object, label, linkTarget);
-    }
-
-    @Override
-    public CompletableFuture<Optional<MerkleNode>> getObject(Multihash object) {
-        return target.getObject(object);
+    public CompletableFuture<Optional<MerkleNode>> get(Multihash object) {
+        return target.get(object);
     }
 
     @Override

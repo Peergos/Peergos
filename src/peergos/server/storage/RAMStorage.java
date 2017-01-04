@@ -9,6 +9,7 @@ import java.io.*;
 import java.security.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.stream.*;
 
 public class RAMStorage implements ContentAddressedStorage {
     private Map<Multihash, byte[]> storage = new HashMap<>();
@@ -16,22 +17,18 @@ public class RAMStorage implements ContentAddressedStorage {
     private final Set<Multihash> pinnedRoots = new HashSet<>();
 
     @Override
-    public CompletableFuture<Multihash> emptyObject(UserPublicKey writer) {
-        return put(writer, new MerkleNode(new byte[0]));
+    public CompletableFuture<List<Multihash>> put(UserPublicKey writer, List<byte[]> blocks) {
+        return CompletableFuture.completedFuture(blocks.stream()
+                .map(b -> {
+                    byte[] hash = hash(b);
+                    Multihash multihash = new Multihash(Multihash.Type.sha2_256, hash);
+                    storage.put(multihash, b);
+                    return multihash;
+                }).collect(Collectors.toList()));
     }
 
     @Override
-    public CompletableFuture<Multihash> setData(UserPublicKey writer, Multihash object, byte[] data) {
-        return put(writer, getAndParseObject(object).setData(data));
-    }
-
-    @Override
-    public CompletableFuture<Multihash> addLink(UserPublicKey writer, Multihash object, String label, Multihash linkTarget) {
-        return put(writer, getAndParseObject(object).addLink(label, linkTarget));
-    }
-
-    @Override
-    public CompletableFuture<Optional<MerkleNode>> getObject(Multihash object) {
+    public CompletableFuture<Optional<MerkleNode>> get(Multihash object) {
         return CompletableFuture.completedFuture(Optional.of(getAndParseObject(object)));
     }
 
@@ -44,10 +41,8 @@ public class RAMStorage implements ContentAddressedStorage {
     @Override
     public CompletableFuture<Multihash> put(UserPublicKey writer, MerkleNode object) {
         byte[] value = object.serialize();
-        byte[] hash = hash(value);
-        Multihash multihash = new Multihash(Multihash.Type.sha2_256, hash);
-        storage.put(multihash, value);
-        return CompletableFuture.completedFuture(multihash);
+        return put(writer, Arrays.asList(value))
+                .thenApply(list -> list.get(0));
     }
 
     @Override

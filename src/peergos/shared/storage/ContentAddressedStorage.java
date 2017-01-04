@@ -16,15 +16,11 @@ public interface ContentAddressedStorage {
 
     int MAX_OBJECT_LENGTH  = 1024*256;
 
-    CompletableFuture<Multihash> emptyObject(UserPublicKey writer);
-
-    CompletableFuture<Multihash> setData(UserPublicKey writer, Multihash object, byte[] data);
-
-    CompletableFuture<Multihash> addLink(UserPublicKey writer, Multihash object, String label, Multihash linkTarget);
+    CompletableFuture<List<Multihash>> put(UserPublicKey writer, List<byte[]> blocks);
 
     CompletableFuture<Optional<byte[]>> getData(Multihash object);
 
-    CompletableFuture<Optional<MerkleNode>> getObject(Multihash object);
+    CompletableFuture<Optional<MerkleNode>> get(Multihash object);
 
     /**
      *
@@ -33,14 +29,7 @@ public interface ContentAddressedStorage {
      */
     default CompletableFuture<Multihash> put(UserPublicKey writer, MerkleNode object) {
         UserPublicKey publicWriter = writer.toUserPublicKey();
-        return emptyObject(publicWriter)
-                .thenCompose(EMPTY -> setData(publicWriter, EMPTY, object.data))
-                .thenCompose(hash -> Futures.reduceAll(
-                        object.links,
-                        hash,
-                        (h, e) -> addLink(publicWriter, h, e.label, e.target),
-                        (a, b) -> {throw new IllegalStateException();}
-        ));
+        return put(publicWriter, Arrays.asList(object.serialize())).thenApply(list -> list.get(0));
     }
 
     default CompletableFuture<Multihash> put(UserPublicKey writer, byte[] data, List<Multihash> links) {
@@ -75,6 +64,14 @@ public interface ContentAddressedStorage {
             return Multihash.fromBase58(hash);
         }
 
+        private static Multihash getObjectHash(Object rawJson) {
+            Map json = (Map)rawJson;
+            String hash = (String)json.get("Hash");
+            if (hash == null)
+                hash = (String)json.get("Key");
+            return Multihash.fromBase58(hash);
+        }
+
         private static MerkleNode getObject(byte[] raw) {
             return MerkleNode.deserialize(raw);
         }
@@ -88,43 +85,26 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<Multihash> emptyObject(UserPublicKey writer) {
-            return poster.get(apiPrefix + "object/new?stream-channels=true"+ "&writer=" + encode(writer.toUserPublicKey().toString()))
-                    .thenApply(HTTP::getObjectHash);
+        public CompletableFuture<List<Multihash>> put(UserPublicKey writer, List<byte[]> blocks) {
+            return poster.postMultipart(apiPrefix + "block/put?arg="
+                    + "&writer=" + encode(writer.toUserPublicKey().toString()), blocks)
+                    .thenApply(bytes -> JSONParser.parseStream(new String(bytes))
+                            .stream()
+                            .map(json -> getObjectHash(json))
+                            .collect(Collectors.toList()));
         }
 
         @Override
-        public CompletableFuture<Multihash> setData(UserPublicKey writer, Multihash base, byte[] data) {
-            return poster.postMultipart(apiPrefix + "object/patch/set-data?arg=" + base.toBase58()
-                    + "&writer=" + encode(writer.toUserPublicKey().toString()), Arrays.asList(data))
-                    .thenApply(HTTP::getObjectHash);
-        }
-
-        @Override
-        public CompletableFuture<Multihash> addLink(UserPublicKey writer, Multihash base, String label, Multihash linkTarget) {
-            return poster.get(apiPrefix + "object/patch/add-link?arg=" + base.toBase58()
-                    + "&arg=" + label + "&arg=" + linkTarget.toBase58()
-                    + "&writer=" + encode(writer.toUserPublicKey().toString()))
-                    .thenApply(HTTP::getObjectHash);
-        }
-
-        @Override
-        public CompletableFuture<Optional<MerkleNode>> getObject(Multihash hash) {
-            return poster.get(apiPrefix + "object/get?stream-channels=true&arg=" + hash.toBase58())
+        public CompletableFuture<Optional<MerkleNode>> get(Multihash hash) {
+            return poster.get(apiPrefix + "block/get?stream-channels=true&arg=" + hash.toBase58())
                     .thenApply(raw -> Optional.of(getObject(raw)));
         }
 
         @Override
         public CompletableFuture<Optional<byte[]>> getData(Multihash key) {
-            return poster.get(apiPrefix + "object/data?stream-channels=true&arg=" + key.toBase58())
-                    .thenApply(bytes -> Optional.of(bytes));
+            return get(key)
+                    .thenApply(nodeOpt -> nodeOpt.map(node -> node.data));
         }
-
-//        @Override
-//        public CompletableFuture<Multihash> put(UserPublicKey writer, MerkleNode object) {
-//            // TODO implement using CBOR to save round trips
-//            throw new IllegalStateException("Unimplemented!");
-//        }
 
         @Override
         public CompletableFuture<List<Multihash>> recursivePin(Multihash hash) {
@@ -157,28 +137,18 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<Multihash> emptyObject(UserPublicKey writer) {
-            return target.emptyObject(writer);
+        public CompletableFuture<List<Multihash>> put(UserPublicKey writer, List<byte[]> blocks) {
+            return target.put(writer, blocks);
         }
 
         @Override
-        public CompletableFuture<Multihash> setData(UserPublicKey writer, Multihash base, byte[] data) {
-            return target.setData(writer, base, data);
-        }
-
-        @Override
-        public CompletableFuture<Multihash> addLink(UserPublicKey writer, Multihash base, String label, Multihash linkTarget) {
-            return target.addLink(writer, base, label, linkTarget);
-        }
-
-        @Override
-        public CompletableFuture<Optional<MerkleNode>> getObject(Multihash hash) {
+        public CompletableFuture<Optional<MerkleNode>> get(Multihash hash) {
             // somehow enabling this ram cache slows down logging by 3-4X...
             /*String cacheKey = hash.toBase58();
             if (cache.containsKey(cacheKey))
                 return CompletableFuture.completedFuture(Optional.of(MerkleNode.deserialize(cache.get(cacheKey))));
                 */
-            return target.getObject(hash).thenApply(object -> {
+            return target.get(hash).thenApply(object -> {
                 /*if (object.isPresent()) {
                     byte[] raw = object.get().serialize();
                     if (raw.length < maxValueSize)
@@ -190,7 +160,7 @@ public interface ContentAddressedStorage {
 
         @Override
         public CompletableFuture<Optional<byte[]>> getData(Multihash hash) {
-            return getObject(hash)
+            return get(hash)
                     .thenApply(opt -> opt.map(object -> object.data));
         }
 
