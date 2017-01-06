@@ -1,5 +1,6 @@
 package peergos.shared.storage;
 
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.ipfs.api.*;
 import peergos.shared.merklebtree.MerkleNode;
@@ -16,32 +17,13 @@ public interface ContentAddressedStorage {
 
     int MAX_OBJECT_LENGTH  = 1024*256;
 
+    default CompletableFuture<Multihash> put(UserPublicKey writer, byte[] block) {
+        return put(writer, Arrays.asList(block)).thenApply(hashes -> hashes.get(0));
+    }
+
     CompletableFuture<List<Multihash>> put(UserPublicKey writer, List<byte[]> blocks);
 
-    CompletableFuture<Optional<byte[]>> getData(Multihash object);
-
-    CompletableFuture<Optional<MerkleNode>> get(Multihash object);
-
-    /**
-     *
-     * @param object
-     * @return a hash of the stored object
-     */
-    default CompletableFuture<Multihash> put(UserPublicKey writer, MerkleNode object) {
-        UserPublicKey publicWriter = writer.toUserPublicKey();
-        return put(publicWriter, Arrays.asList(object.serialize())).thenApply(list -> list.get(0));
-    }
-
-    default CompletableFuture<Multihash> put(UserPublicKey writer, byte[] data, List<Multihash> links) {
-        return put(writer.toUserPublicKey(), new MerkleNode(data,
-                links.stream()
-                        .map(l -> new MerkleNode.Link(l.toBase58(), l))
-                        .collect(Collectors.toList())));
-    }
-
-    default CompletableFuture<Multihash> put(UserPublicKey writer, byte[] data) {
-        return put(writer, new MerkleNode(data, Collections.emptyList()));
-    }
+    CompletableFuture<Optional<CborObject>> get(Multihash object);
 
     CompletableFuture<List<Multihash>> recursivePin(Multihash h);
 
@@ -56,24 +38,12 @@ public interface ContentAddressedStorage {
             this.poster = poster;
         }
 
-        private static Multihash getObjectHash(byte[] raw) {
-            Map json = (Map)JSONParser.parse(new String(raw));
-            String hash = (String)json.get("Hash");
-            if (hash == null)
-                hash = (String)json.get("Key");
-            return Multihash.fromBase58(hash);
-        }
-
         private static Multihash getObjectHash(Object rawJson) {
             Map json = (Map)rawJson;
             String hash = (String)json.get("Hash");
             if (hash == null)
                 hash = (String)json.get("Key");
             return Multihash.fromBase58(hash);
-        }
-
-        private static MerkleNode getObject(byte[] raw) {
-            return MerkleNode.deserialize(raw);
         }
 
         private static String encode(String component) {
@@ -95,15 +65,9 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<Optional<MerkleNode>> get(Multihash hash) {
+        public CompletableFuture<Optional<CborObject>> get(Multihash hash) {
             return poster.get(apiPrefix + "block/get?stream-channels=true&arg=" + hash.toBase58())
-                    .thenApply(raw -> Optional.of(getObject(raw)));
-        }
-
-        @Override
-        public CompletableFuture<Optional<byte[]>> getData(Multihash key) {
-            return get(key)
-                    .thenApply(nodeOpt -> nodeOpt.map(node -> node.data));
+                    .thenApply(raw -> Optional.of(CborObject.fromByteArray(raw)));
         }
 
         @Override
@@ -142,7 +106,7 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<Optional<MerkleNode>> get(Multihash hash) {
+        public CompletableFuture<Optional<CborObject>> get(Multihash hash) {
             // somehow enabling this ram cache slows down logging by 3-4X...
             /*String cacheKey = hash.toBase58();
             if (cache.containsKey(cacheKey))
@@ -156,12 +120,6 @@ public interface ContentAddressedStorage {
                 }*/
                 return object;
             });
-        }
-
-        @Override
-        public CompletableFuture<Optional<byte[]>> getData(Multihash hash) {
-            return get(hash)
-                    .thenApply(opt -> opt.map(object -> object.data));
         }
 
         @Override

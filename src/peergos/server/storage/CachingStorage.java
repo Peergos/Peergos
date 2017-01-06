@@ -1,5 +1,6 @@
 package peergos.server.storage;
 
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.ipfs.api.Multihash;
 import peergos.shared.merklebtree.MerkleNode;
@@ -26,23 +27,16 @@ public class CachingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<MerkleNode>> get(Multihash object) {
-        return target.get(object);
-    }
-
-    @Override
-    public CompletableFuture<Multihash> put(UserPublicKey writer, MerkleNode object) {
-        return target.put(writer, object);
-    }
-
-    @Override
-    public CompletableFuture<Optional<byte[]>> getData(Multihash key) {
+    public CompletableFuture<Optional<CborObject>> get(Multihash key) {
         if (cache.containsKey(key))
-            return CompletableFuture.completedFuture(Optional.of(cache.get(key)));
-        return target.getData(key).thenApply(valueOpt -> {
-            if (valueOpt.isPresent() && valueOpt.get().length > 0 && valueOpt.get().length < maxValueSize)
-                cache.put(key, valueOpt.get());
-            return valueOpt;
+            return CompletableFuture.completedFuture(Optional.of(CborObject.fromByteArray(cache.get(key))));
+        return target.get(key).thenApply(cborOpt -> {
+            if (cborOpt.isPresent()) {
+                byte[] value = cborOpt.get().toByteArray();
+                if (value.length > 0 && value.length < maxValueSize)
+                    cache.put(key, value);
+            }
+            return cborOpt;
         });
     }
 

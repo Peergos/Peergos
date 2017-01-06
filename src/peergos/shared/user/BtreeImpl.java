@@ -31,11 +31,11 @@ public class BtreeImpl implements Btree {
     private CompletableFuture<WriterData> getWriterData(MaybeMultihash hash) {
         if (!hash.isPresent())
             return CompletableFuture.completedFuture(WriterData.createEmpty());
-        return dht.getData(hash.get())
+        return dht.get(hash.get())
                 .thenApply(dataOpt -> {
                     if (! dataOpt.isPresent())
                         throw new IllegalStateException("Couldn't retrieve WriterData from dht! " + hash);
-                    return WriterData.fromCbor(CborObject.fromByteArray(dataOpt.get()), null);
+                    return WriterData.fromCbor(dataOpt.get(), null);
                 });
     }
 

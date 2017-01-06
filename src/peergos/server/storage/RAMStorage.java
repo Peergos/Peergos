@@ -1,5 +1,6 @@
 package peergos.server.storage;
 
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.ipfs.api.*;
 import peergos.shared.merklebtree.MerkleNode;
@@ -28,28 +29,14 @@ public class RAMStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<MerkleNode>> get(Multihash object) {
+    public CompletableFuture<Optional<CborObject>> get(Multihash object) {
         return CompletableFuture.completedFuture(Optional.of(getAndParseObject(object)));
     }
 
-    public MerkleNode getAndParseObject(Multihash hash) {
+    public CborObject getAndParseObject(Multihash hash) {
         if (!storage.containsKey(hash))
             throw new IllegalStateException("Hash not present! "+ hash);
-        return MerkleNode.deserialize(storage.get(hash));
-    }
-
-    @Override
-    public CompletableFuture<Multihash> put(UserPublicKey writer, MerkleNode object) {
-        byte[] value = object.serialize();
-        return put(writer, Arrays.asList(value))
-                .thenApply(list -> list.get(0));
-    }
-
-    @Override
-    public CompletableFuture<Optional<byte[]>> getData(Multihash key) {
-        if (!storage.containsKey(key))
-            return CompletableFuture.completedFuture(Optional.empty());
-        return CompletableFuture.completedFuture(Optional.of(getAndParseObject(key).data));
+        return CborObject.fromByteArray(storage.get(hash));
     }
 
     public void clear() {

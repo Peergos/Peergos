@@ -1,7 +1,8 @@
 package peergos.shared.merklebtree;
 
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
-import peergos.shared.ipfs.api.Multihash;
+import peergos.shared.ipfs.api.*;
 import peergos.shared.storage.ContentAddressedStorage;
 import peergos.shared.util.*;
 
@@ -11,7 +12,7 @@ import java.util.concurrent.*;
 import java.util.function.*;
 import java.util.stream.*;
 
-public class TreeNode {
+public class TreeNode implements Cborable {
     public final MaybeMultihash hash;
     public final SortedSet<KeyElement> keys;
 
@@ -73,8 +74,8 @@ public class TreeNode {
             return CompletableFuture.completedFuture(MaybeMultihash.EMPTY());
 
         Multihash nextSmallestHash = nextSmallest.targetHash.get();
-        return storage.getData(nextSmallestHash)
-                .thenCompose(rawOpt -> TreeNode.deserialize(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present! " + nextSmallestHash)))
+        return storage.get(nextSmallestHash)
+                .thenCompose(rawOpt -> TreeNode.fromCbor(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present! " + nextSmallestHash)))
                         .get(key, storage));
     }
 
@@ -96,14 +97,14 @@ public class TreeNode {
             keys.remove(nextSmallest);
             keys.add(modified);
             // commit this node to storage
-            return storage.put(writer, this.toMerkleNode())
+            return storage.put(writer, this.serialize())
                     .thenApply(multihash -> new TreeNode(this.keys, multihash));
         }
         if (! nextSmallest.targetHash.isPresent()) {
             if (keys.size() < maxChildren) {
                 keys.add(new KeyElement(key,  MaybeMultihash.of(value), MaybeMultihash.EMPTY()));
                 // commit this node to storage
-                return storage.put(writer, this.toMerkleNode())
+                return storage.put(writer, this.serialize())
                         .thenApply(multihash -> new TreeNode(this.keys, MaybeMultihash.of(multihash)));
             }
             // split into two and make new parent
@@ -113,13 +114,13 @@ public class TreeNode {
             // commit left child
             SortedSet<KeyElement> left = keys.headSet(median);
             TreeNode leftChild = new TreeNode(left);
-            return storage.put(writer, leftChild.toMerkleNode()).thenCompose(leftChildHash -> {
+            return storage.put(writer, leftChild.serialize()).thenCompose(leftChildHash -> {
 
                 // commit right child
                 SortedSet<KeyElement> right = keys.tailSet(median);
                 right.remove(right.first());
                 TreeNode rightChild = new TreeNode(median.targetHash, right);
-                return storage.put(writer, rightChild.toMerkleNode()).thenApply(rightChildHash -> {
+                return storage.put(writer, rightChild.serialize()).thenApply(rightChildHash -> {
 
                     // now add median to parent
                     TreeSet holder = new TreeSet<>();
@@ -132,8 +133,8 @@ public class TreeNode {
 
         final KeyElement finalNextSmallest = nextSmallest;
         Multihash nextSmallestHash = nextSmallest.targetHash.get();
-        return storage.getData(nextSmallestHash)
-                .thenApply(rawOpt -> TreeNode.deserialize(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present! " + nextSmallestHash))))
+        return storage.get(nextSmallestHash)
+                .thenApply(rawOpt -> TreeNode.fromCbor(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present! " + nextSmallestHash))))
                 .thenCompose(modifiedChild -> modifiedChild.withHash(finalNextSmallest.targetHash).put(writer, key, value, storage, maxChildren))
                 .thenCompose(modifiedChild -> {
                     if (!modifiedChild.hash.isPresent()) {
@@ -143,7 +144,7 @@ public class TreeNode {
                             keys.remove(finalNextSmallest);
                             keys.add(replacementNextSmallest);
                             keys.add(modifiedChild.keys.last());
-                            return storage.put(writer, this.toMerkleNode())
+                            return storage.put(writer, this.serialize())
                                     .thenApply(multihash -> new TreeNode(this.keys, MaybeMultihash.of(multihash)));
                         }
                         // we need to split as well, merge in new key and two pointers first
@@ -159,13 +160,13 @@ public class TreeNode {
                         // commit left child
                         SortedSet<KeyElement> left = keys.headSet(median);
                         TreeNode leftChild = new TreeNode(left);
-                        return storage.put(writer, leftChild.toMerkleNode()).thenCompose(leftChildHash -> {
+                        return storage.put(writer, leftChild.serialize()).thenCompose(leftChildHash -> {
 
                             // commit right child
                             SortedSet<KeyElement> right = keys.tailSet(median);
                             right.remove(right.first());
                             TreeNode rightChild = new TreeNode(median.targetHash, right);
-                            return storage.put(writer, rightChild.toMerkleNode()).thenApply(rightChildHash -> {
+                            return storage.put(writer, rightChild.serialize()).thenApply(rightChildHash -> {
                                 // now add median to parent
                                 TreeSet holder = new TreeSet<>();
                                 KeyElement newParent = new KeyElement(median.key, median.valueHash, MaybeMultihash.of(rightChildHash));
@@ -178,14 +179,14 @@ public class TreeNode {
                     KeyElement updated = new KeyElement(finalNextSmallest.key, finalNextSmallest.valueHash, modifiedChild.hash.get());
                     keys.remove(finalNextSmallest);
                     keys.add(updated);
-                    return storage.put(writer, this.toMerkleNode()).thenApply(multihash -> new TreeNode(this, multihash));
+                    return storage.put(writer, this.serialize()).thenApply(multihash -> new TreeNode(this, multihash));
                 });
     }
 
     public CompletableFuture<Integer> size(ContentAddressedStorage storage) {
         return Futures.reduceAll(keys, keys.size() - 1, (total, key) -> key.targetHash.isPresent() ?
-                storage.getData(key.targetHash.get())
-                        .thenCompose(rawOpt -> TreeNode.deserialize(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present! " + key.targetHash.get())))
+                storage.get(key.targetHash.get())
+                        .thenCompose(rawOpt -> TreeNode.fromCbor(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present! " + key.targetHash.get())))
                                 .size(storage)).thenApply(subTreeTotal -> subTreeTotal + total) :
                 CompletableFuture.completedFuture(total), (a, b) -> a + b);
     }
@@ -198,8 +199,8 @@ public class TreeNode {
         MaybeMultihash targetHash = keys.first().targetHash;
         if (! targetHash.isPresent())
             return CompletableFuture.completedFuture(keys.toArray(new KeyElement[keys.size()])[1].key);
-        return storage.getData(targetHash.get())
-                .thenCompose(rawOpt -> TreeNode.deserialize(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present! " + targetHash.get())))
+        return storage.get(targetHash.get())
+                .thenCompose(rawOpt -> TreeNode.fromCbor(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present! " + targetHash.get())))
                         .smallestKey(storage));
     }
 
@@ -219,26 +220,26 @@ public class TreeNode {
                 // we are a leaf
                 keys.remove(nextSmallest);
                 if (keys.size() >= maxChildren/2) {
-                    return storage.put(writer, this.toMerkleNode())
+                    return storage.put(writer, this.serialize())
                             .thenApply(multihash -> new TreeNode(this.keys, multihash));
                 }
                 return CompletableFuture.completedFuture(new TreeNode(this.keys));
             } else {
                 Multihash multihash = nextSmallest.targetHash.get();
                 final KeyElement finalNextSmallest = nextSmallest;
-                return storage.getData(multihash)
-                        .thenApply(rawOpt -> TreeNode.deserialize(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present! " + multihash)))
+                return storage.get(multihash)
+                        .thenApply(rawOpt -> TreeNode.fromCbor(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present! " + multihash)))
                                 .withHash(finalNextSmallest.targetHash))
                         .thenCompose(child -> {
                             // take the subtree's smallest value (in a leaf) delete it and promote it to the separator here
                             return child.smallestKey(storage).thenCompose(smallestKey -> child.get(smallestKey, storage)
                                     .thenCompose(value -> child.delete(writer, smallestKey, storage, maxChildren)
-                                                    .thenCompose(newChild -> storage.put(writer, newChild.toMerkleNode()).thenCompose(childHash -> {
+                                                    .thenCompose(newChild -> storage.put(writer, newChild.serialize()).thenCompose(childHash -> {
                                                                 keys.remove(finalNextSmallest);
                                                                 KeyElement replacement = new KeyElement(smallestKey, value, childHash);
                                                                 keys.add(replacement);
                                                                 if (newChild.keys.size() >= maxChildren / 2) {
-                                                                    return storage.put(writer, this.toMerkleNode())
+                                                                    return storage.put(writer, this.serialize())
                                                                             .thenApply(multihash1 -> new TreeNode(this, multihash));
                                                                 } else {
                                                                     // re-balance
@@ -255,8 +256,8 @@ public class TreeNode {
             return CompletableFuture.completedFuture(new TreeNode(this.keys));
         final KeyElement finalNextSmallest = nextSmallest;
         final Multihash nextSmallestHash = nextSmallest.targetHash.get();
-        return storage.getData(nextSmallestHash)
-                .thenCompose(rawOpt -> TreeNode.deserialize(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present! " + nextSmallestHash)))
+        return storage.get(nextSmallestHash)
+                .thenCompose(rawOpt -> TreeNode.fromCbor(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present! " + nextSmallestHash)))
                         .withHash(finalNextSmallest.targetHash).delete(writer, key, storage, maxChildren))
                 .thenCompose(child -> {
                     // update pointer
@@ -268,7 +269,7 @@ public class TreeNode {
                         // re-balance
                         return rebalance(writer, this, child, nextSmallestHash, storage, maxChildren);
                     }
-                    return storage.put(writer, this.toMerkleNode())
+                    return storage.put(writer, this.serialize())
                             .thenApply(multihash -> new TreeNode(this, multihash));
                 });
     }
@@ -289,8 +290,8 @@ public class TreeNode {
         Function<Optional<KeyElement>, CompletableFuture<Optional<TreeNode>>> keyToNode = key -> {
             if (! key.isPresent())
                 return CompletableFuture.completedFuture(Optional.empty());
-            return storage.getData(key.get().targetHash.get())
-                    .thenApply(rawOpt -> rawOpt.map(raw -> TreeNode.deserialize(raw)));
+            return storage.get(key.get().targetHash.get())
+                    .thenApply(rawOpt -> rawOpt.map(raw -> TreeNode.fromCbor(raw)));
         };
 
         CompletableFuture<Optional<TreeNode>> leftSiblingFut = keyToNode.apply(leftKey);
@@ -304,15 +305,15 @@ public class TreeNode {
                 parent.keys.remove(centerKey);
 
                 child.keys.add(new KeyElement(rightKey.get().key, rightKey.get().valueHash, right.keys.first().targetHash));
-                return storage.put(writer, child.toMerkleNode()).thenCompose(newChildHash -> {
+                return storage.put(writer, child.serialize()).thenCompose(newChildHash -> {
                     right.keys.remove(newSeparator);
                     right.keys.remove(KeyElement.dummy(new ByteArrayWrapper(new byte[0])));
                     TreeNode newRight = new TreeNode(newSeparator.targetHash, right.keys);
-                    return storage.put(writer, newRight.toMerkleNode()).thenCompose(newRightHash -> {
+                    return storage.put(writer, newRight.serialize()).thenCompose(newRightHash -> {
                         parent.keys.remove(rightKey.get());
                         parent.keys.add(new KeyElement(centerKey.key, centerKey.valueHash, newChildHash));
                         parent.keys.add(new KeyElement(newSeparator.key, newSeparator.valueHash, newRightHash));
-                        return storage.put(writer, parent.toMerkleNode())
+                        return storage.put(writer, parent.serialize())
                                 .thenApply(multihash -> new TreeNode(parent, multihash));
                     });
                 });
@@ -323,15 +324,15 @@ public class TreeNode {
                 parent.keys.remove(centerKey);
 
                 left.keys.remove(newSeparator);
-                return storage.put(writer, left.toMerkleNode()).thenCompose(newLeftHash -> {
+                return storage.put(writer, left.serialize()).thenCompose(newLeftHash -> {
                     child.keys.add(new KeyElement(centerKey.key, centerKey.valueHash, child.keys.first().targetHash));
                     child.keys.remove(KeyElement.dummy(new ByteArrayWrapper(new byte[0])));
                     child.keys.add(new KeyElement(new ByteArrayWrapper(new byte[0]), MaybeMultihash.EMPTY(), newSeparator.targetHash));
-                    return storage.put(writer, child.toMerkleNode()).thenCompose(newChildHash -> {
+                    return storage.put(writer, child.serialize()).thenCompose(newChildHash -> {
                         parent.keys.remove(leftKey.get());
                         parent.keys.add(new KeyElement(leftKey.get().key, leftKey.get().valueHash, newLeftHash));
                         parent.keys.add(new KeyElement(newSeparator.key, newSeparator.valueHash, newChildHash));
-                        return storage.put(writer, parent.toMerkleNode())
+                        return storage.put(writer, parent.serialize())
                                 .thenApply(multihash -> new TreeNode(parent, multihash));
                     });
                 });
@@ -343,12 +344,12 @@ public class TreeNode {
                     combinedKeys.addAll(rightSibling.get().keys);
                     combinedKeys.add(new KeyElement(rightKey.get().key, rightKey.get().valueHash, rightSibling.get().keys.first().targetHash));
                     TreeNode combined = new TreeNode(combinedKeys);
-                    return storage.put(writer, combined.toMerkleNode()).thenCompose(combinedHash -> {
+                    return storage.put(writer, combined.serialize()).thenCompose(combinedHash -> {
                         parent.keys.remove(rightKey.get());
                         parent.keys.remove(centerKey);
                         parent.keys.add(new KeyElement(centerKey.key, centerKey.valueHash, combinedHash));
                         if (parent.keys.size() >= maxChildren / 2) {
-                            return storage.put(writer, parent.toMerkleNode())
+                            return storage.put(writer, parent.serialize())
                                     .thenApply(multihash -> new TreeNode(parent, multihash));
                         }
                         return CompletableFuture.completedFuture(new TreeNode(parent.keys));
@@ -360,12 +361,12 @@ public class TreeNode {
                     combinedKeys.addAll(leftSibling.get().keys);
                     combinedKeys.add(new KeyElement(centerKey.key, centerKey.valueHash, child.keys.first().targetHash));
                     TreeNode combined = new TreeNode(combinedKeys);
-                    return storage.put(writer, combined.toMerkleNode()).thenCompose(combinedHash -> {
+                    return storage.put(writer, combined.serialize()).thenCompose(combinedHash -> {
                         parent.keys.remove(leftKey.get());
                         parent.keys.remove(centerKey);
                         parent.keys.add(new KeyElement(leftKey.get().key, leftKey.get().valueHash, combinedHash));
                         if (parent.keys.size() >= maxChildren / 2) {
-                            return storage.put(writer, parent.toMerkleNode())
+                            return storage.put(writer, parent.serialize())
                                     .thenApply(multihash -> new TreeNode(parent, multihash));
                         }
                         return CompletableFuture.completedFuture(new TreeNode(parent.keys));
@@ -390,65 +391,28 @@ public class TreeNode {
                 tab += "   ";
             w.print(StringUtils.format(tab + "[%d/%d] %s : %s\n", index++, keys.size(), e.key.toString(), new ByteArrayWrapper(e.valueHash.toBytes()).toString()));
             if (e.targetHash.isPresent())
-                TreeNode.deserialize(storage.getData(e.targetHash.get()).get().get()).print(w, depth + 1, storage);
+                TreeNode.fromCbor(storage.get(e.targetHash.get()).get().get()).print(w, depth + 1, storage);
         }
     }
 
-    public byte[] serialize() {
-        try {
-            ByteArrayOutputStream bout = new ByteArrayOutputStream();
-            DataOutputStream dout = new DataOutputStream(bout);
-            dout.writeInt(keys.size());
-            for (KeyElement e : keys) {
-                dout.writeInt(e.key.data.length);
-                dout.write(e.key.data);
-                e.valueHash.serialize(dout);
-                e.targetHash.serialize(dout);
-            }
-            return bout.toByteArray();
-        } catch (IOException e) {
-            throw new IllegalStateException(e);
-        }
+    public CborObject toCbor() {
+        return new CborObject.CborList(keys.stream()
+                .map(Cborable::toCbor)
+                .collect(Collectors.toList())
+        );
     }
 
-    public MerkleNode toMerkleNode() {
-        List<MerkleNode.Link> links = Stream.concat(
-                keys.stream()
-                        .filter(k -> k.targetHash.isPresent())
-                        .map(k -> k.targetHash.get()),
-                keys.stream()
-                        .filter(k -> k.valueHash.isPresent())
-                        .map(k -> k.valueHash.get()))
-                .map(h -> new MerkleNode.Link(h.toBase58(), h))
-                .collect(Collectors.toList());
-        return new MerkleNode(serialize(), links);
+    public static TreeNode fromCbor(CborObject cbor) {
+        if (! (cbor instanceof CborObject.CborList))
+            throw new IllegalStateException("Incorrect serialization for tree node! " + cbor);
+        TreeSet<KeyElement> sortedKeys = new TreeSet<>(((CborObject.CborList) cbor).value
+                .stream()
+                .map(KeyElement::fromCbor)
+                .collect(Collectors.toSet()));
+        return new TreeNode(sortedKeys);
     }
 
-    public static TreeNode fromMerkleNode(MerkleNode node) throws IOException {
-        return deserialize(node.data);
-    }
-
-    public static TreeNode deserialize(byte[] raw) {
-        if (raw == null)
-            throw new IllegalArgumentException("Null byte[]!");
-        DataInputStream din = new DataInputStream(new ByteArrayInputStream(raw));
-        try {
-            int n = din.readInt();
-            SortedSet<KeyElement> keys = new TreeSet<>();
-            for (int i = 0; i < n; i++) {
-                byte[] key = new byte[din.readInt()];
-                din.readFully(key);
-                MaybeMultihash valueHash = MaybeMultihash.deserialize(din);
-                MaybeMultihash targetHash = MaybeMultihash.deserialize(din);
-                keys.add(new KeyElement(new ByteArrayWrapper(key), valueHash, targetHash));
-            }
-            return new TreeNode(keys);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    private static class KeyElement implements Comparable<KeyElement> {
+    private static class KeyElement implements Cborable, Comparable<KeyElement> {
         public final ByteArrayWrapper key;
         public final MaybeMultihash valueHash, targetHash;
 
@@ -476,6 +440,41 @@ public class TreeNode {
         @Override
         public String toString() {
             return key.toString() + " -> " + valueHash.toString() +" : "+targetHash.toString();
+        }
+
+        @Override
+        public CborObject toCbor() {
+            Map<String, CborObject> cbor = new TreeMap<>();
+            cbor.put("k", new CborObject.CborByteArray(key.data));
+            if (valueHash.isPresent())
+                cbor.put("v", new CborObject.CborMerkleLink(new MultiAddress(valueHash.get())));
+            if (targetHash.isPresent())
+                cbor.put("t", new CborObject.CborMerkleLink(new MultiAddress(targetHash.get())));
+
+            return CborObject.CborMap.build(cbor);
+        }
+
+        public static KeyElement fromCbor(CborObject cbor) {
+            if (! (cbor instanceof CborObject.CborMap))
+                throw new IllegalStateException("Incorrect cbor for TreeNode$KeyElement: " + cbor);
+
+            SortedMap<CborObject, CborObject> values = ((CborObject.CborMap) cbor).values;
+
+            ByteArrayWrapper key = new ByteArrayWrapper(getOrDefault(values, "k", c -> ((CborObject.CborByteArray)c).value, () -> new byte[0]));
+            MaybeMultihash value = getOrDefault(values, "v",
+                    c -> MaybeMultihash.of(Multihash.fromMultiAddress(((CborObject.CborMerkleLink)c).target)),
+                    MaybeMultihash::EMPTY);
+            MaybeMultihash target = getOrDefault(values, "t",
+                    c -> MaybeMultihash.of(Multihash.fromMultiAddress(((CborObject.CborMerkleLink)c).target)),
+                    MaybeMultihash::EMPTY);
+            return new KeyElement(key, value, target);
+        }
+
+        private static <T> T getOrDefault(SortedMap<CborObject, CborObject> values, String skey, Function<CborObject, T> converter, Supplier<T> def) {
+            CborObject.CborString key = new CborObject.CborString(skey);
+            if (! values.containsKey(key))
+                return def.get();
+            return converter.apply(values.get(key));
         }
 
         static KeyElement dummy(ByteArrayWrapper key) {

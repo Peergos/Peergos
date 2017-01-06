@@ -23,7 +23,7 @@ public class DirAccess extends FileAccess {
     public DirAccess(SymmetricLink subfolders2files, SymmetricLink subfolders2parent, List<SymmetricLocationLink> subfolders,
                      List<SymmetricLocationLink> files, SymmetricLink parent2meta, byte[] properties,
                      FileRetriever retriever, SymmetricLocationLink parentLink, Optional<SymmetricLocationLink> moreFolderContents) {
-        super(parent2meta, properties, retriever, parentLink);
+        super(parent2meta, properties, retriever, parentLink, Collections.emptyList());
         this.subfolders2files = subfolders2files;
         this.subfolders2parent = subfolders2parent;
         this.subfolders = subfolders;
@@ -36,8 +36,8 @@ public class DirAccess extends FileAccess {
                 retriever, parentLink, moreFolderContents);
     }
 
-    public void serialize(DataSink bout) throws IOException {
-        super.serialize(bout);
+    protected DataSink serializeCryptTree() {
+        DataSink bout = super.serializeCryptTree();
         bout.writeArray(subfolders2parent.serialize());
         bout.writeArray(subfolders2files.serialize());
         bout.writeInt(0);
@@ -48,6 +48,7 @@ public class DirAccess extends FileAccess {
         bout.writeBoolean(moreFolderContents.isPresent());
         if (moreFolderContents.isPresent())
             bout.writeArray(moreFolderContents.get().serialize());
+        return bout;
     }
 
     public List<SymmetricLocationLink> getSubfolders() {
@@ -76,7 +77,7 @@ public class DirAccess extends FileAccess {
                 parentLink,
                 moreFolderContents
         );
-        return context.uploadChunk(dira, writableFilePointer.location, Collections.emptyList());
+        return context.uploadChunk(dira, writableFilePointer.location);
     }
 
     public CompletableFuture<DirAccess> addFileAndCommit(ReadableFilePointer targetCAP, SymmetricKey ourSubfolders,
@@ -184,7 +185,7 @@ public class DirAccess extends FileAccess {
         else {
             toUpdate = addFileAndCommit(modified.filePointer, ourPointer.baseKey, ourPointer, context);
         }
-        return toUpdate.thenCompose(newDirAccess -> context.uploadChunk(newDirAccess, ourPointer.getLocation(), Collections.emptyList()));
+        return toUpdate.thenCompose(newDirAccess -> context.uploadChunk(newDirAccess, ourPointer.getLocation()));
     }
 
     public CompletableFuture<Boolean> removeChild(RetrievedFilePointer childRetrievedPointer, ReadableFilePointer ourPointer, UserContext context) {
@@ -224,7 +225,7 @@ public class DirAccess extends FileAccess {
                 }
             }).collect(Collectors.toList());
         }
-        return context.uploadChunk(this, ourPointer.getLocation(), Collections.EMPTY_LIST);
+        return context.uploadChunk(this, ourPointer.getLocation());
     }
 
     // 0=FILE, 1=DIR
@@ -286,7 +287,7 @@ public class DirAccess extends FileAccess {
         Location ourLocation = new Location(userContext.user, writer, ourMapKey);
         DirAccess dir = DirAccess.create(dirReadKey, new FileProperties(name, 0, LocalDateTime.now(), isSystemFolder, Optional.empty()), ourLocation, ourParentKey, null);
         CompletableFuture<ReadableFilePointer> result = new CompletableFuture<>();
-        userContext.uploadChunk(dir, new Location(userContext.user, writer, dirMapKey), Collections.emptyList()).thenAccept(success -> {
+        userContext.uploadChunk(dir, new Location(userContext.user, writer, dirMapKey)).thenAccept(success -> {
             if (success) {
                 ReadableFilePointer ourPointer = new ReadableFilePointer(userContext.user, writer, ourMapKey, baseKey);
                 ReadableFilePointer subdirPointer = new ReadableFilePointer(new Location(userContext.user, writer, dirMapKey), dirReadKey);
@@ -299,7 +300,7 @@ public class DirAccess extends FileAccess {
     }
 
     public CompletableFuture<DirAccess> commit(Location ourLocation, UserContext userContext) {
-        return userContext.uploadChunk(this, ourLocation, Collections.emptyList())
+        return userContext.uploadChunk(this, ourLocation)
                 .thenApply(x -> this);
     }
 

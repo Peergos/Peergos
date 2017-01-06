@@ -1,28 +1,46 @@
 package peergos.shared.user.fs;
 
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.symmetric.*;
+import peergos.shared.ipfs.api.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.stream.*;
 
-public class FileAccess {
+public class FileAccess implements Cborable {
     protected final SymmetricLink parent2meta;
     protected final byte[] properties;
     protected final FileRetriever retriever;
     protected final SymmetricLocationLink parentLink;
+    protected final List<Multihash> fragmentHashes;
 
-    public FileAccess(SymmetricLink parent2Meta, byte[] fileProperties, FileRetriever fileRetriever, SymmetricLocationLink parentLink) {
+    public FileAccess(SymmetricLink parent2Meta, byte[] fileProperties, FileRetriever fileRetriever,
+                      SymmetricLocationLink parentLink, List<Multihash> fragmentHashes) {
         this.parent2meta = parent2Meta;
         this.properties = fileProperties;
         this.retriever = fileRetriever;
         this.parentLink = parentLink;
+        this.fragmentHashes = fragmentHashes;
     }
 
-    public void serialize(DataSink bout) throws IOException {
+    @Override
+    public CborObject toCbor() {
+        Map<String, CborObject> cbor = new TreeMap<>();
+        CborObject.CborByteArray cryptree = new CborObject.CborByteArray(serializeCryptTree().toByteArray());
+        cbor.put("c", cryptree);
+        List<CborObject> linksToFragments = fragmentHashes.stream().map(h -> new CborObject.CborMerkleLink(new MultiAddress(h))).collect(Collectors.toList());
+        cbor.put("f", new CborObject.CborList(linksToFragments));
+
+        return CborObject.CborMap.build(cbor);
+    }
+
+    protected DataSink serializeCryptTree() {
+        DataSink bout = new DataSink();
         bout.writeArray(parent2meta.serialize());
         bout.writeArray(properties);
         bout.writeByte(retriever != null ? 1 : 0);
@@ -32,6 +50,7 @@ public class FileAccess {
         if (parentLink != null)
             bout.writeArray(this.parentLink.serialize());
         bout.writeByte(this.getType());
+        return bout;
     }
 
     // 0=FILE, 1=DIR
@@ -84,8 +103,9 @@ public class FileAccess {
             throw new IllegalStateException("Need a writable pointer!");
         SymmetricKey metaKey = this.getMetaKey(writableFilePointer.baseKey);
         byte[] nonce = metaKey.createNonce();
-        FileAccess fa = new FileAccess(this.parent2meta, ArrayOps.concat(nonce, metaKey.encrypt(newProps.serialize(), nonce)), this.retriever, this.parentLink);
-        return context.uploadChunk(fa, writableFilePointer.location, Collections.emptyList()); //TODO get fragment hashes from retriever
+        FileAccess fa = new FileAccess(this.parent2meta, ArrayOps.concat(nonce, metaKey.encrypt(newProps.serialize(), nonce)),
+                this.retriever, this.parentLink, this.fragmentHashes);
+        return context.uploadChunk(fa, writableFilePointer.location);
     }
 
     public CompletableFuture<FileAccess> markDirty(ReadableFilePointer writableFilePointer, SymmetricKey newParentKey, UserContext context) {
@@ -95,9 +115,8 @@ public class FileAccess {
         SymmetricLocationLink newParentLink = SymmetricLocationLink.create(newParentKey,
                 parentLink.target(writableFilePointer.baseKey),
                 parentLink.targetLocation(writableFilePointer.baseKey));
-        FileAccess fa = new FileAccess(newParentToMeta, properties, this.retriever, newParentLink);
-        return context.uploadChunk(fa, writableFilePointer.location, //TODO get fragment hashes from retriever
-                Collections.emptyList())
+        FileAccess fa = new FileAccess(newParentToMeta, properties, this.retriever, newParentLink, fragmentHashes);
+        return context.uploadChunk(fa, writableFilePointer.location)
                 .thenApply(x -> fa);
     }
 
@@ -110,12 +129,27 @@ public class FileAccess {
         if (!Arrays.equals(baseKey.serialize(), newBaseKey.serialize()))
             throw new IllegalStateException("FileAccess clone must have same base key as original!");
         FileProperties props = getFileProperties(baseKey);
-        FileAccess fa = FileAccess.create(newBaseKey, isDirectory() ? SymmetricKey.random() : getMetaKey(baseKey), props, this.retriever, parentLocation, parentparentKey);
-        //TODO get fragment hashes from retriever
-        return context.uploadChunk(fa, new Location(context.user, entryWriterKey, newMapKey), Collections.emptyList()).thenApply(b -> fa);
+        FileAccess fa = FileAccess.create(newBaseKey, isDirectory() ? SymmetricKey.random() : getMetaKey(baseKey), props,
+                this.retriever, parentLocation, parentparentKey, fragmentHashes);
+        return context.uploadChunk(fa, new Location(context.user, entryWriterKey, newMapKey)).thenApply(b -> fa);
     }
 
-    public static FileAccess deserialize(byte[] raw) {
+    public static FileAccess fromCbor(CborObject cbor) {
+        if (! (cbor instanceof CborObject.CborMap))
+            throw new IllegalStateException("Incorrect cbor for FileAccess: " + cbor);
+
+        SortedMap<CborObject, CborObject> values = ((CborObject.CborMap) cbor).values;
+
+        List<Multihash> fragmentHashes = ((CborObject.CborList) values.get(new CborObject.CborString("f"))).value
+                .stream()
+                .map(c -> Multihash.fromMultiAddress(((CborObject.CborMerkleLink) c).target))
+                .collect(Collectors.toList());
+
+        byte[] cryptree = ((CborObject.CborByteArray) values.get(new CborObject.CborString("c"))).value;
+        return deserialize(cryptree, fragmentHashes);
+    }
+
+    private static FileAccess deserialize(byte[] raw, List<Multihash> fragmentHashes) {
         try {
             DataSource buf = new DataSource(raw);
             byte[] p2m = buf.readArray();
@@ -125,7 +159,7 @@ public class FileAccess {
             boolean hasParent = buf.readBoolean();
             SymmetricLocationLink parentLink = hasParent ? SymmetricLocationLink.deserialize(buf.readArray()) : null;
             byte type = buf.readByte();
-            FileAccess fileAccess = new FileAccess(new SymmetricLink(p2m), properties, retriever, parentLink);
+            FileAccess fileAccess = new FileAccess(new SymmetricLink(p2m), properties, retriever, parentLink, fragmentHashes);
             switch (type) {
                 case 0:
                     return fileAccess;
@@ -140,9 +174,12 @@ public class FileAccess {
     }
 
     public static FileAccess create(SymmetricKey parentKey, SymmetricKey metaKey, FileProperties props,
-                                    FileRetriever retriever, Location parentLocation, SymmetricKey parentparentKey) {
+                                    FileRetriever retriever, Location parentLocation, SymmetricKey parentparentKey, List<Multihash> fragmentHashes) {
         byte[] nonce = metaKey.createNonce();
         return new FileAccess(SymmetricLink.fromPair(parentKey, metaKey),
-                ArrayOps.concat(nonce, metaKey.encrypt(props.serialize(), nonce)), retriever, SymmetricLocationLink.create(parentKey, parentparentKey, parentLocation));
+                ArrayOps.concat(nonce, metaKey.encrypt(props.serialize(), nonce)),
+                retriever,
+                SymmetricLocationLink.create(parentKey, parentparentKey, parentLocation),
+                fragmentHashes);
     }
 }

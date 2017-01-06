@@ -360,14 +360,13 @@ public class FileTreeNode {
                                                        EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
                 byte[] mapKey = context.randomBytes(32);
                 Location nextChunkLocation = new Location(getLocation().owner, getLocation().writer, mapKey);
-                chunks.upload(context, parentLocation.owner, (User) entryWriterKey, nextChunkLocation).thenAccept(fileLocation -> {
-                    ReadableFilePointer filePointer = new ReadableFilePointer(fileLocation, fileKey);
-                    dirAccess.addFileAndCommit(filePointer, rootRKey, pointer.filePointer, context);
-                    context.uploadChunk(dirAccess, new Location(parentLocation.owner, entryWriterKey, dirMapKey)
-                                        , Collections.emptyList()).thenAccept(uploadResult -> {
-                        result.complete(uploadResult);
-                    });
-                });
+                chunks.upload(context, parentLocation.owner, (User) entryWriterKey, nextChunkLocation)
+                        .thenAccept(fileLocation -> {
+                            ReadableFilePointer filePointer = new ReadableFilePointer(fileLocation, fileKey);
+                            dirAccess.addFileAndCommit(filePointer, rootRKey, pointer.filePointer, context);
+                            context.uploadChunk(dirAccess, new Location(parentLocation.owner, entryWriterKey, dirMapKey))
+                                    .thenAccept(uploadResult -> result.complete(uploadResult));
+                        });
                 });
             });
             return result;

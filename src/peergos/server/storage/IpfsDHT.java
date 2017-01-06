@@ -1,5 +1,6 @@
 package peergos.server.storage;
 
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.ipfs.api.IPFS;
 import peergos.shared.ipfs.api.MultiAddress;
@@ -40,27 +41,13 @@ public class IpfsDHT implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<MerkleNode>> get(Multihash hash) {
+    public CompletableFuture<Optional<CborObject>> get(Multihash hash) {
         try {
             byte[] raw = ipfs.block.get(hash);
-            return CompletableFuture.completedFuture(Optional.of(MerkleNode.deserialize(raw)));
+            return CompletableFuture.completedFuture(Optional.of(CborObject.fromByteArray(raw)));
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-    }
-
-    @Override
-    public CompletableFuture<Optional<byte[]>> getData(Multihash key) {
-        try {
-            return CompletableFuture.completedFuture(Optional.of(ipfs.object.data(key)));
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    @Override
-    public CompletableFuture<Multihash> put(UserPublicKey writer, MerkleNode object) {
-        return put(writer, Arrays.asList(object.serialize())).thenApply(list -> list.get(0));
     }
 
     @Override
@@ -81,16 +68,5 @@ public class IpfsDHT implements ContentAddressedStorage {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-    }
-
-    public static void main(String[] args) throws Exception {
-        IpfsDHT dht = new IpfsDHT();
-        byte[] val1 = new byte[57];
-        MerkleNode val = new MerkleNode(val1);
-        new Random().nextBytes(val1);
-        Multihash put = dht.put(UserPublicKey.createNull(), val).get();
-        byte[] val2 = dht.getData(put).get().get();
-        boolean equals = Arrays.equals(val1, val2);
-        System.out.println(equals);
     }
 }

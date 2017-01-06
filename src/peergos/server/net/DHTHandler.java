@@ -75,13 +75,7 @@ public class DHTHandler implements HttpHandler
                     Multihash hash = Multihash.fromBase58(args.get(0));
                     dht.get(hash)
                             .thenAccept(opt -> replyBytes(httpExchange,
-                                    opt.map(m -> m.serialize()).orElse(new byte[0]), Optional.of(hash)))
-                            .exceptionally(Futures::logError);
-                    break;
-                }
-                case "object/data": {
-                    Multihash hash = Multihash.fromBase58(args.get(0));
-                    dht.getData(hash).thenAccept(opt -> replyBytes(httpExchange, opt.orElse(new byte[0]), Optional.of(hash)))
+                                    opt.map(cbor -> cbor.toByteArray()).orElse(new byte[0]), Optional.of(hash)))
                             .exceptionally(Futures::logError);
                     break;
                 }

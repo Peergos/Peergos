@@ -102,8 +102,8 @@ public class WriterData implements Cborable {
     }
 
     public CompletableFuture<Boolean> commit(User user, CoreNode coreNode, ContentAddressedStorage dhtClient) {
-        byte[] raw = serialize();
-        return dhtClient.put(user, raw, Collections.emptyList())
+        byte[] cbor = serialize();
+        return dhtClient.put(user, cbor)
                 .thenCompose(blobHash -> coreNode.getMetadataBlob(user)
                         .thenCompose(currentHash -> {
                             DataSink bout = new DataSink();

@@ -237,7 +237,7 @@ public class UserContext {
         DirAccess root = DirAccess.create(rootRKey, new FileProperties(directoryName, 0, LocalDateTime.now(), false, Optional.empty()), (Location)null, null, null);
         Location rootLocation = new Location(this.user, writer, rootMapKey);
         System.out.println("Uploading entry point directory");
-        return this.uploadChunk(root, rootLocation, Collections.emptyList()).thenCompose(uploaded -> {
+        return this.uploadChunk(root, rootLocation).thenCompose(uploaded -> {
             if (!uploaded)
                 throw new IllegalStateException("Failed to upload root dir!");
             long t3 = System.currentTimeMillis();
@@ -726,7 +726,7 @@ public class UserContext {
     }
 
     private CompletableFuture<Multihash> uploadFragment(Fragment f, UserPublicKey targetUser) {
-        return network.dhtClient.put(targetUser, f.data, Collections.emptyList());
+        return network.dhtClient.put(targetUser, new CborObject.CborByteArray(f.data).toByteArray());
     }
 
     public CompletableFuture<List<Multihash>> uploadFragments(List<Fragment> fragments, UserPublicKey owner,
@@ -742,13 +742,11 @@ public class UserContext {
         return Futures.combineAllInOrder(futures);
     }
 
-    public CompletableFuture<Boolean> uploadChunk(FileAccess metadata, Location location, List<Multihash> linkHashes) {
-        DataSink dout = new DataSink();
+    public CompletableFuture<Boolean> uploadChunk(FileAccess metadata, Location location) {
         try {
-            metadata.serialize(dout);
-            byte[] metaBlob = dout.toByteArray();
+            byte[] metaBlob = metadata.serialize();
             System.out.println("Storing metadata blob of " + metaBlob.length + " bytes. to mapKey: " + location.toString());
-            return network.dhtClient.put(location.owner, metaBlob, linkHashes).thenCompose(blobHash -> {
+            return network.dhtClient.put(location.owner, metaBlob).thenCompose(blobHash -> {
                 User sharer = (User) location.writer;
                 return network.btree.put(sharer, location.getMapKey(), blobHash);
             });
@@ -803,9 +801,8 @@ public class UserContext {
     private static CompletableFuture<CborObject> getWriterDataCbor(NetworkAccess network, String username) {
         return network.coreNode.getPublicKey(username)
                 .thenCompose(pubKey -> network.coreNode.getMetadataBlob(pubKey.get()))
-                .thenCompose(key -> network.dhtClient.getData(key.get()))
-                .thenApply(Optional::get)
-                .thenApply(CborObject::fromByteArray);
+                .thenCompose(key -> network.dhtClient.get(key.get()))
+                .thenApply(Optional::get);
     }
 
     public CompletableFuture<Set<FileTreeNode>> retrieveAll(List<EntryPoint> entries) {
@@ -827,8 +824,8 @@ public class UserContext {
         // download the metadata blob for this entry point
         return network.btree.get(entry.pointer.location.writer, entry.pointer.location.getMapKey()).thenCompose(btreeValue -> {
             if (btreeValue.isPresent())
-                return network.dhtClient.getData(btreeValue.get())
-                        .thenApply(value -> value.map(FileAccess::deserialize));
+                return network.dhtClient.get(btreeValue.get())
+                        .thenApply(value -> value.map(FileAccess::fromCbor));
             return CompletableFuture.completedFuture(Optional.empty());
         });
     }
@@ -838,12 +835,9 @@ public class UserContext {
                 .map(link -> {
                     Location loc = link.targetLocation(baseKey);
                     return network.btree.get(loc.writer, loc.getMapKey())
-                            .thenCompose(key -> network.dhtClient.getData(key.get()))
-                            .thenApply(dataOpt -> {
-                                if (!dataOpt.isPresent() || dataOpt.get().length == 0)
-                                    return Optional.<RetrievedFilePointer>empty();
-                                return dataOpt.map(data -> new RetrievedFilePointer(link.toReadableFilePointer(baseKey), FileAccess.deserialize(data)));
-                            });
+                            .thenCompose(key -> network.dhtClient.get(key.get()))
+                            .thenApply(dataOpt ->  dataOpt
+                                    .map(cbor -> new RetrievedFilePointer(link.toReadableFilePointer(baseKey), FileAccess.fromCbor(cbor))));
                 }).collect(Collectors.toList());
 
         return Futures.combineAll(all).thenApply(optSet -> optSet.stream()
@@ -858,17 +852,18 @@ public class UserContext {
         return network.btree.get(loc.writer, loc.getMapKey()).thenCompose(blobHash -> {
             if (!blobHash.isPresent())
                 return CompletableFuture.completedFuture(Optional.empty());
-            return network.dhtClient.getData(blobHash.get())
-                    .thenApply(rawOpt -> rawOpt.map(FileAccess::deserialize));
+            return network.dhtClient.get(blobHash.get())
+                    .thenApply(rawOpt -> rawOpt.map(FileAccess::fromCbor));
         });
     };
 
     public CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Multihash> hashes, ProgressConsumer<Long> monitor) {
         List<CompletableFuture<Optional<FragmentWithHash>>> futures = hashes.stream()
-                .map(h -> network.dhtClient.getData(h)
+                .map(h -> network.dhtClient.get(h)
                         .thenApply(dataOpt -> {
-                            dataOpt.ifPresent(bytes -> monitor.accept((long)bytes.length));
-                            return dataOpt.map(data -> new FragmentWithHash(new Fragment(data), h));
+                            Optional<byte[]> bytes = dataOpt.map(cbor -> ((CborObject.CborByteArray) cbor).value);
+                            bytes.ifPresent(arr -> monitor.accept((long)arr.length));
+                            return bytes.map(data -> new FragmentWithHash(new Fragment(data), h));
                         }))
                 .collect(Collectors.toList());
 
