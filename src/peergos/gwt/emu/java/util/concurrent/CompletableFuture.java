@@ -225,6 +225,8 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
         return this;
     }
 
+    @Override
+    @JsMethod
     public CompletableFuture<T> exceptionally(Function<Throwable, ? extends T> handler) {
         CompletableFuture<T> fut = new CompletableFuture<>();
         errorFutures.add(fut);
@@ -285,7 +287,6 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
     public CompletionStage<Void> acceptEitherAsync(CompletionStage<? extends T> other, Consumer<? super T> action, Executor executor) {     throw new IllegalStateException("Unimplemented!");   }
 
     public CompletionStage<Void> runAfterEither(CompletionStage<?> other, Runnable action) {     throw new IllegalStateException("Unimplemented!");   }
-
     public CompletionStage<Void> runAfterEitherAsync(CompletionStage<?> other, Runnable action) {     throw new IllegalStateException("Unimplemented!");   }
 
     public CompletionStage<Void> runAfterEitherAsync(CompletionStage<?> other, Runnable action, Executor executor) {     throw new IllegalStateException("Unimplemented!");   }
