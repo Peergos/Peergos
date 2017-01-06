@@ -15,7 +15,8 @@ public class CachingCoreNode implements CoreNode {
 
     private final CoreNode target;
     private final int cacheTTL;
-    private final Map<UserPublicKey, Pair<MaybeMultihash, Long>> cache = new HashMap<>();
+    // use strings as key to rule out any JS issues with equals
+    private final Map<String, Pair<MaybeMultihash, Long>> cache = new HashMap<>();
 
     public CachingCoreNode(CoreNode target, int cacheTTL) {
         this.target = target;
@@ -24,31 +25,37 @@ public class CachingCoreNode implements CoreNode {
 
     @Override
     public CompletableFuture<MaybeMultihash> getMetadataBlob(UserPublicKey writerKey) {
+        UserPublicKey publicWriter = writerKey.toUserPublicKey();
         synchronized (cache) {
-            Pair<MaybeMultihash, Long> cached = cache.get(writerKey);
-            if (cached != null && System.currentTimeMillis() - cached.right < cacheTTL)
+            Pair<MaybeMultihash, Long> cached = cache.get(publicWriter.toString());
+            if (cached != null && System.currentTimeMillis() - cached.right < cacheTTL) {
                 return CompletableFuture.completedFuture(cached.left);
+            }
         }
-        return target.getMetadataBlob(writerKey).thenApply(m -> {
-            cache.put(writerKey, new Pair<>(m, System.currentTimeMillis()));
+        return target.getMetadataBlob(publicWriter).thenApply(m -> {
+            synchronized (cache) {
+                cache.put(publicWriter.toString(), new Pair<>(m, System.currentTimeMillis()));
+            }
             return m;
         });
     }
 
     @Override
     public CompletableFuture<Boolean> setMetadataBlob(UserPublicKey ownerPublicKey, UserPublicKey writerKey, byte[] sharingKeySignedBtreeRootHash) {
+        UserPublicKey publicWriter = writerKey.toUserPublicKey();
         synchronized (cache) {
-            cache.remove(writerKey);
+            cache.remove(publicWriter.toString());
         }
-        return target.setMetadataBlob(ownerPublicKey, writerKey, sharingKeySignedBtreeRootHash);
+        return target.setMetadataBlob(ownerPublicKey, publicWriter, sharingKeySignedBtreeRootHash);
     }
 
     @Override
     public CompletableFuture<Boolean> removeMetadataBlob(UserPublicKey writerKey, byte[] sharingKeySignedMapKeyPlusBlob) {
+        UserPublicKey publicWriter = writerKey.toUserPublicKey();
         synchronized (cache) {
-            cache.remove(writerKey);
+            cache.remove(publicWriter.toString());
         }
-        return target.removeMetadataBlob(writerKey, sharingKeySignedMapKeyPlusBlob);
+        return target.removeMetadataBlob(publicWriter, sharingKeySignedMapKeyPlusBlob);
     }
 
     @Override

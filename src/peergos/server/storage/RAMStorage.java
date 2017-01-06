@@ -38,11 +38,7 @@ public class RAMStorage implements ContentAddressedStorage {
     public MerkleNode getAndParseObject(Multihash hash) {
         if (!storage.containsKey(hash))
             throw new IllegalStateException("Hash not present! "+ hash);
-        try {
-            return MerkleNode.deserialize(storage.get(hash));
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+        return MerkleNode.deserialize(storage.get(hash));
     }
 
     @Override

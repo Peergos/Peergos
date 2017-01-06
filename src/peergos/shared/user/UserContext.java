@@ -1,6 +1,7 @@
 package peergos.shared.user;
 
 import peergos.shared.*;
+import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.symmetric.*;
@@ -24,8 +25,7 @@ public class UserContext {
     @JsProperty
     public final String username;
     public final User user;
-    private final SymmetricKey rootKey;
-    private final UserStaticData staticData;
+    private WriterData userData;
     private TrieNode entrie = new TrieNode(); // ba dum che!
     private final Fragmenter fragmenter;
 
@@ -36,19 +36,18 @@ public class UserContext {
     // In process only
     public final Crypto crypto;
 
-    public UserContext(String username, User user, SymmetricKey root, NetworkAccess network, Crypto crypto) {
-        this(username, user, root, network, crypto, new ErasureFragmenter(40, 10));
+    public UserContext(String username, User user, NetworkAccess network, Crypto crypto, WriterData userData) {
+        this(username, user, network, crypto, new ErasureFragmenter(40, 10), userData);
     }
 
-    public UserContext(String username, User user, SymmetricKey root, NetworkAccess network,
-                       Crypto crypto, Fragmenter fragmenter) {
+    public UserContext(String username, User user, NetworkAccess network,
+                       Crypto crypto, Fragmenter fragmenter, WriterData userData) {
         this.username = username;
         this.user = user;
-        this.rootKey = root;
         this.network = network;
         this.crypto = crypto;
         this.fragmenter = fragmenter;
-        this.staticData =  new UserStaticData();
+        this.userData = userData;
     }
 
     public boolean isJavascript() {
@@ -57,20 +56,31 @@ public class UserContext {
     
     @JsMethod
     public static CompletableFuture<UserContext> signIn(String username, String password, NetworkAccess network, Crypto crypto) {
-        return UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer)
-                .thenApply(userWithRoot -> new UserContext(username, userWithRoot.getUser(), userWithRoot.getRoot(), network, crypto))
-                .thenCompose(ctx -> {
-                    System.out.println("Initializing context..");
-                    return ctx.init()
-                            .thenApply(res -> ctx);
-                }).exceptionally(Futures::logError);
+        return getWriterDataCbor(network, username)
+                .thenCompose(cbor -> {
+                    UserGenerationAlgorithm algorithm = WriterData.extractUserGenerationAlgorithm(cbor).get();
+                    return UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider,
+                            crypto.random, crypto.signer, crypto.boxer, algorithm)
+                            .thenApply(userWithRoot ->
+                                    new UserContext(username, userWithRoot.getUser(), network, crypto,
+                                            WriterData.fromCbor(cbor, userWithRoot.getRoot()))
+                            ).thenCompose(ctx -> {
+                                System.out.println("Initializing context..");
+                                return ctx.init()
+                                        .thenApply(res -> ctx);
+                            }).exceptionally(Futures::logError);
+                });
     }
 
     @JsMethod
     public static CompletableFuture<UserContext> signUp(String username, String password, NetworkAccess network, Crypto crypto) {
-        return UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer)
+        return signUpGeneral(username, password, network, crypto, UserGenerationAlgorithm.getDefault());
+    }
+
+    public static CompletableFuture<UserContext> signUpGeneral(String username, String password, NetworkAccess network, Crypto crypto, UserGenerationAlgorithm algorithm) {
+        return UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer, algorithm)
                 .thenCompose(userWithRoot -> {
-                    UserContext context = new UserContext(username, userWithRoot.getUser(), userWithRoot.getRoot(), network, crypto);
+                    UserContext context = new UserContext(username, userWithRoot.getUser(), network, crypto, WriterData.createEmpty(userWithRoot.getRoot()));
                     System.out.println("Registering username " + username);
                     return context.register().thenCompose(successfullyRegistered -> {
                         if (!successfullyRegistered) {
@@ -93,7 +103,7 @@ public class UserContext {
     public static CompletableFuture<UserContext> fromPublicLink(String link, NetworkAccess network, Crypto crypto) {
         ReadableFilePointer entryPoint = ReadableFilePointer.fromLink(link);
         EntryPoint entry = new EntryPoint(entryPoint, "", Collections.emptySet(), Collections.emptySet());
-        UserContext context = new UserContext(null, null, null, network, crypto);
+        UserContext context = new UserContext(null, null, network, crypto, WriterData.createEmpty(null));
         return context.addEntryPoint(context.entrie, entry).thenApply(trieNode -> {
             context.entrie = trieNode;
             return context;
@@ -135,8 +145,7 @@ public class UserContext {
     }
 
     private CompletableFuture<Boolean> init() {
-        staticData.clear();
-        return createFileTree()
+        return createFileTree(userData)
                 .thenCompose(root -> {
                     this.entrie = root;
                     return getByPath("/" + username + "/" + "shared")
@@ -167,13 +176,6 @@ public class UserContext {
                 .thenApply(publicKey -> !publicKey.isPresent());
     }
 
-    private static byte[] serializeStatic(SortedMap<UserPublicKey, EntryPoint> staticData, SymmetricKey rootKey) {
-        DataSink sink = new DataSink();
-        sink.writeInt(staticData.size());
-        staticData.values().forEach(ep -> sink.writeArray(ep.serializeAndSymmetricallyEncrypt(rootKey)));
-        return sink.toByteArray();
-    }
-
     @JsMethod
     public CompletableFuture<Boolean> register() {
         return isRegistered().thenCompose(exists -> {
@@ -189,32 +191,32 @@ public class UserContext {
     }
 
     @JsMethod
-    public CompletableFuture<UserContext> changePassword(String oldPassword, String newPassword) {
+    public CompletableFuture<UserContext> changePassword(String oldPassword, String newPassword,
+                                                         UserGenerationAlgorithm existingAlgorithm,
+                                                         UserGenerationAlgorithm newAlgorithm) {
         System.out.println("changing password");
         LocalDate expiry = LocalDate.now();
         // set claim expiry to two months from now
         expiry.plusMonths(2);
 
-        return UserUtil.generateUser(username, oldPassword, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer)
+        return UserUtil.generateUser(username, oldPassword, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer, existingAlgorithm)
                 .thenCompose(existingUser -> {
                     if (!existingUser.getUser().equals(this.user))
                         throw new IllegalArgumentException("Incorrect existing password during change password attempt!");
-                    return UserUtil.generateUser(username, newPassword, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer)
-                            .thenCompose(updatedUser -> {
-                                return commit(updatedUser.getUser(), updatedUser.getRoot(), network)
-                                        .thenCompose(updated -> {
-                                            if (!updated)
-                                                throw new IllegalStateException("Change Password Failed: couldn't upload new file system entry points!");
+                    return UserUtil.generateUser(username, newPassword, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer, newAlgorithm)
+                            .thenCompose(updatedUser ->
+                                    userData.changeKeys(updatedUser.getUser(), updatedUser.getRoot(), network)
+                                            .thenCompose(userData -> {
+                                                this.userData = userData;
+                                                List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createChain(user, updatedUser.getUser(), username, expiry);
+                                                return network.coreNode.updateChain(username, claimChain).thenCompose(updatedChain -> {
+                                                    if (!updatedChain)
+                                                        throw new IllegalStateException("Couldn't register new public keys during password change!");
 
-                                            List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createChain(user, updatedUser.getUser(), username, expiry);
-                                            return network.coreNode.updateChain(username, claimChain).thenCompose(updatedChain -> {
-                                                if (!updatedChain)
-                                                    throw new IllegalStateException("Couldn't register new public keys during password change!");
-
-                                                return UserContext.ensureSignedUp(username, newPassword, network, crypto);
-                                            });
-                                        });
-                            });
+                                                    return UserContext.ensureSignedUp(username, newPassword, network, crypto);
+                                                });
+                                            })
+                            );
                 });
     }
 
@@ -241,6 +243,7 @@ public class UserContext {
             long t3 = System.currentTimeMillis();
             System.out.println("Uploading root dir metadata took " + (t3 - t2) + " mS");
             return addToStaticDataAndCommit(entry)
+                    .thenCompose(x -> addOwnedKeyAndCommit(entry.pointer.location.writer))
                     .thenApply(x -> {
                         System.out.println("Committing static data took " + (System.currentTimeMillis() - t3) + " mS");
 
@@ -249,6 +252,14 @@ public class UserContext {
                         throw new IllegalStateException("Failed to create entry directory!");
                     });
         });
+    }
+
+    private CompletableFuture<WriterData> addOwnedKeyAndCommit(UserPublicKey owned) {
+        Set<UserPublicKey> updated = Stream.concat(userData.ownedKeys.stream(), Stream.of(owned.toUserPublicKey()))
+                .collect(Collectors.toSet());
+
+        WriterData writerData = userData.withOwnedKeys(updated);
+        return writerData.commit(user, network).thenApply(b -> writerData);
     }
 
     @JsMethod
@@ -282,12 +293,21 @@ public class UserContext {
                         .collect(Collectors.toMap(e -> e.getFileProperties().name, e -> e)));
     }
 
+    private Set<String> getFollowers() {
+        return userData.staticData.get()
+                .getEntryPoints()
+                .stream()
+                .map(e -> e.owner)
+                .filter(name -> ! name.equals(username))
+                .collect(Collectors.toSet());
+    }
+
     @JsMethod
     public CompletableFuture<SocialState> getSocialState() {
         return processFollowRequests()
                 .thenCompose(pending -> getFollowerRoots()
                         .thenCompose(followerRoots -> getFriendRoots()
-                                .thenApply(followingRoots -> new SocialState(pending, followerRoots, followingRoots))));
+                                .thenApply(followingRoots -> new SocialState(pending, getFollowers(), followerRoots, followingRoots))));
     }
 
     @JsMethod
@@ -327,7 +347,7 @@ public class UserContext {
                     return sharing.mkdir(theirUsername, this, initialRequest.key.get(), true, crypto.random)
                             .thenCompose(friendRoot -> {
                                 // add a note to our static data so we know who we sent the read access to
-                                EntryPoint entry = new EntryPoint(friendRoot.readOnly(), username, Stream.of(theirUsername).collect(Collectors.toSet()), Collections.EMPTY_SET);
+                                EntryPoint entry = new EntryPoint(friendRoot.readOnly(), username, Collections.singleton(theirUsername), Collections.emptySet());
 
                                 return addToStaticDataAndCommit(entry).thenApply(trie -> {
                                     this.entrie = trie;
@@ -391,9 +411,9 @@ public class UserContext {
                         UserPublicKey targetUser = targetUserOpt.get();
                         return sharing.mkdir(targetUsername, this, null, true, crypto.random).thenCompose(friendRoot -> {
 
-                            // add a note to our static data so we know who we sent the read access to
-                            EntryPoint entry = new EntryPoint(friendRoot.readOnly(), username, Stream.of(targetUsername).collect(Collectors.toSet()), Collections.EMPTY_SET);
-                            CompletableFuture<TrieNode> addToStatic = addToStaticDataAndCommit(entry);
+                            // if they accept the request we will add a note to our static data so we know who we sent the read access to
+                            EntryPoint entry = new EntryPoint(friendRoot.readOnly(), username, Collections.singleton(targetUsername), Collections.emptySet());
+
                             // send details to allow friend to follow us, and optionally let us follow them
                             // create a tmp keypair whose public key we can prepend to the request without leaking information
                             User tmp = User.random(crypto.random, crypto.signer, crypto.boxer);
@@ -406,10 +426,7 @@ public class UserContext {
                             DataSink res = new DataSink();
                             res.writeArray(tmp.getPublicKeys());
                             res.writeArray(payload);
-                            return addToStatic.thenCompose(newRoot -> {
-                                entrie = newRoot;
-                                return network.coreNode.followRequest(targetUser.toUserPublicKey(), res.toByteArray());
-                            });
+                            return network.coreNode.followRequest(targetUser.toUserPublicKey(), res.toByteArray());
                         });
                     });
                 });
@@ -590,39 +607,13 @@ public class UserContext {
     }
 
     private CompletableFuture<TrieNode> addToStaticDataAndCommit(TrieNode root, EntryPoint entry) {
-        staticData.add(entry);
-        return commit(user, rootKey, network)
+        userData.staticData.ifPresent(sd -> sd.add(entry));
+        return userData.commit(user, network)
                 .thenCompose(res -> addEntryPoint(root, entry));
     }
 
-    private CompletableFuture<Boolean> commit(User user,
-                                              SymmetricKey rootKey,
-                                              NetworkAccess network) {
-
-        byte[] rawStatic = staticData.serialize(rootKey);
-        return network.dhtClient.put(user, rawStatic, Collections.emptyList())
-                .thenCompose(blobHash -> network.coreNode.getMetadataBlob(user)
-                        .thenCompose(currentHash -> {
-                            DataSink bout = new DataSink();
-                            try {
-                                currentHash.serialize(bout);
-                                bout.writeArray(blobHash.toBytes());
-                                byte[] signed = user.signMessage(bout.toByteArray());
-                                return network.coreNode.setMetadataBlob(user, user, signed);
-                            } catch (IOException e) {
-                                throw new RuntimeException(e);
-                            }
-                        })
-                );
-    }
-
     private CompletableFuture<Boolean> removeFromStaticData(FileTreeNode fileTreeNode) {
-        ReadableFilePointer pointer = fileTreeNode.getPointer().filePointer;
-
-        boolean isRemoved = staticData.remove(pointer);
-
-        return isRemoved ? commit(user, rootKey, network) :
-                CompletableFuture.completedFuture(true);
+        return userData.removeFromStaticData(fileTreeNode, user, network);
     };
 
     /**
@@ -679,6 +670,7 @@ public class UserContext {
                         byte[] ourKeyForThem = ourDirForThem.getKey().serialize();
                         byte[] keyFromResponse = freq.key.map(k -> k.serialize()).orElse(null);
                         if (keyFromResponse == null || !Arrays.equals(keyFromResponse, ourKeyForThem)) {
+                            // They didn't reciprocate (follow us)
                             CompletableFuture<Boolean> removeDir = ourDirForThem.remove(this, sharing);
                             // remove entry point as well
                             CompletableFuture<Boolean> cleanStatic = removeFromStaticData(ourDirForThem);
@@ -690,14 +682,23 @@ public class UserContext {
                                     .thenCompose(b -> addToStatic.apply(trie, freq));
                         } else if (freq.entry.get().pointer.isNull()) {
                             // They reciprocated, but didn't accept (they follow us, but we can't follow them)
-                            return CompletableFuture.completedFuture(trie);
+                            // add entry point to static data to signify their acceptance
+                            EntryPoint entryWeSentToThem = new EntryPoint(ourDirForThem.getPointer().filePointer.readOnly(),
+                                    username, Collections.singleton(ourDirForThem.getName()), Collections.emptySet());
+                            return addToStaticDataAndCommit(trie, entryWeSentToThem);
                         } else {
-                            // add new entry to tree root
+                            // they accepted and reciprocated
+                            // add entry point to static data to signify their acceptance
+                            EntryPoint entryWeSentToThem = new EntryPoint(ourDirForThem.getPointer().filePointer.readOnly(),
+                                    username, Collections.singleton(ourDirForThem.getName()), Collections.emptySet());
+
+                            // add new entry point to tree root
                             EntryPoint entry = freq.entry.get();
-                            return retrieveEntryPoint(entry).thenCompose(treeNode ->
-                                    treeNode.get().getPath(this)).thenApply(path ->
-                                    trie.put(path, entry)
-                            ).thenCompose(trieres -> addToStatic.apply(trieres, freq).thenApply(b -> trieres));
+                            return addToStaticDataAndCommit(trie, entryWeSentToThem)
+                                    .thenCompose(newRoot -> retrieveEntryPoint(entry).thenCompose(treeNode ->
+                                            treeNode.get().getPath(this)).thenApply(path ->
+                                            newRoot.put(path, entry)
+                                    ).thenCompose(trieres -> addToStatic.apply(trieres, freq).thenApply(b -> trieres)));
                         }
                     };
                     List<FollowRequest> initialRequests = all.stream()
@@ -749,12 +750,7 @@ public class UserContext {
             System.out.println("Storing metadata blob of " + metaBlob.length + " bytes. to mapKey: " + location.toString());
             return network.dhtClient.put(location.owner, metaBlob, linkHashes).thenCompose(blobHash -> {
                 User sharer = (User) location.writer;
-                return network.btree.put(sharer, location.getMapKey(), blobHash).thenCompose(newBtreeRootCAS -> {
-                    if (newBtreeRootCAS.left.equals(newBtreeRootCAS.right))
-                        return CompletableFuture.completedFuture(true);
-                    byte[] signed = sharer.signMessage(newBtreeRootCAS.toByteArray());
-                    return network.coreNode.setMetadataBlob(location.owner, sharer, signed);
-                });
+                return network.btree.put(sharer, location.getMapKey(), blobHash);
             });
         } catch (Exception e) {
             System.out.println(e.getMessage());
@@ -775,21 +771,16 @@ public class UserContext {
         return getByPath("/"+username).thenApply(opt -> opt.get());
     }
 
-    private CompletableFuture<byte[]> getStaticData() {
-        return network.coreNode.getMetadataBlob(user.toUserPublicKey())
-                .thenCompose(key -> network.dhtClient.getData(key.get())
-                        .thenApply(opt -> opt.get()));
-    }
-
     /**
      *
      * @return TrieNode for root of filesystem
      */
-    private CompletableFuture<TrieNode> createFileTree() {
-        return getEntryPoints()
-                .thenCompose(entryPoints ->
-                        Futures.reduceAll(entryPoints, entrie, (t, e) -> addEntryPoint(t, e), (a, b) -> a)
-                ).exceptionally(Futures::logError);
+    private CompletableFuture<TrieNode> createFileTree(WriterData userData) {
+        TrieNode root = new TrieNode();
+        if (! userData.staticData.isPresent())
+            throw new IllegalStateException("Cannot retrieve file tree for a filesystem without entrypoints!");
+        return Futures.reduceAll(userData.staticData.get().getEntryPoints(), root, (t, e) -> addEntryPoint(t, e), (a, b) -> a)
+                .exceptionally(Futures::logError);
     }
 
     private CompletableFuture<TrieNode> addEntryPoint(TrieNode root, EntryPoint e) {
@@ -809,22 +800,12 @@ public class UserContext {
         }).exceptionally(Futures::logError);
     }
 
-    private CompletableFuture<Set<EntryPoint>> getEntryPoints() {
-        return getStaticData().thenApply(raw -> {
-            try {
-                DataSource source = new DataSource(raw);
-                int count = source.readInt();
-                System.out.println("Found "+count+" entry points");
-
-                for (int i = 0; i < count; i++) {
-                    EntryPoint entry = EntryPoint.symmetricallyDecryptAndDeserialize(source.readArray(), rootKey);
-                    staticData.add(entry);
-                }
-                return staticData.getEntryPoints();
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });
+    private static CompletableFuture<CborObject> getWriterDataCbor(NetworkAccess network, String username) {
+        return network.coreNode.getPublicKey(username)
+                .thenCompose(pubKey -> network.coreNode.getMetadataBlob(pubKey.get()))
+                .thenCompose(key -> network.dhtClient.getData(key.get()))
+                .thenApply(Optional::get)
+                .thenApply(CborObject::fromByteArray);
     }
 
     public CompletableFuture<Set<FileTreeNode>> retrieveAll(List<EntryPoint> entries) {

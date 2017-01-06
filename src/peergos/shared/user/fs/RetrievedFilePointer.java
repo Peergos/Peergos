@@ -34,9 +34,7 @@ public class RetrievedFilePointer {
         if (!this.fileAccess.isDirectory()) {
             this.fileAccess.removeFragments(context);
             CompletableFuture<Boolean> result = new CompletableFuture<>();
-            context.network.btree.remove(this.filePointer.location.writer, this.filePointer.location.getMapKey()).thenAccept(treeRootHashCAS -> {
-                byte[] signed = ((User) filePointer.location.writer).signMessage(treeRootHashCAS.toByteArray());
-                context.network.coreNode.setMetadataBlob(this.filePointer.location.owner, this.filePointer.location.writer, signed);
+            context.network.btree.remove((User) this.filePointer.location.writer, this.filePointer.location.getMapKey()).thenAccept(removed -> {
                 // remove from parent
                 if (parentRetrievedFilePointer != null)
                     ((DirAccess) parentRetrievedFilePointer.fileAccess).removeChild(this, parentRetrievedFilePointer.filePointer, context);
@@ -48,14 +46,11 @@ public class RetrievedFilePointer {
             for (RetrievedFilePointer file : files)
                 file.remove(context, null);
             CompletableFuture<Boolean> result = new CompletableFuture<>();
-            context.network.btree.remove(this.filePointer.location.writer, this.filePointer.location.getMapKey()).thenAccept(treeRootHashCAS -> {
-                byte[] signed = ((User) filePointer.location.writer).signMessage(treeRootHashCAS.toByteArray());
-                context.network.coreNode.setMetadataBlob(this.filePointer.location.owner, this.filePointer.location.writer, signed).thenAccept(res -> {
-                    // remove from parent
-                    if (parentRetrievedFilePointer != null)
-                        ((DirAccess) parentRetrievedFilePointer.fileAccess).removeChild(this, parentRetrievedFilePointer.filePointer, context);
-                    result.complete(res);
-                });
+            context.network.btree.remove((User) this.filePointer.location.writer, this.filePointer.location.getMapKey()).thenAccept(removed -> {
+                // remove from parent
+                if (parentRetrievedFilePointer != null)
+                    ((DirAccess) parentRetrievedFilePointer.fileAccess).removeChild(this, parentRetrievedFilePointer.filePointer, context);
+                result.complete(removed);
             });
             return result;
         });

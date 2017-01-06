@@ -72,8 +72,9 @@ public class TreeNode {
         if (! nextSmallest.targetHash.isPresent())
             return CompletableFuture.completedFuture(MaybeMultihash.EMPTY());
 
-        return storage.getData(nextSmallest.targetHash.get())
-                .thenCompose(rawOpt -> TreeNode.deserialize(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present!")))
+        Multihash nextSmallestHash = nextSmallest.targetHash.get();
+        return storage.getData(nextSmallestHash)
+                .thenCompose(rawOpt -> TreeNode.deserialize(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present! " + nextSmallestHash)))
                         .get(key, storage));
     }
 
@@ -130,8 +131,9 @@ public class TreeNode {
         }
 
         final KeyElement finalNextSmallest = nextSmallest;
-        return storage.getData(nextSmallest.targetHash.get())
-                .thenApply(rawOpt -> TreeNode.deserialize(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present!"))))
+        Multihash nextSmallestHash = nextSmallest.targetHash.get();
+        return storage.getData(nextSmallestHash)
+                .thenApply(rawOpt -> TreeNode.deserialize(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present! " + nextSmallestHash))))
                 .thenCompose(modifiedChild -> modifiedChild.withHash(finalNextSmallest.targetHash).put(writer, key, value, storage, maxChildren))
                 .thenCompose(modifiedChild -> {
                     if (!modifiedChild.hash.isPresent()) {
@@ -183,7 +185,7 @@ public class TreeNode {
     public CompletableFuture<Integer> size(ContentAddressedStorage storage) {
         return Futures.reduceAll(keys, keys.size() - 1, (total, key) -> key.targetHash.isPresent() ?
                 storage.getData(key.targetHash.get())
-                        .thenCompose(rawOpt -> TreeNode.deserialize(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present!")))
+                        .thenCompose(rawOpt -> TreeNode.deserialize(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present! " + key.targetHash.get())))
                                 .size(storage)).thenApply(subTreeTotal -> subTreeTotal + total) :
                 CompletableFuture.completedFuture(total), (a, b) -> a + b);
     }
@@ -197,7 +199,7 @@ public class TreeNode {
         if (! targetHash.isPresent())
             return CompletableFuture.completedFuture(keys.toArray(new KeyElement[keys.size()])[1].key);
         return storage.getData(targetHash.get())
-                .thenCompose(rawOpt -> TreeNode.deserialize(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present!")))
+                .thenCompose(rawOpt -> TreeNode.deserialize(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present! " + targetHash.get())))
                         .smallestKey(storage));
     }
 
@@ -225,7 +227,7 @@ public class TreeNode {
                 Multihash multihash = nextSmallest.targetHash.get();
                 final KeyElement finalNextSmallest = nextSmallest;
                 return storage.getData(multihash)
-                        .thenApply(rawOpt -> TreeNode.deserialize(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present!")))
+                        .thenApply(rawOpt -> TreeNode.deserialize(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present! " + multihash)))
                                 .withHash(finalNextSmallest.targetHash))
                         .thenCompose(child -> {
                             // take the subtree's smallest value (in a leaf) delete it and promote it to the separator here
@@ -252,8 +254,9 @@ public class TreeNode {
         if (! nextSmallest.targetHash.isPresent())
             return CompletableFuture.completedFuture(new TreeNode(this.keys));
         final KeyElement finalNextSmallest = nextSmallest;
-        return storage.getData(nextSmallest.targetHash.get())
-                .thenCompose(rawOpt -> TreeNode.deserialize(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present!")))
+        final Multihash nextSmallestHash = nextSmallest.targetHash.get();
+        return storage.getData(nextSmallestHash)
+                .thenCompose(rawOpt -> TreeNode.deserialize(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present! " + nextSmallestHash)))
                         .withHash(finalNextSmallest.targetHash).delete(writer, key, storage, maxChildren))
                 .thenCompose(child -> {
                     // update pointer
@@ -263,7 +266,7 @@ public class TreeNode {
                     }
                     if (child.keys.size() < maxChildren / 2) {
                         // re-balance
-                        return rebalance(writer, this, child, finalNextSmallest.targetHash.get(), storage, maxChildren);
+                        return rebalance(writer, this, child, nextSmallestHash, storage, maxChildren);
                     }
                     return storage.put(writer, this.toMerkleNode())
                             .thenApply(multihash -> new TreeNode(this, multihash));

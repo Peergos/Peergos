@@ -144,14 +144,6 @@ public class UserService
         server.createContext(UI_URL, new StaticHandler(webroot, caching, true));
         server.createContext("/" + HTTPCoreNodeServer.CORE_URL, new HTTPCoreNodeServer.CoreNodeHandler(coreNode));
 
-        BTreeHandlers bTreeHandlers = new BTreeHandlers(coreNode, dht);
-
-        bTreeHandlers.handlerMap()
-                .entrySet()
-                .stream()
-                .forEach(e -> server.createContext(e.getKey(), e.getValue()));
-
-
         server.setExecutor(Executors.newFixedThreadPool(HANDLER_THREADS));
         server.start();
 
