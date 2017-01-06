@@ -9,17 +9,17 @@ import java.util.stream.*;
 @JsType
 public class SocialState {
 
-    public final List<FollowRequest> pending;
+    public final List<FollowRequest> pendingIncoming;
     public final Map<String, FileTreeNode> followerRoots;
     public final Set<FileTreeNode> followingRoots;
-    public final Map<String, FileTreeNode> pendingFollowRequestsToOthers;
+    public final Map<String, FileTreeNode> pendingOutgoingFollowRequests;
 
-    public SocialState(List<FollowRequest> pending,
+    public SocialState(List<FollowRequest> pendingIncoming,
                        Set<String> actualFollowers,
                        Map<String, FileTreeNode> followerRoots,
                        Set<FileTreeNode> followingRoots) {
-        this.pending = pending;
-        this.pendingFollowRequestsToOthers = followerRoots.entrySet()
+        this.pendingIncoming = pendingIncoming;
+        this.pendingOutgoingFollowRequests = followerRoots.entrySet()
                 .stream()
                 .filter(e -> ! actualFollowers.contains(e.getKey()))
                 .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue()));
