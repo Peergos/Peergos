@@ -84,7 +84,7 @@ public class UserContext {
         return UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer, algorithm)
                 .thenCompose(userWithRoot -> {
                     UserContext context = new UserContext(username, userWithRoot.getUser(), userWithRoot.getBoxingPair(),
-                            network, crypto, WriterData.createEmpty(userWithRoot.getRoot()));
+                            network, crypto, WriterData.createEmpty(Optional.of(userWithRoot.getBoxingPair().publicBoxingKey), userWithRoot.getRoot()));
                     System.out.println("Registering username " + username);
                     return context.register().thenCompose(successfullyRegistered -> {
                         if (!successfullyRegistered) {
@@ -107,7 +107,7 @@ public class UserContext {
     public static CompletableFuture<UserContext> fromPublicLink(String link, NetworkAccess network, Crypto crypto) {
         ReadableFilePointer entryPoint = ReadableFilePointer.fromLink(link);
         EntryPoint entry = new EntryPoint(entryPoint, "", Collections.emptySet(), Collections.emptySet());
-        UserContext context = new UserContext(null, null, null, network, crypto, WriterData.createEmpty(null));
+        UserContext context = new UserContext(null, null, null, network, crypto, WriterData.createEmpty(Optional.empty(), null));
         return context.addEntryPoint(context.entrie, entry).thenApply(trieNode -> {
             context.entrie = trieNode;
             return context;
@@ -732,7 +732,7 @@ public class UserContext {
 
     private FollowRequest decodeFollowRequest(byte[] raw) throws IOException {
         DataSource buf = new DataSource(raw);
-        PublicBoxingKey tmp = PublicBoxingKey.deserialize(new DataSource(Serialize.deserializeByteArray(buf, 4096)));
+        PublicBoxingKey tmp = PublicBoxingKey.fromCbor(CborObject.fromByteArray(Serialize.deserializeByteArray(buf, 4096)));
         byte[] cipher = buf.readArray();
         byte[] plaintext = boxer.secretBoxingKey.decryptMessage(cipher, tmp);
         DataSource input = new DataSource(plaintext);

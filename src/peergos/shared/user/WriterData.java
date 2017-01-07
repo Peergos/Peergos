@@ -80,10 +80,10 @@ public class WriterData implements Cborable {
                 Optional.empty());
     }
 
-    public static WriterData createEmpty(SymmetricKey rootKey) {
+    public static WriterData createEmpty(Optional<PublicBoxingKey> followRequestReceiver, SymmetricKey rootKey) {
         return new WriterData(Optional.of(UserGenerationAlgorithm.getDefault()),
                 Optional.empty(),
-                Optional.empty(),
+                followRequestReceiver,
                 Collections.emptySet(),
                 Optional.of(new UserStaticData(rootKey)),
                 Optional.empty());
@@ -167,7 +167,8 @@ public class WriterData implements Cborable {
         Optional<PublicBoxingKey> followRequestReceiver = extract.apply("inbound").map(raw -> PublicBoxingKey.fromCbor(raw));
         CborObject.CborList ownedList = (CborObject.CborList) map.values.get(new CborObject.CborString("owned"));
         Set<UserPublicKey> owned = ownedList.value.stream().map(UserPublicKey::fromCbor).collect(Collectors.toSet());
-        Optional<UserStaticData> staticData = extract.apply("static").map(raw -> UserStaticData.fromCbor(raw, rootKey));
+        // rootKey is null for other people parsing our WriterData who don't have our root key
+        Optional<UserStaticData> staticData = rootKey == null ? Optional.empty() : extract.apply("static").map(raw -> UserStaticData.fromCbor(raw, rootKey));
         Optional<Multihash> btree = extract.apply("btree").map(val -> Multihash.fromMultiAddress(((CborObject.CborMerkleLink)val).target));
         return new WriterData(algo, publicData, followRequestReceiver, owned, staticData, btree);
     }
