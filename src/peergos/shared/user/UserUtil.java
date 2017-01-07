@@ -1,6 +1,6 @@
 package peergos.shared.user;
 
-import peergos.shared.crypto.User;
+import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
@@ -33,15 +33,13 @@ public class UserUtil {
             byte[] pubilcBoxBytes = new byte[32];
             boxer.crypto_box_keypair(pubilcBoxBytes, secretBoxBytes);
 	
-            User user = new User(
-                    new Ed25519SecretKey(secretSignBytes, signer),
-                    new Curve25519SecretKey(secretBoxBytes, boxer),
-                    new Ed25519PublicKey(publicSignBytes, signer),
-                    new Curve25519PublicKey(pubilcBoxBytes, boxer, random));
-	
+            User user = new User(new Ed25519SecretKey(secretSignBytes, signer), new Ed25519PublicKey(publicSignBytes, signer));
+
+            BoxingKeyPair boxingKeyPair = new BoxingKeyPair(new Curve25519PublicKey(pubilcBoxBytes, boxer, random), new Curve25519SecretKey(secretBoxBytes, boxer));
+
             SymmetricKey root =  new TweetNaClKey(rootKeyBytes, false, provider, random);
 
-            return new UserWithRoot(user, root);
+            return new UserWithRoot(user, boxingKeyPair, root);
         });
     }
 }

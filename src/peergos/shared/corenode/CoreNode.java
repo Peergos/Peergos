@@ -1,13 +1,11 @@
 package peergos.shared.corenode;
 
-import peergos.server.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.merklebtree.*;
 
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
-
 
 public interface CoreNode {
     int MAX_PENDING_FOLLOWERS = 100;

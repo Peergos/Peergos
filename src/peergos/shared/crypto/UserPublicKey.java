@@ -15,21 +15,17 @@ public class UserPublicKey implements Cborable, Comparable<UserPublicKey>
 
     @JsProperty
     public final PublicSigningKey publicSigningKey;
-    @JsProperty
-    public final PublicBoxingKey publicBoxingKey;
 
     @JsConstructor
-    public UserPublicKey(PublicSigningKey publicSigningKey, PublicBoxingKey publicBoxingKey)
+    public UserPublicKey(PublicSigningKey publicSigningKey)
     {
         this.publicSigningKey = publicSigningKey;
-        this.publicBoxingKey = publicBoxingKey;
     }
 
     public static UserPublicKey deserialize(DataInput din) {
         try {
             PublicSigningKey signingKey = PublicSigningKey.deserialize(din);
-            PublicBoxingKey boxingKey = PublicBoxingKey.deserialize(din);
-            return new UserPublicKey(signingKey, boxingKey);
+            return new UserPublicKey(signingKey);
         } catch (IOException e) {
             throw new IllegalStateException("Invalid serialized UserPublicKey", e);
         }
@@ -37,7 +33,6 @@ public class UserPublicKey implements Cborable, Comparable<UserPublicKey>
 
     public void serialize(DataOutput dout) throws IOException {
         publicSigningKey.serialize(dout);
-        publicBoxingKey.serialize(dout);
     }
 
     @JsMethod
@@ -63,7 +58,7 @@ public class UserPublicKey implements Cborable, Comparable<UserPublicKey>
     @JsMethod
     public byte[] serialize()
     {
-        return ArrayOps.concat(publicSigningKey.toByteArray(), publicBoxingKey.toByteArray());
+        return publicSigningKey.toByteArray();
     }
 
     public byte[] getPublicSigningKey()
@@ -71,26 +66,14 @@ public class UserPublicKey implements Cborable, Comparable<UserPublicKey>
         return publicSigningKey.getPublicSigningKey();
     }
 
-    public byte[] getPublicBoxingKey()
-    {
-        return publicBoxingKey.getPublicBoxingKey();
-    }
-
     public byte[] getPublicKeys() {
         try {
             DataSink buf = new DataSink();
             this.publicSigningKey.serialize(buf);
-            this.publicBoxingKey.serialize(buf);
             return buf.toByteArray();
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-    }
-
-    @JsMethod
-    public byte[] encryptMessageFor(byte[] input, SecretBoxingKey ourSecretBoxingKey)
-    {
-        return publicBoxingKey.encryptMessageFor(input, ourSecretBoxingKey);
     }
 
     @JsMethod
@@ -100,7 +83,7 @@ public class UserPublicKey implements Cborable, Comparable<UserPublicKey>
     }
 
     public UserPublicKey toUserPublicKey() {
-        return new UserPublicKey(publicSigningKey, publicBoxingKey);
+        return new UserPublicKey(publicSigningKey);
     }
 
     public boolean equals(Object o)
@@ -109,12 +92,12 @@ public class UserPublicKey implements Cborable, Comparable<UserPublicKey>
             return false;
 
         UserPublicKey other = (UserPublicKey) o;
-        return publicBoxingKey.equals(other.publicBoxingKey) && publicSigningKey.equals(other.publicSigningKey);
+        return publicSigningKey.equals(other.publicSigningKey);
     }
 
     public int hashCode()
     {
-        return publicBoxingKey.hashCode() ^ publicSigningKey.hashCode();
+        return publicSigningKey.hashCode();
     }
 
     public boolean isValidSignature(byte[] signed, byte[] raw)
@@ -137,8 +120,6 @@ public class UserPublicKey implements Cborable, Comparable<UserPublicKey>
 
     public static UserPublicKey createNull() {
         return new UserPublicKey(
-                new Ed25519PublicKey(new byte[32], PublicSigningKey.PROVIDERS.get(PublicSigningKey.Type.Ed25519)),
-                new Curve25519PublicKey(new byte[32], PublicBoxingKey.PROVIDERS.get(PublicBoxingKey.Type.Curve25519),
-                        PublicBoxingKey.RNG_PROVIDERS.get(PublicBoxingKey.Type.Curve25519)));
+                new Ed25519PublicKey(new byte[32], PublicSigningKey.PROVIDERS.get(PublicSigningKey.Type.Ed25519)));
     }
 }

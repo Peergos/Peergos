@@ -3,6 +3,7 @@ package peergos.shared.user;
 import jsinterop.annotations.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
@@ -24,7 +25,7 @@ public class EntryPoint {
         this.writers = writers;
     }
 
-    public byte[] serializeAndEncrypt(User user, UserPublicKey target) throws IOException {
+    public byte[] serializeAndEncrypt(BoxingKeyPair user, PublicBoxingKey target) throws IOException {
         return target.encryptMessageFor(this.serialize(), user.secretBoxingKey);
     }
 

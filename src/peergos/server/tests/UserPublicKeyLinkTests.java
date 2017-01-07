@@ -26,7 +26,7 @@ public class UserPublicKeyLinkTests {
 
     @Test
     public void createInitial() {
-        User user = User.random(new SafeRandom.Java(), new Ed25519.Java(), new Curve25519.Java());
+        User user = User.random(new SafeRandom.Java(), new Ed25519.Java());
         UserPublicKeyLink.UsernameClaim node = UserPublicKeyLink.UsernameClaim.create("someuser", user, LocalDate.now().plusYears(2));
         UserPublicKeyLink upl = new UserPublicKeyLink(user.toUserPublicKey(), node);
         testSerialization(upl);
@@ -42,8 +42,8 @@ public class UserPublicKeyLinkTests {
 
     @Test
     public void createChain() {
-        User oldUser = User.random(new SafeRandom.Java(), new Ed25519.Java(), new Curve25519.Java());
-        User newUser = User.random(new SafeRandom.Java(), new Ed25519.Java(), new Curve25519.Java());
+        User oldUser = User.random(new SafeRandom.Java(), new Ed25519.Java());
+        User newUser = User.random(new SafeRandom.Java(), new Ed25519.Java());
 
         List<UserPublicKeyLink> links = UserPublicKeyLink.createChain(oldUser, newUser, "someuser", LocalDate.now().plusYears(2));
         links.forEach(link -> testSerialization(link));

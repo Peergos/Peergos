@@ -4,6 +4,7 @@ import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.ipfs.api.*;
 import peergos.shared.storage.*;
@@ -25,6 +26,8 @@ public class WriterData implements Cborable {
     public final Optional<UserGenerationAlgorithm> generationAlgorithm;
     // accessible under IPFS address $hash/public
     public final Optional<ReadableFilePointer> publicData;
+    // The public key to encrypt follow requests to, accessible under IPFS address $hash/inbound
+    public final Optional<PublicBoxingKey> followRequestReceiver;
     // accessible under IPFS address $hash/owned
     public final Set<UserPublicKey> ownedKeys;
 
@@ -42,29 +45,35 @@ public class WriterData implements Cborable {
      * @param staticData Any static data owner by this key (list of entry points)
      * @param btree Any file tree owned by this key
      */
-    public WriterData(Optional<UserGenerationAlgorithm> generationAlgorithm, Optional<ReadableFilePointer> publicData,
-                      Set<UserPublicKey> ownedKeys, Optional<UserStaticData> staticData, Optional<Multihash> btree) {
+    public WriterData(Optional<UserGenerationAlgorithm> generationAlgorithm,
+                      Optional<ReadableFilePointer> publicData,
+                      Optional<PublicBoxingKey> followRequestReceiver,
+                      Set<UserPublicKey> ownedKeys,
+                      Optional<UserStaticData> staticData,
+                      Optional<Multihash> btree) {
         this.generationAlgorithm = generationAlgorithm;
         this.publicData = publicData;
+        this.followRequestReceiver = followRequestReceiver;
         this.ownedKeys = ownedKeys;
         this.staticData = staticData;
         this.btree = btree;
     }
 
     public WriterData withBtree(Multihash treeRoot) {
-        return new WriterData(generationAlgorithm, publicData, ownedKeys, staticData, Optional.of(treeRoot));
+        return new WriterData(generationAlgorithm, publicData, followRequestReceiver, ownedKeys, staticData, Optional.of(treeRoot));
     }
 
     public WriterData withOwnedKeys(Set<UserPublicKey> owned) {
-        return new WriterData(generationAlgorithm, publicData, owned, staticData, btree);
+        return new WriterData(generationAlgorithm, publicData, followRequestReceiver, owned, staticData, btree);
     }
 
     public static WriterData buildSubtree(Multihash btreeRoot) {
-        return new WriterData(Optional.empty(), Optional.empty(), Collections.emptySet(), Optional.empty(), Optional.of(btreeRoot));
+        return new WriterData(Optional.empty(), Optional.empty(), Optional.empty(), Collections.emptySet(), Optional.empty(), Optional.of(btreeRoot));
     }
 
     public static WriterData createEmpty() {
         return new WriterData(Optional.empty(),
+                Optional.empty(),
                 Optional.empty(),
                 Collections.emptySet(),
                 Optional.empty(),
@@ -73,6 +82,7 @@ public class WriterData implements Cborable {
 
     public static WriterData createEmpty(SymmetricKey rootKey) {
         return new WriterData(Optional.of(UserGenerationAlgorithm.getDefault()),
+                Optional.empty(),
                 Optional.empty(),
                 Collections.emptySet(),
                 Optional.of(new UserStaticData(rootKey)),
@@ -90,9 +100,9 @@ public class WriterData implements Cborable {
         }).orElse(CompletableFuture.completedFuture(true));
     }
 
-    public CompletableFuture<WriterData> changeKeys(User user, SymmetricKey newKey, NetworkAccess network) {
+    public CompletableFuture<WriterData> changeKeys(User user, PublicBoxingKey followRequestReceiver, SymmetricKey newKey, NetworkAccess network) {
         Optional<UserStaticData> newEntryPoints = staticData.map(sd -> sd.withKey(newKey));
-        WriterData updated = new WriterData(generationAlgorithm, publicData, ownedKeys, newEntryPoints, btree);
+        WriterData updated = new WriterData(generationAlgorithm, publicData, Optional.of(followRequestReceiver), ownedKeys, newEntryPoints, btree);
         return updated.commit(user, network).thenApply(b -> updated);
 
     }
@@ -125,6 +135,7 @@ public class WriterData implements Cborable {
 
         generationAlgorithm.ifPresent(alg -> result.put("algorithm", alg.toCbor()));
         publicData.ifPresent(rfp -> result.put("public", rfp.toCbor()));
+        followRequestReceiver.ifPresent(boxer -> result.put("inbound", boxer.toCbor()));
         List<CborObject> ownedKeyStrings = ownedKeys.stream().map(Cborable::toCbor).collect(Collectors.toList());
         result.put("owned", new CborObject.CborList(ownedKeyStrings));
         staticData.ifPresent(sd -> result.put("static", sd.toCbor()));
@@ -153,10 +164,11 @@ public class WriterData implements Cborable {
 
         Optional<UserGenerationAlgorithm> algo  = extractUserGenerationAlgorithm(cbor);
         Optional<ReadableFilePointer> publicData = extract.apply("public").map(ReadableFilePointer::fromCbor);
+        Optional<PublicBoxingKey> followRequestReceiver = extract.apply("inbound").map(raw -> PublicBoxingKey.fromCbor(raw));
         CborObject.CborList ownedList = (CborObject.CborList) map.values.get(new CborObject.CborString("owned"));
         Set<UserPublicKey> owned = ownedList.value.stream().map(UserPublicKey::fromCbor).collect(Collectors.toSet());
         Optional<UserStaticData> staticData = extract.apply("static").map(raw -> UserStaticData.fromCbor(raw, rootKey));
         Optional<Multihash> btree = extract.apply("btree").map(val -> Multihash.fromMultiAddress(((CborObject.CborMerkleLink)val).target));
-        return new WriterData(algo, publicData, owned, staticData, btree);
+        return new WriterData(algo, publicData, followRequestReceiver, owned, staticData, btree);
     }
 }
