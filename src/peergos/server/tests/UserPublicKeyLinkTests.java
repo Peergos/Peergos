@@ -26,7 +26,7 @@ public class UserPublicKeyLinkTests {
 
     @Test
     public void createInitial() {
-        User user = User.random(new SafeRandom.Java(), new Ed25519.Java());
+        SigningKeyPair user = SigningKeyPair.random(new SafeRandom.Java(), new Ed25519.Java());
         UserPublicKeyLink.UsernameClaim node = UserPublicKeyLink.UsernameClaim.create("someuser", user, LocalDate.now().plusYears(2));
         UserPublicKeyLink upl = new UserPublicKeyLink(user.toUserPublicKey(), node);
         testSerialization(upl);
@@ -42,8 +42,8 @@ public class UserPublicKeyLinkTests {
 
     @Test
     public void createChain() {
-        User oldUser = User.random(new SafeRandom.Java(), new Ed25519.Java());
-        User newUser = User.random(new SafeRandom.Java(), new Ed25519.Java());
+        SigningKeyPair oldUser = SigningKeyPair.random(new SafeRandom.Java(), new Ed25519.Java());
+        SigningKeyPair newUser = SigningKeyPair.random(new SafeRandom.Java(), new Ed25519.Java());
 
         List<UserPublicKeyLink> links = UserPublicKeyLink.createChain(oldUser, newUser, "someuser", LocalDate.now().plusYears(2));
         links.forEach(link -> testSerialization(link));
@@ -52,7 +52,7 @@ public class UserPublicKeyLinkTests {
     @Test
     public void coreNode() throws Exception {
         CoreNode core = getDefaultCoreNode();
-        User user = User.insecureRandom();
+        SigningKeyPair user = SigningKeyPair.insecureRandom();
         String username = "someuser";
 
         // register the username
@@ -72,7 +72,7 @@ public class UserPublicKeyLinkTests {
             throw new IllegalStateException("Retrieved chain element different "+chain2 +" != "+Arrays.asList(upl2));
 
         // now change the keys
-        User user2 = User.insecureRandom();
+        SigningKeyPair user2 = SigningKeyPair.insecureRandom();
         List<UserPublicKeyLink> chain3 = UserPublicKeyLink.createChain(user, user2, username, LocalDate.now().plusWeeks(1));
         boolean success3 = core.updateChain(username, chain3).get();
         List<UserPublicKeyLink> chain3Retrieved = core.getChain(username).get();
@@ -94,7 +94,7 @@ public class UserPublicKeyLinkTests {
             throw new IllegalStateException("Returned username is different! "+uname + " != "+username);
 
         // try to claim the same username with a different key
-        User user3 = User.insecureRandom();
+        SigningKeyPair user3 = SigningKeyPair.insecureRandom();
         UserPublicKeyLink.UsernameClaim node3 = UserPublicKeyLink.UsernameClaim.create(username, user3, LocalDate.now().plusYears(2));
         UserPublicKeyLink upl3 = new UserPublicKeyLink(user3.toUserPublicKey(), node3);
         try {

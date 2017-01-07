@@ -1,6 +1,5 @@
 package peergos.shared.user.fs;
 
-import com.google.gwt.user.client.ui.*;
 import jsinterop.annotations.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.symmetric.*;
@@ -64,8 +63,8 @@ public class FileUploader implements AutoCloseable {
                 baseKey, metaKey, parentLocation, parentparentKey, monitor, fileProperties, nOriginalFragments, nAllowedFalures);
     }
 
-    public CompletableFuture<Location> uploadChunk(UserContext context, UserPublicKey owner, User writer, long chunkIndex,
-                                Location currentLocation, ProgressConsumer<Long> monitor) {
+    public CompletableFuture<Location> uploadChunk(UserContext context, UserPublicKey owner, SigningKeyPair writer, long chunkIndex,
+                                                   Location currentLocation, ProgressConsumer<Long> monitor) {
 	    System.out.println("uploading chunk: "+chunkIndex + " of "+name);
 
         long position = chunkIndex * Chunk.MAX_SIZE;
@@ -85,7 +84,7 @@ public class FileUploader implements AutoCloseable {
         });
     }
 
-    public CompletableFuture<Location> upload(UserContext context, UserPublicKey owner, User writer, Location currentChunk) {
+    public CompletableFuture<Location> upload(UserContext context, UserPublicKey owner, SigningKeyPair writer, Location currentChunk) {
         long t1 = System.currentTimeMillis();
         Location originalChunk = currentChunk;
 
@@ -97,9 +96,9 @@ public class FileUploader implements AutoCloseable {
                 });
     }
 
-    public static CompletableFuture<Boolean> uploadChunk(User writer, FileProperties props, Location parentLocation, SymmetricKey parentparentKey,
-                        SymmetricKey baseKey, LocatedChunk chunk, int nOriginalFragments, int nAllowedFalures, Location nextChunkLocation,
-                        UserContext context, ProgressConsumer<Long> monitor) {
+    public static CompletableFuture<Boolean> uploadChunk(SigningKeyPair writer, FileProperties props, Location parentLocation, SymmetricKey parentparentKey,
+                                                         SymmetricKey baseKey, LocatedChunk chunk, int nOriginalFragments, int nAllowedFalures, Location nextChunkLocation,
+                                                         UserContext context, ProgressConsumer<Long> monitor) {
         EncryptedChunk encryptedChunk = chunk.chunk.encrypt();
 
         peergos.shared.user.fs.Fragmenter fragmenter = nAllowedFalures == 0 ?

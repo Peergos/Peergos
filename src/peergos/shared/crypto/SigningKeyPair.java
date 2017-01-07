@@ -9,11 +9,11 @@ import peergos.shared.util.ArrayOps;
 import java.io.*;
 import java.util.Random;
 
-public class User extends UserPublicKey
+public class SigningKeyPair extends UserPublicKey
 {
     public final SecretSigningKey secretSigningKey;
 
-    public User(SecretSigningKey secretSigningKey, PublicSigningKey publicSigningKey)
+    public SigningKeyPair(SecretSigningKey secretSigningKey, PublicSigningKey publicSigningKey)
     {
         super(publicSigningKey);
         this.secretSigningKey = secretSigningKey;
@@ -34,7 +34,7 @@ public class User extends UserPublicKey
             if (hasPrivateKeys) {
                 SecretSigningKey signingKey = SecretSigningKey.deserialize(din);
                 UserPublicKey pub = UserPublicKey.deserialize(din);
-                return new User(signingKey, pub.publicSigningKey);
+                return new SigningKeyPair(signingKey, pub.publicSigningKey);
             }
             return UserPublicKey.deserialize(din);
         } catch (IOException e) {
@@ -50,7 +50,7 @@ public class User extends UserPublicKey
         return ArrayOps.concat(secretSigningKey.serialize(), super.serialize());
     }
 
-    public static User random(SafeRandom random, Ed25519 signer) {
+    public static SigningKeyPair random(SafeRandom random, Ed25519 signer) {
 
         byte[] secretSignBytes = new byte[64];
         byte[] publicSignBytes = new byte[32];
@@ -60,16 +60,16 @@ public class User extends UserPublicKey
         return random(secretSignBytes, publicSignBytes, signer);
     }
 
-    private static User random(byte[] secretSignBytes, byte[] publicSignBytes,
-                               Ed25519 signer) {
+    private static SigningKeyPair random(byte[] secretSignBytes, byte[] publicSignBytes,
+                                         Ed25519 signer) {
         signer.crypto_sign_keypair(publicSignBytes, secretSignBytes);
 
-        return new User(
+        return new SigningKeyPair(
                 new Ed25519SecretKey(secretSignBytes, signer),
                 new Ed25519PublicKey(publicSignBytes, signer));
     }
 
-    public static User insecureRandom() {
+    public static SigningKeyPair insecureRandom() {
 
         byte[] secretSignBytes = new byte[64];
         byte[] publicSignBytes = new byte[32];

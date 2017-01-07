@@ -25,7 +25,7 @@ public class UserContext {
 
     @JsProperty
     public final String username;
-    public final User user;
+    public final SigningKeyPair signer;
     public final BoxingKeyPair boxer;
     private WriterData userData;
     private TrieNode entrie = new TrieNode(); // ba dum che!
@@ -38,14 +38,14 @@ public class UserContext {
     // In process only
     public final Crypto crypto;
 
-    public UserContext(String username, User user, BoxingKeyPair boxer, NetworkAccess network, Crypto crypto, WriterData userData) {
-        this(username, user, boxer, network, crypto, new ErasureFragmenter(40, 10), userData);
+    public UserContext(String username, SigningKeyPair signer, BoxingKeyPair boxer, NetworkAccess network, Crypto crypto, WriterData userData) {
+        this(username, signer, boxer, network, crypto, new ErasureFragmenter(40, 10), userData);
     }
 
-    public UserContext(String username, User user, BoxingKeyPair boxer, NetworkAccess network,
+    public UserContext(String username, SigningKeyPair signer, BoxingKeyPair boxer, NetworkAccess network,
                        Crypto crypto, Fragmenter fragmenter, WriterData userData) {
         this.username = username;
-        this.user = user;
+        this.signer = signer;
         this.boxer = boxer;
         this.network = network;
         this.crypto = crypto;
@@ -98,7 +98,7 @@ public class UserContext {
                         long t1 = System.currentTimeMillis();
                         return context.createEntryDirectory(username).thenCompose(userRoot -> {
                             System.out.println("Creating root directory took " + (System.currentTimeMillis() - t1) + " mS");
-                            return ((DirAccess) userRoot.fileAccess).mkdir(SHARED_DIR_NAME, context, (User) userRoot.filePointer.location.writer,
+                            return ((DirAccess) userRoot.fileAccess).mkdir(SHARED_DIR_NAME, context, (SigningKeyPair) userRoot.filePointer.location.writer,
                                     userRoot.filePointer.location.getMapKey(), userRoot.filePointer.baseKey, null, true, crypto.random)
                                     .thenCompose(x -> context.init().thenApply(inited -> context));
                         });
@@ -171,7 +171,7 @@ public class UserContext {
     @JsMethod
     public CompletableFuture<Boolean> isRegistered() {
         System.out.println("isRegistered");
-        return network.coreNode.getUsername(user).thenApply(registeredUsername -> {
+        return network.coreNode.getUsername(signer).thenApply(registeredUsername -> {
             System.out.println("got username \"" + registeredUsername + "\"");
             return this.username.equals(registeredUsername);
         });
@@ -192,7 +192,7 @@ public class UserContext {
             // set claim expiry to two months from now
             LocalDate expiry = now.plusMonths(2);
             System.out.println("claiming username: " + this.username + " with expiry " + expiry);
-            List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createInitial(user, this.username, expiry);
+            List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createInitial(signer, this.username, expiry);
             return network.coreNode.updateChain(this.username, claimChain);
         });
     }
@@ -208,14 +208,14 @@ public class UserContext {
 
         return UserUtil.generateUser(username, oldPassword, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer, existingAlgorithm)
                 .thenCompose(existingUser -> {
-                    if (!existingUser.getUser().equals(this.user))
+                    if (!existingUser.getUser().equals(this.signer))
                         throw new IllegalArgumentException("Incorrect existing password during change password attempt!");
                     return UserUtil.generateUser(username, newPassword, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer, newAlgorithm)
                             .thenCompose(updatedUser ->
                                     userData.changeKeys(updatedUser.getUser(), updatedUser.getBoxingPair().publicBoxingKey, updatedUser.getRoot(), network)
                                             .thenCompose(userData -> {
                                                 this.userData = userData;
-                                                List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createChain(user, updatedUser.getUser(), username, expiry);
+                                                List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createChain(signer, updatedUser.getUser(), username, expiry);
                                                 return network.coreNode.updateChain(username, claimChain).thenCompose(updatedChain -> {
                                                     if (!updatedChain)
                                                         throw new IllegalStateException("Couldn't register new public keys during password change!");
@@ -229,7 +229,7 @@ public class UserContext {
 
     public CompletableFuture<RetrievedFilePointer> createEntryDirectory(String directoryName) {
         long t1 = System.currentTimeMillis();
-        User writer = User.random(crypto.random, crypto.signer);
+        SigningKeyPair writer = SigningKeyPair.random(crypto.random, crypto.signer);
         System.out.println("Random User generation took " + (System.currentTimeMillis()-t1) + " mS");
         byte[] rootMapKey = new byte[32]; // root will be stored under this in the core node
         crypto.random.randombytes(rootMapKey, 0, 32);
@@ -237,12 +237,12 @@ public class UserContext {
         System.out.println("Random keys generation took " + (System.currentTimeMillis()-t1) + " mS");
 
         // and authorise the writer key
-        ReadableFilePointer rootPointer = new ReadableFilePointer(this.user, writer, rootMapKey, rootRKey);
+        ReadableFilePointer rootPointer = new ReadableFilePointer(this.signer, writer, rootMapKey, rootRKey);
         EntryPoint entry = new EntryPoint(rootPointer, this.username, Collections.emptySet(), Collections.emptySet());
 
         long t2 = System.currentTimeMillis();
         DirAccess root = DirAccess.create(rootRKey, new FileProperties(directoryName, 0, LocalDateTime.now(), false, Optional.empty()), (Location)null, null, null);
-        Location rootLocation = new Location(this.user, writer, rootMapKey);
+        Location rootLocation = new Location(this.signer, writer, rootMapKey);
         System.out.println("Uploading entry point directory");
         return this.uploadChunk(root, rootLocation, Collections.emptyList()).thenCompose(uploaded -> {
             if (!uploaded)
@@ -272,7 +272,7 @@ public class UserContext {
                 .collect(Collectors.toSet());
 
         WriterData writerData = userData.withOwnedKeys(updated);
-        return writerData.commit(user, network).thenApply(b -> writerData);
+        return writerData.commit(signer, network).thenApply(b -> writerData);
     }
 
     @JsMethod
@@ -352,7 +352,7 @@ public class UserContext {
                 resp.writeArray(payload);
                 network.coreNode.followRequest(initialRequest.entry.get().pointer.location.owner, resp.toByteArray());
                 // remove pending follow request from them
-                return network.coreNode.removeFollowRequest(user, user.signMessage(initialRequest.rawCipher));
+                return network.coreNode.removeFollowRequest(signer, signer.signMessage(initialRequest.rawCipher));
             });
         }
 
@@ -405,7 +405,7 @@ public class UserContext {
         }).thenCompose(trie -> {
             // remove original request
             entrie = trie;
-            return network.coreNode.removeFollowRequest(user.toUserPublicKey(), user.signMessage(initialRequest.rawCipher));
+            return network.coreNode.removeFollowRequest(signer.toUserPublicKey(), signer.signMessage(initialRequest.rawCipher));
         });
     }
 
@@ -628,12 +628,12 @@ public class UserContext {
 
     private CompletableFuture<TrieNode> addToStaticDataAndCommit(TrieNode root, EntryPoint entry) {
         userData.staticData.ifPresent(sd -> sd.add(entry));
-        return userData.commit(user, network)
+        return userData.commit(signer, network)
                 .thenCompose(res -> addEntryPoint(root, entry));
     }
 
     private CompletableFuture<Boolean> removeFromStaticData(FileTreeNode fileTreeNode) {
-        return userData.removeFromStaticData(fileTreeNode, user, network);
+        return userData.removeFromStaticData(fileTreeNode, signer, network);
     };
 
     /**
@@ -642,7 +642,7 @@ public class UserContext {
      * @return initial follow requests
      */
     public CompletableFuture<List<FollowRequest>> processFollowRequests() {
-        return network.coreNode.getFollowRequests(user.toUserPublicKey()).thenCompose(reqs -> {
+        return network.coreNode.getFollowRequests(signer.toUserPublicKey()).thenCompose(reqs -> {
             DataSource din = new DataSource(reqs);
             List<FollowRequest> all;
             try {
@@ -677,7 +677,7 @@ public class UserContext {
                             CompletableFuture<TrieNode> updatedRoot = addToStaticDataAndCommit(root, freq.entry.get());
                             return updatedRoot.thenCompose(newRoot -> {
                                 entrie = newRoot;
-                                return network.coreNode.removeFollowRequest(user.toUserPublicKey(), user.signMessage(freq.rawCipher))
+                                return network.coreNode.removeFollowRequest(signer.toUserPublicKey(), signer.signMessage(freq.rawCipher))
                                         .thenApply(b -> newRoot);
                             });
                         }
@@ -695,7 +695,7 @@ public class UserContext {
                             // remove entry point as well
                             CompletableFuture<Boolean> cleanStatic = removeFromStaticData(ourDirForThem);
                             // clear their response follow req too
-                            CompletableFuture<Boolean> clearPending = network.coreNode.removeFollowRequest(user.toUserPublicKey(), user.signMessage(freq.rawCipher));
+                            CompletableFuture<Boolean> clearPending = network.coreNode.removeFollowRequest(signer.toUserPublicKey(), signer.signMessage(freq.rawCipher));
 
                             return removeDir.thenCompose(x -> cleanStatic)
                                     .thenCompose(x -> clearPending)
@@ -769,7 +769,7 @@ public class UserContext {
             byte[] metaBlob = dout.toByteArray();
             System.out.println("Storing metadata blob of " + metaBlob.length + " bytes. to mapKey: " + location.toString());
             return network.dhtClient.put(location.owner, metaBlob, linkHashes).thenCompose(blobHash -> {
-                User sharer = (User) location.writer;
+                SigningKeyPair sharer = (SigningKeyPair) location.writer;
                 return network.btree.put(sharer, location.getMapKey(), blobHash);
             });
         } catch (Exception e) {

@@ -75,7 +75,7 @@ public class UserPublicKeyLink {
         }
     }
 
-    public static List<UserPublicKeyLink> createChain(User oldUser, User newUser, String username, LocalDate expiry) {
+    public static List<UserPublicKeyLink> createChain(SigningKeyPair oldUser, SigningKeyPair newUser, String username, LocalDate expiry) {
         // sign new claim to username, with provided expiry
         UsernameClaim newClaim = UsernameClaim.create(username, newUser, expiry);
 
@@ -124,7 +124,7 @@ public class UserPublicKeyLink {
             }
         }
 
-        public static UsernameClaim create(String username, User from, LocalDate expiryDate) {
+        public static UsernameClaim create(String username, SigningKeyPair from, LocalDate expiryDate) {
             try {
                 ByteArrayOutputStream bout = new ByteArrayOutputStream();
                 DataOutputStream dout = new DataOutputStream(bout);
@@ -153,10 +153,10 @@ public class UserPublicKeyLink {
         }
     }
 
-    public static List<UserPublicKeyLink> createInitial(User user, String username, LocalDate expiry) {
-        UsernameClaim newClaim = UsernameClaim.create(username, user, expiry);
+    public static List<UserPublicKeyLink> createInitial(SigningKeyPair signer, String username, LocalDate expiry) {
+        UsernameClaim newClaim = UsernameClaim.create(username, signer, expiry);
 
-        return Collections.singletonList(new UserPublicKeyLink(user.toUserPublicKey(), newClaim));
+        return Collections.singletonList(new UserPublicKeyLink(signer.toUserPublicKey(), newClaim));
     }
 
     public static List<UserPublicKeyLink> merge(List<UserPublicKeyLink> existing, List<UserPublicKeyLink> tail) {

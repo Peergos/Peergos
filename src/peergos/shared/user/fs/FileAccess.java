@@ -106,13 +106,13 @@ public class FileAccess {
     }
 
     public CompletableFuture<? extends FileAccess> copyTo(SymmetricKey baseKey, SymmetricKey newBaseKey, Location parentLocation, SymmetricKey parentparentKey,
-                  User entryWriterKey, byte[] newMapKey, UserContext context) {
+                                                          SigningKeyPair entryWriterKey, byte[] newMapKey, UserContext context) {
         if (!Arrays.equals(baseKey.serialize(), newBaseKey.serialize()))
             throw new IllegalStateException("FileAccess clone must have same base key as original!");
         FileProperties props = getFileProperties(baseKey);
         FileAccess fa = FileAccess.create(newBaseKey, isDirectory() ? SymmetricKey.random() : getMetaKey(baseKey), props, this.retriever, parentLocation, parentparentKey);
         //TODO get fragment hashes from retriever
-        return context.uploadChunk(fa, new Location(context.user, entryWriterKey, newMapKey), Collections.emptyList()).thenApply(b -> fa);
+        return context.uploadChunk(fa, new Location(context.signer, entryWriterKey, newMapKey), Collections.emptyList()).thenApply(b -> fa);
     }
 
     public static FileAccess deserialize(byte[] raw) {

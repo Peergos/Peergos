@@ -276,22 +276,22 @@ public class DirAccess extends FileAccess {
     }
 
     // returns pointer to new child directory
-    public CompletableFuture<ReadableFilePointer> mkdir(String name, UserContext userContext, User writer, byte[] ourMapKey,
-                                                       SymmetricKey baseKey, SymmetricKey optionalBaseKey,
+    public CompletableFuture<ReadableFilePointer> mkdir(String name, UserContext userContext, SigningKeyPair writer, byte[] ourMapKey,
+                                                        SymmetricKey baseKey, SymmetricKey optionalBaseKey,
                                                         boolean isSystemFolder, SafeRandom random) {
         SymmetricKey dirReadKey = optionalBaseKey != null ? optionalBaseKey : SymmetricKey.random();
         byte[] dirMapKey = new byte[32]; // root will be stored under this in the btree
         random.randombytes(dirMapKey, 0, 32);
         SymmetricKey ourParentKey = this.getParentKey(baseKey);
-        Location ourLocation = new Location(userContext.user, writer, ourMapKey);
+        Location ourLocation = new Location(userContext.signer, writer, ourMapKey);
         DirAccess dir = DirAccess.create(dirReadKey, new FileProperties(name, 0, LocalDateTime.now(), isSystemFolder, Optional.empty()), ourLocation, ourParentKey, null);
         CompletableFuture<ReadableFilePointer> result = new CompletableFuture<>();
-        userContext.uploadChunk(dir, new Location(userContext.user, writer, dirMapKey), Collections.emptyList()).thenAccept(success -> {
+        userContext.uploadChunk(dir, new Location(userContext.signer, writer, dirMapKey), Collections.emptyList()).thenAccept(success -> {
             if (success) {
-                ReadableFilePointer ourPointer = new ReadableFilePointer(userContext.user, writer, ourMapKey, baseKey);
-                ReadableFilePointer subdirPointer = new ReadableFilePointer(new Location(userContext.user, writer, dirMapKey), dirReadKey);
+                ReadableFilePointer ourPointer = new ReadableFilePointer(userContext.signer, writer, ourMapKey, baseKey);
+                ReadableFilePointer subdirPointer = new ReadableFilePointer(new Location(userContext.signer, writer, dirMapKey), dirReadKey);
                 addSubdirAndCommit(subdirPointer, baseKey, ourPointer, userContext)
-                        .thenAccept(modified -> result.complete(new ReadableFilePointer(userContext.user, writer, dirMapKey, dirReadKey)));
+                        .thenAccept(modified -> result.complete(new ReadableFilePointer(userContext.signer, writer, dirMapKey, dirReadKey)));
             } else
                 result.completeExceptionally(new IllegalStateException("Couldn't upload directory metadata!"));
         });
@@ -304,12 +304,12 @@ public class DirAccess extends FileAccess {
     }
 
     public CompletableFuture<DirAccess> copyTo(SymmetricKey baseKey, SymmetricKey newBaseKey, Location parentLocation,
-                            SymmetricKey parentparentKey, User entryWriterKey, byte[] newMapKey, UserContext context) {
+                                               SymmetricKey parentparentKey, SigningKeyPair entryWriterKey, byte[] newMapKey, UserContext context) {
         SymmetricKey parentKey = getParentKey(baseKey);
         FileProperties props = getFileProperties(parentKey);
         DirAccess da = DirAccess.create(newBaseKey, props, parentLocation, parentparentKey, parentKey);
         SymmetricKey ourNewParentKey = da.getParentKey(newBaseKey);
-        Location ourNewLocation = new Location(context.user, entryWriterKey, newMapKey);
+        Location ourNewLocation = new Location(context.signer, entryWriterKey, newMapKey);
 
         return this.getChildren(context, baseKey).thenCompose(RFPs -> {
             // upload new metadata blob for each child and re-add child
@@ -317,7 +317,7 @@ public class DirAccess extends FileAccess {
                 SymmetricKey newChildBaseKey = rfp.fileAccess.isDirectory() ? SymmetricKey.random() : rfp.filePointer.baseKey;
                 byte[] newChildMapKey = new byte[32];
                 context.crypto.random.randombytes(newChildMapKey, 0, 32);
-                Location newChildLocation = new Location(context.user, entryWriterKey, newChildMapKey);
+                Location newChildLocation = new Location(context.signer, entryWriterKey, newChildMapKey);
                 return rfp.fileAccess.copyTo(rfp.filePointer.baseKey, newChildBaseKey,
                         ourNewLocation, ourNewParentKey, entryWriterKey, newChildMapKey, context)
                         .thenCompose(newChildFileAccess -> {

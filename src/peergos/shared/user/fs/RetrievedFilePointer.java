@@ -1,12 +1,8 @@
 package peergos.shared.user.fs;
 
 import peergos.shared.crypto.*;
-import peergos.shared.ipfs.api.*;
-import peergos.shared.merklebtree.*;
 import peergos.shared.user.*;
 
-import java.io.*;
-import java.util.*;
 import java.util.concurrent.*;
 
 public class RetrievedFilePointer {
@@ -34,7 +30,7 @@ public class RetrievedFilePointer {
         if (!this.fileAccess.isDirectory()) {
             this.fileAccess.removeFragments(context);
             CompletableFuture<Boolean> result = new CompletableFuture<>();
-            context.network.btree.remove((User) this.filePointer.location.writer, this.filePointer.location.getMapKey()).thenAccept(removed -> {
+            context.network.btree.remove((SigningKeyPair) this.filePointer.location.writer, this.filePointer.location.getMapKey()).thenAccept(removed -> {
                 // remove from parent
                 if (parentRetrievedFilePointer != null)
                     ((DirAccess) parentRetrievedFilePointer.fileAccess).removeChild(this, parentRetrievedFilePointer.filePointer, context);
@@ -46,7 +42,7 @@ public class RetrievedFilePointer {
             for (RetrievedFilePointer file : files)
                 file.remove(context, null);
             CompletableFuture<Boolean> result = new CompletableFuture<>();
-            context.network.btree.remove((User) this.filePointer.location.writer, this.filePointer.location.getMapKey()).thenAccept(removed -> {
+            context.network.btree.remove((SigningKeyPair) this.filePointer.location.writer, this.filePointer.location.getMapKey()).thenAccept(removed -> {
                 // remove from parent
                 if (parentRetrievedFilePointer != null)
                     ((DirAccess) parentRetrievedFilePointer.fileAccess).removeChild(this, parentRetrievedFilePointer.filePointer, context);

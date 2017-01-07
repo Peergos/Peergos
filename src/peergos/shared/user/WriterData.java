@@ -89,39 +89,39 @@ public class WriterData implements Cborable {
                 Optional.empty());
     }
 
-    public CompletableFuture<Boolean> removeFromStaticData(FileTreeNode fileTreeNode, User user, NetworkAccess network) {
+    public CompletableFuture<Boolean> removeFromStaticData(FileTreeNode fileTreeNode, SigningKeyPair signer, NetworkAccess network) {
         ReadableFilePointer pointer = fileTreeNode.getPointer().filePointer;
 
         return staticData.map(sd -> {
             boolean isRemoved = sd.remove(pointer);
 
-            return isRemoved ? commit(user, network) :
+            return isRemoved ? commit(signer, network) :
                     CompletableFuture.completedFuture(true);
         }).orElse(CompletableFuture.completedFuture(true));
     }
 
-    public CompletableFuture<WriterData> changeKeys(User user, PublicBoxingKey followRequestReceiver, SymmetricKey newKey, NetworkAccess network) {
+    public CompletableFuture<WriterData> changeKeys(SigningKeyPair signer, PublicBoxingKey followRequestReceiver, SymmetricKey newKey, NetworkAccess network) {
         Optional<UserStaticData> newEntryPoints = staticData.map(sd -> sd.withKey(newKey));
         WriterData updated = new WriterData(generationAlgorithm, publicData, Optional.of(followRequestReceiver), ownedKeys, newEntryPoints, btree);
-        return updated.commit(user, network).thenApply(b -> updated);
+        return updated.commit(signer, network).thenApply(b -> updated);
 
     }
 
-    public CompletableFuture<Boolean> commit(User user, NetworkAccess network) {
-        return commit(user, network.coreNode, network.dhtClient);
+    public CompletableFuture<Boolean> commit(SigningKeyPair signer, NetworkAccess network) {
+        return commit(signer, network.coreNode, network.dhtClient);
     }
 
-    public CompletableFuture<Boolean> commit(User user, CoreNode coreNode, ContentAddressedStorage dhtClient) {
+    public CompletableFuture<Boolean> commit(SigningKeyPair signer, CoreNode coreNode, ContentAddressedStorage dhtClient) {
         byte[] raw = serialize();
-        return dhtClient.put(user, raw, Collections.emptyList())
-                .thenCompose(blobHash -> coreNode.getMetadataBlob(user)
+        return dhtClient.put(signer, raw, Collections.emptyList())
+                .thenCompose(blobHash -> coreNode.getMetadataBlob(signer)
                         .thenCompose(currentHash -> {
                             DataSink bout = new DataSink();
                             try {
                                 currentHash.serialize(bout);
                                 bout.writeArray(blobHash.toBytes());
-                                byte[] signed = user.signMessage(bout.toByteArray());
-                                return coreNode.setMetadataBlob(user, user, signed);
+                                byte[] signed = signer.signMessage(bout.toByteArray());
+                                return coreNode.setMetadataBlob(signer, signer, signed);
                             } catch (IOException e) {
                                 throw new RuntimeException(e);
                             }

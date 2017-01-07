@@ -54,7 +54,7 @@ public class ReadableFilePointer implements Cborable {
         try {
             DataSource bin = new DataSource(arr);
             UserPublicKey owner = UserPublicKey.fromByteArray(bin.readArray());
-            UserPublicKey writer = User.deserialize(bin);
+            UserPublicKey writer = SigningKeyPair.deserialize(bin);
             byte[] mapKey = bin.readArray();
             byte[] rootDirKeySecret = bin.readArray();
             return new ReadableFilePointer(owner, writer, mapKey, SymmetricKey.deserialize(rootDirKeySecret));
@@ -82,7 +82,7 @@ public class ReadableFilePointer implements Cborable {
     }
 
     public boolean isWritable() {
-        return this.location.writer instanceof User;
+        return this.location.writer instanceof SigningKeyPair;
     }
 
     public String toLink() {

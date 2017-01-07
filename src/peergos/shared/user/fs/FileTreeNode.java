@@ -203,7 +203,7 @@ public class FileTreeNode {
 
     @JsMethod
     public boolean isWritable() {
-        return entryWriterKey instanceof User;
+        return entryWriterKey instanceof SigningKeyPair;
     }
 
     @JsMethod
@@ -360,7 +360,7 @@ public class FileTreeNode {
                                                        EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
                 byte[] mapKey = context.randomBytes(32);
                 Location nextChunkLocation = new Location(getLocation().owner, getLocation().writer, mapKey);
-                chunks.upload(context, parentLocation.owner, (User) entryWriterKey, nextChunkLocation).thenAccept(fileLocation -> {
+                chunks.upload(context, parentLocation.owner, (SigningKeyPair) entryWriterKey, nextChunkLocation).thenAccept(fileLocation -> {
                     ReadableFilePointer filePointer = new ReadableFilePointer(fileLocation, fileKey);
                     dirAccess.addFileAndCommit(filePointer, rootRKey, pointer.filePointer, context);
                     context.uploadChunk(dirAccess, new Location(parentLocation.owner, entryWriterKey, dirMapKey)
@@ -444,7 +444,7 @@ public class FileTreeNode {
                                         FileProperties newProps = new FileProperties(childProps.name, endIndex > currentSize ? endIndex : currentSize,
                                                 LocalDateTime.now(), childProps.isHidden, childProps.thumbnail);
 
-                                        CompletableFuture<Boolean> chunkUploaded = FileUploader.uploadChunk((User) entryWriterKey, newProps, getLocation(), getParentKey(), baseKey, located,
+                                        CompletableFuture<Boolean> chunkUploaded = FileUploader.uploadChunk((SigningKeyPair) entryWriterKey, newProps, getLocation(), getParentKey(), baseKey, located,
                                                 EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES, nextChunkLocation, context, monitor);
 
                                         return chunkUploaded.thenCompose(isUploaded -> {
@@ -511,7 +511,7 @@ public class FileTreeNode {
             ReadableFilePointer dirPointer = pointer.filePointer;
             DirAccess dirAccess = (DirAccess) pointer.fileAccess;
             SymmetricKey rootDirKey = dirPointer.baseKey;
-            return dirAccess.mkdir(newFolderName, context, (User) entryWriterKey, dirPointer.getLocation().getMapKey(), rootDirKey,
+            return dirAccess.mkdir(newFolderName, context, (SigningKeyPair) entryWriterKey, dirPointer.getLocation().getMapKey(), rootDirKey,
                     requestedBaseSymmetricKey, isSystemFolder, random);
         });
     }
@@ -600,11 +600,11 @@ public class FileTreeNode {
             SymmetricKey ourBaseKey = this.getKey();
             // a file baseKey is the key for the chunk, which hasn't changed, so this must stay the same
             SymmetricKey newBaseKey = this.isDirectory() ? SymmetricKey.random() : ourBaseKey;
-            ReadableFilePointer newRFP = new ReadableFilePointer(context.user, target.getEntryWriterKey(), newMapKey, newBaseKey);
+            ReadableFilePointer newRFP = new ReadableFilePointer(context.signer, target.getEntryWriterKey(), newMapKey, newBaseKey);
             Location newParentLocation = target.getLocation();
             SymmetricKey newParentParentKey = target.getParentKey();
 
-            return pointer.fileAccess.copyTo(ourBaseKey, newBaseKey, newParentLocation, newParentParentKey, (User) target.getEntryWriterKey(), newMapKey, context)
+            return pointer.fileAccess.copyTo(ourBaseKey, newBaseKey, newParentLocation, newParentParentKey, (SigningKeyPair) target.getEntryWriterKey(), newMapKey, context)
                     .thenCompose(newAccess -> {
                         // upload new metadatablob
                         RetrievedFilePointer newRetrievedFilePointer = new RetrievedFilePointer(newRFP, newAccess);
