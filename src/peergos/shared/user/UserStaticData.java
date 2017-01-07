@@ -11,16 +11,16 @@ import java.util.*;
 
 public class UserStaticData implements Cborable {
 
-    private final SortedMap<UserPublicKey, EntryPoint> staticData;
+    private final List<EntryPoint> staticData;
     public final SymmetricKey rootKey;
 
-    public UserStaticData(SortedMap<UserPublicKey, EntryPoint> staticData, SymmetricKey rootKey) {
+    public UserStaticData(List<EntryPoint> staticData, SymmetricKey rootKey) {
         this.staticData = staticData;
         this.rootKey = rootKey;
     }
 
     public UserStaticData(SymmetricKey rootKey) {
-        this(new TreeMap<>(), rootKey);
+        this(new ArrayList<>(), rootKey);
     }
 
     public UserStaticData withKey(SymmetricKey newKey) {
@@ -36,18 +36,14 @@ public class UserStaticData implements Cborable {
     }
 
     public void add(EntryPoint entryPoint) {
-        staticData.put(entryPoint.pointer.location.writer, entryPoint);
+        if (! staticData.contains(entryPoint))
+            staticData.add(entryPoint);
     }
-
-    public EntryPoint get(UserPublicKey userPublicKey) {
-        return staticData.get(userPublicKey);
-    }
-
 
     public boolean remove(ReadableFilePointer readableFilePointer) {
-        for (Iterator<Map.Entry<UserPublicKey, EntryPoint>> it = staticData.entrySet().iterator() ;it.hasNext();) {
-            Map.Entry<UserPublicKey, EntryPoint> entry = it.next();
-            if (entry.getValue().pointer.equals(readableFilePointer)) {
+        for (Iterator<EntryPoint> it = staticData.iterator() ;it.hasNext();) {
+            EntryPoint entry = it.next();
+            if (entry.pointer.equals(readableFilePointer)) {
                 it.remove();
                 return true;
             }
@@ -55,11 +51,10 @@ public class UserStaticData implements Cborable {
         return false;
     }
 
-
     public byte[] serialize() {
         DataSink sink = new DataSink();
         sink.writeInt(staticData.size());
-        staticData.values().forEach(ep -> sink.writeArray(ep.serializeAndSymmetricallyEncrypt(rootKey)));
+        staticData.forEach(ep -> sink.writeArray(ep.serializeAndSymmetricallyEncrypt(rootKey)));
         return sink.toByteArray();
     }
 
@@ -81,7 +76,7 @@ public class UserStaticData implements Cborable {
     }
 
     public Set<EntryPoint> getEntryPoints() {
-        return new HashSet<>(staticData.values());
+        return new HashSet<>(staticData);
     }
 
     @Override

@@ -61,7 +61,10 @@ public class UserContext {
     public static CompletableFuture<UserContext> signIn(String username, String password, NetworkAccess network, Crypto crypto) {
         return getWriterDataCbor(network, username)
                 .thenCompose(cbor -> {
-                    UserGenerationAlgorithm algorithm = WriterData.extractUserGenerationAlgorithm(cbor).get();
+                    Optional<UserGenerationAlgorithm> algorithmOpt = WriterData.extractUserGenerationAlgorithm(cbor);
+                    if (! algorithmOpt.isPresent())
+                        throw new IllegalStateException("No login algorithm specified in user data!");
+                    UserGenerationAlgorithm algorithm = algorithmOpt.get();
                     return UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider,
                             crypto.random, crypto.signer, crypto.boxer, algorithm)
                             .thenApply(userWithRoot ->
