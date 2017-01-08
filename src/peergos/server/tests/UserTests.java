@@ -74,12 +74,15 @@ public class UserTests {
         byte[] rawBoxPub = boxer.publicBoxingKey.serialize(); // 36
         byte[] rawBoxSecret = boxer.secretBoxingKey.serialize(); // 36
         byte[] rawBoxBoth = boxer.serialize(); // 73
+        SymmetricKey sym = SymmetricKey.random();
+        byte[] rawSym = sym.serialize(); // 37
         Assert.assertTrue("Serialization overhead isn't too much", rawSignPub.length <= 32 + 4);
         Assert.assertTrue("Serialization overhead isn't too much", rawSignSecret.length <= 64 + 4);
         Assert.assertTrue("Serialization overhead isn't too much", rawSignBoth.length <= 96 + 9);
         Assert.assertTrue("Serialization overhead isn't too much", rawBoxPub.length <= 32 + 4);
         Assert.assertTrue("Serialization overhead isn't too much", rawBoxSecret.length <= 32 + 4);
         Assert.assertTrue("Serialization overhead isn't too much", rawBoxBoth.length <= 64 + 9);
+        Assert.assertTrue("Serialization overhead isn't too much", rawSym.length <= 33 + 4);
     }
 
     @Test

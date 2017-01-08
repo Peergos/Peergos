@@ -90,18 +90,17 @@ public class TweetNaClKey implements SymmetricKey
     }
 
     public CborObject toCbor() {
-        Map<String, CborObject> cbor = new TreeMap<>();
-        cbor.put("t", new CborObject.CborLong(type().value));
-        cbor.put("k", new CborObject.CborByteArray(secretKey));
-        cbor.put("d", new CborObject.CborBoolean(isDirty));
-        return CborObject.CborMap.build(cbor);
+        return  new CborObject.CborList(Arrays.asList(
+                new CborObject.CborLong(type().value),
+                new CborObject.CborByteArray(secretKey),
+                new CborObject.CborBoolean(isDirty)));
     }
 
     public static TweetNaClKey fromCbor(CborObject cbor, Salsa20Poly1305 provider, SafeRandom random) {
-        if (! (cbor instanceof CborObject.CborMap))
+        if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Invalid cbor for PublicBoxingKey! " + cbor);
-        CborObject.CborByteArray secretKey = (CborObject.CborByteArray) ((CborObject.CborMap) cbor).values.get(new CborObject.CborString("k"));
-        CborObject.CborBoolean isDirty = (CborObject.CborBoolean) ((CborObject.CborMap) cbor).values.get(new CborObject.CborString("d"));
+        CborObject.CborByteArray secretKey = (CborObject.CborByteArray) ((CborObject.CborList) cbor).value.get(1);
+        CborObject.CborBoolean isDirty = (CborObject.CborBoolean) ((CborObject.CborList) cbor).value.get(2);
         return new TweetNaClKey(secretKey.value, isDirty.value, provider, random);
     }
 
