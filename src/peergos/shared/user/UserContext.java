@@ -828,7 +828,12 @@ public class UserContext {
     }
 
     private static CompletableFuture<CborObject> getWriterDataCbor(NetworkAccess network, String username) {
-        return network.coreNode.getPublicKey(username).thenCompose(signer -> getWriterDataCbor(network, signer.get()));
+        return network.coreNode.getPublicKey(username)
+                .thenCompose(signer -> {
+                    PublicSigningKey publicSigningKey = signer.orElseThrow(
+                            () -> new IllegalStateException("No public-key for user " + username));
+                    return getWriterDataCbor(network, publicSigningKey);
+                });
     }
 
     private static CompletableFuture<CborObject> getWriterDataCbor(NetworkAccess network, PublicSigningKey signer) {
