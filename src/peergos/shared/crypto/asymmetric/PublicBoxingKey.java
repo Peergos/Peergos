@@ -13,7 +13,7 @@ import java.util.Map;
 public interface PublicBoxingKey extends Cborable {
     Map<Integer, Type> byValue = new HashMap<>();
     enum Type {
-        Curve25519(0xEC);
+        Curve25519(0x1);
 
         public final int value;
         Type(int value)
@@ -58,9 +58,9 @@ public interface PublicBoxingKey extends Cborable {
     }
 
     static PublicBoxingKey fromCbor(CborObject cbor) {
-        if (! (cbor instanceof CborObject.CborMap))
+        if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Invalid cbor for PublicBoxingKey! " + cbor);
-        CborObject.CborLong type = (CborObject.CborLong) ((CborObject.CborMap) cbor).values.get(new CborObject.CborString("t"));
+        CborObject.CborLong type = (CborObject.CborLong) ((CborObject.CborList) cbor).value.get(0);
         Type t = Type.byValue((int) type.value);
         switch (t) {
             case Curve25519:

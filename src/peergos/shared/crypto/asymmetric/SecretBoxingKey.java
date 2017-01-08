@@ -17,9 +17,9 @@ public interface SecretBoxingKey extends Cborable {
     byte[] decryptMessage(byte[] cipher, PublicBoxingKey from);
 
     static SecretBoxingKey fromCbor(CborObject cbor) {
-        if (! (cbor instanceof CborObject.CborMap))
+        if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Invalid cbor for PublicBoxingKey! " + cbor);
-        CborObject.CborLong type = (CborObject.CborLong) ((CborObject.CborMap) cbor).values.get("t");
+        CborObject.CborLong type = (CborObject.CborLong) ((CborObject.CborList) cbor).value.get(0);
         PublicBoxingKey.Type t = PublicBoxingKey.Type.byValue((int) type.value);
         switch (t) {
             case Curve25519:

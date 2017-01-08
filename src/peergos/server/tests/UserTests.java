@@ -65,6 +65,24 @@ public class UserTests {
     }
 
     @Test
+    public void serializationSizesSmall() {
+        SigningKeyPair signer = SigningKeyPair.random(crypto.random, crypto.signer);
+        byte[] rawSignPub = signer.publicSigningKey.serialize(); // 36
+        byte[] rawSignSecret = signer.secretSigningKey.serialize(); // 68
+        byte[] rawSignBoth = signer.serialize(); // 105
+        BoxingKeyPair boxer = BoxingKeyPair.random(crypto.random, crypto.boxer);
+        byte[] rawBoxPub = boxer.publicBoxingKey.serialize(); // 36
+        byte[] rawBoxSecret = boxer.secretBoxingKey.serialize(); // 36
+        byte[] rawBoxBoth = boxer.serialize(); // 73
+        Assert.assertTrue("Serialization overhead isn't too much", rawSignPub.length <= 32 + 4);
+        Assert.assertTrue("Serialization overhead isn't too much", rawSignSecret.length <= 64 + 4);
+        Assert.assertTrue("Serialization overhead isn't too much", rawSignBoth.length <= 96 + 9);
+        Assert.assertTrue("Serialization overhead isn't too much", rawBoxPub.length <= 32 + 4);
+        Assert.assertTrue("Serialization overhead isn't too much", rawBoxSecret.length <= 32 + 4);
+        Assert.assertTrue("Serialization overhead isn't too much", rawBoxBoth.length <= 64 + 9);
+    }
+
+    @Test
     public void differentLoginTypes() throws Exception {
         String username = "name";
         String password = "letmein";

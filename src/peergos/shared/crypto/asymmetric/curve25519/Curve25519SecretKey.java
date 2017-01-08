@@ -44,24 +44,21 @@ public class Curve25519SecretKey implements SecretBoxingKey {
         return Arrays.copyOfRange(secretKey, 0, secretKey.length);
     }
 
-    @Override
-    public CborObject toCbor() {
-        Map<String, CborObject> cbor = new TreeMap<>();
-        cbor.put("t", new CborObject.CborLong(type().value));
-        cbor.put("k", new CborObject.CborByteArray(secretKey));
-        return CborObject.CborMap.build(cbor);
-    }
-
     public byte[] decryptMessage(byte[] cipher, PublicBoxingKey from) {
         byte[] nonce = Arrays.copyOfRange(cipher, cipher.length - TweetNaCl.BOX_NONCE_BYTES, cipher.length);
         cipher = Arrays.copyOfRange(cipher, 0, cipher.length - TweetNaCl.BOX_NONCE_BYTES);
         return implementation.crypto_box_open(cipher, nonce, from.getPublicBoxingKey(), secretKey);
     }
 
+    @Override
+    public CborObject toCbor() {
+        return new CborObject.CborList(Arrays.asList(new CborObject.CborLong(type().value), new CborObject.CborByteArray(secretKey)));
+    }
+
     public static SecretBoxingKey fromCbor(CborObject cbor, Curve25519 provider) {
-        if (! (cbor instanceof CborObject.CborMap))
+        if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Invalid cbor for SecretBoxingKey! " + cbor);
-        CborObject.CborByteArray key = (CborObject.CborByteArray) ((CborObject.CborMap) cbor).values.get(new CborObject.CborString("k"));
+        CborObject.CborByteArray key = (CborObject.CborByteArray) ((CborObject.CborList) cbor).value.get(1);
         return new Curve25519SecretKey(key.value, provider);
     }
 }

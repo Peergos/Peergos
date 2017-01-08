@@ -40,10 +40,7 @@ public class Ed25519SecretKey implements SecretSigningKey {
 
     @Override
     public CborObject toCbor() {
-        Map<String, CborObject> cbor = new TreeMap<>();
-        cbor.put("t", new CborObject.CborLong(type().value));
-        cbor.put("k", new CborObject.CborByteArray(secretKey));
-        return CborObject.CborMap.build(cbor);
+        return new CborObject.CborList(Arrays.asList(new CborObject.CborLong(type().value), new CborObject.CborByteArray(secretKey)));
     }
 
     public byte[] signMessage(byte[] message) {
@@ -51,9 +48,9 @@ public class Ed25519SecretKey implements SecretSigningKey {
     }
 
     public static SecretSigningKey fromCbor(CborObject cbor, Ed25519 provider) {
-        if (! (cbor instanceof CborObject.CborMap))
+        if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Invalid cbor for Ed25519 secret key! " + cbor);
-        CborObject.CborByteArray key = (CborObject.CborByteArray) ((CborObject.CborMap) cbor).values.get(new CborObject.CborString("k"));
+        CborObject.CborByteArray key = (CborObject.CborByteArray) ((CborObject.CborList) cbor).value.get(1);
         return new Ed25519SecretKey(key.value, provider);
     }
 }
