@@ -41,7 +41,7 @@
     <mkdir dir="${build}"/>
   </target>
 
-  <target name="compile" depends="init"
+  <target name="compile" depends="clean, init"
         description="compile the source">
     <javac includeantruntime="false" destdir="${build}" debug="true" debuglevel="lines,vars,source">
       <src>
