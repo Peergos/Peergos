@@ -616,7 +616,7 @@ public class FileTreeNode {
             Location newParentLocation = target.getLocation();
             SymmetricKey newParentParentKey = target.getParentKey();
 
-            return pointer.fileAccess.copyTo(ourBaseKey, newBaseKey, newParentLocation, newParentParentKey, target.pointer.filePointer.signer(), newMapKey, context)
+            return pointer.fileAccess.copyTo(ourBaseKey, newBaseKey, newParentLocation, newParentParentKey, getSigner(), newMapKey, context)
                     .thenCompose(newAccess -> {
                         // upload new metadatablob
                         RetrievedFilePointer newRetrievedFilePointer = new RetrievedFilePointer(newRFP, newAccess);
