@@ -1,6 +1,7 @@
 package peergos.server.storage;
 
 import peergos.shared.crypto.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.ipfs.api.*;
 import peergos.shared.merklebtree.MerkleNode;
 import peergos.shared.storage.ContentAddressedStorage;
@@ -16,17 +17,17 @@ public class RAMStorage implements ContentAddressedStorage {
     private final Set<Multihash> pinnedRoots = new HashSet<>();
 
     @Override
-    public CompletableFuture<Multihash> emptyObject(UserPublicKey writer) {
+    public CompletableFuture<Multihash> emptyObject(PublicSigningKey writer) {
         return put(writer, new MerkleNode(new byte[0]));
     }
 
     @Override
-    public CompletableFuture<Multihash> setData(UserPublicKey writer, Multihash object, byte[] data) {
+    public CompletableFuture<Multihash> setData(PublicSigningKey writer, Multihash object, byte[] data) {
         return put(writer, getAndParseObject(object).setData(data));
     }
 
     @Override
-    public CompletableFuture<Multihash> addLink(UserPublicKey writer, Multihash object, String label, Multihash linkTarget) {
+    public CompletableFuture<Multihash> addLink(PublicSigningKey writer, Multihash object, String label, Multihash linkTarget) {
         return put(writer, getAndParseObject(object).addLink(label, linkTarget));
     }
 
@@ -42,7 +43,7 @@ public class RAMStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Multihash> put(UserPublicKey writer, MerkleNode object) {
+    public CompletableFuture<Multihash> put(PublicSigningKey writer, MerkleNode object) {
         byte[] value = object.serialize();
         byte[] hash = hash(value);
         Multihash multihash = new Multihash(Multihash.Type.sha2_256, hash);

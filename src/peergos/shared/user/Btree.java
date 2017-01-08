@@ -1,10 +1,9 @@
 package peergos.shared.user;
 
 import peergos.shared.crypto.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.ipfs.api.Multihash;
 import peergos.shared.merklebtree.MaybeMultihash;
-import peergos.shared.merklebtree.PairMultihash;
-import peergos.shared.util.*;
 
 import java.io.*;
 import java.util.concurrent.*;
@@ -19,7 +18,7 @@ public interface Btree {
      * @return the new root hash of the btree
      * @throws IOException
      */
-    CompletableFuture<Boolean> put(User sharingKey, byte[] mapKey, Multihash value);
+    CompletableFuture<Boolean> put(SigningKeyPair sharingKey, byte[] mapKey, Multihash value);
 
     /**
      *
@@ -28,7 +27,7 @@ public interface Btree {
      * @return  the value stored under mapKey for sharingKey
      * @throws IOException
      */
-    CompletableFuture<MaybeMultihash> get(UserPublicKey sharingKey, byte[] mapKey);
+    CompletableFuture<MaybeMultihash> get(PublicSigningKey sharingKey, byte[] mapKey);
 
     /**
      *
@@ -37,6 +36,6 @@ public interface Btree {
      * @return  hash(sharingKey.metadata) | the new root hash of the btree
      * @throws IOException
      */
-    CompletableFuture<Boolean> remove(User sharingKey, byte[] mapKey);
+    CompletableFuture<Boolean> remove(SigningKeyPair sharingKey, byte[] mapKey);
 
 }

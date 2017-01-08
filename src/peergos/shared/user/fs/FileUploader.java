@@ -1,8 +1,8 @@
 package peergos.shared.user.fs;
 
-import com.google.gwt.user.client.ui.*;
 import jsinterop.annotations.*;
 import peergos.shared.crypto.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
@@ -64,8 +64,8 @@ public class FileUploader implements AutoCloseable {
                 baseKey, metaKey, parentLocation, parentparentKey, monitor, fileProperties, nOriginalFragments, nAllowedFalures);
     }
 
-    public CompletableFuture<Location> uploadChunk(UserContext context, UserPublicKey owner, User writer, long chunkIndex,
-                                Location currentLocation, ProgressConsumer<Long> monitor) {
+    public CompletableFuture<Location> uploadChunk(UserContext context, PublicSigningKey owner, SigningKeyPair writer, long chunkIndex,
+                                                   Location currentLocation, ProgressConsumer<Long> monitor) {
 	    System.out.println("uploading chunk: "+chunkIndex + " of "+name);
 
         long position = chunkIndex * Chunk.MAX_SIZE;
@@ -77,15 +77,15 @@ public class FileUploader implements AutoCloseable {
         return reader.readIntoArray(data, 0, data.length).thenCompose(b -> {
             byte[] nonce = context.randomBytes(TweetNaCl.SECRETBOX_NONCE_BYTES);
             Chunk chunk = new Chunk(data, metaKey, currentLocation.getMapKey(), nonce);
-            LocatedChunk locatedChunk = new LocatedChunk(new Location(owner, writer, chunk.mapKey()), chunk);
+            LocatedChunk locatedChunk = new LocatedChunk(new Location(owner, writer.publicSigningKey, chunk.mapKey()), chunk);
             byte[] mapKey = context.randomBytes(32);
-            Location nextLocation = new Location(owner, writer, mapKey);
+            Location nextLocation = new Location(owner, writer.publicSigningKey, mapKey);
             return uploadChunk(writer, props, parentLocation, parentparentKey, baseKey, locatedChunk,
                     nOriginalFragments, nAllowedFalures, nextLocation, context, monitor).thenApply(c -> nextLocation);
         });
     }
 
-    public CompletableFuture<Location> upload(UserContext context, UserPublicKey owner, User writer, Location currentChunk) {
+    public CompletableFuture<Location> upload(UserContext context, PublicSigningKey owner, SigningKeyPair writer, Location currentChunk) {
         long t1 = System.currentTimeMillis();
         Location originalChunk = currentChunk;
 
@@ -97,9 +97,9 @@ public class FileUploader implements AutoCloseable {
                 });
     }
 
-    public static CompletableFuture<Boolean> uploadChunk(User writer, FileProperties props, Location parentLocation, SymmetricKey parentparentKey,
-                        SymmetricKey baseKey, LocatedChunk chunk, int nOriginalFragments, int nAllowedFalures, Location nextChunkLocation,
-                        UserContext context, ProgressConsumer<Long> monitor) {
+    public static CompletableFuture<Boolean> uploadChunk(SigningKeyPair writer, FileProperties props, Location parentLocation, SymmetricKey parentparentKey,
+                                                         SymmetricKey baseKey, LocatedChunk chunk, int nOriginalFragments, int nAllowedFalures, Location nextChunkLocation,
+                                                         UserContext context, ProgressConsumer<Long> monitor) {
         EncryptedChunk encryptedChunk = chunk.chunk.encrypt();
 
         peergos.shared.user.fs.Fragmenter fragmenter = nAllowedFalures == 0 ?
@@ -108,10 +108,10 @@ public class FileUploader implements AutoCloseable {
 
         List<Fragment> fragments = encryptedChunk.generateFragments(fragmenter);
         System.out.println(StringUtils.format("Uploading chunk with %d fragments\n", fragments.size()));
-        return context.uploadFragments(fragments, chunk.location.owner, chunk.location.writer, chunk.chunk.mapKey(), monitor).thenCompose(hashes -> {
+        return context.uploadFragments(fragments, chunk.location.owner, monitor).thenCompose(hashes -> {
             FileRetriever retriever = new EncryptedChunkRetriever(chunk.chunk.nonce(), encryptedChunk.getAuth(), hashes, nextChunkLocation, fragmenter);
             FileAccess metaBlob = FileAccess.create(baseKey, chunk.chunk.key(), props, retriever, parentLocation, parentparentKey);
-            return context.uploadChunk(metaBlob, new Location(chunk.location.owner, writer, chunk.chunk.mapKey()), hashes);
+            return context.uploadChunk(metaBlob, new Location(chunk.location.owner, writer.publicSigningKey, chunk.chunk.mapKey()), writer, hashes);
         });
     }
 

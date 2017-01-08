@@ -8,6 +8,7 @@ import org.junit.runners.*;
 import peergos.server.storage.ResetableFileInputStream;
 import peergos.shared.*;
 import peergos.shared.crypto.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
@@ -64,6 +65,24 @@ public class UserTests {
     }
 
     @Test
+    public void serializationSizesSmall() {
+        SigningKeyPair signer = SigningKeyPair.random(crypto.random, crypto.signer);
+        byte[] rawSignPub = signer.publicSigningKey.serialize(); // 36
+        byte[] rawSignSecret = signer.secretSigningKey.serialize(); // 68
+        byte[] rawSignBoth = signer.serialize(); // 105
+        BoxingKeyPair boxer = BoxingKeyPair.random(crypto.random, crypto.boxer);
+        byte[] rawBoxPub = boxer.publicBoxingKey.serialize(); // 36
+        byte[] rawBoxSecret = boxer.secretBoxingKey.serialize(); // 36
+        byte[] rawBoxBoth = boxer.serialize(); // 73
+        Assert.assertTrue("Serialization overhead isn't too much", rawSignPub.length <= 32 + 4);
+        Assert.assertTrue("Serialization overhead isn't too much", rawSignSecret.length <= 64 + 4);
+        Assert.assertTrue("Serialization overhead isn't too much", rawSignBoth.length <= 96 + 9);
+        Assert.assertTrue("Serialization overhead isn't too much", rawBoxPub.length <= 32 + 4);
+        Assert.assertTrue("Serialization overhead isn't too much", rawBoxSecret.length <= 32 + 4);
+        Assert.assertTrue("Serialization overhead isn't too much", rawBoxBoth.length <= 64 + 9);
+    }
+
+    @Test
     public void differentLoginTypes() throws Exception {
         String username = "name";
         String password = "letmein";
@@ -90,9 +109,9 @@ public class UserTests {
 
         UserUtil.generateUser(username, password, new ScryptJava(), new Salsa20Poly1305.Java(),
                 new SafeRandom.Java(), new Ed25519.Java(), new Curve25519.Java(), UserGenerationAlgorithm.getDefault()).thenAccept(userWithRoot -> {
-		    UserPublicKey expected = UserPublicKey.fromString("7HvEWP6yd1UD8rOorfFrieJ8S7yC8+l3VisV9kXNiHmI7Eav7+3GTRSVBRCymItrzebUUoCi39M6rdgeOU9sXXFD");
-		    if (! expected.equals(userWithRoot.getUser().toUserPublicKey()))
-		        throw new IllegalStateException("Generated user diferent from the Javascript! \n"+userWithRoot.getUser().toUserPublicKey() + " != \n"+expected);
+		    PublicSigningKey expected = PublicSigningKey.fromString("7HvEWP6yd1UD8rOorfFrieJ8S7yC8+l3VisV9kXNiHmI7Eav7+3GTRSVBRCymItrzebUUoCi39M6rdgeOU9sXXFD");
+		    if (! expected.equals(userWithRoot.getUser().publicSigningKey))
+		        throw new IllegalStateException("Generated user diferent from the Javascript! \n"+userWithRoot.getUser().publicSigningKey + " != \n"+expected);
         });
     }
 
@@ -105,7 +124,7 @@ public class UserTests {
 
     @Test
     public void singleSignUp() throws Exception {
-        // This is ensure a user can't accidentally sign in rather than login and overwrite all their data
+        // This is to ensure a user can't accidentally sign in rather than login and overwrite all their data
         String username = "test" + (System.currentTimeMillis() % 10000);
         String password = "password";
         ensureSignedUp(username, password, network, crypto);

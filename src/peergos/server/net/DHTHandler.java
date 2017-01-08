@@ -1,6 +1,7 @@
 package peergos.server.net;
 
 import peergos.shared.crypto.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.ipfs.api.*;
 import peergos.shared.storage.ContentAddressedStorage;
 import com.sun.net.httpserver.*;
@@ -55,7 +56,7 @@ public class DHTHandler implements HttpHandler
 
             switch (path) {
                 case "object/new":{
-                    UserPublicKey writer = UserPublicKey.fromString(last.apply("writer"));
+                    PublicSigningKey writer = PublicSigningKey.fromString(last.apply("writer"));
                     dht.emptyObject(writer).thenAccept(newHash -> {
                         Map res = new HashMap();
                         res.put("Hash", newHash.toBase58());
@@ -65,7 +66,7 @@ public class DHTHandler implements HttpHandler
                     break;
                 }
                 case "object/patch/add-link":{
-                    UserPublicKey writer = UserPublicKey.fromString(last.apply("writer"));
+                    PublicSigningKey writer = PublicSigningKey.fromString(last.apply("writer"));
                     Multihash hash = Multihash.fromBase58(args.get(0));
                     String label = args.get(1);
                     Multihash targetHash = Multihash.fromBase58(args.get(2));
@@ -78,7 +79,7 @@ public class DHTHandler implements HttpHandler
                     break;
                 }
                 case "object/patch/set-data": {
-                    UserPublicKey writer = UserPublicKey.fromString(last.apply("writer"));
+                    PublicSigningKey writer = PublicSigningKey.fromString(last.apply("writer"));
                     Multihash hash = Multihash.fromBase58(args.get(0));
                     String boundary = httpExchange.getRequestHeaders().get("Content-Type")
                             .stream()

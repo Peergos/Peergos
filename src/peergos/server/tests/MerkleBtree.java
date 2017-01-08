@@ -3,6 +3,7 @@ package peergos.server.tests;
 import org.junit.*;
 import peergos.server.storage.*;
 import peergos.shared.crypto.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.ipfs.api.*;
 import peergos.shared.merklebtree.*;
 import peergos.shared.storage.*;
@@ -18,15 +19,15 @@ public class MerkleBtree {
         return new RAMStorage();
     }
 
-    public CompletableFuture<MerkleBTree> createTree(UserPublicKey user) throws IOException {
+    public CompletableFuture<MerkleBTree> createTree(PublicSigningKey user) throws IOException {
         return createTree(user, new RAMStorage());
     }
 
-    public UserPublicKey createUser() {
-        return UserPublicKey.createNull();
+    public PublicSigningKey createUser() {
+        return PublicSigningKey.createNull();
     }
 
-    public CompletableFuture<MerkleBTree> createTree(UserPublicKey user, ContentAddressedStorage dht) throws IOException {
+    public CompletableFuture<MerkleBTree> createTree(PublicSigningKey user, ContentAddressedStorage dht) throws IOException {
         return MerkleBTree.create(user, MaybeMultihash.EMPTY(), dht);
     }
 
@@ -36,7 +37,7 @@ public class MerkleBtree {
 
     @Test
     public void basic() throws Exception {
-        UserPublicKey user = createUser();
+        PublicSigningKey user = createUser();
         MerkleBTree tree = createTree(user).get();
         byte[] key1 = new byte[]{0, 1, 2, 3};
         Multihash value1 = hash(new byte[]{1, 1, 1, 1});
@@ -48,7 +49,7 @@ public class MerkleBtree {
 
     @Test
     public void basic2() throws Exception {
-        UserPublicKey user = createUser();
+        PublicSigningKey user = createUser();
         RAMStorage dht = createStorage();
         MerkleBTree tree = createTree(user, dht).get();
         for (int i=0; i < 16; i++) {
@@ -65,7 +66,7 @@ public class MerkleBtree {
 
     @Test
     public void overwriteValue() throws Exception {
-        UserPublicKey user = createUser();
+        PublicSigningKey user = createUser();
         MerkleBTree tree = createTree(user).get();
         byte[] key1 = new byte[]{0, 1, 2, 3};
         Multihash value1 = hash(new byte[]{1, 1, 1, 1});
@@ -82,7 +83,7 @@ public class MerkleBtree {
 
     @Test
     public void huge() throws Exception {
-        UserPublicKey user = createUser();
+        PublicSigningKey user = createUser();
         MerkleBTree tree = createTree(user).get();
         long t1 = System.currentTimeMillis();
         for (int i=0; i < 1000000; i++) {
@@ -107,7 +108,7 @@ public class MerkleBtree {
 
     @Test
     public void random() throws Exception {
-        UserPublicKey user = createUser();
+        PublicSigningKey user = createUser();
         MerkleBTree tree = createTree(user).get();
         int keylen = 32;
 
@@ -135,7 +136,7 @@ public class MerkleBtree {
 
     @Test
     public void delete() throws Exception {
-        UserPublicKey user = createUser();
+        PublicSigningKey user = createUser();
         MerkleBTree tree = createTree(user).get();
         int keylen = 32;
 
@@ -185,7 +186,7 @@ public class MerkleBtree {
 
     @Test
     public void storageSize() throws Exception {
-        UserPublicKey user = createUser();
+        PublicSigningKey user = createUser();
         MerkleBTree tree = createTree(user).get();
         int keylen = 32;
 

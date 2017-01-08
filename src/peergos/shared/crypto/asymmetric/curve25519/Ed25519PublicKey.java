@@ -1,5 +1,6 @@
 package peergos.shared.crypto.asymmetric.curve25519;
 
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.PublicSigningKey;
 
 import java.io.*;
@@ -34,16 +35,24 @@ public class Ed25519PublicKey implements PublicSigningKey {
         return Arrays.hashCode(publicKey);
     }
 
-    public void serialize(DataOutput dout) throws IOException {
-        dout.writeByte(type().value);
-        dout.write(publicKey);
+    @Override
+    public String toString() {
+        return Base64.getEncoder().encodeToString(serialize());
     }
 
-    public byte[] getPublicSigningKey() {
-        return Arrays.copyOfRange(publicKey, 0, publicKey.length);
+    @Override
+    public CborObject toCbor() {
+        return new CborObject.CborList(Arrays.asList(new CborObject.CborLong(type().value), new CborObject.CborByteArray(publicKey)));
     }
 
     public byte[] unsignMessage(byte[] signed) {
         return implementation.crypto_sign_open(signed, publicKey);
+    }
+
+    public static Ed25519PublicKey fromCbor(CborObject cbor, Ed25519 provider) {
+        if (! (cbor instanceof CborObject.CborList))
+            throw new IllegalStateException("Invalid cbor for Ed25519 public key! " + cbor);
+        CborObject.CborByteArray key = (CborObject.CborByteArray) ((CborObject.CborList) cbor).value.get(1);
+        return new Ed25519PublicKey(key.value, provider);
     }
 }

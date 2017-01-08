@@ -1,5 +1,6 @@
 package peergos.shared.crypto.symmetric;
 
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.random.*;
 
@@ -86,6 +87,22 @@ public class TweetNaClKey implements SymmetricKey
         int result = Arrays.hashCode(secretKey);
         result = 31 * result + (isDirty ? 1 : 0);
         return result;
+    }
+
+    public CborObject toCbor() {
+        Map<String, CborObject> cbor = new TreeMap<>();
+        cbor.put("t", new CborObject.CborLong(type().value));
+        cbor.put("k", new CborObject.CborByteArray(secretKey));
+        cbor.put("d", new CborObject.CborBoolean(isDirty));
+        return CborObject.CborMap.build(cbor);
+    }
+
+    public static TweetNaClKey fromCbor(CborObject cbor, Salsa20Poly1305 provider, SafeRandom random) {
+        if (! (cbor instanceof CborObject.CborMap))
+            throw new IllegalStateException("Invalid cbor for PublicBoxingKey! " + cbor);
+        CborObject.CborByteArray secretKey = (CborObject.CborByteArray) ((CborObject.CborMap) cbor).values.get(new CborObject.CborString("k"));
+        CborObject.CborBoolean isDirty = (CborObject.CborBoolean) ((CborObject.CborMap) cbor).values.get(new CborObject.CborString("d"));
+        return new TweetNaClKey(secretKey.value, isDirty.value, provider, random);
     }
 
     public static TweetNaClKey random(Salsa20Poly1305 provider, SafeRandom random)
