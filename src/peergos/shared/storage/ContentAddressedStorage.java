@@ -1,6 +1,7 @@
 package peergos.shared.storage;
 
 import peergos.shared.crypto.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.ipfs.api.*;
 import peergos.shared.merklebtree.MerkleNode;
 import peergos.shared.user.*;
@@ -16,11 +17,11 @@ public interface ContentAddressedStorage {
 
     int MAX_OBJECT_LENGTH  = 1024*256;
 
-    CompletableFuture<Multihash> emptyObject(UserPublicKey writer);
+    CompletableFuture<Multihash> emptyObject(PublicSigningKey writer);
 
-    CompletableFuture<Multihash> setData(UserPublicKey writer, Multihash object, byte[] data);
+    CompletableFuture<Multihash> setData(PublicSigningKey writer, Multihash object, byte[] data);
 
-    CompletableFuture<Multihash> addLink(UserPublicKey writer, Multihash object, String label, Multihash linkTarget);
+    CompletableFuture<Multihash> addLink(PublicSigningKey writer, Multihash object, String label, Multihash linkTarget);
 
     CompletableFuture<Optional<byte[]>> getData(Multihash object);
 
@@ -31,26 +32,25 @@ public interface ContentAddressedStorage {
      * @param object
      * @return a hash of the stored object
      */
-    default CompletableFuture<Multihash> put(UserPublicKey writer, MerkleNode object) {
-        UserPublicKey publicWriter = writer.toUserPublicKey();
-        return emptyObject(publicWriter)
-                .thenCompose(EMPTY -> setData(publicWriter, EMPTY, object.data))
+    default CompletableFuture<Multihash> put(PublicSigningKey writer, MerkleNode object) {
+        return emptyObject(writer)
+                .thenCompose(EMPTY -> setData(writer, EMPTY, object.data))
                 .thenCompose(hash -> Futures.reduceAll(
                         object.links,
                         hash,
-                        (h, e) -> addLink(publicWriter, h, e.label, e.target),
+                        (h, e) -> addLink(writer, h, e.label, e.target),
                         (a, b) -> {throw new IllegalStateException();}
         ));
     }
 
-    default CompletableFuture<Multihash> put(UserPublicKey writer, byte[] data, List<Multihash> links) {
-        return put(writer.toUserPublicKey(), new MerkleNode(data,
+    default CompletableFuture<Multihash> put(PublicSigningKey writer, byte[] data, List<Multihash> links) {
+        return put(writer, new MerkleNode(data,
                 links.stream()
                         .map(l -> new MerkleNode.Link(l.toBase58(), l))
                         .collect(Collectors.toList())));
     }
 
-    default CompletableFuture<Multihash> put(UserPublicKey writer, byte[] data) {
+    default CompletableFuture<Multihash> put(PublicSigningKey writer, byte[] data) {
         return put(writer, new MerkleNode(data, Collections.emptyList()));
     }
 
@@ -88,23 +88,23 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<Multihash> emptyObject(UserPublicKey writer) {
-            return poster.get(apiPrefix + "object/new?stream-channels=true"+ "&writer=" + encode(writer.toUserPublicKey().toString()))
+        public CompletableFuture<Multihash> emptyObject(PublicSigningKey writer) {
+            return poster.get(apiPrefix + "object/new?stream-channels=true"+ "&writer=" + encode(writer.toString()))
                     .thenApply(HTTP::getObjectHash);
         }
 
         @Override
-        public CompletableFuture<Multihash> setData(UserPublicKey writer, Multihash base, byte[] data) {
+        public CompletableFuture<Multihash> setData(PublicSigningKey writer, Multihash base, byte[] data) {
             return poster.postMultipart(apiPrefix + "object/patch/set-data?arg=" + base.toBase58()
-                    + "&writer=" + encode(writer.toUserPublicKey().toString()), Arrays.asList(data))
+                    + "&writer=" + encode(writer.toString()), Arrays.asList(data))
                     .thenApply(HTTP::getObjectHash);
         }
 
         @Override
-        public CompletableFuture<Multihash> addLink(UserPublicKey writer, Multihash base, String label, Multihash linkTarget) {
+        public CompletableFuture<Multihash> addLink(PublicSigningKey writer, Multihash base, String label, Multihash linkTarget) {
             return poster.get(apiPrefix + "object/patch/add-link?arg=" + base.toBase58()
                     + "&arg=" + label + "&arg=" + linkTarget.toBase58()
-                    + "&writer=" + encode(writer.toUserPublicKey().toString()))
+                    + "&writer=" + encode(writer.toString()))
                     .thenApply(HTTP::getObjectHash);
         }
 
@@ -157,17 +157,17 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<Multihash> emptyObject(UserPublicKey writer) {
+        public CompletableFuture<Multihash> emptyObject(PublicSigningKey writer) {
             return target.emptyObject(writer);
         }
 
         @Override
-        public CompletableFuture<Multihash> setData(UserPublicKey writer, Multihash base, byte[] data) {
+        public CompletableFuture<Multihash> setData(PublicSigningKey writer, Multihash base, byte[] data) {
             return target.setData(writer, base, data);
         }
 
         @Override
-        public CompletableFuture<Multihash> addLink(UserPublicKey writer, Multihash base, String label, Multihash linkTarget) {
+        public CompletableFuture<Multihash> addLink(PublicSigningKey writer, Multihash base, String label, Multihash linkTarget) {
             return target.addLink(writer, base, label, linkTarget);
         }
 

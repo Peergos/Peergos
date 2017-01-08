@@ -1,5 +1,6 @@
 package peergos.shared.crypto.asymmetric.curve25519;
 
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.TweetNaCl;
 import peergos.shared.crypto.asymmetric.PublicBoxingKey;
 import peergos.shared.crypto.asymmetric.SecretBoxingKey;
@@ -7,7 +8,7 @@ import peergos.shared.crypto.asymmetric.SecretBoxingKey;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
-import java.util.Arrays;
+import java.util.*;
 
 public class Curve25519SecretKey implements SecretBoxingKey {
 
@@ -38,20 +39,17 @@ public class Curve25519SecretKey implements SecretBoxingKey {
         return Arrays.hashCode(secretKey);
     }
 
-    public byte[] serialize() {
-        try {
-            ByteArrayOutputStream bout = new ByteArrayOutputStream();
-            DataOutputStream dout = new DataOutputStream(bout);
-            dout.writeByte(type().value);
-            dout.write(secretKey);
-            return bout.toByteArray();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
+    @Override
     public byte[] getSecretBoxingKey() {
         return Arrays.copyOfRange(secretKey, 0, secretKey.length);
+    }
+
+    @Override
+    public CborObject toCbor() {
+        Map<String, CborObject> cbor = new TreeMap<>();
+        cbor.put("t", new CborObject.CborLong(type().value));
+        cbor.put("k", new CborObject.CborByteArray(secretKey));
+        return CborObject.CborMap.build(cbor);
     }
 
     public byte[] decryptMessage(byte[] cipher, PublicBoxingKey from) {
@@ -60,9 +58,10 @@ public class Curve25519SecretKey implements SecretBoxingKey {
         return implementation.crypto_box_open(cipher, nonce, from.getPublicBoxingKey(), secretKey);
     }
 
-    public static byte[] getPublicBoxingKey(byte[] secretBoxingKey) {
-        byte[] pub = new byte[32];
-        TweetNaCl.crypto_scalarmult_base(pub, secretBoxingKey);
-        return pub;
+    public static SecretBoxingKey fromCbor(CborObject cbor, Curve25519 provider) {
+        if (! (cbor instanceof CborObject.CborMap))
+            throw new IllegalStateException("Invalid cbor for SecretBoxingKey! " + cbor);
+        CborObject.CborByteArray key = (CborObject.CborByteArray) ((CborObject.CborMap) cbor).values.get(new CborObject.CborString("k"));
+        return new Curve25519SecretKey(key.value, provider);
     }
 }

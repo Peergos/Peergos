@@ -1,6 +1,7 @@
 package peergos.shared.user;
 
 import peergos.shared.crypto.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.ipfs.api.Multihash;
 import peergos.shared.merklebtree.MaybeMultihash;
 
@@ -26,7 +27,7 @@ public interface Btree {
      * @return  the value stored under mapKey for sharingKey
      * @throws IOException
      */
-    CompletableFuture<MaybeMultihash> get(UserPublicKey sharingKey, byte[] mapKey);
+    CompletableFuture<MaybeMultihash> get(PublicSigningKey sharingKey, byte[] mapKey);
 
     /**
      *

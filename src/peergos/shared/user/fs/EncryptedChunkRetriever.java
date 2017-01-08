@@ -111,7 +111,7 @@ public class EncryptedChunkRetriever implements FileRetriever {
         buf.writeArray(ArrayOps.concat(fragmentHashes.stream().map(h -> new ByteArrayWrapper(h.toBytes())).collect(Collectors.toList())));
         buf.writeByte(this.nextChunk != null ? (byte)1 : 0);
         if (this.nextChunk != null)
-            buf.write(this.nextChunk.serialize());
+            buf.writeArray(this.nextChunk.serialize());
         fragmenter.serialize(buf);
     }
 
@@ -128,7 +128,7 @@ public class EncryptedChunkRetriever implements FileRetriever {
         boolean hasNext = buf.readBoolean();
         Location nextChunk = null;
         if (hasNext)
-            nextChunk = Location.deserialize(buf);
+            nextChunk = Location.fromByteArray(buf.readArray());
         Fragmenter fragmenter = Fragmenter.deserialize(buf);
 
         return new EncryptedChunkRetriever(chunkNonce, chunkAuth, hashes, nextChunk, fragmenter);

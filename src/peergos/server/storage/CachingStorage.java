@@ -1,6 +1,7 @@
 package peergos.server.storage;
 
 import peergos.shared.crypto.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.ipfs.api.Multihash;
 import peergos.shared.merklebtree.MerkleNode;
 import peergos.shared.storage.ContentAddressedStorage;
@@ -21,17 +22,17 @@ public class CachingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Multihash> emptyObject(UserPublicKey writer) {
+    public CompletableFuture<Multihash> emptyObject(PublicSigningKey writer) {
         return put(writer, new MerkleNode(new byte[0]));
     }
 
     @Override
-    public CompletableFuture<Multihash> setData(UserPublicKey writer, Multihash object, byte[] data) {
+    public CompletableFuture<Multihash> setData(PublicSigningKey writer, Multihash object, byte[] data) {
         return target.setData(writer, object, data);
     }
 
     @Override
-    public CompletableFuture<Multihash> addLink(UserPublicKey writer, Multihash object, String label, Multihash linkTarget) {
+    public CompletableFuture<Multihash> addLink(PublicSigningKey writer, Multihash object, String label, Multihash linkTarget) {
         return target.addLink(writer, object, label, linkTarget);
     }
 
@@ -41,7 +42,7 @@ public class CachingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Multihash> put(UserPublicKey writer, MerkleNode object) {
+    public CompletableFuture<Multihash> put(PublicSigningKey writer, MerkleNode object) {
         return target.put(writer, object);
     }
 

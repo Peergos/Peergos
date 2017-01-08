@@ -1,5 +1,6 @@
 package peergos.server.corenode;
 
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.ipfs.api.*;
 import peergos.shared.corenode.CoreNode;
 import peergos.shared.corenode.UserPublicKeyLink;
@@ -22,7 +23,7 @@ public class PinningCoreNode implements CoreNode {
     }
 
     @Override
-    public CompletableFuture<String> getUsername(UserPublicKey publicKey) {
+    public CompletableFuture<String> getUsername(PublicSigningKey publicKey) {
         return target.getUsername(publicKey);
     }
 
@@ -42,22 +43,22 @@ public class PinningCoreNode implements CoreNode {
     }
 
     @Override
-    public CompletableFuture<Boolean> followRequest(UserPublicKey target, byte[] encryptedPermission) {
+    public CompletableFuture<Boolean> followRequest(PublicSigningKey target, byte[] encryptedPermission) {
         return this.target.followRequest(target, encryptedPermission);
     }
 
     @Override
-    public CompletableFuture<byte[]> getFollowRequests(UserPublicKey owner) {
+    public CompletableFuture<byte[]> getFollowRequests(PublicSigningKey owner) {
         return target.getFollowRequests(owner);
     }
 
     @Override
-    public CompletableFuture<Boolean> removeFollowRequest(UserPublicKey owner, byte[] data) {
+    public CompletableFuture<Boolean> removeFollowRequest(PublicSigningKey owner, byte[] data) {
         return target.removeFollowRequest(owner, data);
     }
 
     @Override
-    public CompletableFuture<Boolean> setMetadataBlob(UserPublicKey ownerPublicKey, UserPublicKey signer, byte[] sharingKeySignedBtreeRootHashes) {
+    public CompletableFuture<Boolean> setMetadataBlob(PublicSigningKey owner, PublicSigningKey signer, byte[] sharingKeySignedBtreeRootHashes) {
         // first pin new root
         byte[] message = signer.unsignMessage(sharingKeySignedBtreeRootHashes);
         DataInputStream din = new DataInputStream(new ByteArrayInputStream(message));
@@ -68,7 +69,7 @@ public class PinningCoreNode implements CoreNode {
             return storage.recursivePin(newRoot).thenCompose(pins -> {
                 if (!pins.contains(newRoot))
                     return CompletableFuture.completedFuture(false);
-                return target.setMetadataBlob(ownerPublicKey, signer, sharingKeySignedBtreeRootHashes)
+                return target.setMetadataBlob(owner, signer, sharingKeySignedBtreeRootHashes)
                         .thenCompose(b -> {
                             if (!b)
                                 return CompletableFuture.completedFuture(false);
@@ -84,7 +85,7 @@ public class PinningCoreNode implements CoreNode {
     }
 
     @Override
-    public CompletableFuture<Boolean> removeMetadataBlob(UserPublicKey sharer, byte[] sharingKeySignedMapKeyPlusBlob) {
+    public CompletableFuture<Boolean> removeMetadataBlob(PublicSigningKey sharer, byte[] sharingKeySignedMapKeyPlusBlob) {
         // first pin new root
         byte[] message = sharer.unsignMessage(sharingKeySignedMapKeyPlusBlob);
         DataInputStream din = new DataInputStream(new ByteArrayInputStream(message));
@@ -108,7 +109,7 @@ public class PinningCoreNode implements CoreNode {
     }
 
     @Override
-    public CompletableFuture<MaybeMultihash> getMetadataBlob(UserPublicKey encodedSharingKey) {
+    public CompletableFuture<MaybeMultihash> getMetadataBlob(PublicSigningKey encodedSharingKey) {
         return target.getMetadataBlob(encodedSharingKey);
     }
 

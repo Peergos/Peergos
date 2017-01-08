@@ -52,48 +52,21 @@ public interface PublicBoxingKey extends Cborable {
     @JsMethod
     byte[] createNonce();
 
-    void serialize(DataOutput dout) throws IOException;
-
-    @JsMethod
-    default byte[] toByteArray() {
-        try {
-            ByteArrayOutputStream bout = new ByteArrayOutputStream();
-            DataOutputStream dout = new DataOutputStream(bout);
-            serialize(dout);
-            return bout.toByteArray();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    default CborObject toCbor() {
-        return new CborObject.CborByteArray(toByteArray());
-    }
-
     @JsMethod
     static PublicBoxingKey fromByteArray(byte[] raw) {
-        return deserialize(new DataInputStream(new ByteArrayInputStream(raw)));
-    }
-
-    static PublicBoxingKey deserialize(DataInput din) {
-        try {
-            Type t = Type.byValue(din.readUnsignedByte());
-            switch (t) {
-                case Curve25519:
-                    byte[] key = new byte[32];
-                    din.readFully(key);
-                    return new Curve25519PublicKey(key, PROVIDERS.get(t), RNG_PROVIDERS.get(t));
-                default:
-                    throw new IllegalStateException("Unknown Public Boxing Key type: " + t.name());
-            }
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+        return fromCbor(CborObject.fromByteArray(raw));
     }
 
     static PublicBoxingKey fromCbor(CborObject cbor) {
-        if (! (cbor instanceof CborObject.CborByteArray))
-            throw new IllegalStateException("Incorrect cbor type for PublicBoxingKey: " + cbor);
-        return fromByteArray(((CborObject.CborByteArray) cbor).value);
+        if (! (cbor instanceof CborObject.CborMap))
+            throw new IllegalStateException("Invalid cbor for PublicBoxingKey! " + cbor);
+        CborObject.CborLong type = (CborObject.CborLong) ((CborObject.CborMap) cbor).values.get(new CborObject.CborString("t"));
+        Type t = Type.byValue((int) type.value);
+        switch (t) {
+            case Curve25519:
+                return Curve25519PublicKey.fromCbor(cbor, PROVIDERS.get(t), RNG_PROVIDERS.get(t));
+            default:
+                throw new IllegalStateException("Unknown Public Boxing Key type: " + t.name());
+        }
     }
 }

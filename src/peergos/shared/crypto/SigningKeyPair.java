@@ -1,26 +1,22 @@
 package peergos.shared.crypto;
 
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.PublicSigningKey;
 import peergos.shared.crypto.asymmetric.SecretSigningKey;
 import peergos.shared.crypto.asymmetric.curve25519.*;
 import peergos.shared.crypto.random.*;
-import peergos.shared.util.ArrayOps;
 
-import java.io.*;
-import java.util.Random;
+import java.util.*;
 
-public class SigningKeyPair extends UserPublicKey
+public class SigningKeyPair implements Cborable
 {
+    public final PublicSigningKey publicSigningKey;
     public final SecretSigningKey secretSigningKey;
 
-    public SigningKeyPair(SecretSigningKey secretSigningKey, PublicSigningKey publicSigningKey)
+    public SigningKeyPair(PublicSigningKey publicSigningKey, SecretSigningKey secretSigningKey)
     {
-        super(publicSigningKey);
+        this.publicSigningKey = publicSigningKey;
         this.secretSigningKey = secretSigningKey;
-    }
-
-    public byte[] getSecretSigningKey() {
-        return secretSigningKey.getSecretSigningKey();
     }
 
     public byte[] signMessage(byte[] message)
@@ -28,26 +24,44 @@ public class SigningKeyPair extends UserPublicKey
         return secretSigningKey.signMessage(message);
     }
 
-    public static UserPublicKey deserialize(DataInput din) {
-        try {
-            boolean hasPrivateKeys = din.readBoolean();
-            if (hasPrivateKeys) {
-                SecretSigningKey signingKey = SecretSigningKey.deserialize(din);
-                UserPublicKey pub = UserPublicKey.deserialize(din);
-                return new SigningKeyPair(signingKey, pub.publicSigningKey);
-            }
-            return UserPublicKey.deserialize(din);
-        } catch (IOException e) {
-            throw new IllegalStateException("Invalid serialized User", e);
-        }
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+
+        SigningKeyPair that = (SigningKeyPair) o;
+
+        if (publicSigningKey != null ? !publicSigningKey.equals(that.publicSigningKey) : that.publicSigningKey != null)
+            return false;
+        return secretSigningKey != null ? secretSigningKey.equals(that.secretSigningKey) : that.secretSigningKey == null;
     }
 
-    public void serialize(DataOutput dout) throws IOException {
-        dout.write(serialize());
+    @Override
+    public int hashCode() {
+        int result = publicSigningKey != null ? publicSigningKey.hashCode() : 0;
+        result = 31 * result + (secretSigningKey != null ? secretSigningKey.hashCode() : 0);
+        return result;
     }
 
-    public byte[] serialize() {
-        return ArrayOps.concat(secretSigningKey.serialize(), super.serialize());
+    @Override
+    public CborObject toCbor() {
+        return new CborObject.CborList(Arrays.asList(
+                publicSigningKey.toCbor(),
+                secretSigningKey.toCbor()));
+    }
+
+    public static SigningKeyPair fromByteArray(byte[] raw) {
+        return fromCbor(CborObject.fromByteArray(raw));
+    }
+
+    public static SigningKeyPair fromCbor(CborObject cbor) {
+        if (! (cbor instanceof CborObject.CborList))
+            throw new IllegalStateException("Incorrect cbor for SigningKeyPair: " + cbor);
+
+        List<CborObject> values = ((CborObject.CborList) cbor).value;
+        PublicSigningKey pub = PublicSigningKey.fromCbor(values.get(0));
+        SecretSigningKey secret = SecretSigningKey.fromCbor(values.get(1));
+        return new SigningKeyPair(pub, secret);
     }
 
     public static SigningKeyPair random(SafeRandom random, Ed25519 signer) {
@@ -65,8 +79,8 @@ public class SigningKeyPair extends UserPublicKey
         signer.crypto_sign_keypair(publicSignBytes, secretSignBytes);
 
         return new SigningKeyPair(
-                new Ed25519SecretKey(secretSignBytes, signer),
-                new Ed25519PublicKey(publicSignBytes, signer));
+                new Ed25519PublicKey(publicSignBytes, signer),
+                new Ed25519SecretKey(secretSignBytes, signer));
     }
 
     public static SigningKeyPair insecureRandom() {

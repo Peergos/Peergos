@@ -12,6 +12,7 @@ import java.util.concurrent.*;
 import java.util.zip.*;
 
 import com.sun.net.httpserver.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.ipfs.api.*;
 import peergos.shared.merklebtree.MaybeMultihash;
 import peergos.shared.util.Args;
@@ -110,7 +111,7 @@ public class HTTPCoreNodeServer
             List<UserPublicKeyLink> chain = coreNode.getChain(username).get();
             dout.writeInt(chain.size());
             for (UserPublicKeyLink link : chain) {
-                link.owner.serialize(dout);
+                Serialize.serialize(link.owner.serialize(), dout);
                 Serialize.serialize(link.toByteArray(), dout);
             }
         }
@@ -121,7 +122,7 @@ public class HTTPCoreNodeServer
             int count = din.readInt();
             List<UserPublicKeyLink> res = new ArrayList<>();
             for (int i=0; i < count; i++) {
-                UserPublicKey owner = UserPublicKey.deserialize(din);
+                PublicSigningKey owner = PublicSigningKey.fromByteArray(Serialize.deserializeByteArray(din, PublicSigningKey.MAX_SIZE));
                 res.add(UserPublicKeyLink.fromByteArray(owner, Serialize.deserializeByteArray(din, UserPublicKeyLink.MAX_SIZE)));
             }
             boolean isAdded = coreNode.updateChain(username, res).get();
@@ -132,7 +133,7 @@ public class HTTPCoreNodeServer
         void getPublicKey(DataInputStream din, DataOutputStream dout) throws Exception
         {
             String username = CoreNodeUtils.deserializeString(din);
-            Optional<UserPublicKey> k = coreNode.getPublicKey(username).get();
+            Optional<PublicSigningKey> k = coreNode.getPublicKey(username).get();
             dout.writeBoolean(k.isPresent());
             if (!k.isPresent())
                 return;
@@ -144,7 +145,7 @@ public class HTTPCoreNodeServer
         void getUsername(DataInputStream din, DataOutputStream dout) throws Exception
         {
             byte[] publicKey = CoreNodeUtils.deserializeByteArray(din);
-            String k = coreNode.getUsername(UserPublicKey.fromByteArray(publicKey)).get();
+            String k = coreNode.getUsername(PublicSigningKey.fromByteArray(publicKey)).get();
             if (k == null)
                 k="";
             Serialize.serialize(k, dout);
@@ -163,8 +164,8 @@ public class HTTPCoreNodeServer
 
         void followRequest(DataInputStream din, DataOutputStream dout) throws Exception
         {
-            byte[] encodedKey = Serialize.deserializeByteArray(din, UserPublicKey.MAX_SIZE);
-            UserPublicKey target = UserPublicKey.deserialize(new DataInputStream(new ByteArrayInputStream(encodedKey)));
+            byte[] encodedKey = Serialize.deserializeByteArray(din, PublicSigningKey.MAX_SIZE);
+            PublicSigningKey target = PublicSigningKey.fromByteArray(encodedKey);
             byte[] encodedSharingPublicKey = CoreNodeUtils.deserializeByteArray(din);
 
             boolean followRequested = coreNode.followRequest(target, encodedSharingPublicKey).get();
@@ -172,15 +173,15 @@ public class HTTPCoreNodeServer
         }
         void getFollowRequests(DataInputStream din, DataOutputStream dout) throws Exception
         {
-            byte[] encodedKey = Serialize.deserializeByteArray(din, UserPublicKey.MAX_SIZE);
-            UserPublicKey ownerPublicKey = UserPublicKey.deserialize(new DataInputStream(new ByteArrayInputStream(encodedKey)));
+            byte[] encodedKey = Serialize.deserializeByteArray(din, PublicSigningKey.MAX_SIZE);
+            PublicSigningKey ownerPublicKey = PublicSigningKey.fromByteArray(encodedKey);
             byte[] res = coreNode.getFollowRequests(ownerPublicKey).get();
             Serialize.serialize(res, dout);
         }
         void removeFollowRequest(DataInputStream din, DataOutputStream dout) throws Exception
         {
-            byte[] encodedKey = Serialize.deserializeByteArray(din, UserPublicKey.MAX_SIZE);
-            UserPublicKey owner = UserPublicKey.deserialize(new DataInputStream(new ByteArrayInputStream(encodedKey)));
+            byte[] encodedKey = Serialize.deserializeByteArray(din, PublicSigningKey.MAX_SIZE);
+            PublicSigningKey owner = PublicSigningKey.fromByteArray(encodedKey);
             byte[] signedFollowRequest = CoreNodeUtils.deserializeByteArray(din);
 
             boolean isRemoved = coreNode.removeFollowRequest(owner, signedFollowRequest).get();
@@ -193,8 +194,8 @@ public class HTTPCoreNodeServer
             byte[] encodedSharingPublicKey = CoreNodeUtils.deserializeByteArray(din);
             byte[] signedPayload = CoreNodeUtils.deserializeByteArray(din);
             boolean isAdded = coreNode.setMetadataBlob(
-                    UserPublicKey.fromByteArray(ownerPublicKey),
-                    UserPublicKey.fromByteArray(encodedSharingPublicKey),
+                    PublicSigningKey.fromByteArray(ownerPublicKey),
+                    PublicSigningKey.fromByteArray(encodedSharingPublicKey),
                     signedPayload).get();
             dout.writeBoolean(isAdded);
         }
@@ -204,7 +205,7 @@ public class HTTPCoreNodeServer
             byte[] encodedWriterPublicKey = CoreNodeUtils.deserializeByteArray(din);
             byte[] signedPayload = CoreNodeUtils.deserializeByteArray(din);
             boolean isAdded = coreNode.removeMetadataBlob(
-                    UserPublicKey.fromByteArray(encodedWriterPublicKey),
+                    PublicSigningKey.fromByteArray(encodedWriterPublicKey),
                     signedPayload).get();
             dout.writeBoolean(isAdded);
         }
@@ -213,7 +214,7 @@ public class HTTPCoreNodeServer
         {
             byte[] encodedSharingKey = CoreNodeUtils.deserializeByteArray(din);
             MaybeMultihash metadataBlob = coreNode.getMetadataBlob(
-                    UserPublicKey.fromByteArray(encodedSharingKey)).get();
+                    PublicSigningKey.fromByteArray(encodedSharingKey)).get();
 
             metadataBlob.serialize(dout);
         }

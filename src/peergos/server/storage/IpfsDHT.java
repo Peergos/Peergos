@@ -1,6 +1,7 @@
 package peergos.server.storage;
 
 import peergos.shared.crypto.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.ipfs.api.IPFS;
 import peergos.shared.ipfs.api.MultiAddress;
 import peergos.shared.ipfs.api.Multihash;
@@ -30,7 +31,7 @@ public class IpfsDHT implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Multihash> emptyObject(UserPublicKey writer) {
+    public CompletableFuture<Multihash> emptyObject(PublicSigningKey writer) {
         try {
             return CompletableFuture.completedFuture(ipfs.object._new(Optional.empty()).hash);
         } catch (IOException e) {
@@ -39,7 +40,7 @@ public class IpfsDHT implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Multihash> setData(UserPublicKey writer, Multihash object, byte[] data) {
+    public CompletableFuture<Multihash> setData(PublicSigningKey writer, Multihash object, byte[] data) {
         try {
             return CompletableFuture.completedFuture(ipfs.object.patch(EMPTY, "set-data", Optional.of(data), Optional.empty(), Optional.empty()).hash);
         } catch (IOException e) {
@@ -48,7 +49,7 @@ public class IpfsDHT implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Multihash> addLink(UserPublicKey writer, Multihash object, String label, Multihash linkTarget) {
+    public CompletableFuture<Multihash> addLink(PublicSigningKey writer, Multihash object, String label, Multihash linkTarget) {
         try {
             return CompletableFuture.completedFuture(ipfs.object.patch(object, "add-link", Optional.empty(), Optional.of(label), Optional.of(linkTarget)).hash);
         } catch (IOException e) {
@@ -79,7 +80,7 @@ public class IpfsDHT implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Multihash> put(UserPublicKey writer, MerkleNode object) {
+    public CompletableFuture<Multihash> put(PublicSigningKey writer, MerkleNode object) {
         try {
             peergos.shared.ipfs.api.MerkleNode data = ipfs.object.patch(EMPTY, "set-data", Optional.of(object.data), Optional.empty(), Optional.empty());
             Multihash current = data.hash;
@@ -116,7 +117,7 @@ public class IpfsDHT implements ContentAddressedStorage {
         byte[] val1 = new byte[57];
         MerkleNode val = new MerkleNode(val1);
         new Random().nextBytes(val1);
-        Multihash put = dht.put(UserPublicKey.createNull(), val).get();
+        Multihash put = dht.put(PublicSigningKey.createNull(), val).get();
         byte[] val2 = dht.getData(put).get().get();
         boolean equals = Arrays.equals(val1, val2);
         System.out.println(equals);

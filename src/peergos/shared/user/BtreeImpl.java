@@ -3,6 +3,7 @@ package peergos.shared.user;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.CoreNode;
 import peergos.shared.crypto.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.ipfs.api.Multihash;
 import peergos.shared.merklebtree.MaybeMultihash;
 import peergos.shared.merklebtree.MerkleBTree;
@@ -40,7 +41,7 @@ public class BtreeImpl implements Btree {
 
     @Override
     public CompletableFuture<Boolean> put(SigningKeyPair sharingKey, byte[] mapKey, Multihash value) {
-        UserPublicKey publicSharingKey = sharingKey.toUserPublicKey();
+        PublicSigningKey publicSharingKey = sharingKey.publicSigningKey;
         return coreNode.getMetadataBlob(publicSharingKey)
                 .thenCompose(holderHashOpt -> getWriterData(holderHashOpt)
                 .thenCompose(holder -> {
@@ -54,29 +55,28 @@ public class BtreeImpl implements Btree {
     }
 
     @Override
-    public CompletableFuture<MaybeMultihash> get(UserPublicKey sharingKey, byte[] mapKey) {
-        UserPublicKey publicSharingKey = sharingKey.toUserPublicKey();
-        return coreNode.getMetadataBlob(publicSharingKey)
+    public CompletableFuture<MaybeMultihash> get(PublicSigningKey writer, byte[] mapKey) {
+        return coreNode.getMetadataBlob(writer)
                 .thenCompose(holderHashOpt -> getWriterData(holderHashOpt))
                 .thenCompose(holder -> {
                     MaybeMultihash btreeRootHash = holder.btree.isPresent() ? MaybeMultihash.of(holder.btree.get()) : MaybeMultihash.EMPTY();
-                    return MerkleBTree.create(publicSharingKey, btreeRootHash, dht)
+                    return MerkleBTree.create(writer, btreeRootHash, dht)
                             .thenCompose(btree -> btree.get(mapKey))
                             .thenApply(maybe -> log(maybe, "BTREE.get (" + ArrayOps.bytesToHex(mapKey) + ", root="+btreeRootHash+" => " + maybe));
                 });
     }
 
     @Override
-    public CompletableFuture<Boolean> remove(SigningKeyPair sharingKey, byte[] mapKey) {
-        UserPublicKey publicSharingKey = sharingKey.toUserPublicKey();
-        return coreNode.getMetadataBlob(publicSharingKey)
+    public CompletableFuture<Boolean> remove(SigningKeyPair writer, byte[] mapKey) {
+        PublicSigningKey publicWriter = writer.publicSigningKey;
+        return coreNode.getMetadataBlob(publicWriter)
                 .thenCompose(holderHashOpt -> getWriterData(holderHashOpt))
                 .thenCompose(holder -> {
                     MaybeMultihash btreeRootHash = holder.btree.isPresent() ? MaybeMultihash.of(holder.btree.get()) : MaybeMultihash.EMPTY();
-                    return MerkleBTree.create(publicSharingKey, btreeRootHash, dht)
-                            .thenCompose(btree -> btree.delete(publicSharingKey, mapKey))
+                    return MerkleBTree.create(publicWriter, btreeRootHash, dht)
+                            .thenCompose(btree -> btree.delete(publicWriter, mapKey))
                             .thenApply(pair -> log(pair, "BTREE.rm (" + ArrayOps.bytesToHex(mapKey) + "  => " + pair))
-                            .thenCompose(newBtreeRoot -> holder.withBtree(newBtreeRoot).commit(sharingKey, coreNode, dht));
+                            .thenCompose(newBtreeRoot -> holder.withBtree(newBtreeRoot).commit(writer, coreNode, dht));
                 });
     }
 }

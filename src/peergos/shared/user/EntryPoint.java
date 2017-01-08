@@ -14,11 +14,11 @@ import java.util.*;
 @JsType
 public class EntryPoint {
 
-    public final ReadableFilePointer pointer;
+    public final FilePointer pointer;
     public final String owner;
     public final Set<String> readers, writers;
 
-    public EntryPoint(ReadableFilePointer pointer, String owner, Set<String> readers, Set<String> writers) {
+    public EntryPoint(FilePointer pointer, String owner, Set<String> readers, Set<String> writers) {
         this.pointer = pointer;
         this.owner = owner;
         this.readers = readers;
@@ -47,7 +47,7 @@ public class EntryPoint {
 
     static EntryPoint deserialize(byte[] raw) throws IOException {
         DataSource din = new DataSource(raw);
-        ReadableFilePointer pointer = ReadableFilePointer.deserialize(din.readArray());
+        FilePointer pointer = FilePointer.fromByteArray(din.readArray());
         String owner = din.readString();
         int nReaders = din.readInt();
         Set<String> readers = new HashSet<>();
@@ -87,7 +87,7 @@ public class EntryPoint {
         byte[] nonce = Arrays.copyOfRange(input, 0, 24);
         byte[] raw = key.decrypt(Arrays.copyOfRange(input, 24, input.length), nonce);
         DataInputStream din = new DataInputStream(new ByteArrayInputStream(raw));
-        ReadableFilePointer pointer = ReadableFilePointer.deserialize(Serialize.deserializeByteArray(din, 4*1024*1024));
+        FilePointer pointer = FilePointer.fromByteArray(Serialize.deserializeByteArray(din, 4*1024*1024));
         String owner = Serialize.deserializeString(din, CoreNode.MAX_USERNAME_SIZE);
         int nReaders = din.readInt();
         Set<String> readers = new HashSet<>();

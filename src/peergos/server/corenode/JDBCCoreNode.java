@@ -1,8 +1,8 @@
 package peergos.server.corenode;
 
+import peergos.shared.corenode.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.ipfs.api.*;
-import peergos.shared.corenode.CoreNode;
-import peergos.shared.corenode.UserPublicKeyLink;
 import peergos.shared.crypto.*;
 import peergos.shared.merklebtree.*;
 import peergos.shared.util.*;
@@ -13,7 +13,6 @@ import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
-import java.util.zip.*;
 
 public class JDBCCoreNode implements CoreNode {
     public static final long MIN_USERNAME_SET_REFRESH_PERIOD = 60*1000000000L;
@@ -184,7 +183,7 @@ public class JDBCCoreNode implements CoreNode {
 
     private class FollowRequestData extends RowData
     {
-        FollowRequestData(UserPublicKey owner, byte[] publicKey)
+        FollowRequestData(PublicSigningKey owner, byte[] publicKey)
         {
             super(owner.toString(), publicKey);
         }
@@ -361,7 +360,7 @@ public class JDBCCoreNode implements CoreNode {
     }
 
     @Override
-    public CompletableFuture<String> getUsername(UserPublicKey encodedKey)
+    public CompletableFuture<String> getUsername(PublicSigningKey encodedKey)
     {
         String b64key = Base64.getEncoder().encodeToString(encodedKey.serialize());
         try {
@@ -392,7 +391,7 @@ public class JDBCCoreNode implements CoreNode {
                 ResultSet resultSet = preparedStatement.executeQuery();
                 Map<Integer, UserPublicKeyLink> serializedChain = new HashMap<>();
                 while (resultSet.next()) {
-                    serializedChain.put(resultSet.getInt(1), UserPublicKeyLink.fromByteArray(UserPublicKey.fromString(resultSet.getString(2)),
+                    serializedChain.put(resultSet.getInt(1), UserPublicKeyLink.fromByteArray(PublicSigningKey.fromString(resultSet.getString(2)),
                             Base64.getDecoder().decode(resultSet.getString(3))));
                 }
                 ArrayList<UserPublicKeyLink> result = new ArrayList<>();
@@ -419,8 +418,8 @@ public class JDBCCoreNode implements CoreNode {
             List<String> existingStrings = existing.stream().map(x -> new String(Base64.getEncoder().encode(x.toByteArray()))).collect(Collectors.toList());
             List<UserPublicKeyLink> merged = UserPublicKeyLink.merge(existing, tail);
             List<String> toWrite = merged.stream().map(x -> new String(Base64.getEncoder().encode(x.toByteArray()))).collect(Collectors.toList());
-            Optional<UserPublicKey> oldKey = existing.size() == 0 ? Optional.empty() : Optional.of(existing.get(existing.size() - 1).owner);
-            UserPublicKey newKey = tail.get(tail.size() - 1).owner;
+            Optional<PublicSigningKey> oldKey = existing.size() == 0 ? Optional.empty() : Optional.of(existing.get(existing.size() - 1).owner);
+            PublicSigningKey newKey = tail.get(tail.size() - 1).owner;
 
             // Conceptually this should be a CAS of the new chain in for the old one under the username
             // The last one or two elements will have changed
@@ -552,7 +551,7 @@ public class JDBCCoreNode implements CoreNode {
     }
 
     @Override
-    public CompletableFuture<Boolean> followRequest(UserPublicKey owner, byte[] encryptedPermission)
+    public CompletableFuture<Boolean> followRequest(PublicSigningKey owner, byte[] encryptedPermission)
     {
         byte[] dummy = null;
         FollowRequestData selector = new FollowRequestData(owner, dummy);
@@ -566,7 +565,7 @@ public class JDBCCoreNode implements CoreNode {
     }
 
     @Override
-    public CompletableFuture<Boolean> removeFollowRequest(UserPublicKey owner, byte[] req)
+    public CompletableFuture<Boolean> removeFollowRequest(PublicSigningKey owner, byte[] req)
     {
         try {
             byte[] unsigned = owner.unsignMessage(req);
@@ -579,7 +578,7 @@ public class JDBCCoreNode implements CoreNode {
     }
 
     @Override
-    public CompletableFuture<byte[]> getFollowRequests(UserPublicKey owner) {
+    public CompletableFuture<byte[]> getFollowRequests(PublicSigningKey owner) {
         byte[] dummy = null;
         FollowRequestData request = new FollowRequestData(owner, dummy);
         RowData[] requests = request.select();
@@ -600,11 +599,11 @@ public class JDBCCoreNode implements CoreNode {
     }
 
     @Override
-    public CompletableFuture<Boolean> setMetadataBlob(UserPublicKey ownerPublicKey, UserPublicKey writingKey, byte[] writingKeySignedHash) {
+    public CompletableFuture<Boolean> setMetadataBlob(PublicSigningKey owner, PublicSigningKey writer, byte[] writingKeySignedHash) {
 
         try {
-            return getMetadataBlob(writingKey).thenApply(current -> {
-                byte[] bothHashes = writingKey.unsignMessage(writingKeySignedHash);
+            return getMetadataBlob(writer).thenApply(current -> {
+                byte[] bothHashes = writer.unsignMessage(writingKeySignedHash);
                 // check CAS [current hash, new hash]
                 DataInputStream din = new DataInputStream(new ByteArrayInputStream(bothHashes));
                 try {
@@ -612,21 +611,21 @@ public class JDBCCoreNode implements CoreNode {
                     MaybeMultihash newHash = MaybeMultihash.deserialize(din);
                     if (!current.equals(claimedCurrentHash))
                         return false;
-                    System.out.println("Core::setMetadata for " + writingKey + " from " + current + " to " + newHash);
-                    MetadataBlob blob = new MetadataBlob(writingKey.serialize(), bothHashes);
+                    System.out.println("Core::setMetadata for " + writer + " from " + current + " to " + newHash);
+                    MetadataBlob blob = new MetadataBlob(writer.serialize(), bothHashes);
                     return blob.insert();
                 } catch (IOException e) {
                     throw new RuntimeException(e);
                 }
             });
         } catch (TweetNaCl.InvalidSignatureException e) {
-            System.err.println("Invalid signature during setMetadataBlob for sharer: " + writingKey);
+            System.err.println("Invalid signature during setMetadataBlob for sharer: " + writer);
             return CompletableFuture.completedFuture(false);
         }
     }
 
     @Override
-    public CompletableFuture<Boolean> removeMetadataBlob(UserPublicKey writingKey, byte[] writingKeySignedMapKeyPlusBlob) {
+    public CompletableFuture<Boolean> removeMetadataBlob(PublicSigningKey writingKey, byte[] writingKeySignedMapKeyPlusBlob) {
         try {
             byte[] currentHash = writingKey.unsignMessage(writingKeySignedMapKeyPlusBlob);
             MetadataBlob blob = new MetadataBlob(writingKey.serialize(), currentHash);
@@ -638,7 +637,7 @@ public class JDBCCoreNode implements CoreNode {
     }
 
     @Override
-    public CompletableFuture<MaybeMultihash> getMetadataBlob(UserPublicKey writingKey) {
+    public CompletableFuture<MaybeMultihash> getMetadataBlob(PublicSigningKey writingKey) {
         byte[] dummy = null;
         MetadataBlob blob = new MetadataBlob(writingKey.serialize(), dummy);
         MetadataBlob users = blob.selectOne();

@@ -1,6 +1,7 @@
 package peergos.shared.merklebtree;
 
 import peergos.shared.crypto.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.ipfs.api.Multihash;
 import peergos.shared.storage.ContentAddressedStorage;
 import peergos.shared.util.*;
@@ -78,7 +79,7 @@ public class TreeNode {
                         .get(key, storage));
     }
 
-    public CompletableFuture<TreeNode> put(UserPublicKey writer, ByteArrayWrapper key, Multihash value, ContentAddressedStorage storage, int maxChildren) {
+    public CompletableFuture<TreeNode> put(PublicSigningKey writer, ByteArrayWrapper key, Multihash value, ContentAddressedStorage storage, int maxChildren) {
         KeyElement dummy = KeyElement.dummy(key);
         SortedSet<KeyElement> tailSet = keys.tailSet(dummy);
         KeyElement nextSmallest;
@@ -203,7 +204,7 @@ public class TreeNode {
                         .smallestKey(storage));
     }
 
-    public CompletableFuture<TreeNode> delete(UserPublicKey writer, ByteArrayWrapper key, ContentAddressedStorage storage, int maxChildren) {
+    public CompletableFuture<TreeNode> delete(PublicSigningKey writer, ByteArrayWrapper key, ContentAddressedStorage storage, int maxChildren) {
         KeyElement dummy = KeyElement.dummy(key);
         SortedSet<KeyElement> tailSet = keys.tailSet(dummy);
         KeyElement nextSmallest;
@@ -273,7 +274,7 @@ public class TreeNode {
                 });
     }
 
-    private static CompletableFuture<TreeNode> rebalance(UserPublicKey writer, TreeNode parent, TreeNode child, Multihash originalChildHash,
+    private static CompletableFuture<TreeNode> rebalance(PublicSigningKey writer, TreeNode parent, TreeNode child, Multihash originalChildHash,
                                                          ContentAddressedStorage storage, int maxChildren) {
         // child has too few children
         Multihash childHash = originalChildHash;

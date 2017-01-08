@@ -1,9 +1,8 @@
 package peergos.shared.user;
 
 import peergos.shared.cbor.*;
-import peergos.shared.crypto.UserPublicKey;
 import peergos.shared.crypto.symmetric.SymmetricKey;
-import peergos.shared.user.fs.ReadableFilePointer;
+import peergos.shared.user.fs.FilePointer;
 import peergos.shared.util.*;
 
 import java.io.*;
@@ -40,10 +39,10 @@ public class UserStaticData implements Cborable {
             staticData.add(entryPoint);
     }
 
-    public boolean remove(ReadableFilePointer readableFilePointer) {
+    public boolean remove(FilePointer filePointer) {
         for (Iterator<EntryPoint> it = staticData.iterator() ;it.hasNext();) {
             EntryPoint entry = it.next();
-            if (entry.pointer.equals(readableFilePointer)) {
+            if (entry.pointer.equals(filePointer)) {
                 it.remove();
                 return true;
             }

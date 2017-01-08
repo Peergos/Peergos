@@ -25,11 +25,11 @@ public class WriterData implements Cborable {
     // publicly readable and present on owner keys
     public final Optional<UserGenerationAlgorithm> generationAlgorithm;
     // accessible under IPFS address $hash/public
-    public final Optional<ReadableFilePointer> publicData;
+    public final Optional<FilePointer> publicData;
     // The public key to encrypt follow requests to, accessible under IPFS address $hash/inbound
     public final Optional<PublicBoxingKey> followRequestReceiver;
     // accessible under IPFS address $hash/owned
-    public final Set<UserPublicKey> ownedKeys;
+    public final Set<PublicSigningKey> ownedKeys;
 
     // Encrypted
     // accessible under IPFS address $hash/static (present on owner keys)
@@ -46,9 +46,9 @@ public class WriterData implements Cborable {
      * @param btree Any file tree owned by this key
      */
     public WriterData(Optional<UserGenerationAlgorithm> generationAlgorithm,
-                      Optional<ReadableFilePointer> publicData,
+                      Optional<FilePointer> publicData,
                       Optional<PublicBoxingKey> followRequestReceiver,
-                      Set<UserPublicKey> ownedKeys,
+                      Set<PublicSigningKey> ownedKeys,
                       Optional<UserStaticData> staticData,
                       Optional<Multihash> btree) {
         this.generationAlgorithm = generationAlgorithm;
@@ -63,7 +63,7 @@ public class WriterData implements Cborable {
         return new WriterData(generationAlgorithm, publicData, followRequestReceiver, ownedKeys, staticData, Optional.of(treeRoot));
     }
 
-    public WriterData withOwnedKeys(Set<UserPublicKey> owned) {
+    public WriterData withOwnedKeys(Set<PublicSigningKey> owned) {
         return new WriterData(generationAlgorithm, publicData, followRequestReceiver, owned, staticData, btree);
     }
 
@@ -90,7 +90,7 @@ public class WriterData implements Cborable {
     }
 
     public CompletableFuture<Boolean> removeFromStaticData(FileTreeNode fileTreeNode, SigningKeyPair signer, NetworkAccess network) {
-        ReadableFilePointer pointer = fileTreeNode.getPointer().filePointer;
+        FilePointer pointer = fileTreeNode.getPointer().filePointer;
 
         return staticData.map(sd -> {
             boolean isRemoved = sd.remove(pointer);
@@ -113,15 +113,15 @@ public class WriterData implements Cborable {
 
     public CompletableFuture<Boolean> commit(SigningKeyPair signer, CoreNode coreNode, ContentAddressedStorage dhtClient) {
         byte[] raw = serialize();
-        return dhtClient.put(signer, raw, Collections.emptyList())
-                .thenCompose(blobHash -> coreNode.getMetadataBlob(signer)
+        return dhtClient.put(signer.publicSigningKey, raw, Collections.emptyList())
+                .thenCompose(blobHash -> coreNode.getMetadataBlob(signer.publicSigningKey)
                         .thenCompose(currentHash -> {
                             DataSink bout = new DataSink();
                             try {
                                 currentHash.serialize(bout);
                                 bout.writeArray(blobHash.toBytes());
                                 byte[] signed = signer.signMessage(bout.toByteArray());
-                                return coreNode.setMetadataBlob(signer, signer, signed);
+                                return coreNode.setMetadataBlob(signer.publicSigningKey, signer.publicSigningKey, signed);
                             } catch (IOException e) {
                                 throw new RuntimeException(e);
                             }
@@ -163,10 +163,10 @@ public class WriterData implements Cborable {
         };
 
         Optional<UserGenerationAlgorithm> algo  = extractUserGenerationAlgorithm(cbor);
-        Optional<ReadableFilePointer> publicData = extract.apply("public").map(ReadableFilePointer::fromCbor);
+        Optional<FilePointer> publicData = extract.apply("public").map(FilePointer::fromCbor);
         Optional<PublicBoxingKey> followRequestReceiver = extract.apply("inbound").map(raw -> PublicBoxingKey.fromCbor(raw));
         CborObject.CborList ownedList = (CborObject.CborList) map.values.get(new CborObject.CborString("owned"));
-        Set<UserPublicKey> owned = ownedList.value.stream().map(UserPublicKey::fromCbor).collect(Collectors.toSet());
+        Set<PublicSigningKey> owned = ownedList.value.stream().map(PublicSigningKey::fromCbor).collect(Collectors.toSet());
         // rootKey is null for other people parsing our WriterData who don't have our root key
         Optional<UserStaticData> staticData = rootKey == null ? Optional.empty() : extract.apply("static").map(raw -> UserStaticData.fromCbor(raw, rootKey));
         Optional<Multihash> btree = extract.apply("btree").map(val -> Multihash.fromMultiAddress(((CborObject.CborMerkleLink)val).target));

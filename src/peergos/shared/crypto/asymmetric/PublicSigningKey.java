@@ -1,14 +1,15 @@
 package peergos.shared.crypto.asymmetric;
 
 import jsinterop.annotations.*;
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
 import peergos.shared.util.StringUtils;
 
-import java.io.*;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 
-public interface PublicSigningKey {
+public interface PublicSigningKey extends Cborable {
+    int MAX_SIZE = 10*1024*1024;
+
     Map<Integer, Type> byValue = new HashMap<>();
     enum Type {
         Ed25519(0xEC);
@@ -36,38 +37,31 @@ public interface PublicSigningKey {
     Type type();
 
     @JsMethod
-    byte[] getPublicSigningKey();
-
-    @JsMethod
     byte[] unsignMessage(byte[] signed);
 
-    void serialize(DataOutput dout) throws IOException;
-
-    @JsMethod
-    default byte[] toByteArray() {
-        try {
-            ByteArrayOutputStream bout = new ByteArrayOutputStream();
-            DataOutputStream dout = new DataOutputStream(bout);
-            serialize(dout);
-            return bout.toByteArray();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+    static PublicSigningKey fromString(String b64) {
+        return fromByteArray(Base64.getDecoder().decode(b64));
     }
 
     @JsMethod
-    static PublicSigningKey fromByteArray(byte[] raw) throws IOException {
-        return deserialize(new DataInputStream(new ByteArrayInputStream(raw)));
+    static PublicSigningKey fromByteArray(byte[] raw) {
+        return fromCbor(CborObject.fromByteArray(raw));
     }
 
-    static PublicSigningKey deserialize(DataInput din) throws IOException {
-        Type t = Type.byValue(din.readUnsignedByte());
+    static PublicSigningKey fromCbor(CborObject cbor) {
+        if (! (cbor instanceof CborObject.CborMap))
+            throw new IllegalStateException("Invalid cbor for PublicSigningKey! " + cbor);
+        CborObject.CborLong type = (CborObject.CborLong) ((CborObject.CborMap) cbor).values.get(new CborObject.CborString("t"));
+        Type t = Type.byValue((int) type.value);
         switch (t) {
             case Ed25519:
-                byte[] key = new byte[32];
-                din.readFully(key);
-                return new Ed25519PublicKey(key, PROVIDERS.get(t));
-            default: throw new IllegalStateException("Unknown Public Signing Key type: "+t.name());
+                return Ed25519PublicKey.fromCbor(cbor, PROVIDERS.get(t));
+            default:
+                throw new IllegalStateException("Unknown Public Signing Key type: " + t.name());
         }
+    }
+
+    static PublicSigningKey createNull() {
+        return new Ed25519PublicKey(new byte[32], PublicSigningKey.PROVIDERS.get(PublicSigningKey.Type.Ed25519));
     }
 }

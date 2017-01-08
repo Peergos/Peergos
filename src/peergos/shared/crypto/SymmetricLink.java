@@ -24,7 +24,7 @@ public class SymmetricLink
     public SymmetricKey target(SymmetricKey from)
     {
         byte[] encoded = from.decrypt(link, nonce);
-        return SymmetricKey.deserialize(encoded);
+        return SymmetricKey.fromByteArray(encoded);
     }
 
     public static SymmetricLink fromPair(SymmetricKey from, SymmetricKey to) {

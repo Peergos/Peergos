@@ -98,7 +98,7 @@ public class UserContext {
                         long t1 = System.currentTimeMillis();
                         return context.createEntryDirectory(username).thenCompose(userRoot -> {
                             System.out.println("Creating root directory took " + (System.currentTimeMillis() - t1) + " mS");
-                            return ((DirAccess) userRoot.fileAccess).mkdir(SHARED_DIR_NAME, context, (SigningKeyPair) userRoot.filePointer.location.writer,
+                            return ((DirAccess) userRoot.fileAccess).mkdir(SHARED_DIR_NAME, context, userRoot.filePointer.signer(),
                                     userRoot.filePointer.location.getMapKey(), userRoot.filePointer.baseKey, null, true, crypto.random)
                                     .thenCompose(x -> context.init().thenApply(inited -> context));
                         });
@@ -108,7 +108,7 @@ public class UserContext {
 
     @JsMethod
     public static CompletableFuture<UserContext> fromPublicLink(String link, NetworkAccess network, Crypto crypto) {
-        ReadableFilePointer entryPoint = ReadableFilePointer.fromLink(link);
+        FilePointer entryPoint = FilePointer.fromLink(link);
         EntryPoint entry = new EntryPoint(entryPoint, "", Collections.emptySet(), Collections.emptySet());
         UserContext context = new UserContext(null, null, null, network, crypto, WriterData.createEmpty(Optional.empty(), null));
         return context.addEntryPoint(context.entrie, entry).thenApply(trieNode -> {
@@ -171,7 +171,7 @@ public class UserContext {
     @JsMethod
     public CompletableFuture<Boolean> isRegistered() {
         System.out.println("isRegistered");
-        return network.coreNode.getUsername(signer).thenApply(registeredUsername -> {
+        return network.coreNode.getUsername(signer.publicSigningKey).thenApply(registeredUsername -> {
             System.out.println("got username \"" + registeredUsername + "\"");
             return this.username.equals(registeredUsername);
         });
@@ -237,14 +237,14 @@ public class UserContext {
         System.out.println("Random keys generation took " + (System.currentTimeMillis()-t1) + " mS");
 
         // and authorise the writer key
-        ReadableFilePointer rootPointer = new ReadableFilePointer(this.signer, writer, rootMapKey, rootRKey);
+        FilePointer rootPointer = new FilePointer(this.signer.publicSigningKey, writer, rootMapKey, rootRKey);
         EntryPoint entry = new EntryPoint(rootPointer, this.username, Collections.emptySet(), Collections.emptySet());
 
         long t2 = System.currentTimeMillis();
         DirAccess root = DirAccess.create(rootRKey, new FileProperties(directoryName, 0, LocalDateTime.now(), false, Optional.empty()), (Location)null, null, null);
-        Location rootLocation = new Location(this.signer, writer, rootMapKey);
+        Location rootLocation = new Location(this.signer.publicSigningKey, writer.publicSigningKey, rootMapKey);
         System.out.println("Uploading entry point directory");
-        return this.uploadChunk(root, rootLocation, Collections.emptyList()).thenCompose(uploaded -> {
+        return this.uploadChunk(root, rootLocation, writer, Collections.emptyList()).thenCompose(uploaded -> {
             if (!uploaded)
                 throw new IllegalStateException("Failed to upload root dir!");
             long t3 = System.currentTimeMillis();
@@ -261,14 +261,14 @@ public class UserContext {
         });
     }
 
-    public CompletableFuture<Optional<Pair<UserPublicKey, PublicBoxingKey>>> getPublicKeys(String username) {
+    public CompletableFuture<Optional<Pair<PublicSigningKey, PublicBoxingKey>>> getPublicKeys(String username) {
         return network.coreNode.getPublicKey(username)
                 .thenCompose(signerOpt -> getWriterData(network, signerOpt.get())
                         .thenApply(wd -> Optional.of(new Pair<>(signerOpt.get(), wd.followRequestReceiver.get()))));
     }
 
-    private CompletableFuture<WriterData> addOwnedKeyAndCommit(UserPublicKey owned) {
-        Set<UserPublicKey> updated = Stream.concat(userData.ownedKeys.stream(), Stream.of(owned.toUserPublicKey()))
+    private CompletableFuture<WriterData> addOwnedKeyAndCommit(PublicSigningKey owned) {
+        Set<PublicSigningKey> updated = Stream.concat(userData.ownedKeys.stream(), Stream.of(owned))
                 .collect(Collectors.toSet());
 
         WriterData writerData = userData.withOwnedKeys(updated);
@@ -336,7 +336,7 @@ public class UserContext {
             // send a null entry and null key (full rejection)
             DataSink dout = new DataSink();
             // write a null entry point
-            EntryPoint entry = new EntryPoint(ReadableFilePointer.createNull(), username, Collections.emptySet(), Collections.emptySet());
+            EntryPoint entry = new EntryPoint(FilePointer.createNull(), username, Collections.emptySet(), Collections.emptySet());
             dout.writeArray(entry.serialize());
             dout.writeArray(new byte[0]); // tell them we're not reciprocating
             byte[] plaintext = dout.toByteArray();
@@ -352,7 +352,7 @@ public class UserContext {
                 resp.writeArray(payload);
                 network.coreNode.followRequest(initialRequest.entry.get().pointer.location.owner, resp.toByteArray());
                 // remove pending follow request from them
-                return network.coreNode.removeFollowRequest(signer, signer.signMessage(initialRequest.rawCipher));
+                return network.coreNode.removeFollowRequest(signer.publicSigningKey, signer.signMessage(initialRequest.rawCipher));
             });
         }
 
@@ -373,7 +373,7 @@ public class UserContext {
                             });
                 });
             } else {
-                EntryPoint entry = new EntryPoint(ReadableFilePointer.createNull(), username, Collections.emptySet(), Collections.emptySet());
+                EntryPoint entry = new EntryPoint(FilePointer.createNull(), username, Collections.emptySet(), Collections.emptySet());
                 dout.writeArray(entry.serialize());
                 return CompletableFuture.completedFuture(dout);
             }
@@ -396,7 +396,7 @@ public class UserContext {
                 DataSink resp = new DataSink();
                 resp.writeArray(tmp.publicBoxingKey.serialize());
                 resp.writeArray(payload);
-                return network.coreNode.followRequest(initialRequest.entry.get().pointer.location.owner.toUserPublicKey(), resp.toByteArray());
+                return network.coreNode.followRequest(initialRequest.entry.get().pointer.location.owner, resp.toByteArray());
             });
         }).thenCompose(b -> {
             if (reciprocate)
@@ -405,7 +405,7 @@ public class UserContext {
         }).thenCompose(trie -> {
             // remove original request
             entrie = trie;
-            return network.coreNode.removeFollowRequest(signer.toUserPublicKey(), signer.signMessage(initialRequest.rawCipher));
+            return network.coreNode.removeFollowRequest(signer.publicSigningKey, signer.signMessage(initialRequest.rawCipher));
         });
     }
 
@@ -445,7 +445,7 @@ public class UserContext {
                             DataSink res = new DataSink();
                             res.writeArray(tmp.publicBoxingKey.serialize());
                             res.writeArray(payload);
-                            UserPublicKey targetSigner = targetUserOpt.get().left;
+                            PublicSigningKey targetSigner = targetUserOpt.get().left;
                             return network.coreNode.followRequest(targetSigner, res.toByteArray());
                         });
                     });
@@ -454,7 +454,7 @@ public class UserContext {
         });
     };
 
-    public CompletableFuture<Boolean> sendWriteAccess(UserPublicKey targetUser) {
+    public CompletableFuture<Boolean> sendWriteAccess(PublicSigningKey targetUser) {
         /*
         // create sharing keypair and give it write access
         User sharing = User.random(random, signer, boxer);
@@ -462,7 +462,7 @@ public class UserContext {
         random.randombytes(rootMapKey, 0, 32);
 
         // add a note to our static data so we know who we sent the private key to
-        ReadableFilePointer friendRoot = new ReadableFilePointer(user, sharing, rootMapKey, SymmetricKey.random());
+        FilePointer friendRoot = new FilePointer(user, sharing, rootMapKey, SymmetricKey.random());
         return corenodeClient.getUsername(targetUser).thenCompose(name -> {
             EntryPoint entry = new EntryPoint(friendRoot, username, Collections.emptySet(), Stream.of(name).collect(Collectors.toSet()));
             try {
@@ -642,7 +642,7 @@ public class UserContext {
      * @return initial follow requests
      */
     public CompletableFuture<List<FollowRequest>> processFollowRequests() {
-        return network.coreNode.getFollowRequests(signer.toUserPublicKey()).thenCompose(reqs -> {
+        return network.coreNode.getFollowRequests(signer.publicSigningKey).thenCompose(reqs -> {
             DataSource din = new DataSource(reqs);
             List<FollowRequest> all;
             try {
@@ -677,7 +677,7 @@ public class UserContext {
                             CompletableFuture<TrieNode> updatedRoot = addToStaticDataAndCommit(root, freq.entry.get());
                             return updatedRoot.thenCompose(newRoot -> {
                                 entrie = newRoot;
-                                return network.coreNode.removeFollowRequest(signer.toUserPublicKey(), signer.signMessage(freq.rawCipher))
+                                return network.coreNode.removeFollowRequest(signer.publicSigningKey, signer.signMessage(freq.rawCipher))
                                         .thenApply(b -> newRoot);
                             });
                         }
@@ -695,7 +695,7 @@ public class UserContext {
                             // remove entry point as well
                             CompletableFuture<Boolean> cleanStatic = removeFromStaticData(ourDirForThem);
                             // clear their response follow req too
-                            CompletableFuture<Boolean> clearPending = network.coreNode.removeFollowRequest(signer.toUserPublicKey(), signer.signMessage(freq.rawCipher));
+                            CompletableFuture<Boolean> clearPending = network.coreNode.removeFollowRequest(signer.publicSigningKey, signer.signMessage(freq.rawCipher));
 
                             return removeDir.thenCompose(x -> cleanStatic)
                                     .thenCompose(x -> clearPending)
@@ -742,15 +742,15 @@ public class UserContext {
         byte[] rawEntry = input.readArray();
         byte[] rawKey = input.readArray();
         return new FollowRequest(rawEntry.length > 0 ? Optional.of(EntryPoint.deserialize(rawEntry)) : Optional.empty(),
-                rawKey.length > 0 ? Optional.of(SymmetricKey.deserialize(rawKey)) : Optional.empty(), raw);
+                rawKey.length > 0 ? Optional.of(SymmetricKey.fromByteArray(rawKey)) : Optional.empty(), raw);
     }
 
-    private CompletableFuture<Multihash> uploadFragment(Fragment f, UserPublicKey targetUser) {
+    private CompletableFuture<Multihash> uploadFragment(Fragment f, PublicSigningKey targetUser) {
         return network.dhtClient.put(targetUser, f.data, Collections.emptyList());
     }
 
-    public CompletableFuture<List<Multihash>> uploadFragments(List<Fragment> fragments, UserPublicKey owner,
-                                                              UserPublicKey sharer, byte[] mapKey, ProgressConsumer<Long> progressCounter) {
+    public CompletableFuture<List<Multihash>> uploadFragments(List<Fragment> fragments, PublicSigningKey owner,
+                                                              ProgressConsumer<Long> progressCounter) {
         List<CompletableFuture<Multihash>> futures = fragments.stream()
                 .map(f -> uploadFragment(f, owner)
                         .thenApply(hash -> {
@@ -762,16 +762,18 @@ public class UserContext {
         return Futures.combineAllInOrder(futures);
     }
 
-    public CompletableFuture<Boolean> uploadChunk(FileAccess metadata, Location location, List<Multihash> linkHashes) {
+    public CompletableFuture<Boolean> uploadChunk(FileAccess metadata, Location location, SigningKeyPair writer, List<Multihash> linkHashes) {
+        if (! writer.publicSigningKey.equals(location.writer))
+            throw new IllegalStateException("Non matching location writer and signing writer key!");
         DataSink dout = new DataSink();
         try {
             metadata.serialize(dout);
             byte[] metaBlob = dout.toByteArray();
             System.out.println("Storing metadata blob of " + metaBlob.length + " bytes. to mapKey: " + location.toString());
-            return network.dhtClient.put(location.owner, metaBlob, linkHashes).thenCompose(blobHash -> {
-                SigningKeyPair sharer = (SigningKeyPair) location.writer;
-                return network.btree.put(sharer, location.getMapKey(), blobHash);
-            });
+            return network.dhtClient.put(location.owner, metaBlob, linkHashes)
+                    .thenCompose(blobHash -> {
+                        return network.btree.put(writer, location.getMapKey(), blobHash);
+                    });
         } catch (Exception e) {
             System.out.println(e.getMessage());
             throw new RuntimeException(e);
@@ -820,7 +822,7 @@ public class UserContext {
         }).exceptionally(Futures::logError);
     }
 
-    private static CompletableFuture<WriterData> getWriterData(NetworkAccess network, UserPublicKey signer) {
+    private static CompletableFuture<WriterData> getWriterData(NetworkAccess network, PublicSigningKey signer) {
         return getWriterDataCbor(network, signer)
                 .thenApply(cbor -> WriterData.fromCbor(cbor, null));
     }
@@ -829,7 +831,7 @@ public class UserContext {
         return network.coreNode.getPublicKey(username).thenCompose(signer -> getWriterDataCbor(network, signer.get()));
     }
 
-    private static CompletableFuture<CborObject> getWriterDataCbor(NetworkAccess network, UserPublicKey signer) {
+    private static CompletableFuture<CborObject> getWriterDataCbor(NetworkAccess network, PublicSigningKey signer) {
         return network.coreNode.getMetadataBlob(signer)
                 .thenCompose(key -> network.dhtClient.getData(key.get()))
                 .thenApply(Optional::get)
@@ -848,7 +850,7 @@ public class UserContext {
     protected CompletableFuture<Optional<FileTreeNode>> retrieveEntryPoint(EntryPoint e) {
         return downloadEntryPoint(e)
                 .thenApply(faOpt ->faOpt.map(fa -> new FileTreeNode(new RetrievedFilePointer(e.pointer, fa), e.owner,
-                        e.readers, e.writers, e.pointer.location.writer)));
+                        e.readers, e.writers, e.pointer.writer)));
     }
 
     private CompletableFuture<Optional<FileAccess>> downloadEntryPoint(EntryPoint entry) {

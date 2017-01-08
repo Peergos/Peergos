@@ -1,6 +1,7 @@
 package peergos.shared.user.fs;
 
 import peergos.shared.crypto.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
@@ -79,16 +80,16 @@ public class FileAccess {
         return retriever;
     }
 
-    public CompletableFuture<Boolean> rename(ReadableFilePointer writableFilePointer, FileProperties newProps, UserContext context) {
+    public CompletableFuture<Boolean> rename(FilePointer writableFilePointer, FileProperties newProps, UserContext context) {
         if (!writableFilePointer.isWritable())
             throw new IllegalStateException("Need a writable pointer!");
         SymmetricKey metaKey = this.getMetaKey(writableFilePointer.baseKey);
         byte[] nonce = metaKey.createNonce();
         FileAccess fa = new FileAccess(this.parent2meta, ArrayOps.concat(nonce, metaKey.encrypt(newProps.serialize(), nonce)), this.retriever, this.parentLink);
-        return context.uploadChunk(fa, writableFilePointer.location, Collections.emptyList()); //TODO get fragment hashes from retriever
+        return context.uploadChunk(fa, writableFilePointer.location, writableFilePointer.signer(), Collections.emptyList()); //TODO get fragment hashes from retriever
     }
 
-    public CompletableFuture<FileAccess> markDirty(ReadableFilePointer writableFilePointer, SymmetricKey newParentKey, UserContext context) {
+    public CompletableFuture<FileAccess> markDirty(FilePointer writableFilePointer, SymmetricKey newParentKey, UserContext context) {
         // keep the same metakey, just marked as dirty
         SymmetricKey metaKey = this.getMetaKey(writableFilePointer.baseKey).makeDirty();
         SymmetricLink newParentToMeta = SymmetricLink.fromPair(newParentKey, metaKey);
@@ -97,7 +98,7 @@ public class FileAccess {
                 parentLink.targetLocation(writableFilePointer.baseKey));
         FileAccess fa = new FileAccess(newParentToMeta, properties, this.retriever, newParentLink);
         return context.uploadChunk(fa, writableFilePointer.location, //TODO get fragment hashes from retriever
-                Collections.emptyList())
+                writableFilePointer.signer(), Collections.emptyList())
                 .thenApply(x -> fa);
     }
 
@@ -112,7 +113,11 @@ public class FileAccess {
         FileProperties props = getFileProperties(baseKey);
         FileAccess fa = FileAccess.create(newBaseKey, isDirectory() ? SymmetricKey.random() : getMetaKey(baseKey), props, this.retriever, parentLocation, parentparentKey);
         //TODO get fragment hashes from retriever
-        return context.uploadChunk(fa, new Location(context.signer, entryWriterKey, newMapKey), Collections.emptyList()).thenApply(b -> fa);
+        return context.uploadChunk(fa,
+                new Location(context.signer.publicSigningKey, entryWriterKey.publicSigningKey, newMapKey),
+                entryWriterKey,
+                Collections.emptyList()
+        ).thenApply(b -> fa);
     }
 
     public static FileAccess deserialize(byte[] raw) {

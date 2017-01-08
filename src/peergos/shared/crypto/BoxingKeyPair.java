@@ -1,5 +1,6 @@
 package peergos.shared.crypto;
 
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
 import peergos.shared.crypto.random.*;
@@ -8,7 +9,7 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.util.*;
 
-public class BoxingKeyPair
+public class BoxingKeyPair implements Cborable
 {
     public final PublicBoxingKey publicBoxingKey;
     public final SecretBoxingKey secretBoxingKey;
@@ -18,22 +19,21 @@ public class BoxingKeyPair
         this.secretBoxingKey = secretBoxingKey;
     }
 
-    public static BoxingKeyPair deserialize(DataInput din) {
-        try {
-            SecretBoxingKey secretKey = SecretBoxingKey.deserialize(din);
-            PublicBoxingKey publicKey = PublicBoxingKey.deserialize(din);
-            return new BoxingKeyPair(publicKey, secretKey);
-        } catch (IOException e) {
-            throw new IllegalStateException("Invalid serialized User", e);
-        }
+    @Override
+    public CborObject toCbor() {
+        return new CborObject.CborList(Arrays.asList(
+                publicBoxingKey.toCbor(),
+                secretBoxingKey.toCbor()));
     }
 
-    public void serialize(DataOutput dout) throws IOException {
-        dout.write(serialize());
-    }
+    public static BoxingKeyPair fromCbor(CborObject cbor) {
+        if (! (cbor instanceof CborObject.CborList))
+            throw new IllegalStateException("Incorrect cbor for SigningKeyPair: " + cbor);
 
-    public byte[] serialize() {
-        return ArrayOps.concat(secretBoxingKey.serialize(), publicBoxingKey.serialize());
+        List<CborObject> values = ((CborObject.CborList) cbor).value;
+        PublicBoxingKey pub = PublicBoxingKey.fromCbor(values.get(0));
+        SecretBoxingKey secret = SecretBoxingKey.fromCbor(values.get(1));
+        return new BoxingKeyPair(pub, secret);
     }
 
     public static BoxingKeyPair random(SafeRandom random, Curve25519 boxer) {
