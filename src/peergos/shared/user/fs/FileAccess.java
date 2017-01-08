@@ -2,6 +2,7 @@ package peergos.shared.user.fs;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.ipfs.api.*;
 import peergos.shared.user.*;
@@ -98,17 +99,16 @@ public class FileAccess implements Cborable {
         return retriever;
     }
 
-    public CompletableFuture<Boolean> rename(ReadableFilePointer writableFilePointer, FileProperties newProps, UserContext context) {
+    public CompletableFuture<Boolean> rename(FilePointer writableFilePointer, FileProperties newProps, UserContext context) {
         if (!writableFilePointer.isWritable())
             throw new IllegalStateException("Need a writable pointer!");
         SymmetricKey metaKey = this.getMetaKey(writableFilePointer.baseKey);
         byte[] nonce = metaKey.createNonce();
-        FileAccess fa = new FileAccess(this.parent2meta, ArrayOps.concat(nonce, metaKey.encrypt(newProps.serialize(), nonce)),
-                this.retriever, this.parentLink, this.fragmentHashes);
-        return context.uploadChunk(fa, writableFilePointer.location);
+        FileAccess fa = new FileAccess(this.parent2meta, ArrayOps.concat(nonce, metaKey.encrypt(newProps.serialize(), nonce)), this.retriever, this.parentLink, this.fragmentHashes);
+        return context.uploadChunk(fa, writableFilePointer.location, writableFilePointer.signer());
     }
 
-    public CompletableFuture<FileAccess> markDirty(ReadableFilePointer writableFilePointer, SymmetricKey newParentKey, UserContext context) {
+    public CompletableFuture<FileAccess> markDirty(FilePointer writableFilePointer, SymmetricKey newParentKey, UserContext context) {
         // keep the same metakey, just marked as dirty
         SymmetricKey metaKey = this.getMetaKey(writableFilePointer.baseKey).makeDirty();
         SymmetricLink newParentToMeta = SymmetricLink.fromPair(newParentKey, metaKey);
@@ -116,7 +116,8 @@ public class FileAccess implements Cborable {
                 parentLink.target(writableFilePointer.baseKey),
                 parentLink.targetLocation(writableFilePointer.baseKey));
         FileAccess fa = new FileAccess(newParentToMeta, properties, this.retriever, newParentLink, fragmentHashes);
-        return context.uploadChunk(fa, writableFilePointer.location)
+        return context.uploadChunk(fa, writableFilePointer.location,
+                writableFilePointer.signer())
                 .thenApply(x -> fa);
     }
 
@@ -125,13 +126,14 @@ public class FileAccess implements Cborable {
     }
 
     public CompletableFuture<? extends FileAccess> copyTo(SymmetricKey baseKey, SymmetricKey newBaseKey, Location parentLocation, SymmetricKey parentparentKey,
-                  User entryWriterKey, byte[] newMapKey, UserContext context) {
+                                                          SigningKeyPair entryWriterKey, byte[] newMapKey, UserContext context) {
         if (!Arrays.equals(baseKey.serialize(), newBaseKey.serialize()))
             throw new IllegalStateException("FileAccess clone must have same base key as original!");
         FileProperties props = getFileProperties(baseKey);
         FileAccess fa = FileAccess.create(newBaseKey, isDirectory() ? SymmetricKey.random() : getMetaKey(baseKey), props,
                 this.retriever, parentLocation, parentparentKey, fragmentHashes);
-        return context.uploadChunk(fa, new Location(context.user, entryWriterKey, newMapKey)).thenApply(b -> fa);
+        return context.uploadChunk(fa, new Location(context.signer.publicSigningKey, entryWriterKey.publicSigningKey, newMapKey), entryWriterKey)
+                .thenApply(b -> fa);
     }
 
     public static FileAccess fromCbor(CborObject cbor) {

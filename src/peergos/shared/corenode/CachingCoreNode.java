@@ -1,6 +1,7 @@
 package peergos.shared.corenode;
 
 import peergos.shared.crypto.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.merklebtree.*;
 import peergos.shared.util.*;
 
@@ -24,42 +25,39 @@ public class CachingCoreNode implements CoreNode {
     }
 
     @Override
-    public CompletableFuture<MaybeMultihash> getMetadataBlob(UserPublicKey writerKey) {
-        UserPublicKey publicWriter = writerKey.toUserPublicKey();
+    public CompletableFuture<MaybeMultihash> getMetadataBlob(PublicSigningKey writer) {
         synchronized (cache) {
-            Pair<MaybeMultihash, Long> cached = cache.get(publicWriter.toString());
+            Pair<MaybeMultihash, Long> cached = cache.get(writer.toString());
             if (cached != null && System.currentTimeMillis() - cached.right < cacheTTL) {
                 return CompletableFuture.completedFuture(cached.left);
             }
         }
-        return target.getMetadataBlob(publicWriter).thenApply(m -> {
+        return target.getMetadataBlob(writer).thenApply(m -> {
             synchronized (cache) {
-                cache.put(publicWriter.toString(), new Pair<>(m, System.currentTimeMillis()));
+                cache.put(writer.toString(), new Pair<>(m, System.currentTimeMillis()));
             }
             return m;
         });
     }
 
     @Override
-    public CompletableFuture<Boolean> setMetadataBlob(UserPublicKey ownerPublicKey, UserPublicKey writerKey, byte[] sharingKeySignedBtreeRootHash) {
-        UserPublicKey publicWriter = writerKey.toUserPublicKey();
+    public CompletableFuture<Boolean> setMetadataBlob(PublicSigningKey ownerPublicKey, PublicSigningKey writer, byte[] writerSignedBtreeRootHash) {
         synchronized (cache) {
-            cache.remove(publicWriter.toString());
+            cache.remove(writer.toString());
         }
-        return target.setMetadataBlob(ownerPublicKey, publicWriter, sharingKeySignedBtreeRootHash);
+        return target.setMetadataBlob(ownerPublicKey, writer, writerSignedBtreeRootHash);
     }
 
     @Override
-    public CompletableFuture<Boolean> removeMetadataBlob(UserPublicKey writerKey, byte[] sharingKeySignedMapKeyPlusBlob) {
-        UserPublicKey publicWriter = writerKey.toUserPublicKey();
+    public CompletableFuture<Boolean> removeMetadataBlob(PublicSigningKey writer, byte[] sharingKeySignedMapKeyPlusBlob) {
         synchronized (cache) {
-            cache.remove(publicWriter.toString());
+            cache.remove(writer.toString());
         }
-        return target.removeMetadataBlob(publicWriter, sharingKeySignedMapKeyPlusBlob);
+        return target.removeMetadataBlob(writer, sharingKeySignedMapKeyPlusBlob);
     }
 
     @Override
-    public CompletableFuture<String> getUsername(UserPublicKey key) {
+    public CompletableFuture<String> getUsername(PublicSigningKey key) {
         return target.getUsername(key);
     }
 
@@ -79,17 +77,17 @@ public class CachingCoreNode implements CoreNode {
     }
 
     @Override
-    public CompletableFuture<Boolean> followRequest(UserPublicKey target, byte[] encryptedPermission) {
+    public CompletableFuture<Boolean> followRequest(PublicSigningKey target, byte[] encryptedPermission) {
         return this.target.followRequest(target, encryptedPermission);
     }
 
     @Override
-    public CompletableFuture<byte[]> getFollowRequests(UserPublicKey owner) {
+    public CompletableFuture<byte[]> getFollowRequests(PublicSigningKey owner) {
         return target.getFollowRequests(owner);
     }
 
     @Override
-    public CompletableFuture<Boolean> removeFollowRequest(UserPublicKey owner, byte[] data) {
+    public CompletableFuture<Boolean> removeFollowRequest(PublicSigningKey owner, byte[] data) {
         return target.removeFollowRequest(owner, data);
     }
 

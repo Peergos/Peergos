@@ -1,12 +1,13 @@
 package peergos.shared.crypto.asymmetric.curve25519;
 
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.PublicSigningKey;
 import peergos.shared.crypto.asymmetric.SecretSigningKey;
 
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
-import java.util.Arrays;
+import java.util.*;
 
 public class Ed25519SecretKey implements SecretSigningKey {
 
@@ -37,27 +38,19 @@ public class Ed25519SecretKey implements SecretSigningKey {
         return Arrays.hashCode(secretKey);
     }
 
-    public byte[] serialize() {
-        try {
-            ByteArrayOutputStream bout = new ByteArrayOutputStream();
-            DataOutputStream dout = new DataOutputStream(bout);
-            dout.writeByte(type().value);
-            dout.write(secretKey);
-            return bout.toByteArray();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    public byte[] getSecretSigningKey() {
-        return Arrays.copyOfRange(secretKey, 0, secretKey.length);
+    @Override
+    public CborObject toCbor() {
+        return new CborObject.CborList(Arrays.asList(new CborObject.CborLong(type().value), new CborObject.CborByteArray(secretKey)));
     }
 
     public byte[] signMessage(byte[] message) {
         return implementation.crypto_sign(message, secretKey);
     }
 
-    public static byte[] getPublicSigningKey(byte[] secretSigningKey) {
-        return Arrays.copyOfRange(secretSigningKey, 32, 64);
+    public static SecretSigningKey fromCbor(CborObject cbor, Ed25519 provider) {
+        if (! (cbor instanceof CborObject.CborList))
+            throw new IllegalStateException("Invalid cbor for Ed25519 secret key! " + cbor);
+        CborObject.CborByteArray key = (CborObject.CborByteArray) ((CborObject.CborList) cbor).value.get(1);
+        return new Ed25519SecretKey(key.value, provider);
     }
 }

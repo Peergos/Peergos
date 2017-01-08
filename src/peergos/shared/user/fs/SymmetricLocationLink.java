@@ -33,10 +33,10 @@ public class SymmetricLocationLink {
         return buf.toByteArray();
     }
 
-    public ReadableFilePointer toReadableFilePointer(SymmetricKey baseKey) {
+    public FilePointer toReadableFilePointer(SymmetricKey baseKey) {
        Location loc =  targetLocation(baseKey);
        SymmetricKey key = target(baseKey);
-       return new ReadableFilePointer(loc.owner, loc.writer, loc.getMapKey(), key);
+       return new FilePointer(loc.owner, loc.writer, loc.getMapKey(), key);
     }
 
     public static SymmetricLocationLink deserialize(byte[] raw) throws IOException {

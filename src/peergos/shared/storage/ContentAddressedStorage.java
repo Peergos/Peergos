@@ -2,6 +2,7 @@ package peergos.shared.storage;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.ipfs.api.*;
 import peergos.shared.merklebtree.MerkleNode;
 import peergos.shared.user.*;
@@ -17,11 +18,11 @@ public interface ContentAddressedStorage {
 
     int MAX_OBJECT_LENGTH  = 1024*256;
 
-    default CompletableFuture<Multihash> put(UserPublicKey writer, byte[] block) {
+    default CompletableFuture<Multihash> put(PublicSigningKey writer, byte[] block) {
         return put(writer, Arrays.asList(block)).thenApply(hashes -> hashes.get(0));
     }
 
-    CompletableFuture<List<Multihash>> put(UserPublicKey writer, List<byte[]> blocks);
+    CompletableFuture<List<Multihash>> put(PublicSigningKey writer, List<byte[]> blocks);
 
     CompletableFuture<Optional<CborObject>> get(Multihash object);
 
@@ -55,9 +56,9 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<List<Multihash>> put(UserPublicKey writer, List<byte[]> blocks) {
+        public CompletableFuture<List<Multihash>> put(PublicSigningKey writer, List<byte[]> blocks) {
             return poster.postMultipart(apiPrefix + "block/put?arg="
-                    + "&writer=" + encode(writer.toUserPublicKey().toString()), blocks)
+                    + "&writer=" + encode(writer.toString()), blocks)
                     .thenApply(bytes -> JSONParser.parseStream(new String(bytes))
                             .stream()
                             .map(json -> getObjectHash(json))
@@ -101,7 +102,7 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<List<Multihash>> put(UserPublicKey writer, List<byte[]> blocks) {
+        public CompletableFuture<List<Multihash>> put(PublicSigningKey writer, List<byte[]> blocks) {
             return target.put(writer, blocks);
         }
 

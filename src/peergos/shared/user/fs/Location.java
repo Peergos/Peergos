@@ -1,21 +1,21 @@
 package peergos.shared.user.fs;
 
 import jsinterop.annotations.*;
-import peergos.shared.crypto.UserPublicKey;
+import peergos.shared.cbor.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.symmetric.SymmetricKey;
 import peergos.shared.util.*;
 
-import java.io.*;
 import java.util.*;
 
-public class Location {
+public class Location implements Cborable {
     public static final int MAP_KEY_LENGTH = 32;
 
     @JsProperty
-    public final UserPublicKey owner, writer;
+    public final PublicSigningKey owner, writer;
     private final byte[] mapKey;
 
-    public Location(UserPublicKey owner, UserPublicKey writer, byte[] mapKey) {
+    public Location(PublicSigningKey owner, PublicSigningKey writer, byte[] mapKey) {
         if (mapKey.length != MAP_KEY_LENGTH)
             throw  new IllegalArgumentException("map key length "+ mapKey.length +" is not "+ MAP_KEY_LENGTH);
         this.owner = owner;
@@ -23,13 +23,12 @@ public class Location {
         this.mapKey = mapKey;
     }
 
-    @JsMethod
-    public byte[] serialize() {
-        DataSink sink = new DataSink();
-        sink.writeArray(owner.getPublicKeys());
-        sink.writeArray(writer.getPublicKeys());
-        sink.writeArray(mapKey);
-        return sink.toByteArray();
+    public CborObject toCbor() {
+        return new CborObject.CborList(Arrays.asList(
+                owner.toCbor(),
+                writer.toCbor(),
+                new CborObject.CborByteArray(mapKey)
+        ));
     }
 
     @JsMethod
@@ -46,23 +45,23 @@ public class Location {
         return new ByteArrayWrapper(mapKey).toString();
     }
 
-    public static Location deserialize(DataSource din) {
-        try {
-            UserPublicKey ownerKey = UserPublicKey.fromByteArray(din.readArray());
-            UserPublicKey writerKey = UserPublicKey.fromByteArray(din.readArray());
-            byte[] mapKey = din.readArray();
-            return new Location(ownerKey, writerKey, mapKey);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+    public static Location fromByteArray(byte[] raw) {
+        return fromCbor(CborObject.fromByteArray(raw));
+    }
+
+    public static Location fromCbor(CborObject cbor) {
+        if (! (cbor instanceof CborObject.CborList))
+            throw new IllegalStateException("Incorrect cbor for Location: " + cbor);
+        List<CborObject> values = ((CborObject.CborList) cbor).value;
+        return new Location(PublicSigningKey.fromCbor(values.get(0)), PublicSigningKey.fromCbor(values.get(1)), ((CborObject.CborByteArray) values.get(2)).value);
     }
 
     public static Location decrypt(SymmetricKey fromKey, byte[] nonce, byte[] location) {
         byte[] bytes = fromKey.decrypt(location, nonce);
-        return Location.deserialize(new DataSource(bytes));
+        return Location.fromCbor(CborObject.fromByteArray(bytes));
     }
 
-    public Location withWriter(UserPublicKey newWriter) {
+    public Location withWriter(PublicSigningKey newWriter) {
         return new Location(owner, newWriter, mapKey);
     }
 

@@ -1,6 +1,7 @@
 package peergos.shared.corenode;
 
 import peergos.shared.crypto.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.util.*;
 
 import java.io.*;
@@ -12,21 +13,21 @@ public class UserPublicKeyLink {
     public static final int MAX_SIZE = 2*1024*1024;
     public static final int MAX_USERNAME_SIZE = 64;
 
-    public final UserPublicKey owner;
+    public final PublicSigningKey owner;
     public final UsernameClaim claim;
     private final Optional<byte[]> keyChangeProof;
 
-    public UserPublicKeyLink(UserPublicKey owner, UsernameClaim claim, Optional<byte[]> keyChangeProof) {
-        this.owner = owner.toUserPublicKey();
+    public UserPublicKeyLink(PublicSigningKey owner, UsernameClaim claim, Optional<byte[]> keyChangeProof) {
+        this.owner = owner;
         this.claim = claim;
         this.keyChangeProof = keyChangeProof;
         // check validity of link
         if (keyChangeProof.isPresent()) {
-            UserPublicKey newKeys = UserPublicKey.fromByteArray(owner.unsignMessage(keyChangeProof.get()));
+            PublicSigningKey newKeys = PublicSigningKey.fromByteArray(owner.unsignMessage(keyChangeProof.get()));
         }
     }
 
-    public UserPublicKeyLink(UserPublicKey owner, UsernameClaim claim) {
+    public UserPublicKeyLink(PublicSigningKey owner, UsernameClaim claim) {
         this(owner, claim, Optional.empty());
     }
 
@@ -63,7 +64,7 @@ public class UserPublicKeyLink {
         return Arrays.hashCode(toByteArray());
     }
 
-    public static UserPublicKeyLink fromByteArray(UserPublicKey owner, byte[] raw) {
+    public static UserPublicKeyLink fromByteArray(PublicSigningKey owner, byte[] raw) {
         try {
             DataInputStream din = new DataInputStream(new ByteArrayInputStream(raw));
             UsernameClaim proof = UsernameClaim.fromByteArray(owner, Serialize.deserializeByteArray(din, MAX_SIZE));
@@ -75,17 +76,17 @@ public class UserPublicKeyLink {
         }
     }
 
-    public static List<UserPublicKeyLink> createChain(User oldUser, User newUser, String username, LocalDate expiry) {
+    public static List<UserPublicKeyLink> createChain(SigningKeyPair oldUser, SigningKeyPair newUser, String username, LocalDate expiry) {
         // sign new claim to username, with provided expiry
         UsernameClaim newClaim = UsernameClaim.create(username, newUser, expiry);
 
-        // sign new keys with old
-        byte[] link = oldUser.signMessage(newUser.toUserPublicKey().serialize());
+        // sign new key with old
+        byte[] link = oldUser.signMessage(newUser.publicSigningKey.serialize());
 
         // create link from old that never expires
-        UserPublicKeyLink fromOld = new UserPublicKeyLink(oldUser, UsernameClaim.create(username, oldUser, LocalDate.MAX), Optional.of(link));
+        UserPublicKeyLink fromOld = new UserPublicKeyLink(oldUser.publicSigningKey, UsernameClaim.create(username, oldUser, LocalDate.MAX), Optional.of(link));
 
-        return Arrays.asList(fromOld, new UserPublicKeyLink(newUser, newClaim));
+        return Arrays.asList(fromOld, new UserPublicKeyLink(newUser.publicSigningKey, newClaim));
     }
 
     public static class UsernameClaim {
@@ -99,7 +100,7 @@ public class UserPublicKeyLink {
             this.signedContents = signedContents;
         }
 
-        public static UsernameClaim fromByteArray(UserPublicKey from, byte[] raw) {
+        public static UsernameClaim fromByteArray(PublicSigningKey from, byte[] raw) {
             try {
                 DataInputStream rawdin = new DataInputStream(new ByteArrayInputStream(raw));
                 byte[] signed = Serialize.deserializeByteArray(rawdin, MAX_SIZE);
@@ -124,7 +125,7 @@ public class UserPublicKeyLink {
             }
         }
 
-        public static UsernameClaim create(String username, User from, LocalDate expiryDate) {
+        public static UsernameClaim create(String username, SigningKeyPair from, LocalDate expiryDate) {
             try {
                 ByteArrayOutputStream bout = new ByteArrayOutputStream();
                 DataOutputStream dout = new DataOutputStream(bout);
@@ -153,10 +154,10 @@ public class UserPublicKeyLink {
         }
     }
 
-    public static List<UserPublicKeyLink> createInitial(User user, String username, LocalDate expiry) {
-        UsernameClaim newClaim = UsernameClaim.create(username, user, expiry);
+    public static List<UserPublicKeyLink> createInitial(SigningKeyPair signer, String username, LocalDate expiry) {
+        UsernameClaim newClaim = UsernameClaim.create(username, signer, expiry);
 
-        return Collections.singletonList(new UserPublicKeyLink(user.toUserPublicKey(), newClaim));
+        return Collections.singletonList(new UserPublicKeyLink(signer.publicSigningKey, newClaim));
     }
 
     public static List<UserPublicKeyLink> merge(List<UserPublicKeyLink> existing, List<UserPublicKeyLink> tail) {
@@ -177,14 +178,14 @@ public class UserPublicKeyLink {
             throw new IllegalStateException("Invalid username claim!");
     }
 
-    static boolean validLink(UserPublicKeyLink from, UserPublicKey target, String username) {
+    static boolean validLink(UserPublicKeyLink from, PublicSigningKey target, String username) {
         if (!validClaim(from, username))
             return true;
 
         Optional<byte[]> keyChangeProof = from.getKeyChangeProof();
         if (!keyChangeProof.isPresent())
             return false;
-        UserPublicKey targetKey = UserPublicKey.fromByteArray(from.owner.unsignMessage(keyChangeProof.get()));
+        PublicSigningKey targetKey = PublicSigningKey.fromByteArray(from.owner.unsignMessage(keyChangeProof.get()));
         if (!Arrays.equals(targetKey.serialize(), target.serialize()))
             return false;
 

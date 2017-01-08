@@ -2,6 +2,7 @@
 package peergos.shared.corenode;
 
 import peergos.client.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.ipfs.api.*;
 import peergos.shared.crypto.*;
 import peergos.shared.merklebtree.*;
@@ -27,7 +28,7 @@ public class HTTPCoreNode implements CoreNode
         this.poster = poster;
     }
 
-    @Override public CompletableFuture<Optional<UserPublicKey>> getPublicKey(String username)
+    @Override public CompletableFuture<Optional<PublicSigningKey>> getPublicKey(String username)
     {
         try {
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
@@ -44,7 +45,7 @@ public class HTTPCoreNode implements CoreNode
                     if (!din.readBoolean())
                         return Optional.empty();
                     byte[] publicKey = CoreNodeUtils.deserializeByteArray(din);
-                    return Optional.of(UserPublicKey.deserialize(new DataInputStream(new ByteArrayInputStream(publicKey))));
+                    return Optional.of(PublicSigningKey.fromByteArray(publicKey));
                 } catch (IOException e) {
                     throw new RuntimeException(e);
                 }
@@ -55,14 +56,14 @@ public class HTTPCoreNode implements CoreNode
         }
     }
 
-    @Override public CompletableFuture<String> getUsername(UserPublicKey publicKey)
+    @Override public CompletableFuture<String> getUsername(PublicSigningKey publicKey)
     {
         try
         {
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
             DataOutputStream dout = new DataOutputStream(bout);
 
-            Serialize.serialize(publicKey.toUserPublicKey().serialize(), dout);
+            Serialize.serialize(publicKey.serialize(), dout);
             dout.flush();
             CompletableFuture<byte[]> fut = poster.post("core/getUsername", bout.toByteArray(), true);
             return fut.thenApply(res -> {
@@ -91,12 +92,12 @@ public class HTTPCoreNode implements CoreNode
             dout.flush();
 
             return poster.postUnzip("core/getChain", bout.toByteArray()).thenApply(res -> {
-                DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
+                DataSource din = new DataSource(res);
                 try {
                     int count = din.readInt();
                     List<UserPublicKeyLink> result = new ArrayList<>();
                     for (int i = 0; i < count; i++) {
-                        UserPublicKey owner = UserPublicKey.deserialize(din);
+                        PublicSigningKey owner = PublicSigningKey.fromByteArray(din.readArray());
                         result.add(UserPublicKeyLink.fromByteArray(owner, Serialize.deserializeByteArray(din, UserPublicKeyLink.MAX_SIZE)));
                     }
                     return result;
@@ -119,7 +120,7 @@ public class HTTPCoreNode implements CoreNode
             Serialize.serialize(username, dout);
             dout.writeInt(chain.size());
             for (UserPublicKeyLink link : chain) {
-                link.owner.serialize(dout);
+                Serialize.serialize(link.owner.serialize(), dout);
                 Serialize.serialize(link.toByteArray(), dout);
             }
             dout.flush();
@@ -138,14 +139,14 @@ public class HTTPCoreNode implements CoreNode
         }
     }
 
-    @Override public CompletableFuture<Boolean> followRequest(UserPublicKey target, byte[] encryptedPermission)
+    @Override public CompletableFuture<Boolean> followRequest(PublicSigningKey target, byte[] encryptedPermission)
     {
         try
         {
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
             DataOutputStream dout = new DataOutputStream(bout);
 
-            Serialize.serialize(target.toUserPublicKey().serialize(), dout);
+            Serialize.serialize(target.serialize(), dout);
             Serialize.serialize(encryptedPermission, dout);
             dout.flush();
 
@@ -169,7 +170,7 @@ public class HTTPCoreNode implements CoreNode
                 .thenApply(raw -> (List) JSONParser.parse(new String(raw)));
     }
 
-    @Override public CompletableFuture<byte[]> getFollowRequests(UserPublicKey owner)
+    @Override public CompletableFuture<byte[]> getFollowRequests(PublicSigningKey owner)
     {
         try
         {
@@ -177,7 +178,7 @@ public class HTTPCoreNode implements CoreNode
             DataOutputStream dout = new DataOutputStream(bout);
 
 
-            Serialize.serialize(owner.toUserPublicKey().serialize(), dout);
+            Serialize.serialize(owner.serialize(), dout);
             dout.flush();
 
             return poster.postUnzip("core/getFollowRequests", bout.toByteArray()).thenApply(res -> {
@@ -194,14 +195,14 @@ public class HTTPCoreNode implements CoreNode
         }
     }
     
-    @Override public CompletableFuture<Boolean> removeFollowRequest(UserPublicKey owner, byte[] signedRequest)
+    @Override public CompletableFuture<Boolean> removeFollowRequest(PublicSigningKey owner, byte[] signedRequest)
     {
         try
         {
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
             DataOutputStream dout = new DataOutputStream(bout);
 
-            Serialize.serialize(owner.toUserPublicKey().serialize(), dout);
+            Serialize.serialize(owner.serialize(), dout);
             Serialize.serialize(signedRequest, dout);
             dout.flush();
 
@@ -219,15 +220,15 @@ public class HTTPCoreNode implements CoreNode
         }
     }
    
-   @Override public CompletableFuture<Boolean> setMetadataBlob(UserPublicKey ownerPublicKey, UserPublicKey sharingPublicKey, byte[] sharingKeySignedPayload)
+   @Override public CompletableFuture<Boolean> setMetadataBlob(PublicSigningKey ownerPublicKey, PublicSigningKey sharingPublicKey, byte[] sharingKeySignedPayload)
     {
         try
         {
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
             DataOutputStream dout = new DataOutputStream(bout);
 
-            Serialize.serialize(ownerPublicKey.toUserPublicKey().serialize(), dout);
-            Serialize.serialize(sharingPublicKey.toUserPublicKey().serialize(), dout);
+            Serialize.serialize(ownerPublicKey.serialize(), dout);
+            Serialize.serialize(sharingPublicKey.serialize(), dout);
             Serialize.serialize(sharingKeySignedPayload, dout);
             dout.flush();
 
@@ -245,14 +246,14 @@ public class HTTPCoreNode implements CoreNode
         }
     }
 
-    @Override public CompletableFuture<Boolean> removeMetadataBlob(UserPublicKey encodedSharingPublicKey, byte[] sharingKeySignedPayload)
+    @Override public CompletableFuture<Boolean> removeMetadataBlob(PublicSigningKey encodedSharingPublicKey, byte[] sharingKeySignedPayload)
     {
         try
         {
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
             DataOutputStream dout = new DataOutputStream(bout);
 
-            Serialize.serialize(encodedSharingPublicKey.toUserPublicKey().serialize(), dout);
+            Serialize.serialize(encodedSharingPublicKey.serialize(), dout);
             Serialize.serialize(sharingKeySignedPayload, dout);
             dout.flush();
 
@@ -270,7 +271,7 @@ public class HTTPCoreNode implements CoreNode
         }
     }
 
-    @Override public CompletableFuture<MaybeMultihash> getMetadataBlob(UserPublicKey encodedSharingKey)
+    @Override public CompletableFuture<MaybeMultihash> getMetadataBlob(PublicSigningKey encodedSharingKey)
     {
         try
         {
@@ -278,7 +279,7 @@ public class HTTPCoreNode implements CoreNode
             DataOutputStream dout = new DataOutputStream(bout);
 
 
-            Serialize.serialize(encodedSharingKey.toUserPublicKey().serialize(), dout);
+            Serialize.serialize(encodedSharingKey.serialize(), dout);
             dout.flush();
 
             return poster.postUnzip("core/getMetadataBlob", bout.toByteArray()).thenApply(res -> {

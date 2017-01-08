@@ -1,12 +1,11 @@
 package peergos.server.storage;
 
 import peergos.shared.cbor.*;
-import peergos.shared.crypto.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.ipfs.api.*;
 import peergos.shared.merklebtree.MerkleNode;
 import peergos.shared.storage.ContentAddressedStorage;
 
-import java.io.*;
 import java.security.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -18,7 +17,7 @@ public class RAMStorage implements ContentAddressedStorage {
     private final Set<Multihash> pinnedRoots = new HashSet<>();
 
     @Override
-    public CompletableFuture<List<Multihash>> put(UserPublicKey writer, List<byte[]> blocks) {
+    public CompletableFuture<List<Multihash>> put(PublicSigningKey writer, List<byte[]> blocks) {
         return CompletableFuture.completedFuture(blocks.stream()
                 .map(b -> {
                     byte[] hash = hash(b);

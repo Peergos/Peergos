@@ -1,5 +1,6 @@
 package peergos.shared.crypto.asymmetric.curve25519;
 
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.TweetNaCl;
 import peergos.shared.crypto.asymmetric.PublicBoxingKey;
 import peergos.shared.crypto.asymmetric.SecretBoxingKey;
@@ -8,7 +9,7 @@ import peergos.shared.util.ArrayOps;
 
 import java.io.DataOutput;
 import java.io.IOException;
-import java.util.Arrays;
+import java.util.*;
 
 public class Curve25519PublicKey implements PublicBoxingKey {
     private final byte[] publicKey;
@@ -16,6 +17,8 @@ public class Curve25519PublicKey implements PublicBoxingKey {
     private final SafeRandom random;
 
     public Curve25519PublicKey(byte[] publicKey, Curve25519 provider, SafeRandom random) {
+        if (publicKey.length != 32)
+            throw new IllegalArgumentException("Incorrect curve25519 public key length! " + publicKey.length);
         this.publicKey = publicKey;
         this.implementation = provider;
         this.random = random;
@@ -49,14 +52,21 @@ public class Curve25519PublicKey implements PublicBoxingKey {
         return ArrayOps.concat(implementation.crypto_box(input, nonce, publicKey, from.getSecretBoxingKey()), nonce);
     }
 
-    public void serialize(DataOutput dout) throws IOException {
-        dout.writeByte(type().value);
-        dout.write(publicKey);
-    }
-
     public byte[] createNonce() {
         byte[] nonce = new byte[TweetNaCl.BOX_NONCE_BYTES];
         random.randombytes(nonce, 0, nonce.length);
         return nonce;
+    }
+
+    @Override
+    public CborObject toCbor() {
+        return new CborObject.CborList(Arrays.asList(new CborObject.CborLong(type().value), new CborObject.CborByteArray(publicKey)));
+    }
+
+    public static Curve25519PublicKey fromCbor(CborObject cbor, Curve25519 provider, SafeRandom random) {
+        if (! (cbor instanceof CborObject.CborList))
+            throw new IllegalStateException("Invalid cbor for PublicBoxingKey! " + cbor);
+        CborObject.CborByteArray key = (CborObject.CborByteArray) ((CborObject.CborList) cbor).value.get(1);
+        return new Curve25519PublicKey(key.value, provider, random);
     }
 }

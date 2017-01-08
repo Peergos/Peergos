@@ -1,7 +1,7 @@
 package peergos.server.storage;
 
 import peergos.shared.cbor.*;
-import peergos.shared.crypto.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.ipfs.api.Multihash;
 import peergos.shared.merklebtree.MerkleNode;
 import peergos.shared.storage.ContentAddressedStorage;
@@ -22,7 +22,7 @@ public class CachingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> put(UserPublicKey writer, List<byte[]> blocks) {
+    public CompletableFuture<List<Multihash>> put(PublicSigningKey writer, List<byte[]> blocks) {
         return target.put(writer, blocks);
     }
 

@@ -1,6 +1,7 @@
 package peergos.shared.merklebtree;
 
 import peergos.shared.crypto.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.ipfs.api.*;
 import peergos.shared.storage.ContentAddressedStorage;
 import peergos.shared.util.*;
@@ -26,11 +27,11 @@ public class MerkleBTree
         this(root, MaybeMultihash.of(rootHash), storage, maxChildren);
     }
 
-    public static CompletableFuture<MerkleBTree> create(UserPublicKey writer, Multihash rootHash, ContentAddressedStorage dht) {
+    public static CompletableFuture<MerkleBTree> create(PublicSigningKey writer, Multihash rootHash, ContentAddressedStorage dht) {
         return create(writer, MaybeMultihash.of(rootHash), dht);
     }
 
-    public static CompletableFuture<MerkleBTree> create(UserPublicKey writer, MaybeMultihash rootHash, ContentAddressedStorage dht) {
+    public static CompletableFuture<MerkleBTree> create(PublicSigningKey writer, MaybeMultihash rootHash, ContentAddressedStorage dht) {
         if (!  rootHash.isPresent()) {
             TreeNode newRoot = new TreeNode(new TreeSet<>());
             return dht.put(writer, newRoot.serialize())
@@ -60,7 +61,7 @@ public class MerkleBTree
      * @return hash of new tree root
      * @throws IOException
      */
-    public CompletableFuture<Multihash> put(UserPublicKey writer, byte[] rawKey, Multihash value) {
+    public CompletableFuture<Multihash> put(PublicSigningKey writer, byte[] rawKey, Multihash value) {
         return root.put(writer, new ByteArrayWrapper(rawKey), value, storage, maxChildren)
                 .thenCompose(newRoot -> commit(writer, newRoot));
     }
@@ -71,12 +72,12 @@ public class MerkleBTree
      * @return hash of new tree root
      * @throws IOException
      */
-    public CompletableFuture<Multihash> delete(UserPublicKey writer, byte[] rawKey) {
+    public CompletableFuture<Multihash> delete(PublicSigningKey writer, byte[] rawKey) {
         return root.delete(writer, new ByteArrayWrapper(rawKey), storage, maxChildren)
                 .thenCompose(newRoot -> commit(writer, newRoot));
     }
 
-    private CompletableFuture<Multihash> commit(UserPublicKey writer, TreeNode newRoot) {
+    private CompletableFuture<Multihash> commit(PublicSigningKey writer, TreeNode newRoot) {
         if (newRoot.hash.isPresent()) {
             root = newRoot;
             return CompletableFuture.completedFuture(newRoot.hash.get());

@@ -1,6 +1,6 @@
 package peergos.server.net;
 
-import peergos.shared.crypto.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.ipfs.api.*;
 import peergos.shared.storage.ContentAddressedStorage;
 import com.sun.net.httpserver.*;
@@ -55,7 +55,7 @@ public class DHTHandler implements HttpHandler
 
             switch (path) {
                 case "block/put": {
-                    UserPublicKey writer = UserPublicKey.fromString(last.apply("writer"));
+                    PublicSigningKey writer = PublicSigningKey.fromString(last.apply("writer"));
                     String boundary = httpExchange.getRequestHeaders().get("Content-Type")
                             .stream()
                             .filter(s -> s.contains("boundary="))

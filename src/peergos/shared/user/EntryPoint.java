@@ -3,6 +3,7 @@ package peergos.shared.user;
 import jsinterop.annotations.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
@@ -13,18 +14,18 @@ import java.util.*;
 @JsType
 public class EntryPoint {
 
-    public final ReadableFilePointer pointer;
+    public final FilePointer pointer;
     public final String owner;
     public final Set<String> readers, writers;
 
-    public EntryPoint(ReadableFilePointer pointer, String owner, Set<String> readers, Set<String> writers) {
+    public EntryPoint(FilePointer pointer, String owner, Set<String> readers, Set<String> writers) {
         this.pointer = pointer;
         this.owner = owner;
         this.readers = readers;
         this.writers = writers;
     }
 
-    public byte[] serializeAndEncrypt(User user, UserPublicKey target) throws IOException {
+    public byte[] serializeAndEncrypt(BoxingKeyPair user, PublicBoxingKey target) throws IOException {
         return target.encryptMessageFor(this.serialize(), user.secretBoxingKey);
     }
 
@@ -46,7 +47,7 @@ public class EntryPoint {
 
     static EntryPoint deserialize(byte[] raw) throws IOException {
         DataSource din = new DataSource(raw);
-        ReadableFilePointer pointer = ReadableFilePointer.deserialize(din.readArray());
+        FilePointer pointer = FilePointer.fromByteArray(din.readArray());
         String owner = din.readString();
         int nReaders = din.readInt();
         Set<String> readers = new HashSet<>();
@@ -86,7 +87,7 @@ public class EntryPoint {
         byte[] nonce = Arrays.copyOfRange(input, 0, 24);
         byte[] raw = key.decrypt(Arrays.copyOfRange(input, 24, input.length), nonce);
         DataInputStream din = new DataInputStream(new ByteArrayInputStream(raw));
-        ReadableFilePointer pointer = ReadableFilePointer.deserialize(Serialize.deserializeByteArray(din, 4*1024*1024));
+        FilePointer pointer = FilePointer.fromByteArray(Serialize.deserializeByteArray(din, 4*1024*1024));
         String owner = Serialize.deserializeString(din, CoreNode.MAX_USERNAME_SIZE);
         int nReaders = din.readInt();
         Set<String> readers = new HashSet<>();

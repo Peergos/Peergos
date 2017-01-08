@@ -1,7 +1,7 @@
 package peergos.server.storage;
 
 import peergos.shared.cbor.*;
-import peergos.shared.crypto.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.ipfs.api.IPFS;
 import peergos.shared.ipfs.api.MultiAddress;
 import peergos.shared.ipfs.api.Multihash;
@@ -31,7 +31,7 @@ public class IpfsDHT implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> put(UserPublicKey writer, List<byte[]> blocks) {
+    public CompletableFuture<List<Multihash>> put(PublicSigningKey writer, List<byte[]> blocks) {
         try {
             return CompletableFuture.completedFuture(ipfs.block.put(blocks))
                     .thenApply(nodes -> nodes.stream().map(n -> n.hash).collect(Collectors.toList()));

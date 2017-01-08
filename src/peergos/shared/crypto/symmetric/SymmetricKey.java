@@ -1,13 +1,15 @@
 package peergos.shared.crypto.symmetric;
 
 import jsinterop.annotations.*;
+import peergos.shared.cbor.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.util.*;
 
 import java.io.*;
 import java.util.*;
 
-public interface SymmetricKey
+public interface SymmetricKey extends Cborable
 {
     Map<Integer, Type> byValue = new HashMap<>();
     enum Type {
@@ -56,35 +58,20 @@ public interface SymmetricKey
     @JsMethod
     SymmetricKey makeDirty();
 
-    @JsMethod
-    static SymmetricKey deserialize(byte[] in) {
-        try {
-            return deserialize(new DataInputStream(new ByteArrayInputStream(in)));
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+    static SymmetricKey fromByteArray(byte[] raw) {
+        return fromCbor(CborObject.fromByteArray(raw));
     }
 
-    static SymmetricKey deserialize(DataInputStream din) throws IOException {
-        Type t = Type.byValue(din.read());
+    static SymmetricKey fromCbor(CborObject cbor) {
+        if (! (cbor instanceof CborObject.CborMap))
+            throw new IllegalStateException("Invalid cbor for PublicBoxingKey! " + cbor);
+        CborObject.CborLong type = (CborObject.CborLong) ((CborObject.CborMap) cbor).values.get(new CborObject.CborString("t"));
+        Type t = Type.byValue((int) type.value);
         switch (t) {
             case TweetNaCl:
-                byte[] key = new byte[TweetNaClKey.KEY_BYTES];
-                din.readFully(key);
-                boolean isDirty = din.readBoolean();
-                return new TweetNaClKey(key, isDirty, PROVIDERS.get(t), RNG_PROVIDERS.get(t));
+                return TweetNaClKey.fromCbor(cbor, PROVIDERS.get(t), RNG_PROVIDERS.get(t));
             default: throw new IllegalStateException("Unknown Symmetric Key type: "+t.name());
         }
-
-    }
-
-    @JsMethod
-    default byte[] serialize() {
-        DataSink sink = new DataSink();
-        sink.write(type().value);
-        sink.write(getKey());
-        sink.writeBoolean(isDirty());
-        return sink.toByteArray();
     }
 
     @JsMethod

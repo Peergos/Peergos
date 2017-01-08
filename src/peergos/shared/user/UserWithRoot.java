@@ -1,21 +1,26 @@
 package peergos.shared.user;
 
-import peergos.shared.crypto.User;
+import peergos.shared.crypto.*;
 import peergos.shared.crypto.symmetric.SymmetricKey;
 
 public class UserWithRoot {
-    private final User user;
+    private final SigningKeyPair signer;
+    private final BoxingKeyPair boxer;
     private final SymmetricKey root;
 
-    public UserWithRoot(User user, SymmetricKey root) {
-        this.user = user;
+    public UserWithRoot(SigningKeyPair signer, BoxingKeyPair boxer, SymmetricKey root) {
+        this.signer = signer;
+        this.boxer = boxer;
         this.root = root;
     }
 
-    public User getUser() {
-        return user;
+    public SigningKeyPair getUser() {
+        return signer;
     }
 
+    public BoxingKeyPair getBoxingPair() {
+        return boxer;
+    }
     public SymmetricKey getRoot() {
         return root;
     }
