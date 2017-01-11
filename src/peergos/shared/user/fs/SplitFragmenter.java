@@ -30,14 +30,9 @@ public class SplitFragmenter implements Fragmenter {
 
     public byte[] recombine(byte[][] encoded, int truncateTo) {
         int length = 0;
-        if (encoded.length == 0)
-            return new byte[0];
 
         for (int i=0; i < encoded.length; i++)
             length += encoded[i].length;
-
-        if (length != truncateTo)
-            throw new IllegalStateException("length " +length +" is not equal to  truncate_to "+ truncateTo);
 
         byte[] output = new byte[length];
         int pos =  0;
