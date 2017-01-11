@@ -38,8 +38,7 @@ public class FileUploader implements AutoCloseable {
             this.props = fileProperties;
         if (baseKey == null) baseKey = SymmetricKey.random();
 
-        fragmenter = nAllowedFalures == 0 ?
-                new peergos.shared.user.fs.SplitFragmenter() : new peergos.shared.user.fs.ErasureFragmenter(nOriginalFragments, nAllowedFalures);
+        fragmenter = Fragmenter.getInstance();
 
         long offset = offsetLow + ((offsetHi & 0xFFFFFFFFL) << 32);
 
@@ -104,7 +103,7 @@ public class FileUploader implements AutoCloseable {
 
         peergos.shared.user.fs.Fragmenter fragmenter = nAllowedFalures == 0 ?
                 new peergos.shared.user.fs.SplitFragmenter() :
-                new peergos.shared.user.fs.ErasureFragmenter(nOriginalFragments, nAllowedFalures);
+                Fragmenter.getInstance();
 
         List<Fragment> fragments = encryptedChunk.generateFragments(fragmenter);
         System.out.println(StringUtils.format("Uploading chunk with %d fragments\n", fragments.size()));
