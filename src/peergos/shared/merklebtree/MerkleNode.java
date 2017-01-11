@@ -50,7 +50,7 @@ public class MerkleNode implements Cborable {
         SortedMap<CborObject, CborObject> cbor = new TreeMap<>();
         cbor.put(new CborObject.CborString("Data"), new CborObject.CborByteArray(data));
         for (Link link: links) {
-            cbor.put(new CborObject.CborString(link.label), new CborObject.CborMerkleLink(new MultiAddress(link.target)));
+            cbor.put(new CborObject.CborString(link.label), new CborObject.CborMerkleLink((link.target)));
         }
         return new CborObject.CborMap(cbor);
     }
@@ -64,7 +64,7 @@ public class MerkleNode implements Cborable {
             if (entry.getKey().equals(dataLabel))
                 continue;
             String label = ((CborObject.CborString) entry.getKey()).value;
-            MultiAddress value = ((CborObject.CborMerkleLink) entry.getValue()).target;
+            Multihash value = ((CborObject.CborMerkleLink) entry.getValue()).target;
             String addr = value.toString();
             if (! addr.startsWith("/ipfs/"))
                 throw new IllegalStateException("Incompatible multiaddress for merkle link: " + addr);
