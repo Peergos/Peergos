@@ -66,8 +66,6 @@ public class MerkleNode implements Cborable {
             String label = ((CborObject.CborString) entry.getKey()).value;
             Multihash value = ((CborObject.CborMerkleLink) entry.getValue()).target;
             String addr = value.toString();
-            if (! addr.startsWith("/ipfs/"))
-                throw new IllegalStateException("Incompatible multiaddress for merkle link: " + addr);
             Multihash h = Multihash.fromBase58(addr.substring(6));
             links.add(new Link(label, h));
         }
