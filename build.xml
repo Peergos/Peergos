@@ -48,6 +48,10 @@
     </exec>
   </target>
 
+  <target name="run_ipfs">
+    <echo message="Hello Peergos!" />
+  </target>
+
   <target name="compile" depends="clean, init"
         description="compile the source">
     <javac includeantruntime="false" destdir="${build}" debug="true" debuglevel="lines,vars,source">

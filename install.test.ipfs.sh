@@ -23,10 +23,10 @@ else
 	tar -xvzf go-ipfs_"$version"_$arch.tar.gz &&
 	cp go-ipfs/ipfs . &&
 	rm -rf go-ipfs &&
-	./ipfs config Datastore.Path `pwd`/datastore &&
 	if [ "$present" == "" ]; then
 	    ./ipfs init -e
 	fi &&
+	./ipfs config Datastore.Path `pwd`/datastore &&
 	./ipfs bootstrap rm all &&
 	if [ "$bootstrap" != "" ]; then
 	    ./ipfs bootstrap add $bootstrap
