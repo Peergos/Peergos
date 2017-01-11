@@ -65,9 +65,7 @@ public class MerkleNode implements Cborable {
                 continue;
             String label = ((CborObject.CborString) entry.getKey()).value;
             Multihash value = ((CborObject.CborMerkleLink) entry.getValue()).target;
-            String addr = value.toString();
-            Multihash h = Multihash.fromBase58(addr.substring(6));
-            links.add(new Link(label, h));
+            links.add(new Link(label, value));
         }
         return new MerkleNode(data.value, links);
     }
