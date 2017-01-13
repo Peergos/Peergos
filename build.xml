@@ -43,13 +43,37 @@
 
   <target name="install_ipfs">
     <exec executable="/bin/bash">
-      <arg value="./install.test.ipfs.sh"/>
+      <arg value="./data.service.sh"/>
+      <arg value="install"/>
       <arg value="v0.4.4"/>
+      <arg value="."/>
+      <arg value="."/>
     </exec>
   </target>
 
-  <target name="run_ipfs">
-    <echo message="Hello Peergos!" />
+  <target name="start_ipfs">
+    <exec executable="/bin/bash">
+      <arg value="./data.service.sh"/>
+      <arg value="restarted"/>
+      <arg value="."/>
+      <arg value="."/>
+    </exec>
+  </target>
+
+  <target name="stop_ipfs">
+    <exec executable="/bin/bash">
+      <arg value="./data.service.sh"/>
+      <arg value="stop"/>
+    </exec>
+  </target>
+
+  <target name="uninstall_ipfs">
+    <exec executable="/bin/bash">
+      <arg value="./data.service.sh"/>
+      <arg value="uninstall"/>
+      <arg value="."/>
+      <arg value="."/>
+    </exec>
   </target>
 
   <target name="compile" depends="clean, init"
