@@ -54,7 +54,7 @@
   <target name="start_ipfs">
     <exec executable="/bin/bash">
       <arg value="./data.service.sh"/>
-      <arg value="restarted"/>
+      <arg value="restart"/>
       <arg value="."/>
       <arg value="."/>
     </exec>
