@@ -1,4 +1,4 @@
-<img src="https://teamcity.jetbrains.com/app/rest/builds/aggregated/buildType:(id:OpenSourceProjects_Peergos_Build)/statusIcon"></a>
+<img src="https://teamcity.jetbrains.com/app/rest/builds/buildType:(id:OpenSourceProjects_Peergos_Build)/statusIcon"></a>
 
 ![Peergos Logo](https://raw.githubusercontent.com/ianopolous/Peergos/gh-pages/images/PeergosLogo.png)
 
