@@ -2,18 +2,18 @@
 command=$1
 
 if [ "$command" == "" ]; then
-    echo 'Usage: install.ipfs.sh command [$arg1] [$arg2] [$arg3]'
+    echo 'Usage: data.service.sh command [$arg1] [$arg2] [$arg3]'
     echo "command [args...] in {"
     echo '                        install $version $target_dir $repo_dir [$bootstrap_node_multiaddr]'
     echo '                        restart $repo_dir $target_dir'
     echo "                        stop"
     echo '                        uninstall $repo_dir $target_dir'
     echo "                     }"
-    echo "      e.g. install.ipfs.sh uninstall . ."
-    echo "      e.g. install.ipfs.sh restart . ."
-    echo "      e.g. install.ipfs.sh stop"
-    echo "      e.g. install.ipfs.sh install v0.4.4 . . [/ip4/172.22.2.24/tcp4001/ipfs/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ]"
-        echo "e.g. install.ipfs.sh install v0.4.4 /usr/local/bin ."
+    echo "      e.g. data.service.sh uninstall . ."
+    echo "      e.g. data.service.sh restart . ."
+    echo "      e.g. data.service.sh stop"
+    echo "      e.g. data.service.sh install v0.4.4 . . [/ip4/172.22.2.24/tcp4001/ipfs/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ]"
+    echo "      e.g. data.service.sh install v0.4.4 /usr/local/bin ."
     exit 0
 fi
 
