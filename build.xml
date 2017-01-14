@@ -41,6 +41,41 @@
     <mkdir dir="${build}"/>
   </target>
 
+  <target name="install_ipfs">
+    <exec executable="/bin/bash">
+      <arg value="./data.service.sh"/>
+      <arg value="install"/>
+      <arg value="v0.4.4"/>
+      <arg value="."/>
+      <arg value="."/>
+    </exec>
+  </target>
+
+  <target name="start_ipfs">
+    <exec executable="/bin/bash">
+      <arg value="./data.service.sh"/>
+      <arg value="restart"/>
+      <arg value="."/>
+      <arg value="."/>
+    </exec>
+  </target>
+
+  <target name="stop_ipfs">
+    <exec executable="/bin/bash">
+      <arg value="./data.service.sh"/>
+      <arg value="stop"/>
+    </exec>
+  </target>
+
+  <target name="uninstall_ipfs">
+    <exec executable="/bin/bash">
+      <arg value="./data.service.sh"/>
+      <arg value="uninstall"/>
+      <arg value="."/>
+      <arg value="."/>
+    </exec>
+  </target>
+
   <target name="compile" depends="clean, init"
         description="compile the source">
     <javac includeantruntime="false" destdir="${build}" debug="true" debuglevel="lines,vars,source">
@@ -73,20 +108,10 @@
       <fileset dir=".">
 	<include name="**/ui/**"/>
 	<exclude name="out/**"/>
-	<exclude name="ui/doppio/**"/>
-	<exclude name="ui/PeergosServer.jar"/>
       </fileset>
-    </jar>
-    <jar jarfile="${dist}/PeergosClient.jar" basedir="${build}" includes="peergos/server/**,peergos/shared/**,peergos/client/**">
-      <manifest>
-	  <attribute name="Class-Path" value="${manifest_cp}"/>
-      </manifest>
     </jar>
     <copy todir=".">
       <fileset file="${dist}/PeergosServer.jar"/>
-    </copy>
-    <copy todir="ui/">
-      <fileset file="${dist}/PeergosClient.jar"/>
     </copy>
   </target>
 
