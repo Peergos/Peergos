@@ -3,10 +3,7 @@ package java.util.concurrent;
 import jsinterop.annotations.*;
 
 import java.util.*;
-import java.util.function.BiConsumer;
-import java.util.function.BiFunction;
-import java.util.function.Consumer;
-import java.util.function.Function;
+import java.util.function.*;
 
 /** Emulation of CompletableFuture
  *
@@ -232,6 +229,10 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
         errorFutures.add(fut);
         errors.add(handler);
         return fut;
+    }
+
+    public static <U> java.util.concurrent.CompletableFuture<U> supplyAsync(Supplier<U> var0, Executor var1) {
+        throw new IllegalStateException("Not implemented!");
     }
 
     @Override
