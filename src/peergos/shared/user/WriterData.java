@@ -112,7 +112,7 @@ public class WriterData implements Cborable {
                                                              NetworkAccess network, Consumer<CommittedWriterData> updater) {
         Optional<UserStaticData> newEntryPoints = staticData.map(sd -> sd.withKey(newKey));
         WriterData updated = new WriterData(generationAlgorithm, publicData, Optional.of(followRequestReceiver), ownedKeys, newEntryPoints, btree);
-        return updated.commit(signer, currentHash, network, updater);
+        return updated.commit(signer, MaybeMultihash.EMPTY(), network, updater);
 
     }
 

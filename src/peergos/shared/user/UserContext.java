@@ -217,10 +217,13 @@ public class UserContext {
                 .thenCompose(existingUser -> {
                     if (!existingUser.getUser().equals(this.signer))
                         throw new IllegalArgumentException("Incorrect existing password during change password attempt!");
-                    return UserUtil.generateUser(username, newPassword, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer, newAlgorithm)
-                            .thenCompose(updatedUser ->
-                                    userData.thenCompose(wd -> wd.props
-                                            .changeKeys(updatedUser.getUser(), wd.hash, updatedUser.getBoxingPair().publicBoxingKey, updatedUser.getRoot(), network, this::updateUserData)
+                    return UserUtil.generateUser(username, newPassword, crypto.hasher, crypto.symmetricProvider,
+                            crypto.random, crypto.signer, crypto.boxer, newAlgorithm)
+                            .thenCompose(updatedUser ->{
+                                CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
+                                return addToUserDataQueue(lock).thenCompose(wd -> wd.props
+                                            .changeKeys(updatedUser.getUser(), wd.hash, updatedUser.getBoxingPair().publicBoxingKey,
+                                                    updatedUser.getRoot(), network, lock::complete)
                                             .thenCompose(userData -> {
                                                 List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createChain(signer, updatedUser.getUser(), username, expiry);
                                                 return network.coreNode.updateChain(username, claimChain).thenCompose(updatedChain -> {
@@ -230,7 +233,8 @@ public class UserContext {
                                                     return UserContext.ensureSignedUp(username, newPassword, network, crypto);
                                                 });
                                             })
-                            ));
+                                );
+                            });
                 });
     }
 
@@ -274,13 +278,20 @@ public class UserContext {
                         .thenApply(wd -> Optional.of(new Pair<>(signerOpt.get(), wd.props.followRequestReceiver.get()))));
     }
 
+    private synchronized CompletableFuture<CommittedWriterData> addToUserDataQueue(CompletableFuture<CommittedWriterData> replacement) {
+        CompletableFuture<CommittedWriterData> existing = this.userData;
+        this.userData = replacement;
+        return existing;
+    }
+
     private CompletableFuture<CommittedWriterData> addOwnedKeyAndCommit(PublicSigningKey owned) {
-        return userData.thenCompose(wd -> {
+        CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
+        return addToUserDataQueue(lock).thenCompose(wd -> {
             Set<PublicSigningKey> updated = Stream.concat(wd.props.ownedKeys.stream(), Stream.of(owned))
                     .collect(Collectors.toSet());
 
             WriterData writerData = wd.props.withOwnedKeys(updated);
-            return writerData.commit(signer, wd.hash, network, this::updateUserData);
+            return writerData.commit(signer, wd.hash, network, lock::complete);
         });
     }
 
@@ -316,12 +327,16 @@ public class UserContext {
     }
 
     private CompletableFuture<Set<String>> getFollowers() {
-        return userData.thenApply(wd -> wd.props.staticData.get()
-                .getEntryPoints()
-                .stream()
-                .map(e -> e.owner)
-                .filter(name -> ! name.equals(username))
-                .collect(Collectors.toSet()));
+        CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
+        return addToUserDataQueue(lock).thenApply(wd -> {
+            lock.complete(wd);
+            return wd.props.staticData.get()
+                    .getEntryPoints()
+                    .stream()
+                    .map(e -> e.owner)
+                    .filter(name -> ! name.equals(username))
+                    .collect(Collectors.toSet());
+        });
     }
 
     @JsMethod
@@ -636,20 +651,22 @@ public class UserContext {
     }
 
     private synchronized CompletableFuture<TrieNode> addToStaticDataAndCommit(TrieNode root, EntryPoint entry) {
-        return userData.thenCompose(wd -> {
+        CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
+        return addToUserDataQueue(lock).thenCompose(wd -> {
             wd.props.staticData.ifPresent(sd -> sd.add(entry));
-            return wd.props.commit(signer, wd.hash, network, this::updateUserData)
-                    .thenCompose(res -> addEntryPoint(root, entry));
+            return wd.props.commit(signer, wd.hash, network, lock::complete)
+                    .thenCompose(res -> {
+                        lock.complete(res);
+                        return addEntryPoint(root, entry);
+                    });
         });
     }
 
-    public void updateUserData(CommittedWriterData userData) {
-        this.userData = CompletableFuture.completedFuture(userData);
-    }
-
     private CompletableFuture<CommittedWriterData> removeFromStaticData(FileTreeNode fileTreeNode) {
-        return userData.thenCompose(wd -> wd.props.removeFromStaticData(fileTreeNode, signer, wd.hash, network, this::updateUserData));
-    };
+        CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
+        return addToUserDataQueue(lock)
+                .thenCompose(wd -> wd.props.removeFromStaticData(fileTreeNode, signer, wd.hash, network, lock::complete));
+    }
 
     /**
      * Process any responses to our follow requests.

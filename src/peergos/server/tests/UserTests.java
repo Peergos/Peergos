@@ -142,10 +142,10 @@ public class UserTests {
         String password = "password";
         UserContext userContext = ensureSignedUp(username, password, network, crypto);
         String newPassword = "newPassword";
-        userContext.changePassword(password, newPassword, UserGenerationAlgorithm.getDefault(), UserGenerationAlgorithm.getDefault());
+        userContext.changePassword(password, newPassword, UserGenerationAlgorithm.getDefault(), UserGenerationAlgorithm.getDefault()).get();
         ensureSignedUp(username, newPassword, network, crypto);
-
     }
+
     @Test
     public void changePasswordFAIL() throws Exception {
         String username = "test" + (System.currentTimeMillis() % 10000);
