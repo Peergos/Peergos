@@ -225,7 +225,7 @@ public class DirAccess extends FileAccess {
                 }
             }).collect(Collectors.toList());
         }
-        return context.uploadChunk(this, ourPointer.getLocation(), signer, Collections.EMPTY_LIST);
+        return context.uploadChunk(this, ourPointer.getLocation(), signer, Collections.emptyList());
     }
 
     // 0=FILE, 1=DIR

@@ -102,8 +102,11 @@ public class WriterData implements Cborable {
         return staticData.map(sd -> {
             boolean isRemoved = sd.remove(pointer);
 
-            return isRemoved ? commit(signer, currentHash, network, updater) :
-                    CompletableFuture.completedFuture(committed(currentHash));
+            if (isRemoved)
+                return commit(signer, currentHash, network, updater);
+            CommittedWriterData committed = committed(currentHash);
+            updater.accept(committed);
+            return CompletableFuture.completedFuture(committed);
         }).orElse(CompletableFuture.completedFuture(committed(currentHash)));
     }
 

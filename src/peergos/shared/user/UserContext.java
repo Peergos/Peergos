@@ -655,10 +655,7 @@ public class UserContext {
         return addToUserDataQueue(lock).thenCompose(wd -> {
             wd.props.staticData.ifPresent(sd -> sd.add(entry));
             return wd.props.commit(signer, wd.hash, network, lock::complete)
-                    .thenCompose(res -> {
-                        lock.complete(res);
-                        return addEntryPoint(root, entry);
-                    });
+                    .thenCompose(res -> addEntryPoint(root, entry));
         });
     }
 
@@ -709,6 +706,7 @@ public class UserContext {
                             CompletableFuture<TrieNode> updatedRoot = addToStaticDataAndCommit(root, freq.entry.get());
                             return updatedRoot.thenCompose(newRoot -> {
                                 entrie = newRoot;
+                                // clear their response follow req too
                                 return network.coreNode.removeFollowRequest(signer.publicSigningKey, signer.signMessage(freq.rawCipher))
                                         .thenApply(b -> newRoot);
                             });
@@ -726,11 +724,8 @@ public class UserContext {
                             CompletableFuture<Boolean> removeDir = ourDirForThem.remove(this, sharing);
                             // remove entry point as well
                             CompletableFuture<CommittedWriterData> cleanStatic = removeFromStaticData(ourDirForThem);
-                            // clear their response follow req too
-                            CompletableFuture<Boolean> clearPending = network.coreNode.removeFollowRequest(signer.publicSigningKey, signer.signMessage(freq.rawCipher));
 
                             return removeDir.thenCompose(x -> cleanStatic)
-                                    .thenCompose(x -> clearPending)
                                     .thenCompose(b -> addToStatic.apply(trie, freq));
                         } else if (freq.entry.get().pointer.isNull()) {
                             // They reciprocated, but didn't accept (they follow us, but we can't follow them)
