@@ -39,7 +39,7 @@ public class FileUploader implements AutoCloseable {
         if (baseKey == null) baseKey = SymmetricKey.random();
 
         fragmenter = nAllowedFalures == 0 ?
-                new peergos.shared.user.fs.SplitFragmenter() : new peergos.shared.user.fs.ErasureFragmenter(nOriginalFragments, nAllowedFalures);
+                new SplitFragmenter() : new peergos.shared.user.fs.ErasureFragmenter(nOriginalFragments, nAllowedFalures);
 
         long offset = offsetLow + ((offsetHi & 0xFFFFFFFFL) << 32);
 

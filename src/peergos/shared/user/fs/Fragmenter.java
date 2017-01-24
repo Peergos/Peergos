@@ -1,11 +1,15 @@
 package peergos.shared.user.fs;
 
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 import peergos.shared.util.*;
 
 import java.io.*;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import static org.junit.Assert.*;
 
 public interface Fragmenter {
 
@@ -53,7 +57,7 @@ public interface Fragmenter {
         }
     }
 
-    /* todo-test
+    // todo-test
     @RunWith(Parameterized.class)
     class FragmenterTest  {
         private static Random random = new Random(666);
@@ -80,7 +84,8 @@ public interface Fragmenter {
                 test(b);
             }
         }
-        @Test public void testBoundary()  throws IOException {
+        @Test
+        public void testBoundary()  throws IOException {
             List<Integer> sizes = Arrays.asList(Fragment.MAX_LENGTH, 2 * Fragment.MAX_LENGTH);
             for (Integer size : sizes) {
                 byte[] b = new byte[size];
@@ -92,13 +97,7 @@ public interface Fragmenter {
             random.nextBytes(input);
 
 
-            byte[][] split = fragmenter.split(input, false);
-
-//            int nChunk  = input.length / Chunk.MAX_SIZE;
-//            if (input.length % Chunk.MAX_SIZE > 0)
-//                nChunk++;
-//
-//            assertEquals(split.length, nChunk);
+            byte[][] split = fragmenter.split(input);
 
             for (byte[] bytes : split) {
                 int length = bytes.length;
@@ -121,5 +120,10 @@ public interface Fragmenter {
 
             assertEquals(fragmenter, deserialize);
         }
-    }*/
+    }
+
+    static Fragmenter getInstance() {
+        //return new ErasureFragmenter(40, 10);
+        return new SplitFragmenter();
+    }
 }

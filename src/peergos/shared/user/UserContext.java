@@ -23,7 +23,6 @@ import jsinterop.annotations.*;
 
 public class UserContext {
     public static final String SHARED_DIR_NAME = "shared";
-
     @JsProperty
     public final String username;
     public final SigningKeyPair signer;
@@ -40,7 +39,7 @@ public class UserContext {
     public final Crypto crypto;
 
     public UserContext(String username, SigningKeyPair signer, BoxingKeyPair boxer, NetworkAccess network, Crypto crypto, CompletableFuture<CommittedWriterData> userData) {
-        this(username, signer, boxer, network, crypto, new ErasureFragmenter(40, 10), userData);
+        this(username, signer, boxer, network, crypto, Fragmenter.getInstance(), userData);
     }
 
     public UserContext(String username, SigningKeyPair signer, BoxingKeyPair boxer, NetworkAccess network,
