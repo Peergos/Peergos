@@ -80,6 +80,7 @@ public class Cid extends Multihash {
         return Arrays.copyOfRange(res, 0, index + hashBytes.length);
     }
 
+    @Override
     public byte[] toBytes() {
         if (version == 0)
             return toBytesV0();
