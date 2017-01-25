@@ -1,11 +1,15 @@
 package peergos.shared.user.fs;
 
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 import peergos.shared.util.*;
 
 import java.io.*;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import static org.junit.Assert.*;
 
 public interface Fragmenter {
 
@@ -53,73 +57,8 @@ public interface Fragmenter {
         }
     }
 
-    /* todo-test
-    @RunWith(Parameterized.class)
-    class FragmenterTest  {
-        private static Random random = new Random(666);
-
-        private final Fragmenter  fragmenter;
-
-        public  FragmenterTest(Fragmenter fragmenter) {
-            this.fragmenter = fragmenter;
-        }
-
-        @Parameterized.Parameters(name = "{0}")
-        public static Collection<Object[]> parameters() {
-            return Arrays.asList(new Object[][]{
-                    {new SplitFragmenter()},
-                    {new peergos.shared.user.fs.ErasureFragmenter(EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES)}
-            });
-        }
-
-        @Test
-        public void testSeries() throws IOException {
-            for (int i = 1; i < 10; i++) {
-                int length = random.nextInt(Chunk.MAX_SIZE);
-                byte[] b = new byte[length];
-                test(b);
-            }
-        }
-        @Test public void testBoundary()  throws IOException {
-            List<Integer> sizes = Arrays.asList(Fragment.MAX_LENGTH, 2 * Fragment.MAX_LENGTH);
-            for (Integer size : sizes) {
-                byte[] b = new byte[size];
-                test(b);
-            }
-        }
-
-        private void test(byte[] input)  throws IOException {
-            random.nextBytes(input);
-
-
-            byte[][] split = fragmenter.split(input, false);
-
-//            int nChunk  = input.length / Chunk.MAX_SIZE;
-//            if (input.length % Chunk.MAX_SIZE > 0)
-//                nChunk++;
-//
-//            assertEquals(split.length, nChunk);
-
-            for (byte[] bytes : split) {
-                int length = bytes.length;
-                assertTrue(length > 0);
-                assertTrue(length <= Fragment.MAX_LENGTH);
-            }
-
-            byte[] recombine = fragmenter.recombine(split, input.length);
-
-            assertTrue("recombine(split(input)) = input", Arrays.equals(input, recombine));
-        }
-
-
-        @Test public void serializationTest()  throws IOException {
-            DataSink sink = new DataSink();
-            fragmenter.serialize(sink);
-
-            Fragmenter deserialize = Fragmenter.deserialize(new DataInputStream(
-                    new ByteArrayInputStream(sink.toByteArray())));
-
-            assertEquals(fragmenter, deserialize);
-        }
-    }*/
+    static Fragmenter getInstance() {
+        //return new ErasureFragmenter(40, 10);
+        return new SplitFragmenter();
+    }
 }

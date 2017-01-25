@@ -71,9 +71,9 @@ public interface CborObject {
                     if (tag == LINK_TAG) {
                         CborObject value = deserialize(decoder);
                         if (value instanceof CborString)
-                            return new CborMerkleLink(new MultiAddress(((CborString) value).value));
+                            return new CborMerkleLink(Multihash.fromBase58(((CborString) value).value));
                         if (value instanceof CborByteArray)
-                            return new CborMerkleLink(new MultiAddress(((CborByteArray) value).value));
+                            return new CborMerkleLink(new Multihash(((CborByteArray) value).value));
                         throw new IllegalStateException("Invalid type for merkle link: " + value);
                     }
                     throw new IllegalStateException("Unknown TAG in CBOR: " + type.getAdditionalInfo());
@@ -133,9 +133,9 @@ public interface CborObject {
     }
 
     final class CborMerkleLink implements CborObject {
-        public final MultiAddress target;
+        public final Multihash target;
 
-        public CborMerkleLink(MultiAddress target) {
+        public CborMerkleLink(Multihash target) {
             this.target = target;
         }
 
@@ -143,18 +143,10 @@ public interface CborObject {
         public void serialize(CborEncoder encoder) {
             try {
                 encoder.writeTag(LINK_TAG);
-                if (isInvertible(target))
-                    encoder.writeByteString(target.getBytes());
-                else
-                    encoder.writeTextString(target.toString());
+                encoder.writeByteString(target.toBytes());
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
-        }
-
-        // use binary encoding if addr string -> bytes -> addr string == identity
-        private boolean isInvertible(MultiAddress addr) {
-            return addr.toString().equals(new MultiAddress(addr.getBytes()).toString());
         }
 
         @Override

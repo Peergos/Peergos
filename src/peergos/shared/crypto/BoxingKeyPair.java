@@ -9,6 +9,7 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.util.*;
 
+
 public class BoxingKeyPair implements Cborable
 {
     public final PublicBoxingKey publicBoxingKey;

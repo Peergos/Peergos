@@ -139,7 +139,7 @@ public class WriterData implements Cborable {
         List<CborObject> ownedKeyStrings = ownedKeys.stream().map(Cborable::toCbor).collect(Collectors.toList());
         result.put("owned", new CborObject.CborList(ownedKeyStrings));
         staticData.ifPresent(sd -> result.put("static", sd.toCbor()));
-        btree.ifPresent(btree -> result.put("btree", new CborObject.CborMerkleLink(new MultiAddress(btree))));
+        btree.ifPresent(btree -> result.put("btree", new CborObject.CborMerkleLink(btree)));
         return CborObject.CborMap.build(result);
     }
 
@@ -169,7 +169,7 @@ public class WriterData implements Cborable {
         Set<PublicSigningKey> owned = ownedList.value.stream().map(PublicSigningKey::fromCbor).collect(Collectors.toSet());
         // rootKey is null for other people parsing our WriterData who don't have our root key
         Optional<UserStaticData> staticData = rootKey == null ? Optional.empty() : extract.apply("static").map(raw -> UserStaticData.fromCbor(raw, rootKey));
-        Optional<Multihash> btree = extract.apply("btree").map(val -> Multihash.fromMultiAddress(((CborObject.CborMerkleLink)val).target));
+        Optional<Multihash> btree = extract.apply("btree").map(val -> ((CborObject.CborMerkleLink)val).target);
         return new WriterData(algo, publicData, followRequestReceiver, owned, staticData, btree);
     }
 }
