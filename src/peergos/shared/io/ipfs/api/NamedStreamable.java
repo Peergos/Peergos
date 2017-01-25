@@ -1,6 +1,7 @@
-package peergos.shared.ipfs.api;
+package peergos.shared.io.ipfs.api;
 
 import java.io.*;
+import java.net.*;
 import java.util.*;
 
 public interface NamedStreamable
@@ -8,6 +9,8 @@ public interface NamedStreamable
     InputStream getInputStream() throws IOException;
 
     Optional<String> getName();
+
+    boolean isDirectory();
 
     default byte[] getContents() throws IOException {
         InputStream in = getInputStream();
@@ -21,17 +24,35 @@ public interface NamedStreamable
 
     class FileWrapper implements NamedStreamable {
         private final File source;
+        private final String pathPrefix;
+
+        public FileWrapper(String pathPrefix, File source) {
+            this.source = source;
+            this.pathPrefix = pathPrefix;
+        }
 
         public FileWrapper(File source) {
-            this.source = source;
+            this("", source);
         }
 
         public InputStream getInputStream() throws IOException {
             return new FileInputStream(source);
         }
 
+        public boolean isDirectory() {
+            return source.isDirectory();
+        }
+
+        public File getFile() {
+            return source;
+        }
+
         public Optional<String> getName() {
-            return Optional.of(source.getName());
+            try {
+                return Optional.of(URLEncoder.encode(pathPrefix + source.getName(), "UTF-8"));
+            } catch (UnsupportedEncodingException e) {
+                throw new RuntimeException(e);
+            }
         }
     }
 
@@ -50,6 +71,10 @@ public interface NamedStreamable
         public ByteArrayWrapper(Optional<String> name, byte[] data) {
             this.name = name;
             this.data = data;
+        }
+
+        public boolean isDirectory() {
+            return false;
         }
 
         public InputStream getInputStream() throws IOException {

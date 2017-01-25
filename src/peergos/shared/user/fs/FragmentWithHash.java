@@ -1,6 +1,7 @@
 package peergos.shared.user.fs;
 
-import peergos.shared.ipfs.api.*;
+
+import peergos.shared.io.ipfs.multihash.*;
 
 public class FragmentWithHash {
     public final Fragment fragment;

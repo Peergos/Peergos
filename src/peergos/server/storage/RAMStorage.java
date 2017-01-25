@@ -2,8 +2,8 @@ package peergos.server.storage;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
-import peergos.shared.ipfs.api.*;
-import peergos.shared.merklebtree.MerkleNode;
+import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.storage.ContentAddressedStorage;
 
 import java.security.*;
@@ -22,8 +22,9 @@ public class RAMStorage implements ContentAddressedStorage {
                 .map(b -> {
                     byte[] hash = hash(b);
                     Multihash multihash = new Multihash(Multihash.Type.sha2_256, hash);
-                    storage.put(multihash, b);
-                    return multihash;
+                    Cid cid = new Cid(1, Cid.Codec.DagCbor, multihash);
+                    storage.put(cid, b);
+                    return cid;
                 }).collect(Collectors.toList()));
     }
 

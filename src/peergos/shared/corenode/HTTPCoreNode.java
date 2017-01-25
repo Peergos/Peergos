@@ -1,10 +1,9 @@
 
 package peergos.shared.corenode;
 
-import peergos.client.*;
 import peergos.shared.crypto.asymmetric.*;
-import peergos.shared.ipfs.api.*;
-import peergos.shared.crypto.*;
+import peergos.shared.io.ipfs.api.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.merklebtree.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
@@ -288,7 +287,7 @@ public class HTTPCoreNode implements CoreNode
                     byte[] meta = CoreNodeUtils.deserializeByteArray(din);
                     if (meta.length == 0)
                         return MaybeMultihash.EMPTY();
-                    return MaybeMultihash.of(new Multihash(meta));
+                    return MaybeMultihash.of(Cid.cast(meta));
                 } catch (IOException e) {
                     throw new RuntimeException(e);
                 }

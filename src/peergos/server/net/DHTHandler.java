@@ -1,7 +1,9 @@
 package peergos.server.net;
 
 import peergos.shared.crypto.asymmetric.*;
-import peergos.shared.ipfs.api.*;
+import peergos.shared.io.ipfs.api.*;
+import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.storage.ContentAddressedStorage;
 import com.sun.net.httpserver.*;
 import peergos.shared.util.*;
@@ -72,7 +74,7 @@ public class DHTHandler implements HttpHandler
                     break;
                 }
                 case "block/get":{
-                    Multihash hash = Multihash.fromBase58(args.get(0));
+                    Multihash hash = Cid.decode(args.get(0));
                     dht.get(hash)
                             .thenAccept(opt -> replyBytes(httpExchange,
                                     opt.map(cbor -> cbor.toByteArray()).orElse(new byte[0]), Optional.of(hash)))
@@ -80,10 +82,10 @@ public class DHTHandler implements HttpHandler
                     break;
                 }
                 case "pin/add": {
-                    Multihash hash = Multihash.fromBase58(args.get(0));
+                    Multihash hash = Cid.decode(args.get(0));
                     dht.recursivePin(hash).thenAccept(pinned -> {
                         Map<String, Object> json = new TreeMap<>();
-                        json.put("Pins", pinned.stream().map(h -> h.toBase58()).collect(Collectors.toList()));
+                        json.put("Pins", pinned.stream().map(h -> h.toString()).collect(Collectors.toList()));
                         replyJson(httpExchange, JSONParser.toString(json), Optional.empty());
                     }).exceptionally(Futures::logError);
                     break;
@@ -92,10 +94,10 @@ public class DHTHandler implements HttpHandler
                     boolean recursive = params.containsKey("r") && Boolean.parseBoolean(last.apply("r"));
                     if (!recursive)
                         throw new IllegalStateException("Unimplemented: non recursive unpin!");
-                    Multihash hash = Multihash.fromBase58(args.get(0));
+                    Multihash hash = Cid.decode(args.get(0));
                     dht.recursiveUnpin(hash).thenAccept(unpinned -> {
                         Map<String, Object> json = new TreeMap<>();
-                        json.put("Pins", unpinned.stream().map(h -> h.toBase58()).collect(Collectors.toList()));
+                        json.put("Pins", unpinned.stream().map(h -> h.toString()).collect(Collectors.toList()));
                         replyJson(httpExchange, JSONParser.toString(json), Optional.empty());
                     }).exceptionally(Futures::logError);
                     break;
@@ -113,7 +115,7 @@ public class DHTHandler implements HttpHandler
 
     private static Object wrapHash(Multihash h) {
         Map<String, Object> json = new TreeMap<>();
-        json.put("Hash", h.toBase58());
+        json.put("Hash", h.toString());
         return json;
     }
 
@@ -135,7 +137,7 @@ public class DHTHandler implements HttpHandler
         try {
             if (key.isPresent()) {
                 exchange.getResponseHeaders().set("Cache-Control", "public, max-age=31622400 immutable");
-                exchange.getResponseHeaders().set("ETag", key.get().toBase58());
+                exchange.getResponseHeaders().set("ETag", key.get().toString());
             }
             exchange.sendResponseHeaders(200, 0);
             DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());
@@ -152,7 +154,7 @@ public class DHTHandler implements HttpHandler
         try {
             if (key.isPresent()) {
                 exchange.getResponseHeaders().set("Cache-Control", "public, max-age=31622400 immutable");
-                exchange.getResponseHeaders().set("ETag", key.get().toBase58());
+                exchange.getResponseHeaders().set("ETag", key.get().toString());
             }
             exchange.sendResponseHeaders(200, 0);
             DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());

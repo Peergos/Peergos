@@ -2,9 +2,8 @@ package peergos.server.tests;
 
 import org.junit.*;
 import peergos.server.storage.*;
-import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
-import peergos.shared.ipfs.api.*;
+import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.merklebtree.*;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;

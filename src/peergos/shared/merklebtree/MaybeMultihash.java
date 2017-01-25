@@ -1,6 +1,7 @@
 package peergos.shared.merklebtree;
 
-import peergos.shared.ipfs.api.*;
+import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.util.*;
 
 import java.io.DataInput;
@@ -62,7 +63,7 @@ public class MaybeMultihash {
             return MaybeMultihash.EMPTY();
         byte[] data  = new byte[val];
         din.readFully(data);
-        return MaybeMultihash.of(new Multihash(data));
+        return MaybeMultihash.of(Cid.cast(data));
     }
 
     public void serialize(DataOutput dout) throws IOException {

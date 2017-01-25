@@ -1,9 +1,9 @@
 package peergos.shared.merklebtree;
 
 import peergos.shared.cbor.*;
-import peergos.shared.ipfs.api.*;
 import peergos.shared.crypto.asymmetric.*;
-import peergos.shared.ipfs.api.Multihash;
+import peergos.shared.io.ipfs.multiaddr.*;
+import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.ContentAddressedStorage;
 import peergos.shared.util.*;
 
@@ -448,9 +448,9 @@ public class TreeNode implements Cborable {
             Map<String, CborObject> cbor = new TreeMap<>();
             cbor.put("k", new CborObject.CborByteArray(key.data));
             if (valueHash.isPresent())
-                cbor.put("v", new CborObject.CborMerkleLink(new MultiAddress(valueHash.get())));
+                cbor.put("v", new CborObject.CborMerkleLink(valueHash.get()));
             if (targetHash.isPresent())
-                cbor.put("t", new CborObject.CborMerkleLink(new MultiAddress(targetHash.get())));
+                cbor.put("t", new CborObject.CborMerkleLink(targetHash.get()));
 
             return CborObject.CborMap.build(cbor);
         }
@@ -463,10 +463,10 @@ public class TreeNode implements Cborable {
 
             ByteArrayWrapper key = new ByteArrayWrapper(getOrDefault(values, "k", c -> ((CborObject.CborByteArray)c).value, () -> new byte[0]));
             MaybeMultihash value = getOrDefault(values, "v",
-                    c -> MaybeMultihash.of(Multihash.fromMultiAddress(((CborObject.CborMerkleLink)c).target)),
+                    c -> MaybeMultihash.of(((CborObject.CborMerkleLink)c).target),
                     MaybeMultihash::EMPTY);
             MaybeMultihash target = getOrDefault(values, "t",
-                    c -> MaybeMultihash.of(Multihash.fromMultiAddress(((CborObject.CborMerkleLink)c).target)),
+                    c -> MaybeMultihash.of(((CborObject.CborMerkleLink)c).target),
                     MaybeMultihash::EMPTY);
             return new KeyElement(key, value, target);
         }

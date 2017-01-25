@@ -2,14 +2,14 @@ package peergos.shared.user.fs;
 
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.symmetric.*;
-import peergos.shared.ipfs.api.Multihash;
+import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.function.*;
 import java.util.stream.*;
 
 public class EncryptedChunkRetriever implements FileRetriever {
@@ -108,7 +108,10 @@ public class EncryptedChunkRetriever implements FileRetriever {
         buf.writeByte((byte)1); // This class
         buf.writeArray(chunkNonce);
         buf.writeArray(chunkAuth);
-        buf.writeArray(ArrayOps.concat(fragmentHashes.stream().map(h -> new ByteArrayWrapper(h.toBytes())).collect(Collectors.toList())));
+        buf.writeInt(fragmentHashes.size());
+        for (Multihash hash : fragmentHashes) {
+            buf.writeArray(hash.toBytes());
+        }
         buf.writeByte(this.nextChunk != null ? (byte)1 : 0);
         if (this.nextChunk != null)
             buf.writeArray(this.nextChunk.serialize());
@@ -118,12 +121,10 @@ public class EncryptedChunkRetriever implements FileRetriever {
     public static EncryptedChunkRetriever deserialize(DataSource buf) throws IOException {
         byte[] chunkNonce = buf.readArray();
         byte[] chunkAuth = buf.readArray();
-        byte[] concatFragmentHashes = buf.readArray();
-
+        int nHashes = buf.readInt();
         List<Multihash> hashes = new ArrayList<>();
-        DataSource dataSource = new DataSource(concatFragmentHashes);
-        while (dataSource.remaining() != 0)
-            hashes.add(Multihash.deserialize(dataSource));
+        for (int i=0; i < nHashes; i++)
+            hashes.add(Cid.cast(buf.readArray()));
 
         boolean hasNext = buf.readBoolean();
         Location nextChunk = null;

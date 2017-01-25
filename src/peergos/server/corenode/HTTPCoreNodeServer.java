@@ -3,7 +3,6 @@ package peergos.server.corenode;
 import peergos.shared.corenode.CoreNode;
 import peergos.shared.corenode.CoreNodeUtils;
 import peergos.shared.corenode.UserPublicKeyLink;
-import peergos.shared.crypto.*;
 
 import java.net.*;
 import java.io.*;
@@ -13,7 +12,7 @@ import java.util.zip.*;
 
 import com.sun.net.httpserver.*;
 import peergos.shared.crypto.asymmetric.*;
-import peergos.shared.ipfs.api.*;
+import peergos.shared.io.ipfs.api.*;
 import peergos.shared.merklebtree.MaybeMultihash;
 import peergos.shared.util.Args;
 import peergos.shared.util.Serialize;

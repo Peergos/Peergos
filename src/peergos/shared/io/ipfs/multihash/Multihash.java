@@ -1,10 +1,9 @@
-package peergos.shared.ipfs.api;
+package peergos.shared.io.ipfs.multihash;
+
+import peergos.shared.io.ipfs.multibase.*;
 
 import java.io.*;
 import java.util.*;
-
-import peergos.shared.cbor.*;
-import peergos.shared.util.*;
 
 public class Multihash {
     public enum Type {
@@ -36,7 +35,7 @@ public class Multihash {
     }
 
     public final Type type;
-    public final byte[] hash;
+    private final byte[] hash;
 
     public Multihash(Type type, byte[] hash) {
         if (hash.length > 127)
@@ -45,6 +44,10 @@ public class Multihash {
             throw new IllegalStateException("Incorrect hash length: " + hash.length + " != "+type.length);
         this.type = type;
         this.hash = hash;
+    }
+
+    public Multihash(Multihash toClone) {
+        this(toClone.type, toClone.hash); // N.B. despite being a byte[], hash is immutable
     }
 
     public Multihash(byte[] multihash) {
@@ -63,23 +66,13 @@ public class Multihash {
         dout.write(toBytes());
     }
 
-    public static Multihash deserialize(DataInput din) {
-        try {
-            int type = din.readUnsignedByte();
-            int len = din.readUnsignedByte();
-            Type t = Type.lookup(type);
-            byte[] hash = new byte[len];
-            din.readFully(hash);
-            return new Multihash(t, hash);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    public static Multihash fromCbor(CborObject cbor) {
-        if (! (cbor instanceof CborObject.CborByteArray))
-            throw new IllegalStateException("Multihash cbor must be a byte[]! " + cbor);
-        return deserialize(new DataSource(((CborObject.CborByteArray) cbor).value));
+    public static Multihash deserialize(DataInput din) throws IOException {
+        int type = din.readUnsignedByte();
+        int len = din.readUnsignedByte();
+        Type t = Type.lookup(type);
+        byte[] hash = new byte[len];
+        din.readFully(hash);
+        return new Multihash(t, hash);
     }
 
     @Override
@@ -99,24 +92,8 @@ public class Multihash {
         return Arrays.hashCode(hash) ^ type.hashCode();
     }
 
-    public String toHex() {
-        StringBuilder res = new StringBuilder();
-        for (byte b: toBytes())
-            res.append(StringUtils.format("%x", b&0xff));
-        return res.toString();
-    }
-
     public String toBase58() {
         return Base58.encode(toBytes());
-    }
-
-    public static Multihash fromHex(String hex) {
-        if (hex.length() % 2 != 0)
-            throw new IllegalStateException("Uneven number of hex digits!");
-        ByteArrayOutputStream bout = new ByteArrayOutputStream();
-        for (int i=0; i < hex.length()-1; i+= 2)
-            bout.write(Integer.valueOf(hex.substring(i, i+2), 16));
-        return new Multihash(bout.toByteArray());
     }
 
     public static Multihash fromBase58(String base58) {

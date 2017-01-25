@@ -1,8 +1,7 @@
 package peergos.shared.merklebtree;
 
-import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
-import peergos.shared.ipfs.api.*;
+import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.ContentAddressedStorage;
 import peergos.shared.util.*;
 

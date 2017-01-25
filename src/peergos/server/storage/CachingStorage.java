@@ -2,8 +2,7 @@ package peergos.server.storage;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
-import peergos.shared.ipfs.api.Multihash;
-import peergos.shared.merklebtree.MerkleNode;
+import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.ContentAddressedStorage;
 import peergos.shared.util.*;
 

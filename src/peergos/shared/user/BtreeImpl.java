@@ -1,10 +1,9 @@
 package peergos.shared.user;
 
-import peergos.shared.cbor.*;
 import peergos.shared.corenode.CoreNode;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
-import peergos.shared.ipfs.api.Multihash;
+import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.merklebtree.MaybeMultihash;
 import peergos.shared.merklebtree.MerkleBTree;
 import peergos.shared.storage.ContentAddressedStorage;

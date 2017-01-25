@@ -2,8 +2,8 @@ package peergos.server.corenode;
 
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.asymmetric.*;
-import peergos.shared.ipfs.api.*;
 import peergos.shared.crypto.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.merklebtree.*;
 import peergos.shared.util.*;
 
@@ -649,7 +649,7 @@ public class JDBCCoreNode implements CoreNode {
             byte[] multihash = Serialize.deserializeByteArray(din, 4096);
             if (multihash.length == 0)
                 return CompletableFuture.completedFuture(MaybeMultihash.EMPTY());
-            return CompletableFuture.completedFuture(MaybeMultihash.of(new Multihash(multihash)));
+            return CompletableFuture.completedFuture(MaybeMultihash.of(Cid.cast(multihash)));
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

@@ -1,4 +1,4 @@
-package peergos.shared.ipfs.api;
+package peergos.shared.io.ipfs.multibase;
 
 /**
  * Copyright 2011 Google Inc.
@@ -16,7 +16,7 @@ package peergos.shared.ipfs.api;
  * limitations under the License.
  */
 
-import java.math.BigInteger;
+import java.math.*;
 
 /**
  * A custom form of base58 is used to encode BitCoin addresses. Note that this is not the same base58 as used by

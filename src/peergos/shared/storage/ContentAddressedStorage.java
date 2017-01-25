@@ -1,10 +1,10 @@
 package peergos.shared.storage;
 
 import peergos.shared.cbor.*;
-import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
-import peergos.shared.ipfs.api.*;
-import peergos.shared.merklebtree.MerkleNode;
+import peergos.shared.io.ipfs.api.*;
+import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
@@ -44,7 +44,7 @@ public interface ContentAddressedStorage {
             String hash = (String)json.get("Hash");
             if (hash == null)
                 hash = (String)json.get("Key");
-            return Multihash.fromBase58(hash);
+            return Cid.decode(hash);
         }
 
         private static String encode(String component) {
@@ -57,7 +57,7 @@ public interface ContentAddressedStorage {
 
         @Override
         public CompletableFuture<List<Multihash>> put(PublicSigningKey writer, List<byte[]> blocks) {
-            return poster.postMultipart(apiPrefix + "block/put?arg="
+            return poster.postMultipart(apiPrefix + "block/put?format=cbor"
                     + "&writer=" + encode(writer.toString()), blocks)
                     .thenApply(bytes -> JSONParser.parseStream(new String(bytes))
                             .stream()
@@ -67,26 +67,26 @@ public interface ContentAddressedStorage {
 
         @Override
         public CompletableFuture<Optional<CborObject>> get(Multihash hash) {
-            return poster.get(apiPrefix + "block/get?stream-channels=true&arg=" + hash.toBase58())
+            return poster.get(apiPrefix + "block/get?stream-channels=true&arg=" + hash.toString())
                     .thenApply(raw -> Optional.of(CborObject.fromByteArray(raw)));
         }
 
         @Override
         public CompletableFuture<List<Multihash>> recursivePin(Multihash hash) {
-            return poster.get(apiPrefix + "pin/add?stream-channels=true&arg=" + hash.toBase58())
+            return poster.get(apiPrefix + "pin/add?stream-channels=true&arg=" + hash.toString())
                     .thenApply(this::getPins);
         }
 
         @Override
         public CompletableFuture<List<Multihash>> recursiveUnpin(Multihash hash) {
-            return poster.get(apiPrefix + "pin/rm?stream-channels=true&r=true&arg=" + hash.toBase58())
+            return poster.get(apiPrefix + "pin/rm?stream-channels=true&r=true&arg=" + hash.toString())
                     .thenApply(this::getPins);
         }
 
         private List<Multihash> getPins(byte[] raw) {
             Map res = (Map)JSONParser.parse(new String(raw));
             List<String> pins = (List<String>)res.get("Pins");
-            return pins.stream().map(Multihash::fromBase58).collect(Collectors.toList());
+            return pins.stream().map(Cid::decode).collect(Collectors.toList());
         }
     }
 

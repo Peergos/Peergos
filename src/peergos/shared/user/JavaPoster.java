@@ -1,6 +1,6 @@
 package peergos.shared.user;
 
-import peergos.shared.ipfs.api.*;
+import peergos.shared.io.ipfs.api.*;
 import peergos.shared.util.*;
 
 import java.io.*;

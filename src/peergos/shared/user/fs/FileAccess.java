@@ -2,9 +2,8 @@ package peergos.shared.user.fs;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
-import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.symmetric.*;
-import peergos.shared.ipfs.api.*;
+import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
@@ -34,7 +33,9 @@ public class FileAccess implements Cborable {
         Map<String, CborObject> cbor = new TreeMap<>();
         CborObject.CborByteArray cryptree = new CborObject.CborByteArray(serializeCryptTree().toByteArray());
         cbor.put("c", cryptree);
-        List<CborObject> linksToFragments = fragmentHashes.stream().map(h -> new CborObject.CborMerkleLink(new MultiAddress(h))).collect(Collectors.toList());
+        List<CborObject> linksToFragments = fragmentHashes.stream()
+                .map(CborObject.CborMerkleLink::new)
+                .collect(Collectors.toList());
         cbor.put("f", new CborObject.CborList(linksToFragments));
 
         return CborObject.CborMap.build(cbor);
@@ -144,7 +145,7 @@ public class FileAccess implements Cborable {
 
         List<Multihash> fragmentHashes = ((CborObject.CborList) values.get(new CborObject.CborString("f"))).value
                 .stream()
-                .map(c -> Multihash.fromMultiAddress(((CborObject.CborMerkleLink) c).target))
+                .map(c -> ((CborObject.CborMerkleLink) c).target)
                 .collect(Collectors.toList());
 
         byte[] cryptree = ((CborObject.CborByteArray) values.get(new CborObject.CborString("c"))).value;
