@@ -142,10 +142,10 @@ public class UserTests {
         String password = "password";
         UserContext userContext = ensureSignedUp(username, password, network, crypto);
         String newPassword = "newPassword";
-        userContext.changePassword(password, newPassword, UserGenerationAlgorithm.getDefault(), UserGenerationAlgorithm.getDefault());
+        userContext.changePassword(password, newPassword, UserGenerationAlgorithm.getDefault(), UserGenerationAlgorithm.getDefault()).get();
         ensureSignedUp(username, newPassword, network, crypto);
-
     }
+
     @Test
     public void changePasswordFAIL() throws Exception {
         String username = "test" + (System.currentTimeMillis() % 10000);
@@ -211,6 +211,45 @@ public class UserTests {
         UserContext context2 = ensureSignedUp(username, password, network, crypto);
         Optional<FileTreeNode> renamed = context2.getByPath(username + "/" + newname).get();
         checkFileContents(data3, renamed.get(), context);
+    }
+
+    @Test
+    public void concurrentWrites() throws Exception {
+        String username = "test01";
+        String password = "test01";
+        UserContext context = ensureSignedUp(username, password, network, crypto);
+        FileTreeNode userRoot = context.getUserRoot().get();
+
+        // write empty file
+        int concurrency = 8;
+        int fileSize = 1024;
+        ForkJoinPool pool = new ForkJoinPool(concurrency);
+        Set<CompletableFuture<Boolean>> futs = IntStream.range(0, concurrency)
+                .mapToObj(i -> CompletableFuture.supplyAsync(() -> {
+                    byte[] data = randomData(fileSize);
+                    String filename = i + ".bin";
+                    try {
+                        boolean result = userRoot.uploadFile(filename,
+                                new AsyncReader.ArrayBacked(data),
+                                data.length,
+                                context, l -> {
+                                },
+                                context.fragmenter()
+                        ).get();
+                        checkFileContents(data, context.getByPath("/" + username + "/" + filename).get().get(), context);
+                        System.out.println("Finished a file");
+                        return true;
+                    } catch (Exception e) {
+                        throw new RuntimeException(e.getMessage(), e);
+                    }
+                }, pool)).collect(Collectors.toSet());
+
+        boolean success = Futures.combineAll(futs).get().stream().reduce(true, (a, b) -> a && b);
+
+        Set<FileTreeNode> files = context.getUserRoot().get().getChildren(context).get();
+        Set<String> names = files.stream().filter(f -> ! f.getFileProperties().isHidden).map(f -> f.getName()).collect(Collectors.toSet());
+        Set<String> expectedNames = IntStream.range(0, concurrency).mapToObj(i -> i + ".bin").collect(Collectors.toSet());
+        Assert.assertTrue("All children present and accounted for", names.equals(expectedNames));
     }
 
     @Test

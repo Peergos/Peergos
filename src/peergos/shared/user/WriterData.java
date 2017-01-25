@@ -7,6 +7,7 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.merklebtree.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
@@ -89,44 +90,64 @@ public class WriterData implements Cborable {
                 Optional.empty());
     }
 
-    public CompletableFuture<Boolean> removeFromStaticData(FileTreeNode fileTreeNode, SigningKeyPair signer, NetworkAccess network) {
+    public CommittedWriterData committed(MaybeMultihash hash) {
+        return new CommittedWriterData(hash, this);
+    }
+
+    public CompletableFuture<CommittedWriterData> removeFromStaticData(FileTreeNode fileTreeNode, SigningKeyPair signer,
+                                                                       MaybeMultihash currentHash,
+                                                                       NetworkAccess network, Consumer<CommittedWriterData> updater) {
         FilePointer pointer = fileTreeNode.getPointer().filePointer;
 
         return staticData.map(sd -> {
             boolean isRemoved = sd.remove(pointer);
 
-            return isRemoved ? commit(signer, network) :
-                    CompletableFuture.completedFuture(true);
-        }).orElse(CompletableFuture.completedFuture(true));
+            if (isRemoved)
+                return commit(signer, currentHash, network, updater);
+            CommittedWriterData committed = committed(currentHash);
+            updater.accept(committed);
+            return CompletableFuture.completedFuture(committed);
+        }).orElse(CompletableFuture.completedFuture(committed(currentHash)));
     }
 
-    public CompletableFuture<WriterData> changeKeys(SigningKeyPair signer, PublicBoxingKey followRequestReceiver, SymmetricKey newKey, NetworkAccess network) {
+    public CompletableFuture<CommittedWriterData> changeKeys(SigningKeyPair signer, MaybeMultihash currentHash,
+                                                             PublicBoxingKey followRequestReceiver, SymmetricKey newKey,
+                                                             NetworkAccess network, Consumer<CommittedWriterData> updater) {
         Optional<UserStaticData> newEntryPoints = staticData.map(sd -> sd.withKey(newKey));
         WriterData updated = new WriterData(generationAlgorithm, publicData, Optional.of(followRequestReceiver), ownedKeys, newEntryPoints, btree);
-        return updated.commit(signer, network).thenApply(b -> updated);
+        return updated.commit(signer, MaybeMultihash.EMPTY(), network, updater);
 
     }
 
-    public CompletableFuture<Boolean> commit(SigningKeyPair signer, NetworkAccess network) {
-        return commit(signer, network.coreNode, network.dhtClient);
+    public CompletableFuture<CommittedWriterData> commit(SigningKeyPair signer, MaybeMultihash currentHash,
+                                                         NetworkAccess network, Consumer<CommittedWriterData> updater) {
+        return commit(signer, currentHash, network.coreNode, network.dhtClient, updater);
     }
 
-    public CompletableFuture<Boolean> commit(SigningKeyPair signer, CoreNode coreNode, ContentAddressedStorage dhtClient) {
+    public CompletableFuture<CommittedWriterData> commit(SigningKeyPair signer, MaybeMultihash currentHash,
+                                                         CoreNode coreNode, ContentAddressedStorage dhtClient,
+                                                         Consumer<CommittedWriterData> updater) {
         byte[] raw = serialize();
+
         return dhtClient.put(signer.publicSigningKey, raw)
-                .thenCompose(blobHash -> coreNode.getMetadataBlob(signer.publicSigningKey)
-                        .thenCompose(currentHash -> {
+                .thenCompose(blobHash -> {
                             DataSink bout = new DataSink();
                             try {
                                 currentHash.serialize(bout);
                                 bout.writeArray(blobHash.toBytes());
                                 byte[] signed = signer.signMessage(bout.toByteArray());
-                                return coreNode.setMetadataBlob(signer.publicSigningKey, signer.publicSigningKey, signed);
+                                return coreNode.setMetadataBlob(signer.publicSigningKey, signer.publicSigningKey, signed)
+                                        .thenApply(res -> {
+                                            if (!res)
+                                                throw new IllegalStateException("Corenode Crypto CAS failed!");
+                                            CommittedWriterData committed = committed(MaybeMultihash.of(blobHash));
+                                            updater.accept(committed);
+                                            return committed;
+                                        });
                             } catch (IOException e) {
                                 throw new RuntimeException(e);
                             }
-                        })
-                );
+                        });
     }
 
     @Override

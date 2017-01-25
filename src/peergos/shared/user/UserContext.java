@@ -7,6 +7,7 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multihash.Multihash;
+import peergos.shared.merklebtree.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
@@ -26,7 +27,7 @@ public class UserContext {
     public final String username;
     public final SigningKeyPair signer;
     public final BoxingKeyPair boxer;
-    private WriterData userData;
+    private CompletableFuture<CommittedWriterData> userData;
     private TrieNode entrie = new TrieNode(); // ba dum che!
     private final Fragmenter fragmenter;
 
@@ -37,12 +38,12 @@ public class UserContext {
     // In process only
     public final Crypto crypto;
 
-    public UserContext(String username, SigningKeyPair signer, BoxingKeyPair boxer, NetworkAccess network, Crypto crypto, WriterData userData) {
+    public UserContext(String username, SigningKeyPair signer, BoxingKeyPair boxer, NetworkAccess network, Crypto crypto, CompletableFuture<CommittedWriterData> userData) {
         this(username, signer, boxer, network, crypto, Fragmenter.getInstance(), userData);
     }
 
     public UserContext(String username, SigningKeyPair signer, BoxingKeyPair boxer, NetworkAccess network,
-                       Crypto crypto, Fragmenter fragmenter, WriterData userData) {
+                       Crypto crypto, Fragmenter fragmenter, CompletableFuture<CommittedWriterData> userData) {
         this.username = username;
         this.signer = signer;
         this.boxer = boxer;
@@ -59,16 +60,18 @@ public class UserContext {
     @JsMethod
     public static CompletableFuture<UserContext> signIn(String username, String password, NetworkAccess network, Crypto crypto) {
         return getWriterDataCbor(network, username)
-                .thenCompose(cbor -> {
-                    Optional<UserGenerationAlgorithm> algorithmOpt = WriterData.extractUserGenerationAlgorithm(cbor);
+                .thenCompose(pair -> {
+                    Optional<UserGenerationAlgorithm> algorithmOpt = WriterData.extractUserGenerationAlgorithm(pair.right);
                     if (! algorithmOpt.isPresent())
                         throw new IllegalStateException("No login algorithm specified in user data!");
                     UserGenerationAlgorithm algorithm = algorithmOpt.get();
                     return UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider,
                             crypto.random, crypto.signer, crypto.boxer, algorithm)
-                            .thenApply(userWithRoot ->
-                                    new UserContext(username, userWithRoot.getUser(), userWithRoot.getBoxingPair(), network, crypto,
-                                            WriterData.fromCbor(cbor, userWithRoot.getRoot()))
+                            .thenApply(userWithRoot -> {
+                                WriterData userData = WriterData.fromCbor(pair.right, userWithRoot.getRoot());
+                                        return new UserContext(username, userWithRoot.getUser(), userWithRoot.getBoxingPair(), network, crypto,
+                                                CompletableFuture.completedFuture(new CommittedWriterData(MaybeMultihash.of(pair.left), userData)));
+                                    }
                             ).thenCompose(ctx -> {
                                 System.out.println("Initializing context..");
                                 return ctx.init()
@@ -85,8 +88,10 @@ public class UserContext {
     public static CompletableFuture<UserContext> signUpGeneral(String username, String password, NetworkAccess network, Crypto crypto, UserGenerationAlgorithm algorithm) {
         return UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer, algorithm)
                 .thenCompose(userWithRoot -> {
+                    WriterData newUserData = WriterData.createEmpty(Optional.of(userWithRoot.getBoxingPair().publicBoxingKey), userWithRoot.getRoot());
+                    CommittedWriterData notCommitted = new CommittedWriterData(MaybeMultihash.EMPTY(), newUserData);
                     UserContext context = new UserContext(username, userWithRoot.getUser(), userWithRoot.getBoxingPair(),
-                            network, crypto, WriterData.createEmpty(Optional.of(userWithRoot.getBoxingPair().publicBoxingKey), userWithRoot.getRoot()));
+                            network, crypto, CompletableFuture.completedFuture(notCommitted));
                     System.out.println("Registering username " + username);
                     return context.register().thenCompose(successfullyRegistered -> {
                         if (!successfullyRegistered) {
@@ -109,7 +114,9 @@ public class UserContext {
     public static CompletableFuture<UserContext> fromPublicLink(String link, NetworkAccess network, Crypto crypto) {
         FilePointer entryPoint = FilePointer.fromLink(link);
         EntryPoint entry = new EntryPoint(entryPoint, "", Collections.emptySet(), Collections.emptySet());
-        UserContext context = new UserContext(null, null, null, network, crypto, WriterData.createEmpty(Optional.empty(), null));
+        CommittedWriterData committed = new CommittedWriterData(MaybeMultihash.EMPTY(), WriterData.createEmpty(Optional.empty(), null));
+        CompletableFuture<CommittedWriterData> userData = CompletableFuture.completedFuture(committed);
+        UserContext context = new UserContext(null, null, null, network, crypto, userData);
         return context.addEntryPoint(context.entrie, entry).thenApply(trieNode -> {
             context.entrie = trieNode;
             return context;
@@ -151,7 +158,7 @@ public class UserContext {
     }
 
     private CompletableFuture<Boolean> init() {
-        return createFileTree(userData)
+        return userData.thenCompose(wd -> createFileTree(wd.props)
                 .thenCompose(root -> {
                     this.entrie = root;
                     return getByPath("/" + username + "/" + "shared")
@@ -160,7 +167,7 @@ public class UserContext {
                                     throw new IllegalStateException("Couldn't find shared folder!");
                                 return true;
                             });
-                });
+                }));
     }
 
     public CompletableFuture<FileTreeNode> getSharingFolder() {
@@ -209,11 +216,14 @@ public class UserContext {
                 .thenCompose(existingUser -> {
                     if (!existingUser.getUser().equals(this.signer))
                         throw new IllegalArgumentException("Incorrect existing password during change password attempt!");
-                    return UserUtil.generateUser(username, newPassword, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer, newAlgorithm)
-                            .thenCompose(updatedUser ->
-                                    userData.changeKeys(updatedUser.getUser(), updatedUser.getBoxingPair().publicBoxingKey, updatedUser.getRoot(), network)
+                    return UserUtil.generateUser(username, newPassword, crypto.hasher, crypto.symmetricProvider,
+                            crypto.random, crypto.signer, crypto.boxer, newAlgorithm)
+                            .thenCompose(updatedUser ->{
+                                CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
+                                return addToUserDataQueue(lock).thenCompose(wd -> wd.props
+                                            .changeKeys(updatedUser.getUser(), wd.hash, updatedUser.getBoxingPair().publicBoxingKey,
+                                                    updatedUser.getRoot(), network, lock::complete)
                                             .thenCompose(userData -> {
-                                                this.userData = userData;
                                                 List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createChain(signer, updatedUser.getUser(), username, expiry);
                                                 return network.coreNode.updateChain(username, claimChain).thenCompose(updatedChain -> {
                                                     if (!updatedChain)
@@ -222,7 +232,8 @@ public class UserContext {
                                                     return UserContext.ensureSignedUp(username, newPassword, network, crypto);
                                                 });
                                             })
-                            );
+                                );
+                            });
                 });
     }
 
@@ -263,15 +274,24 @@ public class UserContext {
     public CompletableFuture<Optional<Pair<PublicSigningKey, PublicBoxingKey>>> getPublicKeys(String username) {
         return network.coreNode.getPublicKey(username)
                 .thenCompose(signerOpt -> getWriterData(network, signerOpt.get())
-                        .thenApply(wd -> Optional.of(new Pair<>(signerOpt.get(), wd.followRequestReceiver.get()))));
+                        .thenApply(wd -> Optional.of(new Pair<>(signerOpt.get(), wd.props.followRequestReceiver.get()))));
     }
 
-    private CompletableFuture<WriterData> addOwnedKeyAndCommit(PublicSigningKey owned) {
-        Set<PublicSigningKey> updated = Stream.concat(userData.ownedKeys.stream(), Stream.of(owned))
-                .collect(Collectors.toSet());
+    private synchronized CompletableFuture<CommittedWriterData> addToUserDataQueue(CompletableFuture<CommittedWriterData> replacement) {
+        CompletableFuture<CommittedWriterData> existing = this.userData;
+        this.userData = replacement;
+        return existing;
+    }
 
-        WriterData writerData = userData.withOwnedKeys(updated);
-        return writerData.commit(signer, network).thenApply(b -> writerData);
+    private CompletableFuture<CommittedWriterData> addOwnedKeyAndCommit(PublicSigningKey owned) {
+        CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
+        return addToUserDataQueue(lock).thenCompose(wd -> {
+            Set<PublicSigningKey> updated = Stream.concat(wd.props.ownedKeys.stream(), Stream.of(owned))
+                    .collect(Collectors.toSet());
+
+            WriterData writerData = wd.props.withOwnedKeys(updated);
+            return writerData.commit(signer, wd.hash, network, lock::complete);
+        });
     }
 
     @JsMethod
@@ -305,13 +325,17 @@ public class UserContext {
                         .collect(Collectors.toMap(e -> e.getFileProperties().name, e -> e)));
     }
 
-    private Set<String> getFollowers() {
-        return userData.staticData.get()
-                .getEntryPoints()
-                .stream()
-                .map(e -> e.owner)
-                .filter(name -> ! name.equals(username))
-                .collect(Collectors.toSet());
+    private CompletableFuture<Set<String>> getFollowers() {
+        CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
+        return addToUserDataQueue(lock).thenApply(wd -> {
+            lock.complete(wd);
+            return wd.props.staticData.get()
+                    .getEntryPoints()
+                    .stream()
+                    .map(e -> e.owner)
+                    .filter(name -> ! name.equals(username))
+                    .collect(Collectors.toSet());
+        });
     }
 
     @JsMethod
@@ -319,7 +343,7 @@ public class UserContext {
         return processFollowRequests()
                 .thenCompose(pending -> getFollowerRoots()
                         .thenCompose(followerRoots -> getFriendRoots()
-                                .thenApply(followingRoots -> new SocialState(pending, getFollowers(), followerRoots, followingRoots))));
+                                .thenCompose(followingRoots -> getFollowers().thenApply(followers -> new SocialState(pending, followers, followerRoots, followingRoots)))));
     }
 
     @JsMethod
@@ -625,15 +649,20 @@ public class UserContext {
         return addToStaticDataAndCommit(entrie, entry);
     }
 
-    private CompletableFuture<TrieNode> addToStaticDataAndCommit(TrieNode root, EntryPoint entry) {
-        userData.staticData.ifPresent(sd -> sd.add(entry));
-        return userData.commit(signer, network)
-                .thenCompose(res -> addEntryPoint(root, entry));
+    private synchronized CompletableFuture<TrieNode> addToStaticDataAndCommit(TrieNode root, EntryPoint entry) {
+        CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
+        return addToUserDataQueue(lock).thenCompose(wd -> {
+            wd.props.staticData.ifPresent(sd -> sd.add(entry));
+            return wd.props.commit(signer, wd.hash, network, lock::complete)
+                    .thenCompose(res -> addEntryPoint(root, entry));
+        });
     }
 
-    private CompletableFuture<Boolean> removeFromStaticData(FileTreeNode fileTreeNode) {
-        return userData.removeFromStaticData(fileTreeNode, signer, network);
-    };
+    private CompletableFuture<CommittedWriterData> removeFromStaticData(FileTreeNode fileTreeNode) {
+        CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
+        return addToUserDataQueue(lock)
+                .thenCompose(wd -> wd.props.removeFromStaticData(fileTreeNode, signer, wd.hash, network, lock::complete));
+    }
 
     /**
      * Process any responses to our follow requests.
@@ -676,6 +705,7 @@ public class UserContext {
                             CompletableFuture<TrieNode> updatedRoot = addToStaticDataAndCommit(root, freq.entry.get());
                             return updatedRoot.thenCompose(newRoot -> {
                                 entrie = newRoot;
+                                // clear their response follow req too
                                 return network.coreNode.removeFollowRequest(signer.publicSigningKey, signer.signMessage(freq.rawCipher))
                                         .thenApply(b -> newRoot);
                             });
@@ -692,12 +722,9 @@ public class UserContext {
                             // They didn't reciprocate (follow us)
                             CompletableFuture<Boolean> removeDir = ourDirForThem.remove(this, sharing);
                             // remove entry point as well
-                            CompletableFuture<Boolean> cleanStatic = removeFromStaticData(ourDirForThem);
-                            // clear their response follow req too
-                            CompletableFuture<Boolean> clearPending = network.coreNode.removeFollowRequest(signer.publicSigningKey, signer.signMessage(freq.rawCipher));
+                            CompletableFuture<CommittedWriterData> cleanStatic = removeFromStaticData(ourDirForThem);
 
                             return removeDir.thenCompose(x -> cleanStatic)
-                                    .thenCompose(x -> clearPending)
                                     .thenCompose(b -> addToStatic.apply(trie, freq));
                         } else if (freq.entry.get().pointer.isNull()) {
                             // They reciprocated, but didn't accept (they follow us, but we can't follow them)
@@ -833,12 +860,12 @@ public class UserContext {
         }).exceptionally(Futures::logError);
     }
 
-    private static CompletableFuture<WriterData> getWriterData(NetworkAccess network, PublicSigningKey signer) {
+    private static CompletableFuture<CommittedWriterData> getWriterData(NetworkAccess network, PublicSigningKey signer) {
         return getWriterDataCbor(network, signer)
-                .thenApply(cbor -> WriterData.fromCbor(cbor, null));
+                .thenApply(pair -> new CommittedWriterData(MaybeMultihash.of(pair.left), WriterData.fromCbor(pair.right, null)));
     }
 
-    private static CompletableFuture<CborObject> getWriterDataCbor(NetworkAccess network, String username) {
+    private static CompletableFuture<Pair<Multihash, CborObject>> getWriterDataCbor(NetworkAccess network, String username) {
         return network.coreNode.getPublicKey(username)
                 .thenCompose(signer -> {
                     PublicSigningKey publicSigningKey = signer.orElseThrow(
@@ -847,10 +874,12 @@ public class UserContext {
                 });
     }
 
-    private static CompletableFuture<CborObject> getWriterDataCbor(NetworkAccess network, PublicSigningKey signer) {
+    private static CompletableFuture<Pair<Multihash, CborObject>> getWriterDataCbor(NetworkAccess network, PublicSigningKey signer) {
         return network.coreNode.getMetadataBlob(signer)
-                .thenCompose(key -> network.dhtClient.get(key.get()))
-                .thenApply(Optional::get);
+                .thenCompose(key -> network.dhtClient.get(key.get())
+                        .thenApply(Optional::get)
+                        .thenApply(cbor -> new Pair<>(key.get(), cbor))
+                );
     }
 
     public CompletableFuture<Set<FileTreeNode>> retrieveAll(List<EntryPoint> entries) {
@@ -940,7 +969,7 @@ public class UserContext {
     }
 
     @JsMethod
-    public CompletableFuture<Boolean> removeFollower(String username) {
+    public CompletableFuture<CommittedWriterData> removeFollower(String username) {
         System.out.println("Remove follower: " + username);
         // remove /$us/shared/$them
         return getSharingFolder()
