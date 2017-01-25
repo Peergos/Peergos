@@ -748,17 +748,31 @@ public class UserContext {
         return network.dhtClient.put(targetUser, new CborObject.CborByteArray(f.data).toByteArray());
     }
 
+    private CompletableFuture<List<Multihash>> bulkUploadFragments(List<Fragment> fragments, PublicSigningKey targetUser) {
+        return network.dhtClient.put(targetUser, fragments
+                .stream()
+                .map(f -> new CborObject.CborByteArray(f.data).toByteArray())
+                .collect(Collectors.toList()));
+    }
+
     public CompletableFuture<List<Multihash>> uploadFragments(List<Fragment> fragments, PublicSigningKey owner,
                                                               ProgressConsumer<Long> progressCounter) {
-        List<CompletableFuture<Multihash>> futures = fragments.stream()
-                .map(f -> uploadFragment(f, owner)
+        // upload in groups of 10. This means in a browser we have 6 upload threads with erasure coding on, or 4 without
+        List<List<Fragment>> grouped = IntStream.range(0, (fragments.size() + 9) / 10)
+                .mapToObj(i -> fragments.stream().skip(10 * i).limit(10).collect(Collectors.toList()))
+                .collect(Collectors.toList());
+        List<CompletableFuture<List<Multihash>>> futures = grouped.stream()
+                .map(g -> bulkUploadFragments(g, owner)
                         .thenApply(hash -> {
                             if (progressCounter != null)
-                                progressCounter.accept((long)f.data.length);
+                                progressCounter.accept((long)g.stream().mapToInt(f -> f.data.length).sum());
                             return hash;
                         }))
                 .collect(Collectors.toList());
-        return Futures.combineAllInOrder(futures);
+        return Futures.combineAllInOrder(futures)
+                .thenApply(groups -> groups.stream()
+                        .flatMap(g -> g.stream())
+                        .collect(Collectors.toList()));
     }
 
     public CompletableFuture<Boolean> uploadChunk(FileAccess metadata, Location location, SigningKeyPair writer) {
