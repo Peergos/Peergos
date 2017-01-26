@@ -1,6 +1,7 @@
 package peergos.shared.user;
 
 import jsinterop.annotations.*;
+import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
@@ -10,9 +11,10 @@ import peergos.shared.util.*;
 
 import java.io.*;
 import java.util.*;
+import java.util.stream.*;
 
 @JsType
-public class EntryPoint {
+public class EntryPoint implements Cborable{
 
     public final FilePointer pointer;
     public final String owner;
@@ -34,29 +36,31 @@ public class EntryPoint {
         return ArrayOps.concat(nonce, key.encrypt(serialize(), nonce));
     }
 
-    public byte[] serialize() {
-        DataSink sink = new DataSink();
-        sink.writeArray(pointer.serialize());
-        sink.writeString(owner);
-        sink.writeInt(readers.size());
-        readers.forEach(s -> sink.writeString(s));
-        sink.writeInt(writers.size());
-        writers.forEach(s -> sink.writeString(s));
-        return sink.toByteArray();
+    @Override
+    public CborObject toCbor() {
+        return new CborObject.CborList(Arrays.asList(
+                pointer.toCbor(),
+                new CborObject.CborString(owner),
+                new CborObject.CborList(readers.stream().sorted().map(CborObject.CborString::new).collect(Collectors.toList())),
+                new CborObject.CborList(writers.stream().sorted().map(CborObject.CborString::new).collect(Collectors.toList()))
+        ));
     }
 
-    static EntryPoint deserialize(byte[] raw) throws IOException {
-        DataSource din = new DataSource(raw);
-        FilePointer pointer = FilePointer.fromByteArray(din.readArray());
-        String owner = din.readString();
-        int nReaders = din.readInt();
-        Set<String> readers = new HashSet<>();
-        for (int i=0; i < nReaders; i++)
-            readers.add(din.readString());
-        int nWriters = din.readInt();
-        Set<String> writers = new HashSet<>();
-        for (int i=0; i < nWriters; i++)
-            writers.add(din.readString());
+    static EntryPoint fromCbor(CborObject cbor) {
+        if (! (cbor instanceof CborObject.CborList))
+            throw new IllegalStateException("Incorrect cbor type for EntryPoint: " + cbor);
+
+        List<CborObject> value = ((CborObject.CborList) cbor).value;
+        FilePointer pointer = FilePointer.fromCbor(value.get(0));
+        String owner = ((CborObject.CborString) value.get(1)).value;
+        Set<String> readers = ((CborObject.CborList) value.get(2)).value
+                .stream()
+                .map(c -> ((CborObject.CborString) c).value)
+                .collect(Collectors.toSet());
+        Set<String> writers = ((CborObject.CborList) value.get(3)).value
+                .stream()
+                .map(c -> ((CborObject.CborString) c).value)
+                .collect(Collectors.toSet());
         return new EntryPoint(pointer, owner, readers, writers);
     }
 

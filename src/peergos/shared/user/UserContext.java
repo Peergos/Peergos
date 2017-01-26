@@ -767,7 +767,7 @@ public class UserContext {
         DataSource input = new DataSource(plaintext);
         byte[] rawEntry = input.readArray();
         byte[] rawKey = input.readArray();
-        return new FollowRequest(rawEntry.length > 0 ? Optional.of(EntryPoint.deserialize(rawEntry)) : Optional.empty(),
+        return new FollowRequest(rawEntry.length > 0 ? Optional.of(EntryPoint.fromCbor(CborObject.fromByteArray(rawEntry))) : Optional.empty(),
                 rawKey.length > 0 ? Optional.of(SymmetricKey.fromByteArray(rawKey)) : Optional.empty(), raw);
     }
 
