@@ -274,15 +274,8 @@ public class HTTPCoreNode implements CoreNode
     @Override public CompletableFuture<MaybeMultihash> getMetadataBlob(PublicSigningKey encodedSharingKey)
     {
         try {
-            return poster.postUnzip("core/getMetadataBlob", encodedSharingKey.serialize()).thenApply(res -> {
-                DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
-                try {
-                    byte[] meta = CoreNodeUtils.deserializeByteArray(din);
-                    return MaybeMultihash.fromCbor(CborObject.fromByteArray(meta));
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
-            });
+            return poster.postUnzip("core/getMetadataBlob", encodedSharingKey.serialize())
+                    .thenApply(meta -> MaybeMultihash.fromCbor(CborObject.fromByteArray(meta)));
         } catch (Exception ioe) {
             ioe.printStackTrace();
             return CompletableFuture.completedFuture(MaybeMultihash.EMPTY());

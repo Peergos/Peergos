@@ -52,10 +52,6 @@ public class FileAccess implements Cborable {
         return parent2meta.target(parentKey);
     }
 
-    public boolean removeFragments(UserContext context) {
-        return true;
-    }
-
     public FileProperties getFileProperties(SymmetricKey parentKey) {
         try {
             byte[] nonce = Arrays.copyOfRange(properties, 0, TweetNaCl.SECRETBOX_NONCE_BYTES);

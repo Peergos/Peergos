@@ -215,7 +215,7 @@ public class HTTPCoreNodeServer
             PublicSigningKey encodedSharingKey = PublicSigningKey.fromCbor(CborObject.deserialize(new CborDecoder(din)));
             MaybeMultihash metadataBlob = coreNode.getMetadataBlob(encodedSharingKey).get();
 
-            Serialize.serialize(metadataBlob.serialize(), dout);
+            dout.write(metadataBlob.serialize());
         }
 
         public void close() throws IOException{

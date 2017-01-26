@@ -265,7 +265,7 @@ public class UserTests {
 
         //overwrite with 2 chunk file
         byte[] data5 = new byte[10*1024*1024];
-        new Random().nextBytes(data5);
+        random.nextBytes(data5);
         userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data5), 0, data5.length, context, l -> {} , context.fragmenter());
         checkFileContents(data5, userRoot.getDescendentByPath(filename, context).get().get(), context);
         assertTrue("10MiB file size", data5.length == userRoot.getDescendentByPath(filename, context).get().get().getFileProperties().size);

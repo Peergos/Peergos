@@ -30,7 +30,6 @@ public class RetrievedFilePointer {
         if (!this.filePointer.isWritable())
             return CompletableFuture.completedFuture(false);
         if (!this.fileAccess.isDirectory()) {
-            this.fileAccess.removeFragments(context);
             CompletableFuture<Boolean> result = new CompletableFuture<>();
             context.network.btree.remove(signer, this.filePointer.location.getMapKey()).thenAccept(removed -> {
                 // remove from parent
