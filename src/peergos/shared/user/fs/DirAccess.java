@@ -1,5 +1,6 @@
 package peergos.shared.user.fs;
 
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.random.*;
@@ -24,7 +25,7 @@ public class DirAccess extends FileAccess {
     public DirAccess(SymmetricLink subfolders2files, SymmetricLink subfolders2parent, List<SymmetricLocationLink> subfolders,
                      List<SymmetricLocationLink> files, SymmetricLink parent2meta, byte[] properties,
                      FileRetriever retriever, SymmetricLocationLink parentLink, Optional<SymmetricLocationLink> moreFolderContents) {
-        super(parent2meta, properties, retriever, parentLink, Collections.emptyList());
+        super(parent2meta, properties, retriever, parentLink);
         this.subfolders2files = subfolders2files;
         this.subfolders2parent = subfolders2parent;
         this.subfolders = subfolders;
@@ -37,19 +38,44 @@ public class DirAccess extends FileAccess {
                 retriever, parentLink, moreFolderContents);
     }
 
-    protected DataSink serializeCryptTree() {
-        DataSink bout = super.serializeCryptTree();
-        bout.writeArray(subfolders2parent.serialize());
-        bout.writeArray(subfolders2files.serialize());
-        bout.writeInt(0);
-        bout.writeInt(this.subfolders.size());
-        subfolders.forEach(x -> bout.writeArray(x.serialize()));
-        bout.writeInt(this.files.size());
-        files.forEach(x -> bout.writeArray(x.serialize()));
-        bout.writeBoolean(moreFolderContents.isPresent());
-        if (moreFolderContents.isPresent())
-            bout.writeArray(moreFolderContents.get().serialize());
-        return bout;
+    @Override
+    public CborObject toCbor() {
+        CborObject file = super.toCbor();
+        CborObject dirPart = new CborObject.CborList(Arrays.asList(
+                subfolders2parent.toCbor(),
+                subfolders2files.toCbor(),
+                new CborObject.CborList(subfolders
+                        .stream()
+                        .map(locLink -> locLink.toCbor())
+                        .collect(Collectors.toList())),
+                new CborObject.CborList(files
+                        .stream()
+                        .map(locLink -> locLink.toCbor())
+                        .collect(Collectors.toList())),
+                moreFolderContents.isPresent() ? moreFolderContents.get().toCbor() : new CborObject.CborNull()
+        ));
+        return new CborObject.CborList(Arrays.asList(file, dirPart));
+    }
+
+    public static DirAccess fromCbor(CborObject cbor, FileAccess base) {
+        if (! (cbor instanceof CborObject.CborList))
+            throw new IllegalStateException("Incorrect cbor for DirAccess: " + cbor);
+
+        List<CborObject> value = ((CborObject.CborList) cbor).value;
+        SymmetricLink subfoldersToParent = SymmetricLink.fromCbor(value.get(0));
+        SymmetricLink subfoldersToFiles = SymmetricLink.fromCbor(value.get(1));
+        List<SymmetricLocationLink> subfolders = ((CborObject.CborList)value.get(2)).value
+                .stream()
+                .map(SymmetricLocationLink::fromCbor)
+                .collect(Collectors.toList());
+        List<SymmetricLocationLink> files = ((CborObject.CborList)value.get(3)).value
+                .stream()
+                .map(SymmetricLocationLink::fromCbor)
+                .collect(Collectors.toList());
+        Optional<SymmetricLocationLink> moreFolderContents = value.get(4) instanceof CborObject.CborNull ?
+                Optional.empty() : Optional.of(SymmetricLocationLink.fromCbor(value.get(4)));
+        return new DirAccess(subfoldersToFiles, subfoldersToParent, subfolders, files,
+                base.parent2meta, base.properties, base.retriever, base.parentLink, moreFolderContents);
     }
 
     public List<SymmetricLocationLink> getSubfolders() {
@@ -337,24 +363,6 @@ public class DirAccess extends FileAccess {
             }, (a, b) -> a.thenCompose(x -> b)); // TODO Think about this combiner function
             return reduce;
         }).thenCompose(finalDir -> finalDir.commit(new Location(parentLocation.owner, entryWriterKey.publicSigningKey, newMapKey), entryWriterKey, context));
-    }
-
-    public static DirAccess deserialize(FileAccess base, DataSource bin) throws IOException {
-        byte[] s2p = bin.readArray();
-        byte[] s2f = bin.readArray();
-
-        int nSharingKeys = bin.readInt();
-        List<SymmetricLocationLink> files = new ArrayList<>(), subfolders = new ArrayList<>();
-        int nsubfolders = bin.readInt();
-        for (int i=0; i < nsubfolders; i++)
-            subfolders.add(SymmetricLocationLink.deserialize(bin.readArray()));
-        int nfiles = bin.readInt();
-        for (int i=0; i < nfiles; i++)
-            files.add(SymmetricLocationLink.deserialize(bin.readArray()));
-        boolean hasMoreChildren = bin.readBoolean();
-        Optional<SymmetricLocationLink> moreChildren = hasMoreChildren ? Optional.of(SymmetricLocationLink.deserialize(bin.readArray())) : Optional.empty();
-        return new DirAccess(new SymmetricLink(s2f), new SymmetricLink(s2p),
-                subfolders, files, base.parent2meta, base.properties, base.retriever, base.parentLink, moreChildren);
     }
 
     public static DirAccess create(SymmetricKey subfoldersKey, FileProperties metadata, Location parentLocation, SymmetricKey parentParentKey, SymmetricKey parentKey) {

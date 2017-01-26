@@ -131,23 +131,17 @@ public class WriterData implements Cborable {
 
         return dhtClient.put(signer.publicSigningKey, raw)
                 .thenCompose(blobHash -> {
-                            DataSink bout = new DataSink();
-                            try {
-                                currentHash.serialize(bout);
-                                bout.writeArray(blobHash.toBytes());
-                                byte[] signed = signer.signMessage(bout.toByteArray());
-                                return coreNode.setMetadataBlob(signer.publicSigningKey, signer.publicSigningKey, signed)
-                                        .thenApply(res -> {
-                                            if (!res)
-                                                throw new IllegalStateException("Corenode Crypto CAS failed!");
-                                            CommittedWriterData committed = committed(MaybeMultihash.of(blobHash));
-                                            updater.accept(committed);
-                                            return committed;
-                                        });
-                            } catch (IOException e) {
-                                throw new RuntimeException(e);
-                            }
-                        });
+                    HashCasPair cas = new HashCasPair(currentHash, MaybeMultihash.of(blobHash));
+                    byte[] signed = signer.signMessage(cas.serialize());
+                    return coreNode.setMetadataBlob(signer.publicSigningKey, signer.publicSigningKey, signed)
+                            .thenApply(res -> {
+                                if (!res)
+                                    throw new IllegalStateException("Corenode Crypto CAS failed!");
+                                CommittedWriterData committed = committed(MaybeMultihash.of(blobHash));
+                                updater.accept(committed);
+                                return committed;
+                            });
+                });
     }
 
     @Override

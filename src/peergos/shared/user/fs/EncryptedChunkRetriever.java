@@ -1,5 +1,6 @@
 package peergos.shared.user.fs;
 
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multihash.*;
@@ -104,35 +105,34 @@ public class EncryptedChunkRetriever implements FileRetriever {
         });
     }
 
-    public void serialize(DataSink buf) {
-        buf.writeByte((byte)1); // This class
-        buf.writeArray(chunkNonce);
-        buf.writeArray(chunkAuth);
-        buf.writeInt(fragmentHashes.size());
-        for (Multihash hash : fragmentHashes) {
-            buf.writeArray(hash.toBytes());
-        }
-        buf.writeByte(this.nextChunk != null ? (byte)1 : 0);
-        if (this.nextChunk != null)
-            buf.writeArray(this.nextChunk.serialize());
-        fragmenter.serialize(buf);
+    @Override
+    public CborObject toCbor() {
+        return new CborObject.CborList(Arrays.asList(
+                new CborObject.CborByteArray(chunkNonce),
+                new CborObject.CborByteArray(chunkAuth),
+                new CborObject.CborList(fragmentHashes
+                        .stream()
+                        .map(CborObject.CborMerkleLink::new)
+                        .collect(Collectors.toList())),
+                nextChunk == null ? new CborObject.CborNull() : nextChunk.toCbor(),
+                fragmenter.toCbor()
+        ));
     }
 
-    public static EncryptedChunkRetriever deserialize(DataSource buf) throws IOException {
-        byte[] chunkNonce = buf.readArray();
-        byte[] chunkAuth = buf.readArray();
-        int nHashes = buf.readInt();
-        List<Multihash> hashes = new ArrayList<>();
-        for (int i=0; i < nHashes; i++)
-            hashes.add(Cid.cast(buf.readArray()));
+    public static EncryptedChunkRetriever fromCbor(CborObject cbor) {
+        if (! (cbor instanceof CborObject.CborList))
+            throw new IllegalStateException("Incorrect cbor for EncryptedChunkRetriever: " + cbor);
 
-        boolean hasNext = buf.readBoolean();
-        Location nextChunk = null;
-        if (hasNext)
-            nextChunk = Location.fromByteArray(buf.readArray());
-        Fragmenter fragmenter = Fragmenter.deserialize(buf);
-
-        return new EncryptedChunkRetriever(chunkNonce, chunkAuth, hashes, nextChunk, fragmenter);
+        List<CborObject> value = ((CborObject.CborList) cbor).value;
+        byte[] chunkNonce = ((CborObject.CborByteArray)value.get(0)).value;
+        byte[] chunkAuth = ((CborObject.CborByteArray)value.get(1)).value;
+        List<Multihash> fragmentHashes = ((CborObject.CborList)value.get(2)).value
+                .stream()
+                .map(c -> ((CborObject.CborMerkleLink)c).target)
+                .collect(Collectors.toList());
+        Location nextChunk = value.get(3) instanceof CborObject.CborNull ? null : Location.fromCbor(value.get(3));
+        Fragmenter fragmenter = Fragmenter.fromCbor(value.get(4));
+        return new EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChunk, fragmenter);
     }
 
     private static List<FragmentWithHash> reorder(List<FragmentWithHash> fragments, List<Multihash> hashes) {

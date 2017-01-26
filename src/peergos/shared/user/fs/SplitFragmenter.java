@@ -1,6 +1,8 @@
 package peergos.shared.user.fs;
 
-import peergos.shared.util.*;
+import peergos.shared.cbor.*;
+
+import java.util.*;
 
 public class SplitFragmenter implements Fragmenter {
 
@@ -24,8 +26,11 @@ public class SplitFragmenter implements Fragmenter {
 
     }
 
-    public void serialize(DataSink dout) {
-        dout.writeInt(peergos.shared.user.fs.Fragmenter.Type.SIMPLE.val);
+    @Override
+    public CborObject toCbor() {
+        Map<String, CborObject> res = new HashMap<>();
+        res.put("t", new CborObject.CborLong(Fragmenter.Type.SIMPLE.val));
+        return CborObject.CborMap.build(res);
     }
 
     public byte[] recombine(byte[][] encoded, int truncateTo) {

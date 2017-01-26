@@ -1,37 +1,30 @@
 package peergos.shared.user.fs;
 
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
-import peergos.shared.util.*;
+import peergos.shared.cbor.*;
 
-import java.io.*;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import static org.junit.Assert.*;
 
-public interface Fragmenter {
+public interface Fragmenter extends Cborable {
 
     byte[][] split(byte[] input);
 
     byte[] recombine(byte[][] encoded, int inputLength);
 
-    void serialize(DataSink dout);
+    static Fragmenter fromCbor(CborObject cbor) {
+        if (! (cbor instanceof CborObject.CborMap))
+            throw new IllegalStateException("Incorrect cbor for Fragmenter: " + cbor);
 
-    static Fragmenter deserialize(DataInput din) throws IOException {
-        int val = din.readInt();
-        Type type  = Type.ofVal(val);
-        switch (type) {
-            case SIMPLE:
-                return new peergos.shared.user.fs.SplitFragmenter();
-            case ERASURE_CODING:
-                int nOriginalFragments = din.readInt();
-                int nAllowedFailures = din.readInt();
-                return new peergos.shared.user.fs.ErasureFragmenter(nOriginalFragments, nAllowedFailures);
-            default:
-                throw new IllegalStateException();
-        }
+        SortedMap<CborObject, CborObject> values = ((CborObject.CborMap) cbor).values;
+
+        long t = ((CborObject.CborLong) values.get(new CborObject.CborString("t"))).value;
+        Type type = Type.ofVal((int) t);
+        if (type == Type.SIMPLE)
+            return new SplitFragmenter();
+        int originalFragments = (int)((CborObject.CborLong) values.get(new CborObject.CborString("o"))).value;
+        int allowedFailures = (int)((CborObject.CborLong) values.get(new CborObject.CborString("a"))).value;
+        return new ErasureFragmenter(originalFragments, allowedFailures);
     }
 
     enum Type  {
@@ -52,7 +45,7 @@ public interface Fragmenter {
         public static Type ofVal(int val) {
             Type type = MAP.get(val);
             if (type == null)
-                throw new IllegalStateException("No type for value "+ val);
+                throw new IllegalStateException("No Fragmenter type for value "+ val);
             return type;
         }
     }

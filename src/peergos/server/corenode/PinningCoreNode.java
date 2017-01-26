@@ -1,5 +1,6 @@
 package peergos.server.corenode;
 
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.corenode.CoreNode;
 import peergos.shared.corenode.UserPublicKeyLink;
@@ -61,27 +62,20 @@ public class PinningCoreNode implements CoreNode {
     public CompletableFuture<Boolean> setMetadataBlob(PublicSigningKey owner, PublicSigningKey signer, byte[] sharingKeySignedBtreeRootHashes) {
         // first pin new root
         byte[] message = signer.unsignMessage(sharingKeySignedBtreeRootHashes);
-        DataInputStream din = new DataInputStream(new ByteArrayInputStream(message));
-        try {
-            byte[] rawOldRoot = Serialize.deserializeByteArray(din, 256);
-            Optional<Multihash> oldRoot = rawOldRoot.length > 0 ? Optional.of(Cid.cast(rawOldRoot)) : Optional.empty();
-            Multihash newRoot = Cid.cast(Serialize.deserializeByteArray(din, 256));
-            return storage.recursivePin(newRoot).thenCompose(pins -> {
-                if (!pins.contains(newRoot))
-                    return CompletableFuture.completedFuture(false);
-                return target.setMetadataBlob(owner, signer, sharingKeySignedBtreeRootHashes)
-                        .thenCompose(b -> {
-                            if (!b)
-                                return CompletableFuture.completedFuture(false);
-                            // unpin old root
-                            return !oldRoot.isPresent() ?
-                                    CompletableFuture.completedFuture(true) :
-                                    storage.recursiveUnpin(oldRoot.get()).thenApply(unpins -> unpins.contains(oldRoot.get()));
-                        });
-            });
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+        HashCasPair cas = HashCasPair.fromCbor(CborObject.fromByteArray(message));
+        return storage.recursivePin(cas.updated.get()).thenCompose(pins -> {
+            if (!pins.contains(cas.updated.get()))
+                return CompletableFuture.completedFuture(false);
+            return target.setMetadataBlob(owner, signer, sharingKeySignedBtreeRootHashes)
+                    .thenCompose(b -> {
+                        if (!b)
+                            return CompletableFuture.completedFuture(false);
+                        // unpin old root
+                        return !cas.original.isPresent() ?
+                                CompletableFuture.completedFuture(true) :
+                                storage.recursiveUnpin(cas.original.get()).thenApply(unpins -> unpins.contains(cas.original.get()));
+                    });
+        });
     }
 
     @Override

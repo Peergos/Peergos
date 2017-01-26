@@ -1,5 +1,6 @@
 package peergos.server.corenode;
 
+import peergos.shared.cbor.*;
 import peergos.shared.corenode.CoreNode;
 import peergos.shared.corenode.CoreNodeUtils;
 import peergos.shared.corenode.UserPublicKeyLink;
@@ -211,11 +212,10 @@ public class HTTPCoreNodeServer
 
         void getMetadataBlob(DataInputStream din, DataOutputStream dout) throws Exception
         {
-            byte[] encodedSharingKey = CoreNodeUtils.deserializeByteArray(din);
-            MaybeMultihash metadataBlob = coreNode.getMetadataBlob(
-                    PublicSigningKey.fromByteArray(encodedSharingKey)).get();
+            PublicSigningKey encodedSharingKey = PublicSigningKey.fromCbor(CborObject.deserialize(new CborDecoder(din)));
+            MaybeMultihash metadataBlob = coreNode.getMetadataBlob(encodedSharingKey).get();
 
-            metadataBlob.serialize(dout);
+            Serialize.serialize(metadataBlob.serialize(), dout);
         }
 
         public void close() throws IOException{

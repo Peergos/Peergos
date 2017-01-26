@@ -1,6 +1,5 @@
 package peergos.shared.corenode;
 
-import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.merklebtree.*;
 
@@ -35,6 +34,13 @@ public interface CoreNode {
 
     CompletableFuture<Boolean> removeFollowRequest(PublicSigningKey owner, byte[] data);
 
+    /**
+     *
+     * @param owner
+     * @param writer
+     * @param writerSignedBtreeRootHash the signed serialization of the HashCasPair
+     * @return
+     */
     CompletableFuture<Boolean> setMetadataBlob(PublicSigningKey owner, PublicSigningKey writer, byte[] writerSignedBtreeRootHash);
 
     CompletableFuture<Boolean> removeMetadataBlob(PublicSigningKey writer, byte[] writerSignedMapKeyPlusBlob);

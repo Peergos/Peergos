@@ -1,14 +1,10 @@
 package peergos.shared.merklebtree;
 
+import peergos.shared.cbor.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.io.ipfs.cid.*;
-import peergos.shared.util.*;
 
-import java.io.DataInput;
-import java.io.DataOutput;
-import java.io.IOException;
-
-public class MaybeMultihash {
+public class MaybeMultihash implements Cborable {
     private final Multihash hash;
 
     public MaybeMultihash(Multihash hash) {
@@ -25,16 +21,6 @@ public class MaybeMultihash {
         return hash;
     }
 
-    public byte[] toBytes() {
-        try {
-            DataSink sink = new DataSink();
-            serialize(sink);
-            return sink.toByteArray();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
     public String toString() {
         return hash != null ? hash.toString() : "EMPTY";
     }
@@ -47,7 +33,6 @@ public class MaybeMultihash {
         MaybeMultihash that = (MaybeMultihash) o;
 
         return hash != null ? hash.equals(that.hash) : that.hash == null;
-
     }
 
     @Override
@@ -55,25 +40,18 @@ public class MaybeMultihash {
         return hash != null ? hash.hashCode() : 0;
     }
 
-    public static MaybeMultihash deserialize(DataInput din) throws IOException {
-        int val  = din.readInt();
-
-        boolean isPresent  = val != 0;
-        if (! isPresent)
+    public static MaybeMultihash fromCbor(CborObject cbor) {
+        if (cbor instanceof CborObject.CborNull)
             return MaybeMultihash.EMPTY();
-        byte[] data  = new byte[val];
-        din.readFully(data);
-        return MaybeMultihash.of(Cid.cast(data));
+
+        if (! (cbor instanceof CborObject.CborByteArray))
+            throw new IllegalStateException("Incorrect cbor for MaybeMultihash: " + cbor);
+        return MaybeMultihash.of(Cid.cast(((CborObject.CborByteArray) cbor).value));
     }
 
-    public void serialize(DataOutput dout) throws IOException {
-        if (! isPresent())
-            dout.writeInt(0);
-        else {
-            byte[] bytes = hash.toBytes();
-            dout.writeInt(bytes.length);
-            dout.write(bytes);
-        }
+    @Override
+    public CborObject toCbor() {
+        return isPresent() ? new CborObject.CborByteArray(hash.toBytes()) : new CborObject.CborNull();
     }
 
     private static MaybeMultihash EMPTY = new MaybeMultihash(null);

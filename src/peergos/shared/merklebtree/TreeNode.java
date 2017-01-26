@@ -2,7 +2,6 @@ package peergos.shared.merklebtree;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
-import peergos.shared.io.ipfs.multiaddr.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.ContentAddressedStorage;
 import peergos.shared.util.*;
@@ -390,7 +389,7 @@ public class TreeNode implements Cborable {
             String tab = "";
             for (int i=0; i < depth; i++)
                 tab += "   ";
-            w.print(StringUtils.format(tab + "[%d/%d] %s : %s\n", index++, keys.size(), e.key.toString(), new ByteArrayWrapper(e.valueHash.toBytes()).toString()));
+            w.print(StringUtils.format(tab + "[%d/%d] %s : %s\n", index++, keys.size(), e.key.toString(), new ByteArrayWrapper(e.valueHash.serialize()).toString()));
             if (e.targetHash.isPresent())
                 TreeNode.fromCbor(storage.get(e.targetHash.get()).get().get()).print(w, depth + 1, storage);
         }

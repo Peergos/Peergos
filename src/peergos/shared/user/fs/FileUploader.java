@@ -110,7 +110,7 @@ public class FileUploader implements AutoCloseable {
         System.out.println(StringUtils.format("Uploading chunk with %d fragments\n", fragments.size()));
         return context.uploadFragments(fragments, chunk.location.owner, monitor).thenCompose(hashes -> {
             FileRetriever retriever = new EncryptedChunkRetriever(chunk.chunk.nonce(), encryptedChunk.getAuth(), hashes, nextChunkLocation, fragmenter);
-            FileAccess metaBlob = FileAccess.create(baseKey, chunk.chunk.key(), props, retriever, parentLocation, parentparentKey, hashes);
+            FileAccess metaBlob = FileAccess.create(baseKey, chunk.chunk.key(), props, retriever, parentLocation, parentparentKey);
             return context.uploadChunk(metaBlob, new Location(chunk.location.owner, writer.publicSigningKey, chunk.chunk.mapKey()), writer);
         });
     }
