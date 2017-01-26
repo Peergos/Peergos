@@ -90,18 +90,6 @@ public class EntryPoint implements Cborable{
     static EntryPoint symmetricallyDecryptAndDeserialize(byte[] input, SymmetricKey key) throws IOException {
         byte[] nonce = Arrays.copyOfRange(input, 0, 24);
         byte[] raw = key.decrypt(Arrays.copyOfRange(input, 24, input.length), nonce);
-        DataInputStream din = new DataInputStream(new ByteArrayInputStream(raw));
-        FilePointer pointer = FilePointer.fromByteArray(Serialize.deserializeByteArray(din, 4*1024*1024));
-        String owner = Serialize.deserializeString(din, CoreNode.MAX_USERNAME_SIZE);
-        int nReaders = din.readInt();
-        Set<String> readers = new HashSet<>();
-        for (int i=0; i < nReaders; i++)
-            readers.add(Serialize.deserializeString(din, CoreNode.MAX_USERNAME_SIZE));
-        int nWriters = din.readInt();
-        Set<String> writers = new HashSet<>();
-        for (int i=0; i < nWriters; i++)
-            writers.add(Serialize.deserializeString(din, CoreNode.MAX_USERNAME_SIZE));
-        return new EntryPoint(pointer, owner, readers, writers);
+        return fromCbor(CborObject.fromByteArray(raw));
     }
-
 }
