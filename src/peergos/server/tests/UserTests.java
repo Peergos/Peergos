@@ -87,7 +87,7 @@ public class UserTests {
 
     @Test
     public void differentLoginTypes() throws Exception {
-        String username = "name";
+        String username = "test" + (random.nextInt() % 10000);
         String password = "letmein";
         Crypto crypto = Crypto.initJava();
         List<ScryptEd25519Curve25519> params = Arrays.asList(
@@ -107,7 +107,7 @@ public class UserTests {
 
     @Test
     public void javascriptCompatible() throws IOException {
-        String username = "test01";
+        String username = "test" + (random.nextInt() % 10000);
         String password = "test01";
 
         UserUtil.generateUser(username, password, new ScryptJava(), new Salsa20Poly1305.Java(),
@@ -120,7 +120,7 @@ public class UserTests {
 
     @Test
     public void randomSignup() throws Exception {
-        String username = "test" + (System.currentTimeMillis() % 10000);
+        String username = "test" + (random.nextInt() % 10000);
         String password = "password";
         ensureSignedUp(username, password, network, crypto);
     }
@@ -128,7 +128,7 @@ public class UserTests {
     @Test
     public void singleSignUp() throws Exception {
         // This is to ensure a user can't accidentally sign in rather than login and overwrite all their data
-        String username = "test" + (System.currentTimeMillis() % 10000);
+        String username = "test" + (random.nextInt() % 10000);
         String password = "password";
         ensureSignedUp(username, password, network, crypto);
         CompletableFuture<UserContext> secondSignup = UserContext.signUp(username, password, network, crypto);
@@ -138,7 +138,7 @@ public class UserTests {
 
     @Test
     public void changePassword() throws Exception {
-        String username = "test" + (System.currentTimeMillis() % 10000);
+        String username = "test" + (random.nextInt() % 10000);
         String password = "password";
         UserContext userContext = ensureSignedUp(username, password, network, crypto);
         String newPassword = "newPassword";
@@ -148,7 +148,7 @@ public class UserTests {
 
     @Test
     public void changePasswordFAIL() throws Exception {
-        String username = "test" + (System.currentTimeMillis() % 10000);
+        String username = "test" + (random.nextInt() % 10000);
         String password = "password";
         UserContext userContext = ensureSignedUp(username, password, network, crypto);
         String newPassword = "passwordtest";
@@ -168,8 +168,8 @@ public class UserTests {
 
     @Test
     public void writeReadVariations() throws Exception {
-        String username = "test01";
-        String password = "test01";
+        String username = "test" + (random.nextInt() % 10000);
+        String password = "test";
         UserContext context = ensureSignedUp(username, password, network, crypto);
         FileTreeNode userRoot = context.getUserRoot().get();
 
@@ -215,7 +215,7 @@ public class UserTests {
 
     @Test
     public void concurrentWrites() throws Exception {
-        String username = "test01";
+        String username = "test" + (random.nextInt() % 10000);
         String password = "test01";
         UserContext context = ensureSignedUp(username, password, network, crypto);
         FileTreeNode userRoot = context.getUserRoot().get();
@@ -254,7 +254,7 @@ public class UserTests {
 
     @Test
     public void mediumFileWrite() throws Exception {
-        String username = "test01";
+        String username = "test" + (random.nextInt() % 10000);
         String password = "test01";
         UserContext context = ensureSignedUp(username, password, network, crypto);
         FileTreeNode userRoot = context.getUserRoot().get();
@@ -281,7 +281,7 @@ public class UserTests {
 
     @Test
     public void writeTiming() throws Exception {
-        String username = "test01";
+        String username = "test" + (random.nextInt() % 10000);
         String password = "test01";
         UserContext context = ensureSignedUp(username, password, network, crypto);
         FileTreeNode userRoot = context.getUserRoot().get();
@@ -302,7 +302,7 @@ public class UserTests {
 
     @Test
     public void publicLinkToFile() throws Exception {
-        String username = "test01";
+        String username = "test" + (random.nextInt() % 10000);
         String password = "test01";
         UserContext context = ensureSignedUp(username, password, network, crypto);
         FileTreeNode userRoot = context.getUserRoot().get();
@@ -323,7 +323,7 @@ public class UserTests {
 
     @Test
     public void publicLinkToDir() throws Exception {
-        String username = "test01";
+        String username = "test" + (random.nextInt() % 10000);
         String password = "test01";
         UserContext context = ensureSignedUp(username, password, network, crypto);
         FileTreeNode userRoot = context.getUserRoot().get();
@@ -354,7 +354,7 @@ public class UserTests {
     // This one takes a while, so disable most of the time
 //    @Test
     public void hugeFolder() throws Exception {
-        String username = "test01";
+        String username = "test" + (random.nextInt() % 10000);
         String password = "test01";
         UserContext context = ensureSignedUp(username, password, network, crypto);
         FileTreeNode userRoot = context.getUserRoot().get();
@@ -374,7 +374,7 @@ public class UserTests {
 
     @Test
     public void readWriteTest() throws Exception {
-        String username = "test01";
+        String username = "test" + (random.nextInt() % 10000);
         String password = "test01";
         UserContext context = ensureSignedUp(username, password, network, crypto);
         FileTreeNode userRoot = context.getUserRoot().get();
@@ -416,7 +416,7 @@ public class UserTests {
 
     @Test
     public void deleteTest() throws Exception {
-        String username = "test01";
+        String username = "test" + (random.nextInt() % 10000);
         String password = "test01";
         UserContext context = ensureSignedUp(username, password, network, crypto);
         FileTreeNode userRoot = context.getUserRoot().get();
@@ -492,7 +492,7 @@ public class UserTests {
 
     @Test
     public void deleteDirectoryTest() throws Exception {
-        String username = "test01";
+        String username = "test" + (random.nextInt() % 10000);
         String password = "test01";
         UserContext context = ensureSignedUp(username, password, network, crypto);
         FileTreeNode userRoot = context.getUserRoot().get();

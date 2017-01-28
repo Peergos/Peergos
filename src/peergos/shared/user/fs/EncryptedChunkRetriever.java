@@ -4,11 +4,9 @@ import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multihash.*;
-import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
-import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
