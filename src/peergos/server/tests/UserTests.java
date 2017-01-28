@@ -292,7 +292,7 @@ public class UserTests {
 
         //overwrite with 2 chunk file
         byte[] data5 = new byte[10*1024*1024];
-        new Random().nextBytes(data5);
+        random.nextBytes(data5);
         long t1 = System.currentTimeMillis();
         userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data5), 0, data5.length, context, l -> {}, context.fragmenter());
         long t2 = System.currentTimeMillis();
@@ -309,7 +309,7 @@ public class UserTests {
 
         String filename = "mediumfile.bin";
         byte[] data = new byte[128*1024];
-        new Random().nextBytes(data);
+        random.nextBytes(data);
         long t1 = System.currentTimeMillis();
         userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data), 0, data.length, context, l -> {}, context.fragmenter());
         long t2 = System.currentTimeMillis();
@@ -330,7 +330,7 @@ public class UserTests {
 
         String filename = "mediumfile.bin";
         byte[] data = new byte[128*1024];
-        new Random().nextBytes(data);
+        random.nextBytes(data);
         long t1 = System.currentTimeMillis();
         String dirName = "subdir";
         userRoot.mkdir(dirName, context, false).get();
@@ -468,9 +468,7 @@ public class UserTests {
         //check the file is no longer present
         boolean isPresent = userRoot2.getChildren(context2).get()
                 .stream()
-                .filter(e -> e.getFileProperties().name.equals(name))
-                .findFirst()
-                .isPresent();
+                .anyMatch(e -> e.getFileProperties().name.equals(name));
 
         Assert.assertFalse("uploaded file is deleted", isPresent);
 
