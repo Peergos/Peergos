@@ -413,7 +413,6 @@ public class UserTests {
         assertTrue("retrieved same data", dataEquals);
     }
 
-
     @Test
     public void deleteTest() throws Exception {
         String username = "test" + (random.nextInt() % 10000);
