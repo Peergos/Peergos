@@ -16,7 +16,7 @@ public class MultipartTests {
     private final int port;
     private final HttpServer server;
     private final Queue<List<byte[]>> received = new LinkedBlockingQueue<>();
-    private final Random r = new Random(666);
+    private final Random r = new Random(1);
 
     public MultipartTests() throws IOException {
         this.port = 5679;

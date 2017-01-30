@@ -49,7 +49,13 @@ public class MultipartReceiver {
                 if (indexInPattern > 0)
                     prior.write(pattern, 0, indexInPattern);
                 indexInPattern = 0;
-                prior.write(r);
+                // be careful of case where last byte before pattern == first byte of pattern
+                if ((byte) r == pattern[0]) {
+                    indexInPattern = 1;
+                    if (pattern.length == 1)
+                        return prior.toByteArray();
+                } else
+                    prior.write(r);
             }
         }
         return prior.toByteArray();
