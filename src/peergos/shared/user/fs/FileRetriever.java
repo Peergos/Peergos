@@ -5,14 +5,12 @@ import peergos.shared.crypto.symmetric.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
-import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.function.*;
 
 public interface FileRetriever extends Cborable {
 
-    Location getNext();
+    Optional<Location> getNext(SymmetricKey dataKey);
 
     byte[] getNonce();
 
@@ -24,7 +22,7 @@ public interface FileRetriever extends Cborable {
                                                                          SymmetricKey dataKey, Location ourLocation,
                                                                          UserContext context, ProgressConsumer<Long> monitor);
 
-    CompletableFuture<Optional<Location>> getLocationAt(Location startLocation, long offset, UserContext context);
+    CompletableFuture<Optional<Location>> getLocationAt(Location startLocation, long offset, SymmetricKey dataKey, UserContext context);
 
     CompletableFuture<Optional<LocatedChunk>> getChunkInputStream(UserContext context, SymmetricKey dataKey, long startIndex,
                                                long truncateTo, Location ourLocation, ProgressConsumer<Long> monitor);

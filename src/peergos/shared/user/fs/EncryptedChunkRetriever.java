@@ -15,10 +15,10 @@ public class EncryptedChunkRetriever implements FileRetriever {
 
     private final byte[] chunkNonce, chunkAuth;
     private final List<Multihash> fragmentHashes;
-    private final Location nextChunk;
+    private final Optional<CipherText> nextChunk;
     private final peergos.shared.user.fs.Fragmenter fragmenter;
 
-    public EncryptedChunkRetriever(byte[] chunkNonce, byte[] chunkAuth, List<Multihash> fragmentHashes, Location nextChunk, Fragmenter fragmenter) {
+    public EncryptedChunkRetriever(byte[] chunkNonce, byte[] chunkAuth, List<Multihash> fragmentHashes, Optional<CipherText> nextChunk, Fragmenter fragmenter) {
         this.chunkNonce = chunkNonce;
         this.chunkAuth = chunkAuth;
         this.fragmentHashes = fragmentHashes;
@@ -46,30 +46,33 @@ public class EncryptedChunkRetriever implements FileRetriever {
                 return CompletableFuture.completedFuture(Optional.of(new LocatedEncryptedChunk(ourLocation, fullEncryptedChunk, nonce)));
             });
         }
-        return context.getMetadata(getNext()).thenCompose(meta ->
+        Optional<Location> next = getNext(dataKey);
+        if (! next.isPresent())
+            return CompletableFuture.completedFuture(Optional.empty());
+        return context.getMetadata(next.get()).thenCompose(meta ->
              !meta.isPresent() ? CompletableFuture.completedFuture(Optional.empty()) :
                      meta.get().retriever().getEncryptedChunk(bytesRemainingUntilStart - Chunk.MAX_SIZE,
-                             truncateTo - Chunk.MAX_SIZE, meta.get().retriever().getNonce(), dataKey, getNext(), context, monitor)
+                             truncateTo - Chunk.MAX_SIZE, meta.get().retriever().getNonce(), dataKey, next.get(), context, monitor)
             );
     }
 
-    public CompletableFuture<Optional<Location>> getLocationAt(Location startLocation, long offset, UserContext context) {
+    public CompletableFuture<Optional<Location>> getLocationAt(Location startLocation, long offset, SymmetricKey dataKey, UserContext context) {
         if (offset < Chunk.MAX_SIZE)
             return CompletableFuture.completedFuture(Optional.of(startLocation));
-        Location next = getNext();
-        if (next == null)
+        Optional<Location> next = getNext(dataKey);
+        if (! next.isPresent())
             return CompletableFuture.completedFuture(Optional.empty());
         if (offset < 2*Chunk.MAX_SIZE)
-            return CompletableFuture.completedFuture(Optional.of(next)); // chunk at this location hasn't been written yet, only referenced by previous chunk
-        return context.getMetadata(next)
+            return CompletableFuture.completedFuture(next); // chunk at this location hasn't been written yet, only referenced by previous chunk
+        return context.getMetadata(next.get())
                 .thenCompose(meta -> meta.isPresent() ?
-                        meta.get().retriever().getLocationAt(next, offset - Chunk.MAX_SIZE, context) :
+                        meta.get().retriever().getLocationAt(next.get(), offset - Chunk.MAX_SIZE, dataKey, context) :
                         CompletableFuture.completedFuture(Optional.empty())
                 );
     }
 
-    public Location getNext() {
-        return this.nextChunk;
+    public Optional<Location> getNext(SymmetricKey dataKey) {
+        return this.nextChunk.map(c -> c.decrypt(dataKey, raw -> Location.fromByteArray(raw)));
     }
 
     public byte[] getNonce() {
@@ -82,7 +85,7 @@ public class EncryptedChunkRetriever implements FileRetriever {
         return getEncryptedChunk(startIndex, truncateTo, chunkNonce, dataKey, ourLocation, context, monitor).thenCompose(fullEncryptedChunk -> {
 
             if (!fullEncryptedChunk.isPresent()) {
-                return getLocationAt(ourLocation, startIndex, context).thenApply(unwrittenChunkLocation ->
+                return getLocationAt(ourLocation, startIndex, dataKey, context).thenApply(unwrittenChunkLocation ->
                         !unwrittenChunkLocation.isPresent() ? Optional.empty() :
                                 Optional.of(new LocatedChunk(unwrittenChunkLocation.get(),
                                         new Chunk(new byte[Math.min(Chunk.MAX_SIZE, (int) (truncateTo - startIndex))],
@@ -112,7 +115,7 @@ public class EncryptedChunkRetriever implements FileRetriever {
                         .stream()
                         .map(CborObject.CborMerkleLink::new)
                         .collect(Collectors.toList())),
-                nextChunk == null ? new CborObject.CborNull() : nextChunk.toCbor(),
+                ! nextChunk.isPresent() ? new CborObject.CborNull() : nextChunk.get().toCbor(),
                 fragmenter.toCbor()
         ));
     }
@@ -128,7 +131,7 @@ public class EncryptedChunkRetriever implements FileRetriever {
                 .stream()
                 .map(c -> ((CborObject.CborMerkleLink)c).target)
                 .collect(Collectors.toList());
-        Location nextChunk = value.get(3) instanceof CborObject.CborNull ? null : Location.fromCbor(value.get(3));
+        Optional<CipherText> nextChunk = value.get(3) instanceof CborObject.CborNull ? Optional.empty() : Optional.of(CipherText.fromCbor(value.get(3)));
         Fragmenter fragmenter = Fragmenter.fromCbor(value.get(4));
         return new EncryptedChunkRetriever(chunkNonce, chunkAuth, fragmentHashes, nextChunk, fragmenter);
     }

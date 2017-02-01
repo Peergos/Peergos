@@ -415,7 +415,8 @@ public class FileTreeNode {
                     BiFunction<Boolean, Long, CompletableFuture<Boolean>> composer = (id, startIndex) -> {
                         return retriever.getChunkInputStream(context, dataKey, startIndex, filesSize.get(), child.getLocation(), monitor)
                                 .thenCompose(currentLocation -> {
-                                            CompletableFuture<Optional<Location>> locationAt = retriever.getLocationAt(child.getLocation(), startIndex + Chunk.MAX_SIZE, context);
+                                            CompletableFuture<Optional<Location>> locationAt = retriever
+                                                    .getLocationAt(child.getLocation(), startIndex + Chunk.MAX_SIZE, dataKey, context);
                                             return locationAt.thenCompose(location ->
                                                     CompletableFuture.completedFuture(new Pair<>(currentLocation, location)));
                                         }
