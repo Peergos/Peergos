@@ -63,9 +63,9 @@ public class BtreeImpl implements Btree {
     @Override
     public CompletableFuture<Boolean> put(SigningKeyPair writer, byte[] mapKey, Multihash value) {
         PublicSigningKey publicWriterKey = writer.publicSigningKey;
-        CompletableFuture<CommittedWriterData> future = new CompletableFuture<>();
+        CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
 
-        return addToQueue(publicWriterKey, future)
+        return addToQueue(publicWriterKey, lock)
                 .thenCompose(committed -> {
                     WriterData holder = committed.props;
                     MaybeMultihash btreeRootHash = holder.btree.isPresent() ? MaybeMultihash.of(holder.btree.get()) : MaybeMultihash.EMPTY();
@@ -74,7 +74,7 @@ public class BtreeImpl implements Btree {
                             .thenApply(newRoot -> log(newRoot, "BTREE.put (" + ArrayOps.bytesToHex(mapKey)
                                     + ", " + value + ") => CAS(" + btreeRootHash + ", " + newRoot + ")"))
                             .thenCompose(newBtreeRoot -> holder.withBtree(newBtreeRoot)
-                                    .commit(writer, committed.hash, coreNode, dht, future::complete))
+                                    .commit(writer, committed.hash, coreNode, dht, lock::complete))
                             .thenApply(x -> true);
                 });
     }

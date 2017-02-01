@@ -104,7 +104,7 @@ public class UserContext {
                             System.out.println("Creating root directory took " + (System.currentTimeMillis() - t1) + " mS");
                             return ((DirAccess) userRoot.fileAccess).mkdir(SHARED_DIR_NAME, context, userRoot.filePointer.signer(),
                                     userRoot.filePointer.location.getMapKey(), userRoot.filePointer.baseKey, null, true, crypto.random)
-                                    .thenCompose(x -> context.init().thenApply(inited -> context));
+                                    .thenCompose(x -> signIn(username, password, network.clear(), crypto));
                         });
                     });
                 }).exceptionally(Futures::logError);
