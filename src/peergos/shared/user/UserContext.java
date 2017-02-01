@@ -158,16 +158,19 @@ public class UserContext {
     }
 
     private CompletableFuture<Boolean> init() {
-        return userData.thenCompose(wd -> createFileTree(wd.props)
-                .thenCompose(root -> {
-                    this.entrie = root;
-                    return getByPath("/" + username + "/" + "shared")
-                            .thenApply(sharedOpt -> {
-                                if (!sharedOpt.isPresent())
-                                    throw new IllegalStateException("Couldn't find shared folder!");
-                                return true;
-                            });
-                }));
+        CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
+        return addToUserDataQueue(lock)
+                .thenCompose(wd -> createFileTree(wd.props)
+                        .thenCompose(root -> {
+                            this.entrie = root;
+                            return getByPath("/" + username + "/" + "shared")
+                                    .thenApply(sharedOpt -> {
+                                        if (!sharedOpt.isPresent())
+                                            throw new IllegalStateException("Couldn't find shared folder!");
+                                        lock.complete(wd);
+                                        return true;
+                                    });
+                        }));
     }
 
     public CompletableFuture<FileTreeNode> getSharingFolder() {

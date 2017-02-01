@@ -23,9 +23,13 @@ public class RAMStorage implements ContentAddressedStorage {
                     byte[] hash = hash(b);
                     Multihash multihash = new Multihash(Multihash.Type.sha2_256, hash);
                     Cid cid = new Cid(1, Cid.Codec.DagCbor, multihash);
-                    storage.put(cid, b);
+                    put(cid, b);
                     return cid;
                 }).collect(Collectors.toList()));
+    }
+
+    private synchronized void put(Cid cid, byte[] data) {
+        storage.put(cid, data);
     }
 
     @Override
@@ -33,17 +37,17 @@ public class RAMStorage implements ContentAddressedStorage {
         return CompletableFuture.completedFuture(Optional.of(getAndParseObject(object)));
     }
 
-    public CborObject getAndParseObject(Multihash hash) {
+    private synchronized CborObject getAndParseObject(Multihash hash) {
         if (!storage.containsKey(hash))
             throw new IllegalStateException("Hash not present! "+ hash);
         return CborObject.fromByteArray(storage.get(hash));
     }
 
-    public void clear() {
+    public synchronized void clear() {
         storage.clear();
     }
 
-    public int size() {
+    public synchronized int size() {
         return storage.size();
     }
 
