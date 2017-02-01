@@ -4,6 +4,7 @@ import java.io.*;
 import java.util.*;
 
 public class MultipartReceiver {
+    private static final byte[] DOUBLE_NEW_LINE = "\r\n\r\n".getBytes();
 
     public static List<byte[]> extractFiles(InputStream rawIn, String boundary) {
         try {
@@ -12,7 +13,7 @@ public class MultipartReceiver {
             String first = readLine(in, maxLineSize);
             if (!first.substring(2).equals(boundary))
                 throw new IllegalStateException("Incorrect boundary! " + boundary + " != " + first.substring(2));
-            byte[] firstHeaders = readUntil("\r\n\r\n".getBytes(), in);
+            byte[] firstHeaders = readUntil(DOUBLE_NEW_LINE, in);
 
             byte[] boundaryBytes = ("\r\n--" + boundary).getBytes();
             List<byte[]> files = new ArrayList<>();
@@ -20,7 +21,7 @@ public class MultipartReceiver {
             while (true) {
                 byte[] file = readUntil(boundaryBytes, in);
                 files.add(file);
-                byte[] headers = readUntil("\r\n\r\n".getBytes(), in);
+                byte[] headers = readUntil(DOUBLE_NEW_LINE, in);
                 if (headers.length == 0 || Arrays.equals(headers, "--".getBytes()))
                     return files;
             }
