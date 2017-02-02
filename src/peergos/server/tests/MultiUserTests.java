@@ -169,6 +169,7 @@ public class MultiUserTests {
     private String random() {
         return UUID.randomUUID().toString();
     }
+
     public void shareAndUnshareFolder(int userCount) throws Exception {
         Assert.assertTrue(0 < userCount);
 

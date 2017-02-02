@@ -46,16 +46,17 @@ public class BtreeImpl implements Btree {
                 .thenCompose(this::getWriterData);
     }
 
-    private CompletableFuture<CommittedWriterData> addToQueue(PublicSigningKey pubKey, CompletableFuture<CommittedWriterData> replacement) {
+    private CompletableFuture<CommittedWriterData> addToQueue(PublicSigningKey pubKey, CompletableFuture<CommittedWriterData> lock) {
         synchronized (pending) {
             // This is subtle, but we need to ensure that there is only ever 1 thenAble waiting on the future for a given key
             // otherwise when the future completes, then the two or more waiters will both proceed with the existing hash,
-            // and whoever commits first will win
+            // and whoever commits first will win. We also need to retrieve the writer data again from the network after
+            // a previous transaction has completed (another node/user may have updated the mapping)
 
             if (pending.containsKey(pubKey)) {
-                return pending.put(pubKey, replacement);
+                return pending.put(pubKey, lock).thenCompose(x -> getWriterData(pubKey));
             }
-            pending.put(pubKey, replacement);
+            pending.put(pubKey, lock);
             return getWriterData(pubKey);
         }
     }
