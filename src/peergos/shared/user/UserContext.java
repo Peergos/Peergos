@@ -116,7 +116,7 @@ public class UserContext {
         EntryPoint entry = new EntryPoint(entryPoint, "", Collections.emptySet(), Collections.emptySet());
         CommittedWriterData committed = new CommittedWriterData(MaybeMultihash.EMPTY(), WriterData.createEmpty(Optional.empty(), null));
         CompletableFuture<CommittedWriterData> userData = CompletableFuture.completedFuture(committed);
-        UserContext context = new UserContext(null, null, null, network, crypto, userData);
+        UserContext context = new UserContext(null, null, null, network.clear(), crypto, userData);
         return context.addEntryPoint(context.entrie, entry).thenApply(trieNode -> {
             context.entrie = trieNode;
             return context;

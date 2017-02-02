@@ -315,7 +315,7 @@ public class UserTests {
         byte[] data = new byte[128*1024];
         random.nextBytes(data);
         long t1 = System.currentTimeMillis();
-        userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data), 0, data.length, context, l -> {}, context.fragmenter());
+        userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data), 0, data.length, context, l -> {}, context.fragmenter()).get();
         long t2 = System.currentTimeMillis();
         String path = "/" + username + "/" + filename;
         FileTreeNode file = context.getByPath(path).get().get();
@@ -342,7 +342,7 @@ public class UserTests {
         String anotherDirName = "anotherDir";
         subdir.mkdir(anotherDirName, context, false).get();
         FileTreeNode anotherDir = context.getByPath("/" + username + "/" + dirName + "/" + anotherDirName).get().get();
-        anotherDir.uploadFile(filename, new AsyncReader.ArrayBacked(data), 0, data.length, context, l -> {}, context.fragmenter());
+        anotherDir.uploadFile(filename, new AsyncReader.ArrayBacked(data), 0, data.length, context, l -> {}, context.fragmenter()).get();
         long t2 = System.currentTimeMillis();
         String path = "/" + username + "/" + dirName + "/" + anotherDirName;
         FileTreeNode theDir = context.getByPath(path).get().get();
