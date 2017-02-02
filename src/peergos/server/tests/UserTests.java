@@ -212,7 +212,7 @@ public class UserTests {
         // check from the root as well
         checkFileContents(data3, context.getByPath(username + "/" + newname).get().get(), context);
         // check from a fresh log in too
-        UserContext context2 = ensureSignedUp(username, password, network, crypto);
+        UserContext context2 = ensureSignedUp(username, password, network.clear(), crypto);
         Optional<FileTreeNode> renamed = context2.getByPath(username + "/" + newname).get();
         checkFileContents(data3, renamed.get(), context);
     }
@@ -421,7 +421,7 @@ public class UserTests {
     public void deleteTest() throws Exception {
         String username = generateUsername();
         String password = "test01";
-        UserContext context = ensureSignedUp(username, password, network, crypto);
+        UserContext context = ensureSignedUp(username, password, network.clear(), crypto);
         FileTreeNode userRoot = context.getUserRoot().get();
 
         Set<FileTreeNode> children = userRoot.getChildren(context).get();
@@ -464,7 +464,7 @@ public class UserTests {
         fileTreeNode.remove(context, userRoot).get();
 
         //re-create user-context
-        UserContext context2 = ensureSignedUp(username, password, network, crypto);
+        UserContext context2 = ensureSignedUp(username, password, network.clear(), crypto);
         FileTreeNode userRoot2 = context2.getUserRoot().get();
 
 
