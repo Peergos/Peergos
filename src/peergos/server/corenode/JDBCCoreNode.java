@@ -1,9 +1,11 @@
 package peergos.server.corenode;
 
+import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.asymmetric.*;
-import peergos.shared.ipfs.api.*;
 import peergos.shared.crypto.*;
+import peergos.shared.io.ipfs.cid.*;
+import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.merklebtree.*;
 import peergos.shared.util.*;
 
@@ -605,18 +607,14 @@ public class JDBCCoreNode implements CoreNode {
             return getMetadataBlob(writer).thenApply(current -> {
                 byte[] bothHashes = writer.unsignMessage(writingKeySignedHash);
                 // check CAS [current hash, new hash]
-                DataInputStream din = new DataInputStream(new ByteArrayInputStream(bothHashes));
-                try {
-                    MaybeMultihash claimedCurrentHash = MaybeMultihash.deserialize(din);
-                    MaybeMultihash newHash = MaybeMultihash.deserialize(din);
-                    if (!current.equals(claimedCurrentHash))
-                        return false;
-                    System.out.println("Core::setMetadata for " + writer + " from " + current + " to " + newHash);
-                    MetadataBlob blob = new MetadataBlob(writer.serialize(), bothHashes);
-                    return blob.insert();
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
+                HashCasPair cas = HashCasPair.fromCbor(CborObject.fromByteArray(bothHashes));
+                MaybeMultihash claimedCurrentHash = cas.original;
+                Multihash newHash = cas.updated.get();
+                if (!current.equals(claimedCurrentHash))
+                    return false;
+                System.out.println("Core::setMetadata for " + writer + " from " + current + " to " + newHash);
+                MetadataBlob blob = new MetadataBlob(writer.serialize(), bothHashes);
+                return blob.insert();
             });
         } catch (TweetNaCl.InvalidSignatureException e) {
             System.err.println("Invalid signature during setMetadataBlob for sharer: " + writer);
@@ -643,16 +641,8 @@ public class JDBCCoreNode implements CoreNode {
         MetadataBlob users = blob.selectOne();
         if (users == null)
             return CompletableFuture.completedFuture(MaybeMultihash.EMPTY());
-        DataInputStream din = new DataInputStream(new ByteArrayInputStream(users.hash));
-        try {
-            Serialize.deserializeByteArray(din, 4096);
-            byte[] multihash = Serialize.deserializeByteArray(din, 4096);
-            if (multihash.length == 0)
-                return CompletableFuture.completedFuture(MaybeMultihash.EMPTY());
-            return CompletableFuture.completedFuture(MaybeMultihash.of(new Multihash(multihash)));
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+        HashCasPair cas = HashCasPair.fromCbor(CborObject.fromByteArray(users.hash));
+        return CompletableFuture.completedFuture(cas.updated);
     }
 
     public synchronized void close()

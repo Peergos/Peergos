@@ -355,7 +355,6 @@ public class FileTreeNode {
             SymmetricKey fileKey = baseKey.orElseGet(SymmetricKey::random);
             SymmetricKey fileMetaKey = SymmetricKey.random();
             SymmetricKey rootRKey = pointer.filePointer.baseKey;
-            byte[] dirMapKey = pointer.filePointer.getLocation().getMapKey();
             DirAccess dirAccess = (DirAccess) pointer.fileAccess;
             SymmetricKey dirParentKey = dirAccess.getParentKey(rootRKey);
             Location parentLocation = getLocation();
@@ -363,19 +362,16 @@ public class FileTreeNode {
             int thumbnailSrcImageSize = startIndex == 0 && endIndex < Integer.MAX_VALUE ? (int)endIndex : 0;
             generateThumbnail(context, fileData, thumbnailSrcImageSize, filename).thenAccept(thumbData -> {
                 fileData.reset().thenAccept(resetResult -> {
-                FileProperties fileProps = new FileProperties(filename, endIndex, LocalDateTime.now(), false, Optional.of(thumbData));
-                FileUploader chunks = new FileUploader(filename, fileData, startIndex, endIndex, fileKey, fileMetaKey, parentLocation, dirParentKey, monitor, fileProps,
-                                                       EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
-                byte[] mapKey = context.randomBytes(32);
-                Location nextChunkLocation = new Location(getLocation().owner, getLocation().writer, mapKey);
-                chunks.upload(context, parentLocation.owner, getSigner(), nextChunkLocation).thenAccept(fileLocation -> {
-                    FilePointer filePointer = new FilePointer(fileLocation, Optional.empty(), fileKey);
-                    dirAccess.addFileAndCommit(filePointer, rootRKey, pointer.filePointer, getSigner(), context);
-                    context.uploadChunk(dirAccess, new Location(parentLocation.owner, getLocation().writer, dirMapKey), getSigner()
-                                        , Collections.emptyList()).thenAccept(uploadResult -> {
-                        result.complete(uploadResult);
+                    FileProperties fileProps = new FileProperties(filename, endIndex, LocalDateTime.now(), false, Optional.of(thumbData));
+                    FileUploader chunks = new FileUploader(filename, fileData, startIndex, endIndex, fileKey, fileMetaKey, parentLocation, dirParentKey, monitor, fileProps,
+                            EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
+                    byte[] mapKey = context.randomBytes(32);
+                    Location nextChunkLocation = new Location(getLocation().owner, getLocation().writer, mapKey);
+                    chunks.upload(context, parentLocation.owner, getSigner(), nextChunkLocation).thenAccept(fileLocation -> {
+                        FilePointer filePointer = new FilePointer(fileLocation, Optional.empty(), fileKey);
+                        dirAccess.addFileAndCommit(filePointer, rootRKey, pointer.filePointer, getSigner(), context)
+                                .thenAccept(uploadResult -> result.complete(true));
                     });
-                });
                 });
             });
             return result;
@@ -415,7 +411,8 @@ public class FileTreeNode {
                     BiFunction<Boolean, Long, CompletableFuture<Boolean>> composer = (id, startIndex) -> {
                         return retriever.getChunkInputStream(context, dataKey, startIndex, filesSize.get(), child.getLocation(), monitor)
                                 .thenCompose(currentLocation -> {
-                                            CompletableFuture<Optional<Location>> locationAt = retriever.getLocationAt(child.getLocation(), startIndex + Chunk.MAX_SIZE, context);
+                                            CompletableFuture<Optional<Location>> locationAt = retriever
+                                                    .getLocationAt(child.getLocation(), startIndex + Chunk.MAX_SIZE, dataKey, context);
                                             return locationAt.thenCompose(location ->
                                                     CompletableFuture.completedFuture(new Pair<>(currentLocation, location)));
                                         }

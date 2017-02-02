@@ -1,10 +1,11 @@
 package peergos.server.corenode;
 
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
-import peergos.shared.ipfs.api.*;
 import peergos.shared.corenode.CoreNode;
 import peergos.shared.corenode.UserPublicKeyLink;
-import peergos.shared.crypto.*;
+import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.merklebtree.*;
 import peergos.shared.storage.ContentAddressedStorage;
 import peergos.shared.util.*;
@@ -61,27 +62,20 @@ public class PinningCoreNode implements CoreNode {
     public CompletableFuture<Boolean> setMetadataBlob(PublicSigningKey owner, PublicSigningKey signer, byte[] sharingKeySignedBtreeRootHashes) {
         // first pin new root
         byte[] message = signer.unsignMessage(sharingKeySignedBtreeRootHashes);
-        DataInputStream din = new DataInputStream(new ByteArrayInputStream(message));
-        try {
-            byte[] rawOldRoot = Serialize.deserializeByteArray(din, 256);
-            Optional<Multihash> oldRoot = rawOldRoot.length > 0 ? Optional.of(new Multihash(rawOldRoot)) : Optional.empty();
-            Multihash newRoot = new Multihash(Serialize.deserializeByteArray(din, 256));
-            return storage.recursivePin(newRoot).thenCompose(pins -> {
-                if (!pins.contains(newRoot))
-                    return CompletableFuture.completedFuture(false);
-                return target.setMetadataBlob(owner, signer, sharingKeySignedBtreeRootHashes)
-                        .thenCompose(b -> {
-                            if (!b)
-                                return CompletableFuture.completedFuture(false);
-                            // unpin old root
-                            return !oldRoot.isPresent() ?
-                                    CompletableFuture.completedFuture(true) :
-                                    storage.recursiveUnpin(oldRoot.get()).thenApply(unpins -> unpins.contains(oldRoot.get()));
-                        });
-            });
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+        HashCasPair cas = HashCasPair.fromCbor(CborObject.fromByteArray(message));
+        return storage.recursivePin(cas.updated.get()).thenCompose(pins -> {
+            if (!pins.contains(cas.updated.get()))
+                return CompletableFuture.completedFuture(false);
+            return target.setMetadataBlob(owner, signer, sharingKeySignedBtreeRootHashes)
+                    .thenCompose(b -> {
+                        if (!b)
+                            return CompletableFuture.completedFuture(false);
+                        // unpin old root
+                        return !cas.original.isPresent() ?
+                                CompletableFuture.completedFuture(true) :
+                                storage.recursiveUnpin(cas.original.get()).thenApply(unpins -> unpins.contains(cas.original.get()));
+                    });
+        });
     }
 
     @Override
@@ -90,8 +84,8 @@ public class PinningCoreNode implements CoreNode {
         byte[] message = sharer.unsignMessage(sharingKeySignedMapKeyPlusBlob);
         DataInputStream din = new DataInputStream(new ByteArrayInputStream(message));
         try {
-            Multihash oldRoot = new Multihash(Serialize.deserializeByteArray(din, 256));
-            Multihash newRoot = new Multihash(Serialize.deserializeByteArray(din, 256));
+            Multihash oldRoot = Cid.cast(Serialize.deserializeByteArray(din, 256));
+            Multihash newRoot = Cid.cast(Serialize.deserializeByteArray(din, 256));
             return storage.recursivePin(newRoot).thenCompose(pins -> {
                 if (!pins.contains(newRoot))
                     return CompletableFuture.completedFuture(false);

@@ -45,9 +45,13 @@ public class NetworkAccess {
         return coreNode.getChain(username).thenApply(chain -> chain.size() > 0);
     }
 
+    public NetworkAccess clear() {
+        return new NetworkAccess(coreNode, dhtClient, new BtreeImpl(coreNode, dhtClient), usernames, isJavascript);
+    }
+
     public static CompletableFuture<NetworkAccess> build(HttpPoster poster, boolean isJavascript) {
-        CoreNode coreNode = new CachingCoreNode(new HTTPCoreNode(poster), 5_000);
-//        CoreNode coreNode = new HTTPCoreNode(poster);
+//        CoreNode coreNode = new CachingCoreNode(new HTTPCoreNode(poster), 5_000);
+        CoreNode coreNode = new HTTPCoreNode(poster);
         ContentAddressedStorage dht = new ContentAddressedStorage.CachingDHTClient(new ContentAddressedStorage.HTTP(poster), 1000, 50 * 1024);
         Btree btree = new BtreeImpl(coreNode, dht);
         return coreNode.getUsernames("").thenApply(usernames -> new NetworkAccess(coreNode, dht, btree, usernames, isJavascript));

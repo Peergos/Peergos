@@ -1,9 +1,8 @@
 package peergos.server.storage;
 
-import peergos.shared.crypto.*;
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
-import peergos.shared.ipfs.api.Multihash;
-import peergos.shared.merklebtree.MerkleNode;
+import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.ContentAddressedStorage;
 import peergos.shared.util.*;
 
@@ -22,38 +21,21 @@ public class CachingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Multihash> emptyObject(PublicSigningKey writer) {
-        return put(writer, new MerkleNode(new byte[0]));
+    public CompletableFuture<List<Multihash>> put(PublicSigningKey writer, List<byte[]> blocks) {
+        return target.put(writer, blocks);
     }
 
     @Override
-    public CompletableFuture<Multihash> setData(PublicSigningKey writer, Multihash object, byte[] data) {
-        return target.setData(writer, object, data);
-    }
-
-    @Override
-    public CompletableFuture<Multihash> addLink(PublicSigningKey writer, Multihash object, String label, Multihash linkTarget) {
-        return target.addLink(writer, object, label, linkTarget);
-    }
-
-    @Override
-    public CompletableFuture<Optional<MerkleNode>> getObject(Multihash object) {
-        return target.getObject(object);
-    }
-
-    @Override
-    public CompletableFuture<Multihash> put(PublicSigningKey writer, MerkleNode object) {
-        return target.put(writer, object);
-    }
-
-    @Override
-    public CompletableFuture<Optional<byte[]>> getData(Multihash key) {
+    public CompletableFuture<Optional<CborObject>> get(Multihash key) {
         if (cache.containsKey(key))
-            return CompletableFuture.completedFuture(Optional.of(cache.get(key)));
-        return target.getData(key).thenApply(valueOpt -> {
-            if (valueOpt.isPresent() && valueOpt.get().length > 0 && valueOpt.get().length < maxValueSize)
-                cache.put(key, valueOpt.get());
-            return valueOpt;
+            return CompletableFuture.completedFuture(Optional.of(CborObject.fromByteArray(cache.get(key))));
+        return target.get(key).thenApply(cborOpt -> {
+            if (cborOpt.isPresent()) {
+                byte[] value = cborOpt.get().toByteArray();
+                if (value.length > 0 && value.length < maxValueSize)
+                    cache.put(key, value);
+            }
+            return cborOpt;
         });
     }
 

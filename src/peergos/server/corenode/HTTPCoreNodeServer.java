@@ -1,9 +1,9 @@
 package peergos.server.corenode;
 
+import peergos.shared.cbor.*;
 import peergos.shared.corenode.CoreNode;
 import peergos.shared.corenode.CoreNodeUtils;
 import peergos.shared.corenode.UserPublicKeyLink;
-import peergos.shared.crypto.*;
 
 import java.net.*;
 import java.io.*;
@@ -13,7 +13,7 @@ import java.util.zip.*;
 
 import com.sun.net.httpserver.*;
 import peergos.shared.crypto.asymmetric.*;
-import peergos.shared.ipfs.api.*;
+import peergos.shared.io.ipfs.api.*;
 import peergos.shared.merklebtree.MaybeMultihash;
 import peergos.shared.util.Args;
 import peergos.shared.util.Serialize;
@@ -212,11 +212,10 @@ public class HTTPCoreNodeServer
 
         void getMetadataBlob(DataInputStream din, DataOutputStream dout) throws Exception
         {
-            byte[] encodedSharingKey = CoreNodeUtils.deserializeByteArray(din);
-            MaybeMultihash metadataBlob = coreNode.getMetadataBlob(
-                    PublicSigningKey.fromByteArray(encodedSharingKey)).get();
+            PublicSigningKey encodedSharingKey = PublicSigningKey.fromCbor(CborObject.deserialize(new CborDecoder(din)));
+            MaybeMultihash metadataBlob = coreNode.getMetadataBlob(encodedSharingKey).get();
 
-            metadataBlob.serialize(dout);
+            dout.write(metadataBlob.serialize());
         }
 
         public void close() throws IOException{

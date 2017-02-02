@@ -1,11 +1,10 @@
 package peergos.server.storage;
 
-import peergos.shared.crypto.*;
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
-import peergos.shared.ipfs.api.IPFS;
-import peergos.shared.ipfs.api.MultiAddress;
-import peergos.shared.ipfs.api.Multihash;
-import peergos.shared.merklebtree.MerkleNode;
+import peergos.shared.io.ipfs.api.IPFS;
+import peergos.shared.io.ipfs.multiaddr.MultiAddress;
+import peergos.shared.io.ipfs.multihash.Multihash;
 import peergos.shared.storage.ContentAddressedStorage;
 
 import java.io.*;
@@ -15,12 +14,12 @@ import java.util.stream.*;
 
 public class IpfsDHT implements ContentAddressedStorage {
     private final IPFS ipfs;
-    private final Multihash EMPTY;
 
     public IpfsDHT(IPFS ipfs) {
         this.ipfs = ipfs;
         try {
-            EMPTY = ipfs.object._new(Optional.empty()).hash;
+            // test connectivity
+            ipfs.object._new(Optional.empty());
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -31,62 +30,20 @@ public class IpfsDHT implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Multihash> emptyObject(PublicSigningKey writer) {
+    public CompletableFuture<List<Multihash>> put(PublicSigningKey writer, List<byte[]> blocks) {
         try {
-            return CompletableFuture.completedFuture(ipfs.object._new(Optional.empty()).hash);
+            return CompletableFuture.completedFuture(ipfs.block.put(blocks, Optional.of("cbor")))
+                    .thenApply(nodes -> nodes.stream().map(n -> n.hash).collect(Collectors.toList()));
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
     }
 
     @Override
-    public CompletableFuture<Multihash> setData(PublicSigningKey writer, Multihash object, byte[] data) {
+    public CompletableFuture<Optional<CborObject>> get(Multihash hash) {
         try {
-            return CompletableFuture.completedFuture(ipfs.object.patch(EMPTY, "set-data", Optional.of(data), Optional.empty(), Optional.empty()).hash);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    @Override
-    public CompletableFuture<Multihash> addLink(PublicSigningKey writer, Multihash object, String label, Multihash linkTarget) {
-        try {
-            return CompletableFuture.completedFuture(ipfs.object.patch(object, "add-link", Optional.empty(), Optional.of(label), Optional.of(linkTarget)).hash);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    @Override
-    public CompletableFuture<Optional<MerkleNode>> getObject(Multihash hash) {
-        try {
-            peergos.shared.ipfs.api.MerkleNode merkleNode = ipfs.object.get(hash);
-            List<MerkleNode.Link> links = merkleNode.links.stream()
-                    .map(m -> new MerkleNode.Link(m.name.get(), m.hash))
-                    .collect(Collectors.toList());
-            return CompletableFuture.completedFuture(Optional.of(new MerkleNode(merkleNode.data.orElse(new byte[0]), links)));
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    @Override
-    public CompletableFuture<Optional<byte[]>> getData(Multihash key) {
-        try {
-            return CompletableFuture.completedFuture(Optional.of(ipfs.object.data(key)));
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    @Override
-    public CompletableFuture<Multihash> put(PublicSigningKey writer, MerkleNode object) {
-        try {
-            peergos.shared.ipfs.api.MerkleNode data = ipfs.object.patch(EMPTY, "set-data", Optional.of(object.data), Optional.empty(), Optional.empty());
-            Multihash current = data.hash;
-            for (MerkleNode.Link e : object.links)
-                current = ipfs.object.patch(current, "add-link", Optional.empty(), Optional.of(e.label), Optional.of(e.target)).hash;
-            return CompletableFuture.completedFuture(current);
+            byte[] raw = ipfs.block.get(hash);
+            return CompletableFuture.completedFuture(Optional.of(CborObject.fromByteArray(raw)));
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -110,16 +67,5 @@ public class IpfsDHT implements ContentAddressedStorage {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-    }
-
-    public static void main(String[] args) throws Exception {
-        IpfsDHT dht = new IpfsDHT();
-        byte[] val1 = new byte[57];
-        MerkleNode val = new MerkleNode(val1);
-        new Random().nextBytes(val1);
-        Multihash put = dht.put(PublicSigningKey.createNull(), val).get();
-        byte[] val2 = dht.getData(put).get().get();
-        boolean equals = Arrays.equals(val1, val2);
-        System.out.println(equals);
     }
 }

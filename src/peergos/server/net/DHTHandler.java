@@ -1,8 +1,9 @@
 package peergos.server.net;
 
-import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
-import peergos.shared.ipfs.api.*;
+import peergos.shared.io.ipfs.api.*;
+import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.storage.ContentAddressedStorage;
 import com.sun.net.httpserver.*;
 import peergos.shared.util.*;
@@ -55,65 +56,36 @@ public class DHTHandler implements HttpHandler
             Function<String, String> last = key -> params.get(key).get(params.get(key).size() - 1);
 
             switch (path) {
-                case "object/new":{
+                case "block/put": {
                     PublicSigningKey writer = PublicSigningKey.fromString(last.apply("writer"));
-                    dht.emptyObject(writer).thenAccept(newHash -> {
-                        Map res = new HashMap();
-                        res.put("Hash", newHash.toBase58());
-                        // don't cache EMPTY multihash as it will change if the internal IPFS serialization format changes
-                        replyJson(httpExchange, JSONParser.toString(res), Optional.empty());
-                    }).exceptionally(Futures::logError);
-                    break;
-                }
-                case "object/patch/add-link":{
-                    PublicSigningKey writer = PublicSigningKey.fromString(last.apply("writer"));
-                    Multihash hash = Multihash.fromBase58(args.get(0));
-                    String label = args.get(1);
-                    Multihash targetHash = Multihash.fromBase58(args.get(2));
-                    dht.addLink(writer, hash, label, targetHash)
-                            .thenAccept(resultHash -> {
-                                Map res = new HashMap();
-                                res.put("Hash", resultHash.toBase58());
-                                replyJson(httpExchange, JSONParser.toString(res), Optional.empty());
-                            }).exceptionally(Futures::logError);
-                    break;
-                }
-                case "object/patch/set-data": {
-                    PublicSigningKey writer = PublicSigningKey.fromString(last.apply("writer"));
-                    Multihash hash = Multihash.fromBase58(args.get(0));
                     String boundary = httpExchange.getRequestHeaders().get("Content-Type")
                             .stream()
                             .filter(s -> s.contains("boundary="))
                             .map(s -> s.substring(s.indexOf("=") + 1))
                             .findAny()
                             .get();
-                    byte[] data = MultipartReceiver.extractFile(httpExchange.getRequestBody(), boundary);
-                    dht.setData(writer, hash, data).thenAccept(h -> {
-                        Map<String, Object> json = new TreeMap<>();
-                        json.put("Hash", h.toBase58());
-                        replyJson(httpExchange, JSONParser.toString(json), Optional.empty());
+                    List<byte[]> data = MultipartReceiver.extractFiles(httpExchange.getRequestBody(), boundary);
+                    dht.put(writer, data).thenAccept(hashes -> {
+                        List<Object> json = hashes.stream().map(h -> wrapHash(h)).collect(Collectors.toList());
+                        // make stream of JSON objects
+                        String jsonStream = json.stream().map(m -> JSONParser.toString(m)).reduce("", (a, b) -> a + b);
+                        replyJson(httpExchange, jsonStream, Optional.empty());
                     }).exceptionally(Futures::logError);
                     break;
                 }
-                case "object/get":{
-                    Multihash hash = Multihash.fromBase58(args.get(0));
-                    dht.getObject(hash)
+                case "block/get":{
+                    Multihash hash = Cid.decode(args.get(0));
+                    dht.get(hash)
                             .thenAccept(opt -> replyBytes(httpExchange,
-                                    opt.map(m -> m.serialize()).orElse(new byte[0]), Optional.of(hash)))
-                            .exceptionally(Futures::logError);
-                    break;
-                }
-                case "object/data": {
-                    Multihash hash = Multihash.fromBase58(args.get(0));
-                    dht.getData(hash).thenAccept(opt -> replyBytes(httpExchange, opt.orElse(new byte[0]), Optional.of(hash)))
+                                    opt.map(cbor -> cbor.toByteArray()).orElse(new byte[0]), Optional.of(hash)))
                             .exceptionally(Futures::logError);
                     break;
                 }
                 case "pin/add": {
-                    Multihash hash = Multihash.fromBase58(args.get(0));
+                    Multihash hash = Cid.decode(args.get(0));
                     dht.recursivePin(hash).thenAccept(pinned -> {
                         Map<String, Object> json = new TreeMap<>();
-                        json.put("Pins", pinned.stream().map(h -> h.toBase58()).collect(Collectors.toList()));
+                        json.put("Pins", pinned.stream().map(h -> h.toString()).collect(Collectors.toList()));
                         replyJson(httpExchange, JSONParser.toString(json), Optional.empty());
                     }).exceptionally(Futures::logError);
                     break;
@@ -122,10 +94,10 @@ public class DHTHandler implements HttpHandler
                     boolean recursive = params.containsKey("r") && Boolean.parseBoolean(last.apply("r"));
                     if (!recursive)
                         throw new IllegalStateException("Unimplemented: non recursive unpin!");
-                    Multihash hash = Multihash.fromBase58(args.get(0));
+                    Multihash hash = Cid.decode(args.get(0));
                     dht.recursiveUnpin(hash).thenAccept(unpinned -> {
                         Map<String, Object> json = new TreeMap<>();
-                        json.put("Pins", unpinned.stream().map(h -> h.toBase58()).collect(Collectors.toList()));
+                        json.put("Pins", unpinned.stream().map(h -> h.toString()).collect(Collectors.toList()));
                         replyJson(httpExchange, JSONParser.toString(json), Optional.empty());
                     }).exceptionally(Futures::logError);
                     break;
@@ -139,6 +111,12 @@ public class DHTHandler implements HttpHandler
             e.printStackTrace();
             replyError(httpExchange, e);
         }
+    }
+
+    private static Object wrapHash(Multihash h) {
+        Map<String, Object> json = new TreeMap<>();
+        json.put("Hash", h.toString());
+        return json;
     }
 
     private static void replyError(HttpExchange exchange, Throwable t) {
@@ -159,7 +137,7 @@ public class DHTHandler implements HttpHandler
         try {
             if (key.isPresent()) {
                 exchange.getResponseHeaders().set("Cache-Control", "public, max-age=31622400 immutable");
-                exchange.getResponseHeaders().set("ETag", key.get().toBase58());
+                exchange.getResponseHeaders().set("ETag", key.get().toString());
             }
             exchange.sendResponseHeaders(200, 0);
             DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());
@@ -176,7 +154,7 @@ public class DHTHandler implements HttpHandler
         try {
             if (key.isPresent()) {
                 exchange.getResponseHeaders().set("Cache-Control", "public, max-age=31622400 immutable");
-                exchange.getResponseHeaders().set("ETag", key.get().toBase58());
+                exchange.getResponseHeaders().set("ETag", key.get().toString());
             }
             exchange.sendResponseHeaders(200, 0);
             DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());

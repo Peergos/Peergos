@@ -1,4 +1,8 @@
-package peergos.shared.ipfs.api;
+package peergos.shared.io.ipfs.multiaddr;
+
+
+import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.cid.*;
 
 import java.io.*;
 import java.net.*;
@@ -140,7 +144,7 @@ public class Protocol {
             case IPFS:
                 buf = new byte[sizeForAddress];
                 in.read(buf);
-                return new Multihash(buf).toBase58();
+                return Cid.cast(buf).toString();
             case ONION:
                 byte[] host = new byte[10];
                 in.read(host);

@@ -1,8 +1,11 @@
 package peergos.shared.user.fs;
 
 
+import peergos.shared.cbor.*;
 import peergos.shared.user.fs.erasure.Erasure;
 import peergos.shared.util.*;
+
+import java.util.*;
 
 public class ErasureFragmenter implements Fragmenter {
 
@@ -21,6 +24,15 @@ public class ErasureFragmenter implements Fragmenter {
     public byte[] recombine(byte[][] encoded, int truncateLength) {
         // truncateTo should be  input.length
         return Erasure.recombine(encoded, truncateLength, nOriginalFragments, nAllowedFailures);
+    }
+
+    @Override
+    public CborObject toCbor() {
+        Map<String, CborObject> res = new HashMap<>();
+        res.put("t", new CborObject.CborLong(Type.ERASURE_CODING.val));
+        res.put("o", new CborObject.CborLong(nOriginalFragments));
+        res.put("a", new CborObject.CborLong(nAllowedFailures));
+        return CborObject.CborMap.build(res);
     }
 
     public void serialize(DataSink dout) {

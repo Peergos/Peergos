@@ -2,7 +2,7 @@ package peergos.server.tests;
 
 import org.junit.*;
 import peergos.shared.cbor.*;
-import peergos.shared.ipfs.api.*;
+import peergos.shared.io.ipfs.multihash.*;
 
 import java.util.*;
 

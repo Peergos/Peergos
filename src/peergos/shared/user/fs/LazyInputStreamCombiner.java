@@ -26,7 +26,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
         this.dataKey = dataKey;
         this.current = chunk;
         this.index = 0;
-        this.next = stream.getNext();
+        this.next = stream.getNext(dataKey).orElse(null);
         this.totalLength = totalLength;
         this.monitor = monitor;
         this.original = chunk;
@@ -43,7 +43,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
                     return err;
                 }
                 FileRetriever nextRet = meta.get().retriever();
-                this.next = nextRet.getNext();
+                this.next = nextRet.getNext(dataKey).orElse(null);
                 return nextRet.getChunkInputStream(context, dataKey, 0, len, nextLocation, monitor)
                         .thenApply(x -> x.get().chunk.data());
             });

@@ -64,6 +64,10 @@ public class UserTests {
         field.set(null, newValue);
     }
 
+    private String generateUsername() {
+        return "test" + (random.nextInt() % 10000);
+    }
+
     @Test
     public void serializationSizesSmall() {
         SigningKeyPair signer = SigningKeyPair.random(crypto.random, crypto.signer);
@@ -87,7 +91,7 @@ public class UserTests {
 
     @Test
     public void differentLoginTypes() throws Exception {
-        String username = "name";
+        String username = generateUsername();
         String password = "letmein";
         Crypto crypto = Crypto.initJava();
         List<ScryptEd25519Curve25519> params = Arrays.asList(
@@ -107,7 +111,7 @@ public class UserTests {
 
     @Test
     public void javascriptCompatible() throws IOException {
-        String username = "test01";
+        String username = generateUsername();
         String password = "test01";
 
         UserUtil.generateUser(username, password, new ScryptJava(), new Salsa20Poly1305.Java(),
@@ -120,7 +124,7 @@ public class UserTests {
 
     @Test
     public void randomSignup() throws Exception {
-        String username = "test" + (System.currentTimeMillis() % 10000);
+        String username = generateUsername();
         String password = "password";
         ensureSignedUp(username, password, network, crypto);
     }
@@ -128,7 +132,7 @@ public class UserTests {
     @Test
     public void singleSignUp() throws Exception {
         // This is to ensure a user can't accidentally sign in rather than login and overwrite all their data
-        String username = "test" + (System.currentTimeMillis() % 10000);
+        String username = generateUsername();
         String password = "password";
         ensureSignedUp(username, password, network, crypto);
         CompletableFuture<UserContext> secondSignup = UserContext.signUp(username, password, network, crypto);
@@ -138,17 +142,17 @@ public class UserTests {
 
     @Test
     public void changePassword() throws Exception {
-        String username = "test" + (System.currentTimeMillis() % 10000);
+        String username = generateUsername();
         String password = "password";
         UserContext userContext = ensureSignedUp(username, password, network, crypto);
         String newPassword = "newPassword";
-        userContext.changePassword(password, newPassword, UserGenerationAlgorithm.getDefault(), UserGenerationAlgorithm.getDefault());
+        userContext.changePassword(password, newPassword, UserGenerationAlgorithm.getDefault(), UserGenerationAlgorithm.getDefault()).get();
         ensureSignedUp(username, newPassword, network, crypto);
-
     }
+
     @Test
     public void changePasswordFAIL() throws Exception {
-        String username = "test" + (System.currentTimeMillis() % 10000);
+        String username = generateUsername();
         String password = "password";
         UserContext userContext = ensureSignedUp(username, password, network, crypto);
         String newPassword = "passwordtest";
@@ -168,8 +172,8 @@ public class UserTests {
 
     @Test
     public void writeReadVariations() throws Exception {
-        String username = "test01";
-        String password = "test01";
+        String username = generateUsername();
+        String password = "test";
         UserContext context = ensureSignedUp(username, password, network, crypto);
         FileTreeNode userRoot = context.getUserRoot().get();
 
@@ -208,14 +212,53 @@ public class UserTests {
         // check from the root as well
         checkFileContents(data3, context.getByPath(username + "/" + newname).get().get(), context);
         // check from a fresh log in too
-        UserContext context2 = ensureSignedUp(username, password, network, crypto);
+        UserContext context2 = ensureSignedUp(username, password, network.clear(), crypto);
         Optional<FileTreeNode> renamed = context2.getByPath(username + "/" + newname).get();
         checkFileContents(data3, renamed.get(), context);
     }
 
     @Test
+    public void concurrentWrites() throws Exception {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = ensureSignedUp(username, password, network, crypto);
+        FileTreeNode userRoot = context.getUserRoot().get();
+
+        // write empty file
+        int concurrency = 8;
+        int fileSize = 1024;
+        ForkJoinPool pool = new ForkJoinPool(concurrency);
+        Set<CompletableFuture<Boolean>> futs = IntStream.range(0, concurrency)
+                .mapToObj(i -> CompletableFuture.supplyAsync(() -> {
+                    byte[] data = randomData(fileSize);
+                    String filename = i + ".bin";
+                    try {
+                        boolean result = userRoot.uploadFile(filename,
+                                new AsyncReader.ArrayBacked(data),
+                                data.length,
+                                context, l -> {
+                                },
+                                context.fragmenter()
+                        ).get();
+                        checkFileContents(data, context.getByPath("/" + username + "/" + filename).get().get(), context);
+                        System.out.println("Finished a file");
+                        return true;
+                    } catch (Exception e) {
+                        throw new RuntimeException(e.getMessage(), e);
+                    }
+                }, pool)).collect(Collectors.toSet());
+
+        boolean success = Futures.combineAll(futs).get().stream().reduce(true, (a, b) -> a && b);
+
+        Set<FileTreeNode> files = context.getUserRoot().get().getChildren(context).get();
+        Set<String> names = files.stream().filter(f -> ! f.getFileProperties().isHidden).map(f -> f.getName()).collect(Collectors.toSet());
+        Set<String> expectedNames = IntStream.range(0, concurrency).mapToObj(i -> i + ".bin").collect(Collectors.toSet());
+        Assert.assertTrue("All children present and accounted for", names.equals(expectedNames));
+    }
+
+    @Test
     public void mediumFileWrite() throws Exception {
-        String username = "test01";
+        String username = generateUsername();
         String password = "test01";
         UserContext context = ensureSignedUp(username, password, network, crypto);
         FileTreeNode userRoot = context.getUserRoot().get();
@@ -226,7 +269,7 @@ public class UserTests {
 
         //overwrite with 2 chunk file
         byte[] data5 = new byte[10*1024*1024];
-        new Random().nextBytes(data5);
+        random.nextBytes(data5);
         userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data5), 0, data5.length, context, l -> {} , context.fragmenter());
         checkFileContents(data5, userRoot.getDescendentByPath(filename, context).get().get(), context);
         assertTrue("10MiB file size", data5.length == userRoot.getDescendentByPath(filename, context).get().get().getFileProperties().size);
@@ -242,7 +285,7 @@ public class UserTests {
 
     @Test
     public void writeTiming() throws Exception {
-        String username = "test01";
+        String username = generateUsername();
         String password = "test01";
         UserContext context = ensureSignedUp(username, password, network, crypto);
         FileTreeNode userRoot = context.getUserRoot().get();
@@ -253,7 +296,7 @@ public class UserTests {
 
         //overwrite with 2 chunk file
         byte[] data5 = new byte[10*1024*1024];
-        new Random().nextBytes(data5);
+        random.nextBytes(data5);
         long t1 = System.currentTimeMillis();
         userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data5), 0, data5.length, context, l -> {}, context.fragmenter());
         long t2 = System.currentTimeMillis();
@@ -263,16 +306,16 @@ public class UserTests {
 
     @Test
     public void publicLinkToFile() throws Exception {
-        String username = "test01";
+        String username = generateUsername();
         String password = "test01";
         UserContext context = ensureSignedUp(username, password, network, crypto);
         FileTreeNode userRoot = context.getUserRoot().get();
 
         String filename = "mediumfile.bin";
         byte[] data = new byte[128*1024];
-        new Random().nextBytes(data);
+        random.nextBytes(data);
         long t1 = System.currentTimeMillis();
-        userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data), 0, data.length, context, l -> {}, context.fragmenter());
+        userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data), 0, data.length, context, l -> {}, context.fragmenter()).get();
         long t2 = System.currentTimeMillis();
         String path = "/" + username + "/" + filename;
         FileTreeNode file = context.getByPath(path).get().get();
@@ -284,14 +327,14 @@ public class UserTests {
 
     @Test
     public void publicLinkToDir() throws Exception {
-        String username = "test01";
+        String username = generateUsername();
         String password = "test01";
         UserContext context = ensureSignedUp(username, password, network, crypto);
         FileTreeNode userRoot = context.getUserRoot().get();
 
         String filename = "mediumfile.bin";
         byte[] data = new byte[128*1024];
-        new Random().nextBytes(data);
+        random.nextBytes(data);
         long t1 = System.currentTimeMillis();
         String dirName = "subdir";
         userRoot.mkdir(dirName, context, false).get();
@@ -299,7 +342,7 @@ public class UserTests {
         String anotherDirName = "anotherDir";
         subdir.mkdir(anotherDirName, context, false).get();
         FileTreeNode anotherDir = context.getByPath("/" + username + "/" + dirName + "/" + anotherDirName).get().get();
-        anotherDir.uploadFile(filename, new AsyncReader.ArrayBacked(data), 0, data.length, context, l -> {}, context.fragmenter());
+        anotherDir.uploadFile(filename, new AsyncReader.ArrayBacked(data), 0, data.length, context, l -> {}, context.fragmenter()).get();
         long t2 = System.currentTimeMillis();
         String path = "/" + username + "/" + dirName + "/" + anotherDirName;
         FileTreeNode theDir = context.getByPath(path).get().get();
@@ -315,7 +358,7 @@ public class UserTests {
     // This one takes a while, so disable most of the time
 //    @Test
     public void hugeFolder() throws Exception {
-        String username = "test01";
+        String username = generateUsername();
         String password = "test01";
         UserContext context = ensureSignedUp(username, password, network, crypto);
         FileTreeNode userRoot = context.getUserRoot().get();
@@ -335,7 +378,7 @@ public class UserTests {
 
     @Test
     public void readWriteTest() throws Exception {
-        String username = "test01";
+        String username = generateUsername();
         String password = "test01";
         UserContext context = ensureSignedUp(username, password, network, crypto);
         FileTreeNode userRoot = context.getUserRoot().get();
@@ -374,12 +417,11 @@ public class UserTests {
         assertTrue("retrieved same data", dataEquals);
     }
 
-
     @Test
     public void deleteTest() throws Exception {
-        String username = "test01";
+        String username = generateUsername();
         String password = "test01";
-        UserContext context = ensureSignedUp(username, password, network, crypto);
+        UserContext context = ensureSignedUp(username, password, network.clear(), crypto);
         FileTreeNode userRoot = context.getUserRoot().get();
 
         Set<FileTreeNode> children = userRoot.getChildren(context).get();
@@ -422,16 +464,14 @@ public class UserTests {
         fileTreeNode.remove(context, userRoot).get();
 
         //re-create user-context
-        UserContext context2 = ensureSignedUp(username, password, network, crypto);
+        UserContext context2 = ensureSignedUp(username, password, network.clear(), crypto);
         FileTreeNode userRoot2 = context2.getUserRoot().get();
 
 
         //check the file is no longer present
         boolean isPresent = userRoot2.getChildren(context2).get()
                 .stream()
-                .filter(e -> e.getFileProperties().name.equals(name))
-                .findFirst()
-                .isPresent();
+                .anyMatch(e -> e.getFileProperties().name.equals(name));
 
         Assert.assertFalse("uploaded file is deleted", isPresent);
 
@@ -453,7 +493,7 @@ public class UserTests {
 
     @Test
     public void deleteDirectoryTest() throws Exception {
-        String username = "test01";
+        String username = generateUsername();
         String password = "test01";
         UserContext context = ensureSignedUp(username, password, network, crypto);
         FileTreeNode userRoot = context.getUserRoot().get();

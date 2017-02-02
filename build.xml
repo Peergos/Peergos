@@ -118,7 +118,7 @@
 
   <target name="userTest" depends="compile,dist">
     <junit printsummary="yes" fork="true" haltonfailure="yes">
-      <jvmarg value="-Xmx1g"/>
+      <jvmarg value="-Xmx2g"/>
       <classpath>
 	<pathelement location="lib/junit-4.11.jar" />
 	<pathelement location="lib/hamcrest-core-1.3.jar" />
@@ -133,7 +133,7 @@
 
   <target name="multiUserTests" depends="compile,dist">
     <junit printsummary="yes" fork="true" haltonfailure="yes">
-      <jvmarg value="-Xmx1g"/>
+      <jvmarg value="-Xmx2g"/>
       <classpath>
 	<pathelement location="lib/junit-4.11.jar" />
 	<pathelement location="lib/hamcrest-core-1.3.jar" />
@@ -148,7 +148,7 @@
 
   <target name="publicLinkTest" depends="compile,dist">
     <junit printsummary="yes" fork="true" haltonfailure="yes">
-      <jvmarg value="-Xmx1g"/>
+      <jvmarg value="-Xmx2g"/>
       <classpath>
 	<pathelement location="lib/junit-4.11.jar" />
 	<pathelement location="lib/hamcrest-core-1.3.jar" />
@@ -163,7 +163,7 @@
 
   <target name="fuseTest" depends="compile,dist">
     <junit printsummary="yes" fork="true" haltonfailure="yes">
-      <jvmarg value="-Xmx1g"/>
+      <jvmarg value="-Xmx2g"/>
       <classpath>
 	<pathelement location="lib/junit-4.11.jar" />
 	<pathelement location="lib/hamcrest-core-1.3.jar" />

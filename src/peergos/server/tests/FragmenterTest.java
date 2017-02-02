@@ -3,6 +3,7 @@ package peergos.server.tests;
 import org.junit.*;
 import org.junit.runner.*;
 import org.junit.runners.*;
+import peergos.shared.cbor.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
@@ -68,11 +69,9 @@ public class FragmenterTest {
 
     @Test
     public void serializationTest() throws IOException {
-        DataSink sink = new DataSink();
-        fragmenter.serialize(sink);
+        byte[] raw = fragmenter.serialize();
 
-        Fragmenter deserialize = Fragmenter.deserialize(new DataInputStream(
-                new ByteArrayInputStream(sink.toByteArray())));
+        Fragmenter deserialize = Fragmenter.fromCbor(CborObject.fromByteArray(raw));
 
         assertEquals(fragmenter, deserialize);
     }

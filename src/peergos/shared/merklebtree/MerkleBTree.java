@@ -1,8 +1,7 @@
 package peergos.shared.merklebtree;
 
-import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
-import peergos.shared.ipfs.api.*;
+import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.ContentAddressedStorage;
 import peergos.shared.util.*;
 
@@ -34,12 +33,13 @@ public class MerkleBTree
     public static CompletableFuture<MerkleBTree> create(PublicSigningKey writer, MaybeMultihash rootHash, ContentAddressedStorage dht) {
         if (!  rootHash.isPresent()) {
             TreeNode newRoot = new TreeNode(new TreeSet<>());
-            return dht.put(writer, newRoot.toMerkleNode()).thenApply(put -> new MerkleBTree(newRoot, put, dht, MAX_NODE_CHILDREN));
+            return dht.put(writer, newRoot.serialize())
+                    .thenApply(put -> new MerkleBTree(newRoot, put, dht, MAX_NODE_CHILDREN));
         }
-        return dht.getData(rootHash.get()).thenApply(rawOpt -> {
+        return dht.get(rootHash.get()).thenApply(rawOpt -> {
             if (! rawOpt.isPresent())
                 throw new IllegalStateException("Null byte[] returned by DHT for hash: " + rootHash.get());
-            return new MerkleBTree(TreeNode.deserialize(rawOpt.get()), rootHash, dht, MAX_NODE_CHILDREN);
+            return new MerkleBTree(TreeNode.fromCbor(rawOpt.get()), rootHash, dht, MAX_NODE_CHILDREN);
         });
     }
 
@@ -81,7 +81,7 @@ public class MerkleBTree
             root = newRoot;
             return CompletableFuture.completedFuture(newRoot.hash.get());
         }
-        return storage.put(writer, newRoot.toMerkleNode()).thenApply(newRootHash -> {
+        return storage.put(writer, newRoot.serialize()).thenApply(newRootHash -> {
             root = new TreeNode(newRoot.keys, newRootHash);
             return newRootHash;
         });

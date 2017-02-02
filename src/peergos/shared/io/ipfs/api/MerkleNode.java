@@ -1,4 +1,7 @@
-package peergos.shared.ipfs.api;
+package peergos.shared.io.ipfs.api;
+
+import peergos.shared.io.ipfs.cid.*;
+import peergos.shared.io.ipfs.multihash.*;
 
 import java.util.*;
 import java.util.stream.*;
@@ -21,7 +24,7 @@ public class MerkleNode {
 
     public MerkleNode(String hash, Optional<String> name, Optional<Integer> size, Optional<Integer> type, List<MerkleNode> links, Optional<byte[]> data) {
         this.name = name;
-        this.hash = Multihash.fromBase58(hash);
+        this.hash = Cid.decode(hash);
         this.size = size;
         this.type = type;
         this.links = links;

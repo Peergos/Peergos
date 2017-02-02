@@ -1,68 +1,55 @@
 package peergos.server.storage;
 
-import peergos.shared.crypto.*;
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
-import peergos.shared.ipfs.api.*;
-import peergos.shared.merklebtree.MerkleNode;
+import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.storage.ContentAddressedStorage;
 
-import java.io.*;
 import java.security.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.stream.*;
 
 public class RAMStorage implements ContentAddressedStorage {
+    private static final int CID_V1 = 1;
+
     private Map<Multihash, byte[]> storage = new HashMap<>();
 
     private final Set<Multihash> pinnedRoots = new HashSet<>();
 
     @Override
-    public CompletableFuture<Multihash> emptyObject(PublicSigningKey writer) {
-        return put(writer, new MerkleNode(new byte[0]));
+    public CompletableFuture<List<Multihash>> put(PublicSigningKey writer, List<byte[]> blocks) {
+        return CompletableFuture.completedFuture(blocks.stream()
+                .map(b -> {
+                    byte[] hash = hash(b);
+                    Multihash multihash = new Multihash(Multihash.Type.sha2_256, hash);
+                    Cid cid = new Cid(CID_V1, Cid.Codec.DagCbor, multihash);
+                    put(cid, b);
+                    return cid;
+                }).collect(Collectors.toList()));
+    }
+
+    private synchronized void put(Cid cid, byte[] data) {
+        storage.put(cid, data);
     }
 
     @Override
-    public CompletableFuture<Multihash> setData(PublicSigningKey writer, Multihash object, byte[] data) {
-        return put(writer, getAndParseObject(object).setData(data));
-    }
-
-    @Override
-    public CompletableFuture<Multihash> addLink(PublicSigningKey writer, Multihash object, String label, Multihash linkTarget) {
-        return put(writer, getAndParseObject(object).addLink(label, linkTarget));
-    }
-
-    @Override
-    public CompletableFuture<Optional<MerkleNode>> getObject(Multihash object) {
+    public CompletableFuture<Optional<CborObject>> get(Multihash object) {
         return CompletableFuture.completedFuture(Optional.of(getAndParseObject(object)));
     }
 
-    public MerkleNode getAndParseObject(Multihash hash) {
+    private synchronized CborObject getAndParseObject(Multihash hash) {
         if (!storage.containsKey(hash))
             throw new IllegalStateException("Hash not present! "+ hash);
-        return MerkleNode.deserialize(storage.get(hash));
+        return CborObject.fromByteArray(storage.get(hash));
     }
 
-    @Override
-    public CompletableFuture<Multihash> put(PublicSigningKey writer, MerkleNode object) {
-        byte[] value = object.serialize();
-        byte[] hash = hash(value);
-        Multihash multihash = new Multihash(Multihash.Type.sha2_256, hash);
-        storage.put(multihash, value);
-        return CompletableFuture.completedFuture(multihash);
-    }
-
-    @Override
-    public CompletableFuture<Optional<byte[]>> getData(Multihash key) {
-        if (!storage.containsKey(key))
-            return CompletableFuture.completedFuture(Optional.empty());
-        return CompletableFuture.completedFuture(Optional.of(getAndParseObject(key).data));
-    }
-
-    public void clear() {
+    public synchronized void clear() {
         storage.clear();
     }
 
-    public int size() {
+    public synchronized int size() {
         return storage.size();
     }
 

@@ -349,7 +349,7 @@ public class FuseTests {
 
     @Test
     public void readWriteTest() throws IOException {
-        Random  random =  new Random(666); // repeatable with same seed
+        Random  random =  new Random(3); // repeatable with same seed 3 leads to failure with bulk upload at size of 137
         for (int power = 5; power < 20; power++) {
             int length =  (int) Math.pow(2, power);
             length +=  random.nextInt(length);

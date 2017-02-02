@@ -1,4 +1,4 @@
-package peergos.shared.ipfs.api;
+package peergos.shared.io.ipfs.api;
 
 import java.io.*;
 import java.net.*;
@@ -48,13 +48,44 @@ public class Multipart {
         writer.flush();
     }
 
+    /** Recursive call to add a subtree to this post
+     *
+     * @param path
+     * @param dir
+     * @throws IOException
+     */
+    public void addSubtree(String path, File dir) throws IOException {
+        String dirPath = path + (path.length() > 0 ? "/" : "") + dir.getName();
+        addDirectoryPart(dirPath);
+        for (File f: dir.listFiles()) {
+            if (f.isDirectory())
+                addSubtree(dirPath, f);
+            else
+                addFilePart("file", new NamedStreamable.FileWrapper(dirPath + "/", f));
+        }
+    }
+
+    public void addDirectoryPart(String path) {
+        try {
+            writer.append("--" + boundary).append(LINE_FEED);
+            writer.append("Content-Disposition: file; filename=\"" + URLEncoder.encode(path, "UTF-8") + "\"").append(LINE_FEED);
+            writer.append("Content-Type: application/x-directory").append(LINE_FEED);
+            writer.append("Content-Transfer-Encoding: binary").append(LINE_FEED);
+            writer.append(LINE_FEED);
+            writer.append(LINE_FEED);
+            writer.flush();
+        } catch (UnsupportedEncodingException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     public void addFilePart(String fieldName, NamedStreamable uploadFile) throws IOException {
         Optional<String> fileName = uploadFile.getName();
         writer.append("--" + boundary).append(LINE_FEED);
         if (!fileName.isPresent())
             writer.append("Content-Disposition: file; name=\"" + fieldName + "\";").append(LINE_FEED);
         else
-            writer.append("Content-Disposition: file; name=\"" + fieldName + "\"; filename=\"" + fileName.get() + "\"").append(LINE_FEED);
+            writer.append("Content-Disposition: file; filename=\"" + fileName.get() + "\"").append(LINE_FEED);
         writer.append("Content-Type: application/octet-stream").append(LINE_FEED);
         writer.append("Content-Transfer-Encoding: binary").append(LINE_FEED);
         writer.append(LINE_FEED);

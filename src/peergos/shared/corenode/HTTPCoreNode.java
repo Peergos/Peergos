@@ -1,10 +1,10 @@
 
 package peergos.shared.corenode;
 
-import peergos.client.*;
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
-import peergos.shared.ipfs.api.*;
-import peergos.shared.crypto.*;
+import peergos.shared.io.ipfs.api.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.merklebtree.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
@@ -273,27 +273,10 @@ public class HTTPCoreNode implements CoreNode
 
     @Override public CompletableFuture<MaybeMultihash> getMetadataBlob(PublicSigningKey encodedSharingKey)
     {
-        try
-        {
-            ByteArrayOutputStream bout = new ByteArrayOutputStream();
-            DataOutputStream dout = new DataOutputStream(bout);
-
-
-            Serialize.serialize(encodedSharingKey.serialize(), dout);
-            dout.flush();
-
-            return poster.postUnzip("core/getMetadataBlob", bout.toByteArray()).thenApply(res -> {
-                DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
-                try {
-                    byte[] meta = CoreNodeUtils.deserializeByteArray(din);
-                    if (meta.length == 0)
-                        return MaybeMultihash.EMPTY();
-                    return MaybeMultihash.of(new Multihash(meta));
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
-            });
-        } catch (IOException ioe) {
+        try {
+            return poster.postUnzip("core/getMetadataBlob", encodedSharingKey.serialize())
+                    .thenApply(meta -> MaybeMultihash.fromCbor(CborObject.fromByteArray(meta)));
+        } catch (Exception ioe) {
             ioe.printStackTrace();
             return CompletableFuture.completedFuture(MaybeMultihash.EMPTY());
         }

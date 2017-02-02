@@ -1,4 +1,7 @@
-package peergos.shared.ipfs.api;
+package peergos.shared.io.ipfs.multiaddr;
+
+
+import peergos.shared.io.ipfs.multihash.*;
 
 import java.io.*;
 import java.util.*;
@@ -8,7 +11,7 @@ public class MultiAddress
     private final byte[] raw;
 
     public MultiAddress(Multihash hash) {
-        this("/ipfs/" + hash.toBase58());
+        this("/ipfs/" + hash.toString());
     }
 
     public MultiAddress(String address) {

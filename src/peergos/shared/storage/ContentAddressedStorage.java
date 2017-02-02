@@ -1,9 +1,10 @@
 package peergos.shared.storage;
 
-import peergos.shared.crypto.*;
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
-import peergos.shared.ipfs.api.*;
-import peergos.shared.merklebtree.MerkleNode;
+import peergos.shared.io.ipfs.api.*;
+import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
@@ -17,42 +18,13 @@ public interface ContentAddressedStorage {
 
     int MAX_OBJECT_LENGTH  = 1024*256;
 
-    CompletableFuture<Multihash> emptyObject(PublicSigningKey writer);
-
-    CompletableFuture<Multihash> setData(PublicSigningKey writer, Multihash object, byte[] data);
-
-    CompletableFuture<Multihash> addLink(PublicSigningKey writer, Multihash object, String label, Multihash linkTarget);
-
-    CompletableFuture<Optional<byte[]>> getData(Multihash object);
-
-    CompletableFuture<Optional<MerkleNode>> getObject(Multihash object);
-
-    /**
-     *
-     * @param object
-     * @return a hash of the stored object
-     */
-    default CompletableFuture<Multihash> put(PublicSigningKey writer, MerkleNode object) {
-        return emptyObject(writer)
-                .thenCompose(EMPTY -> setData(writer, EMPTY, object.data))
-                .thenCompose(hash -> Futures.reduceAll(
-                        object.links,
-                        hash,
-                        (h, e) -> addLink(writer, h, e.label, e.target),
-                        (a, b) -> {throw new IllegalStateException();}
-        ));
+    default CompletableFuture<Multihash> put(PublicSigningKey writer, byte[] block) {
+        return put(writer, Arrays.asList(block)).thenApply(hashes -> hashes.get(0));
     }
 
-    default CompletableFuture<Multihash> put(PublicSigningKey writer, byte[] data, List<Multihash> links) {
-        return put(writer, new MerkleNode(data,
-                links.stream()
-                        .map(l -> new MerkleNode.Link(l.toBase58(), l))
-                        .collect(Collectors.toList())));
-    }
+    CompletableFuture<List<Multihash>> put(PublicSigningKey writer, List<byte[]> blocks);
 
-    default CompletableFuture<Multihash> put(PublicSigningKey writer, byte[] data) {
-        return put(writer, new MerkleNode(data, Collections.emptyList()));
-    }
+    CompletableFuture<Optional<CborObject>> get(Multihash object);
 
     CompletableFuture<List<Multihash>> recursivePin(Multihash h);
 
@@ -67,16 +39,12 @@ public interface ContentAddressedStorage {
             this.poster = poster;
         }
 
-        private static Multihash getObjectHash(byte[] raw) {
-            Map json = (Map)JSONParser.parse(new String(raw));
+        private static Multihash getObjectHash(Object rawJson) {
+            Map json = (Map)rawJson;
             String hash = (String)json.get("Hash");
             if (hash == null)
                 hash = (String)json.get("Key");
-            return Multihash.fromBase58(hash);
-        }
-
-        private static MerkleNode getObject(byte[] raw) {
-            return MerkleNode.deserialize(raw);
+            return Cid.decode(hash);
         }
 
         private static String encode(String component) {
@@ -88,60 +56,37 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<Multihash> emptyObject(PublicSigningKey writer) {
-            return poster.get(apiPrefix + "object/new?stream-channels=true"+ "&writer=" + encode(writer.toString()))
-                    .thenApply(HTTP::getObjectHash);
+        public CompletableFuture<List<Multihash>> put(PublicSigningKey writer, List<byte[]> blocks) {
+            return poster.postMultipart(apiPrefix + "block/put?format=cbor"
+                    + "&writer=" + encode(writer.toString()), blocks)
+                    .thenApply(bytes -> JSONParser.parseStream(new String(bytes))
+                            .stream()
+                            .map(json -> getObjectHash(json))
+                            .collect(Collectors.toList()));
         }
 
         @Override
-        public CompletableFuture<Multihash> setData(PublicSigningKey writer, Multihash base, byte[] data) {
-            return poster.postMultipart(apiPrefix + "object/patch/set-data?arg=" + base.toBase58()
-                    + "&writer=" + encode(writer.toString()), Arrays.asList(data))
-                    .thenApply(HTTP::getObjectHash);
+        public CompletableFuture<Optional<CborObject>> get(Multihash hash) {
+            return poster.get(apiPrefix + "block/get?stream-channels=true&arg=" + hash.toString())
+                    .thenApply(raw -> Optional.of(CborObject.fromByteArray(raw)));
         }
-
-        @Override
-        public CompletableFuture<Multihash> addLink(PublicSigningKey writer, Multihash base, String label, Multihash linkTarget) {
-            return poster.get(apiPrefix + "object/patch/add-link?arg=" + base.toBase58()
-                    + "&arg=" + label + "&arg=" + linkTarget.toBase58()
-                    + "&writer=" + encode(writer.toString()))
-                    .thenApply(HTTP::getObjectHash);
-        }
-
-        @Override
-        public CompletableFuture<Optional<MerkleNode>> getObject(Multihash hash) {
-            return poster.get(apiPrefix + "object/get?stream-channels=true&arg=" + hash.toBase58())
-                    .thenApply(raw -> Optional.of(getObject(raw)));
-        }
-
-        @Override
-        public CompletableFuture<Optional<byte[]>> getData(Multihash key) {
-            return poster.get(apiPrefix + "object/data?stream-channels=true&arg=" + key.toBase58())
-                    .thenApply(bytes -> Optional.of(bytes));
-        }
-
-//        @Override
-//        public CompletableFuture<Multihash> put(UserPublicKey writer, MerkleNode object) {
-//            // TODO implement using CBOR to save round trips
-//            throw new IllegalStateException("Unimplemented!");
-//        }
 
         @Override
         public CompletableFuture<List<Multihash>> recursivePin(Multihash hash) {
-            return poster.get(apiPrefix + "pin/add?stream-channels=true&arg=" + hash.toBase58())
+            return poster.get(apiPrefix + "pin/add?stream-channels=true&arg=" + hash.toString())
                     .thenApply(this::getPins);
         }
 
         @Override
         public CompletableFuture<List<Multihash>> recursiveUnpin(Multihash hash) {
-            return poster.get(apiPrefix + "pin/rm?stream-channels=true&r=true&arg=" + hash.toBase58())
+            return poster.get(apiPrefix + "pin/rm?stream-channels=true&r=true&arg=" + hash.toString())
                     .thenApply(this::getPins);
         }
 
         private List<Multihash> getPins(byte[] raw) {
             Map res = (Map)JSONParser.parse(new String(raw));
             List<String> pins = (List<String>)res.get("Pins");
-            return pins.stream().map(Multihash::fromBase58).collect(Collectors.toList());
+            return pins.stream().map(Cid::decode).collect(Collectors.toList());
         }
     }
 
@@ -157,28 +102,18 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<Multihash> emptyObject(PublicSigningKey writer) {
-            return target.emptyObject(writer);
+        public CompletableFuture<List<Multihash>> put(PublicSigningKey writer, List<byte[]> blocks) {
+            return target.put(writer, blocks);
         }
 
         @Override
-        public CompletableFuture<Multihash> setData(PublicSigningKey writer, Multihash base, byte[] data) {
-            return target.setData(writer, base, data);
-        }
-
-        @Override
-        public CompletableFuture<Multihash> addLink(PublicSigningKey writer, Multihash base, String label, Multihash linkTarget) {
-            return target.addLink(writer, base, label, linkTarget);
-        }
-
-        @Override
-        public CompletableFuture<Optional<MerkleNode>> getObject(Multihash hash) {
+        public CompletableFuture<Optional<CborObject>> get(Multihash hash) {
             // somehow enabling this ram cache slows down logging by 3-4X...
             /*String cacheKey = hash.toBase58();
             if (cache.containsKey(cacheKey))
                 return CompletableFuture.completedFuture(Optional.of(MerkleNode.deserialize(cache.get(cacheKey))));
                 */
-            return target.getObject(hash).thenApply(object -> {
+            return target.get(hash).thenApply(object -> {
                 /*if (object.isPresent()) {
                     byte[] raw = object.get().serialize();
                     if (raw.length < maxValueSize)
@@ -186,12 +121,6 @@ public interface ContentAddressedStorage {
                 }*/
                 return object;
             });
-        }
-
-        @Override
-        public CompletableFuture<Optional<byte[]>> getData(Multihash hash) {
-            return getObject(hash)
-                    .thenApply(opt -> opt.map(object -> object.data));
         }
 
         @Override

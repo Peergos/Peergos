@@ -1,4 +1,4 @@
-package peergos.shared.ipfs.api;
+package peergos.shared.io.ipfs.api;
 
 import java.util.*;
 

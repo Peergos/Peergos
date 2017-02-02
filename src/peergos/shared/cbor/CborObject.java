@@ -1,7 +1,7 @@
 package peergos.shared.cbor;
 
-import peergos.shared.ipfs.api.*;
-import peergos.shared.util.*;
+import peergos.shared.io.ipfs.cid.*;
+import peergos.shared.io.ipfs.multihash.*;
 
 import java.io.*;
 import java.util.*;
@@ -18,7 +18,7 @@ public interface CborObject {
         return bout.toByteArray();
     }
 
-    int LINK_TAG = 258;
+    int LINK_TAG = 42;
 
     static CborObject fromByteArray(byte[] cbor) {
         return deserialize(new CborDecoder(new ByteArrayInputStream(cbor)));
@@ -71,9 +71,13 @@ public interface CborObject {
                     if (tag == LINK_TAG) {
                         CborObject value = deserialize(decoder);
                         if (value instanceof CborString)
-                            return new CborMerkleLink(Multihash.fromBase58(((CborString) value).value));
-                        if (value instanceof CborByteArray)
-                            return new CborMerkleLink(new Multihash(((CborByteArray) value).value));
+                            return new CborMerkleLink(Cid.decode(((CborString) value).value));
+                        if (value instanceof CborByteArray) {
+                            byte[] bytes = ((CborByteArray) value).value;
+                            if (bytes[0] == 0) // multibase for binary
+                                return new CborMerkleLink(Cid.cast(Arrays.copyOfRange(bytes, 1, bytes.length)));
+                            throw new IllegalStateException("Unknown Multibase decoding Merkle link: " + bytes[0]);
+                        }
                         throw new IllegalStateException("Invalid type for merkle link: " + value);
                     }
                     throw new IllegalStateException("Unknown TAG in CBOR: " + type.getAdditionalInfo());
@@ -143,7 +147,10 @@ public interface CborObject {
         public void serialize(CborEncoder encoder) {
             try {
                 encoder.writeTag(LINK_TAG);
-                encoder.writeByteString(target.toBytes());
+                byte[] cid = target.toBytes();
+                byte[] withMultibaseHeader = new byte[cid.length + 1];
+                System.arraycopy(cid, 0, withMultibaseHeader, 1, cid.length);
+                encoder.writeByteString(withMultibaseHeader);
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
@@ -250,7 +257,23 @@ public interface CborObject {
 
         @Override
         public int compareTo(CborByteArray other) {
-            return ArrayOps.compare(value, other.value);
+            return compare(value, other.value);
+        }
+
+        /** This only matter so that we can have byte[]'s as keys in a sorted map deterministically
+         *
+         * @param a
+         * @param b
+         * @return
+         */
+        public static int compare(byte[] a, byte[] b)
+        {
+            if (a.length != b.length)
+                return a.length - b.length;
+            for (int i=0; i < a.length; i++)
+                if (a[i] != b[i])
+                    return a[i] & 0xff - b[i] & 0xff;
+            return 0;
         }
 
         @Override

@@ -5,7 +5,7 @@ import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.symmetric.SymmetricKey;
-import peergos.shared.ipfs.api.Base58;
+import peergos.shared.io.ipfs.multibase.*;
 import peergos.shared.util.*;
 
 import java.util.*;
