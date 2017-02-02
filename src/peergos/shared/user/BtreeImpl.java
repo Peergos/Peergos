@@ -81,11 +81,11 @@ public class BtreeImpl implements Btree {
 
     @Override
     public CompletableFuture<MaybeMultihash> get(PublicSigningKey writer, byte[] mapKey) {
-        CompletableFuture<CommittedWriterData> future = new CompletableFuture<>();
+        CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
 
-        return addToQueue(writer, future)
+        return addToQueue(writer, lock)
                 .thenCompose(committed -> {
-                    future.complete(committed);
+                    lock.complete(committed);
                     WriterData holder = committed.props;
                     MaybeMultihash btreeRootHash = holder.btree.isPresent() ? MaybeMultihash.of(holder.btree.get()) : MaybeMultihash.EMPTY();
                     return MerkleBTree.create(writer, btreeRootHash, dht)

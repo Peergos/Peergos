@@ -71,7 +71,7 @@ public class MultiUserTests {
                 .mapToObj(e -> {
                     String username = username(e);
                     try {
-                        return UserTests.ensureSignedUp(username, username, network, crypto);
+                        return UserTests.ensureSignedUp(username, username, network.clear(), crypto);
                     } catch (Exception ioe) {
                         throw new IllegalStateException(ioe);
                     }}).collect(Collectors.toList());
@@ -79,7 +79,7 @@ public class MultiUserTests {
 
     @Test
     public void shareAndUnshareFile() throws Exception {
-        UserContext u1 = UserTests.ensureSignedUp("a", "a", network, crypto);
+        UserContext u1 = UserTests.ensureSignedUp("a", "a", network.clear(), crypto);
 
         // send follow requests from each other user to "a"
         List<UserContext> userContexts = getUserContexts(userCount);
@@ -140,7 +140,7 @@ public class MultiUserTests {
                 .skip(1)
                 .collect(Collectors.toList());
 
-        UserContext u1New = UserTests.ensureSignedUp("a", "a", network, crypto);
+        UserContext u1New = UserTests.ensureSignedUp("a", "a", network.clear(), crypto);
 
         // check remaining users can still read it
         for (UserContext userContext : remainingUsers) {
@@ -255,11 +255,11 @@ public class MultiUserTests {
 //        }
 
         //test that u2 cannot access it from scratch
-        UserContext u1New = UserTests.ensureSignedUp(u1nameAndPasword, u1nameAndPasword, network, crypto);
+        UserContext u1New = UserTests.ensureSignedUp(u1nameAndPasword, u1nameAndPasword, network.clear(), crypto);
 
         List<UserContext>  usersNew = new ArrayList<>();
         for (int i = 0; i < userCount; i++)
-            usersNew.add(UserTests.ensureSignedUp(userNames.get(i), userPasswords.get(i), network, crypto));
+            usersNew.add(UserTests.ensureSignedUp(userNames.get(i), userPasswords.get(i), network.clear(), crypto));
 
         for (int i = 0; i < usersNew.size(); i++) {
             UserContext user = usersNew.get(i);
@@ -319,12 +319,12 @@ public class MultiUserTests {
         Optional<FileTreeNode> u2ToU1 = u1.getByPath("/" + u2.username).get();
         assertTrue("Friend root present after accepted follow request", u2ToU1.isPresent());
 
-        Set<String> u1Following = UserTests.ensureSignedUp("q", "q", network, crypto).getSocialState().get()
+        Set<String> u1Following = UserTests.ensureSignedUp("q", "q", network.clear(), crypto).getSocialState().get()
                 .followingRoots.stream().map(f -> f.getName())
                 .collect(Collectors.toSet());
         assertTrue("Following correct", u1Following.contains(u2.username));
 
-        Set<String> u2Following = UserTests.ensureSignedUp("w", "w", network, crypto).getSocialState().get()
+        Set<String> u2Following = UserTests.ensureSignedUp("w", "w", network.clear(), crypto).getSocialState().get()
                 .followingRoots.stream().map(f -> f.getName())
                 .collect(Collectors.toSet());
         assertTrue("Following correct", u2Following.contains(u1.username));
