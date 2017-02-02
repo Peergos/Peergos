@@ -85,8 +85,6 @@ public class MultipartTests {
 
         boolean sameLength = result.size() == input.size();
 
-        if (! sameLength)
-            System.out.println();
         Assert.assertTrue("Same length on other end", sameLength);
 
         List<Integer> differences = IntStream.range(0, input.size())

@@ -260,9 +260,17 @@ public interface CborObject {
             return compare(value, other.value);
         }
 
+        /** This only matter so that we can have byte[]'s as keys in a sorted map deterministically
+         *
+         * @param a
+         * @param b
+         * @return
+         */
         public static int compare(byte[] a, byte[] b)
         {
-            for (int i=0; i < Math.min(a.length, b.length); i++)
+            if (a.length != b.length)
+                return a.length - b.length;
+            for (int i=0; i < a.length; i++)
                 if (a[i] != b[i])
                     return a[i] & 0xff - b[i] & 0xff;
             return 0;

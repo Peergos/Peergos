@@ -12,6 +12,8 @@ import java.util.concurrent.*;
 import java.util.stream.*;
 
 public class RAMStorage implements ContentAddressedStorage {
+    private static final int CID_V1 = 1;
+
     private Map<Multihash, byte[]> storage = new HashMap<>();
 
     private final Set<Multihash> pinnedRoots = new HashSet<>();
@@ -22,7 +24,7 @@ public class RAMStorage implements ContentAddressedStorage {
                 .map(b -> {
                     byte[] hash = hash(b);
                     Multihash multihash = new Multihash(Multihash.Type.sha2_256, hash);
-                    Cid cid = new Cid(1, Cid.Codec.DagCbor, multihash);
+                    Cid cid = new Cid(CID_V1, Cid.Codec.DagCbor, multihash);
                     put(cid, b);
                     return cid;
                 }).collect(Collectors.toList()));

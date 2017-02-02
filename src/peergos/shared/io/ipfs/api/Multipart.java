@@ -23,7 +23,7 @@ public class Multipart {
         httpConn.setDoOutput(true);
         httpConn.setDoInput(true);
         httpConn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
-        httpConn.setRequestProperty("User-Agent", "Java IPFS CLient");
+        httpConn.setRequestProperty("User-Agent", "Java IPFS Client");
         out = httpConn.getOutputStream();
         writer = new PrintWriter(new OutputStreamWriter(out, charset), true);
     }
@@ -48,6 +48,12 @@ public class Multipart {
         writer.flush();
     }
 
+    /** Recursive call to add a subtree to this post
+     *
+     * @param path
+     * @param dir
+     * @throws IOException
+     */
     public void addSubtree(String path, File dir) throws IOException {
         String dirPath = path + (path.length() > 0 ? "/" : "") + dir.getName();
         addDirectoryPart(dirPath);

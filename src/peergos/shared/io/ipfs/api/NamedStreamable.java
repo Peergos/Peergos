@@ -24,11 +24,11 @@ public interface NamedStreamable
 
     class FileWrapper implements NamedStreamable {
         private final File source;
-        private final String pathPrefix;
+        private final String relativePath;
 
-        public FileWrapper(String pathPrefix, File source) {
+        public FileWrapper(String relativePath, File source) {
             this.source = source;
-            this.pathPrefix = pathPrefix;
+            this.relativePath = relativePath;
         }
 
         public FileWrapper(File source) {
@@ -49,7 +49,7 @@ public interface NamedStreamable
 
         public Optional<String> getName() {
             try {
-                return Optional.of(URLEncoder.encode(pathPrefix + source.getName(), "UTF-8"));
+                return Optional.of(URLEncoder.encode(relativePath + source.getName(), "UTF-8"));
             } catch (UnsupportedEncodingException e) {
                 throw new RuntimeException(e);
             }

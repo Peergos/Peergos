@@ -30,11 +30,11 @@ public class MultipartReceiver {
         }
     }
 
-    /** returns the bytes in this stream until pattern is encountered, or the end of the stream is reached
+    /**
      *
-     * @param pattern
+     * @param pattern the pattern of bytes to search until
      * @param in
-     * @return
+     * @return the bytes in this stream until pattern is encountered, or the end of the stream is reached
      * @throws IOException
      */
     private static byte[] readUntil(byte[] pattern, InputStream in) throws IOException {
