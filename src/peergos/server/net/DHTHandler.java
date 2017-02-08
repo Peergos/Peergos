@@ -29,6 +29,8 @@ public class DHTHandler implements HttpHandler
     }
 
     private Map<String, List<String>> parseQuery(String query) {
+        if (query == null)
+            return Collections.emptyMap();
         if (query.startsWith("?"))
             query = query.substring(1);
         String[] parts = query.split("&");
