@@ -1,8 +1,10 @@
-package peergos.shared.io.ipfs.api;
+package peergos.server.storage;
 
+import peergos.shared.io.ipfs.api.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multiaddr.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.util.*;
 
 import java.io.*;
 import java.net.*;
@@ -506,8 +508,13 @@ public class IPFS {
         } catch (ConnectException e) {
             throw new RuntimeException("Couldn't connect to IPFS daemon at "+target+"\n Is IPFS running?");
         } catch (IOException e) {
-            throw new RuntimeException("IOException contacting IPFS daemon.\nTrailer: " + conn.getHeaderFields().get("Trailer"), e);
+            String err = readFully(conn.getErrorStream());
+            throw new RuntimeException("IOException contacting IPFS daemon.\n"+err+"\nTrailer: " + conn.getHeaderFields().get("Trailer"), e);
         }
+    }
+
+    private static String readFully(InputStream in) throws IOException {
+        return new String(Serialize.readFully(in));
     }
 
     private InputStream retrieveStream(String path) throws IOException {

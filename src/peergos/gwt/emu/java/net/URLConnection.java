@@ -15,7 +15,10 @@ public class URLConnection {
 	public OutputStream getOutputStream() throws IOException {
 		return null;
 	}
-    public Map<String,List<String>> getHeaderFields() {
+    public InputStream getErrorStream() throws IOException {
+		return null;
+	}
+	public Map<String,List<String>> getHeaderFields() {
         return Collections.emptyMap();
     }
     public void setDoOutput(boolean dooutput) {
