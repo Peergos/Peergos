@@ -23,14 +23,13 @@ public class FileUploader implements AutoCloseable {
     private final Location parentLocation;
     private final SymmetricKey parentparentKey;
     private final ProgressConsumer<Long> monitor;
-    private final int nOriginalFragments, nAllowedFalures;
-    private final peergos.shared.user.fs.Fragmenter fragmenter;
+    private final Fragmenter fragmenter;
     private final AsyncReader reader; // resettable input stream
 
     @JsConstructor
     public FileUploader(String name, AsyncReader fileData, int offsetHi, int offsetLow, int lengthHi, int lengthLow,
                         SymmetricKey baseKey, SymmetricKey metaKey, Location parentLocation, SymmetricKey parentparentKey,
-                        ProgressConsumer<Long> monitor, FileProperties fileProperties, int nOriginalFragments, int nAllowedFalures) {
+                        ProgressConsumer<Long> monitor, FileProperties fileProperties, Fragmenter fragmenter) {
         long length = lengthLow + ((lengthHi & 0xFFFFFFFFL) << 32);
         if (fileProperties == null)
             this.props = new FileProperties(name, length, LocalDateTime.now(), false, Optional.empty());
@@ -38,8 +37,7 @@ public class FileUploader implements AutoCloseable {
             this.props = fileProperties;
         if (baseKey == null) baseKey = SymmetricKey.random();
 
-        fragmenter = nAllowedFalures == 0 ?
-                new SplitFragmenter() : new peergos.shared.user.fs.ErasureFragmenter(nOriginalFragments, nAllowedFalures);
+        this.fragmenter = fragmenter;
 
         long offset = offsetLow + ((offsetHi & 0xFFFFFFFFL) << 32);
 
@@ -54,14 +52,12 @@ public class FileUploader implements AutoCloseable {
         this.parentLocation = parentLocation;
         this.parentparentKey = parentparentKey;
         this.monitor = monitor;
-        this.nOriginalFragments = nOriginalFragments != -1 ? nOriginalFragments : EncryptedChunk.ERASURE_ORIGINAL;
-        this.nAllowedFalures = nAllowedFalures != -1 ? nAllowedFalures : EncryptedChunk.ERASURE_ALLOWED_FAILURES;
     }
 
     public FileUploader(String name, AsyncReader fileData, long offset, long length, SymmetricKey baseKey, SymmetricKey metaKey, Location parentLocation, SymmetricKey parentparentKey,
-                        ProgressConsumer<Long> monitor, FileProperties fileProperties, int nOriginalFragments, int nAllowedFalures) {
+                        ProgressConsumer<Long> monitor, FileProperties fileProperties, Fragmenter fragmenter) {
         this(name, fileData, (int)(offset >> 32), (int) offset, (int) (length >> 32), (int) length,
-                baseKey, metaKey, parentLocation, parentparentKey, monitor, fileProperties, nOriginalFragments, nAllowedFalures);
+                baseKey, metaKey, parentLocation, parentparentKey, monitor, fileProperties, fragmenter);
     }
 
     public CompletableFuture<Location> uploadChunk(UserContext context, PublicSigningKey owner, SigningKeyPair writer, long chunkIndex,
@@ -81,7 +77,7 @@ public class FileUploader implements AutoCloseable {
             byte[] mapKey = context.randomBytes(32);
             Location nextLocation = new Location(owner, writer.publicSigningKey, mapKey);
             return uploadChunk(writer, props, parentLocation, parentparentKey, baseKey, locatedChunk,
-                    nOriginalFragments, nAllowedFalures, nextLocation, context, monitor).thenApply(c -> nextLocation);
+                    fragmenter, nextLocation, context, monitor).thenApply(c -> nextLocation);
         });
     }
 
@@ -98,13 +94,9 @@ public class FileUploader implements AutoCloseable {
     }
 
     public static CompletableFuture<Boolean> uploadChunk(SigningKeyPair writer, FileProperties props, Location parentLocation, SymmetricKey parentparentKey,
-                                                         SymmetricKey baseKey, LocatedChunk chunk, int nOriginalFragments, int nAllowedFalures, Location nextChunkLocation,
+                                                         SymmetricKey baseKey, LocatedChunk chunk, Fragmenter fragmenter, Location nextChunkLocation,
                                                          UserContext context, ProgressConsumer<Long> monitor) {
         EncryptedChunk encryptedChunk = chunk.chunk.encrypt();
-
-        peergos.shared.user.fs.Fragmenter fragmenter = nAllowedFalures == 0 ?
-                new peergos.shared.user.fs.SplitFragmenter() :
-                new peergos.shared.user.fs.ErasureFragmenter(nOriginalFragments, nAllowedFalures);
 
         List<Fragment> fragments = encryptedChunk.generateFragments(fragmenter);
         System.out.println(StringUtils.format("Uploading chunk with %d fragments\n", fragments.size()));

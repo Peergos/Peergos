@@ -364,7 +364,7 @@ public class FileTreeNode {
                 fileData.reset().thenAccept(resetResult -> {
                     FileProperties fileProps = new FileProperties(filename, endIndex, LocalDateTime.now(), false, Optional.of(thumbData));
                     FileUploader chunks = new FileUploader(filename, fileData, startIndex, endIndex, fileKey, fileMetaKey, parentLocation, dirParentKey, monitor, fileProps,
-                            EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES);
+                            fragmenter);
                     byte[] mapKey = context.randomBytes(32);
                     Location nextChunkLocation = new Location(getLocation().owner, getLocation().writer, mapKey);
                     chunks.upload(context, parentLocation.owner, getSigner(), nextChunkLocation).thenAccept(fileLocation -> {
@@ -451,7 +451,7 @@ public class FileTreeNode {
 
                                         CompletableFuture<Boolean> chunkUploaded = FileUploader.uploadChunk(getSigner(),
                                                 newProps, getLocation(), getParentKey(), baseKey, located,
-                                                EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES,
+                                                fragmenter,
                                                 nextChunkLocation, context, monitor);
 
                                         return chunkUploaded.thenCompose(isUploaded -> {

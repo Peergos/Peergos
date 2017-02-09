@@ -38,10 +38,10 @@ public interface Fragmenter extends Cborable {
         }
 
         private static Map<Integer, Type> MAP = Stream.of(values())
-                .collect(
-                        Collectors.toMap(
+                .collect(Collectors.toMap(
                                 e -> e.val,
                                 e -> e));
+
         public static Type ofVal(int val) {
             Type type = MAP.get(val);
             if (type == null)
@@ -51,7 +51,6 @@ public interface Fragmenter extends Cborable {
     }
 
     static Fragmenter getInstance() {
-        //return new ErasureFragmenter(40, 10);
         return new SplitFragmenter();
     }
 }
