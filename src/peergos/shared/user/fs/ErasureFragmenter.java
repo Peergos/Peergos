@@ -13,7 +13,6 @@ public class ErasureFragmenter implements Fragmenter {
     private final int nAllowedFailures;
 
     public ErasureFragmenter(int nOriginalFragments, int nAllowedFailures) {
-        new Exception().printStackTrace();
         this.nOriginalFragments = nOriginalFragments;
         this.nAllowedFailures = nAllowedFailures;
     }
