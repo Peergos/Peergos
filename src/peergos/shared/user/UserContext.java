@@ -207,6 +207,17 @@ public class UserContext {
     }
 
     @JsMethod
+    public CompletableFuture<UserContext> changePassword(String oldPassword, String newPassword) {
+
+        return getWriterDataCbor(this.network, this.username)
+                .thenCompose(pair -> {
+                    Optional<UserGenerationAlgorithm> algorithmOpt = WriterData.extractUserGenerationAlgorithm(pair.right);
+                    if (! algorithmOpt.isPresent())
+                        throw new IllegalStateException("No login algorithm specified in user data!");
+                    UserGenerationAlgorithm algorithm = algorithmOpt.get();
+                    return changePassword(oldPassword, newPassword, algorithm, algorithm);
+                });
+    }
     public CompletableFuture<UserContext> changePassword(String oldPassword, String newPassword,
                                                          UserGenerationAlgorithm existingAlgorithm,
                                                          UserGenerationAlgorithm newAlgorithm) {
