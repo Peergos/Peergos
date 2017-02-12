@@ -8,7 +8,6 @@ import java.util.concurrent.*;
 public class ResetableFileInputStream implements AsyncReader {
 
     private final RandomAccessFile raf;
-    private long currentIndex = 0;
 
     public ResetableFileInputStream(RandomAccessFile raf) {
         this.raf = raf;
@@ -19,12 +18,12 @@ public class ResetableFileInputStream implements AsyncReader {
     }
 
     @Override
-    public CompletableFuture<Boolean> seek(int high32, int low32) {
+    public CompletableFuture<AsyncReader> seek(int high32, int low32) {
         try {
             raf.seek(low32 + (high32 & 0xFFFFFFFFL) << 32);
-            return CompletableFuture.completedFuture(true);
+            return CompletableFuture.completedFuture(this);
         } catch (IOException e) {
-            CompletableFuture<Boolean> err = new CompletableFuture<>();
+            CompletableFuture<AsyncReader> err = new CompletableFuture<>();
             err.completeExceptionally(e);
             return err;
         }
@@ -43,13 +42,12 @@ public class ResetableFileInputStream implements AsyncReader {
     }
 
     @Override
-    public synchronized CompletableFuture<Boolean> reset() {
+    public synchronized CompletableFuture<AsyncReader> reset() {
         try {
             raf.seek(0);
-            currentIndex = 0;
-            return CompletableFuture.completedFuture(true);
+            return CompletableFuture.completedFuture(this);
         } catch (IOException e) {
-            CompletableFuture<Boolean> err = new CompletableFuture<>();
+            CompletableFuture<AsyncReader> err = new CompletableFuture<>();
             err.completeExceptionally(e);
             return err;
         }

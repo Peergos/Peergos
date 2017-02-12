@@ -13,8 +13,8 @@ public class BrowserFileReader implements AsyncReader {
         this.reader = reader;
     }
 
-    public CompletableFuture<Boolean> seek(int high32, int low32) {
-        return reader.seek(high32, low32);
+    public CompletableFuture<AsyncReader> seek(int high32, int low32) {
+        return reader.seek(high32, low32).thenApply(x -> this);
     }
 
     /**
@@ -32,8 +32,8 @@ public class BrowserFileReader implements AsyncReader {
      *  reset to original starting position
      * @return
      */
-    public CompletableFuture<Boolean> reset() {
-        return reader.reset();
+    public CompletableFuture<AsyncReader> reset() {
+        return reader.reset().thenApply(x -> this);
     }
 
     /**

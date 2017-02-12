@@ -12,90 +12,94 @@ public class LazyInputStreamCombiner implements AsyncReader {
     private final SymmetricKey dataKey;
     private final ProgressConsumer<Long> monitor;
     private final long totalLength;
-    private final byte[] original;
-    private final Location originalNext;
-    private long globalIndex = 0;
-    private byte[] current;
-    private int index;
-    private Location next;
 
-    public LazyInputStreamCombiner(FileRetriever stream, UserContext context, SymmetricKey dataKey, byte[] chunk, long totalLength, ProgressConsumer<Long> monitor) {
+    private final byte[] originalChunk;
+    private final Location originalNextPointer;
+
+    private final byte[] currentChunk;
+    private final Location nextChunkPointer;
+
+    private final long globalIndex;
+    private int index;
+
+    public LazyInputStreamCombiner(long globalIndex,
+                                   byte[] chunk, Location nextChunkPointer,
+                                   byte[] originalChunk, Location originalNextChunkPointer,
+                                   UserContext context, SymmetricKey dataKey,
+                                   long totalLength,
+                                   ProgressConsumer<Long> monitor) {
         if (chunk == null)
             throw new IllegalStateException("Null initial chunk!");
         this.context = context;
         this.dataKey = dataKey;
-        this.current = chunk;
-        this.index = 0;
-        this.next = stream.getNext(dataKey).orElse(null);
-        this.totalLength = totalLength;
         this.monitor = monitor;
-        this.original = chunk;
-        this.originalNext = next;
+        this.totalLength = totalLength;
+        this.originalChunk = originalChunk;
+        this.originalNextPointer = originalNextChunkPointer;
+        this.currentChunk = chunk;
+        this.nextChunkPointer = nextChunkPointer;
+        this.globalIndex = globalIndex;
+        this.index = 0;
     }
 
-    public CompletableFuture<byte[]> getNextStream(int len) {
-        if (this.next != null) {
-            Location nextLocation = this.next;
+    public CompletableFuture<AsyncReader> getNextStream(int len) {
+        if (this.nextChunkPointer != null) {
+            Location nextLocation = this.nextChunkPointer;
             return context.getMetadata(nextLocation).thenCompose(meta -> {
                 if (!meta.isPresent()) {
-                    CompletableFuture<byte[]> err = new CompletableFuture<>();
+                    CompletableFuture<AsyncReader> err = new CompletableFuture<>();
                     err.completeExceptionally(new EOFException());
                     return err;
                 }
                 FileRetriever nextRet = meta.get().retriever();
-                this.next = nextRet.getNext(dataKey).orElse(null);
+                Location newNextChunkPointer = nextRet.getNext(dataKey).orElse(null);
                 return nextRet.getChunkInputStream(context, dataKey, 0, len, nextLocation, monitor)
-                        .thenApply(x -> x.get().chunk.data());
+                        .thenApply(x -> new LazyInputStreamCombiner(globalIndex + Chunk.MAX_SIZE, x.get().chunk.data(), newNextChunkPointer,
+                                originalChunk, originalNextPointer,
+                                context, dataKey, totalLength, monitor));
             });
         }
-        CompletableFuture<byte[]> err = new CompletableFuture<>();
+        CompletableFuture<AsyncReader> err = new CompletableFuture<>();
         err.completeExceptionally(new EOFException());
         return err;
     }
 
-    private CompletableFuture<Boolean> skip(long skip) {
+    private CompletableFuture<AsyncReader> skip(long skip) {
         long available = (long) bytesReady();
 
         if (skip <= available) {
             index += (int) skip;
-            globalIndex += skip;
-            return CompletableFuture.completedFuture(true);
+            return CompletableFuture.completedFuture(this);
         }
 
         long toRead = Math.min(available, skip);
-        globalIndex += toRead;
 
         int remainingToRead = totalLength - globalIndex > Chunk.MAX_SIZE ? Chunk.MAX_SIZE : (int) (totalLength - globalIndex);
         return getNextStream(remainingToRead)
-                .thenCompose(nextChunk -> {
-                    current = nextChunk;
-                    index = 0;
-                    return skip(skip - toRead);
-                });
+                .thenCompose(nextChunkReader -> ((LazyInputStreamCombiner)nextChunkReader).skip(skip - toRead));
     }
 
     @Override
-    public CompletableFuture<Boolean> seek(int hi32, int low32) {
+    public CompletableFuture<AsyncReader> seek(int hi32, int low32) {
         long seek = ((long) (hi32) << 32) | low32;
 
         if (totalLength < seek)
             throw new IllegalStateException("Cannot seek to position "+ seek);
-        globalIndex = 0;
-        return reset()
-                .thenCompose(x -> skip(seek));
+        return reset().thenCompose(x -> ((LazyInputStreamCombiner)x).skip(seek));
     }
 
-    public int bytesReady() {
-        return this.current.length - this.index;
+    private int bytesReady() {
+        return this.currentChunk.length - this.index;
     }
 
     public void close() {}
 
-    public CompletableFuture<Boolean> reset() {
-        index = 0;
-        current = original;
-        next = originalNext;
-        return CompletableFuture.completedFuture(true);
+    public CompletableFuture<AsyncReader> reset() {
+        return CompletableFuture.completedFuture(new LazyInputStreamCombiner(
+                0,
+                originalChunk, originalNextPointer,
+                originalChunk, originalNextPointer,
+                context, dataKey, totalLength, monitor));
     }
 
     /**
@@ -108,20 +112,17 @@ public class LazyInputStreamCombiner implements AsyncReader {
     public CompletableFuture<Integer> readIntoArray(byte[] res, int offset, int length) {
         int available = bytesReady();
         int toRead = Math.min(available, length);
-        System.arraycopy(current, index, res, offset, toRead);
-        globalIndex += toRead;
+        System.arraycopy(currentChunk, index, res, offset, toRead);
         if (available >= length) // we are done
             return CompletableFuture.completedFuture(length);
-        if (globalIndex >= totalLength) {
+        if (globalIndex + toRead >= totalLength) {
             CompletableFuture<Integer> err=  new CompletableFuture<>();
             err.completeExceptionally(new EOFException());
             return err;
         }
         int remainingToRead = totalLength - globalIndex > Chunk.MAX_SIZE ? Chunk.MAX_SIZE : (int) (totalLength - globalIndex);
-        return getNextStream(remainingToRead).thenCompose(nextChunk -> {
-            current = nextChunk;
-            index = 0;
-            return readIntoArray(res, offset + toRead, length - toRead).thenApply(bytesRead -> bytesRead + toRead);
+        return getNextStream(remainingToRead).thenCompose(nextChunkReader -> {
+            return nextChunkReader.readIntoArray(res, offset + toRead, length - toRead).thenApply(bytesRead -> bytesRead + toRead);
         });
     }
 }
