@@ -6,6 +6,11 @@ import java.util.*;
 
 public class SplitFragmenter implements Fragmenter {
 
+    @Override
+    public double storageIncreaseFactor() {
+        return 1.0;
+    }
+
     public byte[][] split(byte[] input) {
 
         int remainder  = input.length % Fragment.MAX_LENGTH;

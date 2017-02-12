@@ -8,6 +8,12 @@ import java.util.stream.Stream;
 
 public interface Fragmenter extends Cborable {
 
+    /** The amount of extra space required by this fragmenter compared to the original file
+     *
+     * @return
+     */
+    double storageIncreaseFactor();
+
     byte[][] split(byte[] input);
 
     byte[] recombine(byte[][] encoded, int inputLength);

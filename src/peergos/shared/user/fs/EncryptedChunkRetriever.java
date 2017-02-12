@@ -36,7 +36,7 @@ public class EncryptedChunkRetriever implements FileRetriever {
                                                                                 byte[] nonce, SymmetricKey dataKey,
                                                                                 Location ourLocation, UserContext context, ProgressConsumer<Long> monitor) {
         if (bytesRemainingUntilStart < Chunk.MAX_SIZE) {
-            return context.downloadFragments(fragmentHashes, monitor).thenCompose(fragments -> {
+            return context.downloadFragments(fragmentHashes, monitor, fragmenter.storageIncreaseFactor()).thenCompose(fragments -> {
                 fragments = reorder(fragments, fragmentHashes);
                 byte[][] collect = fragments.stream().map(f -> f.fragment.data).toArray(byte[][]::new);
                 byte[] cipherText = fragmenter.recombine(collect, Chunk.MAX_SIZE);

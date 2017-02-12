@@ -938,12 +938,12 @@ public class UserContext {
         });
     };
 
-    public CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Multihash> hashes, ProgressConsumer<Long> monitor) {
+    public CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Multihash> hashes, ProgressConsumer<Long> monitor, double spaceIncreaseFactor) {
         List<CompletableFuture<Optional<FragmentWithHash>>> futures = hashes.stream()
                 .map(h -> network.dhtClient.get(h)
                         .thenApply(dataOpt -> {
                             Optional<byte[]> bytes = dataOpt.map(cbor -> ((CborObject.CborByteArray) cbor).value);
-                            bytes.ifPresent(arr -> monitor.accept((long)arr.length));
+                            bytes.ifPresent(arr -> monitor.accept((long)(arr.length / spaceIncreaseFactor)));
                             return bytes.map(data -> new FragmentWithHash(new Fragment(data), h));
                         }))
                 .collect(Collectors.toList());

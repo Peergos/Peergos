@@ -5,8 +5,8 @@ import peergos.shared.crypto.symmetric.SymmetricKey;
 import java.util.*;
 
 public class Chunk {
-    public static final int ERASURE_ORIGINAL= 40;
-    public static final int MAX_SIZE = Fragment.MAX_LENGTH * ERASURE_ORIGINAL;
+
+    public static final int MAX_SIZE = 5 * 1024 * 1024;
 
     private final SymmetricKey dataKey;
     private final byte[] data, mapKey;

@@ -5,7 +5,6 @@ import peergos.shared.crypto.symmetric.*;
 import peergos.shared.util.*;
 
 import java.util.*;
-import java.util.stream.*;
 
 public class EncryptedChunk {
 
@@ -45,9 +44,4 @@ public class EncryptedChunk {
     public EncryptedChunk truncateTo(int length) {
         return new EncryptedChunk(auth, Arrays.copyOfRange(cipher, 0, length));
     }
-
-    public static final Set<Integer> ALLOWED_ORIGINAL = Stream.of(5, 10, 20, 40, 80).collect(Collectors.toSet());
-    public static final Set<Integer> ALLOWED_FAILURES = Stream.of(5, 10, 20, 40, 80).collect(Collectors.toSet());
-    public static final int ERASURE_ORIGINAL = 40; // mean 128 KiB fragments, could also use 80, 20, 10, 5
-    public static final int ERASURE_ALLOWED_FAILURES = 10; // generates twice this extra fragments
 }
