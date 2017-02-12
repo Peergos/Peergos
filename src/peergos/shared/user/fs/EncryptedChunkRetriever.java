@@ -31,7 +31,7 @@ public class EncryptedChunkRetriever implements FileRetriever {
         return getChunkInputStream(context, dataKey, 0, fileSize, ourLocation, monitor)
                 .thenApply(chunk -> {
                     Location nextChunkPointer = this.getNext(dataKey).orElse(null);
-                    return new LazyInputStreamCombiner(
+                    return new LazyInputStreamCombiner(0,
                             chunk.get().chunk.data(), nextChunkPointer,
                             chunk.get().chunk.data(), nextChunkPointer,
                             context, dataKey, fileSize, monitor);
