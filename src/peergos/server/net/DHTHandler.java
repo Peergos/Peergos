@@ -1,5 +1,6 @@
 package peergos.server.net;
 
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.io.ipfs.api.*;
 import peergos.shared.io.ipfs.multihash.*;
@@ -79,7 +80,7 @@ public class DHTHandler implements HttpHandler
                     Multihash hash = Cid.decode(args.get(0));
                     dht.get(hash)
                             .thenAccept(opt -> replyBytes(httpExchange,
-                                    opt.map(cbor -> cbor.toByteArray()).orElse(new byte[0]), Optional.of(hash)))
+                                    opt.map(CborObject::toByteArray).orElse(new byte[0]), opt.map(x -> hash)))
                             .exceptionally(Futures::logError);
                     break;
                 }

@@ -68,7 +68,7 @@ public interface ContentAddressedStorage {
         @Override
         public CompletableFuture<Optional<CborObject>> get(Multihash hash) {
             return poster.get(apiPrefix + "block/get?stream-channels=true&arg=" + hash.toString())
-                    .thenApply(raw -> Optional.of(CborObject.fromByteArray(raw)));
+                    .thenApply(raw -> raw.length == 0 ? Optional.empty() : Optional.of(CborObject.fromByteArray(raw)));
         }
 
         @Override
