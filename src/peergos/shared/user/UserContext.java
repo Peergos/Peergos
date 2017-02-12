@@ -786,7 +786,7 @@ public class UserContext {
     }
 
     public CompletableFuture<List<Multihash>> uploadFragments(List<Fragment> fragments, PublicSigningKey owner,
-                                                              ProgressConsumer<Long> progressCounter) {
+                                                              ProgressConsumer<Long> progressCounter, double spaceIncreaseFactor) {
         // upload in groups of 10. This means in a browser we have 6 upload threads with erasure coding on, or 4 without
         int FRAGMENTs_PER_QUERY = 1;
         List<List<Fragment>> grouped = IntStream.range(0, (fragments.size() + FRAGMENTs_PER_QUERY - 1) / FRAGMENTs_PER_QUERY)
@@ -796,7 +796,7 @@ public class UserContext {
                 .map(g -> bulkUploadFragments(g, owner)
                         .thenApply(hash -> {
                             if (progressCounter != null)
-                                progressCounter.accept((long)g.stream().mapToInt(f -> f.data.length).sum());
+                                progressCounter.accept((long)(g.stream().mapToInt(f -> f.data.length).sum() / spaceIncreaseFactor));
                             return hash;
                         }))
                 .collect(Collectors.toList());
