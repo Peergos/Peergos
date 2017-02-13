@@ -27,7 +27,7 @@ public class FragmenterTest {
     public static Collection<Object[]> parameters() {
         return Arrays.asList(new Object[][]{
                 {new SplitFragmenter()},
-                {new ErasureFragmenter(EncryptedChunk.ERASURE_ORIGINAL, EncryptedChunk.ERASURE_ALLOWED_FAILURES)}
+                {new ErasureFragmenter(ErasureFragmenter.ERASURE_ORIGINAL, ErasureFragmenter.ERASURE_ALLOWED_FAILURES)}
         });
     }
 

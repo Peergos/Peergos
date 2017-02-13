@@ -797,7 +797,7 @@ public class UserContext {
     }
 
     public CompletableFuture<List<Multihash>> uploadFragments(List<Fragment> fragments, PublicSigningKey owner,
-                                                              ProgressConsumer<Long> progressCounter) {
+                                                              ProgressConsumer<Long> progressCounter, double spaceIncreaseFactor) {
         // upload in groups of 10. This means in a browser we have 6 upload threads with erasure coding on, or 4 without
         int FRAGMENTs_PER_QUERY = 1;
         List<List<Fragment>> grouped = IntStream.range(0, (fragments.size() + FRAGMENTs_PER_QUERY - 1) / FRAGMENTs_PER_QUERY)
@@ -807,7 +807,7 @@ public class UserContext {
                 .map(g -> bulkUploadFragments(g, owner)
                         .thenApply(hash -> {
                             if (progressCounter != null)
-                                progressCounter.accept((long)g.stream().mapToInt(f -> f.data.length).sum());
+                                progressCounter.accept((long)(g.stream().mapToInt(f -> f.data.length).sum() / spaceIncreaseFactor));
                             return hash;
                         }))
                 .collect(Collectors.toList());
@@ -949,12 +949,12 @@ public class UserContext {
         });
     };
 
-    public CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Multihash> hashes, ProgressConsumer<Long> monitor) {
+    public CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Multihash> hashes, ProgressConsumer<Long> monitor, double spaceIncreaseFactor) {
         List<CompletableFuture<Optional<FragmentWithHash>>> futures = hashes.stream()
                 .map(h -> network.dhtClient.get(h)
                         .thenApply(dataOpt -> {
                             Optional<byte[]> bytes = dataOpt.map(cbor -> ((CborObject.CborByteArray) cbor).value);
-                            bytes.ifPresent(arr -> monitor.accept((long)arr.length));
+                            bytes.ifPresent(arr -> monitor.accept((long)(arr.length / spaceIncreaseFactor)));
                             return bytes.map(data -> new FragmentWithHash(new Fragment(data), h));
                         }))
                 .collect(Collectors.toList());
