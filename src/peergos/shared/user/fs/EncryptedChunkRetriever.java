@@ -29,7 +29,13 @@ public class EncryptedChunkRetriever implements FileRetriever {
     public CompletableFuture<AsyncReader> getFile(UserContext context, SymmetricKey dataKey, long fileSize,
                                                   Location ourLocation, ProgressConsumer<Long> monitor) {
         return getChunkInputStream(context, dataKey, 0, fileSize, ourLocation, monitor)
-                .thenApply(chunk -> new LazyInputStreamCombiner(this, context, dataKey, chunk.get().chunk.data(), fileSize, monitor));
+                .thenApply(chunk -> {
+                    Location nextChunkPointer = this.getNext(dataKey).orElse(null);
+                    return new LazyInputStreamCombiner(0,
+                            chunk.get().chunk.data(), nextChunkPointer,
+                            chunk.get().chunk.data(), nextChunkPointer,
+                            context, dataKey, fileSize, monitor);
+                });
     }
 
     public CompletableFuture<Optional<LocatedEncryptedChunk>> getEncryptedChunk(long bytesRemainingUntilStart, long truncateTo,

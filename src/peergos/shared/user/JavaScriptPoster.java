@@ -28,6 +28,11 @@ public class JavaScriptPoster implements HttpPoster {
         return http.get(url);
     }
 
+    @JsMethod
+    public static byte[] emptyArray() {
+        return new byte[0];
+    }
+
     // This is an ugly hack to convert Uint8Array to a valid byte[]
     @JsMethod
     public static byte[] convertToBytes(short[] uints) {
