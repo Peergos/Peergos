@@ -68,11 +68,14 @@ public class UserContext {
                     return UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider,
                             crypto.random, crypto.signer, crypto.boxer, algorithm)
                             .thenApply(userWithRoot -> {
-                                WriterData userData = WriterData.fromCbor(pair.right, userWithRoot.getRoot());
-                                        return new UserContext(username, userWithRoot.getUser(), userWithRoot.getBoxingPair(), network, crypto,
-                                                CompletableFuture.completedFuture(new CommittedWriterData(MaybeMultihash.of(pair.left), userData)));
-                                    }
-                            ).thenCompose(ctx -> {
+                                try {
+                                    WriterData userData = WriterData.fromCbor(pair.right, userWithRoot.getRoot());
+                                    return new UserContext(username, userWithRoot.getUser(), userWithRoot.getBoxingPair(), network, crypto,
+                                            CompletableFuture.completedFuture(new CommittedWriterData(MaybeMultihash.of(pair.left), userData)));
+                                } catch (Throwable t) {
+                                    throw new IllegalStateException("Incorrect password");
+                                }
+                            }).thenCompose(ctx -> {
                                 System.out.println("Initializing context..");
                                 return ctx.init()
                                         .thenApply(res -> ctx);
