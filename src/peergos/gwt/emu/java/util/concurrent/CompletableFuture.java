@@ -53,7 +53,11 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
             if (reason != null) {
                 fut.completeExceptionally(reason);
             } else {
-                fut.complete(fn.apply(value));
+                try {
+                    fut.complete(fn.apply(value));
+                } catch(Throwable t) {
+                    fut.completeExceptionally(t);
+                }
             }
         } else {
             applyFutures.add(fut);
@@ -69,7 +73,12 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
             if (reason != null) {
                 fut.completeExceptionally(reason);
             } else {
-                action.accept(value);
+                try {
+                    action.accept(value);
+                    fut.complete(null);
+                } catch(Throwable t) {
+                    fut.completeExceptionally(t);
+                }
             }
         } else {
             consumeFutures.add(fut);
@@ -91,7 +100,16 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
             if (reason != null) {
                 fut.completeExceptionally(reason);
             } else {
-                fn.apply(value).thenAccept(fut::complete);
+                try {
+                    fn.apply(value)
+                            .thenAccept(fut::complete)
+                            .exceptionally(t -> {
+                                fut.completeExceptionally(t);
+                                return null;
+                            });
+                } catch(Throwable t) {
+                    fut.completeExceptionally(t);
+                }
             }
         } else {
             composeFutures.add(fut);
@@ -128,7 +146,11 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
             CompletableFuture future = composeFutures.get(i);
             try {
                 function.apply(value)
-                        .thenAccept(val -> future.complete(val));
+                        .thenAccept(val -> future.complete(val))
+                        .exceptionally(t -> {
+                            future.completeExceptionally((Throwable) t);
+                            return null;
+                        });
             } catch (Throwable t) {
                 future.completeExceptionally(t);
             }
@@ -155,7 +177,6 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
 
     @JsMethod
     public boolean completeExceptionally(Throwable err) {
-        err.printStackTrace();
         this.reason = err;
         this.isDone = true;
         for (int i=0; i < applies.size(); i++) {

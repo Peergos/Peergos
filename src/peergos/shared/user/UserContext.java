@@ -76,8 +76,8 @@ public class UserContext {
                                 System.out.println("Initializing context..");
                                 return ctx.init()
                                         .thenApply(res -> ctx);
-                            }).exceptionally(Futures::logError);
-                });
+                            });
+                }).exceptionally(Futures::logError);
     }
 
     @JsMethod
