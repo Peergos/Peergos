@@ -161,7 +161,7 @@ public class UserTests {
         try {
             UserContext oldContext = ensureSignedUp(username, password, network, crypto);
         } catch (Exception e) {
-            if (! e.getMessage().contains("Invalid encryption!"))
+            if (! e.getMessage().contains("Incorrect password"))
                 throw e;
         }
     }
