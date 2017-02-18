@@ -22,9 +22,7 @@ public class RAMStorage implements ContentAddressedStorage {
     public CompletableFuture<List<Multihash>> put(PublicSigningKey writer, List<byte[]> blocks) {
         return CompletableFuture.completedFuture(blocks.stream()
                 .map(b -> {
-                    byte[] hash = hash(b);
-                    Multihash multihash = new Multihash(Multihash.Type.sha2_256, hash);
-                    Cid cid = new Cid(CID_V1, Cid.Codec.DagCbor, multihash);
+                    Cid cid = hashToCid(b);
                     put(cid, b);
                     return cid;
                 }).collect(Collectors.toList()));
@@ -61,6 +59,12 @@ public class RAMStorage implements ContentAddressedStorage {
     @Override
     public CompletableFuture<List<Multihash>> recursiveUnpin(Multihash h) {
         return CompletableFuture.completedFuture(Arrays.asList(h));
+    }
+
+    public static Cid hashToCid(byte[] input) {
+        byte[] hash = hash(input);
+        Multihash multihash = new Multihash(Multihash.Type.sha2_256, hash);
+        return new Cid(CID_V1, Cid.Codec.DagCbor, multihash);
     }
 
     public static byte[] hash(byte[] input)
