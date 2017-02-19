@@ -13,6 +13,8 @@ There is a single machine demo running at [https://demo.peergos.net](https://dem
 
 The slides of the first talk introducing Peergos are [here](https://speakerdeck.com/ianopolous/introducing-peergos).
 
+WARNING: Peergos is still alpha software, and needs an independent security audit. Don't use it for data you can't afford to lose, yet.
+
 Peergos aims
 ------------
  - To allow individuals to securely and privately store files in a peer to peer network which has no central node and is generally difficult to disrupt or surveil
@@ -33,16 +35,17 @@ Project anti-aims
 Architecture
 ------------
 1.0 Layers of architecture
- - 1: Peer-to-peer and data layer - [IPFS](https://ipfs.io) provides the data storage, routing and retrieval
- - 2: Authorization Layer - IPNS - controls who is able to modify parts of the file system
- - 3: Distributed file system - Uses erasure codes to add fault tolerance. User's clients are responsible for ensuring that enough fragments of their files survive. 
- - 4: Encryption - Strong encryption is done on the user's machine using [TweetNaCl](http://tweetnacl.cr.yp.to/). 
+ - 1: Peer-to-peer and data layer - [IPFS](https://ipfs.io) provides the data storage, routing and retrieval. A User must have at least one peergos instance storing their data for it to be available. 
+ - 2: Authorization Layer - a key pair (IPNS) controls who is able to modify parts of the file system (every write is signed)
+ - 3: Data storage - under a given IPNS key there is a merkle-btree of encrypted chunks under random labels, without any cross links visible to the network (the network can't deduce the size of files)
+ - 4: Encryption - Strong encryption is done on the user's machine using [TweetNaCl](http://tweetnacl.cr.yp.to/), with each 5MiB chunk of a file being encryped independently. 
  - 5: Social layer implementing the concept of following or being friends with another user, without exposing the friend network to anyone.
  - 5: Sharing - Secure cryptographic sharing of files with friends.
 
 2.0 Language
  - The IPFS layer is currently coded in Go
- - The rest is coded to run on JVM to get portability and speed, predominantly Java
+ - The server is coded to run on JVM to get portability and speed, predominantly Java
+ - The web interface is mostly coded in Java and cross compiled to Javascript, with the exception of the tweetnacl, scrypt and sha25 libraries, and a small amount of GUI code in JS for Vue.js. 
 
 3.0 Nodes
  - The Core nodes are highly reliable nodes. They store the username <--> public key mapping and the encrypted pending follow requests. Eventually we hope to put this small amount of data in a blockchain for full decentralization.
@@ -52,14 +55,13 @@ Architecture
  - New versions of the software will be delivered through Peergos itself. (Able to be turned off by the user if desired)
  - A user who trusts a public Peergos server (and the SSL Certificate authority chain) can use the web interface over TLS
  - A less trusting user can run a Peergos server on their own machine and use the web interface over localhost
- - A paranoid user can run a Peergos server on their own machine and use the native GUI, and optionally a U2F device
+ - A more paranoid user can run a Peergos server on their own machine and use the native GUI, or the fuse binding and optionally a U2F device
 
 4.0 Logging in
- - A user's username is salted with the hash of their password and then run through scrypt (with parameters 17, 8, 1, 96) to generate a symmetric key, an encrypting keypair and a signing keypair. This means that a user can log in from any machine without transfering any keys, and also that their keys are protected from a brute force attack (see slides above for cost estimate).
+ - A user's username is salted with the hash of their password and then run through scrypt (with parameters 17, 8, 1, 96, though users can choose harder parameters if desired) to generate a symmetric key, an encrypting keypair and a signing keypair. This means that a user can log in from any machine without transfering any keys, and also that their keys are protected from a brute force attack (see slides above for cost estimate).
 
 5.0 Encryption
- - private keys never leave client node
- - encrypted files are duplicated locally, using erasure codes, into multiple fragments to distribute to the network
+ - private keys never leave client node, a random key is generated for every file (explicitly not convergent encryption, which leaks information)
 
 6.0 Incentives
  - Users will be able to earn storage space by donating storage space (through [FileCoin](http://filecoin.io/))
@@ -75,13 +77,10 @@ Architecture
 
 9.0 Sharing of a file (with another user, or publicly)
  - Once user A is being followed by user B, then A can share files with user B (B can revoke their following at any time)
- - based on [cryptree](https://raw.githubusercontent.com/ianopolous/Peergos/master/papers/wuala-cryptree.pdf) system used by Wuala
+ - File access control is based on [cryptree](https://raw.githubusercontent.com/ianopolous/Peergos/master/papers/wuala-cryptree.pdf) system used by Wuala
  - sharing of a text file with another user could constitute a secure email
- - a public link can be generated to a file or a folder which can be shared with anyone through any medium
+ - a public link can be generated to a file or a folder which can be shared with anyone through any medium. A public link is of the form https://demo.peergos.net/#KEY_MATERIAL which has the property that even a public link doesn't leak the file contents to the network, as the key material after the # is not sent to the server, but interpreted locally in the browser.
 
 Usage
 -----
-First install and run the [IPFS daemon](https://ipfs.io/docs/install/)
-
-The run with the following to find out available options:
-java -jar PeergosServer.jar -help
+Instructions for self hosting will be written once it is supported. 
