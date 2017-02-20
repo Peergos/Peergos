@@ -2,6 +2,7 @@ package peergos.shared;
 
 import jsinterop.annotations.*;
 import peergos.client.*;
+import peergos.server.storage.*;
 import peergos.shared.corenode.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
@@ -52,7 +53,7 @@ public class NetworkAccess {
     public static CompletableFuture<NetworkAccess> build(HttpPoster poster, boolean isJavascript) {
 //        CoreNode coreNode = new CachingCoreNode(new HTTPCoreNode(poster), 5_000);
         CoreNode coreNode = new HTTPCoreNode(poster);
-        ContentAddressedStorage dht = new ContentAddressedStorage.CachingDHTClient(new ContentAddressedStorage.HTTP(poster), 1000, 50 * 1024);
+        ContentAddressedStorage dht = new CachingStorage(new ContentAddressedStorage.HTTP(poster), 1000, 50 * 1024);
         Btree btree = new BtreeImpl(coreNode, dht);
         return coreNode.getUsernames("").thenApply(usernames -> new NetworkAccess(coreNode, dht, btree, usernames, isJavascript));
     }

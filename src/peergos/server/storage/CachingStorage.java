@@ -48,4 +48,14 @@ public class CachingStorage implements ContentAddressedStorage {
     public CompletableFuture<List<Multihash>> recursiveUnpin(Multihash h) {
         return target.recursiveUnpin(h);
     }
+
+    @Override
+    public CompletableFuture<List<Multihash>> getLinks(Multihash root) {
+        return target.getLinks(root);
+    }
+
+    @Override
+    public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
+        return target.getSize(block);
+    }
 }

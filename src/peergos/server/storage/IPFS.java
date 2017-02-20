@@ -112,8 +112,12 @@ public class IPFS {
         return retrieveStream("cat/" + hash);
     }
 
-    public Map refs(Multihash hash, boolean recursive) throws IOException {
-        return retrieveMap("refs?arg=" + hash +"&r="+recursive);
+    public List<Multihash> refs(Multihash hash, boolean recursive) throws IOException {
+        String jsonStream = new String(retrieve("refs?arg=" + hash + "&r=" + recursive));
+        return JSONParser.parseStream(jsonStream).stream()
+                .map(m -> (String) (((Map) m).get("Ref")))
+                .map(Cid::decode)
+                .collect(Collectors.toList());
     }
 
     public Map resolve(String scheme, Multihash hash, boolean recursive) throws IOException {
