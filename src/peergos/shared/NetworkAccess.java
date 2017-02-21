@@ -2,7 +2,6 @@ package peergos.shared;
 
 import jsinterop.annotations.*;
 import peergos.client.*;
-import peergos.server.storage.*;
 import peergos.shared.corenode.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;

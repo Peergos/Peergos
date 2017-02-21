@@ -1,9 +1,8 @@
-package peergos.server.storage;
+package peergos.shared.storage;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.io.ipfs.multihash.*;
-import peergos.shared.storage.ContentAddressedStorage;
 import peergos.shared.util.*;
 
 import java.util.*;

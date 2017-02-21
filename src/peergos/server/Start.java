@@ -4,7 +4,7 @@ import peergos.shared.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
-import peergos.shared.storage.ContentAddressedStorage;
+import peergos.shared.storage.*;
 import peergos.server.corenode.HTTPCoreNodeServer;
 import peergos.server.corenode.PinningCoreNode;
 import peergos.server.corenode.SQLiteCoreNode;
