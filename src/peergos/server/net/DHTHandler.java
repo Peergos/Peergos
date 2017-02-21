@@ -105,6 +105,26 @@ public class DHTHandler implements HttpHandler
                     }).exceptionally(Futures::logError);
                     break;
                 }
+                case "block/stat": {
+                    Multihash block = Cid.decode(args.get(0));
+                    dht.getSize(block).thenAccept(sizeOpt -> {
+                        Map<String, Object> res = new HashMap<>();
+                        res.put("Size", sizeOpt.orElse(0));
+                        String json = JSONParser.toString(res);
+                        replyJson(httpExchange, json, Optional.of(block));
+                    }).exceptionally(Futures::logError);
+                    break;
+                }
+                case "refs": {
+                    Multihash block = Cid.decode(args.get(0));
+                    dht.getLinks(block).thenAccept(links -> {
+                        List<Object> json = links.stream().map(h -> wrapHash(h)).collect(Collectors.toList());
+                        // make stream of JSON objects
+                        String jsonStream = json.stream().map(m -> JSONParser.toString(m)).reduce("", (a, b) -> a + b);
+                        replyJson(httpExchange, jsonStream, Optional.of(block));
+                    }).exceptionally(Futures::logError);
+                    break;
+                }
                 default: {
                     httpExchange.sendResponseHeaders(404, 0);
                 }
