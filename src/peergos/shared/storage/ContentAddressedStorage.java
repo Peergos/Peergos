@@ -94,7 +94,7 @@ public interface ContentAddressedStorage {
 
         @Override
         public CompletableFuture<List<Multihash>> getLinks(Multihash block) {
-            return poster.get(apiPrefix + "refs&arg=" + block.toString())
+            return poster.get(apiPrefix + "refs?arg=" + block.toString())
                     .thenApply(raw -> JSONParser.parseStream(new String(raw))
                             .stream()
                             .map(obj -> (String) (((Map) obj).get("Ref")))
@@ -105,7 +105,7 @@ public interface ContentAddressedStorage {
         @Override
         public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
             return poster.get(apiPrefix + "block/stat?stream-channels=true&arg=" + block.toString())
-                    .thenApply(raw -> Optional.of(Integer.parseInt(new String(raw))));
+                    .thenApply(raw -> Optional.of((Integer)((Map)JSONParser.parse(new String(raw))).get("Size")));
         }
     }
 }

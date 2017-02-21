@@ -209,6 +209,29 @@ public class UserContext {
         });
     }
 
+    public CompletableFuture<Long> getTotalSpaceUsed(PublicSigningKey owner) {
+        // assume no cycles in owned keys
+        return getWriterData(network, owner).thenCompose(cwd -> {
+            CompletableFuture<Long> subtree = Futures.reduceAll(cwd.props.ownedKeys
+                            .stream()
+                            .map(writer -> getTotalSpaceUsed(writer))
+                            .collect(Collectors.toList()),
+                    0L, (t, fut) -> fut.thenApply(x -> x + t), (a, b) -> a + b);
+            return subtree.thenCompose(ownedSize -> getRecursiveBlockSize(cwd.hash.get())
+                    .thenApply(descendentSize -> descendentSize + ownedSize));
+        });
+    }
+
+    private CompletableFuture<Long> getRecursiveBlockSize(Multihash block) {
+        return network.dhtClient.getLinks(block).thenCompose(links -> {
+            List<CompletableFuture<Long>> subtrees = links.stream().map(this::getRecursiveBlockSize).collect(Collectors.toList());
+            return network.dhtClient.getSize(block)
+                    .thenCompose(siseOpt -> Futures.reduceAll(subtrees,
+                            0L, (t, fut) -> fut.thenApply(x -> x + t), (a, b) -> a + b)
+                            .thenApply(sum -> sum + siseOpt.orElse(0)));
+        });
+    }
+
     @JsMethod
     public CompletableFuture<UserContext> changePassword(String oldPassword, String newPassword) {
 

@@ -118,7 +118,7 @@ public class DHTHandler implements HttpHandler
                 case "refs": {
                     Multihash block = Cid.decode(args.get(0));
                     dht.getLinks(block).thenAccept(links -> {
-                        List<Object> json = links.stream().map(h -> wrapHash(h)).collect(Collectors.toList());
+                        List<Object> json = links.stream().map(h -> wrapHash("Ref", h)).collect(Collectors.toList());
                         // make stream of JSON objects
                         String jsonStream = json.stream().map(m -> JSONParser.toString(m)).reduce("", (a, b) -> a + b);
                         replyJson(httpExchange, jsonStream, Optional.of(block));
@@ -137,8 +137,12 @@ public class DHTHandler implements HttpHandler
     }
 
     private static Object wrapHash(Multihash h) {
+        return wrapHash("Hash", h);
+    }
+
+    private static Object wrapHash(String key, Multihash h) {
         Map<String, Object> json = new TreeMap<>();
-        json.put("Hash", h.toString());
+        json.put(key, h.toString());
         return json;
     }
 
