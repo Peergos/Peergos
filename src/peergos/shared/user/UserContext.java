@@ -209,6 +209,11 @@ public class UserContext {
         });
     }
 
+    @JsMethod
+    public CompletableFuture<Pair<Integer, Integer>> getTotalSpaceUsedJS(PublicSigningKey owner) {
+        return getTotalSpaceUsed(owner).thenApply(size -> new Pair<>((int)(size >> 32), size.intValue()));
+    }
+
     public CompletableFuture<Long> getTotalSpaceUsed(PublicSigningKey owner) {
         // assume no cycles in owned keys
         return getWriterData(network, owner).thenCompose(cwd -> {
