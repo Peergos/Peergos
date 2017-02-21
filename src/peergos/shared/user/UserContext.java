@@ -231,9 +231,11 @@ public class UserContext {
         return network.dhtClient.getLinks(block).thenCompose(links -> {
             List<CompletableFuture<Long>> subtrees = links.stream().map(this::getRecursiveBlockSize).collect(Collectors.toList());
             return network.dhtClient.getSize(block)
-                    .thenCompose(siseOpt -> Futures.reduceAll(subtrees,
-                            0L, (t, fut) -> fut.thenApply(x -> x + t), (a, b) -> a + b)
-                            .thenApply(sum -> sum + siseOpt.orElse(0)));
+                    .thenCompose(sizeOpt -> {
+                        CompletableFuture<Long> reduced = Futures.reduceAll(subtrees,
+                                0L, (t, fut) -> fut.thenApply(x -> x + t), (a, b) -> a + b);
+                        return reduced.thenApply(sum -> sum + sizeOpt.orElse(0));
+                    });
         });
     }
 
