@@ -3,10 +3,9 @@ package peergos.shared.storage;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.io.ipfs.api.*;
-import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.io.ipfs.cid.*;
+import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.user.*;
-import peergos.shared.util.*;
 
 import java.io.*;
 import java.net.*;
@@ -29,6 +28,10 @@ public interface ContentAddressedStorage {
     CompletableFuture<List<Multihash>> recursivePin(Multihash h);
 
     CompletableFuture<List<Multihash>> recursiveUnpin(Multihash h);
+
+    CompletableFuture<List<Multihash>> getLinks(Multihash root);
+
+    CompletableFuture<Optional<Integer>> getSize(Multihash block);
 
     class HTTP implements ContentAddressedStorage {
 
@@ -88,49 +91,21 @@ public interface ContentAddressedStorage {
             List<String> pins = (List<String>)res.get("Pins");
             return pins.stream().map(Cid::decode).collect(Collectors.toList());
         }
-    }
 
-    class CachingDHTClient implements ContentAddressedStorage {
-        private final LRUCache<String, byte[]> cache;
-        private final ContentAddressedStorage target;
-        private final int maxValueSize;
-
-        public CachingDHTClient(ContentAddressedStorage target, int cacheSize, int maxValueSize) {
-            this.target = target;
-            this.cache = new LRUCache<>(cacheSize);
-            this.maxValueSize = maxValueSize;
+        @Override
+        public CompletableFuture<List<Multihash>> getLinks(Multihash block) {
+            return poster.get(apiPrefix + "refs?arg=" + block.toString())
+                    .thenApply(raw -> JSONParser.parseStream(new String(raw))
+                            .stream()
+                            .map(obj -> (String) (((Map) obj).get("Ref")))
+                            .map(Cid::decode)
+                            .collect(Collectors.toList()));
         }
 
         @Override
-        public CompletableFuture<List<Multihash>> put(PublicSigningKey writer, List<byte[]> blocks) {
-            return target.put(writer, blocks);
-        }
-
-        @Override
-        public CompletableFuture<Optional<CborObject>> get(Multihash hash) {
-            // somehow enabling this ram cache slows down logging by 3-4X...
-            /*String cacheKey = hash.toBase58();
-            if (cache.containsKey(cacheKey))
-                return CompletableFuture.completedFuture(Optional.of(MerkleNode.deserialize(cache.get(cacheKey))));
-                */
-            return target.get(hash).thenApply(object -> {
-                /*if (object.isPresent()) {
-                    byte[] raw = object.get().serialize();
-                    if (raw.length < maxValueSize)
-                        cache.put(cacheKey, raw);
-                }*/
-                return object;
-            });
-        }
-
-        @Override
-        public CompletableFuture<List<Multihash>> recursivePin(Multihash h) {
-            return target.recursivePin(h);
-        }
-
-        @Override
-        public CompletableFuture<List<Multihash>> recursiveUnpin(Multihash h) {
-            return target.recursiveUnpin(h);
+        public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
+            return poster.get(apiPrefix + "block/stat?stream-channels=true&arg=" + block.toString())
+                    .thenApply(raw -> Optional.of((Integer)((Map)JSONParser.parse(new String(raw))).get("Size")));
         }
     }
 }

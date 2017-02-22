@@ -11,6 +11,8 @@ public interface CborObject {
 
     void serialize(CborEncoder encoder);
 
+    List<Multihash> links();
+
     default byte[] toByteArray() {
         ByteArrayOutputStream bout = new ByteArrayOutputStream();
         CborEncoder encoder = new CborEncoder(bout);
@@ -120,6 +122,13 @@ public interface CborObject {
         }
 
         @Override
+        public List<Multihash> links() {
+            return values.values().stream()
+                    .flatMap(cbor -> cbor.links().stream())
+                    .collect(Collectors.toList());
+        }
+
+        @Override
         public boolean equals(Object o) {
             if (this == o) return true;
             if (o == null || getClass() != o.getClass()) return false;
@@ -154,6 +163,11 @@ public interface CborObject {
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
+        }
+
+        @Override
+        public List<Multihash> links() {
+            return Collections.singletonList(target);
         }
 
         @Override
@@ -193,6 +207,13 @@ public interface CborObject {
         }
 
         @Override
+        public List<Multihash> links() {
+            return value.stream()
+                    .flatMap(cbor -> cbor.links().stream())
+                    .collect(Collectors.toList());
+        }
+
+        @Override
         public boolean equals(Object o) {
             if (this == o) return true;
             if (o == null || getClass() != o.getClass()) return false;
@@ -222,6 +243,11 @@ public interface CborObject {
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
+        }
+
+        @Override
+        public List<Multihash> links() {
+            return Collections.emptyList();
         }
 
         @Override
@@ -286,6 +312,11 @@ public interface CborObject {
         }
 
         @Override
+        public List<Multihash> links() {
+            return Collections.emptyList();
+        }
+
+        @Override
         public boolean equals(Object o) {
             if (this == o) return true;
             if (o == null || getClass() != o.getClass()) return false;
@@ -325,6 +356,11 @@ public interface CborObject {
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
+        }
+
+        @Override
+        public List<Multihash> links() {
+            return Collections.emptyList();
         }
 
         @Override
@@ -373,6 +409,11 @@ public interface CborObject {
         }
 
         @Override
+        public List<Multihash> links() {
+            return Collections.emptyList();
+        }
+
+        @Override
         public boolean equals(Object o) {
             if (this == o) return true;
             if (o == null || getClass() != o.getClass()) return false;
@@ -411,6 +452,11 @@ public interface CborObject {
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
+        }
+
+        @Override
+        public List<Multihash> links() {
+            return Collections.emptyList();
         }
 
         @Override

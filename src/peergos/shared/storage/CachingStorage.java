@@ -1,9 +1,8 @@
-package peergos.server.storage;
+package peergos.shared.storage;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.io.ipfs.multihash.*;
-import peergos.shared.storage.ContentAddressedStorage;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -47,5 +46,15 @@ public class CachingStorage implements ContentAddressedStorage {
     @Override
     public CompletableFuture<List<Multihash>> recursiveUnpin(Multihash h) {
         return target.recursiveUnpin(h);
+    }
+
+    @Override
+    public CompletableFuture<List<Multihash>> getLinks(Multihash root) {
+        return target.getLinks(root);
+    }
+
+    @Override
+    public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
+        return target.getSize(block);
     }
 }

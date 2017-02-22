@@ -67,4 +67,26 @@ public class IpfsDHT implements ContentAddressedStorage {
             throw new RuntimeException(e);
         }
     }
+
+    @Override
+    public CompletableFuture<List<Multihash>> getLinks(Multihash root) {
+        CompletableFuture<List<Multihash>> res = new CompletableFuture<>();
+        try {
+            res.complete(ipfs.refs(root, false));
+        } catch (IOException e) {
+            res.completeExceptionally(e);
+        }
+        return res;
+    }
+
+    @Override
+    public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
+        CompletableFuture<Optional<Integer>> res = new CompletableFuture<>();
+        try {
+            res.complete(Optional.of((Integer)ipfs.block.stat(block).get("Size")));
+        } catch (IOException e) {
+            res.completeExceptionally(e);
+        }
+        return res;
+    }
 }

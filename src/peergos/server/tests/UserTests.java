@@ -281,6 +281,10 @@ public class UserTests {
         userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(dataInsert), start, start + dataInsert.length, context, l -> {}, context.fragmenter());
         System.arraycopy(dataInsert, 0, data5, start, dataInsert.length);
         checkFileContents(data5, userRoot.getDescendentByPath(filename, context).get().get(), context);
+
+        // check used space
+        long totalSpaceUsed = context.getTotalSpaceUsed(context.signer.publicSigningKey).get();
+        Assert.assertTrue("Correct used space", totalSpaceUsed > 10*1024*1024);
     }
 
     @Test

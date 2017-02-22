@@ -43,7 +43,7 @@ public class FuseProcess implements Runnable, AutoCloseable {
         boolean blocking = false;
         boolean debug = false;
         int transferBufferSize = 5*1024*1024;
-        String[] fuseOpts = new String[]{"-o", "big_writes", "-o", "large_read",
+        String[] fuseOpts = new String[]{"-o", "big_writes",
                 "-o", "fsname=Peergos",
                 "-o", "max_read="+transferBufferSize, "-o", "max_write="+transferBufferSize};
         peergosFS.mount(mountPoint, blocking, debug, fuseOpts);

@@ -61,6 +61,21 @@ public class RAMStorage implements ContentAddressedStorage {
         return CompletableFuture.completedFuture(Arrays.asList(h));
     }
 
+    @Override
+    public CompletableFuture<List<Multihash>> getLinks(Multihash root) {
+        return get(root).thenApply(opt -> opt
+                .map(cbor -> cbor.links())
+                .orElse(Collections.emptyList())
+        );
+    }
+
+    @Override
+    public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
+        if (!storage.containsKey(block))
+            return CompletableFuture.completedFuture(Optional.empty());
+        return CompletableFuture.completedFuture(Optional.of(storage.get(block).length));
+    }
+
     public static Cid hashToCid(byte[] input) {
         byte[] hash = hash(input);
         Multihash multihash = new Multihash(Multihash.Type.sha2_256, hash);
