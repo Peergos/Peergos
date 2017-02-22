@@ -13,7 +13,7 @@ There is a single machine demo running at [https://demo.peergos.net](https://dem
 
 The slides of the first talk introducing Peergos are [here](https://speakerdeck.com/ianopolous/introducing-peergos).
 
-WARNING: Peergos is still alpha software, and needs an independent security audit. Don't use it for data you can't afford to lose, yet.
+**WARNING:** Peergos is still alpha software, and needs an independent security audit. Don't use it for data you can't afford to lose or expose, yet.
 
 Peergos aims
 ------------
@@ -30,7 +30,7 @@ Peergos aims
 
 Project anti-aims
 -----------------
- - Peergos does not provide anonymity. Anonymity can be achieved by creating and only ever accessing a User account over Tor
+ - Peergos does not provide anonymity, yet. Anonymity can be achieved by creating and only ever accessing a User account over Tor
 
 Architecture
 ------------
@@ -62,6 +62,10 @@ Architecture
 
 5.0 Encryption
  - private keys never leave client node, a random key is generated for every file (explicitly not convergent encryption, which leaks information)
+
+5.1 Post-quantum encryption
+ - Files that haven't been shared with another user are already resistant to quantum computer based attacks. This is because the operations to decrypt them from logging in, to seeing plain text, include only hashing and symmetric encryption, both of which are currently believed to not be significantly weakened with a quantum computer. 
+ - Files that have been shared between users are, currently, vulnerable to a large enough quantum computer if an attacker is able to log the initial follow requests sent between the users (before the user retrieves and deletes them). This will be replaced with a post-quantum asymmetric algorithm as soon as a clear candidate arrives.  
 
 6.0 Incentives
  - Users will be able to earn storage space by donating storage space (through [FileCoin](http://filecoin.io/))
