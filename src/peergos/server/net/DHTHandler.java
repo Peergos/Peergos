@@ -136,11 +136,11 @@ public class DHTHandler implements HttpHandler
         }
     }
 
-    private static Object wrapHash(Multihash h) {
+    private static Map<String, Object> wrapHash(Multihash h) {
         return wrapHash("Hash", h);
     }
 
-    private static Object wrapHash(String key, Multihash h) {
+    private static Map<String, Object> wrapHash(String key, Multihash h) {
         Map<String, Object> json = new TreeMap<>();
         json.put(key, h.toString());
         return json;
