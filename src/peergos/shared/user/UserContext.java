@@ -1000,7 +1000,8 @@ public class UserContext {
                                 if (key.isPresent())
                                     return network.dhtClient.get(key.get());
                                 System.err.println("Couldn't download link at: " + loc);
-                                return CompletableFuture.completedFuture(Optional.empty());
+                                Optional<CborObject> result = Optional.empty();
+                                return CompletableFuture.completedFuture(result);
                             }).thenApply(dataOpt ->  dataOpt
                                     .map(cbor -> new RetrievedFilePointer(link.toReadableFilePointer(baseKey), FileAccess.fromCbor(cbor))));
                 }).collect(Collectors.toList());
