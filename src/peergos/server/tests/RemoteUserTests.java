@@ -28,11 +28,14 @@ public class RemoteUserTests {
     }
 
     @Test
-    public void loginAndTest() throws Exception {
+    public void loginAndCleanADirectory() throws Exception {
         String username = "ianopolous";
         String password = "notmypassword";
         UserContext context = ensureSignedUp(username, password, network, crypto);
         FileTreeNode userRoot = context.getUserRoot().get();
+        FileTreeNode dirToFixChildLinks = context.getByPath("/" + username + "/peergos").get().get();
+        dirToFixChildLinks.cleanUnreachableChildren(context).get();
+        Set<FileTreeNode> children = dirToFixChildLinks.getChildren(context).get();
         // Do stuff
         System.out.println(userRoot);
     }
