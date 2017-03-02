@@ -288,6 +288,48 @@ public class DirAccess extends FileAccess {
         );
     }
 
+    public CompletableFuture<Boolean> cleanUnreachableChildren(UserContext context, SymmetricKey baseKey, FilePointer ourPointer, SigningKeyPair signer) {
+        CompletableFuture<List<RetrievedFilePointer>> subdirsFuture = context.retrieveAllMetadata(this.subfolders, baseKey);
+        CompletableFuture<List<RetrievedFilePointer>> filesFuture = context.retrieveAllMetadata(this.files, this.subfolders2files.target(baseKey));
+
+        CompletableFuture<List<RetrievedFilePointer>> moreChildrenFuture = moreFolderContents.isPresent() ?
+                context.retrieveAllMetadata(Arrays.asList(moreFolderContents.get()), baseKey) :
+                CompletableFuture.completedFuture(Collections.emptyList());
+
+        return getChildren(context, baseKey)
+                .thenCompose(reachable -> subdirsFuture
+                        .thenCompose(subdirs -> filesFuture
+                                .thenCompose(files -> moreChildrenFuture
+                                        .thenCompose(moreChildrenSource -> {
+                                            // this only has one or zero elements
+                                            Optional<RetrievedFilePointer> any = moreChildrenSource.stream().findAny();
+                                            CompletableFuture<Boolean> moreChildren = any
+                                                    .map(d -> ((DirAccess)d.fileAccess)
+                                                            .cleanUnreachableChildren(context, d.filePointer.baseKey, d.filePointer, signer))
+                                                    .orElse(CompletableFuture.completedFuture(true));
+                                            return moreChildren.thenApply(moreRetrievedChildren -> {
+                                                List<SymmetricLocationLink> reachableDirLinks = subfolders
+                                                        .stream()
+                                                        .filter(sym -> reachable.stream()
+                                                                .anyMatch(rfp -> rfp.filePointer.equals(sym.toReadableFilePointer(baseKey))))
+                                                        .collect(Collectors.toList());
+
+                                                List<SymmetricLocationLink> reachableFileLinks = this.files
+                                                        .stream()
+                                                        .filter(sym -> reachable.stream()
+                                                                .anyMatch(rfp -> rfp.filePointer.equals(sym.toReadableFilePointer(subfolders2files.target(baseKey)))))
+                                                        .collect(Collectors.toList());
+
+                                                this.subfolders = reachableDirLinks;
+                                                this.files = reachableFileLinks;
+
+                                                return context.uploadChunk(this, ourPointer.getLocation(), signer);
+                                            });
+                                        })
+                                )
+                        )).thenApply(x -> true);
+    }
+
     public Set<Location> getChildrenLocations(SymmetricKey baseKey) {
         SymmetricKey filesKey = this.subfolders2files.target(baseKey);
         return Stream.concat(subfolders.stream().map(d -> d.targetLocation(baseKey)),
