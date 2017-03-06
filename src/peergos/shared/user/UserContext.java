@@ -1006,7 +1006,7 @@ public class UserContext {
     public CompletableFuture<Boolean> unfollow(String friendName) {
         System.out.println("Unfollowing: "+friendName);
         // remove entry point from static data
-        String friendPath = "/" + friendName + "/shared/" + username;
+        String friendPath = "/" + friendName + "/";
         return getByPath(friendPath)
                 // remove our static data entry storing that they've granted us access
                 .thenCompose(dir -> removeFromStaticData(dir.get()))

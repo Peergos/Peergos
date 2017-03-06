@@ -379,4 +379,22 @@ public class MultiUserTests {
         Optional<FileTreeNode> u2Tou1 = u1.getByPath("/" + u2.username).get();
         assertTrue("Friend root present after reciprocated follow request", u2Tou1.isPresent());
     }
+
+    @Test
+    public void unfollow() throws Exception {
+        UserContext u1 = UserTests.ensureSignedUp("q", "q", network, crypto);
+        UserContext u2 = UserTests.ensureSignedUp("w", "w", network, crypto);
+        u2.sendFollowRequest(u1.username, SymmetricKey.random());
+        List<FollowRequest> u1Requests = u1.processFollowRequests().get();
+        u1.sendReplyFollowRequest(u1Requests.get(0), true, true);
+        List<FollowRequest> u2FollowRequests = u2.processFollowRequests().get();
+
+        Set<String> u1Following = u1.getFollowing().get();
+        Assert.assertTrue("u1 following u2", u1Following.contains(u2.username));
+
+        u1.unfollow(u2.username).get();
+
+        Set<String> newU1Following = u1.getFollowing().get();
+        Assert.assertTrue("u1 no longer following u2", ! newU1Following.contains(u2.username));
+    }
 }

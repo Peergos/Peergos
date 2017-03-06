@@ -95,6 +95,11 @@ class TrieNode {
 
     public TrieNode removeEntry(String path) {
         System.out.println("Entrie.rm(" + path + ")");
+        for (String prefix: pathMappings.keySet()) {
+            if (path.startsWith(prefix)) {
+                path = pathMappings.get(prefix) + path.substring(prefix.length());
+            }
+        }
         if (path.startsWith("/"))
             path = path.substring(1);
         if (path.length() == 0) {
@@ -106,7 +111,7 @@ class TrieNode {
 
         HashMap<String, TrieNode> newChildren = new HashMap<>(children);
         if (newChild.isEmpty())
-            newChildren.remove(elements[0], newChild);
+            newChildren.remove(elements[0]);
         else
             newChildren.put(elements[0], newChild);
         return new TrieNode(newChildren, value, pathMappings);
