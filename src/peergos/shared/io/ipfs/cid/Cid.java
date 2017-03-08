@@ -146,7 +146,7 @@ public class Cid extends Multihash {
     }
 
     public static Cid cast(byte[] data) {
-        if (data.length == 34 && data[0] == 0x18 && data[1] == 32)
+        if (data.length == 34 && data[0] == 18 && data[1] == 32)
             return buildCidV0(new Multihash(data));
 
         InputStream in = new ByteArrayInputStream(data);
