@@ -3,6 +3,7 @@
     Building Peergos
   </description>
 
+  <!-- Need to run "sudo apt-get install ant-optional" -->
   <taskdef resource="net/sf/antcontrib/antlib.xml">
     <classpath>
       <fileset dir="ant.lib"/>
@@ -13,6 +14,7 @@
   <property name="test.sources" location="src"/>
   <property name="build" location="build"/>
   <property name="dist" location="dist"/>
+  <property name="test.reports" location="test.reports"/>
 
   <path id="dep.runtime">
     <fileset dir="./lib">
@@ -42,6 +44,7 @@
   
   <target name="init">
     <mkdir dir="${build}"/>
+    <mkdir dir="${test.reports}"/>
   </target>
 
   <target name="install_ipfs">
