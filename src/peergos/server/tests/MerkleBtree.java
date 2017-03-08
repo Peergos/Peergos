@@ -80,7 +80,7 @@ public class MerkleBtree {
             throw new IllegalStateException("Results not equal");
     }
 
-    @Test
+//    @Test
     public void huge() throws Exception {
         PublicSigningKey user = createUser();
         MerkleBTree tree = createTree(user).get();
@@ -133,7 +133,7 @@ public class MerkleBtree {
         ((RAMStorage)tree.storage).clear();
     }
 
-    @Test
+//    @Test
     public void delete() throws Exception {
         PublicSigningKey user = createUser();
         MerkleBTree tree = createTree(user).get();
