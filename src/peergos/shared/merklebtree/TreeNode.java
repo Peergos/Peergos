@@ -240,7 +240,7 @@ public class TreeNode implements Cborable {
                                                                 keys.add(replacement);
                                                                 if (newChild.keys.size() >= maxChildren / 2) {
                                                                     return storage.put(writer, this.serialize())
-                                                                            .thenApply(multihash1 -> new TreeNode(this, multihash));
+                                                                            .thenApply(multihash1 -> new TreeNode(this, multihash1));
                                                                 } else {
                                                                     // re-balance
                                                                     return rebalance(writer, this, newChild, childHash, storage, maxChildren);
