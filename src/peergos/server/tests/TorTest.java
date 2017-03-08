@@ -10,7 +10,7 @@ import javax.net.ssl.*;
 
 public class TorTest {
 
-    @Test
+//    @Test
     public void connect() throws IOException {
         TorClient tor = new TorClient();
         tor.start();
