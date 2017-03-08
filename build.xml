@@ -3,7 +3,14 @@
     Building Peergos
   </description>
 
+  <taskdef resource="net/sf/antcontrib/antlib.xml">
+    <classpath>
+      <fileset dir="ant.lib"/>
+    </classpath>
+  </taskdef>
+  
   <property name="src" location="src"/>
+  <property name="test.sources" location="src"/>
   <property name="build" location="build"/>
   <property name="dist" location="dist"/>
 
@@ -19,10 +26,6 @@
   <!-- Configure path to GWT SDK -->
   <!--<property name="gwt.sdk" location="/home/ian/gwt-2.8.0-rc1" />-->
   <property name="gwt.sdk" location="gwt/gwt-2.8.0-rc3" />
-
-
-
-
 
 
   <path id="project.class.path">
@@ -115,70 +118,50 @@
     </copy>
   </target>
 
-
-  <target name="userTest" depends="compile,dist">
-    <junit printsummary="yes" fork="true" haltonfailure="yes">
-      <jvmarg value="-Xmx2g"/>
-      <classpath>
-	<pathelement location="lib/junit-4.11.jar" />
-	<pathelement location="lib/hamcrest-core-1.3.jar" />
-	<pathelement location="PeergosServer.jar" />
-      </classpath>
-      <test name="peergos.server.tests.UserTests" haltonfailure="yes">
-	<formatter type="plain"/>
-	<formatter type="xml"/>
-      </test>
-      </junit>
-  </target>
-
-  <target name="multiUserTests" depends="compile,dist">
-    <junit printsummary="yes" fork="true" haltonfailure="yes">
-      <jvmarg value="-Xmx2g"/>
-      <classpath>
-	<pathelement location="lib/junit-4.11.jar" />
-	<pathelement location="lib/hamcrest-core-1.3.jar" />
-	<pathelement location="PeergosServer.jar" />
-      </classpath>
-      <test name="peergos.server.tests.MultiUserTests" haltonfailure="yes">
-	<formatter type="plain"/>
-	<formatter type="xml"/>
-      </test>
-      </junit>
-  </target>
-
-  <target name="publicLinkTest" depends="compile,dist">
-    <junit printsummary="yes" fork="true" haltonfailure="yes">
-      <jvmarg value="-Xmx2g"/>
-      <classpath>
-	<pathelement location="lib/junit-4.11.jar" />
-	<pathelement location="lib/hamcrest-core-1.3.jar" />
-	<pathelement location="PeergosServer.jar" />
-      </classpath>
-      <test name="peergos.server.tests.UserPublicKeyLinkTests" haltonfailure="yes">
-	<formatter type="plain"/>
-	<formatter type="xml"/>
-      </test>
-      </junit>
-  </target>
-
-  <target name="fuseTest" depends="compile,dist">
-    <junit printsummary="yes" fork="true" haltonfailure="yes">
-      <jvmarg value="-Xmx2g"/>
-      <classpath>
-	<pathelement location="lib/junit-4.11.jar" />
-	<pathelement location="lib/hamcrest-core-1.3.jar" />
-	<pathelement location="PeergosServer.jar" />
-      </classpath>
-      <test name="peergos.server.tests.FuseTests" haltonfailure="yes">
-	<formatter type="plain"/>
-	<formatter type="xml"/>
-      </test>
-      </junit>
-  </target>
-
-  <target name="test" depends="compile,dist,userTest,multiUserTests,fuseTest,publicLinkTest">
+  <target name="test" depends="parallel_test">
   </target> 
 
+  <target name="execute.test">
+    <!-- we need to have relative path -->
+    <pathconvert property="test.source.relative">
+      <fileset file="${test.source.absolute}" />
+      <map from="${test.sources}/" to="" />
+    </pathconvert>
+    <!-- run one particular test -->
+    <junit fork="true" printsummary="true" haltonfailure="yes">
+      <jvmarg value="-Xmx2g"/>
+      <classpath>
+	<pathelement location="lib/junit-4.11.jar" />
+	<pathelement location="lib/hamcrest-core-1.3.jar" />
+	<pathelement location="PeergosServer.jar" />
+      </classpath>
+      <formatter type="xml" />
+      <batchtest todir="${test.reports}" skipNonTests="true">
+	<fileset dir="${test.sources}">
+          <filename name="${test.source.relative}" />
+	</fileset>
+      </batchtest>
+    </junit>
+  </target>
+
+  <target name="parallel_test" depends="compile,dist">
+    <for
+	keepgoing="false"
+	threadCount="1"
+	parallel="true"
+	param="test.source.absolute">
+      <path>
+	<fileset dir="${test.sources}">
+	  <include name="peergos/server/tests/*.java"/>
+	</fileset>
+      </path>
+      <sequential>
+	<antcall target="execute.test">
+	  <param name="test.source.absolute" value="@{test.source.absolute}"/>
+	</antcall>
+      </sequential>
+    </for>
+  </target>
 
   <!-- GWT stuff -->
 
