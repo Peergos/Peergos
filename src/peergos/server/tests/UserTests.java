@@ -26,8 +26,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
 
-@RunWith(Parameterized.class)
-public class UserTests {
+public abstract class UserTests {
 
     public static int RANDOM_SEED = 666;
     private final NetworkAccess network;
@@ -45,14 +44,6 @@ public class UserTests {
         this.network = NetworkAccess.buildJava(new URL("http://localhost:" + webPort)).get();
         // use insecure random otherwise tests take ages
         setFinalStatic(TweetNaCl.class.getDeclaredField("prng"), new Random(1));
-    }
-
-    @Parameterized.Parameters(name = "{index}: {0}")
-    public static Collection<Object[]> parameters() {
-        return Arrays.asList(new Object[][] {
-                {"IPFS", new Random(0)},
-                {"RAM", new Random(1)}
-        });
     }
 
     static void setFinalStatic(Field field, Object newValue) throws Exception {

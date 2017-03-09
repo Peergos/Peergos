@@ -132,7 +132,7 @@
     </pathconvert>
     <!-- run one particular test -->
     <junit fork="true" printsummary="true" haltonfailure="yes">
-      <jvmarg value="-Xmx4g"/>
+      <jvmarg value="-Xmx3g"/>
       <classpath>
 	<pathelement location="lib/junit-4.11.jar" />
 	<pathelement location="lib/hamcrest-core-1.3.jar" />
@@ -150,7 +150,7 @@
   <target name="parallel_test" depends="compile,dist">
     <for
 	keepgoing="false"
-	threadCount="1"
+	threadCount="2"
 	parallel="true"
 	param="test.source.absolute">
       <path>

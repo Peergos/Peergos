@@ -29,8 +29,10 @@ public class MultiUserTests {
     private final int userCount;
 
     public MultiUserTests(String useIPFS, Random r, int userCount, Crypto crypto) throws Exception {
-        int webPort = 9000 + r.nextInt(1000);
-        int corePort = 10000 + r.nextInt(1000);
+        int portMin = 9000;
+        int portRange = 2000;
+        int webPort = portMin + r.nextInt(portRange);
+        int corePort = portMin + portRange + r.nextInt(portRange);
         this.userCount = userCount;
         if (userCount  < 2)
             throw new IllegalStateException();
@@ -55,7 +57,7 @@ public class MultiUserTests {
 
     @Parameterized.Parameters(name = "{index}: {0}")
     public static Collection<Object[]> parameters() {
-        Random r = new Random(1);
+        Random r = new Random(123);
         Crypto crypto = Crypto.initJava();
         return Arrays.asList(new Object[][] {
                 {"RAM", r, 2, crypto}

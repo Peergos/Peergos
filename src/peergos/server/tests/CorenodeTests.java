@@ -48,7 +48,7 @@ public class CorenodeTests {
 
     @Parameterized.Parameters(name = "{index}: {0}")
     public static Collection<Object[]> parameters() {
-        Random r = new Random(0);
+        Random r = new Random(1234);
         return Arrays.asList(new Object[][] {
 //                {"IPFS", r},
                 {"RAM", r}
