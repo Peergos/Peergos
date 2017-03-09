@@ -36,8 +36,10 @@ public class UserTests {
     private static Random random = new Random(RANDOM_SEED);
 
     public UserTests(String useIPFS, Random r) throws Exception {
-        int webPort = 9000 + r.nextInt(1000);
-        int corePort = 10000 + r.nextInt(1000);
+        int portMin = 9000;
+        int portRange = 2000;
+        int webPort = portMin + r.nextInt(portRange);
+        int corePort = portMin + portRange + r.nextInt(portRange);
         Args args = Args.parse(new String[]{"useIPFS", ""+useIPFS.equals("IPFS"), "-port", Integer.toString(webPort), "-corenodePort", Integer.toString(corePort)});
         Start.local(args);
         this.network = NetworkAccess.buildJava(new URL("http://localhost:" + webPort)).get();
@@ -47,10 +49,9 @@ public class UserTests {
 
     @Parameterized.Parameters(name = "{index}: {0}")
     public static Collection<Object[]> parameters() {
-        Random r = new Random(0);
         return Arrays.asList(new Object[][] {
-                {"IPFS", r},
-                {"RAM", r}
+                {"IPFS", new Random(0)},
+                {"RAM", new Random(1)}
         });
     }
 
