@@ -900,7 +900,7 @@ public class UserContext {
                             String[] parts = path.split("/");
                             if (parts.length < 3 || ! parts[2].equals(SHARED_DIR_NAME))
                                 return CompletableFuture.completedFuture(root.put(path, e));
-                            TrieNode rootWithMapping = parts[1].equals(username) ? root : root.addPathMapping("/" + parts[1] + "/", path + "/us");
+                            TrieNode rootWithMapping = parts[1].equals(username) ? root : root.addPathMapping("/" + parts[1] + "/", path + "/");
                             return CompletableFuture.completedFuture(rootWithMapping.put(path, e));
                         });
             }
