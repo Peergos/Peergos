@@ -110,7 +110,7 @@ public class CorenodeTests {
             }
         }).max().getAsLong();
         System.out.println("Worst Latency: " + worstLatency);
-        Assert.assertTrue("Worst latency < 1 second: " + worstLatency, worstLatency < 1000);
+        Assert.assertTrue("Worst latency < 1 second: " + worstLatency, worstLatency < 2000);
         pool.awaitQuiescence(5, TimeUnit.MINUTES);
     }
 }

@@ -150,7 +150,7 @@
   <target name="parallel_test" depends="compile,dist">
     <for
 	keepgoing="false"
-	threadCount="2"
+	threadCount="1"
 	parallel="true"
 	param="test.source.absolute">
       <path>
