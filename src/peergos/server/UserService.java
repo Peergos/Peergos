@@ -23,7 +23,6 @@ public class UserService
     public static final String SIGNUP_URL = "/signup/";
     public static final String ACTIVATION_URL = "/activation/";
     public static final String UI_URL = "/";
-    public static final String UI_DIR = "ui/";
 
     public static final int HANDLER_THREADS = 100;
     public static final int CONNECTION_BACKLOG = 100;
