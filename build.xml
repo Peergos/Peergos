@@ -120,10 +120,6 @@
 	  <attribute name="Class-Path" value="${manifest_cp}"/>
 	  <attribute name="Main-Class" value="peergos.server.Start"/>
       </manifest>
-      <fileset dir=".">
-	<include name="**/ui/**"/>
-	<exclude name="out/**"/>
-      </fileset>
     </jar>
     <copy todir=".">
       <fileset file="${dist}/PeergosServer.jar"/>
