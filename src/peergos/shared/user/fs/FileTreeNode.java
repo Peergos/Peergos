@@ -285,6 +285,16 @@ public class FileTreeNode {
         throw new IllegalStateException("No credentials to retrieve children!");
     }
 
+    public CompletableFuture<Boolean> cleanUnreachableChildren(UserContext context) {
+        FilePointer filePointer = pointer.filePointer;
+        FileAccess fileAccess = pointer.fileAccess;
+        SymmetricKey rootDirKey = filePointer.baseKey;
+
+        if (isReadable())
+            return ((DirAccess) fileAccess).cleanUnreachableChildren(context, rootDirKey, filePointer, getSigner());
+        throw new IllegalStateException("No credentials to retrieve children!");
+    }
+
     @JsMethod
     public String getOwner() {
         return ownername;

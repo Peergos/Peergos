@@ -176,6 +176,16 @@ public class UserContext {
                         }));
     }
 
+    public CompletableFuture<Boolean> cleanEntryPoints() {
+        CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
+        return addToUserDataQueue(lock)
+                .thenCompose(wd -> Futures.reduceAll(
+                                wd.props.staticData.get().getEntryPoints(),
+                                true,
+                                (t, e) -> cleanOurEntryPoint(e),
+                                (a, b) -> a && b));
+    }
+
     public CompletableFuture<FileTreeNode> getSharingFolder() {
         return getByPath("/"+username + "/shared").thenApply(opt -> opt.get());
     }
@@ -902,10 +912,36 @@ public class UserContext {
                                 return CompletableFuture.completedFuture(root.put(path, e));
                             TrieNode rootWithMapping = parts[1].equals(username) ? root : root.addPathMapping("/" + parts[1] + "/", path + "/");
                             return CompletableFuture.completedFuture(rootWithMapping.put(path, e));
+                        }).exceptionally(t -> {
+                            System.err.println("Couldn't add entry point (failed retrieving parent dir): " + metadata.get().getName());
+                            // Allow the system to continue without this entry point
+                            return root;
                         });
             }
             throw new IllegalStateException("Metadata blob not Present downloading entry point!");
         }).exceptionally(Futures::logError);
+    }
+
+    private CompletableFuture<Boolean> cleanOurEntryPoint(EntryPoint e) {
+        if (! e.owner.equals(username))
+            return CompletableFuture.completedFuture(false);
+        return retrieveEntryPoint(e).thenCompose(fileOpt -> {
+            if (! fileOpt.isPresent())
+                return CompletableFuture.completedFuture(true);
+            FileTreeNode file = fileOpt.get();
+            return file.getPath(this)
+                    .thenApply(x -> true)
+                    .exceptionally(t -> {
+                        // If the inaccessible entry point is into our space, remove the entry point,
+                        // and the dir/file it points to
+                        // first make it writable by combining with the root writing key
+                        getByPath("/" + username).thenCompose(rootDir ->
+                                new FileTreeNode(file.getPointer(), file.getOwner(), e.readers, e.writers, rootDir.get().getEntryWriterKey())
+                                        .remove(this, null)
+                                        .thenApply(x -> removeFromStaticData(file)));
+                        return true;
+                    });
+        });
     }
 
     private static CompletableFuture<CommittedWriterData> getWriterData(NetworkAccess network, PublicSigningKey signer) {
@@ -960,8 +996,13 @@ public class UserContext {
                 .map(link -> {
                     Location loc = link.targetLocation(baseKey);
                     return network.btree.get(loc.writer, loc.getMapKey())
-                            .thenCompose(key -> network.dhtClient.get(key.get()))
-                            .thenApply(dataOpt ->  dataOpt
+                            .thenCompose(key -> {
+                                if (key.isPresent())
+                                    return network.dhtClient.get(key.get());
+                                System.err.println("Couldn't download link at: " + loc);
+                                Optional<CborObject> result = Optional.empty();
+                                return CompletableFuture.completedFuture(result);
+                            }).thenApply(dataOpt ->  dataOpt
                                     .map(cbor -> new RetrievedFilePointer(link.toReadableFilePointer(baseKey), FileAccess.fromCbor(cbor))));
                 }).collect(Collectors.toList());
 
