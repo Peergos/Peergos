@@ -11,6 +11,7 @@ import peergos.shared.util.*;
 import javax.net.ssl.*;
 import java.io.*;
 import java.net.*;
+import java.nio.file.Paths;
 import java.security.*;
 import java.security.cert.*;
 import java.util.concurrent.*;
@@ -60,8 +61,6 @@ public class UserService
     }
 
     public boolean init(ContentAddressedStorage dht, Args args) throws IOException {
-        String webroot = args.getArg("webroot", UI_DIR);
-        System.out.println("Using webroot: " + webroot);
         boolean isLocal = this.local.getHostName().contains("local");
         if (!isLocal)
             try {
@@ -140,8 +139,25 @@ public class UserService
         server.createContext(DHT_URL, new DHTHandler(dht));
         server.createContext(SIGNUP_URL, new InverseProxyHandler("demo.peergos.net", isLocal));
         server.createContext(ACTIVATION_URL, new InverseProxyHandler("demo.peergos.net", isLocal));
-        boolean caching = args.hasArg("webCache");
-        server.createContext(UI_URL, new StaticHandler(webroot, caching, true));
+
+        //define  web-root static-handler
+        StaticHandler handler;
+        try {
+            String webroot = args.getArg("webroot");
+            System.out.println("Using webroot from local file system: " + webroot);
+            handler = new FileHandler(Paths.get(webroot), false);
+        } catch (IllegalStateException ile) {
+            System.out.println("Using webroot from jar");
+            handler = new JarHandler(false, Paths.get("webroot"));
+        }
+
+        boolean webcache = args.getBoolean("webcache", true);
+        if (webcache) {
+            System.out.println("Caching web-resources");
+            handler = handler.withCache();
+        }
+
+        server.createContext(UI_URL, handler);
         server.createContext("/" + HTTPCoreNodeServer.CORE_URL, new HTTPCoreNodeServer.CoreNodeHandler(coreNode));
 
         server.setExecutor(Executors.newFixedThreadPool(HANDLER_THREADS));

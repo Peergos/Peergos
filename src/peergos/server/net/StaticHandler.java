@@ -1,40 +1,37 @@
 package peergos.server.net;
 
-import com.sun.net.httpserver.*;
-import peergos.shared.crypto.hash.*;
-import peergos.shared.util.*;
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpHandler;
+import org.junit.Assert;
+import peergos.shared.crypto.hash.Hash;
+import peergos.shared.util.ArrayOps;
 
 import java.io.*;
-import java.net.*;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.util.*;
-import java.util.jar.*;
-import java.util.zip.*;
+import java.util.jar.JarInputStream;
+import java.util.zip.GZIPOutputStream;
+import java.util.zip.ZipEntry;
 
-public class StaticHandler implements HttpHandler
+public abstract class StaticHandler implements HttpHandler
 {
-    private static Map<String, Asset> data = new HashMap<>();
-    private final boolean caching, gzip;
-    private final String pathToRoot;
+    private final boolean isGzip;
 
-    public StaticHandler(String pathToRoot, boolean caching, boolean gzip) throws IOException {
-        this.caching = caching;
-        this.pathToRoot = pathToRoot.endsWith("/") ? pathToRoot : pathToRoot + "/";
-        this.gzip = gzip;
-
-        File[] files = new File(pathToRoot).listFiles();
-        if (files == null)
-            throw new IllegalStateException("Couldn't find webroot: "+pathToRoot);
-        for (File f: files)
-            processFile("", f, gzip);
+    public StaticHandler(boolean isGzip) {
+        this.isGzip = isGzip;
     }
 
-    private static class Asset {
+    public abstract Asset getAsset(String resourcePath) throws IOException;
+
+    public static class Asset {
         public final byte[] data;
         public final String hash;
 
         public Asset(byte[] data) {
             this.data = data;
-            this.hash = ArrayOps.bytesToHex(Arrays.copyOfRange(Hash.sha256(data), 0, 4));
+            byte[] digest = Hash.sha256(data);
+            this.hash = ArrayOps.bytesToHex(Arrays.copyOfRange(digest, 0, 4));
         }
     }
 
@@ -47,12 +44,9 @@ public class StaticHandler implements HttpHandler
             if (path.length() == 0)
                 path = "index.html";
 
-            boolean fromFile = new File(pathToRoot + path).exists();
-            InputStream in = fromFile ? new FileInputStream(pathToRoot + path)
-                    : ClassLoader.getSystemClassLoader().getResourceAsStream(pathToRoot + path);
-            Asset res = caching ? data.get(path) : new Asset(readResource(in, gzip));
+            Asset res = getAsset(path);
 
-            if (gzip)
+            if (isGzip)
                 httpExchange.getResponseHeaders().set("Content-Encoding", "gzip");
             if (path.endsWith(".js"))
                 httpExchange.getResponseHeaders().set("Content-Type", "text/javascript");
@@ -82,15 +76,8 @@ public class StaticHandler implements HttpHandler
         }
     }
 
-    private static void processFile(String path, File f, boolean gzip) throws IOException {
-        if (!f.isDirectory())
-            data.put(path + f.getName(), new Asset(readResource(new FileInputStream(f), gzip)));
-        if (f.isDirectory())
-            for (File sub: f.listFiles())
-                processFile(path + f.getName() + "/", sub, gzip);
-    }
 
-    private static byte[] readResource(InputStream in, boolean gzip) throws IOException {
+    protected static byte[] readResource(InputStream in, boolean gzip) throws IOException {
         ByteArrayOutputStream bout = new ByteArrayOutputStream();
         OutputStream gout = gzip ? new GZIPOutputStream(bout) : new DataOutputStream(bout);
         byte[] tmp = new byte[4096];
@@ -103,83 +90,18 @@ public class StaticHandler implements HttpHandler
         return bout.toByteArray();
     }
 
-    private static List<String> getResources(String directory)
-    {
-        ClassLoader context = Thread.currentThread().getContextClassLoader();
 
-        List<String> resources = new ArrayList<>();
+    public StaticHandler withCache() {
+        Map<String, Asset> cache = new HashMap<>();
+        StaticHandler that = this;
 
-        ClassLoader cl = StaticHandler.class.getClassLoader();
-        if (!(cl instanceof URLClassLoader))
-            throw new IllegalStateException();
-        URL[] urls = ((URLClassLoader) cl).getURLs();
-
-        int slash = directory.lastIndexOf("/");
-        String dir = directory.substring(0, slash + 1);
-        for (int i=0; i<urls.length; i++)
-        {
-            if (!urls[i].toString().endsWith(".jar"))
-                continue;
-            try
-            {
-                JarInputStream jarStream = new JarInputStream(urls[i].openStream());
-                while (true)
-                {
-                    ZipEntry entry = jarStream.getNextEntry();
-                    if (entry == null)
-                        break;
-                    if (entry.isDirectory())
-                        continue;
-
-                    String name = entry.getName();
-                    slash = name.lastIndexOf("/");
-                    String thisDir = "";
-                    if (slash >= 0)
-                        thisDir = name.substring(0, slash + 1);
-
-                    if (!thisDir.startsWith(dir))
-                        continue;
-                    resources.add(name);
-                }
-
-                jarStream.close();
+        return new StaticHandler(isGzip) {
+            @Override
+            public Asset getAsset(String resourcePath) throws IOException {
+                if (! cache.containsKey(resourcePath))
+                    cache.put(resourcePath, that.getAsset(resourcePath));
+                return cache.get(resourcePath);
             }
-            catch (IOException e) { e.printStackTrace();}
-        }
-        InputStream stream = context.getResourceAsStream(directory);
-        try
-        {
-            if (stream != null)
-            {
-                StringBuilder sb = new StringBuilder();
-                char[] buffer = new char[1024];
-                try (Reader r = new InputStreamReader(stream))
-                {
-                    while (true)
-                    {
-                        int length = r.read(buffer);
-                        if (length < 0)
-                        {
-                            break;
-                        }
-                        sb.append(buffer, 0, length);
-                    }
-                }
-
-                for (String s : sb.toString().split("\n"))
-                {
-                    if (s.length() > 0 && context.getResource(directory + s) != null)
-                    {
-                        resources.add(s);
-                    }
-                }
-            }
-        }
-        catch (IOException e)
-        {
-            e.printStackTrace();
-        }
-
-        return resources;
+        };
     }
 }
