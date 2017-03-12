@@ -2,17 +2,13 @@ package peergos.server.net;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
-import org.junit.Assert;
 import peergos.shared.crypto.hash.Hash;
 import peergos.shared.util.ArrayOps;
 
 import java.io.*;
-import java.net.URL;
-import java.net.URLClassLoader;
 import java.util.*;
-import java.util.jar.JarInputStream;
+import java.util.concurrent.*;
 import java.util.zip.GZIPOutputStream;
-import java.util.zip.ZipEntry;
 
 public abstract class StaticHandler implements HttpHandler
 {
@@ -33,6 +29,10 @@ public abstract class StaticHandler implements HttpHandler
             byte[] digest = Hash.sha256(data);
             this.hash = ArrayOps.bytesToHex(Arrays.copyOfRange(digest, 0, 4));
         }
+    }
+
+    protected boolean isGzip() {
+        return isGzip;
     }
 
     @Override
@@ -72,7 +72,8 @@ public abstract class StaticHandler implements HttpHandler
             System.err.println("Error retrieving: " + path);
         } catch (Throwable t) {
             System.err.println("Error retrieving: " + path);
-            t.printStackTrace();
+            httpExchange.sendResponseHeaders(404, 0);
+            httpExchange.getResponseBody().close();
         }
     }
 
@@ -92,7 +93,7 @@ public abstract class StaticHandler implements HttpHandler
 
 
     public StaticHandler withCache() {
-        Map<String, Asset> cache = new HashMap<>();
+        Map<String, Asset> cache = new ConcurrentHashMap<>();
         StaticHandler that = this;
 
         return new StaticHandler(isGzip) {

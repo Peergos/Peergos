@@ -1,17 +1,7 @@
 package peergos.server.net;
 
-import com.sun.net.httpserver.*;
-import peergos.shared.crypto.hash.*;
-import peergos.shared.util.*;
-
 import java.io.*;
-import java.net.*;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.*;
-import java.util.jar.*;
-import java.util.zip.*;
 
 public class FileHandler extends StaticHandler
 {
@@ -25,7 +15,7 @@ public class FileHandler extends StaticHandler
     public Asset getAsset(String resourcePath) throws IOException {
         String stem = resourcePath.startsWith("/")  ?  resourcePath.substring(1) : resourcePath;
         Path fullPath = root.resolve(stem);
-        byte[] bytes = Files.readAllBytes(fullPath);
+        byte[] bytes = readResource(new FileInputStream(fullPath.toFile()), isGzip());
         return new Asset(bytes);
     }
 }

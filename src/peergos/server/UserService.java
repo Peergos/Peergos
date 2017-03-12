@@ -145,10 +145,10 @@ public class UserService
         try {
             String webroot = args.getArg("webroot");
             System.out.println("Using webroot from local file system: " + webroot);
-            handler = new FileHandler(Paths.get(webroot), false);
+            handler = new FileHandler(Paths.get(webroot), true);
         } catch (IllegalStateException ile) {
             System.out.println("Using webroot from jar");
-            handler = new JarHandler(false, Paths.get("webroot"));
+            handler = new JarHandler(true, Paths.get("webroot"));
         }
 
         boolean webcache = args.getBoolean("webcache", true);

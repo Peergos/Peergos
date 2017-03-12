@@ -1,6 +1,6 @@
 package peergos.server.net;
 
-import java.io.IOException;
+import java.io.*;
 import java.nio.file.Path;
 
 public class JarHandler extends StaticHandler {
@@ -14,7 +14,8 @@ public class JarHandler extends StaticHandler {
     @Override
     public Asset getAsset(String resourcePath) throws IOException {
         String pathWithinJar = root.resolve(resourcePath).toString();
-        byte[] data = StaticHandler.readResource(getClass().getResourceAsStream(pathWithinJar), false);
+        ClassLoader context = Thread.currentThread().getContextClassLoader();
+        byte[] data = StaticHandler.readResource(context.getResourceAsStream(pathWithinJar), isGzip());
         return new Asset(data);
     }
 }
