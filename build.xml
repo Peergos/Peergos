@@ -22,6 +22,12 @@
     </fileset>
   </path>
 
+  <path id="dep.build">
+    <fileset dir="./lib-build">
+        <include name="**/*.jar" />
+    </fileset>
+  </path>
+
   <!-- Arguments to gwtc and devmode targets -->
   <property name="gwt.args" value="-generateJsInteropExports -style Pretty -strict" />
 
@@ -38,8 +44,8 @@
     <pathelement location="${gwt.sdk}/validation-api-1.0.0.GA-sources.jar"/>
     <fileset dir="war/WEB-INF/lib" includes="**/*.jar"/>
     <!-- Add any additional non-server libs (such as JUnit) here -->
-    <pathelement location="lib/junit-4.11.jar"/>
-    <pathelement location="lib/hamcrest-core-1.3.jar"/>
+    <pathelement location="lib-build/junit-4.11.jar"/>
+    <pathelement location="lib-build/hamcrest-core-1.3.jar"/>
   </path>
   
   <target name="init">
@@ -94,6 +100,9 @@
 	<fileset dir="lib">
           <include name="**/*.jar" />
         </fileset>
+	<fileset dir="lib-build">
+          <include name="**/*.jar" />
+        </fileset>
       </classpath>
     </javac>
   </target>
@@ -134,8 +143,8 @@
     <junit fork="true" printsummary="true" haltonfailure="yes">
       <jvmarg value="-Xmx3g"/>
       <classpath>
-	<pathelement location="lib/junit-4.11.jar" />
-	<pathelement location="lib/hamcrest-core-1.3.jar" />
+	<pathelement location="lib-build/junit-4.11.jar" />
+	<pathelement location="lib-build/hamcrest-core-1.3.jar" />
 	<pathelement location="PeergosServer.jar" />
       </classpath>
       <formatter type="xml" />
