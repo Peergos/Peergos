@@ -231,5 +231,7 @@
   <target name="clean" description="clean up">
     <delete dir="${build}"/>
     <delete dir="${dist}"/>
+    <delete dir="${dist}"/>
+    <delete dir="war"/>
   </target>
 </project>
