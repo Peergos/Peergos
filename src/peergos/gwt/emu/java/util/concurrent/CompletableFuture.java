@@ -246,10 +246,25 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
     @Override
     @JsMethod
     public CompletableFuture<T> exceptionally(Function<Throwable, ? extends T> handler) {
-        CompletableFuture<T> fut = new CompletableFuture<>();
-        errorFutures.add(fut);
-        errors.add(handler);
-        return fut;
+        if (isDone()) {
+            if (isCompletedExceptionally()) {
+                try {
+                    return CompletableFuture.completedFuture(handler.apply(reason));
+                } catch (Throwable t) {
+                    CompletableFuture<T> fut = new CompletableFuture<>();
+                    fut.completeExceptionally(t);
+                    return fut;
+                }
+            } else {
+                // no exception occured just return the already completed future
+                return this;
+            }
+        } else {
+            CompletableFuture<T> fut = new CompletableFuture<>();
+            errorFutures.add(fut);
+            errors.add(handler);
+            return fut;
+        }
     }
 
     public static <U> java.util.concurrent.CompletableFuture<U> supplyAsync(Supplier<U> var0, Executor var1) {
@@ -330,6 +345,6 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
     public <U> CompletionStage<U> handleAsync(BiFunction<? super T, Throwable, ? extends U> fn, Executor executor) {     throw new IllegalStateException("Unimplemented!");   }
 
     public boolean isCompletedExceptionally() {
-        throw new IllegalStateException("Unimplemented!");
+        return isDone() && reason != null;
     }
 }

@@ -711,7 +711,11 @@ public class UserContext {
         return addToUserDataQueue(lock).thenCompose(wd -> {
             wd.props.staticData.ifPresent(sd -> sd.add(entry));
             return wd.props.commit(signer, wd.hash, network, lock::complete)
-                    .thenCompose(res -> addEntryPoint(root, entry));
+                    .thenCompose(res -> addEntryPoint(root, entry))
+                    .exceptionally(t -> {
+                        lock.complete(wd);
+                        return root;
+                    });
         });
     }
 
@@ -905,13 +909,13 @@ public class UserContext {
         return retrieveEntryPoint(e).thenCompose(metadata -> {
             if (metadata.isPresent()) {
                 return metadata.get().getPath(this)
-                        .thenCompose(path -> {
+                        .thenApply(path -> {
                             System.out.println("Added entry point: " + metadata.get() + " at path " + path);
                             String[] parts = path.split("/");
                             if (parts.length < 3 || ! parts[2].equals(SHARED_DIR_NAME))
-                                return CompletableFuture.completedFuture(root.put(path, e));
+                                return root.put(path, e);
                             TrieNode rootWithMapping = parts[1].equals(username) ? root : root.addPathMapping("/" + parts[1] + "/", path + "/");
-                            return CompletableFuture.completedFuture(rootWithMapping.put(path, e));
+                            return rootWithMapping.put(path, e);
                         }).exceptionally(t -> {
                             System.err.println("Couldn't add entry point (failed retrieving parent dir): " + metadata.get().getName());
                             // Allow the system to continue without this entry point
