@@ -50,8 +50,11 @@ public class NetworkAccess {
     }
 
     public static CompletableFuture<NetworkAccess> build(HttpPoster poster, boolean isJavascript) {
-//        CoreNode coreNode = new CachingCoreNode(new HTTPCoreNode(poster), 5_000);
-        CoreNode coreNode = new HTTPCoreNode(poster);
+        int cacheTTL = 7_000;
+        System.out.println("Using caching corenode with TTL: " + cacheTTL + " mS");
+        CoreNode coreNode = new CachingCoreNode(new HTTPCoreNode(poster), cacheTTL);
+//        CoreNode coreNode = new HTTPCoreNode(poster);
+
         ContentAddressedStorage dht = new CachingStorage(new ContentAddressedStorage.HTTP(poster), 1000, 50 * 1024);
         Btree btree = new BtreeImpl(coreNode, dht);
         return coreNode.getUsernames("").thenApply(usernames -> new NetworkAccess(coreNode, dht, btree, usernames, isJavascript));
