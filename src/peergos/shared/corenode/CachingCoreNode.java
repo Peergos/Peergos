@@ -1,6 +1,5 @@
 package peergos.shared.corenode;
 
-import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.merklebtree.*;
 import peergos.shared.util.*;
@@ -16,8 +15,7 @@ public class CachingCoreNode implements CoreNode {
 
     private final CoreNode target;
     private final int cacheTTL;
-    // use strings as key to rule out any JS issues with equals
-    private final Map<String, Pair<MaybeMultihash, Long>> cache = new HashMap<>();
+    private final Map<PublicSigningKey, Pair<MaybeMultihash, Long>> cache = new HashMap<>();
 
     public CachingCoreNode(CoreNode target, int cacheTTL) {
         this.target = target;
@@ -27,14 +25,15 @@ public class CachingCoreNode implements CoreNode {
     @Override
     public CompletableFuture<MaybeMultihash> getMetadataBlob(PublicSigningKey writer) {
         synchronized (cache) {
-            Pair<MaybeMultihash, Long> cached = cache.get(writer.toString());
+            Pair<MaybeMultihash, Long> cached = cache.get(writer);
             if (cached != null && System.currentTimeMillis() - cached.right < cacheTTL) {
+                System.out.println("Returning cached IPNS entry");
                 return CompletableFuture.completedFuture(cached.left);
             }
         }
         return target.getMetadataBlob(writer).thenApply(m -> {
             synchronized (cache) {
-                cache.put(writer.toString(), new Pair<>(m, System.currentTimeMillis()));
+                cache.put(writer, new Pair<>(m, System.currentTimeMillis()));
             }
             return m;
         });
@@ -43,7 +42,7 @@ public class CachingCoreNode implements CoreNode {
     @Override
     public CompletableFuture<Boolean> setMetadataBlob(PublicSigningKey ownerPublicKey, PublicSigningKey writer, byte[] writerSignedBtreeRootHash) {
         synchronized (cache) {
-            cache.remove(writer.toString());
+            cache.remove(writer);
         }
         return target.setMetadataBlob(ownerPublicKey, writer, writerSignedBtreeRootHash);
     }
@@ -51,7 +50,7 @@ public class CachingCoreNode implements CoreNode {
     @Override
     public CompletableFuture<Boolean> removeMetadataBlob(PublicSigningKey writer, byte[] sharingKeySignedMapKeyPlusBlob) {
         synchronized (cache) {
-            cache.remove(writer.toString());
+            cache.remove(writer);
         }
         return target.removeMetadataBlob(writer, sharingKeySignedMapKeyPlusBlob);
     }
