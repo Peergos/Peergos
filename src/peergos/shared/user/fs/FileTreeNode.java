@@ -49,6 +49,7 @@ public class FileTreeNode {
         thumbnail = new NativeJSThumbnail();
     }
 
+    @JsMethod
     public boolean equals(Object other) {
         if (other == null)
             return false;
