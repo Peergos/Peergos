@@ -30,20 +30,31 @@ public class UserService
     static {
         // disable weak algorithms
         System.out.println("\nInitial security properties:");
-        System.out.println("jdk.tls.disabledAlgorithms: "+Security.getProperty("jdk.tls.disabledAlgorithms"));
-        System.out.println("jdk.certpath.disabledAlgorithms: " + Security.getProperty("jdk.certpath.disabledAlgorithms"));
-        System.out.println("jdk.tls.rejectClientInitializedRenegotiation: " + Security.getProperty("jdk.tls.rejectClientInitializedRenegotiation"));
+        printSecurityProperties();
 
-        Security.setProperty("jdk.tls.disabledAlgorithms", "SSLv3, RC4, MD2, MD4, MD5, SHA1, DSA, DH, RSA keySize < 2048, EC keySize < 160");
-        Security.setProperty("jdk.certpath.disabledAlgorithms", "RC4, MD2, MD4, MD5, SHA1, DSA, RSA keySize < 2048, EC keySize < 160");
+        // The ECDH and RSA ket exchange algorithms are disabled because they don't provide forward secrecy
+        Security.setProperty("jdk.tls.disabledAlgorithms",
+                "SSLv3, RC4, MD2, MD4, MD5, SHA1, DSA, DH, RSA keySize < 2048, EC keySize < 160, " +
+                "TLS_ECDH_RSA_WITH_AES_128_CBC_SHA256, " +
+                "TLS_ECDH_ECDSA_WITH_AES_128_CBC_SHA256, " +
+                "TLS_ECDH_ECDSA_WITH_AES_128_GCM_SHA256, " +
+                "TLS_ECDH_RSA_WITH_AES_128_GCM_SHA256, " +
+                "TLS_RSA_WITH_AES_128_CBC_SHA256, " +
+                "TLS_RSA_WITH_AES_128_GCM_SHA256");
+        Security.setProperty("jdk.certpath.disabledAlgorithms",
+                "RC4, MD2, MD4, MD5, SHA1, DSA, RSA keySize < 2048, EC keySize < 160");
         Security.setProperty("jdk.tls.rejectClientInitializedRenegotiation", "true");
 
         System.out.println("\nUpdated security properties:");
+        printSecurityProperties();
+
+        Security.setProperty("jdk.tls.ephemeralDHKeySize", "2048");
+    }
+
+    static void printSecurityProperties() {
         System.out.println("jdk.tls.disabledAlgorithms: " + Security.getProperty("jdk.tls.disabledAlgorithms"));
         System.out.println("jdk.certpath.disabledAlgorithms: " + Security.getProperty("jdk.certpath.disabledAlgorithms"));
         System.out.println("jdk.tls.rejectClientInitializedRenegotiation: "+Security.getProperty("jdk.tls.rejectClientInitializedRenegotiation"));
-
-        Security.setProperty("jdk.tls.ephemeralDHKeySize", "2048");
     }
 
     private final Logger LOGGER;
@@ -97,12 +108,14 @@ public class UserService
 
                 // setup the HTTPS context and parameters
                 sslContext.init(kmf.getKeyManagers(), null, null);
+                sslContext.getSupportedSSLParameters().setUseCipherSuitesOrder(true);
                 // set up perfect forward secrecy
                 sslContext.getSupportedSSLParameters().setCipherSuites(new String[]{
-                        "TLS_DHE_RSA_WITH_AES_128_GCM_SHA256",
+                        "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
                         "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
-                        "TLS_DHE_RSA_WITH_AES_256_GCM_SHA384",
-                        "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"});
+                        "TLS_DHE_RSA_WITH_AES_128_GCM_SHA256",
+                        "TLS_DHE_RSA_WITH_AES_256_GCM_SHA384"
+                });
 
                 SSLContext.setDefault(sslContext);
                 ((HttpsServer)server).setHttpsConfigurator(new HttpsConfigurator(sslContext) {
