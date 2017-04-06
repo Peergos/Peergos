@@ -35,6 +35,8 @@ public class UserService
         // The ECDH and RSA ket exchange algorithms are disabled because they don't provide forward secrecy
         Security.setProperty("jdk.tls.disabledAlgorithms",
                 "SSLv3, RC4, MD2, MD4, MD5, SHA1, DSA, DH, RSA keySize < 2048, EC keySize < 160, " +
+                "TLS_RSA_WITH_AES_256_GCM_SHA384, " +
+                "TLS_RSA_WITH_AES_256_CBC_SHA256, " +
                 "TLS_ECDH_RSA_WITH_AES_128_CBC_SHA256, " +
                 "TLS_ECDH_ECDSA_WITH_AES_128_CBC_SHA256, " +
                 "TLS_ECDH_ECDSA_WITH_AES_128_GCM_SHA256, " +
