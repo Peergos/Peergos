@@ -15,6 +15,7 @@ import java.nio.file.Paths;
 import java.security.*;
 import java.security.cert.*;
 import java.util.concurrent.*;
+import java.util.function.*;
 import java.util.logging.Logger;
 
 public class UserService
@@ -150,9 +151,11 @@ public class UserService
             }
         }
 
-        server.createContext(DHT_URL, new DHTHandler(dht));
-        server.createContext(SIGNUP_URL, new InverseProxyHandler("demo.peergos.net", isLocal));
-        server.createContext(ACTIVATION_URL, new InverseProxyHandler("demo.peergos.net", isLocal));
+        Function<HttpHandler, HttpHandler> wrap = h -> !isLocal ? new HSTSHandler(h) : h;
+
+        server.createContext(DHT_URL, wrap.apply(new DHTHandler(dht)));
+        server.createContext(SIGNUP_URL, wrap.apply(new InverseProxyHandler("demo.peergos.net", isLocal)));
+        server.createContext(ACTIVATION_URL, wrap.apply(new InverseProxyHandler("demo.peergos.net", isLocal)));
 
         //define  web-root static-handler
         StaticHandler handler;
@@ -171,8 +174,8 @@ public class UserService
             handler = handler.withCache();
         }
 
-        server.createContext(UI_URL, handler);
-        server.createContext("/" + HTTPCoreNodeServer.CORE_URL, new HTTPCoreNodeServer.CoreNodeHandler(coreNode));
+        server.createContext(UI_URL, wrap.apply(handler));
+        server.createContext("/" + HTTPCoreNodeServer.CORE_URL, wrap.apply(new HTTPCoreNodeServer.CoreNodeHandler(coreNode)));
 
         server.setExecutor(Executors.newFixedThreadPool(HANDLER_THREADS));
         server.start();
