@@ -11,12 +11,14 @@ import java.util.concurrent.*;
 public class CachingStorage implements ContentAddressedStorage {
     private final ContentAddressedStorage target;
     private final LRUCache<Multihash, byte[]> cache;
+    private final LRUCache<Multihash, CompletableFuture<Optional<CborObject>>> pending;
     private final int maxValueSize;
 
     public CachingStorage(ContentAddressedStorage target, int cacheSize, int maxValueSize) {
         this.target = target;
         this.cache = new LRUCache<>(cacheSize);
         this.maxValueSize = maxValueSize;
+        this.pending = new LRUCache<>(100);
     }
 
     @Override
@@ -28,12 +30,20 @@ public class CachingStorage implements ContentAddressedStorage {
     public CompletableFuture<Optional<CborObject>> get(Multihash key) {
         if (cache.containsKey(key))
             return CompletableFuture.completedFuture(Optional.of(CborObject.fromByteArray(cache.get(key))));
+
+        if (pending.containsKey(key))
+            return pending.get(key);
+
+        CompletableFuture<Optional<CborObject>> pipe = new CompletableFuture<>();
+        pending.put(key, pipe);
         return target.get(key).thenApply(cborOpt -> {
             if (cborOpt.isPresent()) {
                 byte[] value = cborOpt.get().toByteArray();
                 if (value.length > 0 && value.length < maxValueSize)
                     cache.put(key, value);
             }
+            pending.remove(key);
+            pipe.complete(cborOpt);
             return cborOpt;
         });
     }

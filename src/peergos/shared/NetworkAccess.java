@@ -55,7 +55,8 @@ public class NetworkAccess {
         CoreNode coreNode = new CachingCoreNode(new HTTPCoreNode(poster), cacheTTL);
 //        CoreNode coreNode = new HTTPCoreNode(poster);
 
-        ContentAddressedStorage dht = new CachingStorage(new ContentAddressedStorage.HTTP(poster), 1000, 50 * 1024);
+        // allow 10MiB of ram for caching btree entries
+        ContentAddressedStorage dht = new CachingStorage(new ContentAddressedStorage.HTTP(poster), 10_000, 50 * 1024);
         Btree btree = new BtreeImpl(coreNode, dht);
         return coreNode.getUsernames("").thenApply(usernames -> new NetworkAccess(coreNode, dht, btree, usernames, isJavascript));
     }
