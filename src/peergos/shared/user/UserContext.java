@@ -22,6 +22,8 @@ import java.util.stream.*;
 import jsinterop.annotations.*;
 
 public class UserContext {
+    private static final boolean LOGGING = false;
+
     public static final String SHARED_DIR_NAME = "shared";
     @JsProperty
     public final String username;
@@ -869,7 +871,8 @@ public class UserContext {
             throw new IllegalStateException("Non matching location writer and signing writer key!");
         try {
             byte[] metaBlob = metadata.serialize();
-            System.out.println("Storing metadata blob of " + metaBlob.length + " bytes. to mapKey: " + location.toString());
+            if (LOGGING)
+                System.out.println("Storing metadata blob of " + metaBlob.length + " bytes. to mapKey: " + location.toString());
             return network.dhtClient.put(location.owner, metaBlob)
                     .thenCompose(blobHash -> {
                         return network.btree.put(writer, location.getMapKey(), blobHash);

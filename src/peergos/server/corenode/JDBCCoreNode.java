@@ -4,7 +4,6 @@ import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.*;
-import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.merklebtree.*;
 import peergos.shared.util.*;
@@ -17,6 +16,8 @@ import java.util.concurrent.*;
 import java.util.stream.*;
 
 public class JDBCCoreNode implements CoreNode {
+    public static final boolean LOGGING = false;
+
     public static final long MIN_USERNAME_SET_REFRESH_PERIOD = 60*1000000000L;
 
     private static final String TABLE_NAMES_SELECT_STMT = "SELECT * FROM sqlite_master WHERE type='table';";
@@ -602,7 +603,6 @@ public class JDBCCoreNode implements CoreNode {
 
     @Override
     public CompletableFuture<Boolean> setMetadataBlob(PublicSigningKey owner, PublicSigningKey writer, byte[] writingKeySignedHash) {
-
         try {
             return getMetadataBlob(writer).thenApply(current -> {
                 byte[] bothHashes = writer.unsignMessage(writingKeySignedHash);
@@ -612,7 +612,8 @@ public class JDBCCoreNode implements CoreNode {
                 Multihash newHash = cas.updated.get();
                 if (!current.equals(claimedCurrentHash))
                     return false;
-                System.out.println("Core::setMetadata for " + writer + " from " + current + " to " + newHash);
+                if (LOGGING)
+                    System.out.println("Core::setMetadata for " + writer + " from " + current + " to " + newHash);
                 MetadataBlob blob = new MetadataBlob(writer.serialize(), bothHashes);
                 return blob.insert();
             });

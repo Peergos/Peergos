@@ -26,10 +26,8 @@ public class CachingCoreNode implements CoreNode {
     public CompletableFuture<MaybeMultihash> getMetadataBlob(PublicSigningKey writer) {
         synchronized (cache) {
             Pair<MaybeMultihash, Long> cached = cache.get(writer);
-            if (cached != null && System.currentTimeMillis() - cached.right < cacheTTL) {
-                System.out.println("Returning cached IPNS entry");
+            if (cached != null && System.currentTimeMillis() - cached.right < cacheTTL)
                 return CompletableFuture.completedFuture(cached.left);
-            }
         }
         return target.getMetadataBlob(writer).thenApply(m -> {
             synchronized (cache) {
