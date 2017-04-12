@@ -184,7 +184,7 @@ public class DirAccess extends FileAccess {
                         // re-upload us with the link to the next DirAccess
                         DirAccess withNextBlob = newUs.withNextBlob(Optional.of(SymmetricLocationLink.create(ourSubfolders,
                                 nextSubfoldersKey, nextPointer.getLocation())));
-                        return newUs.commit(ourPointer.getLocation(), signer, context);
+                        return withNextBlob.commit(ourPointer.getLocation(), signer, context);
                         });
                     });
                 }

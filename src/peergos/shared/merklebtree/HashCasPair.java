@@ -11,6 +11,8 @@ public class HashCasPair implements Cborable {
     public final MaybeMultihash updated;
 
     public HashCasPair(MaybeMultihash original, MaybeMultihash updated) {
+        if (original.equals(updated))
+            throw new IllegalStateException("Tried to create a CAS pair with original == target!");
         this.original = original;
         this.updated = updated;
     }

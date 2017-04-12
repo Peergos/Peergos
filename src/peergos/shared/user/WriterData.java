@@ -131,13 +131,20 @@ public class WriterData implements Cborable {
 
         return dhtClient.put(signer.publicSigningKey, raw)
                 .thenCompose(blobHash -> {
-                    HashCasPair cas = new HashCasPair(currentHash, MaybeMultihash.of(blobHash));
+                    MaybeMultihash newHash = MaybeMultihash.of(blobHash);
+                    if (newHash.equals(currentHash)) {
+                        // nothing has changed
+                        CommittedWriterData committed = committed(newHash);
+                        updater.accept(committed);
+                        return CompletableFuture.completedFuture(committed);
+                    }
+                    HashCasPair cas = new HashCasPair(currentHash, newHash);
                     byte[] signed = signer.signMessage(cas.serialize());
                     return coreNode.setMetadataBlob(signer.publicSigningKey, signer.publicSigningKey, signed)
                             .thenApply(res -> {
                                 if (!res)
                                     throw new IllegalStateException("Corenode Crypto CAS failed!");
-                                CommittedWriterData committed = committed(MaybeMultihash.of(blobHash));
+                                CommittedWriterData committed = committed(newHash);
                                 updater.accept(committed);
                                 return committed;
                             });
