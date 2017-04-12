@@ -13,14 +13,10 @@ public class SplitFragmenter implements Fragmenter {
 
     public byte[][] split(byte[] input) {
 
-        //align length to 256
+        int remainder  = input.length % Fragment.MAX_LENGTH;
 
-        int remainder = input.length % 256;
-        int totalLength = input.length + 256 - remainder;
-        int nFragments = totalLength / Fragment.MAX_LENGTH;
-
-        if (totalLength % Fragment.MAX_LENGTH > 0)
-            nFragments +=1;
+        int extra =  remainder > 0 ? 1: 0;
+        int nFragments = input.length / Fragment.MAX_LENGTH + extra;
 
         byte[][] split = new  byte[nFragments][];
         for(int i= 0; i< nFragments; ++i) {
