@@ -70,7 +70,7 @@ public class PinningCoreNode implements CoreNode {
                 return CompletableFuture.completedFuture(false);
             long t2 = System.currentTimeMillis();
             if (LOGGING)
-                System.out.println("Pinning took: " + (t2 -t1) + " mS");
+                System.out.println("Pinning "+cas.updated+" took: " + (t2 -t1) + " mS");
             return target.setMetadataBlob(owner, signer, sharingKeySignedBtreeRootHashes)
                     .thenCompose(b -> {
                         if (!b)
@@ -83,7 +83,7 @@ public class PinningCoreNode implements CoreNode {
                                         .thenApply(unpins -> {
                                             long t4 = System.currentTimeMillis();
                                             if (LOGGING)
-                                                System.out.println("Unpinning took: " + (t4 -t3) + " mS");
+                                                System.out.println("Unpinning "+cas.original+" took: " + (t4 -t3) + " mS");
                                             return unpins.contains(cas.original.get());
                                         });
                     });
