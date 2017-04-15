@@ -28,7 +28,8 @@ public class JDBCCoreNode implements CoreNode {
     private static final String CREATE_CHAINS_TABLE =
             "create table chains (userID int references usernames(id), linkID int references links(id), lindex int, primary key (userID, lindex)); create unique index uniq1 on chains(userID, linkID)";
     private static final String CREATE_FOLLOW_REQUESTS_TABLE = "create table followrequests (id integer primary key autoincrement, name text not null, followrequest text not null);";
-    private static final String CREATE_METADATA_BLOBS_TABLE = "create table metadatablobs (writingkey text primary key not null, hash text not null);";
+    private static final String CREATE_METADATA_BLOBS_TABLE = "create table metadatablobs (writingkey text primary key not null, hash text not null); " +
+            "CREATE UNIQUE INDEX index_name on metadatablobs (writingkey);";
 
     private static final Map<String,String> TABLES = new HashMap<>();
     static
