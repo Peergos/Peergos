@@ -16,6 +16,7 @@ import java.util.stream.*;
 
 public class DHTHandler implements HttpHandler
 {
+    private static final boolean LOGGING = true;
     private final ContentAddressedStorage dht;
     private final String apiPrefix;
 
@@ -48,8 +49,9 @@ public class DHTHandler implements HttpHandler
 
     @Override
     public void handle(HttpExchange httpExchange) throws IOException {
+        long t1 = System.currentTimeMillis();
+        String path = httpExchange.getRequestURI().getPath();
         try {
-            String path = httpExchange.getRequestURI().getPath();
             if (! path.startsWith(apiPrefix))
                 throw new IllegalStateException("Unsupported api version, required: " + apiPrefix);
             path = path.substring(apiPrefix.length());
@@ -133,6 +135,10 @@ public class DHTHandler implements HttpHandler
             System.err.println("Error handling " +httpExchange.getRequestURI());
             e.printStackTrace();
             replyError(httpExchange, e);
+        } finally {
+            long t2 = System.currentTimeMillis();
+            if (LOGGING)
+                System.out.println("DHT Handler handled " + path + " query in: " + (t2 - t1) + " mS");
         }
     }
 

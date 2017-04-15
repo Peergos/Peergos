@@ -20,6 +20,7 @@ import peergos.shared.util.Serialize;
 
 public class HTTPCoreNodeServer
 {
+    private static final boolean LOGGING = true;
     private static final int CONNECTION_BACKLOG = 100;
     private static final int HANDLER_THREAD_COUNT = 1000;
 
@@ -36,6 +37,7 @@ public class HTTPCoreNodeServer
 
         public void handle(HttpExchange exchange) throws IOException 
         {
+            long t1 = System.currentTimeMillis();
             DataInputStream din = new DataInputStream(exchange.getRequestBody());
             
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
@@ -100,6 +102,9 @@ public class HTTPCoreNodeServer
                 exchange.sendResponseHeaders(400, 0);
             } finally {
                 exchange.close();
+                long t2 = System.currentTimeMillis();
+                if (LOGGING)
+                    System.out.println("Corenode server handled " + method + " request in: " + (t2 - t1) + " mS");
             }
 
         }

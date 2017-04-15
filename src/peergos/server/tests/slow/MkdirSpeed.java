@@ -29,7 +29,7 @@ public class MkdirSpeed {
     private static Random random = new Random(RANDOM_SEED);
 
     public MkdirSpeed(boolean useHttp, String useIPFS, Random r) throws Exception {
-        this.network = useHttp ? buildInProcessAccess(r) : buildHttpNetworkAccess(useIPFS.equals("IPFS"), r);
+        this.network = ! useHttp ? buildInProcessAccess(r) : buildHttpNetworkAccess(useIPFS.equals("IPFS"), r);
 
         // use insecure random otherwise tests take ages
         setFinalStatic(TweetNaCl.class.getDeclaredField("prng"), new Random(1));
@@ -55,9 +55,9 @@ public class MkdirSpeed {
     @Parameterized.Parameters()
     public static Collection<Object[]> parameters() {
         return Arrays.asList(new Object[][] {
-//                {false, "IPFS", new Random(0)}
-                {false, "NOTIPFS", new Random(0)}
 //                {true, "IPFS", new Random(0)}
+                {true, "NOTIPFS", new Random(0)}
+//                {false, "IPFS", new Random(0)}
         });
     }
 

@@ -16,6 +16,7 @@ import java.util.concurrent.*;
 
 public class HTTPCoreNode implements CoreNode
 {
+    private static final boolean LOGGING = true;
     private final HttpPoster poster;
 
     public static CoreNode getInstance(URL coreURL) throws IOException {
@@ -222,6 +223,7 @@ public class HTTPCoreNode implements CoreNode
    
    @Override public CompletableFuture<Boolean> setMetadataBlob(PublicSigningKey ownerPublicKey, PublicSigningKey sharingPublicKey, byte[] sharingKeySignedPayload)
     {
+        long t1 = System.currentTimeMillis();
         try
         {
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
@@ -243,6 +245,10 @@ public class HTTPCoreNode implements CoreNode
         } catch (IOException ioe) {
             ioe.printStackTrace();
             return CompletableFuture.completedFuture(false);
+        } finally {
+            long t2 = System.currentTimeMillis();
+            if (LOGGING)
+                System.out.println("HTTPCorenode.set took " + (t2 -t1) + "mS");
         }
     }
 
@@ -273,12 +279,17 @@ public class HTTPCoreNode implements CoreNode
 
     @Override public CompletableFuture<MaybeMultihash> getMetadataBlob(PublicSigningKey encodedSharingKey)
     {
+        long t1 = System.currentTimeMillis();
         try {
             return poster.postUnzip("core/getMetadataBlob", encodedSharingKey.serialize())
                     .thenApply(meta -> MaybeMultihash.fromCbor(CborObject.fromByteArray(meta)));
         } catch (Exception ioe) {
             ioe.printStackTrace();
             return CompletableFuture.completedFuture(MaybeMultihash.EMPTY());
+        } finally {
+            long t2 = System.currentTimeMillis();
+            if (LOGGING)
+                System.out.println("HTTPCorenode.get took " + (t2 -t1) + "mS");
         }
     }
 

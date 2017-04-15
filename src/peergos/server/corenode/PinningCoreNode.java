@@ -15,6 +15,7 @@ import java.util.*;
 import java.util.concurrent.*;
 
 public class PinningCoreNode implements CoreNode {
+    private static final boolean LOGGING = true;
     private final CoreNode target;
     private final ContentAddressedStorage storage;
 
@@ -63,17 +64,28 @@ public class PinningCoreNode implements CoreNode {
         // first pin new root
         byte[] message = signer.unsignMessage(sharingKeySignedBtreeRootHashes);
         HashCasPair cas = HashCasPair.fromCbor(CborObject.fromByteArray(message));
+        long t1 = System.currentTimeMillis();
         return storage.recursivePin(cas.updated.get()).thenCompose(pins -> {
             if (!pins.contains(cas.updated.get()))
                 return CompletableFuture.completedFuture(false);
+            long t2 = System.currentTimeMillis();
+            if (LOGGING)
+                System.out.println("Pinning took: " + (t2 -t1) + " mS");
             return target.setMetadataBlob(owner, signer, sharingKeySignedBtreeRootHashes)
                     .thenCompose(b -> {
                         if (!b)
                             return CompletableFuture.completedFuture(false);
+                        long t3 = System.currentTimeMillis();
                         // unpin old root
                         return !cas.original.isPresent() ?
                                 CompletableFuture.completedFuture(true) :
-                                storage.recursiveUnpin(cas.original.get()).thenApply(unpins -> unpins.contains(cas.original.get()));
+                                storage.recursiveUnpin(cas.original.get())
+                                        .thenApply(unpins -> {
+                                            long t4 = System.currentTimeMillis();
+                                            if (LOGGING)
+                                                System.out.println("Unpinning took: " + (t4 -t3) + " mS");
+                                            return unpins.contains(cas.original.get());
+                                        });
                     });
         });
     }
