@@ -57,7 +57,7 @@ public class FragmenterTest {
 
         for (byte[] bytes : split) {
             int length = bytes.length;
-            assertTrue(length >= 0);
+            assertTrue(length > 0);
             assertTrue(length <= Fragment.MAX_LENGTH);
         }
 

@@ -12,8 +12,13 @@ public class SplitFragmenter implements Fragmenter {
     }
 
     public byte[][] split(byte[] input) {
+        //calculate padding length to align to 256 bytes
+        int padding = 0;
+        int mod = input.length % 256;
+        if (mod != 0 || input.length == 0)
+            padding = 256 - mod;
         //align to 256 bytes
-        int len = input.length + (256 - input.length % 256);
+        int len = input.length + padding;
 
         //calculate the number  of fragments
         int nFragments =  len / Fragment.MAX_LENGTH;
