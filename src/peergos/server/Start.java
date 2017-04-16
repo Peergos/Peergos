@@ -1,12 +1,14 @@
 package peergos.server;
 
+import peergos.server.mutable.*;
 import peergos.shared.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
+import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
-import peergos.server.corenode.HTTPCoreNodeServer;
-import peergos.server.corenode.PinningCoreNode;
+import peergos.server.corenode.HttpCoreNodeServer;
+import peergos.server.corenode.PinningMutablePointers;
 import peergos.server.corenode.SQLiteCoreNode;
 import peergos.server.fuse.*;
 import peergos.server.storage.*;
@@ -81,13 +83,13 @@ public class Start
                 String keyfile = a.getArg("keyfile", "core.key");
                 char[] passphrase = a.getArg("passphrase", "password").toCharArray();
                 String path = a.getArg("corenodePath", ":memory:");
-                int corenodePort = a.getInt("corenodePort", HTTPCoreNodeServer.PORT);
+                int corenodePort = a.getInt("corenodePort", HttpCoreNodeServer.PORT);
                 System.out.println("Using core node path " + path);
                 SQLiteCoreNode coreNode = SQLiteCoreNode.build(path);
-                HTTPCoreNodeServer.createAndStart(keyfile, passphrase, corenodePort, coreNode, a);
+                HttpCoreNodeServer.createAndStart(keyfile, passphrase, corenodePort, coreNode, coreNode, a);
             } else {
                 int webPort = a.getInt("port", 8000);
-                URL coreAddress = new URI(a.getArg("corenodeURL", "http://localhost:" + HTTPCoreNodeServer.PORT)).toURL();
+                URL coreAddress = new URI(a.getArg("corenodeURL", "http://localhost:" + HttpCoreNodeServer.PORT)).toURL();
                 String domain = a.getArg("domain", "localhost");
                 InetSocketAddress userAPIAddress = new InetSocketAddress(domain, webPort);
 
@@ -100,10 +102,11 @@ public class Start
                 String hostname = a.getArg("domain", "localhost");
 
                 CoreNode core = HTTPCoreNode.getInstance(coreAddress);
-                CoreNode pinner = new PinningCoreNode(core, dht);
+                MutablePointers mutable = HttpMutablePointers.getInstance(coreAddress);
+                MutablePointers pinner = new PinningMutablePointers(mutable, dht);
 
                 InetSocketAddress httpsMessengerAddress = new InetSocketAddress(hostname, userAPIAddress.getPort());
-                new UserService(httpsMessengerAddress, Logger.getLogger("IPFS"), dht, pinner, a);
+                new UserService(httpsMessengerAddress, Logger.getLogger("IPFS"), dht, core, pinner, a);
 
                 if (a.hasArg("fuse")) {
                     String username = a.getArg("username", "test01");
@@ -136,7 +139,7 @@ public class Start
     public static void demo(Args a) throws Exception {
         String domain = a.getArg("domain", "demo.peergos.net");
         String corenodePath = a.getArg("corenodePath", "core.sql");
-        int corenodePort = a.getInt("corenodePort", HTTPCoreNodeServer.PORT);
+        int corenodePort = a.getInt("corenodePort", HttpCoreNodeServer.PORT);
 
         Start.main(new String[] {"-corenode", "-domain", domain, "-corenodePath", a.getArg("corenodePath", corenodePath)});
 
@@ -150,7 +153,7 @@ public class Start
     public static void local(Args a) throws Exception {
         String domain = a.getArg("domain", "localhost");
         String corenodePath = a.getArg("corenodePath", ":memory:");
-        int corenodePort = a.getInt("corenodePort", HTTPCoreNodeServer.PORT);
+        int corenodePort = a.getInt("corenodePort", HttpCoreNodeServer.PORT);
 
         run(Args.parse(new String[] {"-corenode", "-domain", domain, "-corenodePath", corenodePath, "-corenodePort", Integer.toString(corenodePort)}));
 

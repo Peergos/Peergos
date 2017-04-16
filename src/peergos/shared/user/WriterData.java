@@ -8,6 +8,7 @@ import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.merklebtree.*;
+import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
@@ -121,15 +122,15 @@ public class WriterData implements Cborable {
 
     public CompletableFuture<CommittedWriterData> commit(SigningKeyPair signer, MaybeMultihash currentHash,
                                                          NetworkAccess network, Consumer<CommittedWriterData> updater) {
-        return commit(signer, currentHash, network.coreNode, network.dhtClient, updater);
+        return commit(signer, currentHash, network.mutable, network.dhtClient, updater);
     }
 
     public CompletableFuture<CommittedWriterData> commit(SigningKeyPair signer, MaybeMultihash currentHash,
-                                                         CoreNode coreNode, ContentAddressedStorage dhtClient,
+                                                         MutablePointers mutable, ContentAddressedStorage immutable,
                                                          Consumer<CommittedWriterData> updater) {
         byte[] raw = serialize();
 
-        return dhtClient.put(signer.publicSigningKey, raw)
+        return immutable.put(signer.publicSigningKey, raw)
                 .thenCompose(blobHash -> {
                     MaybeMultihash newHash = MaybeMultihash.of(blobHash);
                     if (newHash.equals(currentHash)) {
@@ -140,7 +141,7 @@ public class WriterData implements Cborable {
                     }
                     HashCasPair cas = new HashCasPair(currentHash, newHash);
                     byte[] signed = signer.signMessage(cas.serialize());
-                    return coreNode.setMetadataBlob(signer.publicSigningKey, signer.publicSigningKey, signed)
+                    return mutable.setPointer(signer.publicSigningKey, signer.publicSigningKey, signed)
                             .thenApply(res -> {
                                 if (!res)
                                     throw new IllegalStateException("Corenode Crypto CAS failed!");

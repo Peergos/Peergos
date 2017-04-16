@@ -36,10 +36,10 @@ public class MkdirSpeed {
     }
 
     private static NetworkAccess buildInProcessAccess(Random r) throws Exception {
-        CoreNode core = SQLiteCoreNode.build(":memory:");
+        JDBCCoreNode core = SQLiteCoreNode.build(":memory:");
         ContentAddressedStorage dht = new RAMStorage();
         Btree btree = new BtreeImpl(core, dht);
-        return new NetworkAccess(core, dht, btree, Collections.emptyList());
+        return new NetworkAccess(core, dht, core, btree, Collections.emptyList());
     }
 
     private static NetworkAccess buildHttpNetworkAccess(boolean useIpfs, Random r) throws Exception {

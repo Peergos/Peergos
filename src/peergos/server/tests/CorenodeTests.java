@@ -89,7 +89,7 @@ public class CorenodeTests {
                     byte[] signed = writer.signMessage(cas.serialize());
                     try {
                         long t3 = System.currentTimeMillis();
-                        network.coreNode.setMetadataBlob(owner.publicSigningKey, writer.publicSigningKey, signed).get();
+                        network.mutable.setPointer(owner.publicSigningKey, writer.publicSigningKey, signed).get();
                         long latency = System.currentTimeMillis() - t3;
                         if (latency > maxLatency)
                             maxLatency = latency;
