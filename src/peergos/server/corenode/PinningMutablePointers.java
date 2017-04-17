@@ -32,8 +32,11 @@ public class PinningMutablePointers implements MutablePointers {
         HashCasPair cas = HashCasPair.fromCbor(CborObject.fromByteArray(message));
         long t1 = System.currentTimeMillis();
         return storage.recursivePin(cas.updated.get()).thenCompose(pins -> {
-            if (!pins.contains(cas.updated.get()))
-                return CompletableFuture.completedFuture(false);
+            if (!pins.contains(cas.updated.get())) {
+                CompletableFuture<Boolean> err = new CompletableFuture<>();
+                err.completeExceptionally(new IllegalStateException("Couldn't pin new hash: " + cas.updated.get()));
+                return err;
+            }
             long t2 = System.currentTimeMillis();
             if (LOGGING)
                 System.out.println("Pinning "+cas.updated+" took: " + (t2 -t1) + " mS");
