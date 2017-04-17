@@ -12,11 +12,18 @@ public class SplitFragmenter implements Fragmenter {
     }
 
     public byte[][] split(byte[] input) {
+        //calculate padding length to align to 256 bytes
+        int padding = 0;
+        int mod = input.length % 256;
+        if (mod != 0 || input.length == 0)
+            padding = 256 - mod;
+        //align to 256 bytes
+        int len = input.length + padding;
 
-        int remainder  = input.length % Fragment.MAX_LENGTH;
-
-        int extra =  remainder > 0 ? 1: 0;
-        int nFragments = input.length / Fragment.MAX_LENGTH + extra;
+        //calculate the number  of fragments
+        int nFragments =  len / Fragment.MAX_LENGTH;
+        if (len % Fragment.MAX_LENGTH > 0)
+            nFragments++;
 
         byte[][] split = new  byte[nFragments][];
         for(int i= 0; i< nFragments; ++i) {
@@ -46,10 +53,11 @@ public class SplitFragmenter implements Fragmenter {
 
         byte[] output = new byte[length];
         int pos =  0;
-        for (int i=0; i < encoded.length; i++) {
+        for (int i=0; i < encoded.length && pos < truncateTo; i++) {
             byte[] b = encoded[i];
-            System.arraycopy(b, 0, output, pos, b.length);
-            pos += b.length;
+            int copyLength = Math.max(0, Math.min(b.length, truncateTo - pos));
+            System.arraycopy(b, 0, output, pos, copyLength);
+            pos += copyLength;
         }
         return output;
     }
