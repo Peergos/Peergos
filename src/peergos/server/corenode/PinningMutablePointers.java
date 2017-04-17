@@ -42,8 +42,11 @@ public class PinningMutablePointers implements MutablePointers {
                 System.out.println("Pinning "+cas.updated+" took: " + (t2 -t1) + " mS");
             return target.setPointer(owner, signer, sharingKeySignedBtreeRootHashes)
                     .thenCompose(b -> {
-                        if (!b)
-                            return CompletableFuture.completedFuture(false);
+                        if (!b) {
+                            CompletableFuture<Boolean> err = new CompletableFuture<>();
+                            err.completeExceptionally(new IllegalStateException("Couldn't update mutable pointer, cas failed: " + cas));
+                            return err;
+                        }
                         long t3 = System.currentTimeMillis();
                         // unpin old root
                         return !cas.original.isPresent() ?
