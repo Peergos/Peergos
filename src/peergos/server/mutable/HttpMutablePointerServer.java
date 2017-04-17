@@ -66,6 +66,8 @@ public class HttpMutablePointerServer
             } catch (Exception e) {
                 e.printStackTrace();
                 exchange.sendResponseHeaders(400, 0);
+                OutputStream body = exchange.getResponseBody();
+                body.write(e.getMessage().getBytes());
             } finally {
                 exchange.close();
                 long t2 = System.currentTimeMillis();
