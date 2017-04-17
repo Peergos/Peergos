@@ -6,6 +6,7 @@ import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.merklebtree.*;
+import peergos.shared.mutable.*;
 import peergos.shared.util.*;
 
 import java.io.*;
@@ -15,7 +16,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
 
-public class JDBCCoreNode implements CoreNode {
+public class JDBCCoreNode implements CoreNode, MutablePointers {
     public static final boolean LOGGING = false;
 
     public static final long MIN_USERNAME_SET_REFRESH_PERIOD = 60*1000000000L;
@@ -603,9 +604,9 @@ public class JDBCCoreNode implements CoreNode {
     }
 
     @Override
-    public CompletableFuture<Boolean> setMetadataBlob(PublicSigningKey owner, PublicSigningKey writer, byte[] writingKeySignedHash) {
+    public CompletableFuture<Boolean> setPointer(PublicSigningKey owner, PublicSigningKey writer, byte[] writingKeySignedHash) {
         try {
-            return getMetadataBlob(writer).thenApply(current -> {
+            return getPointer(writer).thenApply(current -> {
                 byte[] bothHashes = writer.unsignMessage(writingKeySignedHash);
                 // check CAS [current hash, new hash]
                 HashCasPair cas = HashCasPair.fromCbor(CborObject.fromByteArray(bothHashes));
@@ -625,19 +626,7 @@ public class JDBCCoreNode implements CoreNode {
     }
 
     @Override
-    public CompletableFuture<Boolean> removeMetadataBlob(PublicSigningKey writingKey, byte[] writingKeySignedMapKeyPlusBlob) {
-        try {
-            byte[] currentHash = writingKey.unsignMessage(writingKeySignedMapKeyPlusBlob);
-            MetadataBlob blob = new MetadataBlob(writingKey.serialize(), currentHash);
-            return CompletableFuture.completedFuture(blob.delete());
-        } catch (TweetNaCl.InvalidSignatureException e) {
-            System.err.println("Invalid signature during removeMetadataBlob for  sharer: "+writingKey);
-            return CompletableFuture.completedFuture(false);
-        }
-    }
-
-    @Override
-    public CompletableFuture<MaybeMultihash> getMetadataBlob(PublicSigningKey writingKey) {
+    public CompletableFuture<MaybeMultihash> getPointer(PublicSigningKey writingKey) {
         byte[] dummy = null;
         MetadataBlob blob = new MetadataBlob(writingKey.serialize(), dummy);
         MetadataBlob users = blob.selectOne();

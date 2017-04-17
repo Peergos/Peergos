@@ -1,10 +1,12 @@
 package peergos.server;
 
 import com.sun.net.httpserver.*;
+import peergos.server.mutable.*;
 import peergos.shared.corenode.*;
+import peergos.shared.mutable.*;
 import peergos.shared.storage.ContentAddressedStorage;
 
-import peergos.server.corenode.HTTPCoreNodeServer;
+import peergos.server.corenode.HttpCoreNodeServer;
 import peergos.server.net.*;
 import peergos.shared.util.*;
 
@@ -63,13 +65,15 @@ public class UserService
     private final Logger LOGGER;
     private final InetSocketAddress local;
     private final CoreNode coreNode;
+    private final MutablePointers mutable;
     private HttpServer server;
 
-    public UserService(InetSocketAddress local, Logger LOGGER, ContentAddressedStorage dht, CoreNode coreNode, Args args) throws IOException
+    public UserService(InetSocketAddress local, Logger LOGGER, ContentAddressedStorage dht, CoreNode coreNode, MutablePointers mutable, Args args) throws IOException
     {
         this.LOGGER = LOGGER;
         this.local = local;
         this.coreNode = coreNode;
+        this.mutable = mutable;
         init(dht, args);
     }
 
@@ -175,7 +179,8 @@ public class UserService
         }
 
         server.createContext(UI_URL, wrap.apply(handler));
-        server.createContext("/" + HTTPCoreNodeServer.CORE_URL, wrap.apply(new HTTPCoreNodeServer.CoreNodeHandler(coreNode)));
+        server.createContext("/" + HttpCoreNodeServer.CORE_URL, wrap.apply(new HttpCoreNodeServer.CoreNodeHandler(coreNode)));
+        server.createContext("/" + HttpMutablePointerServer.MUTABLE_POINTERS_URL, wrap.apply(new HttpMutablePointerServer.MutationHandler(mutable)));
 
         server.setExecutor(Executors.newFixedThreadPool(HANDLER_THREADS));
         server.start();

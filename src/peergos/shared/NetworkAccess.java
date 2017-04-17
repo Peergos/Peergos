@@ -3,6 +3,7 @@ package peergos.shared;
 import jsinterop.annotations.*;
 import peergos.client.*;
 import peergos.shared.corenode.*;
+import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
 
@@ -15,19 +16,21 @@ public class NetworkAccess {
 
     public final CoreNode coreNode;
     public final ContentAddressedStorage dhtClient;
+    public final MutablePointers mutable;
     public final Btree btree;
     @JsProperty
     public final List<String> usernames;
     private final LocalDateTime creationTime;
     private final boolean isJavascript;
 
-    public NetworkAccess(CoreNode coreNode, ContentAddressedStorage dhtClient, Btree btree, List<String> usernames) {
-        this(coreNode,dhtClient,btree, usernames, false);
+    public NetworkAccess(CoreNode coreNode, ContentAddressedStorage dhtClient, MutablePointers mutable, Btree btree, List<String> usernames) {
+        this(coreNode, dhtClient, mutable, btree, usernames, false);
     }
 
-    public NetworkAccess(CoreNode coreNode, ContentAddressedStorage dhtClient, Btree btree, List<String> usernames, boolean isJavascript) {
+    public NetworkAccess(CoreNode coreNode, ContentAddressedStorage dhtClient, MutablePointers mutable, Btree btree, List<String> usernames, boolean isJavascript) {
         this.coreNode = coreNode;
         this.dhtClient = dhtClient;
+        this.mutable = mutable;
         this.btree = btree;
         this.usernames = usernames;
         this.creationTime = LocalDateTime.now();
@@ -46,19 +49,19 @@ public class NetworkAccess {
     }
 
     public NetworkAccess clear() {
-        return new NetworkAccess(coreNode, dhtClient, new BtreeImpl(coreNode, dhtClient), usernames, isJavascript);
+        return new NetworkAccess(coreNode, dhtClient, mutable, new BtreeImpl(mutable, dhtClient), usernames, isJavascript);
     }
 
     public static CompletableFuture<NetworkAccess> build(HttpPoster poster, boolean isJavascript) {
         int cacheTTL = 7_000;
         System.out.println("Using caching corenode with TTL: " + cacheTTL + " mS");
-        CoreNode coreNode = new CachingCoreNode(new HTTPCoreNode(poster), cacheTTL);
-//        CoreNode coreNode = new HTTPCoreNode(poster);
+        CoreNode coreNode = new HTTPCoreNode(poster);
+        MutablePointers mutable = new CachingPointers(new HttpMutablePointers(poster), cacheTTL);
 
         // allow 10MiB of ram for caching btree entries
         ContentAddressedStorage dht = new CachingStorage(new ContentAddressedStorage.HTTP(poster), 10_000, 50 * 1024);
-        Btree btree = new BtreeImpl(coreNode, dht);
-        return coreNode.getUsernames("").thenApply(usernames -> new NetworkAccess(coreNode, dht, btree, usernames, isJavascript));
+        Btree btree = new BtreeImpl(mutable, dht);
+        return coreNode.getUsernames("").thenApply(usernames -> new NetworkAccess(coreNode, dht, mutable, btree, usernames, isJavascript));
     }
 
     @JsMethod

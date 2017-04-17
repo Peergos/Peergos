@@ -1,11 +1,11 @@
 package peergos.shared.user;
 
-import peergos.shared.corenode.CoreNode;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.merklebtree.MaybeMultihash;
 import peergos.shared.merklebtree.MerkleBTree;
+import peergos.shared.mutable.*;
 import peergos.shared.storage.ContentAddressedStorage;
 import peergos.shared.util.*;
 
@@ -13,13 +13,13 @@ import java.util.*;
 import java.util.concurrent.*;
 
 public class BtreeImpl implements Btree {
-    private final CoreNode coreNode;
+    private final MutablePointers mutable;
     private final ContentAddressedStorage dht;
     private static final boolean LOGGING = false;
     private final Map<PublicSigningKey, CompletableFuture<CommittedWriterData>> pending = new HashMap<>();
 
-    public BtreeImpl(CoreNode coreNode, ContentAddressedStorage dht) {
-        this.coreNode = coreNode;
+    public BtreeImpl(MutablePointers mutable, ContentAddressedStorage dht) {
+        this.mutable = mutable;
         this.dht = dht;
     }
 
@@ -41,7 +41,7 @@ public class BtreeImpl implements Btree {
     }
 
     private CompletableFuture<CommittedWriterData> getWriterData(PublicSigningKey pubKey) {
-        return coreNode.getMetadataBlob(pubKey)
+        return mutable.getPointer(pubKey)
                 .thenCompose(this::getWriterData);
     }
 
@@ -74,7 +74,7 @@ public class BtreeImpl implements Btree {
                             .thenApply(newRoot -> LOGGING ? log(newRoot, "BTREE.put (" + ArrayOps.bytesToHex(mapKey)
                                     + ", " + value + ") => CAS(" + btreeRootHash + ", " + newRoot + ")") : newRoot)
                             .thenCompose(newBtreeRoot -> holder.withBtree(newBtreeRoot)
-                                    .commit(writer, committed.hash, coreNode, dht, lock::complete))
+                                    .commit(writer, committed.hash, mutable, dht, lock::complete))
                             .thenApply(x -> true);
                 });
     }
@@ -108,7 +108,7 @@ public class BtreeImpl implements Btree {
                             .thenCompose(btree -> btree.delete(publicWriter, mapKey))
                             .thenApply(pair -> LOGGING ? log(pair, "BTREE.rm (" + ArrayOps.bytesToHex(mapKey) + "  => " + pair) : pair)
                             .thenCompose(newBtreeRoot -> holder.withBtree(newBtreeRoot)
-                                    .commit(writer, committed.hash, coreNode, dht, future::complete))
+                                    .commit(writer, committed.hash, mutable, dht, future::complete))
                             .thenApply(x -> true);
                 });
     }

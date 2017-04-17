@@ -1,6 +1,6 @@
 package peergos.server.corenode;
 
-import peergos.shared.cbor.*;
+import peergos.server.mutable.*;
 import peergos.shared.corenode.CoreNode;
 import peergos.shared.corenode.CoreNodeUtils;
 import peergos.shared.corenode.UserPublicKeyLink;
@@ -14,15 +14,15 @@ import java.util.zip.*;
 import com.sun.net.httpserver.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.io.ipfs.api.*;
-import peergos.shared.merklebtree.MaybeMultihash;
+import peergos.shared.mutable.*;
 import peergos.shared.util.Args;
 import peergos.shared.util.Serialize;
 
-public class HTTPCoreNodeServer
+public class HttpCoreNodeServer
 {
     private static final boolean LOGGING = true;
     private static final int CONNECTION_BACKLOG = 100;
-    private static final int HANDLER_THREAD_COUNT = 1000;
+    private static final int HANDLER_THREAD_COUNT = 100;
 
     public static final String CORE_URL = "core/";
     public static final int PORT = 9999;
@@ -78,15 +78,6 @@ public class HTTPCoreNodeServer
                         break;
                     case "removeFollowRequest":
                         removeFollowRequest(din, dout);
-                        break;
-                    case "addMetadataBlob":
-                        addMetadataBlob(din, dout);
-                        break;
-                    case "getMetadataBlob":
-                        getMetadataBlob(din, dout);
-                        break;
-                    case "removeMetadataBlob":
-                        removeMetadataBlob(din, dout);
                         break;
                     default:
                         throw new IOException("Unknown method "+ method);
@@ -193,36 +184,6 @@ public class HTTPCoreNodeServer
             dout.writeBoolean(isRemoved);
         }
 
-        void addMetadataBlob(DataInputStream din, DataOutputStream dout) throws Exception
-        {
-            byte[] ownerPublicKey = CoreNodeUtils.deserializeByteArray(din);
-            byte[] encodedSharingPublicKey = CoreNodeUtils.deserializeByteArray(din);
-            byte[] signedPayload = CoreNodeUtils.deserializeByteArray(din);
-            boolean isAdded = coreNode.setMetadataBlob(
-                    PublicSigningKey.fromByteArray(ownerPublicKey),
-                    PublicSigningKey.fromByteArray(encodedSharingPublicKey),
-                    signedPayload).get();
-            dout.writeBoolean(isAdded);
-        }
-
-        void removeMetadataBlob(DataInputStream din, DataOutputStream dout) throws Exception
-        {
-            byte[] encodedWriterPublicKey = CoreNodeUtils.deserializeByteArray(din);
-            byte[] signedPayload = CoreNodeUtils.deserializeByteArray(din);
-            boolean isAdded = coreNode.removeMetadataBlob(
-                    PublicSigningKey.fromByteArray(encodedWriterPublicKey),
-                    signedPayload).get();
-            dout.writeBoolean(isAdded);
-        }
-
-        void getMetadataBlob(DataInputStream din, DataOutputStream dout) throws Exception
-        {
-            PublicSigningKey encodedSharingKey = PublicSigningKey.fromCbor(CborObject.deserialize(new CborDecoder(din)));
-            MaybeMultihash metadataBlob = coreNode.getMetadataBlob(encodedSharingKey).get();
-
-            dout.write(metadataBlob.serialize());
-        }
-
         public void close() throws IOException{
             coreNode.close();
         }
@@ -232,7 +193,7 @@ public class HTTPCoreNodeServer
     private final InetSocketAddress address; 
     private final CoreNodeHandler ch;
 
-    public HTTPCoreNodeServer(CoreNode coreNode, InetSocketAddress address) throws IOException
+    public HttpCoreNodeServer(CoreNode coreNode, MutablePointers mutable, InetSocketAddress address) throws IOException
     {
 
         this.address = address;
@@ -242,6 +203,7 @@ public class HTTPCoreNodeServer
             server = HttpServer.create(new InetSocketAddress(InetAddress.getLocalHost(), address.getPort()), CONNECTION_BACKLOG);
         ch = new CoreNodeHandler(coreNode);
         server.createContext("/" + CORE_URL, ch);
+        server.createContext("/" + HttpMutablePointerServer.MUTABLE_POINTERS_URL, new HttpMutablePointerServer.MutationHandler(mutable));
         server.setExecutor(Executors.newFixedThreadPool(HANDLER_THREAD_COUNT));
     }
 
@@ -259,14 +221,14 @@ public class HTTPCoreNodeServer
     }
 
 
-    public static void createAndStart(String keyfile, char[] passphrase, int port, CoreNode coreNode, Args args)
+    public static void createAndStart(String keyfile, char[] passphrase, int port, CoreNode coreNode, MutablePointers mutable, Args args)
     {
         // eventually will need our own keypair to sign traffic to other core nodes
         try {
             String hostname = args.getArg("domain", "localhost");
             System.out.println("Starting core node server listening on: " + hostname+":"+port +" proxying to "+coreNode);
             InetSocketAddress address = new InetSocketAddress(hostname, port);
-            HTTPCoreNodeServer server = new HTTPCoreNodeServer(coreNode, address);
+            HttpCoreNodeServer server = new HttpCoreNodeServer(coreNode, mutable, address);
             server.start();
         } catch (Exception e)
         {
