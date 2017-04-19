@@ -1,6 +1,5 @@
 package peergos.server;
 
-import peergos.server.mutable.*;
 import peergos.shared.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.asymmetric.*;
@@ -8,7 +7,7 @@ import peergos.shared.crypto.asymmetric.curve25519.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.server.corenode.HttpCoreNodeServer;
-import peergos.server.corenode.PinningMutablePointers;
+import peergos.server.mutable.PinningMutablePointers;
 import peergos.server.corenode.SQLiteCoreNode;
 import peergos.server.fuse.*;
 import peergos.server.storage.*;

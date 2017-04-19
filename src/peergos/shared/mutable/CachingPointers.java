@@ -1,8 +1,7 @@
-package peergos.shared.corenode;
+package peergos.shared.mutable;
 
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.merklebtree.*;
-import peergos.shared.mutable.*;
 import peergos.shared.util.*;
 
 import java.util.*;

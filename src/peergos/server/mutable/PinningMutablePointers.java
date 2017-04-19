@@ -1,18 +1,11 @@
-package peergos.server.corenode;
+package peergos.server.mutable;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
-import peergos.shared.corenode.CoreNode;
-import peergos.shared.corenode.UserPublicKeyLink;
-import peergos.shared.io.ipfs.multihash.*;
-import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.merklebtree.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.ContentAddressedStorage;
-import peergos.shared.util.*;
 
-import java.io.*;
-import java.util.*;
 import java.util.concurrent.*;
 
 public class PinningMutablePointers implements MutablePointers {
