@@ -170,7 +170,7 @@ public class DHTHandler implements HttpHandler
         try {
             if (key.isPresent()) {
                 exchange.getResponseHeaders().set("Cache-Control", "public, max-age=31622400 immutable");
-                exchange.getResponseHeaders().set("ETag", key.get().toString());
+                exchange.getResponseHeaders().set("ETag", "\"" + key.get().toString() + "\"");
             }
             exchange.sendResponseHeaders(200, 0);
             DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());
@@ -187,7 +187,7 @@ public class DHTHandler implements HttpHandler
         try {
             if (key.isPresent()) {
                 exchange.getResponseHeaders().set("Cache-Control", "public, max-age=31622400 immutable");
-                exchange.getResponseHeaders().set("ETag", key.get().toString());
+                exchange.getResponseHeaders().set("ETag", "\"" + key.get().toString() + "\"");
             }
             exchange.sendResponseHeaders(200, 0);
             DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());
