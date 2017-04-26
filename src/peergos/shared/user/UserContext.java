@@ -407,6 +407,9 @@ public class UserContext {
 
     @JsMethod
     public CompletableFuture<Boolean> sendInitialFollowRequest(String targetUsername) {
+        if(username.equals(targetUsername)) {
+            return CompletableFuture.completedFuture(false);
+        }
         return sendFollowRequest(targetUsername, SymmetricKey.random());
     }
 
