@@ -1,5 +1,6 @@
 package peergos.shared.corenode;
 
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.util.*;
@@ -9,7 +10,7 @@ import java.time.*;
 import java.util.*;
 import java.util.stream.*;
 
-public class UserPublicKeyLink {
+public class UserPublicKeyLink implements Cborable{
     public static final int MAX_SIZE = 2*1024*1024;
     public static final int MAX_USERNAME_SIZE = 64;
 
@@ -35,6 +36,28 @@ public class UserPublicKeyLink {
         return keyChangeProof.map(x -> Arrays.copyOfRange(x, 0, x.length));
     }
 
+    @Override
+    public CborObject toCbor() {
+        Map<String, CborObject> values = new TreeMap<>();
+        values.put("owner", owner.toCbor());
+        values.put("claim", claim.toCbor());
+        keyChangeProof.ifPresent(proof -> values.put("keychange", new CborObject.CborByteArray(proof)));
+        return CborObject.CborMap.build(values);
+    }
+
+    public static UserPublicKeyLink fromCbor(CborObject cbor) {
+        if (! (cbor instanceof CborObject.CborMap))
+            throw new IllegalStateException("Invalid cbor for UserPublicKeyLink: " + cbor);
+        SortedMap<CborObject, CborObject> values = ((CborObject.CborMap) cbor).values;
+        PublicSigningKey owner = PublicSigningKey.fromCbor(values.get(new CborObject.CborString("owner")));
+        UsernameClaim claim  = UsernameClaim.fromCbor(values.get(new CborObject.CborString("claim")));
+        CborObject.CborString proofKey = new CborObject.CborString("keychange");
+        Optional<byte[]> keyChangeProof = values.containsKey(proofKey) ?
+                Optional.of(((CborObject.CborByteArray)values.get(proofKey)).value) : Optional.empty();
+        return new UserPublicKeyLink(owner, claim, keyChangeProof);
+    }
+
+    @Deprecated
     public byte[] toByteArray() {
         try {
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
@@ -64,6 +87,7 @@ public class UserPublicKeyLink {
         return Arrays.hashCode(toByteArray());
     }
 
+    @Deprecated
     public static UserPublicKeyLink fromByteArray(PublicSigningKey owner, byte[] raw) {
         try {
             DataInputStream din = new DataInputStream(new ByteArrayInputStream(raw));
@@ -89,7 +113,7 @@ public class UserPublicKeyLink {
         return Arrays.asList(fromOld, new UserPublicKeyLink(newUser.publicSigningKey, newClaim));
     }
 
-    public static class UsernameClaim {
+    public static class UsernameClaim implements Cborable {
         public final String username;
         public final LocalDate expiry;
         private final byte[] signedContents;
@@ -98,6 +122,22 @@ public class UserPublicKeyLink {
             this.username = username;
             this.expiry = expiry;
             this.signedContents = signedContents;
+        }
+
+        @Override
+        public CborObject toCbor() {
+            return new CborObject.CborList(Arrays.asList(new CborObject.CborString(username),
+                    new CborObject.CborString(expiry.toString()),
+                    new CborObject.CborByteArray(signedContents)));
+        }
+
+        public static UsernameClaim fromCbor(CborObject cbor) {
+            if (! (cbor instanceof CborObject.CborList))
+                throw new IllegalStateException("Invalid cbor for Username claim: " + cbor);
+            String username = ((CborObject.CborString)((CborObject.CborList) cbor).value.get(0)).value;
+            LocalDate expiry = LocalDate.parse(((CborObject.CborString)((CborObject.CborList) cbor).value.get(1)).value);
+            byte[] signedContents = ((CborObject.CborByteArray)((CborObject.CborList) cbor).value.get(0)).value;
+            return new UsernameClaim(username, expiry, signedContents);
         }
 
         public static UsernameClaim fromByteArray(PublicSigningKey from, byte[] raw) {
