@@ -346,13 +346,37 @@ public class FileTreeNode {
         return uploadFile(filename, fileData, 0, length, Optional.empty(), context, monitor, fragmenter);
     }
 
+    public CompletableFuture<Boolean> uploadFile(String filename,
+                                                 AsyncReader fileData,
+                                                 boolean isHidden,
+                                                 long length,
+                                                 UserContext context,
+                                                 ProgressConsumer<Long> monitor,
+                                                 peergos.shared.user.fs.Fragmenter fragmenter) {
+        return uploadFile(filename, fileData, isHidden, 0, length, Optional.empty(), context, monitor, fragmenter);
+    }
+
     public CompletableFuture<Boolean> uploadFile(String filename, AsyncReader fileData, long startIndex, long endIndex,
                                                  UserContext context, ProgressConsumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) {
         return uploadFile(filename, fileData, startIndex, endIndex, Optional.empty(), context, monitor, fragmenter);
     }
 
-    public CompletableFuture<Boolean> uploadFile(String filename, AsyncReader fileData, long startIndex, long endIndex, Optional<SymmetricKey> baseKey,
-                                                 UserContext context, ProgressConsumer<Long> monitor, peergos.shared.user.fs.Fragmenter fragmenter) {
+    public CompletableFuture<Boolean> uploadFile(String filename, AsyncReader fileData,
+                                                 long startIndex, long endIndex,
+                                                 Optional<SymmetricKey> baseKey,
+                                                 UserContext context,
+                                                 ProgressConsumer<Long> monitor,
+                                                 peergos.shared.user.fs.Fragmenter fragmenter) {
+        return uploadFile(filename, fileData, false, startIndex, endIndex, baseKey, context, monitor, fragmenter);
+    }
+
+    public CompletableFuture<Boolean> uploadFile(String filename, AsyncReader fileData,
+                                                 boolean isHidden,
+                                                 long startIndex, long endIndex,
+                                                 Optional<SymmetricKey> baseKey,
+                                                 UserContext context,
+                                                 ProgressConsumer<Long> monitor,
+                                                 peergos.shared.user.fs.Fragmenter fragmenter) {
         if (!isLegalName(filename))
             return CompletableFuture.completedFuture(false);
         return getDescendentByPath(filename, context).thenCompose(childOpt -> {
@@ -373,7 +397,7 @@ public class FileTreeNode {
             int thumbnailSrcImageSize = startIndex == 0 && endIndex < Integer.MAX_VALUE ? (int)endIndex : 0;
             generateThumbnail(context, fileData, thumbnailSrcImageSize, filename).thenAccept(thumbData -> {
                 fileData.reset().thenAccept(resetResult -> {
-                    FileProperties fileProps = new FileProperties(filename, endIndex, LocalDateTime.now(), false, Optional.of(thumbData));
+                    FileProperties fileProps = new FileProperties(filename, endIndex, LocalDateTime.now(), isHidden, Optional.of(thumbData));
                     FileUploader chunks = new FileUploader(filename, fileData, startIndex, endIndex, fileKey, fileMetaKey, parentLocation, dirParentKey, monitor, fileProps,
                             fragmenter);
                     byte[] mapKey = context.randomBytes(32);
