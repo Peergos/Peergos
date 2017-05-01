@@ -17,6 +17,10 @@ public class TofuKeyStore implements Cborable {
         updateReverseLookup();
     }
 
+    public TofuKeyStore() {
+        this(new HashMap<>());
+    }
+
     public Optional<PublicSigningKey> getPublicKey(String username) {
         List<UserPublicKeyLink> chain = chains.get(username);
         if (chain == null)
