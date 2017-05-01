@@ -54,6 +54,13 @@ public class TofuCoreNode implements CoreNode {
                 });
     }
 
+    public CompletableFuture<Boolean> updateUser(String username) {
+        return source.getChain(username).thenCompose(chain -> {
+            tofu.updateChain(username, chain);
+            return commit();
+        });
+    }
+
     @Override
     public CompletableFuture<Optional<PublicSigningKey>> getPublicKey(String username) {
         Optional<PublicSigningKey> local = tofu.getPublicKey(username);
