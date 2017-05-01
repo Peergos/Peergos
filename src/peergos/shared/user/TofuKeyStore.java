@@ -10,9 +10,11 @@ import java.util.stream.*;
 public class TofuKeyStore implements Cborable {
 
     private final Map<String, List<UserPublicKeyLink>> chains;
+    private final Map<PublicSigningKey, String> reverseLookup = new HashMap<>();
 
     public TofuKeyStore(Map<String, List<UserPublicKeyLink>> chains) {
         this.chains = chains;
+        updateReverseLookup();
     }
 
     public Optional<PublicSigningKey> getPublicKey(String username) {
@@ -22,6 +24,13 @@ public class TofuKeyStore implements Cborable {
         return Optional.of(chain.get(chain.size() - 1).owner);
     }
 
+    public Optional<String> getUsername(PublicSigningKey signer) {
+        String name = reverseLookup.get(signer);
+        if (name == null)
+            return Optional.empty();
+        return Optional.of(name);
+    }
+
     public List<UserPublicKeyLink> getChain(String username) {
         return chains.getOrDefault(username, Collections.emptyList());
     }
@@ -29,12 +38,19 @@ public class TofuKeyStore implements Cborable {
     public void updateChain(String username, List<UserPublicKeyLink> tail) {
         UserPublicKeyLink.validChain(tail, username);
 
-        if (tail.size() > 2)
-            throw new IllegalStateException("Cannot update key chain by more than a single link at once!");
-
         List<UserPublicKeyLink> existing = getChain(username);
         List<UserPublicKeyLink> merged = UserPublicKeyLink.merge(existing, tail);
         chains.put(username, merged);
+        PublicSigningKey owner = tail.get(tail.size() - 1).owner;
+        reverseLookup.put(owner, username);
+    }
+
+    private void updateReverseLookup() {
+        reverseLookup.clear();
+        reverseLookup.putAll(chains.entrySet().stream()
+                .collect(Collectors.toMap(
+                        e -> e.getValue().get(e.getValue().size() - 1).owner,
+                        e -> e.getKey())));
     }
 
     @Override
@@ -49,7 +65,7 @@ public class TofuKeyStore implements Cborable {
 
     public static TofuKeyStore fromCbor(CborObject cbor) {
         if (! (cbor instanceof CborObject.CborMap))
-            throw new IllegalStateException("Invalid cbor for Tofy key store: " + cbor);
+            throw new IllegalStateException("Invalid cbor for Tofu key store: " + cbor);
 
         Map<String, List<UserPublicKeyLink>> chains = new HashMap<>();
         SortedMap<CborObject, CborObject> values = ((CborObject.CborMap) cbor).values;
