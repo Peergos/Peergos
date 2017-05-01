@@ -136,7 +136,7 @@ public class UserPublicKeyLink implements Cborable{
                 throw new IllegalStateException("Invalid cbor for Username claim: " + cbor);
             String username = ((CborObject.CborString)((CborObject.CborList) cbor).value.get(0)).value;
             LocalDate expiry = LocalDate.parse(((CborObject.CborString)((CborObject.CborList) cbor).value.get(1)).value);
-            byte[] signedContents = ((CborObject.CborByteArray)((CborObject.CborList) cbor).value.get(0)).value;
+            byte[] signedContents = ((CborObject.CborByteArray)((CborObject.CborList) cbor).value.get(2)).value;
             return new UsernameClaim(username, expiry, signedContents);
         }
 
