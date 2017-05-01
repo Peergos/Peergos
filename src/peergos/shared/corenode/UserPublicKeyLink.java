@@ -140,6 +140,7 @@ public class UserPublicKeyLink implements Cborable{
             return new UsernameClaim(username, expiry, signedContents);
         }
 
+        @Deprecated
         public static UsernameClaim fromByteArray(PublicSigningKey from, byte[] raw) {
             try {
                 DataInputStream rawdin = new DataInputStream(new ByteArrayInputStream(raw));
@@ -154,6 +155,7 @@ public class UserPublicKeyLink implements Cborable{
             }
         }
 
+        @Deprecated
         public byte[] toByteArray() {
             try {
                 ByteArrayOutputStream bout = new ByteArrayOutputStream();
