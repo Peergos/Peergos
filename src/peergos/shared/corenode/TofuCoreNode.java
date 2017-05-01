@@ -14,11 +14,14 @@ public class TofuCoreNode implements CoreNode {
     public static final String KEY_STORE_NAME = ".keystore";
     private final CoreNode source;
     private final TofuKeyStore tofu;
-    private final UserContext context;
+    private UserContext context;
 
-    public TofuCoreNode(CoreNode source, TofuKeyStore tofu, UserContext context) {
+    public TofuCoreNode(CoreNode source, TofuKeyStore tofu) {
         this.source = source;
         this.tofu = tofu;
+    }
+
+    public void setContext(UserContext context) {
         this.context = context;
     }
 
@@ -26,7 +29,7 @@ public class TofuCoreNode implements CoreNode {
         return "/" + serializer.username + "/" + KEY_STORE_NAME;
     }
 
-    private static CompletableFuture<TofuKeyStore> load(UserContext context) {
+    public static CompletableFuture<TofuKeyStore> load(UserContext context) {
         if (context.username == null)
             return CompletableFuture.completedFuture(new TofuKeyStore());
 
