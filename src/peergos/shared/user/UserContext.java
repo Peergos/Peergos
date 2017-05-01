@@ -81,7 +81,7 @@ public class UserContext {
                                 System.out.println("Initializing context..");
                                 return ctx.init()
                                         .thenCompose(res -> TofuCoreNode.load(ctx)
-                                                    .thenApply(keystore -> {
+                                                    .thenCompose(keystore -> {
                                                         TofuCoreNode tofu = new TofuCoreNode(ctx.network.coreNode, keystore);
                                                         UserContext result = new UserContext(ctx.username,
                                                                 ctx.signer, ctx.boxer,
@@ -91,7 +91,7 @@ public class UserContext {
                                                                         ctx.network.btree, ctx.network.usernames),
                                                                 ctx.crypto, ctx.fragmenter, ctx.userData);
                                                         tofu.setContext(result);
-                                                        return result;
+                                                        return result.init();
                                                     }));
                             });
                 }).exceptionally(Futures::logError);
@@ -174,7 +174,7 @@ public class UserContext {
         });
     }
 
-    private CompletableFuture<Boolean> init() {
+    private CompletableFuture<UserContext> init() {
         CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
         return addToUserDataQueue(lock)
                 .thenCompose(wd -> createFileTree(wd.props)
@@ -185,7 +185,7 @@ public class UserContext {
                                         if (!sharedOpt.isPresent())
                                             throw new IllegalStateException("Couldn't find shared folder!");
                                         lock.complete(wd);
-                                        return true;
+                                        return this;
                                     });
                         }));
     }
