@@ -2,6 +2,7 @@ package peergos.shared;
 
 import jsinterop.annotations.*;
 import peergos.client.*;
+import peergos.server.tests.*;
 import peergos.shared.corenode.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
@@ -40,7 +41,11 @@ public class NetworkAccess {
     public boolean isJavascript() {
     	return isJavascript;
     }
-    
+
+    public NetworkAccess withCorenode(CoreNode newCore) {
+        return new NetworkAccess(newCore, dhtClient, mutable, btree, usernames, isJavascript);
+    }
+
     @JsMethod
     public CompletableFuture<Boolean> isUsernameRegistered(String username) {
         if (usernames.contains(username))

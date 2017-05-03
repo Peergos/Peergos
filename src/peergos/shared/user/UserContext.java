@@ -85,10 +85,7 @@ public class UserContext {
                                                         TofuCoreNode tofu = new TofuCoreNode(ctx.network.coreNode, keystore);
                                                         UserContext result = new UserContext(ctx.username,
                                                                 ctx.signer, ctx.boxer,
-                                                                new NetworkAccess(
-                                                                        tofu,
-                                                                        ctx.network.dhtClient, ctx.network.mutable,
-                                                                        ctx.network.btree, ctx.network.usernames),
+                                                                ctx.network.withCorenode(tofu),
                                                                 ctx.crypto, ctx.fragmenter, ctx.userData);
                                                         tofu.setContext(result);
                                                         return result.init();
