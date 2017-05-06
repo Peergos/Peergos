@@ -162,7 +162,7 @@ public class MultiUserTests {
         byte[] suffix = "Some new data at the end".getBytes();
         AsyncReader suffixStream = new AsyncReader.ArrayBacked(suffix);
         FileTreeNode parent = u1New.getByPath(u1New.username).get().get();
-        parent.uploadFile(filename, suffixStream, originalFileContents.length, originalFileContents.length + suffix.length,
+        parent.uploadFileSection(filename, suffixStream, originalFileContents.length, originalFileContents.length + suffix.length,
                 Optional.empty(), u1New.network, u1New.crypto.random, u1New.entrie, l -> {}, u1New.fragmenter());
         AsyncReader extendedContents = u1New.getByPath(u1.username + "/" + filename).get().get().getInputStream(u1New.network,
                 u1New.crypto.random, l -> {}).get();
@@ -283,7 +283,7 @@ public class MultiUserTests {
             byte[] suffix = "Some new data at the end".getBytes();
             AsyncReader suffixStream = new AsyncReader.ArrayBacked(suffix);
             FileTreeNode parent = u1New.getByPath(u1New.username + "/" + folderName).get().get();
-            parent.uploadFile(filename, suffixStream, fileContents.length, fileContents.length + suffix.length,
+            parent.uploadFileSection(filename, suffixStream, fileContents.length, fileContents.length + suffix.length,
                     Optional.empty(), u1New.network, u1New.crypto.random, u1New.entrie, l -> {}, u1New.fragmenter()).get();
             FileTreeNode extendedFile = u1New.getByPath(originalPath).get().get();
             AsyncReader extendedContents = extendedFile.getInputStream(u1New.network, u1New.crypto.random, l -> {}).get();

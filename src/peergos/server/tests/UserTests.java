@@ -197,7 +197,7 @@ public abstract class UserTests {
         // insert data in the middle
         byte[] data4 = "some data to insert somewhere".getBytes();
         int startIndex = 100 * 1024;
-        userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data4), startIndex, startIndex + data4.length,
+        userRoot.uploadFileSection(filename, new AsyncReader.ArrayBacked(data4), startIndex, startIndex + data4.length,
                 context.network, context.crypto.random, context.entrie, l -> {}, context.fragmenter()).get();
         System.arraycopy(data4, 0, data3, startIndex, data4.length);
         checkFileContents(data3, userRoot.getDescendentByPath(context.entrie, filename, context.network).get().get(), context);

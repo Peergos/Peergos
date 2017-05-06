@@ -591,7 +591,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
                 throw new IllegalStateException("Cannot write more than " + Integer.MAX_VALUE + " bytes");
             }
 
-            boolean b = parent.treeNode.uploadFile(name, new AsyncReader.ArrayBacked(toWrite), offset, offset + size,
+            boolean b = parent.treeNode.uploadFileSection(name, new AsyncReader.ArrayBacked(toWrite), offset, offset + size,
                     context.network, context.crypto.random, context.entrie, l -> {}, context.fragmenter()).get();
             return b ? (int) size : 1;
         } catch (Throwable t) {
