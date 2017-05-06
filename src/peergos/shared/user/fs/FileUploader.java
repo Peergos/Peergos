@@ -1,8 +1,10 @@
 package peergos.shared.user.fs;
 
 import jsinterop.annotations.*;
+import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
@@ -60,7 +62,7 @@ public class FileUploader implements AutoCloseable {
                 baseKey, metaKey, parentLocation, parentparentKey, monitor, fileProperties, fragmenter);
     }
 
-    public CompletableFuture<Location> uploadChunk(UserContext context, PublicSigningKey owner, SigningKeyPair writer, long chunkIndex,
+    public CompletableFuture<Location> uploadChunk(NetworkAccess network, SafeRandom random, PublicSigningKey owner, SigningKeyPair writer, long chunkIndex,
                                                    Location currentLocation, ProgressConsumer<Long> monitor) {
 	    System.out.println("uploading chunk: "+chunkIndex + " of "+name);
 
@@ -71,22 +73,22 @@ public class FileUploader implements AutoCloseable {
         int length =  isLastChunk ? (int)(fileLength -  position) : Chunk.MAX_SIZE;
         byte[] data = new byte[length];
         return reader.readIntoArray(data, 0, data.length).thenCompose(b -> {
-            byte[] nonce = context.randomBytes(TweetNaCl.SECRETBOX_NONCE_BYTES);
+            byte[] nonce = random.randomBytes(TweetNaCl.SECRETBOX_NONCE_BYTES);
             Chunk chunk = new Chunk(data, metaKey, currentLocation.getMapKey(), nonce);
             LocatedChunk locatedChunk = new LocatedChunk(new Location(owner, writer.publicSigningKey, chunk.mapKey()), chunk);
-            byte[] mapKey = context.randomBytes(32);
+            byte[] mapKey = random.randomBytes(32);
             Location nextLocation = new Location(owner, writer.publicSigningKey, mapKey);
             return uploadChunk(writer, props, parentLocation, parentparentKey, baseKey, locatedChunk,
-                    fragmenter, nextLocation, context, monitor).thenApply(c -> nextLocation);
+                    fragmenter, nextLocation, network, monitor).thenApply(c -> nextLocation);
         });
     }
 
-    public CompletableFuture<Location> upload(UserContext context, PublicSigningKey owner, SigningKeyPair writer, Location currentChunk) {
+    public CompletableFuture<Location> upload(NetworkAccess network, SafeRandom random, PublicSigningKey owner, SigningKeyPair writer, Location currentChunk) {
         long t1 = System.currentTimeMillis();
         Location originalChunk = currentChunk;
 
         List<Integer> input = IntStream.range(0, (int) nchunks).mapToObj(i -> Integer.valueOf(i)).collect(Collectors.toList());
-        return Futures.reduceAll(input, currentChunk, (loc, i) -> uploadChunk(context, owner, writer, i, loc, monitor), (a, b) -> b)
+        return Futures.reduceAll(input, currentChunk, (loc, i) -> uploadChunk(network, random, owner, writer, i, loc, monitor), (a, b) -> b)
                 .thenApply(loc -> {
                     System.out.println("File encryption, erasure coding and upload took: " +(System.currentTimeMillis()-t1) + " mS");
                     return originalChunk;
@@ -95,7 +97,7 @@ public class FileUploader implements AutoCloseable {
 
     public static CompletableFuture<Boolean> uploadChunk(SigningKeyPair writer, FileProperties props, Location parentLocation, SymmetricKey parentparentKey,
                                                          SymmetricKey baseKey, LocatedChunk chunk, Fragmenter fragmenter, Location nextChunkLocation,
-                                                         UserContext context, ProgressConsumer<Long> monitor) {
+                                                         NetworkAccess network, ProgressConsumer<Long> monitor) {
         EncryptedChunk encryptedChunk = chunk.chunk.encrypt();
 
         List<Fragment> fragments = encryptedChunk.generateFragments(fragmenter);
@@ -104,10 +106,10 @@ public class FileUploader implements AutoCloseable {
         byte[] nextLocationNonce = chunkKey.createNonce();
         byte[] nextLocation = nextChunkLocation.encrypt(chunkKey, nextLocationNonce);
         CipherText encryptedNextChunkLocation = new CipherText(nextLocationNonce, nextLocation);
-        return context.uploadFragments(fragments, chunk.location.owner, monitor, fragmenter.storageIncreaseFactor()).thenCompose(hashes -> {
+        return network.uploadFragments(fragments, chunk.location.owner, monitor, fragmenter.storageIncreaseFactor()).thenCompose(hashes -> {
             FileRetriever retriever = new EncryptedChunkRetriever(chunk.chunk.nonce(), encryptedChunk.getAuth(), hashes, Optional.of(encryptedNextChunkLocation), fragmenter);
             FileAccess metaBlob = FileAccess.create(baseKey, chunkKey, props, retriever, parentLocation, parentparentKey);
-            return context.uploadChunk(metaBlob, new Location(chunk.location.owner, writer.publicSigningKey, chunk.chunk.mapKey()), writer);
+            return network.uploadChunk(metaBlob, new Location(chunk.location.owner, writer.publicSigningKey, chunk.chunk.mapKey()), writer);
         });
     }
 

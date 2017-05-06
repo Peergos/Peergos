@@ -109,7 +109,8 @@ public class MultiUserTests {
         byte[] originalFileContents = "Hello Peergos friend!".getBytes();
         Files.write(f.toPath(), originalFileContents);
         ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(f);
-        boolean uploaded = u1Root.uploadFile(filename, resetableFileInputStream, f.length(), u1, l -> {}, u1.fragmenter()).get();
+        boolean uploaded = u1Root.uploadFile(filename, resetableFileInputStream, f.length(),
+                u1.network, u1.crypto.random, u1.entrie, l -> {}, u1.fragmenter()).get();
 
         // share the file from "a" to each of the others
         FileTreeNode u1File = u1.getByPath(u1.username + "/" + filename).get().get();
@@ -121,7 +122,8 @@ public class MultiUserTests {
                     "/" + userContext.username + "/" + filename).get();
             Assert.assertTrue("shared file present", sharedFile.isPresent());
 
-            AsyncReader inputStream = sharedFile.get().getInputStream(userContext, l -> {}).get();
+            AsyncReader inputStream = sharedFile.get().getInputStream(userContext.network,
+                    userContext.crypto.random, l -> {}).get();
 
             byte[] fileContents = Serialize.readFully(inputStream, sharedFile.get().getFileProperties().size).get();
             Assert.assertTrue("shared file contents correct", Arrays.equals(originalFileContents, fileContents));
@@ -161,8 +163,9 @@ public class MultiUserTests {
         AsyncReader suffixStream = new AsyncReader.ArrayBacked(suffix);
         FileTreeNode parent = u1New.getByPath(u1New.username).get().get();
         parent.uploadFile(filename, suffixStream, originalFileContents.length, originalFileContents.length + suffix.length,
-                Optional.empty(), u1New, l -> {}, u1New.fragmenter());
-        AsyncReader extendedContents = u1New.getByPath(u1.username + "/" + filename).get().get().getInputStream(u1New, l -> {}).get();
+                Optional.empty(), u1New.network, u1New.crypto.random, u1New.entrie, l -> {}, u1New.fragmenter());
+        AsyncReader extendedContents = u1New.getByPath(u1.username + "/" + filename).get().get().getInputStream(u1New.network,
+                u1New.crypto.random, l -> {}).get();
         byte[] newFileContents = Serialize.readFully(extendedContents, originalFileContents.length + suffix.length).get();
 
         Assert.assertTrue(Arrays.equals(newFileContents, ArrayOps.concat(originalFileContents, suffix)));
@@ -211,10 +214,11 @@ public class MultiUserTests {
         byte[] originalFileContents = "Hello Peergos friend!".getBytes();
         Files.write(f.toPath(), originalFileContents);
         String folderName = "afolder";
-        u1Root.mkdir(folderName, u1, SymmetricKey.random(), false, u1.crypto.random).get();
+        u1Root.mkdir(folderName, u1.network, SymmetricKey.random(), false, u1.crypto.random, u1.entrie).get();
         FileTreeNode folder = u1.getByPath("/a/" + folderName).get().get();
         ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(f);
-        boolean uploaded = folder.uploadFile(filename, resetableFileInputStream, f.length(), u1, l -> {}, u1.fragmenter()).get();
+        boolean uploaded = folder.uploadFile(filename, resetableFileInputStream, f.length(), u1.network,
+                u1.crypto.random, u1.entrie, l -> {}, u1.fragmenter()).get();
         String originalPath = u1.username + "/" + folderName + "/" + filename;
         FileTreeNode file = u1.getByPath(originalPath).get().get();
 
@@ -223,13 +227,13 @@ public class MultiUserTests {
         for (UserContext user : users) {
             String path = u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + user.username;
             FileTreeNode u1ToU2 = u1.getByPath(path).get().get();
-            FileTreeNode fileTreeNode = u1ToU2.addLinkTo(folder, u1).get();
+            FileTreeNode fileTreeNode = u1ToU2.addLinkTo(folder, u1.network, u1.crypto.random, u1.entrie).get();
             FileTreeNode ownerViewOfLink = u1.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + user.username + "/" + folderName).get().get();
 
             Set<FileTreeNode> u2children = user
                     .getByPath(path)
                     .get().get()
-                    .getChildren(user).get();
+                    .getChildren(user.entrie, user.network).get();
             Optional<FileTreeNode> fromParent = u2children.stream()
                     .filter(fn -> fn.getFileProperties().name.equals(folderName))
                     .findAny();
@@ -240,7 +244,7 @@ public class MultiUserTests {
             Assert.assertTrue("Shared folder present via direct path", sharedFolder.isPresent() && sharedFolder.get().getFileProperties().name.equals(folderName));
 
             FileTreeNode sharedFile = user.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + user.username + "/" + folderName + "/" + filename).get().get();
-            AsyncReader inputStream = sharedFile.getInputStream(user, l -> {}).get();
+            AsyncReader inputStream = sharedFile.getInputStream(user.network, user.crypto.random, l -> {}).get();
 
             byte[] contents = Serialize.readFully(inputStream, sharedFile.getSize()).get();
             if (fileContents != null)
@@ -279,9 +283,10 @@ public class MultiUserTests {
             byte[] suffix = "Some new data at the end".getBytes();
             AsyncReader suffixStream = new AsyncReader.ArrayBacked(suffix);
             FileTreeNode parent = u1New.getByPath(u1New.username + "/" + folderName).get().get();
-            parent.uploadFile(filename, suffixStream, fileContents.length, fileContents.length + suffix.length, Optional.empty(), u1New, l -> {}, u1New.fragmenter()).get();
+            parent.uploadFile(filename, suffixStream, fileContents.length, fileContents.length + suffix.length,
+                    Optional.empty(), u1New.network, u1New.crypto.random, u1New.entrie, l -> {}, u1New.fragmenter()).get();
             FileTreeNode extendedFile = u1New.getByPath(originalPath).get().get();
-            AsyncReader extendedContents = extendedFile.getInputStream(u1New, l -> {}).get();
+            AsyncReader extendedContents = extendedFile.getInputStream(u1New.network, u1New.crypto.random, l -> {}).get();
             byte[] newFileContents = Serialize.readFully(extendedContents, extendedFile.getSize()).get();
 
             Assert.assertTrue(Arrays.equals(newFileContents, ArrayOps.concat(fileContents, suffix)));
@@ -294,7 +299,7 @@ public class MultiUserTests {
                 Assert.assertTrue("Shared folder present via direct path", sharedFolder.isPresent() && sharedFolder.get().getFileProperties().name.equals(folderName));
 
                 FileTreeNode sharedFile = otherUser.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + otherUser.username + "/" + folderName + "/" + filename).get().get();
-                AsyncReader inputStream = sharedFile.getInputStream(otherUser, l -> {}).get();
+                AsyncReader inputStream = sharedFile.getInputStream(otherUser.network, otherUser.crypto.random, l -> {}).get();
 
                 byte[] contents = Serialize.readFully(inputStream, sharedFile.getSize()).get();
                 Assert.assertTrue(Arrays.equals(contents, newFileContents)); //remaining users share latest view of same data

@@ -3,16 +3,27 @@ package peergos.shared;
 import jsinterop.annotations.*;
 import peergos.client.*;
 import peergos.server.tests.*;
+import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
+import peergos.shared.crypto.*;
+import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.crypto.symmetric.*;
+import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
+import peergos.shared.user.fs.*;
+import peergos.shared.util.*;
 
 import java.net.*;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.stream.*;
 
+/**
+ *  This class is unprivileged - doesn't have any private keys
+ */
 public class NetworkAccess {
 
     public final CoreNode coreNode;
@@ -86,5 +97,122 @@ public class NetworkAccess {
         } catch (MalformedURLException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public CompletableFuture<List<RetrievedFilePointer>> retrieveAllMetadata(List<SymmetricLocationLink> links,
+                                                                                    SymmetricKey baseKey) {
+        List<CompletableFuture<Optional<RetrievedFilePointer>>> all = links.stream()
+                .map(link -> {
+                    Location loc = link.targetLocation(baseKey);
+                    return btree.get(loc.writer, loc.getMapKey())
+                            .thenCompose(key -> {
+                                if (key.isPresent())
+                                    return dhtClient.get(key.get());
+                                System.err.println("Couldn't download link at: " + loc);
+                                Optional<CborObject> result = Optional.empty();
+                                return CompletableFuture.completedFuture(result);
+                            }).thenApply(dataOpt ->  dataOpt
+                                    .map(cbor -> new RetrievedFilePointer(link.toReadableFilePointer(baseKey), FileAccess.fromCbor(cbor))));
+                }).collect(Collectors.toList());
+
+        return Futures.combineAll(all).thenApply(optSet -> optSet.stream()
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .collect(Collectors.toList()));
+    }
+
+    public CompletableFuture<Set<FileTreeNode>> retrieveAll(List<EntryPoint> entries) {
+        return Futures.reduceAll(entries, Collections.emptySet(),
+                (set, entry) -> retrieveEntryPoint(entry)
+                        .thenApply(opt ->
+                                opt.map(f -> Stream.concat(set.stream(), Stream.of(f)).collect(Collectors.toSet()))
+                                        .orElse(set)),
+                (a, b) -> Stream.concat(a.stream(), b.stream()).collect(Collectors.toSet()));
+    }
+
+    public CompletableFuture<Optional<FileTreeNode>> retrieveEntryPoint(EntryPoint e) {
+        return downloadEntryPoint(e)
+                .thenApply(faOpt ->faOpt.map(fa -> new FileTreeNode(new RetrievedFilePointer(e.pointer, fa), e.owner,
+                        e.readers, e.writers, e.pointer.writer)));
+    }
+
+    private CompletableFuture<Optional<FileAccess>> downloadEntryPoint(EntryPoint entry) {
+        // download the metadata blob for this entry point
+        return btree.get(entry.pointer.location.writer, entry.pointer.location.getMapKey()).thenCompose(btreeValue -> {
+            if (btreeValue.isPresent())
+                return dhtClient.get(btreeValue.get())
+                        .thenApply(value -> value.map(FileAccess::fromCbor));
+            return CompletableFuture.completedFuture(Optional.empty());
+        });
+    }
+
+    private CompletableFuture<Multihash> uploadFragment(Fragment f, PublicSigningKey targetUser) {
+        return dhtClient.put(targetUser, new CborObject.CborByteArray(f.data).toByteArray());
+    }
+
+    private CompletableFuture<List<Multihash>> bulkUploadFragments(List<Fragment> fragments, PublicSigningKey targetUser) {
+        return dhtClient.put(targetUser, fragments
+                .stream()
+                .map(f -> new CborObject.CborByteArray(f.data).toByteArray())
+                .collect(Collectors.toList()));
+    }
+
+    public CompletableFuture<List<Multihash>> uploadFragments(List<Fragment> fragments, PublicSigningKey owner,
+                                                              ProgressConsumer<Long> progressCounter, double spaceIncreaseFactor) {
+        // upload in groups of 10. This means in a browser we have 6 upload threads with erasure coding on, or 4 without
+        int FRAGMENTs_PER_QUERY = 1;
+        List<List<Fragment>> grouped = IntStream.range(0, (fragments.size() + FRAGMENTs_PER_QUERY - 1) / FRAGMENTs_PER_QUERY)
+                .mapToObj(i -> fragments.stream().skip(FRAGMENTs_PER_QUERY * i).limit(FRAGMENTs_PER_QUERY).collect(Collectors.toList()))
+                .collect(Collectors.toList());
+        List<CompletableFuture<List<Multihash>>> futures = grouped.stream()
+                .map(g -> bulkUploadFragments(g, owner)
+                        .thenApply(hash -> {
+                            if (progressCounter != null)
+                                progressCounter.accept((long)(g.stream().mapToInt(f -> f.data.length).sum() / spaceIncreaseFactor));
+                            return hash;
+                        }))
+                .collect(Collectors.toList());
+        return Futures.combineAllInOrder(futures)
+                .thenApply(groups -> groups.stream()
+                        .flatMap(g -> g.stream())
+                        .collect(Collectors.toList()));
+    }
+
+    public CompletableFuture<Boolean> uploadChunk(FileAccess metadata, Location location, SigningKeyPair writer) {
+        if (! writer.publicSigningKey.equals(location.writer))
+            throw new IllegalStateException("Non matching location writer and signing writer key!");
+        try {
+            byte[] metaBlob = metadata.serialize();
+            return dhtClient.put(location.owner, metaBlob)
+                    .thenCompose(blobHash -> btree.put(writer, location.getMapKey(), blobHash));
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+            throw new RuntimeException(e);
+        }
+    }
+
+    public CompletableFuture<Optional<FileAccess>> getMetadata(Location loc) {
+        if (loc == null)
+            return CompletableFuture.completedFuture(Optional.empty());
+        return btree.get(loc.writer, loc.getMapKey()).thenCompose(blobHash -> {
+            if (!blobHash.isPresent())
+                return CompletableFuture.completedFuture(Optional.empty());
+            return dhtClient.get(blobHash.get())
+                    .thenApply(rawOpt -> rawOpt.map(FileAccess::fromCbor));
+        });
+    }
+
+    public CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Multihash> hashes, ProgressConsumer<Long> monitor, double spaceIncreaseFactor) {
+        List<CompletableFuture<Optional<FragmentWithHash>>> futures = hashes.stream()
+                .map(h -> dhtClient.get(h)
+                        .thenApply(dataOpt -> {
+                            Optional<byte[]> bytes = dataOpt.map(cbor -> ((CborObject.CborByteArray) cbor).value);
+                            bytes.ifPresent(arr -> monitor.accept((long)(arr.length / spaceIncreaseFactor)));
+                            return bytes.map(data -> new FragmentWithHash(new Fragment(data), h));
+                        }))
+                .collect(Collectors.toList());
+
+        return Futures.combineAllInOrder(futures)
+                .thenApply(optList -> optList.stream().filter(Optional::isPresent).map(Optional::get).collect(Collectors.toList()));
     }
 }

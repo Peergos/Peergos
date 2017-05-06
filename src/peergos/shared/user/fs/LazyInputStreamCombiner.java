@@ -1,5 +1,7 @@
 package peergos.shared.user.fs;
 
+import peergos.shared.*;
+import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
@@ -8,7 +10,8 @@ import java.io.*;
 import java.util.concurrent.*;
 
 public class LazyInputStreamCombiner implements AsyncReader {
-    private final UserContext context;
+    private final NetworkAccess network;
+    private final SafeRandom random;
     private final SymmetricKey dataKey;
     private final ProgressConsumer<Long> monitor;
     private final long totalLength;
@@ -23,14 +26,19 @@ public class LazyInputStreamCombiner implements AsyncReader {
     private int index;
 
     public LazyInputStreamCombiner(long globalIndex,
-                                   byte[] chunk, Location nextChunkPointer,
-                                   byte[] originalChunk, Location originalNextChunkPointer,
-                                   UserContext context, SymmetricKey dataKey,
+                                   byte[] chunk,
+                                   Location nextChunkPointer,
+                                   byte[] originalChunk,
+                                   Location originalNextChunkPointer,
+                                   NetworkAccess network,
+                                   SafeRandom random,
+                                   SymmetricKey dataKey,
                                    long totalLength,
                                    ProgressConsumer<Long> monitor) {
         if (chunk == null)
             throw new IllegalStateException("Null initial chunk!");
-        this.context = context;
+        this.network = network;
+        this.random = random;
         this.dataKey = dataKey;
         this.monitor = monitor;
         this.totalLength = totalLength;
@@ -45,7 +53,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
     public CompletableFuture<AsyncReader> getNextStream(int len) {
         if (this.nextChunkPointer != null) {
             Location nextLocation = this.nextChunkPointer;
-            return context.getMetadata(nextLocation).thenCompose(meta -> {
+            return network.getMetadata(nextLocation).thenCompose(meta -> {
                 if (!meta.isPresent()) {
                     CompletableFuture<AsyncReader> err = new CompletableFuture<>();
                     err.completeExceptionally(new EOFException());
@@ -53,10 +61,10 @@ public class LazyInputStreamCombiner implements AsyncReader {
                 }
                 FileRetriever nextRet = meta.get().retriever();
                 Location newNextChunkPointer = nextRet.getNext(dataKey).orElse(null);
-                return nextRet.getChunkInputStream(context, dataKey, 0, len, nextLocation, monitor)
+                return nextRet.getChunkInputStream(network, random, dataKey, 0, len, nextLocation, monitor)
                         .thenApply(x -> new LazyInputStreamCombiner(globalIndex + Chunk.MAX_SIZE, x.get().chunk.data(), newNextChunkPointer,
                                 originalChunk, originalNextPointer,
-                                context, dataKey, totalLength, monitor));
+                                network, random, dataKey, totalLength, monitor));
             });
         }
         CompletableFuture<AsyncReader> err = new CompletableFuture<>();
@@ -99,7 +107,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
                 0,
                 originalChunk, originalNextPointer,
                 originalChunk, originalNextPointer,
-                context, dataKey, totalLength, monitor));
+                network, random, dataKey, totalLength, monitor));
     }
 
     /**
