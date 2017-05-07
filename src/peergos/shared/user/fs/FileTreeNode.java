@@ -345,7 +345,7 @@ public class FileTreeNode {
     }
 
     @JsMethod
-    public CompletableFuture<Boolean> uploadFile(String filename, AsyncReader fileData, int lengthHi, int lengthLow,
+    public CompletableFuture<Boolean> uploadFileJS(String filename, AsyncReader fileData, int lengthHi, int lengthLow,
                                                  NetworkAccess network, SafeRandom random, TrieNode root,
                                                  ProgressConsumer<Long> monitor, Fragmenter fragmenter) {
         return uploadFile(filename, fileData, lengthLow + ((lengthHi & 0xFFFFFFFFL) << 32), network, random, root, monitor, fragmenter);

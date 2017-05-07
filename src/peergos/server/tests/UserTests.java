@@ -178,7 +178,7 @@ public abstract class UserTests {
 
         // write small 1 chunk file
         byte[] data2 = "This is a small amount of data".getBytes();
-        userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data2), 0, data2.length, context.network,
+        userRoot.uploadFileSection(filename, new AsyncReader.ArrayBacked(data2), 0, data2.length, context.network,
                 context.crypto.random, context.entrie, l -> {}, context.fragmenter()).get();
         checkFileContents(data2, userRoot.getDescendentByPath(context.entrie, filename, context.network).get().get(), context);
 
@@ -190,7 +190,7 @@ public abstract class UserTests {
         // extend file within existing chunk
         byte[] data3 = new byte[128 * 1024];
         new Random().nextBytes(data3);
-        userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data3), 0, data3.length, context.network,
+        userRoot.uploadFileSection(filename, new AsyncReader.ArrayBacked(data3), 0, data3.length, context.network,
                 context.crypto.random, context.entrie, l -> {}, context.fragmenter()).get();
         checkFileContents(data3, userRoot.getDescendentByPath(context.entrie, filename, context.network).get().get(), context);
 
@@ -269,7 +269,7 @@ public abstract class UserTests {
         //overwrite with 2 chunk file
         byte[] data5 = new byte[10*1024*1024];
         random.nextBytes(data5);
-        userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data5), 0, data5.length, context.network,
+        userRoot.uploadFileSection(filename, new AsyncReader.ArrayBacked(data5), 0, data5.length, context.network,
                 context.crypto.random, context.entrie, l -> {} , context.fragmenter());
         checkFileContents(data5, userRoot.getDescendentByPath(context.entrie, filename, context.network).get().get(), context);
         assertTrue("10MiB file size", data5.length == userRoot.getDescendentByPath(context.entrie,
@@ -279,7 +279,7 @@ public abstract class UserTests {
         System.out.println("\n***** Mid 2nd chunk write test");
         byte[] dataInsert = "some data to insert somewhere else".getBytes();
         int start = 5*1024*1024 + 4*1024;
-        userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(dataInsert), start, start + dataInsert.length,
+        userRoot.uploadFileSection(filename, new AsyncReader.ArrayBacked(dataInsert), start, start + dataInsert.length,
                 context.network, context.crypto.random, context.entrie, l -> {}, context.fragmenter());
         System.arraycopy(dataInsert, 0, data5, start, dataInsert.length);
         checkFileContents(data5, userRoot.getDescendentByPath(context.entrie, filename, context.network).get().get(), context);
@@ -304,7 +304,7 @@ public abstract class UserTests {
         byte[] data5 = new byte[10*1024*1024];
         random.nextBytes(data5);
         long t1 = System.currentTimeMillis();
-        userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data5), 0, data5.length, context.network, context.crypto.random, context.entrie, l -> {}, context.fragmenter());
+        userRoot.uploadFileSection(filename, new AsyncReader.ArrayBacked(data5), 0, data5.length, context.network, context.crypto.random, context.entrie, l -> {}, context.fragmenter());
         long t2 = System.currentTimeMillis();
         System.out.println("Write time per chunk " + (t2-t1)/2 + "mS");
         Assert.assertTrue("Timely write", (t2-t1)/2 < 20000);
@@ -321,7 +321,7 @@ public abstract class UserTests {
         byte[] data = new byte[128*1024];
         random.nextBytes(data);
         long t1 = System.currentTimeMillis();
-        userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data), 0, data.length, context.network, context.crypto.random, context.entrie, l -> {}, context.fragmenter()).get();
+        userRoot.uploadFileSection(filename, new AsyncReader.ArrayBacked(data), 0, data.length, context.network, context.crypto.random, context.entrie, l -> {}, context.fragmenter()).get();
         long t2 = System.currentTimeMillis();
         String path = "/" + username + "/" + filename;
         FileTreeNode file = context.getByPath(path).get().get();
@@ -348,7 +348,7 @@ public abstract class UserTests {
         String anotherDirName = "anotherDir";
         subdir.mkdir(anotherDirName, context.network, false, context.crypto.random, context.entrie).get();
         FileTreeNode anotherDir = context.getByPath("/" + username + "/" + dirName + "/" + anotherDirName).get().get();
-        anotherDir.uploadFile(filename, new AsyncReader.ArrayBacked(data), 0, data.length, context.network,
+        anotherDir.uploadFileSection(filename, new AsyncReader.ArrayBacked(data), 0, data.length, context.network,
                 context.crypto.random, context.entrie, l -> {}, context.fragmenter()).get();
         long t2 = System.currentTimeMillis();
         String path = "/" + username + "/" + dirName + "/" + anotherDirName;
