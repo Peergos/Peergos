@@ -1,7 +1,9 @@
 package peergos.shared.corenode;
 
+import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.crypto.random.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 
@@ -25,19 +27,19 @@ public class TofuCoreNode implements CoreNode {
         this.context = context;
     }
 
-    private static String getStorePath(UserContext serializer) {
-        return "/" + serializer.username + "/" + KEY_STORE_NAME;
+    private static String getStorePath(String username) {
+        return "/" + username + "/" + KEY_STORE_NAME;
     }
 
-    public static CompletableFuture<TofuKeyStore> load(UserContext context) {
-        if (context.username == null)
+    public static CompletableFuture<TofuKeyStore> load(String username, TrieNode root, NetworkAccess network, SafeRandom random) {
+        if (username == null)
             return CompletableFuture.completedFuture(new TofuKeyStore());
 
-        return context.getByPath(getStorePath(context)).thenCompose(fileOpt -> {
+        return root.getByPath(getStorePath(username), network, root).thenCompose(fileOpt -> {
             if (! fileOpt.isPresent())
                 return CompletableFuture.completedFuture(new TofuKeyStore());
 
-            return fileOpt.get().getInputStream(context.network, context.crypto.random, x -> {}).thenCompose(reader -> {
+            return fileOpt.get().getInputStream(network, random, x -> {}).thenCompose(reader -> {
                 byte[] storeData = new byte[(int) fileOpt.get().getSize()];
                 return reader.readIntoArray(storeData, 0, storeData.length)
                         .thenApply(x -> TofuKeyStore.fromCbor(CborObject.fromByteArray(storeData)));

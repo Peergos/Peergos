@@ -29,10 +29,11 @@ public class UserContext {
     public final String username;
     public final SigningKeyPair signer;
     public final BoxingKeyPair boxer;
+    public final Fragmenter fragmenter;
+
     private CompletableFuture<CommittedWriterData> userData;
     @JsProperty
     public TrieNode entrie = new TrieNode(); // ba dum che!
-    public final Fragmenter fragmenter;
 
     // Contact external world
     @JsProperty
@@ -81,7 +82,7 @@ public class UserContext {
                             }).thenCompose(ctx -> {
                                 System.out.println("Initializing context..");
                                 return ctx.init()
-                                        .thenCompose(res -> TofuCoreNode.load(ctx)
+                                        .thenCompose(res -> TofuCoreNode.load(ctx.username, ctx.entrie, network, crypto.random)
                                                     .thenCompose(keystore -> {
                                                         TofuCoreNode tofu = new TofuCoreNode(ctx.network.coreNode, keystore);
                                                         UserContext result = new UserContext(ctx.username,
