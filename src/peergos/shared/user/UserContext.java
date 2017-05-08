@@ -893,15 +893,19 @@ public class UserContext {
         return network.retrieveEntryPoint(e).thenCompose(metadata -> {
             if (metadata.isPresent()) {
                 return metadata.get().getPath(network)
-                        .thenApply(path -> {
-                            System.out.println("Added entry point: " + metadata.get() + " at path " + path);
-                            String[] parts = path.split("/");
-                            if (parts.length < 3 || ! parts[2].equals(SHARED_DIR_NAME))
-                                return root.put(path, e);
-                            TrieNode rootWithMapping = parts[1].equals(ourName) ? root : root.addPathMapping("/" + parts[1] + "/", path + "/");
-                            return rootWithMapping.put(path, e);
+                        .thenCompose(path -> {
+                            // check entrypoint doesn't forge the owner
+                            return e.isValid(path, network).thenApply(valid -> {
+
+                                System.out.println("Added entry point: " + metadata.get() + " at path " + path);
+                                String[] parts = path.split("/");
+                                if (parts.length < 3 || !parts[2].equals(SHARED_DIR_NAME))
+                                    return root.put(path, e);
+                                TrieNode rootWithMapping = parts[1].equals(ourName) ? root : root.addPathMapping("/" + parts[1] + "/", path + "/");
+                                return rootWithMapping.put(path, e);
+                            });
                         }).exceptionally(t -> {
-                            System.err.println("Couldn't add entry point (failed retrieving parent dir): " + metadata.get().getName());
+                            System.err.println("Couldn't add entry point (failed retrieving parent dir or it was invalid): " + metadata.get().getName());
                             // Allow the system to continue without this entry point
                             return root;
                         });
@@ -932,7 +936,7 @@ public class UserContext {
         });
     }
 
-    private static CompletableFuture<CommittedWriterData> getWriterData(NetworkAccess network, PublicSigningKey signer) {
+    public static CompletableFuture<CommittedWriterData> getWriterData(NetworkAccess network, PublicSigningKey signer) {
         return getWriterDataCbor(network, signer)
                 .thenApply(pair -> new CommittedWriterData(MaybeMultihash.of(pair.left), WriterData.fromCbor(pair.right, null)));
     }

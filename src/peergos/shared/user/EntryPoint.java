@@ -1,8 +1,8 @@
 package peergos.shared.user;
 
 import jsinterop.annotations.*;
+import peergos.shared.*;
 import peergos.shared.cbor.*;
-import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.symmetric.*;
@@ -11,6 +11,7 @@ import peergos.shared.util.*;
 
 import java.io.*;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.stream.*;
 
 @JsType
@@ -34,6 +35,21 @@ public class EntryPoint implements Cborable{
     public byte[] serializeAndSymmetricallyEncrypt(SymmetricKey key) {
         byte[] nonce = key.createNonce();
         return ArrayOps.concat(nonce, key.encrypt(serialize(), nonce));
+    }
+
+    public CompletableFuture<Boolean> isValid(String path, NetworkAccess network) {
+        String[] parts = path.split("/");
+        String claimedOwner = parts[1];
+        // check claimed owner actually owns the signing key
+        PublicSigningKey entryWriter = pointer.getLocation().writer;
+        return network.coreNode.getPublicKey(claimedOwner).thenCompose(ownerKey -> {
+            if (! ownerKey.isPresent())
+                throw new IllegalStateException("No owner key present for user " + claimedOwner);
+           return UserContext.getWriterData(network, ownerKey.get()).thenApply(wd -> {
+               // TODO do this recursively to handle arbitrary trees of key ownership
+               return wd.props.ownedKeys.contains(entryWriter);
+           });
+        });
     }
 
     @Override
