@@ -66,32 +66,28 @@ public class UserContext {
         return getWriterDataCbor(network, username)
                 .thenCompose(pair -> {
                     Optional<UserGenerationAlgorithm> algorithmOpt = WriterData.extractUserGenerationAlgorithm(pair.right);
-                    if (! algorithmOpt.isPresent())
+                    if (!algorithmOpt.isPresent())
                         throw new IllegalStateException("No login algorithm specified in user data!");
                     UserGenerationAlgorithm algorithm = algorithmOpt.get();
                     return UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider,
                             crypto.random, crypto.signer, crypto.boxer, algorithm)
-                            .thenApply(userWithRoot -> {
+                            .thenCompose(userWithRoot -> {
                                 try {
                                     WriterData userData = WriterData.fromCbor(pair.right, userWithRoot.getRoot());
-                                    return new UserContext(username, userWithRoot.getUser(), userWithRoot.getBoxingPair(), network, crypto,
-                                            CompletableFuture.completedFuture(new CommittedWriterData(MaybeMultihash.of(pair.left), userData)));
+                                    return createOurFileTreeOnly(username, userData, network)
+                                            .thenCompose(root -> TofuCoreNode.load(username, root, network, crypto.random)
+                                                    .thenCompose(keystore -> {
+                                                        TofuCoreNode tofu = new TofuCoreNode(network.coreNode, keystore);
+                                                        UserContext result = new UserContext(username, userWithRoot.getUser(),
+                                                                userWithRoot.getBoxingPair(), network.withCorenode(tofu), crypto,
+                                                                CompletableFuture.completedFuture(new CommittedWriterData(MaybeMultihash.of(pair.left), userData)));
+                                                        tofu.setContext(result);
+                                                        System.out.println("Initializing context..");
+                                                        return result.init();
+                                                    }));
                                 } catch (Throwable t) {
                                     throw new IllegalStateException("Incorrect password");
                                 }
-                            }).thenCompose(ctx -> {
-                                System.out.println("Initializing context..");
-                                return ctx.init()
-                                        .thenCompose(res -> TofuCoreNode.load(ctx.username, ctx.entrie, network, crypto.random)
-                                                    .thenCompose(keystore -> {
-                                                        TofuCoreNode tofu = new TofuCoreNode(ctx.network.coreNode, keystore);
-                                                        UserContext result = new UserContext(ctx.username,
-                                                                ctx.signer, ctx.boxer,
-                                                                ctx.network.withCorenode(tofu),
-                                                                ctx.crypto, ctx.fragmenter, ctx.userData);
-                                                        tofu.setContext(result);
-                                                        return result.init();
-                                                    }));
                             });
                 }).exceptionally(Futures::logError);
     }
@@ -862,6 +858,23 @@ public class UserContext {
 
     public CompletableFuture<FileTreeNode> getUserRoot() {
         return getByPath("/"+username).thenApply(opt -> opt.get());
+    }
+
+    /**
+     *
+     * @return TrieNode for root of filesystem containing only our files
+     */
+    private static CompletableFuture<TrieNode> createOurFileTreeOnly(String ourName, WriterData userData, NetworkAccess network) {
+        TrieNode root = new TrieNode();
+        if (! userData.staticData.isPresent())
+            throw new IllegalStateException("Cannot retrieve file tree for a filesystem without entrypoints!");
+        List<EntryPoint> ourFileSystemEntries = userData.staticData.get()
+                .getEntryPoints()
+                .stream()
+                .filter(e -> e.owner.equals(ourName))
+                .collect(Collectors.toList());
+        return Futures.reduceAll(ourFileSystemEntries, root, (t, e) -> addEntryPoint(ourName, t, e, network), (a, b) -> a)
+                .exceptionally(Futures::logError);
     }
 
     /**
