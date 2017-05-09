@@ -778,7 +778,9 @@ public class UserContext {
 
                     BiFunction<TrieNode, FollowRequest, CompletableFuture<TrieNode>> addToStatic = (root, freq) -> {
                         if (!Arrays.equals(freq.entry.get().pointer.baseKey.serialize(), SymmetricKey.createNull().serialize())) {
-                            CompletableFuture<TrieNode> updatedRoot = addToStaticDataAndCommit(root, freq.entry.get());
+                            CompletableFuture<TrieNode> updatedRoot = freq.entry.get().owner.equals(username) ?
+                                    CompletableFuture.completedFuture(root) : // ignore responses claiming to be owned by us
+                                    addToStaticDataAndCommit(root, freq.entry.get());
                             return updatedRoot.thenCompose(newRoot -> {
                                 entrie = newRoot;
                                 // clear their response follow req too
@@ -816,6 +818,8 @@ public class UserContext {
 
                             // add new entry point to tree root
                             EntryPoint entry = freq.entry.get();
+                            if (entry.owner.equals(username))
+                                throw new IllegalStateException("Received a follow request claiming to be owner by us!");
                             return addToStaticDataAndCommit(trie, entryWeSentToThem)
                                     .thenCompose(newRoot -> network.retrieveEntryPoint(entry).thenCompose(treeNode ->
                                             treeNode.get().getPath(network)).thenApply(path ->
@@ -895,7 +899,8 @@ public class UserContext {
                 return metadata.get().getPath(network)
                         .thenCompose(path -> {
                             // check entrypoint doesn't forge the owner
-                            return e.isValid(path, network).thenApply(valid -> {
+                            return  (e.owner.equals(ourName) ? CompletableFuture.completedFuture(true) :
+                             e.isValid(path, network)).thenApply(valid -> {
 
                                 System.out.println("Added entry point: " + metadata.get() + " at path " + path);
                                 String[] parts = path.split("/");
