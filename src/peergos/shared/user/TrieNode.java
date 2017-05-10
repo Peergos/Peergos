@@ -33,9 +33,13 @@ public class TrieNode {
         String finalPath = path.startsWith("/") ? path.substring(1) : path;
         if (finalPath.length() == 0) {
             if (! value.isPresent()) { // find a child entry and traverse parent links
-                return children.values().stream().findAny().get()
+                return children.values().stream()
+                        .findAny()
+                        .get()
                         .getByPath("", network)
-                        .thenCompose(child -> child.get().retrieveParent(network));
+                        .thenCompose(child -> child.get()
+                                .retrieveParent(network)
+                                .thenApply(opt -> opt.map(f -> f.withTrieNode(this))));
             }
             return network.retrieveEntryPoint(value.get());
         }

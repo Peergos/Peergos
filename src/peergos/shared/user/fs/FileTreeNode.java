@@ -67,6 +67,10 @@ public class FileTreeNode {
         this(Optional.empty(), pointer, ownername, readers, writers, entryWriterKey);
     }
 
+    public FileTreeNode withTrieNode(TrieNode trie) {
+        return new FileTreeNode(Optional.of(trie), pointer, ownername, readers, writers, entryWriterKey);
+    }
+
     @JsMethod
     public boolean equals(Object other) {
         if (other == null)
