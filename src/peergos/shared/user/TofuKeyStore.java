@@ -30,9 +30,7 @@ public class TofuKeyStore implements Cborable {
 
     public Optional<String> getUsername(PublicSigningKey signer) {
         String name = reverseLookup.get(signer);
-        if (name == null)
-            return Optional.empty();
-        return Optional.of(name);
+        return Optional.ofNullable(name);
     }
 
     public List<UserPublicKeyLink> getChain(String username) {
