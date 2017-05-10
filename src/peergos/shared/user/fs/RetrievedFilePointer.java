@@ -1,5 +1,6 @@
 package peergos.shared.user.fs;
 
+import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.user.*;
@@ -26,27 +27,27 @@ public class RetrievedFilePointer {
         return filePointer.equals(((RetrievedFilePointer)that).filePointer);
     }
 
-    public CompletableFuture<Boolean> remove(UserContext context, RetrievedFilePointer parentRetrievedFilePointer, SigningKeyPair signer) {
+    public CompletableFuture<Boolean> remove(NetworkAccess network, RetrievedFilePointer parentRetrievedFilePointer, SigningKeyPair signer) {
         if (!this.filePointer.isWritable())
             return CompletableFuture.completedFuture(false);
         if (!this.fileAccess.isDirectory()) {
             CompletableFuture<Boolean> result = new CompletableFuture<>();
-            context.network.btree.remove(signer, this.filePointer.location.getMapKey()).thenAccept(removed -> {
+            network.btree.remove(signer, this.filePointer.location.getMapKey()).thenAccept(removed -> {
                 // remove from parent
                 if (parentRetrievedFilePointer != null)
-                    ((DirAccess) parentRetrievedFilePointer.fileAccess).removeChild(this, parentRetrievedFilePointer.filePointer, signer, context);
+                    ((DirAccess) parentRetrievedFilePointer.fileAccess).removeChild(this, parentRetrievedFilePointer.filePointer, signer, network);
                 result.complete(true);
             });
             return result;
         }
-        return ((DirAccess)fileAccess).getChildren(context, this.filePointer.baseKey).thenCompose(files -> {
+        return ((DirAccess)fileAccess).getChildren(network, this.filePointer.baseKey).thenCompose(files -> {
             for (RetrievedFilePointer file : files)
-                file.remove(context, null, signer);
+                file.remove(network, null, signer);
             CompletableFuture<Boolean> result = new CompletableFuture<>();
-            context.network.btree.remove(signer, this.filePointer.location.getMapKey()).thenAccept(removed -> {
+            network.btree.remove(signer, this.filePointer.location.getMapKey()).thenAccept(removed -> {
                 // remove from parent
                 if (parentRetrievedFilePointer != null)
-                    ((DirAccess) parentRetrievedFilePointer.fileAccess).removeChild(this, parentRetrievedFilePointer.filePointer, signer, context);
+                    ((DirAccess) parentRetrievedFilePointer.fileAccess).removeChild(this, parentRetrievedFilePointer.filePointer, signer, network);
                 result.complete(removed);
             });
             return result;

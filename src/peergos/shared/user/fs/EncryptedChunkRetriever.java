@@ -1,7 +1,9 @@
 package peergos.shared.user.fs;
 
+import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
+import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.user.*;
@@ -16,9 +18,13 @@ public class EncryptedChunkRetriever implements FileRetriever {
     private final byte[] chunkNonce, chunkAuth;
     private final List<Multihash> fragmentHashes;
     private final Optional<CipherText> nextChunk;
-    private final peergos.shared.user.fs.Fragmenter fragmenter;
+    private final Fragmenter fragmenter;
 
-    public EncryptedChunkRetriever(byte[] chunkNonce, byte[] chunkAuth, List<Multihash> fragmentHashes, Optional<CipherText> nextChunk, Fragmenter fragmenter) {
+    public EncryptedChunkRetriever(byte[] chunkNonce,
+                                   byte[] chunkAuth,
+                                   List<Multihash> fragmentHashes,
+                                   Optional<CipherText> nextChunk,
+                                   Fragmenter fragmenter) {
         this.chunkNonce = chunkNonce;
         this.chunkAuth = chunkAuth;
         this.fragmentHashes = fragmentHashes;
@@ -26,23 +32,28 @@ public class EncryptedChunkRetriever implements FileRetriever {
         this.fragmenter = fragmenter;
     }
 
-    public CompletableFuture<AsyncReader> getFile(UserContext context, SymmetricKey dataKey, long fileSize,
+    @Override
+    public CompletableFuture<AsyncReader> getFile(NetworkAccess network, SafeRandom random, SymmetricKey dataKey, long fileSize,
                                                   Location ourLocation, ProgressConsumer<Long> monitor) {
-        return getChunkInputStream(context, dataKey, 0, fileSize, ourLocation, monitor)
+        return getChunkInputStream(network, random, dataKey, 0, fileSize, ourLocation, monitor)
                 .thenApply(chunk -> {
                     Location nextChunkPointer = this.getNext(dataKey).orElse(null);
                     return new LazyInputStreamCombiner(0,
                             chunk.get().chunk.data(), nextChunkPointer,
                             chunk.get().chunk.data(), nextChunkPointer,
-                            context, dataKey, fileSize, monitor);
+                            network, random, dataKey, fileSize, monitor);
                 });
     }
 
-    public CompletableFuture<Optional<LocatedEncryptedChunk>> getEncryptedChunk(long bytesRemainingUntilStart, long truncateTo,
-                                                                                byte[] nonce, SymmetricKey dataKey,
-                                                                                Location ourLocation, UserContext context, ProgressConsumer<Long> monitor) {
+    public CompletableFuture<Optional<LocatedEncryptedChunk>> getEncryptedChunk(long bytesRemainingUntilStart,
+                                                                                long truncateTo,
+                                                                                byte[] nonce,
+                                                                                SymmetricKey dataKey,
+                                                                                Location ourLocation,
+                                                                                NetworkAccess network,
+                                                                                ProgressConsumer<Long> monitor) {
         if (bytesRemainingUntilStart < Chunk.MAX_SIZE) {
-            return context.downloadFragments(fragmentHashes, monitor, fragmenter.storageIncreaseFactor()).thenCompose(fragments -> {
+            return network.downloadFragments(fragmentHashes, monitor, fragmenter.storageIncreaseFactor()).thenCompose(fragments -> {
                 fragments = reorder(fragments, fragmentHashes);
                 byte[][] collect = fragments.stream().map(f -> f.fragment.data).toArray(byte[][]::new);
                 byte[] cipherText = fragmenter.recombine(collect, Chunk.MAX_SIZE);
@@ -55,14 +66,14 @@ public class EncryptedChunkRetriever implements FileRetriever {
         Optional<Location> next = getNext(dataKey);
         if (! next.isPresent())
             return CompletableFuture.completedFuture(Optional.empty());
-        return context.getMetadata(next.get()).thenCompose(meta ->
+        return network.getMetadata(next.get()).thenCompose(meta ->
              !meta.isPresent() ? CompletableFuture.completedFuture(Optional.empty()) :
                      meta.get().retriever().getEncryptedChunk(bytesRemainingUntilStart - Chunk.MAX_SIZE,
-                             truncateTo - Chunk.MAX_SIZE, meta.get().retriever().getNonce(), dataKey, next.get(), context, monitor)
+                             truncateTo - Chunk.MAX_SIZE, meta.get().retriever().getNonce(), dataKey, next.get(), network, monitor)
             );
     }
 
-    public CompletableFuture<Optional<Location>> getLocationAt(Location startLocation, long offset, SymmetricKey dataKey, UserContext context) {
+    public CompletableFuture<Optional<Location>> getLocationAt(Location startLocation, long offset, SymmetricKey dataKey, NetworkAccess network) {
         if (offset < Chunk.MAX_SIZE)
             return CompletableFuture.completedFuture(Optional.of(startLocation));
         Optional<Location> next = getNext(dataKey);
@@ -70,9 +81,9 @@ public class EncryptedChunkRetriever implements FileRetriever {
             return CompletableFuture.completedFuture(Optional.empty());
         if (offset < 2*Chunk.MAX_SIZE)
             return CompletableFuture.completedFuture(next); // chunk at this location hasn't been written yet, only referenced by previous chunk
-        return context.getMetadata(next.get())
+        return network.getMetadata(next.get())
                 .thenCompose(meta -> meta.isPresent() ?
-                        meta.get().retriever().getLocationAt(next.get(), offset - Chunk.MAX_SIZE, dataKey, context) :
+                        meta.get().retriever().getLocationAt(next.get(), offset - Chunk.MAX_SIZE, dataKey, network) :
                         CompletableFuture.completedFuture(Optional.empty())
                 );
     }
@@ -85,18 +96,19 @@ public class EncryptedChunkRetriever implements FileRetriever {
         return chunkNonce;
     }
 
-    public CompletableFuture<Optional<LocatedChunk>> getChunkInputStream(UserContext context, SymmetricKey dataKey,
+    public CompletableFuture<Optional<LocatedChunk>> getChunkInputStream(NetworkAccess network, SafeRandom random,
+                                                                         SymmetricKey dataKey,
                                                                          long startIndex, long truncateTo,
                                                                          Location ourLocation, ProgressConsumer<Long> monitor) {
-        return getEncryptedChunk(startIndex, truncateTo, chunkNonce, dataKey, ourLocation, context, monitor).thenCompose(fullEncryptedChunk -> {
+        return getEncryptedChunk(startIndex, truncateTo, chunkNonce, dataKey, ourLocation, network, monitor).thenCompose(fullEncryptedChunk -> {
 
             if (!fullEncryptedChunk.isPresent()) {
-                return getLocationAt(ourLocation, startIndex, dataKey, context).thenApply(unwrittenChunkLocation ->
+                return getLocationAt(ourLocation, startIndex, dataKey, network).thenApply(unwrittenChunkLocation ->
                         !unwrittenChunkLocation.isPresent() ? Optional.empty() :
                                 Optional.of(new LocatedChunk(unwrittenChunkLocation.get(),
                                         new Chunk(new byte[Math.min(Chunk.MAX_SIZE, (int) (truncateTo - startIndex))],
                                                 dataKey, unwrittenChunkLocation.get().getMapKey(),
-                                                context.randomBytes(TweetNaCl.SECRETBOX_NONCE_BYTES)))));
+                                                random.randomBytes(TweetNaCl.SECRETBOX_NONCE_BYTES)))));
             }
 
             if (!fullEncryptedChunk.isPresent())
@@ -105,7 +117,7 @@ public class EncryptedChunkRetriever implements FileRetriever {
             try {
                 byte[] original = fullEncryptedChunk.get().chunk.decrypt(dataKey, fullEncryptedChunk.get().nonce);
                 return CompletableFuture.completedFuture(Optional.of(new LocatedChunk(fullEncryptedChunk.get().location,
-                        new Chunk(original, dataKey, fullEncryptedChunk.get().location.getMapKey(), context.randomBytes(TweetNaCl.SECRETBOX_NONCE_BYTES)))));
+                        new Chunk(original, dataKey, fullEncryptedChunk.get().location.getMapKey(), random.randomBytes(TweetNaCl.SECRETBOX_NONCE_BYTES)))));
             } catch (IllegalStateException e) {
                 throw new IllegalStateException("Couldn't decrypt chunk at mapkey: " + new ByteArrayWrapper(fullEncryptedChunk.get().location.getMapKey()), e);
             }
