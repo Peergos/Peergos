@@ -34,8 +34,20 @@ public class FileTreeNode {
     Set<String> readers;
     Set<String> writers;
     Optional<SecretSigningKey> entryWriterKey;
+    private final Optional<TrieNode> globalRoot;
 
-    public FileTreeNode(RetrievedFilePointer pointer, String ownername, Set<String> readers, Set<String> writers, Optional<SecretSigningKey> entryWriterKey) {
+    /**
+     *
+     * @param globalRoot This is only present for if this is the global root
+     * @param pointer
+     * @param ownername
+     * @param readers
+     * @param writers
+     * @param entryWriterKey
+     */
+    public FileTreeNode(Optional<TrieNode> globalRoot, RetrievedFilePointer pointer, String ownername,
+                        Set<String> readers, Set<String> writers, Optional<SecretSigningKey> entryWriterKey) {
+        this.globalRoot = globalRoot;
         this.pointer = pointer == null ? null : pointer.withWriter(entryWriterKey);
         this.ownername = ownername;
         this.readers = readers;
@@ -48,6 +60,11 @@ public class FileTreeNode {
             props = pointer.fileAccess.getFileProperties(parentKey);
         }
         thumbnail = new NativeJSThumbnail();
+    }
+
+    public FileTreeNode(RetrievedFilePointer pointer, String ownername,
+                        Set<String> readers, Set<String> writers, Optional<SecretSigningKey> entryWriterKey) {
+        this(Optional.empty(), pointer, ownername, readers, writers, entryWriterKey);
     }
 
     @JsMethod
@@ -75,7 +92,7 @@ public class FileTreeNode {
         });
     }
 
-    public CompletableFuture<Optional<FileTreeNode>> getDescendentByPath(TrieNode root, String path, NetworkAccess network) {
+    public CompletableFuture<Optional<FileTreeNode>> getDescendentByPath(String path, NetworkAccess network) {
         if (path.length() == 0)
             return CompletableFuture.completedFuture(Optional.of(this));
 
@@ -90,10 +107,10 @@ public class FileTreeNode {
         int slash = path.indexOf("/");
         String prefix = slash > 0 ? path.substring(0, slash) : path;
         String suffix = slash > 0 ? path.substring(slash + 1) : "";
-        return getChildren(root, network).thenCompose(children -> {
+        return getChildren(network).thenCompose(children -> {
             for (FileTreeNode child : children)
                 if (child.getFileProperties().name.equals(prefix)) {
-                    return child.getDescendentByPath(root, suffix, network);
+                    return child.getDescendentByPath(suffix, network);
                 }
             return CompletableFuture.completedFuture(Optional.empty());
         });
@@ -143,7 +160,7 @@ public class FileTreeNode {
                                             ownername, readers, writers, entryWriterKey);
 
                                     // clean all subtree keys except file dataKeys (lazily re-key and re-encrypt them)
-                                    return getChildren(root, network).thenCompose(children -> {
+                                    return getChildren(network).thenCompose(children -> {
                                         for (FileTreeNode child : children) {
                                             child.makeDirty(network, random, root, theNewUs, readersToRemove);
                                         }
@@ -174,8 +191,8 @@ public class FileTreeNode {
         }
     }
 
-    public CompletableFuture<Boolean> hasChildWithName(TrieNode root, String name, NetworkAccess network) {
-        return getChildren(root, network)
+    public CompletableFuture<Boolean> hasChildWithName(String name, NetworkAccess network) {
+        return getChildren(network)
                 .thenApply(children -> children.stream().filter(c -> c.props.name.equals(name)).findAny().isPresent());
     }
 
@@ -183,14 +200,14 @@ public class FileTreeNode {
         return ((DirAccess)pointer.fileAccess).removeChild(child.getPointer(), pointer.filePointer, getSigner(), network);
     }
 
-    public CompletableFuture<FileTreeNode> addLinkTo(FileTreeNode file, NetworkAccess network, SafeRandom random, TrieNode root) {
+    public CompletableFuture<FileTreeNode> addLinkTo(FileTreeNode file, NetworkAccess network, SafeRandom random) {
         CompletableFuture<FileTreeNode> error = new CompletableFuture<>();
         if (!this.isDirectory() || !this.isWritable()) {
             error.completeExceptionally(new IllegalArgumentException("Can only add link toa writable directory!"));
             return error;
         }
         String name = file.getFileProperties().name;
-        return hasChildWithName(root, name, network).thenCompose(hasChild -> {
+        return hasChildWithName(name, network).thenCompose(hasChild -> {
             if (hasChild) {
                 error.completeExceptionally(new IllegalStateException("Child already exists with name: " + name));
                 return error;
@@ -253,7 +270,7 @@ public class FileTreeNode {
         CompletableFuture<RetrievedFilePointer> parent = pointer.fileAccess.getParent(parentKey, network);
         return parent.thenApply(parentRFP -> {
             if (parentRFP == null)
-                return Optional.of(createRoot());
+                return Optional.empty();
             return Optional.of(new FileTreeNode(parentRFP, ownername, Collections.emptySet(), Collections.emptySet(), entryWriterKey));
         });
     }
@@ -270,9 +287,9 @@ public class FileTreeNode {
     }
 
     @JsMethod
-    public CompletableFuture<Set<FileTreeNode>> getChildren(TrieNode root, NetworkAccess network) {
-        if (this.props.name.equals("/"))
-            return root.getChildren("/", network, root);
+    public CompletableFuture<Set<FileTreeNode>> getChildren(NetworkAccess network) {
+        if (globalRoot.isPresent())
+            return globalRoot.get().getChildren("/", network);
         if (isReadable()) {
             return retrieveChildren(network).thenApply(childrenRFPs -> {
                 Set<FileTreeNode> newChildren = childrenRFPs.stream()
@@ -281,7 +298,7 @@ public class FileTreeNode {
                 return newChildren.stream().collect(Collectors.toSet());
             });
         }
-        return getPath(network).thenCompose(path -> root.getChildren(path, network, root));
+        throw new IllegalStateException("Unreadable FileTreeNode!");
     }
 
     private CompletableFuture<Set<RetrievedFilePointer>> retrieveChildren(NetworkAccess network) {
@@ -319,7 +336,7 @@ public class FileTreeNode {
         return pointer.fileAccess.isDirty(pointer.filePointer.baseKey);
     }
 
-    public CompletableFuture<FileTreeNode> clean(NetworkAccess network, SafeRandom random, TrieNode root,
+    public CompletableFuture<FileTreeNode> clean(NetworkAccess network, SafeRandom random,
                                                  FileTreeNode parent, peergos.shared.user.fs.Fragmenter fragmenter) {
         if (!isDirty())
             return CompletableFuture.completedFuture(this);
@@ -335,10 +352,10 @@ public class FileTreeNode {
                 String tmpFilename = ArrayOps.bytesToHex(tmp) + ".tmp";
 
                 CompletableFuture<Boolean> reuploaded = parent.uploadFileSection(tmpFilename, in, 0, props.size,
-                        Optional.of(baseKey), network, random, root, l -> {}, fragmenter);
-                return reuploaded.thenCompose(upload -> parent.getDescendentByPath(root, tmpFilename, network))
-                        .thenCompose(tmpChild -> tmpChild.get().rename(root, props.name, network, parent, true))
-                        .thenCompose(rename -> parent.getDescendentByPath(root, props.name, network))
+                        Optional.of(baseKey), network, random, l -> {}, fragmenter);
+                return reuploaded.thenCompose(upload -> parent.getDescendentByPath(tmpFilename, network))
+                        .thenCompose(tmpChild -> tmpChild.get().rename(props.name, network, parent, true))
+                        .thenCompose(rename -> parent.getDescendentByPath(props.name, network))
                         .thenApply(fileOpt -> fileOpt.get());
             });
         }
@@ -346,41 +363,40 @@ public class FileTreeNode {
 
     @JsMethod
     public CompletableFuture<Boolean> uploadFileJS(String filename, AsyncReader fileData, int lengthHi, int lengthLow,
-                                                 NetworkAccess network, SafeRandom random, TrieNode root,
+                                                 NetworkAccess network, SafeRandom random,
                                                  ProgressConsumer<Long> monitor, Fragmenter fragmenter) {
-        return uploadFile(filename, fileData, lengthLow + ((lengthHi & 0xFFFFFFFFL) << 32), network, random, root, monitor, fragmenter);
+        return uploadFile(filename, fileData, lengthLow + ((lengthHi & 0xFFFFFFFFL) << 32), network, random, monitor, fragmenter);
     }
 
     public CompletableFuture<Boolean> uploadFile(String filename, AsyncReader fileData, long length,
-                                                 NetworkAccess network, SafeRandom random, TrieNode root,
+                                                 NetworkAccess network, SafeRandom random,
                                                  ProgressConsumer<Long> monitor, Fragmenter fragmenter) {
-        return uploadFileSection(filename, fileData, 0, length, Optional.empty(), network, random, root, monitor, fragmenter);
+        return uploadFileSection(filename, fileData, 0, length, Optional.empty(), network, random, monitor, fragmenter);
     }
 
     public CompletableFuture<Boolean> uploadFile(String filename,
                                                  AsyncReader fileData,
                                                  boolean isHidden,
                                                  long length,
-                                                 NetworkAccess network, SafeRandom random, TrieNode root,
+                                                 NetworkAccess network, SafeRandom random,
                                                  ProgressConsumer<Long> monitor,
                                                  Fragmenter fragmenter) {
-        return uploadFileSection(filename, fileData, isHidden, 0, length, Optional.empty(), network, random, root, monitor, fragmenter);
+        return uploadFileSection(filename, fileData, isHidden, 0, length, Optional.empty(), network, random, monitor, fragmenter);
     }
 
     public CompletableFuture<Boolean> uploadFileSection(String filename, AsyncReader fileData, long startIndex, long endIndex,
-                                                 NetworkAccess network, SafeRandom random, TrieNode root,
+                                                 NetworkAccess network, SafeRandom random,
                                                  ProgressConsumer<Long> monitor, Fragmenter fragmenter) {
-        return uploadFileSection(filename, fileData, startIndex, endIndex, Optional.empty(), network, random, root, monitor, fragmenter);
+        return uploadFileSection(filename, fileData, startIndex, endIndex, Optional.empty(), network, random, monitor, fragmenter);
     }
 
     public CompletableFuture<Boolean> uploadFileSection(String filename, AsyncReader fileData,
                                                  long startIndex, long endIndex,
                                                  Optional<SymmetricKey> baseKey,
                                                  NetworkAccess network, SafeRandom random,
-                                                 TrieNode root,
                                                  ProgressConsumer<Long> monitor,
                                                  Fragmenter fragmenter) {
-        return uploadFileSection(filename, fileData, false, startIndex, endIndex, baseKey, network, random, root, monitor, fragmenter);
+        return uploadFileSection(filename, fileData, false, startIndex, endIndex, baseKey, network, random, monitor, fragmenter);
     }
 
     public CompletableFuture<Boolean> uploadFileSection(String filename, AsyncReader fileData,
@@ -389,14 +405,13 @@ public class FileTreeNode {
                                                  Optional<SymmetricKey> baseKey,
                                                  NetworkAccess network,
                                                  SafeRandom random,
-                                                 TrieNode root,
                                                  ProgressConsumer<Long> monitor,
                                                  Fragmenter fragmenter) {
         if (!isLegalName(filename))
             return CompletableFuture.completedFuture(false);
-        return getDescendentByPath(root, filename, network).thenCompose(childOpt -> {
+        return getDescendentByPath(filename, network).thenCompose(childOpt -> {
             if (childOpt.isPresent()) {
-                return updateExistingChild(childOpt.get(), fileData, startIndex, endIndex, network, random, root, monitor, fragmenter);
+                return updateExistingChild(childOpt.get(), fileData, startIndex, endIndex, network, random, monitor, fragmenter);
             }
             if (startIndex > 0) {
                 // TODO if startIndex > 0 prepend with a zero section
@@ -430,14 +445,14 @@ public class FileTreeNode {
 
     private CompletableFuture<Boolean> updateExistingChild(FileTreeNode existingChild, AsyncReader fileData,
                                                            long inputStartIndex, long endIndex,
-                                                           NetworkAccess network, SafeRandom random, TrieNode root,
+                                                           NetworkAccess network, SafeRandom random,
                                                            ProgressConsumer<Long> monitor, Fragmenter fragmenter) {
 
         String filename = existingChild.getFileProperties().name;
         System.out.println("Overwriting section [" + Long.toHexString(inputStartIndex) + ", " + Long.toHexString(endIndex) + "] of child with name: " + filename);
 
         if (existingChild.isDirty()) {
-            CompletableFuture<FileTreeNode> clean = existingChild.clean(network, random, root, this, fragmenter);
+            CompletableFuture<FileTreeNode> clean = existingChild.clean(network, random, this, fragmenter);
             return clean.thenCompose(x -> CompletableFuture.completedFuture(true));
         }
 
@@ -517,11 +532,11 @@ public class FileTreeNode {
 
                                                 if (updatedLength > Chunk.MAX_SIZE) {
                                                     // update file size in FileProperties of first chunk
-                                                    CompletableFuture<Boolean> updatedSize = getChildren(root, network).thenCompose(children -> {
+                                                    CompletableFuture<Boolean> updatedSize = getChildren(network).thenCompose(children -> {
                                                         Optional<FileTreeNode> updatedChild = children.stream()
                                                                 .filter(f -> f.getFileProperties().name.equals(filename))
                                                                 .findAny();
-                                                        return updatedChild.get().setProperties(child.getFileProperties().withSize(endIndex), network, root, this);
+                                                        return updatedChild.get().setProperties(child.getFileProperties().withSize(endIndex), network, this);
                                                     });
                                                 }
                                             }
@@ -560,7 +575,7 @@ public class FileTreeNode {
             result.completeExceptionally(new IllegalStateException("Illegal directory name: " + newFolderName));
             return result;
         }
-        return hasChildWithName(root, newFolderName, network).thenCompose(hasChild -> {
+        return hasChildWithName(newFolderName, network).thenCompose(hasChild -> {
             if (hasChild) {
                 result.completeExceptionally(new IllegalStateException("Child already exists with name: " + newFolderName));
                 return result;
@@ -574,17 +589,17 @@ public class FileTreeNode {
     }
 
     @JsMethod
-    public CompletableFuture<Boolean> rename(TrieNode root, String newFilename, NetworkAccess network, FileTreeNode parent) {
-        return rename(root, newFilename, network, parent, false);
+    public CompletableFuture<Boolean> rename(String newFilename, NetworkAccess network, FileTreeNode parent) {
+        return rename(newFilename, network, parent, false);
     }
 
-    public CompletableFuture<Boolean> rename(TrieNode root, String newFilename, NetworkAccess network,
+    public CompletableFuture<Boolean> rename(String newFilename, NetworkAccess network,
                                              FileTreeNode parent, boolean overwrite) {
         if (! isLegalName(newFilename))
             return CompletableFuture.completedFuture(false);
         CompletableFuture<Optional<FileTreeNode>> childExists = parent == null ?
                 CompletableFuture.completedFuture(Optional.empty()) :
-                parent.getDescendentByPath(root, newFilename, network);
+                parent.getDescendentByPath(newFilename, network);
         return childExists
                 .thenCompose(existing -> {
                     if (existing.isPresent() && !overwrite)
@@ -609,14 +624,14 @@ public class FileTreeNode {
                 });
     }
 
-    public CompletableFuture<Boolean> setProperties(FileProperties updatedProperties, NetworkAccess network, TrieNode root, FileTreeNode parent) {
+    public CompletableFuture<Boolean> setProperties(FileProperties updatedProperties, NetworkAccess network, FileTreeNode parent) {
         String newName = updatedProperties.name;
         CompletableFuture<Boolean> result = new CompletableFuture<>();
         if (!isLegalName(newName)) {
             result.completeExceptionally(new IllegalArgumentException("Illegal file name: " + newName));
             return result;
         }
-        return (parent == null ? CompletableFuture.completedFuture(false) : parent.hasChildWithName(root, newName, network)).thenCompose(hasChild -> {
+        return (parent == null ? CompletableFuture.completedFuture(false) : parent.hasChildWithName(newName, network)).thenCompose(hasChild -> {
             if (hasChild && parent!= null && !parent.getChildrenLocations().stream()
                     .map(l -> new ByteArrayWrapper(l.getMapKey()))
                     .collect(Collectors.toSet())
@@ -647,7 +662,7 @@ public class FileTreeNode {
             result.completeExceptionally(new IllegalStateException("CopyTo target " + target + " must be a directory"));
             return result;
         }
-        return target.hasChildWithName(root, getFileProperties().name, network).thenCompose(childExists -> {
+        return target.hasChildWithName(getFileProperties().name, network).thenCompose(childExists -> {
             if (childExists) {
                 result.completeExceptionally(new IllegalStateException("CopyTo target " + target + " already has child with name " + getFileProperties().name));
                 return result;
@@ -669,7 +684,7 @@ public class FileTreeNode {
                         RetrievedFilePointer newRetrievedFilePointer = new RetrievedFilePointer(newRFP, newAccess);
                         FileTreeNode newFileTreeNode = new FileTreeNode(newRetrievedFilePointer, target.getOwner(),
                                 Collections.emptySet(), Collections.emptySet(), target.getEntryWriterKey());
-                        return target.addLinkTo(newFileTreeNode, network, random, root);
+                        return target.addLinkTo(newFileTreeNode, network, random);
                     });
         });
     }
@@ -737,8 +752,8 @@ public class FileTreeNode {
         return getFileProperties().name;
     }
 
-    public static FileTreeNode createRoot() {
-        return new FileTreeNode(null, null, Collections.EMPTY_SET, Collections.EMPTY_SET, null);
+    public static FileTreeNode createRoot(TrieNode root) {
+        return new FileTreeNode(Optional.of(root), null, null, Collections.EMPTY_SET, Collections.EMPTY_SET, null);
     }
 
     private CompletableFuture<byte[]> generateThumbnail(NetworkAccess network, AsyncReader fileData, int fileSize, String filename)

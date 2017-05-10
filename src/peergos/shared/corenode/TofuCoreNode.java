@@ -35,7 +35,7 @@ public class TofuCoreNode implements CoreNode {
         if (username == null)
             return CompletableFuture.completedFuture(new TofuKeyStore());
 
-        return root.getByPath(getStorePath(username), network, root).thenCompose(fileOpt -> {
+        return root.getByPath(getStorePath(username), network).thenCompose(fileOpt -> {
             if (! fileOpt.isPresent())
                 return CompletableFuture.completedFuture(new TofuKeyStore());
 
@@ -53,7 +53,7 @@ public class TofuCoreNode implements CoreNode {
                     byte[] data = tofu.serialize();
                     AsyncReader.ArrayBacked dataReader = new AsyncReader.ArrayBacked(data);
                     return home.uploadFile(KEY_STORE_NAME, dataReader, true, (long) data.length,
-                            context.network, context.crypto.random, context.entrie, x-> {}, context.fragmenter());
+                            context.network, context.crypto.random, x-> {}, context.fragmenter());
                 });
     }
 

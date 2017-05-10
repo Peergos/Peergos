@@ -110,7 +110,7 @@ public class MultiUserTests {
         Files.write(f.toPath(), originalFileContents);
         ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(f);
         boolean uploaded = u1Root.uploadFile(filename, resetableFileInputStream, f.length(),
-                u1.network, u1.crypto.random, u1.entrie, l -> {}, u1.fragmenter()).get();
+                u1.network, u1.crypto.random,l -> {}, u1.fragmenter()).get();
 
         // share the file from "a" to each of the others
         FileTreeNode u1File = u1.getByPath(u1.username + "/" + filename).get().get();
@@ -163,7 +163,7 @@ public class MultiUserTests {
         AsyncReader suffixStream = new AsyncReader.ArrayBacked(suffix);
         FileTreeNode parent = u1New.getByPath(u1New.username).get().get();
         parent.uploadFileSection(filename, suffixStream, originalFileContents.length, originalFileContents.length + suffix.length,
-                Optional.empty(), u1New.network, u1New.crypto.random, u1New.entrie, l -> {}, u1New.fragmenter());
+                Optional.empty(), u1New.network, u1New.crypto.random, l -> {}, u1New.fragmenter());
         AsyncReader extendedContents = u1New.getByPath(u1.username + "/" + filename).get().get().getInputStream(u1New.network,
                 u1New.crypto.random, l -> {}).get();
         byte[] newFileContents = Serialize.readFully(extendedContents, originalFileContents.length + suffix.length).get();
@@ -218,7 +218,7 @@ public class MultiUserTests {
         FileTreeNode folder = u1.getByPath("/a/" + folderName).get().get();
         ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(f);
         boolean uploaded = folder.uploadFile(filename, resetableFileInputStream, f.length(), u1.network,
-                u1.crypto.random, u1.entrie, l -> {}, u1.fragmenter()).get();
+                u1.crypto.random, l -> {}, u1.fragmenter()).get();
         String originalPath = u1.username + "/" + folderName + "/" + filename;
         FileTreeNode file = u1.getByPath(originalPath).get().get();
 
@@ -227,13 +227,13 @@ public class MultiUserTests {
         for (UserContext user : users) {
             String path = u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + user.username;
             FileTreeNode u1ToU2 = u1.getByPath(path).get().get();
-            FileTreeNode fileTreeNode = u1ToU2.addLinkTo(folder, u1.network, u1.crypto.random, u1.entrie).get();
+            FileTreeNode fileTreeNode = u1ToU2.addLinkTo(folder, u1.network, u1.crypto.random).get();
             FileTreeNode ownerViewOfLink = u1.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME + "/" + user.username + "/" + folderName).get().get();
 
             Set<FileTreeNode> u2children = user
                     .getByPath(path)
                     .get().get()
-                    .getChildren(user.entrie, user.network).get();
+                    .getChildren(user.network).get();
             Optional<FileTreeNode> fromParent = u2children.stream()
                     .filter(fn -> fn.getFileProperties().name.equals(folderName))
                     .findAny();
@@ -284,7 +284,7 @@ public class MultiUserTests {
             AsyncReader suffixStream = new AsyncReader.ArrayBacked(suffix);
             FileTreeNode parent = u1New.getByPath(u1New.username + "/" + folderName).get().get();
             parent.uploadFileSection(filename, suffixStream, fileContents.length, fileContents.length + suffix.length,
-                    Optional.empty(), u1New.network, u1New.crypto.random, u1New.entrie, l -> {}, u1New.fragmenter()).get();
+                    Optional.empty(), u1New.network, u1New.crypto.random, l -> {}, u1New.fragmenter()).get();
             FileTreeNode extendedFile = u1New.getByPath(originalPath).get().get();
             AsyncReader extendedContents = extendedFile.getInputStream(u1New.network, u1New.crypto.random, l -> {}).get();
             byte[] newFileContents = Serialize.readFully(extendedContents, extendedFile.getSize()).get();

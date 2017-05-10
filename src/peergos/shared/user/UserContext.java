@@ -151,7 +151,7 @@ public class UserContext {
     private CompletableFuture<String> getLinkPath(FileTreeNode file) {
         if (! file.isDirectory())
             return CompletableFuture.completedFuture("");
-        return file.getChildren(entrie, network)
+        return file.getChildren(network)
                 .thenCompose(children -> {
                     if (children.size() != 1)
                         return CompletableFuture.completedFuture(file.getName());
@@ -389,7 +389,7 @@ public class UserContext {
 
     public CompletableFuture<Map<String, FileTreeNode>> getFollowerRoots() {
         return getSharingFolder()
-                .thenCompose(sharing -> sharing.getChildren(entrie, network))
+                .thenCompose(sharing -> sharing.getChildren(network))
                 .thenApply(children -> children.stream()
                         .collect(Collectors.toMap(e -> e.getFileProperties().name, e -> e)));
     }
@@ -506,7 +506,7 @@ public class UserContext {
 
     public CompletableFuture<Boolean> sendFollowRequest(String targetUsername, SymmetricKey requestedKey) {
         return getSharingFolder().thenCompose(sharing -> {
-            return sharing.getChildren(entrie, network).thenCompose(children -> {
+            return sharing.getChildren(network).thenCompose(children -> {
                 boolean alreadySentRequest = children.stream()
                         .filter(f -> f.getFileProperties().name.equals(targetUsername))
                         .findAny()
@@ -650,7 +650,7 @@ public class UserContext {
         String path = "/" + username + "/shared";
 
         Function<FileTreeNode, CompletableFuture<Optional<String>>> func = sharedUserDir -> {
-            CompletableFuture<Set<FileTreeNode>> children = sharedUserDir.getChildren(entrie, network);
+            CompletableFuture<Set<FileTreeNode>> children = sharedUserDir.getChildren(network);
             return children.thenCompose(e -> {
                 boolean present = e.stream()
                         .filter(sharedFile -> sharedFile.getLocation().equals(fileLocation))
@@ -664,7 +664,7 @@ public class UserContext {
         return getByPath(path)
                 .thenCompose(sharedDirOpt -> {
                     FileTreeNode sharedDir = sharedDirOpt.orElseThrow(() -> new IllegalStateException("No such directory" + path));
-                    return sharedDir.getChildren(entrie, network)
+                    return sharedDir.getChildren(network)
                             .thenCompose(sharedUserDirs -> {
                                 List<CompletableFuture<Optional<String>>> collect = sharedUserDirs.stream()
                                         .map(func::apply)
@@ -712,7 +712,7 @@ public class UserContext {
                     if (!shared.isPresent())
                         return CompletableFuture.completedFuture(true);
                     FileTreeNode sharedTreeNode = shared.get();
-                    return sharedTreeNode.addLinkTo(file, network, crypto.random, entrie)
+                    return sharedTreeNode.addLinkTo(file, network, crypto.random)
                             .thenCompose(ee -> CompletableFuture.completedFuture(true));
                 });
     }
@@ -852,12 +852,14 @@ public class UserContext {
     }
 
     public CompletableFuture<Set<FileTreeNode>> getChildren(String path) {
-        return entrie.getChildren(path, network, entrie);
+        return entrie.getChildren(path, network);
     }
 
     @JsMethod
     public CompletableFuture<Optional<FileTreeNode>> getByPath(String path) {
-        return entrie.getByPath(path, network, entrie);
+        if (path.equals("/"))
+            return CompletableFuture.completedFuture(Optional.of(FileTreeNode.createRoot(entrie)));
+        return entrie.getByPath(path, network);
     }
 
     public CompletableFuture<FileTreeNode> getUserRoot() {

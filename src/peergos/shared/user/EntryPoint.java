@@ -37,6 +37,12 @@ public class EntryPoint implements Cborable{
         return ArrayOps.concat(nonce, key.encrypt(serialize(), nonce));
     }
 
+    /**
+     *
+     * @param path The path of the file this entry point corresponds to
+     * @param network
+     * @return
+     */
     public CompletableFuture<Boolean> isValid(String path, NetworkAccess network) {
         String[] parts = path.split("/");
         String claimedOwner = parts[1];

@@ -23,7 +23,7 @@ public class TrieNode {
         this(Collections.emptyMap(), Optional.empty(), Collections.emptyMap());
     }
 
-    public CompletableFuture<Optional<FileTreeNode>> getByPath(String path, NetworkAccess network, TrieNode root) {
+    public CompletableFuture<Optional<FileTreeNode>> getByPath(String path, NetworkAccess network) {
         System.out.println("GetByPath: " + path);
         for (String prefix: pathMappings.keySet()) {
             if (path.startsWith(prefix)) {
@@ -32,31 +32,29 @@ public class TrieNode {
         }
         String finalPath = path.startsWith("/") ? path.substring(1) : path;
         if (finalPath.length() == 0) {
-            if (!value.isPresent()) { // find a child entry and traverse parent links
+            if (! value.isPresent()) { // find a child entry and traverse parent links
                 return children.values().stream().findAny().get()
-                        .getByPath("", network, root)
+                        .getByPath("", network)
                         .thenCompose(child -> child.get().retrieveParent(network));
             }
-            return !value.isPresent() ?
-                    CompletableFuture.completedFuture(Optional.empty()) :
-                    network.retrieveEntryPoint(value.get());
+            return network.retrieveEntryPoint(value.get());
         }
         String[] elements = finalPath.split("/");
         // There may be an entry point further down the tree, but it will have <= permission than this one
         if (value.isPresent())
             return network.retrieveEntryPoint(value.get())
-                    .thenCompose(dir -> dir.get().getDescendentByPath(root, finalPath, network));
+                    .thenCompose(dir -> dir.get().getDescendentByPath(finalPath, network));
         if (!children.containsKey(elements[0]))
             return CompletableFuture.completedFuture(Optional.empty());
-        return children.get(elements[0]).getByPath(finalPath.substring(elements[0].length()), network, root);
+        return children.get(elements[0]).getByPath(finalPath.substring(elements[0].length()), network);
     }
 
-    public CompletableFuture<Set<FileTreeNode>> getChildren(String path, NetworkAccess network, TrieNode root) {
+    public CompletableFuture<Set<FileTreeNode>> getChildren(String path, NetworkAccess network) {
         String trimmedPath = path.startsWith("/") ? path.substring(1) : path;
         if (trimmedPath.length() == 0) {
             if (!value.isPresent()) { // find a child entry and traverse parent links
                 Set<CompletableFuture<Optional<FileTreeNode>>> kids = children.values().stream()
-                        .map(t -> t.getByPath("", network, root)).collect(Collectors.toSet());
+                        .map(t -> t.getByPath("", network)).collect(Collectors.toSet());
                 return Futures.combineAll(kids)
                         .thenApply(set -> set.stream()
                                 .filter(opt -> opt.isPresent())
@@ -64,14 +62,14 @@ public class TrieNode {
                                 .collect(Collectors.toSet()));
             }
             return network.retrieveEntryPoint(value.get())
-                    .thenCompose(dir -> dir.get().getChildren(root, network));
+                    .thenCompose(dir -> dir.get().getChildren(network));
         }
         String[] elements = trimmedPath.split("/");
         if (!children.containsKey(elements[0]))
             return network.retrieveEntryPoint(value.get())
-                    .thenCompose(dir -> dir.get().getDescendentByPath(root, trimmedPath, network)
-                            .thenCompose(parent -> parent.get().getChildren(root, network)));
-        return children.get(elements[0]).getChildren(trimmedPath.substring(elements[0].length()), network, root);
+                    .thenCompose(dir -> dir.get().getDescendentByPath(trimmedPath, network)
+                            .thenCompose(parent -> parent.get().getChildren(network)));
+        return children.get(elements[0]).getChildren(trimmedPath.substring(elements[0].length()), network);
     }
 
     public Set<String> getChildNames() {
