@@ -14,6 +14,7 @@ public class Crypto {
     private static Crypto INSTANCE;
     private static boolean isJava;
 
+    @JsProperty
     public final SafeRandom random;
     public final LoginHasher hasher;
     public final Salsa20Poly1305 symmetricProvider;

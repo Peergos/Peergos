@@ -40,6 +40,7 @@ public class UserContext {
     public final NetworkAccess network;
 
     // In process only
+    @JsProperty
     public final Crypto crypto;
 
     public UserContext(String username, SigningKeyPair signer, BoxingKeyPair boxer, NetworkAccess network, Crypto crypto, CompletableFuture<CommittedWriterData> userData) {
