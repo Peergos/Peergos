@@ -214,7 +214,7 @@ public class MultiUserTests {
         byte[] originalFileContents = "Hello Peergos friend!".getBytes();
         Files.write(f.toPath(), originalFileContents);
         String folderName = "afolder";
-        u1Root.mkdir(folderName, u1.network, SymmetricKey.random(), false, u1.crypto.random, u1.entrie).get();
+        u1Root.mkdir(folderName, u1.network, SymmetricKey.random(), false, u1.crypto.random).get();
         FileTreeNode folder = u1.getByPath("/a/" + folderName).get().get();
         ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(f);
         boolean uploaded = folder.uploadFile(filename, resetableFileInputStream, f.length(), u1.network,

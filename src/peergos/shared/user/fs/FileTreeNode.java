@@ -129,7 +129,7 @@ public class FileTreeNode {
      * @return
      * @throws IOException
      */
-    public CompletableFuture<FileTreeNode> makeDirty(NetworkAccess network, SafeRandom random, TrieNode root,
+    public CompletableFuture<FileTreeNode> makeDirty(NetworkAccess network, SafeRandom random,
                                                      FileTreeNode parent, Set<String> readersToRemove) {
         if (!isWritable())
             throw new IllegalStateException("You cannot mark a file as dirty without write access!");
@@ -166,7 +166,7 @@ public class FileTreeNode {
                                     // clean all subtree keys except file dataKeys (lazily re-key and re-encrypt them)
                                     return getChildren(network).thenCompose(children -> {
                                         for (FileTreeNode child : children) {
-                                            child.makeDirty(network, random, root, theNewUs, readersToRemove);
+                                            child.makeDirty(network, random, theNewUs, readersToRemove);
                                         }
 
                                         // update pointer from parent to us
@@ -561,15 +561,15 @@ public class FileTreeNode {
 
     @JsMethod
     public CompletableFuture<FilePointer> mkdir(String newFolderName, NetworkAccess network, boolean isSystemFolder,
-                                                SafeRandom random, TrieNode root) throws IOException {
-        return mkdir(newFolderName, network, null, isSystemFolder, random, root);
+                                                SafeRandom random) throws IOException {
+        return mkdir(newFolderName, network, null, isSystemFolder, random);
     }
 
     public CompletableFuture<FilePointer> mkdir(String newFolderName,
                                                 NetworkAccess network,
                                                 SymmetricKey requestedBaseSymmetricKey,
                                                 boolean isSystemFolder,
-                                                SafeRandom random, TrieNode root) {
+                                                SafeRandom random) {
         CompletableFuture<FilePointer> result = new CompletableFuture<>();
         if (!this.isDirectory()) {
             result.completeExceptionally(new IllegalStateException("Cannot mkdir in a file!"));
@@ -660,7 +660,7 @@ public class FileTreeNode {
     }
 
     @JsMethod
-    public CompletableFuture<FileTreeNode> copyTo(FileTreeNode target, NetworkAccess network, SafeRandom random, TrieNode root) {
+    public CompletableFuture<FileTreeNode> copyTo(FileTreeNode target, NetworkAccess network, SafeRandom random) {
         CompletableFuture<FileTreeNode> result = new CompletableFuture<>();
         if (! target.isDirectory()) {
             result.completeExceptionally(new IllegalStateException("CopyTo target " + target + " must be a directory"));

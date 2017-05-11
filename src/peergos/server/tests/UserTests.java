@@ -343,10 +343,10 @@ public abstract class UserTests {
         random.nextBytes(data);
         long t1 = System.currentTimeMillis();
         String dirName = "subdir";
-        userRoot.mkdir(dirName, context.network, false, context.crypto.random, context.entrie).get();
+        userRoot.mkdir(dirName, context.network, false, context.crypto.random).get();
         FileTreeNode subdir = context.getByPath("/" + username + "/" + dirName).get().get();
         String anotherDirName = "anotherDir";
-        subdir.mkdir(anotherDirName, context.network, false, context.crypto.random, context.entrie).get();
+        subdir.mkdir(anotherDirName, context.network, false, context.crypto.random).get();
         FileTreeNode anotherDir = context.getByPath("/" + username + "/" + dirName + "/" + anotherDirName).get().get();
         anotherDir.uploadFileSection(filename, new AsyncReader.ArrayBacked(data), 0, data.length, context.network,
                 context.crypto.random, l -> {}, context.fragmenter()).get();
@@ -373,7 +373,7 @@ public abstract class UserTests {
         IntStream.range(0, 2000).forEach(i -> names.add(randomString()));
 
         for (String filename: names) {
-            userRoot.mkdir(filename, context.network, false, context.crypto.random, context.entrie);
+            userRoot.mkdir(filename, context.network, false, context.crypto.random);
         }
     }
 
@@ -516,7 +516,7 @@ public abstract class UserTests {
         boolean isSystemFolder = false;
 
         //create the directory
-        userRoot.mkdir(folderName, context.network, isSystemFolder, context.crypto.random, context.entrie).get();
+        userRoot.mkdir(folderName, context.network, isSystemFolder, context.crypto.random).get();
 
         FileTreeNode folderTreeNode = userRoot.getChildren(context.network)
                 .get()

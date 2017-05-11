@@ -96,7 +96,7 @@ public class MkdirSpeed {
         for (int i=0; i < names.size(); i++) {
             String filename = names.get(i);
             long t1 = System.currentTimeMillis();
-            userRoot.mkdir(filename, context.network, false, context.crypto.random, context.entrie).get();
+            userRoot.mkdir(filename, context.network, false, context.crypto.random).get();
             long duration = System.currentTimeMillis() - t1;
             worst = Math.max(worst, duration);
             best = Math.min(best, duration);

@@ -455,7 +455,7 @@ public class UserContext {
             DataSink dout = new DataSink();
             if (accept) {
                 return getSharingFolder().thenCompose(sharing -> {
-                    return sharing.mkdir(theirUsername, network, initialRequest.key.get(), true, crypto.random, entrie)
+                    return sharing.mkdir(theirUsername, network, initialRequest.key.get(), true, crypto.random)
                             .thenCompose(friendRoot -> {
                                 // add a note to our static data so we know who we sent the read access to
                                 EntryPoint entry = new EntryPoint(friendRoot.readOnly(), username, Collections.singleton(theirUsername), Collections.emptySet());
@@ -523,7 +523,7 @@ public class UserContext {
                         if (!targetUserOpt.isPresent())
                             return CompletableFuture.completedFuture(false);
                         PublicBoxingKey targetUser = targetUserOpt.get().right;
-                        return sharing.mkdir(targetUsername, network, null, true, crypto.random, entrie).thenCompose(friendRoot -> {
+                        return sharing.mkdir(targetUsername, network, null, true, crypto.random).thenCompose(friendRoot -> {
 
                             // if they accept the request we will add a note to our static data so we know who we sent the read access to
                             EntryPoint entry = new EntryPoint(friendRoot.readOnly(), username, Collections.singleton(targetUsername), Collections.emptySet());

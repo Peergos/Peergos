@@ -103,7 +103,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
     private Optional<FilePointer> mkdir(String name, FileTreeNode node)  {
         boolean isSystemFolder = false;
         try {
-            return Optional.of(node.mkdir(name, context.network, isSystemFolder, context.crypto.random, context.entrie).get());
+            return Optional.of(node.mkdir(name, context.network, isSystemFolder, context.crypto.random).get());
         } catch (Exception ioe) {
             ioe.printStackTrace();
             return Optional.empty();
@@ -178,7 +178,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
                 Optional<FileTreeNode> renamedOriginal = context.getByPath(renamedInPlacePath.toString()).get();;
                 if (!renamedOriginal.isPresent())
                     return 1;
-                renamedOriginal.get().copyTo(newParent.get(), context.network, context.crypto.random, context.entrie).get();
+                renamedOriginal.get().copyTo(newParent.get(), context.network, context.crypto.random).get();
                 boolean removed = source.treeNode.remove(context.network, parent).get();
                 if (!removed)
                     return 1;
