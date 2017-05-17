@@ -33,7 +33,7 @@ public class UserContext {
 
     private CompletableFuture<CommittedWriterData> userData;
     @JsProperty
-    public TrieNode entrie = new TrieNode(); // ba dum che!
+    public TrieNode entrie; // ba dum che!
 
     // Contact external world
     @JsProperty
@@ -43,12 +43,14 @@ public class UserContext {
     @JsProperty
     public final Crypto crypto;
 
-    public UserContext(String username, SigningKeyPair signer, BoxingKeyPair boxer, NetworkAccess network, Crypto crypto, CompletableFuture<CommittedWriterData> userData) {
-        this(username, signer, boxer, network, crypto, Fragmenter.getInstance(), userData);
+    public UserContext(String username, SigningKeyPair signer, BoxingKeyPair boxer, NetworkAccess network, Crypto crypto,
+                       CompletableFuture<CommittedWriterData> userData, TrieNode entrie) {
+        this(username, signer, boxer, network, crypto, Fragmenter.getInstance(), userData, entrie);
     }
 
     public UserContext(String username, SigningKeyPair signer, BoxingKeyPair boxer, NetworkAccess network,
-                       Crypto crypto, Fragmenter fragmenter, CompletableFuture<CommittedWriterData> userData) {
+                       Crypto crypto, Fragmenter fragmenter, CompletableFuture<CommittedWriterData> userData,
+                       TrieNode entrie) {
         this.username = username;
         this.signer = signer;
         this.boxer = boxer;
@@ -56,6 +58,7 @@ public class UserContext {
         this.crypto = crypto;
         this.fragmenter = fragmenter;
         this.userData = userData;
+        this.entrie = entrie;
     }
 
     public boolean isJavascript() {
@@ -81,7 +84,8 @@ public class UserContext {
                                                         TofuCoreNode tofu = new TofuCoreNode(network.coreNode, keystore);
                                                         UserContext result = new UserContext(username, userWithRoot.getUser(),
                                                                 userWithRoot.getBoxingPair(), network.withCorenode(tofu), crypto,
-                                                                CompletableFuture.completedFuture(new CommittedWriterData(MaybeMultihash.of(pair.left), userData)));
+                                                                CompletableFuture.completedFuture(new CommittedWriterData(MaybeMultihash.of(pair.left), userData)),
+                                                                root);
                                                         tofu.setContext(result);
                                                         System.out.println("Initializing context..");
                                                         return result.init();
@@ -104,7 +108,7 @@ public class UserContext {
                     WriterData newUserData = WriterData.createEmpty(Optional.of(userWithRoot.getBoxingPair().publicBoxingKey), userWithRoot.getRoot());
                     CommittedWriterData notCommitted = new CommittedWriterData(MaybeMultihash.EMPTY(), newUserData);
                     UserContext context = new UserContext(username, userWithRoot.getUser(), userWithRoot.getBoxingPair(),
-                            network, crypto, CompletableFuture.completedFuture(notCommitted));
+                            network, crypto, CompletableFuture.completedFuture(notCommitted), new TrieNode());
                     System.out.println("Registering username " + username);
                     return context.register().thenCompose(successfullyRegistered -> {
                         if (!successfullyRegistered) {
@@ -132,7 +136,7 @@ public class UserContext {
         EntryPoint entry = new EntryPoint(entryPoint, "", Collections.emptySet(), Collections.emptySet());
         CommittedWriterData committed = new CommittedWriterData(MaybeMultihash.EMPTY(), WriterData.createEmpty(Optional.empty(), null));
         CompletableFuture<CommittedWriterData> userData = CompletableFuture.completedFuture(committed);
-        UserContext context = new UserContext(null, null, null, network.clear(), crypto, userData);
+        UserContext context = new UserContext(null, null, null, network.clear(), crypto, userData, new TrieNode());
         return context.addEntryPoint(null, context.entrie, entry, network).thenApply(trieNode -> {
             context.entrie = trieNode;
             return context;
@@ -176,7 +180,7 @@ public class UserContext {
     private CompletableFuture<UserContext> init() {
         CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
         return addToUserDataQueue(lock)
-                .thenCompose(wd -> createFileTree(username, wd.props, network)
+                .thenCompose(wd -> createFileTree(entrie, username, wd.props, network)
                         .thenCompose(root -> {
                             this.entrie = root;
                             return getByPath("/" + username + "/" + "shared")
@@ -888,11 +892,13 @@ public class UserContext {
      *
      * @return TrieNode for root of filesystem
      */
-    private static CompletableFuture<TrieNode> createFileTree(String ourName, WriterData userData, NetworkAccess network) {
-        TrieNode root = new TrieNode();
-        if (! userData.staticData.isPresent())
-            throw new IllegalStateException("Cannot retrieve file tree for a filesystem without entrypoints!");
-        return Futures.reduceAll(userData.staticData.get().getEntryPoints(), root, (t, e) -> addEntryPoint(ourName, t, e, network), (a, b) -> a)
+    private static CompletableFuture<TrieNode> createFileTree(TrieNode ourRoot, String ourName, WriterData userData, NetworkAccess network) {
+        List<EntryPoint> notOurFileSystemEntries = userData.staticData.get()
+                .getEntryPoints()
+                .stream()
+                .filter(e -> ! e.owner.equals(ourName))
+                .collect(Collectors.toList());
+        return Futures.reduceAll(notOurFileSystemEntries, ourRoot, (t, e) -> addEntryPoint(ourName, t, e, network), (a, b) -> a)
                 .exceptionally(Futures::logError);
     }
 
@@ -913,6 +919,7 @@ public class UserContext {
                                 return rootWithMapping.put(path, e);
                             });
                         }).exceptionally(t -> {
+                            t.printStackTrace();
                             System.err.println("Couldn't add entry point (failed retrieving parent dir or it was invalid): " + metadata.get().getName());
                             // Allow the system to continue without this entry point
                             return root;

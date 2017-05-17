@@ -226,7 +226,7 @@ public class CachingPeergosFS extends PeergosFS {
             //read current data into data view
             PeergosStat stat = getByPath(path).orElseThrow(() -> new IllegalStateException("missing" + path));
             byte[] readData = CachingPeergosFS.this.read(stat, data.length, offset)
-                    .orElseThrow(() -> new IllegalStateException("missing" + path));
+                    .orElseThrow(() -> new IllegalStateException("missing: " + path));
             this.maxDirtyPos = 0;
             System.arraycopy(readData, 0, data, 0, readData.length);
 
