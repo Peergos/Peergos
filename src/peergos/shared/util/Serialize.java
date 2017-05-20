@@ -69,9 +69,10 @@ public class Serialize
     public static byte[] readFully(InputStream in) throws IOException {
         ByteArrayOutputStream bout =  new ByteArrayOutputStream();
         byte[] b =  new  byte[0x1000];
-        int nRead = -1;
+        int nRead;
         while ((nRead = in.read(b, 0, b.length)) != -1 )
             bout.write(b, 0, nRead);
+        in.close();
         return bout.toByteArray();
     }
 

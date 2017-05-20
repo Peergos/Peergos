@@ -9,6 +9,8 @@ import java.io.*;
 import java.net.*;
 import java.nio.file.*;
 import java.util.*;
+import java.util.concurrent.*;
+import java.util.function.*;
 
 public class Downloader {
 
@@ -20,40 +22,48 @@ public class Downloader {
         String fromPath = args[2];
         String toPath = args[3];
         UserContext context = UserContext.signIn(username, password, network, crypto).get();
-        downloadTo(context, fromPath, Paths.get(toPath));
+        ForkJoinPool pool = new ForkJoinPool(50);
+        long t1 = System.currentTimeMillis();
+        downloadTo(context, fromPath, Paths.get(toPath), props -> true, pool);
+        long t2 = System.currentTimeMillis();
+        System.out.println("Download took " + (t2-t1) + " mS");
     }
 
-    public static void downloadTo(UserContext source, String origin, Path targetDir) throws Exception {
+    public static void downloadTo(UserContext source, String origin, Path targetDir,
+                                  Predicate<FileProperties> saveFile, ForkJoinPool pool) throws Exception {
         if (! targetDir.toFile().exists() && ! targetDir.toFile().mkdirs())
             throw new IllegalStateException("Couldn't create " + targetDir);
         Optional<FileTreeNode> file = source.getByPath(origin).get();
-        file.ifPresent(f -> downloadTo(f, targetDir, source.network, source.crypto.random));
+        pool.submit(() -> file.ifPresent(f -> downloadTo(f, targetDir, source.network, source.crypto.random, saveFile))).get();
     }
 
-    public static void downloadTo(FileTreeNode source, Path target, NetworkAccess network, SafeRandom random) {
-        try {
+    public static void downloadTo(FileTreeNode source, Path target, NetworkAccess network, SafeRandom random,
+                                  Predicate<FileProperties> saveFile) {
             Path us = target.resolve(source.getName());
             if (source.isDirectory()) {
-                Set<FileTreeNode> children = source.getChildren(network).get();
-                if (!us.toFile().mkdir())
-                    throw new IllegalStateException("Couldn't create directory: " + us);
-                children.forEach(child -> downloadTo(child, us, network, random));
-            } else {
-                try (FileOutputStream fout = new FileOutputStream(us.toFile());) {
-                    AsyncReader reader = source.getInputStream(network, random, count -> {}).get();
+                try {
+                    Set<FileTreeNode> children = source.getChildren(network).get();
+                    if (! us.toFile().exists() && !us.toFile().mkdir())
+                        throw new IllegalStateException("Couldn't create directory: " + us);
+                    children.stream().parallel().forEach(child -> downloadTo(child, us, network, random, saveFile));
+                } catch (Exception e) {
+                    System.err.println("Error downloading children of " + source.getName());
+                    e.printStackTrace();
+                }
+            } else if (saveFile.test(source.getFileProperties())) {
+                try (FileOutputStream fout = new FileOutputStream(us.toFile())) {
                     long size = source.getSize();
-                    long offset = 0;
-                    byte[] buf = new byte[5 * 1024 * 1024];
-                    while (offset < size) {
-                        int count = Math.min(buf.length, (int) (size - offset));
-                        reader.readIntoArray(buf, 0, count).get();
-                        fout.write(buf, 0, count);
-                        offset += count;
-                    }
+                    if (size > Integer.MAX_VALUE)
+                        throw new IllegalStateException("Need to implement streaming for files bigger than 2GiB");
+                    byte[] buf = new byte[(int)size];
+                    AsyncReader reader = source.getInputStream(network, random, c -> {}).get();
+                    reader.readIntoArray(buf, 0, buf.length)
+                            .get();
+                    fout.write(buf);
+                } catch (Exception e) {
+                    System.err.println("Error downloading " + source.getName());
+                    e.printStackTrace();
                 }
             }
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
     }
 }
