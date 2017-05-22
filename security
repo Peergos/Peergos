@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<head>
+    <title>Security</title>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta charset="utf-8">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <link rel="shortcut icon" href="/theme/vendor/peergos-styles/dist/img/icons/favicon.ico"/>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+            <link href="https://fonts.googleapis.com/css?family=Montserrat:400,300,700,900,500" rel="stylesheet" type="text/css">
+    <link rel="stylesheet" href="/theme/vendor/materialize/css/materialize.min.css" type="text/css"/>
+    <link rel="stylesheet" href="theme/css/peergos.css" type="text/css"/>
+
+
+ </head>
+<body class="security" style="overflow-y: scroll;">
+<nav>
+    <div class="nav-wrapper">
+
+
+        <a href="/" class="brand-logo"><img src="/theme/img/peergos/logo-main.svg" width="200"/></a>
+        <a href="#" data-activates="mobile" class="button-collapse"><i class="material-icons">menu</i></a>
+            <ul class="right hide-on-med-and-down">
+                    <li >
+                        <a href="http://localhost:8000/features"
+>
+                            Features
+                        </a>
+                    </li>
+                    <li class="active">
+                        <a href="http://localhost:8000/security"
+>
+                            Security
+                        </a>
+                    </li>
+                    <li >
+                        <a href="http://localhost:8000/about"
+>
+                            About
+                        </a>
+                    </li>
+                        <li>
+                            <a href="https://demo.peergos.net" class="btn">
+                                                        <span>
+                                                                Try the Demo
+                                                        </span>
+                            </a>
+                        </li>
+
+            </ul>
+
+
+        <ul class="side-nav" id="mobile">
+            <li class="side-nav-header">
+                <a href="/" class="brand-logo"><img src="/theme/img/peergos/logo-tower-only-green.svg" width="180"/></a>
+            </li>
+                <li >
+                    <a href="http://localhost:8000/features"
+>
+                        Features
+                    </a>
+                </li>
+                <li class="active">
+                    <a href="http://localhost:8000/security"
+>
+                        Security
+                    </a>
+                </li>
+                <li >
+                    <a href="http://localhost:8000/about"
+>
+                        About
+                    </a>
+                </li>
+                    <li class="hidden-md hidden-lg nav_bar_grey_li">
+                        <a href="https://demo.peergos.net" class="nav_bar_grey_lnk">
+                                                        <span class="nav_bar_grey_span">
+                                                                Demo
+                                                        </span>
+                        </a>
+                    </li>
+        </ul>
+
+    </div>
+</nav>
+    <div class="container bs-docs-container">
+    <div class="row">
+    <div class="col m3 col s4">
+    <div id="full-toc" class="bs-docs-sidebar hidden-print affix-top hidden-xs hidden-sm" role="complementary">
+  <ul class='nav bs-docs-sidenav'><li class='active'><a href='#overview_' data-scroll data-url>Overview</a></li><li><a href='#quantum_cryptography_' data-scroll data-url>Quantum Cryptography?</a></li><li><a href='#threat_models_' data-scroll data-url>Threat Models</a></li><li><a href='#the_casual_user_' data-scroll data-url>The casual user</a></li><li><a href='#the_cautious_user_' data-scroll data-url>The cautious user</a></li><li><a href='#the_local_only_user_' data-scroll data-url>The local only user</a></ul>
+    </div>
+    </div>
+    <div class="col m9 col s8" role="main" style="overflow-x:auto; padding-bottom: 10px;">
+    <h1 class="page-header main-title">Security</h1>
+    <div class="bs-docs-section">
+    <h2 id="overview_">Overview</h2>
+<p>Peergos encrypts files locally on your device and your keys never leave your device. To log in, your username and password are (locally) hashed through <a href="https://en.wikipedia.org/wiki/Scrypt">scrypt</a> to derive your root key-pair and root symmetric key. This key-pair is never written to disk, and is only used to decrypt follow requests sent to you. The symmetric key is used to decrypt your entry points into your filesystem. This design allows you to log in from any device. Read more about our <a href="/technology">technology</a>.</p>
+<p>The underlying encryption uses <a href="http://tweetnacl.cr.yp.to/">Tweetnacl</a> for both symmetric and asymmetric encryption. </p>
+<p>Peergos hides the contents of files, but also the friendship graph. If a user shares a file with another user, the network shouldn't be able to deduce this relationship. A Peergos server doesn't store any sensitive data or metadata. </p>
+<h2 id="quantum_cryptography_">Quantum Cryptography?</h2>
+<p>Your entire file system in Peergos is encrypted with symmetric cryptography and the initial keys are derived using cryptographic hashing. Both of these are believed to be resistant to quantum computer attacks. We will be switching the asymmetric cryptography, which is used to share files, to a post-quantum algorithm as soon as a clear candidate arrives. </p>
+<h2 id="threat_models_">Threat Models</h2>
+<p>Peergos is designed to be secure against passive network adversaries, even ones with state level computational resources, who are able to store all data on the Peergos network indefinitely. Despite all the encrypted data being publicly accessible, no one but the intended recipients can deduce any data or friendship graphs. </p>
+<p>Peergos does not defend against a compromised user's machine. Currently, Peergos doesn't protect files shared between users from an adversary with a large quantum computer. </p>
+<p>Peergos should be secure against attackers with read access to a users machine which is not synchronous with the client being logged in. </p>
+<h2 id="the_casual_user_">The casual user</h2>
+<p><strong>Trusts</strong></p>
+<ol>
+<li>The Internet's SSL certificate hierarchy and DNS system</li>
+<li>That our public server hasn't been compromised</li>
+<li>Javascript crypto delivered over https</li>
+</ol>
+<p><strong>Uses</strong></p>
+<ol>
+<li>Can use our public server's web interface over https</li>
+<li>Can use our mobile app, created using Electron to bundle the web interface</li>
+</ol>
+<h2 id="the_cautious_user_">The cautious user</h2>
+<p><strong>Trusts</strong></p>
+<ol>
+<li>A copy of Peergos that they downloaded to their device, optionally verifying the signature of.</li>
+<li>Javascript crypto delivered over localhost, or in process</li>
+</ol>
+<p><strong>Uses</strong></p>
+<ol>
+<li>Download and run Peergos locally, and use the web interface over localhost in their browser of choice, or the native interface created using Electron</li>
+</ol>
+<h2 id="the_local_only_user_">The local only user</h2>
+<p><strong>Trusts</strong></p>
+<ol>
+<li>A copy of Peergos that they downloaded to their device, and verified the signature of.</li>
+</ol>
+<p><strong>Uses</strong></p>
+<ol>
+<li>Can download and run Peergos locally as an effective local encrypted file store, without the social aspects. They can access through the web interface on localhost, through the native filesystem with a FUSE mount of Peergos, or using the Java api directly. </li>
+</ol>
+    </div>
+    <span class="pull-right">
+                                        <a class="btn btn-default" role="button"
+                                           href="javascript:window.scrollTo(0,0);">Back to Top</a>
+                                </span>
+    </div>
+    </div>
+    </div>
+    <div class="index">
+
+
+<footer class="page-footer">
+    <div class="">
+        <div class="row">
+            <div class="col l6 m6 s12 footer-logo">
+                <img src="/theme/img/peergos/logo-dark-bg.svg" width="230">
+            </div>
+
+            <div class="col l3 m4 s12">
+                <h5 class="white-text">About Us</h5>
+                <ul>
+                    <li><a href="/about" >About</a></li>
+                    <li><a href="/contact" >Contact</a></li>
+                    <li><a href="/faq" >FAQ</a></li>
+                </ul>
+            </div>
+
+            <div class="col l3 m3 s12">
+                <h5 class="white-text">Community</h5>
+                <ul>
+                    <!--<li><a href="http://blog.peergos.org" target="_new">Blog</a></li>-->
+                    <li><a href="https://github.com/peergos" target="_new">GitHub</a></li>
+                    <li><a href="https://twitter.com/peergos" target="_new">Twitter</a></li>
+                    <li><a href="https://gitter.im/ianopolous/Peergos/PeergosChat" target="_new">Chatroom</a></li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="footer-copyright">
+            <div class="row">
+                <div class="col s12">
+                    © PEERGOS | Designed by <a href="http://www.antarctic-design.co.uk" target="_blank"> Eamonn
+                    Maguire</a>.
+                </div>
+
+            </div>
+        </div>
+
+</footer>
+
+    </div>
+</div>
+<script src="/theme/vendor/jquery/dist/jquery.min.js"></script>
+<script src="/theme/vendor/materialize/js/materialize.min.js"></script>
+<script>
+    $(".button-collapse").sideNav();
+
+
+</script>
+
+</body>
+</html>

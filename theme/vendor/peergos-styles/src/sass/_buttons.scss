@@ -1,0 +1,71 @@
+/***********************
+* Buttons
+***********************/
+
+// general
+.btn {
+  border: none;
+  background-color: #e6e6e6;
+}
+
+// default
+%btn-default {
+  background-color: $btn-default-color;
+}
+
+.open .dropdown-toggle.btn-default {
+  @extend %btn-default;
+}
+
+.btn-default {
+  @extend %btn-default;
+
+  &:hover,
+  &:focus,
+  &:active,
+  &.active {
+    background-color: $btn-default-color-hover;
+  }
+
+  &[disabled="disabled"],
+  &.disabled {
+    background-color: $btn-default-color;
+  }
+}
+
+// primary
+%btn-primary {
+  background-color: $btn-primary-color;
+}
+
+.open .dropdown-toggle.btn-primary {
+  @extend %btn-primary;
+}
+
+.btn-primary {
+  @extend %btn-primary;
+
+  &:hover,
+  &:focus,
+  &:active,
+  &.active {
+    background-color: $btn-primary-color-hover;
+  }
+
+  &[disabled="disabled"],
+  &.disabled {
+    background-color: $btn-primary-color;
+  }
+}
+
+// link
+.btn-link {
+  color: $btn-link-color;
+
+  &:hover,
+  &:focus,
+  &:active,
+  &.active {
+    color: $btn-link-color-hover;
+  }
+}

@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<head>
+    <title>Technology</title>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta charset="utf-8">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <link rel="shortcut icon" href="/theme/vendor/peergos-styles/dist/img/icons/favicon.ico"/>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+            <link href="https://fonts.googleapis.com/css?family=Montserrat:400,300,700,900,500" rel="stylesheet" type="text/css">
+    <link rel="stylesheet" href="/theme/vendor/materialize/css/materialize.min.css" type="text/css"/>
+    <link rel="stylesheet" href="theme/css/peergos.css" type="text/css"/>
+
+
+ </head>
+<body class="technology" style="overflow-y: scroll;">
+<nav>
+    <div class="nav-wrapper">
+
+
+        <a href="/" class="brand-logo"><img src="/theme/img/peergos/logo-main.svg" width="200"/></a>
+        <a href="#" data-activates="mobile" class="button-collapse"><i class="material-icons">menu</i></a>
+            <ul class="right hide-on-med-and-down">
+                    <li >
+                        <a href="http://localhost:8000/features"
+>
+                            Features
+                        </a>
+                    </li>
+                    <li >
+                        <a href="http://localhost:8000/security"
+>
+                            Security
+                        </a>
+                    </li>
+                    <li >
+                        <a href="http://localhost:8000/about"
+>
+                            About
+                        </a>
+                    </li>
+                        <li>
+                            <a href="https://demo.peergos.net" class="btn">
+                                                        <span>
+                                                                Try the Demo
+                                                        </span>
+                            </a>
+                        </li>
+
+            </ul>
+
+
+        <ul class="side-nav" id="mobile">
+            <li class="side-nav-header">
+                <a href="/" class="brand-logo"><img src="/theme/img/peergos/logo-tower-only-green.svg" width="180"/></a>
+            </li>
+                <li >
+                    <a href="http://localhost:8000/features"
+>
+                        Features
+                    </a>
+                </li>
+                <li >
+                    <a href="http://localhost:8000/security"
+>
+                        Security
+                    </a>
+                </li>
+                <li >
+                    <a href="http://localhost:8000/about"
+>
+                        About
+                    </a>
+                </li>
+                    <li class="hidden-md hidden-lg nav_bar_grey_li">
+                        <a href="https://demo.peergos.net" class="nav_bar_grey_lnk">
+                                                        <span class="nav_bar_grey_span">
+                                                                Demo
+                                                        </span>
+                        </a>
+                    </li>
+        </ul>
+
+    </div>
+</nav>
+    <div class="container bs-docs-container">
+    <div class="row">
+    <div class="col m3 col s4">
+    <div id="full-toc" class="bs-docs-sidebar hidden-print affix-top hidden-xs hidden-sm" role="complementary">
+  <ul class='nav bs-docs-sidenav'><li class='active'><a href='#logical_architecture_' data-scroll data-url>Logical Architecture</a><li><a href='#physical_architecture_' data-scroll data-url>Physical Architecture</a></li><li><a href='#content_and_metadata_encryption_' data-scroll data-url>Content and metadata encryption</a></li><li><a href='#decentralized_login_' data-scroll data-url>Decentralized log-in</a></li><li><a href='#capabilities_' data-scroll data-url>Capabilities</a></li></ul>
+    </div>
+    </div>
+    <div class="col m9 col s8" role="main" style="overflow-x:auto; padding-bottom: 10px;">
+    <h1 class="page-header main-title">Technology</h1>
+    <div class="bs-docs-section">
+    <h3 id="logical_architecture_">Logical Architecture</h3>
+<p>A Peergos client connects only to a Peergos server (which may be in the same process, same machine, or a remote machine over https). The server acts as a proxy and doesn't store any data. All file system data is stored in the Inter-Planetary File System (IPFS), and the public keys, usernames and pending follow requests are stored on the corenode. All access to the corenode will be through Tor. The corenode stores the public key history for each username, any pending encrypted follow requests, and the root multihash for each public key.
+<center>
+<img alt="Logical architecture" class="class" height="70%" id="id" src="/theme/img/architecture/arch.svg" width="70%">
+</center></p>
+<h3 id="physical_architecture_">Physical Architecture</h3>
+<p>IPFS forms a global, content addressed, peer-to-peer network. A Peergos server may serve a single user, or multiple users. If it serves multiple users it needs to use different Tor circuits for each user's queries on the corenode. Typically the Peergos server will have IPFS running locally on the same machine, an communicate over http. There is no sensitive information on the Peergos server apart from metadata.
+<center>
+<img alt="Physical architecture" class="class" height="70%" id="id" src="/theme/img/architecture/p2p.svg" width="70%">
+</center></p>
+<h3 id="content_and_metadata_encryption_">Content and metadata encryption</h3>
+<p>Peergos gives fine grained control over read access to files and directories. This is done using a slightly simplified version of <a href="https://raw.githubusercontent.com/ianopolous/Peergos/master/papers/wuala-cryptree.pdf">cryptree</a> to control read access to individual files. All encrpytion is done using <a href="http://tweetnacl.cr.yp.to/">TweetNaCl</a>. A cryptree is a tree of symmetric keys, with a link from key A to key B meaning the holder of key A can decrypt key B. A back link is provided for each file to allow a well defined path, which can be deduced by readers of a file, even if they can't read the parent folder.</p>
+<p><center>
+<img alt="Cryptree" class="class" height="70%" id="id" src="/theme/img/architecture/cryptree.svg" width="70%">
+</center></p>
+<h3 id="decentralized_login_">Decentralized log-in</h3>
+<p>A Peergos user's private keys are not stored anywhere, but derived everytime they log in from their username and password. The username and password are put through the scrypt hashing algortihm, with configurable parameters, to derive the users identity key pairs (signing and boxing), and symmetric root key. The symmetric root key is used to decrypt the users root directory in the cryptree. The signing keypair is only used to sign updates to the filesystem. The boxing keypair is only used in sending follow requests, which enable files to be shared between users.</p>
+<p><center>
+<img alt="scrypt" class="class" height="70%" id="id" src="/theme/img/architecture/scrypt.svg" width="70%">
+</center></p>
+<p>The default difficulty of scrypt is tuned to about a few seconds on a mobile device, but also so that a random 12 character alpha-numeric password would cost more than the annual budget of the NSA and take a year to crack by brute force.</p>
+<h3 id="capabilities_">Capabilities</h3>
+<p>Files in Peergos can be accessed using a cryptographic capability made up of a public signing key, a label, and a symmetric base key. The signing key is used to look up the root of a merkle-btree holding all the filesystem it controls. The label (32 random bytes) is used to lookup the file in the btree. After retrieval, it can be decrypted using the base key. Every directory, or up to 5 MiB chunk of a file has a different random label in the btree. </p>
+<p><center>
+<img alt="btree" class="class" height="70%" id="id" src="/theme/img/architecture/btree.svg" width="70%">
+</center></p>
+<p>Each user stores a list of capabilities (symmetrically encrypted with their root key) in IPFS. One of these entry points tells the users where their root directory is in their btree. Others may correspond to folders that other users have shared with them. </p>
+    </div>
+    <span class="pull-right">
+                                        <a class="btn btn-default" role="button"
+                                           href="javascript:window.scrollTo(0,0);">Back to Top</a>
+                                </span>
+    </div>
+    </div>
+    </div>
+    <div class="index">
+
+
+<footer class="page-footer">
+    <div class="">
+        <div class="row">
+            <div class="col l6 m6 s12 footer-logo">
+                <img src="/theme/img/peergos/logo-dark-bg.svg" width="230">
+            </div>
+
+            <div class="col l3 m4 s12">
+                <h5 class="white-text">About Us</h5>
+                <ul>
+                    <li><a href="/about" >About</a></li>
+                    <li><a href="/contact" >Contact</a></li>
+                    <li><a href="/faq" >FAQ</a></li>
+                </ul>
+            </div>
+
+            <div class="col l3 m3 s12">
+                <h5 class="white-text">Community</h5>
+                <ul>
+                    <!--<li><a href="http://blog.peergos.org" target="_new">Blog</a></li>-->
+                    <li><a href="https://github.com/peergos" target="_new">GitHub</a></li>
+                    <li><a href="https://twitter.com/peergos" target="_new">Twitter</a></li>
+                    <li><a href="https://gitter.im/ianopolous/Peergos/PeergosChat" target="_new">Chatroom</a></li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="footer-copyright">
+            <div class="row">
+                <div class="col s12">
+                    © PEERGOS | Designed by <a href="http://www.antarctic-design.co.uk" target="_blank"> Eamonn
+                    Maguire</a>.
+                </div>
+
+            </div>
+        </div>
+
+</footer>
+
+    </div>
+</div>
+<script src="/theme/vendor/jquery/dist/jquery.min.js"></script>
+<script src="/theme/vendor/materialize/js/materialize.min.js"></script>
+<script>
+    $(".button-collapse").sideNav();
+
+
+</script>
+
+</body>
+</html>

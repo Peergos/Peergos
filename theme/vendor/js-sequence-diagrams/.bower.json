@@ -1,0 +1,35 @@
+{
+  "name": "js-sequence-diagrams",
+  "version": "1.0.5",
+  "authors": "Andrew Brampton (bramp.net)",
+  "description": "Generates UML sequence diagrams from simple text",
+  "main": [
+    "build/sequence-diagram-min.js"
+  ],
+  "keywords": [
+    "uml",
+    "sequence",
+    "diagram"
+  ],
+  "license": "BSD",
+  "ignore": [
+    ".*",
+    "_site",
+    "node_modules",
+    "bower_components"
+  ],
+  "dependencies": {
+    "underscore": "~1.4.x",
+    "raphael": "~2.1.x"
+  },
+  "homepage": "https://github.com/vitoravelino/js-sequence-diagrams",
+  "_release": "1.0.5",
+  "_resolution": {
+    "type": "version",
+    "tag": "v1.0.5",
+    "commit": "eee12fa7e3050417a8d4d91809d03047559037b9"
+  },
+  "_source": "git://github.com/vitoravelino/js-sequence-diagrams.git",
+  "_target": "~1.0.5",
+  "_originalSource": "vitoravelino/js-sequence-diagrams"
+}

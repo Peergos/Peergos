@@ -1,0 +1,34 @@
+/***********************
+* Images
+***********************/
+.bs-example {
+  img {
+    border: 1px solid hsl(0,0%,90%);
+  }
+}
+
+figure {
+  &.credits {
+    position: relative;
+
+    img {
+      margin-bottom: 0;
+      border: none;
+    }
+
+    figcaption {
+      width: 100%;
+      position: absolute;
+      bottom: 0;
+      font-size: .75em;
+      color: #fff;
+      padding: .5em;
+      font-weight: 400;
+      background: rgba(0, 0, 0, .5);
+    }
+  }
+
+  img {
+    margin-bottom: 0.875em;
+  }
+}

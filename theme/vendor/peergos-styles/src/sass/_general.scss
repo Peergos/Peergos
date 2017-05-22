@@ -1,0 +1,162 @@
+/***********************
+* General
+***********************/
+body, html {
+  font-family: 'Montserrat', Sans-Serif;
+  color: $primary-color;
+}
+
+a {
+  outline: 0;
+
+  &:active,
+  &:focus {
+    outline: 0;
+  }
+}
+
+pre {
+  border-radius: 0;
+}
+
+code {
+  color: $primary-color;
+  background-color: rgba(45, 174, 191, .075);
+}
+
+img {
+  max-width: 100%;
+}
+
+nav {
+  color: $primary-color;
+  background-color: transparent;
+  box-shadow: none;
+}
+
+nav {
+  padding: 10px;
+  color: $primary-color;
+  background-color: white;
+  box-shadow: none;
+  a {
+    color: $primary-color;
+  }
+  ul a {
+    color: $primary-color;
+  }
+}
+
+.hero {
+  text-align: center;
+  background: url("../img/peergos/hero-image.svg") bottom center;
+  background-repeat: no-repeat;
+  background-size: 60%;
+  height: 500px;
+  width: 100%;
+  padding: 30px 30px 0 30px;
+
+  @media (min-width: 1400px) {
+    .hero {
+      height: 600px;
+    }
+  }
+
+  h3 {
+    font-size: 1.6em;
+    font-weight: bolder;
+  }
+
+  p {
+    font-size: 1.3em;
+    color: $secondary-color;
+  }
+}
+
+footer {
+  &.page-footer {
+    background-color: $primary-color;
+  }
+
+  a {
+    color: $secondary-color !important;
+  }
+}
+
+.center-align {
+  text-align: center;
+}
+
+.features {
+  padding: 10px;
+  background-color: $primary-color;
+  color: white;
+
+  .col {
+    padding: 30px;
+  }
+
+  a {
+    color: $secondary-color;
+  }
+
+  h4 {
+    font-size: 1.3em;
+    color: $secondary-color;
+  }
+}
+
+.get-it {
+  padding: 1.5em 0;
+
+  background-color: $secondary-color;
+  color: $primary-color;
+
+  h4 {
+    font-size: 1.4em;
+    font-weight: bolder;
+  }
+
+  h5 {
+    font-size: 1.3em;
+    padding-bottom: 20px;
+  }
+
+  input[type=text] {
+    background-color: #209e84;
+    padding: 5px 10px;
+    color: $primary-color;
+    border: none;
+    border-radius: 4px;
+  }
+}
+
+.side-nav {
+  background-color: #209e84;
+  color: $primary-color;
+
+  .side-nav-header {
+    background-color: $primary-color;
+    height: 200px;
+  }
+
+  a {
+    color: $primary-color;
+  }
+}
+
+.footer-logo {
+  padding-top: 40px !important;
+}
+
+.footer-copyright {
+  width: 100%;
+  text-align: center;
+}
+
+#particles {
+  position: absolute;
+  z-index: -1;
+  height: 470px;
+  width: 100%;
+}

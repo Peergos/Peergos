@@ -1,0 +1,155 @@
+body, html {
+    font-family: 'Montserrat', Sans-Serif;
+    color: #2c3e50;
+}
+
+nav {
+    padding: 10px;
+    color: #2c3e50;
+    background-color: white;
+    box-shadow: none;
+}
+
+a {
+    color: #26b99a;
+}
+
+h1 {
+    margin: 0;
+    font-size: 3em;
+}
+
+h2 {
+    font-size: 2em;
+}
+
+h3 {
+    font-size: 1.7em;
+}
+
+nav ul a {
+    color: #2c3e50;
+}
+
+nav a {
+    color: #2c3e50;
+}
+
+.main-title {
+    color: #26b99a;
+}
+
+.hero {
+    text-align: center;
+    background: url("../img/peergos/hero-image.svg") bottom center;
+    background-repeat: no-repeat;
+    background-size: 60%;
+    height: 500px;
+    width: 100%;
+    padding: 30px 30px 0 30px;
+}
+
+@media (min-width: 1400px) {
+    .hero {
+        height: 600px;
+        background-size: 50%;
+    }
+}
+
+.hero h3 {
+    font-size: 1.6em;
+    font-weight: bolder;
+}
+
+.hero p {
+    font-size: 1.3em;
+    color: #26b99a;
+    width: 80%;
+    margin: 0 auto;
+}
+
+footer.page-footer {
+    background-color: #2c3e50;
+}
+
+footer a {
+    color: #26b99a !important;
+}
+
+.center-align {
+    text-align: center;
+}
+
+.home-features {
+    padding: 10px;
+    background-color: #2c3e50;
+    color: white;
+}
+
+.home-features .col {
+    padding: 30px;
+}
+
+.home-features a {
+    color: #26b99a;
+}
+
+.home-features h4 {
+    font-size: 1.3em;
+    color: #26b99a;
+}
+
+.get-it {
+    padding: 1.5em 0;
+
+    background-color: #26b99a;
+    color: #2c3e50;
+}
+
+.get-it h4 {
+    font-size: 1.4em;
+    font-weight: bolder;
+}
+
+.get-it h5 {
+    font-size: 1.3em;
+    padding-bottom: 20px;
+}
+
+.get-it input[type=text] {
+    background-color: #209e84;
+    padding: 5px 10px;
+    color: #2c3e50;
+    border: none;
+    border-radius: 4px;
+}
+
+.side-nav {
+    background-color: #209e84;
+    color: #2c3e50;
+}
+
+.side-nav .side-nav-header {
+    background-color: #2c3e50;
+    height: 200px;
+}
+
+.side-nav a {
+    color: #2c3e50;
+}
+
+.footer-logo {
+    padding-top: 40px !important;
+}
+
+.footer-copyright {
+    width: 100%;
+    text-align: center;
+}
+
+#particles {
+    position: absolute;
+    z-index: -1;
+    height: 470px;
+    width: 100%;
+}

@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<head>
+    <title>About</title>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta charset="utf-8">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <link rel="shortcut icon" href="/theme/vendor/peergos-styles/dist/img/icons/favicon.ico"/>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+            <link href="https://fonts.googleapis.com/css?family=Montserrat:400,300,700,900,500" rel="stylesheet" type="text/css">
+    <link rel="stylesheet" href="/theme/vendor/materialize/css/materialize.min.css" type="text/css"/>
+    <link rel="stylesheet" href="theme/css/peergos.css" type="text/css"/>
+
+
+ </head>
+<body class="about" style="overflow-y: scroll;">
+<nav>
+    <div class="nav-wrapper">
+
+
+        <a href="/" class="brand-logo"><img src="/theme/img/peergos/logo-main.svg" width="200"/></a>
+        <a href="#" data-activates="mobile" class="button-collapse"><i class="material-icons">menu</i></a>
+            <ul class="right hide-on-med-and-down">
+                    <li >
+                        <a href="http://localhost:8000/features"
+>
+                            Features
+                        </a>
+                    </li>
+                    <li >
+                        <a href="http://localhost:8000/security"
+>
+                            Security
+                        </a>
+                    </li>
+                    <li class="active">
+                        <a href="http://localhost:8000/about"
+>
+                            About
+                        </a>
+                    </li>
+                        <li>
+                            <a href="https://demo.peergos.net" class="btn">
+                                                        <span>
+                                                                Try the Demo
+                                                        </span>
+                            </a>
+                        </li>
+
+            </ul>
+
+
+        <ul class="side-nav" id="mobile">
+            <li class="side-nav-header">
+                <a href="/" class="brand-logo"><img src="/theme/img/peergos/logo-tower-only-green.svg" width="180"/></a>
+            </li>
+                <li >
+                    <a href="http://localhost:8000/features"
+>
+                        Features
+                    </a>
+                </li>
+                <li >
+                    <a href="http://localhost:8000/security"
+>
+                        Security
+                    </a>
+                </li>
+                <li class="active">
+                    <a href="http://localhost:8000/about"
+>
+                        About
+                    </a>
+                </li>
+                    <li class="hidden-md hidden-lg nav_bar_grey_li">
+                        <a href="https://demo.peergos.net" class="nav_bar_grey_lnk">
+                                                        <span class="nav_bar_grey_span">
+                                                                Demo
+                                                        </span>
+                        </a>
+                    </li>
+        </ul>
+
+    </div>
+</nav>
+    <div class="container bs-docs-container">
+    <div class="row">
+    <div class="col m3 col s4">
+    <div id="full-toc" class="bs-docs-sidebar hidden-print affix-top hidden-xs hidden-sm" role="complementary">
+  <ul class='nav bs-docs-sidenav'><li class='active'><a href='#history_' data-scroll data-url>History</a></li><li><a href='#the_team_' data-scroll data-url>The Team</a><ul class='nav'><li><a href='#ian_' data-scroll data-url>Ian</a></li><li><a href='#chris_' data-scroll data-url>Chris</a></li><li><a href='#kevin_' data-scroll data-url>Kevin</a></li></ul>
+    </div>
+    </div>
+    <div class="col m9 col s8" role="main" style="overflow-x:auto; padding-bottom: 10px;">
+    <h1 class="page-header main-title">About</h1>
+    <div class="bs-docs-section">
+    <h2 id="history_">History</h2>
+<p>We started Peergos in August 2013 with the aim of a secure decentralised file storage and sharing network with a secure email replacement. </p>
+<h2 id="the_team_">The Team</h2>
+<h3 id="ian_">Ian</h3>
+<p>Ian did his DPhil in Particle Physics at Oxford University, during which he mainly worked on a new x86 system emulator, <a href="https://github.com/ianopolous/JPC">JPC</a>. After his doctorate he was the lead developer on an x86 Linux process emulator which was able to achieve 80% native speed on x86 hardare. As well as emulation, he is passionate about distributed systems and cryptography, which is in his blood as his grandfather worked at Bletchley park during WWII. Both of these are in abundance in Peergos.  </p>
+<h3 id="chris_">Chris</h3>
+<p>Chris also has a DPhil in Particle Physics from Oxford University and used to work on the Large Hadron Collider before turning his focus to software engineering. He has written an ACID compliant distributed noSQL database with better performance than Cassandra. </p>
+<h3 id="kevin_">Kevin</h3>
+<p>Kevin has a lot of experience in high performance software and web applications. He ported two x86 emulators to Javascript, including the world's first full x86 system emulator that ran in Javascript.</p>
+    </div>
+    <span class="pull-right">
+                                        <a class="btn btn-default" role="button"
+                                           href="javascript:window.scrollTo(0,0);">Back to Top</a>
+                                </span>
+    </div>
+    </div>
+    </div>
+    <div class="index">
+
+
+<footer class="page-footer">
+    <div class="">
+        <div class="row">
+            <div class="col l6 m6 s12 footer-logo">
+                <img src="/theme/img/peergos/logo-dark-bg.svg" width="230">
+            </div>
+
+            <div class="col l3 m4 s12">
+                <h5 class="white-text">About Us</h5>
+                <ul>
+                    <li><a href="/about" >About</a></li>
+                    <li><a href="/contact" >Contact</a></li>
+                    <li><a href="/faq" >FAQ</a></li>
+                </ul>
+            </div>
+
+            <div class="col l3 m3 s12">
+                <h5 class="white-text">Community</h5>
+                <ul>
+                    <!--<li><a href="http://blog.peergos.org" target="_new">Blog</a></li>-->
+                    <li><a href="https://github.com/peergos" target="_new">GitHub</a></li>
+                    <li><a href="https://twitter.com/peergos" target="_new">Twitter</a></li>
+                    <li><a href="https://gitter.im/ianopolous/Peergos/PeergosChat" target="_new">Chatroom</a></li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="footer-copyright">
+            <div class="row">
+                <div class="col s12">
+                    © PEERGOS | Designed by <a href="http://www.antarctic-design.co.uk" target="_blank"> Eamonn
+                    Maguire</a>.
+                </div>
+
+            </div>
+        </div>
+
+</footer>
+
+    </div>
+</div>
+<script src="/theme/vendor/jquery/dist/jquery.min.js"></script>
+<script src="/theme/vendor/materialize/js/materialize.min.js"></script>
+<script>
+    $(".button-collapse").sideNav();
+
+
+</script>
+
+</body>
+</html>

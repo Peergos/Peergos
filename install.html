@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<head>
+    <title>Install</title>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta charset="utf-8">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <link rel="shortcut icon" href="/theme/vendor/peergos-styles/dist/img/icons/favicon.ico"/>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+            <link href="https://fonts.googleapis.com/css?family=Montserrat:400,300,700,900,500" rel="stylesheet" type="text/css">
+    <link rel="stylesheet" href="/theme/vendor/materialize/css/materialize.min.css" type="text/css"/>
+    <link rel="stylesheet" href="theme/css/peergos.css" type="text/css"/>
+
+
+ </head>
+<body class="install" style="overflow-y: scroll;">
+<nav>
+    <div class="nav-wrapper">
+
+
+        <a href="/" class="brand-logo"><img src="/theme/img/peergos/logo-main.svg" width="200"/></a>
+        <a href="#" data-activates="mobile" class="button-collapse"><i class="material-icons">menu</i></a>
+            <ul class="right hide-on-med-and-down">
+                    <li >
+                        <a href="http://localhost:8000/features"
+>
+                            Features
+                        </a>
+                    </li>
+                    <li >
+                        <a href="http://localhost:8000/security"
+>
+                            Security
+                        </a>
+                    </li>
+                    <li >
+                        <a href="http://localhost:8000/about"
+>
+                            About
+                        </a>
+                    </li>
+                        <li>
+                            <a href="https://demo.peergos.net" class="btn">
+                                                        <span>
+                                                                Try the Demo
+                                                        </span>
+                            </a>
+                        </li>
+
+            </ul>
+
+
+        <ul class="side-nav" id="mobile">
+            <li class="side-nav-header">
+                <a href="/" class="brand-logo"><img src="/theme/img/peergos/logo-tower-only-green.svg" width="180"/></a>
+            </li>
+                <li >
+                    <a href="http://localhost:8000/features"
+>
+                        Features
+                    </a>
+                </li>
+                <li >
+                    <a href="http://localhost:8000/security"
+>
+                        Security
+                    </a>
+                </li>
+                <li >
+                    <a href="http://localhost:8000/about"
+>
+                        About
+                    </a>
+                </li>
+                    <li class="hidden-md hidden-lg nav_bar_grey_li">
+                        <a href="https://demo.peergos.net" class="nav_bar_grey_lnk">
+                                                        <span class="nav_bar_grey_span">
+                                                                Demo
+                                                        </span>
+                        </a>
+                    </li>
+        </ul>
+
+    </div>
+</nav>
+    <div class="container bs-docs-container">
+    <div class="row">
+    <div class="col m3 col s4">
+    <div id="full-toc" class="bs-docs-sidebar hidden-print affix-top hidden-xs hidden-sm" role="complementary">
+  <ul class='nav bs-docs-sidenav'><li class='active'><a href='#install_requirements_' data-scroll data-url>Install Requirements</a></li><li><a href='#getting_help_' data-scroll data-url>Getting Help</a></li><li><a href='#peergos_dns_' data-scroll data-url>Peergos DNS</a><ul class='nav'><li><a href='#aim_' data-scroll data-url>Aim</a></li><li><a href='#configure_' data-scroll data-url>Configure</a></li><li><a href='#test_' data-scroll data-url>Test</a></li></ul><li><a href='#firewall_setup_' data-scroll data-url>Firewall Setup</a></li><li><a href='#prosody_setup_' data-scroll data-url>Prosody Setup</a><ul class='nav'><li><a href='#install_' data-scroll data-url>Install</a></li><li><a href='#configure_prosody_' data-scroll data-url>Configure Prosody</a></li><li><a href='#restart_prosody_' data-scroll data-url>Restart Prosody</a></li><li><a href='#test_2' data-scroll data-url>Test</a></li><li><a href='#debug_' data-scroll data-url>Debug</a></li></ul><li><a href='#peergos_server_' data-scroll data-url>Peergos Server</a><ul class='nav'><li><a href='#install_2' data-scroll data-url>Install</a></li><li><a href='#configure_server_' data-scroll data-url>Configure Server</a></li><li><a href='#start_server_' data-scroll data-url>Start Server</a></li><li><a href='#test_3' data-scroll data-url>Test</a></li><li><a href='#debug_2' data-scroll data-url>Debug</a></li></ul><li><a href='#peergos_api_server_' data-scroll data-url>Peergos API Server</a><ul class='nav'><li><a href='#install_3' data-scroll data-url>Install</a></li><li><a href='#configure_server_2' data-scroll data-url>Configure Server</a></li><li><a href='#restart_server_' data-scroll data-url>Restart Server</a></li><li><a href='#add_site_to_apache_' data-scroll data-url>Add Site to Apache</a></li><li><a href='#test_4' data-scroll data-url>Test</a></li><li><a href='#debug_3' data-scroll data-url>Debug</a></li></ul><li><a href='#peergos_webclient_' data-scroll data-url>Peergos Webclient</a><ul class='nav'><li><a href='#install_4' data-scroll data-url>Install</a></li><li><a href='#configure_2' data-scroll data-url>Configure</a></li><li><a href='#test_5' data-scroll data-url>Test</a></li><li><a href='#debug_4' data-scroll data-url>Debug</a></li></ul><li><a href='#peergos_pusher_' data-scroll data-url>Peergos Pusher</a><ul class='nav'><li><a href='#install_5' data-scroll data-url>Install</a></li><li><a href='#configure_3' data-scroll data-url>Configure</a></li><li><a href='#restart_' data-scroll data-url>Restart</a></li><li><a href='#test_6' data-scroll data-url>Test</a></li><li><a href='#debug_5' data-scroll data-url>Debug</a></li></ul><li><a href='#final_steps_' data-scroll data-url>Final Steps</a></li><li><a href='#sharing_debug_info_' data-scroll data-url>Sharing Debug Info</a></ul>
+    </div>
+    </div>
+    <div class="col m9 col s8" role="main" style="overflow-x:auto; padding-bottom: 10px;">
+    <h1 class="page-header main-title">Install</h1>
+    <div class="bs-docs-section">
+    <h2 data-hidden-from-toc="true">Docker?</h2>
+
+<p>If you'd rather run this as a Docker instance, check out <a href="https://github.com/peergos/dockerfiles">https://github.com/peergos/dockerfiles</a></p>
+<h2 id="install_requirements_">Install Requirements</h2>
+<ul>
+<li>a server with an internet routable IP address (No public IP, no problem, use the <a href="http://hosting.peergos.org">peergos
+    hosting</a>)</li>
+<li>a domain name (the instructions assume EXAMPLE.COM)</li>
+<li>the ability to edit your DNS</li>
+<li>Ubuntu, 14.04 (LTS)</li>
+</ul>
+<h2 id="getting_help_">Getting Help</h2>
+<p>Please ask if you get stuck</p>
+<ul>
+<li>chatroom: <a href="https://jappix.com/?r=seehaus@channels.peergos.org">https://jappix.com/?r=seehaus@channels.peergos.org</a></li>
+<li>mailing list: <a href="https://groups.google.com/forum/#!forum/peergos-dev">https://groups.google.com/forum/#!forum/peergos-dev</a></li>
+<li>report an issue on github: <a href="https://github.com/peergos">https://github.com/peergos</a></li>
+<li>email us at: <a href="mailto:reach-a-developer@peergos.com">reach-a-developer@peergos.org</a></li>
+</ul>
+<h2 id="peergos_dns_">Peergos DNS</h2>
+<p><span style="color:green">Estimated time: <strong>10 mins</strong></span></p>
+<h3 id="aim_">Aim</h3>
+<ul>
+<li>website for peergos channels: <a href="http://peergos.EXAMPLE.COM">http://peergos.EXAMPLE.COM</a></li>
+<li>server running peergos: peergos.EXAMPLE.COM</li>
+</ul>
+<h3 id="configure_">Configure</h3>
+<p>This install will setup a peergos webclient at
+<a href="http://peergos.EXAMPLE.COM">http://peergos.EXAMPLE.COM</a></p>
+<p>Log into your registrar or edit your DNS zone file. In this example we use 1.2.3.4 as your server
+address.</p>
+<div class="highlight"><pre>peergos.EXAMPLE.COM.                    IN A            1.2.3.4 # SRV records must point to A records
+_xmpp-server._tcp.EXAMPLE.COM.             IN SRV 5 0 5269 peergos.EXAMPLE.COM. # XMPP Server
+_xmpp-client._tcp.EXAMPLE.COM.             IN SRV 5 0 5222 peergos.EXAMPLE.COM. # XMPP client connections
+_xmpp-server._tcp.anon.EXAMPLE.COM.        IN SRV 5 0 5269 peergos.EXAMPLE.COM. # XMPP Server anonymous connections
+_xmpp-client._tcp.anon.EXAMPLE.COM.        IN SRV 5 0 5222 peergos.EXAMPLE.COM. # XMPP anonymous client connections
+_xmpp-server._tcp.media.EXAMPLE.COM.       IN SRV 5 0 5269 peergos.EXAMPLE.COM. # Media Server XMPP component
+_xmpp-server._tcp.peergos.EXAMPLE.COM.  IN SRV 5 0 5269 peergos.EXAMPLE.COM. # peergos Server XMPP component
+_peergos-api._tcp.EXAMPLE.COM.          IN TXT "v=1.0 host=peergos.EXAMPLE.COM protocol=https path=/api port=443" 
+_bcloud-server._tcp.EXAMPLE.COM            IN TXT "v=1.0 server=peergos.EXAMPLE.COM" # To delegate to a hosting platoform
+</pre></div>
+
+
+<h3 id="test_">Test</h3>
+<p>Test your DNS on <a href="http://protocol.peergos.org/EXAMPLE.COM">http://protocol.peergos.org/EXAMPLE.COM</a></p>
+<p>(replace <code>EXAMPLE.COM</code> by your actual domain)</p>
+<p>The following tests must pass:</p>
+<ul>
+<li><code>xmpp_server_srv_lookup</code></li>
+<li><code>xmpp_server_anon_srv_lookup</code></li>
+<li><code>xmpp_client_srv_lookup</code></li>
+<li><code>xmpp_client_anon_srv_lookup</code></li>
+<li><code>xmpp_server_a_lookup</code></li>
+</ul>
+<h2 id="firewall_setup_">Firewall Setup</h2>
+<p><span style="color:green">Estimated time: <strong>2 mins</strong></span></p>
+<p>Double check your firewall rules. They should look something like this:</p>
+<div class="highlight"><pre><span class="c1"># inbound web, server to server and outbound server to server</span>
+iptables -A INPUT  -m state --state NEW -s 0.0.0.0/0 -d &lt;your server address&gt; -p tcp --dport <span class="m">80</span>   -j ACCEPT 
+iptables -A INPUT  -m state --state NEW -s 0.0.0.0/0 -d &lt;your server address&gt; -p tcp --dport <span class="m">443</span>  -j ACCEPT
+iptables -A INPUT  -m state --state NEW -s 0.0.0.0/0 -d &lt;your server address&gt; -p tcp --dport <span class="m">5222</span> -j ACCEPT
+iptables -A INPUT  -m state --state NEW -s 0.0.0.0/0 -d &lt;your server address&gt; -p tcp --dport <span class="m">5269</span> -j ACCEPT
+iptables -A OUTPUT -m state --state NEW -s &lt;your server address&gt; -d 0.0.0.0/0 -p tcp --dport <span class="m">5269</span> -j ACCEPT 
+</pre></div>
+
+
+<h2 id="prosody_setup_">Prosody Setup</h2>
+<p><span style="color:green">Estimated time: <strong>10 mins</strong></span></p>
+<h3 id="install_">Install</h3>
+<div class="highlight"><pre>apt-get install prosody lua-zlib liblua5.1-cyrussasl0
+</pre></div>
+
+
+<p>You might need to tell where those Prosody dependencies are. If that's
+the case, you can do the following:</p>
+<div class="highlight"><pre><span class="nb">echo</span> deb http://packages.prosody.im/debian <span class="k">$(</span>lsb_release -sc<span class="k">)</span> main <span class="p">|</span> sudo tee -a /etc/apt/sources.list
+wget http://prosody.im/files/prosody-debian-packages.key -O- <span class="p">|</span> sudo apt-key add -
+sudo apt-get update
+</pre></div>
+
+
+<p>More information on what's you'd be doing on the steps above here:
+<a href="http://prosody.im/download/package_repository#debianubuntu">http://prosody.im/download/package_repository#debianubuntu</a></p>
+<h3 id="configure_prosody_">Configure Prosody</h3>
+<p>Edit <code>/etc/prosody/prosody.cfg.lua</code>:</p>
+<div class="highlight"><pre><span class="n">modules_enabled</span> <span class="o">=</span> <span class="p">{</span>
+  <span class="s2">"</span><span class="s">saslauth"</span><span class="p">;</span>           <span class="c1">-- Authentication for clients and servers. Recommended if you want to log in.</span>
+  <span class="s2">"</span><span class="s">tls"</span><span class="p">;</span>                <span class="c1">-- Add support for secure TLS on c2s/s2s connections</span>
+  <span class="s2">"</span><span class="s">dialback"</span><span class="p">;</span>           <span class="c1">-- s2s dialback support</span>
+  <span class="s2">"</span><span class="s">disco"</span><span class="p">;</span>              <span class="c1">-- Service discovery</span>
+  <span class="s2">"</span><span class="s">time"</span><span class="p">;</span>               <span class="c1">-- Let others know the time here on this server</span>
+  <span class="s2">"</span><span class="s">ping"</span><span class="p">;</span>               <span class="c1">-- Replies to XMPP pings with pongs</span>
+  <span class="s2">"</span><span class="s">posix"</span><span class="p">;</span>              <span class="c1">-- Do posixy things</span>
+  <span class="s2">"</span><span class="s">register"</span><span class="p">;</span>           <span class="c1">-- Allow users to register on this server using a client and change passwords</span>
+  <span class="s2">"</span><span class="s">watchregistrations"</span><span class="p">;</span> <span class="c1">-- Alert admins of registrations (check "admins" option below too)</span>
+  <span class="s2">"</span><span class="s">compression"</span><span class="p">;</span>        <span class="c1">-- Enable mod_compression</span>
+<span class="p">};</span>
+
+<span class="n">storage</span>                 <span class="o">=</span> <span class="s2">"</span><span class="s">internal"</span>
+<span class="n">admins</span>                  <span class="o">=</span> <span class="p">{</span> <span class="s2">"</span><span class="s">your-username@EXAMPLE.COM"</span> <span class="p">}</span>  <span class="c1">-- who receives registration alerts</span>
+<span class="n">pidfile</span>                 <span class="o">=</span> <span class="s2">"</span><span class="s">/var/run/prosody/prosody.pid"</span>
+<span class="n">log</span>                     <span class="o">=</span> <span class="p">{{</span> <span class="n">levels</span> <span class="o">=</span> <span class="p">{</span> <span class="n">min</span> <span class="o">=</span> <span class="s2">"</span><span class="s">error"</span> <span class="p">},</span> <span class="n">to</span> <span class="o">=</span> <span class="s2">"</span><span class="s">file"</span><span class="p">,</span> <span class="n">filename</span> <span class="o">=</span> <span class="s2">"</span><span class="s">/var/log/prosody/prosody.err"</span> <span class="p">};</span>
+                           <span class="p">{</span> <span class="n">levels</span> <span class="o">=</span> <span class="p">{</span> <span class="n">min</span> <span class="o">=</span> <span class="s2">"</span><span class="s">info"</span>  <span class="p">},</span> <span class="n">to</span> <span class="o">=</span> <span class="s2">"</span><span class="s">file"</span><span class="p">,</span> <span class="n">filename</span> <span class="o">=</span> <span class="s2">"</span><span class="s">/var/log/prosody/prosody.log"</span> <span class="p">};}</span>
+<span class="n">registration_whitelist</span>      <span class="o">=</span> <span class="p">{</span> <span class="s2">"</span><span class="s">127.0.0.1"</span> <span class="p">}</span>
+<span class="n">whitelist_registration_only</span> <span class="o">=</span> <span class="kc">true</span>
+
+
+<span class="n">VirtualHost</span> <span class="s2">"</span><span class="s">EXAMPLE.COM"</span>
+  <span class="n">authentication</span>        <span class="o">=</span> <span class="s2">"</span><span class="s">internal_hashed"</span>
+  <span class="n">allow_registration</span>    <span class="o">=</span> <span class="kc">true</span> 
+  <span class="n">anonymous_login</span>       <span class="o">=</span> <span class="kc">false</span>
+  <span class="n">ssl</span>                   <span class="o">=</span> <span class="p">{</span>         <span class="n">key</span> <span class="o">=</span> <span class="s2">"</span><span class="s">/etc/apache2/certs/EXAMPLE.COM.key"</span><span class="p">;</span>
+                            <span class="n">certificate</span> <span class="o">=</span> <span class="s2">"</span><span class="s">/etc/apache2/certs/EXAMPLE.COM.pem"</span> <span class="p">}</span>
+
+<span class="c1">-- for non-logged in browsing of open channels.</span>
+<span class="n">VirtualHost</span> <span class="s2">"</span><span class="s">anon.EXAMPLE.COM"</span>
+  <span class="n">authentication</span>        <span class="o">=</span> <span class="s2">"</span><span class="s">anonymous"</span>
+  <span class="n">allow_registration</span>    <span class="o">=</span> <span class="kc">false</span>
+  <span class="n">anonymous_login</span>       <span class="o">=</span> <span class="kc">true</span>
+
+<span class="c1">-- Peergos Channel Server XMPP component configuration.</span>
+<span class="n">Component</span> <span class="s2">"</span><span class="s">peergos.EXAMPLE.COM"</span>
+  <span class="n">component_secret</span>      <span class="o">=</span> <span class="s2">"</span><span class="s">tellnoone"</span>
+
+<span class="c1">-- Peergos Channel Server (optional topic channels).</span>
+<span class="n">Component</span> <span class="s2">"</span><span class="s">topics.EXAMPLE.COM"</span>
+  <span class="n">component_secret</span>      <span class="o">=</span> <span class="s2">"</span><span class="s">tellnoone"</span>
+
+<span class="c1">-- Peergos Media Server XMPP component configuration.</span>
+<span class="n">Component</span> <span class="s2">"</span><span class="s">media.EXAMPLE.COM"</span>
+  <span class="n">component_secret</span>      <span class="o">=</span> <span class="s2">"</span><span class="s">tellnoone"</span>
+
+<span class="c1">-- Peergos Pusher Server XMPP component configuration.</span>
+<span class="n">Component</span> <span class="s2">"</span><span class="s">pusher.EXAMPLE.COM"</span>
+  <span class="n">component_secret</span>      <span class="o">=</span> <span class="s2">"</span><span class="s">tellnoone"</span>
+</pre></div>
+
+
+<h3 id="restart_prosody_">Restart Prosody</h3>
+<div class="highlight"><pre>/etc/init.d/prosody restart
+</pre></div>
+
+
+<h3 id="test_2">Test</h3>
+<p>Check your server is visible on
+<a href="http://protocol.peergos.org/EXAMPLE.COM">http://protocol.peergos.org/EXAMPLE.COM</a></p>
+<p>(replace <code>EXAMPLE.COM</code> by your actual domain)</p>
+<p>Besides the previous 5 SRV and A record lookup tests, the following test
+must pass as well:</p>
+<ul>
+<li><code>xmpp_server_connection</code></li>
+</ul>
+<p>Check your certificates are working correctly using the <a href="https://xmpp.net">XMPP security checker</a>.</p>
+<h3 id="debug_">Debug</h3>
+<div class="highlight"><pre>tail -F /var/log/prosody/prosody.err <span class="se">\</span>
+        /var/log/prosody/prosody.log
+</pre></div>
+
+
+<h2 id="peergos_server_">Peergos Server</h2>
+<p><span style="color:green">Estimated time: <strong>5 mins</strong></span></p>
+<h3 id="install_2">Install</h3>
+<div class="highlight"><pre><span class="c1"># install dependencies</span>
+apt-get install postgresql postgresql-client postgresql-contrib openjdk-7-jre dbconfig-common
+<span class="c1"># Download package from http://downloads.peergos.org/packages/debian/nightly/peergos-server-java/</span>
+dpkg -i peergos-server-java*.deb
+</pre></div>
+
+
+<h3 id="configure_server_">Configure Server</h3>
+<p>Edit <code>/etc/peergos-server-java/configuration.properties</code>.</p>
+<ul>
+<li>change EXAMPLE.COM to match your domain</li>
+<li>double check the database connection strings</li>
+</ul>
+<h3 id="start_server_">Start Server</h3>
+<div class="highlight"><pre>/etc/init.d/peergos-server-java start
+</pre></div>
+
+
+<h3 id="test_3">Test</h3>
+<p>Check the peergos server is discoverable using
+<a href="http://protocol.peergos.org">http://protocol.peergos.org</a> (should pass <code>peergos_server_disco</code>
+test)</p>
+<h3 id="debug_2">Debug</h3>
+<p>check logs</p>
+<div class="highlight"><pre>tail -F /var/log/peergos-server-java/log 
+</pre></div>
+
+
+<p>Test the database is installed (password is in
+<code>/etc/peergos-server-java/configuration.properties</code>)</p>
+<div class="highlight"><pre>psql -h 127.0.0.1 --username peergosserverjava -d peergosserverjava -c <span class="s2">"select * from nodes;"</span> 
+node
+------
+<span class="o">(</span><span class="m">0</span> rows<span class="o">)</span>
+<span class="c1"># this means that your peergos server database schema been installed successfully.</span>
+</pre></div>
+
+
+<h2 id="peergos_api_server_">Peergos API Server</h2>
+<p><span style="color:green">Estimated time: <strong>6 mins</strong></span></p>
+<ul>
+<li>Alternative: <a href="http://github.com/peergos/peergos-http-api">Install from source</a></li>
+</ul>
+<p><em>Note: SSL and API requests: Chrome and Firefox will <strong>not</strong> work with
+self signed certificates when used for API calls. Ordinarily you would
+receive a certificate warning. But for API requests, this does not
+happen and requests are silently drop.</em> You have two options:</p>
+<ul>
+<li>run without SSL on your API server, or</li>
+<li>get a signed certificate</li>
+</ul>
+<h3 id="install_3">Install</h3>
+<div class="highlight"><pre>apt-get install software-properties-common python-software-properties<span class="p">;</span> <span class="c1">#needed for PPA access</span>
+add-apt-repository ppa:chris-lea/node.js-legacy <span class="c1"># to retrieve the correct nodejs version</span>
+apt-get update
+apt-get install nodejs apache2 apache2.2-common
+
+<span class="c1"># ensure you have the correct modules enabled in Apache</span>
+a2enmod rewrite proxy_http ssl headers expires deflate
+service apache2 reload
+<span class="c1"># Download from http://downloads.peergos.org/packages/debian/nightly/peergos-http-api/</span>
+dpkg -i peergos-http-api*.deb<span class="p">;</span> 
+</pre></div>
+
+
+<h3 id="configure_server_2">Configure Server</h3>
+<p>Edit <code>/etc/peergos-http-api/config.js</code> to use your domain.</p>
+<h3 id="restart_server_">Restart Server</h3>
+<div class="highlight"><pre>/etc/init.d/peergos-http-api start
+</pre></div>
+
+
+<h3 id="add_site_to_apache_">Add Site to Apache</h3>
+<p>We recommend the usage of a HTTP server in order to make the API
+publicly available. As we are using Apache to serve the webclient, we
+use the same site to redirect requests to the API. Thus, if you run the
+webclient from EXAMPLE.com, the API will be run from EXAMPLE.com/api.</p>
+<p>Please refer to <a href="peergos Apache virtual host setup" title="wikilink">peergos Apache virtual host
+setup</a> for site setup,
+then</p>
+<div class="highlight"><pre>a2ensite peergos-apache-virtual-host
+/etc/init.d/apache2 reload
+</pre></div>
+
+
+<h3 id="test_4">Test</h3>
+<p>Check your peergos API server is discoverable on
+<a href="http://protocol.peergos.org/EXAMPLE.COM">http://protocol.peergos.org/EXAMPLE.COM</a></p>
+<p>(replace EXAMPLE.COM by your actual domain)</p>
+<p>The following tests must pass:</p>
+<ul>
+<li><code>api_server_lookup</code></li>
+<li><code>api_server_connection</code></li>
+</ul>
+<h3 id="debug_3">Debug</h3>
+<div class="highlight"><pre>node --version <span class="c1"># The peergos API requires nodejs 0.8.*</span>
+tail -F /var/log/peergos-http-api/peergos-http-api.log
+</pre></div>
+
+
+<h2 id="peergos_webclient_">Peergos Webclient</h2>
+<p><span style="color:green">Estimated time: <strong>5 mins</strong></span></p>
+<ul>
+<li>Alternative: <a href="https://github.com/peergos/dockerfiles/blob/master/peergos-stack/config/peergos-nginx-server-block">peergos nginx
+    setup</a></li>
+</ul>
+<h3 id="install_4">Install</h3>
+<div class="highlight"><pre><span class="c1"># Download from http://downloads.peergos.org/packages/debian/releases/peergos-webclient/ </span>
+dpkg -i peergos-webclient*.deb<span class="p">;</span>
+</pre></div>
+
+
+<h3 id="configure_2">Configure</h3>
+<div class="highlight"><pre>vim /etc/apache2/sites-available/peergos-apache-virtual-host
+cp /usr/share/peergos-webclient/config.js.example /usr/share/peergos-webclient/config.js
+vim /usr/share/peergos-webclient/config.js
+a2ensite peergos-apache-virtual-host
+service apache2 reload
+</pre></div>
+
+
+<h3 id="test_5">Test</h3>
+<ul>
+<li><a href="https://www.ssllabs.com/ssltest/index.html">check your SSL setup</a></li>
+<li>open <code>https://EXAMPLE.COM/</code> in your browser: you should see the
+    login screen</li>
+<li>open <code>https://EXAMPLE.COM/team@topics.peergos.org</code> in your
+    browser: you should see an open channel displayed</li>
+</ul>
+<h3 id="debug_4">Debug</h3>
+<div class="highlight"><pre>tail -F /var/log/apache2/EXAMPLE.COM-error.log <span class="se">\ </span>
+        /var/log/apache2/EXAMPLE.COM-error.log <span class="se">\</span>
+        /var/log/apache2/api.EXAMPLE.COM-error.log <span class="se">\</span>
+        /var/log/apache2/api.EXAMPLE.COM-error.log
+</pre></div>
+
+
+<h2 id="peergos_pusher_">Peergos Pusher</h2>
+<p><span style="color:green">Estimated time: <strong>5 mins</strong></span></p>
+<h3 id="install_5">Install</h3>
+<div class="highlight"><pre><span class="c1"># Download from http://downloads.peergos.org/packages/debian/ </span>
+wget http://downloads.peergos.org/packages/debian/nightly/peergos-pusher/peergos-pusher-$LATEST/peergos-pusher_$LATEST_all.deb
+<span class="c1"># Install it with dpkg</span>
+dpkg -i peergos-pusher_$LATEST_all.deb
+</pre></div>
+
+
+<h3 id="configure_3">Configure</h3>
+<p>Check your Pusher component is in Prosody <code>/etc/prosody/prosody.cfg.lua</code></p>
+<div class="highlight"><pre><span class="n">Component</span> <span class="s2">"</span><span class="s">pusher.EXAMPLE.COM"</span>
+       <span class="n">component_secret</span> <span class="o">=</span> <span class="s2">"</span><span class="s">tellnoone"</span>
+</pre></div>
+
+
+<p>Change XMPP settings in the Pusher
+<code>/usr/share/peergos-pusher/configuration.properties</code></p>
+<div class="highlight"><pre><span class="n">xmpp</span><span class="o">.</span><span class="na">subdomain</span><span class="o">=</span><span class="n">pusher</span><span class="o">.</span><span class="na">EXAMPLE</span><span class="o">.</span><span class="na">COM</span>
+<span class="n">xmpp</span><span class="o">.</span><span class="na">secretkey</span><span class="o">=</span><span class="n">tellnoone</span>
+</pre></div>
+
+
+<p>Add the Pusher to the API in <code>/etc/peergos-http-api/config.js</code></p>
+<div class="highlight"><pre><span class="n">pusherComponent</span><span class="p">:</span> <span class="s1">'</span><span class="s">pusher.EXAMPLE.COM'</span>
+</pre></div>
+
+
+<p>Change SMTP settings in the pusher
+<code>/usr/share/peergos-pusher/configuration.properties</code></p>
+<div class="highlight"><pre><span class="c1"># Use STMP auth</span>
+mail.smtp.auth<span class="o">=</span><span class="nb">true</span>
+<span class="c1"># Enable start TLS</span>
+mail.smtp.starttls.enable<span class="o">=</span><span class="nb">true</span>
+<span class="c1"># SMTP host</span>
+mail.smtp.host<span class="o">=</span>smtp.example.com
+<span class="c1"># SMTP port</span>
+mail.smtp.port<span class="o">=</span>587
+<span class="c1"># SMTP login user</span>
+mail.username<span class="o">=</span>admin@pusher.peergos.org
+<span class="c1"># SMTP login password</span>
+mail.password<span class="o">=</span>password
+</pre></div>
+
+
+<p>Create a GCM project and get an API key as per
+<code>http://developer.android.com/google/gcm/gs.html#create-proj</code></p>
+<p>Change GCM settings in the pusher
+<code>/usr/share/peergos-pusher/configuration.properties</code></p>
+<div class="highlight"><pre><span class="c1"># GCM project id </span>
+gcm.google_project_id<span class="o">=</span>
+<span class="c1"># GCM API key </span>
+gcm.api_key<span class="o">=</span>
+</pre></div>
+
+
+<h3 id="restart_">Restart</h3>
+<div class="highlight"><pre>/etc/init.d/peergos-pusher restart
+/etc/init.d/peergos-http-api restart
+</pre></div>
+
+
+<h3 id="test_6">Test</h3>
+<ul>
+<li>Enable and configure push notifications in the webclient (or via the
+    <a href="http://peergos.org/api#notification_settings_">Pusher API</a>)</li>
+<li>After a new post in your channel, for instance, you should get an
+    email and/or GCM notification.</li>
+</ul>
+<h3 id="debug_5">Debug</h3>
+<div class="highlight"><pre>tail -F /usr/share/peergos-pusher/logs/log
+</pre></div>
+
+
+<h2 id="final_steps_">Final Steps</h2>
+<p>You are done!</p>
+<p>Log-into your peergos node at <a href="http://peergos.EXAMPLE.COM/">http://peergos.EXAMPLE.COM/</a> and
+follow your first channels.</p>
+<h2 id="sharing_debug_info_">Sharing Debug Info</h2>
+<p>The following commands will generate a file called
+<code>/tmp/peergos-debug.txt</code> to <a href="http://pastebin.com/">Pastebin</a>.</p>
+<p>When you have run the commands, please share the link in the <a href="https://jappix.com/?r=seehaus@channels.peergos.org">peergos
+chat room</a> or on
+the
+<a href="peergos-dev mailing list">https://groups.google.com/forum/#!forum/peergos-dev</a>.</p>
+<div class="highlight"><pre><span class="c1"># peergos related configuration files</span>
+sudo cat /etc/prosody/prosody.cfg.lua <span class="se">\</span>
+         /etc/postgresql/9.1/main/pg_hba.conf <span class="se">\</span>
+         /opt/peergos-server-java/environment.properties <span class="se">\ </span>
+         /etc/init.d/peergos-server-java <span class="se">\ </span>
+         /var/www/&lt;your-domain-name&gt;/config.js <span class="se">\ </span>
+         /etc/apache2/sites-enabled/&lt;your-domain-name&gt;  &gt;&gt; /tmp/peergos.debug.txt
+
+<span class="c1"># network </span>
+ip addr  show &gt;&gt; /tmp/peergos-debug.txt
+ip route show &gt;&gt; /tmp/peergos-debug.txt
+
+<span class="c1"># what is running</span>
+ps -efww &gt;&gt; /tmp/peergos-debug.txt
+
+<span class="c1"># what's listening</span>
+sudo netstat -plutn <span class="p">|</span> grep LISTEN &gt;&gt; /tmp/peergos-debug.txt
+
+<span class="c1"># what's stopping things from listening</span>
+sudo iptables -vnL INPUT &gt;&gt; /tmp/peergos-debug.txt
+sudo iptables -vnL OUTPUT &gt;&gt; /tmp/peergos-debug.txt
+
+<span class="c1"># the related log files</span>
+sudo tail -n <span class="m">200</span> /var/log/apache2/&lt;your-domain-name&gt;-access.log <span class="se">\</span>
+                 /var/log/apache2/&lt;your-domain-name&gt;-error.log <span class="se">\</span>
+                 /var/log/prosody/prosody.log <span class="se">\</span>
+                 /var/log/prosody/prosody.err <span class="se">\</span>
+                 /var/log/peergos-server.log <span class="se">\</span>
+                 /var/log/postgresql/postgresql-9.1-main.log &gt;&gt; /tmp/peergos-debug.log 
+
+<span class="c1"># Edit the file and remove any passwords.</span>
+sudo edit /tmp/peergos-debug.txt
+
+<span class="c1"># To automatically upload the file:</span>
+sudo apt-get install pastebinit
+sudo cat /tmp/peergos-debug.txt <span class="p">|</span> pastebinit
+</pre></div>
+    </div>
+    <span class="pull-right">
+                                        <a class="btn btn-default" role="button"
+                                           href="javascript:window.scrollTo(0,0);">Back to Top</a>
+                                </span>
+    </div>
+    </div>
+    </div>
+    <div class="index">
+
+
+<footer class="page-footer">
+    <div class="">
+        <div class="row">
+            <div class="col l6 m6 s12 footer-logo">
+                <img src="/theme/img/peergos/logo-dark-bg.svg" width="230">
+            </div>
+
+            <div class="col l3 m4 s12">
+                <h5 class="white-text">About Us</h5>
+                <ul>
+                    <li><a href="/about" >About</a></li>
+                    <li><a href="/contact" >Contact</a></li>
+                    <li><a href="/faq" >FAQ</a></li>
+                </ul>
+            </div>
+
+            <div class="col l3 m3 s12">
+                <h5 class="white-text">Community</h5>
+                <ul>
+                    <!--<li><a href="http://blog.peergos.org" target="_new">Blog</a></li>-->
+                    <li><a href="https://github.com/peergos" target="_new">GitHub</a></li>
+                    <li><a href="https://twitter.com/peergos" target="_new">Twitter</a></li>
+                    <li><a href="https://gitter.im/ianopolous/Peergos/PeergosChat" target="_new">Chatroom</a></li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="footer-copyright">
+            <div class="row">
+                <div class="col s12">
+                    © PEERGOS | Designed by <a href="http://www.antarctic-design.co.uk" target="_blank"> Eamonn
+                    Maguire</a>.
+                </div>
+
+            </div>
+        </div>
+
+</footer>
+
+    </div>
+</div>
+<script src="/theme/vendor/jquery/dist/jquery.min.js"></script>
+<script src="/theme/vendor/materialize/js/materialize.min.js"></script>
+<script>
+    $(".button-collapse").sideNav();
+
+
+</script>
+
+</body>
+</html>

@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<head>
+    <title>Features</title>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta charset="utf-8">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <link rel="shortcut icon" href="/theme/vendor/peergos-styles/dist/img/icons/favicon.ico"/>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+            <link href="https://fonts.googleapis.com/css?family=Montserrat:400,300,700,900,500" rel="stylesheet" type="text/css">
+    <link rel="stylesheet" href="/theme/vendor/materialize/css/materialize.min.css" type="text/css"/>
+    <link rel="stylesheet" href="theme/css/peergos.css" type="text/css"/>
+
+
+ </head>
+<body class="features" style="overflow-y: scroll;">
+<nav>
+    <div class="nav-wrapper">
+
+
+        <a href="/" class="brand-logo"><img src="/theme/img/peergos/logo-main.svg" width="200"/></a>
+        <a href="#" data-activates="mobile" class="button-collapse"><i class="material-icons">menu</i></a>
+            <ul class="right hide-on-med-and-down">
+                    <li class="active">
+                        <a href="http://localhost:8000/features"
+>
+                            Features
+                        </a>
+                    </li>
+                    <li >
+                        <a href="http://localhost:8000/security"
+>
+                            Security
+                        </a>
+                    </li>
+                    <li >
+                        <a href="http://localhost:8000/about"
+>
+                            About
+                        </a>
+                    </li>
+                        <li>
+                            <a href="https://demo.peergos.net" class="btn">
+                                                        <span>
+                                                                Try the Demo
+                                                        </span>
+                            </a>
+                        </li>
+
+            </ul>
+
+
+        <ul class="side-nav" id="mobile">
+            <li class="side-nav-header">
+                <a href="/" class="brand-logo"><img src="/theme/img/peergos/logo-tower-only-green.svg" width="180"/></a>
+            </li>
+                <li class="active">
+                    <a href="http://localhost:8000/features"
+>
+                        Features
+                    </a>
+                </li>
+                <li >
+                    <a href="http://localhost:8000/security"
+>
+                        Security
+                    </a>
+                </li>
+                <li >
+                    <a href="http://localhost:8000/about"
+>
+                        About
+                    </a>
+                </li>
+                    <li class="hidden-md hidden-lg nav_bar_grey_li">
+                        <a href="https://demo.peergos.net" class="nav_bar_grey_lnk">
+                                                        <span class="nav_bar_grey_span">
+                                                                Demo
+                                                        </span>
+                        </a>
+                    </li>
+        </ul>
+
+    </div>
+</nav>
+    <div class="container bs-docs-container">
+    <div class="row">
+    <div class="col m3 col s4">
+    <div id="full-toc" class="bs-docs-sidebar hidden-print affix-top hidden-xs hidden-sm" role="complementary">
+  <ul class='nav bs-docs-sidenav'><li class='active'><a href='#secure_and_private_storage_' data-scroll data-url>Secure and private storage</a></li><li><a href='#sharing_' data-scroll data-url>Sharing</a></li><li><a href='#private_social_network_' data-scroll data-url>Private social network</a></li><li><a href='#multiple_device_login_' data-scroll data-url>Multiple device login</a></li><li><a href='#decentralized_' data-scroll data-url>Decentralized</a></li><li><a href='#open_source_' data-scroll data-url>Open source</a></ul>
+    </div>
+    </div>
+    <div class="col m9 col s8" role="main" style="overflow-x:auto; padding-bottom: 10px;">
+    <h1 class="page-header main-title">Features</h1>
+    <div class="bs-docs-section">
+    <h2 id="secure_and_private_storage_">Secure and private storage</h2>
+<p>Peergos's primary design goal is security and privacy. Only you should be able to read your data, your metadata, and your friend list. Files are stored in Peergos using state of the art encryption (TweetNaCl). Read more about our <a href="/security">security</a>.</p>
+<h2 id="sharing_">Sharing</h2>
+<p>You can share files in Peergos securely with other Peergos users. Alternatively, you can generate a public link to a file or a folder which can be shared with anyone. Only people who have that link can view the file and the file still isn't exposed to the network. </p>
+<h2 id="private_social_network_">Private social network</h2>
+<p>The social network in Peergos is similar to Twitter or Instagram where any user can send another a follow request. The target user can accept, accept and reciprocate, or deny. Who follows who is not visible to us or the network. </p>
+<h2 id="multiple_device_login_">Multiple device login</h2>
+<p>Using your password you can log in on any device securely. Any files will be downloaded from the network and decrypted on demand locally. </p>
+<h2 id="decentralized_">Decentralized</h2>
+<p>Peergos is built on top of <a href="https://ipfs.io">IPFS</a>. You can run Peergos on your own machine and still access your files through any other Peergos server. Alternatively you can pay another provider to store your data (they won't be able to read your files). Currently, we have a small central server which stores usernames and public keys, but we will be moving this to a blockchain eventually. Read more about our <a href="/technology">technology</a>.</p>
+<h2 id="open_source_">Open source</h2>
+<p>Peergos is fully open source and self hostable. </p>
+    </div>
+    <span class="pull-right">
+                                        <a class="btn btn-default" role="button"
+                                           href="javascript:window.scrollTo(0,0);">Back to Top</a>
+                                </span>
+    </div>
+    </div>
+    </div>
+    <div class="index">
+
+
+<footer class="page-footer">
+    <div class="">
+        <div class="row">
+            <div class="col l6 m6 s12 footer-logo">
+                <img src="/theme/img/peergos/logo-dark-bg.svg" width="230">
+            </div>
+
+            <div class="col l3 m4 s12">
+                <h5 class="white-text">About Us</h5>
+                <ul>
+                    <li><a href="/about" >About</a></li>
+                    <li><a href="/contact" >Contact</a></li>
+                    <li><a href="/faq" >FAQ</a></li>
+                </ul>
+            </div>
+
+            <div class="col l3 m3 s12">
+                <h5 class="white-text">Community</h5>
+                <ul>
+                    <!--<li><a href="http://blog.peergos.org" target="_new">Blog</a></li>-->
+                    <li><a href="https://github.com/peergos" target="_new">GitHub</a></li>
+                    <li><a href="https://twitter.com/peergos" target="_new">Twitter</a></li>
+                    <li><a href="https://gitter.im/ianopolous/Peergos/PeergosChat" target="_new">Chatroom</a></li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="footer-copyright">
+            <div class="row">
+                <div class="col s12">
+                    © PEERGOS | Designed by <a href="http://www.antarctic-design.co.uk" target="_blank"> Eamonn
+                    Maguire</a>.
+                </div>
+
+            </div>
+        </div>
+
+</footer>
+
+    </div>
+</div>
+<script src="/theme/vendor/jquery/dist/jquery.min.js"></script>
+<script src="/theme/vendor/materialize/js/materialize.min.js"></script>
+<script>
+    $(".button-collapse").sideNav();
+
+
+</script>
+
+</body>
+</html>

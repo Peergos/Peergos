@@ -1,0 +1,53 @@
+/***********************
+* Highlight
+***********************/
+
+.highlight {
+  width: 100%;
+  background-color: #333;
+  padding: 0;
+  border-radius: 0;
+
+  pre {
+    overflow-y: auto;
+    overflow-x: scroll;
+    font-family: 'Source Code Pro';
+    font-weight: 500;
+    font-size: 0.85em;
+    padding: 1em 1em .5em 1em;
+
+    &::-webkit-scrollbar {
+      width: .75em;
+      height: .75em;
+      z-index: 2000;
+    }
+
+    &::-webkit-scrollbar-track-piece {
+      background: hsla(0,0%,55%,0);
+    }
+
+    &::-webkit-scrollbar-thumb {
+      background: hsl(0,0%,40%);
+    }
+
+    &:hover::-webkit-scrollbar-thumb {
+      background: hsl(0,0%,60%);
+    }
+
+    code {
+      color: transparent;
+      white-space: pre;
+      word-break: normal;
+      word-wrap: normal;
+    }
+
+    .nt {
+      color: #2DAEBF;
+    }
+
+    .s {
+      color: #fff;
+    }
+  }
+}
+

@@ -1,0 +1,29 @@
+{
+  "name": "peergos-styles",
+  "version": "0.0.0",
+  "authors": [
+    "Jan Lindenberg <jan.lindenberg@gmail.com>",
+    "Vítor Avelino <contact@vitoravelino.me>"
+  ],
+  "description": "Bootstrap theme for peergos sites",
+  "main": [
+    "dist/css/peergos-styles.css",
+    "dist/js/peergos-styles.js"
+  ],
+  "keywords": [
+    "css",
+    "framework",
+    "peergos"
+  ],
+  "license": "Apache2",
+  "private": true,
+  "ignore": [
+    ".*",
+    "docs",
+    "bower_components",
+    "app/bower_components"
+  ],
+  "dependencies": {
+    "bootstrap": "3.1.1"
+  }
+}
