@@ -47,7 +47,9 @@ public class JavaPoster implements HttpPoster {
             String contentEncoding = conn.getContentEncoding();
             boolean isGzipped = "gzip".equals(contentEncoding);
             DataInputStream din = new DataInputStream(isGzipped && unzip ? new GZIPInputStream(conn.getInputStream()) : conn.getInputStream());
-            res.complete(Serialize.readFully(din));
+            byte[] resp = Serialize.readFully(din);
+            din.close();
+            res.complete(resp);
         } catch (IOException e) {
             res.completeExceptionally(e);
         } finally {

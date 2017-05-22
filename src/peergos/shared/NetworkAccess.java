@@ -203,7 +203,7 @@ public class NetworkAccess {
     }
 
     public CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Multihash> hashes, ProgressConsumer<Long> monitor, double spaceIncreaseFactor) {
-        List<CompletableFuture<Optional<FragmentWithHash>>> futures = hashes.stream()
+        List<CompletableFuture<Optional<FragmentWithHash>>> futures = hashes.stream().parallel()
                 .map(h -> dhtClient.get(h)
                         .thenApply(dataOpt -> {
                             Optional<byte[]> bytes = dataOpt.map(cbor -> ((CborObject.CborByteArray) cbor).value);
