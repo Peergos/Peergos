@@ -24,19 +24,19 @@
         <a href="#" data-activates="mobile" class="button-collapse"><i class="material-icons">menu</i></a>
             <ul class="right hide-on-med-and-down">
                     <li >
-                        <a href="http://localhost:8000/features"
+                        <a href="./features"
 >
                             Features
                         </a>
                     </li>
                     <li class="active">
-                        <a href="http://localhost:8000/security"
+                        <a href="./security"
 >
                             Security
                         </a>
                     </li>
                     <li >
-                        <a href="http://localhost:8000/about"
+                        <a href="./about"
 >
                             About
                         </a>
@@ -57,19 +57,19 @@
                 <a href="/" class="brand-logo"><img src="/theme/img/peergos/logo-tower-only-green.svg" width="180"/></a>
             </li>
                 <li >
-                    <a href="http://localhost:8000/features"
+                    <a href="./features"
 >
                         Features
                     </a>
                 </li>
                 <li class="active">
-                    <a href="http://localhost:8000/security"
+                    <a href="./security"
 >
                         Security
                     </a>
                 </li>
                 <li >
-                    <a href="http://localhost:8000/about"
+                    <a href="./about"
 >
                         About
                     </a>
