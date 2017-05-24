@@ -22,9 +22,17 @@ public interface ContentAddressedStorage {
         return put(writer, Arrays.asList(block)).thenApply(hashes -> hashes.get(0));
     }
 
+    default CompletableFuture<Multihash> putRaw(PublicSigningKey writer, byte[] block) {
+        return putRaw(writer, Arrays.asList(block)).thenApply(hashes -> hashes.get(0));
+    }
+
     CompletableFuture<List<Multihash>> put(PublicSigningKey writer, List<byte[]> blocks);
 
     CompletableFuture<Optional<CborObject>> get(Multihash object);
+
+    CompletableFuture<List<Multihash>> putRaw(PublicSigningKey writer, List<byte[]> blocks);
+
+    CompletableFuture<Optional<byte[]>> getRaw(Multihash object);
 
     CompletableFuture<List<MultiAddress>> pinUpdate(Multihash existing, Multihash updated);
 
@@ -63,7 +71,16 @@ public interface ContentAddressedStorage {
 
         @Override
         public CompletableFuture<List<Multihash>> put(PublicSigningKey writer, List<byte[]> blocks) {
-            return poster.postMultipart(apiPrefix + "block/put?format=cbor"
+            return put(writer, blocks, "cbor");
+        }
+
+        @Override
+        public CompletableFuture<List<Multihash>> putRaw(PublicSigningKey writer, List<byte[]> blocks) {
+            return put(writer, blocks, "raw");
+        }
+
+        private CompletableFuture<List<Multihash>> put(PublicSigningKey writer, List<byte[]> blocks, String format) {
+            return poster.postMultipart(apiPrefix + "block/put?format=" + format
                     + "&writer=" + encode(writer.toString()), blocks)
                     .thenApply(bytes -> JSONParser.parseStream(new String(bytes))
                             .stream()
@@ -75,6 +92,12 @@ public interface ContentAddressedStorage {
         public CompletableFuture<Optional<CborObject>> get(Multihash hash) {
             return poster.get(apiPrefix + "block/get?stream-channels=true&arg=" + hash.toString())
                     .thenApply(raw -> raw.length == 0 ? Optional.empty() : Optional.of(CborObject.fromByteArray(raw)));
+        }
+
+        @Override
+        public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash) {
+            return poster.get(apiPrefix + "block/get?stream-channels=true&arg=" + hash.toString())
+                    .thenApply(raw -> raw.length == 0 ? Optional.empty() : Optional.of(raw));
         }
 
         @Override

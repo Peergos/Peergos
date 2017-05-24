@@ -13,6 +13,7 @@ public class CachingStorage implements ContentAddressedStorage {
     private final ContentAddressedStorage target;
     private final LRUCache<Multihash, byte[]> cache;
     private final LRUCache<Multihash, CompletableFuture<Optional<CborObject>>> pending;
+    private final LRUCache<Multihash, CompletableFuture<Optional<byte[]>>> pendingRaw;
     private final int maxValueSize;
 
     public CachingStorage(ContentAddressedStorage target, int cacheSize, int maxValueSize) {
@@ -20,6 +21,7 @@ public class CachingStorage implements ContentAddressedStorage {
         this.cache = new LRUCache<>(cacheSize);
         this.maxValueSize = maxValueSize;
         this.pending = new LRUCache<>(100);
+        this.pendingRaw = new LRUCache<>(100);
     }
 
     @Override
@@ -46,6 +48,33 @@ public class CachingStorage implements ContentAddressedStorage {
             pending.remove(key);
             pipe.complete(cborOpt);
             return cborOpt;
+        });
+    }
+
+    @Override
+    public CompletableFuture<List<Multihash>> putRaw(PublicSigningKey writer, List<byte[]> blocks) {
+        return target.putRaw(writer, blocks);
+    }
+
+    @Override
+    public CompletableFuture<Optional<byte[]>> getRaw(Multihash key) {
+        if (cache.containsKey(key))
+            return CompletableFuture.completedFuture(Optional.of(cache.get(key)));
+
+        if (pendingRaw.containsKey(key))
+            return pendingRaw.get(key);
+
+        CompletableFuture<Optional<byte[]>> pipe = new CompletableFuture<>();
+        pendingRaw.put(key, pipe);
+        return target.getRaw(key).thenApply(rawOpt -> {
+            if (rawOpt.isPresent()) {
+                byte[] value = rawOpt.get();
+                if (value.length > 0 && value.length < maxValueSize)
+                    cache.put(key, value);
+            }
+            pendingRaw.remove(key);
+            pipe.complete(rawOpt);
+            return rawOpt;
         });
     }
 

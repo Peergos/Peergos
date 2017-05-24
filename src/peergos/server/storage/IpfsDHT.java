@@ -30,8 +30,17 @@ public class IpfsDHT implements ContentAddressedStorage {
 
     @Override
     public CompletableFuture<List<Multihash>> put(PublicSigningKey writer, List<byte[]> blocks) {
+        return put(writer, blocks, "cbor");
+    }
+
+    @Override
+    public CompletableFuture<List<Multihash>> putRaw(PublicSigningKey writer, List<byte[]> blocks) {
+        return put(writer, blocks, "raw");
+    }
+
+    private CompletableFuture<List<Multihash>> put(PublicSigningKey writer, List<byte[]> blocks, String format) {
         try {
-            return CompletableFuture.completedFuture(ipfs.block.put(blocks, Optional.of("cbor")))
+            return CompletableFuture.completedFuture(ipfs.block.put(blocks, Optional.of(format)))
                     .thenApply(nodes -> nodes.stream().map(n -> n.hash).collect(Collectors.toList()));
         } catch (IOException e) {
             throw new RuntimeException(e);
@@ -43,6 +52,16 @@ public class IpfsDHT implements ContentAddressedStorage {
         try {
             byte[] raw = ipfs.block.get(hash);
             return CompletableFuture.completedFuture(Optional.of(CborObject.fromByteArray(raw)));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash) {
+        try {
+            byte[] raw = ipfs.block.get(hash);
+            return CompletableFuture.completedFuture(Optional.of(raw));
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

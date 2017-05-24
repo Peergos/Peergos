@@ -147,13 +147,13 @@ public class NetworkAccess {
     }
 
     private CompletableFuture<Multihash> uploadFragment(Fragment f, PublicSigningKey targetUser) {
-        return dhtClient.put(targetUser, new CborObject.CborByteArray(f.data).toByteArray());
+        return dhtClient.putRaw(targetUser, f.data);
     }
 
     private CompletableFuture<List<Multihash>> bulkUploadFragments(List<Fragment> fragments, PublicSigningKey targetUser) {
-        return dhtClient.put(targetUser, fragments
+        return dhtClient.putRaw(targetUser, fragments
                 .stream()
-                .map(f -> new CborObject.CborByteArray(f.data).toByteArray())
+                .map(f -> f.data)
                 .collect(Collectors.toList()));
     }
 
@@ -204,9 +204,9 @@ public class NetworkAccess {
 
     public CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Multihash> hashes, ProgressConsumer<Long> monitor, double spaceIncreaseFactor) {
         List<CompletableFuture<Optional<FragmentWithHash>>> futures = hashes.stream().parallel()
-                .map(h -> dhtClient.get(h)
+                .map(h -> dhtClient.getRaw(h)
                         .thenApply(dataOpt -> {
-                            Optional<byte[]> bytes = dataOpt.map(cbor -> ((CborObject.CborByteArray) cbor).value);
+                            Optional<byte[]> bytes = dataOpt;
                             bytes.ifPresent(arr -> monitor.accept((long)(arr.length / spaceIncreaseFactor)));
                             return bytes.map(data -> new FragmentWithHash(new Fragment(data), h));
                         }))

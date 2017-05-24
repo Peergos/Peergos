@@ -34,6 +34,16 @@ public class RAMStorage implements ContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<List<Multihash>> putRaw(PublicSigningKey writer, List<byte[]> blocks) {
+        return put(writer, blocks);
+    }
+
+    @Override
+    public CompletableFuture<Optional<byte[]>> getRaw(Multihash object) {
+        return CompletableFuture.completedFuture(Optional.of(storage.getOrDefault(object, new byte[0])));
+    }
+
+    @Override
     public CompletableFuture<Optional<CborObject>> get(Multihash object) {
         return CompletableFuture.completedFuture(Optional.of(getAndParseObject(object)));
     }
