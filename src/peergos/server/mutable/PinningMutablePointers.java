@@ -2,11 +2,16 @@ package peergos.server.mutable;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.io.ipfs.cid.*;
+import peergos.shared.io.ipfs.multiaddr.*;
+import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.merklebtree.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.ContentAddressedStorage;
 
+import java.util.*;
 import java.util.concurrent.*;
+import java.util.stream.*;
 
 public class PinningMutablePointers implements MutablePointers {
     private static final boolean LOGGING = true;
@@ -24,7 +29,9 @@ public class PinningMutablePointers implements MutablePointers {
         byte[] message = signer.unsignMessage(sharingKeySignedBtreeRootHashes);
         HashCasPair cas = HashCasPair.fromCbor(CborObject.fromByteArray(message));
         long t1 = System.currentTimeMillis();
-        return storage.recursivePin(cas.updated.get()).thenCompose(pins -> {
+        return (cas.original.isPresent() ? storage.pinUpdate(cas.original.get(), cas.updated.get())
+                .thenApply(PinningMutablePointers::convert) :
+                storage.recursivePin(cas.updated.get())).thenCompose(pins -> {
             if (!pins.contains(cas.updated.get())) {
                 CompletableFuture<Boolean> err = new CompletableFuture<>();
                 err.completeExceptionally(new IllegalStateException("Couldn't pin new hash: " + cas.updated.get()));
@@ -53,6 +60,13 @@ public class PinningMutablePointers implements MutablePointers {
                                         });
                     });
         });
+    }
+
+    private static List<Multihash> convert(List<MultiAddress> addresses) {
+        return addresses.stream()
+                .filter(addr -> addr.toString().startsWith("/ipfs/"))
+                .map(addr -> Cid.decode(addr.toString().substring(6)))
+                .collect(Collectors.toList());
     }
 
     @Override

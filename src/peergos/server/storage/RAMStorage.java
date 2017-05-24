@@ -2,6 +2,7 @@ package peergos.server.storage;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.io.ipfs.multiaddr.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.storage.ContentAddressedStorage;
@@ -59,6 +60,11 @@ public class RAMStorage implements ContentAddressedStorage {
     @Override
     public CompletableFuture<List<Multihash>> recursiveUnpin(Multihash h) {
         return CompletableFuture.completedFuture(Arrays.asList(h));
+    }
+
+    @Override
+    public CompletableFuture<List<MultiAddress>> pinUpdate(Multihash existing, Multihash updated) {
+        return CompletableFuture.completedFuture(Arrays.asList(new MultiAddress("/ipfs/"+existing), new MultiAddress("/ipfs/"+updated)));
     }
 
     @Override

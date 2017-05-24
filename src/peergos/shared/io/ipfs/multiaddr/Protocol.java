@@ -10,6 +10,7 @@ import java.util.*;
 
 public class Protocol {
     public static int LENGTH_PREFIXED_VAR_SIZE = -1;
+    private static final String IPV4_REGEX = "\\A(25[0-5]|2[0-4]\\d|[0-1]?\\d?\\d)(\\.(25[0-5]|2[0-4]\\d|[0-1]?\\d?\\d)){3}\\z";
 
     enum Type {
         IP4(4, 32, "ip4"),
@@ -74,6 +75,8 @@ public class Protocol {
         try {
             switch (type) {
                 case IP4:
+                    if (! addr.matches(IPV4_REGEX))
+                        throw new IllegalStateException("Invalid IPv4 address: " + addr);
                     return Inet4Address.getByName(addr).getAddress();
                 case IP6:
                     return Inet6Address.getByName(addr).getAddress();
@@ -86,7 +89,7 @@ public class Protocol {
                         throw new IllegalStateException("Failed to parse "+type.name+" address "+addr + " (> 65535");
                     return new byte[]{(byte)(x >>8), (byte)x};
                 case IPFS:
-                    Multihash hash = Multihash.fromBase58(addr);
+                    Multihash hash = Cid.decode(addr);
                     ByteArrayOutputStream bout = new ByteArrayOutputStream();
                     byte[] hashBytes = hash.toBytes();
                     byte[] varint = new byte[(32 - Integer.numberOfLeadingZeros(hashBytes.length)+6)/7];
