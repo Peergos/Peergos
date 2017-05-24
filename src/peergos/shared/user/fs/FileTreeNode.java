@@ -305,6 +305,11 @@ public class FileTreeNode {
         throw new IllegalStateException("Unreadable FileTreeNode!");
     }
 
+    public CompletableFuture<Optional<FileTreeNode>> getChild(String name, NetworkAccess network) {
+        return getChildren(network)
+                .thenApply(children -> children.stream().filter(f -> f.getName().equals(name)).findAny());
+    }
+
     private CompletableFuture<Set<RetrievedFilePointer>> retrieveChildren(NetworkAccess network) {
         FilePointer filePointer = pointer.filePointer;
         FileAccess fileAccess = pointer.fileAccess;
