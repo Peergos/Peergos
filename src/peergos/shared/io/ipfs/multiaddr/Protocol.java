@@ -89,7 +89,7 @@ public class Protocol {
                         throw new IllegalStateException("Failed to parse "+type.name+" address "+addr + " (> 65535");
                     return new byte[]{(byte)(x >>8), (byte)x};
                 case IPFS:
-                    Multihash hash = Multihash.fromBase58(addr);
+                    Multihash hash = Cid.decode(addr);
                     ByteArrayOutputStream bout = new ByteArrayOutputStream();
                     byte[] hashBytes = hash.toBytes();
                     byte[] varint = new byte[(32 - Integer.numberOfLeadingZeros(hashBytes.length)+6)/7];
