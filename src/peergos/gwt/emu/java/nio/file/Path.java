@@ -19,4 +19,16 @@ public class Path {
 	public File toFile() {
 		return null;
 	}
+
+	public Path getName(int index) {
+		return null;
+	}
+
+	public int getNameCount() {
+		return 0;
+	}
+
+	public Path subpath(int from, int to) {
+		return null;
+	}
 }
