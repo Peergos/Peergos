@@ -1,6 +1,6 @@
 <img src="https://teamcity.jetbrains.com/app/rest/builds/buildType:(id:OpenSourceProjects_Peergos_Build)/statusIcon"></a>
 
-![Peergos Logo](https://raw.githubusercontent.com/ianopolous/Peergos/gh-pages/images/PeergosLogo.png)
+![Peergos Logo](https://peergos.org/theme/img/peergos/logo-main.svg)
 
 Peergos
 ========
