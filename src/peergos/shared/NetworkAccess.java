@@ -8,6 +8,7 @@ import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.symmetric.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
@@ -204,7 +205,9 @@ public class NetworkAccess {
 
     public CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Multihash> hashes, ProgressConsumer<Long> monitor, double spaceIncreaseFactor) {
         List<CompletableFuture<Optional<FragmentWithHash>>> futures = hashes.stream().parallel()
-                .map(h -> dhtClient.getRaw(h)
+                .map(h -> ((h instanceof Cid) && ((Cid) h).codec == Cid.Codec.Raw ?
+                        dhtClient.getRaw(h) :
+                        dhtClient.get(h).thenApply(cborOpt -> cborOpt.map(cbor -> ((CborObject.CborByteArray) cbor).value))) // for backwards compatibility
                         .thenApply(dataOpt -> {
                             Optional<byte[]> bytes = dataOpt;
                             bytes.ifPresent(arr -> monitor.accept((long)(arr.length / spaceIncreaseFactor)));
