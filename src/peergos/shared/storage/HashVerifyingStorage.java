@@ -1,0 +1,79 @@
+package peergos.shared.storage;
+
+import peergos.shared.cbor.*;
+import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.cid.*;
+import peergos.shared.io.ipfs.multiaddr.*;
+import peergos.shared.io.ipfs.multihash.*;
+
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.function.*;
+import java.util.stream.*;
+
+public class HashVerifyingStorage implements ContentAddressedStorage {
+
+    private final ContentAddressedStorage source;
+
+    public HashVerifyingStorage(ContentAddressedStorage source) {
+        this.source = source;
+    }
+
+    private <T> T verify(byte[] data, Multihash claimed, Supplier<T> result) {
+        switch (claimed.type) {
+            case sha2_256:
+                Sha256 sha256 = new Sha256();
+                sha256.update(data);
+                Multihash computed = new Multihash(Multihash.Type.sha2_256, sha256.digest());
+                if (claimed instanceof Cid) {
+                    Cid cid = new Cid(((Cid) claimed).version, ((Cid) claimed).codec, computed);
+                    if (cid.equals(claimed))
+                        return result.get();
+                } else if (computed.equals(claimed))
+                    return result.get();
+
+                throw new IllegalStateException("Incorrect hash! Are you under attack?");
+            default: throw new IllegalStateException("Unimplemented hash algorithm: " + claimed.type);
+        }
+    }
+
+    @Override
+    public CompletableFuture<List<Multihash>> put(PublicSigningKey writer, List<byte[]> blocks) {
+        return source.put(writer, blocks)
+                .thenApply(hashes -> hashes.stream()
+                        .map(h -> verify(blocks.get(hashes.indexOf(h)), h, () -> h))
+                        .collect(Collectors.toList()));
+    }
+
+    @Override
+    public CompletableFuture<Optional<CborObject>> get(Multihash hash) {
+        return source.get(hash)
+                .thenApply(cborOpt -> cborOpt.map(cbor -> verify(cbor.toByteArray(), hash, () -> cbor)));
+    }
+
+    @Override
+    public CompletableFuture<List<MultiAddress>> pinUpdate(Multihash existing, Multihash updated) {
+        return source.pinUpdate(existing, updated);
+    }
+
+    @Override
+    public CompletableFuture<List<Multihash>> recursivePin(Multihash h) {
+        return source.recursivePin(h);
+    }
+
+    @Override
+    public CompletableFuture<List<Multihash>> recursiveUnpin(Multihash h) {
+        return source.recursiveUnpin(h);
+    }
+
+    @Override
+    public CompletableFuture<List<Multihash>> getLinks(Multihash root) {
+        return source.getLinks(root);
+    }
+
+    @Override
+    public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
+        return source.getSize(block);
+    }
+}
