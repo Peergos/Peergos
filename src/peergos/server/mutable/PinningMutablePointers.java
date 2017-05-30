@@ -1,7 +1,6 @@
 package peergos.server.mutable;
 
 import peergos.shared.cbor.*;
-import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multiaddr.*;
@@ -73,7 +72,7 @@ public class PinningMutablePointers implements MutablePointers {
     }
 
     @Override
-    public CompletableFuture<MaybeMultihash> getPointer(PublicKeyHash encodedSharingKey) {
-        return target.getPointer(encodedSharingKey);
+    public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash writer) {
+        return target.getPointer(writer);
     }
 }

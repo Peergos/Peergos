@@ -82,7 +82,7 @@ public class UserRepository implements CoreNode, MutablePointers {
     }
 
     @Override
-    public CompletableFuture<MaybeMultihash> getPointer(PublicKeyHash writer) {
+    public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash writer) {
         return store.getPointer(writer);
     }
 
@@ -102,7 +102,7 @@ public class UserRepository implements CoreNode, MutablePointers {
                                     return CompletableFuture.completedFuture(false);
                                 if (LOGGING)
                                     System.out.println("Core::setMetadata for " + writer + " from " + current + " to " + newHash);
-                                return store.setPointer(owner, writer, bothHashes);
+                                return store.setPointer(owner, writer, writerSignedBtreeRootHash);
                             } catch (TweetNaCl.InvalidSignatureException e) {
                                 System.err.println("Invalid signature during setMetadataBlob for sharer: " + writer);
                                 return CompletableFuture.completedFuture(false);

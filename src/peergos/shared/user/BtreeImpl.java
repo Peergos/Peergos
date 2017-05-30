@@ -1,11 +1,11 @@
 package peergos.shared.user;
 
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
-import peergos.shared.merklebtree.MaybeMultihash;
-import peergos.shared.merklebtree.MerkleBTree;
+import peergos.shared.merklebtree.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.ContentAddressedStorage;
 import peergos.shared.util.*;
@@ -41,9 +41,13 @@ public class BtreeImpl implements Btree {
                 });
     }
 
-    private CompletableFuture<CommittedWriterData> getWriterData(PublicKeyHash pubKey) {
-        return mutable.getPointer(pubKey)
-                .thenCompose(maybeHash -> getWriterData(pubKey, maybeHash));
+    private CompletableFuture<CommittedWriterData> getWriterData(PublicKeyHash hash) {
+        return mutable.getPointer(hash)
+                .thenCompose(dataOpt -> dht.getSigningKey(hash)
+                        .thenApply(signer -> dataOpt.isPresent() ?
+                                HashCasPair.fromCbor(CborObject.fromByteArray(signer.get().unsignMessage(dataOpt.get()))).updated :
+                                MaybeMultihash.EMPTY())
+                        .thenCompose(x -> getWriterData(hash, x)));
     }
 
     private CompletableFuture<CommittedWriterData> addToQueue(PublicKeyHash pubKey, CompletableFuture<CommittedWriterData> lock) {

@@ -15,7 +15,7 @@ public class CachingPointers implements MutablePointers {
 
     private final MutablePointers target;
     private final int cacheTTL;
-    private final Map<PublicKeyHash, Pair<MaybeMultihash, Long>> cache = new HashMap<>();
+    private final Map<PublicKeyHash, Pair<Optional<byte[]>, Long>> cache = new HashMap<>();
 
     public CachingPointers(MutablePointers target, int cacheTTL) {
         this.target = target;
@@ -23,9 +23,9 @@ public class CachingPointers implements MutablePointers {
     }
 
     @Override
-    public CompletableFuture<MaybeMultihash> getPointer(PublicKeyHash writer) {
+    public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash writer) {
         synchronized (cache) {
-            Pair<MaybeMultihash, Long> cached = cache.get(writer);
+            Pair<Optional<byte[]>, Long> cached = cache.get(writer);
             if (cached != null && System.currentTimeMillis() - cached.right < cacheTTL)
                 return CompletableFuture.completedFuture(cached.left);
         }
