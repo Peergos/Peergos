@@ -53,6 +53,20 @@ public class HashVerifyingStorage implements ContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<List<Multihash>> putRaw(PublicSigningKey writer, List<byte[]> blocks) {
+        return source.putRaw(writer, blocks)
+                .thenApply(hashes -> hashes.stream()
+                        .map(h -> verify(blocks.get(hashes.indexOf(h)), h, () -> h))
+                        .collect(Collectors.toList()));
+    }
+
+    @Override
+    public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash) {
+        return source.getRaw(hash)
+                .thenApply(arrOpt -> arrOpt.map(bytes -> verify(bytes, hash, () -> bytes)));
+    }
+
+    @Override
     public CompletableFuture<List<MultiAddress>> pinUpdate(Multihash existing, Multihash updated) {
         return source.pinUpdate(existing, updated);
     }
