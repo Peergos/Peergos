@@ -82,9 +82,11 @@ public class DHTHandler implements HttpHandler
                 }
                 case "block/get":{
                     Multihash hash = Cid.decode(args.get(0));
-                    dht.get(hash)
+                    (hash instanceof Cid && ((Cid) hash).codec == Cid.Codec.Raw ?
+                            dht.getRaw(hash) :
+                            dht.get(hash).thenApply(opt -> opt.map(CborObject::toByteArray)))
                             .thenAccept(opt -> replyBytes(httpExchange,
-                                    opt.map(CborObject::toByteArray).orElse(new byte[0]), opt.map(x -> hash)))
+                                    opt.orElse(new byte[0]), opt.map(x -> hash)))
                             .exceptionally(Futures::logError);
                     break;
                 }

@@ -21,9 +21,18 @@ public class RAMStorage implements ContentAddressedStorage {
 
     @Override
     public CompletableFuture<List<Multihash>> put(PublicSigningKey writer, List<byte[]> blocks) {
+        return put(writer, blocks, false);
+    }
+
+    @Override
+    public CompletableFuture<List<Multihash>> putRaw(PublicSigningKey writer, List<byte[]> blocks) {
+        return put(writer, blocks, true);
+    }
+
+    private CompletableFuture<List<Multihash>> put(PublicSigningKey writer, List<byte[]> blocks, boolean isRaw) {
         return CompletableFuture.completedFuture(blocks.stream()
                 .map(b -> {
-                    Cid cid = hashToCid(b);
+                    Cid cid = hashToCid(b, isRaw);
                     put(cid, b);
                     return cid;
                 }).collect(Collectors.toList()));
@@ -34,18 +43,15 @@ public class RAMStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> putRaw(PublicSigningKey writer, List<byte[]> blocks) {
-        return put(writer, blocks);
-    }
-
-    @Override
     public CompletableFuture<Optional<byte[]>> getRaw(Multihash object) {
         return CompletableFuture.completedFuture(Optional.of(storage.getOrDefault(object, new byte[0])));
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Multihash object) {
-        return CompletableFuture.completedFuture(Optional.of(getAndParseObject(object)));
+    public CompletableFuture<Optional<CborObject>> get(Multihash hash) {
+        if (hash instanceof Cid && ((Cid) hash).codec == Cid.Codec.Raw)
+            throw new IllegalStateException("Need to call getRaw if cid is not cbor!");
+        return CompletableFuture.completedFuture(Optional.of(getAndParseObject(hash)));
     }
 
     private synchronized CborObject getAndParseObject(Multihash hash) {
@@ -79,6 +85,8 @@ public class RAMStorage implements ContentAddressedStorage {
 
     @Override
     public CompletableFuture<List<Multihash>> getLinks(Multihash root) {
+        if (root instanceof Cid && ((Cid) root).codec == Cid.Codec.Raw)
+            return CompletableFuture.completedFuture(Collections.emptyList());
         return get(root).thenApply(opt -> opt
                 .map(cbor -> cbor.links())
                 .orElse(Collections.emptyList())
@@ -92,10 +100,10 @@ public class RAMStorage implements ContentAddressedStorage {
         return CompletableFuture.completedFuture(Optional.of(storage.get(block).length));
     }
 
-    public static Cid hashToCid(byte[] input) {
+    public static Cid hashToCid(byte[] input, boolean isRaw) {
         byte[] hash = hash(input);
         Multihash multihash = new Multihash(Multihash.Type.sha2_256, hash);
-        return new Cid(CID_V1, Cid.Codec.DagCbor, multihash);
+        return new Cid(CID_V1, isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor, multihash);
     }
 
     public static byte[] hash(byte[] input)

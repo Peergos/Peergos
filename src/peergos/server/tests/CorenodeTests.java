@@ -84,7 +84,7 @@ public class CorenodeTests {
                 long maxLatency = 0;
                 for (int i = 0; i < iterations; i++) {
                     random.nextBytes(data);
-                    Cid cid = RAMStorage.hashToCid(data);
+                    Cid cid = RAMStorage.hashToCid(data, true);
                     HashCasPair cas = new HashCasPair(current, MaybeMultihash.of(cid));
                     byte[] signed = writer.signMessage(cas.serialize());
                     try {
