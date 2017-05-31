@@ -26,11 +26,10 @@ public class HashVerifyingStorage implements ContentAddressedStorage {
                 Sha256 sha256 = new Sha256();
                 sha256.update(data);
                 Multihash computed = new Multihash(Multihash.Type.sha2_256, sha256.digest());
-                if (claimed instanceof Cid) {
-                    Cid cid = new Cid(((Cid) claimed).version, ((Cid) claimed).codec, computed);
-                    if (cid.equals(claimed))
-                        return result.get();
-                } else if (computed.equals(claimed))
+                if (claimed instanceof Cid)
+                    computed = new Cid(((Cid) claimed).version, ((Cid) claimed).codec, computed);
+
+                if (computed.equals(claimed))
                     return result.get();
 
                 throw new IllegalStateException("Incorrect hash! Are you under attack? Expected: " + claimed + " actual: " + computed);
