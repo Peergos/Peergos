@@ -41,7 +41,7 @@ public class NetworkAccess {
 
     public NetworkAccess(CoreNode coreNode, ContentAddressedStorage dhtClient, MutablePointers mutable, Btree btree, List<String> usernames, boolean isJavascript) {
         this.coreNode = coreNode;
-        this.dhtClient = dhtClient;
+        this.dhtClient = new HashVerifyingStorage(dhtClient);
         this.mutable = mutable;
         this.btree = btree;
         this.usernames = usernames;
