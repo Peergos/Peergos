@@ -33,7 +33,7 @@ public class HashVerifyingStorage implements ContentAddressedStorage {
                 } else if (computed.equals(claimed))
                     return result.get();
 
-                throw new IllegalStateException("Incorrect hash! Are you under attack?");
+                throw new IllegalStateException("Incorrect hash! Are you under attack? Expected: " + claimed + " actual: " + computed);
             default: throw new IllegalStateException("Unimplemented hash algorithm: " + claimed.type);
         }
     }
