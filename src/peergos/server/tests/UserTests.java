@@ -255,6 +255,19 @@ public abstract class UserTests {
     }
 
     @Test
+    public void smallFileWrite() throws Exception {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = ensureSignedUp(username, password, network, crypto);
+        FileTreeNode userRoot = context.getUserRoot().get();
+
+        String filename = "small.txt";
+        byte[] data = new byte[10];
+        userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
+                context.crypto.random, l -> {}, context.fragmenter()).get();
+    }
+
+    @Test
     public void mediumFileWrite() throws Exception {
         String username = generateUsername();
         String password = "test01";
@@ -264,7 +277,7 @@ public abstract class UserTests {
         String filename = "mediumfile.bin";
         byte[] data = new byte[0];
         userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
-                context.crypto.random, l -> {}, context.fragmenter());
+                context.crypto.random, l -> {}, context.fragmenter()).get();
 
         //overwrite with 2 chunk file
         byte[] data5 = new byte[10*1024*1024];

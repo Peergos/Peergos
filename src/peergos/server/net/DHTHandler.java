@@ -70,7 +70,9 @@ public class DHTHandler implements HttpHandler
                             .findAny()
                             .get();
                     List<byte[]> data = MultipartReceiver.extractFiles(httpExchange.getRequestBody(), boundary);
-                    dht.put(writer, data).thenAccept(hashes -> {
+                    boolean isRaw = last.apply("format").equals("raw");
+
+                    (isRaw ? dht.putRaw(writer, data) : dht.put(writer, data)).thenAccept(hashes -> {
                         List<Object> json = hashes.stream().map(h -> wrapHash(h)).collect(Collectors.toList());
                         // make stream of JSON objects
                         String jsonStream = json.stream().map(m -> JSONParser.toString(m)).reduce("", (a, b) -> a + b);
