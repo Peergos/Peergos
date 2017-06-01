@@ -14,7 +14,7 @@ public class ScryptJava implements LoginHasher {
     public CompletableFuture<byte[]> hashToKeyBytes(String username, String password, UserGenerationAlgorithm algorithm) {
         CompletableFuture<byte[]> res = new CompletableFuture<>();
         if (algorithm.getType() == UserGenerationAlgorithm.Type.ScryptEd25519Curve25519) {
-            byte[] hash = Arrays.copyOfRange(Hash.sha256(password.getBytes()), 2, 34);
+            byte[] hash = Hash.sha256(password.getBytes());
             byte[] salt = username.getBytes();
             try {
                 ScryptEd25519Curve25519 params = (ScryptEd25519Curve25519) algorithm;

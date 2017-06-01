@@ -12,12 +12,7 @@ public class Hash {
         try {
             MessageDigest md = MessageDigest.getInstance(HASH);
             md.update(input);
-            byte[] digest = md.digest();
-            byte[] multihash = new byte[2 + digest.length];
-            multihash[0] = 0x12;
-            multihash[1] = 0x20;
-            System.arraycopy(digest, 0, multihash, 2, digest.length);
-            return multihash;
+            return md.digest();
         } catch (NoSuchAlgorithmException e)
         {
             // This is only here to work around a bug in Doppio JVM

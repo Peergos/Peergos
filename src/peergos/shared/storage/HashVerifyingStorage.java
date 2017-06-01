@@ -23,9 +23,7 @@ public class HashVerifyingStorage implements ContentAddressedStorage {
     private <T> T verify(byte[] data, Multihash claimed, Supplier<T> result) {
         switch (claimed.type) {
             case sha2_256:
-                Sha256 sha256 = new Sha256();
-                sha256.update(data);
-                Multihash computed = new Multihash(Multihash.Type.sha2_256, sha256.digest());
+                Multihash computed = new Multihash(Multihash.Type.sha2_256, Hash.sha256(data));
                 if (claimed instanceof Cid)
                     computed = new Cid(((Cid) claimed).version, ((Cid) claimed).codec, computed);
 
