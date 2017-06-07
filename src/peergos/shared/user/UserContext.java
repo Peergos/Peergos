@@ -30,6 +30,7 @@ public class UserContext {
     public final SigningKeyPair signer;
     public final BoxingKeyPair boxer;
     public final Fragmenter fragmenter;
+    public final Set<String> sharedFiles;
 
     private CompletableFuture<CommittedWriterData> userData;
     @JsProperty
@@ -59,6 +60,7 @@ public class UserContext {
         this.fragmenter = fragmenter;
         this.userData = userData;
         this.entrie = entrie;
+        this.sharedFiles = new HashSet<>();
     }
 
     public boolean isJavascript() {
@@ -618,6 +620,9 @@ public class UserContext {
                                 .filter(reader -> ! readersToRemove.contains(reader))
                                 .collect(Collectors.toSet());
 
+                        if(remainingReaders.size() == 0) {
+                            this.sharedFiles.remove(shareKey(sharedPath));
+                        }
                         return shareWith(path, remainingReaders);
                     });
         });
@@ -646,6 +651,20 @@ public class UserContext {
         Set<String> remainingReaders = sharees.stream().filter(name -> !readersToRemove.contains(name)).collect(Collectors.toSet());
         share(path, remainingReaders);*/
 
+    }
+
+    private String shareKey(FileTreeNode file) {
+        if(file == null) {
+            return "";
+        }
+        String key = file.getPointer().filePointer.toString();
+        return key;
+    }
+
+    @JsMethod
+    public boolean isShared(FileTreeNode file) {
+        String key = shareKey(file);
+        return this.sharedFiles.contains(key);
     }
 
     @JsMethod
@@ -718,7 +737,10 @@ public class UserContext {
                         return CompletableFuture.completedFuture(true);
                     FileTreeNode sharedTreeNode = shared.get();
                     return sharedTreeNode.addLinkTo(file, network, crypto.random)
-                            .thenCompose(ee -> CompletableFuture.completedFuture(true));
+                            .thenCompose(ee -> {
+                                this.sharedFiles.add(shareKey(file));
+                                return CompletableFuture.completedFuture(true);
+                            });
                 });
     }
 
