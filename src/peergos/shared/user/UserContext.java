@@ -87,8 +87,8 @@ public class UserContext {
                                                                 CompletableFuture.completedFuture(new CommittedWriterData(MaybeMultihash.of(pair.left), userData)),
                                                                 root);
                                                         tofu.setContext(result);
-                                                        return result.usernameIsExpired()
-                                                                .thenCompose(expired -> expired ?
+                                                        return result.getUsernameClaimExpiry()
+                                                                .thenCompose(expiry -> expiry.isBefore(LocalDate.now().plusMonths(1)) ?
                                                                         result.renewUsernameClaim(LocalDate.now().plusMonths(2)) :
                                                                         CompletableFuture.completedFuture(true))
                                                                 .thenCompose(x -> {
@@ -244,6 +244,11 @@ public class UserContext {
             List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createInitial(signer, this.username, expiry);
             return network.coreNode.updateChain(this.username, claimChain);
         });
+    }
+
+    public CompletableFuture<LocalDate> getUsernameClaimExpiry() {
+        return network.coreNode.getChain(username)
+                .thenApply(chain -> chain.get(chain.size() - 1).claim.expiry);
     }
 
     public CompletableFuture<Boolean> usernameIsExpired() {
