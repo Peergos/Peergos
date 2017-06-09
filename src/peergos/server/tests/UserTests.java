@@ -182,6 +182,9 @@ public abstract class UserTests {
                 context.crypto.random, l -> {}, context.fragmenter()).get();
         checkFileContents(data2, userRoot.getDescendentByPath(filename, context.network).get().get(), context);
 
+        checkFileContentsChunked(data2, userRoot.getDescendentByPath(filename, context.network).get().get(), context, 3);
+
+
         // check file size
         assertTrue("File size", data2.length == userRoot.getDescendentByPath(filename,
                 context.network).get().get().getFileProperties().size);
@@ -394,6 +397,27 @@ public abstract class UserTests {
         byte[] retrievedData = Serialize.readFully(f.getInputStream(context.network, context.crypto.random,
                 f.getFileProperties().size, l-> {}).get(), f.getSize()).get();
         assertTrue("Correct contents", Arrays.equals(retrievedData, expected));
+    }
+
+    private static void checkFileContentsChunked(byte[] expected, FileTreeNode f, UserContext context, int  nChunks) throws Exception {
+
+        AsyncReader in = f.getInputStream(context.network, context.crypto.random,
+                f.getFileProperties().size, l -> {}).get();
+        assertTrue(nChunks > 1);
+
+        long size = f.getSize();
+        long chunkSize = size/nChunks;
+
+
+        ByteArrayOutputStream bout = new ByteArrayOutputStream();
+
+        for (int i = 0; i < nChunks; i++) {
+            byte[] retrievedData = Serialize.readFully(
+                    in,
+                    chunkSize).get();
+            bout.write(retrievedData);
+        }
+        assertTrue("Correct contents", Arrays.equals(bout.toByteArray(), expected));
     }
 
 
