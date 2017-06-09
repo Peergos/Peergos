@@ -212,12 +212,15 @@ public class UserPublicKeyLink implements Cborable{
         return result;
     }
 
-    public static void validChain(List<UserPublicKeyLink> chain, String username) {
+    public static boolean validChain(List<UserPublicKeyLink> chain, String username) {
         for (int i=0; i < chain.size()-1; i++)
             if (!validLink(chain.get(i), chain.get(i+1).owner, username))
-                throw new IllegalStateException("Invalid public key chain link!");
-        if (!validClaim(chain.get(chain.size()-1), username))
-            throw new IllegalStateException("Invalid username claim!");
+                return false;
+        UserPublicKeyLink last = chain.get(chain.size() - 1);
+        if (!validClaim(last, username)) {
+            return false;
+        }
+        return true;
     }
 
     static boolean validLink(UserPublicKeyLink from, PublicSigningKey target, String username) {
@@ -239,9 +242,12 @@ public class UserPublicKeyLink implements Cborable{
             return false;
         if (username.length() > MAX_USERNAME_SIZE)
             return false;
-        if (!from.claim.username.equals(username) || from.claim.expiry.isBefore(LocalDate.now()))
+        if (!from.claim.username.equals(username))
             return false;
         return true;
     }
 
+    public static boolean isExpiredClaim(UserPublicKeyLink from) {
+        return from.claim.expiry.isBefore(LocalDate.now());
+    }
 }
