@@ -26,8 +26,12 @@ public class TofuKeyStore implements Cborable {
 
     public Optional<PublicSigningKey> getPublicKey(String username) {
         List<UserPublicKeyLink> chain = chains.get(username);
-        if (chain == null)
-            return Optional.empty();
+        if (chain == null) {
+            List<UserPublicKeyLink> expiredChain = expired.get(username);
+            if (expiredChain == null)
+                return Optional.empty();
+            return Optional.of(expiredChain.get(expiredChain.size() - 1).owner);
+        }
         return Optional.of(chain.get(chain.size() - 1).owner);
     }
 
@@ -70,10 +74,11 @@ public class TofuKeyStore implements Cborable {
 
     private void updateReverseLookup() {
         reverseLookup.clear();
-        reverseLookup.putAll(chains.entrySet().stream()
-                .collect(Collectors.toMap(
-                        e -> e.getValue().get(e.getValue().size() - 1).owner,
-                        e -> e.getKey())));
+        reverseLookup.putAll(
+                Stream.concat(chains.entrySet().stream(), expired.entrySet().stream())
+                        .collect(Collectors.toMap(
+                                e -> e.getValue().get(e.getValue().size() - 1).owner,
+                                e -> e.getKey())));
     }
 
     @Override
