@@ -87,8 +87,14 @@ public class UserContext {
                                                                 CompletableFuture.completedFuture(new CommittedWriterData(MaybeMultihash.of(pair.left), userData)),
                                                                 root);
                                                         tofu.setContext(result);
-                                                        System.out.println("Initializing context..");
-                                                        return result.init();
+                                                        return result.getUsernameClaimExpiry()
+                                                                .thenCompose(expiry -> expiry.isBefore(LocalDate.now().plusMonths(1)) ?
+                                                                        result.renewUsernameClaim(LocalDate.now().plusMonths(2)) :
+                                                                        CompletableFuture.completedFuture(true))
+                                                                .thenCompose(x -> {
+                                                                    System.out.println("Initializing context..");
+                                                                    return result.init();
+                                                                });
                                                     }));
                                 } catch (Throwable t) {
                                     throw new IllegalStateException("Incorrect password");
@@ -102,7 +108,11 @@ public class UserContext {
         return signUpGeneral(username, password, network, crypto, UserGenerationAlgorithm.getDefault());
     }
 
-    public static CompletableFuture<UserContext> signUpGeneral(String username, String password, NetworkAccess network, Crypto crypto, UserGenerationAlgorithm algorithm) {
+    public static CompletableFuture<UserContext> signUpGeneral(String username,
+                                                               String password,
+                                                               NetworkAccess network,
+                                                               Crypto crypto,
+                                                               UserGenerationAlgorithm algorithm) {
         return UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer, algorithm)
                 .thenCompose(userWithRoot -> {
                     WriterData newUserData = WriterData.createEmpty(Optional.of(userWithRoot.getBoxingPair().publicBoxingKey), userWithRoot.getRoot());
@@ -234,6 +244,26 @@ public class UserContext {
             List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createInitial(signer, this.username, expiry);
             return network.coreNode.updateChain(this.username, claimChain);
         });
+    }
+
+    public CompletableFuture<LocalDate> getUsernameClaimExpiry() {
+        return network.coreNode.getChain(username)
+                .thenApply(chain -> chain.get(chain.size() - 1).claim.expiry);
+    }
+
+    public CompletableFuture<Boolean> usernameIsExpired() {
+        return network.coreNode.getChain(username)
+                .thenApply(chain -> UserPublicKeyLink.isExpiredClaim(chain.get(chain.size() - 1)));
+    }
+
+    public CompletableFuture<Boolean> renewUsernameClaim(LocalDate expiry) {
+        return renewUsernameClaim(username, signer, expiry, network);
+    }
+
+    public static CompletableFuture<Boolean> renewUsernameClaim(String username, SigningKeyPair signer, LocalDate expiry, NetworkAccess network) {
+        System.out.println("renewing username: " + username + " with expiry " + expiry);
+        List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createInitial(signer, username, expiry);
+        return network.coreNode.updateChain(username, claimChain);
     }
 
     @JsMethod
