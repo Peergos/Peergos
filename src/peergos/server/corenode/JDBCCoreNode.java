@@ -414,7 +414,9 @@ public class JDBCCoreNode implements CoreNode, MutablePointers {
 
     @Override
     public CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> tail) {
-        UserPublicKeyLink.validChain(tail, username);
+        if (! UserPublicKeyLink.validChain(tail, username))
+            return CompletableFuture.completedFuture(false);
+
         if (UserPublicKeyLink.isExpiredClaim(tail.get(tail.size() - 1)))
             return CompletableFuture.completedFuture(false);
 

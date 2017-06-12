@@ -208,7 +208,8 @@ public class UserPublicKeyLink implements Cborable{
         if (!tail.get(0).owner.equals(existing.get(existing.size()-1).owner))
             throw new IllegalStateException("Different keys in merge chains intersection!");
         List<UserPublicKeyLink> result = Stream.concat(existing.subList(0, existing.size() - 1).stream(), tail.stream()).collect(Collectors.toList());
-        validChain(result, tail.get(0).claim.username);
+        if (! validChain(result, tail.get(0).claim.username))
+            throw new IllegalStateException("Invalid key chain merge!");
         return result;
     }
 

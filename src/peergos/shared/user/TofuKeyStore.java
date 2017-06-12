@@ -45,7 +45,8 @@ public class TofuKeyStore implements Cborable {
     }
 
     public void updateChain(String username, List<UserPublicKeyLink> tail) {
-        UserPublicKeyLink.validChain(tail, username);
+        if (! UserPublicKeyLink.validChain(tail, username))
+            throw new IllegalStateException("Trying to update with invalid keychain!");
         UserPublicKeyLink last = tail.get(tail.size() - 1);
         // we are allowing expired chains to be stored
 
@@ -56,7 +57,7 @@ public class TofuKeyStore implements Cborable {
         if (existingExpired) {
             List<UserPublicKeyLink> expiredChain = expired.getOrDefault(username, existing);
             List<UserPublicKeyLink> withoutExpiredClaim = expiredChain.subList(0, expiredChain.size() - 1);
-            if (withoutExpiredClaim.size() == 0 && ! expiredChain.get(0).owner.equals(tail.get(0).owner))
+            if (withoutExpiredClaim.size() == 0 && ! expiredChain.get(0).owner.toCbor().equals(tail.get(0).owner.toCbor()))
                 throw new IllegalStateException("Trying to update a username claim with a different key!");
 
             List<UserPublicKeyLink> merged = UserPublicKeyLink.merge(withoutExpiredClaim, tail);
