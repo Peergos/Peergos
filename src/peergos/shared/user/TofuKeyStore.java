@@ -3,6 +3,7 @@ package peergos.shared.user;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.function.*;
@@ -51,14 +52,16 @@ public class TofuKeyStore implements Cborable {
         // we are allowing expired chains to be stored
 
         List<UserPublicKeyLink> existing = getChain(username);
-        boolean existingExpired =
-                (existing.size() > 0 && UserPublicKeyLink.isExpiredClaim(existing.get(existing.size() - 1))) ||
-                        expired.containsKey(username);
-        if (existingExpired) {
-            List<UserPublicKeyLink> expiredChain = expired.getOrDefault(username, existing);
-            List<UserPublicKeyLink> withoutExpiredClaim = expiredChain.subList(0, expiredChain.size() - 1);
-            if (withoutExpiredClaim.size() == 0 && ! expiredChain.get(0).owner.toCbor().equals(tail.get(0).owner.toCbor()))
-                throw new IllegalStateException("Trying to update a username claim with a different key!");
+        boolean isExpired =
+                (existing.size() > 0 && UserPublicKeyLink.isExpiredClaim(existing.get(existing.size() - 1)));
+
+        if (isExpired) {
+            List<UserPublicKeyLink> withoutExpiredClaim = existing.subList(0, existing.size() - 1);
+            if (withoutExpiredClaim.size() == 0 &&
+                    ! Arrays.equals(existing.get(0).owner.toCbor().toByteArray(), tail.get(0).owner.toCbor().toByteArray()))
+                throw new IllegalStateException("Trying to update a username claim with a different key! "
+                        + ArrayOps.bytesToHex(existing.get(0).owner.toCbor().toByteArray()) + " != "
+                        + ArrayOps.bytesToHex(tail.get(0).owner.toCbor().toByteArray()));
 
             List<UserPublicKeyLink> merged = UserPublicKeyLink.merge(withoutExpiredClaim, tail);
             chains.put(username, merged);
