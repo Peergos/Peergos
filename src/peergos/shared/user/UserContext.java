@@ -115,7 +115,10 @@ public class UserContext {
                                                                UserGenerationAlgorithm algorithm) {
         return UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer, algorithm)
                 .thenCompose(userWithRoot -> {
-                    WriterData newUserData = WriterData.createEmpty(Optional.of(userWithRoot.getBoxingPair().publicBoxingKey), userWithRoot.getRoot());
+                    WriterData newUserData = WriterData.createEmpty(
+                            userWithRoot.getUser().publicSigningKey,
+                            Optional.of(userWithRoot.getBoxingPair().publicBoxingKey),
+                            userWithRoot.getRoot());
                     CommittedWriterData notCommitted = new CommittedWriterData(MaybeMultihash.EMPTY(), newUserData);
                     UserContext context = new UserContext(username, userWithRoot.getUser(), userWithRoot.getBoxingPair(),
                             network, crypto, CompletableFuture.completedFuture(notCommitted), new TrieNode());
@@ -144,7 +147,8 @@ public class UserContext {
     public static CompletableFuture<UserContext> fromPublicLink(String link, NetworkAccess network, Crypto crypto) {
         FilePointer entryPoint = FilePointer.fromLink(link);
         EntryPoint entry = new EntryPoint(entryPoint, "", Collections.emptySet(), Collections.emptySet());
-        CommittedWriterData committed = new CommittedWriterData(MaybeMultihash.EMPTY(), WriterData.createEmpty(Optional.empty(), null));
+        WriterData empty = WriterData.createEmpty(entryPoint.location.owner, Optional.empty(), null);
+        CommittedWriterData committed = new CommittedWriterData(MaybeMultihash.EMPTY(), empty);
         CompletableFuture<CommittedWriterData> userData = CompletableFuture.completedFuture(committed);
         UserContext context = new UserContext(null, null, null, network.clear(), crypto, userData, new TrieNode());
         return context.addEntryPoint(null, context.entrie, entry, network).thenApply(trieNode -> {

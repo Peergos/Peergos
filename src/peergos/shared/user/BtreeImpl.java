@@ -29,9 +29,9 @@ public class BtreeImpl implements Btree {
         return result;
     }
 
-    private CompletableFuture<CommittedWriterData> getWriterData(MaybeMultihash hash) {
+    private CompletableFuture<CommittedWriterData> getWriterData(PublicSigningKey controller, MaybeMultihash hash) {
         if (!hash.isPresent())
-            return CompletableFuture.completedFuture(new CommittedWriterData(MaybeMultihash.EMPTY(), WriterData.createEmpty()));
+            return CompletableFuture.completedFuture(new CommittedWriterData(MaybeMultihash.EMPTY(), WriterData.createEmpty(controller)));
         return dht.get(hash.get())
                 .thenApply(cborOpt -> {
                     if (! cborOpt.isPresent())
@@ -42,7 +42,7 @@ public class BtreeImpl implements Btree {
 
     private CompletableFuture<CommittedWriterData> getWriterData(PublicSigningKey pubKey) {
         return mutable.getPointer(pubKey)
-                .thenCompose(this::getWriterData);
+                .thenCompose(maybeHash -> getWriterData(pubKey, maybeHash));
     }
 
     private CompletableFuture<CommittedWriterData> addToQueue(PublicSigningKey pubKey, CompletableFuture<CommittedWriterData> lock) {
