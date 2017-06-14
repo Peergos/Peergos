@@ -580,6 +580,11 @@ public class UserContext {
         throw new IllegalStateException("Unimplemented!");
     }
 
+    @JsMethod
+    public CompletableFuture<Boolean> unShare(FileTreeNode file, String readerToRemove) {
+        return unShareItem(file, Collections.singleton(readerToRemove));
+    }
+
     public CompletableFuture<Boolean> unShare(Path path, String readerToRemove) {
         return unShare(path, Collections.singleton(readerToRemove));
     }
@@ -588,46 +593,9 @@ public class UserContext {
         String pathString = path.toString();
         CompletableFuture<Optional<FileTreeNode>> byPath = getByPath(pathString);
         return byPath.thenCompose(opt -> {
-            //
-            // first remove links from shared directory
-            //
-            FileTreeNode sharedPath = opt.orElseThrow(() -> new IllegalStateException("Specified un-shareWith path " + pathString + " does not exist"));
-            Optional<String> empty = Optional.empty();
-
-            Function<String, CompletableFuture<Optional<String>>> unshareWith = user -> getByPath("/" + username + "/shared/" + user)
-                    .thenCompose(sharedWithOpt -> {
-                        if (!sharedWithOpt.isPresent())
-                            return CompletableFuture.completedFuture(empty);
-                        FileTreeNode sharedRoot = sharedWithOpt.get();
-                        return sharedRoot.removeChild(sharedPath, network)
-                                .thenCompose(x -> CompletableFuture.completedFuture(Optional.of(user)));
-                    });
-
-            return sharedWith(sharedPath)
-                    .thenCompose(sharedWithUsers -> {
-
-                        Set<CompletableFuture<Optional<String>>> collect = sharedWithUsers.stream()
-                                .map(unshareWith::apply) //remove link from shared directory
-                                .collect(Collectors.toSet());
-
-                        return Futures.combineAll(collect);
-                    }).thenCompose(x -> {
-                        List<String> allSharees = x.stream()
-                                .flatMap(e -> e.isPresent() ? Stream.of(e.get()) : Stream.empty())
-                                .collect(Collectors.toList());
-
-                        Set<String> remainingReaders = allSharees.stream()
-                                .filter(reader -> ! readersToRemove.contains(reader))
-                                .collect(Collectors.toSet());
-
-                        if(remainingReaders.size() == 0) {
-                            this.sharedFiles.remove(shareKey(sharedPath));
-                        }
-                        return shareWith(path, remainingReaders);
-                    });
-        });
-
-
+                    FileTreeNode sharedPath = opt.orElseThrow(() -> new IllegalStateException("Specified un-shareWith path " + pathString + " does not exist"));
+                    return unShareItem(sharedPath, readersToRemove);
+                });
         /*
         Optional<FileTreeNode> f = getByPath(path.toString());
         if (! f.isPresent())
@@ -650,6 +618,45 @@ public class UserContext {
         // now re-share new keys with remaining users
         Set<String> remainingReaders = sharees.stream().filter(name -> !readersToRemove.contains(name)).collect(Collectors.toSet());
         share(path, remainingReaders);*/
+
+    }
+
+    private CompletableFuture<Boolean> unShareItem(FileTreeNode sharedPath, Set<String> readersToRemove) {
+        //
+        // first remove links from shared directory
+        //
+        Optional<String> empty = Optional.empty();
+        Function<String, CompletableFuture<Optional<String>>> unshareWith = user -> getByPath("/" + username + "/shared/" + user)
+                .thenCompose(sharedWithOpt -> {
+                    if (!sharedWithOpt.isPresent())
+                        return CompletableFuture.completedFuture(empty);
+                    FileTreeNode sharedRoot = sharedWithOpt.get();
+                    return sharedRoot.removeChild(sharedPath, network)
+                            .thenCompose(x -> CompletableFuture.completedFuture(Optional.of(user)));
+                });
+
+        return sharedWith(sharedPath)
+                .thenCompose(sharedWithUsers -> {
+
+                    Set<CompletableFuture<Optional<String>>> collect = sharedWithUsers.stream()
+                            .map(unshareWith::apply) //remove link from shared directory
+                            .collect(Collectors.toSet());
+
+                    return Futures.combineAll(collect);
+                }).thenCompose(x -> {
+                    List<String> allSharees = x.stream()
+                            .flatMap(e -> e.isPresent() ? Stream.of(e.get()) : Stream.empty())
+                            .collect(Collectors.toList());
+
+                    Set<String> remainingReaders = allSharees.stream()
+                            .filter(reader -> ! readersToRemove.contains(reader))
+                            .collect(Collectors.toSet());
+
+                    if(remainingReaders.size() == 0) {
+                        this.sharedFiles.remove(shareKey(sharedPath));
+                    }
+                    return shareWithAll(sharedPath, remainingReaders);
+                });
 
     }
 
