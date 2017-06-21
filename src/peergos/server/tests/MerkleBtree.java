@@ -16,11 +16,11 @@ import java.util.concurrent.*;
 public class MerkleBtree {
 
     public RAMStorage createStorage() {
-        return new RAMStorage();
+        return RAMStorage.getSingleton();
     }
 
     public CompletableFuture<MerkleBTree> createTree(PublicKeyHash user) throws IOException {
-        return createTree(user, new RAMStorage());
+        return createTree(user, RAMStorage.getSingleton());
     }
 
     public PublicKeyHash createUser() {

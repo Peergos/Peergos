@@ -20,7 +20,7 @@ import java.util.concurrent.*;
 
 
 public class UserPublicKeyLinkTests {
-    private final ContentAddressedStorage ipfs = new RAMStorage();
+    private final ContentAddressedStorage ipfs = RAMStorage.getSingleton();
 
     @BeforeClass
     public static void init() throws Exception {

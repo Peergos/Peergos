@@ -32,7 +32,7 @@ public class PublicKeyHash extends Multihash implements Cborable {
 
     @Override
     public boolean equals(Object o) {
-        return hash.equals(o);
+        return o instanceof PublicKeyHash && hash.equals(((PublicKeyHash) o).hash);
     }
 
     @Override

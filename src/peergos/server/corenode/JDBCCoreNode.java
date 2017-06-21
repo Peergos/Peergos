@@ -190,7 +190,7 @@ public class JDBCCoreNode implements CoreNode, MutablePointers {
 
     private class FollowRequestData extends RowData
     {
-        FollowRequestData(PublicSigningKey owner, byte[] publicKey)
+        FollowRequestData(PublicKeyHash owner, byte[] publicKey)
         {
             super(owner.toString(), publicKey);
         }
@@ -400,8 +400,8 @@ public class JDBCCoreNode implements CoreNode, MutablePointers {
                 ResultSet resultSet = preparedStatement.executeQuery();
                 Map<Integer, UserPublicKeyLink> serializedChain = new HashMap<>();
                 while (resultSet.next()) {
-                    serializedChain.put(resultSet.getInt(1), UserPublicKeyLink.fromByteArray(PublicSigningKey.fromString(resultSet.getString(2)),
-                            Base64.getDecoder().decode(resultSet.getString(3))));
+                    serializedChain.put(resultSet.getInt(1), UserPublicKeyLink.fromCbor(CborObject.fromByteArray(
+                            Base64.getDecoder().decode(resultSet.getString(3)))));
                 }
                 ArrayList<UserPublicKeyLink> result = new ArrayList<>();
                 for (int i=0; i < serializedChain.size(); i++) {
@@ -418,125 +418,128 @@ public class JDBCCoreNode implements CoreNode, MutablePointers {
 
     @Override
     public CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> tail) {
-        if (! UserPublicKeyLink.validChain(tail, username))
-            return CompletableFuture.completedFuture(false);
+        return UserPublicKeyLink.validChain(tail, username, ipfs).thenCompose(valid -> {
+            if (! valid)
+                return CompletableFuture.completedFuture(false);
 
-        if (UserPublicKeyLink.isExpiredClaim(tail.get(tail.size() - 1)))
-            return CompletableFuture.completedFuture(false);
+            if (UserPublicKeyLink.isExpiredClaim(tail.get(tail.size() - 1)))
+                return CompletableFuture.completedFuture(false);
 
-        if (tail.size() > 2)
-            return CompletableFuture.completedFuture(false);
+            if (tail.size() > 2)
+                return CompletableFuture.completedFuture(false);
 
-        return getChain(username).thenApply(existing -> {
-            List<String> existingStrings = existing.stream().map(x -> new String(Base64.getEncoder().encode(x.toByteArray()))).collect(Collectors.toList());
-            List<UserPublicKeyLink> merged = UserPublicKeyLink.merge(existing, tail);
-            List<String> toWrite = merged.stream().map(x -> new String(Base64.getEncoder().encode(x.toByteArray()))).collect(Collectors.toList());
-            Optional<PublicSigningKey> oldKey = existing.size() == 0 ? Optional.empty() : Optional.of(existing.get(existing.size() - 1).owner);
-            PublicSigningKey newKey = tail.get(tail.size() - 1).owner;
+            return getChain(username).thenCompose(existing -> {
+                List<String> existingStrings = existing.stream().map(x -> new String(Base64.getEncoder().encode(x.serialize()))).collect(Collectors.toList());
+                return UserPublicKeyLink.merge(existing, tail, ipfs).thenApply(merged -> {
+                    List<String> toWrite = merged.stream().map(x -> new String(Base64.getEncoder().encode(x.serialize()))).collect(Collectors.toList());
+                    Optional<PublicKeyHash> oldKey = existing.size() == 0 ? Optional.empty() : Optional.of(existing.get(existing.size() - 1).owner);
+                    PublicKeyHash newKey = tail.get(tail.size() - 1).owner;
 
-            // Conceptually this should be a CAS of the new chain in for the old one under the username
-            // The last one or two elements will have changed
-            // Ensure usernamesandkeys table is uptodate as well
-            Optional<String> existingKeyb64 = oldKey.map(x -> new String(Base64.getEncoder().encode(x.serialize())));
-            String newKeyb64 = new String(Base64.getEncoder().encode(newKey.serialize()));
-            if (existingStrings.size() == 0 && toWrite.size() == 1) {
-                // single link to claim a new username
-                try {
-                    PreparedStatement user = null, link = null, chain = null;
-                    try {
-                        conn.setAutoCommit(false);
-                        user = conn.prepareStatement("insert into usernames (name) VALUES(?);");
-                        user.setString(1, username);
-                        user.execute();
-                        link = conn.prepareStatement("insert into links (publickey, link) VALUES(?, ?);");
-                        link.setString(1, newKeyb64);
-                        link.setString(2, toWrite.get(0));
-                        link.execute();
-                        chain = conn.prepareStatement("insert into chains (userid, linkid, lindex) select usernames.id, links.id, 0 "
-                                + "from usernames join links where links.publickey=? and usernames.name=?;");
-                        chain.setString(1, newKeyb64);
-                        chain.setString(2, username);
-                        chain.execute();
-                        conn.commit();
-                        // updated cached list of usernames
-                        List<String> updatedUsernames = Stream.concat(
-                                Stream.of(username),
-                                userSet.getMostRecent().orElse(Collections.emptyList()).stream()
-                        ).sorted().collect(Collectors.toList());
-                        userSet.setUserSet(updatedUsernames);
-                        return true;
-                    } catch (SQLException sqe) {
-                        throw new IllegalStateException(sqe);
-                    } finally {
-                        if (user != null) {
-                            user.close();
+                    // Conceptually this should be a CAS of the new chain in for the old one under the username
+                    // The last one or two elements will have changed
+                    // Ensure usernamesandkeys table is uptodate as well
+                    Optional<String> existingKeyb64 = oldKey.map(x -> new String(Base64.getEncoder().encode(x.serialize())));
+                    String newKeyb64 = new String(Base64.getEncoder().encode(newKey.serialize()));
+                    if (existingStrings.size() == 0 && toWrite.size() == 1) {
+                        // single link to claim a new username
+                        try {
+                            PreparedStatement user = null, link = null, chain = null;
+                            try {
+                                conn.setAutoCommit(false);
+                                user = conn.prepareStatement("insert into usernames (name) VALUES(?);");
+                                user.setString(1, username);
+                                user.execute();
+                                link = conn.prepareStatement("insert into links (publickey, link) VALUES(?, ?);");
+                                link.setString(1, newKeyb64);
+                                link.setString(2, toWrite.get(0));
+                                link.execute();
+                                chain = conn.prepareStatement("insert into chains (userid, linkid, lindex) select usernames.id, links.id, 0 "
+                                        + "from usernames join links where links.publickey=? and usernames.name=?;");
+                                chain.setString(1, newKeyb64);
+                                chain.setString(2, username);
+                                chain.execute();
+                                conn.commit();
+                                // updated cached list of usernames
+                                List<String> updatedUsernames = Stream.concat(
+                                        Stream.of(username),
+                                        userSet.getMostRecent().orElse(Collections.emptyList()).stream()
+                                ).sorted().collect(Collectors.toList());
+                                userSet.setUserSet(updatedUsernames);
+                                return true;
+                            } catch (SQLException sqe) {
+                                throw new IllegalStateException(sqe);
+                            } finally {
+                                if (user != null) {
+                                    user.close();
+                                }
+                                if (link != null) {
+                                    link.close();
+                                }
+                                if (chain != null) {
+                                    chain.close();
+                                }
+                                conn.setAutoCommit(true);
+                            }
+                        } catch (SQLException e) {
+                            throw new IllegalStateException(e);
                         }
-                        if (link != null) {
-                            link.close();
+                    } else if (toWrite.size() == existingStrings.size() + 1) {
+                        // two link update ( a key change to an existing username)
+                        try {
+                            PreparedStatement update = null, link = null, chain = null;
+                            try {
+                                conn.setAutoCommit(false);
+                                update = conn.prepareStatement("update links set link=? where links.publickey=?;");
+                                update.setString(1, toWrite.get(toWrite.size() - 2));
+                                update.setString(2, existingKeyb64.get());
+                                update.execute();
+                                link = conn.prepareStatement("insert into links (publickey, link) VALUES(?, ?);");
+                                link.setString(1, newKeyb64);
+                                link.setString(2, toWrite.get(toWrite.size() - 1));
+                                link.execute();
+                                chain = conn.prepareStatement("insert into chains (userid, linkid, lindex) " +
+                                        "select usernames.id, links.id, " +
+                                        "((select max(lindex) from chains inner join usernames where " +
+                                        "chains.userid=usernames.id and usernames.name=?)+1) " +
+                                        "from usernames join links where links.publickey=? and usernames.name=?;");
+                                chain.setString(1, username);
+                                chain.setString(2, newKeyb64);
+                                chain.setString(3, username);
+                                chain.execute();
+                                conn.commit();
+                                return true;
+                            } catch (SQLException sqe) {
+                                throw new IllegalStateException(sqe);
+                            } finally {
+                                if (update != null) {
+                                    update.close();
+                                }
+                                if (link != null) {
+                                    link.close();
+                                }
+                                if (chain != null) {
+                                    chain.close();
+                                }
+                                conn.setAutoCommit(true);
+                            }
+                        } catch (SQLException e) {
+                            throw new IllegalStateException(e);
                         }
-                        if (chain != null) {
-                            chain.close();
-                        }
-                        conn.setAutoCommit(true);
-                    }
-                } catch (SQLException e) {
-                    throw new IllegalStateException(e);
-                }
-            } else if (toWrite.size() == existingStrings.size() + 1) {
-                // two link update ( a key change to an existing username)
-                try {
-                    PreparedStatement update = null, link = null, chain = null;
-                    try {
-                        conn.setAutoCommit(false);
-                        update = conn.prepareStatement("update links set link=? where links.publickey=?;");
-                        update.setString(1, toWrite.get(toWrite.size() - 2));
-                        update.setString(2, existingKeyb64.get());
-                        update.execute();
-                        link = conn.prepareStatement("insert into links (publickey, link) VALUES(?, ?);");
-                        link.setString(1, newKeyb64);
-                        link.setString(2, toWrite.get(toWrite.size() - 1));
-                        link.execute();
-                        chain = conn.prepareStatement("insert into chains (userid, linkid, lindex) " +
-                                "select usernames.id, links.id, " +
-                                "((select max(lindex) from chains inner join usernames where " +
-                                "chains.userid=usernames.id and usernames.name=?)+1) " +
-                                "from usernames join links where links.publickey=? and usernames.name=?;");
-                        chain.setString(1, username);
-                        chain.setString(2, newKeyb64);
-                        chain.setString(3, username);
-                        chain.execute();
-                        conn.commit();
-                        return true;
-                    } catch (SQLException sqe) {
-                        throw new IllegalStateException(sqe);
-                    } finally {
-                        if (update != null) {
-                            update.close();
-                        }
-                        if (link != null) {
-                            link.close();
-                        }
-                        if (chain != null) {
-                            chain.close();
-                        }
-                        conn.setAutoCommit(true);
-                    }
-                } catch (SQLException e) {
-                    throw new IllegalStateException(e);
-                }
-            } else if (toWrite.size() == existingStrings.size()) {
-                // single link update to existing username and key (changing expiry date)
-                try (PreparedStatement stmt = conn.prepareStatement("update links set link=? where links.publickey=?;")) {
-                    stmt.setString(1, toWrite.get(toWrite.size() - 1));
-                    stmt.setString(2, existingKeyb64.get());
-                    stmt.execute();
+                    } else if (toWrite.size() == existingStrings.size()) {
+                        // single link update to existing username and key (changing expiry date)
+                        try (PreparedStatement stmt = conn.prepareStatement("update links set link=? where links.publickey=?;")) {
+                            stmt.setString(1, toWrite.get(toWrite.size() - 1));
+                            stmt.setString(2, existingKeyb64.get());
+                            stmt.execute();
 
-                    return true;
-                } catch (SQLException sqe) {
-                    throw new IllegalStateException(sqe);
-                }
-            } else
-                throw new IllegalStateException("Tried to shorten key chain for username: " + username + "!");
+                            return true;
+                        } catch (SQLException sqe) {
+                            throw new IllegalStateException(sqe);
+                        }
+                    } else
+                        throw new IllegalStateException("Tried to shorten key chain for username: " + username + "!");
+                });
+            });
         });
     }
 
@@ -580,14 +583,16 @@ public class JDBCCoreNode implements CoreNode, MutablePointers {
     @Override
     public CompletableFuture<Boolean> removeFollowRequest(PublicKeyHash owner, byte[] req)
     {
-        try {
-            byte[] unsigned = owner.unsignMessage(req);
+        return ipfs.getSigningKey(owner).thenCompose(signerOpt -> {
+            try {
+                byte[] unsigned = signerOpt.get().unsignMessage(req);
 
-            FollowRequestData request = new FollowRequestData(owner, unsigned);
-            return CompletableFuture.completedFuture(request.delete());
-        } catch (TweetNaCl.InvalidSignatureException e) {
-            return CompletableFuture.completedFuture(false);
-        }
+                FollowRequestData request = new FollowRequestData(owner, unsigned);
+                return CompletableFuture.completedFuture(request.delete());
+            } catch (TweetNaCl.InvalidSignatureException e) {
+                return CompletableFuture.completedFuture(false);
+            }
+        });
     }
 
     @Override
@@ -612,25 +617,28 @@ public class JDBCCoreNode implements CoreNode, MutablePointers {
     }
 
     @Override
-    public CompletableFuture<Boolean> setPointer(PublicKeyHash owner, PublicKeyHash writer, byte[] writingKeySignedHash) {
-        try {
-            return getPointer(writer).thenApply(current -> {
-                byte[] bothHashes = writer.unsignMessage(writingKeySignedHash);
-                // check CAS [current hash, new hash]
-                HashCasPair cas = HashCasPair.fromCbor(CborObject.fromByteArray(bothHashes));
-                MaybeMultihash claimedCurrentHash = cas.original;
-                Multihash newHash = cas.updated.get();
-                if (!current.equals(claimedCurrentHash))
-                    return false;
-                if (LOGGING)
-                    System.out.println("Core::setMetadata for " + writer + " from " + current + " to " + newHash);
-                MetadataBlob blob = new MetadataBlob(writer.serialize(), bothHashes);
-                return blob.insert();
-            });
-        } catch (TweetNaCl.InvalidSignatureException e) {
-            System.err.println("Invalid signature during setMetadataBlob for sharer: " + writer);
-            return CompletableFuture.completedFuture(false);
-        }
+    public CompletableFuture<Boolean> setPointer(PublicKeyHash owner, PublicKeyHash writerHash, byte[] writingKeySignedHash) {
+        return getPointer(writerHash)
+                .thenCompose(current -> ipfs.getSigningKey(writerHash)
+                        .thenApply(writerOpt -> {
+                            try {
+                                PublicSigningKey writer = writerOpt.get();
+                                byte[] bothHashes = writer.unsignMessage(writingKeySignedHash);
+                                // check CAS [current hash, new hash]
+                                HashCasPair cas = HashCasPair.fromCbor(CborObject.fromByteArray(bothHashes));
+                                MaybeMultihash claimedCurrentHash = cas.original;
+                                Multihash newHash = cas.updated.get();
+                                if (!current.equals(claimedCurrentHash))
+                                    return false;
+                                if (LOGGING)
+                                    System.out.println("Core::setMetadata for " + writer + " from " + current + " to " + newHash);
+                                MetadataBlob blob = new MetadataBlob(writer.serialize(), bothHashes);
+                                return blob.insert();
+                            } catch (TweetNaCl.InvalidSignatureException e) {
+                                System.err.println("Invalid signature during setMetadataBlob for sharer: " + writerHash);
+                                return false;
+                            }
+                        }));
     }
 
     @Override
