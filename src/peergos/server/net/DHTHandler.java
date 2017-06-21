@@ -2,6 +2,7 @@ package peergos.server.net;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.api.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.io.ipfs.cid.*;
@@ -62,7 +63,7 @@ public class DHTHandler implements HttpHandler
 
             switch (path) {
                 case "block/put": {
-                    PublicSigningKey writer = PublicSigningKey.fromString(last.apply("writer"));
+                    PublicKeyHash writer = PublicKeyHash.fromString(last.apply("writer"));
                     String boundary = httpExchange.getRequestHeaders().get("Content-Type")
                             .stream()
                             .filter(s -> s.contains("boundary="))

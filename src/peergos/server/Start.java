@@ -84,7 +84,11 @@ public class Start
                 String path = a.getArg("corenodePath", ":memory:");
                 int corenodePort = a.getInt("corenodePort", HttpCoreNodeServer.PORT);
                 System.out.println("Using core node path " + path);
-                SQLiteCoreNode coreNode = SQLiteCoreNode.build(path);
+                boolean useIPFS = a.getBoolean("useIPFS", true);
+                int dhtCacheEntries = 1000;
+                int maxValueSizeToCache = 2 * 1024 * 1024;
+                ContentAddressedStorage dht = useIPFS ? new CachingStorage(new IpfsDHT(), dhtCacheEntries, maxValueSizeToCache) : RAMStorage.getSingleton();
+                SQLiteCoreNode coreNode = SQLiteCoreNode.build(path, dht);
                 HttpCoreNodeServer.createAndStart(keyfile, passphrase, corenodePort, coreNode, coreNode, a);
             } else {
                 int webPort = a.getInt("port", 8000);
@@ -95,7 +99,7 @@ public class Start
                 boolean useIPFS = a.getBoolean("useIPFS", true);
                 int dhtCacheEntries = 1000;
                 int maxValueSizeToCache = 50 * 1024;
-                ContentAddressedStorage dht = useIPFS ? new CachingStorage(new IpfsDHT(), dhtCacheEntries, maxValueSizeToCache) : new RAMStorage();
+                ContentAddressedStorage dht = useIPFS ? new CachingStorage(new IpfsDHT(), dhtCacheEntries, maxValueSizeToCache) : RAMStorage.getSingleton();
 
                 // start the User Service
                 String hostname = a.getArg("domain", "localhost");

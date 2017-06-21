@@ -301,7 +301,8 @@ public abstract class UserTests {
         checkFileContents(data5, userRoot.getDescendentByPath(filename, context.network).get().get(), context);
 
         // check used space
-        long totalSpaceUsed = context.getTotalSpaceUsed(context.signer.publicSigningKey).get();
+        PublicKeyHash signer = context.signer.publicKeyHash;
+        long totalSpaceUsed = context.getTotalSpaceUsed(signer).get();
         Assert.assertTrue("Correct used space", totalSpaceUsed > 10*1024*1024);
     }
 

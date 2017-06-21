@@ -4,9 +4,11 @@ import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.merklebtree.*;
 import peergos.shared.mutable.*;
+import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
 import java.io.*;
@@ -326,10 +328,12 @@ public class JDBCCoreNode implements CoreNode, MutablePointers {
     }
 
     private volatile boolean isClosed;
+    private final ContentAddressedStorage ipfs;
 
-    public JDBCCoreNode(Connection conn) throws SQLException
+    public JDBCCoreNode(Connection conn, ContentAddressedStorage ipfs) throws SQLException
     {
-        this.conn =  conn;
+        this.conn = conn;
+        this.ipfs = ipfs;
         init();
     }
 
@@ -365,7 +369,7 @@ public class JDBCCoreNode implements CoreNode, MutablePointers {
     }
 
     @Override
-    public CompletableFuture<String> getUsername(PublicSigningKey encodedKey)
+    public CompletableFuture<String> getUsername(PublicKeyHash encodedKey)
     {
         String b64key = Base64.getEncoder().encodeToString(encodedKey.serialize());
         try {
@@ -560,7 +564,7 @@ public class JDBCCoreNode implements CoreNode, MutablePointers {
     }
 
     @Override
-    public CompletableFuture<Boolean> followRequest(PublicSigningKey owner, byte[] encryptedPermission)
+    public CompletableFuture<Boolean> followRequest(PublicKeyHash owner, byte[] encryptedPermission)
     {
         byte[] dummy = null;
         FollowRequestData selector = new FollowRequestData(owner, dummy);
@@ -574,7 +578,7 @@ public class JDBCCoreNode implements CoreNode, MutablePointers {
     }
 
     @Override
-    public CompletableFuture<Boolean> removeFollowRequest(PublicSigningKey owner, byte[] req)
+    public CompletableFuture<Boolean> removeFollowRequest(PublicKeyHash owner, byte[] req)
     {
         try {
             byte[] unsigned = owner.unsignMessage(req);
@@ -587,7 +591,7 @@ public class JDBCCoreNode implements CoreNode, MutablePointers {
     }
 
     @Override
-    public CompletableFuture<byte[]> getFollowRequests(PublicSigningKey owner) {
+    public CompletableFuture<byte[]> getFollowRequests(PublicKeyHash owner) {
         byte[] dummy = null;
         FollowRequestData request = new FollowRequestData(owner, dummy);
         RowData[] requests = request.select();
@@ -608,7 +612,7 @@ public class JDBCCoreNode implements CoreNode, MutablePointers {
     }
 
     @Override
-    public CompletableFuture<Boolean> setPointer(PublicSigningKey owner, PublicSigningKey writer, byte[] writingKeySignedHash) {
+    public CompletableFuture<Boolean> setPointer(PublicKeyHash owner, PublicKeyHash writer, byte[] writingKeySignedHash) {
         try {
             return getPointer(writer).thenApply(current -> {
                 byte[] bothHashes = writer.unsignMessage(writingKeySignedHash);
@@ -630,7 +634,7 @@ public class JDBCCoreNode implements CoreNode, MutablePointers {
     }
 
     @Override
-    public CompletableFuture<MaybeMultihash> getPointer(PublicSigningKey writingKey) {
+    public CompletableFuture<MaybeMultihash> getPointer(PublicKeyHash writingKey) {
         byte[] dummy = null;
         MetadataBlob blob = new MetadataBlob(writingKey.serialize(), dummy);
         MetadataBlob users = blob.selectOne();

@@ -3,32 +3,31 @@ package peergos.shared.corenode;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.crypto.hash.*;
+import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
 import java.io.*;
 import java.time.*;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.stream.*;
 
 public class UserPublicKeyLink implements Cborable{
     public static final int MAX_SIZE = 2*1024*1024;
     public static final int MAX_USERNAME_SIZE = 64;
 
-    public final PublicSigningKey owner;
+    public final PublicKeyHash owner;
     public final UsernameClaim claim;
     private final Optional<byte[]> keyChangeProof;
 
-    public UserPublicKeyLink(PublicSigningKey owner, UsernameClaim claim, Optional<byte[]> keyChangeProof) {
-        this.owner = owner;
+    public UserPublicKeyLink(PublicKeyHash ownerHash, UsernameClaim claim, Optional<byte[]> keyChangeProof) {
+        this.owner = ownerHash;
         this.claim = claim;
         this.keyChangeProof = keyChangeProof;
-        // check validity of link
-        if (keyChangeProof.isPresent()) {
-            PublicSigningKey newKeys = PublicSigningKey.fromByteArray(owner.unsignMessage(keyChangeProof.get()));
-        }
     }
 
-    public UserPublicKeyLink(PublicSigningKey owner, UsernameClaim claim) {
+    public UserPublicKeyLink(PublicKeyHash owner, UsernameClaim claim) {
         this(owner, claim, Optional.empty());
     }
 
@@ -49,7 +48,7 @@ public class UserPublicKeyLink implements Cborable{
         if (! (cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Invalid cbor for UserPublicKeyLink: " + cbor);
         SortedMap<CborObject, CborObject> values = ((CborObject.CborMap) cbor).values;
-        PublicSigningKey owner = PublicSigningKey.fromCbor(values.get(new CborObject.CborString("owner")));
+        PublicKeyHash owner = PublicKeyHash.fromCbor(values.get(new CborObject.CborString("owner")));
         UsernameClaim claim  = UsernameClaim.fromCbor(values.get(new CborObject.CborString("claim")));
         CborObject.CborString proofKey = new CborObject.CborString("keychange");
         Optional<byte[]> keyChangeProof = values.containsKey(proofKey) ?
@@ -57,60 +56,20 @@ public class UserPublicKeyLink implements Cborable{
         return new UserPublicKeyLink(owner, claim, keyChangeProof);
     }
 
-    @Deprecated
-    public byte[] toByteArray() {
-        try {
-            ByteArrayOutputStream bout = new ByteArrayOutputStream();
-            DataOutputStream dout = new DataOutputStream(bout);
-            Serialize.serialize(claim.toByteArray(), dout);
-            dout.writeBoolean(keyChangeProof.isPresent());
-            if (keyChangeProof.isPresent())
-                Serialize.serialize(keyChangeProof.get(), dout);
-            return bout.toByteArray();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-
-        UserPublicKeyLink that = (UserPublicKeyLink) o;
-
-        return Arrays.equals(toByteArray(), that.toByteArray());
-    }
-
-    @Override
-    public int hashCode() {
-        return Arrays.hashCode(toByteArray());
-    }
-
-    @Deprecated
-    public static UserPublicKeyLink fromByteArray(PublicSigningKey owner, byte[] raw) {
-        try {
-            DataInputStream din = new DataInputStream(new ByteArrayInputStream(raw));
-            UsernameClaim proof = UsernameClaim.fromByteArray(owner, Serialize.deserializeByteArray(din, MAX_SIZE));
-            boolean hasLink = din.readBoolean();
-            Optional<byte[]> link = hasLink ? Optional.of(Serialize.deserializeByteArray(din, MAX_SIZE)) : Optional.empty();
-            return new UserPublicKeyLink(owner, proof, link);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    public static List<UserPublicKeyLink> createChain(SigningKeyPair oldUser, SigningKeyPair newUser, String username, LocalDate expiry) {
+    public static List<UserPublicKeyLink> createChain(SigningPrivateKeyAndPublicHash oldUser,
+                                                      SigningPrivateKeyAndPublicHash newUser,
+                                                      String username,
+                                                      LocalDate expiry) {
         // sign new claim to username, with provided expiry
-        UsernameClaim newClaim = UsernameClaim.create(username, newUser, expiry);
+        UsernameClaim newClaim = UsernameClaim.create(username, newUser.secret, expiry);
 
         // sign new key with old
-        byte[] link = oldUser.signMessage(newUser.publicSigningKey.serialize());
+        byte[] link = oldUser.secret.signMessage(newUser.publicKeyHash.serialize());
 
         // create link from old that never expires
-        UserPublicKeyLink fromOld = new UserPublicKeyLink(oldUser.publicSigningKey, UsernameClaim.create(username, oldUser, LocalDate.MAX), Optional.of(link));
+        UserPublicKeyLink fromOld = new UserPublicKeyLink(oldUser.publicKeyHash, UsernameClaim.create(username, oldUser.secret, LocalDate.MAX), Optional.of(link));
 
-        return Arrays.asList(fromOld, new UserPublicKeyLink(newUser.publicSigningKey, newClaim));
+        return Arrays.asList(fromOld, new UserPublicKeyLink(newUser.publicKeyHash, newClaim));
     }
 
     public static class UsernameClaim implements Cborable {
@@ -140,34 +99,7 @@ public class UserPublicKeyLink implements Cborable{
             return new UsernameClaim(username, expiry, signedContents);
         }
 
-        @Deprecated
-        public static UsernameClaim fromByteArray(PublicSigningKey from, byte[] raw) {
-            try {
-                DataInputStream rawdin = new DataInputStream(new ByteArrayInputStream(raw));
-                byte[] signed = Serialize.deserializeByteArray(rawdin, MAX_SIZE);
-                byte[] unsigned = from.unsignMessage(signed);
-                DataInputStream din = new DataInputStream(new ByteArrayInputStream(unsigned));
-                String username = Serialize.deserializeString(din, CoreNode.MAX_USERNAME_SIZE);
-                LocalDate expiry = LocalDate.parse(Serialize.deserializeString(din, 100));
-                return new UsernameClaim(username, expiry, signed);
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        }
-
-        @Deprecated
-        public byte[] toByteArray() {
-            try {
-                ByteArrayOutputStream bout = new ByteArrayOutputStream();
-                DataOutputStream dout = new DataOutputStream(bout);
-                Serialize.serialize(signedContents, dout);
-                return bout.toByteArray();
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        }
-
-        public static UsernameClaim create(String username, SigningKeyPair from, LocalDate expiryDate) {
+        public static UsernameClaim create(String username, SecretSigningKey from, LocalDate expiryDate) {
             try {
                 ByteArrayOutputStream bout = new ByteArrayOutputStream();
                 DataOutputStream dout = new DataOutputStream(bout);
@@ -187,55 +119,83 @@ public class UserPublicKeyLink implements Cborable{
             if (o == null || getClass() != o.getClass()) return false;
 
             UsernameClaim that = (UsernameClaim) o;
-            return Arrays.equals(toByteArray(), that.toByteArray());
+
+            if (username != null ? !username.equals(that.username) : that.username != null) return false;
+            if (expiry != null ? !expiry.equals(that.expiry) : that.expiry != null) return false;
+            return Arrays.equals(signedContents, that.signedContents);
         }
 
         @Override
         public int hashCode() {
-            return Arrays.hashCode(toByteArray());
+            int result = username != null ? username.hashCode() : 0;
+            result = 31 * result + (expiry != null ? expiry.hashCode() : 0);
+            result = 31 * result + Arrays.hashCode(signedContents);
+            return result;
         }
     }
 
-    public static List<UserPublicKeyLink> createInitial(SigningKeyPair signer, String username, LocalDate expiry) {
-        UsernameClaim newClaim = UsernameClaim.create(username, signer, expiry);
+    public static List<UserPublicKeyLink> createInitial(SigningPrivateKeyAndPublicHash signer,
+                                                        String username,
+                                                        LocalDate expiry) {
+        UsernameClaim newClaim = UsernameClaim.create(username, signer.secret, expiry);
 
-        return Collections.singletonList(new UserPublicKeyLink(signer.publicSigningKey, newClaim));
+        return Collections.singletonList(new UserPublicKeyLink(signer.publicKeyHash, newClaim));
     }
 
-    public static List<UserPublicKeyLink> merge(List<UserPublicKeyLink> existing, List<UserPublicKeyLink> tail) {
+    public static CompletableFuture<List<UserPublicKeyLink>> merge(List<UserPublicKeyLink> existing,
+                                                List<UserPublicKeyLink> tail,
+                                                ContentAddressedStorage ipfs) {
         if (existing.size() == 0)
-            return tail;
+            return CompletableFuture.completedFuture(tail);
         if (!tail.get(0).owner.equals(existing.get(existing.size()-1).owner))
             throw new IllegalStateException("Different keys in merge chains intersection!");
         List<UserPublicKeyLink> result = Stream.concat(existing.subList(0, existing.size() - 1).stream(), tail.stream()).collect(Collectors.toList());
-        if (! validChain(result, tail.get(0).claim.username))
-            throw new IllegalStateException("Invalid key chain merge!");
-        return result;
+        return validChain(result, tail.get(0).claim.username, ipfs)
+                .thenApply(valid -> {
+                    if (! valid)
+                        throw new IllegalStateException("Invalid key chain merge!");
+                    return result;
+                });
     }
 
-    public static boolean validChain(List<UserPublicKeyLink> chain, String username) {
+    public static CompletableFuture<Boolean> validChain(List<UserPublicKeyLink> chain, String username, ContentAddressedStorage ipfs) {
+        List<CompletableFuture<Boolean>> validities = new ArrayList<>();
         for (int i=0; i < chain.size()-1; i++)
-            if (!validLink(chain.get(i), chain.get(i+1).owner, username))
-                return false;
-        UserPublicKeyLink last = chain.get(chain.size() - 1);
-        if (!validClaim(last, username)) {
-            return false;
-        }
-        return true;
+            validities.add(validLink(chain.get(i), chain.get(i+1).owner, username, ipfs));
+        return Futures.reduceAll(validities,
+                true,
+                (b, valid) -> valid.thenApply(res -> res && b),
+                (a, b) -> a && b)
+                .thenApply(valid -> {
+                    if (! valid)
+                        return valid;
+                    UserPublicKeyLink last = chain.get(chain.size() - 1);
+                    if (!validClaim(last, username)) {
+                        return false;
+                    }
+                    return true;
+                });
     }
 
-    static boolean validLink(UserPublicKeyLink from, PublicSigningKey target, String username) {
+    static CompletableFuture<Boolean> validLink(UserPublicKeyLink from,
+                                                PublicKeyHash target,
+                                                String username,
+                                                ContentAddressedStorage ipfs) {
         if (!validClaim(from, username))
-            return true;
+            return CompletableFuture.completedFuture(true);
 
         Optional<byte[]> keyChangeProof = from.getKeyChangeProof();
         if (!keyChangeProof.isPresent())
-            return false;
-        PublicSigningKey targetKey = PublicSigningKey.fromByteArray(from.owner.unsignMessage(keyChangeProof.get()));
-        if (!Arrays.equals(targetKey.serialize(), target.serialize()))
-            return false;
+            return CompletableFuture.completedFuture(false);
+        return ipfs.getSigningKey(from.owner).thenApply(ownerKeyOpt -> {
+            if (! ownerKeyOpt.isPresent())
+                return false;
+            PublicSigningKey targetKey = PublicSigningKey.fromByteArray(ownerKeyOpt.get().unsignMessage(keyChangeProof.get()));
+            if (!Arrays.equals(targetKey.serialize(), target.serialize()))
+                return false;
 
-        return true;
+            return true;
+        });
     }
 
     static boolean validClaim(UserPublicKeyLink from, String username) {

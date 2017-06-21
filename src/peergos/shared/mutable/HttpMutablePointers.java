@@ -4,6 +4,7 @@ package peergos.shared.mutable;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.api.*;
 import peergos.shared.merklebtree.*;
 import peergos.shared.user.*;
@@ -29,7 +30,8 @@ public class HttpMutablePointers implements MutablePointers
         this.poster = poster;
     }
    
-    @Override public CompletableFuture<Boolean> setPointer(PublicSigningKey ownerPublicKey, PublicSigningKey sharingPublicKey, byte[] sharingKeySignedPayload)
+    @Override
+    public CompletableFuture<Boolean> setPointer(PublicKeyHash ownerPublicKey, PublicKeyHash sharingPublicKey, byte[] sharingKeySignedPayload)
     {
         long t1 = System.currentTimeMillis();
         try
@@ -60,7 +62,8 @@ public class HttpMutablePointers implements MutablePointers
         }
     }
 
-    @Override public CompletableFuture<MaybeMultihash> getPointer(PublicSigningKey encodedSharingKey)
+    @Override
+    public CompletableFuture<MaybeMultihash> getPointer(PublicKeyHash encodedSharingKey)
     {
         long t1 = System.currentTimeMillis();
         try {

@@ -4,6 +4,7 @@ import jsinterop.annotations.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.SymmetricKey;
 import peergos.shared.io.ipfs.multibase.*;
 import peergos.shared.util.*;
@@ -22,29 +23,29 @@ public class FilePointer implements Cborable {
         this.writer = writer;
     }
 
-    public FilePointer(PublicSigningKey owner, PublicSigningKey writer, byte[] mapKey, SymmetricKey baseKey) {
+    public FilePointer(PublicKeyHash owner, PublicKeyHash writer, byte[] mapKey, SymmetricKey baseKey) {
         this(new Location(owner, writer, mapKey), Optional.empty(), baseKey);
     }
 
-    public FilePointer(PublicSigningKey owner, SigningKeyPair writer, byte[] mapKey, SymmetricKey baseKey) {
-        this(new Location(owner, writer.publicSigningKey, mapKey), Optional.of(writer.secretSigningKey), baseKey);
+    public FilePointer(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, byte[] mapKey, SymmetricKey baseKey) {
+        this(new Location(owner, writer.publicKeyHash, mapKey), Optional.of(writer.secret), baseKey);
     }
 
     public Location getLocation() {
         return location;
     }
 
-    public SigningKeyPair signer() {
+    public SigningPrivateKeyAndPublicHash signer() {
         if (! writer.isPresent())
             throw new IllegalStateException("Can't get signer for a read only pointer!");
-        return new SigningKeyPair(location.writer, writer.get());
+        return new SigningPrivateKeyAndPublicHash(location.writer, writer.get());
     }
 
     public FilePointer withBaseKey(SymmetricKey newBaseKey) {
         return new FilePointer(location, writer, newBaseKey);
     }
 
-    public FilePointer withWritingKey(PublicSigningKey writingKey) {
+    public FilePointer withWritingKey(PublicKeyHash writingKey) {
         return new FilePointer(location.withWriter(writingKey), Optional.empty(), baseKey);
     }
 
@@ -122,14 +123,14 @@ public class FilePointer implements Cborable {
         if (keysString.startsWith("#"))
             keysString = keysString.substring(1);
         String[] split = keysString.split("/");
-        PublicSigningKey owner = PublicSigningKey.createNull();
-        PublicSigningKey writer = PublicSigningKey.fromByteArray(Base58.decode(split[0]));
+        PublicKeyHash owner = PublicKeyHash.NULL;
+        PublicKeyHash writer = PublicKeyHash.fromCbor(CborObject.fromByteArray(Base58.decode(split[0])));
         byte[] mapKey = Base58.decode(split[1]);
         SymmetricKey baseKey = SymmetricKey.fromByteArray(Base58.decode(split[2]));
         return new FilePointer(owner, writer, mapKey, baseKey);
     }
 
     public static FilePointer createNull() {
-        return new FilePointer(PublicSigningKey.createNull(), PublicSigningKey.createNull(), new byte[32], SymmetricKey.createNull());
+        return new FilePointer(PublicKeyHash.NULL, PublicKeyHash.NULL, new byte[32], SymmetricKey.createNull());
     }
 }

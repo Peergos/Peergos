@@ -3,6 +3,7 @@ package peergos.shared.corenode;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
@@ -58,36 +59,32 @@ public class TofuCoreNode implements CoreNode {
     }
 
     public CompletableFuture<Boolean> updateUser(String username) {
-        return source.getChain(username).thenCompose(chain -> {
-            tofu.updateChain(username, chain);
-            return commit();
-        });
+        return source.getChain(username)
+                .thenCompose(chain -> tofu.updateChain(username, chain, context.network.dhtClient)
+                        .thenCompose(x -> commit()));
     }
 
     @Override
-    public CompletableFuture<Optional<PublicSigningKey>> getPublicKey(String username) {
-        Optional<PublicSigningKey> local = tofu.getPublicKey(username);
+    public CompletableFuture<Optional<PublicKeyHash>> getPublicKey(String username) {
+        Optional<PublicKeyHash> local = tofu.getPublicKey(username);
         if (local.isPresent())
             return CompletableFuture.completedFuture(local);
         return source.getChain(username)
-                .thenCompose(chain -> {
-                    tofu.updateChain(username, chain);
-                    return commit().thenApply(x -> tofu.getPublicKey(username));
-                });
+                .thenCompose(chain -> tofu.updateChain(username, chain, context.network.dhtClient)
+                        .thenCompose(x -> commit()))
+                .thenApply(x -> tofu.getPublicKey(username));
     }
 
     @Override
-    public CompletableFuture<String> getUsername(PublicSigningKey key) {
+    public CompletableFuture<String> getUsername(PublicKeyHash key) {
         Optional<String> local = tofu.getUsername(key);
         if (local.isPresent())
             return CompletableFuture.completedFuture(local.get());
         return source.getUsername(key)
-                .thenCompose(username -> {
-                    return source.getChain(username).thenCompose(chain -> {
-                        tofu.updateChain(username, chain);
-                        return commit().thenApply(x -> username);
-                    });
-                });
+                .thenCompose(username -> source.getChain(username)
+                        .thenCompose(chain -> tofu.updateChain(username, chain, context.network.dhtClient)
+                                .thenCompose(x -> commit())
+                                .thenApply(x -> username)));
     }
 
     @Override
@@ -96,16 +93,15 @@ public class TofuCoreNode implements CoreNode {
         if (! localChain.isEmpty())
             return CompletableFuture.completedFuture(localChain);
         return source.getChain(username)
-                .thenCompose(chain -> {
-                    tofu.updateChain(username, chain);
-                    return commit().thenApply(x -> tofu.getChain(username));
-                });
+                .thenCompose(chain -> tofu.updateChain(username, chain, context.network.dhtClient)
+                        .thenCompose(x -> commit()).thenApply(x -> tofu.getChain(username)));
     }
 
     @Override
     public CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> chain) {
-        tofu.updateChain(username, chain);
-        return commit().thenCompose(x -> source.updateChain(username, chain));
+        return tofu.updateChain(username, chain, context.network.dhtClient)
+                .thenCompose(x -> commit())
+                .thenCompose(x -> source.updateChain(username, chain));
     }
 
     @Override
@@ -114,17 +110,17 @@ public class TofuCoreNode implements CoreNode {
     }
 
     @Override
-    public CompletableFuture<Boolean> followRequest(PublicSigningKey target, byte[] encryptedPermission) {
+    public CompletableFuture<Boolean> followRequest(PublicKeyHash target, byte[] encryptedPermission) {
         return source.followRequest(target, encryptedPermission);
     }
 
     @Override
-    public CompletableFuture<byte[]> getFollowRequests(PublicSigningKey owner) {
+    public CompletableFuture<byte[]> getFollowRequests(PublicKeyHash owner) {
         return source.getFollowRequests(owner);
     }
 
     @Override
-    public CompletableFuture<Boolean> removeFollowRequest(PublicSigningKey owner, byte[] data) {
+    public CompletableFuture<Boolean> removeFollowRequest(PublicKeyHash owner, byte[] data) {
         return source.removeFollowRequest(owner, data);
     }
 

@@ -3,6 +3,7 @@ package peergos.shared.corenode;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.api.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.merklebtree.*;
@@ -29,7 +30,7 @@ public class HTTPCoreNode implements CoreNode
         this.poster = poster;
     }
 
-    @Override public CompletableFuture<Optional<PublicSigningKey>> getPublicKey(String username)
+    @Override public CompletableFuture<Optional<PublicKeyHash>> getPublicKey(String username)
     {
         try {
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
@@ -46,7 +47,7 @@ public class HTTPCoreNode implements CoreNode
                     if (!din.readBoolean())
                         return Optional.empty();
                     byte[] publicKey = CoreNodeUtils.deserializeByteArray(din);
-                    return Optional.of(PublicSigningKey.fromByteArray(publicKey));
+                    return Optional.of(PublicKeyHash.fromCbor(CborObject.fromByteArray(publicKey)));
                 } catch (IOException e) {
                     throw new RuntimeException(e);
                 }
@@ -57,7 +58,8 @@ public class HTTPCoreNode implements CoreNode
         }
     }
 
-    @Override public CompletableFuture<String> getUsername(PublicSigningKey publicKey)
+    @Override
+    public CompletableFuture<String> getUsername(PublicKeyHash publicKey)
     {
         try
         {
@@ -98,8 +100,7 @@ public class HTTPCoreNode implements CoreNode
                     int count = din.readInt();
                     List<UserPublicKeyLink> result = new ArrayList<>();
                     for (int i = 0; i < count; i++) {
-                        PublicSigningKey owner = PublicSigningKey.fromByteArray(din.readArray());
-                        result.add(UserPublicKeyLink.fromByteArray(owner, Serialize.deserializeByteArray(din, UserPublicKeyLink.MAX_SIZE)));
+                        result.add(UserPublicKeyLink.fromCbor(CborObject.fromByteArray(Serialize.deserializeByteArray(din, UserPublicKeyLink.MAX_SIZE))));
                     }
                     return result;
                 } catch (IOException e) {
@@ -121,8 +122,7 @@ public class HTTPCoreNode implements CoreNode
             Serialize.serialize(username, dout);
             dout.writeInt(chain.size());
             for (UserPublicKeyLink link : chain) {
-                Serialize.serialize(link.owner.serialize(), dout);
-                Serialize.serialize(link.toByteArray(), dout);
+                Serialize.serialize(link.serialize(), dout);
             }
             dout.flush();
 
@@ -140,7 +140,8 @@ public class HTTPCoreNode implements CoreNode
         }
     }
 
-    @Override public CompletableFuture<Boolean> followRequest(PublicSigningKey target, byte[] encryptedPermission)
+    @Override
+    public CompletableFuture<Boolean> followRequest(PublicKeyHash target, byte[] encryptedPermission)
     {
         try
         {
@@ -171,7 +172,7 @@ public class HTTPCoreNode implements CoreNode
                 .thenApply(raw -> (List) JSONParser.parse(new String(raw)));
     }
 
-    @Override public CompletableFuture<byte[]> getFollowRequests(PublicSigningKey owner)
+    @Override public CompletableFuture<byte[]> getFollowRequests(PublicKeyHash owner)
     {
         try
         {
@@ -196,7 +197,8 @@ public class HTTPCoreNode implements CoreNode
         }
     }
     
-    @Override public CompletableFuture<Boolean> removeFollowRequest(PublicSigningKey owner, byte[] signedRequest)
+    @Override
+    public CompletableFuture<Boolean> removeFollowRequest(PublicKeyHash owner, byte[] signedRequest)
     {
         try
         {

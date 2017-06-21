@@ -5,6 +5,7 @@ import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
@@ -47,7 +48,7 @@ public class EntryPoint implements Cborable{
         String[] parts = path.split("/");
         String claimedOwner = parts[1];
         // check claimed owner actually owns the signing key
-        PublicSigningKey entryWriter = pointer.getLocation().writer;
+        PublicKeyHash entryWriter = pointer.getLocation().writer;
         return network.coreNode.getPublicKey(claimedOwner).thenCompose(ownerKey -> {
             if (! ownerKey.isPresent())
                 throw new IllegalStateException("No owner key present for user " + claimedOwner);

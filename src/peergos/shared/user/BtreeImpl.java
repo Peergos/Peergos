@@ -2,6 +2,7 @@ package peergos.shared.user;
 
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.merklebtree.MaybeMultihash;
 import peergos.shared.merklebtree.MerkleBTree;
@@ -16,7 +17,7 @@ public class BtreeImpl implements Btree {
     private final MutablePointers mutable;
     private final ContentAddressedStorage dht;
     private static final boolean LOGGING = false;
-    private final Map<PublicSigningKey, CompletableFuture<CommittedWriterData>> pending = new HashMap<>();
+    private final Map<PublicKeyHash, CompletableFuture<CommittedWriterData>> pending = new HashMap<>();
 
     public BtreeImpl(MutablePointers mutable, ContentAddressedStorage dht) {
         this.mutable = mutable;
@@ -29,7 +30,7 @@ public class BtreeImpl implements Btree {
         return result;
     }
 
-    private CompletableFuture<CommittedWriterData> getWriterData(PublicSigningKey controller, MaybeMultihash hash) {
+    private CompletableFuture<CommittedWriterData> getWriterData(PublicKeyHash controller, MaybeMultihash hash) {
         if (!hash.isPresent())
             return CompletableFuture.completedFuture(new CommittedWriterData(MaybeMultihash.EMPTY(), WriterData.createEmpty(controller)));
         return dht.get(hash.get())
@@ -40,12 +41,12 @@ public class BtreeImpl implements Btree {
                 });
     }
 
-    private CompletableFuture<CommittedWriterData> getWriterData(PublicSigningKey pubKey) {
+    private CompletableFuture<CommittedWriterData> getWriterData(PublicKeyHash pubKey) {
         return mutable.getPointer(pubKey)
                 .thenCompose(maybeHash -> getWriterData(pubKey, maybeHash));
     }
 
-    private CompletableFuture<CommittedWriterData> addToQueue(PublicSigningKey pubKey, CompletableFuture<CommittedWriterData> lock) {
+    private CompletableFuture<CommittedWriterData> addToQueue(PublicKeyHash pubKey, CompletableFuture<CommittedWriterData> lock) {
         synchronized (pending) {
             // This is subtle, but we need to ensure that there is only ever 1 thenAble waiting on the future for a given key
             // otherwise when the future completes, then the two or more waiters will both proceed with the existing hash,
@@ -61,8 +62,8 @@ public class BtreeImpl implements Btree {
     }
 
     @Override
-    public CompletableFuture<Boolean> put(SigningKeyPair writer, byte[] mapKey, Multihash value) {
-        PublicSigningKey publicWriterKey = writer.publicSigningKey;
+    public CompletableFuture<Boolean> put(SigningPrivateKeyAndPublicHash writer, byte[] mapKey, Multihash value) {
+        PublicKeyHash publicWriterKey = writer.publicKeyHash;
         CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
 
         return addToQueue(publicWriterKey, lock)
@@ -80,7 +81,7 @@ public class BtreeImpl implements Btree {
     }
 
     @Override
-    public CompletableFuture<MaybeMultihash> get(PublicSigningKey writer, byte[] mapKey) {
+    public CompletableFuture<MaybeMultihash> get(PublicKeyHash writer, byte[] mapKey) {
         CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
 
         return addToQueue(writer, lock)
@@ -96,8 +97,8 @@ public class BtreeImpl implements Btree {
     }
 
     @Override
-    public CompletableFuture<Boolean> remove(SigningKeyPair writer, byte[] mapKey) {
-        PublicSigningKey publicWriter = writer.publicSigningKey;
+    public CompletableFuture<Boolean> remove(SigningPrivateKeyAndPublicHash writer, byte[] mapKey) {
+        PublicKeyHash publicWriter = writer.publicKeyHash;
         CompletableFuture<CommittedWriterData> future = new CompletableFuture<>();
 
         return addToQueue(publicWriter, future)

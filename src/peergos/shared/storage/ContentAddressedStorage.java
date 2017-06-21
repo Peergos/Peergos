@@ -2,6 +2,7 @@ package peergos.shared.storage;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.api.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multiaddr.*;
@@ -18,19 +19,19 @@ public interface ContentAddressedStorage {
 
     int MAX_OBJECT_LENGTH  = 1024*256;
 
-    default CompletableFuture<Multihash> put(PublicSigningKey writer, byte[] block) {
+    default CompletableFuture<Multihash> put(PublicKeyHash writer, byte[] block) {
         return put(writer, Arrays.asList(block)).thenApply(hashes -> hashes.get(0));
     }
 
-    default CompletableFuture<Multihash> putRaw(PublicSigningKey writer, byte[] block) {
+    default CompletableFuture<Multihash> putRaw(PublicKeyHash writer, byte[] block) {
         return putRaw(writer, Arrays.asList(block)).thenApply(hashes -> hashes.get(0));
     }
 
-    CompletableFuture<List<Multihash>> put(PublicSigningKey writer, List<byte[]> blocks);
+    CompletableFuture<List<Multihash>> put(PublicKeyHash writer, List<byte[]> blocks);
 
     CompletableFuture<Optional<CborObject>> get(Multihash object);
 
-    CompletableFuture<List<Multihash>> putRaw(PublicSigningKey writer, List<byte[]> blocks);
+    CompletableFuture<List<Multihash>> putRaw(PublicKeyHash writer, List<byte[]> blocks);
 
     CompletableFuture<Optional<byte[]>> getRaw(Multihash object);
 
@@ -43,6 +44,26 @@ public interface ContentAddressedStorage {
     CompletableFuture<List<Multihash>> getLinks(Multihash root);
 
     CompletableFuture<Optional<Integer>> getSize(Multihash block);
+
+    default CompletableFuture<PublicKeyHash> putSigningKey(PublicSigningKey key) {
+        return put(PublicKeyHash.NULL, key.toCbor().toByteArray())
+                .thenApply(PublicKeyHash::new);
+    }
+
+    default CompletableFuture<PublicKeyHash> putBoxingKey(PublicKeyHash controller, PublicBoxingKey key) {
+        return put(controller, key.toCbor().toByteArray())
+                .thenApply(PublicKeyHash::new);
+    }
+
+    default CompletableFuture<Optional<PublicSigningKey>> getSigningKey(PublicKeyHash hash) {
+        return get(hash)
+                .thenApply(opt -> opt.map(PublicSigningKey::fromCbor));
+    }
+
+    default CompletableFuture<Optional<PublicBoxingKey>> getBoxingKey(PublicKeyHash hash) {
+        return get(hash)
+                .thenApply(opt -> opt.map(PublicBoxingKey::fromCbor));
+    }
 
     class HTTP implements ContentAddressedStorage {
 
@@ -70,16 +91,16 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<List<Multihash>> put(PublicSigningKey writer, List<byte[]> blocks) {
+        public CompletableFuture<List<Multihash>> put(PublicKeyHash writer, List<byte[]> blocks) {
             return put(writer, blocks, "cbor");
         }
 
         @Override
-        public CompletableFuture<List<Multihash>> putRaw(PublicSigningKey writer, List<byte[]> blocks) {
+        public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash writer, List<byte[]> blocks) {
             return put(writer, blocks, "raw");
         }
 
-        private CompletableFuture<List<Multihash>> put(PublicSigningKey writer, List<byte[]> blocks, String format) {
+        private CompletableFuture<List<Multihash>> put(PublicKeyHash writer, List<byte[]> blocks, String format) {
             return poster.postMultipart(apiPrefix + "block/put?format=" + format
                     + "&writer=" + encode(writer.toString()), blocks)
                     .thenApply(bytes -> JSONParser.parseStream(new String(bytes))

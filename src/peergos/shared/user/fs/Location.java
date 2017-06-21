@@ -3,6 +3,7 @@ package peergos.shared.user.fs;
 import jsinterop.annotations.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.SymmetricKey;
 import peergos.shared.util.*;
 
@@ -12,10 +13,10 @@ public class Location implements Cborable {
     public static final int MAP_KEY_LENGTH = 32;
 
     @JsProperty
-    public final PublicSigningKey owner, writer;
+    public final PublicKeyHash owner, writer;
     private final byte[] mapKey;
 
-    public Location(PublicSigningKey owner, PublicSigningKey writer, byte[] mapKey) {
+    public Location(PublicKeyHash owner, PublicKeyHash writer, byte[] mapKey) {
         if (mapKey.length != MAP_KEY_LENGTH)
             throw  new IllegalArgumentException("map key length "+ mapKey.length +" is not "+ MAP_KEY_LENGTH);
         this.owner = owner;
@@ -53,7 +54,10 @@ public class Location implements Cborable {
         if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Incorrect cbor for Location: " + cbor);
         List<CborObject> values = ((CborObject.CborList) cbor).value;
-        return new Location(PublicSigningKey.fromCbor(values.get(0)), PublicSigningKey.fromCbor(values.get(1)), ((CborObject.CborByteArray) values.get(2)).value);
+        return new Location(
+                PublicKeyHash.fromCbor(values.get(0)),
+                PublicKeyHash.fromCbor(values.get(1)),
+                ((CborObject.CborByteArray) values.get(2)).value);
     }
 
     public static Location decrypt(SymmetricKey fromKey, byte[] nonce, byte[] location) {
@@ -61,7 +65,7 @@ public class Location implements Cborable {
         return Location.fromCbor(CborObject.fromByteArray(bytes));
     }
 
-    public Location withWriter(PublicSigningKey newWriter) {
+    public Location withWriter(PublicKeyHash newWriter) {
         return new Location(owner, newWriter, mapKey);
     }
 
