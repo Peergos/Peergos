@@ -36,6 +36,29 @@ public class UserPublicKeyLink implements Cborable{
     }
 
     @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+
+        UserPublicKeyLink that = (UserPublicKeyLink) o;
+
+        if (owner != null ? !owner.equals(that.owner) : that.owner != null) return false;
+        if (claim != null ? !claim.equals(that.claim) : that.claim != null) return false;
+        return keyChangeProof.isPresent() ?
+                that.keyChangeProof.isPresent() &&
+                        Arrays.equals(keyChangeProof.get(), that.keyChangeProof.get()) :
+                ! that.keyChangeProof.isPresent();
+    }
+
+    @Override
+    public int hashCode() {
+        int result = owner != null ? owner.hashCode() : 0;
+        result = 31 * result + (claim != null ? claim.hashCode() : 0);
+        result = 31 * result + keyChangeProof.map(Arrays::hashCode).orElse(0);
+        return result;
+    }
+
+    @Override
     public CborObject toCbor() {
         Map<String, CborObject> values = new TreeMap<>();
         values.put("owner", owner.toCbor());
@@ -190,7 +213,7 @@ public class UserPublicKeyLink implements Cborable{
         return ipfs.getSigningKey(from.owner).thenApply(ownerKeyOpt -> {
             if (! ownerKeyOpt.isPresent())
                 return false;
-            PublicSigningKey targetKey = PublicSigningKey.fromByteArray(ownerKeyOpt.get().unsignMessage(keyChangeProof.get()));
+            PublicKeyHash targetKey = PublicKeyHash.fromCbor(CborObject.fromByteArray(ownerKeyOpt.get().unsignMessage(keyChangeProof.get())));
             if (!Arrays.equals(targetKey.serialize(), target.serialize()))
                 return false;
 
