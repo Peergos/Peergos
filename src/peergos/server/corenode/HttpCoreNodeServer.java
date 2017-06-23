@@ -109,7 +109,6 @@ public class HttpCoreNodeServer
             List<UserPublicKeyLink> chain = coreNode.getChain(username).get();
             dout.writeInt(chain.size());
             for (UserPublicKeyLink link : chain) {
-                Serialize.serialize(link.owner.serialize(), dout);
                 Serialize.serialize(link.serialize(), dout);
             }
         }
