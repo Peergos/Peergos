@@ -343,7 +343,7 @@ public class UserContext {
 
         return UserUtil.generateUser(username, oldPassword, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer, existingAlgorithm)
                 .thenCompose(existingUser -> {
-                    if (!existingUser.getUser().equals(this.signer))
+                    if (!existingUser.getUser().secretSigningKey.equals(this.signer.secret))
                         throw new IllegalArgumentException("Incorrect existing password during change password attempt!");
                     return UserUtil.generateUser(username, newPassword, crypto.hasher, crypto.symmetricProvider,
                             crypto.random, crypto.signer, crypto.boxer, newAlgorithm)
