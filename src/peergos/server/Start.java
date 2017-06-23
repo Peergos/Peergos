@@ -157,8 +157,9 @@ public class Start
         String domain = a.getArg("domain", "localhost");
         String corenodePath = a.getArg("corenodePath", ":memory:");
         int corenodePort = a.getInt("corenodePort", HttpCoreNodeServer.PORT);
+        boolean useIPFS = a.getBoolean("useIPFS", false);
 
-        run(Args.parse(new String[] {"-corenode", "-useIPFS", "false", "-domain", domain, "-corenodePath", corenodePath, "-corenodePort", Integer.toString(corenodePort)}));
+        run(Args.parse(new String[] {"-corenode", "-useIPFS", "" + useIPFS, "-domain", domain, "-corenodePath", corenodePath, "-corenodePort", Integer.toString(corenodePort)}));
 
         a.setArg("corenodeURL", "http://localhost:"+corenodePort);
         a.removeArg("local");
