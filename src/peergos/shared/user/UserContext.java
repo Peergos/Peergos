@@ -387,14 +387,14 @@ public class UserContext {
             System.out.println("Random keys generation took " + (System.currentTimeMillis() - t1) + " mS");
 
             // and authorise the writer key
-            FilePointer rootPointer = new FilePointer(this.signer.publicKeyHash, writerHash, rootMapKey, rootRKey);
+            SigningPrivateKeyAndPublicHash writerWithHash = new SigningPrivateKeyAndPublicHash(writerHash, writer.secretSigningKey);
+            FilePointer rootPointer = new FilePointer(this.signer.publicKeyHash, writerWithHash, rootMapKey, rootRKey);
             EntryPoint entry = new EntryPoint(rootPointer, this.username, Collections.emptySet(), Collections.emptySet());
 
             long t2 = System.currentTimeMillis();
             DirAccess root = DirAccess.create(rootRKey, new FileProperties(directoryName, 0, LocalDateTime.now(), false, Optional.empty()), (Location) null, null, null);
             Location rootLocation = new Location(this.signer.publicKeyHash, writerHash, rootMapKey);
             System.out.println("Uploading entry point directory");
-            SigningPrivateKeyAndPublicHash writerWithHash = new SigningPrivateKeyAndPublicHash(writerHash, writer.secretSigningKey);
             return network.uploadChunk(root, rootLocation, writerWithHash).thenCompose(uploaded -> {
                 if (!uploaded)
                     throw new IllegalStateException("Failed to upload root dir!");
