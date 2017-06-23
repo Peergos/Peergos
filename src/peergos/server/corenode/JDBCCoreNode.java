@@ -632,7 +632,7 @@ public class JDBCCoreNode implements CoreNode, MutablePointers {
                                     return false;
                                 if (LOGGING)
                                     System.out.println("Core::setMetadata for " + writer + " from " + current + " to " + newHash);
-                                MetadataBlob blob = new MetadataBlob(writer.serialize(), bothHashes);
+                                MetadataBlob blob = new MetadataBlob(writerHash.serialize(), bothHashes);
                                 return blob.insert();
                             } catch (TweetNaCl.InvalidSignatureException e) {
                                 System.err.println("Invalid signature during setMetadataBlob for sharer: " + writerHash);
