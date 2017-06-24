@@ -112,7 +112,7 @@ public class FilePointer implements Cborable {
     }
 
     public boolean isNull() {
-        PublicSigningKey nullUser = PublicSigningKey.createNull();
+        PublicKeyHash nullUser = PublicKeyHash.NULL;
         return nullUser.equals(location.owner) &&
                 nullUser.equals(location.writer) &&
                 Arrays.equals(location.getMapKey(), new byte[32]) &&
