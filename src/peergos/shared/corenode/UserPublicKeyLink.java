@@ -11,6 +11,7 @@ import java.io.*;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.*;
 import java.util.stream.*;
 
 public class UserPublicKeyLink implements Cborable{
@@ -185,12 +186,13 @@ public class UserPublicKeyLink implements Cborable{
         List<CompletableFuture<Boolean>> validities = new ArrayList<>();
         for (int i=0; i < chain.size()-1; i++)
             validities.add(validLink(chain.get(i), chain.get(i+1).owner, username, ipfs));
+        BiFunction<Boolean, CompletableFuture<Boolean>, CompletableFuture<Boolean>> composer = (b, valid) -> valid.thenApply(res -> res && b);
         return Futures.reduceAll(validities,
                 true,
-                (b, valid) -> valid.thenApply(res -> res && b),
+                composer,
                 (a, b) -> a && b)
                 .thenApply(valid -> {
-                    if (! valid)
+                    if (!valid)
                         return valid;
                     UserPublicKeyLink last = chain.get(chain.size() - 1);
                     if (!validClaim(last, username)) {
