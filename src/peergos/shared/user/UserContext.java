@@ -531,7 +531,7 @@ public class UserContext {
                 DataSink resp = new DataSink();
                 resp.writeArray(tmp.publicBoxingKey.serialize());
                 resp.writeArray(payload);
-                network.coreNode.followRequest(initialRequest.entry.get().pointer.location.owner, resp.toByteArray());
+                network.coreNode.addFollowRequest(initialRequest.entry.get().pointer.location.owner, resp.toByteArray());
                 // remove pending follow request from them
                 return network.coreNode.removeFollowRequest(signer.publicKeyHash, signer.secret.signMessage(initialRequest.rawCipher));
             });
@@ -577,7 +577,7 @@ public class UserContext {
                 DataSink resp = new DataSink();
                 resp.writeArray(tmp.publicBoxingKey.serialize());
                 resp.writeArray(payload);
-                return network.coreNode.followRequest(initialRequest.entry.get().pointer.location.owner, resp.toByteArray());
+                return network.coreNode.addFollowRequest(initialRequest.entry.get().pointer.location.owner, resp.toByteArray());
             });
         }).thenCompose(b -> {
             if (reciprocate)
@@ -627,7 +627,7 @@ public class UserContext {
                             res.writeArray(tmp.publicBoxingKey.serialize());
                             res.writeArray(payload);
                             PublicKeyHash targetSigner = targetUserOpt.get().left;
-                            return network.coreNode.followRequest(targetSigner, res.toByteArray());
+                            return network.coreNode.addFollowRequest(targetSigner, res.toByteArray());
                         });
                     });
                 });
@@ -651,7 +651,7 @@ public class UserContext {
                 // create a tmp keypair whose public key we can append to the request without leaking information
                 User tmp = User.random(random, signer, boxer);
                 byte[] payload = entry.serializeAndEncrypt(tmp, targetUser);
-                return corenodeClient.followRequest(targetUser, ArrayOps.concat(tmp.publicBoxingKey.toByteArray(), payload));
+                return corenodeClient.addFollowRequest(targetUser, ArrayOps.concat(tmp.publicBoxingKey.toByteArray(), payload));
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }

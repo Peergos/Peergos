@@ -61,7 +61,7 @@ public interface CoreNode {
      * @param encryptedPermission
      * @return
      */
-    CompletableFuture<Boolean> followRequest(PublicKeyHash target, byte[] encryptedPermission);
+    CompletableFuture<Boolean> addFollowRequest(PublicKeyHash target, byte[] encryptedPermission);
 
     /**
      *

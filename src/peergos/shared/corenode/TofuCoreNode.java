@@ -2,7 +2,6 @@ package peergos.shared.corenode;
 
 import peergos.shared.*;
 import peergos.shared.cbor.*;
-import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.user.*;
@@ -110,8 +109,8 @@ public class TofuCoreNode implements CoreNode {
     }
 
     @Override
-    public CompletableFuture<Boolean> followRequest(PublicKeyHash target, byte[] encryptedPermission) {
-        return source.followRequest(target, encryptedPermission);
+    public CompletableFuture<Boolean> addFollowRequest(PublicKeyHash target, byte[] encryptedPermission) {
+        return source.addFollowRequest(target, encryptedPermission);
     }
 
     @Override

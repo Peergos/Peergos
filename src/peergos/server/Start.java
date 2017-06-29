@@ -1,14 +1,13 @@
 package peergos.server;
 
+import peergos.server.corenode.*;
 import peergos.shared.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
-import peergos.server.corenode.HttpCoreNodeServer;
 import peergos.server.mutable.PinningMutablePointers;
-import peergos.server.corenode.SQLiteCoreNode;
 import peergos.server.fuse.*;
 import peergos.server.storage.*;
 import peergos.server.tests.*;
@@ -88,8 +87,8 @@ public class Start
                 int dhtCacheEntries = 1000;
                 int maxValueSizeToCache = 2 * 1024 * 1024;
                 ContentAddressedStorage dht = useIPFS ? new CachingStorage(new IpfsDHT(), dhtCacheEntries, maxValueSizeToCache) : RAMStorage.getSingleton();
-                SQLiteCoreNode coreNode = SQLiteCoreNode.build(path, dht);
-                HttpCoreNodeServer.createAndStart(keyfile, passphrase, corenodePort, coreNode, coreNode, a);
+                UserRepository userRepository = UserRepository.buildSqlLite(path, dht);
+                HttpCoreNodeServer.createAndStart(keyfile, passphrase, corenodePort, userRepository, userRepository, a);
             } else {
                 int webPort = a.getInt("port", 8000);
                 URL coreAddress = new URI(a.getArg("corenodeURL", "http://localhost:" + HttpCoreNodeServer.PORT)).toURL();

@@ -1,7 +1,7 @@
 package peergos.server.tests;
 
 import org.junit.*;
-import peergos.server.corenode.SQLiteCoreNode;
+import peergos.server.corenode.*;
 import peergos.server.storage.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.CoreNode;
@@ -122,7 +122,7 @@ public class UserPublicKeyLinkTests {
 
     static CoreNode getDefaultCoreNode() {
         try {
-            return SQLiteCoreNode.build(":memory:", RAMStorage.getSingleton());
+            return UserRepository.buildSqlLite(":memory:", RAMStorage.getSingleton());
         } catch (SQLException s) {
             throw new IllegalStateException(s);
         }

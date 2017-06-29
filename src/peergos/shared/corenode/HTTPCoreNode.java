@@ -141,7 +141,7 @@ public class HTTPCoreNode implements CoreNode
     }
 
     @Override
-    public CompletableFuture<Boolean> followRequest(PublicKeyHash target, byte[] encryptedPermission)
+    public CompletableFuture<Boolean> addFollowRequest(PublicKeyHash target, byte[] encryptedPermission)
     {
         try
         {

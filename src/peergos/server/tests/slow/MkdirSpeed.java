@@ -37,7 +37,7 @@ public class MkdirSpeed {
 
     private static NetworkAccess buildInProcessAccess(Random r) throws Exception {
         ContentAddressedStorage dht = RAMStorage.getSingleton();
-        JDBCCoreNode core = SQLiteCoreNode.build(":memory:", dht);
+        UserRepository core = UserRepository.buildSqlLite(":memory:", dht);
         Btree btree = new BtreeImpl(core, dht);
         return new NetworkAccess(core, dht, core, btree, Collections.emptyList());
     }
