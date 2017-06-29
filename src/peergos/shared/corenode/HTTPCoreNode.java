@@ -30,7 +30,7 @@ public class HTTPCoreNode implements CoreNode
         this.poster = poster;
     }
 
-    @Override public CompletableFuture<Optional<PublicKeyHash>> getPublicKey(String username)
+    @Override public CompletableFuture<Optional<PublicKeyHash>> getPublicKeyHash(String username)
     {
         try {
             ByteArrayOutputStream bout = new ByteArrayOutputStream();

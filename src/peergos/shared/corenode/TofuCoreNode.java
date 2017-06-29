@@ -64,7 +64,7 @@ public class TofuCoreNode implements CoreNode {
     }
 
     @Override
-    public CompletableFuture<Optional<PublicKeyHash>> getPublicKey(String username) {
+    public CompletableFuture<Optional<PublicKeyHash>> getPublicKeyHash(String username) {
         Optional<PublicKeyHash> local = tofu.getPublicKey(username);
         if (local.isPresent())
             return CompletableFuture.completedFuture(local);

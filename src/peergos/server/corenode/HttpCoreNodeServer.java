@@ -129,7 +129,7 @@ public class HttpCoreNodeServer
         void getPublicKey(DataInputStream din, DataOutputStream dout) throws Exception
         {
             String username = CoreNodeUtils.deserializeString(din);
-            Optional<PublicKeyHash> k = coreNode.getPublicKey(username).get();
+            Optional<PublicKeyHash> k = coreNode.getPublicKeyHash(username).get();
             dout.writeBoolean(k.isPresent());
             if (!k.isPresent())
                 return;

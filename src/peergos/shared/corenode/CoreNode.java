@@ -39,7 +39,7 @@ public interface CoreNode {
      * @param username
      * @return the public key for a username, if present
      */
-    default CompletableFuture<Optional<PublicKeyHash>> getPublicKey(String username) {
+    default CompletableFuture<Optional<PublicKeyHash>> getPublicKeyHash(String username) {
         return getChain(username).thenApply(chain -> {
             if (chain.size() == 0)
                 return Optional.empty();

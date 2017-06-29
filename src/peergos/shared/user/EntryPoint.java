@@ -49,7 +49,7 @@ public class EntryPoint implements Cborable{
         String claimedOwner = parts[1];
         // check claimed owner actually owns the signing key
         PublicKeyHash entryWriter = pointer.getLocation().writer;
-        return network.coreNode.getPublicKey(claimedOwner).thenCompose(ownerKey -> {
+        return network.coreNode.getPublicKeyHash(claimedOwner).thenCompose(ownerKey -> {
             if (! ownerKey.isPresent())
                 throw new IllegalStateException("No owner key present for user " + claimedOwner);
            return UserContext.getWriterData(network, ownerKey.get()).thenApply(wd -> {

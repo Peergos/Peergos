@@ -247,7 +247,7 @@ public class UserContext {
 
     @JsMethod
     public CompletableFuture<Boolean> isAvailable() {
-        return network.coreNode.getPublicKey(username)
+        return network.coreNode.getPublicKeyHash(username)
                 .thenApply(publicKey -> !publicKey.isPresent());
     }
 
@@ -422,7 +422,7 @@ public class UserContext {
     }
 
     public CompletableFuture<Optional<Pair<PublicKeyHash, PublicBoxingKey>>> getPublicKeys(String username) {
-        return network.coreNode.getPublicKey(username)
+        return network.coreNode.getPublicKeyHash(username)
                 .thenCompose(signerOpt -> getSigningKey(signerOpt.get())
                         .thenCompose(signer -> getWriterData(network, signerOpt.get())
                                 .thenCompose(wd -> getBoxingKey(wd.props.followRequestReceiver.get())
@@ -1038,7 +1038,7 @@ public class UserContext {
     }
 
     private static CompletableFuture<Pair<Multihash, CborObject>> getWriterDataCbor(NetworkAccess network, String username) {
-        return network.coreNode.getPublicKey(username)
+        return network.coreNode.getPublicKeyHash(username)
                 .thenCompose(signer -> {
                     PublicKeyHash publicSigningKey = signer.orElseThrow(
                             () -> new IllegalStateException("No public-key for user " + username));
