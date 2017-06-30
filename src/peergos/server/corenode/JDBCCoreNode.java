@@ -587,19 +587,18 @@ public class JDBCCoreNode {
         }
     }
 
-    public CompletableFuture<Boolean> setPointer(PublicKeyHash owner, PublicKeyHash writerHash, byte[] bothHashes) {
-        MetadataBlob blob = new MetadataBlob(writerHash.serialize(), bothHashes);
+    public CompletableFuture<Boolean> setPointer(PublicKeyHash owner, PublicKeyHash writerHash, byte[] writingKeySignedHash) {
+        MetadataBlob blob = new MetadataBlob(writerHash.serialize(), writingKeySignedHash);
         return CompletableFuture.completedFuture(blob.insert());
     }
 
-    public CompletableFuture<MaybeMultihash> getPointer(PublicKeyHash writingKey) {
+    public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash writingKey) {
         byte[] dummy = null;
         MetadataBlob blob = new MetadataBlob(writingKey.serialize(), dummy);
         MetadataBlob users = blob.selectOne();
         if (users == null)
-            return CompletableFuture.completedFuture(MaybeMultihash.EMPTY());
-        HashCasPair cas = HashCasPair.fromCbor(CborObject.fromByteArray(users.hash));
-        return CompletableFuture.completedFuture(cas.updated);
+            return CompletableFuture.completedFuture(Optional.empty());
+        return CompletableFuture.completedFuture(Optional.of(users.hash));
     }
 
     public synchronized void close()
@@ -637,5 +636,4 @@ public class JDBCCoreNode {
                 }
         }
     }
-
 }

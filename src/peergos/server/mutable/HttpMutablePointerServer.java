@@ -3,11 +3,8 @@ package peergos.server.mutable;
 import com.sun.net.httpserver.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
-import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.merklebtree.*;
 import peergos.shared.mutable.*;
-import peergos.shared.util.*;
 
 import java.io.*;
 import java.net.*;
@@ -93,9 +90,9 @@ public class HttpMutablePointerServer
         void getPointer(DataInputStream din, DataOutputStream dout) throws Exception
         {
             PublicKeyHash encodedSharingKey = PublicKeyHash.fromCbor(CborObject.deserialize(new CborDecoder(din)));
-            MaybeMultihash metadataBlob = mutable.getPointer(encodedSharingKey).get();
+            byte[] metadataBlob = mutable.getPointer(encodedSharingKey).get().orElse(new byte[0]);
 
-            dout.write(metadataBlob.serialize());
+            dout.write(metadataBlob);
         }
     }
 

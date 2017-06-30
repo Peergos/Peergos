@@ -1,8 +1,9 @@
 package peergos.shared.mutable;
 
 import peergos.shared.crypto.hash.*;
-import peergos.shared.merklebtree.*;
+import peergos.shared.crypto.asymmetric.*;
 
+import java.util.*;
 import java.util.concurrent.*;
 
 public interface MutablePointers {
@@ -18,8 +19,8 @@ public interface MutablePointers {
 
     /** Get the current hash a public key maps to
      *
-     * @param encodedSharingKey
+     * @param writer
      * @return
      */
-    CompletableFuture<MaybeMultihash> getPointer(PublicKeyHash encodedSharingKey);
+    CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash writer);
 }

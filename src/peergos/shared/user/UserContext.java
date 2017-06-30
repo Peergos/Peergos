@@ -1046,12 +1046,16 @@ public class UserContext {
                 });
     }
 
-    private static CompletableFuture<Pair<Multihash, CborObject>> getWriterDataCbor(NetworkAccess network, PublicKeyHash signer) {
-        return network.mutable.getPointer(signer)
-                .thenCompose(key -> network.dhtClient.get(key.get())
-                        .thenApply(Optional::get)
-                        .thenApply(cbor -> new Pair<>(key.get(), cbor))
-                );
+    private static CompletableFuture<Pair<Multihash, CborObject>> getWriterDataCbor(NetworkAccess network, PublicKeyHash signerHash) {
+        return network.mutable.getPointer(signerHash)
+                .thenCompose(casOpt -> network.dhtClient.getSigningKey(signerHash)
+                        .thenApply(signer -> casOpt.map(raw -> HashCasPair.fromCbor(CborObject.fromByteArray(
+                                signer.get().unsignMessage(raw))).updated)
+                                .orElse(MaybeMultihash.EMPTY())))
+                        .thenCompose(key -> network.dhtClient.get(key.get())
+                                .thenApply(Optional::get)
+                                .thenApply(cbor -> new Pair<>(key.get(), cbor))
+                        );
     }
 
     @JsMethod
