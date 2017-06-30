@@ -98,7 +98,11 @@ public class UserRepository implements CoreNode, MutablePointers {
                                 HashCasPair cas = HashCasPair.fromCbor(CborObject.fromByteArray(bothHashes));
                                 MaybeMultihash claimedCurrentHash = cas.original;
                                 Multihash newHash = cas.updated.get();
-                                if (!current.equals(claimedCurrentHash))
+
+                                MaybeMultihash existing = current
+                                        .map(signed -> HashCasPair.fromCbor(CborObject.fromByteArray(writerKey.unsignMessage(signed))).updated)
+                                        .orElse(MaybeMultihash.EMPTY());
+                                if (! existing.equals(claimedCurrentHash))
                                     return CompletableFuture.completedFuture(false);
                                 if (LOGGING)
                                     System.out.println("Core::setMetadata for " + writer + " from " + current + " to " + newHash);
