@@ -7,6 +7,7 @@ import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
@@ -147,18 +148,18 @@ public class NetworkAccess {
         });
     }
 
-    private CompletableFuture<Multihash> uploadFragment(Fragment f, PublicSigningKey targetUser) {
+    private CompletableFuture<Multihash> uploadFragment(Fragment f, PublicKeyHash targetUser) {
         return dhtClient.putRaw(targetUser, f.data);
     }
 
-    private CompletableFuture<List<Multihash>> bulkUploadFragments(List<Fragment> fragments, PublicSigningKey targetUser) {
+    private CompletableFuture<List<Multihash>> bulkUploadFragments(List<Fragment> fragments, PublicKeyHash targetUser) {
         return dhtClient.putRaw(targetUser, fragments
                 .stream()
                 .map(f -> f.data)
                 .collect(Collectors.toList()));
     }
 
-    public CompletableFuture<List<Multihash>> uploadFragments(List<Fragment> fragments, PublicSigningKey owner,
+    public CompletableFuture<List<Multihash>> uploadFragments(List<Fragment> fragments, PublicKeyHash owner,
                                                               ProgressConsumer<Long> progressCounter, double spaceIncreaseFactor) {
         // upload in groups of 10. This means in a browser we have 6 upload threads with erasure coding on, or 4 without
         int FRAGMENTs_PER_QUERY = 1;
@@ -179,8 +180,8 @@ public class NetworkAccess {
                         .collect(Collectors.toList()));
     }
 
-    public CompletableFuture<Boolean> uploadChunk(FileAccess metadata, Location location, SigningKeyPair writer) {
-        if (! writer.publicSigningKey.equals(location.writer))
+    public CompletableFuture<Boolean> uploadChunk(FileAccess metadata, Location location, SigningPrivateKeyAndPublicHash writer) {
+        if (! writer.publicKeyHash.equals(location.writer))
             throw new IllegalStateException("Non matching location writer and signing writer key!");
         try {
             byte[] metaBlob = metadata.serialize();
@@ -203,11 +204,14 @@ public class NetworkAccess {
         });
     }
 
-    public CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Multihash> hashes, ProgressConsumer<Long> monitor, double spaceIncreaseFactor) {
+    public CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Multihash> hashes,
+                                                                       ProgressConsumer<Long> monitor,
+                                                                       double spaceIncreaseFactor) {
         List<CompletableFuture<Optional<FragmentWithHash>>> futures = hashes.stream().parallel()
                 .map(h -> ((h instanceof Cid) && ((Cid) h).codec == Cid.Codec.Raw ?
                         dhtClient.getRaw(h) :
-                        dhtClient.get(h).thenApply(cborOpt -> cborOpt.map(cbor -> ((CborObject.CborByteArray) cbor).value))) // for backwards compatibility
+                        dhtClient.get(h)
+                                .thenApply(cborOpt -> cborOpt.map(cbor -> ((CborObject.CborByteArray) cbor).value))) // for backwards compatibility
                         .thenApply(dataOpt -> {
                             Optional<byte[]> bytes = dataOpt;
                             bytes.ifPresent(arr -> monitor.accept((long)(arr.length / spaceIncreaseFactor)));

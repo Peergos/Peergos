@@ -75,6 +75,8 @@ public class CorenodeTests {
             worstLatencies.add(pool.submit(() -> {
                 SigningKeyPair owner = SigningKeyPair.random(crypto.random, crypto.signer);
                 SigningKeyPair writer = SigningKeyPair.random(crypto.random, crypto.signer);
+                PublicKeyHash ownerHash = network.dhtClient.putSigningKey(owner.publicSigningKey).get();
+                PublicKeyHash writerHash = network.dhtClient.putSigningKey(writer.publicSigningKey).get();
 
                 byte[] data = new byte[10];
 
@@ -89,7 +91,7 @@ public class CorenodeTests {
                     byte[] signed = writer.signMessage(cas.serialize());
                     try {
                         long t3 = System.currentTimeMillis();
-                        network.mutable.setPointer(owner.publicSigningKey, writer.publicSigningKey, signed).get();
+                        network.mutable.setPointer(ownerHash, writerHash, signed).get();
                         long latency = System.currentTimeMillis() - t3;
                         if (latency > maxLatency)
                             maxLatency = latency;

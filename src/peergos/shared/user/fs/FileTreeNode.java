@@ -254,11 +254,11 @@ public class FileTreeNode {
         return pointer.filePointer.getLocation();
     }
 
-    private SigningKeyPair getSigner() {
+    private SigningPrivateKeyAndPublicHash getSigner() {
         if (! isWritable())
             throw new IllegalStateException("Can only get a signer for a writable directory!");
 
-        return new SigningKeyPair(getLocation().writer, entryWriterKey.get());
+        return new SigningPrivateKeyAndPublicHash(getLocation().writer, entryWriterKey.get());
     }
 
     public Set<Location> getChildrenLocations() {

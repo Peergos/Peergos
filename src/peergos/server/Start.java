@@ -1,14 +1,13 @@
 package peergos.server;
 
+import peergos.server.corenode.*;
 import peergos.shared.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
-import peergos.server.corenode.HttpCoreNodeServer;
 import peergos.server.mutable.PinningMutablePointers;
-import peergos.server.corenode.SQLiteCoreNode;
 import peergos.server.fuse.*;
 import peergos.server.storage.*;
 import peergos.server.tests.*;
@@ -84,8 +83,12 @@ public class Start
                 String path = a.getArg("corenodePath", ":memory:");
                 int corenodePort = a.getInt("corenodePort", HttpCoreNodeServer.PORT);
                 System.out.println("Using core node path " + path);
-                SQLiteCoreNode coreNode = SQLiteCoreNode.build(path);
-                HttpCoreNodeServer.createAndStart(keyfile, passphrase, corenodePort, coreNode, coreNode, a);
+                boolean useIPFS = a.getBoolean("useIPFS", true);
+                int dhtCacheEntries = 1000;
+                int maxValueSizeToCache = 2 * 1024 * 1024;
+                ContentAddressedStorage dht = useIPFS ? new CachingStorage(new IpfsDHT(), dhtCacheEntries, maxValueSizeToCache) : RAMStorage.getSingleton();
+                UserRepository userRepository = UserRepository.buildSqlLite(path, dht);
+                HttpCoreNodeServer.createAndStart(keyfile, passphrase, corenodePort, userRepository, userRepository, a);
             } else {
                 int webPort = a.getInt("port", 8000);
                 URL coreAddress = new URI(a.getArg("corenodeURL", "http://localhost:" + HttpCoreNodeServer.PORT)).toURL();
@@ -95,7 +98,7 @@ public class Start
                 boolean useIPFS = a.getBoolean("useIPFS", true);
                 int dhtCacheEntries = 1000;
                 int maxValueSizeToCache = 50 * 1024;
-                ContentAddressedStorage dht = useIPFS ? new CachingStorage(new IpfsDHT(), dhtCacheEntries, maxValueSizeToCache) : new RAMStorage();
+                ContentAddressedStorage dht = useIPFS ? new CachingStorage(new IpfsDHT(), dhtCacheEntries, maxValueSizeToCache) : RAMStorage.getSingleton();
 
                 // start the User Service
                 String hostname = a.getArg("domain", "localhost");
@@ -153,8 +156,9 @@ public class Start
         String domain = a.getArg("domain", "localhost");
         String corenodePath = a.getArg("corenodePath", ":memory:");
         int corenodePort = a.getInt("corenodePort", HttpCoreNodeServer.PORT);
+        boolean useIPFS = a.getBoolean("useIPFS", false);
 
-        run(Args.parse(new String[] {"-corenode", "-domain", domain, "-corenodePath", corenodePath, "-corenodePort", Integer.toString(corenodePort)}));
+        run(Args.parse(new String[] {"-corenode", "-useIPFS", "" + useIPFS, "-domain", domain, "-corenodePath", corenodePath, "-corenodePort", Integer.toString(corenodePort)}));
 
         a.setArg("corenodeURL", "http://localhost:"+corenodePort);
         a.removeArg("local");

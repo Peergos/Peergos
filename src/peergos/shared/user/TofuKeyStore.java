@@ -3,9 +3,12 @@ package peergos.shared.user;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.crypto.hash.*;
+import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.function.*;
 import java.util.stream.*;
 
@@ -13,7 +16,7 @@ public class TofuKeyStore implements Cborable {
 
     private final Map<String, List<UserPublicKeyLink>> chains;
     private final Map<String, List<UserPublicKeyLink>> expired;
-    private final Map<PublicSigningKey, String> reverseLookup = new HashMap<>();
+    private final Map<PublicKeyHash, String> reverseLookup = new HashMap<>();
 
     public TofuKeyStore(Map<String, List<UserPublicKeyLink>> chains, Map<String, List<UserPublicKeyLink>> expired) {
         this.chains = chains;
@@ -25,7 +28,7 @@ public class TofuKeyStore implements Cborable {
         this(new HashMap<>(), new HashMap<>());
     }
 
-    public Optional<PublicSigningKey> getPublicKey(String username) {
+    public Optional<PublicKeyHash> getPublicKey(String username) {
         List<UserPublicKeyLink> chain = chains.get(username);
         if (chain == null) {
             List<UserPublicKeyLink> expiredChain = expired.get(username);
@@ -36,7 +39,7 @@ public class TofuKeyStore implements Cborable {
         return Optional.of(chain.get(chain.size() - 1).owner);
     }
 
-    public Optional<String> getUsername(PublicSigningKey signer) {
+    public Optional<String> getUsername(PublicKeyHash signer) {
         String name = reverseLookup.get(signer);
         return Optional.ofNullable(name);
     }
@@ -45,35 +48,38 @@ public class TofuKeyStore implements Cborable {
         return chains.getOrDefault(username, expired.getOrDefault(username, Collections.emptyList()));
     }
 
-    public void updateChain(String username, List<UserPublicKeyLink> tail) {
-        if (! UserPublicKeyLink.validChain(tail, username))
-            throw new IllegalStateException("Trying to update with invalid keychain!");
-        UserPublicKeyLink last = tail.get(tail.size() - 1);
-        // we are allowing expired chains to be stored
+    public CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> tail, ContentAddressedStorage ipfs) {
+        return UserPublicKeyLink.validChain(tail, username, ipfs)
+                .thenCompose(valid -> {
+                    if (!valid)
+                        throw new IllegalStateException("Trying to update with invalid keychain!");
+                    UserPublicKeyLink last = tail.get(tail.size() - 1);
+                    // we are allowing expired chains to be stored
 
-        List<UserPublicKeyLink> existing = getChain(username);
-        boolean isExpired =
-                (existing.size() > 0 && UserPublicKeyLink.isExpiredClaim(existing.get(existing.size() - 1)));
+                    List<UserPublicKeyLink> existing = getChain(username);
+                    boolean isExpired =
+                            (existing.size() > 0 && UserPublicKeyLink.isExpiredClaim(existing.get(existing.size() - 1)));
 
-        if (isExpired) {
-            List<UserPublicKeyLink> withoutExpiredClaim = existing.subList(0, existing.size() - 1);
-            if (withoutExpiredClaim.size() == 0 &&
-                    ! Arrays.equals(existing.get(0).owner.toCbor().toByteArray(), tail.get(0).owner.toCbor().toByteArray()))
-                throw new IllegalStateException("Trying to update a username claim with a different key! "
-                        + ArrayOps.bytesToHex(existing.get(0).owner.toCbor().toByteArray()) + " != "
-                        + ArrayOps.bytesToHex(tail.get(0).owner.toCbor().toByteArray()));
+                    CompletableFuture<List<UserPublicKeyLink>> mergedFuture;
+                    if (isExpired) {
+                        List<UserPublicKeyLink> withoutExpiredClaim = existing.subList(0, existing.size() - 1);
+                        if (withoutExpiredClaim.size() == 0 &&
+                                !Arrays.equals(existing.get(0).owner.toCbor().toByteArray(), tail.get(0).owner.toCbor().toByteArray()))
+                            throw new IllegalStateException("Trying to update a username claim with a different key! "
+                                    + ArrayOps.bytesToHex(existing.get(0).owner.toCbor().toByteArray()) + " != "
+                                    + ArrayOps.bytesToHex(tail.get(0).owner.toCbor().toByteArray()));
+                        expired.remove(username);
+                        mergedFuture = UserPublicKeyLink.merge(withoutExpiredClaim, tail, ipfs);
+                    } else
+                        mergedFuture = UserPublicKeyLink.merge(existing, tail, ipfs);
 
-            List<UserPublicKeyLink> merged = UserPublicKeyLink.merge(withoutExpiredClaim, tail);
-            chains.put(username, merged);
-            expired.remove(username);
-            PublicSigningKey owner = last.owner;
-            reverseLookup.put(owner, username);
-        } else {
-            List<UserPublicKeyLink> merged = UserPublicKeyLink.merge(existing, tail);
-            chains.put(username, merged);
-            PublicSigningKey owner = last.owner;
-            reverseLookup.put(owner, username);
-        }
+                    return mergedFuture.thenApply(merged -> {
+                        chains.put(username, merged);
+                        PublicKeyHash owner = last.owner;
+                        reverseLookup.put(owner, username);
+                        return true;
+                    });
+                });
     }
 
     private void updateReverseLookup() {
@@ -112,12 +118,10 @@ public class TofuKeyStore implements Cborable {
                     List<UserPublicKeyLink> chain = ((CborObject.CborList) value).value.stream()
                             .map(UserPublicKeyLink::fromCbor)
                             .collect(Collectors.toList());
-                    if (UserPublicKeyLink.validChain(chain, name)) {
-                        if (UserPublicKeyLink.isExpiredClaim(chain.get(chain.size() - 1)))
-                            expired.put(name, chain);
-                        else
-                            chains.put(name, chain);
-                    }
+                    if (UserPublicKeyLink.isExpiredClaim(chain.get(chain.size() - 1)))
+                        expired.put(name, chain);
+                    else
+                        chains.put(name, chain);
                 } else throw new IllegalStateException("Invalid value in Tofu key store map: " + value);
             } else throw new IllegalStateException("Invalid key in Tofu key store map: " + key);
         }
