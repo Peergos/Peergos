@@ -47,7 +47,12 @@ public class LocalDate {
 	    		int dayOfMonth = Integer.valueOf(trimmed.substring(8,10));
 	    		return of(year, month, dayOfMonth);
 	    	}
-    	}catch(Exception e){
+            String[] parts = text.trim().split("-");
+            int year = Integer.valueOf(parts[0]);
+            int month = Integer.valueOf(parts[1]);
+            int dayOfMonth = Integer.valueOf(parts[2]);
+            return of(year, month, dayOfMonth);
+        }catch(Exception e){
     		
     	}
         throw new DateTimeParseException("Unable to parse:" + text);

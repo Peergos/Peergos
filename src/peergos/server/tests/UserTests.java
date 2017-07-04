@@ -138,7 +138,7 @@ public abstract class UserTests {
         String password = "password";
         UserContext userContext = ensureSignedUp(username, password, network, crypto);
         String newPassword = "newPassword";
-        userContext.changePassword(password, newPassword, UserGenerationAlgorithm.getDefault(), UserGenerationAlgorithm.getDefault()).get();
+        userContext.changePassword(password, newPassword).get();
         ensureSignedUp(username, newPassword, network, crypto);
     }
 
@@ -148,7 +148,7 @@ public abstract class UserTests {
         String password = "password";
         UserContext userContext = ensureSignedUp(username, password, network, crypto);
         String newPassword = "passwordtest";
-        UserContext newContext = userContext.changePassword(password, newPassword, UserGenerationAlgorithm.getDefault(), UserGenerationAlgorithm.getDefault()).get();
+        UserContext newContext = userContext.changePassword(password, newPassword).get();
 
         try {
             UserContext oldContext = ensureSignedUp(username, password, network, crypto);

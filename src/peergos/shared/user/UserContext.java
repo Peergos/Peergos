@@ -336,10 +336,9 @@ public class UserContext {
     public CompletableFuture<UserContext> changePassword(String oldPassword, String newPassword,
                                                          UserGenerationAlgorithm existingAlgorithm,
                                                          UserGenerationAlgorithm newAlgorithm) {
-        System.out.println("changing password");
-        LocalDate expiry = LocalDate.now();
         // set claim expiry to two months from now
-        expiry.plusMonths(2);
+        LocalDate expiry = LocalDate.now().plusMonths(2);
+        System.out.println("Changing password and setting expiry to: " + expiry);
 
         return UserUtil.generateUser(username, oldPassword, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer, existingAlgorithm)
                 .thenCompose(existingUser -> {

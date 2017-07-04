@@ -12,6 +12,7 @@ import peergos.shared.storage.*;
 
 import java.io.*;
 import java.sql.*;
+import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -47,8 +48,14 @@ public class UserRepository implements CoreNode, MutablePointers {
             if (! valid)
                 return CompletableFuture.completedFuture(false);
 
-            if (UserPublicKeyLink.isExpiredClaim(tail.get(tail.size() - 1)))
+            UserPublicKeyLink last = tail.get(tail.size() - 1);
+            if (UserPublicKeyLink.isExpiredClaim(last))
                 return CompletableFuture.completedFuture(false);
+
+            if (LocalDate.now().plusYears(1).isBefore(last.claim.expiry)) {
+                System.err.println("Rejecting username claim expiring more than 1 year from now: " + username);
+                return CompletableFuture.completedFuture(false);
+            }
 
             if (tail.size() > 2)
                 return CompletableFuture.completedFuture(false);
