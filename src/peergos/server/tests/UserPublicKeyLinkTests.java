@@ -68,7 +68,7 @@ public class UserPublicKeyLinkTests {
         String username = "someuser";
 
         // register the username
-        UserPublicKeyLink.UsernameClaim node = UserPublicKeyLink.UsernameClaim.create(username, user.secretSigningKey, LocalDate.now().plusYears(2));
+        UserPublicKeyLink.UsernameClaim node = UserPublicKeyLink.UsernameClaim.create(username, user.secretSigningKey, LocalDate.now().plusMonths(2));
         PublicKeyHash userHash = ipfs.putSigningKey(user.publicSigningKey).get();
         UserPublicKeyLink upl = new UserPublicKeyLink(userHash, node);
         boolean success = core.updateChain(username, Arrays.asList(upl)).get();
@@ -77,7 +77,7 @@ public class UserPublicKeyLinkTests {
             throw new IllegalStateException("Retrieved chain element different "+chain +" != "+Arrays.asList(upl));
 
         // now change the expiry
-        UserPublicKeyLink.UsernameClaim node2 = UserPublicKeyLink.UsernameClaim.create(username, user.secretSigningKey, LocalDate.now().plusYears(3));
+        UserPublicKeyLink.UsernameClaim node2 = UserPublicKeyLink.UsernameClaim.create(username, user.secretSigningKey, LocalDate.now().plusMonths(3));
         UserPublicKeyLink upl2 = new UserPublicKeyLink(userHash, node2);
         boolean success2 = core.updateChain(username, Arrays.asList(upl2)).get();
         List<UserPublicKeyLink> chain2 = core.getChain(username).get();
@@ -112,7 +112,7 @@ public class UserPublicKeyLinkTests {
         // try to claim the same username with a different key
         SigningKeyPair user3 = SigningKeyPair.insecureRandom();
         PublicKeyHash user3Hash = ipfs.putSigningKey(user3.publicSigningKey).get();
-        UserPublicKeyLink.UsernameClaim node3 = UserPublicKeyLink.UsernameClaim.create(username, user3.secretSigningKey, LocalDate.now().plusYears(2));
+        UserPublicKeyLink.UsernameClaim node3 = UserPublicKeyLink.UsernameClaim.create(username, user3.secretSigningKey, LocalDate.now().plusMonths(2));
         UserPublicKeyLink upl3 = new UserPublicKeyLink(user3Hash, node3);
         try {
             boolean shouldFail = core.updateChain(username, Arrays.asList(upl3)).get();
