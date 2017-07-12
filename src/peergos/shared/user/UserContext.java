@@ -664,7 +664,7 @@ public class UserContext {
         if(file == null) {
             return "";
         }
-        String key = file.getPointer().filePointer.toString();
+        String key = file.getPointer().filePointer.getLocation().toString();
         return key;
     }
 
