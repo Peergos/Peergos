@@ -120,12 +120,13 @@ public class WriterData implements Cborable {
 
     public CompletableFuture<CommittedWriterData> changeKeys(SigningPrivateKeyAndPublicHash signer, MaybeMultihash currentHash,
                                                              PublicBoxingKey followRequestReceiver, SymmetricKey newKey,
+                                                             UserGenerationAlgorithm newAlgorithm,
                                                              NetworkAccess network, Consumer<CommittedWriterData> updater) {
         Optional<UserStaticData> newEntryPoints = staticData.map(sd -> sd.withKey(newKey));
         return network.dhtClient.putBoxingKey(signer.publicKeyHash, followRequestReceiver)
                 .thenCompose(boxerHash -> {
                     WriterData updated = new WriterData(signer.publicKeyHash,
-                            generationAlgorithm,
+                            Optional.of(newAlgorithm),
                             publicData,
                             Optional.of(new PublicKeyHash(boxerHash)),
                             ownedKeys,

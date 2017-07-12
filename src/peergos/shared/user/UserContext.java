@@ -365,6 +365,7 @@ public class UserContext {
                                                                 wd.hash,
                                                                 updatedUser.getBoxingPair().publicBoxingKey,
                                                                 updatedUser.getRoot(),
+                                                                newAlgorithm,
                                                                 network,
                                                                 lock::complete)
                                                         .thenCompose(userData -> {
