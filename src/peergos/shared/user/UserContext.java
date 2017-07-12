@@ -706,6 +706,9 @@ public class UserContext {
                                 Set<String> sharedWith = optSet.stream()
                                         .flatMap(e -> e.isPresent() ? Stream.of(e.get()) : Stream.empty())
                                         .collect(Collectors.toSet());
+                                if(sharedWith.size() == 0) {
+                                    this.sharedFiles.remove(shareKey(file));
+                                }
                                 return CompletableFuture.completedFuture(sharedWith);
                             });
                 });
