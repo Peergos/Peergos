@@ -321,6 +321,16 @@ public class UserContext {
         });
     }
 
+    public CompletableFuture<UserGenerationAlgorithm> getKeyGenAlgorithm() {
+        return getWriterDataCbor(this.network, this.username)
+                .thenApply(pair -> {
+                    Optional<UserGenerationAlgorithm> algorithmOpt = WriterData.extractUserGenerationAlgorithm(pair.right);
+                    if (!algorithmOpt.isPresent())
+                        throw new IllegalStateException("No login algorithm specified in user data!");
+                    return algorithmOpt.get();
+                });
+    }
+
     @JsMethod
     public CompletableFuture<UserContext> changePassword(String oldPassword, String newPassword) {
 
@@ -355,6 +365,7 @@ public class UserContext {
                                                                 wd.hash,
                                                                 updatedUser.getBoxingPair().publicBoxingKey,
                                                                 updatedUser.getRoot(),
+                                                                newAlgorithm,
                                                                 network,
                                                                 lock::complete)
                                                         .thenCompose(userData -> {

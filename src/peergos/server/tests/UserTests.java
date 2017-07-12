@@ -158,6 +158,17 @@ public abstract class UserTests {
         }
     }
 
+    @Test
+    public void changeLoginAlgorithm() throws Exception {
+        String username = generateUsername();
+        String password = "password";
+        UserContext userContext = ensureSignedUp(username, password, network, crypto);
+        UserGenerationAlgorithm algo = userContext.getKeyGenAlgorithm().get();
+        ScryptEd25519Curve25519 newAlgo = new ScryptEd25519Curve25519(19, 8, 1, 96);
+        userContext.changePassword(password, password, algo, newAlgo).get();
+        ensureSignedUp(username, password, network, crypto);
+    }
+
     public static UserContext ensureSignedUp(String username, String password, NetworkAccess network, Crypto crypto) throws Exception {
         return UserContext.ensureSignedUp(username, password, network, crypto).get();
     }
