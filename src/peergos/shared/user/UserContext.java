@@ -708,6 +708,8 @@ public class UserContext {
                                         .collect(Collectors.toSet());
                                 if(sharedWith.size() == 0) {
                                     this.sharedFiles.remove(shareKey(file));
+                                } else {
+                                    this.sharedFiles.add(shareKey(file));
                                 }
                                 return CompletableFuture.completedFuture(sharedWith);
                             });
@@ -888,8 +890,58 @@ public class UserContext {
                 rawKey.length > 0 ? Optional.of(SymmetricKey.fromByteArray(rawKey)) : Optional.empty(), raw);
     }
 
-    public CompletableFuture<Set<FileTreeNode>> getChildren(String path) {
-        return entrie.getChildren(path, network);
+
+    @JsMethod
+    public CompletableFuture<Set<FileTreeNode>> getChildren(String pathString) {
+        String path = "/" + username + "/shared";
+        return getByPath(path).thenCompose(sharedDirOpt -> {
+            FileTreeNode sharedDir = sharedDirOpt.orElseThrow(() -> new IllegalStateException("No such directory" + path));
+            return sharedDir.getChildren(network).thenCompose(sharedUserDirs -> {
+
+                return entrie.getChildren(pathString, network).thenApply(childrenFTNs -> {
+                    childrenFTNs.stream().forEach(childFTN -> {
+
+                        sharedWith(childFTN, sharedUserDirs);
+
+
+                    });
+                    return childrenFTNs;
+                });
+            });
+        });
+    }
+
+    private CompletableFuture<Set<String>> sharedWith(FileTreeNode file, Set<FileTreeNode> sharedUserDirs) {
+
+        Location fileLocation = file.getLocation();
+
+        Function<FileTreeNode, CompletableFuture<Optional<String>>> func = sharedUserDir -> {
+            CompletableFuture<Set<FileTreeNode>> children = sharedUserDir.getChildren(network);
+            return children.thenCompose(e -> {
+                boolean present = e.stream()
+                        .filter(sharedFile -> sharedFile.getLocation().equals(fileLocation))
+                        .findFirst()
+                        .isPresent();
+                String userName = present ? sharedUserDir.getFileProperties().name : null;
+                return CompletableFuture.completedFuture(Optional.ofNullable(userName));
+            });
+        };
+
+        List<CompletableFuture<Optional<String>>> collect = sharedUserDirs.stream()
+                .map(func::apply)
+                .collect(Collectors.toList());
+
+        return Futures.combineAll(collect).thenCompose(optSet -> {
+            Set<String> sharedWith = optSet.stream()
+                    .flatMap(e -> e.isPresent() ? Stream.of(e.get()) : Stream.empty())
+                    .collect(Collectors.toSet());
+            if(sharedWith.size() == 0) {
+                this.sharedFiles.remove(shareKey(file));
+            } else {
+                this.sharedFiles.add(shareKey(file));
+            }
+            return CompletableFuture.completedFuture(sharedWith);
+        });
     }
 
     @JsMethod
