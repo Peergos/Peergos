@@ -27,7 +27,7 @@ public class RetrievedFilePointer {
         return filePointer.equals(((RetrievedFilePointer)that).filePointer);
     }
 
-    public CompletableFuture<Boolean> remove(NetworkAccess network, RetrievedFilePointer parentRetrievedFilePointer, SigningKeyPair signer) {
+    public CompletableFuture<Boolean> remove(NetworkAccess network, RetrievedFilePointer parentRetrievedFilePointer, SigningPrivateKeyAndPublicHash signer) {
         if (!this.filePointer.isWritable())
             return CompletableFuture.completedFuture(false);
         if (!this.fileAccess.isDirectory()) {

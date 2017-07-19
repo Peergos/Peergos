@@ -1,11 +1,7 @@
 
 package peergos.shared.mutable;
 
-import peergos.shared.cbor.*;
-import peergos.shared.corenode.*;
-import peergos.shared.crypto.asymmetric.*;
-import peergos.shared.io.ipfs.api.*;
-import peergos.shared.merklebtree.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
@@ -29,7 +25,8 @@ public class HttpMutablePointers implements MutablePointers
         this.poster = poster;
     }
    
-    @Override public CompletableFuture<Boolean> setPointer(PublicSigningKey ownerPublicKey, PublicSigningKey sharingPublicKey, byte[] sharingKeySignedPayload)
+    @Override
+    public CompletableFuture<Boolean> setPointer(PublicKeyHash ownerPublicKey, PublicKeyHash sharingPublicKey, byte[] sharingKeySignedPayload)
     {
         long t1 = System.currentTimeMillis();
         try
@@ -60,15 +57,16 @@ public class HttpMutablePointers implements MutablePointers
         }
     }
 
-    @Override public CompletableFuture<MaybeMultihash> getPointer(PublicSigningKey encodedSharingKey)
+    @Override
+    public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash writer)
     {
         long t1 = System.currentTimeMillis();
         try {
-            return poster.postUnzip("mutable/getPointer", encodedSharingKey.serialize())
-                    .thenApply(meta -> MaybeMultihash.fromCbor(CborObject.fromByteArray(meta)));
+            return poster.postUnzip("mutable/getPointer", writer.serialize())
+                    .thenApply(meta -> meta.length == 0 ? Optional.empty() : Optional.of(meta));
         } catch (Exception ioe) {
             ioe.printStackTrace();
-            return CompletableFuture.completedFuture(MaybeMultihash.EMPTY());
+            return CompletableFuture.completedFuture(Optional.empty());
         } finally {
             long t2 = System.currentTimeMillis();
             if (LOGGING)

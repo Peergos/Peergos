@@ -3,10 +3,8 @@ package peergos.server.mutable;
 import com.sun.net.httpserver.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
-import peergos.shared.crypto.asymmetric.*;
-import peergos.shared.merklebtree.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.mutable.*;
-import peergos.shared.util.*;
 
 import java.io.*;
 import java.net.*;
@@ -83,18 +81,18 @@ public class HttpMutablePointerServer
             byte[] encodedSharingPublicKey = CoreNodeUtils.deserializeByteArray(din);
             byte[] signedPayload = CoreNodeUtils.deserializeByteArray(din);
             boolean isAdded = mutable.setPointer(
-                    PublicSigningKey.fromByteArray(ownerPublicKey),
-                    PublicSigningKey.fromByteArray(encodedSharingPublicKey),
+                    PublicKeyHash.fromCbor(CborObject.fromByteArray(ownerPublicKey)),
+                    PublicKeyHash.fromCbor(CborObject.fromByteArray(encodedSharingPublicKey)),
                     signedPayload).get();
             dout.writeBoolean(isAdded);
         }
 
         void getPointer(DataInputStream din, DataOutputStream dout) throws Exception
         {
-            PublicSigningKey encodedSharingKey = PublicSigningKey.fromCbor(CborObject.deserialize(new CborDecoder(din)));
-            MaybeMultihash metadataBlob = mutable.getPointer(encodedSharingKey).get();
+            PublicKeyHash encodedSharingKey = PublicKeyHash.fromCbor(CborObject.deserialize(new CborDecoder(din)));
+            byte[] metadataBlob = mutable.getPointer(encodedSharingKey).get().orElse(new byte[0]);
 
-            dout.write(metadataBlob.serialize());
+            dout.write(metadataBlob);
         }
     }
 

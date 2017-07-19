@@ -138,7 +138,7 @@ public abstract class UserTests {
         String password = "password";
         UserContext userContext = ensureSignedUp(username, password, network, crypto);
         String newPassword = "newPassword";
-        userContext.changePassword(password, newPassword, UserGenerationAlgorithm.getDefault(), UserGenerationAlgorithm.getDefault()).get();
+        userContext.changePassword(password, newPassword).get();
         ensureSignedUp(username, newPassword, network, crypto);
     }
 
@@ -148,7 +148,7 @@ public abstract class UserTests {
         String password = "password";
         UserContext userContext = ensureSignedUp(username, password, network, crypto);
         String newPassword = "passwordtest";
-        UserContext newContext = userContext.changePassword(password, newPassword, UserGenerationAlgorithm.getDefault(), UserGenerationAlgorithm.getDefault()).get();
+        UserContext newContext = userContext.changePassword(password, newPassword).get();
 
         try {
             UserContext oldContext = ensureSignedUp(username, password, network, crypto);
@@ -156,6 +156,17 @@ public abstract class UserTests {
             if (! e.getMessage().contains("Incorrect password"))
                 throw e;
         }
+    }
+
+    @Test
+    public void changeLoginAlgorithm() throws Exception {
+        String username = generateUsername();
+        String password = "password";
+        UserContext userContext = ensureSignedUp(username, password, network, crypto);
+        UserGenerationAlgorithm algo = userContext.getKeyGenAlgorithm().get();
+        ScryptEd25519Curve25519 newAlgo = new ScryptEd25519Curve25519(19, 8, 1, 96);
+        userContext.changePassword(password, password, algo, newAlgo).get();
+        ensureSignedUp(username, password, network, crypto);
     }
 
     public static UserContext ensureSignedUp(String username, String password, NetworkAccess network, Crypto crypto) throws Exception {
@@ -182,29 +193,44 @@ public abstract class UserTests {
                 context.crypto.random, l -> {}, context.fragmenter()).get();
         checkFileContents(data2, userRoot.getDescendentByPath(filename, context.network).get().get(), context);
 
+        // check multiple read calls  in one chunk
+        checkFileContentsChunked(data2, userRoot.getDescendentByPath(filename, context.network).get().get(), context, 3);
         // check file size
-        assertTrue("File size", data2.length == userRoot.getDescendentByPath(filename,
-                context.network).get().get().getFileProperties().size);
-        assertTrue("File size", data2.length == context.getByPath(username + "/" + filename).get().get().getFileProperties().size);
+        // assertTrue("File size", data2.length == userRoot.getDescendentByPath(filename,context.network).get().get().getFileProperties().size);
+
+
+        // check multiple read calls in multiple chunks
+        int bigLength = Chunk.MAX_SIZE * 3;
+        byte[] bigData = new byte[bigLength];
+        random.nextBytes(bigData);
+        userRoot.uploadFileSection(filename, new AsyncReader.ArrayBacked(bigData), 0, bigData.length, context.network,
+                context.crypto.random, l -> {}, context.fragmenter()).get();
+        checkFileContentsChunked(bigData,
+                userRoot.getDescendentByPath(filename, context.network).get().get(),
+                context,
+                5);
+        assertTrue("File size", bigData.length == context.getByPath(username + "/" + filename).get().get().getFileProperties().size);
 
         // extend file within existing chunk
         byte[] data3 = new byte[128 * 1024];
         new Random().nextBytes(data3);
-        userRoot.uploadFileSection(filename, new AsyncReader.ArrayBacked(data3), 0, data3.length, context.network,
+        String otherName = "other"+filename;
+        userRoot.uploadFileSection(otherName, new AsyncReader.ArrayBacked(data3), 0, data3.length, context.network,
                 context.crypto.random, l -> {}, context.fragmenter()).get();
-        checkFileContents(data3, userRoot.getDescendentByPath(filename, context.network).get().get(), context);
+        assertTrue("File size", data3.length == context.getByPath(username + "/" + otherName).get().get().getFileProperties().size);
+        checkFileContents(data3, userRoot.getDescendentByPath(otherName, context.network).get().get(), context);
 
         // insert data in the middle
         byte[] data4 = "some data to insert somewhere".getBytes();
         int startIndex = 100 * 1024;
-        userRoot.uploadFileSection(filename, new AsyncReader.ArrayBacked(data4), startIndex, startIndex + data4.length,
+        userRoot.uploadFileSection(otherName, new AsyncReader.ArrayBacked(data4), startIndex, startIndex + data4.length,
                 context.network, context.crypto.random, l -> {}, context.fragmenter()).get();
         System.arraycopy(data4, 0, data3, startIndex, data4.length);
-        checkFileContents(data3, userRoot.getDescendentByPath(filename, context.network).get().get(), context);
+        checkFileContents(data3, userRoot.getDescendentByPath(otherName, context.network).get().get(), context);
 
         //rename
         String newname = "newname.txt";
-        userRoot.getDescendentByPath(filename, context.network).get().get()
+        userRoot.getDescendentByPath(otherName, context.network).get().get()
                 .rename(newname, context.network, userRoot).get();
         checkFileContents(data3, userRoot.getDescendentByPath(newname, context.network).get().get(), context);
         // check from the root as well
@@ -298,7 +324,8 @@ public abstract class UserTests {
         checkFileContents(data5, userRoot.getDescendentByPath(filename, context.network).get().get(), context);
 
         // check used space
-        long totalSpaceUsed = context.getTotalSpaceUsed(context.signer.publicSigningKey).get();
+        PublicKeyHash signer = context.signer.publicKeyHash;
+        long totalSpaceUsed = context.getTotalSpaceUsed(signer).get();
         Assert.assertTrue("Correct used space", totalSpaceUsed > 10*1024*1024);
     }
 
@@ -394,6 +421,40 @@ public abstract class UserTests {
         byte[] retrievedData = Serialize.readFully(f.getInputStream(context.network, context.crypto.random,
                 f.getFileProperties().size, l-> {}).get(), f.getSize()).get();
         assertTrue("Correct contents", Arrays.equals(retrievedData, expected));
+    }
+
+    private static void checkFileContentsChunked(byte[] expected, FileTreeNode f, UserContext context, int  nReads) throws Exception {
+
+        AsyncReader in = f.getInputStream(context.network, context.crypto.random,
+                f.getFileProperties().size, l -> {}).get();
+        assertTrue(nReads > 1);
+
+        long size = f.getSize();
+        long readLength = size/nReads;
+
+
+        ByteArrayOutputStream bout = new ByteArrayOutputStream();
+
+        for (int i = 0; i < nReads; i++) {
+            long pos = i * readLength;
+            long len = Math.min(readLength , expected.length - pos);
+            System.out.println("Reading from "+ pos +" to "+ (pos + len) +" with total "+ expected.length);
+            byte[] retrievedData = Serialize.readFully(
+                    in,
+                    len).get();
+            bout.write(retrievedData);
+        }
+        byte[] readBytes = bout.toByteArray();
+        assertEquals("Lengths correct", readBytes.length, expected.length);
+
+        String start = ArrayOps.bytesToHex(Arrays.copyOfRange(expected, 0, 10));
+
+        for (int i = 0; i < readBytes.length; i++)
+            assertEquals("position  "+ i + " out of "+ readBytes.length  + ", start of file "+ start,
+                    StringUtils.format("%02x", readBytes[i] & 0xFF),
+                    StringUtils.format("%02x", expected[i] & 0xFF));
+
+        assertTrue("Correct contents", Arrays.equals(readBytes, expected));
     }
 
 

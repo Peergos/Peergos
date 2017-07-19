@@ -107,14 +107,14 @@ public class FileAccess implements Cborable {
 
     public CompletableFuture<? extends FileAccess> copyTo(SymmetricKey baseKey, SymmetricKey newBaseKey,
                                                           Location newParentLocation, SymmetricKey parentparentKey,
-                                                          SigningKeyPair entryWriterKey, byte[] newMapKey,
+                                                          SigningPrivateKeyAndPublicHash entryWriterKey, byte[] newMapKey,
                                                           NetworkAccess network) {
         if (!Arrays.equals(baseKey.serialize(), newBaseKey.serialize()))
             throw new IllegalStateException("FileAccess clone must have same base key as original!");
         FileProperties props = getFileProperties(baseKey);
         FileAccess fa = FileAccess.create(newBaseKey, isDirectory() ? SymmetricKey.random() : getMetaKey(baseKey), props,
                 this.retriever, newParentLocation, parentparentKey);
-        return network.uploadChunk(fa, new Location(newParentLocation.owner, entryWriterKey.publicSigningKey, newMapKey), entryWriterKey)
+        return network.uploadChunk(fa, new Location(newParentLocation.owner, entryWriterKey.publicKeyHash, newMapKey), entryWriterKey)
                 .thenApply(b -> fa);
     }
 

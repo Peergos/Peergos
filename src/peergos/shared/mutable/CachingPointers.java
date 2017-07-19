@@ -1,6 +1,7 @@
 package peergos.shared.mutable;
 
 import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.merklebtree.*;
 import peergos.shared.util.*;
 
@@ -14,7 +15,7 @@ public class CachingPointers implements MutablePointers {
 
     private final MutablePointers target;
     private final int cacheTTL;
-    private final Map<PublicSigningKey, Pair<MaybeMultihash, Long>> cache = new HashMap<>();
+    private final Map<PublicKeyHash, Pair<Optional<byte[]>, Long>> cache = new HashMap<>();
 
     public CachingPointers(MutablePointers target, int cacheTTL) {
         this.target = target;
@@ -22,9 +23,9 @@ public class CachingPointers implements MutablePointers {
     }
 
     @Override
-    public CompletableFuture<MaybeMultihash> getPointer(PublicSigningKey writer) {
+    public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash writer) {
         synchronized (cache) {
-            Pair<MaybeMultihash, Long> cached = cache.get(writer);
+            Pair<Optional<byte[]>, Long> cached = cache.get(writer);
             if (cached != null && System.currentTimeMillis() - cached.right < cacheTTL)
                 return CompletableFuture.completedFuture(cached.left);
         }
@@ -37,7 +38,7 @@ public class CachingPointers implements MutablePointers {
     }
 
     @Override
-    public CompletableFuture<Boolean> setPointer(PublicSigningKey ownerPublicKey, PublicSigningKey writer, byte[] writerSignedBtreeRootHash) {
+    public CompletableFuture<Boolean> setPointer(PublicKeyHash ownerPublicKey, PublicKeyHash writer, byte[] writerSignedBtreeRootHash) {
         synchronized (cache) {
             cache.remove(writer);
         }

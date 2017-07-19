@@ -5,6 +5,7 @@ import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.merklebtree.*;
@@ -24,14 +25,17 @@ public class WriterData implements Cborable {
      *  Represents the merkle node that a public key maps to
      */
 
+    // the public signing key controlling this subspace
+    public final PublicKeyHash controller;
+
     // publicly readable and present on owner keys
     public final Optional<UserGenerationAlgorithm> generationAlgorithm;
     // accessible under IPFS address $hash/public
     public final Optional<FilePointer> publicData;
-    // The public key to encrypt follow requests to, accessible under IPFS address $hash/inbound
-    public final Optional<PublicBoxingKey> followRequestReceiver;
+    // The public boxing key to encrypt follow requests to, accessible under IPFS address $hash/inbound
+    public final Optional<PublicKeyHash> followRequestReceiver;
     // accessible under IPFS address $hash/owned
-    public final Set<PublicSigningKey> ownedKeys;
+    public final Set<PublicKeyHash> ownedKeys;
 
     // Encrypted
     // accessible under IPFS address $hash/static (present on owner keys)
@@ -41,18 +45,21 @@ public class WriterData implements Cborable {
 
     /**
      *
+     * @param controller the public signing key that controls writing to this subspace
      * @param generationAlgorithm The algorithm used to create the users key pairs and root key from the username and password
      * @param publicData A readable pointer to a subtree made public by this key
      * @param ownedKeys Any public keys owned by this key
      * @param staticData Any static data owner by this key (list of entry points)
      * @param btree Any file tree owned by this key
      */
-    public WriterData(Optional<UserGenerationAlgorithm> generationAlgorithm,
+    public WriterData(PublicKeyHash controller,
+                      Optional<UserGenerationAlgorithm> generationAlgorithm,
                       Optional<FilePointer> publicData,
-                      Optional<PublicBoxingKey> followRequestReceiver,
-                      Set<PublicSigningKey> ownedKeys,
+                      Optional<PublicKeyHash> followRequestReceiver,
+                      Set<PublicKeyHash> ownedKeys,
                       Optional<UserStaticData> staticData,
                       Optional<Multihash> btree) {
+        this.controller = controller;
         this.generationAlgorithm = generationAlgorithm;
         this.publicData = publicData;
         this.followRequestReceiver = followRequestReceiver;
@@ -62,19 +69,16 @@ public class WriterData implements Cborable {
     }
 
     public WriterData withBtree(Multihash treeRoot) {
-        return new WriterData(generationAlgorithm, publicData, followRequestReceiver, ownedKeys, staticData, Optional.of(treeRoot));
+        return new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver, ownedKeys, staticData, Optional.of(treeRoot));
     }
 
-    public WriterData withOwnedKeys(Set<PublicSigningKey> owned) {
-        return new WriterData(generationAlgorithm, publicData, followRequestReceiver, owned, staticData, btree);
+    public WriterData withOwnedKeys(Set<PublicKeyHash> owned) {
+        return new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver, owned, staticData, btree);
     }
 
-    public static WriterData buildSubtree(Multihash btreeRoot) {
-        return new WriterData(Optional.empty(), Optional.empty(), Optional.empty(), Collections.emptySet(), Optional.empty(), Optional.of(btreeRoot));
-    }
-
-    public static WriterData createEmpty() {
-        return new WriterData(Optional.empty(),
+    public static WriterData createEmpty(PublicKeyHash controller) {
+        return new WriterData(controller,
+                Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
                 Collections.emptySet(),
@@ -82,8 +86,11 @@ public class WriterData implements Cborable {
                 Optional.empty());
     }
 
-    public static WriterData createEmpty(Optional<PublicBoxingKey> followRequestReceiver, SymmetricKey rootKey) {
-        return new WriterData(Optional.of(UserGenerationAlgorithm.getDefault()),
+    public static WriterData createEmpty(PublicKeyHash controller,
+                                         Optional<PublicKeyHash> followRequestReceiver,
+                                         SymmetricKey rootKey) {
+        return new WriterData(controller,
+                Optional.of(UserGenerationAlgorithm.getDefault()),
                 Optional.empty(),
                 followRequestReceiver,
                 Collections.emptySet(),
@@ -95,7 +102,7 @@ public class WriterData implements Cborable {
         return new CommittedWriterData(hash, this);
     }
 
-    public CompletableFuture<CommittedWriterData> removeFromStaticData(FileTreeNode fileTreeNode, SigningKeyPair signer,
+    public CompletableFuture<CommittedWriterData> removeFromStaticData(FileTreeNode fileTreeNode, SigningPrivateKeyAndPublicHash signer,
                                                                        MaybeMultihash currentHash,
                                                                        NetworkAccess network, Consumer<CommittedWriterData> updater) {
         FilePointer pointer = fileTreeNode.getPointer().filePointer;
@@ -111,26 +118,35 @@ public class WriterData implements Cborable {
         }).orElse(CompletableFuture.completedFuture(committed(currentHash)));
     }
 
-    public CompletableFuture<CommittedWriterData> changeKeys(SigningKeyPair signer, MaybeMultihash currentHash,
+    public CompletableFuture<CommittedWriterData> changeKeys(SigningPrivateKeyAndPublicHash signer, MaybeMultihash currentHash,
                                                              PublicBoxingKey followRequestReceiver, SymmetricKey newKey,
+                                                             UserGenerationAlgorithm newAlgorithm,
                                                              NetworkAccess network, Consumer<CommittedWriterData> updater) {
         Optional<UserStaticData> newEntryPoints = staticData.map(sd -> sd.withKey(newKey));
-        WriterData updated = new WriterData(generationAlgorithm, publicData, Optional.of(followRequestReceiver), ownedKeys, newEntryPoints, btree);
-        return updated.commit(signer, MaybeMultihash.EMPTY(), network, updater);
-
+        return network.dhtClient.putBoxingKey(signer.publicKeyHash, followRequestReceiver)
+                .thenCompose(boxerHash -> {
+                    WriterData updated = new WriterData(signer.publicKeyHash,
+                            Optional.of(newAlgorithm),
+                            publicData,
+                            Optional.of(new PublicKeyHash(boxerHash)),
+                            ownedKeys,
+                            newEntryPoints,
+                            btree);
+                    return updated.commit(signer, MaybeMultihash.EMPTY(), network, updater);
+                });
     }
 
-    public CompletableFuture<CommittedWriterData> commit(SigningKeyPair signer, MaybeMultihash currentHash,
+    public CompletableFuture<CommittedWriterData> commit(SigningPrivateKeyAndPublicHash signer, MaybeMultihash currentHash,
                                                          NetworkAccess network, Consumer<CommittedWriterData> updater) {
         return commit(signer, currentHash, network.mutable, network.dhtClient, updater);
     }
 
-    public CompletableFuture<CommittedWriterData> commit(SigningKeyPair signer, MaybeMultihash currentHash,
+    public CompletableFuture<CommittedWriterData> commit(SigningPrivateKeyAndPublicHash signer, MaybeMultihash currentHash,
                                                          MutablePointers mutable, ContentAddressedStorage immutable,
                                                          Consumer<CommittedWriterData> updater) {
         byte[] raw = serialize();
 
-        return immutable.put(signer.publicSigningKey, raw)
+        return immutable.put(signer.publicKeyHash, raw)
                 .thenCompose(blobHash -> {
                     MaybeMultihash newHash = MaybeMultihash.of(blobHash);
                     if (newHash.equals(currentHash)) {
@@ -140,8 +156,8 @@ public class WriterData implements Cborable {
                         return CompletableFuture.completedFuture(committed);
                     }
                     HashCasPair cas = new HashCasPair(currentHash, newHash);
-                    byte[] signed = signer.signMessage(cas.serialize());
-                    return mutable.setPointer(signer.publicSigningKey, signer.publicSigningKey, signed)
+                    byte[] signed = signer.secret.signMessage(cas.serialize());
+                    return mutable.setPointer(signer.publicKeyHash, signer.publicKeyHash, signed)
                             .thenApply(res -> {
                                 if (!res)
                                     throw new IllegalStateException("Corenode Crypto CAS failed!");
@@ -156,10 +172,11 @@ public class WriterData implements Cborable {
     public CborObject toCbor() {
         Map<String, CborObject> result = new TreeMap<>();
 
+        result.put("controller", new CborObject.CborMerkleLink(controller));
         generationAlgorithm.ifPresent(alg -> result.put("algorithm", alg.toCbor()));
         publicData.ifPresent(rfp -> result.put("public", rfp.toCbor()));
-        followRequestReceiver.ifPresent(boxer -> result.put("inbound", boxer.toCbor()));
-        List<CborObject> ownedKeyStrings = ownedKeys.stream().map(Cborable::toCbor).collect(Collectors.toList());
+        followRequestReceiver.ifPresent(boxer -> result.put("inbound", new CborObject.CborMerkleLink(boxer)));
+        List<CborObject> ownedKeyStrings = ownedKeys.stream().map(CborObject.CborMerkleLink::new).collect(Collectors.toList());
         result.put("owned", new CborObject.CborList(ownedKeyStrings));
         staticData.ifPresent(sd -> result.put("static", sd.toCbor()));
         btree.ifPresent(btree -> result.put("btree", new CborObject.CborMerkleLink(btree)));
@@ -185,14 +202,15 @@ public class WriterData implements Cborable {
             return map.values.containsKey(cborKey) ? Optional.of(map.values.get(cborKey)) : Optional.empty();
         };
 
+        PublicKeyHash controller = extract.apply("controller").map(PublicKeyHash::fromCbor).get();
         Optional<UserGenerationAlgorithm> algo  = extractUserGenerationAlgorithm(cbor);
         Optional<FilePointer> publicData = extract.apply("public").map(FilePointer::fromCbor);
-        Optional<PublicBoxingKey> followRequestReceiver = extract.apply("inbound").map(raw -> PublicBoxingKey.fromCbor(raw));
+        Optional<PublicKeyHash> followRequestReceiver = extract.apply("inbound").map(PublicKeyHash::fromCbor);
         CborObject.CborList ownedList = (CborObject.CborList) map.values.get(new CborObject.CborString("owned"));
-        Set<PublicSigningKey> owned = ownedList.value.stream().map(PublicSigningKey::fromCbor).collect(Collectors.toSet());
+        Set<PublicKeyHash> owned = ownedList.value.stream().map(PublicKeyHash::fromCbor).collect(Collectors.toSet());
         // rootKey is null for other people parsing our WriterData who don't have our root key
         Optional<UserStaticData> staticData = rootKey == null ? Optional.empty() : extract.apply("static").map(raw -> UserStaticData.fromCbor(raw, rootKey));
         Optional<Multihash> btree = extract.apply("btree").map(val -> ((CborObject.CborMerkleLink)val).target);
-        return new WriterData(algo, publicData, followRequestReceiver, owned, staticData, btree);
+        return new WriterData(controller, algo, publicData, followRequestReceiver, owned, staticData, btree);
     }
 }

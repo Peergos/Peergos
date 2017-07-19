@@ -2,6 +2,7 @@ package peergos.server.storage;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multiaddr.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.io.ipfs.cid.*;
@@ -20,16 +21,16 @@ public class RAMStorage implements ContentAddressedStorage {
     private final Set<Multihash> pinnedRoots = new HashSet<>();
 
     @Override
-    public CompletableFuture<List<Multihash>> put(PublicSigningKey writer, List<byte[]> blocks) {
+    public CompletableFuture<List<Multihash>> put(PublicKeyHash writer, List<byte[]> blocks) {
         return put(writer, blocks, false);
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> putRaw(PublicSigningKey writer, List<byte[]> blocks) {
+    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash writer, List<byte[]> blocks) {
         return put(writer, blocks, true);
     }
 
-    private CompletableFuture<List<Multihash>> put(PublicSigningKey writer, List<byte[]> blocks, boolean isRaw) {
+    private CompletableFuture<List<Multihash>> put(PublicKeyHash writer, List<byte[]> blocks, boolean isRaw) {
         return CompletableFuture.completedFuture(blocks.stream()
                 .map(b -> {
                     Cid cid = hashToCid(b, isRaw);
@@ -116,5 +117,10 @@ public class RAMStorage implements ContentAddressedStorage {
         {
             throw new IllegalStateException("couldn't find hash algorithm");
         }
+    }
+
+    private static RAMStorage singleton = new RAMStorage();
+    public static RAMStorage getSingleton() {
+        return singleton;
     }
 }

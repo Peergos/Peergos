@@ -13,7 +13,7 @@ import java.util.stream.*;
 
 public class IPFS {
 
-    public static final String MIN_VERSION = "0.4.5";
+    public static final String MIN_VERSION = "0.4.10";
     public enum PinType {all, direct, indirect, recursive}
     public List<String> ObjectTemplates = Arrays.asList("unixfs-dir");
     public List<String> ObjectPatchTypes = Arrays.asList("add-link", "rm-link", "set-data", "append-data");

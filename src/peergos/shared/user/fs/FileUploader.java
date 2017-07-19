@@ -4,6 +4,7 @@ import jsinterop.annotations.*;
 import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.user.*;
@@ -62,7 +63,7 @@ public class FileUploader implements AutoCloseable {
                 baseKey, metaKey, parentLocation, parentparentKey, monitor, fileProperties, fragmenter);
     }
 
-    public CompletableFuture<Location> uploadChunk(NetworkAccess network, SafeRandom random, PublicSigningKey owner, SigningKeyPair writer, long chunkIndex,
+    public CompletableFuture<Location> uploadChunk(NetworkAccess network, SafeRandom random, PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, long chunkIndex,
                                                    Location currentLocation, ProgressConsumer<Long> monitor) {
 	    System.out.println("uploading chunk: "+chunkIndex + " of "+name);
 
@@ -75,15 +76,19 @@ public class FileUploader implements AutoCloseable {
         return reader.readIntoArray(data, 0, data.length).thenCompose(b -> {
             byte[] nonce = random.randomBytes(TweetNaCl.SECRETBOX_NONCE_BYTES);
             Chunk chunk = new Chunk(data, metaKey, currentLocation.getMapKey(), nonce);
-            LocatedChunk locatedChunk = new LocatedChunk(new Location(owner, writer.publicSigningKey, chunk.mapKey()), chunk);
+            LocatedChunk locatedChunk = new LocatedChunk(new Location(owner, writer.publicKeyHash, chunk.mapKey()), chunk);
             byte[] mapKey = random.randomBytes(32);
-            Location nextLocation = new Location(owner, writer.publicSigningKey, mapKey);
+            Location nextLocation = new Location(owner, writer.publicKeyHash, mapKey);
             return uploadChunk(writer, props, parentLocation, parentparentKey, baseKey, locatedChunk,
                     fragmenter, nextLocation, network, monitor).thenApply(c -> nextLocation);
         });
     }
 
-    public CompletableFuture<Location> upload(NetworkAccess network, SafeRandom random, PublicSigningKey owner, SigningKeyPair writer, Location currentChunk) {
+    public CompletableFuture<Location> upload(NetworkAccess network,
+                                              SafeRandom random,
+                                              PublicKeyHash owner,
+                                              SigningPrivateKeyAndPublicHash writer,
+                                              Location currentChunk) {
         long t1 = System.currentTimeMillis();
         Location originalChunk = currentChunk;
 
@@ -95,7 +100,7 @@ public class FileUploader implements AutoCloseable {
                 });
     }
 
-    public static CompletableFuture<Boolean> uploadChunk(SigningKeyPair writer, FileProperties props, Location parentLocation, SymmetricKey parentparentKey,
+    public static CompletableFuture<Boolean> uploadChunk(SigningPrivateKeyAndPublicHash writer, FileProperties props, Location parentLocation, SymmetricKey parentparentKey,
                                                          SymmetricKey baseKey, LocatedChunk chunk, Fragmenter fragmenter, Location nextChunkLocation,
                                                          NetworkAccess network, ProgressConsumer<Long> monitor) {
         EncryptedChunk encryptedChunk = chunk.chunk.encrypt();
@@ -109,7 +114,7 @@ public class FileUploader implements AutoCloseable {
         return network.uploadFragments(fragments, chunk.location.owner, monitor, fragmenter.storageIncreaseFactor()).thenCompose(hashes -> {
             FileRetriever retriever = new EncryptedChunkRetriever(chunk.chunk.nonce(), encryptedChunk.getAuth(), hashes, Optional.of(encryptedNextChunkLocation), fragmenter);
             FileAccess metaBlob = FileAccess.create(baseKey, chunkKey, props, retriever, parentLocation, parentparentKey);
-            return network.uploadChunk(metaBlob, new Location(chunk.location.owner, writer.publicSigningKey, chunk.chunk.mapKey()), writer);
+            return network.uploadChunk(metaBlob, new Location(chunk.location.owner, writer.publicKeyHash, chunk.chunk.mapKey()), writer);
         });
     }
 

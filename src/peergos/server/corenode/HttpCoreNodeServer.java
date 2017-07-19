@@ -1,6 +1,7 @@
 package peergos.server.corenode;
 
 import peergos.server.mutable.*;
+import peergos.shared.cbor.*;
 import peergos.shared.corenode.CoreNode;
 import peergos.shared.corenode.CoreNodeUtils;
 import peergos.shared.corenode.UserPublicKeyLink;
@@ -13,6 +14,7 @@ import java.util.zip.*;
 
 import com.sun.net.httpserver.*;
 import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.api.*;
 import peergos.shared.mutable.*;
 import peergos.shared.util.Args;
@@ -107,8 +109,7 @@ public class HttpCoreNodeServer
             List<UserPublicKeyLink> chain = coreNode.getChain(username).get();
             dout.writeInt(chain.size());
             for (UserPublicKeyLink link : chain) {
-                Serialize.serialize(link.owner.serialize(), dout);
-                Serialize.serialize(link.toByteArray(), dout);
+                Serialize.serialize(link.serialize(), dout);
             }
         }
 
@@ -118,8 +119,7 @@ public class HttpCoreNodeServer
             int count = din.readInt();
             List<UserPublicKeyLink> res = new ArrayList<>();
             for (int i=0; i < count; i++) {
-                PublicSigningKey owner = PublicSigningKey.fromByteArray(Serialize.deserializeByteArray(din, PublicSigningKey.MAX_SIZE));
-                res.add(UserPublicKeyLink.fromByteArray(owner, Serialize.deserializeByteArray(din, UserPublicKeyLink.MAX_SIZE)));
+                res.add(UserPublicKeyLink.fromCbor(CborObject.fromByteArray(Serialize.deserializeByteArray(din, UserPublicKeyLink.MAX_SIZE))));
             }
             boolean isAdded = coreNode.updateChain(username, res).get();
 
@@ -129,7 +129,7 @@ public class HttpCoreNodeServer
         void getPublicKey(DataInputStream din, DataOutputStream dout) throws Exception
         {
             String username = CoreNodeUtils.deserializeString(din);
-            Optional<PublicSigningKey> k = coreNode.getPublicKey(username).get();
+            Optional<PublicKeyHash> k = coreNode.getPublicKeyHash(username).get();
             dout.writeBoolean(k.isPresent());
             if (!k.isPresent())
                 return;
@@ -141,7 +141,7 @@ public class HttpCoreNodeServer
         void getUsername(DataInputStream din, DataOutputStream dout) throws Exception
         {
             byte[] publicKey = CoreNodeUtils.deserializeByteArray(din);
-            String k = coreNode.getUsername(PublicSigningKey.fromByteArray(publicKey)).get();
+            String k = coreNode.getUsername(PublicKeyHash.fromCbor(CborObject.fromByteArray(publicKey))).get();
             if (k == null)
                 k="";
             Serialize.serialize(k, dout);
@@ -161,23 +161,23 @@ public class HttpCoreNodeServer
         void followRequest(DataInputStream din, DataOutputStream dout) throws Exception
         {
             byte[] encodedKey = Serialize.deserializeByteArray(din, PublicSigningKey.MAX_SIZE);
-            PublicSigningKey target = PublicSigningKey.fromByteArray(encodedKey);
+            PublicKeyHash target = PublicKeyHash.fromCbor(CborObject.fromByteArray(encodedKey));
             byte[] encodedSharingPublicKey = CoreNodeUtils.deserializeByteArray(din);
 
-            boolean followRequested = coreNode.followRequest(target, encodedSharingPublicKey).get();
+            boolean followRequested = coreNode.addFollowRequest(target, encodedSharingPublicKey).get();
             dout.writeBoolean(followRequested);
         }
         void getFollowRequests(DataInputStream din, DataOutputStream dout) throws Exception
         {
             byte[] encodedKey = Serialize.deserializeByteArray(din, PublicSigningKey.MAX_SIZE);
-            PublicSigningKey ownerPublicKey = PublicSigningKey.fromByteArray(encodedKey);
+            PublicKeyHash ownerPublicKey = PublicKeyHash.fromCbor(CborObject.fromByteArray(encodedKey));
             byte[] res = coreNode.getFollowRequests(ownerPublicKey).get();
             Serialize.serialize(res, dout);
         }
         void removeFollowRequest(DataInputStream din, DataOutputStream dout) throws Exception
         {
             byte[] encodedKey = Serialize.deserializeByteArray(din, PublicSigningKey.MAX_SIZE);
-            PublicSigningKey owner = PublicSigningKey.fromByteArray(encodedKey);
+            PublicKeyHash owner = PublicKeyHash.fromCbor(CborObject.fromByteArray(encodedKey));
             byte[] signedFollowRequest = CoreNodeUtils.deserializeByteArray(din);
 
             boolean isRemoved = coreNode.removeFollowRequest(owner, signedFollowRequest).get();

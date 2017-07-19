@@ -1,6 +1,7 @@
 package peergos.shared.corenode;
 
 import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.merklebtree.*;
 
 import java.io.*;
@@ -16,7 +17,7 @@ public interface CoreNode {
      * @param key
      * @return the username claimed by a given public key
      */
-    CompletableFuture<String> getUsername(PublicSigningKey key);
+    CompletableFuture<String> getUsername(PublicKeyHash key);
 
     /**
      *
@@ -38,7 +39,7 @@ public interface CoreNode {
      * @param username
      * @return the public key for a username, if present
      */
-    default CompletableFuture<Optional<PublicSigningKey>> getPublicKey(String username) {
+    default CompletableFuture<Optional<PublicKeyHash>> getPublicKeyHash(String username) {
         return getChain(username).thenApply(chain -> {
             if (chain.size() == 0)
                 return Optional.empty();
@@ -60,14 +61,14 @@ public interface CoreNode {
      * @param encryptedPermission
      * @return
      */
-    CompletableFuture<Boolean> followRequest(PublicSigningKey target, byte[] encryptedPermission);
+    CompletableFuture<Boolean> addFollowRequest(PublicKeyHash target, byte[] encryptedPermission);
 
     /**
      *
      * @param owner
      * @return all the pending follow requests for the given public key
      */
-    CompletableFuture<byte[]> getFollowRequests(PublicSigningKey owner);
+    CompletableFuture<byte[]> getFollowRequests(PublicKeyHash owner);
 
     /** Delete a follow request for a given public key
      *
@@ -75,7 +76,7 @@ public interface CoreNode {
      * @param data
      * @return
      */
-    CompletableFuture<Boolean> removeFollowRequest(PublicSigningKey owner, byte[] data);
+    CompletableFuture<Boolean> removeFollowRequest(PublicKeyHash owner, byte[] data);
 
     void close() throws IOException;
 }
