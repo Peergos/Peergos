@@ -654,6 +654,8 @@ public class UserContext {
 
                     if(remainingReaders.size() == 0) {
                         this.sharedFiles.remove(shareKey(sharedPath));
+                    } else {
+                        this.sharedFiles.add(shareKey(sharedPath));
                     }
                     return shareWithAll(sharedPath, remainingReaders);
                 });
