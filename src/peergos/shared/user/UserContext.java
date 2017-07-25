@@ -985,13 +985,12 @@ public class UserContext {
 
 
     @JsMethod
-    public CompletableFuture<Set<FileTreeNode>> getChildren(String pathString) {
+    public CompletableFuture<Set<FileTreeNode>> getChildren(FileTreeNode directory) {
         String path = "/" + username + "/shared";
         return getByPath(path).thenCompose(sharedDirOpt -> {
             FileTreeNode sharedDir = sharedDirOpt.orElseThrow(() -> new IllegalStateException("No such directory" + path));
             return sharedDir.getChildren(network).thenCompose(sharedUserDirs -> {
-
-                return entrie.getChildren(pathString, network).thenCompose(childrenFTNs -> {
+                return directory.getChildren(network).thenCompose(childrenFTNs -> {
                     return Futures.combineAll(childrenFTNs.stream()
                             .map(childFTN -> sharedWith(childFTN, sharedUserDirs))
                             .collect(Collectors.toList()))
