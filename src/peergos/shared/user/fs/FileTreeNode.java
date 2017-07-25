@@ -234,7 +234,7 @@ public class FileTreeNode {
 
     @JsMethod
     public boolean isWritable() {
-        return entryWriterKey.isPresent();
+        return entryWriterKey == null ? false : entryWriterKey.isPresent();
     }
 
     @JsMethod
