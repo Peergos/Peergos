@@ -171,6 +171,112 @@ public class MultiUserTests {
         Assert.assertTrue(Arrays.equals(newFileContents, ArrayOps.concat(originalFileContents, suffix)));
     }
 
+    @Test
+    public void cleanRenamedFiles() throws Exception {
+        UserContext u1 = UserTests.ensureSignedUp("a", "a", network.clear(), crypto);
+
+        // send follow requests from each other user to "a"
+        List<UserContext> friends = getUserContexts(userCount);
+        for (UserContext userContext : friends) {
+            userContext.sendFollowRequest(u1.username, SymmetricKey.random()).get();
+        }
+
+        // make "a" reciprocate all the follow requests
+        List<FollowRequest> u1Requests = u1.processFollowRequests().get();
+        for (FollowRequest u1Request : u1Requests) {
+            boolean accept = true;
+            boolean reciprocate = true;
+            u1.sendReplyFollowRequest(u1Request, accept, reciprocate).get();
+        }
+
+        // complete the friendship connection
+        for (UserContext userContext : friends) {
+            userContext.processFollowRequests().get();//needed for side effect
+        }
+
+        // upload a file to "a"'s space
+        FileTreeNode u1Root = u1.getUserRoot().get();
+        String filename = "somefile.txt";
+        File f = File.createTempFile("peergos", "");
+        byte[] originalFileContents = "Hello Peergos friend!".getBytes();
+        Files.write(f.toPath(), originalFileContents);
+        ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(f);
+        boolean uploaded = u1Root.uploadFile(filename, resetableFileInputStream, f.length(),
+                u1.network, u1.crypto.random,l -> {}, u1.fragmenter()).get();
+
+        // share the file from "a" to each of the others
+        FileTreeNode u1File = u1.getByPath(u1.username + "/" + filename).get().get();
+        u1.shareWith(Paths.get(u1.username, filename), friends.stream().map(u -> u.username).collect(Collectors.toSet())).get();
+
+        // check other users can read the file
+        for (UserContext friend : friends) {
+            Optional<FileTreeNode> sharedFile = friend.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME +
+                    "/" + friend.username + "/" + filename).get();
+            Assert.assertTrue("shared file present", sharedFile.isPresent());
+
+            AsyncReader inputStream = sharedFile.get().getInputStream(friend.network,
+                    friend.crypto.random, l -> {}).get();
+
+            byte[] fileContents = Serialize.readFully(inputStream, sharedFile.get().getFileProperties().size).get();
+            Assert.assertTrue("shared file contents correct", Arrays.equals(originalFileContents, fileContents));
+        }
+
+        UserContext userToUnshareWith = friends.stream().findFirst().get();
+        String friendsPathToFile = u1.username + "/" + UserContext.SHARED_DIR_NAME +
+                "/" + userToUnshareWith.username + "/" + filename;
+        Optional<FileTreeNode> priorUnsharedView = userToUnshareWith.getByPath(friendsPathToFile).get();
+
+        // unshare with a single user
+        u1.unShare(Paths.get(u1.username, filename), userToUnshareWith.username).get();
+
+        String newname = "newname.txt";
+        boolean renamed = u1File.rename(newname, network, u1Root).get();
+
+        // check still logged in user can't read the new name
+        Optional<FileTreeNode> unsharedView = userToUnshareWith.getByPath(friendsPathToFile).get();
+        String friendsNewPathToFile = u1.username + "/" + UserContext.SHARED_DIR_NAME +
+                "/" + userToUnshareWith.username + "/" + newname;
+        Optional<FileTreeNode> unsharedView2 = userToUnshareWith.getByPath(friendsNewPathToFile).get();
+        FilePointer priorPointer = priorUnsharedView.get().getPointer().filePointer;
+        FileAccess fileAccess = network.getMetadata(priorPointer.getLocation()).get().get();
+        try {
+            FileProperties freshProperties = fileAccess.getFileProperties(priorPointer.baseKey);
+            throw new IllegalStateException("We shouldn't be able to decrypt this after a rename!");
+        } catch (TweetNaCl.InvalidCipherTextException e) {}
+
+        List<UserContext> updatedUserContexts = getUserContexts(userCount);
+
+        List<UserContext> remainingUsers = updatedUserContexts.stream()
+                .skip(1)
+                .collect(Collectors.toList());
+
+        UserContext u1New = UserTests.ensureSignedUp("a", "a", network.clear(), crypto);
+
+        // check remaining users can still read it
+        for (UserContext userContext : remainingUsers) {
+            String path = u1.username + "/" + UserContext.SHARED_DIR_NAME +
+                    "/" + userContext.username + "/" + newname;
+            Optional<FileTreeNode> sharedFile = userContext.getByPath(path).get();
+            Assert.assertTrue("path '"+ path +"' is still available", sharedFile.isPresent());
+        }
+
+        // test that u1 can still access the original file
+        Optional<FileTreeNode> fileWithNewBaseKey = u1New.getByPath(u1.username + "/" + newname).get();
+        Assert.assertTrue(fileWithNewBaseKey.isPresent());
+
+        // Now modify the file
+        byte[] suffix = "Some new data at the end".getBytes();
+        AsyncReader suffixStream = new AsyncReader.ArrayBacked(suffix);
+        FileTreeNode parent = u1New.getByPath(u1New.username).get().get();
+        parent.uploadFileSection(newname, suffixStream, originalFileContents.length, originalFileContents.length + suffix.length,
+                Optional.empty(), u1New.network, u1New.crypto.random, l -> {}, u1New.fragmenter());
+        AsyncReader extendedContents = u1New.getByPath(u1.username + "/" + newname).get().get().getInputStream(u1New.network,
+                u1New.crypto.random, l -> {}).get();
+        byte[] newFileContents = Serialize.readFully(extendedContents, originalFileContents.length + suffix.length).get();
+
+        Assert.assertTrue(Arrays.equals(newFileContents, ArrayOps.concat(originalFileContents, suffix)));
+    }
+
     private String random() {
         return UUID.randomUUID().toString();
     }
