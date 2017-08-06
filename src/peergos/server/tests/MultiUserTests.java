@@ -118,8 +118,7 @@ public class MultiUserTests {
 
         // check other users can read the file
         for (UserContext userContext : userContexts) {
-            Optional<FileTreeNode> sharedFile = userContext.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME +
-                    "/" + userContext.username + "/" + filename).get();
+            Optional<FileTreeNode> sharedFile = userContext.getByPath(u1.username + "/" + filename).get();
             Assert.assertTrue("shared file present", sharedFile.isPresent());
 
             AsyncReader inputStream = sharedFile.get().getInputStream(userContext.network,
@@ -148,8 +147,7 @@ public class MultiUserTests {
 
         // check remaining users can still read it
         for (UserContext userContext : remainingUsers) {
-            String path = u1.username + "/" + UserContext.SHARED_DIR_NAME +
-                    "/" + userContext.username + "/" + filename;
+            String path = u1.username + "/" + filename;
             Optional<FileTreeNode> sharedFile = userContext.getByPath(path).get();
             Assert.assertTrue("path '"+ path +"' is still available", sharedFile.isPresent());
         }
