@@ -230,7 +230,7 @@ public class MultiUserTests {
         u1.unShare(Paths.get(u1.username, filename), userToUnshareWith.username).get();
 
         String newname = "newname.txt";
-        boolean renamed = u1File.rename(newname, network, u1Root).get();
+        boolean renamed = u1File.rename(newname, network, u1.getUserRoot().get()).get();
 
         // check still logged in user can't read the new name
         Optional<FileTreeNode> unsharedView = userToUnshareWith.getByPath(friendsPathToFile).get();

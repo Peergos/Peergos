@@ -180,7 +180,7 @@ public class FileTreeNode {
         } else {
             // create a new baseKey == parentKey and mark the metaDataKey as dirty
             SymmetricKey parentKey = SymmetricKey.random();
-            return pointer.fileAccess.markDirty(pointer.filePointer, parentKey, network).thenCompose(newFileAccess -> {
+            return pointer.fileAccess.markDirty(writableFilePointer(), parentKey, network).thenCompose(newFileAccess -> {
 
                 // changing readers here will only affect the returned FileTreeNode, as the readers is derived from the entry point
                 TreeSet<String> newReaders = new TreeSet<>(readers);
@@ -189,7 +189,7 @@ public class FileTreeNode {
 
                 // update link from parent folder to file to have new baseKey
                 return ((DirAccess) parent.pointer.fileAccess)
-                        .updateChildLink(parent.pointer.filePointer, pointer, newPointer, getSigner(), network, random)
+                        .updateChildLink(parent.writableFilePointer(), pointer, newPointer, getSigner(), network, random)
                         .thenApply(x -> new FileTreeNode(newPointer, ownername, newReaders, writers, entryWriterKey));
             });
         }
