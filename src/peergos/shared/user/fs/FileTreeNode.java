@@ -216,7 +216,6 @@ public class FileTreeNode {
                 error.completeExceptionally(new IllegalStateException("Child already exists with name: " + name));
                 return error;
             }
-            Location loc = file.getLocation();
             DirAccess toUpdate = (DirAccess) pointer.fileAccess;
             return (file.isDirectory() ?
                     toUpdate.addSubdirAndCommit(file.pointer.filePointer, this.getKey(),

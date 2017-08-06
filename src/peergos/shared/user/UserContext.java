@@ -893,12 +893,13 @@ public class UserContext {
                             // add new entry point to tree root
                             EntryPoint entry = freq.entry.get();
                             if (entry.owner.equals(username))
-                                throw new IllegalStateException("Received a follow request claiming to be owner by us!");
+                                throw new IllegalStateException("Received a follow request claiming to be owned by us!");
                             return addToStaticDataAndCommit(trie, entryWeSentToThem)
-                                    .thenCompose(newRoot -> network.retrieveEntryPoint(entry).thenCompose(treeNode ->
-                                            treeNode.get().getPath(network)).thenApply(path ->
-                                            newRoot.put(path, entry)
-                                    ).thenCompose(trieres -> addToStatic.apply(trieres, freq).thenApply(b -> trieres)));
+                                    .thenCompose(newRoot -> network.retrieveEntryPoint(entry)
+                                            .thenCompose(treeNode ->
+                                                    treeNode.get().getPath(network))
+                                            .thenApply(path -> newRoot.put(path, entry)
+                                    ).thenCompose(trieres -> addToStatic.apply(trieres, freq)));
                         }
                     };
                     List<FollowRequest> initialRequests = all.stream()
@@ -933,7 +934,7 @@ public class UserContext {
     public CompletableFuture<Optional<FileTreeNode>> getByPath(String path) {
         if (path.equals("/"))
             return CompletableFuture.completedFuture(Optional.of(FileTreeNode.createRoot(entrie)));
-        return entrie.getByPath(path, network);
+        return entrie.getByPath(path.startsWith("/") ? path : "/" + path, network);
     }
 
     public CompletableFuture<FileTreeNode> getUserRoot() {

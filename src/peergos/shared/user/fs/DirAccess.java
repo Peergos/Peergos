@@ -225,7 +225,7 @@ public class DirAccess extends FileAccess {
         else {
             toUpdate = addFileAndCommit(modified.filePointer, ourPointer.baseKey, ourPointer, signer, network, random);
         }
-        return toUpdate.thenCompose(newDirAccess -> network.uploadChunk(newDirAccess, ourPointer.getLocation(), ourPointer.signer()));
+        return toUpdate.thenCompose(newDirAccess -> network.uploadChunk(newDirAccess, ourPointer.getLocation(), signer));
     }
 
     public CompletableFuture<Boolean> removeChild(RetrievedFilePointer childRetrievedPointer, FilePointer ourPointer,
