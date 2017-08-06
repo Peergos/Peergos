@@ -209,8 +209,7 @@ public class MultiUserTests {
 
         // check other users can read the file
         for (UserContext friend : friends) {
-            Optional<FileTreeNode> sharedFile = friend.getByPath(u1.username + "/" + UserContext.SHARED_DIR_NAME +
-                    "/" + friend.username + "/" + filename).get();
+            Optional<FileTreeNode> sharedFile = friend.getByPath(u1.username + "/" + filename).get();
             Assert.assertTrue("shared file present", sharedFile.isPresent());
 
             AsyncReader inputStream = sharedFile.get().getInputStream(friend.network,
@@ -221,8 +220,7 @@ public class MultiUserTests {
         }
 
         UserContext userToUnshareWith = friends.stream().findFirst().get();
-        String friendsPathToFile = u1.username + "/" + UserContext.SHARED_DIR_NAME +
-                "/" + userToUnshareWith.username + "/" + filename;
+        String friendsPathToFile = u1.username + "/" + filename;
         Optional<FileTreeNode> priorUnsharedView = userToUnshareWith.getByPath(friendsPathToFile).get();
 
         // unshare with a single user
@@ -234,8 +232,7 @@ public class MultiUserTests {
 
         // check still logged in user can't read the new name
         Optional<FileTreeNode> unsharedView = userToUnshareWith.getByPath(friendsPathToFile).get();
-        String friendsNewPathToFile = u1.username + "/" + UserContext.SHARED_DIR_NAME +
-                "/" + userToUnshareWith.username + "/" + newname;
+        String friendsNewPathToFile = u1.username + "/" + newname;
         Optional<FileTreeNode> unsharedView2 = userToUnshareWith.getByPath(friendsNewPathToFile).get();
         FilePointer priorPointer = priorUnsharedView.get().getPointer().filePointer;
         FileAccess fileAccess = network.getMetadata(priorPointer.getLocation()).get().get();
@@ -257,8 +254,7 @@ public class MultiUserTests {
 
         // check remaining users can still read it
         for (UserContext userContext : remainingUsers) {
-            String path = u1.username + "/" + UserContext.SHARED_DIR_NAME +
-                    "/" + userContext.username + "/" + newname;
+            String path = u1.username + "/" + newname;
             Optional<FileTreeNode> sharedFile = userContext.getByPath(path).get();
             Assert.assertTrue("path '"+ path +"' is still available", sharedFile.isPresent());
         }
