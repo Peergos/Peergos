@@ -205,7 +205,8 @@ public class MultiUserTests {
                 u1.network, u1.crypto.random,l -> {}, u1.fragmenter()).get();
 
         // share the file from "a" to each of the others
-        FileTreeNode u1File = u1.getByPath(u1.username + "/" + filename).get().get();
+        String originalPath = u1.username + "/" + filename;
+        FileTreeNode u1File = u1.getByPath(originalPath).get().get();
         u1.shareWith(Paths.get(u1.username, filename), friends.stream().map(u -> u.username).collect(Collectors.toSet())).get();
 
         // check other users can read the file
@@ -230,7 +231,8 @@ public class MultiUserTests {
         u1.unShare(Paths.get(u1.username, filename), userToUnshareWith.username).get();
 
         String newname = "newname.txt";
-        boolean renamed = u1File.rename(newname, network, u1.getUserRoot().get()).get();
+        boolean renamed = u1.getByPath(originalPath).get().get()
+                .rename(newname, network, u1.getUserRoot().get()).get();
 
         // check still logged in user can't read the new name
         Optional<FileTreeNode> unsharedView = userToUnshareWith.getByPath(friendsPathToFile).get();
@@ -243,6 +245,9 @@ public class MultiUserTests {
             FileProperties freshProperties = fileAccess.getFileProperties(priorPointer.baseKey);
             throw new IllegalStateException("We shouldn't be able to decrypt this after a rename!");
         } catch (TweetNaCl.InvalidCipherTextException e) {}
+
+        Assert.assertTrue("target can't read through original path", ! unsharedView.isPresent());
+        Assert.assertTrue("target can't read through new path", ! unsharedView2.isPresent());
 
         List<UserContext> updatedUserContexts = getUserContexts(userCount);
 
@@ -270,8 +275,8 @@ public class MultiUserTests {
         FileTreeNode parent = u1New.getByPath(u1New.username).get().get();
         parent.uploadFileSection(newname, suffixStream, originalFileContents.length, originalFileContents.length + suffix.length,
                 Optional.empty(), u1New.network, u1New.crypto.random, l -> {}, u1New.fragmenter());
-        AsyncReader extendedContents = u1New.getByPath(u1.username + "/" + newname).get().get().getInputStream(u1New.network,
-                u1New.crypto.random, l -> {}).get();
+        AsyncReader extendedContents = u1New.getByPath(u1.username + "/" + newname).get().get()
+                .getInputStream(u1New.network, u1New.crypto.random, l -> {}).get();
         byte[] newFileContents = Serialize.readFully(extendedContents, originalFileContents.length + suffix.length).get();
 
         Assert.assertTrue(Arrays.equals(newFileContents, ArrayOps.concat(originalFileContents, suffix)));

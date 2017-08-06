@@ -59,7 +59,7 @@ public class FileAccess implements Cborable {
             byte[] nonce = Arrays.copyOfRange(properties, 0, TweetNaCl.SECRETBOX_NONCE_BYTES);
             byte[] cipher = Arrays.copyOfRange(properties, TweetNaCl.SECRETBOX_NONCE_BYTES, this.properties.length);
             return FileProperties.deserialize(getMetaKey(parentKey).decrypt(cipher, nonce));
-        } catch (Exception e) {
+        } catch (IOException e) {
             throw new RuntimeException(e);
         }
     }

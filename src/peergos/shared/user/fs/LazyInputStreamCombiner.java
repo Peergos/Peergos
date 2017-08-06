@@ -124,14 +124,17 @@ public class LazyInputStreamCombiner implements AsyncReader {
         int toRead = Math.min(available, length);
         System.arraycopy(currentChunk, index, res, offset, toRead);
         index += toRead;
+        globalIndex += toRead;
         if (available >= length) // we are done
             return CompletableFuture.completedFuture(length);
-        if (globalIndex + toRead >= totalLength) {
+        if (globalIndex > totalLength) {
             CompletableFuture<Integer> err=  new CompletableFuture<>();
             err.completeExceptionally(new EOFException());
             return err;
         }
         int remainingToRead = totalLength - globalIndex > Chunk.MAX_SIZE ? Chunk.MAX_SIZE : (int) (totalLength - globalIndex);
+        if (remainingToRead == 0)
+            return CompletableFuture.completedFuture(toRead);
         return getNextStream(remainingToRead).thenCompose(done ->
             this.readIntoArray(res, offset + toRead, length - toRead).thenApply(bytesRead -> bytesRead + toRead)
         );
