@@ -450,7 +450,7 @@ public abstract class UserTests {
         String start = ArrayOps.bytesToHex(Arrays.copyOfRange(expected, 0, 10));
 
         for (int i = 0; i < readBytes.length; i++)
-            assertEquals("position  "+ i + " out of "+ readBytes.length  + ", start of file "+ start,
+            assertEquals("position  " + i + " out of " + readBytes.length + ", start of file " + start,
                     StringUtils.format("%02x", readBytes[i] & 0xFF),
                     StringUtils.format("%02x", expected[i] & 0xFF));
 
