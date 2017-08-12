@@ -22,8 +22,8 @@ public class LazyInputStreamCombiner implements AsyncReader {
     private byte[] currentChunk;
     private Location nextChunkPointer;
 
-    private long globalIndex;
-    private int index;
+    private long globalIndex; // index of beginning of current chunk in file
+    private int index; // index within current chunk
 
     public LazyInputStreamCombiner(long globalIndex,
                                    byte[] chunk,
@@ -124,15 +124,19 @@ public class LazyInputStreamCombiner implements AsyncReader {
         int toRead = Math.min(available, length);
         System.arraycopy(currentChunk, index, res, offset, toRead);
         index += toRead;
+        long globalOffset = globalIndex + index;
+
         if (available >= length) // we are done
             return CompletableFuture.completedFuture(length);
-        if (globalIndex + toRead >= totalLength) {
+        if (globalOffset > totalLength) {
             CompletableFuture<Integer> err=  new CompletableFuture<>();
             err.completeExceptionally(new EOFException());
             return err;
         }
-        int remainingToRead = totalLength - globalIndex > Chunk.MAX_SIZE ? Chunk.MAX_SIZE : (int) (totalLength - globalIndex);
-        return getNextStream(remainingToRead).thenCompose(done ->
+        int nextChunkSize = totalLength - globalOffset > Chunk.MAX_SIZE ?
+                Chunk.MAX_SIZE :
+                (int) (totalLength - globalOffset);
+        return getNextStream(nextChunkSize).thenCompose(done ->
             this.readIntoArray(res, offset + toRead, length - toRead).thenApply(bytesRead -> bytesRead + toRead)
         );
     }

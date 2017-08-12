@@ -680,7 +680,7 @@ public class UserContext {
             //
             // first remove links from shared directory
             //
-            FileTreeNode sharedPath = opt.orElseThrow(() -> new IllegalStateException("Specified un-shareWith path " + pathString + " does not exist"));
+            FileTreeNode toUnshare = opt.orElseThrow(() -> new IllegalStateException("Specified un-shareWith path " + pathString + " does not exist"));
             Optional<String> empty = Optional.empty();
 
             Function<String, CompletableFuture<Optional<String>>> unshareWith = user -> getByPath("/" + username + "/shared/" + user)
@@ -688,55 +688,33 @@ public class UserContext {
                         if (!sharedWithOpt.isPresent())
                             return CompletableFuture.completedFuture(empty);
                         FileTreeNode sharedRoot = sharedWithOpt.get();
-                        return sharedRoot.removeChild(sharedPath, network)
+                        return sharedRoot.removeChild(toUnshare, network)
                                 .thenCompose(x -> CompletableFuture.completedFuture(Optional.of(user)));
                     });
 
-            return sharedWith(sharedPath)
-                    .thenCompose(sharedWithUsers -> {
+            // now change to new base keys, clean some keys and mark others as dirty
+            return getByPath(path.getParent().toString())
+                    .thenCompose(parent -> sharedWith(toUnshare)
+                            .thenCompose(sharedWithUsers ->
+                                    toUnshare.makeDirty(network, crypto.random, parent.get(), readersToRemove)
+                                            .thenCompose(markedDirty -> {
+                                                Set<CompletableFuture<Optional<String>>> collect = sharedWithUsers.stream()
+                                                        .map(unshareWith::apply) //remove link from shared directory
+                                                        .collect(Collectors.toSet());
 
-                        Set<CompletableFuture<Optional<String>>> collect = sharedWithUsers.stream()
-                                .map(unshareWith::apply) //remove link from shared directory
-                                .collect(Collectors.toSet());
+                                                return Futures.combineAll(collect);})
+                                            .thenCompose(x -> {
+                                                List<String> allSharees = x.stream()
+                                                        .flatMap(e -> e.isPresent() ? Stream.of(e.get()) : Stream.empty())
+                                                        .collect(Collectors.toList());
 
-                        return Futures.combineAll(collect);
-                    }).thenCompose(x -> {
-                        List<String> allSharees = x.stream()
-                                .flatMap(e -> e.isPresent() ? Stream.of(e.get()) : Stream.empty())
-                                .collect(Collectors.toList());
+                                                Set<String> remainingReaders = allSharees.stream()
+                                                        .filter(reader -> !readersToRemove.contains(reader))
+                                                        .collect(Collectors.toSet());
 
-                        Set<String> remainingReaders = allSharees.stream()
-                                .filter(reader -> ! readersToRemove.contains(reader))
-                                .collect(Collectors.toSet());
-
-                        return shareWith(path, remainingReaders);
-                    });
+                                                return shareWith(path, remainingReaders);
+                                            })));
         });
-
-
-        /*
-        Optional<FileTreeNode> f = getByPath(path.toString());
-        if (! f.isPresent())
-            return;
-        FileTreeNode file = f.get();
-        Set<String> sharees = sharedWith(file);
-        // first remove links from shared directory
-        for (String friendName: sharees) {
-            Optional<FileTreeNode> opt = getByPath("/" + username + "/shared/" + friendName);
-            if (!opt.isPresent())
-                continue;
-            FileTreeNode sharedRoot = opt.get();
-            sharedRoot.removeChild(file, this);
-        }
-
-        // now change to new base keys, clean some keys and mark others as dirty
-        FileTreeNode parent = getByPath(path.getParent().toString()).get();
-        file.makeDirty(this, parent, readersToRemove);
-
-        // now re-share new keys with remaining users
-        Set<String> remainingReaders = sharees.stream().filter(name -> !readersToRemove.contains(name)).collect(Collectors.toSet());
-        share(path, remainingReaders);*/
-
     }
 
     @JsMethod
@@ -915,12 +893,13 @@ public class UserContext {
                             // add new entry point to tree root
                             EntryPoint entry = freq.entry.get();
                             if (entry.owner.equals(username))
-                                throw new IllegalStateException("Received a follow request claiming to be owner by us!");
+                                throw new IllegalStateException("Received a follow request claiming to be owned by us!");
                             return addToStaticDataAndCommit(trie, entryWeSentToThem)
-                                    .thenCompose(newRoot -> network.retrieveEntryPoint(entry).thenCompose(treeNode ->
-                                            treeNode.get().getPath(network)).thenApply(path ->
-                                            newRoot.put(path, entry)
-                                    ).thenCompose(trieres -> addToStatic.apply(trieres, freq).thenApply(b -> trieres)));
+                                    .thenCompose(newRoot -> network.retrieveEntryPoint(entry)
+                                            .thenCompose(treeNode ->
+                                                    treeNode.get().getPath(network))
+                                            .thenApply(path -> newRoot.put(path, entry)
+                                    ).thenCompose(trieres -> addToStatic.apply(trieres, freq)));
                         }
                     };
                     List<FollowRequest> initialRequests = all.stream()
@@ -955,7 +934,7 @@ public class UserContext {
     public CompletableFuture<Optional<FileTreeNode>> getByPath(String path) {
         if (path.equals("/"))
             return CompletableFuture.completedFuture(Optional.of(FileTreeNode.createRoot(entrie)));
-        return entrie.getByPath(path, network);
+        return entrie.getByPath(path.startsWith("/") ? path : "/" + path, network);
     }
 
     public CompletableFuture<FileTreeNode> getUserRoot() {
