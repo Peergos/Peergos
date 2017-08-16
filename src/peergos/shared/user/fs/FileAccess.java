@@ -92,8 +92,13 @@ public class FileAccess implements Cborable {
         if (!writableFilePointer.isWritable())
             throw new IllegalStateException("Need a writable pointer!");
         SymmetricKey metaKey = this.getMetaKey(writableFilePointer.baseKey);
+        boolean isDirty = metaKey.isDirty();
+        if (isDirty)
+            metaKey = SymmetricKey.random();
+        SymmetricLink toMeta = isDirty ? this.parent2meta : SymmetricLink.fromPair(writableFilePointer.baseKey, metaKey);
+
         byte[] nonce = metaKey.createNonce();
-        FileAccess fa = new FileAccess(this.parent2meta, this.parent2data, ArrayOps.concat(nonce, metaKey.encrypt(newProps.serialize(), nonce)),
+        FileAccess fa = new FileAccess(toMeta, this.parent2data, ArrayOps.concat(nonce, metaKey.encrypt(newProps.serialize(), nonce)),
                 this.retriever, this.parentLink);
         return network.uploadChunk(fa, writableFilePointer.location, writableFilePointer.signer());
     }
