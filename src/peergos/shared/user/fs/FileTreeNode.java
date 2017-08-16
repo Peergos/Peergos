@@ -469,7 +469,7 @@ public class FileTreeNode {
             final AtomicLong filesSize = new AtomicLong(childProps.size);
             FileRetriever retriever = child.getRetriever();
             SymmetricKey baseKey = child.pointer.filePointer.baseKey;
-            SymmetricKey dataKey = child.pointer.fileAccess.getMetaKey(baseKey);
+            SymmetricKey dataKey = child.pointer.fileAccess.getDataKey(baseKey);
 
             List<Long> startIndexes = new ArrayList<>();
 
