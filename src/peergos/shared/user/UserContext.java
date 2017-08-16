@@ -31,7 +31,7 @@ public class UserContext {
     public final SigningPrivateKeyAndPublicHash signer;
     public final BoxingKeyPair boxer;
     public final Fragmenter fragmenter;
-    public final Set<String> sharedFiles;
+    public final Set<String> filesSharedWithFriends;
 
     private CompletableFuture<CommittedWriterData> userData;
     @JsProperty
@@ -61,7 +61,7 @@ public class UserContext {
         this.fragmenter = fragmenter;
         this.userData = userData;
         this.entrie = entrie;
-        this.sharedFiles = new HashSet<>();
+        this.filesSharedWithFriends = new HashSet<>();
     }
 
     public boolean isJavascript() {
@@ -684,23 +684,28 @@ public class UserContext {
         String pathString = path.toString();
         CompletableFuture<Optional<FileTreeNode>> byPath = getByPath(pathString);
         return byPath.thenCompose(opt -> {
-            //
-            // first remove links from shared directory
-            //
             FileTreeNode toUnshare = opt.orElseThrow(() -> new IllegalStateException("Specified un-shareWith path " + pathString + " does not exist"));
-            Optional<String> empty = Optional.empty();
+            return unShareItem(toUnshare, readersToRemove);
+        });
+    }
 
-            Function<String, CompletableFuture<Optional<String>>> unshareWith = user -> getByPath("/" + username + "/shared/" + user)
-                    .thenCompose(sharedWithOpt -> {
-                        if (!sharedWithOpt.isPresent())
-                            return CompletableFuture.completedFuture(empty);
-                        FileTreeNode sharedRoot = sharedWithOpt.get();
-                        return sharedRoot.removeChild(toUnshare, network)
-                                .thenCompose(x -> CompletableFuture.completedFuture(Optional.of(user)));
-                    });
+    public CompletableFuture<Boolean> unShareItem(FileTreeNode toUnshare, Set<String> readersToRemove) {
+        //
+        // first remove links from shared directory
+        //
+        Optional<String> empty = Optional.empty();
+
+        Function<String, CompletableFuture<Optional<String>>> unshareWith = user -> getByPath("/" + username + "/shared/" + user)
+                .thenCompose(sharedWithOpt -> {
+                    if (!sharedWithOpt.isPresent())
+                        return CompletableFuture.completedFuture(empty);
+                    FileTreeNode sharedRoot = sharedWithOpt.get();
+                    return sharedRoot.removeChild(toUnshare, network)
+                            .thenCompose(x -> CompletableFuture.completedFuture(Optional.of(user)));
+                });
 
             // now change to new base keys, clean some keys and mark others as dirty
-            return getByPath(path.getParent().toString())
+            return toUnshare.retrieveParent(network)
                     .thenCompose(parent -> sharedWith(toUnshare)
                             .thenCompose(sharedWithUsers ->
                                     toUnshare.makeDirty(network, crypto.random, parent.get(), readersToRemove)
@@ -719,50 +724,13 @@ public class UserContext {
                                                         .filter(reader -> !readersToRemove.contains(reader))
                                                         .collect(Collectors.toSet());
 
-                                                return shareWith(path, remainingReaders);
+                                                if(remainingReaders.size() == 0) {
+                                                    this.filesSharedWithFriends.remove(shareKey(toUnshare));
+                                                } else {
+                                                    this.filesSharedWithFriends.add(shareKey(toUnshare));
+                                                }
+                                                return shareWithAll(toUnshare, remainingReaders);
                                             })));
-        });
-    }
-
-    private CompletableFuture<Boolean> unShareItem(FileTreeNode sharedPath, Set<String> readersToRemove) {
-        //
-        // first remove links from shared directory
-        //
-        Optional<String> empty = Optional.empty();
-        Function<String, CompletableFuture<Optional<String>>> unshareWith = user -> getByPath("/" + username + "/shared/" + user)
-                .thenCompose(sharedWithOpt -> {
-                    if (!sharedWithOpt.isPresent())
-                        return CompletableFuture.completedFuture(empty);
-                    FileTreeNode sharedRoot = sharedWithOpt.get();
-                    return sharedRoot.removeChild(sharedPath, network)
-                            .thenCompose(x -> CompletableFuture.completedFuture(Optional.of(user)));
-                });
-
-        return sharedWith(sharedPath)
-                .thenCompose(sharedWithUsers -> {
-
-                    Set<CompletableFuture<Optional<String>>> collect = sharedWithUsers.stream()
-                            .map(unshareWith::apply) //remove link from shared directory
-                            .collect(Collectors.toSet());
-
-                    return Futures.combineAll(collect);
-                }).thenCompose(x -> {
-                    List<String> allSharees = x.stream()
-                            .flatMap(e -> e.isPresent() ? Stream.of(e.get()) : Stream.empty())
-                            .collect(Collectors.toList());
-
-                    Set<String> remainingReaders = allSharees.stream()
-                            .filter(reader -> ! readersToRemove.contains(reader))
-                            .collect(Collectors.toSet());
-
-                    if(remainingReaders.size() == 0) {
-                        this.sharedFiles.remove(shareKey(sharedPath));
-                    } else {
-                        this.sharedFiles.add(shareKey(sharedPath));
-                    }
-                    return shareWithAll(sharedPath, remainingReaders);
-                });
-
     }
 
     private String shareKey(FileTreeNode file) {
@@ -776,7 +744,7 @@ public class UserContext {
     @JsMethod
     public boolean isShared(FileTreeNode file) {
         String key = shareKey(file);
-        return this.sharedFiles.contains(key);
+        return this.filesSharedWithFriends.contains(key);
     }
 
     @JsMethod
@@ -812,9 +780,9 @@ public class UserContext {
                                         .flatMap(e -> e.isPresent() ? Stream.of(e.get()) : Stream.empty())
                                         .collect(Collectors.toSet());
                                 if(sharedWith.size() == 0) {
-                                    this.sharedFiles.remove(shareKey(file));
+                                    this.filesSharedWithFriends.remove(shareKey(file));
                                 } else {
-                                    this.sharedFiles.add(shareKey(file));
+                                    this.filesSharedWithFriends.add(shareKey(file));
                                 }
                                 return CompletableFuture.completedFuture(sharedWith);
                             });
@@ -855,7 +823,7 @@ public class UserContext {
                     FileTreeNode sharedTreeNode = shared.get();
                     return sharedTreeNode.addLinkTo(file, network, crypto.random)
                             .thenCompose(ee -> {
-                                this.sharedFiles.add(shareKey(file));
+                                this.filesSharedWithFriends.add(shareKey(file));
                                 return CompletableFuture.completedFuture(true);
                             });
                 });
@@ -1005,7 +973,7 @@ public class UserContext {
             return sharedDir.getChildren(network).thenCompose(sharedUserDirs -> {
                 return directory.getChildren(network).thenCompose(childrenFTNs -> {
                     return Futures.combineAll(childrenFTNs.stream()
-                            .map(childFTN -> sharedWith(childFTN, sharedUserDirs))
+                            .map(childFTN -> updateSharedWith(childFTN, sharedUserDirs))
                             .collect(Collectors.toList()))
                             .thenApply(x -> childrenFTNs);
                 });
@@ -1013,7 +981,7 @@ public class UserContext {
         });
     }
 
-    private CompletableFuture<Boolean> sharedWith(FileTreeNode file, Set<FileTreeNode> sharedUserDirs) {
+    private CompletableFuture<Boolean> updateSharedWith(FileTreeNode file, Set<FileTreeNode> sharedUserDirs) {
 
         Location fileLocation = file.getLocation();
 
@@ -1033,9 +1001,9 @@ public class UserContext {
 
         return Futures.combineAll(collect).thenApply(presentSet -> {
             if (! presentSet.stream().anyMatch(f -> f)) {
-                this.sharedFiles.remove(shareKey(file));
+                this.filesSharedWithFriends.remove(shareKey(file));
             } else {
-                this.sharedFiles.add(shareKey(file));
+                this.filesSharedWithFriends.add(shareKey(file));
             }
             return true;
         });

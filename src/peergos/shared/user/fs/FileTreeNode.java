@@ -233,7 +233,7 @@ public class FileTreeNode {
 
     @JsMethod
     public boolean isWritable() {
-        return entryWriterKey == null ? false : entryWriterKey.isPresent();
+        return entryWriterKey == null ? false : entryWriterKey.isPresent(); //The null check is required due a gwt/vue.js interaction on logout
     }
 
     @JsMethod
