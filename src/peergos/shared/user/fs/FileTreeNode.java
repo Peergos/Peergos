@@ -721,7 +721,7 @@ public class FileTreeNode {
     public CompletableFuture<? extends AsyncReader> getInputStream(NetworkAccess network, SafeRandom random,
                                                                    long fileSize, ProgressConsumer<Long> monitor) {
         SymmetricKey baseKey = pointer.filePointer.baseKey;
-        SymmetricKey dataKey = pointer.fileAccess.getMetaKey(baseKey);
+        SymmetricKey dataKey = pointer.fileAccess.getDataKey(baseKey);
         return pointer.fileAccess.retriever().getFile(network, random, dataKey, fileSize, getLocation(), monitor);
     }
 
