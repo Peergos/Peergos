@@ -5,6 +5,7 @@ import org.junit.runner.*;
 import org.junit.runners.*;
 import peergos.server.storage.ResetableFileInputStream;
 import peergos.shared.*;
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.server.*;
@@ -222,6 +223,9 @@ public class MultiUserTests {
         UserContext userToUnshareWith = friends.stream().findFirst().get();
         String friendsPathToFile = u1.username + "/" + filename;
         Optional<FileTreeNode> priorUnsharedView = userToUnshareWith.getByPath(friendsPathToFile).get();
+        FilePointer priorPointer = priorUnsharedView.get().getPointer().filePointer;
+        FileAccess priorFileAccess = network.getMetadata(priorPointer.getLocation()).get().get();
+        SymmetricKey priorMetaKey = priorFileAccess.getMetaKey(priorPointer.baseKey);
 
         // unshare with a single user
         u1.unShare(Paths.get(u1.username, filename), userToUnshareWith.username).get();
@@ -234,8 +238,15 @@ public class MultiUserTests {
         Optional<FileTreeNode> unsharedView = userToUnshareWith.getByPath(friendsPathToFile).get();
         String friendsNewPathToFile = u1.username + "/" + newname;
         Optional<FileTreeNode> unsharedView2 = userToUnshareWith.getByPath(friendsNewPathToFile).get();
-        FilePointer priorPointer = priorUnsharedView.get().getPointer().filePointer;
         FileAccess fileAccess = network.getMetadata(priorPointer.getLocation()).get().get();
+        try {
+            // Try decrypting the new metadata with the old key
+            byte[] properties = ((CborObject.CborByteArray) ((CborObject.CborList) fileAccess.toCbor()).value.get(1)).value;
+            byte[] nonce = Arrays.copyOfRange(properties, 0, TweetNaCl.SECRETBOX_NONCE_BYTES);
+            byte[] cipher = Arrays.copyOfRange(properties, TweetNaCl.SECRETBOX_NONCE_BYTES, properties.length);
+            FileProperties props =  FileProperties.deserialize(priorMetaKey.decrypt(cipher, nonce));
+            throw new IllegalStateException("We shouldn't be able to decrypt this after a rename! new name = " + props.name);
+        } catch (TweetNaCl.InvalidCipherTextException e) {}
         try {
             FileProperties freshProperties = fileAccess.getFileProperties(priorPointer.baseKey);
             throw new IllegalStateException("We shouldn't be able to decrypt this after a rename!");
