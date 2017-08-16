@@ -31,7 +31,7 @@ public class UserContext {
     public final SigningPrivateKeyAndPublicHash signer;
     public final BoxingKeyPair boxer;
     public final Fragmenter fragmenter;
-    public final Set<String> filesSharedWithFriends;
+    public final Set<String> filesSharedWithFriends; //String is Location.toString()
 
     private CompletableFuture<CommittedWriterData> userData;
     @JsProperty
