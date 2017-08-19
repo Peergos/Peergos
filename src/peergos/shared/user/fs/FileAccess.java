@@ -4,6 +4,7 @@ import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
@@ -71,6 +72,8 @@ public class FileAccess implements Cborable {
             return FileProperties.deserialize(getMetaKey(parentKey).decrypt(cipher, nonce));
         } catch (IOException e) {
             throw new RuntimeException(e);
+        } catch (RuntimeException e) {
+            throw e;
         }
     }
 
@@ -88,14 +91,18 @@ public class FileAccess implements Cborable {
         return retriever;
     }
 
-    public CompletableFuture<Boolean> rename(FilePointer writableFilePointer, FileProperties newProps, NetworkAccess network) {
+    public CompletableFuture<Boolean> rename(FilePointer writableFilePointer,
+                                             FileProperties newProps,
+                                             NetworkAccess network) {
         if (!writableFilePointer.isWritable())
             throw new IllegalStateException("Need a writable pointer!");
         SymmetricKey metaKey = this.getMetaKey(writableFilePointer.baseKey);
         boolean isDirty = metaKey.isDirty();
         if (isDirty)
             metaKey = SymmetricKey.random();
-        SymmetricLink toMeta = isDirty ? this.parent2meta : SymmetricLink.fromPair(writableFilePointer.baseKey, metaKey);
+        SymmetricLink toMeta = isDirty ?
+                SymmetricLink.fromPair(writableFilePointer.baseKey, metaKey) :
+                this.parent2meta;
 
         byte[] nonce = metaKey.createNonce();
         FileAccess fa = new FileAccess(toMeta, this.parent2data, ArrayOps.concat(nonce, metaKey.encrypt(newProps.serialize(), nonce)),

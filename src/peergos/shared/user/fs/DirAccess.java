@@ -221,14 +221,13 @@ public class DirAccess extends FileAccess {
     public CompletableFuture<Boolean> updateChildLink(FilePointer ourPointer, RetrievedFilePointer original,
                                                       RetrievedFilePointer modified, SigningPrivateKeyAndPublicHash signer,
                                                       NetworkAccess network, SafeRandom random) {
-        removeChild(original, ourPointer, signer, network);
-        CompletableFuture<DirAccess> toUpdate;
-        if (modified.fileAccess.isDirectory())
-            toUpdate = addSubdirAndCommit(modified.filePointer, ourPointer.baseKey, ourPointer, signer, network, random);
-        else {
-            toUpdate = addFileAndCommit(modified.filePointer, ourPointer.baseKey, ourPointer, signer, network, random);
-        }
-        return toUpdate.thenCompose(newDirAccess -> network.uploadChunk(newDirAccess, ourPointer.getLocation(), signer));
+        return removeChild(original, ourPointer, signer, network)
+                .thenCompose(res -> {
+                    if (modified.fileAccess.isDirectory())
+                        return addSubdirAndCommit(modified.filePointer, ourPointer.baseKey, ourPointer, signer, network, random);
+                    else
+                        return addFileAndCommit(modified.filePointer, ourPointer.baseKey, ourPointer, signer, network, random);
+                }).thenApply(x -> true);
     }
 
     public CompletableFuture<Boolean> removeChild(RetrievedFilePointer childRetrievedPointer, FilePointer ourPointer,
