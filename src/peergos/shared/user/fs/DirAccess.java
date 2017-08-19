@@ -442,6 +442,7 @@ public class DirAccess extends FileAccess {
                 SymmetricLink.fromPair(subfoldersKey, parentKey),
                 new ArrayList<>(), new ArrayList<>(),
                 SymmetricLink.fromPair(parentKey, metaKey),
+                // directories don't have any data, so they can always have a null data key
                 SymmetricLink.fromPair(parentKey, SymmetricKey.createNull()),
                 ArrayOps.concat(metaNonce, metaKey.encrypt(metadata.serialize(), metaNonce)),
                 null,

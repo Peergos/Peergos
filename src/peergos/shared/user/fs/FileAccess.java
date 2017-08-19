@@ -72,8 +72,6 @@ public class FileAccess implements Cborable {
             return FileProperties.deserialize(getMetaKey(parentKey).decrypt(cipher, nonce));
         } catch (IOException e) {
             throw new RuntimeException(e);
-        } catch (RuntimeException e) {
-            throw e;
         }
     }
 
@@ -98,6 +96,7 @@ public class FileAccess implements Cborable {
             throw new IllegalStateException("Need a writable pointer!");
         SymmetricKey metaKey = this.getMetaKey(writableFilePointer.baseKey);
         boolean isDirty = metaKey.isDirty();
+        // if the meta key is dirty then we need to generate a new one to not expose the new metadata
         if (isDirty)
             metaKey = SymmetricKey.random();
         SymmetricLink toMeta = isDirty ?
@@ -138,9 +137,10 @@ public class FileAccess implements Cborable {
         if (!Arrays.equals(baseKey.serialize(), newBaseKey.serialize()))
             throw new IllegalStateException("FileAccess clone must have same base key as original!");
         FileProperties props = getFileProperties(baseKey);
+        boolean isDirectory = isDirectory();
         FileAccess fa = FileAccess.create(newBaseKey,
-                isDirectory() ? SymmetricKey.random() : getMetaKey(baseKey),
-                isDirectory() ? SymmetricKey.random() : getDataKey(baseKey),
+                isDirectory ? SymmetricKey.random() : getMetaKey(baseKey),
+                isDirectory ? SymmetricKey.random() : getDataKey(baseKey),
                 props, this.retriever, newParentLocation, parentparentKey);
         return network.uploadChunk(fa, new Location(newParentLocation.owner, entryWriterKey.publicKeyHash, newMapKey), entryWriterKey)
                 .thenApply(b -> fa);
