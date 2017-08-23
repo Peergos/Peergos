@@ -24,13 +24,18 @@ public class DirAccess extends FileAccess {
     private List<SymmetricLocationLink> subfolders, files;
     private final Optional<SymmetricLocationLink> moreFolderContents;
 
-    public DirAccess(SymmetricLink subfolders2files, SymmetricLink subfolders2parent, List<SymmetricLocationLink> subfolders,
+    public DirAccess(int version,
+                     SymmetricLink subfolders2files,
+                     SymmetricLink subfolders2parent,
+                     List<SymmetricLocationLink> subfolders,
                      List<SymmetricLocationLink> files,
                      SymmetricLink parent2meta,
                      SymmetricLink parent2data,
                      byte[] properties,
-                     FileRetriever retriever, SymmetricLocationLink parentLink, Optional<SymmetricLocationLink> moreFolderContents) {
-        super(parent2meta, parent2data, properties, retriever, parentLink);
+                     FileRetriever retriever,
+                     SymmetricLocationLink parentLink,
+                     Optional<SymmetricLocationLink> moreFolderContents) {
+        super(version, parent2meta, parent2data, properties, retriever, parentLink);
         this.subfolders2files = subfolders2files;
         this.subfolders2parent = subfolders2parent;
         this.subfolders = subfolders;
@@ -39,7 +44,7 @@ public class DirAccess extends FileAccess {
     }
 
     public DirAccess withNextBlob(Optional<SymmetricLocationLink> moreFolderContents) {
-        return new DirAccess(subfolders2files, subfolders2parent, subfolders, files,
+        return new DirAccess(version, subfolders2files, subfolders2parent, subfolders, files,
                 parent2meta, parent2data, properties, retriever, parentLink, moreFolderContents);
     }
 
@@ -79,7 +84,7 @@ public class DirAccess extends FileAccess {
                 .collect(Collectors.toList());
         Optional<SymmetricLocationLink> moreFolderContents = value.get(4) instanceof CborObject.CborNull ?
                 Optional.empty() : Optional.of(SymmetricLocationLink.fromCbor(value.get(4)));
-        return new DirAccess(subfoldersToFiles, subfoldersToParent, subfolders, files,
+        return new DirAccess(base.version, subfoldersToFiles, subfoldersToParent, subfolders, files,
                 base.parent2meta, base.parent2data, base.properties, base.retriever, base.parentLink, moreFolderContents);
     }
 
@@ -102,8 +107,8 @@ public class DirAccess extends FileAccess {
         SymmetricKey parentKey = subfolders2parent.target(writableFilePointer.baseKey);
         metaKey = this.getMetaKey(parentKey);
         byte[] metaNonce = metaKey.createNonce();
-        DirAccess dira = new DirAccess(this.subfolders2files, this.subfolders2parent,
-                this.subfolders, this.files, this.parent2meta, this.parent2data,
+        DirAccess dira = new DirAccess(version, subfolders2files, subfolders2parent,
+                subfolders, files, parent2meta, parent2data,
                 ArrayOps.concat(metaNonce, metaKey.encrypt(newProps.serialize(), metaNonce)),
                 null,
                 parentLink,
@@ -438,7 +443,9 @@ public class DirAccess extends FileAccess {
         SymmetricKey filesKey = SymmetricKey.random();
         byte[] metaNonce = metaKey.createNonce();
         SymmetricLocationLink parentLink = parentLocation == null ? null : SymmetricLocationLink.create(parentKey, parentParentKey, parentLocation);
-        return new DirAccess(SymmetricLink.fromPair(subfoldersKey, filesKey),
+        return new DirAccess(
+                FileAccess.CURRENT_VERSION,
+                SymmetricLink.fromPair(subfoldersKey, filesKey),
                 SymmetricLink.fromPair(subfoldersKey, parentKey),
                 new ArrayList<>(), new ArrayList<>(),
                 SymmetricLink.fromPair(parentKey, metaKey),
