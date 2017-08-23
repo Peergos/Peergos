@@ -65,7 +65,7 @@ public class UserContext {
     public boolean isJavascript() {
     	return this.network.isJavascript();
     }
-    
+
     @JsMethod
     public static CompletableFuture<UserContext> signIn(String username, String password, NetworkAccess network, Crypto crypto) {
         return getWriterDataCbor(network, username)
