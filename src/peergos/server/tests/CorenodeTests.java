@@ -6,6 +6,7 @@ import org.junit.runners.*;
 import peergos.server.*;
 import peergos.server.storage.*;
 import peergos.shared.*;
+import peergos.shared.corenode.CoreNode;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
@@ -114,5 +115,22 @@ public class CorenodeTests {
         System.out.println("Worst Latency: " + worstLatency);
         Assert.assertTrue("Worst latency < 1 second: " + worstLatency, worstLatency < 2000);
         pool.awaitQuiescence(5, TimeUnit.MINUTES);
+    }
+
+    @Test
+    public void isValidUsernameTest() {
+        List<String> areValid = Arrays.asList("chris", "super_califragilistic_ex", "z", "c.h_r.i.s");
+
+        List<String> areNotValid = Arrays.asList(
+            " ",
+            "super_califragilistic_expilalidocious",
+            "\n",
+            "\r",
+            "_hello",
+            "hello.",
+            "\b0");
+
+        areValid.forEach(username -> Assert.assertTrue(username + " is valid", CoreNode.isValidUsername(username)));
+        areNotValid.forEach(username -> Assert.assertFalse(username +" is not valid", CoreNode.isValidUsername(username)));
     }
 }

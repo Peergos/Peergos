@@ -53,9 +53,8 @@ public class LocalDate {
             int dayOfMonth = Integer.valueOf(parts[2]);
             return of(year, month, dayOfMonth);
         }catch(Exception e){
-    		
-    	}
-        throw new DateTimeParseException("Unable to parse:" + text);
+            throw new IllegalStateException("Unable to parse:" + text);
+        }
     }
     
     public static LocalDate now(Clock clock) {
