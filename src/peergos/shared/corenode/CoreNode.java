@@ -7,6 +7,7 @@ import peergos.shared.merklebtree.*;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.regex.*;
 
 public interface CoreNode {
     int MAX_PENDING_FOLLOWERS = 100;

@@ -416,6 +416,9 @@ public class JDBCCoreNode {
                                                   List<UserPublicKeyLink> existing,
                                                   List<UserPublicKeyLink> tail,
                                                   List<UserPublicKeyLink> merged) {
+        if (! UsernameValidator.isValidUsername(username))
+            throw new IllegalStateException("Invalid  username '" +username+"'");
+
         List<String> toWrite = merged.stream().map(x -> new String(Base64.getEncoder().encode(x.serialize()))).collect(Collectors.toList());
         Optional<PublicKeyHash> oldKey = existing.size() == 0 ? Optional.empty() : Optional.of(existing.get(existing.size() - 1).owner);
         PublicKeyHash newKey = tail.get(tail.size() - 1).owner;
