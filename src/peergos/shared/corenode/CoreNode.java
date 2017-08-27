@@ -80,20 +80,4 @@ public interface CoreNode {
     CompletableFuture<Boolean> removeFollowRequest(PublicKeyHash owner, byte[] data);
 
     void close() throws IOException;
-
-
-    /** Username rules:
-     * no _ or . at the end
-     * allowed characters [a-zA-Z0-9._]
-     * no __ or _. or ._ or .. inside
-     * no _ or . at the beginning
-     * is 1-32 characters long
-     * @param username
-     * @return true iff username is a valid username.
-     */
-    static boolean isValidUsername(String username) {
-        return VALID_USERNAME.matcher(username).find();
-    }
-
-    final Pattern VALID_USERNAME = Pattern.compile("^(?=.{1,32}$)(?![_.])(?!.*[_.]{2})[a-zA-Z0-9._]+(?<![_.])$");
 }

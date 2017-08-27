@@ -4,6 +4,7 @@ import org.junit.*;
 import org.junit.runner.*;
 import org.junit.runners.*;
 import peergos.server.*;
+import peergos.server.corenode.UsernameValidator;
 import peergos.server.storage.*;
 import peergos.shared.*;
 import peergos.shared.corenode.CoreNode;
@@ -130,7 +131,7 @@ public class CorenodeTests {
             "hello.",
             "\b0");
 
-        areValid.forEach(username -> Assert.assertTrue(username + " is valid", CoreNode.isValidUsername(username)));
-        areNotValid.forEach(username -> Assert.assertFalse(username +" is not valid", CoreNode.isValidUsername(username)));
+        areValid.forEach(username -> Assert.assertTrue(username + " is valid", UsernameValidator.isValidUsername(username)));
+        areNotValid.forEach(username -> Assert.assertFalse(username +" is not valid", UsernameValidator.isValidUsername(username)));
     }
 }

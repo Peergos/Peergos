@@ -416,7 +416,7 @@ public class JDBCCoreNode {
                                                   List<UserPublicKeyLink> existing,
                                                   List<UserPublicKeyLink> tail,
                                                   List<UserPublicKeyLink> merged) {
-        if (! CoreNode.isValidUsername(username))
+        if (! UsernameValidator.isValidUsername(username))
             throw new IllegalStateException("Invalid  username '" +username+"'");
 
         List<String> toWrite = merged.stream().map(x -> new String(Base64.getEncoder().encode(x.serialize()))).collect(Collectors.toList());
