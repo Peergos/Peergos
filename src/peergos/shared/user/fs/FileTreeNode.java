@@ -676,8 +676,7 @@ public class FileTreeNode {
             byte[] newMapKey = new byte[32];
             random.randombytes(newMapKey, 0, 32);
             SymmetricKey ourBaseKey = this.getKey();
-            // a file baseKey is the key for the chunk, which hasn't changed, so this must stay the same
-            SymmetricKey newBaseKey = this.isDirectory() ? SymmetricKey.random() : ourBaseKey;
+            SymmetricKey newBaseKey = SymmetricKey.random();
             FilePointer newRFP = new FilePointer(target.getLocation().owner, target.getLocation().writer, newMapKey, newBaseKey);
             Location newParentLocation = target.getLocation();
             SymmetricKey newParentParentKey = target.getParentKey();

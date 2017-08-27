@@ -572,6 +572,40 @@ public abstract class UserTests {
         Assert.assertTrue("other file data is  intact", otherDataEquals);
     }
 
+    @Test
+    public void internalCopy() throws Exception {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = ensureSignedUp(username, password, network.clear(), crypto);
+        FileTreeNode userRoot = context.getUserRoot().get();
+        Path home = Paths.get(username);
+
+        String filename = "initialfile.bin";
+        byte[] data = randomData(10*1024*1024); // 2 chunks to test block chaining
+
+        userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length, network, crypto.random, x -> {}, context.fragmenter()).get();
+
+        FileTreeNode original = context.getByPath(home.resolve(filename).toString()).get().get();
+
+        // copy the file
+        String foldername = "afolder";
+        userRoot.mkdir(foldername, network, false, crypto.random).get();
+        FileTreeNode subfolder = context.getByPath(home.resolve(foldername).toString()).get().get();
+        FileTreeNode parentDir = original.copyTo(subfolder, network, crypto.random).get();
+        FileTreeNode copy = context.getByPath(home.resolve(foldername).resolve(filename).toString()).get().get();
+        Assert.assertTrue("Different base key", ! copy.getPointer().filePointer.baseKey.equals(original.getPointer().filePointer.baseKey));
+        Assert.assertTrue("Different metadata key", ! getMetaKey(copy).equals(getMetaKey(original)));
+        Assert.assertTrue("Same data key", getDataKey(copy).equals(getDataKey(original)));
+        checkFileContents(data, copy, context);
+    }
+
+    private static SymmetricKey getDataKey(FileTreeNode file) {
+        return file.getPointer().fileAccess.getDataKey(file.getPointer().filePointer.baseKey);
+    }
+
+    private static SymmetricKey getMetaKey(FileTreeNode file) {
+        return file.getPointer().fileAccess.getMetaKey(file.getPointer().filePointer.baseKey);
+    }
 
     @Test
     public void deleteDirectoryTest() throws Exception {

@@ -139,12 +139,10 @@ public class FileAccess implements Cborable {
                                                           Location newParentLocation, SymmetricKey parentparentKey,
                                                           SigningPrivateKeyAndPublicHash entryWriterKey, byte[] newMapKey,
                                                           NetworkAccess network) {
-        if (!Arrays.equals(baseKey.serialize(), newBaseKey.serialize()))
-            throw new IllegalStateException("FileAccess clone must have same base key as original!");
         FileProperties props = getFileProperties(baseKey);
         boolean isDirectory = isDirectory();
         FileAccess fa = FileAccess.create(newBaseKey,
-                isDirectory ? SymmetricKey.random() : getMetaKey(baseKey),
+                SymmetricKey.random(),
                 isDirectory ? SymmetricKey.random() : getDataKey(baseKey),
                 props, this.retriever, newParentLocation, parentparentKey);
         return network.uploadChunk(fa, new Location(newParentLocation.owner, entryWriterKey.publicKeyHash, newMapKey), entryWriterKey)
