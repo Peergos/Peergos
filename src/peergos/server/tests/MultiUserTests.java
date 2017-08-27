@@ -337,7 +337,7 @@ public class MultiUserTests {
     }
 
     private String random() {
-        return UUID.randomUUID().toString();
+        return UUID.randomUUID().toString().replace("-", "_").substring(0, 30);
     }
 
     @Test

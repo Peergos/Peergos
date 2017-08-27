@@ -57,7 +57,7 @@ public abstract class UserTests {
     }
 
     private String generateUsername() {
-        return "test" + (random.nextInt() % 10000);
+        return "test" + Math.abs(random.nextInt() % 10000);
     }
 
     @Test
@@ -418,8 +418,10 @@ public abstract class UserTests {
     }
 
     public static void checkFileContents(byte[] expected, FileTreeNode f, UserContext context) throws Exception {
+        long size = f.getFileProperties().size;
         byte[] retrievedData = Serialize.readFully(f.getInputStream(context.network, context.crypto.random,
-                f.getFileProperties().size, l-> {}).get(), f.getSize()).get();
+            size, l-> {}).get(), f.getSize()).get();
+        assertEquals(expected.length, size);
         assertTrue("Correct contents", Arrays.equals(retrievedData, expected));
     }
 
