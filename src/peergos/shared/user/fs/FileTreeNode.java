@@ -26,15 +26,15 @@ public class FileTreeNode {
     final static int[] PNG = new int[]{137, 80, 78, 71, 13, 10, 26, 10};
     final static int HEADER_BYTES_TO_IDENTIFY_IMAGE_FILE = 8;
     final static int THUMBNAIL_SIZE = 100;
-    final NativeJSThumbnail thumbnail;
-    
-    RetrievedFilePointer pointer;
-    private FileProperties props;
-    String ownername;
-    Set<String> readers;
-    Set<String> writers;
-    Optional<SecretSigningKey> entryWriterKey;
+
+    private final NativeJSThumbnail thumbnail;
+    private final RetrievedFilePointer pointer;
+    private final FileProperties props;
+    private final String ownername;
     private final Optional<TrieNode> globalRoot;
+    private Set<String> readers;
+    private Set<String> writers;
+    private Optional<SecretSigningKey> entryWriterKey;
 
     /**
      *
@@ -661,7 +661,10 @@ public class FileTreeNode {
     }
 
     @JsMethod
-    public CompletableFuture<FileTreeNode> copyTo(FileTreeNode target, NetworkAccess network, SafeRandom random) {
+    public CompletableFuture<FileTreeNode> copyTo(FileTreeNode target,
+                                                  NetworkAccess network,
+                                                  SafeRandom random,
+                                                  Fragmenter fragmenter) {
         CompletableFuture<FileTreeNode> result = new CompletableFuture<>();
         if (! target.isDirectory()) {
             result.completeExceptionally(new IllegalStateException("CopyTo target " + target + " must be a directory"));
@@ -672,24 +675,31 @@ public class FileTreeNode {
                 result.completeExceptionally(new IllegalStateException("CopyTo target " + target + " already has child with name " + getFileProperties().name));
                 return result;
             }
-            //make new FileTreeNode pointing to the same file, but with a different location
-            byte[] newMapKey = new byte[32];
-            random.randombytes(newMapKey, 0, 32);
-            SymmetricKey ourBaseKey = this.getKey();
-            SymmetricKey newBaseKey = SymmetricKey.random();
-            FilePointer newRFP = new FilePointer(target.getLocation().owner, target.getLocation().writer, newMapKey, newBaseKey);
-            Location newParentLocation = target.getLocation();
-            SymmetricKey newParentParentKey = target.getParentKey();
+            boolean sameWriter = getLocation().writer.equals(target.getLocation().writer);
+            //make new FileTreeNode pointing to the same file if we are the same writer, but with a different location
+            if (sameWriter) {
+                byte[] newMapKey = new byte[32];
+                random.randombytes(newMapKey, 0, 32);
+                SymmetricKey ourBaseKey = this.getKey();
+                SymmetricKey newBaseKey = SymmetricKey.random();
+                FilePointer newRFP = new FilePointer(target.getLocation().owner, target.getLocation().writer, newMapKey, newBaseKey);
+                Location newParentLocation = target.getLocation();
+                SymmetricKey newParentParentKey = target.getParentKey();
 
-            return pointer.fileAccess.copyTo(ourBaseKey, newBaseKey, newParentLocation, newParentParentKey,
-                    getSigner(), newMapKey, network)
-                    .thenCompose(newAccess -> {
-                        // upload new metadatablob
-                        RetrievedFilePointer newRetrievedFilePointer = new RetrievedFilePointer(newRFP, newAccess);
-                        FileTreeNode newFileTreeNode = new FileTreeNode(newRetrievedFilePointer, target.getOwner(),
-                                Collections.emptySet(), Collections.emptySet(), target.getEntryWriterKey());
-                        return target.addLinkTo(newFileTreeNode, network, random);
-                    });
+                return pointer.fileAccess.copyTo(ourBaseKey, newBaseKey, newParentLocation, newParentParentKey,
+                        getSigner(), newMapKey, network)
+                        .thenCompose(newAccess -> {
+                            // upload new metadatablob
+                            RetrievedFilePointer newRetrievedFilePointer = new RetrievedFilePointer(newRFP, newAccess);
+                            FileTreeNode newFileTreeNode = new FileTreeNode(newRetrievedFilePointer, target.getOwner(),
+                                    Collections.emptySet(), Collections.emptySet(), target.getEntryWriterKey());
+                            return target.addLinkTo(newFileTreeNode, network, random);
+                        });
+            } else {
+                return getInputStream(network, random, x -> {})
+                        .thenCompose(stream -> target.uploadFile(getName(), stream, getSize(), network, random, x -> {}, fragmenter)
+                        .thenApply(b -> target));
+            }
         });
     }
 

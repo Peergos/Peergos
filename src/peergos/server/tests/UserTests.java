@@ -417,7 +417,7 @@ public abstract class UserTests {
         }
     }
 
-    private static void checkFileContents(byte[] expected, FileTreeNode f, UserContext context) throws Exception {
+    public static void checkFileContents(byte[] expected, FileTreeNode f, UserContext context) throws Exception {
         byte[] retrievedData = Serialize.readFully(f.getInputStream(context.network, context.crypto.random,
                 f.getFileProperties().size, l-> {}).get(), f.getSize()).get();
         assertTrue("Correct contents", Arrays.equals(retrievedData, expected));
@@ -591,7 +591,7 @@ public abstract class UserTests {
         String foldername = "afolder";
         userRoot.mkdir(foldername, network, false, crypto.random).get();
         FileTreeNode subfolder = context.getByPath(home.resolve(foldername).toString()).get().get();
-        FileTreeNode parentDir = original.copyTo(subfolder, network, crypto.random).get();
+        FileTreeNode parentDir = original.copyTo(subfolder, network, crypto.random, context.fragmenter()).get();
         FileTreeNode copy = context.getByPath(home.resolve(foldername).resolve(filename).toString()).get().get();
         Assert.assertTrue("Different base key", ! copy.getPointer().filePointer.baseKey.equals(original.getPointer().filePointer.baseKey));
         Assert.assertTrue("Different metadata key", ! getMetaKey(copy).equals(getMetaKey(original)));
@@ -599,11 +599,11 @@ public abstract class UserTests {
         checkFileContents(data, copy, context);
     }
 
-    private static SymmetricKey getDataKey(FileTreeNode file) {
+    public static SymmetricKey getDataKey(FileTreeNode file) {
         return file.getPointer().fileAccess.getDataKey(file.getPointer().filePointer.baseKey);
     }
 
-    private static SymmetricKey getMetaKey(FileTreeNode file) {
+    public static SymmetricKey getMetaKey(FileTreeNode file) {
         return file.getPointer().fileAccess.getMetaKey(file.getPointer().filePointer.baseKey);
     }
 
@@ -662,11 +662,12 @@ public abstract class UserTests {
         return UUID.randomUUID().toString();
     }
 
-    private static byte[] randomData(int length) {
+    public static byte[] randomData(int length) {
         byte[] data = new byte[length];
         random.nextBytes(data);
         return data;
     }
+
     private static Path TMP_DIR = Paths.get("test","resources","tmp");
 
     private static void ensureTmpDir() {

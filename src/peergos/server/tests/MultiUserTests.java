@@ -171,6 +171,55 @@ public class MultiUserTests {
     }
 
     @Test
+    public void safeCopyOfFriendsFile() throws Exception {
+        UserContext u1 = UserTests.ensureSignedUp("a", "a", network.clear(), crypto);
+        UserContext u2 = UserTests.ensureSignedUp("b", "b", network.clear(), crypto);
+
+        // send follow requests from each other user to "a"
+        u2.sendFollowRequest(u1.username, SymmetricKey.random()).get();
+
+        // make "a" reciprocate all the follow requests
+        List<FollowRequest> u1Requests = u1.processFollowRequests().get();
+        for (FollowRequest u1Request : u1Requests) {
+            boolean accept = true;
+            boolean reciprocate = true;
+            u1.sendReplyFollowRequest(u1Request, accept, reciprocate).get();
+        }
+
+        // complete the friendship connection
+        u2.processFollowRequests().get();//needed for side effect
+
+        // upload a file to "a"'s space
+        FileTreeNode u1Root = u1.getUserRoot().get();
+        String filename = "somefile.txt";
+        byte[] data = UserTests.randomData(10*1024*1024);
+
+        boolean uploaded = u1Root.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length,
+                u1.network, u1.crypto.random,l -> {}, u1.fragmenter()).get();
+
+        // share the file from "a" to each of the others
+        FileTreeNode u1File = u1.getByPath(u1.username + "/" + filename).get().get();
+        u1.shareWith(Paths.get(u1.username, filename), Collections.singleton(u2.username)).get();
+
+        // check other user can read the file
+        FileTreeNode sharedFile = u2.getByPath(u1.username + "/" + filename).get().get();
+        String dirname = "adir";
+        u2.getUserRoot().get().mkdir(dirname, network, false, crypto.random).get();
+        FileTreeNode targetDir = u2.getByPath(Paths.get(u2.username, dirname).toString()).get().get();
+
+        // copy the friend's file to our own space, this should reupload the file encrypted with a new key
+        // this prevents us exposing to the network our social graph by the fact that we pin the same file fragments
+        sharedFile.copyTo(targetDir, network, crypto.random, u2.fragmenter()).get();
+        FileTreeNode copy = u2.getByPath(Paths.get(u2.username, dirname, filename).toString()).get().get();
+
+        // check that the copied file has the correct contents
+        UserTests.checkFileContents(data, copy, u2);
+        Assert.assertTrue("Different base key", ! copy.getPointer().filePointer.baseKey.equals(u1File.getPointer().filePointer.baseKey));
+        Assert.assertTrue("Different metadata key", ! UserTests.getMetaKey(copy).equals(UserTests.getMetaKey(u1File)));
+        Assert.assertTrue("Different data key", ! UserTests.getDataKey(copy).equals(UserTests.getDataKey(u1File)));
+    }
+
+    @Test
     public void cleanRenamedFiles() throws Exception {
         UserContext u1 = UserTests.ensureSignedUp("a", "a", network.clear(), crypto);
 
