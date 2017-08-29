@@ -3,6 +3,8 @@ log/*
 dist/*
 out/*
 log/*
+war/WEB-INF/classes/*
+.idea/*
 *.hprof
 *hs_err_pid*
 *~

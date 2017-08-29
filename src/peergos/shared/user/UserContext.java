@@ -673,7 +673,11 @@ public class UserContext {
 
     @JsMethod
     public CompletableFuture<Boolean> unShare(FileTreeNode file, String readerToRemove) {
-        return unShareItem(file, Collections.singleton(readerToRemove));
+
+        return file.getPath(network).thenCompose(pathString -> {
+            return unShareItem(Paths.get(pathString), file, Collections.singleton(readerToRemove));
+        });
+
     }
 
     public CompletableFuture<Boolean> unShare(Path path, String readerToRemove) {
@@ -685,11 +689,11 @@ public class UserContext {
         CompletableFuture<Optional<FileTreeNode>> byPath = getByPath(pathString);
         return byPath.thenCompose(opt -> {
             FileTreeNode toUnshare = opt.orElseThrow(() -> new IllegalStateException("Specified un-shareWith path " + pathString + " does not exist"));
-            return unShareItem(toUnshare, readersToRemove);
+            return unShareItem(path, toUnshare, readersToRemove);
         });
     }
 
-    public CompletableFuture<Boolean> unShareItem(FileTreeNode toUnshare, Set<String> readersToRemove) {
+    public CompletableFuture<Boolean> unShareItem(Path path, FileTreeNode toUnshare, Set<String> readersToRemove) {
         //
         // first remove links from shared directory
         //
@@ -705,8 +709,8 @@ public class UserContext {
                 });
 
             // now change to new base keys, clean some keys and mark others as dirty
-            return toUnshare.retrieveParent(network)
-                    .thenCompose(parent -> sharedWith(toUnshare)
+        return getByPath(path.getParent().toString())
+                .thenCompose(parent -> sharedWith(toUnshare)
                             .thenCompose(sharedWithUsers ->
                                     toUnshare.makeDirty(network, crypto.random, parent.get(), readersToRemove)
                                             .thenCompose(markedDirty -> {
