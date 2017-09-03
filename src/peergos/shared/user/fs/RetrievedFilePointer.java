@@ -4,15 +4,16 @@ import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.user.*;
+import peergos.shared.user.fs.cryptree.*;
 
 import java.util.*;
 import java.util.concurrent.*;
 
 public class RetrievedFilePointer {
     public final FilePointer filePointer;
-    public final FileAccess fileAccess;
+    public final CryptreeNode fileAccess;
 
-    public RetrievedFilePointer(FilePointer filePointer, FileAccess fileAccess) {
+    public RetrievedFilePointer(FilePointer filePointer, CryptreeNode fileAccess) {
         if (fileAccess == null)
             throw new IllegalStateException("Null FileAccess!");
         this.filePointer = filePointer;

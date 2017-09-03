@@ -66,11 +66,14 @@ public class EncryptedChunkRetriever implements FileRetriever {
         Optional<Location> next = getNext(dataKey);
         if (! next.isPresent())
             return CompletableFuture.completedFuture(Optional.empty());
-        return network.getMetadata(next.get()).thenCompose(meta ->
-             !meta.isPresent() ? CompletableFuture.completedFuture(Optional.empty()) :
-                     meta.get().retriever().getEncryptedChunk(bytesRemainingUntilStart - Chunk.MAX_SIZE,
-                             truncateTo - Chunk.MAX_SIZE, meta.get().retriever().getNonce(), dataKey, next.get(), network, monitor)
-            );
+        return network.getMetadata(next.get()).thenCompose(meta -> {
+            if (!meta.isPresent())
+                return CompletableFuture.completedFuture(Optional.empty());
+
+            FileRetriever retriever = ((FileAccess) meta.get()).retriever();
+            return retriever.getEncryptedChunk(bytesRemainingUntilStart - Chunk.MAX_SIZE,
+                    truncateTo - Chunk.MAX_SIZE, retriever.getNonce(), dataKey, next.get(), network, monitor);
+        });
     }
 
     public CompletableFuture<Optional<Location>> getLocationAt(Location startLocation, long offset, SymmetricKey dataKey, NetworkAccess network) {
@@ -83,7 +86,7 @@ public class EncryptedChunkRetriever implements FileRetriever {
             return CompletableFuture.completedFuture(next); // chunk at this location hasn't been written yet, only referenced by previous chunk
         return network.getMetadata(next.get())
                 .thenCompose(meta -> meta.isPresent() ?
-                        meta.get().retriever().getLocationAt(next.get(), offset - Chunk.MAX_SIZE, dataKey, network) :
+                        ((FileAccess)meta.get()).retriever().getLocationAt(next.get(), offset - Chunk.MAX_SIZE, dataKey, network) :
                         CompletableFuture.completedFuture(Optional.empty())
                 );
     }

@@ -3,18 +3,18 @@ package peergos.shared.user.fs;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
-import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
-import peergos.shared.user.*;
+import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.*;
 
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
 
-public class FileAccess implements Cborable {
-    public static final int CURRENT_VERSION = 1;
+public class FileAccess implements CryptreeNode {
+
     protected final int version;
     protected final SymmetricLink parent2meta;
     protected final SymmetricLink parent2data;
@@ -40,7 +40,7 @@ public class FileAccess implements Cborable {
     public CborObject toCbor() {
         return new CborObject.CborList(
                 Arrays.asList(
-                        new CborObject.CborLong(version),
+                        new CborObject.CborLong(getVersionAndType()),
                         parent2meta.toCbor(),
                         parent2data.toCbor(),
                         new CborObject.CborByteArray(properties),
@@ -49,52 +49,45 @@ public class FileAccess implements Cborable {
                 ));
     }
 
-    // 0=FILE, 1=DIR
-    public byte getType() {
-        return 0;
-    }
-
+    @Override
     public boolean isDirectory() {
-        return this.getType() == 1;
+        return false;
     }
 
-    public SymmetricKey getParentKey(SymmetricKey parentKey) {
-        return parentKey;
+    @Override
+    public int getVersion() {
+        return version;
     }
 
-    public SymmetricKey getMetaKey(SymmetricKey parentKey) {
-        return parent2meta.target(parentKey);
+    @Override
+    public SymmetricKey getParentKey(SymmetricKey baseKey) {
+        return baseKey;
     }
 
-    public SymmetricKey getDataKey(SymmetricKey parentKey) {
-        return parent2data.target(parentKey);
+    @Override
+    public SymmetricLocationLink getParentLink() {
+        return parentLink;
     }
 
-    public FileProperties getFileProperties(SymmetricKey parentKey) {
-        try {
-            byte[] nonce = Arrays.copyOfRange(properties, 0, TweetNaCl.SECRETBOX_NONCE_BYTES);
-            byte[] cipher = Arrays.copyOfRange(properties, TweetNaCl.SECRETBOX_NONCE_BYTES, this.properties.length);
-            return FileProperties.deserialize(getMetaKey(parentKey).decrypt(cipher, nonce));
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+    @Override
+    public SymmetricKey getMetaKey(SymmetricKey baseKey) {
+        return parent2meta.target(baseKey);
     }
 
-    public CompletableFuture<RetrievedFilePointer> getParent(SymmetricKey parentKey, NetworkAccess network) {
-        if (this.parentLink == null)
-            return CompletableFuture.completedFuture(null);
+    @Override
+    public FileProperties getProperties(SymmetricKey baseKey) {
+        return FileProperties.decrypt(properties, getMetaKey(baseKey));
+    }
 
-        return network.retrieveAllMetadata(Arrays.asList(parentLink), parentKey).thenApply(res -> {
-            RetrievedFilePointer retrievedFilePointer = res.stream().findAny().get();
-            return retrievedFilePointer;
-        });
+    public SymmetricKey getDataKey(SymmetricKey baseKey) {
+        return parent2data.target(baseKey);
     }
 
     public FileRetriever retriever() {
         return retriever;
     }
 
-    public CompletableFuture<Boolean> rename(FilePointer writableFilePointer,
+    public CompletableFuture<FileAccess> updateProperties(FilePointer writableFilePointer,
                                              FileProperties newProps,
                                              NetworkAccess network) {
         if (!writableFilePointer.isWritable())
@@ -111,18 +104,19 @@ public class FileAccess implements Cborable {
         byte[] nonce = metaKey.createNonce();
         FileAccess fa = new FileAccess(version, toMeta, this.parent2data, ArrayOps.concat(nonce, metaKey.encrypt(newProps.serialize(), nonce)),
                 this.retriever, this.parentLink);
-        return network.uploadChunk(fa, writableFilePointer.location, writableFilePointer.signer());
+        return network.uploadChunk(fa, writableFilePointer.location, writableFilePointer.signer())
+                .thenApply(b -> fa);
     }
 
-    public CompletableFuture<FileAccess> markDirty(FilePointer writableFilePointer, SymmetricKey newParentKey, NetworkAccess network) {
+    public CompletableFuture<FileAccess> markDirty(FilePointer writableFilePointer, SymmetricKey newBaseKey, NetworkAccess network) {
         // keep the same metakey and data key, just marked as dirty
         SymmetricKey metaKey = this.getMetaKey(writableFilePointer.baseKey).makeDirty();
-        SymmetricLink newParentToMeta = SymmetricLink.fromPair(newParentKey, metaKey);
+        SymmetricLink newParentToMeta = SymmetricLink.fromPair(newBaseKey, metaKey);
 
         SymmetricKey dataKey = this.getDataKey(writableFilePointer.baseKey).makeDirty();
-        SymmetricLink newParentToData = SymmetricLink.fromPair(newParentKey, dataKey);
+        SymmetricLink newParentToData = SymmetricLink.fromPair(newBaseKey, dataKey);
 
-        SymmetricLocationLink newParentLink = SymmetricLocationLink.create(newParentKey,
+        SymmetricLocationLink newParentLink = SymmetricLocationLink.create(newBaseKey,
                 parentLink.target(writableFilePointer.baseKey),
                 parentLink.targetLocation(writableFilePointer.baseKey));
         FileAccess fa = new FileAccess(version, newParentToMeta, newParentToData, properties, this.retriever, newParentLink);
@@ -131,15 +125,22 @@ public class FileAccess implements Cborable {
                 .thenApply(x -> fa);
     }
 
+    @Override
     public boolean isDirty(SymmetricKey baseKey) {
         return getMetaKey(baseKey).isDirty() || getDataKey(baseKey).isDirty();
     }
 
-    public CompletableFuture<? extends FileAccess> copyTo(SymmetricKey baseKey, SymmetricKey newBaseKey,
-                                                          Location newParentLocation, SymmetricKey parentparentKey,
-                                                          SigningPrivateKeyAndPublicHash entryWriterKey, byte[] newMapKey,
-                                                          NetworkAccess network) {
-        FileProperties props = getFileProperties(baseKey);
+    @Override
+    public CompletableFuture<? extends FileAccess> copyTo(SymmetricKey baseKey,
+                                                          SymmetricKey newBaseKey,
+                                                          Location newParentLocation,
+                                                          SymmetricKey parentparentKey,
+                                                          PublicKeyHash newOwner,
+                                                          SigningPrivateKeyAndPublicHash entryWriterKey,
+                                                          byte[] newMapKey,
+                                                          NetworkAccess network,
+                                                          SafeRandom random) {
+        FileProperties props = getProperties(baseKey);
         boolean isDirectory = isDirectory();
         FileAccess fa = FileAccess.create(newBaseKey,
                 SymmetricKey.random(),
@@ -154,13 +155,9 @@ public class FileAccess implements Cborable {
             throw new IllegalStateException("Incorrect cbor for FileAccess: " + cbor);
 
         List<CborObject> value = ((CborObject.CborList) cbor).value;
-        if (value.size() == 2) {// this is dir
-            FileAccess fileBase = fromCbor(value.get(0));
-            return DirAccess.fromCbor(value.get(1), fileBase);
-        }
 
         int index = 0;
-        int version = (int) ((CborObject.CborLong) value.get(index++)).value;
+        int versionAndType = (int) ((CborObject.CborLong) value.get(index++)).value;
         SymmetricLink parentToMeta = SymmetricLink.fromCbor(value.get(index++));
         SymmetricLink parentToData = SymmetricLink.fromCbor(value.get(index++));
         byte[] properties = ((CborObject.CborByteArray)value.get(index++)).value;
@@ -173,13 +170,13 @@ public class FileAccess implements Cborable {
                 null :
                 SymmetricLocationLink.fromCbor(parentLinkCbor);
 
-        return new FileAccess(version, parentToMeta, parentToData, properties, retriever, parentLink);
+        return new FileAccess(versionAndType >> 1, parentToMeta, parentToData, properties, retriever, parentLink);
     }
 
     public static FileAccess create(SymmetricKey parentKey, SymmetricKey metaKey, SymmetricKey dataKey, FileProperties props,
                                     FileRetriever retriever, Location parentLocation, SymmetricKey parentparentKey) {
         byte[] nonce = metaKey.createNonce();
-        return new FileAccess(CURRENT_VERSION,
+        return new FileAccess(CryptreeNode.CURRENT_FILE_VERSION,
                 SymmetricLink.fromPair(parentKey, metaKey),
                 SymmetricLink.fromPair(parentKey, dataKey),
                 ArrayOps.concat(nonce, metaKey.encrypt(props.serialize(), nonce)),

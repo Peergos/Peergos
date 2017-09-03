@@ -1,12 +1,14 @@
 package peergos.shared.user.fs;
 
 import jsinterop.annotations.*;
+import peergos.shared.crypto.*;
+import peergos.shared.crypto.symmetric.*;
 import peergos.shared.storage.ContentAddressedStorage;
 import peergos.shared.util.*;
 
 import java.io.*;
 import java.time.*;
-import java.util.Optional;
+import java.util.*;
 
 @JsType
 public class FileProperties {
@@ -66,6 +68,16 @@ public class FileProperties {
                 Optional.of(Serialize.deserializeByteArray(length, din, length));
 
         return new FileProperties(name, size, LocalDateTime.ofEpochSecond(modified, 0, ZoneOffset.UTC), isHidden, thumbnail);
+    }
+
+    public static FileProperties decrypt(byte[] raw, SymmetricKey metaKey) {
+        try {
+            byte[] nonce = Arrays.copyOfRange(raw, 0, TweetNaCl.SECRETBOX_NONCE_BYTES);
+            byte[] cipher = Arrays.copyOfRange(raw, TweetNaCl.SECRETBOX_NONCE_BYTES, raw.length);
+            return FileProperties.deserialize(metaKey.decrypt(cipher, nonce));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @JsIgnore

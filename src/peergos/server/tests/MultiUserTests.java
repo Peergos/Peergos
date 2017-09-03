@@ -11,6 +11,7 @@ import peergos.shared.crypto.symmetric.*;
 import peergos.server.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
+import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.*;
 
 import java.io.*;
@@ -273,7 +274,7 @@ public class MultiUserTests {
         String friendsPathToFile = u1.username + "/" + filename;
         Optional<FileTreeNode> priorUnsharedView = userToUnshareWith.getByPath(friendsPathToFile).get();
         FilePointer priorPointer = priorUnsharedView.get().getPointer().filePointer;
-        FileAccess priorFileAccess = network.getMetadata(priorPointer.getLocation()).get().get();
+        CryptreeNode priorFileAccess = network.getMetadata(priorPointer.getLocation()).get().get();
         SymmetricKey priorMetaKey = priorFileAccess.getMetaKey(priorPointer.baseKey);
 
         // unshare with a single user
@@ -287,7 +288,7 @@ public class MultiUserTests {
         Optional<FileTreeNode> unsharedView = userToUnshareWith.getByPath(friendsPathToFile).get();
         String friendsNewPathToFile = u1.username + "/" + newname;
         Optional<FileTreeNode> unsharedView2 = userToUnshareWith.getByPath(friendsNewPathToFile).get();
-        FileAccess fileAccess = network.getMetadata(priorPointer.getLocation()).get().get();
+        CryptreeNode fileAccess = network.getMetadata(priorPointer.getLocation()).get().get();
         try {
             // Try decrypting the new metadata with the old key
             byte[] properties = ((CborObject.CborByteArray) ((CborObject.CborList) fileAccess.toCbor()).value.get(1)).value;
@@ -297,7 +298,7 @@ public class MultiUserTests {
             throw new IllegalStateException("We shouldn't be able to decrypt this after a rename! new name = " + props.name);
         } catch (TweetNaCl.InvalidCipherTextException e) {}
         try {
-            FileProperties freshProperties = fileAccess.getFileProperties(priorPointer.baseKey);
+            FileProperties freshProperties = fileAccess.getProperties(priorPointer.baseKey);
             throw new IllegalStateException("We shouldn't be able to decrypt this after a rename!");
         } catch (TweetNaCl.InvalidCipherTextException e) {}
 

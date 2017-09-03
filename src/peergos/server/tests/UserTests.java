@@ -602,7 +602,7 @@ public abstract class UserTests {
     }
 
     public static SymmetricKey getDataKey(FileTreeNode file) {
-        return file.getPointer().fileAccess.getDataKey(file.getPointer().filePointer.baseKey);
+        return ((FileAccess)file.getPointer().fileAccess).getDataKey(file.getPointer().filePointer.baseKey);
     }
 
     public static SymmetricKey getMetaKey(FileTreeNode file) {
