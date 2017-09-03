@@ -21,7 +21,7 @@ public interface CryptreeNode extends Cborable {
     int getVersion();
 
     default int getVersionAndType() {
-        return getVersion() << 1 | (isDirectory() ? 1 : 0);
+        return getVersion() << 1 | (isDirectory() ? 0 : 1);
     }
 
     SymmetricKey getParentKey(SymmetricKey baseKey);

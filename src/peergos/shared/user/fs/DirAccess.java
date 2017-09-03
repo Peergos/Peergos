@@ -124,12 +124,14 @@ public class DirAccess implements CryptreeNode {
                 .stream()
                 .map(SymmetricLocationLink::fromCbor)
                 .collect(Collectors.toList());
-        List<SymmetricLocationLink> files = ((CborObject.CborList)value.get(3)).value
+        List<SymmetricLocationLink> files = ((CborObject.CborList)value.get(index++)).value
                 .stream()
                 .map(SymmetricLocationLink::fromCbor)
                 .collect(Collectors.toList());
-        Optional<SymmetricLocationLink> moreFolderContents = value.get(4) instanceof CborObject.CborNull ?
-                Optional.empty() : Optional.of(SymmetricLocationLink.fromCbor(value.get(4)));
+        CborObject linkToNext = value.get(index++);
+        Optional<SymmetricLocationLink> moreFolderContents = linkToNext instanceof CborObject.CborNull ?
+                Optional.empty() :
+                Optional.of(SymmetricLocationLink.fromCbor(linkToNext));
         return new DirAccess(version, subfoldersToFiles, subfoldersToParent, parentToMeta, parentLink,
                 properties, subfolders, files, moreFolderContents);
     }

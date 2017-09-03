@@ -9,7 +9,6 @@ import peergos.shared.crypto.symmetric.*;
 import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.*;
 
-import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -43,9 +42,9 @@ public class FileAccess implements CryptreeNode {
                         new CborObject.CborLong(getVersionAndType()),
                         parent2meta.toCbor(),
                         parent2data.toCbor(),
+                        parentLink == null ? new CborObject.CborNull() : parentLink.toCbor(),
                         new CborObject.CborByteArray(properties),
-                        retriever == null ? new CborObject.CborNull() : retriever.toCbor(),
-                        parentLink == null ? new CborObject.CborNull() : parentLink.toCbor()
+                        retriever == null ? new CborObject.CborNull() : retriever.toCbor()
                 ));
     }
 
@@ -160,15 +159,18 @@ public class FileAccess implements CryptreeNode {
         int versionAndType = (int) ((CborObject.CborLong) value.get(index++)).value;
         SymmetricLink parentToMeta = SymmetricLink.fromCbor(value.get(index++));
         SymmetricLink parentToData = SymmetricLink.fromCbor(value.get(index++));
+
+        CborObject parentLinkCbor = value.get(index++);
+        SymmetricLocationLink parentLink = parentLinkCbor instanceof CborObject.CborNull ?
+                null :
+                SymmetricLocationLink.fromCbor(parentLinkCbor);
+
         byte[] properties = ((CborObject.CborByteArray)value.get(index++)).value;
         CborObject retrieverCbor = value.get(index++);
         FileRetriever retriever = retrieverCbor instanceof CborObject.CborNull ?
                 null :
                 FileRetriever.fromCbor(retrieverCbor);
-        CborObject parentLinkCbor = value.get(index++);
-        SymmetricLocationLink parentLink = parentLinkCbor instanceof CborObject.CborNull ?
-                null :
-                SymmetricLocationLink.fromCbor(parentLinkCbor);
+
 
         return new FileAccess(versionAndType >> 1, parentToMeta, parentToData, properties, retriever, parentLink);
     }
