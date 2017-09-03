@@ -115,7 +115,7 @@ public class NetworkAccess {
                                 Optional<CborObject> result = Optional.empty();
                                 return CompletableFuture.completedFuture(result);
                             }).thenApply(dataOpt ->  dataOpt
-                                    .map(cbor -> new RetrievedFilePointer(link.toReadableFilePointer(baseKey), FileAccess.fromCbor(cbor))));
+                                    .map(cbor -> new RetrievedFilePointer(link.toReadableFilePointer(baseKey), CryptreeNode.fromCbor(cbor))));
                 }).collect(Collectors.toList());
 
         return Futures.combineAll(all).thenApply(optSet -> optSet.stream()
@@ -139,12 +139,12 @@ public class NetworkAccess {
                         e.readers, e.writers, e.pointer.writer)));
     }
 
-    private CompletableFuture<Optional<FileAccess>> downloadEntryPoint(EntryPoint entry) {
+    private CompletableFuture<Optional<CryptreeNode>> downloadEntryPoint(EntryPoint entry) {
         // download the metadata blob for this entry point
         return btree.get(entry.pointer.location.writer, entry.pointer.location.getMapKey()).thenCompose(btreeValue -> {
             if (btreeValue.isPresent())
                 return dhtClient.get(btreeValue.get())
-                        .thenApply(value -> value.map(FileAccess::fromCbor));
+                        .thenApply(value -> value.map(CryptreeNode::fromCbor));
             return CompletableFuture.completedFuture(Optional.empty());
         });
     }
