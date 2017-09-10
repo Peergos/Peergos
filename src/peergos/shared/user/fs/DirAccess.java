@@ -3,20 +3,26 @@ package peergos.shared.user.fs;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
-import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
-import peergos.shared.user.*;
 import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.*;
 
-import java.io.*;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
 
+/** A DirAccess cryptree node controls read access to a directory.
+ *
+ * It contains the following distinct keys {base, parent, files, metadata}
+ * The serialized encrypted form stores links from the base key to the other keys. With the base key one can decrypt
+ * all the remaining keys. The base key is also known as the sub folders key as it encrypts the links to child
+ * directories. The files key encrypts the links to all the child files. The parent key encrypts the link to the
+ * parent's parent key. The metadata key encrypts the name of the directory.
+ *
+ */
 public class DirAccess implements CryptreeNode {
 
     public static final int MAX_CHILD_LINKS_PER_BLOB = 500;

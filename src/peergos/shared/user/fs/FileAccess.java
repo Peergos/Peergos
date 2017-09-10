@@ -12,6 +12,16 @@ import peergos.shared.util.*;
 import java.util.*;
 import java.util.concurrent.*;
 
+/** A FileAccess cryptree node controls read access to a section of a file, up to 5 MiB in size.
+ *
+ * It contains the following distinct keys {base, metadata, data}
+ * The serialized encrypted form stores links from the base key to the other keys. With the base key one can decrypt
+ * all the remaining keys. The base key is also the parent key. The parent key encrypts the link to the parent's parent
+ * key. The metadata key encrypts the name, size, thumbnail, modification times  and any other properties of the file.
+ *
+ * The file retriever contains the merkle links to the encrypted file fragments of this file section, an optional
+ * erasure coding scheme, nonce and auth for this section as well as an encrypted link to the next section.
+ */
 public class FileAccess implements CryptreeNode {
 
     protected final int version;
