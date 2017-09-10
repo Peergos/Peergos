@@ -31,7 +31,7 @@ public class DirAccess implements CryptreeNode {
     private final SymmetricLink subfolders2files, subfolders2parent, parent2meta;
     private final SymmetricLocationLink parentLink;
     private final byte[] properties;
-    private List<SymmetricLocationLink> subfolders, files;
+    private final List<SymmetricLocationLink> subfolders, files;
     private final Optional<SymmetricLocationLink> moreFolderContents;
 
     public DirAccess(int version,
@@ -49,8 +49,8 @@ public class DirAccess implements CryptreeNode {
         this.parent2meta = parent2meta;
         this.parentLink = parentLink;
         this.properties = properties;
-        this.subfolders = subfolders;
-        this.files = files;
+        this.subfolders = Collections.unmodifiableList(subfolders);
+        this.files = Collections.unmodifiableList(files);
         this.moreFolderContents = moreFolderContents;
     }
 
@@ -209,11 +209,12 @@ public class DirAccess implements CryptreeNode {
             });
         } else {
             SymmetricKey filesKey = this.subfolders2files.target(ourSubfolders);
+            ArrayList<SymmetricLocationLink> newFiles = new ArrayList<>(files);
             for (FilePointer targetCAP : targetCAPs)
-                this.files.add(SymmetricLocationLink.create(filesKey, targetCAP.baseKey, targetCAP.getLocation()));
+                newFiles.add(SymmetricLocationLink.create(filesKey, targetCAP.baseKey, targetCAP.getLocation()));
 
-            return commit(ourPointer.getLocation(), signer, network)
-                    .thenApply(x -> this);
+            return withFiles(newFiles)
+                    .commit(ourPointer.getLocation(), signer, network);
         }
     }
 
@@ -259,10 +260,13 @@ public class DirAccess implements CryptreeNode {
                 }
             });
         } else {
+            ArrayList<SymmetricLocationLink> newSubfolders = new ArrayList<>(subfolders);
             for (FilePointer targetCAP : targetCAPs)
-                this.subfolders.add(SymmetricLocationLink.create(ourSubfolders, targetCAP.baseKey, targetCAP.getLocation()));
+                newSubfolders.add(SymmetricLocationLink.create(ourSubfolders, targetCAP.baseKey, targetCAP.getLocation()));
 
-            return commit(ourPointer.getLocation(), signer, network);
+            return new DirAccess(version, subfolders2files, subfolders2parent, parent2meta, parentLink, properties,
+                    newSubfolders, files, moreFolderContents)
+                    .commit(ourPointer.getLocation(), signer, network);
         }
     }
 
@@ -272,7 +276,7 @@ public class DirAccess implements CryptreeNode {
         return network.retrieveAllMetadata(Arrays.asList(moreFolderContents.get()), subfoldersKey);
     }
 
-    public CompletableFuture<Boolean> updateChildLink(FilePointer ourPointer, RetrievedFilePointer original,
+    public CompletableFuture<DirAccess> updateChildLink(FilePointer ourPointer, RetrievedFilePointer original,
                                                       RetrievedFilePointer modified, SigningPrivateKeyAndPublicHash signer,
                                                       NetworkAccess network, SafeRandom random) {
         return removeChild(original, ourPointer, signer, network)
@@ -281,13 +285,14 @@ public class DirAccess implements CryptreeNode {
                         return addSubdirAndCommit(modified.filePointer, ourPointer.baseKey, ourPointer, signer, network, random);
                     else
                         return addFileAndCommit(modified.filePointer, ourPointer.baseKey, ourPointer, signer, network, random);
-                }).thenApply(x -> true);
+                });
     }
 
-    public CompletableFuture<Boolean> removeChild(RetrievedFilePointer childRetrievedPointer, FilePointer ourPointer,
+    public CompletableFuture<DirAccess> removeChild(RetrievedFilePointer childRetrievedPointer, FilePointer ourPointer,
                                                   SigningPrivateKeyAndPublicHash signer, NetworkAccess network) {
+        DirAccess updated;
         if (childRetrievedPointer.fileAccess.isDirectory()) {
-            this.subfolders = subfolders.stream().filter(e -> {
+            List<SymmetricLocationLink> newSubfolders = subfolders.stream().filter(e -> {
                 try {
                     Location target = e.targetLocation(ourPointer.baseKey);
                     boolean keep = true;
@@ -303,9 +308,10 @@ public class DirAccess implements CryptreeNode {
                     return false;
                 }
             }).collect(Collectors.toList());
+            updated = this.withSubfolders(newSubfolders);
         } else {
-            files = files.stream().filter(e -> {
-            SymmetricKey filesKey = subfolders2files.target(ourPointer.baseKey);
+            List<SymmetricLocationLink> newFiles = files.stream().filter(e -> {
+                SymmetricKey filesKey = subfolders2files.target(ourPointer.baseKey);
                 try {
                     Location target = e.targetLocation(filesKey);
                     boolean keep = true;
@@ -321,8 +327,9 @@ public class DirAccess implements CryptreeNode {
                     return false;
                 }
             }).collect(Collectors.toList());
+            updated = this.withFiles(newFiles);
         }
-        return network.uploadChunk(this, ourPointer.getLocation(), signer);
+        return updated.commit(ourPointer.getLocation(), signer, network);
     }
 
     // returns [RetrievedFilePointer]
@@ -353,7 +360,7 @@ public class DirAccess implements CryptreeNode {
         );
     }
 
-    public CompletableFuture<Boolean> cleanUnreachableChildren(NetworkAccess network,
+    public CompletableFuture<DirAccess> cleanUnreachableChildren(NetworkAccess network,
                                                                SymmetricKey baseKey,
                                                                FilePointer ourPointer,
                                                                SigningPrivateKeyAndPublicHash signer) {
@@ -371,11 +378,11 @@ public class DirAccess implements CryptreeNode {
                                         .thenCompose(moreChildrenSource -> {
                                             // this only has one or zero elements
                                             Optional<RetrievedFilePointer> any = moreChildrenSource.stream().findAny();
-                                            CompletableFuture<Boolean> moreChildren = any
+                                            CompletableFuture<DirAccess> moreChildren = any
                                                     .map(d -> ((DirAccess)d.fileAccess)
                                                             .cleanUnreachableChildren(network, d.filePointer.baseKey, d.filePointer, signer))
-                                                    .orElse(CompletableFuture.completedFuture(true));
-                                            return moreChildren.thenApply(moreRetrievedChildren -> {
+                                                    .orElse(CompletableFuture.completedFuture(this));
+                                            return moreChildren.thenCompose(moreRetrievedChildren -> {
                                                 List<SymmetricLocationLink> reachableDirLinks = subfolders
                                                         .stream()
                                                         .filter(sym -> reachable.stream()
@@ -388,14 +395,13 @@ public class DirAccess implements CryptreeNode {
                                                                 .anyMatch(rfp -> rfp.filePointer.equals(sym.toReadableFilePointer(subfolders2files.target(baseKey)))))
                                                         .collect(Collectors.toList());
 
-                                                this.subfolders = reachableDirLinks;
-                                                this.files = reachableFileLinks;
-
-                                                return network.uploadChunk(this, ourPointer.getLocation(), signer);
+                                                return withSubfolders(reachableDirLinks)
+                                                        .withFiles(reachableFileLinks)
+                                                        .commit(ourPointer.getLocation(), signer, network);
                                             });
                                         })
                                 )
-                        )).thenApply(x -> true);
+                        ));
     }
 
     public Set<Location> getChildrenLocations(SymmetricKey baseKey) {
@@ -484,6 +490,16 @@ public class DirAccess implements CryptreeNode {
             }, (a, b) -> a.thenCompose(x -> b)); // TODO Think about this combiner function
             return reduce;
         }).thenCompose(finalDir -> finalDir.commit(new Location(newParentLocation.owner, entryWriterKey.publicKeyHash, newMapKey), entryWriterKey, network));
+    }
+
+    private DirAccess withSubfolders(List<SymmetricLocationLink> newSubfolders) {
+        return new DirAccess(version, subfolders2files, subfolders2parent, parent2meta, parentLink, properties,
+                newSubfolders, files, moreFolderContents);
+    }
+
+    private DirAccess withFiles(List<SymmetricLocationLink> newFiles) {
+        return new DirAccess(version, subfolders2files, subfolders2parent, parent2meta, parentLink, properties,
+                subfolders, newFiles, moreFolderContents);
     }
 
     public static DirAccess create(SymmetricKey subfoldersKey, FileProperties metadata, Location parentLocation, SymmetricKey parentParentKey, SymmetricKey parentKey) {

@@ -574,9 +574,10 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
             // or extending with 0s
             byte[] truncated = Arrays.copyOfRange(original, 0, (int)size);
             file.treeNode.remove(context.network, parent.treeNode);
-            boolean b = parent.treeNode.uploadFile(file.properties.name, new AsyncReader.ArrayBacked(truncated),
-                    truncated.length, context.network, context.crypto.random, l -> {}, context.fragmenter()).get();
-            return b ? (int) size : 1;
+            FileTreeNode b = parent.treeNode.uploadFile(file.properties.name, new AsyncReader.ArrayBacked(truncated),
+                    truncated.length, context.network, context.crypto.random, l -> {
+                    }, context.fragmenter()).get();
+            return (int) size;
         } catch (Throwable t) {
             t.printStackTrace();
             return 1;
@@ -591,9 +592,9 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
                 throw new IllegalStateException("Cannot write more than " + Integer.MAX_VALUE + " bytes");
             }
 
-            boolean b = parent.treeNode.uploadFileSection(name, new AsyncReader.ArrayBacked(toWrite), offset, offset + size,
+            FileTreeNode b = parent.treeNode.uploadFileSection(name, new AsyncReader.ArrayBacked(toWrite), offset, offset + size,
                     context.network, context.crypto.random, l -> {}, context.fragmenter()).get();
-            return b ? (int) size : 1;
+            return (int) size;
         } catch (Throwable t) {
             t.printStackTrace();
             return 1;

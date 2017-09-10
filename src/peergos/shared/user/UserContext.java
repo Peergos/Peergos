@@ -96,7 +96,7 @@ public class UserContext {
                                                                 .thenCompose(x -> {
                                                                     System.out.println("Initializing context..");
                                                                     return result.init();
-                                                                });
+                                                                }).exceptionally(Futures::logError);
                                                     }));
                                 } catch (Throwable t) {
                                     throw new IllegalStateException("Incorrect password");

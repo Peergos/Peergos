@@ -111,7 +111,7 @@ public class MultiUserTests {
         byte[] originalFileContents = "Hello Peergos friend!".getBytes();
         Files.write(f.toPath(), originalFileContents);
         ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(f);
-        boolean uploaded = u1Root.uploadFile(filename, resetableFileInputStream, f.length(),
+        FileTreeNode uploaded = u1Root.uploadFile(filename, resetableFileInputStream, f.length(),
                 u1.network, u1.crypto.random,l -> {}, u1.fragmenter()).get();
 
         // share the file from "a" to each of the others
@@ -195,7 +195,7 @@ public class MultiUserTests {
         String filename = "somefile.txt";
         byte[] data = UserTests.randomData(10*1024*1024);
 
-        boolean uploaded = u1Root.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length,
+        FileTreeNode uploaded = u1Root.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length,
                 u1.network, u1.crypto.random,l -> {}, u1.fragmenter()).get();
 
         // share the file from "a" to each of the others
@@ -250,7 +250,7 @@ public class MultiUserTests {
         byte[] originalFileContents = "Hello Peergos friend!".getBytes();
         Files.write(f.toPath(), originalFileContents);
         ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(f);
-        boolean uploaded = u1Root.uploadFile(filename, resetableFileInputStream, f.length(),
+        FileTreeNode uploaded = u1Root.uploadFile(filename, resetableFileInputStream, f.length(),
                 u1.network, u1.crypto.random,l -> {}, u1.fragmenter()).get();
 
         // share the file from "a" to each of the others
@@ -385,12 +385,12 @@ public class MultiUserTests {
         String filename = "somefile.txt";
         byte[] originalFileContents = "Hello Peergos friend!".getBytes();
         AsyncReader resetableFileInputStream = new AsyncReader.ArrayBacked(originalFileContents);
-        boolean uploaded = folder.uploadFile(filename, resetableFileInputStream, originalFileContents.length, u1.network,
+        FileTreeNode updatedFolder = folder.uploadFile(filename, resetableFileInputStream, originalFileContents.length, u1.network,
                 u1.crypto.random, l -> {}, u1.fragmenter()).get();
         String originalFilePath = u1.username + "/" + folderName + "/" + filename;
 
         // file is uploaded, do the actual sharing
-        boolean finished = u1.shareWithAll(folder, users.stream().map(c -> c.username).collect(Collectors.toSet())).get();
+        boolean finished = u1.shareWithAll(updatedFolder, users.stream().map(c -> c.username).collect(Collectors.toSet())).get();
 
         // check each user can see the shared folder and directory
         for (UserContext user : users) {

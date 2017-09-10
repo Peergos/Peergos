@@ -15,7 +15,7 @@ import java.time.*;
 import java.util.*;
 import java.util.List;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.*;
 import java.util.function.*;
 import java.util.stream.*;
 
@@ -33,9 +33,10 @@ public class FileTreeNode {
     private final FileProperties props;
     private final String ownername;
     private final Optional<TrieNode> globalRoot;
-    private Set<String> readers;
-    private Set<String> writers;
-    private Optional<SecretSigningKey> entryWriterKey;
+    private final Set<String> readers;
+    private final Set<String> writers;
+    private final Optional<SecretSigningKey> entryWriterKey;
+    private AtomicBoolean modified = new AtomicBoolean(); // This only used as a guard against concurrent modifications
 
     /**
      *
@@ -72,6 +73,11 @@ public class FileTreeNode {
         return new FileTreeNode(Optional.of(trie), pointer, ownername, readers, writers, entryWriterKey);
     }
 
+    private FileTreeNode withCryptreeNode(CryptreeNode access) {
+        return new FileTreeNode(globalRoot, new RetrievedFilePointer(getPointer().filePointer, access), ownername,
+                readers, writers, entryWriterKey);
+    }
+
     @JsMethod
     public boolean equals(Object other) {
         if (other == null)
@@ -98,6 +104,7 @@ public class FileTreeNode {
     }
 
     public CompletableFuture<Optional<FileTreeNode>> getDescendentByPath(String path, NetworkAccess network) {
+        ensureUnmodified();
         if (path.length() == 0)
             return CompletableFuture.completedFuture(Optional.of(this));
 
@@ -121,6 +128,17 @@ public class FileTreeNode {
         });
     }
 
+    private void ensureUnmodified() {
+        if (modified.get())
+            throw new IllegalStateException("This file has already been modified, use the returned instance");
+    }
+
+    private void setModified() {
+        if (modified.get())
+            throw new IllegalStateException("This file has already been modified, use the returned instance");
+        modified.set(true);
+    }
+
     /** Marks a file/directory and all its descendants as dirty. Directories are immediately cleaned,
      * but files have all their keys except the actual data key cleaned. That is cleaned lazily, the next time it is modified
      *
@@ -132,6 +150,7 @@ public class FileTreeNode {
      */
     public CompletableFuture<FileTreeNode> makeDirty(NetworkAccess network, SafeRandom random,
                                                      FileTreeNode parent, Set<String> readersToRemove) {
+        setModified();
         if (!isWritable())
             throw new IllegalStateException("You cannot mark a file as dirty without write access!");
         if (isDirectory()) {
@@ -197,15 +216,22 @@ public class FileTreeNode {
     }
 
     public CompletableFuture<Boolean> hasChildWithName(String name, NetworkAccess network) {
+        ensureUnmodified();
         return getChildren(network)
                 .thenApply(children -> children.stream().filter(c -> c.props.name.equals(name)).findAny().isPresent());
     }
 
-    public CompletableFuture<Boolean> removeChild(FileTreeNode child, NetworkAccess network) {
-        return ((DirAccess)pointer.fileAccess).removeChild(child.getPointer(), pointer.filePointer, getSigner(), network);
+    public CompletableFuture<FileTreeNode> removeChild(FileTreeNode child, NetworkAccess network) {
+        setModified();
+        return ((DirAccess)pointer.fileAccess)
+                .removeChild(child.getPointer(), pointer.filePointer, getSigner(), network)
+                .thenApply(updated -> new FileTreeNode(globalRoot,
+                        new RetrievedFilePointer(getPointer().filePointer, updated), ownername, readers,
+                        writers, entryWriterKey));
     }
 
     public CompletableFuture<FileTreeNode> addLinkTo(FileTreeNode file, NetworkAccess network, SafeRandom random) {
+        ensureUnmodified();
         CompletableFuture<FileTreeNode> error = new CompletableFuture<>();
         if (!this.isDirectory() || !this.isWritable()) {
             error.completeExceptionally(new IllegalArgumentException("Can only add link toa writable directory!"));
@@ -262,12 +288,14 @@ public class FileTreeNode {
     }
 
     public Set<Location> getChildrenLocations() {
+        ensureUnmodified();
         if (!this.isDirectory())
             return Collections.emptySet();
         return ((DirAccess)pointer.fileAccess).getChildrenLocations(pointer.filePointer.baseKey);
     }
 
     public CompletableFuture<Optional<FileTreeNode>> retrieveParent(NetworkAccess network) {
+        ensureUnmodified();
         if (pointer == null)
             return CompletableFuture.completedFuture(Optional.empty());
         SymmetricKey parentKey = getParentKey();
@@ -280,6 +308,7 @@ public class FileTreeNode {
     }
 
     public SymmetricKey getParentKey() {
+        ensureUnmodified();
         SymmetricKey parentKey = pointer.filePointer.baseKey;
         if (this.isDirectory())
             try {
@@ -292,6 +321,7 @@ public class FileTreeNode {
 
     @JsMethod
     public CompletableFuture<Set<FileTreeNode>> getChildren(NetworkAccess network) {
+        ensureUnmodified();
         if (globalRoot.isPresent())
             return globalRoot.get().getChildren("/", network);
         if (isReadable()) {
@@ -320,13 +350,16 @@ public class FileTreeNode {
         throw new IllegalStateException("No credentials to retrieve children!");
     }
 
-    public CompletableFuture<Boolean> cleanUnreachableChildren(NetworkAccess network) {
+    public CompletableFuture<FileTreeNode> cleanUnreachableChildren(NetworkAccess network) {
+        setModified();
         FilePointer filePointer = pointer.filePointer;
         CryptreeNode fileAccess = pointer.fileAccess;
         SymmetricKey rootDirKey = filePointer.baseKey;
 
         if (isReadable())
-            return ((DirAccess) fileAccess).cleanUnreachableChildren(network, rootDirKey, filePointer, getSigner());
+            return ((DirAccess) fileAccess).cleanUnreachableChildren(network, rootDirKey, filePointer, getSigner())
+                    .thenApply(da -> new FileTreeNode(globalRoot,
+                            new RetrievedFilePointer(filePointer, da), ownername, readers, writers, entryWriterKey));
         throw new IllegalStateException("No credentials to retrieve children!");
     }
 
@@ -342,9 +375,18 @@ public class FileTreeNode {
     }
 
     public boolean isDirty() {
+        ensureUnmodified();
         return pointer.fileAccess.isDirty(pointer.filePointer.baseKey);
     }
 
+    /**
+     *
+     * @param network
+     * @param random
+     * @param parent
+     * @param fragmenter
+     * @return updated parent dir
+     */
     public CompletableFuture<FileTreeNode> clean(NetworkAccess network, SafeRandom random,
                                                  FileTreeNode parent, peergos.shared.user.fs.Fragmenter fragmenter) {
         if (!isDirty())
@@ -352,6 +394,7 @@ public class FileTreeNode {
         if (isDirectory()) {
             throw new IllegalStateException("Directories are never dirty (they are cleaned immediately)!");
         } else {
+            setModified();
             FileProperties props = getFileProperties();
             SymmetricKey baseKey = pointer.filePointer.baseKey;
             // stream download and re-encrypt with new metaKey
@@ -360,30 +403,29 @@ public class FileTreeNode {
                 new Random().nextBytes(tmp);
                 String tmpFilename = ArrayOps.bytesToHex(tmp) + ".tmp";
 
-                CompletableFuture<Boolean> reuploaded = parent.uploadFileSection(tmpFilename, in, 0, props.size,
+                CompletableFuture<FileTreeNode> reuploaded = parent.uploadFileSection(tmpFilename, in, 0, props.size,
                         Optional.of(baseKey), network, random, l -> {}, fragmenter);
-                return reuploaded.thenCompose(upload -> parent.getDescendentByPath(tmpFilename, network))
+                return reuploaded.thenCompose(upload -> parent.getDescendentByPath(tmpFilename, network)
                         .thenCompose(tmpChild -> tmpChild.get().rename(props.name, network, parent, true))
-                        .thenCompose(rename -> parent.getDescendentByPath(props.name, network))
-                        .thenApply(fileOpt -> fileOpt.get());
+                        .thenApply(rename -> upload));
             });
         }
     }
 
     @JsMethod
-    public CompletableFuture<Boolean> uploadFileJS(String filename, AsyncReader fileData, int lengthHi, int lengthLow,
+    public CompletableFuture<FileTreeNode> uploadFileJS(String filename, AsyncReader fileData, int lengthHi, int lengthLow,
                                                  NetworkAccess network, SafeRandom random,
                                                  ProgressConsumer<Long> monitor, Fragmenter fragmenter) {
         return uploadFile(filename, fileData, lengthLow + ((lengthHi & 0xFFFFFFFFL) << 32), network, random, monitor, fragmenter);
     }
 
-    public CompletableFuture<Boolean> uploadFile(String filename, AsyncReader fileData, long length,
+    public CompletableFuture<FileTreeNode> uploadFile(String filename, AsyncReader fileData, long length,
                                                  NetworkAccess network, SafeRandom random,
                                                  ProgressConsumer<Long> monitor, Fragmenter fragmenter) {
         return uploadFileSection(filename, fileData, 0, length, Optional.empty(), network, random, monitor, fragmenter);
     }
 
-    public CompletableFuture<Boolean> uploadFile(String filename,
+    public CompletableFuture<FileTreeNode> uploadFile(String filename,
                                                  AsyncReader fileData,
                                                  boolean isHidden,
                                                  long length,
@@ -393,13 +435,13 @@ public class FileTreeNode {
         return uploadFileSection(filename, fileData, isHidden, 0, length, Optional.empty(), network, random, monitor, fragmenter);
     }
 
-    public CompletableFuture<Boolean> uploadFileSection(String filename, AsyncReader fileData, long startIndex, long endIndex,
+    public CompletableFuture<FileTreeNode> uploadFileSection(String filename, AsyncReader fileData, long startIndex, long endIndex,
                                                  NetworkAccess network, SafeRandom random,
                                                  ProgressConsumer<Long> monitor, Fragmenter fragmenter) {
         return uploadFileSection(filename, fileData, startIndex, endIndex, Optional.empty(), network, random, monitor, fragmenter);
     }
 
-    public CompletableFuture<Boolean> uploadFileSection(String filename, AsyncReader fileData,
+    public CompletableFuture<FileTreeNode> uploadFileSection(String filename, AsyncReader fileData,
                                                  long startIndex, long endIndex,
                                                  Optional<SymmetricKey> baseKey,
                                                  NetworkAccess network, SafeRandom random,
@@ -408,7 +450,7 @@ public class FileTreeNode {
         return uploadFileSection(filename, fileData, false, startIndex, endIndex, baseKey, network, random, monitor, fragmenter);
     }
 
-    public CompletableFuture<Boolean> uploadFileSection(String filename, AsyncReader fileData,
+    public CompletableFuture<FileTreeNode> uploadFileSection(String filename, AsyncReader fileData,
                                                  boolean isHidden,
                                                  long startIndex, long endIndex,
                                                  Optional<SymmetricKey> baseKey,
@@ -416,8 +458,11 @@ public class FileTreeNode {
                                                  SafeRandom random,
                                                  ProgressConsumer<Long> monitor,
                                                  Fragmenter fragmenter) {
-        if (!isLegalName(filename))
-            return CompletableFuture.completedFuture(false);
+        if (!isLegalName(filename)) {
+            CompletableFuture<FileTreeNode> res = new CompletableFuture<>();
+            res.completeExceptionally(new IllegalStateException("Illegal filename: " + filename));
+            return res;
+        }
         return getDescendentByPath(filename, network).thenCompose(childOpt -> {
             if (childOpt.isPresent()) {
                 return updateExistingChild(childOpt.get(), fileData, startIndex, endIndex, network, random, monitor, fragmenter);
@@ -432,7 +477,7 @@ public class FileTreeNode {
             DirAccess dirAccess = (DirAccess) pointer.fileAccess;
             SymmetricKey dirParentKey = dirAccess.getParentKey(rootRKey);
             Location parentLocation = getLocation();
-            CompletableFuture<Boolean> result = new CompletableFuture<>();
+            CompletableFuture<FileTreeNode> result = new CompletableFuture<>();
             int thumbnailSrcImageSize = startIndex == 0 && endIndex < Integer.MAX_VALUE ? (int)endIndex : 0;
             generateThumbnail(network, fileData, thumbnailSrcImageSize, filename).thenAccept(thumbData -> {
                 fileData.reset().thenAccept(resetResult -> {
@@ -444,15 +489,19 @@ public class FileTreeNode {
                     chunks.upload(network, random, parentLocation.owner, getSigner(), nextChunkLocation).thenAccept(fileLocation -> {
                         FilePointer filePointer = new FilePointer(fileLocation, Optional.empty(), fileKey);
                         dirAccess.addFileAndCommit(filePointer, rootRKey, pointer.filePointer, getSigner(), network, random)
-                                .thenAccept(uploadResult -> result.complete(true));
+                                .thenAccept(uploadResult -> {
+                                    setModified();
+                                    result.complete(this.withCryptreeNode(uploadResult));
+                                });
                     });
                 });
             });
+
             return result;
         });
     }
 
-    private CompletableFuture<Boolean> updateExistingChild(FileTreeNode existingChild, AsyncReader fileData,
+    private CompletableFuture<FileTreeNode> updateExistingChild(FileTreeNode existingChild, AsyncReader fileData,
                                                            long inputStartIndex, long endIndex,
                                                            NetworkAccess network, SafeRandom random,
                                                            ProgressConsumer<Long> monitor, Fragmenter fragmenter) {
@@ -463,9 +512,13 @@ public class FileTreeNode {
         Supplier<Location> locationSupplier = () -> new Location(getLocation().owner, getLocation().writer, random.randomBytes(32));
 
         return (existingChild.isDirty() ?
-                existingChild.clean(network, random, this, fragmenter) :
-                CompletableFuture.completedFuture(existingChild)
-        ).thenCompose(child -> {
+                existingChild.clean(network, random, this, fragmenter)
+                        .thenCompose(us -> us.getChild(filename, network)
+                                .thenApply(cleanedChild -> new Pair<>(us, cleanedChild.get()))) :
+                CompletableFuture.completedFuture(new Pair<>(this, existingChild))
+        ).thenCompose(updatedPair -> {
+            FileTreeNode us = updatedPair.left;
+            FileTreeNode child = updatedPair.right;
             FileProperties childProps = child.getFileProperties();
             final AtomicLong filesSize = new AtomicLong(childProps.size);
             FileRetriever retriever = child.getRetriever();
@@ -554,7 +607,8 @@ public class FileTreeNode {
             };
 
             BiFunction<Boolean, Boolean, Boolean> combiner = (left, right) -> left && right;
-            return Futures.reduceAll(startIndexes, identity, composer, combiner);
+            return Futures.reduceAll(startIndexes, identity, composer, combiner)
+                    .thenApply(b -> us);
         });
     }
 
@@ -573,6 +627,7 @@ public class FileTreeNode {
                                                 SymmetricKey requestedBaseSymmetricKey,
                                                 boolean isSystemFolder,
                                                 SafeRandom random) {
+
         CompletableFuture<FilePointer> result = new CompletableFuture<>();
         if (!this.isDirectory()) {
             result.completeExceptionally(new IllegalStateException("Cannot mkdir in a file!"));
@@ -591,7 +646,10 @@ public class FileTreeNode {
             DirAccess dirAccess = (DirAccess) pointer.fileAccess;
             SymmetricKey rootDirKey = dirPointer.baseKey;
             return dirAccess.mkdir(newFolderName, network, dirPointer.location.owner, getSigner(), dirPointer.getLocation().getMapKey(), rootDirKey,
-                    requestedBaseSymmetricKey, isSystemFolder, random);
+                    requestedBaseSymmetricKey, isSystemFolder, random).thenApply(x -> {
+                        setModified();
+                        return x;
+                    });
         });
     }
 
@@ -602,6 +660,7 @@ public class FileTreeNode {
 
     public CompletableFuture<Boolean> rename(String newFilename, NetworkAccess network,
                                              FileTreeNode parent, boolean overwrite) {
+        setModified();
         if (! isLegalName(newFilename))
             return CompletableFuture.completedFuture(false);
         CompletableFuture<Optional<FileTreeNode>> childExists = parent == null ?
@@ -633,6 +692,7 @@ public class FileTreeNode {
     }
 
     public CompletableFuture<Boolean> setProperties(FileProperties updatedProperties, NetworkAccess network, FileTreeNode parent) {
+        setModified();
         String newName = updatedProperties.name;
         CompletableFuture<Boolean> result = new CompletableFuture<>();
         if (!isLegalName(newName)) {
@@ -672,6 +732,7 @@ public class FileTreeNode {
                                                   NetworkAccess network,
                                                   SafeRandom random,
                                                   Fragmenter fragmenter) {
+        ensureUnmodified();
         CompletableFuture<FileTreeNode> result = new CompletableFuture<>();
         if (! target.isDirectory()) {
             result.completeExceptionally(new IllegalStateException("CopyTo target " + target + " must be a directory"));
@@ -712,6 +773,7 @@ public class FileTreeNode {
 
     @JsMethod
     public CompletableFuture<Boolean> remove(NetworkAccess network, FileTreeNode parent) {
+        ensureUnmodified();
         Supplier<CompletableFuture<Boolean>> supplier = () -> new RetrievedFilePointer(writableFilePointer(), pointer.fileAccess)
                 .remove(network, null, getSigner());
 
@@ -736,6 +798,7 @@ public class FileTreeNode {
 
     public CompletableFuture<? extends AsyncReader> getInputStream(NetworkAccess network, SafeRandom random,
                                                                    long fileSize, ProgressConsumer<Long> monitor) {
+        ensureUnmodified();
         if (pointer.fileAccess.isDirectory())
             throw new IllegalStateException("Cannot get input stream for a directory!");
         FileAccess fileAccess = (FileAccess) pointer.fileAccess;
@@ -764,6 +827,7 @@ public class FileTreeNode {
 
     @JsMethod
     public FileProperties getFileProperties() {
+        ensureUnmodified();
         return props;
     }
 
