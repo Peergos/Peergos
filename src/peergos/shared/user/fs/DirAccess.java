@@ -6,6 +6,8 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
+import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.merklebtree.*;
 import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.*;
 
@@ -27,6 +29,7 @@ public class DirAccess implements CryptreeNode {
 
     public static final int MAX_CHILD_LINKS_PER_BLOB = 500;
 
+    private final MaybeMultihash committedHash;
     private final int version;
     private final SymmetricLink subfolders2files, subfolders2parent, parent2meta;
     private final SymmetricLocationLink parentLink;
@@ -34,7 +37,8 @@ public class DirAccess implements CryptreeNode {
     private final List<SymmetricLocationLink> subfolders, files;
     private final Optional<SymmetricLocationLink> moreFolderContents;
 
-    public DirAccess(int version,
+    public DirAccess(MaybeMultihash committedHash,
+                     int version,
                      SymmetricLink subfolders2files,
                      SymmetricLink subfolders2parent,
                      SymmetricLink parent2meta,
@@ -43,6 +47,7 @@ public class DirAccess implements CryptreeNode {
                      List<SymmetricLocationLink> subfolders,
                      List<SymmetricLocationLink> files,
                      Optional<SymmetricLocationLink> moreFolderContents) {
+        this.committedHash = committedHash;
         this.version = version;
         this.subfolders2files = subfolders2files;
         this.subfolders2parent = subfolders2parent;
@@ -52,6 +57,11 @@ public class DirAccess implements CryptreeNode {
         this.subfolders = Collections.unmodifiableList(subfolders);
         this.files = Collections.unmodifiableList(files);
         this.moreFolderContents = moreFolderContents;
+    }
+
+    @Override
+    public MaybeMultihash committedHash() {
+        return committedHash;
     }
 
     @Override
@@ -85,7 +95,7 @@ public class DirAccess implements CryptreeNode {
     }
 
     public DirAccess withNextBlob(Optional<SymmetricLocationLink> moreFolderContents) {
-        return new DirAccess(version, subfolders2files, subfolders2parent, parent2meta, parentLink, properties,
+        return new DirAccess(MaybeMultihash.empty(), version, subfolders2files, subfolders2parent, parent2meta, parentLink, properties,
                 subfolders, files, moreFolderContents);
     }
 
@@ -110,7 +120,7 @@ public class DirAccess implements CryptreeNode {
         ));
     }
 
-    public static DirAccess fromCbor(CborObject cbor) {
+    public static DirAccess fromCbor(CborObject cbor, Multihash hash) {
         if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Incorrect cbor for DirAccess: " + cbor);
 
@@ -138,7 +148,7 @@ public class DirAccess implements CryptreeNode {
         Optional<SymmetricLocationLink> moreFolderContents = linkToNext instanceof CborObject.CborNull ?
                 Optional.empty() :
                 Optional.of(SymmetricLocationLink.fromCbor(linkToNext));
-        return new DirAccess(version, subfoldersToFiles, subfoldersToParent, parentToMeta, parentLink,
+        return new DirAccess(MaybeMultihash.of(hash), version, subfoldersToFiles, subfoldersToParent, parentToMeta, parentLink,
                 properties, subfolders, files, moreFolderContents);
     }
 
@@ -157,10 +167,10 @@ public class DirAccess implements CryptreeNode {
         SymmetricKey parentKey = subfolders2parent.target(writableFilePointer.baseKey);
         metaKey = this.getMetaKey(parentKey);
         byte[] metaNonce = metaKey.createNonce();
-        DirAccess updated = new DirAccess(version, subfolders2files, subfolders2parent, parent2meta, parentLink,
+        DirAccess updated = new DirAccess(MaybeMultihash.empty(), version, subfolders2files, subfolders2parent,
+                parent2meta, parentLink,
                 ArrayOps.concat(metaNonce, metaKey.encrypt(newProps.serialize(), metaNonce)),
-                subfolders, files,
-                moreFolderContents
+                subfolders, files, moreFolderContents
         );
         return network.uploadChunk(updated, writableFilePointer.location, writableFilePointer.signer())
                 .thenApply(b -> updated);
@@ -264,7 +274,7 @@ public class DirAccess implements CryptreeNode {
             for (FilePointer targetCAP : targetCAPs)
                 newSubfolders.add(SymmetricLocationLink.create(ourSubfolders, targetCAP.baseKey, targetCAP.getLocation()));
 
-            return new DirAccess(version, subfolders2files, subfolders2parent, parent2meta, parentLink, properties,
+            return new DirAccess(MaybeMultihash.empty(), version, subfolders2files, subfolders2parent, parent2meta, parentLink, properties,
                     newSubfolders, files, moreFolderContents)
                     .commit(ourPointer.getLocation(), signer, network);
         }
@@ -493,12 +503,12 @@ public class DirAccess implements CryptreeNode {
     }
 
     private DirAccess withSubfolders(List<SymmetricLocationLink> newSubfolders) {
-        return new DirAccess(version, subfolders2files, subfolders2parent, parent2meta, parentLink, properties,
+        return new DirAccess(MaybeMultihash.empty(), version, subfolders2files, subfolders2parent, parent2meta, parentLink, properties,
                 newSubfolders, files, moreFolderContents);
     }
 
     private DirAccess withFiles(List<SymmetricLocationLink> newFiles) {
-        return new DirAccess(version, subfolders2files, subfolders2parent, parent2meta, parentLink, properties,
+        return new DirAccess(MaybeMultihash.empty(), version, subfolders2files, subfolders2parent, parent2meta, parentLink, properties,
                 subfolders, newFiles, moreFolderContents);
     }
 
@@ -510,6 +520,7 @@ public class DirAccess implements CryptreeNode {
         byte[] metaNonce = metaKey.createNonce();
         SymmetricLocationLink parentLink = parentLocation == null ? null : SymmetricLocationLink.create(parentKey, parentParentKey, parentLocation);
         return new DirAccess(
+                MaybeMultihash.empty(),
                 CryptreeNode.CURRENT_DIR_VERSION,
                 SymmetricLink.fromPair(subfoldersKey, filesKey),
                 SymmetricLink.fromPair(subfoldersKey, parentKey),

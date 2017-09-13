@@ -2,7 +2,6 @@ package peergos.shared.user;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
-import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.merklebtree.*;
@@ -32,7 +31,7 @@ public class BtreeImpl implements Btree {
 
     private CompletableFuture<CommittedWriterData> getWriterData(PublicKeyHash controller, MaybeMultihash hash) {
         if (!hash.isPresent())
-            return CompletableFuture.completedFuture(new CommittedWriterData(MaybeMultihash.EMPTY(), WriterData.createEmpty(controller)));
+            return CompletableFuture.completedFuture(new CommittedWriterData(MaybeMultihash.empty(), WriterData.createEmpty(controller)));
         return dht.get(hash.get())
                 .thenApply(cborOpt -> {
                     if (! cborOpt.isPresent())
@@ -46,7 +45,7 @@ public class BtreeImpl implements Btree {
                 .thenCompose(dataOpt -> dht.getSigningKey(hash)
                         .thenApply(signer -> dataOpt.isPresent() ?
                                 HashCasPair.fromCbor(CborObject.fromByteArray(signer.get().unsignMessage(dataOpt.get()))).updated :
-                                MaybeMultihash.EMPTY())
+                                MaybeMultihash.empty())
                         .thenCompose(x -> getWriterData(hash, x)));
     }
 
@@ -66,16 +65,16 @@ public class BtreeImpl implements Btree {
     }
 
     @Override
-    public CompletableFuture<Boolean> put(SigningPrivateKeyAndPublicHash writer, byte[] mapKey, Multihash value) {
+    public CompletableFuture<Boolean> put(SigningPrivateKeyAndPublicHash writer, byte[] mapKey, MaybeMultihash existing, Multihash value) {
         PublicKeyHash publicWriterKey = writer.publicKeyHash;
         CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
 
         return addToQueue(publicWriterKey, lock)
                 .thenCompose(committed -> {
                     WriterData holder = committed.props;
-                    MaybeMultihash btreeRootHash = holder.btree.isPresent() ? MaybeMultihash.of(holder.btree.get()) : MaybeMultihash.EMPTY();
+                    MaybeMultihash btreeRootHash = holder.btree.isPresent() ? MaybeMultihash.of(holder.btree.get()) : MaybeMultihash.empty();
                     return MerkleBTree.create(publicWriterKey, btreeRootHash, dht)
-                            .thenCompose(btree -> btree.put(publicWriterKey, mapKey, value))
+                            .thenCompose(btree -> btree.put(publicWriterKey, mapKey, existing, value))
                             .thenApply(newRoot -> LOGGING ? log(newRoot, "BTREE.put (" + ArrayOps.bytesToHex(mapKey)
                                     + ", " + value + ") => CAS(" + btreeRootHash + ", " + newRoot + ")") : newRoot)
                             .thenCompose(newBtreeRoot -> holder.withBtree(newBtreeRoot)
@@ -92,7 +91,7 @@ public class BtreeImpl implements Btree {
                 .thenCompose(committed -> {
                     lock.complete(committed);
                     WriterData holder = committed.props;
-                    MaybeMultihash btreeRootHash = holder.btree.isPresent() ? MaybeMultihash.of(holder.btree.get()) : MaybeMultihash.EMPTY();
+                    MaybeMultihash btreeRootHash = holder.btree.isPresent() ? MaybeMultihash.of(holder.btree.get()) : MaybeMultihash.empty();
                     return MerkleBTree.create(writer, btreeRootHash, dht)
                             .thenCompose(btree -> btree.get(mapKey))
                             .thenApply(maybe -> LOGGING ?
@@ -108,7 +107,7 @@ public class BtreeImpl implements Btree {
         return addToQueue(publicWriter, future)
                 .thenCompose(committed -> {
                     WriterData holder = committed.props;
-                    MaybeMultihash btreeRootHash = holder.btree.isPresent() ? MaybeMultihash.of(holder.btree.get()) : MaybeMultihash.EMPTY();
+                    MaybeMultihash btreeRootHash = holder.btree.isPresent() ? MaybeMultihash.of(holder.btree.get()) : MaybeMultihash.empty();
                     return MerkleBTree.create(publicWriter, btreeRootHash, dht)
                             .thenCompose(btree -> btree.delete(publicWriter, mapKey))
                             .thenApply(pair -> LOGGING ? log(pair, "BTREE.rm (" + ArrayOps.bytesToHex(mapKey) + "  => " + pair) : pair)

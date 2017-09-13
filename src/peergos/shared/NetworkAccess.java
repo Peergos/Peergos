@@ -110,12 +110,15 @@ public class NetworkAccess {
                     return btree.get(loc.writer, loc.getMapKey())
                             .thenCompose(key -> {
                                 if (key.isPresent())
-                                    return dhtClient.get(key.get());
+                                    return dhtClient.get(key.get())
+                                            .thenApply(dataOpt ->  dataOpt
+                                                    .map(cbor -> new RetrievedFilePointer(
+                                                            link.toReadableFilePointer(baseKey),
+                                                            CryptreeNode.fromCbor(cbor, key.get()))));
                                 System.err.println("Couldn't download link at: " + loc);
-                                Optional<CborObject> result = Optional.empty();
+                                Optional<RetrievedFilePointer> result = Optional.empty();
                                 return CompletableFuture.completedFuture(result);
-                            }).thenApply(dataOpt ->  dataOpt
-                                    .map(cbor -> new RetrievedFilePointer(link.toReadableFilePointer(baseKey), CryptreeNode.fromCbor(cbor))));
+                            });
                 }).collect(Collectors.toList());
 
         return Futures.combineAll(all).thenApply(optSet -> optSet.stream()
@@ -144,7 +147,7 @@ public class NetworkAccess {
         return btree.get(entry.pointer.location.writer, entry.pointer.location.getMapKey()).thenCompose(btreeValue -> {
             if (btreeValue.isPresent())
                 return dhtClient.get(btreeValue.get())
-                        .thenApply(value -> value.map(CryptreeNode::fromCbor));
+                        .thenApply(value -> value.map(cbor -> CryptreeNode.fromCbor(cbor,  btreeValue.get())));
             return CompletableFuture.completedFuture(Optional.empty());
         });
     }
@@ -187,7 +190,7 @@ public class NetworkAccess {
         try {
             byte[] metaBlob = metadata.serialize();
             return dhtClient.put(location.owner, metaBlob)
-                    .thenCompose(blobHash -> btree.put(writer, location.getMapKey(), blobHash));
+                    .thenCompose(blobHash -> btree.put(writer, location.getMapKey(), metadata.committedHash(), blobHash));
         } catch (Exception e) {
             System.out.println(e.getMessage());
             throw new RuntimeException(e);
@@ -201,7 +204,7 @@ public class NetworkAccess {
             if (!blobHash.isPresent())
                 return CompletableFuture.completedFuture(Optional.empty());
             return dhtClient.get(blobHash.get())
-                    .thenApply(rawOpt -> rawOpt.map(CryptreeNode::fromCbor));
+                    .thenApply(rawOpt -> rawOpt.map(cbor -> CryptreeNode.fromCbor(cbor, blobHash.get())));
         });
     }
 

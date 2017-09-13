@@ -7,6 +7,7 @@ import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.merklebtree.MaybeMultihash;
 
 import java.io.*;
+import java.util.*;
 import java.util.concurrent.*;
 
 public interface Btree {
@@ -19,7 +20,7 @@ public interface Btree {
      * @return the new root hash of the btree
      * @throws IOException
      */
-    CompletableFuture<Boolean> put(SigningPrivateKeyAndPublicHash sharingKey, byte[] mapKey, Multihash value);
+    CompletableFuture<Boolean> put(SigningPrivateKeyAndPublicHash sharingKey, byte[] mapKey, MaybeMultihash existing, Multihash value);
 
     /**
      *
@@ -39,4 +40,6 @@ public interface Btree {
      */
     CompletableFuture<Boolean> remove(SigningPrivateKeyAndPublicHash sharingKey, byte[] mapKey);
 
+
+    class CASException extends RuntimeException {}
 }

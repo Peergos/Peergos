@@ -127,7 +127,7 @@ public class UserContext {
                                                 Optional.of(new PublicKeyHash(boxerHash)),
                                                 userWithRoot.getRoot());
 
-                                        CommittedWriterData notCommitted = new CommittedWriterData(MaybeMultihash.EMPTY(), newUserData);
+                                        CommittedWriterData notCommitted = new CommittedWriterData(MaybeMultihash.empty(), newUserData);
                                         SigningPrivateKeyAndPublicHash signer = new SigningPrivateKeyAndPublicHash(signerHash, userWithRoot.getUser().secretSigningKey);
                                         UserContext context = new UserContext(username, signer, userWithRoot.getBoxingPair(),
                                                 network, crypto, CompletableFuture.completedFuture(notCommitted), new TrieNode());
@@ -163,7 +163,7 @@ public class UserContext {
         FilePointer entryPoint = FilePointer.fromLink(link);
         EntryPoint entry = new EntryPoint(entryPoint, "", Collections.emptySet(), Collections.emptySet());
         WriterData empty = WriterData.createEmpty(entryPoint.location.owner, Optional.empty(), null);
-        CommittedWriterData committed = new CommittedWriterData(MaybeMultihash.EMPTY(), empty);
+        CommittedWriterData committed = new CommittedWriterData(MaybeMultihash.empty(), empty);
         CompletableFuture<CommittedWriterData> userData = CompletableFuture.completedFuture(committed);
         UserContext context = new UserContext(null, null, null, network.clear(), crypto, userData, new TrieNode());
         return context.addEntryPoint(null, context.entrie, entry, network).thenApply(trieNode -> {
@@ -1040,7 +1040,7 @@ public class UserContext {
                 .thenCompose(casOpt -> network.dhtClient.getSigningKey(signerHash)
                         .thenApply(signer -> casOpt.map(raw -> HashCasPair.fromCbor(CborObject.fromByteArray(
                                 signer.get().unsignMessage(raw))).updated)
-                                .orElse(MaybeMultihash.EMPTY())))
+                                .orElse(MaybeMultihash.empty())))
                         .thenCompose(key -> network.dhtClient.get(key.get())
                                 .thenApply(Optional::get)
                                 .thenApply(cbor -> new Pair<>(key.get(), cbor))

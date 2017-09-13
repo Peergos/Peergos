@@ -2,7 +2,6 @@ package peergos.shared.user;
 
 import peergos.shared.*;
 import peergos.shared.cbor.*;
-import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
@@ -12,9 +11,7 @@ import peergos.shared.merklebtree.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.fs.*;
-import peergos.shared.util.*;
 
-import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
@@ -132,7 +129,7 @@ public class WriterData implements Cborable {
                             ownedKeys,
                             newEntryPoints,
                             btree);
-                    return updated.commit(signer, MaybeMultihash.EMPTY(), network, updater);
+                    return updated.commit(signer, MaybeMultihash.empty(), network, updater);
                 });
     }
 

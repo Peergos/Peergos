@@ -1,6 +1,5 @@
 package peergos.shared.merklebtree;
 
-import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.ContentAddressedStorage;
@@ -61,8 +60,8 @@ public class MerkleBTree
      * @return hash of new tree root
      * @throws IOException
      */
-    public CompletableFuture<Multihash> put(PublicKeyHash writer, byte[] rawKey, Multihash value) {
-        return root.put(writer, new ByteArrayWrapper(rawKey), value, storage, maxChildren)
+    public CompletableFuture<Multihash> put(PublicKeyHash writer, byte[] rawKey, MaybeMultihash existing, Multihash value) {
+        return root.put(writer, new ByteArrayWrapper(rawKey), existing, value, storage, maxChildren)
                 .thenCompose(newRoot -> commit(writer, newRoot));
     }
 

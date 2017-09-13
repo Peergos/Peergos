@@ -277,7 +277,7 @@ public abstract class UserTests {
         Set<FileTreeNode> files = context.getUserRoot().get().getChildren(context.network).get();
         Set<String> names = files.stream().filter(f -> ! f.getFileProperties().isHidden).map(f -> f.getName()).collect(Collectors.toSet());
         Set<String> expectedNames = IntStream.range(0, concurrency).mapToObj(i -> i + ".bin").collect(Collectors.toSet());
-        Assert.assertTrue("All children present and accounted for", names.equals(expectedNames));
+        Assert.assertTrue("All children present and accounted for: " + names, names.equals(expectedNames));
     }
 
     @Test

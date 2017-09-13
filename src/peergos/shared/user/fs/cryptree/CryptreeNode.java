@@ -6,6 +6,8 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
+import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.merklebtree.*;
 import peergos.shared.user.fs.*;
 
 import java.util.*;
@@ -15,6 +17,8 @@ public interface CryptreeNode extends Cborable {
 
     int CURRENT_FILE_VERSION = 1;
     int CURRENT_DIR_VERSION = 1;
+
+    MaybeMultihash committedHash();
 
     boolean isDirectory();
 
@@ -59,7 +63,7 @@ public interface CryptreeNode extends Cborable {
         });
     }
 
-    static CryptreeNode fromCbor(CborObject cbor) {
+    static CryptreeNode fromCbor(CborObject cbor, Multihash hash) {
         if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Incorrect cbor for FileAccess: " + cbor);
 
@@ -67,7 +71,7 @@ public interface CryptreeNode extends Cborable {
         int versionAndType = (int) ((CborObject.CborLong) value.get(0)).value;
         boolean isFile = (versionAndType & 1) != 0;
         if (isFile)
-            return FileAccess.fromCbor(cbor);
-        return DirAccess.fromCbor(cbor);
+            return FileAccess.fromCbor(cbor, hash);
+        return DirAccess.fromCbor(cbor, hash);
     }
 }
