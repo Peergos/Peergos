@@ -486,13 +486,17 @@ public class FileTreeNode {
                             fragmenter);
                     byte[] mapKey = random.randomBytes(32);
                     Location nextChunkLocation = new Location(getLocation().owner, getLocation().writer, mapKey);
-                    chunks.upload(network, random, parentLocation.owner, getSigner(), nextChunkLocation).thenAccept(fileLocation -> {
-                        FilePointer filePointer = new FilePointer(fileLocation, Optional.empty(), fileKey);
-                        dirAccess.addFileAndCommit(filePointer, rootRKey, pointer.filePointer, getSigner(), network, random)
-                                .thenAccept(uploadResult -> {
-                                    setModified();
-                                    result.complete(this.withCryptreeNode(uploadResult));
-                                });
+                    chunks.upload(network, random, parentLocation.owner, getSigner(), nextChunkLocation)
+                            .thenAccept(fileLocation -> {
+                                FilePointer filePointer = new FilePointer(fileLocation, Optional.empty(), fileKey);
+                                dirAccess.addFileAndCommit(filePointer, rootRKey, pointer.filePointer, getSigner(), network, random)
+                                        .thenAccept(uploadResult -> {
+                                            setModified();
+                                            result.complete(this.withCryptreeNode(uploadResult));
+                                        });
+                            }).exceptionally(e -> {
+                                result.completeExceptionally(e);
+                                return null;
                     });
                 });
             });

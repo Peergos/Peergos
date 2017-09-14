@@ -443,18 +443,15 @@ public class DirAccess implements CryptreeNode {
         Location ourLocation = new Location(ownerPublic, writer.publicKeyHash, ourMapKey);
         DirAccess dir = DirAccess.create(dirReadKey, new FileProperties(name, 0, LocalDateTime.now(),
                 isSystemFolder, Optional.empty()), ourLocation, ourParentKey, null);
-        CompletableFuture<FilePointer> result = new CompletableFuture<>();
         Location chunkLocation = new Location(ownerPublic, writer.publicKeyHash, dirMapKey);
-        network.uploadChunk(dir, chunkLocation, writer).thenAccept(success -> {
-            if (success) {
-                FilePointer ourPointer = new FilePointer(ownerPublic, writer.publicKeyHash, ourMapKey, baseKey);
-                FilePointer subdirPointer = new FilePointer(chunkLocation, Optional.empty(), dirReadKey);
-                addSubdirAndCommit(subdirPointer, baseKey, ourPointer, writer, network, random)
-                        .thenAccept(modified -> result.complete(new FilePointer(ownerPublic, writer.publicKeyHash, dirMapKey, dirReadKey)));
-            } else
-                result.completeExceptionally(new IllegalStateException("Couldn't upload directory metadata!"));
+        return network.uploadChunk(dir, chunkLocation, writer).thenCompose(success -> {
+            if (! success)
+                throw new IllegalStateException("Couldn't upload directory metadata!");
+            FilePointer ourPointer = new FilePointer(ownerPublic, writer.publicKeyHash, ourMapKey, baseKey);
+            FilePointer subdirPointer = new FilePointer(chunkLocation, Optional.empty(), dirReadKey);
+            return addSubdirAndCommit(subdirPointer, baseKey, ourPointer, writer, network, random)
+                    .thenApply(modified -> new FilePointer(ownerPublic, writer.publicKeyHash, dirMapKey, dirReadKey));
         });
-        return result;
     }
 
     public CompletableFuture<DirAccess> commit(Location ourLocation, SigningPrivateKeyAndPublicHash signer, NetworkAccess network) {
