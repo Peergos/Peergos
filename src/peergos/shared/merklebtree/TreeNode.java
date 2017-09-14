@@ -103,7 +103,7 @@ public class TreeNode implements Cborable {
             // ensure CAS
             if (! nextSmallest.valueHash.equals(existing)) {
                 CompletableFuture<TreeNode> res = new CompletableFuture<>();
-                res.completeExceptionally(new Btree.CASException());
+                res.completeExceptionally(new Btree.CasException(nextSmallest.valueHash, existing));
                 return res;
             }
             keys.remove(nextSmallest);

@@ -405,19 +405,14 @@ public class UserContext {
             DirAccess root = DirAccess.create(rootRKey, new FileProperties(directoryName, 0, LocalDateTime.now(), false, Optional.empty()), (Location) null, null, null);
             Location rootLocation = new Location(this.signer.publicKeyHash, writerHash, rootMapKey);
             System.out.println("Uploading entry point directory");
-            return network.uploadChunk(root, rootLocation, writerWithHash).thenCompose(uploaded -> {
-                if (!uploaded)
-                    throw new IllegalStateException("Failed to upload root dir!");
+            return network.uploadChunk(root, rootLocation, writerWithHash).thenCompose(chunkHash -> {
                 long t3 = System.currentTimeMillis();
                 System.out.println("Uploading root dir metadata took " + (t3 - t2) + " mS");
                 return addToStaticDataAndCommit(entry)
                         .thenCompose(x -> addOwnedKeyAndCommit(entry.pointer.location.writer))
                         .thenApply(x -> {
                             System.out.println("Committing static data took " + (System.currentTimeMillis() - t3) + " mS");
-
-                            if (uploaded)
-                                return new RetrievedFilePointer(rootPointer, root);
-                            throw new IllegalStateException("Failed to create entry directory!");
+                            return new RetrievedFilePointer(rootPointer, root.withHash(chunkHash));
                         });
             });
         });

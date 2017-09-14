@@ -6,6 +6,7 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
+import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.*;
@@ -13,7 +14,6 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.time.*;
 import java.util.*;
-import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import java.util.function.*;
@@ -477,31 +477,43 @@ public class FileTreeNode {
             DirAccess dirAccess = (DirAccess) pointer.fileAccess;
             SymmetricKey dirParentKey = dirAccess.getParentKey(rootRKey);
             Location parentLocation = getLocation();
-            CompletableFuture<FileTreeNode> result = new CompletableFuture<>();
             int thumbnailSrcImageSize = startIndex == 0 && endIndex < Integer.MAX_VALUE ? (int)endIndex : 0;
-            generateThumbnail(network, fileData, thumbnailSrcImageSize, filename).thenAccept(thumbData -> {
-                fileData.reset().thenAccept(resetResult -> {
+            return generateThumbnail(network, fileData, thumbnailSrcImageSize, filename).thenCompose(thumbData -> {
+                return fileData.reset().thenCompose(resetResult -> {
                     FileProperties fileProps = new FileProperties(filename, endIndex, LocalDateTime.now(), isHidden, Optional.of(thumbData));
                     FileUploader chunks = new FileUploader(filename, fileData, startIndex, endIndex, fileKey, fileMetaKey, parentLocation, dirParentKey, monitor, fileProps,
                             fragmenter);
                     byte[] mapKey = random.randomBytes(32);
                     Location nextChunkLocation = new Location(getLocation().owner, getLocation().writer, mapKey);
-                    chunks.upload(network, random, parentLocation.owner, getSigner(), nextChunkLocation)
-                            .thenAccept(fileLocation -> {
+                    return chunks.upload(network, random, parentLocation.owner, getSigner(), nextChunkLocation)
+                            .thenCompose(fileLocation -> {
                                 FilePointer filePointer = new FilePointer(fileLocation, Optional.empty(), fileKey);
+                                CompletableFuture<FileTreeNode> result = new CompletableFuture<>();
                                 dirAccess.addFileAndCommit(filePointer, rootRKey, pointer.filePointer, getSigner(), network, random)
                                         .thenAccept(uploadResult -> {
                                             setModified();
                                             result.complete(this.withCryptreeNode(uploadResult));
+                                        }).exceptionally(e -> {
+                                            if (e instanceof Btree.CasException) {
+                                                // reload directory and try again
+                                                network.getMetadata(parentLocation).thenAccept(opt -> {
+                                                    DirAccess updatedUs = (DirAccess) opt.get();
+                                                    // todo check another file of same name hasn't been added in the change
+
+                                                    updatedUs.addFileAndCommit(filePointer, rootRKey, pointer.filePointer, getSigner(), network, random)
+                                                            .thenAccept(uploadResult -> {
+                                                                setModified();
+                                                                result.complete(this.withCryptreeNode(uploadResult));
+                                                            });
+                                                });
+                                            } else
+                                                result.completeExceptionally(e);
+                                            return null;
                                         });
-                            }).exceptionally(e -> {
-                                result.completeExceptionally(e);
-                                return null;
-                    });
+                                return result;
+                            });
                 });
             });
-
-            return result;
         });
     }
 
@@ -579,16 +591,12 @@ public class FileTreeNode {
                                 FileProperties newProps = new FileProperties(childProps.name, endIndex > currentSize ? endIndex : currentSize,
                                         LocalDateTime.now(), childProps.isHidden, childProps.thumbnail);
 
-                                CompletableFuture<Boolean> chunkUploaded = FileUploader.uploadChunk(getSigner(),
+                                CompletableFuture<Multihash> chunkUploaded = FileUploader.uploadChunk(getSigner(),
                                         newProps, getLocation(), getParentKey(), baseKey, located,
                                         fragmenter,
                                         nextChunkLocation, network, monitor);
 
                                 return chunkUploaded.thenCompose(isUploaded -> {
-                                    if (!isUploaded)
-                                        return CompletableFuture.completedFuture(false);
-
-
                                     //update indices to be relative to next chunk
                                     long updatedLength = startIndex + internalEnd - internalStart;
                                     if (updatedLength > filesSize.get()) {

@@ -184,13 +184,14 @@ public class NetworkAccess {
                         .collect(Collectors.toList()));
     }
 
-    public CompletableFuture<Boolean> uploadChunk(CryptreeNode metadata, Location location, SigningPrivateKeyAndPublicHash writer) {
+    public CompletableFuture<Multihash> uploadChunk(CryptreeNode metadata, Location location, SigningPrivateKeyAndPublicHash writer) {
         if (! writer.publicKeyHash.equals(location.writer))
             throw new IllegalStateException("Non matching location writer and signing writer key!");
         try {
             byte[] metaBlob = metadata.serialize();
             return dhtClient.put(location.owner, metaBlob)
-                    .thenCompose(blobHash -> btree.put(writer, location.getMapKey(), metadata.committedHash(), blobHash));
+                    .thenCompose(blobHash -> btree.put(writer, location.getMapKey(), metadata.committedHash(), blobHash)
+                            .thenApply(res -> blobHash));
         } catch (Exception e) {
             System.out.println(e.getMessage());
             throw new RuntimeException(e);

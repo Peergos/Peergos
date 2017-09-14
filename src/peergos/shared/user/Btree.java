@@ -41,5 +41,10 @@ public interface Btree {
     CompletableFuture<Boolean> remove(SigningPrivateKeyAndPublicHash sharingKey, byte[] mapKey);
 
 
-    class CASException extends RuntimeException {}
+    class CasException extends RuntimeException {
+
+        public CasException(MaybeMultihash actualExisting, MaybeMultihash claimedExisting) {
+            super("CAS exception updating cryptree node. existing: " + actualExisting + ", claimed: " + claimedExisting);
+        }
+    }
 }

@@ -29,7 +29,7 @@ public class DirAccess implements CryptreeNode {
 
     public static final int MAX_CHILD_LINKS_PER_BLOB = 500;
 
-    private final MaybeMultihash committedHash;
+    private final MaybeMultihash lastCommittedHash;
     private final int version;
     private final SymmetricLink subfolders2files, subfolders2parent, parent2meta;
     private final SymmetricLocationLink parentLink;
@@ -37,7 +37,7 @@ public class DirAccess implements CryptreeNode {
     private final List<SymmetricLocationLink> subfolders, files;
     private final Optional<SymmetricLocationLink> moreFolderContents;
 
-    public DirAccess(MaybeMultihash committedHash,
+    public DirAccess(MaybeMultihash lastCommittedHash,
                      int version,
                      SymmetricLink subfolders2files,
                      SymmetricLink subfolders2parent,
@@ -47,7 +47,7 @@ public class DirAccess implements CryptreeNode {
                      List<SymmetricLocationLink> subfolders,
                      List<SymmetricLocationLink> files,
                      Optional<SymmetricLocationLink> moreFolderContents) {
-        this.committedHash = committedHash;
+        this.lastCommittedHash = lastCommittedHash;
         this.version = version;
         this.subfolders2files = subfolders2files;
         this.subfolders2parent = subfolders2parent;
@@ -59,9 +59,14 @@ public class DirAccess implements CryptreeNode {
         this.moreFolderContents = moreFolderContents;
     }
 
+    public DirAccess withHash(Multihash hash) {
+        return new DirAccess(MaybeMultihash.of(hash), version, subfolders2files, subfolders2parent, parent2meta, parentLink, properties,
+                subfolders, files, moreFolderContents);
+    }
+
     @Override
     public MaybeMultihash committedHash() {
-        return committedHash;
+        return lastCommittedHash;
     }
 
     @Override
@@ -274,7 +279,7 @@ public class DirAccess implements CryptreeNode {
             for (FilePointer targetCAP : targetCAPs)
                 newSubfolders.add(SymmetricLocationLink.create(ourSubfolders, targetCAP.baseKey, targetCAP.getLocation()));
 
-            return new DirAccess(MaybeMultihash.empty(), version, subfolders2files, subfolders2parent, parent2meta, parentLink, properties,
+            return new DirAccess(lastCommittedHash, version, subfolders2files, subfolders2parent, parent2meta, parentLink, properties,
                     newSubfolders, files, moreFolderContents)
                     .commit(ourPointer.getLocation(), signer, network);
         }
@@ -444,9 +449,7 @@ public class DirAccess implements CryptreeNode {
         DirAccess dir = DirAccess.create(dirReadKey, new FileProperties(name, 0, LocalDateTime.now(),
                 isSystemFolder, Optional.empty()), ourLocation, ourParentKey, null);
         Location chunkLocation = new Location(ownerPublic, writer.publicKeyHash, dirMapKey);
-        return network.uploadChunk(dir, chunkLocation, writer).thenCompose(success -> {
-            if (! success)
-                throw new IllegalStateException("Couldn't upload directory metadata!");
+        return network.uploadChunk(dir, chunkLocation, writer).thenCompose(resultHash -> {
             FilePointer ourPointer = new FilePointer(ownerPublic, writer.publicKeyHash, ourMapKey, baseKey);
             FilePointer subdirPointer = new FilePointer(chunkLocation, Optional.empty(), dirReadKey);
             return addSubdirAndCommit(subdirPointer, baseKey, ourPointer, writer, network, random)
@@ -505,7 +508,7 @@ public class DirAccess implements CryptreeNode {
     }
 
     private DirAccess withFiles(List<SymmetricLocationLink> newFiles) {
-        return new DirAccess(MaybeMultihash.empty(), version, subfolders2files, subfolders2parent, parent2meta, parentLink, properties,
+        return new DirAccess(lastCommittedHash, version, subfolders2files, subfolders2parent, parent2meta, parentLink, properties,
                 subfolders, newFiles, moreFolderContents);
     }
 
