@@ -498,7 +498,7 @@ public class FileTreeNode {
                                                 // reload directory and try again
                                                 network.getMetadata(parentLocation).thenAccept(opt -> {
                                                     DirAccess updatedUs = (DirAccess) opt.get();
-                                                    // todo check another file of same name hasn't been added in the change
+                                                    // todo check another file of same name hasn't been added in the concurrent change
 
                                                     updatedUs.addFileAndCommit(filePointer, rootRKey, pointer.filePointer, getSigner(), network, random)
                                                             .thenAccept(uploadResult -> {

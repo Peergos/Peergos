@@ -459,7 +459,7 @@ public class DirAccess implements CryptreeNode {
 
     public CompletableFuture<DirAccess> commit(Location ourLocation, SigningPrivateKeyAndPublicHash signer, NetworkAccess network) {
         return network.uploadChunk(this, ourLocation, signer)
-                .thenApply(x -> this);
+                .thenApply(hash -> this.withHash(hash));
     }
 
     @Override

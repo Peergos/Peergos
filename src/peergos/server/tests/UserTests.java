@@ -511,12 +511,6 @@ public abstract class UserTests {
         UserContext context = ensureSignedUp(username, password, network.clear(), crypto);
         FileTreeNode userRoot = context.getUserRoot().get();
 
-        Set<FileTreeNode> children = userRoot.getChildren(context.network).get();
-
-        children.stream()
-                .map(FileTreeNode::toString)
-                .forEach(System.out::println);
-
         String name = randomString();
         Path tmpPath = createTmpFile(name);
         byte[] data = randomData(10*1024*1024); // 2 chunks to test block chaining
