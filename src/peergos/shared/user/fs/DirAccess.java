@@ -503,7 +503,7 @@ public class DirAccess implements CryptreeNode {
     }
 
     private DirAccess withSubfolders(List<SymmetricLocationLink> newSubfolders) {
-        return new DirAccess(MaybeMultihash.empty(), version, subfolders2files, subfolders2parent, parent2meta, parentLink, properties,
+        return new DirAccess(lastCommittedHash, version, subfolders2files, subfolders2parent, parent2meta, parentLink, properties,
                 newSubfolders, files, moreFolderContents);
     }
 
