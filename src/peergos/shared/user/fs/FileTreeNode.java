@@ -150,7 +150,6 @@ public class FileTreeNode {
      */
     public CompletableFuture<FileTreeNode> makeDirty(NetworkAccess network, SafeRandom random,
                                                      FileTreeNode parent, Set<String> readersToRemove) {
-        setModified();
         if (!isWritable())
             throw new IllegalStateException("You cannot mark a file as dirty without write access!");
         if (isDirectory()) {
@@ -196,6 +195,9 @@ public class FileTreeNode {
                                                 .thenApply(x -> theNewUs);
                                     });
                                 });
+                    }).thenApply(x -> {
+                        setModified();
+                        return x;
                     });
         } else {
             // create a new baseKey == parentKey and mark the metaDataKey as dirty
@@ -211,6 +213,9 @@ public class FileTreeNode {
                 return ((DirAccess) parent.pointer.fileAccess)
                         .updateChildLink(parent.writableFilePointer(), pointer, newPointer, getSigner(), network, random)
                         .thenApply(x -> new FileTreeNode(newPointer, ownername, newReaders, writers, entryWriterKey));
+            }).thenApply(x -> {
+                setModified();
+                return x;
             });
         }
     }

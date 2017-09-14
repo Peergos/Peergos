@@ -421,7 +421,7 @@ public class MultiUserTests {
 
             // test that u1 can still access the original file
             Optional<FileTreeNode> fileWithNewBaseKey = u1New.getByPath(u1New.username + "/" + folderName + "/" + filename).get();
-            Assert.assertTrue(!updatedSharedFolder.isPresent());
+            Assert.assertTrue(! updatedSharedFolder.isPresent());
             Assert.assertTrue(fileWithNewBaseKey.isPresent());
 
             // Now modify the file
