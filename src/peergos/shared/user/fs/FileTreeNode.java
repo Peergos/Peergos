@@ -394,7 +394,6 @@ public class FileTreeNode {
         if (isDirectory()) {
             throw new IllegalStateException("Directories are never dirty (they are cleaned immediately)!");
         } else {
-            setModified();
             FileProperties props = getFileProperties();
             SymmetricKey baseKey = pointer.filePointer.baseKey;
             // stream download and re-encrypt with new metaKey
@@ -405,9 +404,13 @@ public class FileTreeNode {
 
                 CompletableFuture<FileTreeNode> reuploaded = parent.uploadFileSection(tmpFilename, in, 0, props.size,
                         Optional.of(baseKey), network, random, l -> {}, fragmenter);
-                return reuploaded.thenCompose(upload -> parent.getDescendentByPath(tmpFilename, network)
-                        .thenCompose(tmpChild -> tmpChild.get().rename(props.name, network, parent, true))
-                        .thenApply(rename -> upload));
+                return reuploaded.thenCompose(upload -> upload.getDescendentByPath(tmpFilename, network)
+                        .thenCompose(tmpChild -> tmpChild.get().rename(props.name, network, upload, true))
+                        .thenApply(rename -> upload))
+                        .thenApply(res -> {
+                            setModified();
+                            return res;
+                        });
             });
         }
     }

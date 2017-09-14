@@ -297,9 +297,9 @@ public class DirAccess implements CryptreeNode {
         return removeChild(original, ourPointer, signer, network)
                 .thenCompose(res -> {
                     if (modified.fileAccess.isDirectory())
-                        return addSubdirAndCommit(modified.filePointer, ourPointer.baseKey, ourPointer, signer, network, random);
+                        return res.addSubdirAndCommit(modified.filePointer, ourPointer.baseKey, ourPointer, signer, network, random);
                     else
-                        return addFileAndCommit(modified.filePointer, ourPointer.baseKey, ourPointer, signer, network, random);
+                        return res.addFileAndCommit(modified.filePointer, ourPointer.baseKey, ourPointer, signer, network, random);
                 });
     }
 

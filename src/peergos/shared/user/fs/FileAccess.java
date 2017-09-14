@@ -13,7 +13,6 @@ import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.*;
 
 /** A FileAccess cryptree node controls read access to a section of a file, up to 5 MiB in size.
  *
@@ -27,7 +26,7 @@ import java.util.concurrent.atomic.*;
  */
 public class FileAccess implements CryptreeNode {
 
-    protected final MaybeMultihash committedHash;
+    protected final MaybeMultihash lastCommittedHash;
     protected final int version;
     protected final SymmetricLink parent2meta;
     protected final SymmetricLink parent2data;
@@ -35,14 +34,14 @@ public class FileAccess implements CryptreeNode {
     protected final FileRetriever retriever;
     protected final SymmetricLocationLink parentLink;
 
-    public FileAccess(MaybeMultihash committedHash,
+    public FileAccess(MaybeMultihash lastCommittedHash,
                       int version,
                       SymmetricLink parent2Meta,
                       SymmetricLink parent2Data,
                       byte[] fileProperties,
                       FileRetriever fileRetriever,
                       SymmetricLocationLink parentLink) {
-        this.committedHash = committedHash;
+        this.lastCommittedHash = lastCommittedHash;
         this.version = version;
         this.parent2meta = parent2Meta;
         this.parent2data = parent2Data;
@@ -53,7 +52,7 @@ public class FileAccess implements CryptreeNode {
 
     @Override
     public MaybeMultihash committedHash() {
-        return committedHash;
+        return lastCommittedHash;
     }
 
     @Override
@@ -122,7 +121,7 @@ public class FileAccess implements CryptreeNode {
                 this.parent2meta;
 
         byte[] nonce = metaKey.createNonce();
-        FileAccess fa = new FileAccess(committedHash, version, toMeta, this.parent2data, ArrayOps.concat(nonce, metaKey.encrypt(newProps.serialize(), nonce)),
+        FileAccess fa = new FileAccess(lastCommittedHash, version, toMeta, this.parent2data, ArrayOps.concat(nonce, metaKey.encrypt(newProps.serialize(), nonce)),
                 this.retriever, this.parentLink);
         return network.uploadChunk(fa, writableFilePointer.location, writableFilePointer.signer())
                 .thenApply(b -> fa);
@@ -139,7 +138,7 @@ public class FileAccess implements CryptreeNode {
         SymmetricLocationLink newParentLink = SymmetricLocationLink.create(newBaseKey,
                 parentLink.target(writableFilePointer.baseKey),
                 parentLink.targetLocation(writableFilePointer.baseKey));
-        FileAccess fa = new FileAccess(MaybeMultihash.empty(), version, newParentToMeta, newParentToData, properties, this.retriever, newParentLink);
+        FileAccess fa = new FileAccess(committedHash(), version, newParentToMeta, newParentToData, properties, this.retriever, newParentLink);
         return network.uploadChunk(fa, writableFilePointer.location,
                 writableFilePointer.signer())
                 .thenApply(x -> fa);
