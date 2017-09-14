@@ -82,7 +82,9 @@ public class BtreeImpl implements Btree {
                             .thenApply(x -> true)
                             .exceptionally(e -> {
                                 lock.complete(committed);
-                                return null;
+                                if (e instanceof RuntimeException)
+                                    throw (RuntimeException) e;
+                                throw new RuntimeException(e);
                             });
                 });
     }
