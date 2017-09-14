@@ -7,6 +7,7 @@ import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.user.*;
+import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.*;
 
 import java.io.*;
@@ -26,15 +27,15 @@ public class FileTreeNode {
     final static int[] PNG = new int[]{137, 80, 78, 71, 13, 10, 26, 10};
     final static int HEADER_BYTES_TO_IDENTIFY_IMAGE_FILE = 8;
     final static int THUMBNAIL_SIZE = 100;
-    final NativeJSThumbnail thumbnail;
-    
-    RetrievedFilePointer pointer;
-    private FileProperties props;
-    String ownername;
-    Set<String> readers;
-    Set<String> writers;
-    Optional<SecretSigningKey> entryWriterKey;
+
+    private final NativeJSThumbnail thumbnail;
+    private final RetrievedFilePointer pointer;
+    private final FileProperties props;
+    private final String ownername;
     private final Optional<TrieNode> globalRoot;
+    private Set<String> readers;
+    private Set<String> writers;
+    private Optional<SecretSigningKey> entryWriterKey;
 
     /**
      *
@@ -57,7 +58,7 @@ public class FileTreeNode {
             props = new FileProperties("/", 0, LocalDateTime.MIN, false, Optional.empty());
         else {
             SymmetricKey parentKey = this.getParentKey();
-            props = pointer.fileAccess.getFileProperties(parentKey);
+            props = pointer.fileAccess.getProperties(parentKey);
         }
         thumbnail = new NativeJSThumbnail();
     }
@@ -180,9 +181,9 @@ public class FileTreeNode {
         } else {
             // create a new baseKey == parentKey and mark the metaDataKey as dirty
             SymmetricKey parentKey = SymmetricKey.random();
-            return pointer.fileAccess.markDirty(writableFilePointer(), parentKey, network).thenCompose(newFileAccess -> {
+            return ((FileAccess) pointer.fileAccess).markDirty(writableFilePointer(), parentKey, network).thenCompose(newFileAccess -> {
 
-                // changing readers here will only affect the returned FileTreeNode, as the readers is derived from the entry point
+                // changing readers here will only affect the returned FileTreeNode, as the readers are derived from the entry point
                 TreeSet<String> newReaders = new TreeSet<>(readers);
                 newReaders.removeAll(readersToRemove);
                 RetrievedFilePointer newPointer = new RetrievedFilePointer(this.pointer.filePointer.withBaseKey(parentKey), newFileAccess);
@@ -311,7 +312,7 @@ public class FileTreeNode {
 
     private CompletableFuture<Set<RetrievedFilePointer>> retrieveChildren(NetworkAccess network) {
         FilePointer filePointer = pointer.filePointer;
-        FileAccess fileAccess = pointer.fileAccess;
+        CryptreeNode fileAccess = pointer.fileAccess;
         SymmetricKey rootDirKey = filePointer.baseKey;
 
         if (isReadable())
@@ -321,7 +322,7 @@ public class FileTreeNode {
 
     public CompletableFuture<Boolean> cleanUnreachableChildren(NetworkAccess network) {
         FilePointer filePointer = pointer.filePointer;
-        FileAccess fileAccess = pointer.fileAccess;
+        CryptreeNode fileAccess = pointer.fileAccess;
         SymmetricKey rootDirKey = filePointer.baseKey;
 
         if (isReadable())
@@ -469,7 +470,8 @@ public class FileTreeNode {
             final AtomicLong filesSize = new AtomicLong(childProps.size);
             FileRetriever retriever = child.getRetriever();
             SymmetricKey baseKey = child.pointer.filePointer.baseKey;
-            SymmetricKey dataKey = child.pointer.fileAccess.getMetaKey(baseKey);
+            FileAccess fileAccess = (FileAccess) child.pointer.fileAccess;
+            SymmetricKey dataKey = fileAccess.getDataKey(baseKey);
 
             List<Long> startIndexes = new ArrayList<>();
 
@@ -617,14 +619,15 @@ public class FileTreeNode {
                         //get current props
                         FilePointer filePointer = pointer.filePointer;
                         SymmetricKey baseKey = filePointer.baseKey;
-                        FileAccess fileAccess = pointer.fileAccess;
+                        CryptreeNode fileAccess = pointer.fileAccess;
 
                         SymmetricKey key = this.isDirectory() ? fileAccess.getParentKey(baseKey) : baseKey;
-                        FileProperties currentProps = fileAccess.getFileProperties(key);
+                        FileProperties currentProps = fileAccess.getProperties(key);
 
                         FileProperties newProps = new FileProperties(newFilename, currentProps.size, currentProps.modified, currentProps.isHidden, currentProps.thumbnail);
 
-                        return fileAccess.rename(writableFilePointer(), newProps, network);
+                        return fileAccess.updateProperties(writableFilePointer(), newProps, network)
+                                .thenApply(fa -> true);
                     });
                 });
     }
@@ -636,18 +639,22 @@ public class FileTreeNode {
             result.completeExceptionally(new IllegalArgumentException("Illegal file name: " + newName));
             return result;
         }
-        return (parent == null ? CompletableFuture.completedFuture(false) : parent.hasChildWithName(newName, network)).thenCompose(hasChild -> {
-            if (hasChild && parent!= null && !parent.getChildrenLocations().stream()
-                    .map(l -> new ByteArrayWrapper(l.getMapKey()))
-                    .collect(Collectors.toSet())
-                    .contains(new ByteArrayWrapper(pointer.filePointer.getLocation().getMapKey()))) {
-                result.completeExceptionally(new IllegalStateException("Cannot rename to same name as an existing file"));
-                return result;
-            }
-            FileAccess fileAccess = pointer.fileAccess;
+        return (parent == null ?
+                CompletableFuture.completedFuture(false) :
+                parent.hasChildWithName(newName, network))
+                .thenCompose(hasChild -> {
+                    if (hasChild && parent!= null && !parent.getChildrenLocations().stream()
+                            .map(l -> new ByteArrayWrapper(l.getMapKey()))
+                            .collect(Collectors.toSet())
+                            .contains(new ByteArrayWrapper(pointer.filePointer.getLocation().getMapKey()))) {
+                        result.completeExceptionally(new IllegalStateException("Cannot rename to same name as an existing file"));
+                        return result;
+                    }
+                    CryptreeNode fileAccess = pointer.fileAccess;
 
-            return fileAccess.rename(writableFilePointer(), updatedProperties, network);
-        });
+                    return fileAccess.updateProperties(writableFilePointer(), updatedProperties, network)
+                            .thenApply(fa -> true);
+                });
     }
 
     private FilePointer writableFilePointer() {
@@ -661,7 +668,10 @@ public class FileTreeNode {
     }
 
     @JsMethod
-    public CompletableFuture<FileTreeNode> copyTo(FileTreeNode target, NetworkAccess network, SafeRandom random) {
+    public CompletableFuture<FileTreeNode> copyTo(FileTreeNode target,
+                                                  NetworkAccess network,
+                                                  SafeRandom random,
+                                                  Fragmenter fragmenter) {
         CompletableFuture<FileTreeNode> result = new CompletableFuture<>();
         if (! target.isDirectory()) {
             result.completeExceptionally(new IllegalStateException("CopyTo target " + target + " must be a directory"));
@@ -672,25 +682,31 @@ public class FileTreeNode {
                 result.completeExceptionally(new IllegalStateException("CopyTo target " + target + " already has child with name " + getFileProperties().name));
                 return result;
             }
-            //make new FileTreeNode pointing to the same file, but with a different location
-            byte[] newMapKey = new byte[32];
-            random.randombytes(newMapKey, 0, 32);
-            SymmetricKey ourBaseKey = this.getKey();
-            // a file baseKey is the key for the chunk, which hasn't changed, so this must stay the same
-            SymmetricKey newBaseKey = this.isDirectory() ? SymmetricKey.random() : ourBaseKey;
-            FilePointer newRFP = new FilePointer(target.getLocation().owner, target.getLocation().writer, newMapKey, newBaseKey);
-            Location newParentLocation = target.getLocation();
-            SymmetricKey newParentParentKey = target.getParentKey();
+            boolean sameWriter = getLocation().writer.equals(target.getLocation().writer);
+            //make new FileTreeNode pointing to the same file if we are the same writer, but with a different location
+            if (sameWriter) {
+                byte[] newMapKey = new byte[32];
+                random.randombytes(newMapKey, 0, 32);
+                SymmetricKey ourBaseKey = this.getKey();
+                SymmetricKey newBaseKey = SymmetricKey.random();
+                FilePointer newRFP = new FilePointer(target.getLocation().owner, target.getLocation().writer, newMapKey, newBaseKey);
+                Location newParentLocation = target.getLocation();
+                SymmetricKey newParentParentKey = target.getParentKey();
 
-            return pointer.fileAccess.copyTo(ourBaseKey, newBaseKey, newParentLocation, newParentParentKey,
-                    getSigner(), newMapKey, network)
-                    .thenCompose(newAccess -> {
-                        // upload new metadatablob
-                        RetrievedFilePointer newRetrievedFilePointer = new RetrievedFilePointer(newRFP, newAccess);
-                        FileTreeNode newFileTreeNode = new FileTreeNode(newRetrievedFilePointer, target.getOwner(),
-                                Collections.emptySet(), Collections.emptySet(), target.getEntryWriterKey());
-                        return target.addLinkTo(newFileTreeNode, network, random);
-                    });
+                return pointer.fileAccess.copyTo(ourBaseKey, newBaseKey, newParentLocation, newParentParentKey,
+                        target.getLocation().writer, getSigner(), newMapKey, network, random)
+                        .thenCompose(newAccess -> {
+                            // upload new metadatablob
+                            RetrievedFilePointer newRetrievedFilePointer = new RetrievedFilePointer(newRFP, newAccess);
+                            FileTreeNode newFileTreeNode = new FileTreeNode(newRetrievedFilePointer, target.getOwner(),
+                                    Collections.emptySet(), Collections.emptySet(), target.getEntryWriterKey());
+                            return target.addLinkTo(newFileTreeNode, network, random);
+                        });
+            } else {
+                return getInputStream(network, random, x -> {})
+                        .thenCompose(stream -> target.uploadFile(getName(), stream, getSize(), network, random, x -> {}, fragmenter)
+                        .thenApply(b -> target));
+            }
         });
     }
 
@@ -720,13 +736,19 @@ public class FileTreeNode {
 
     public CompletableFuture<? extends AsyncReader> getInputStream(NetworkAccess network, SafeRandom random,
                                                                    long fileSize, ProgressConsumer<Long> monitor) {
+        if (pointer.fileAccess.isDirectory())
+            throw new IllegalStateException("Cannot get input stream for a directory!");
+        FileAccess fileAccess = (FileAccess) pointer.fileAccess;
         SymmetricKey baseKey = pointer.filePointer.baseKey;
-        SymmetricKey dataKey = pointer.fileAccess.getMetaKey(baseKey);
-        return pointer.fileAccess.retriever().getFile(network, random, dataKey, fileSize, getLocation(), monitor);
+        SymmetricKey dataKey = fileAccess.getDataKey(baseKey);
+        return fileAccess.retriever().getFile(network, random, dataKey, fileSize, getLocation(), monitor);
     }
 
     private FileRetriever getRetriever() {
-        return pointer.fileAccess.retriever();
+        if (pointer.fileAccess.isDirectory())
+            throw new IllegalStateException("Cannot get input stream for a directory!");
+        FileAccess fileAccess = (FileAccess) pointer.fileAccess;
+        return fileAccess.retriever();
     }
 
     @JsMethod
@@ -821,10 +843,4 @@ public class FileTreeNode {
         }
         return true;
     }
-    private static InputStream NULL_STREAM = new InputStream() {
-        @Override
-        public int read() throws IOException {
-            return 0;
-        }
-    };
 }

@@ -113,7 +113,7 @@ public class FileUploader implements AutoCloseable {
         CipherText encryptedNextChunkLocation = new CipherText(nextLocationNonce, nextLocation);
         return network.uploadFragments(fragments, chunk.location.owner, monitor, fragmenter.storageIncreaseFactor()).thenCompose(hashes -> {
             FileRetriever retriever = new EncryptedChunkRetriever(chunk.chunk.nonce(), encryptedChunk.getAuth(), hashes, Optional.of(encryptedNextChunkLocation), fragmenter);
-            FileAccess metaBlob = FileAccess.create(baseKey, chunkKey, props, retriever, parentLocation, parentparentKey);
+            FileAccess metaBlob = FileAccess.create(baseKey, SymmetricKey.random(), chunkKey, props, retriever, parentLocation, parentparentKey);
             return network.uploadChunk(metaBlob, new Location(chunk.location.owner, writer.publicKeyHash, chunk.chunk.mapKey()), writer);
         });
     }
