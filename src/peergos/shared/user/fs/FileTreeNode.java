@@ -406,11 +406,10 @@ public class FileTreeNode {
                         Optional.of(baseKey), network, random, l -> {}, fragmenter);
                 return reuploaded.thenCompose(upload -> upload.getDescendentByPath(tmpFilename, network)
                         .thenCompose(tmpChild -> tmpChild.get().rename(props.name, network, upload, true))
-                        .thenApply(rename -> upload))
                         .thenApply(res -> {
                             setModified();
                             return res;
-                        });
+                        }));
             });
         }
     }
@@ -599,7 +598,7 @@ public class FileTreeNode {
                                         LocalDateTime.now(), childProps.isHidden, childProps.thumbnail);
 
                                 CompletableFuture<Multihash> chunkUploaded = FileUploader.uploadChunk(getSigner(),
-                                        newProps, getLocation(), getParentKey(), baseKey, located,
+                                        newProps, getLocation(), us.getParentKey(), baseKey, located,
                                         fragmenter,
                                         nextChunkLocation, network, monitor);
 
@@ -673,26 +672,35 @@ public class FileTreeNode {
     }
 
     @JsMethod
-    public CompletableFuture<Boolean> rename(String newFilename, NetworkAccess network, FileTreeNode parent) {
+    public CompletableFuture<FileTreeNode> rename(String newFilename, NetworkAccess network, FileTreeNode parent) {
         return rename(newFilename, network, parent, false);
     }
 
-    public CompletableFuture<Boolean> rename(String newFilename, NetworkAccess network,
+    /**
+     *
+     * @param newFilename
+     * @param network
+     * @param parent
+     * @param overwrite
+     * @return the updated parent
+     */
+    public CompletableFuture<FileTreeNode> rename(String newFilename, NetworkAccess network,
                                              FileTreeNode parent, boolean overwrite) {
         setModified();
         if (! isLegalName(newFilename))
-            return CompletableFuture.completedFuture(false);
+            return CompletableFuture.completedFuture(parent);
         CompletableFuture<Optional<FileTreeNode>> childExists = parent == null ?
                 CompletableFuture.completedFuture(Optional.empty()) :
                 parent.getDescendentByPath(newFilename, network);
         return childExists
                 .thenCompose(existing -> {
                     if (existing.isPresent() && !overwrite)
-                        return CompletableFuture.completedFuture(false);
+                        return CompletableFuture.completedFuture(parent);
 
                     return ((overwrite && existing.isPresent()) ?
                             existing.get().remove(network, parent) :
-                            CompletableFuture.completedFuture(true)).thenCompose(res -> {
+                            CompletableFuture.completedFuture(parent)
+                    ).thenCompose(res -> {
 
                         //get current props
                         FilePointer filePointer = pointer.filePointer;
@@ -705,7 +713,7 @@ public class FileTreeNode {
                         FileProperties newProps = new FileProperties(newFilename, currentProps.size, currentProps.modified, currentProps.isHidden, currentProps.thumbnail);
 
                         return fileAccess.updateProperties(writableFilePointer(), newProps, network)
-                                .thenApply(fa -> true);
+                                .thenApply(fa -> res);
                     });
                 });
     }
@@ -790,17 +798,24 @@ public class FileTreeNode {
         });
     }
 
+    /**
+     *
+     * @param network
+     * @param parent
+     * @return updated parent
+     */
     @JsMethod
-    public CompletableFuture<Boolean> remove(NetworkAccess network, FileTreeNode parent) {
+    public CompletableFuture<FileTreeNode> remove(NetworkAccess network, FileTreeNode parent) {
         ensureUnmodified();
         Supplier<CompletableFuture<Boolean>> supplier = () -> new RetrievedFilePointer(writableFilePointer(), pointer.fileAccess)
                 .remove(network, null, getSigner());
 
         if (parent != null) {
             return parent.removeChild(this, network)
-                    .thenCompose(x -> supplier.get());
+                    .thenCompose(updated -> supplier.get()
+                            .thenApply(x -> updated));
         }
-        return supplier.get();
+        return supplier.get().thenApply(x -> parent);
     }
 
     public CompletableFuture<? extends AsyncReader> getInputStream(NetworkAccess network, SafeRandom random,

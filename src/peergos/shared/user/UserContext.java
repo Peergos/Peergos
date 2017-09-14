@@ -867,7 +867,7 @@ public class UserContext {
                         byte[] keyFromResponse = freq.key.map(k -> k.serialize()).orElse(null);
                         if (keyFromResponse == null || !Arrays.equals(keyFromResponse, ourKeyForThem)) {
                             // They didn't reciprocate (follow us)
-                            CompletableFuture<Boolean> removeDir = ourDirForThem.remove(network, sharing);
+                            CompletableFuture<FileTreeNode> removeDir = ourDirForThem.remove(network, sharing);
                             // remove entry point as well
                             CompletableFuture<CommittedWriterData> cleanStatic = removeFromStaticData(ourDirForThem);
 

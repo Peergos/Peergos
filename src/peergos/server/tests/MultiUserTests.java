@@ -281,7 +281,7 @@ public class MultiUserTests {
         u1.unShare(Paths.get(u1.username, filename), userToUnshareWith.username).get();
 
         String newname = "newname.txt";
-        boolean renamed = u1.getByPath(originalPath).get().get()
+        FileTreeNode updatedParent = u1.getByPath(originalPath).get().get()
                 .rename(newname, network, u1.getUserRoot().get()).get();
 
         // check still logged in user can't read the new name

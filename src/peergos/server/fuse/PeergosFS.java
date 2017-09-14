@@ -142,8 +142,8 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
             if (!parent.isPresent())
                 return 1;
 
-            boolean removed = file.get().remove(context.network, parent.get()).get();
-            return removed ? 0 : 1;
+            FileTreeNode updatedParent = file.get().remove(context.network, parent.get()).get();
+            return updatedParent != parent.get() ? 0 : 1;
         } catch (Exception ioe) {
             ioe.printStackTrace();
             return 1;
@@ -179,9 +179,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
                 if (!renamedOriginal.isPresent())
                     return 1;
                 renamedOriginal.get().copyTo(newParent.get(), context.network, context.crypto.random, context.fragmenter()).get();
-                boolean removed = source.treeNode.remove(context.network, parent).get();
-                if (!removed)
-                    return 1;
+                FileTreeNode updatedParent = source.treeNode.remove(context.network, parent).get();
             }
             return 0;
         } catch (Exception ioe) {
@@ -485,7 +483,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
     private int rmdir(PeergosStat stat, PeergosStat parentStat) {
         FileTreeNode treeNode = stat.treeNode;
         try {
-            Boolean removed = treeNode.remove(context.network, parentStat.treeNode).get();
+            FileTreeNode updatedParent = treeNode.remove(context.network, parentStat.treeNode).get();
             return 0;
         } catch (Exception ioe) {
             ioe.printStackTrace();
