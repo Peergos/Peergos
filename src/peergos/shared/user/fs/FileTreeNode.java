@@ -551,7 +551,8 @@ public class FileTreeNode {
             boolean identity = true;
 
             BiFunction<Boolean, Long, CompletableFuture<Boolean>> composer = (id, startIndex) -> {
-                return retriever.getChunkInputStream(network, random, dataKey, startIndex, filesSize.get(), child.getLocation(), monitor)
+                return retriever.getChunkInputStream(network, random, dataKey, startIndex, filesSize.get(),
+                        child.getLocation(), child.pointer.fileAccess.committedHash(), monitor)
                         .thenCompose(currentLocation -> {
                                     CompletableFuture<Optional<Location>> locationAt = retriever
                                             .getLocationAt(child.getLocation(), startIndex + Chunk.MAX_SIZE, dataKey, network);
@@ -586,7 +587,7 @@ public class FileTreeNode {
                                 byte[] nonce = random.randomBytes(TweetNaCl.SECRETBOX_NONCE_BYTES);
 
                                 Chunk updated = new Chunk(raw, dataKey, currentOriginal.location.getMapKey(), nonce);
-                                LocatedChunk located = new LocatedChunk(currentOriginal.location, updated);
+                                LocatedChunk located = new LocatedChunk(currentOriginal.location, currentOriginal.existingHash, updated);
                                 long currentSize = filesSize.get();
                                 FileProperties newProps = new FileProperties(childProps.name, endIndex > currentSize ? endIndex : currentSize,
                                         LocalDateTime.now(), childProps.isHidden, childProps.thumbnail);
@@ -802,21 +803,25 @@ public class FileTreeNode {
     }
 
     @JsMethod
-    public CompletableFuture<? extends AsyncReader> getInputStream(NetworkAccess network, SafeRandom random,
-                                                                   int fileSizeHi, int fileSizeLow,
+    public CompletableFuture<? extends AsyncReader> getInputStream(NetworkAccess network,
+                                                                   SafeRandom random,
+                                                                   int fileSizeHi,
+                                                                   int fileSizeLow,
                                                                    ProgressConsumer<Long> monitor) {
         return getInputStream(network, random, fileSizeLow + ((fileSizeHi & 0xFFFFFFFFL) << 32), monitor);
     }
 
-    public CompletableFuture<? extends AsyncReader> getInputStream(NetworkAccess network, SafeRandom random,
-                                                                   long fileSize, ProgressConsumer<Long> monitor) {
+    public CompletableFuture<? extends AsyncReader> getInputStream(NetworkAccess network,
+                                                                   SafeRandom random,
+                                                                   long fileSize,
+                                                                   ProgressConsumer<Long> monitor) {
         ensureUnmodified();
         if (pointer.fileAccess.isDirectory())
             throw new IllegalStateException("Cannot get input stream for a directory!");
         FileAccess fileAccess = (FileAccess) pointer.fileAccess;
         SymmetricKey baseKey = pointer.filePointer.baseKey;
         SymmetricKey dataKey = fileAccess.getDataKey(baseKey);
-        return fileAccess.retriever().getFile(network, random, dataKey, fileSize, getLocation(), monitor);
+        return fileAccess.retriever().getFile(network, random, dataKey, fileSize, getLocation(), fileAccess.committedHash(), monitor);
     }
 
     private FileRetriever getRetriever() {

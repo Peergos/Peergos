@@ -7,6 +7,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.merklebtree.*;
 import peergos.shared.util.*;
 
 import java.io.*;
@@ -62,8 +63,14 @@ public class FileUploader implements AutoCloseable {
                 baseKey, metaKey, parentLocation, parentparentKey, monitor, fileProperties, fragmenter);
     }
 
-    public CompletableFuture<Location> uploadChunk(NetworkAccess network, SafeRandom random, PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, long chunkIndex,
-                                                   Location currentLocation, ProgressConsumer<Long> monitor) {
+    public CompletableFuture<Location> uploadChunk(NetworkAccess network,
+                                                   SafeRandom random,
+                                                   PublicKeyHash owner,
+                                                   SigningPrivateKeyAndPublicHash writer,
+                                                   long chunkIndex,
+                                                   Location currentLocation,
+                                                   MaybeMultihash ourExistingHash,
+                                                   ProgressConsumer<Long> monitor) {
 	    System.out.println("uploading chunk: "+chunkIndex + " of "+name);
 
         long position = chunkIndex * Chunk.MAX_SIZE;
@@ -75,7 +82,7 @@ public class FileUploader implements AutoCloseable {
         return reader.readIntoArray(data, 0, data.length).thenCompose(b -> {
             byte[] nonce = random.randomBytes(TweetNaCl.SECRETBOX_NONCE_BYTES);
             Chunk chunk = new Chunk(data, metaKey, currentLocation.getMapKey(), nonce);
-            LocatedChunk locatedChunk = new LocatedChunk(new Location(owner, writer.publicKeyHash, chunk.mapKey()), chunk);
+            LocatedChunk locatedChunk = new LocatedChunk(new Location(owner, writer.publicKeyHash, chunk.mapKey()), ourExistingHash, chunk);
             byte[] mapKey = random.randomBytes(32);
             Location nextLocation = new Location(owner, writer.publicKeyHash, mapKey);
             return uploadChunk(writer, props, parentLocation, parentparentKey, baseKey, locatedChunk,
@@ -92,7 +99,8 @@ public class FileUploader implements AutoCloseable {
         Location originalChunk = currentChunk;
 
         List<Integer> input = IntStream.range(0, (int) nchunks).mapToObj(i -> Integer.valueOf(i)).collect(Collectors.toList());
-        return Futures.reduceAll(input, currentChunk, (loc, i) -> uploadChunk(network, random, owner, writer, i, loc, monitor), (a, b) -> b)
+        return Futures.reduceAll(input, currentChunk, (loc, i) -> uploadChunk(network, random, owner, writer, i,
+                loc, MaybeMultihash.empty(), monitor), (a, b) -> b)
                 .thenApply(loc -> {
                     System.out.println("File encryption, erasure coding and upload took: " +(System.currentTimeMillis()-t1) + " mS");
                     return originalChunk;
@@ -114,7 +122,7 @@ public class FileUploader implements AutoCloseable {
                 .thenCompose(hashes -> {
                     FileRetriever retriever = new EncryptedChunkRetriever(chunk.chunk.nonce(), encryptedChunk.getAuth(),
                             hashes, Optional.of(encryptedNextChunkLocation), fragmenter);
-                    FileAccess metaBlob = FileAccess.create(baseKey, SymmetricKey.random(),
+                    FileAccess metaBlob = FileAccess.create(chunk.existingHash, baseKey, SymmetricKey.random(),
                             chunkKey, props, retriever, parentLocation, parentparentKey);
                     return network.uploadChunk(metaBlob, new Location(chunk.location.owner,
                             writer.publicKeyHash, chunk.chunk.mapKey()), writer);

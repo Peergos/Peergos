@@ -4,6 +4,7 @@ import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
+import peergos.shared.merklebtree.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
@@ -21,6 +22,7 @@ public interface FileRetriever extends Cborable {
                                            SymmetricKey dataKey,
                                            long fileSize,
                                            Location ourLocation,
+                                           MaybeMultihash ourExistingHash,
                                            ProgressConsumer<Long> monitor);
 
     CompletableFuture<Optional<LocatedEncryptedChunk>> getEncryptedChunk(long bytesRemainingUntilStart,
@@ -28,6 +30,7 @@ public interface FileRetriever extends Cborable {
                                                                          byte[] nonce,
                                                                          SymmetricKey dataKey,
                                                                          Location ourLocation,
+                                                                         MaybeMultihash ourExistingHash,
                                                                          NetworkAccess network,
                                                                          ProgressConsumer<Long> monitor);
 
@@ -42,6 +45,7 @@ public interface FileRetriever extends Cborable {
                                                                   long startIndex,
                                                                   long truncateTo,
                                                                   Location ourLocation,
+                                                                  MaybeMultihash ourExistingHash,
                                                                   ProgressConsumer<Long> monitor);
 
     static FileRetriever fromCbor(CborObject cbor) {
