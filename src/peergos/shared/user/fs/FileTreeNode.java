@@ -494,22 +494,25 @@ public class FileTreeNode {
                                             setModified();
                                             result.complete(this.withCryptreeNode(uploadResult));
                                         }).exceptionally(e -> {
-                                            if (e instanceof Btree.CasException) {
-                                                // reload directory and try again
-                                                network.getMetadata(parentLocation).thenAccept(opt -> {
-                                                    DirAccess updatedUs = (DirAccess) opt.get();
-                                                    // todo check another file of same name hasn't been added in the concurrent change
+                                    if (e.getCause() instanceof Btree.CasException) {
+                                        // reload directory and try again
+                                        network.getMetadata(parentLocation).thenCompose(opt -> {
+                                            DirAccess updatedUs = (DirAccess) opt.get();
+                                            // todo check another file of same name hasn't been added in the concurrent change
 
-                                                    updatedUs.addFileAndCommit(filePointer, rootRKey, pointer.filePointer, getSigner(), network, random)
-                                                            .thenAccept(uploadResult -> {
-                                                                setModified();
-                                                                result.complete(this.withCryptreeNode(uploadResult));
-                                                            });
-                                                });
-                                            } else
-                                                result.completeExceptionally(e);
+                                            return updatedUs.addFileAndCommit(filePointer, rootRKey, pointer.filePointer, getSigner(), network, random)
+                                                    .thenAccept(uploadResult -> {
+                                                        setModified();
+                                                        result.complete(this.withCryptreeNode(uploadResult));
+                                                    });
+                                        }).exceptionally(ex -> {
+                                            result.completeExceptionally(e);
                                             return null;
                                         });
+                                    } else
+                                        result.completeExceptionally(e);
+                                    return null;
+                                });
                                 return result;
                             });
                 });

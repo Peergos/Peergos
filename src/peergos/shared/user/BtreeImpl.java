@@ -79,7 +79,11 @@ public class BtreeImpl implements Btree {
                                     + ", " + value + ") => CAS(" + btreeRootHash + ", " + newRoot + ")") : newRoot)
                             .thenCompose(newBtreeRoot -> holder.withBtree(newBtreeRoot)
                                     .commit(writer, committed.hash, mutable, dht, lock::complete))
-                            .thenApply(x -> true);
+                            .thenApply(x -> true)
+                            .exceptionally(e -> {
+                                lock.complete(committed);
+                                return null;
+                            });
                 });
     }
 
