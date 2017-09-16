@@ -245,7 +245,7 @@ public abstract class UserTests {
     }
 
     @Test
-    public void concurrentWrites() throws Exception {
+    public void concurrentWritesToDir() throws Exception {
         String username = generateUsername();
         String password = "test01";
         UserContext context = ensureSignedUp(username, password, network, crypto);
@@ -278,6 +278,53 @@ public abstract class UserTests {
         Set<String> names = files.stream().filter(f -> ! f.getFileProperties().isHidden).map(f -> f.getName()).collect(Collectors.toSet());
         Set<String> expectedNames = IntStream.range(0, concurrency).mapToObj(i -> i + ".bin").collect(Collectors.toSet());
         Assert.assertTrue("All children present and accounted for: " + names, names.equals(expectedNames));
+    }
+
+    @Test
+    public void concurrentWritesToFile() throws Exception {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = ensureSignedUp(username, password, network, crypto);
+
+        // write a n chunk file, then concurrently modify each of the chunks
+        int concurrency = 2;
+        int CHUNK_SIZE = 5 * 1024 * 1024;
+        int fileSize = concurrency * CHUNK_SIZE;
+        String filename = "afile.bin";
+        FileTreeNode newRoot = context.getUserRoot().get().uploadFile(filename,
+                                new AsyncReader.ArrayBacked(randomData(fileSize)),
+                                fileSize, context.network, context.crypto.random, l -> {}, context.fragmenter()).get();
+
+        List<byte[]> sections = Collections.synchronizedList(new ArrayList<>(concurrency));
+        for (int i=0; i < concurrency; i++)
+            sections.add(null);
+
+        ForkJoinPool pool = new ForkJoinPool(concurrency);
+        Set<CompletableFuture<Boolean>> futs = IntStream.range(0, concurrency)
+                .mapToObj(i -> CompletableFuture.supplyAsync(() -> {
+                    try {
+                        FileTreeNode userRoot = context.getUserRoot().get();
+
+                        byte[] data = randomData(CHUNK_SIZE);
+                        FileTreeNode result = userRoot.uploadFileSection(filename,
+                                new AsyncReader.ArrayBacked(data),
+                                i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE,
+                                context.network, context.crypto.random, l -> {}, context.fragmenter()).get();
+                        Optional<FileTreeNode> childOpt = result.getChild(filename, network).get();
+                        sections.set(i, data);
+                        return true;
+                    } catch (Exception e) {
+                        throw new RuntimeException(e.getMessage(), e);
+                    }
+                }, pool)).collect(Collectors.toSet());
+
+        boolean success = Futures.combineAll(futs).get().stream().reduce(true, (a, b) -> a && b);
+
+        FileTreeNode file = context.getByPath("/" + username + "/" + filename).get().get();
+        byte[] all = new byte[concurrency * CHUNK_SIZE];
+        for (int i=0; i < concurrency; i++)
+            System.arraycopy(sections.get(i), 0, all, i * CHUNK_SIZE, CHUNK_SIZE);
+        checkFileContents(all, file, context);
     }
 
     @Test
