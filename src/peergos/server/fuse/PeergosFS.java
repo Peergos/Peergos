@@ -171,15 +171,15 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
                 return 1;
 
             FileTreeNode parent = sourceParent.treeNode;
-            source.treeNode.rename(requested.getFileName().toString(), context.network, parent);
+            FileTreeNode updatedParent = source.treeNode.rename(requested.getFileName().toString(), context.network, parent).get();
             // TODO clean up on error conditions
-            if (!parent.equals(newParent.get())) {
+            if (! parent.equals(newParent.get())) {
                 Path renamedInPlacePath = Paths.get(sourcePath).getParent().resolve(requested.getFileName().toString());
                 Optional<FileTreeNode> renamedOriginal = context.getByPath(renamedInPlacePath.toString()).get();;
-                if (!renamedOriginal.isPresent())
+                if (! renamedOriginal.isPresent())
                     return 1;
                 renamedOriginal.get().copyTo(newParent.get(), context.network, context.crypto.random, context.fragmenter()).get();
-                FileTreeNode updatedParent = source.treeNode.remove(context.network, parent).get();
+                FileTreeNode updatedParent2 = renamedOriginal.get().remove(context.network, parent).get();
             }
             return 0;
         } catch (Exception ioe) {
