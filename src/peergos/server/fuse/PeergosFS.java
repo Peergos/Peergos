@@ -571,8 +571,8 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
             // TODO do this smarter by only writing the chunk containing the new endpoint, and deleting all following chunks
             // or extending with 0s
             byte[] truncated = Arrays.copyOfRange(original, 0, (int)size);
-            file.treeNode.remove(context.network, parent.treeNode);
-            FileTreeNode b = parent.treeNode.uploadFile(file.properties.name, new AsyncReader.ArrayBacked(truncated),
+            FileTreeNode newParent = file.treeNode.remove(context.network, parent.treeNode).get();
+            FileTreeNode b = newParent.uploadFile(file.properties.name, new AsyncReader.ArrayBacked(truncated),
                     truncated.length, context.network, context.crypto.random, l -> {
                     }, context.fragmenter()).get();
             return (int) size;
