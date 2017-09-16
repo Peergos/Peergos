@@ -415,11 +415,11 @@ public class MultiUserTests {
 
         for (int i = 0; i < usersNew.size(); i++) {
             UserContext user = users.get(i);
-            u1.unShare(Paths.get(u1.username, folderName), user.username);
+            u1.unShare(Paths.get(u1.username, folderName), user.username).get();
 
             Optional<FileTreeNode> updatedSharedFolder = user.getByPath(u1New.username + "/" + folderName).get();
 
-            // test that u1 can still access the original file
+            // test that u1 can still access the original file, and user cannot
             Optional<FileTreeNode> fileWithNewBaseKey = u1New.getByPath(u1New.username + "/" + folderName + "/" + filename).get();
             Assert.assertTrue(! updatedSharedFolder.isPresent());
             Assert.assertTrue(fileWithNewBaseKey.isPresent());

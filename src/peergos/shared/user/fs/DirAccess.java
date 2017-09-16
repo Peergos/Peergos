@@ -206,7 +206,7 @@ public class DirAccess implements CryptreeNode {
                                 // create and upload new metadata blob
                                 SymmetricKey nextSubfoldersKey = SymmetricKey.random();
                                 SymmetricKey ourParentKey = subfolders2parent.target(ourSubfolders);
-                                DirAccess next = DirAccess.create(nextSubfoldersKey, FileProperties.EMPTY,
+                                DirAccess next = DirAccess.create(MaybeMultihash.empty(), nextSubfoldersKey, FileProperties.EMPTY,
                                         parentLink.targetLocation(ourParentKey), parentLink.target(ourParentKey), ourParentKey);
                                 byte[] nextMapKey = random.randomBytes(32);
                                 Location nextLocation = ourPointer.getLocation().withMapKey(nextMapKey);
@@ -258,7 +258,7 @@ public class DirAccess implements CryptreeNode {
                         // create and upload new metadata blob
                         SymmetricKey nextSubfoldersKey = SymmetricKey.random();
                         SymmetricKey ourParentKey = subfolders2parent.target(ourSubfolders);
-                        DirAccess next = DirAccess.create(nextSubfoldersKey, FileProperties.EMPTY,
+                        DirAccess next = DirAccess.create(MaybeMultihash.empty(), nextSubfoldersKey, FileProperties.EMPTY,
                                 parentLink != null ? parentLink.targetLocation(ourParentKey) : null,
                                 parentLink != null ? parentLink.target(ourParentKey) : null, ourParentKey);
                         byte[] nextMapKey = random.randomBytes(32);
@@ -446,7 +446,7 @@ public class DirAccess implements CryptreeNode {
         random.randombytes(dirMapKey, 0, 32);
         SymmetricKey ourParentKey = this.getParentKey(baseKey);
         Location ourLocation = new Location(ownerPublic, writer.publicKeyHash, ourMapKey);
-        DirAccess dir = DirAccess.create(dirReadKey, new FileProperties(name, 0, LocalDateTime.now(),
+        DirAccess dir = DirAccess.create(MaybeMultihash.empty(), dirReadKey, new FileProperties(name, 0, LocalDateTime.now(),
                 isSystemFolder, Optional.empty()), ourLocation, ourParentKey, null);
         Location chunkLocation = new Location(ownerPublic, writer.publicKeyHash, dirMapKey);
         return network.uploadChunk(dir, chunkLocation, writer).thenCompose(resultHash -> {
@@ -474,7 +474,7 @@ public class DirAccess implements CryptreeNode {
                                                SafeRandom random) {
         SymmetricKey parentKey = getParentKey(baseKey);
         FileProperties props = getProperties(parentKey);
-        DirAccess da = DirAccess.create(newBaseKey, props, newParentLocation, parentparentKey, parentKey);
+        DirAccess da = DirAccess.create(MaybeMultihash.empty(), newBaseKey, props, newParentLocation, parentparentKey, parentKey);
         SymmetricKey ourNewParentKey = da.getParentKey(newBaseKey);
         Location ourNewLocation = new Location(newOwner, entryWriterKey.publicKeyHash, newMapKey);
 
@@ -512,7 +512,7 @@ public class DirAccess implements CryptreeNode {
                 subfolders, newFiles, moreFolderContents);
     }
 
-    public static DirAccess create(SymmetricKey subfoldersKey, FileProperties metadata, Location parentLocation, SymmetricKey parentParentKey, SymmetricKey parentKey) {
+    public static DirAccess create(MaybeMultihash lastCommittedHash, SymmetricKey subfoldersKey, FileProperties metadata, Location parentLocation, SymmetricKey parentParentKey, SymmetricKey parentKey) {
         SymmetricKey metaKey = SymmetricKey.random();
         if (parentKey == null)
             parentKey = SymmetricKey.random();
@@ -520,7 +520,7 @@ public class DirAccess implements CryptreeNode {
         byte[] metaNonce = metaKey.createNonce();
         SymmetricLocationLink parentLink = parentLocation == null ? null : SymmetricLocationLink.create(parentKey, parentParentKey, parentLocation);
         return new DirAccess(
-                MaybeMultihash.empty(),
+                lastCommittedHash,
                 CryptreeNode.CURRENT_DIR_VERSION,
                 SymmetricLink.fromPair(subfoldersKey, filesKey),
                 SymmetricLink.fromPair(subfoldersKey, parentKey),

@@ -159,11 +159,13 @@ public class FileTreeNode {
             SymmetricKey newParentKey = SymmetricKey.random();
             FileProperties props = getFileProperties();
 
+            DirAccess existing = (DirAccess) pointer.fileAccess;
+
             // Create new DirAccess, but don't upload it
-            DirAccess newDirAccess = DirAccess.create(newSubfoldersKey, props, parent.pointer.filePointer.getLocation(),
+            DirAccess newDirAccess = DirAccess.create(existing.committedHash(), newSubfoldersKey, props, parent.pointer.filePointer.getLocation(),
                     parent.getParentKey(), newParentKey);
             // re add children
-            DirAccess existing = (DirAccess) pointer.fileAccess;
+
             List<FilePointer> subdirs = existing.getSubfolders().stream().map(link ->
                     new FilePointer(link.targetLocation(pointer.filePointer.baseKey),
                             Optional.empty(), link.target(pointer.filePointer.baseKey))).collect(Collectors.toList());
