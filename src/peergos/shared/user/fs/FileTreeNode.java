@@ -848,7 +848,7 @@ public class FileTreeNode {
         }
         
         for (int i=0; i<length; i++) {
-            if (a[i] != a2[i]) {
+            if ((a[i] & 0xff) != (a2[i] & 0xff)) {
                 return false;
             }
         }
