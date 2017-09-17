@@ -328,6 +328,44 @@ public abstract class UserTests {
     }
 
     @Test
+    public void duplicateConcurrentWritesToDir() throws Exception {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = ensureSignedUp(username, password, network, crypto);
+
+        // write empty file
+        int concurrency = 8;
+        int fileSize = 1024;
+        String prefix = "afile";
+        String suffix = "bin";
+        String filename = prefix + "." + suffix;
+
+        ForkJoinPool pool = new ForkJoinPool(concurrency);
+        Set<CompletableFuture<Boolean>> futs = IntStream.range(0, concurrency)
+                .mapToObj(i -> CompletableFuture.supplyAsync(() -> {
+                    byte[] data = randomData(fileSize);
+                    try {
+                        FileTreeNode userRoot = context.getUserRoot().get();
+                        FileTreeNode result = userRoot.uploadFile(filename,
+                                new AsyncReader.ArrayBacked(data),
+                                data.length, context.network, context.crypto.random, l -> {}, context.fragmenter()).get();
+                        return true;
+                    } catch (Exception e) {
+                        throw new RuntimeException(e.getMessage(), e);
+                    }
+                }, pool)).collect(Collectors.toSet());
+
+        boolean success = Futures.combineAll(futs).get().stream().reduce(true, (a, b) -> a && b);
+
+        Set<FileTreeNode> files = context.getUserRoot().get().getChildren(context.network).get();
+        Set<String> names = files.stream().filter(f -> ! f.getFileProperties().isHidden).map(f -> f.getName()).collect(Collectors.toSet());
+        Set<String> expectedNames = Stream.concat(IntStream.range(1, concurrency)
+                .mapToObj(i -> prefix + "[" + i + "]." + suffix), Stream.of(filename))
+                .collect(Collectors.toSet());
+        Assert.assertTrue("All children present and accounted for: " + names, names.equals(expectedNames));
+    }
+
+    @Test
     public void smallFileWrite() throws Exception {
         String username = generateUsername();
         String password = "test01";

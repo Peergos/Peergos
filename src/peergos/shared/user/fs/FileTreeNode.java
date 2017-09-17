@@ -507,13 +507,32 @@ public class FileTreeNode {
                                         // reload directory and try again
                                         network.getMetadata(parentLocation).thenCompose(opt -> {
                                             DirAccess updatedUs = (DirAccess) opt.get();
-                                            // todo check another file of same name hasn't been added in the concurrent change
+                                            // Check another file of same name hasn't been added in the concurrent change
 
-                                            return updatedUs.addFileAndCommit(filePointer, rootRKey, pointer.filePointer, getSigner(), network, random)
-                                                    .thenAccept(uploadResult -> {
-                                                        setModified();
-                                                        result.complete(this.withCryptreeNode(uploadResult));
-                                                    });
+                                            RetrievedFilePointer updatedPointer = new RetrievedFilePointer(pointer.filePointer, updatedUs);
+                                            FileTreeNode us = new FileTreeNode(globalRoot, updatedPointer, ownername, readers, writers, entryWriterKey);
+                                            return us.getChildren(network).thenCompose(children -> {
+                                                Set<String> childNames = children.stream()
+                                                        .map(f -> f.getName())
+                                                        .collect(Collectors.toSet());
+                                                String safeName = nextSafeReplacementFilename(filename, childNames);
+                                                // rename file in place as we've already uploaded it
+                                                return network.getMetadata(filePointer.location).thenCompose(renameOpt -> {
+                                                    CryptreeNode fileToRename = renameOpt.get();
+                                                    RetrievedFilePointer updatedChildPointer =
+                                                            new RetrievedFilePointer(filePointer, fileToRename);
+                                                    FileTreeNode toRename = new FileTreeNode(Optional.empty(),
+                                                            updatedChildPointer, ownername, readers, writers, entryWriterKey);
+                                                    return toRename.rename(safeName, network, us).thenCompose(usAgain ->
+                                                            ((DirAccess)usAgain.pointer.fileAccess)
+                                                                    .addFileAndCommit(filePointer, rootRKey,
+                                                                            pointer.filePointer, getSigner(), network, random)
+                                                                    .thenAccept(uploadResult -> {
+                                                                        setModified();
+                                                                        result.complete(this.withCryptreeNode(uploadResult));
+                                                                    }));
+                                                });
+                                            });
                                         }).exceptionally(ex -> {
                                             result.completeExceptionally(e);
                                             return null;
@@ -527,6 +546,20 @@ public class FileTreeNode {
                 });
             });
         });
+    }
+
+    private static String nextSafeReplacementFilename(String desired, Set<String> existing) {
+        if (! existing.contains(desired))
+            return desired;
+        for (int counter = 1; counter < 1000; counter++) {
+            int dot = desired.lastIndexOf(".");
+            String candidate = dot >= 0 ?
+                    desired.substring(0, dot) + "[" + counter + "]" + desired.substring(dot) :
+                    desired + "[" + counter + "]";
+            if (! existing.contains(candidate))
+                return candidate;
+        }
+        throw new IllegalStateException("Too many concurrent writes trying to add a file of the saem name!");
     }
 
     private CompletableFuture<FileTreeNode> updateExistingChild(FileTreeNode existingChild, AsyncReader fileData,
