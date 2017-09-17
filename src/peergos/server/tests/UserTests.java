@@ -281,6 +281,39 @@ public abstract class UserTests {
     }
 
     @Test
+    public void concurrentMkdirs() throws Exception {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = ensureSignedUp(username, password, network, crypto);
+
+        // write empty file
+        int concurrency = 8;
+        int fileSize = 1024;
+        ForkJoinPool pool = new ForkJoinPool(concurrency);
+        Set<CompletableFuture<Boolean>> futs = IntStream.range(0, concurrency)
+                .mapToObj(i -> CompletableFuture.supplyAsync(() -> {
+                    byte[] data = randomData(fileSize);
+                    String filename = "folder" + i;
+                    try {
+                        FileTreeNode userRoot = context.getUserRoot().get();
+                        FileTreeNode result = userRoot.uploadFile(filename,
+                                new AsyncReader.ArrayBacked(data),
+                                data.length, context.network, context.crypto.random, l -> {}, context.fragmenter()).get();
+                        return true;
+                    } catch (Exception e) {
+                        throw new RuntimeException(e.getMessage(), e);
+                    }
+                }, pool)).collect(Collectors.toSet());
+
+        boolean success = Futures.combineAll(futs).get().stream().reduce(true, (a, b) -> a && b);
+
+        Set<FileTreeNode> files = context.getUserRoot().get().getChildren(context.network).get();
+        Set<String> names = files.stream().filter(f -> ! f.getFileProperties().isHidden).map(f -> f.getName()).collect(Collectors.toSet());
+        Set<String> expectedNames = IntStream.range(0, concurrency).mapToObj(i -> "folder" + i).collect(Collectors.toSet());
+        Assert.assertTrue("All children present and accounted for: " + names, names.equals(expectedNames));
+    }
+
+    @Test
     public void concurrentWritesToFile() throws Exception {
         String username = generateUsername();
         String password = "test01";
