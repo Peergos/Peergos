@@ -10,6 +10,9 @@ import peergos.shared.user.*;
 import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.*;
 
+import javax.imageio.ImageIO;
+import java.awt.*;
+import java.awt.image.BufferedImage;
 import java.io.*;
 import java.time.*;
 import java.util.*;
@@ -783,16 +786,46 @@ public class FileTreeNode {
         return new FileTreeNode(Optional.of(root), null, null, Collections.EMPTY_SET, Collections.EMPTY_SET, null);
     }
 
+    public static byte[] generateThumbnail(byte[] imageBlob) {
+        try {
+            BufferedImage image = ImageIO.read(new ByteArrayInputStream(imageBlob));
+            BufferedImage thumbnailImage = new BufferedImage(THUMBNAIL_SIZE, THUMBNAIL_SIZE, image.getType());
+            Graphics2D g = thumbnailImage.createGraphics();
+            g.setComposite(AlphaComposite.Src);
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g.drawImage(image, 0, 0, THUMBNAIL_SIZE, THUMBNAIL_SIZE, null);
+            g.dispose();
+
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            ImageIO.write(thumbnailImage, "JPG", baos);
+            baos.close();
+            return baos.toByteArray();
+        }
+        catch (IOException ioe) {
+            ioe.printStackTrace();
+        }
+        return new byte[0];
+    }
+
     private CompletableFuture<byte[]> generateThumbnail(NetworkAccess network, AsyncReader fileData, int fileSize, String filename)
     {
         CompletableFuture<byte[]> fut = new CompletableFuture<>();
-        if(network.isJavascript() && fileSize > 0) {
+        if(fileSize > 0) {
             isImage(fileData).thenAccept(isThumbnail -> {
                 if(isThumbnail) {
-                    thumbnail.generateThumbnail(fileData, fileSize, filename).thenAccept(base64Str -> {
-                        byte[] bytesOfData = Base64.getDecoder().decode(base64Str);
-                        fut.complete(bytesOfData);
-                    });
+                    if(network.isJavascript()) {
+                        thumbnail.generateThumbnail(fileData, fileSize, filename).thenAccept(base64Str -> {
+                            byte[] bytesOfData = Base64.getDecoder().decode(base64Str);
+                            fut.complete(bytesOfData);
+                        });
+                    } else {
+                        byte[] bytes = new byte[fileSize];
+                        fileData.readIntoArray(bytes, 0, fileSize).thenAccept(data -> {
+                            fut.complete(generateThumbnail(bytes));
+                        });
+                    }
                 } else{
                     fut.complete(new byte[0]);    			 
                 }
@@ -837,7 +870,7 @@ public class FileTreeNode {
         }
         
         for (int i=0; i<length; i++) {
-            if (a[i] != a2[i]) {
+            if ((a[i] & 0xff) != (a2[i] & 0xff)) {
                 return false;
             }
         }

@@ -294,6 +294,22 @@ public abstract class UserTests {
     }
 
     @Test
+    public void javaThumbnail() throws Exception {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = ensureSignedUp(username, password, network, crypto);
+        FileTreeNode userRoot = context.getUserRoot().get();
+
+        String filename = "small.png";
+        byte[] data = Files.readAllBytes(Paths.get("assets", "logo.png"));
+        userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
+                context.crypto.random, l -> {}, context.fragmenter()).get();
+        FileTreeNode file = context.getByPath(Paths.get(username, filename).toString()).get().get();
+        String thumbnail = file.getBase64Thumbnail();
+        Assert.assertTrue("Has thumbnail", thumbnail.length() > 0);
+    }
+
+    @Test
     public void mediumFileWrite() throws Exception {
         String username = generateUsername();
         String password = "test01";

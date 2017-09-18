@@ -96,4 +96,8 @@ public class DataOutputStream extends OutputStream implements DataOutput {
 		writeShort(baos.count);
 		os.write(baos.buf, 0, baos.count);
 	}
+
+	public void flush() throws IOException {
+		os.flush();
+	}
 }
