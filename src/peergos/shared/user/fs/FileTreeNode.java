@@ -559,7 +559,7 @@ public class FileTreeNode {
             if (! existing.contains(candidate))
                 return candidate;
         }
-        throw new IllegalStateException("Too many concurrent writes trying to add a file of the saem name!");
+        throw new IllegalStateException("Too many concurrent writes trying to add a file of the same name!");
     }
 
     private CompletableFuture<FileTreeNode> updateExistingChild(FileTreeNode existingChild, AsyncReader fileData,
