@@ -472,6 +472,11 @@ public class FileTreeNode {
             res.completeExceptionally(new IllegalStateException("Illegal filename: " + filename));
             return res;
         }
+        if (! isDirectory()) {
+            CompletableFuture<FileTreeNode> res = new CompletableFuture<>();
+            res.completeExceptionally(new IllegalStateException("Cannot upload a sub file to a file!"));
+            return res;
+        }
         return getDescendentByPath(filename, network).thenCompose(childOpt -> {
             if (childOpt.isPresent()) {
                 return updateExistingChild(childOpt.get(), fileData, startIndex, endIndex, network, random, monitor, fragmenter);
@@ -497,55 +502,62 @@ public class FileTreeNode {
                     return chunks.upload(network, random, parentLocation.owner, getSigner(), nextChunkLocation)
                             .thenCompose(fileLocation -> {
                                 FilePointer filePointer = new FilePointer(fileLocation, Optional.empty(), fileKey);
-                                CompletableFuture<FileTreeNode> result = new CompletableFuture<>();
-                                dirAccess.addFileAndCommit(filePointer, rootRKey, pointer.filePointer, getSigner(), network, random)
-                                        .thenAccept(uploadResult -> {
-                                            setModified();
-                                            result.complete(this.withCryptreeNode(uploadResult));
-                                        }).exceptionally(e -> {
-                                    if (e.getCause() instanceof Btree.CasException) {
-                                        // reload directory and try again
-                                        network.getMetadata(parentLocation).thenCompose(opt -> {
-                                            DirAccess updatedUs = (DirAccess) opt.get();
-                                            // Check another file of same name hasn't been added in the concurrent change
-
-                                            RetrievedFilePointer updatedPointer = new RetrievedFilePointer(pointer.filePointer, updatedUs);
-                                            FileTreeNode us = new FileTreeNode(globalRoot, updatedPointer, ownername, readers, writers, entryWriterKey);
-                                            return us.getChildren(network).thenCompose(children -> {
-                                                Set<String> childNames = children.stream()
-                                                        .map(f -> f.getName())
-                                                        .collect(Collectors.toSet());
-                                                String safeName = nextSafeReplacementFilename(filename, childNames);
-                                                // rename file in place as we've already uploaded it
-                                                return network.getMetadata(filePointer.location).thenCompose(renameOpt -> {
-                                                    CryptreeNode fileToRename = renameOpt.get();
-                                                    RetrievedFilePointer updatedChildPointer =
-                                                            new RetrievedFilePointer(filePointer, fileToRename);
-                                                    FileTreeNode toRename = new FileTreeNode(Optional.empty(),
-                                                            updatedChildPointer, ownername, readers, writers, entryWriterKey);
-                                                    return toRename.rename(safeName, network, us).thenCompose(usAgain ->
-                                                            ((DirAccess)usAgain.pointer.fileAccess)
-                                                                    .addFileAndCommit(filePointer, rootRKey,
-                                                                            pointer.filePointer, getSigner(), network, random)
-                                                                    .thenAccept(uploadResult -> {
-                                                                        setModified();
-                                                                        result.complete(this.withCryptreeNode(uploadResult));
-                                                                    }));
-                                                });
-                                            });
-                                        }).exceptionally(ex -> {
-                                            result.completeExceptionally(e);
-                                            return null;
-                                        });
-                                    } else
-                                        result.completeExceptionally(e);
-                                    return null;
-                                });
-                                return result;
+                                return addChildPointer(filename, filePointer, network, random);
                             });
                 });
             });
         });
+    }
+
+    private CompletableFuture<FileTreeNode> addChildPointer(String filename,
+                                                            FilePointer childPointer,
+                                                            NetworkAccess network,
+                                                            SafeRandom random) {
+        CompletableFuture<FileTreeNode> result = new CompletableFuture<>();
+        ((DirAccess) pointer.fileAccess).addFileAndCommit(childPointer, pointer.filePointer.baseKey, pointer.filePointer, getSigner(), network, random)
+                .thenAccept(uploadResult -> {
+                    setModified();
+                    result.complete(this.withCryptreeNode(uploadResult));
+                }).exceptionally(e -> {
+            if (e.getCause() instanceof Btree.CasException) {
+                // reload directory and try again
+                network.getMetadata(getLocation()).thenCompose(opt -> {
+                    DirAccess updatedUs = (DirAccess) opt.get();
+                    // Check another file of same name hasn't been added in the concurrent change
+
+                    RetrievedFilePointer updatedPointer = new RetrievedFilePointer(pointer.filePointer, updatedUs);
+                    FileTreeNode us = new FileTreeNode(globalRoot, updatedPointer, ownername, readers, writers, entryWriterKey);
+                    return us.getChildren(network).thenCompose(children -> {
+                        Set<String> childNames = children.stream()
+                                .map(f -> f.getName())
+                                .collect(Collectors.toSet());
+                        String safeName = nextSafeReplacementFilename(filename, childNames);
+                        // rename file in place as we've already uploaded it
+                        return network.getMetadata(childPointer.location).thenCompose(renameOpt -> {
+                            CryptreeNode fileToRename = renameOpt.get();
+                            RetrievedFilePointer updatedChildPointer =
+                                    new RetrievedFilePointer(childPointer, fileToRename);
+                            FileTreeNode toRename = new FileTreeNode(Optional.empty(),
+                                    updatedChildPointer, ownername, readers, writers, entryWriterKey);
+                            return toRename.rename(safeName, network, us).thenCompose(usAgain ->
+                                    ((DirAccess)usAgain.pointer.fileAccess)
+                                            .addFileAndCommit(childPointer, pointer.filePointer.baseKey,
+                                                    pointer.filePointer, getSigner(), network, random)
+                                            .thenAccept(uploadResult -> {
+                                                setModified();
+                                                result.complete(this.withCryptreeNode(uploadResult));
+                                            }));
+                        });
+                    });
+                }).exceptionally(ex -> {
+                    result.completeExceptionally(e);
+                    return null;
+                });
+            } else
+                result.completeExceptionally(e);
+            return null;
+        });
+        return result;
     }
 
     private static String nextSafeReplacementFilename(String desired, Set<String> existing) {
