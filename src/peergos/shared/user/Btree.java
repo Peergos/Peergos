@@ -38,7 +38,7 @@ public interface Btree {
      * @return  hash(sharingKey.metadata) | the new root hash of the btree
      * @throws IOException
      */
-    CompletableFuture<Boolean> remove(SigningPrivateKeyAndPublicHash sharingKey, byte[] mapKey);
+    CompletableFuture<Boolean> remove(SigningPrivateKeyAndPublicHash sharingKey, byte[] mapKey, MaybeMultihash existing);
 
 
     class CasException extends RuntimeException {

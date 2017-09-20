@@ -71,8 +71,8 @@ public class MerkleBTree
      * @return hash of new tree root
      * @throws IOException
      */
-    public CompletableFuture<Multihash> delete(PublicKeyHash writer, byte[] rawKey) {
-        return root.delete(writer, new ByteArrayWrapper(rawKey), storage, maxChildren)
+    public CompletableFuture<Multihash> delete(PublicKeyHash writer, byte[] rawKey, MaybeMultihash existing) {
+        return root.delete(writer, new ByteArrayWrapper(rawKey), existing, storage, maxChildren)
                 .thenCompose(newRoot -> commit(writer, newRoot));
     }
 

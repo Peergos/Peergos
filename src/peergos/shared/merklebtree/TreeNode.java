@@ -216,7 +216,7 @@ public class TreeNode implements Cborable {
                         .smallestKey(storage));
     }
 
-    public CompletableFuture<TreeNode> delete(PublicKeyHash writer, ByteArrayWrapper key, ContentAddressedStorage storage, int maxChildren) {
+    public CompletableFuture<TreeNode> delete(PublicKeyHash writer, ByteArrayWrapper key, MaybeMultihash existing, ContentAddressedStorage storage, int maxChildren) {
         KeyElement dummy = KeyElement.dummy(key);
         SortedSet<KeyElement> tailSet = keys.tailSet(dummy);
         KeyElement nextSmallest;
@@ -230,6 +230,12 @@ public class TreeNode implements Cborable {
         if (nextSmallest.key.equals(key)) {
             if (! nextSmallest.targetHash.isPresent()) {
                 // we are a leaf
+                // CAS on existing value
+                if (! nextSmallest.valueHash.equals(existing)) {
+                    CompletableFuture<TreeNode> res = new CompletableFuture<>();
+                    res.completeExceptionally(new Btree.CasException(nextSmallest.valueHash, existing));
+                    return res;
+                }
                 keys.remove(nextSmallest);
                 if (keys.size() >= maxChildren/2) {
                     return storage.put(writer, this.serialize())
@@ -245,7 +251,7 @@ public class TreeNode implements Cborable {
                         .thenCompose(child -> {
                             // take the subtree's smallest value (in a leaf) delete it and promote it to the separator here
                             return child.smallestKey(storage).thenCompose(smallestKey -> child.get(smallestKey, storage)
-                                    .thenCompose(value -> child.delete(writer, smallestKey, storage, maxChildren)
+                                    .thenCompose(value -> child.delete(writer, smallestKey, existing, storage, maxChildren)
                                                     .thenCompose(newChild -> storage.put(writer, newChild.serialize()).thenCompose(childHash -> {
                                                                 keys.remove(finalNextSmallest);
                                                                 KeyElement replacement = new KeyElement(smallestKey, value, childHash);
@@ -270,7 +276,7 @@ public class TreeNode implements Cborable {
         final Multihash nextSmallestHash = nextSmallest.targetHash.get();
         return storage.get(nextSmallestHash)
                 .thenCompose(rawOpt -> TreeNode.fromCbor(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present! " + nextSmallestHash)))
-                        .withHash(finalNextSmallest.targetHash).delete(writer, key, storage, maxChildren))
+                        .withHash(finalNextSmallest.targetHash).delete(writer, key, existing, storage, maxChildren))
                 .thenCompose(child -> {
                     // update pointer
                     if (child.hash.isPresent()) {

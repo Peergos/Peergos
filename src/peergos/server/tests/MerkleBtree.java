@@ -173,7 +173,7 @@ public class MerkleBtree {
             MaybeMultihash value = tree.get(key.data).get();
             if (! value.isPresent())
                 throw new IllegalStateException("Key not present!");
-            tree.delete(user, key.data).get();
+            tree.delete(user, key.data, value).get();
             if (tree.get(key.data).get().isPresent())
                 throw new IllegalStateException("Key still present!");
             tree.put(user, key.data, MaybeMultihash.empty(), value.get()).get();
@@ -218,7 +218,7 @@ public class MerkleBtree {
             MaybeMultihash value = tree.get(key).get();
             if (! value.isPresent())
                 throw new IllegalStateException("Key not present!");
-            tree.delete(user, key).get();
+            tree.delete(user, key, value).get();
             if (tree.get(key).get().isPresent())
                 throw new IllegalStateException("Key still present!");
         }

@@ -106,7 +106,7 @@ public class BtreeImpl implements Btree {
     }
 
     @Override
-    public CompletableFuture<Boolean> remove(SigningPrivateKeyAndPublicHash writer, byte[] mapKey) {
+    public CompletableFuture<Boolean> remove(SigningPrivateKeyAndPublicHash writer, byte[] mapKey, MaybeMultihash existing) {
         PublicKeyHash publicWriter = writer.publicKeyHash;
         CompletableFuture<CommittedWriterData> future = new CompletableFuture<>();
 
@@ -115,7 +115,7 @@ public class BtreeImpl implements Btree {
                     WriterData holder = committed.props;
                     MaybeMultihash btreeRootHash = holder.btree.isPresent() ? MaybeMultihash.of(holder.btree.get()) : MaybeMultihash.empty();
                     return MerkleBTree.create(publicWriter, btreeRootHash, dht)
-                            .thenCompose(btree -> btree.delete(publicWriter, mapKey))
+                            .thenCompose(btree -> btree.delete(publicWriter, mapKey, existing))
                             .thenApply(pair -> LOGGING ? log(pair, "BTREE.rm (" + ArrayOps.bytesToHex(mapKey) + "  => " + pair) : pair)
                             .thenCompose(newBtreeRoot -> holder.withBtree(newBtreeRoot)
                                     .commit(writer, committed.hash, mutable, dht, future::complete))
