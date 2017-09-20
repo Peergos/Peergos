@@ -502,7 +502,7 @@ public class FileTreeNode {
                     return chunks.upload(network, random, parentLocation.owner, getSigner(), nextChunkLocation)
                             .thenCompose(fileLocation -> {
                                 FilePointer filePointer = new FilePointer(fileLocation, Optional.empty(), fileKey);
-                                return addChildPointer(filename, filePointer, network, random);
+                                return addChildPointer(filename, filePointer, network, random, 2);
                             });
                 });
             });
@@ -512,7 +512,8 @@ public class FileTreeNode {
     private CompletableFuture<FileTreeNode> addChildPointer(String filename,
                                                             FilePointer childPointer,
                                                             NetworkAccess network,
-                                                            SafeRandom random) {
+                                                            SafeRandom random,
+                                                            int retries) {
         CompletableFuture<FileTreeNode> result = new CompletableFuture<>();
         ((DirAccess) pointer.fileAccess).addFileAndCommit(childPointer, pointer.filePointer.baseKey, pointer.filePointer, getSigner(), network, random)
                 .thenAccept(uploadResult -> {
@@ -550,7 +551,15 @@ public class FileTreeNode {
                         });
                     });
                 }).exceptionally(ex -> {
-                    result.completeExceptionally(e);
+                    if (e.getCause() instanceof Btree.CasException && retries > 0)
+                        addChildPointer(filename, childPointer, network, random, retries - 1)
+                                .thenApply(f -> result.complete(f))
+                                .exceptionally(e2 -> {
+                                    result.completeExceptionally(e2);
+                                    return null;
+                                });
+                    else
+                        result.completeExceptionally(e);
                     return null;
                 });
             } else
