@@ -100,8 +100,8 @@ public class TreeNode implements Cborable {
         }
         if (nextSmallest.key.equals(key)) {
             KeyElement modified = new KeyElement(key, MaybeMultihash.of(value), nextSmallest.targetHash);
-            // ensure CAS
-            if (! nextSmallest.valueHash.equals(existing)) {
+            // ensure CAS, without allowing replacing a tombstone
+            if (! nextSmallest.valueHash.equals(existing) && ! nextSmallest.valueHash.equals(MaybeMultihash.empty())) {
                 CompletableFuture<TreeNode> res = new CompletableFuture<>();
                 res.completeExceptionally(new Btree.CasException(nextSmallest.valueHash, existing));
                 return res;
@@ -237,6 +237,8 @@ public class TreeNode implements Cborable {
                     return res;
                 }
                 keys.remove(nextSmallest);
+                // put in a tombstone
+                keys.add(new KeyElement(nextSmallest.key, MaybeMultihash.empty(), MaybeMultihash.empty()));
                 if (keys.size() >= maxChildren/2) {
                     return storage.put(writer, this.serialize())
                             .thenApply(multihash -> new TreeNode(this.keys, multihash));
