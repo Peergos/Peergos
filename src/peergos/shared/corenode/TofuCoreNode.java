@@ -54,7 +54,7 @@ public class TofuCoreNode implements CoreNode {
                     AsyncReader.ArrayBacked dataReader = new AsyncReader.ArrayBacked(data);
                     return home.uploadFile(KEY_STORE_NAME, dataReader, true, (long) data.length,
                             context.network, context.crypto.random, x-> {}, context.fragmenter());
-                });
+                }).thenApply(x -> true);
     }
 
     public CompletableFuture<Boolean> updateUser(String username) {
@@ -93,7 +93,8 @@ public class TofuCoreNode implements CoreNode {
             return CompletableFuture.completedFuture(localChain);
         return source.getChain(username)
                 .thenCompose(chain -> tofu.updateChain(username, chain, context.network.dhtClient)
-                        .thenCompose(x -> commit()).thenApply(x -> tofu.getChain(username)));
+                        .thenCompose(x -> commit())
+                        .thenApply(x -> tofu.getChain(username)));
     }
 
     @Override

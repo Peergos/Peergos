@@ -7,28 +7,16 @@ import peergos.server.*;
 import peergos.server.corenode.UsernameValidator;
 import peergos.server.storage.*;
 import peergos.shared.*;
-import peergos.shared.corenode.CoreNode;
 import peergos.shared.crypto.*;
-import peergos.shared.crypto.asymmetric.*;
-import peergos.shared.crypto.asymmetric.curve25519.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.crypto.random.*;
-import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.merklebtree.*;
-import peergos.shared.user.*;
-import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
-import java.io.*;
 import java.lang.reflect.*;
 import java.net.*;
-import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.stream.*;
-
-import static org.junit.Assert.*;
 
 @RunWith(Parameterized.class)
 public class CorenodeTests {
@@ -82,7 +70,7 @@ public class CorenodeTests {
 
                 byte[] data = new byte[10];
 
-                MaybeMultihash current = MaybeMultihash.EMPTY();
+                MaybeMultihash current = MaybeMultihash.empty();
                 long t1 = System.currentTimeMillis();
                 int iterations = 100;
                 long maxLatency = 0;

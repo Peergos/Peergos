@@ -142,8 +142,8 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
             if (!parent.isPresent())
                 return 1;
 
-            boolean removed = file.get().remove(context.network, parent.get()).get();
-            return removed ? 0 : 1;
+            FileTreeNode updatedParent = file.get().remove(context.network, parent.get()).get();
+            return updatedParent != parent.get() ? 0 : 1;
         } catch (Exception ioe) {
             ioe.printStackTrace();
             return 1;
@@ -171,17 +171,15 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
                 return 1;
 
             FileTreeNode parent = sourceParent.treeNode;
-            source.treeNode.rename(requested.getFileName().toString(), context.network, parent);
+            FileTreeNode updatedParent = source.treeNode.rename(requested.getFileName().toString(), context.network, parent).get();
             // TODO clean up on error conditions
-            if (!parent.equals(newParent.get())) {
+            if (! parent.equals(newParent.get())) {
                 Path renamedInPlacePath = Paths.get(sourcePath).getParent().resolve(requested.getFileName().toString());
                 Optional<FileTreeNode> renamedOriginal = context.getByPath(renamedInPlacePath.toString()).get();;
-                if (!renamedOriginal.isPresent())
+                if (! renamedOriginal.isPresent())
                     return 1;
                 renamedOriginal.get().copyTo(newParent.get(), context.network, context.crypto.random, context.fragmenter()).get();
-                boolean removed = source.treeNode.remove(context.network, parent).get();
-                if (!removed)
-                    return 1;
+                FileTreeNode updatedParent2 = renamedOriginal.get().remove(context.network, parent).get();
             }
             return 0;
         } catch (Exception ioe) {
@@ -485,7 +483,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
     private int rmdir(PeergosStat stat, PeergosStat parentStat) {
         FileTreeNode treeNode = stat.treeNode;
         try {
-            Boolean removed = treeNode.remove(context.network, parentStat.treeNode).get();
+            FileTreeNode updatedParent = treeNode.remove(context.network, parentStat.treeNode).get();
             return 0;
         } catch (Exception ioe) {
             ioe.printStackTrace();
@@ -573,10 +571,11 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
             // TODO do this smarter by only writing the chunk containing the new endpoint, and deleting all following chunks
             // or extending with 0s
             byte[] truncated = Arrays.copyOfRange(original, 0, (int)size);
-            file.treeNode.remove(context.network, parent.treeNode);
-            boolean b = parent.treeNode.uploadFile(file.properties.name, new AsyncReader.ArrayBacked(truncated),
-                    truncated.length, context.network, context.crypto.random, l -> {}, context.fragmenter()).get();
-            return b ? (int) size : 1;
+            FileTreeNode newParent = file.treeNode.remove(context.network, parent.treeNode).get();
+            FileTreeNode b = newParent.uploadFile(file.properties.name, new AsyncReader.ArrayBacked(truncated),
+                    truncated.length, context.network, context.crypto.random, l -> {
+                    }, context.fragmenter()).get();
+            return (int) size;
         } catch (Throwable t) {
             t.printStackTrace();
             return 1;
@@ -591,9 +590,9 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
                 throw new IllegalStateException("Cannot write more than " + Integer.MAX_VALUE + " bytes");
             }
 
-            boolean b = parent.treeNode.uploadFileSection(name, new AsyncReader.ArrayBacked(toWrite), offset, offset + size,
+            FileTreeNode b = parent.treeNode.uploadFileSection(name, new AsyncReader.ArrayBacked(toWrite), offset, offset + size,
                     context.network, context.crypto.random, l -> {}, context.fragmenter()).get();
-            return b ? (int) size : 1;
+            return (int) size;
         } catch (Throwable t) {
             t.printStackTrace();
             return 1;

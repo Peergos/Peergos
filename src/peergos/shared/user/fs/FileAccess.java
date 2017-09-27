@@ -6,6 +6,8 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
+import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.merklebtree.*;
 import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.*;
 
@@ -24,6 +26,7 @@ import java.util.concurrent.*;
  */
 public class FileAccess implements CryptreeNode {
 
+    protected final MaybeMultihash lastCommittedHash;
     protected final int version;
     protected final SymmetricLink parent2meta;
     protected final SymmetricLink parent2data;
@@ -31,18 +34,25 @@ public class FileAccess implements CryptreeNode {
     protected final FileRetriever retriever;
     protected final SymmetricLocationLink parentLink;
 
-    public FileAccess(int version,
+    public FileAccess(MaybeMultihash lastCommittedHash,
+                      int version,
                       SymmetricLink parent2Meta,
                       SymmetricLink parent2Data,
                       byte[] fileProperties,
                       FileRetriever fileRetriever,
                       SymmetricLocationLink parentLink) {
+        this.lastCommittedHash = lastCommittedHash;
         this.version = version;
         this.parent2meta = parent2Meta;
         this.parent2data = parent2Data;
         this.properties = fileProperties;
         this.retriever = fileRetriever;
         this.parentLink = parentLink;
+    }
+
+    @Override
+    public MaybeMultihash committedHash() {
+        return lastCommittedHash;
     }
 
     @Override
@@ -111,7 +121,7 @@ public class FileAccess implements CryptreeNode {
                 this.parent2meta;
 
         byte[] nonce = metaKey.createNonce();
-        FileAccess fa = new FileAccess(version, toMeta, this.parent2data, ArrayOps.concat(nonce, metaKey.encrypt(newProps.serialize(), nonce)),
+        FileAccess fa = new FileAccess(lastCommittedHash, version, toMeta, this.parent2data, ArrayOps.concat(nonce, metaKey.encrypt(newProps.serialize(), nonce)),
                 this.retriever, this.parentLink);
         return network.uploadChunk(fa, writableFilePointer.location, writableFilePointer.signer())
                 .thenApply(b -> fa);
@@ -128,7 +138,7 @@ public class FileAccess implements CryptreeNode {
         SymmetricLocationLink newParentLink = SymmetricLocationLink.create(newBaseKey,
                 parentLink.target(writableFilePointer.baseKey),
                 parentLink.targetLocation(writableFilePointer.baseKey));
-        FileAccess fa = new FileAccess(version, newParentToMeta, newParentToData, properties, this.retriever, newParentLink);
+        FileAccess fa = new FileAccess(committedHash(), version, newParentToMeta, newParentToData, properties, this.retriever, newParentLink);
         return network.uploadChunk(fa, writableFilePointer.location,
                 writableFilePointer.signer())
                 .thenApply(x -> fa);
@@ -151,15 +161,14 @@ public class FileAccess implements CryptreeNode {
                                                           SafeRandom random) {
         FileProperties props = getProperties(baseKey);
         boolean isDirectory = isDirectory();
-        FileAccess fa = FileAccess.create(newBaseKey,
-                SymmetricKey.random(),
+        FileAccess fa = FileAccess.create(MaybeMultihash.empty(), newBaseKey, SymmetricKey.random(),
                 isDirectory ? SymmetricKey.random() : getDataKey(baseKey),
                 props, this.retriever, newParentLocation, parentparentKey);
         return network.uploadChunk(fa, new Location(newParentLocation.owner, entryWriterKey.publicKeyHash, newMapKey), entryWriterKey)
                 .thenApply(b -> fa);
     }
 
-    public static FileAccess fromCbor(CborObject cbor) {
+    public static FileAccess fromCbor(CborObject cbor, Multihash hash) {
         if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Incorrect cbor for FileAccess: " + cbor);
 
@@ -182,13 +191,21 @@ public class FileAccess implements CryptreeNode {
                 FileRetriever.fromCbor(retrieverCbor);
 
 
-        return new FileAccess(versionAndType >> 1, parentToMeta, parentToData, properties, retriever, parentLink);
+        return new FileAccess(MaybeMultihash.of(hash), versionAndType >> 1, parentToMeta, parentToData, properties, retriever, parentLink);
     }
 
-    public static FileAccess create(SymmetricKey parentKey, SymmetricKey metaKey, SymmetricKey dataKey, FileProperties props,
-                                    FileRetriever retriever, Location parentLocation, SymmetricKey parentparentKey) {
+    public static FileAccess create(MaybeMultihash existingHash,
+                                    SymmetricKey parentKey,
+                                    SymmetricKey metaKey,
+                                    SymmetricKey dataKey,
+                                    FileProperties props,
+                                    FileRetriever retriever,
+                                    Location parentLocation,
+                                    SymmetricKey parentparentKey) {
         byte[] nonce = metaKey.createNonce();
-        return new FileAccess(CryptreeNode.CURRENT_FILE_VERSION,
+        return new FileAccess(
+                existingHash,
+                CryptreeNode.CURRENT_FILE_VERSION,
                 SymmetricLink.fromPair(parentKey, metaKey),
                 SymmetricLink.fromPair(parentKey, dataKey),
                 ArrayOps.concat(nonce, metaKey.encrypt(props.serialize(), nonce)),
