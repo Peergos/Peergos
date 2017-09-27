@@ -65,18 +65,6 @@ public abstract class StaticHandler implements HttpHandler
                 httpExchange.getResponseHeaders().set("Cache-Control", "public, max-age=3600");
                 httpExchange.getResponseHeaders().set("ETag", res.hash);
             }
-
-            // Only allow assets to be loaded from the original host
-            httpExchange.getResponseHeaders().set("content-security-policy", "default-src https: 'self'");
-            // Don't anyone to load Peergos site in an iframe
-            httpExchange.getResponseHeaders().set("x-frame-options", "DENY");
-            // Enable cross site scripting protection
-            httpExchange.getResponseHeaders().set("x-xss-protection", "1; mode=block");
-            // Don't let browser sniff mime types
-            httpExchange.getResponseHeaders().set("x-content-type-options", "nosniff");
-            // Don't send Peergos referrer to anyone
-            httpExchange.getResponseHeaders().set("referrer-policy", "no-referrer");
-
             httpExchange.sendResponseHeaders(200, res.data.length);
             httpExchange.getResponseBody().write(res.data);
             httpExchange.getResponseBody().close();
