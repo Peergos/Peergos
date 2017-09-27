@@ -12,8 +12,10 @@ import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.*;
 
 import javax.imageio.ImageIO;
-import java.awt.*;
 import java.awt.image.BufferedImage;
+import java.awt.Graphics2D;
+import java.awt.AlphaComposite;
+import java.awt.RenderingHints;
 import java.io.*;
 import java.time.*;
 import java.util.*;
