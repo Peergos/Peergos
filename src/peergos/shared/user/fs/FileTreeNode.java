@@ -26,6 +26,9 @@ import java.util.stream.*;
 
 public class FileTreeNode {
 
+    final static int[] ID3 = new int[]{'I', 'D', '3'};
+    final static int[] MP3 = new int[]{0xff, 0xfb};
+    final static int[] MP4 = new int[]{'f', 't', 'y', 'p'};
     final static int[] BMP = new int[]{66, 77};
     final static int[] GIF = new int[]{71, 73, 70};
     final static int[] JPEG = new int[]{255, 216};
@@ -61,7 +64,7 @@ public class FileTreeNode {
         this.writers = writers;
         this.entryWriterKey = entryWriterKey;
         if (pointer == null)
-            props = new FileProperties("/", 0, LocalDateTime.MIN, false, Optional.empty());
+            props = new FileProperties("/", "", 0, LocalDateTime.MIN, false, Optional.empty());
         else {
             SymmetricKey parentKey = this.getParentKey();
             props = pointer.fileAccess.getProperties(parentKey);
@@ -497,20 +500,25 @@ public class FileTreeNode {
             SymmetricKey dirParentKey = dirAccess.getParentKey(rootRKey);
             Location parentLocation = getLocation();
             int thumbnailSrcImageSize = startIndex == 0 && endIndex < Integer.MAX_VALUE ? (int)endIndex : 0;
-            return generateThumbnail(network, fileData, thumbnailSrcImageSize, filename).thenCompose(thumbData -> {
-                return fileData.reset().thenCompose(resetResult -> {
-                    FileProperties fileProps = new FileProperties(filename, endIndex, LocalDateTime.now(), isHidden, Optional.of(thumbData));
-                    FileUploader chunks = new FileUploader(filename, fileData, startIndex, endIndex, fileKey, fileMetaKey, parentLocation, dirParentKey, monitor, fileProps,
-                            fragmenter);
-                    byte[] mapKey = random.randomBytes(32);
-                    Location nextChunkLocation = new Location(getLocation().owner, getLocation().writer, mapKey);
-                    return chunks.upload(network, random, parentLocation.owner, getSigner(), nextChunkLocation)
-                            .thenCompose(fileLocation -> {
-                                FilePointer filePointer = new FilePointer(fileLocation, Optional.empty(), fileKey);
-                                return addChildPointer(filename, filePointer, network, random, 2);
-                            });
-                });
-            });
+            return generateThumbnail(network, fileData, thumbnailSrcImageSize, filename)
+                    .thenCompose(thumbData -> fileData.reset()
+                            .thenCompose(forMime -> calculateMimeType(forMime)
+                                    .thenCompose(mimeType -> fileData.reset().thenCompose(resetReader -> {
+                                        FileProperties fileProps = new FileProperties(filename, mimeType, endIndex,
+                                                LocalDateTime.now(), isHidden, Optional.of(thumbData));
+                                        FileUploader chunks = new FileUploader(filename, mimeType, resetReader,
+                                                startIndex, endIndex, fileKey, fileMetaKey, parentLocation, dirParentKey, monitor, fileProps,
+                                                fragmenter);
+                                        byte[] mapKey = random.randomBytes(32);
+                                        Location nextChunkLocation = new Location(getLocation().owner, getLocation().writer, mapKey);
+                                        return chunks.upload(network, random, parentLocation.owner, getSigner(), nextChunkLocation)
+                                                .thenCompose(fileLocation -> {
+                                                    FilePointer filePointer = new FilePointer(fileLocation, Optional.empty(), fileKey);
+                                                    return addChildPointer(filename, filePointer, network, random, 2);
+                                                });
+                                    }))
+                            )
+                    );
         });
     }
 
@@ -660,7 +668,8 @@ public class FileTreeNode {
                                 Chunk updated = new Chunk(raw, dataKey, currentOriginal.location.getMapKey(), nonce);
                                 LocatedChunk located = new LocatedChunk(currentOriginal.location, currentOriginal.existingHash, updated);
                                 long currentSize = filesSize.get();
-                                FileProperties newProps = new FileProperties(childProps.name, endIndex > currentSize ? endIndex : currentSize,
+                                FileProperties newProps = new FileProperties(childProps.name, childProps.mimeType,
+                                        endIndex > currentSize ? endIndex : currentSize,
                                         LocalDateTime.now(), childProps.isHidden, childProps.thumbnail);
 
                                 CompletableFuture<Multihash> chunkUploaded = FileUploader.uploadChunk(getSigner(),
@@ -776,7 +785,8 @@ public class FileTreeNode {
                         SymmetricKey key = this.isDirectory() ? fileAccess.getParentKey(baseKey) : baseKey;
                         FileProperties currentProps = fileAccess.getProperties(key);
 
-                        FileProperties newProps = new FileProperties(newFilename, currentProps.size, currentProps.modified, currentProps.isHidden, currentProps.thumbnail);
+                        FileProperties newProps = new FileProperties(newFilename, currentProps.mimeType, currentProps.size,
+                                currentProps.modified, currentProps.isHidden, currentProps.thumbnail);
 
                         return fileAccess.updateProperties(writableFilePointer(), newProps, network)
                                 .thenApply(fa -> res);
@@ -1025,7 +1035,46 @@ public class FileTreeNode {
     	return result;
     }
 
-    private boolean compareArrayContents(byte[] a, int[] a2) {
+    public static CompletableFuture<String> calculateMimeType(AsyncReader data) {
+        byte[] header = new byte[8];
+        return data.readIntoArray(header, 0, header.length)
+                .thenApply(read -> calculateMimeType(header));
+    }
+
+    public static final String calculateMimeType(byte[] start) {
+        if (compareArrayContents(Arrays.copyOfRange(start, 0, BMP.length), BMP))
+            return "image/bmp";
+        if (compareArrayContents(Arrays.copyOfRange(start, 0, GIF.length), GIF))
+            return "image/gif";
+        if (compareArrayContents(Arrays.copyOfRange(start, 0, PNG.length), PNG))
+            return "image/png";
+        if (compareArrayContents(Arrays.copyOfRange(start, 0, 2), JPEG))
+            return "image/jpg";
+
+        if (compareArrayContents(Arrays.copyOfRange(start, 4, 8), MP4))
+            return "video/mp4";
+
+        if (compareArrayContents(Arrays.copyOfRange(start, 0, 3), ID3))
+            return "audio/mpeg3";
+        if (compareArrayContents(Arrays.copyOfRange(start, 0, 3), MP3))
+            return "audio/mpeg3";
+
+        if (allAscii(start))
+            return "text/plain";
+        return "";
+    }
+
+    private static boolean allAscii(byte[] data) {
+        for (byte b : data) {
+            if ((b & 0xff) > 0x80)
+                return false;
+            if ((b & 0xff) < 0x20 && b != (byte)0x10 && b != (byte) 0x13)
+                return false;
+        }
+        return true;
+    }
+
+    private static boolean compareArrayContents(byte[] a, int[] a2) {
         if (a==null || a2==null){
             return false;
         }

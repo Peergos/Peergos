@@ -294,7 +294,7 @@ public class MultiUserTests {
             byte[] properties = ((CborObject.CborByteArray) ((CborObject.CborList) fileAccess.toCbor()).value.get(1)).value;
             byte[] nonce = Arrays.copyOfRange(properties, 0, TweetNaCl.SECRETBOX_NONCE_BYTES);
             byte[] cipher = Arrays.copyOfRange(properties, TweetNaCl.SECRETBOX_NONCE_BYTES, properties.length);
-            FileProperties props =  FileProperties.deserialize(priorMetaKey.decrypt(cipher, nonce));
+            FileProperties props =  FileProperties.fromCbor(CborObject.fromByteArray(priorMetaKey.decrypt(cipher, nonce)));
             throw new IllegalStateException("We shouldn't be able to decrypt this after a rename! new name = " + props.name);
         } catch (TweetNaCl.InvalidCipherTextException e) {}
         try {

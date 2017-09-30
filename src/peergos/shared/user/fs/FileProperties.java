@@ -1,6 +1,7 @@
 package peergos.shared.user.fs;
 
 import jsinterop.annotations.*;
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.storage.ContentAddressedStorage;
@@ -11,18 +12,21 @@ import java.time.*;
 import java.util.*;
 
 @JsType
-public class FileProperties {
-    public static final FileProperties EMPTY = new FileProperties("", 0, LocalDateTime.MIN, false, Optional.empty());
+public class FileProperties implements Cborable {
+    public static final FileProperties EMPTY = new FileProperties("", "", 0, LocalDateTime.MIN, false, Optional.empty());
 
     public final String name;
+    public final String mimeType;
     @JsIgnore
     public final long size;
     public final LocalDateTime modified;
     public final boolean isHidden;
     public final Optional<byte[]> thumbnail;
 
-    public FileProperties(String name, int sizeHi, int sizeLo, LocalDateTime modified, boolean isHidden, Optional<byte[]> thumbnail) {
+    public FileProperties(String name, String mimeType, int sizeHi, int sizeLo,
+                          LocalDateTime modified, boolean isHidden, Optional<byte[]> thumbnail) {
         this.name = name;
+        this.mimeType = mimeType;
         this.size = sizeLo | ((sizeHi | 0L) << 32);
         this.modified = modified;
         this.isHidden = isHidden;
@@ -30,8 +34,9 @@ public class FileProperties {
     }
 
     @JsIgnore
-    public FileProperties(String name, long size, LocalDateTime modified, boolean isHidden, Optional<byte[]> thumbnail) {
-        this(name, (int)(size >> 32), (int) size, modified, isHidden, thumbnail);
+    public FileProperties(String name, String mimeType, long size,
+                          LocalDateTime modified, boolean isHidden, Optional<byte[]> thumbnail) {
+        this(name, mimeType, (int)(size >> 32), (int) size, modified, isHidden, thumbnail);
     }
 
     public int sizeLow() {
@@ -42,51 +47,46 @@ public class FileProperties {
         return (int) (size >> 32);
     }
 
-    public byte[] serialize() {
-        DataSink dout = new DataSink();
-        dout.writeString(name);
-        dout.writeLong(size);
-        dout.writeLong(modified.toEpochSecond(ZoneOffset.UTC));
-        dout.writeBoolean(isHidden);
-        if (!thumbnail.isPresent())
-            dout.writeInt(0);
-        else {
-            dout.writeArray(thumbnail.get());
-        }
-        return dout.toByteArray();
+    @Override
+    public CborObject toCbor() {
+        return new CborObject.CborList(Arrays.asList(
+                new CborObject.CborString(name),
+                new CborObject.CborString(mimeType),
+                new CborObject.CborLong(size),
+                new CborObject.CborLong(modified.toEpochSecond(ZoneOffset.UTC)),
+                new CborObject.CborBoolean(isHidden),
+                new CborObject.CborByteArray(thumbnail.orElse(new byte[0]))
+        ));
     }
 
-    public static FileProperties deserialize(byte[] raw) throws IOException {
-        DataSource din = new DataSource(raw);
-        String name = din.readString();
-        long size = din.readLong();
-        long modified = din.readLong();
-        boolean isHidden = din.readBoolean();
-        int length = din.readInt();
-        Optional<byte[]> thumbnail = length == 0 ?
+    public static FileProperties fromCbor(CborObject cbor) {
+        List<CborObject> elements = ((CborObject.CborList) cbor).value;
+        String name = ((CborObject.CborString)elements.get(0)).value;
+        String mimeType = ((CborObject.CborString)elements.get(1)).value;
+        long size = ((CborObject.CborLong)elements.get(2)).value;
+        long modified = ((CborObject.CborLong)elements.get(3)).value;
+        boolean isHidden = ((CborObject.CborBoolean)elements.get(4)).value;
+        byte[] thumb = ((CborObject.CborByteArray)elements.get(5)).value;
+        Optional<byte[]> thumbnail = thumb.length == 0 ?
                 Optional.empty() :
-                Optional.of(Serialize.deserializeByteArray(length, din, length));
+                Optional.of(thumb);
 
-        return new FileProperties(name, size, LocalDateTime.ofEpochSecond(modified, 0, ZoneOffset.UTC), isHidden, thumbnail);
+        return new FileProperties(name, mimeType, size, LocalDateTime.ofEpochSecond(modified, 0, ZoneOffset.UTC), isHidden, thumbnail);
     }
 
     public static FileProperties decrypt(byte[] raw, SymmetricKey metaKey) {
-        try {
-            byte[] nonce = Arrays.copyOfRange(raw, 0, TweetNaCl.SECRETBOX_NONCE_BYTES);
-            byte[] cipher = Arrays.copyOfRange(raw, TweetNaCl.SECRETBOX_NONCE_BYTES, raw.length);
-            return FileProperties.deserialize(metaKey.decrypt(cipher, nonce));
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+        byte[] nonce = Arrays.copyOfRange(raw, 0, TweetNaCl.SECRETBOX_NONCE_BYTES);
+        byte[] cipher = Arrays.copyOfRange(raw, TweetNaCl.SECRETBOX_NONCE_BYTES, raw.length);
+        return FileProperties.fromCbor(CborObject.fromByteArray(metaKey.decrypt(cipher, nonce)));
     }
 
     @JsIgnore
     public FileProperties withSize(long newSize) {
-        return new FileProperties(name, newSize, modified, isHidden, thumbnail);
+        return new FileProperties(name, mimeType, newSize, modified, isHidden, thumbnail);
     }
 
     public FileProperties withModified(LocalDateTime modified) {
-        return new FileProperties(name, size, modified, isHidden, thumbnail);
+        return new FileProperties(name, mimeType, size, modified, isHidden, thumbnail);
     }
 
     @Override
