@@ -500,7 +500,7 @@ public class FileTreeNode {
             SymmetricKey dirParentKey = dirAccess.getParentKey(rootRKey);
             Location parentLocation = getLocation();
             int thumbnailSrcImageSize = startIndex == 0 && endIndex < Integer.MAX_VALUE ? (int)endIndex : 0;
-            boolean hasMime = thumbnailSrcImageSize > 0;
+            boolean hasMime = thumbnailSrcImageSize >= 8;
             return generateThumbnail(network, fileData, thumbnailSrcImageSize, filename)
                     .thenCompose(thumbData -> fileData.reset()
                             .thenCompose(forMime -> (hasMime ? calculateMimeType(forMime) : CompletableFuture.completedFuture(""))
