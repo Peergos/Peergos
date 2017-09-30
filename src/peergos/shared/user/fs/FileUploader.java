@@ -30,12 +30,15 @@ public class FileUploader implements AutoCloseable {
     private final AsyncReader reader; // resettable input stream
 
     @JsConstructor
-    public FileUploader(String name, AsyncReader fileData, int offsetHi, int offsetLow, int lengthHi, int lengthLow,
-                        SymmetricKey baseKey, SymmetricKey metaKey, Location parentLocation, SymmetricKey parentparentKey,
-                        ProgressConsumer<Long> monitor, FileProperties fileProperties, Fragmenter fragmenter) {
+    public FileUploader(String name, String mimeType, AsyncReader fileData,
+                        int offsetHi, int offsetLow, int lengthHi, int lengthLow,
+                        SymmetricKey baseKey, SymmetricKey metaKey,
+                        Location parentLocation, SymmetricKey parentparentKey,
+                        ProgressConsumer<Long> monitor,
+                        FileProperties fileProperties, Fragmenter fragmenter) {
         long length = lengthLow + ((lengthHi & 0xFFFFFFFFL) << 32);
         if (fileProperties == null)
-            this.props = new FileProperties(name, length, LocalDateTime.now(), false, Optional.empty());
+            this.props = new FileProperties(name, mimeType, length, LocalDateTime.now(), false, Optional.empty());
         else
             this.props = fileProperties;
         if (baseKey == null) baseKey = SymmetricKey.random();
@@ -57,9 +60,10 @@ public class FileUploader implements AutoCloseable {
         this.monitor = monitor;
     }
 
-    public FileUploader(String name, AsyncReader fileData, long offset, long length, SymmetricKey baseKey, SymmetricKey metaKey, Location parentLocation, SymmetricKey parentparentKey,
+    public FileUploader(String name, String mimeType, AsyncReader fileData, long offset, long length,
+                        SymmetricKey baseKey, SymmetricKey metaKey, Location parentLocation, SymmetricKey parentparentKey,
                         ProgressConsumer<Long> monitor, FileProperties fileProperties, Fragmenter fragmenter) {
-        this(name, fileData, (int)(offset >> 32), (int) offset, (int) (length >> 32), (int) length,
+        this(name, mimeType, fileData, (int)(offset >> 32), (int) offset, (int) (length >> 32), (int) length,
                 baseKey, metaKey, parentLocation, parentparentKey, monitor, fileProperties, fragmenter);
     }
 

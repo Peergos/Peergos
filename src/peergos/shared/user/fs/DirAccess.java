@@ -446,7 +446,7 @@ public class DirAccess implements CryptreeNode {
         random.randombytes(dirMapKey, 0, 32);
         SymmetricKey ourParentKey = this.getParentKey(baseKey);
         Location ourLocation = new Location(ownerPublic, writer.publicKeyHash, ourMapKey);
-        DirAccess dir = DirAccess.create(MaybeMultihash.empty(), dirReadKey, new FileProperties(name, 0, LocalDateTime.now(),
+        DirAccess dir = DirAccess.create(MaybeMultihash.empty(), dirReadKey, new FileProperties(name, "", 0, LocalDateTime.now(),
                 isSystemFolder, Optional.empty()), ourLocation, ourParentKey, null);
         Location chunkLocation = new Location(ownerPublic, writer.publicKeyHash, dirMapKey);
         return network.uploadChunk(dir, chunkLocation, writer).thenCompose(resultHash -> {

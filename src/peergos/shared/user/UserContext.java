@@ -402,7 +402,7 @@ public class UserContext {
             EntryPoint entry = new EntryPoint(rootPointer, this.username, Collections.emptySet(), Collections.emptySet());
 
             long t2 = System.currentTimeMillis();
-            DirAccess root = DirAccess.create(MaybeMultihash.empty(), rootRKey, new FileProperties(directoryName,
+            DirAccess root = DirAccess.create(MaybeMultihash.empty(), rootRKey, new FileProperties(directoryName, "",
                     0, LocalDateTime.now(), false, Optional.empty()), (Location) null, null, null);
             Location rootLocation = new Location(this.signer.publicKeyHash, writerHash, rootMapKey);
             System.out.println("Uploading entry point directory");
