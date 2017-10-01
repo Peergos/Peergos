@@ -11,7 +11,7 @@ public class MimeTypes {
     final static int[] AVI = new int[]{'A', 'V', 'I', ' '};
     final static int[] OGG = new int[]{'O', 'g', 'g', 'S', 0, 2};
     final static int[] WEBM = new int[]{'w', 'e', 'b', 'm'};
-    final static int[] MATROSKA = new int[]{0x6D, 0x61, 0x74, 0x72, 0x6F, 0x73, 0x6B, 0x61};
+    final static int[] MATROSKA = new int[]{'m', 'a', 't', 'r', 'o', 's', 'k', 'a'};
 
     final static int[] ICO = new int[]{0, 0, 1, 0};
     final static int[] CUR = new int[]{0, 0, 2, 0};
