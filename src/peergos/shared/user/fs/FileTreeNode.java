@@ -26,19 +26,6 @@ import java.util.stream.*;
 
 public class FileTreeNode {
 
-    final static int[] ID3 = new int[]{'I', 'D', '3'};
-    final static int[] MP3 = new int[]{0xff, 0xfb};
-    final static int[] MP4 = new int[]{'f', 't', 'y', 'p'};
-    final static int[] FLV = new int[]{'F', 'L', 'V'};
-    final static int[] AVI = new int[]{'A', 'V', 'I', ' '};
-    final static int[] OGG = new int[]{'O', 'g', 'g'};
-    final static int[] WEBM = new int[]{'w', 'e', 'b', 'm'};
-    final static int[] MATROSKA = new int[]{0x6D, 0x61, 0x74, 0x72, 0x6F, 0x73, 0x6B, 0x61};
-    final static int[] BMP = new int[]{66, 77};
-    final static int[] GIF = new int[]{71, 73, 70};
-    final static int[] JPEG = new int[]{255, 216};
-    final static int[] PNG = new int[]{137, 80, 78, 71, 13, 10, 26, 10};
-    final static int HEADER_BYTES_TO_IDENTIFY_MIME_TYPE = 28;
     final static int THUMBNAIL_SIZE = 100;
 
     private final NativeJSThumbnail thumbnail;
@@ -1016,19 +1003,16 @@ public class FileTreeNode {
 
     private CompletableFuture<Boolean> isImage(AsyncReader imageBlob) {
         CompletableFuture<Boolean> result = new CompletableFuture<>();
-        byte[] data = new byte[HEADER_BYTES_TO_IDENTIFY_MIME_TYPE];
-        imageBlob.readIntoArray(data, 0, HEADER_BYTES_TO_IDENTIFY_MIME_TYPE).thenAccept(numBytesRead -> {
+        byte[] data = new byte[MimeTypes.HEADER_BYTES_TO_IDENTIFY_MIME_TYPE];
+        imageBlob.readIntoArray(data, 0, data.length).thenAccept(numBytesRead -> {
             imageBlob.reset().thenAccept(resetResult -> {
-                if (numBytesRead < HEADER_BYTES_TO_IDENTIFY_MIME_TYPE) {
+                if (numBytesRead < data.length) {
                     result.complete(false);
                 } else {
-                    if (!compareArrayContents(Arrays.copyOfRange(data, 0, BMP.length), BMP)
-                            && !compareArrayContents(Arrays.copyOfRange(data, 0, GIF.length), GIF)
-                            && !compareArrayContents(Arrays.copyOfRange(data, 0, PNG.length), PNG)
-                            && !compareArrayContents(Arrays.copyOfRange(data, 0, 2), JPEG)) {
-                        result.complete(false);
-                    } else {
+                    if (MimeTypes.calculateMimeType(data).startsWith("image")) {
                         result.complete(true);
+                    } else {
+                        result.complete(false);
                     }
                 }
             });
@@ -1037,68 +1021,8 @@ public class FileTreeNode {
     }
 
     public static CompletableFuture<String> calculateMimeType(AsyncReader data) {
-        byte[] header = new byte[HEADER_BYTES_TO_IDENTIFY_MIME_TYPE];
+        byte[] header = new byte[MimeTypes.HEADER_BYTES_TO_IDENTIFY_MIME_TYPE];
         return data.readIntoArray(header, 0, header.length)
-                .thenApply(read -> calculateMimeType(header));
-    }
-
-    public static final String calculateMimeType(byte[] start) {
-        if (compareArrayContents(Arrays.copyOfRange(start, 0, BMP.length), BMP))
-            return "image/bmp";
-        if (compareArrayContents(Arrays.copyOfRange(start, 0, GIF.length), GIF))
-            return "image/gif";
-        if (compareArrayContents(Arrays.copyOfRange(start, 0, PNG.length), PNG))
-            return "image/png";
-        if (compareArrayContents(Arrays.copyOfRange(start, 0, 2), JPEG))
-            return "image/jpg";
-
-        if (compareArrayContents(Arrays.copyOfRange(start, 4, 8), MP4))
-            return "video/mp4";
-        if (compareArrayContents(Arrays.copyOfRange(start, 24, 28), WEBM))
-            return "video/webm";
-        if (compareArrayContents(Arrays.copyOfRange(start, 0, 3), OGG))
-            return "video/ogg";
-        if (compareArrayContents(Arrays.copyOfRange(start, 8, 16), MATROSKA))
-            return "video/x-matroska";
-        if (compareArrayContents(Arrays.copyOfRange(start, 0, 3), FLV))
-            return "video/x-flv";
-        if (compareArrayContents(Arrays.copyOfRange(start, 8, 12), AVI))
-            return "video/avi";
-
-        if (compareArrayContents(Arrays.copyOfRange(start, 0, 3), ID3))
-            return "audio/mpeg3";
-        if (compareArrayContents(Arrays.copyOfRange(start, 0, 3), MP3))
-            return "audio/mpeg3";
-
-        if (allAscii(start))
-            return "text/plain";
-        return "";
-    }
-
-    private static boolean allAscii(byte[] data) {
-        for (byte b : data) {
-            if ((b & 0xff) > 0x80)
-                return false;
-            if ((b & 0xff) < 0x20 && b != (byte)0x10 && b != (byte) 0x13)
-                return false;
-        }
-        return true;
-    }
-
-    private static boolean compareArrayContents(byte[] a, int[] a2) {
-        if (a==null || a2==null){
-            return false;
-        }
-        int length = a.length;
-        if (a2.length != length){
-            return false;
-        }
-        
-        for (int i=0; i<length; i++) {
-            if ((a[i] & 0xff) != (a2[i] & 0xff)) {
-                return false;
-            }
-        }
-        return true;
+                .thenApply(read -> MimeTypes.calculateMimeType(header));
     }
 }
