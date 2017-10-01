@@ -29,11 +29,16 @@ public class FileTreeNode {
     final static int[] ID3 = new int[]{'I', 'D', '3'};
     final static int[] MP3 = new int[]{0xff, 0xfb};
     final static int[] MP4 = new int[]{'f', 't', 'y', 'p'};
+    final static int[] FLV = new int[]{'F', 'L', 'V'};
+    final static int[] AVI = new int[]{'A', 'V', 'I', ' '};
+    final static int[] OGG = new int[]{'O', 'g', 'g'};
+    final static int[] WEBM = new int[]{'w', 'e', 'b', 'm'};
+    final static int[] MATROSKA = new int[]{0x6D, 0x61, 0x74, 0x72, 0x6F, 0x73, 0x6B, 0x61};
     final static int[] BMP = new int[]{66, 77};
     final static int[] GIF = new int[]{71, 73, 70};
     final static int[] JPEG = new int[]{255, 216};
     final static int[] PNG = new int[]{137, 80, 78, 71, 13, 10, 26, 10};
-    final static int HEADER_BYTES_TO_IDENTIFY_IMAGE_FILE = 8;
+    final static int HEADER_BYTES_TO_IDENTIFY_MIME_TYPE = 28;
     final static int THUMBNAIL_SIZE = 100;
 
     private final NativeJSThumbnail thumbnail;
@@ -92,7 +97,7 @@ public class FileTreeNode {
             return false;
         if (!(other instanceof FileTreeNode))
             return false;
-        return pointer.equals(((FileTreeNode)other).getPointer());
+        return pointer.equals(((FileTreeNode) other).getPointer());
     }
 
     public RetrievedFilePointer getPointer() {
@@ -147,7 +152,8 @@ public class FileTreeNode {
         modified.set(true);
     }
 
-    /** Marks a file/directory and all its descendants as dirty. Directories are immediately cleaned,
+    /**
+     * Marks a file/directory and all its descendants as dirty. Directories are immediately cleaned,
      * but files have all their keys except the actual data key cleaned. That is cleaned lazily, the next time it is modified
      *
      * @param network
@@ -238,7 +244,7 @@ public class FileTreeNode {
 
     public CompletableFuture<FileTreeNode> removeChild(FileTreeNode child, NetworkAccess network) {
         setModified();
-        return ((DirAccess)pointer.fileAccess)
+        return ((DirAccess) pointer.fileAccess)
                 .removeChild(child.getPointer(), pointer.filePointer, getSigner(), network)
                 .thenApply(updated -> new FileTreeNode(globalRoot,
                         new RetrievedFilePointer(getPointer().filePointer, updated), ownername, readers,
@@ -306,7 +312,7 @@ public class FileTreeNode {
         ensureUnmodified();
         if (!this.isDirectory())
             return Collections.emptySet();
-        return ((DirAccess)pointer.fileAccess).getChildrenLocations(pointer.filePointer.baseKey);
+        return ((DirAccess) pointer.fileAccess).getChildrenLocations(pointer.filePointer.baseKey);
     }
 
     public CompletableFuture<Optional<FileTreeNode>> retrieveParent(NetworkAccess network) {
@@ -431,50 +437,50 @@ public class FileTreeNode {
 
     @JsMethod
     public CompletableFuture<FileTreeNode> uploadFileJS(String filename, AsyncReader fileData, int lengthHi, int lengthLow,
-                                                 NetworkAccess network, SafeRandom random,
-                                                 ProgressConsumer<Long> monitor, Fragmenter fragmenter) {
+                                                        NetworkAccess network, SafeRandom random,
+                                                        ProgressConsumer<Long> monitor, Fragmenter fragmenter) {
         return uploadFile(filename, fileData, lengthLow + ((lengthHi & 0xFFFFFFFFL) << 32), network, random, monitor, fragmenter);
     }
 
     public CompletableFuture<FileTreeNode> uploadFile(String filename, AsyncReader fileData, long length,
-                                                 NetworkAccess network, SafeRandom random,
-                                                 ProgressConsumer<Long> monitor, Fragmenter fragmenter) {
+                                                      NetworkAccess network, SafeRandom random,
+                                                      ProgressConsumer<Long> monitor, Fragmenter fragmenter) {
         return uploadFileSection(filename, fileData, 0, length, Optional.empty(), network, random, monitor, fragmenter);
     }
 
     public CompletableFuture<FileTreeNode> uploadFile(String filename,
-                                                 AsyncReader fileData,
-                                                 boolean isHidden,
-                                                 long length,
-                                                 NetworkAccess network, SafeRandom random,
-                                                 ProgressConsumer<Long> monitor,
-                                                 Fragmenter fragmenter) {
+                                                      AsyncReader fileData,
+                                                      boolean isHidden,
+                                                      long length,
+                                                      NetworkAccess network, SafeRandom random,
+                                                      ProgressConsumer<Long> monitor,
+                                                      Fragmenter fragmenter) {
         return uploadFileSection(filename, fileData, isHidden, 0, length, Optional.empty(), network, random, monitor, fragmenter);
     }
 
     public CompletableFuture<FileTreeNode> uploadFileSection(String filename, AsyncReader fileData, long startIndex, long endIndex,
-                                                 NetworkAccess network, SafeRandom random,
-                                                 ProgressConsumer<Long> monitor, Fragmenter fragmenter) {
+                                                             NetworkAccess network, SafeRandom random,
+                                                             ProgressConsumer<Long> monitor, Fragmenter fragmenter) {
         return uploadFileSection(filename, fileData, startIndex, endIndex, Optional.empty(), network, random, monitor, fragmenter);
     }
 
     public CompletableFuture<FileTreeNode> uploadFileSection(String filename, AsyncReader fileData,
-                                                 long startIndex, long endIndex,
-                                                 Optional<SymmetricKey> baseKey,
-                                                 NetworkAccess network, SafeRandom random,
-                                                 ProgressConsumer<Long> monitor,
-                                                 Fragmenter fragmenter) {
+                                                             long startIndex, long endIndex,
+                                                             Optional<SymmetricKey> baseKey,
+                                                             NetworkAccess network, SafeRandom random,
+                                                             ProgressConsumer<Long> monitor,
+                                                             Fragmenter fragmenter) {
         return uploadFileSection(filename, fileData, false, startIndex, endIndex, baseKey, network, random, monitor, fragmenter);
     }
 
     public CompletableFuture<FileTreeNode> uploadFileSection(String filename, AsyncReader fileData,
-                                                 boolean isHidden,
-                                                 long startIndex, long endIndex,
-                                                 Optional<SymmetricKey> baseKey,
-                                                 NetworkAccess network,
-                                                 SafeRandom random,
-                                                 ProgressConsumer<Long> monitor,
-                                                 Fragmenter fragmenter) {
+                                                             boolean isHidden,
+                                                             long startIndex, long endIndex,
+                                                             Optional<SymmetricKey> baseKey,
+                                                             NetworkAccess network,
+                                                             SafeRandom random,
+                                                             ProgressConsumer<Long> monitor,
+                                                             Fragmenter fragmenter) {
         if (!isLegalName(filename)) {
             CompletableFuture<FileTreeNode> res = new CompletableFuture<>();
             res.completeExceptionally(new IllegalStateException("Illegal filename: " + filename));
@@ -499,7 +505,7 @@ public class FileTreeNode {
             DirAccess dirAccess = (DirAccess) pointer.fileAccess;
             SymmetricKey dirParentKey = dirAccess.getParentKey(rootRKey);
             Location parentLocation = getLocation();
-            int thumbnailSrcImageSize = startIndex == 0 && endIndex < Integer.MAX_VALUE ? (int)endIndex : 0;
+            int thumbnailSrcImageSize = startIndex == 0 && endIndex < Integer.MAX_VALUE ? (int) endIndex : 0;
             boolean hasMime = thumbnailSrcImageSize >= 8;
             return generateThumbnail(network, fileData, thumbnailSrcImageSize, filename)
                     .thenCompose(thumbData -> fileData.reset()
@@ -555,7 +561,7 @@ public class FileTreeNode {
                             FileTreeNode toRename = new FileTreeNode(Optional.empty(),
                                     updatedChildPointer, ownername, readers, writers, entryWriterKey);
                             return toRename.rename(safeName, network, us).thenCompose(usAgain ->
-                                    ((DirAccess)usAgain.pointer.fileAccess)
+                                    ((DirAccess) usAgain.pointer.fileAccess)
                                             .addFileAndCommit(childPointer, pointer.filePointer.baseKey,
                                                     pointer.filePointer, getSigner(), network, random)
                                             .thenAccept(uploadResult -> {
@@ -598,9 +604,9 @@ public class FileTreeNode {
     }
 
     private CompletableFuture<FileTreeNode> updateExistingChild(FileTreeNode existingChild, AsyncReader fileData,
-                                                           long inputStartIndex, long endIndex,
-                                                           NetworkAccess network, SafeRandom random,
-                                                           ProgressConsumer<Long> monitor, Fragmenter fragmenter) {
+                                                                long inputStartIndex, long endIndex,
+                                                                NetworkAccess network, SafeRandom random,
+                                                                ProgressConsumer<Long> monitor, Fragmenter fragmenter) {
 
         String filename = existingChild.getFileProperties().name;
         System.out.println("Overwriting section [" + Long.toHexString(inputStartIndex) + ", " + Long.toHexString(endIndex) + "] of child with name: " + filename);
@@ -741,9 +747,9 @@ public class FileTreeNode {
             SymmetricKey rootDirKey = dirPointer.baseKey;
             return dirAccess.mkdir(newFolderName, network, dirPointer.location.owner, getSigner(), dirPointer.getLocation().getMapKey(), rootDirKey,
                     requestedBaseSymmetricKey, isSystemFolder, random).thenApply(x -> {
-                        setModified();
-                        return x;
-                    });
+                setModified();
+                return x;
+            });
         });
     }
 
@@ -753,7 +759,6 @@ public class FileTreeNode {
     }
 
     /**
-     *
      * @param newFilename
      * @param network
      * @param parent
@@ -761,7 +766,7 @@ public class FileTreeNode {
      * @return the updated parent
      */
     public CompletableFuture<FileTreeNode> rename(String newFilename, NetworkAccess network,
-                                             FileTreeNode parent, boolean overwrite) {
+                                                  FileTreeNode parent, boolean overwrite) {
         setModified();
         if (! isLegalName(newFilename))
             return CompletableFuture.completedFuture(parent);
@@ -807,7 +812,7 @@ public class FileTreeNode {
                 CompletableFuture.completedFuture(false) :
                 parent.hasChildWithName(newName, network))
                 .thenCompose(hasChild -> {
-                    if (hasChild && parent!= null && !parent.getChildrenLocations().stream()
+                    if (hasChild && parent != null && !parent.getChildrenLocations().stream()
                             .map(l -> new ByteArrayWrapper(l.getMapKey()))
                             .collect(Collectors.toSet())
                             .contains(new ByteArrayWrapper(pointer.filePointer.getLocation().getMapKey()))) {
@@ -876,7 +881,6 @@ public class FileTreeNode {
     }
 
     /**
-     *
      * @param network
      * @param parent
      * @return updated parent
@@ -932,10 +936,10 @@ public class FileTreeNode {
     @JsMethod
     public String getBase64Thumbnail() {
         Optional<byte[]> thumbnail = props.thumbnail;
-        if(thumbnail.isPresent()){
+        if (thumbnail.isPresent()) {
             String base64Data = Base64.getEncoder().encodeToString(thumbnail.get());
             return "data:image/png;base64," + base64Data;
-        }else{
+        } else {
             return "";
         }
     }
@@ -978,20 +982,18 @@ public class FileTreeNode {
             ImageIO.write(thumbnailImage, "JPG", baos);
             baos.close();
             return baos.toByteArray();
-        }
-        catch (IOException ioe) {
+        } catch (IOException ioe) {
             ioe.printStackTrace();
         }
         return new byte[0];
     }
 
-    private CompletableFuture<byte[]> generateThumbnail(NetworkAccess network, AsyncReader fileData, int fileSize, String filename)
-    {
+    private CompletableFuture<byte[]> generateThumbnail(NetworkAccess network, AsyncReader fileData, int fileSize, String filename) {
         CompletableFuture<byte[]> fut = new CompletableFuture<>();
-        if(fileSize > 0) {
+        if (fileSize > 0) {
             isImage(fileData).thenAccept(isThumbnail -> {
-                if(isThumbnail) {
-                    if(network.isJavascript()) {
+                if (isThumbnail) {
+                    if (network.isJavascript()) {
                         thumbnail.generateThumbnail(fileData, fileSize, filename).thenAccept(base64Str -> {
                             byte[] bytesOfData = Base64.getDecoder().decode(base64Str);
                             fut.complete(bytesOfData);
@@ -1002,8 +1004,8 @@ public class FileTreeNode {
                             fut.complete(generateThumbnail(bytes));
                         });
                     }
-                } else{
-                    fut.complete(new byte[0]);    			 
+                } else {
+                    fut.complete(new byte[0]);
                 }
             });
         } else {
@@ -1012,32 +1014,30 @@ public class FileTreeNode {
         return fut;
     }
 
-    private CompletableFuture<Boolean> isImage(AsyncReader imageBlob)
-    {
+    private CompletableFuture<Boolean> isImage(AsyncReader imageBlob) {
         CompletableFuture<Boolean> result = new CompletableFuture<>();
-        byte[] data = new byte[HEADER_BYTES_TO_IDENTIFY_IMAGE_FILE];
-        imageBlob.readIntoArray(data, 0, HEADER_BYTES_TO_IDENTIFY_IMAGE_FILE).thenAccept(numBytesRead -> {
-        	imageBlob.reset().thenAccept(resetResult -> {
-	            if(numBytesRead < HEADER_BYTES_TO_IDENTIFY_IMAGE_FILE) {
-	            	result.complete(false);
-	            }else {
-                    byte[] tempBytes = Arrays.copyOfRange(data, 0, 2);
-	            	if (!compareArrayContents(Arrays.copyOfRange(data, 0, BMP.length), BMP)
-	                    && !compareArrayContents(Arrays.copyOfRange(data, 0, GIF.length), GIF)
-	                    && !compareArrayContents(Arrays.copyOfRange(data, 0, PNG.length), PNG)
-	                    && !compareArrayContents(Arrays.copyOfRange(data, 0, 2), JPEG)) {
-	            		result.complete(false);
-	            	}else {
-            			result.complete(true);
-	            	}
-	            }
-        	});
+        byte[] data = new byte[HEADER_BYTES_TO_IDENTIFY_MIME_TYPE];
+        imageBlob.readIntoArray(data, 0, HEADER_BYTES_TO_IDENTIFY_MIME_TYPE).thenAccept(numBytesRead -> {
+            imageBlob.reset().thenAccept(resetResult -> {
+                if (numBytesRead < HEADER_BYTES_TO_IDENTIFY_MIME_TYPE) {
+                    result.complete(false);
+                } else {
+                    if (!compareArrayContents(Arrays.copyOfRange(data, 0, BMP.length), BMP)
+                            && !compareArrayContents(Arrays.copyOfRange(data, 0, GIF.length), GIF)
+                            && !compareArrayContents(Arrays.copyOfRange(data, 0, PNG.length), PNG)
+                            && !compareArrayContents(Arrays.copyOfRange(data, 0, 2), JPEG)) {
+                        result.complete(false);
+                    } else {
+                        result.complete(true);
+                    }
+                }
+            });
         });
-    	return result;
+        return result;
     }
 
     public static CompletableFuture<String> calculateMimeType(AsyncReader data) {
-        byte[] header = new byte[8];
+        byte[] header = new byte[HEADER_BYTES_TO_IDENTIFY_MIME_TYPE];
         return data.readIntoArray(header, 0, header.length)
                 .thenApply(read -> calculateMimeType(header));
     }
@@ -1054,6 +1054,16 @@ public class FileTreeNode {
 
         if (compareArrayContents(Arrays.copyOfRange(start, 4, 8), MP4))
             return "video/mp4";
+        if (compareArrayContents(Arrays.copyOfRange(start, 24, 28), WEBM))
+            return "video/webm";
+        if (compareArrayContents(Arrays.copyOfRange(start, 0, 3), OGG))
+            return "video/ogg";
+        if (compareArrayContents(Arrays.copyOfRange(start, 8, 16), MATROSKA))
+            return "video/x-matroska";
+        if (compareArrayContents(Arrays.copyOfRange(start, 0, 3), FLV))
+            return "video/x-flv";
+        if (compareArrayContents(Arrays.copyOfRange(start, 8, 12), AVI))
+            return "video/avi";
 
         if (compareArrayContents(Arrays.copyOfRange(start, 0, 3), ID3))
             return "audio/mpeg3";
