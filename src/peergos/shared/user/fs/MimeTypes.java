@@ -3,11 +3,13 @@ package peergos.shared.user.fs;
 public class MimeTypes {
     final static int[] ID3 = new int[]{'I', 'D', '3'};
     final static int[] MP3 = new int[]{0xff, 0xfb};
+    final static int[] WAV_1 = new int[]{'R', 'I', 'F', 'F'};
+    final static int[] WAV_2 = new int[]{'W', 'A', 'V', 'E'};
 
     final static int[] MP4 = new int[]{'f', 't', 'y', 'p'};
     final static int[] FLV = new int[]{'F', 'L', 'V'};
     final static int[] AVI = new int[]{'A', 'V', 'I', ' '};
-    final static int[] OGG = new int[]{'O', 'g', 'g'};
+    final static int[] OGG = new int[]{'O', 'g', 'g', 'S', 0, 2};
     final static int[] WEBM = new int[]{'w', 'e', 'b', 'm'};
     final static int[] MATROSKA = new int[]{0x6D, 0x61, 0x74, 0x72, 0x6F, 0x73, 0x6B, 0x61};
 
@@ -23,41 +25,45 @@ public class MimeTypes {
     final static int HEADER_BYTES_TO_IDENTIFY_MIME_TYPE = 28;
 
     public static final String calculateMimeType(byte[] start) {
-        if (compareArrayContents(start, BMP))
+        if (equalArrays(start, BMP))
             return "image/bmp";
-        if (compareArrayContents(start, GIF))
+        if (equalArrays(start, GIF))
             return "image/gif";
-        if (compareArrayContents(start, PNG))
+        if (equalArrays(start, PNG))
             return "image/png";
-        if (compareArrayContents(start, JPEG))
+        if (equalArrays(start, JPEG))
             return "image/jpg";
-        if (compareArrayContents(start, ICO))
+        if (equalArrays(start, ICO))
             return "image/x-icon";
-        if (compareArrayContents(start, CUR))
+        if (equalArrays(start, CUR))
             return "image/x-icon";
         // many browsers don't support tiff
-        if (compareArrayContents(start, TIFF1))
+        if (equalArrays(start, TIFF1))
             return "image/tiff";
-        if (compareArrayContents(start, TIFF2))
+        if (equalArrays(start, TIFF2))
             return "image/tiff";
 
-        if (compareArrayContents(start, 4, MP4))
+        if (equalArrays(start, 4, MP4))
             return "video/mp4";
-        if (compareArrayContents(start, 24, WEBM))
+        if (equalArrays(start, 24, WEBM))
             return "video/webm";
-        if (compareArrayContents(start, OGG))
+        if (equalArrays(start, OGG))
             return "video/ogg";
-        if (compareArrayContents(start, 8, MATROSKA))
+        if (equalArrays(start, 8, MATROSKA))
             return "video/x-matroska";
-        if (compareArrayContents(start, FLV))
+        if (equalArrays(start, FLV))
             return "video/x-flv";
-        if (compareArrayContents(start, 8, AVI))
+        if (equalArrays(start, 8, AVI))
             return "video/avi";
 
-        if (compareArrayContents(start, ID3))
-            return "audio/mpeg3";
-        if (compareArrayContents(start, MP3))
-            return "audio/mpeg3";
+        if (equalArrays(start, ID3))
+            return "audio/mpeg";
+        if (equalArrays(start, MP3))
+            return "audio/mpeg";
+        if (equalArrays(start, OGG)) // not sure how to distinguish from ogg video easily
+            return "audio/ogg";
+        if (equalArrays(start, WAV_1) && equalArrays(start, 8, WAV_2))
+            return "audio/wav";
 
         if (allAscii(start))
             return "text/plain";
@@ -74,11 +80,11 @@ public class MimeTypes {
         return true;
     }
 
-    private static boolean compareArrayContents(byte[] a, int[] target) {
-        return compareArrayContents(a, 0, target);
+    private static boolean equalArrays(byte[] a, int[] target) {
+        return equalArrays(a, 0, target);
     }
 
-    private static boolean compareArrayContents(byte[] a, int aOffset, int[] target) {
+    private static boolean equalArrays(byte[] a, int aOffset, int[] target) {
         if (a == null || target == null){
             return false;
         }
