@@ -493,7 +493,7 @@ public class FileTreeNode {
             SymmetricKey dirParentKey = dirAccess.getParentKey(rootRKey);
             Location parentLocation = getLocation();
             int thumbnailSrcImageSize = startIndex == 0 && endIndex < Integer.MAX_VALUE ? (int) endIndex : 0;
-            boolean hasMime = thumbnailSrcImageSize >= 8;
+            boolean hasMime = thumbnailSrcImageSize >= MimeTypes.HEADER_BYTES_TO_IDENTIFY_MIME_TYPE;
             return generateThumbnail(network, fileData, thumbnailSrcImageSize, filename)
                     .thenCompose(thumbData -> fileData.reset()
                             .thenCompose(forMime -> (hasMime ? calculateMimeType(forMime) : CompletableFuture.completedFuture(""))
@@ -977,7 +977,7 @@ public class FileTreeNode {
 
     private CompletableFuture<byte[]> generateThumbnail(NetworkAccess network, AsyncReader fileData, int fileSize, String filename) {
         CompletableFuture<byte[]> fut = new CompletableFuture<>();
-        if (fileSize > 0) {
+        if (fileSize > MimeTypes.HEADER_BYTES_TO_IDENTIFY_MIME_TYPE) {
             isImage(fileData).thenAccept(isThumbnail -> {
                 if (isThumbnail) {
                     if (network.isJavascript()) {
