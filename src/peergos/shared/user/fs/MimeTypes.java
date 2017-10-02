@@ -7,11 +7,18 @@ public class MimeTypes {
     final static int[] WAV_2 = new int[]{'W', 'A', 'V', 'E'};
 
     final static int[] MP4 = new int[]{'f', 't', 'y', 'p'};
+    final static int[] ISO2 = new int[]{'i', 's', 'o', '2'};
+    final static int[] ISOM = new int[]{'i', 's', 'o', 'm'};
+    final static int[] MP41 = new int[]{'m', 'p', '4', '1'};
+    final static int[] MP42 = new int[]{'m', 'p', '4', '2'};
+    final static int[] QT = new int[]{'q', 't', ' ', ' '};
+    final static int[] THREEGP = new int[]{'3', 'g', 'p'};
+
     final static int[] FLV = new int[]{'F', 'L', 'V'};
     final static int[] AVI = new int[]{'A', 'V', 'I', ' '};
     final static int[] OGG = new int[]{'O', 'g', 'g', 'S', 0, 2};
     final static int[] WEBM = new int[]{'w', 'e', 'b', 'm'};
-    final static int[] MATROSKA = new int[]{'m', 'a', 't', 'r', 'o', 's', 'k', 'a'};
+    final static int[] MATROSKA_START = new int[]{0x1a, 0x45, 0xdf, 0xa3};
 
     final static int[] ICO = new int[]{0, 0, 1, 0};
     final static int[] CUR = new int[]{0, 0, 2, 0};
@@ -43,13 +50,22 @@ public class MimeTypes {
         if (equalArrays(start, TIFF2))
             return "image/tiff";
 
-        if (equalArrays(start, 4, MP4))
-            return "video/mp4";
+        if (equalArrays(start, 4, MP4)) {
+            if (equalArrays(start, 8, ISO2)
+                    || equalArrays(start, 8, ISOM)
+                    || equalArrays(start, 8, MP42)
+                    || equalArrays(start, 8, MP41))
+                return "video/mp4";
+            if (equalArrays(start, 8, QT))
+                return "video/quicktime";
+            if (equalArrays(start, 8, THREEGP))
+                return "video/3gpp";
+        }
         if (equalArrays(start, 24, WEBM))
             return "video/webm";
         if (equalArrays(start, OGG))
             return "video/ogg";
-        if (equalArrays(start, 8, MATROSKA))
+        if (equalArrays(start, MATROSKA_START))
             return "video/x-matroska";
         if (equalArrays(start, FLV))
             return "video/x-flv";
