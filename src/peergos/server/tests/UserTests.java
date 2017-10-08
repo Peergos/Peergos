@@ -36,7 +36,7 @@ public abstract class UserTests {
 
     public UserTests(String useIPFS, Random r) throws Exception {
         int portMin = 9000;
-        int portRange = 2000;
+        int portRange = 4000;
         int webPort = portMin + r.nextInt(portRange);
         int corePort = portMin + portRange + r.nextInt(portRange);
         Args args = Args.parse(new String[]{"useIPFS", ""+useIPFS.equals("IPFS"), "-port", Integer.toString(webPort), "-corenodePort", Integer.toString(corePort)});
