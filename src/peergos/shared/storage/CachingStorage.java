@@ -49,6 +49,10 @@ public class CachingStorage implements ContentAddressedStorage {
             pending.remove(key);
             pipe.complete(cborOpt);
             return cborOpt;
+        }).exceptionally(t -> {
+            pending.remove(key);
+            pipe.completeExceptionally(t);
+            return null;
         });
     }
 
@@ -76,6 +80,10 @@ public class CachingStorage implements ContentAddressedStorage {
             pendingRaw.remove(key);
             pipe.complete(rawOpt);
             return rawOpt;
+        }).exceptionally(t -> {
+            pending.remove(key);
+            pipe.completeExceptionally(t);
+            return null;
         });
     }
 
