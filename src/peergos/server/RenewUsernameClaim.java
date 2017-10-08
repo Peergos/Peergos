@@ -20,7 +20,8 @@ public class RenewUsernameClaim {
         Crypto crypto = Crypto.initJava();
         NetworkAccess network = NetworkAccess.buildJava(new URL("https://demo.peergos.net")).get();
         String username = args[0];
-        String password = args[1];
+        Console console = System.console();
+        String password = new String(console.readPassword("Enter password for " + username + ":"));
 
         LocalDate expiry = LocalDate.now().plusMonths(2);
         UserContext context = UserContext.signIn(username, password, network, crypto).get();

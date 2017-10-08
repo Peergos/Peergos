@@ -20,9 +20,10 @@ public class Uploader {
         Crypto crypto = Crypto.initJava();
         NetworkAccess network = NetworkAccess.buildJava(new URL("https://demo.peergos.net")).get();
         String username = args[0];
-        String password = args[1];
-        String fromPath = args[2];
-        String toPath = args[3];
+        String fromPath = args[1];
+        String toPath = args[2];
+        Console console = System.console();
+        String password = new String(console.readPassword("Enter password for " + username + ":"));
         UserContext context = UserContext.signIn(username, password, network, crypto).get();
         ForkJoinPool pool = new ForkJoinPool(50);
         long t1 = System.currentTimeMillis();
