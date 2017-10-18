@@ -7,8 +7,8 @@ Peergos Road Map
 Centralized Alpha
 ------------
  - Stable web interface and data formats
- - Streaming E2E encrypted video
- - Streaming download of arbitrarily large files
+ - Streaming E2E encrypted video (streaming disabled by default)
+ - Streaming download of arbitrarily large files (disabled by default)
  - Config file for Peergos to store the following:
  - Max user count to deny new user signups after some limit (And display error to user)
  - Max storage quota per user (enforced on puts) and error shown to user
@@ -30,7 +30,7 @@ Decentralized writes
 Full decentralization
 ------------
  - Move core node's PKI data to append only log in IPFS
- - Zk-SNARKs for follow requests?
+ - Zk-SNARKs for follow requests? https://blog.ethereum.org/2016/12/05/zksnarks-in-a-nutshell/
  - Each user designates a Tor hidden service (publicly in the WriterData) to send follow requests to them to
 
 Keymail
@@ -48,11 +48,13 @@ Group chat
 
 Social Feed
 ------------
- - Essentially just a group chat that is for most (all?) your friends
+ - Essentially just a group chat that is for most (all?) your friends, but similar to a Facebook or Twitter feed
 
 Fully Quantum proof
 ------------
  - Move asymmetric crypto (follow requests and signing roots) to a post-quantum algorithm
+ - http://sphincs.cr.yp.to/software.html
+ - https://www.win.tue.nl/~tchou/mcbits/
 
 Sustainable
 ------------
