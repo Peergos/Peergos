@@ -35,6 +35,7 @@ Full decentralization
 
 Keymail
 ------------
+ - Initially don't need much UI other than upload text file for keymail an select recipient
  - Application to display and edit text (ideally by granting app write access only to a hidden keymail folder)
  - Decide format, information compatible with email headers
  - Bridge to email - a client that polls an email account, writing newly received emails into peergos, and sending emails from new files in a particular folder
