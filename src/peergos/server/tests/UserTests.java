@@ -520,7 +520,6 @@ public abstract class UserTests {
         String filename = "mediumfile.bin";
         byte[] data = new byte[128*1024];
         random.nextBytes(data);
-        long t1 = System.currentTimeMillis();
         String dirName = "subdir";
         userRoot.mkdir(dirName, context.network, false, context.crypto.random).get();
         FileTreeNode subdir = context.getByPath("/" + username + "/" + dirName).get().get();
@@ -529,7 +528,7 @@ public abstract class UserTests {
         FileTreeNode anotherDir = context.getByPath("/" + username + "/" + dirName + "/" + anotherDirName).get().get();
         anotherDir.uploadFileSection(filename, new AsyncReader.ArrayBacked(data), 0, data.length, context.network,
                 context.crypto.random, l -> {}, context.fragmenter()).get();
-        long t2 = System.currentTimeMillis();
+
         String path = "/" + username + "/" + dirName + "/" + anotherDirName;
         FileTreeNode theDir = context.getByPath(path).get().get();
         String link = theDir.toLink();
@@ -539,6 +538,25 @@ public abstract class UserTests {
 
         Optional<FileTreeNode> fileThroughLink = linkContext.getByPath(path + "/" + filename).get();
         Assert.assertTrue("File present through link", fileThroughLink.isPresent());
+    }
+
+    @Test
+    public void rename() throws Exception {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = ensureSignedUp(username, password, network, crypto);
+        FileTreeNode userRoot = context.getUserRoot().get();
+
+        String dirName = "subdir";
+        userRoot.mkdir(dirName, context.network, false, context.crypto.random).get();
+        FileTreeNode subdir = context.getByPath("/" + username + "/" + dirName).get().get();
+        String anotherDirName = "anotherDir";
+        subdir.mkdir(anotherDirName, context.network, false, context.crypto.random).get();
+
+        String path = "/" + username + "/" + dirName;
+        FileTreeNode theDir = context.getByPath(path).get().get();
+        FileTreeNode userRoot2 = context.getByPath("/" + username).get().get();
+        FileTreeNode renamed = theDir.rename("subdir2", network, userRoot2).get();
     }
 
     // This one takes a while, so disable most of the time
