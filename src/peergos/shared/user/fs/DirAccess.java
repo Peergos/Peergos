@@ -172,7 +172,7 @@ public class DirAccess implements CryptreeNode {
         SymmetricKey parentKey = subfolders2parent.target(writableFilePointer.baseKey);
         metaKey = this.getMetaKey(parentKey);
         byte[] metaNonce = metaKey.createNonce();
-        DirAccess updated = new DirAccess(MaybeMultihash.empty(), version, subfolders2files, subfolders2parent,
+        DirAccess updated = new DirAccess(lastCommittedHash, version, subfolders2files, subfolders2parent,
                 parent2meta, parentLink,
                 ArrayOps.concat(metaNonce, metaKey.encrypt(newProps.serialize(), metaNonce)),
                 subfolders, files, moreFolderContents
