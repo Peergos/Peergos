@@ -1,10 +1,11 @@
 package peergos.shared.util;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 public class Args
 {
-    private final Map<String, String> params = new HashMap<>();
+    private final Map<String, String> params = new LinkedHashMap<>(16, 0.75f, false);//insertion order
 
     public static Args parse(String[] args)
     {
@@ -106,5 +107,28 @@ public class Args
                 return result;
         }
         return def;
+    }
+
+    public Args tail() {
+        Args tail = new Args();
+        boolean isFirst = true;
+
+        for (Iterator<Map.Entry<String, String>> it = params.entrySet().iterator(); it.hasNext();) {
+            Map.Entry<String, String> next = it.next();
+            if (! isFirst)
+                tail.params.put(next.getKey(), next.getValue());
+            isFirst = false;
+        }
+        return tail;
+    }
+
+    public Optional<String> head() {
+        return params.keySet()
+                .stream()
+                .findFirst();
+    }
+
+    public void setIfAbsent(String key, String value) {
+        params.putIfAbsent(key, value);
     }
 }
