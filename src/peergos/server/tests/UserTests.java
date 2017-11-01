@@ -36,7 +36,7 @@ public abstract class UserTests {
 
     public UserTests(String useIPFS, Random r) throws Exception {
         int portMin = 9000;
-        int portRange = 2000;
+        int portRange = 4000;
         int webPort = portMin + r.nextInt(portRange);
         int corePort = portMin + portRange + r.nextInt(portRange);
         Args args = Args.parse(new String[]{"useIPFS", ""+useIPFS.equals("IPFS"), "-port", Integer.toString(webPort), "-corenodePort", Integer.toString(corePort)});
@@ -57,7 +57,7 @@ public abstract class UserTests {
     }
 
     private String generateUsername() {
-        return "test" + (random.nextInt() % 10000);
+        return "test" + Math.abs(random.nextInt() % 10000);
     }
 
     @Test
@@ -110,7 +110,7 @@ public abstract class UserTests {
                 new SafeRandom.Java(), new Ed25519.Java(), new Curve25519.Java(), UserGenerationAlgorithm.getDefault()).thenAccept(userWithRoot -> {
 		    PublicSigningKey expected = PublicSigningKey.fromString("7HvEWP6yd1UD8rOorfFrieJ8S7yC8+l3VisV9kXNiHmI7Eav7+3GTRSVBRCymItrzebUUoCi39M6rdgeOU9sXXFD");
 		    if (! expected.equals(userWithRoot.getUser().publicSigningKey))
-		        throw new IllegalStateException("Generated user diferent from the Javascript! \n"+userWithRoot.getUser().publicSigningKey + " != \n"+expected);
+		        throw new IllegalStateException("Generated user different from the Javascript! \n"+userWithRoot.getUser().publicSigningKey + " != \n"+expected);
         });
     }
 
@@ -185,16 +185,17 @@ public abstract class UserTests {
         byte[] data = new byte[0];
         userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
                 context.crypto.random, l -> {}, context.fragmenter()).get();
-        checkFileContents(data, userRoot.getDescendentByPath(filename, context.network).get().get(), context);
+        checkFileContents(data, context.getUserRoot().get().getDescendentByPath(filename, context.network).get().get(), context);
 
         // write small 1 chunk file
         byte[] data2 = "This is a small amount of data".getBytes();
-        userRoot.uploadFileSection(filename, new AsyncReader.ArrayBacked(data2), 0, data2.length, context.network,
-                context.crypto.random, l -> {}, context.fragmenter()).get();
-        checkFileContents(data2, userRoot.getDescendentByPath(filename, context.network).get().get(), context);
+        FileTreeNode updatedRoot = context.getUserRoot().get().uploadFileSection(filename, new AsyncReader.ArrayBacked(data2), 0, data2.length, context.network,
+                context.crypto.random, l -> {
+                }, context.fragmenter()).get();
+        checkFileContents(data2, updatedRoot.getDescendentByPath(filename, context.network).get().get(), context);
 
         // check multiple read calls  in one chunk
-        checkFileContentsChunked(data2, userRoot.getDescendentByPath(filename, context.network).get().get(), context, 3);
+        checkFileContentsChunked(data2, updatedRoot.getDescendentByPath(filename, context.network).get().get(), context, 3);
         // check file size
         // assertTrue("File size", data2.length == userRoot.getDescendentByPath(filename,context.network).get().get().getFileProperties().size);
 
@@ -203,10 +204,11 @@ public abstract class UserTests {
         int bigLength = Chunk.MAX_SIZE * 3;
         byte[] bigData = new byte[bigLength];
         random.nextBytes(bigData);
-        userRoot.uploadFileSection(filename, new AsyncReader.ArrayBacked(bigData), 0, bigData.length, context.network,
-                context.crypto.random, l -> {}, context.fragmenter()).get();
+        FileTreeNode updatedRoot2 = updatedRoot.uploadFileSection(filename, new AsyncReader.ArrayBacked(bigData), 0, bigData.length, context.network,
+                context.crypto.random, l -> {
+                }, context.fragmenter()).get();
         checkFileContentsChunked(bigData,
-                userRoot.getDescendentByPath(filename, context.network).get().get(),
+                updatedRoot2.getDescendentByPath(filename, context.network).get().get(),
                 context,
                 5);
         assertTrue("File size", bigData.length == context.getByPath(username + "/" + filename).get().get().getFileProperties().size);
@@ -215,24 +217,25 @@ public abstract class UserTests {
         byte[] data3 = new byte[128 * 1024];
         new Random().nextBytes(data3);
         String otherName = "other"+filename;
-        userRoot.uploadFileSection(otherName, new AsyncReader.ArrayBacked(data3), 0, data3.length, context.network,
-                context.crypto.random, l -> {}, context.fragmenter()).get();
+        FileTreeNode updatedRoot3 = updatedRoot2.uploadFileSection(otherName, new AsyncReader.ArrayBacked(data3), 0, data3.length, context.network,
+                context.crypto.random, l -> {
+                }, context.fragmenter()).get();
         assertTrue("File size", data3.length == context.getByPath(username + "/" + otherName).get().get().getFileProperties().size);
-        checkFileContents(data3, userRoot.getDescendentByPath(otherName, context.network).get().get(), context);
+        checkFileContents(data3, updatedRoot3.getDescendentByPath(otherName, context.network).get().get(), context);
 
         // insert data in the middle
         byte[] data4 = "some data to insert somewhere".getBytes();
         int startIndex = 100 * 1024;
-        userRoot.uploadFileSection(otherName, new AsyncReader.ArrayBacked(data4), startIndex, startIndex + data4.length,
+        FileTreeNode updatedRoot4 = updatedRoot3.uploadFileSection(otherName, new AsyncReader.ArrayBacked(data4), startIndex, startIndex + data4.length,
                 context.network, context.crypto.random, l -> {}, context.fragmenter()).get();
         System.arraycopy(data4, 0, data3, startIndex, data4.length);
-        checkFileContents(data3, userRoot.getDescendentByPath(otherName, context.network).get().get(), context);
+        checkFileContents(data3, updatedRoot4.getDescendentByPath(otherName, context.network).get().get(), context);
 
         //rename
         String newname = "newname.txt";
-        userRoot.getDescendentByPath(otherName, context.network).get().get()
-                .rename(newname, context.network, userRoot).get();
-        checkFileContents(data3, userRoot.getDescendentByPath(newname, context.network).get().get(), context);
+        updatedRoot4.getDescendentByPath(otherName, context.network).get().get()
+                .rename(newname, context.network, updatedRoot4).get();
+        checkFileContents(data3, updatedRoot4.getDescendentByPath(newname, context.network).get().get(), context);
         // check from the root as well
         checkFileContents(data3, context.getByPath(username + "/" + newname).get().get(), context);
         // check from a fresh log in too
@@ -242,11 +245,10 @@ public abstract class UserTests {
     }
 
     @Test
-    public void concurrentWrites() throws Exception {
+    public void concurrentWritesToDir() throws Exception {
         String username = generateUsername();
         String password = "test01";
         UserContext context = ensureSignedUp(username, password, network, crypto);
-        FileTreeNode userRoot = context.getUserRoot().get();
 
         // write empty file
         int concurrency = 8;
@@ -257,14 +259,12 @@ public abstract class UserTests {
                     byte[] data = randomData(fileSize);
                     String filename = i + ".bin";
                     try {
-                        boolean result = userRoot.uploadFile(filename,
+                        FileTreeNode userRoot = context.getUserRoot().get();
+                        FileTreeNode result = userRoot.uploadFile(filename,
                                 new AsyncReader.ArrayBacked(data),
-                                data.length,
-                                context.network, context.crypto.random, l -> {
-                                },
-                                context.fragmenter()
-                        ).get();
-                        checkFileContents(data, context.getByPath("/" + username + "/" + filename).get().get(), context);
+                                data.length, context.network, context.crypto.random, l -> {}, context.fragmenter()).get();
+                        Optional<FileTreeNode> childOpt = result.getChild(filename, network).get();
+                        checkFileContents(data, childOpt.get(), context);
                         System.out.println("Finished a file");
                         return true;
                     } catch (Exception e) {
@@ -277,7 +277,125 @@ public abstract class UserTests {
         Set<FileTreeNode> files = context.getUserRoot().get().getChildren(context.network).get();
         Set<String> names = files.stream().filter(f -> ! f.getFileProperties().isHidden).map(f -> f.getName()).collect(Collectors.toSet());
         Set<String> expectedNames = IntStream.range(0, concurrency).mapToObj(i -> i + ".bin").collect(Collectors.toSet());
-        Assert.assertTrue("All children present and accounted for", names.equals(expectedNames));
+        Assert.assertTrue("All children present and accounted for: " + names, names.equals(expectedNames));
+    }
+
+    @Test
+    public void concurrentMkdirs() throws Exception {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = ensureSignedUp(username, password, network, crypto);
+
+        // write empty file
+        int concurrency = 8;
+        int fileSize = 1024;
+        ForkJoinPool pool = new ForkJoinPool(concurrency);
+        Set<CompletableFuture<Boolean>> futs = IntStream.range(0, concurrency)
+                .mapToObj(i -> CompletableFuture.supplyAsync(() -> {
+                    byte[] data = randomData(fileSize);
+                    String filename = "folder" + i;
+                    try {
+                        FileTreeNode userRoot = context.getUserRoot().get();
+                        FileTreeNode result = userRoot.uploadFile(filename,
+                                new AsyncReader.ArrayBacked(data),
+                                data.length, context.network, context.crypto.random, l -> {}, context.fragmenter()).get();
+                        return true;
+                    } catch (Exception e) {
+                        throw new RuntimeException(e.getMessage(), e);
+                    }
+                }, pool)).collect(Collectors.toSet());
+
+        boolean success = Futures.combineAll(futs).get().stream().reduce(true, (a, b) -> a && b);
+
+        Set<FileTreeNode> files = context.getUserRoot().get().getChildren(context.network).get();
+        Set<String> names = files.stream().filter(f -> ! f.getFileProperties().isHidden).map(f -> f.getName()).collect(Collectors.toSet());
+        Set<String> expectedNames = IntStream.range(0, concurrency).mapToObj(i -> "folder" + i).collect(Collectors.toSet());
+        Assert.assertTrue("All children present and accounted for: " + names, names.equals(expectedNames));
+    }
+
+    @Test
+    public void concurrentWritesToFile() throws Exception {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = ensureSignedUp(username, password, network, crypto);
+
+        // write a n chunk file, then concurrently modify each of the chunks
+        int concurrency = 2;
+        int CHUNK_SIZE = 5 * 1024 * 1024;
+        int fileSize = concurrency * CHUNK_SIZE;
+        String filename = "afile.bin";
+        FileTreeNode newRoot = context.getUserRoot().get().uploadFile(filename,
+                                new AsyncReader.ArrayBacked(randomData(fileSize)),
+                                fileSize, context.network, context.crypto.random, l -> {}, context.fragmenter()).get();
+
+        List<byte[]> sections = Collections.synchronizedList(new ArrayList<>(concurrency));
+        for (int i=0; i < concurrency; i++)
+            sections.add(null);
+
+        ForkJoinPool pool = new ForkJoinPool(concurrency);
+        Set<CompletableFuture<Boolean>> futs = IntStream.range(0, concurrency)
+                .mapToObj(i -> CompletableFuture.supplyAsync(() -> {
+                    try {
+                        FileTreeNode userRoot = context.getUserRoot().get();
+
+                        byte[] data = randomData(CHUNK_SIZE);
+                        FileTreeNode result = userRoot.uploadFileSection(filename,
+                                new AsyncReader.ArrayBacked(data),
+                                i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE,
+                                context.network, context.crypto.random, l -> {}, context.fragmenter()).get();
+                        Optional<FileTreeNode> childOpt = result.getChild(filename, network).get();
+                        sections.set(i, data);
+                        return true;
+                    } catch (Exception e) {
+                        throw new RuntimeException(e.getMessage(), e);
+                    }
+                }, pool)).collect(Collectors.toSet());
+
+        boolean success = Futures.combineAll(futs).get().stream().reduce(true, (a, b) -> a && b);
+
+        FileTreeNode file = context.getByPath("/" + username + "/" + filename).get().get();
+        byte[] all = new byte[concurrency * CHUNK_SIZE];
+        for (int i=0; i < concurrency; i++)
+            System.arraycopy(sections.get(i), 0, all, i * CHUNK_SIZE, CHUNK_SIZE);
+        checkFileContents(all, file, context);
+    }
+
+    @Test
+    public void duplicateConcurrentWritesToDir() throws Exception {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = ensureSignedUp(username, password, network, crypto);
+
+        // write empty file
+        int concurrency = 8;
+        int fileSize = 1024;
+        String prefix = "afile";
+        String suffix = "bin";
+        String filename = prefix + "." + suffix;
+
+        ForkJoinPool pool = new ForkJoinPool(concurrency);
+        Set<CompletableFuture<Boolean>> futs = IntStream.range(0, concurrency)
+                .mapToObj(i -> CompletableFuture.supplyAsync(() -> {
+                    byte[] data = randomData(fileSize);
+                    try {
+                        FileTreeNode userRoot = context.getUserRoot().get();
+                        FileTreeNode result = userRoot.uploadFile(filename,
+                                new AsyncReader.ArrayBacked(data),
+                                data.length, context.network, context.crypto.random, l -> {}, context.fragmenter()).get();
+                        return true;
+                    } catch (Exception e) {
+                        throw new RuntimeException(e.getMessage(), e);
+                    }
+                }, pool)).collect(Collectors.toSet());
+
+        boolean success = Futures.combineAll(futs).get().stream().reduce(true, (a, b) -> a && b);
+
+        Set<FileTreeNode> files = context.getUserRoot().get().getChildren(context.network).get();
+        Set<String> names = files.stream().filter(f -> ! f.getFileProperties().isHidden).map(f -> f.getName()).collect(Collectors.toSet());
+        Set<String> expectedNames = Stream.concat(IntStream.range(1, concurrency)
+                .mapToObj(i -> prefix + "[" + i + "]." + suffix), Stream.of(filename))
+                .collect(Collectors.toSet());
+        Assert.assertTrue("All children present and accounted for: " + names, names.equals(expectedNames));
     }
 
     @Test
@@ -294,6 +412,22 @@ public abstract class UserTests {
     }
 
     @Test
+    public void javaThumbnail() throws Exception {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = ensureSignedUp(username, password, network, crypto);
+        FileTreeNode userRoot = context.getUserRoot().get();
+
+        String filename = "small.png";
+        byte[] data = Files.readAllBytes(Paths.get("assets", "logo.png"));
+        userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
+                context.crypto.random, l -> {}, context.fragmenter()).get();
+        FileTreeNode file = context.getByPath(Paths.get(username, filename).toString()).get().get();
+        String thumbnail = file.getBase64Thumbnail();
+        Assert.assertTrue("Has thumbnail", thumbnail.length() > 0);
+    }
+
+    @Test
     public void mediumFileWrite() throws Exception {
         String username = generateUsername();
         String password = "test01";
@@ -302,26 +436,29 @@ public abstract class UserTests {
 
         String filename = "mediumfile.bin";
         byte[] data = new byte[0];
-        userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
-                context.crypto.random, l -> {}, context.fragmenter()).get();
+        FileTreeNode userRoot2 = userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
+                context.crypto.random, l -> {
+                }, context.fragmenter()).get();
 
         //overwrite with 2 chunk file
         byte[] data5 = new byte[10*1024*1024];
         random.nextBytes(data5);
-        userRoot.uploadFileSection(filename, new AsyncReader.ArrayBacked(data5), 0, data5.length, context.network,
-                context.crypto.random, l -> {} , context.fragmenter());
-        checkFileContents(data5, userRoot.getDescendentByPath(filename, context.network).get().get(), context);
-        assertTrue("10MiB file size", data5.length == userRoot.getDescendentByPath(filename,
+        FileTreeNode userRoot3 = userRoot2.uploadFileSection(filename, new AsyncReader.ArrayBacked(data5), 0, data5.length, context.network,
+                context.crypto.random, l -> {
+                }, context.fragmenter()).get();
+        checkFileContents(data5, userRoot3.getDescendentByPath(filename, context.network).get().get(), context);
+        assertTrue("10MiB file size", data5.length == userRoot3.getDescendentByPath(filename,
                 context.network).get().get().getFileProperties().size);
 
         // insert data in the middle of second chunk
         System.out.println("\n***** Mid 2nd chunk write test");
         byte[] dataInsert = "some data to insert somewhere else".getBytes();
         int start = 5*1024*1024 + 4*1024;
-        userRoot.uploadFileSection(filename, new AsyncReader.ArrayBacked(dataInsert), start, start + dataInsert.length,
-                context.network, context.crypto.random, l -> {}, context.fragmenter());
+        FileTreeNode userRoot4 = userRoot3.uploadFileSection(filename, new AsyncReader.ArrayBacked(dataInsert), start, start + dataInsert.length,
+                context.network, context.crypto.random, l -> {
+                }, context.fragmenter()).get();
         System.arraycopy(dataInsert, 0, data5, start, dataInsert.length);
-        checkFileContents(data5, userRoot.getDescendentByPath(filename, context.network).get().get(), context);
+        checkFileContents(data5, userRoot4.getDescendentByPath(filename, context.network).get().get(), context);
 
         // check used space
         PublicKeyHash signer = context.signer.publicKeyHash;
@@ -338,13 +475,15 @@ public abstract class UserTests {
 
         String filename = "mediumfile.bin";
         byte[] data = new byte[0];
-        userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network, context.crypto.random, l -> {}, context.fragmenter());
+        FileTreeNode updatedRoot = userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length,
+                context.network, context.crypto.random, l -> { }, context.fragmenter()).get();
 
         //overwrite with 2 chunk file
         byte[] data5 = new byte[10*1024*1024];
         random.nextBytes(data5);
         long t1 = System.currentTimeMillis();
-        userRoot.uploadFileSection(filename, new AsyncReader.ArrayBacked(data5), 0, data5.length, context.network, context.crypto.random, l -> {}, context.fragmenter());
+        updatedRoot.uploadFileSection(filename, new AsyncReader.ArrayBacked(data5), 0, data5.length,
+                context.network, context.crypto.random, l -> {}, context.fragmenter()).get();
         long t2 = System.currentTimeMillis();
         System.out.println("Write time per chunk " + (t2-t1)/2 + "mS");
         Assert.assertTrue("Timely write", (t2-t1)/2 < 20000);
@@ -381,7 +520,6 @@ public abstract class UserTests {
         String filename = "mediumfile.bin";
         byte[] data = new byte[128*1024];
         random.nextBytes(data);
-        long t1 = System.currentTimeMillis();
         String dirName = "subdir";
         userRoot.mkdir(dirName, context.network, false, context.crypto.random).get();
         FileTreeNode subdir = context.getByPath("/" + username + "/" + dirName).get().get();
@@ -390,7 +528,7 @@ public abstract class UserTests {
         FileTreeNode anotherDir = context.getByPath("/" + username + "/" + dirName + "/" + anotherDirName).get().get();
         anotherDir.uploadFileSection(filename, new AsyncReader.ArrayBacked(data), 0, data.length, context.network,
                 context.crypto.random, l -> {}, context.fragmenter()).get();
-        long t2 = System.currentTimeMillis();
+
         String path = "/" + username + "/" + dirName + "/" + anotherDirName;
         FileTreeNode theDir = context.getByPath(path).get().get();
         String link = theDir.toLink();
@@ -400,6 +538,25 @@ public abstract class UserTests {
 
         Optional<FileTreeNode> fileThroughLink = linkContext.getByPath(path + "/" + filename).get();
         Assert.assertTrue("File present through link", fileThroughLink.isPresent());
+    }
+
+    @Test
+    public void rename() throws Exception {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = ensureSignedUp(username, password, network, crypto);
+        FileTreeNode userRoot = context.getUserRoot().get();
+
+        String dirName = "subdir";
+        userRoot.mkdir(dirName, context.network, false, context.crypto.random).get();
+        FileTreeNode subdir = context.getByPath("/" + username + "/" + dirName).get().get();
+        String anotherDirName = "anotherDir";
+        subdir.mkdir(anotherDirName, context.network, false, context.crypto.random).get();
+
+        String path = "/" + username + "/" + dirName;
+        FileTreeNode theDir = context.getByPath(path).get().get();
+        FileTreeNode userRoot2 = context.getByPath("/" + username).get().get();
+        FileTreeNode renamed = theDir.rename("subdir2", network, userRoot2).get();
     }
 
     // This one takes a while, so disable most of the time
@@ -417,9 +574,11 @@ public abstract class UserTests {
         }
     }
 
-    private static void checkFileContents(byte[] expected, FileTreeNode f, UserContext context) throws Exception {
+    public static void checkFileContents(byte[] expected, FileTreeNode f, UserContext context) throws Exception {
+        long size = f.getFileProperties().size;
         byte[] retrievedData = Serialize.readFully(f.getInputStream(context.network, context.crypto.random,
-                f.getFileProperties().size, l-> {}).get(), f.getSize()).get();
+            size, l-> {}).get(), f.getSize()).get();
+        assertEquals(expected.length, size);
         assertTrue("Correct contents", Arrays.equals(retrievedData, expected));
     }
 
@@ -478,11 +637,9 @@ public abstract class UserTests {
 
         File tmpFile = tmpPath.toFile();
         ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(tmpFile);
-        boolean b = userRoot.uploadFile(name, resetableFileInputStream, tmpFile.length(), context.network, context.crypto.random, (l) -> {}, context.fragmenter()).get();
+        FileTreeNode updatedRoot = userRoot.uploadFile(name, resetableFileInputStream, tmpFile.length(), context.network, context.crypto.random, (l) -> {}, context.fragmenter()).get();
 
-        assertTrue("file upload", b);
-
-        Optional<FileTreeNode> opt = userRoot.getChildren(context.network).get()
+        Optional<FileTreeNode> opt = updatedRoot.getChildren(context.network).get()
                 .stream()
                 .filter(e -> e.getFileProperties().name.equals(name))
                 .findFirst();
@@ -506,12 +663,6 @@ public abstract class UserTests {
         UserContext context = ensureSignedUp(username, password, network.clear(), crypto);
         FileTreeNode userRoot = context.getUserRoot().get();
 
-        Set<FileTreeNode> children = userRoot.getChildren(context.network).get();
-
-        children.stream()
-                .map(FileTreeNode::toString)
-                .forEach(System.out::println);
-
         String name = randomString();
         Path tmpPath = createTmpFile(name);
         byte[] data = randomData(10*1024*1024); // 2 chunks to test block chaining
@@ -520,13 +671,11 @@ public abstract class UserTests {
         File tmpFile = tmpPath.toFile();
         ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(tmpFile);
 
-        boolean b = userRoot.uploadFile(name, resetableFileInputStream, tmpFile.length(), context.network, context.crypto.random, (l) -> {}, context.fragmenter()).get();
+        FileTreeNode updatedRoot = userRoot.uploadFile(name, resetableFileInputStream, tmpFile.length(), context.network, context.crypto.random, (l) -> {}, context.fragmenter()).get();
         String otherName = name + ".other";
-        boolean b2 = userRoot.uploadFile(otherName, resetableFileInputStream, tmpFile.length(), context.network, context.crypto.random, (l) -> {}, context.fragmenter()).get();
+        FileTreeNode updatedRoot2 = updatedRoot.uploadFile(otherName, resetableFileInputStream, tmpFile.length(), context.network, context.crypto.random, (l) -> {}, context.fragmenter()).get();
 
-        assertTrue("file upload", b);
-
-        Optional<FileTreeNode> opt = userRoot.getChildren(context.network).get()
+        Optional<FileTreeNode> opt = updatedRoot2.getChildren(context.network).get()
                         .stream()
                         .filter(e -> e.getFileProperties().name.equals(name))
                         .findFirst();
@@ -543,7 +692,7 @@ public abstract class UserTests {
         assertTrue("retrieved same data", dataEquals);
 
         //delete the file
-        fileTreeNode.remove(context.network, userRoot).get();
+        fileTreeNode.remove(context.network, updatedRoot2).get();
 
         //re-create user-context
         UserContext context2 = ensureSignedUp(username, password, network.clear(), crypto);
@@ -572,6 +721,40 @@ public abstract class UserTests {
         Assert.assertTrue("other file data is  intact", otherDataEquals);
     }
 
+    @Test
+    public void internalCopy() throws Exception {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = ensureSignedUp(username, password, network.clear(), crypto);
+        FileTreeNode userRoot = context.getUserRoot().get();
+        Path home = Paths.get(username);
+
+        String filename = "initialfile.bin";
+        byte[] data = randomData(10*1024*1024); // 2 chunks to test block chaining
+
+        FileTreeNode updatedUserRoot = userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length, network, crypto.random, x -> {}, context.fragmenter()).get();
+
+        FileTreeNode original = context.getByPath(home.resolve(filename).toString()).get().get();
+
+        // copy the file
+        String foldername = "afolder";
+        updatedUserRoot.mkdir(foldername, network, false, crypto.random).get();
+        FileTreeNode subfolder = context.getByPath(home.resolve(foldername).toString()).get().get();
+        FileTreeNode parentDir = original.copyTo(subfolder, network, crypto.random, context.fragmenter()).get();
+        FileTreeNode copy = context.getByPath(home.resolve(foldername).resolve(filename).toString()).get().get();
+        Assert.assertTrue("Different base key", ! copy.getPointer().filePointer.baseKey.equals(original.getPointer().filePointer.baseKey));
+        Assert.assertTrue("Different metadata key", ! getMetaKey(copy).equals(getMetaKey(original)));
+        Assert.assertTrue("Same data key", getDataKey(copy).equals(getDataKey(original)));
+        checkFileContents(data, copy, context);
+    }
+
+    public static SymmetricKey getDataKey(FileTreeNode file) {
+        return ((FileAccess)file.getPointer().fileAccess).getDataKey(file.getPointer().filePointer.baseKey);
+    }
+
+    public static SymmetricKey getMetaKey(FileTreeNode file) {
+        return file.getPointer().fileAccess.getMetaKey(file.getPointer().filePointer.baseKey);
+    }
 
     @Test
     public void deleteDirectoryTest() throws Exception {
@@ -592,7 +775,8 @@ public abstract class UserTests {
         //create the directory
         userRoot.mkdir(folderName, context.network, isSystemFolder, context.crypto.random).get();
 
-        FileTreeNode folderTreeNode = userRoot.getChildren(context.network)
+        FileTreeNode updatedUserRoot = context.getUserRoot().get();
+        FileTreeNode folderTreeNode = updatedUserRoot.getChildren(context.network)
                 .get()
                 .stream()
                 .filter(e -> e.getFileProperties().name.equals(folderName))
@@ -600,10 +784,10 @@ public abstract class UserTests {
                 .orElseThrow(() -> new IllegalStateException("Missing created folder " + folderName));
 
         //remove the directory
-        folderTreeNode.remove(context.network, userRoot).get();
+        folderTreeNode.remove(context.network, updatedUserRoot).get();
 
         //ensure folder directory not  present
-        boolean isPresent = userRoot.getChildren(context.network)
+        boolean isPresent = context.getUserRoot().get().getChildren(context.network)
                 .get()
                 .stream()
                 .filter(e -> e.getFileProperties().name.equals(folderName))
@@ -628,11 +812,12 @@ public abstract class UserTests {
         return UUID.randomUUID().toString();
     }
 
-    private static byte[] randomData(int length) {
+    public static byte[] randomData(int length) {
         byte[] data = new byte[length];
         random.nextBytes(data);
         return data;
     }
+
     private static Path TMP_DIR = Paths.get("test","resources","tmp");
 
     private static void ensureTmpDir() {

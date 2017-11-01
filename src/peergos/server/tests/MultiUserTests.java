@@ -5,11 +5,13 @@ import org.junit.runner.*;
 import org.junit.runners.*;
 import peergos.server.storage.ResetableFileInputStream;
 import peergos.shared.*;
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.server.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
+import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.*;
 
 import java.io.*;
@@ -109,7 +111,7 @@ public class MultiUserTests {
         byte[] originalFileContents = "Hello Peergos friend!".getBytes();
         Files.write(f.toPath(), originalFileContents);
         ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(f);
-        boolean uploaded = u1Root.uploadFile(filename, resetableFileInputStream, f.length(),
+        FileTreeNode uploaded = u1Root.uploadFile(filename, resetableFileInputStream, f.length(),
                 u1.network, u1.crypto.random,l -> {}, u1.fragmenter()).get();
 
         // share the file from "a" to each of the others
@@ -161,12 +163,61 @@ public class MultiUserTests {
         AsyncReader suffixStream = new AsyncReader.ArrayBacked(suffix);
         FileTreeNode parent = u1New.getByPath(u1New.username).get().get();
         parent.uploadFileSection(filename, suffixStream, originalFileContents.length, originalFileContents.length + suffix.length,
-                Optional.empty(), u1New.network, u1New.crypto.random, l -> {}, u1New.fragmenter());
+                Optional.empty(), u1New.network, u1New.crypto.random, l -> {}, u1New.fragmenter()).get();
         AsyncReader extendedContents = u1New.getByPath(u1.username + "/" + filename).get().get().getInputStream(u1New.network,
                 u1New.crypto.random, l -> {}).get();
         byte[] newFileContents = Serialize.readFully(extendedContents, originalFileContents.length + suffix.length).get();
 
         Assert.assertTrue(Arrays.equals(newFileContents, ArrayOps.concat(originalFileContents, suffix)));
+    }
+
+    @Test
+    public void safeCopyOfFriendsFile() throws Exception {
+        UserContext u1 = UserTests.ensureSignedUp("a", "a", network.clear(), crypto);
+        UserContext u2 = UserTests.ensureSignedUp("b", "b", network.clear(), crypto);
+
+        // send follow requests from each other user to "a"
+        u2.sendFollowRequest(u1.username, SymmetricKey.random()).get();
+
+        // make "a" reciprocate all the follow requests
+        List<FollowRequest> u1Requests = u1.processFollowRequests().get();
+        for (FollowRequest u1Request : u1Requests) {
+            boolean accept = true;
+            boolean reciprocate = true;
+            u1.sendReplyFollowRequest(u1Request, accept, reciprocate).get();
+        }
+
+        // complete the friendship connection
+        u2.processFollowRequests().get();//needed for side effect
+
+        // upload a file to "a"'s space
+        FileTreeNode u1Root = u1.getUserRoot().get();
+        String filename = "somefile.txt";
+        byte[] data = UserTests.randomData(10*1024*1024);
+
+        FileTreeNode uploaded = u1Root.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length,
+                u1.network, u1.crypto.random,l -> {}, u1.fragmenter()).get();
+
+        // share the file from "a" to each of the others
+        FileTreeNode u1File = u1.getByPath(u1.username + "/" + filename).get().get();
+        u1.shareWith(Paths.get(u1.username, filename), Collections.singleton(u2.username)).get();
+
+        // check other user can read the file
+        FileTreeNode sharedFile = u2.getByPath(u1.username + "/" + filename).get().get();
+        String dirname = "adir";
+        u2.getUserRoot().get().mkdir(dirname, network, false, crypto.random).get();
+        FileTreeNode targetDir = u2.getByPath(Paths.get(u2.username, dirname).toString()).get().get();
+
+        // copy the friend's file to our own space, this should reupload the file encrypted with a new key
+        // this prevents us exposing to the network our social graph by the fact that we pin the same file fragments
+        sharedFile.copyTo(targetDir, network, crypto.random, u2.fragmenter()).get();
+        FileTreeNode copy = u2.getByPath(Paths.get(u2.username, dirname, filename).toString()).get().get();
+
+        // check that the copied file has the correct contents
+        UserTests.checkFileContents(data, copy, u2);
+        Assert.assertTrue("Different base key", ! copy.getPointer().filePointer.baseKey.equals(u1File.getPointer().filePointer.baseKey));
+        Assert.assertTrue("Different metadata key", ! UserTests.getMetaKey(copy).equals(UserTests.getMetaKey(u1File)));
+        Assert.assertTrue("Different data key", ! UserTests.getDataKey(copy).equals(UserTests.getDataKey(u1File)));
     }
 
     @Test
@@ -199,7 +250,7 @@ public class MultiUserTests {
         byte[] originalFileContents = "Hello Peergos friend!".getBytes();
         Files.write(f.toPath(), originalFileContents);
         ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(f);
-        boolean uploaded = u1Root.uploadFile(filename, resetableFileInputStream, f.length(),
+        FileTreeNode uploaded = u1Root.uploadFile(filename, resetableFileInputStream, f.length(),
                 u1.network, u1.crypto.random,l -> {}, u1.fragmenter()).get();
 
         // share the file from "a" to each of the others
@@ -222,22 +273,32 @@ public class MultiUserTests {
         UserContext userToUnshareWith = friends.stream().findFirst().get();
         String friendsPathToFile = u1.username + "/" + filename;
         Optional<FileTreeNode> priorUnsharedView = userToUnshareWith.getByPath(friendsPathToFile).get();
+        FilePointer priorPointer = priorUnsharedView.get().getPointer().filePointer;
+        CryptreeNode priorFileAccess = network.getMetadata(priorPointer.getLocation()).get().get();
+        SymmetricKey priorMetaKey = priorFileAccess.getMetaKey(priorPointer.baseKey);
 
         // unshare with a single user
         u1.unShare(Paths.get(u1.username, filename), userToUnshareWith.username).get();
 
         String newname = "newname.txt";
-        boolean renamed = u1.getByPath(originalPath).get().get()
+        FileTreeNode updatedParent = u1.getByPath(originalPath).get().get()
                 .rename(newname, network, u1.getUserRoot().get()).get();
 
         // check still logged in user can't read the new name
         Optional<FileTreeNode> unsharedView = userToUnshareWith.getByPath(friendsPathToFile).get();
         String friendsNewPathToFile = u1.username + "/" + newname;
         Optional<FileTreeNode> unsharedView2 = userToUnshareWith.getByPath(friendsNewPathToFile).get();
-        FilePointer priorPointer = priorUnsharedView.get().getPointer().filePointer;
-        FileAccess fileAccess = network.getMetadata(priorPointer.getLocation()).get().get();
+        CryptreeNode fileAccess = network.getMetadata(priorPointer.getLocation()).get().get();
         try {
-            FileProperties freshProperties = fileAccess.getFileProperties(priorPointer.baseKey);
+            // Try decrypting the new metadata with the old key
+            byte[] properties = ((CborObject.CborByteArray) ((CborObject.CborList) fileAccess.toCbor()).value.get(1)).value;
+            byte[] nonce = Arrays.copyOfRange(properties, 0, TweetNaCl.SECRETBOX_NONCE_BYTES);
+            byte[] cipher = Arrays.copyOfRange(properties, TweetNaCl.SECRETBOX_NONCE_BYTES, properties.length);
+            FileProperties props =  FileProperties.fromCbor(CborObject.fromByteArray(priorMetaKey.decrypt(cipher, nonce)));
+            throw new IllegalStateException("We shouldn't be able to decrypt this after a rename! new name = " + props.name);
+        } catch (TweetNaCl.InvalidCipherTextException e) {}
+        try {
+            FileProperties freshProperties = fileAccess.getProperties(priorPointer.baseKey);
             throw new IllegalStateException("We shouldn't be able to decrypt this after a rename!");
         } catch (TweetNaCl.InvalidCipherTextException e) {}
 
@@ -277,7 +338,7 @@ public class MultiUserTests {
     }
 
     private String random() {
-        return UUID.randomUUID().toString();
+        return UUID.randomUUID().toString().replace("-", "_").substring(0, 30);
     }
 
     @Test
@@ -324,12 +385,12 @@ public class MultiUserTests {
         String filename = "somefile.txt";
         byte[] originalFileContents = "Hello Peergos friend!".getBytes();
         AsyncReader resetableFileInputStream = new AsyncReader.ArrayBacked(originalFileContents);
-        boolean uploaded = folder.uploadFile(filename, resetableFileInputStream, originalFileContents.length, u1.network,
+        FileTreeNode updatedFolder = folder.uploadFile(filename, resetableFileInputStream, originalFileContents.length, u1.network,
                 u1.crypto.random, l -> {}, u1.fragmenter()).get();
         String originalFilePath = u1.username + "/" + folderName + "/" + filename;
 
         // file is uploaded, do the actual sharing
-        boolean finished = u1.shareWithAll(folder, users.stream().map(c -> c.username).collect(Collectors.toSet())).get();
+        boolean finished = u1.shareWithAll(updatedFolder, users.stream().map(c -> c.username).collect(Collectors.toSet())).get();
 
         // check each user can see the shared folder and directory
         for (UserContext user : users) {
@@ -354,13 +415,13 @@ public class MultiUserTests {
 
         for (int i = 0; i < usersNew.size(); i++) {
             UserContext user = users.get(i);
-            u1.unShare(Paths.get(u1.username, folderName), user.username);
+            u1.unShare(Paths.get(u1.username, folderName), user.username).get();
 
             Optional<FileTreeNode> updatedSharedFolder = user.getByPath(u1New.username + "/" + folderName).get();
 
-            // test that u1 can still access the original file
+            // test that u1 can still access the original file, and user cannot
             Optional<FileTreeNode> fileWithNewBaseKey = u1New.getByPath(u1New.username + "/" + folderName + "/" + filename).get();
-            Assert.assertTrue(!updatedSharedFolder.isPresent());
+            Assert.assertTrue(! updatedSharedFolder.isPresent());
             Assert.assertTrue(fileWithNewBaseKey.isPresent());
 
             // Now modify the file

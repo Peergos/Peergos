@@ -3,143 +3,211 @@ package peergos.shared.user.fs;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
-import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.crypto.hash.*;
+import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
-import peergos.shared.user.*;
+import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.merklebtree.*;
+import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.*;
 
-import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
 
-public class FileAccess implements Cborable {
+/** A FileAccess cryptree node controls read access to a section of a file, up to 5 MiB in size.
+ *
+ * It contains the following distinct keys {base, metadata, data}
+ * The serialized encrypted form stores links from the base key to the other keys. With the base key one can decrypt
+ * all the remaining keys. The base key is also the parent key. The parent key encrypts the link to the parent's parent
+ * key. The metadata key encrypts the name, size, thumbnail, modification times  and any other properties of the file.
+ *
+ * The file retriever contains the merkle links to the encrypted file fragments of this file section, an optional
+ * erasure coding scheme, nonce and auth for this section as well as an encrypted link to the next section.
+ */
+public class FileAccess implements CryptreeNode {
+
+    protected final MaybeMultihash lastCommittedHash;
+    protected final int version;
     protected final SymmetricLink parent2meta;
+    protected final SymmetricLink parent2data;
     protected final byte[] properties;
     protected final FileRetriever retriever;
     protected final SymmetricLocationLink parentLink;
 
-    public FileAccess(SymmetricLink parent2Meta, byte[] fileProperties, FileRetriever fileRetriever,
+    public FileAccess(MaybeMultihash lastCommittedHash,
+                      int version,
+                      SymmetricLink parent2Meta,
+                      SymmetricLink parent2Data,
+                      byte[] fileProperties,
+                      FileRetriever fileRetriever,
                       SymmetricLocationLink parentLink) {
+        this.lastCommittedHash = lastCommittedHash;
+        this.version = version;
         this.parent2meta = parent2Meta;
+        this.parent2data = parent2Data;
         this.properties = fileProperties;
         this.retriever = fileRetriever;
         this.parentLink = parentLink;
     }
 
     @Override
+    public MaybeMultihash committedHash() {
+        return lastCommittedHash;
+    }
+
+    @Override
     public CborObject toCbor() {
         return new CborObject.CborList(
                 Arrays.asList(
+                        new CborObject.CborLong(getVersionAndType()),
                         parent2meta.toCbor(),
+                        parent2data.toCbor(),
+                        parentLink == null ? new CborObject.CborNull() : parentLink.toCbor(),
                         new CborObject.CborByteArray(properties),
-                        retriever == null ? new CborObject.CborNull() : retriever.toCbor(),
-                        parentLink == null ? new CborObject.CborNull() : parentLink.toCbor()
+                        retriever == null ? new CborObject.CborNull() : retriever.toCbor()
                 ));
     }
 
-    // 0=FILE, 1=DIR
-    public byte getType() {
-        return 0;
-    }
-
+    @Override
     public boolean isDirectory() {
-        return this.getType() == 1;
+        return false;
     }
 
-    public SymmetricKey getParentKey(SymmetricKey parentKey) {
-        return parentKey;
+    @Override
+    public int getVersion() {
+        return version;
     }
 
-    public SymmetricKey getMetaKey(SymmetricKey parentKey) {
-        return parent2meta.target(parentKey);
+    @Override
+    public SymmetricKey getParentKey(SymmetricKey baseKey) {
+        return baseKey;
     }
 
-    public FileProperties getFileProperties(SymmetricKey parentKey) {
-        try {
-            byte[] nonce = Arrays.copyOfRange(properties, 0, TweetNaCl.SECRETBOX_NONCE_BYTES);
-            byte[] cipher = Arrays.copyOfRange(properties, TweetNaCl.SECRETBOX_NONCE_BYTES, this.properties.length);
-            return FileProperties.deserialize(getMetaKey(parentKey).decrypt(cipher, nonce));
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+    @Override
+    public SymmetricLocationLink getParentLink() {
+        return parentLink;
     }
 
-    public CompletableFuture<RetrievedFilePointer> getParent(SymmetricKey parentKey, NetworkAccess network) {
-        if (this.parentLink == null)
-            return CompletableFuture.completedFuture(null);
+    @Override
+    public SymmetricKey getMetaKey(SymmetricKey baseKey) {
+        return parent2meta.target(baseKey);
+    }
 
-        return network.retrieveAllMetadata(Arrays.asList(parentLink), parentKey).thenApply(res -> {
-            RetrievedFilePointer retrievedFilePointer = res.stream().findAny().get();
-            return retrievedFilePointer;
-        });
+    @Override
+    public FileProperties getProperties(SymmetricKey baseKey) {
+        return FileProperties.decrypt(properties, getMetaKey(baseKey));
+    }
+
+    public SymmetricKey getDataKey(SymmetricKey baseKey) {
+        return parent2data.target(baseKey);
     }
 
     public FileRetriever retriever() {
         return retriever;
     }
 
-    public CompletableFuture<Boolean> rename(FilePointer writableFilePointer, FileProperties newProps, NetworkAccess network) {
+    public CompletableFuture<FileAccess> updateProperties(FilePointer writableFilePointer,
+                                             FileProperties newProps,
+                                             NetworkAccess network) {
         if (!writableFilePointer.isWritable())
             throw new IllegalStateException("Need a writable pointer!");
         SymmetricKey metaKey = this.getMetaKey(writableFilePointer.baseKey);
+        boolean isDirty = metaKey.isDirty();
+        // if the meta key is dirty then we need to generate a new one to not expose the new metadata
+        if (isDirty)
+            metaKey = SymmetricKey.random();
+        SymmetricLink toMeta = isDirty ?
+                SymmetricLink.fromPair(writableFilePointer.baseKey, metaKey) :
+                this.parent2meta;
+
         byte[] nonce = metaKey.createNonce();
-        FileAccess fa = new FileAccess(this.parent2meta, ArrayOps.concat(nonce, metaKey.encrypt(newProps.serialize(), nonce)),
+        FileAccess fa = new FileAccess(lastCommittedHash, version, toMeta, this.parent2data, ArrayOps.concat(nonce, metaKey.encrypt(newProps.serialize(), nonce)),
                 this.retriever, this.parentLink);
-        return network.uploadChunk(fa, writableFilePointer.location, writableFilePointer.signer());
+        return network.uploadChunk(fa, writableFilePointer.location, writableFilePointer.signer())
+                .thenApply(b -> fa);
     }
 
-    public CompletableFuture<FileAccess> markDirty(FilePointer writableFilePointer, SymmetricKey newParentKey, NetworkAccess network) {
-        // keep the same metakey, just marked as dirty
+    public CompletableFuture<FileAccess> markDirty(FilePointer writableFilePointer, SymmetricKey newBaseKey, NetworkAccess network) {
+        // keep the same metakey and data key, just marked as dirty
         SymmetricKey metaKey = this.getMetaKey(writableFilePointer.baseKey).makeDirty();
-        SymmetricLink newParentToMeta = SymmetricLink.fromPair(newParentKey, metaKey);
-        SymmetricLocationLink newParentLink = SymmetricLocationLink.create(newParentKey,
+        SymmetricLink newParentToMeta = SymmetricLink.fromPair(newBaseKey, metaKey);
+
+        SymmetricKey dataKey = this.getDataKey(writableFilePointer.baseKey).makeDirty();
+        SymmetricLink newParentToData = SymmetricLink.fromPair(newBaseKey, dataKey);
+
+        SymmetricLocationLink newParentLink = SymmetricLocationLink.create(newBaseKey,
                 parentLink.target(writableFilePointer.baseKey),
                 parentLink.targetLocation(writableFilePointer.baseKey));
-        FileAccess fa = new FileAccess(newParentToMeta, properties, this.retriever, newParentLink);
+        FileAccess fa = new FileAccess(committedHash(), version, newParentToMeta, newParentToData, properties, this.retriever, newParentLink);
         return network.uploadChunk(fa, writableFilePointer.location,
                 writableFilePointer.signer())
                 .thenApply(x -> fa);
     }
 
+    @Override
     public boolean isDirty(SymmetricKey baseKey) {
-        return getMetaKey(baseKey).isDirty();
+        return getMetaKey(baseKey).isDirty() || getDataKey(baseKey).isDirty();
     }
 
-    public CompletableFuture<? extends FileAccess> copyTo(SymmetricKey baseKey, SymmetricKey newBaseKey,
-                                                          Location newParentLocation, SymmetricKey parentparentKey,
-                                                          SigningPrivateKeyAndPublicHash entryWriterKey, byte[] newMapKey,
-                                                          NetworkAccess network) {
-        if (!Arrays.equals(baseKey.serialize(), newBaseKey.serialize()))
-            throw new IllegalStateException("FileAccess clone must have same base key as original!");
-        FileProperties props = getFileProperties(baseKey);
-        FileAccess fa = FileAccess.create(newBaseKey, isDirectory() ? SymmetricKey.random() : getMetaKey(baseKey), props,
-                this.retriever, newParentLocation, parentparentKey);
+    @Override
+    public CompletableFuture<? extends FileAccess> copyTo(SymmetricKey baseKey,
+                                                          SymmetricKey newBaseKey,
+                                                          Location newParentLocation,
+                                                          SymmetricKey parentparentKey,
+                                                          PublicKeyHash newOwner,
+                                                          SigningPrivateKeyAndPublicHash entryWriterKey,
+                                                          byte[] newMapKey,
+                                                          NetworkAccess network,
+                                                          SafeRandom random) {
+        FileProperties props = getProperties(baseKey);
+        boolean isDirectory = isDirectory();
+        FileAccess fa = FileAccess.create(MaybeMultihash.empty(), newBaseKey, SymmetricKey.random(),
+                isDirectory ? SymmetricKey.random() : getDataKey(baseKey),
+                props, this.retriever, newParentLocation, parentparentKey);
         return network.uploadChunk(fa, new Location(newParentLocation.owner, entryWriterKey.publicKeyHash, newMapKey), entryWriterKey)
                 .thenApply(b -> fa);
     }
 
-    public static FileAccess fromCbor(CborObject cbor) {
+    public static FileAccess fromCbor(CborObject cbor, Multihash hash) {
         if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Incorrect cbor for FileAccess: " + cbor);
 
         List<CborObject> value = ((CborObject.CborList) cbor).value;
-        if (value.size() == 2) {// this is dir
-            FileAccess fileBase = fromCbor(value.get(0));
-            return DirAccess.fromCbor(value.get(1), fileBase);
-        }
 
-        SymmetricLink parentToMeta = SymmetricLink.fromCbor(value.get(0));
-        byte[] properties = ((CborObject.CborByteArray)value.get(1)).value;
-        FileRetriever retriever = value.get(2) instanceof CborObject.CborNull ? null : FileRetriever.fromCbor(value.get(2));
-        SymmetricLocationLink parentLink = value.get(3) instanceof CborObject.CborNull ? null : SymmetricLocationLink.fromCbor(value.get(3));
+        int index = 0;
+        int versionAndType = (int) ((CborObject.CborLong) value.get(index++)).value;
+        SymmetricLink parentToMeta = SymmetricLink.fromCbor(value.get(index++));
+        SymmetricLink parentToData = SymmetricLink.fromCbor(value.get(index++));
 
-        return new FileAccess(parentToMeta, properties, retriever, parentLink);
+        CborObject parentLinkCbor = value.get(index++);
+        SymmetricLocationLink parentLink = parentLinkCbor instanceof CborObject.CborNull ?
+                null :
+                SymmetricLocationLink.fromCbor(parentLinkCbor);
+
+        byte[] properties = ((CborObject.CborByteArray)value.get(index++)).value;
+        CborObject retrieverCbor = value.get(index++);
+        FileRetriever retriever = retrieverCbor instanceof CborObject.CborNull ?
+                null :
+                FileRetriever.fromCbor(retrieverCbor);
+
+
+        return new FileAccess(MaybeMultihash.of(hash), versionAndType >> 1, parentToMeta, parentToData, properties, retriever, parentLink);
     }
 
-    public static FileAccess create(SymmetricKey parentKey, SymmetricKey metaKey, FileProperties props,
-                                    FileRetriever retriever, Location parentLocation, SymmetricKey parentparentKey) {
+    public static FileAccess create(MaybeMultihash existingHash,
+                                    SymmetricKey parentKey,
+                                    SymmetricKey metaKey,
+                                    SymmetricKey dataKey,
+                                    FileProperties props,
+                                    FileRetriever retriever,
+                                    Location parentLocation,
+                                    SymmetricKey parentparentKey) {
         byte[] nonce = metaKey.createNonce();
-        return new FileAccess(SymmetricLink.fromPair(parentKey, metaKey),
+        return new FileAccess(
+                existingHash,
+                CryptreeNode.CURRENT_FILE_VERSION,
+                SymmetricLink.fromPair(parentKey, metaKey),
+                SymmetricLink.fromPair(parentKey, dataKey),
                 ArrayOps.concat(nonce, metaKey.encrypt(props.serialize(), nonce)),
                 retriever,
                 SymmetricLocationLink.create(parentKey, parentparentKey, parentLocation));

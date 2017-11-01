@@ -42,7 +42,7 @@ public class MaybeMultihash implements Cborable {
 
     public static MaybeMultihash fromCbor(CborObject cbor) {
         if (cbor instanceof CborObject.CborNull)
-            return MaybeMultihash.EMPTY();
+            return MaybeMultihash.empty();
 
         if (! (cbor instanceof CborObject.CborByteArray))
             throw new IllegalStateException("Incorrect cbor for MaybeMultihash: " + cbor);
@@ -56,7 +56,7 @@ public class MaybeMultihash implements Cborable {
 
     private static MaybeMultihash EMPTY = new MaybeMultihash(null);
 
-    public static MaybeMultihash EMPTY() {
+    public static MaybeMultihash empty() {
         return EMPTY;
     }
 

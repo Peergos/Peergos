@@ -1,10 +1,10 @@
 package peergos.shared.merklebtree;
 
 import peergos.shared.cbor.*;
-import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.ContentAddressedStorage;
+import peergos.shared.user.*;
 import peergos.shared.util.*;
 
 import java.io.*;
@@ -20,34 +20,34 @@ public class TreeNode implements Cborable {
     private TreeNode(MaybeMultihash leftChildHash, SortedSet<KeyElement> keys, MaybeMultihash ourHash) {
         this.keys = new TreeSet<>();
         this.keys.addAll(keys);
-        KeyElement zero = new KeyElement(new ByteArrayWrapper(new byte[0]), MaybeMultihash.EMPTY(), leftChildHash);
+        KeyElement zero = new KeyElement(new ByteArrayWrapper(new byte[0]), MaybeMultihash.empty(), leftChildHash);
         if (!keys.contains(zero))
             this.keys.add(zero);
         this.hash = ourHash;
     }
 
     private TreeNode(MaybeMultihash leftChildHash, SortedSet<KeyElement> keys) {
-        this(leftChildHash, keys, MaybeMultihash.EMPTY());
+        this(leftChildHash, keys, MaybeMultihash.empty());
     }
 
     private TreeNode(Multihash leftChildHash, SortedSet<KeyElement> keys) {
-        this(MaybeMultihash.of(leftChildHash), keys, MaybeMultihash.EMPTY());
+        this(MaybeMultihash.of(leftChildHash), keys, MaybeMultihash.empty());
     }
 
     public TreeNode(SortedSet<KeyElement> keys) {
-        this(MaybeMultihash.EMPTY(), keys, MaybeMultihash.EMPTY());
+        this(MaybeMultihash.empty(), keys, MaybeMultihash.empty());
     }
 
     public TreeNode(SortedSet<KeyElement> keys, MaybeMultihash ourHash) {
-        this(MaybeMultihash.EMPTY(), keys, ourHash);
+        this(MaybeMultihash.empty(), keys, ourHash);
     }
 
     public TreeNode(SortedSet<KeyElement> keys, Multihash ourHash) {
-        this(MaybeMultihash.EMPTY(), keys, MaybeMultihash.of(ourHash));
+        this(MaybeMultihash.empty(), keys, MaybeMultihash.of(ourHash));
     }
 
     private TreeNode(TreeNode node, MaybeMultihash hash) {
-        this(MaybeMultihash.EMPTY(), node.keys, hash);
+        this(MaybeMultihash.empty(), node.keys, hash);
     }
 
     private TreeNode(TreeNode node, Multihash hash) {
@@ -72,7 +72,7 @@ public class TreeNode implements Cborable {
         if (nextSmallest.key.equals(key))
             return CompletableFuture.completedFuture(nextSmallest.valueHash);
         if (! nextSmallest.targetHash.isPresent())
-            return CompletableFuture.completedFuture(MaybeMultihash.EMPTY());
+            return CompletableFuture.completedFuture(MaybeMultihash.empty());
 
         Multihash nextSmallestHash = nextSmallest.targetHash.get();
         return storage.get(nextSmallestHash)
@@ -80,7 +80,12 @@ public class TreeNode implements Cborable {
                         .get(key, storage));
     }
 
-    public CompletableFuture<TreeNode> put(PublicKeyHash writer, ByteArrayWrapper key, Multihash value, ContentAddressedStorage storage, int maxChildren) {
+    public CompletableFuture<TreeNode> put(PublicKeyHash writer,
+                                           ByteArrayWrapper key,
+                                           MaybeMultihash existing,
+                                           Multihash value,
+                                           ContentAddressedStorage storage,
+                                           int maxChildren) {
         KeyElement dummy = KeyElement.dummy(key);
         SortedSet<KeyElement> tailSet = keys.tailSet(dummy);
         KeyElement nextSmallest;
@@ -95,6 +100,12 @@ public class TreeNode implements Cborable {
         }
         if (nextSmallest.key.equals(key)) {
             KeyElement modified = new KeyElement(key, MaybeMultihash.of(value), nextSmallest.targetHash);
+            // ensure CAS, without allowing replacing a tombstone
+            if (! nextSmallest.valueHash.equals(existing) && ! nextSmallest.valueHash.equals(MaybeMultihash.empty())) {
+                CompletableFuture<TreeNode> res = new CompletableFuture<>();
+                res.completeExceptionally(new Btree.CasException(nextSmallest.valueHash, existing));
+                return res;
+            }
             keys.remove(nextSmallest);
             keys.add(modified);
             // commit this node to storage
@@ -103,13 +114,13 @@ public class TreeNode implements Cborable {
         }
         if (! nextSmallest.targetHash.isPresent()) {
             if (keys.size() < maxChildren) {
-                keys.add(new KeyElement(key,  MaybeMultihash.of(value), MaybeMultihash.EMPTY()));
+                keys.add(new KeyElement(key,  MaybeMultihash.of(value), MaybeMultihash.empty()));
                 // commit this node to storage
                 return storage.put(writer, this.serialize())
                         .thenApply(multihash -> new TreeNode(this.keys, MaybeMultihash.of(multihash)));
             }
             // split into two and make new parent
-            keys.add(new KeyElement(key, MaybeMultihash.of(value), MaybeMultihash.EMPTY()));
+            keys.add(new KeyElement(key, MaybeMultihash.of(value), MaybeMultihash.empty()));
             KeyElement[] tmp = new KeyElement[keys.size()];
             KeyElement median = keys.toArray(tmp)[keys.size()/2];
             // commit left child
@@ -136,7 +147,7 @@ public class TreeNode implements Cborable {
         Multihash nextSmallestHash = nextSmallest.targetHash.get();
         return storage.get(nextSmallestHash)
                 .thenApply(rawOpt -> TreeNode.fromCbor(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present! " + nextSmallestHash))))
-                .thenCompose(modifiedChild -> modifiedChild.withHash(finalNextSmallest.targetHash).put(writer, key, value, storage, maxChildren))
+                .thenCompose(modifiedChild -> modifiedChild.withHash(finalNextSmallest.targetHash).put(writer, key, existing, value, storage, maxChildren))
                 .thenCompose(modifiedChild -> {
                     if (!modifiedChild.hash.isPresent()) {
                         // we split a child and need to add the median to our keys
@@ -193,7 +204,7 @@ public class TreeNode implements Cborable {
     }
 
     private KeyElement smallestNonZeroKey() {
-        return keys.tailSet(new KeyElement(new ByteArrayWrapper(new byte[]{0}), MaybeMultihash.EMPTY(), MaybeMultihash.EMPTY())).first();
+        return keys.tailSet(new KeyElement(new ByteArrayWrapper(new byte[]{0}), MaybeMultihash.empty(), MaybeMultihash.empty())).first();
     }
 
     public CompletableFuture<ByteArrayWrapper> smallestKey(ContentAddressedStorage storage) {
@@ -205,7 +216,7 @@ public class TreeNode implements Cborable {
                         .smallestKey(storage));
     }
 
-    public CompletableFuture<TreeNode> delete(PublicKeyHash writer, ByteArrayWrapper key, ContentAddressedStorage storage, int maxChildren) {
+    public CompletableFuture<TreeNode> delete(PublicKeyHash writer, ByteArrayWrapper key, MaybeMultihash existing, ContentAddressedStorage storage, int maxChildren) {
         KeyElement dummy = KeyElement.dummy(key);
         SortedSet<KeyElement> tailSet = keys.tailSet(dummy);
         KeyElement nextSmallest;
@@ -219,7 +230,15 @@ public class TreeNode implements Cborable {
         if (nextSmallest.key.equals(key)) {
             if (! nextSmallest.targetHash.isPresent()) {
                 // we are a leaf
+                // CAS on existing value
+                if (! nextSmallest.valueHash.equals(existing)) {
+                    CompletableFuture<TreeNode> res = new CompletableFuture<>();
+                    res.completeExceptionally(new Btree.CasException(nextSmallest.valueHash, existing));
+                    return res;
+                }
                 keys.remove(nextSmallest);
+                // put in a tombstone
+                keys.add(new KeyElement(nextSmallest.key, MaybeMultihash.empty(), MaybeMultihash.empty()));
                 if (keys.size() >= maxChildren/2) {
                     return storage.put(writer, this.serialize())
                             .thenApply(multihash -> new TreeNode(this.keys, multihash));
@@ -234,7 +253,7 @@ public class TreeNode implements Cborable {
                         .thenCompose(child -> {
                             // take the subtree's smallest value (in a leaf) delete it and promote it to the separator here
                             return child.smallestKey(storage).thenCompose(smallestKey -> child.get(smallestKey, storage)
-                                    .thenCompose(value -> child.delete(writer, smallestKey, storage, maxChildren)
+                                    .thenCompose(value -> child.delete(writer, smallestKey, existing, storage, maxChildren)
                                                     .thenCompose(newChild -> storage.put(writer, newChild.serialize()).thenCompose(childHash -> {
                                                                 keys.remove(finalNextSmallest);
                                                                 KeyElement replacement = new KeyElement(smallestKey, value, childHash);
@@ -259,7 +278,7 @@ public class TreeNode implements Cborable {
         final Multihash nextSmallestHash = nextSmallest.targetHash.get();
         return storage.get(nextSmallestHash)
                 .thenCompose(rawOpt -> TreeNode.fromCbor(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present! " + nextSmallestHash)))
-                        .withHash(finalNextSmallest.targetHash).delete(writer, key, storage, maxChildren))
+                        .withHash(finalNextSmallest.targetHash).delete(writer, key, existing, storage, maxChildren))
                 .thenCompose(child -> {
                     // update pointer
                     if (child.hash.isPresent()) {
@@ -328,7 +347,7 @@ public class TreeNode implements Cborable {
                 return storage.put(writer, left.serialize()).thenCompose(newLeftHash -> {
                     child.keys.add(new KeyElement(centerKey.key, centerKey.valueHash, child.keys.first().targetHash));
                     child.keys.remove(KeyElement.dummy(new ByteArrayWrapper(new byte[0])));
-                    child.keys.add(new KeyElement(new ByteArrayWrapper(new byte[0]), MaybeMultihash.EMPTY(), newSeparator.targetHash));
+                    child.keys.add(new KeyElement(new ByteArrayWrapper(new byte[0]), MaybeMultihash.empty(), newSeparator.targetHash));
                     return storage.put(writer, child.serialize()).thenCompose(newChildHash -> {
                         parent.keys.remove(leftKey.get());
                         parent.keys.add(new KeyElement(leftKey.get().key, leftKey.get().valueHash, newLeftHash));
@@ -464,10 +483,10 @@ public class TreeNode implements Cborable {
             ByteArrayWrapper key = new ByteArrayWrapper(getOrDefault(values, "k", c -> ((CborObject.CborByteArray)c).value, () -> new byte[0]));
             MaybeMultihash value = getOrDefault(values, "v",
                     c -> MaybeMultihash.of(((CborObject.CborMerkleLink)c).target),
-                    MaybeMultihash::EMPTY);
+                    MaybeMultihash::empty);
             MaybeMultihash target = getOrDefault(values, "t",
                     c -> MaybeMultihash.of(((CborObject.CborMerkleLink)c).target),
-                    MaybeMultihash::EMPTY);
+                    MaybeMultihash::empty);
             return new KeyElement(key, value, target);
         }
 
@@ -479,7 +498,7 @@ public class TreeNode implements Cborable {
         }
 
         static KeyElement dummy(ByteArrayWrapper key) {
-            return new KeyElement(key, MaybeMultihash.EMPTY(), MaybeMultihash.EMPTY());
+            return new KeyElement(key, MaybeMultihash.empty(), MaybeMultihash.empty());
         }
     }
 }

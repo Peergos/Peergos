@@ -15,6 +15,7 @@ import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
+import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.*;
 
 import java.net.*;
@@ -109,12 +110,15 @@ public class NetworkAccess {
                     return btree.get(loc.writer, loc.getMapKey())
                             .thenCompose(key -> {
                                 if (key.isPresent())
-                                    return dhtClient.get(key.get());
+                                    return dhtClient.get(key.get())
+                                            .thenApply(dataOpt ->  dataOpt
+                                                    .map(cbor -> new RetrievedFilePointer(
+                                                            link.toReadableFilePointer(baseKey),
+                                                            CryptreeNode.fromCbor(cbor, key.get()))));
                                 System.err.println("Couldn't download link at: " + loc);
-                                Optional<CborObject> result = Optional.empty();
+                                Optional<RetrievedFilePointer> result = Optional.empty();
                                 return CompletableFuture.completedFuture(result);
-                            }).thenApply(dataOpt ->  dataOpt
-                                    .map(cbor -> new RetrievedFilePointer(link.toReadableFilePointer(baseKey), FileAccess.fromCbor(cbor))));
+                            });
                 }).collect(Collectors.toList());
 
         return Futures.combineAll(all).thenApply(optSet -> optSet.stream()
@@ -138,12 +142,12 @@ public class NetworkAccess {
                         e.readers, e.writers, e.pointer.writer)));
     }
 
-    private CompletableFuture<Optional<FileAccess>> downloadEntryPoint(EntryPoint entry) {
+    private CompletableFuture<Optional<CryptreeNode>> downloadEntryPoint(EntryPoint entry) {
         // download the metadata blob for this entry point
         return btree.get(entry.pointer.location.writer, entry.pointer.location.getMapKey()).thenCompose(btreeValue -> {
             if (btreeValue.isPresent())
                 return dhtClient.get(btreeValue.get())
-                        .thenApply(value -> value.map(FileAccess::fromCbor));
+                        .thenApply(value -> value.map(cbor -> CryptreeNode.fromCbor(cbor,  btreeValue.get())));
             return CompletableFuture.completedFuture(Optional.empty());
         });
     }
@@ -180,27 +184,28 @@ public class NetworkAccess {
                         .collect(Collectors.toList()));
     }
 
-    public CompletableFuture<Boolean> uploadChunk(FileAccess metadata, Location location, SigningPrivateKeyAndPublicHash writer) {
+    public CompletableFuture<Multihash> uploadChunk(CryptreeNode metadata, Location location, SigningPrivateKeyAndPublicHash writer) {
         if (! writer.publicKeyHash.equals(location.writer))
             throw new IllegalStateException("Non matching location writer and signing writer key!");
         try {
             byte[] metaBlob = metadata.serialize();
             return dhtClient.put(location.owner, metaBlob)
-                    .thenCompose(blobHash -> btree.put(writer, location.getMapKey(), blobHash));
+                    .thenCompose(blobHash -> btree.put(writer, location.getMapKey(), metadata.committedHash(), blobHash)
+                            .thenApply(res -> blobHash));
         } catch (Exception e) {
             System.out.println(e.getMessage());
             throw new RuntimeException(e);
         }
     }
 
-    public CompletableFuture<Optional<FileAccess>> getMetadata(Location loc) {
+    public CompletableFuture<Optional<CryptreeNode>> getMetadata(Location loc) {
         if (loc == null)
             return CompletableFuture.completedFuture(Optional.empty());
         return btree.get(loc.writer, loc.getMapKey()).thenCompose(blobHash -> {
             if (!blobHash.isPresent())
                 return CompletableFuture.completedFuture(Optional.empty());
             return dhtClient.get(blobHash.get())
-                    .thenApply(rawOpt -> rawOpt.map(FileAccess::fromCbor));
+                    .thenApply(rawOpt -> rawOpt.map(cbor -> CryptreeNode.fromCbor(cbor, blobHash.get())));
         });
     }
 

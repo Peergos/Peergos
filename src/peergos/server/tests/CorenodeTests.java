@@ -4,29 +4,19 @@ import org.junit.*;
 import org.junit.runner.*;
 import org.junit.runners.*;
 import peergos.server.*;
+import peergos.server.corenode.UsernameValidator;
 import peergos.server.storage.*;
 import peergos.shared.*;
 import peergos.shared.crypto.*;
-import peergos.shared.crypto.asymmetric.*;
-import peergos.shared.crypto.asymmetric.curve25519.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.crypto.random.*;
-import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.merklebtree.*;
-import peergos.shared.user.*;
-import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
-import java.io.*;
 import java.lang.reflect.*;
 import java.net.*;
-import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.stream.*;
-
-import static org.junit.Assert.*;
 
 @RunWith(Parameterized.class)
 public class CorenodeTests {
@@ -80,7 +70,7 @@ public class CorenodeTests {
 
                 byte[] data = new byte[10];
 
-                MaybeMultihash current = MaybeMultihash.EMPTY();
+                MaybeMultihash current = MaybeMultihash.empty();
                 long t1 = System.currentTimeMillis();
                 int iterations = 100;
                 long maxLatency = 0;
@@ -114,5 +104,22 @@ public class CorenodeTests {
         System.out.println("Worst Latency: " + worstLatency);
         Assert.assertTrue("Worst latency < 1 second: " + worstLatency, worstLatency < 2000);
         pool.awaitQuiescence(5, TimeUnit.MINUTES);
+    }
+
+    @Test
+    public void isValidUsernameTest() {
+        List<String> areValid = Arrays.asList("chris", "super_califragilistic_ex", "z", "c.h_r.i.s");
+
+        List<String> areNotValid = Arrays.asList(
+            " ",
+            "super_califragilistic_expilalidocious",
+            "\n",
+            "\r",
+            "_hello",
+            "hello.",
+            "\b0");
+
+        areValid.forEach(username -> Assert.assertTrue(username + " is valid", UsernameValidator.isValidUsername(username)));
+        areNotValid.forEach(username -> Assert.assertFalse(username +" is not valid", UsernameValidator.isValidUsername(username)));
     }
 }

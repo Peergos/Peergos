@@ -4,15 +4,16 @@ import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.user.*;
+import peergos.shared.user.fs.cryptree.*;
 
 import java.util.*;
 import java.util.concurrent.*;
 
 public class RetrievedFilePointer {
     public final FilePointer filePointer;
-    public final FileAccess fileAccess;
+    public final CryptreeNode fileAccess;
 
-    public RetrievedFilePointer(FilePointer filePointer, FileAccess fileAccess) {
+    public RetrievedFilePointer(FilePointer filePointer, CryptreeNode fileAccess) {
         if (fileAccess == null)
             throw new IllegalStateException("Null FileAccess!");
         this.filePointer = filePointer;
@@ -27,12 +28,14 @@ public class RetrievedFilePointer {
         return filePointer.equals(((RetrievedFilePointer)that).filePointer);
     }
 
-    public CompletableFuture<Boolean> remove(NetworkAccess network, RetrievedFilePointer parentRetrievedFilePointer, SigningPrivateKeyAndPublicHash signer) {
-        if (!this.filePointer.isWritable())
+    public CompletableFuture<Boolean> remove(NetworkAccess network,
+                                             RetrievedFilePointer parentRetrievedFilePointer,
+                                             SigningPrivateKeyAndPublicHash signer) {
+        if (! filePointer.isWritable())
             return CompletableFuture.completedFuture(false);
-        if (!this.fileAccess.isDirectory()) {
+        if (! fileAccess.isDirectory()) {
             CompletableFuture<Boolean> result = new CompletableFuture<>();
-            network.btree.remove(signer, this.filePointer.location.getMapKey()).thenAccept(removed -> {
+            network.btree.remove(signer, this.filePointer.location.getMapKey(), fileAccess.committedHash()).thenAccept(removed -> {
                 // remove from parent
                 if (parentRetrievedFilePointer != null)
                     ((DirAccess) parentRetrievedFilePointer.fileAccess).removeChild(this, parentRetrievedFilePointer.filePointer, signer, network);
@@ -40,11 +43,11 @@ public class RetrievedFilePointer {
             });
             return result;
         }
-        return ((DirAccess)fileAccess).getChildren(network, this.filePointer.baseKey).thenCompose(files -> {
+        return ((DirAccess) fileAccess).getChildren(network, this.filePointer.baseKey).thenCompose(files -> {
             for (RetrievedFilePointer file : files)
                 file.remove(network, null, signer);
             CompletableFuture<Boolean> result = new CompletableFuture<>();
-            network.btree.remove(signer, this.filePointer.location.getMapKey()).thenAccept(removed -> {
+            network.btree.remove(signer, this.filePointer.location.getMapKey(), fileAccess.committedHash()).thenAccept(removed -> {
                 // remove from parent
                 if (parentRetrievedFilePointer != null)
                     ((DirAccess) parentRetrievedFilePointer.fileAccess).removeChild(this, parentRetrievedFilePointer.filePointer, signer, network);

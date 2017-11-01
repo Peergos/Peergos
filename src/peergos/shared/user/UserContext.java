@@ -67,7 +67,7 @@ public class UserContext {
     public boolean isJavascript() {
     	return this.network.isJavascript();
     }
-    
+
     @JsMethod
     public static CompletableFuture<UserContext> signIn(String username, String password, NetworkAccess network, Crypto crypto) {
         return getWriterDataCbor(network, username)
@@ -98,7 +98,7 @@ public class UserContext {
                                                                 .thenCompose(x -> {
                                                                     System.out.println("Initializing context..");
                                                                     return result.init();
-                                                                });
+                                                                }).exceptionally(Futures::logError);
                                                     }));
                                 } catch (Throwable t) {
                                     throw new IllegalStateException("Incorrect password");
@@ -129,7 +129,7 @@ public class UserContext {
                                                 Optional.of(new PublicKeyHash(boxerHash)),
                                                 userWithRoot.getRoot());
 
-                                        CommittedWriterData notCommitted = new CommittedWriterData(MaybeMultihash.EMPTY(), newUserData);
+                                        CommittedWriterData notCommitted = new CommittedWriterData(MaybeMultihash.empty(), newUserData);
                                         SigningPrivateKeyAndPublicHash signer = new SigningPrivateKeyAndPublicHash(signerHash, userWithRoot.getUser().secretSigningKey);
                                         UserContext context = new UserContext(username, signer, userWithRoot.getBoxingPair(),
                                                 network, crypto, CompletableFuture.completedFuture(notCommitted), new TrieNode());
@@ -165,7 +165,7 @@ public class UserContext {
         FilePointer entryPoint = FilePointer.fromLink(link);
         EntryPoint entry = new EntryPoint(entryPoint, "", Collections.emptySet(), Collections.emptySet());
         WriterData empty = WriterData.createEmpty(entryPoint.location.owner, Optional.empty(), null);
-        CommittedWriterData committed = new CommittedWriterData(MaybeMultihash.EMPTY(), empty);
+        CommittedWriterData committed = new CommittedWriterData(MaybeMultihash.empty(), empty);
         CompletableFuture<CommittedWriterData> userData = CompletableFuture.completedFuture(committed);
         UserContext context = new UserContext(null, null, null, network.clear(), crypto, userData, new TrieNode());
         return context.addEntryPoint(null, context.entrie, entry, network).thenApply(trieNode -> {
@@ -404,22 +404,18 @@ public class UserContext {
             EntryPoint entry = new EntryPoint(rootPointer, this.username, Collections.emptySet(), Collections.emptySet());
 
             long t2 = System.currentTimeMillis();
-            DirAccess root = DirAccess.create(rootRKey, new FileProperties(directoryName, 0, LocalDateTime.now(), false, Optional.empty()), (Location) null, null, null);
+            DirAccess root = DirAccess.create(MaybeMultihash.empty(), rootRKey, new FileProperties(directoryName, "",
+                    0, LocalDateTime.now(), false, Optional.empty()), (Location) null, null, null);
             Location rootLocation = new Location(this.signer.publicKeyHash, writerHash, rootMapKey);
             System.out.println("Uploading entry point directory");
-            return network.uploadChunk(root, rootLocation, writerWithHash).thenCompose(uploaded -> {
-                if (!uploaded)
-                    throw new IllegalStateException("Failed to upload root dir!");
+            return network.uploadChunk(root, rootLocation, writerWithHash).thenCompose(chunkHash -> {
                 long t3 = System.currentTimeMillis();
                 System.out.println("Uploading root dir metadata took " + (t3 - t2) + " mS");
                 return addToStaticDataAndCommit(entry)
                         .thenCompose(x -> addOwnedKeyAndCommit(entry.pointer.location.writer))
                         .thenApply(x -> {
                             System.out.println("Committing static data took " + (System.currentTimeMillis() - t3) + " mS");
-
-                            if (uploaded)
-                                return new RetrievedFilePointer(rootPointer, root);
-                            throw new IllegalStateException("Failed to create entry directory!");
+                            return new RetrievedFilePointer(rootPointer, root.withHash(chunkHash));
                         });
             });
         });
@@ -914,7 +910,7 @@ public class UserContext {
                         byte[] keyFromResponse = freq.key.map(k -> k.serialize()).orElse(null);
                         if (keyFromResponse == null || !Arrays.equals(keyFromResponse, ourKeyForThem)) {
                             // They didn't reciprocate (follow us)
-                            CompletableFuture<Boolean> removeDir = ourDirForThem.remove(network, sharing);
+                            CompletableFuture<FileTreeNode> removeDir = ourDirForThem.remove(network, sharing);
                             // remove entry point as well
                             CompletableFuture<CommittedWriterData> cleanStatic = removeFromStaticData(ourDirForThem);
 
@@ -1123,7 +1119,7 @@ public class UserContext {
                 .thenCompose(casOpt -> network.dhtClient.getSigningKey(signerHash)
                         .thenApply(signer -> casOpt.map(raw -> HashCasPair.fromCbor(CborObject.fromByteArray(
                                 signer.get().unsignMessage(raw))).updated)
-                                .orElse(MaybeMultihash.EMPTY())))
+                                .orElse(MaybeMultihash.empty())))
                         .thenCompose(key -> network.dhtClient.get(key.get())
                                 .thenApply(Optional::get)
                                 .thenApply(cbor -> new Pair<>(key.get(), cbor))

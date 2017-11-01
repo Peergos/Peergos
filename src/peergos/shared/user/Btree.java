@@ -7,6 +7,7 @@ import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.merklebtree.MaybeMultihash;
 
 import java.io.*;
+import java.util.*;
 import java.util.concurrent.*;
 
 public interface Btree {
@@ -19,7 +20,7 @@ public interface Btree {
      * @return the new root hash of the btree
      * @throws IOException
      */
-    CompletableFuture<Boolean> put(SigningPrivateKeyAndPublicHash sharingKey, byte[] mapKey, Multihash value);
+    CompletableFuture<Boolean> put(SigningPrivateKeyAndPublicHash sharingKey, byte[] mapKey, MaybeMultihash existing, Multihash value);
 
     /**
      *
@@ -37,6 +38,13 @@ public interface Btree {
      * @return  hash(sharingKey.metadata) | the new root hash of the btree
      * @throws IOException
      */
-    CompletableFuture<Boolean> remove(SigningPrivateKeyAndPublicHash sharingKey, byte[] mapKey);
+    CompletableFuture<Boolean> remove(SigningPrivateKeyAndPublicHash sharingKey, byte[] mapKey, MaybeMultihash existing);
 
+
+    class CasException extends RuntimeException {
+
+        public CasException(MaybeMultihash actualExisting, MaybeMultihash claimedExisting) {
+            super("CAS exception updating cryptree node. existing: " + actualExisting + ", claimed: " + claimedExisting);
+        }
+    }
 }

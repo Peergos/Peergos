@@ -108,7 +108,7 @@ public class UserRepository implements CoreNode, MutablePointers {
 
                                 MaybeMultihash existing = current
                                         .map(signed -> HashCasPair.fromCbor(CborObject.fromByteArray(writerKey.unsignMessage(signed))).updated)
-                                        .orElse(MaybeMultihash.EMPTY());
+                                        .orElse(MaybeMultihash.empty());
                                 if (! existing.equals(claimedCurrentHash))
                                     return CompletableFuture.completedFuture(false);
                                 if (LOGGING)

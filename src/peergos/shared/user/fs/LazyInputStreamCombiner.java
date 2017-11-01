@@ -4,6 +4,7 @@ import peergos.shared.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.user.*;
+import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.*;
 
 import java.io.*;
@@ -59,9 +60,12 @@ public class LazyInputStreamCombiner implements AsyncReader {
                     err.completeExceptionally(new EOFException());
                     return err;
                 }
-                FileRetriever nextRet = meta.get().retriever();
+                CryptreeNode access = meta.get();
+                if (! (access instanceof FileAccess))
+                    throw new IllegalStateException("File linked to a directory for its next chunk!");
+                FileRetriever nextRet = ((FileAccess) access).retriever();
                 Location newNextChunkPointer = nextRet.getNext(dataKey).orElse(null);
-                return nextRet.getChunkInputStream(network, random, dataKey, 0, len, nextLocation, monitor)
+                return nextRet.getChunkInputStream(network, random, dataKey, 0, len, nextLocation, access.committedHash(), monitor)
                         .thenApply(x -> {
                             byte[] nextData = x.get().chunk.data();
                             updateState(0,globalIndex + Chunk.MAX_SIZE, nextData, newNextChunkPointer);
