@@ -18,6 +18,11 @@ public class HashCasPair implements Cborable {
     }
 
     @Override
+    public String toString() {
+        return "(" + original.toString() + ", " + updated.toString() + ")";
+    }
+
+    @Override
     public CborObject toCbor() {
         return new CborObject.CborList(Arrays.asList(
                 original.toCbor(),
