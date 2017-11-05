@@ -120,6 +120,7 @@ public class TreeNode implements Cborable {
                         .thenApply(multihash -> new TreeNode(this.keys, MaybeMultihash.of(multihash)));
             }
             // split into two and make new parent
+            System.out.println("Btree:Splitting");
             keys.add(new KeyElement(key, MaybeMultihash.of(value), MaybeMultihash.empty()));
             KeyElement[] tmp = new KeyElement[keys.size()];
             KeyElement median = keys.toArray(tmp)[keys.size()/2];
@@ -167,6 +168,7 @@ public class TreeNode implements Cborable {
                         keys.add(updated);
 
                         // now split
+                        System.out.println("Btree:Splitting");
                         KeyElement[] tmp = new KeyElement[keys.size()];
                         KeyElement median = keys.toArray(tmp)[keys.size() / 2];
                         // commit left child
@@ -296,6 +298,7 @@ public class TreeNode implements Cborable {
 
     private static CompletableFuture<TreeNode> rebalance(PublicKeyHash writer, TreeNode parent, TreeNode child, Multihash originalChildHash,
                                                          ContentAddressedStorage storage, int maxChildren) {
+        System.out.println("Btree:rebalance");
         // child has too few children
         Multihash childHash = originalChildHash;
         KeyElement[] parentKeys = parent.keys.toArray(new KeyElement[parent.keys.size()]);

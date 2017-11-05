@@ -40,7 +40,7 @@ public class PinningMutablePointers implements MutablePointers {
                 }
                 long t2 = System.currentTimeMillis();
                 if (LOGGING)
-                    System.out.println("Pinning " + cas.updated + " took: " + (t2 - t1) + " mS");
+                    System.out.println("Btree:Pin update " + cas.updated + " took: " + (t2 - t1) + " mS");
                 return target.setPointer(owner, signerHash, sharingKeySignedBtreeRootHashes)
                         .thenCompose(b -> {
                             if (!b) {
