@@ -62,8 +62,22 @@ public class UserContext {
         this.entrie = entrie;
     }
 
+    @JsMethod
+    public boolean isShared(FileTreeNode file) {
+        return false;
+    }
+    
     public boolean isJavascript() {
     	return this.network.isJavascript();
+    }
+
+    @JsMethod
+     public CompletableFuture<Boolean> unShare(FileTreeNode file, String readerToRemove) {
+
+        return file.getPath(network).thenCompose(pathString -> {
+            return unShare(Paths.get(pathString), Collections.singleton(readerToRemove));
+        });
+
     }
 
     @JsMethod
