@@ -92,7 +92,7 @@ public class FuseProcess implements Runnable, AutoCloseable {
                 "-port", Integer.toString(WEB_PORT),
                 "-corenodePort", Integer.toString(CORE_PORT)});
 
-        Start.local(a);
+        Start.LOCAL.main(a);
 
         // TODO find a faster high quality randomness source
         setFinalStatic(TweetNaCl.class.getDeclaredField("prng"), new Random());

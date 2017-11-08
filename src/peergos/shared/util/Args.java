@@ -65,8 +65,15 @@ public class Args
 
     public boolean getBoolean(String param, boolean def)
     {
-        if (!params.containsKey(param))
+        if (! params.containsKey(param))
             return def;
+        return "true".equals(params.get(param));
+    }
+
+    public boolean getBoolean(String param)
+    {
+        if (! params.containsKey(param))
+            throw new IllegalStateException("Missing parameter for " + param);
         return "true".equals(params.get(param));
     }
 
