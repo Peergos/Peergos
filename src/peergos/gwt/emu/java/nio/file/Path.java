@@ -57,27 +57,4 @@ public class Path {
         throw new IllegalArgumentException("Not implemented!");
     }
 
-    public static void main(String[] args)
-    {
-        test();
-    }
-    private static void assertTrue(boolean value, String msg) {
-        if(!value) {
-            throw new Error(msg);
-        }
-    }
-
-    private static void test(){
-        Path path = new Path("/dirOne/dirTwo/filename.txt");
-        String toStr = path.toString();
-        assertTrue(toStr.equals("/dirOne/dirTwo/filename.txt"), "ToStr wrong!");
-        Path parent1 = path.getParent();
-        assertTrue(parent1.toString().equals("/dirOne/dirTwo"), "ToStr parent wrong!");
-        Path parent2 = parent1.getParent();
-        assertTrue(parent2.toString().equals("/dirOne"), "ToStr parent of parent wrong!");
-        Path parent3 = parent2.getParent();
-        assertTrue(parent3.toString().equals("/"), "ToStr should be root!");
-        Path parent4 = parent3.getParent();
-        assertTrue(parent4 == null, "ToStr should be null!");
-    }
 }
