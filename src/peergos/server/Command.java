@@ -37,18 +37,18 @@ public class Command {
     public Command(String name, String description,
                    Consumer<Args> entryPoint,
                    List<Arg> params) {
-        this(name,description, entryPoint, params, Collections.emptyMap());
+        this(name,description, entryPoint, params, Collections.emptyList());
     }
 
     public Command(String name, String description,
                    Consumer<Args> entryPoint,
                    List<Arg> params,
-                   Map<String, Command> subCommands) {
+                   List<Command> subCommands) {
         this.name = name;
         this.description = description;
         this.entryPoint = entryPoint;
         this.params = params;
-        this.subCommands = subCommands;
+        this.subCommands = subCommands.stream().collect(Collectors.toMap(c -> c.name, c -> c));
     }
 
     public void main(Args args) {

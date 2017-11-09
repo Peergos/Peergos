@@ -29,7 +29,7 @@ public class Start
         PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, new Ed25519.Java());
     }
 
-    public static Command CORE_NODE = new Command("A Peergos Corenode",
+    public static Command CORE_NODE = new Command("core",
             "Start a Corenode.",
             Start::startCoreNode,
             Stream.of(
@@ -40,7 +40,7 @@ public class Start
             ).collect(Collectors.toList())
     );
 
-    public static final Command PEERGOS = new Command("Peergos Server",
+    public static final Command PEERGOS = new Command("peergos",
             "The user facing Peergos server",
             Start::startPeergos,
             Stream.of(
@@ -184,13 +184,13 @@ public class Start
                 startPeergos(args);
             },
             Collections.emptyList(),
-            Stream.of(
-                    new Pair<>("core", CORE_NODE),
-                    new Pair<>("peergos", PEERGOS),
-                    new Pair<>("local", LOCAL),
-                    new Pair<>("demo", DEMO),
-                    new Pair<>("fuse", FUSE)
-            ).collect(Collectors.toMap(p -> p.left, p -> p.right))
+            Arrays.asList(
+                    CORE_NODE,
+                    PEERGOS,
+                    LOCAL,
+                    DEMO,
+                    FUSE
+            )
     );
 
     public static void main(String[] args) {
