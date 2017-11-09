@@ -1,13 +1,13 @@
 package peergos.server;
 
 import peergos.server.corenode.*;
+import peergos.server.mutable.*;
 import peergos.shared.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
-import peergos.server.mutable.PinningMutablePointers;
 import peergos.server.fuse.*;
 import peergos.server.storage.*;
 import peergos.server.tests.*;
@@ -109,7 +109,9 @@ public class Start
 
             CoreNode core = HTTPCoreNode.getInstance(coreAddress);
             MutablePointers mutable = HttpMutablePointers.getInstance(coreAddress);
-            MutablePointers pinner = new PinningMutablePointers(mutable, dht);
+            String blacklistPath = "blacklist.txt";
+            PublicKeyBlackList blacklist = new UserBasedBlackList(Paths.get(blacklistPath), core, mutable, dht);
+            MutablePointers pinner = new BlockingMutablePointers(new PinningMutablePointers(mutable, dht), blacklist);
 
             InetSocketAddress httpsMessengerAddress = new InetSocketAddress(hostname, userAPIAddress.getPort());
             new UserService(httpsMessengerAddress, Logger.getLogger("IPFS"), dht, core, pinner, a);
