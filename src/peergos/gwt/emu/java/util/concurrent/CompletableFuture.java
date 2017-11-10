@@ -277,7 +277,7 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
     }
 
     @Override
-    public T get() {
+    public T get() throws InterruptedException, ExecutionException {
         throw new IllegalStateException("Not possible to call synchronous get() in JS!");
     }
 
