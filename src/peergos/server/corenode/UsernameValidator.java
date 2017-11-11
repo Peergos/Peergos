@@ -9,13 +9,13 @@ import java.util.regex.Pattern;
  */
 public final class UsernameValidator {
 
-    final static Pattern VALID_USERNAME = Pattern.compile("^(?=.{1,32}$)(?![_.])(?!.*[_.]{2})[a-zA-Z0-9._]+(?<![_.])$");
+    final static Pattern VALID_USERNAME = Pattern.compile("^(?=.{1,32}$)(?![_])(?!.*[_]{2})[a-z0-9_]+(?<![_])$");
 
     /** Username rules:
-     * no _ or . at the end
-     * allowed characters [a-zA-Z0-9._]
-     * no __ or _. or ._ or .. inside
-     * no _ or . at the beginning
+     * no _ at the end
+     * allowed characters [a-z0-9_]
+     * no __ inside
+     * no _ at the beginning
      * is 1-32 characters long
      * @param username
      * @return true iff username is a valid username.
