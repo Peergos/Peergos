@@ -64,7 +64,7 @@ public class FuseTests {
                 "-port", Integer.toString(WEB_PORT),
                 "-corenodePort", Integer.toString(CORE_PORT)});
 
-        Start.local(args);
+        Start.LOCAL.main(args);
         NetworkAccess network = NetworkAccess.buildJava(WEB_PORT).get();
         UserContext userContext = UserContext.ensureSignedUp(username, password, network, Crypto.initJava()).get();
 

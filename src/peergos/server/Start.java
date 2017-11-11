@@ -14,154 +14,186 @@ import peergos.server.tests.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
+import java.io.IOException;
 import java.net.*;
 import java.nio.file.*;
+import java.sql.*;
 import java.util.*;
 import java.util.logging.*;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class Start
 {
-
-    public static final Map<String, String> OPTIONS = new LinkedHashMap();
-    static
-    {
-        OPTIONS.put("help", "Show this help.");
-        OPTIONS.put("local", "Run an ephemeral localhost Peergos");
-        OPTIONS.put("fuse", "Mount a Peergos user's filesystem natively");
-        OPTIONS.put("corenode", "start a corenode");
-        OPTIONS.put("demo", "run in demo mode");
-        OPTIONS.put("publicserver", "listen on all network interfaces, not just localhost");
-    }
-    public static final Map<String, String> PARAMS = new LinkedHashMap();
-    static
-    {
-        PARAMS.put("port", " the port to listen on.");
-        PARAMS.put("useIPFS", "true/false use IPFS or an ephemeral RAM storage");
-        PARAMS.put("corenodeURL", "URL of a corenode e.g. https://demo.peergos.net");
-        PARAMS.put("mountPoint", "directory to mount Peergos in (used with -fuse)");
-        PARAMS.put("username", "user whose filesystem will be mounted (used with -fuse)");
-        PARAMS.put("password", "password for user filesystem to be mounted (used with -fuse)");
-        PARAMS.put("corenodePath", "path to a local corenode sql file (created if it doesn't exist)");
-        PARAMS.put("corenodePort", "port for the local core node to listen on");
-        PARAMS.put("webroot", "the path to the directory to serve as the web root");
-        PARAMS.put("domain", "the domain name of the machine that this Peergos server is running on");
-        PARAMS.put("mountPoint", "the directory to mount the Peergos filesystem in");
-        PARAMS.put("username", "only used for fuse");
-        PARAMS.put("password", "only used for fuse");
+    static {
+        PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, new Ed25519.Java());
     }
 
-    public static void printOptions()
-    {
-        System.out.println("\nPeergos Server help.");
-        System.out.println("\nOptions:");
-        for (String k: OPTIONS.keySet())
-            System.out.println("-"+ k + "\t " + OPTIONS.get(k));
-        System.out.println("\nParameters:");
-        for (String k: PARAMS.keySet())
-            System.out.println("-"+ k + "\t " + PARAMS.get(k));
-    }
+    public static Command CORE_NODE = new Command("core",
+            "Start a Corenode.",
+            Start::startCoreNode,
+            Stream.of(
+                    new Command.Arg("corenodePath", "Path to a local corenode sql file (created if it doesn't exist)", false, ":memory:"),
+                    new Command.Arg("keyfile", "Path to keyfile", false),
+                    new Command.Arg("passphrase", "Passphrase for keyfile", false),
+                    new Command.Arg("corenodePort", "Service port", true, "" + HttpCoreNodeServer.PORT)
+            ).collect(Collectors.toList())
+    );
 
-    public static void main(String[] args) {
-        run(Args.parse(args));
-    }
+    public static final Command PEERGOS = new Command("peergos",
+            "The user facing Peergos server",
+            Start::startPeergos,
+            Stream.of(
+                    new Command.Arg("port",  "service port", false, "8000"),
+                    new Command.Arg("corenodeURL", "Core node address", false, "http://localhost:" + HttpCoreNodeServer.PORT),
+                    new Command.Arg("domain", "Domain name to bind to,", false, "localhost"),
+                    new Command.Arg("useIPFS", "Use IPFS for storage or ephemeral RAM store", false, "true"),
+                    new Command.Arg("webroot", "the path to the directory to serve as the web root", false),
+                    new Command.Arg("publicserver", "listen on all network interfaces, not just localhost", false)
+            ).collect(Collectors.toList())
+    );
 
-    public static void run(Args a) {
+    public static final Command DEMO = new Command("demo",
+            "Run in demo server mode",
+            args -> {
+                args.setIfAbsent("domain", "demo.peergos.net");
+                args.setIfAbsent("corenodePath", "core.sql");
+                args.setIfAbsent("useIPFS", "true");
+                CORE_NODE.main(args);
+                args.setIfAbsent("corenodeURL", "http://localhost:" + args.getArg("corenodePort"));
+                PEERGOS.main(args);
+            },
+            Collections.emptyList()
+    );
+
+    public static final Command LOCAL = new Command("local",
+            "Start an ephemeral Peergos Server and CoreNode server",
+            args -> {
+                args.setIfAbsent("domain", "localhost");
+                args.setIfAbsent("corenodePath", ":memory:");
+                args.setIfAbsent("useIPFS", "false");
+                CORE_NODE.main(args);
+                args.setIfAbsent("corenodeURL", "http://localhost:" + args.getArg("corenodePort"));
+                PEERGOS.main(args);
+            },
+            Collections.emptyList()
+    );
+
+    public static final Command FUSE = new Command("fuse",
+            "Mount a Peergos user's filesystem natively",
+            Start::startFuse,
+            Stream.of(
+                    new Command.Arg("username", "Peergos username", false),
+                    new Command.Arg("password", "Peergos password", false),
+                    new Command.Arg("webport", "Peergos service address port", false, "8000"),
+                    new Command.Arg("mountPoint", "The directory to mount the Peergos filesystem in", true, "peergos")
+            ).collect(Collectors.toList())
+    );
+
+    public static void startPeergos(Args a) {
         try {
             PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, new Ed25519.Java());
 
-            if (a.hasArg("help")) {
-                printOptions();
-                System.exit(0);
-            }
-            if (a.hasArg("local")) {
-                local(a);
-            } else if (a.hasArg("demo")) {
-                demo(a);
-            } else if (a.hasArg("corenode")) {
-                String keyfile = a.getArg("keyfile", "core.key");
-                char[] passphrase = a.getArg("passphrase", "password").toCharArray();
-                String path = a.getArg("corenodePath", ":memory:");
-                int corenodePort = a.getInt("corenodePort", HttpCoreNodeServer.PORT);
-                System.out.println("Using core node path " + path);
-                boolean useIPFS = a.getBoolean("useIPFS", true);
-                int dhtCacheEntries = 1000;
-                int maxValueSizeToCache = 2 * 1024 * 1024;
-                ContentAddressedStorage dht = useIPFS ? new CachingStorage(new IpfsDHT(), dhtCacheEntries, maxValueSizeToCache) : RAMStorage.getSingleton();
-                UserRepository userRepository = UserRepository.buildSqlLite(path, dht);
-                HttpCoreNodeServer.createAndStart(keyfile, passphrase, corenodePort, userRepository, userRepository, a);
-            } else {
-                int webPort = a.getInt("port", 8000);
-                URL coreAddress = new URI(a.getArg("corenodeURL", "http://localhost:" + HttpCoreNodeServer.PORT)).toURL();
-                String domain = a.getArg("domain", "localhost");
-                InetSocketAddress userAPIAddress = new InetSocketAddress(domain, webPort);
+            int webPort = a.getInt("port");
+            URL coreAddress = new URI(a.getArg("corenodeURL")).toURL();
+            String domain = a.getArg("domain");
+            InetSocketAddress userAPIAddress = new InetSocketAddress(domain, webPort);
 
-                boolean useIPFS = a.getBoolean("useIPFS", true);
-                int dhtCacheEntries = 1000;
-                int maxValueSizeToCache = 50 * 1024;
-                ContentAddressedStorage dht = useIPFS ? new CachingStorage(new IpfsDHT(), dhtCacheEntries, maxValueSizeToCache) : RAMStorage.getSingleton();
+            boolean useIPFS = a.getBoolean("useIPFS");
+            int dhtCacheEntries = 1000;
+            int maxValueSizeToCache = 50 * 1024;
+            ContentAddressedStorage dht = useIPFS ? new CachingStorage(new IpfsDHT(), dhtCacheEntries, maxValueSizeToCache) : RAMStorage.getSingleton();
 
-                // start the User Service
-                String hostname = a.getArg("domain", "localhost");
+            // start the User Service
+            String hostname = a.getArg("domain");
 
-                CoreNode core = HTTPCoreNode.getInstance(coreAddress);
-                MutablePointers mutable = HttpMutablePointers.getInstance(coreAddress);
-                MutablePointers pinner = new PinningMutablePointers(mutable, dht);
+            CoreNode core = HTTPCoreNode.getInstance(coreAddress);
+            MutablePointers mutable = HttpMutablePointers.getInstance(coreAddress);
+            MutablePointers pinner = new PinningMutablePointers(mutable, dht);
 
-                InetSocketAddress httpsMessengerAddress = new InetSocketAddress(hostname, userAPIAddress.getPort());
-                new UserService(httpsMessengerAddress, Logger.getLogger("IPFS"), dht, core, pinner, a);
-
-                if (a.hasArg("fuse")) {
-                    String username = a.getArg("username", "test01");
-                    String password = a.getArg("password", "test01");
-                    Path mount = Files.createTempDirectory("peergos");
-                    String mountPath = a.getArg("mountPoint", mount.toString());
-
-                    Path path = Paths.get(mountPath);
-                    path.toFile().mkdirs();
-
-                    System.out.println("\n\nPeergos mounted at " + path + "\n\n");
-
-                    NetworkAccess network = NetworkAccess.buildJava(webPort).get();
-                    Crypto crypto = Crypto.initJava();
-                    UserContext userContext = UserTests.ensureSignedUp(username, password, network, crypto);
-                    PeergosFS peergosFS = new PeergosFS(userContext);
-                    FuseProcess fuseProcess = new FuseProcess(peergosFS, path);
-
-                    Runtime.getRuntime().addShutdownHook(new Thread(() -> fuseProcess.close()));
-
-                    fuseProcess.start();
-                }
-            }
+            InetSocketAddress httpsMessengerAddress = new InetSocketAddress(hostname, userAPIAddress.getPort());
+            new UserService(httpsMessengerAddress, Logger.getLogger("IPFS"), dht, core, pinner, a);
         } catch (Exception e) {
             e.printStackTrace();
             System.exit(-1);
         }
     }
 
-    public static void demo(Args a) throws Exception {
-        String domain = a.getArg("domain", "demo.peergos.net");
-        String corenodePath = a.getArg("corenodePath", "core.sql");
-        int corenodePort = a.getInt("corenodePort", HttpCoreNodeServer.PORT);
+    public static void startFuse(Args a) {
+        String username = a.getArg("username", "test01");
+        String password = a.getArg("password", "test01");
 
-        Start.main(new String[] {"-corenode", "-domain", domain, "-corenodePath", a.getArg("corenodePath", corenodePath)});
+        int webPort  = a.getInt("webport");
+        try {
+            Files.createTempDirectory("peergos").toString();
+        } catch (IOException ioe) {
+            throw new IllegalStateException(ioe);
+        }
+        String mountPath = a.getArg("mountPoint");
+        Path path = Paths.get(mountPath);
 
-        a.setArg("port", "443");
-        a.setArg("corenodeURL", "http://" + domain + ":"+corenodePort);
-        a.setParameter("publicserver");
-        a.removeArg("demo");
-        run(a);
+        path.toFile().mkdirs();
+
+        System.out.println("\n\nPeergos mounted at " + path + "\n\n");
+        try {
+            NetworkAccess network = NetworkAccess.buildJava(webPort).get();
+            Crypto crypto = Crypto.initJava();
+            UserContext userContext = UserTests.ensureSignedUp(username, password, network, crypto);
+            PeergosFS peergosFS = new PeergosFS(userContext);
+            FuseProcess fuseProcess = new FuseProcess(peergosFS, path);
+
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> fuseProcess.close()));
+
+            fuseProcess.start();
+        } catch (Exception ex) {
+            throw new IllegalStateException(ex);
+        }
     }
 
-    public static void local(Args a) throws Exception {
-        String domain = a.getArg("domain", "localhost");
-        String corenodePath = a.getArg("corenodePath", ":memory:");
-        int corenodePort = a.getInt("corenodePort", HttpCoreNodeServer.PORT);
-        boolean useIPFS = a.getBoolean("useIPFS", false);
+    public static void startCoreNode(Args a) {
+        String keyfile = a.getArg("keyfile", "core.key");
+        char[] passphrase = a.getArg("passphrase", "password").toCharArray();
+        String path = a.getArg("corenodePath");
+        int corenodePort = a.getInt("corenodePort");
+        System.out.println("Using core node path " + path);
+        boolean useIPFS = a.getBoolean("useIPFS");
+        int dhtCacheEntries = 1000;
+        int maxValueSizeToCache = 2 * 1024 * 1024;
+        ContentAddressedStorage dht = useIPFS ?
+                new CachingStorage(new IpfsDHT(), dhtCacheEntries, maxValueSizeToCache) :
+                RAMStorage.getSingleton();
+        try {
+            UserRepository userRepository = UserRepository.buildSqlLite(path, dht);
+            HttpCoreNodeServer.createAndStart(keyfile, passphrase, corenodePort, userRepository, userRepository, a);
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
 
-        run(Args.parse(new String[] {"-corenode", "-useIPFS", "" + useIPFS, "-domain", domain, "-corenodePath", corenodePath, "-corenodePort", Integer.toString(corenodePort)}));
+    public static final Command MAIN = new Command("Main",
+            "Run a Peergos server and/or a corenode server",
+            args -> {
+                Optional<String> top = args.head();
+                if (! top.isPresent()) {
+                    System.out.println("Run with -help to show options");
+                    return;
+                }
+                args.setIfAbsent("domain", "localhost");
+                args.setIfAbsent("corenodePath", ":memory:");
+                startCoreNode(args);
+                startPeergos(args);
+            },
+            Collections.emptyList(),
+            Arrays.asList(
+                    CORE_NODE,
+                    PEERGOS,
+                    LOCAL,
+                    DEMO,
+                    FUSE
+            )
+    );
 
-        a.setArg("corenodeURL", "http://localhost:"+corenodePort);
-        a.removeArg("local");
-        run(a);
+    public static void main(String[] args) {
+        MAIN.main(Args.parse(args));
     }
 }
