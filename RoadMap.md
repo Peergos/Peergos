@@ -6,14 +6,13 @@ Peergos Road Map
 
 Centralized Alpha
 ------------
- - Stable web interface and data formats
- - Streaming E2E encrypted video (streaming disabled by default)
- - Streaming download of arbitrarily large files (disabled by default)
- - Config file for Peergos to store the following:
+ - &#10004; Stable web interface and data formats (at least pre-crdt)
+ - &#10004; Streaming E2E encrypted video (streaming disabled by default)
+ - &#10004;Streaming download of arbitrarily large files (disabled by default)
  - Max user count to deny new user signups after some limit (And display error to user)
  - Max storage quota per user (enforced on puts) and error shown to user
  - Whitelist of users that can write to this server
- - Blacklist of users that can't be read from this server (illegal content guard)
+ - &#10004; Blacklist of users that can't be read from this server (illegal content guard)
  
 Self-hostable storage
 ------------
