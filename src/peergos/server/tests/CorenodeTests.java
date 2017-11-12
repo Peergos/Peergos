@@ -114,7 +114,8 @@ public class CorenodeTests {
                 "z",
                 "ch_ris",
                 "123456789012345678901234567890ab",
-                "1337");
+                "1337",
+                "alpha-beta");
 
         List<String> areNotValid = Arrays.asList(
                 "",
@@ -123,6 +124,7 @@ public class CorenodeTests {
                 "\n",
                 "\r",
                 "\tted",
+                "-ted",
                 "_ted",
                 "t__ed",
                 "ted_",
