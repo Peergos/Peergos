@@ -122,7 +122,7 @@ public class UserPublicKeyLinkTests {
 
     static CoreNode getDefaultCoreNode() {
         try {
-            return UserRepository.buildSqlLite(":memory:", RAMStorage.getSingleton());
+            return UserRepository.buildSqlLite(":memory:", RAMStorage.getSingleton(), CoreNode.MAX_USERNAME_COUNT);
         } catch (SQLException s) {
             throw new IllegalStateException(s);
         }

@@ -157,6 +157,7 @@ public class Start
         char[] passphrase = a.getArg("passphrase", "password").toCharArray();
         String path = a.getArg("corenodePath");
         int corenodePort = a.getInt("corenodePort");
+        int maxUserCount = a.getInt("maxUserCount", CoreNode.MAX_USERNAME_COUNT);
         System.out.println("Using core node path " + path);
         boolean useIPFS = a.getBoolean("useIPFS");
         int dhtCacheEntries = 1000;
@@ -165,7 +166,7 @@ public class Start
                 new CachingStorage(new IpfsDHT(), dhtCacheEntries, maxValueSizeToCache) :
                 RAMStorage.getSingleton();
         try {
-            UserRepository userRepository = UserRepository.buildSqlLite(path, dht);
+            UserRepository userRepository = UserRepository.buildSqlLite(path, dht, maxUserCount);
             HttpCoreNodeServer.createAndStart(keyfile, passphrase, corenodePort, userRepository, userRepository, a);
         } catch (SQLException e) {
             throw new RuntimeException(e);
