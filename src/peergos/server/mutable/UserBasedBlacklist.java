@@ -16,7 +16,7 @@ import java.util.stream.*;
 
 public class UserBasedBlacklist implements PublicKeyBlackList {
 
-    private static final long RELOAD_PERIOD = 3_600_000;
+    private static final long RELOAD_PERIOD_MS = 3_600_000;
 
     private Map<PublicKeyHash, Boolean> banned = new ConcurrentHashMap<>();
     private final CoreNode core;
@@ -44,7 +44,7 @@ public class UserBasedBlacklist implements PublicKeyBlackList {
     private void updateBlackList() {
         long modified = source.toFile().lastModified();
         long now = System.currentTimeMillis();
-        if (modified != lastModified || (now - lastReloaded > RELOAD_PERIOD)) {
+        if (modified != lastModified || (now - lastReloaded > RELOAD_PERIOD_MS)) {
             System.out.println("Updating blacklist...");
             lastModified = modified;
             lastReloaded = now;
