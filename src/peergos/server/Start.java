@@ -110,7 +110,7 @@ public class Start
             CoreNode core = HTTPCoreNode.getInstance(coreAddress);
             MutablePointers mutable = HttpMutablePointers.getInstance(coreAddress);
             String blacklistPath = "blacklist.txt";
-            PublicKeyBlackList blacklist = new UserBasedBlackList(Paths.get(blacklistPath), core, mutable, dht);
+            PublicKeyBlackList blacklist = new UserBasedBlacklist(Paths.get(blacklistPath), core, mutable, dht);
             MutablePointers pinner = new BlockingMutablePointers(new PinningMutablePointers(mutable, dht), blacklist);
 
             InetSocketAddress httpsMessengerAddress = new InetSocketAddress(hostname, userAPIAddress.getPort());

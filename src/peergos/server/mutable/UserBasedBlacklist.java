@@ -14,7 +14,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
 
-public class UserBasedBlackList implements PublicKeyBlackList {
+public class UserBasedBlacklist implements PublicKeyBlackList {
 
     private static final long RELOAD_PERIOD = 3_600_000;
 
@@ -26,7 +26,7 @@ public class UserBasedBlackList implements PublicKeyBlackList {
     private final ForkJoinPool pool = new ForkJoinPool(1);
     private long lastModified, lastReloaded;
 
-    public UserBasedBlackList(Path source, CoreNode core, MutablePointers mutable, ContentAddressedStorage dht) {
+    public UserBasedBlacklist(Path source, CoreNode core, MutablePointers mutable, ContentAddressedStorage dht) {
         this.source = source;
         this.core = core;
         this.mutable = mutable;
@@ -48,7 +48,7 @@ public class UserBasedBlackList implements PublicKeyBlackList {
             System.out.println("Updating blacklist...");
             lastModified = modified;
             lastReloaded = now;
-            Set<String> usernames = readUsernameFromFile();
+            Set<String> usernames = readUsernamesFromFile();
             Set<PublicKeyHash> updated = buildBlackList(usernames);
             banned.clear();
             for (PublicKeyHash hash : updated) {
@@ -57,7 +57,7 @@ public class UserBasedBlackList implements PublicKeyBlackList {
         }
     }
 
-    private Set<String> readUsernameFromFile() {
+    private Set<String> readUsernamesFromFile() {
         try {
             Stream<String> lines = Files.lines(source);
             Set<String> res = new HashSet<>();
