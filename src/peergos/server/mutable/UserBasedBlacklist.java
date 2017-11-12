@@ -46,6 +46,8 @@ public class UserBasedBlacklist implements PublicKeyBlackList {
     }
 
     private void updateBlackList() {
+        if (! source.toFile().exists())
+            return;
         long modified = source.toFile().lastModified();
         long now = System.currentTimeMillis();
         if (modified != lastModified || (now - lastReloaded > RELOAD_PERIOD_MS)) {
@@ -63,6 +65,8 @@ public class UserBasedBlacklist implements PublicKeyBlackList {
 
     private Set<String> readUsernamesFromFile() {
         try {
+            if (! source.toFile().exists())
+                return Collections.emptySet();
             return Files.lines(source)
                     .map(String::trim)
                     .collect(Collectors.toSet());
