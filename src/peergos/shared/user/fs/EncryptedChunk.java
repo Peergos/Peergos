@@ -5,6 +5,7 @@ import peergos.shared.crypto.symmetric.*;
 import peergos.shared.util.*;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 
 public class EncryptedChunk {
 
@@ -35,10 +36,13 @@ public class EncryptedChunk {
         return Arrays.copyOf(auth, auth.length);
     }
 
-    public byte[] decrypt(SymmetricKey key, byte[] nonce) {
-        if (cipher.length == 0)
-            return cipher;
-        return key.decrypt(ArrayOps.concat(this.auth, this.cipher), nonce);
+    public CompletableFuture<byte[]> decrypt(SymmetricKey key, byte[] nonce) {
+        if (cipher.length == 0) {
+            CompletableFuture<byte[]> res = new CompletableFuture<>();
+            res.complete(cipher);
+            return res;
+        }
+        return key.decryptAsync(ArrayOps.concat(this.auth, this.cipher), nonce);
     }
 
     public EncryptedChunk truncateTo(int length) {

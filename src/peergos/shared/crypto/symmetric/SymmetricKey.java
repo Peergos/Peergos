@@ -8,6 +8,7 @@ import peergos.shared.util.*;
 
 import java.io.*;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 
 public interface SymmetricKey extends Cborable
 {
@@ -48,6 +49,10 @@ public interface SymmetricKey extends Cborable
 
     @JsMethod
     byte[] decrypt(byte[] data, byte[] nonce);
+
+    CompletableFuture<byte[]> encryptAsync(byte[] data, byte[] nonce);
+
+    CompletableFuture<byte[]> decryptAsync(byte[] data, byte[] nonce);
 
     @JsMethod
     byte[] createNonce();
