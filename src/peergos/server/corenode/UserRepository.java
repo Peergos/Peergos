@@ -127,18 +127,11 @@ public class UserRepository implements CoreNode, MutablePointers {
 
     }
 
-    public static UserRepository buildSqlLite(String dbPath, ContentAddressedStorage ipfs) throws SQLException
+    public static UserRepository buildSqlLite(String dbPath, ContentAddressedStorage ipfs, int maxUserCount) throws SQLException
     {
-        try
-        {
-            Class.forName("org.sqlite.JDBC");
-        } catch (ClassNotFoundException cnfe) {
-            throw new SQLException(cnfe);
-        }
+        JDBCCoreNode coreNode = new JDBCCoreNode(
+            JDBCCoreNode.buildSqlLite(dbPath), maxUserCount);
 
-        String url = "jdbc:sqlite:"+dbPath;
-        Connection conn = DriverManager.getConnection(url);
-        conn.setAutoCommit(true);
-        return new UserRepository(ipfs, new JDBCCoreNode(conn));
+        return new UserRepository(ipfs, coreNode);
     }
 }

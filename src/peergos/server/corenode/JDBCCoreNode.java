@@ -328,10 +328,17 @@ public class JDBCCoreNode {
     }
 
     private volatile boolean isClosed;
+    private final int maxUsernameCount;
 
     public JDBCCoreNode(Connection conn) throws SQLException
     {
+        this(conn, CoreNode.MAX_USERNAME_COUNT);
+    }
+
+    public JDBCCoreNode(Connection conn, int maxUsernameCount) throws SQLException
+    {
         this.conn = conn;
+        this.maxUsernameCount = maxUsernameCount;
         init();
     }
 
@@ -412,12 +419,21 @@ public class JDBCCoreNode {
         }
     }
 
+    /**
+     *
+     * @param username
+     * @param existing
+     * @param tail
+     * @param merged
+     * @return
+     */
     public boolean updateChain(String username,
                                                   List<UserPublicKeyLink> existing,
                                                   List<UserPublicKeyLink> tail,
                                                   List<UserPublicKeyLink> merged) {
         if (! UsernameValidator.isValidUsername(username))
             throw new IllegalStateException("Invalid  username '" +username+"'");
+
 
         List<String> toWrite = merged.stream().map(x -> new String(Base64.getEncoder().encode(x.serialize()))).collect(Collectors.toList());
         Optional<PublicKeyHash> oldKey = existing.size() == 0 ? Optional.empty() : Optional.of(existing.get(existing.size() - 1).owner);
@@ -435,6 +451,11 @@ public class JDBCCoreNode {
                 PreparedStatement user = null, link = null, chain = null;
                 try {
                     conn.setAutoCommit(false);
+
+                    long userCount = conn.createStatement().executeQuery("select count(name) from usernames;").getLong(1);
+                    if (userCount >= this.maxUsernameCount)
+                        return false;
+
                     user = conn.prepareStatement("insert into usernames (name) VALUES(?);");
                     user.setString(1, username);
                     user.execute();
@@ -639,4 +660,20 @@ public class JDBCCoreNode {
                 }
         }
     }
+
+    public static Connection buildSqlLite(String dbPath) throws SQLException
+    {
+        try
+        {
+            Class.forName("org.sqlite.JDBC");
+        } catch (ClassNotFoundException cnfe) {
+            throw new SQLException(cnfe);
+        }
+
+        String url = "jdbc:sqlite:"+dbPath;
+        Connection conn = DriverManager.getConnection(url);
+        conn.setAutoCommit(true);
+        return conn;
+    }
+
 }

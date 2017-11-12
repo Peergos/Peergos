@@ -12,6 +12,7 @@ import java.util.regex.*;
 public interface CoreNode {
     int MAX_PENDING_FOLLOWERS = 100;
     int MAX_USERNAME_SIZE = 100;
+    int MAX_USERNAME_COUNT = 1024;
 
     /**
      *
