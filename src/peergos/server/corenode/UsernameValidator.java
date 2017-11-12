@@ -1,17 +1,16 @@
 package peergos.server.corenode;
 
-import jsinterop.annotations.*;
+import peergos.shared.corenode.*;
 
 import java.util.regex.Pattern;
 
 /**
  * Encapsulates CoreNode username rules.
  *
- *
  */
 public final class UsernameValidator {
 
-    private static final Pattern VALID_USERNAME = Pattern.compile("^(?=.{1,32}$)(?![_-])(?!.*[_-]{2})[a-z0-9_-]+(?<![_-])$");
+    private static final Pattern VALID_USERNAME = Pattern.compile(Usernames.REGEX);
 
     /** Username rules:
      * no _- at the end
@@ -22,7 +21,6 @@ public final class UsernameValidator {
      * @param username
      * @return true iff username is a valid username.
      */
-    @JsMethod
     public static boolean isValidUsername(String username) {
         return VALID_USERNAME.matcher(username).find();
     }
