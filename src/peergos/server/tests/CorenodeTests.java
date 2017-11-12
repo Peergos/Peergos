@@ -108,16 +108,29 @@ public class CorenodeTests {
 
     @Test
     public void isValidUsernameTest() {
-        List<String> areValid = Arrays.asList("chris", "super_califragilistic_ex", "z", "c.h_r.i.s");
+        List<String> areValid = Arrays.asList(
+                "chris",
+                "super_califragilistic_ex",
+                "z",
+                "ch_ris",
+                "123456789012345678901234567890ab",
+                "1337",
+                "alpha-beta");
 
         List<String> areNotValid = Arrays.asList(
-            " ",
-            "super_califragilistic_expilalidocious",
-            "\n",
-            "\r",
-            "_hello",
-            "hello.",
-            "\b0");
+                "",
+                " ",
+                "super_califragilistic_expialidocious",
+                "\n",
+                "\r",
+                "\tted",
+                "-ted",
+                "_ted",
+                "t__ed",
+                "ted_",
+                "_hello",
+                "hello.",
+                "\b0");
 
         areValid.forEach(username -> Assert.assertTrue(username + " is valid", UsernameValidator.isValidUsername(username)));
         areNotValid.forEach(username -> Assert.assertFalse(username +" is not valid", UsernameValidator.isValidUsername(username)));
