@@ -33,7 +33,11 @@ public class UserBasedBlacklist implements PublicKeyBlackList {
         this.dht = dht;
         pool.submit(() -> {
             while (true) {
-                updateBlackList();
+                try {
+                    updateBlackList();
+                } catch (Throwable t) {
+                    t.printStackTrace();
+                }
                 try {
                     Thread.sleep(5000);
                 } catch (InterruptedException e) {}
@@ -59,10 +63,9 @@ public class UserBasedBlacklist implements PublicKeyBlackList {
 
     private Set<String> readUsernamesFromFile() {
         try {
-            Stream<String> lines = Files.lines(source);
-            Set<String> res = new HashSet<>();
-            lines.forEach(name -> res.add(name.trim()));
-            return res;
+            return Files.lines(source)
+                    .map(String::trim)
+                    .collect(Collectors.toSet());
         } catch (IOException e) {
             e.printStackTrace();
             return Collections.emptySet();
