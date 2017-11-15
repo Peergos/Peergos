@@ -37,7 +37,6 @@ public interface Salsa20Poly1305 {
         public CompletableFuture<byte[]> secretbox_openAsync(byte[] cipher, byte[] nonce, byte[] key) {
             return scriptJS.secretbox_openAsync(cipher, nonce, key);
         }
-
     }
 
     class Java implements Salsa20Poly1305 {
@@ -68,7 +67,6 @@ public interface Salsa20Poly1305 {
             return res;
 
         }
-
     }
 
 }

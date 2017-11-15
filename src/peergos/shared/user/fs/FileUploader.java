@@ -115,7 +115,6 @@ public class FileUploader implements AutoCloseable {
                                                            SymmetricKey baseKey, LocatedChunk chunk, Fragmenter fragmenter, Location nextChunkLocation,
                                                            NetworkAccess network, ProgressConsumer<Long> monitor) {
         return chunk.chunk.encrypt().thenCompose(encryptedChunk -> {
-
             List<Fragment> fragments = encryptedChunk.generateFragments(fragmenter);
             System.out.println(StringUtils.format("Uploading chunk with %d fragments\n", fragments.size()));
             SymmetricKey chunkKey = chunk.chunk.key();

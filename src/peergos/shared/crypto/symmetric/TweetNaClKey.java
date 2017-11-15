@@ -44,8 +44,6 @@ public class TweetNaClKey implements SymmetricKey
         return new TweetNaClKey(secretKey, true, implementation, random);
     }
 
-
-
     public byte[] encrypt(byte[] data, byte[] nonce)
     {
         return encrypt(secretKey, data, nonce, implementation);

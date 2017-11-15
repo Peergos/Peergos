@@ -117,7 +117,6 @@ public class EncryptedChunkRetriever implements FileRetriever {
                                                                          MaybeMultihash ourExistingHash,
                                                                          ProgressConsumer<Long> monitor) {
         return getEncryptedChunk(startIndex, truncateTo, chunkNonce, dataKey, ourLocation, ourExistingHash, network, monitor).thenCompose(fullEncryptedChunk -> {
-
             if (! fullEncryptedChunk.isPresent()) {
                 return getLocationAt(ourLocation, startIndex, dataKey, network).thenApply(unwrittenChunkLocation ->
                         ! unwrittenChunkLocation.isPresent() ? Optional.empty() :
