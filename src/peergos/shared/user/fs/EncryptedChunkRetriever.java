@@ -117,7 +117,6 @@ public class EncryptedChunkRetriever implements FileRetriever {
                                                                          MaybeMultihash ourExistingHash,
                                                                          ProgressConsumer<Long> monitor) {
         return getEncryptedChunk(startIndex, truncateTo, chunkNonce, dataKey, ourLocation, ourExistingHash, network, monitor).thenCompose(fullEncryptedChunk -> {
-
             if (! fullEncryptedChunk.isPresent()) {
                 return getLocationAt(ourLocation, startIndex, dataKey, network).thenApply(unwrittenChunkLocation ->
                         ! unwrittenChunkLocation.isPresent() ? Optional.empty() :
@@ -132,10 +131,11 @@ public class EncryptedChunkRetriever implements FileRetriever {
 
             LocatedEncryptedChunk cipherText = fullEncryptedChunk.get();
             try {
-                byte[] original = cipherText.chunk.decrypt(dataKey, cipherText.nonce);
-                return CompletableFuture.completedFuture(Optional.of(new LocatedChunk(cipherText.location,
-                        cipherText.existingHash,
-                        new Chunk(original, dataKey, cipherText.location.getMapKey(), random.randomBytes(TweetNaCl.SECRETBOX_NONCE_BYTES)))));
+                return cipherText.chunk.decrypt(dataKey, cipherText.nonce).thenCompose(original -> {
+                    return CompletableFuture.completedFuture(Optional.of(new LocatedChunk(cipherText.location,
+                            cipherText.existingHash,
+                            new Chunk(original, dataKey, cipherText.location.getMapKey(), random.randomBytes(TweetNaCl.SECRETBOX_NONCE_BYTES)))));
+                });
             } catch (IllegalStateException e) {
                 throw new IllegalStateException("Couldn't decrypt chunk at mapkey: " + new ByteArrayWrapper(cipherText.location.getMapKey()), e);
             }

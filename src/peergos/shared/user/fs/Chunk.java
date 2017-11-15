@@ -3,6 +3,7 @@ package peergos.shared.user.fs;
 import peergos.shared.crypto.symmetric.SymmetricKey;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 
 public class Chunk {
 
@@ -19,8 +20,10 @@ public class Chunk {
         this.nonce = nonce;
     }
 
-    public EncryptedChunk encrypt() {
-        return new EncryptedChunk(dataKey.encrypt(data, nonce));
+    public CompletableFuture<EncryptedChunk> encrypt() {
+        return dataKey.encryptAsync(data, nonce).thenApply(encryptedBytes -> {
+            return new EncryptedChunk(encryptedBytes);
+        });
     }
 
     public SymmetricKey key() {

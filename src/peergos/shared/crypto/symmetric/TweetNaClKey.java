@@ -5,6 +5,7 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.random.*;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 
 public class TweetNaClKey implements SymmetricKey
 {
@@ -53,14 +54,34 @@ public class TweetNaClKey implements SymmetricKey
         return decrypt(secretKey, data, nonce, implementation);
     }
 
-    public static byte[] encrypt(byte[] key, byte[] data, byte[] nonce, Salsa20Poly1305 implementation)
+    public CompletableFuture<byte[]> encryptAsync(byte[] data, byte[] nonce)
+    {
+        return encryptAsync(secretKey, data, nonce, implementation);
+    }
+
+    public CompletableFuture<byte[]> decryptAsync(byte[] data, byte[] nonce)
+    {
+        return decryptAsync(secretKey, data, nonce, implementation);
+    }
+
+    private static byte[] encrypt(byte[] key, byte[] data, byte[] nonce, Salsa20Poly1305 implementation)
     {
         return implementation.secretbox(data, nonce, key);
     }
 
-    public static byte[] decrypt(byte[] key, byte[] cipher, byte[] nonce, Salsa20Poly1305 implementation)
+    private static byte[] decrypt(byte[] key, byte[] cipher, byte[] nonce, Salsa20Poly1305 implementation)
     {
         return implementation.secretbox_open(cipher, nonce, key);
+    }
+
+    private static CompletableFuture<byte[]> encryptAsync(byte[] key, byte[] data, byte[] nonce, Salsa20Poly1305 implementation)
+    {
+        return implementation.secretboxAsync(data, nonce, key);
+    }
+
+    private static CompletableFuture<byte[]> decryptAsync(byte[] key, byte[] cipher, byte[] nonce, Salsa20Poly1305 implementation)
+    {
+        return implementation.secretbox_openAsync(cipher, nonce, key);
     }
 
     public byte[] createNonce()
