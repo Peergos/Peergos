@@ -61,6 +61,7 @@ public class Start
                 args.setIfAbsent("useIPFS", "true");
                 args.setIfAbsent("publicserver", "true");
                 CORE_NODE.main(args);
+                args.setArg("port", "443");
                 args.setIfAbsent("corenodeURL", "http://localhost:" + args.getArg("corenodePort"));
                 PEERGOS.main(args);
             },
