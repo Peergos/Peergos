@@ -59,6 +59,7 @@ public class Start
                 args.setIfAbsent("domain", "demo.peergos.net");
                 args.setIfAbsent("corenodePath", "core.sql");
                 args.setIfAbsent("useIPFS", "true");
+                args.setIfAbsent("publicserver", "true");
                 CORE_NODE.main(args);
                 args.setIfAbsent("corenodeURL", "http://localhost:" + args.getArg("corenodePort"));
                 PEERGOS.main(args);
