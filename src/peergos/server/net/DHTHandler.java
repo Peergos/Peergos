@@ -64,6 +64,10 @@ public class DHTHandler implements HttpHandler
             switch (path) {
                 case "block/put": {
                     PublicKeyHash writer = PublicKeyHash.fromString(last.apply("writer"));
+                    String username = last.apply("username");
+                    List<byte[]> signatures = Arrays.stream(last.apply("signatures").split(","))
+                            .map(ArrayOps::hexToBytes)
+                            .collect(Collectors.toList());
                     String boundary = httpExchange.getRequestHeaders().get("Content-Type")
                             .stream()
                             .filter(s -> s.contains("boundary="))
@@ -73,7 +77,9 @@ public class DHTHandler implements HttpHandler
                     List<byte[]> data = MultipartReceiver.extractFiles(httpExchange.getRequestBody(), boundary);
                     boolean isRaw = last.apply("format").equals("raw");
 
-                    (isRaw ? dht.putRaw(writer, data) : dht.put(writer, data)).thenAccept(hashes -> {
+                    (isRaw ?
+                            dht.putRaw(username, writer, signatures, data) :
+                            dht.put(username, writer, signatures, data)).thenAccept(hashes -> {
                         List<Object> json = hashes.stream().map(h -> wrapHash(h)).collect(Collectors.toList());
                         // make stream of JSON objects
                         String jsonStream = json.stream().map(m -> JSONParser.toString(m)).reduce("", (a, b) -> a + b);

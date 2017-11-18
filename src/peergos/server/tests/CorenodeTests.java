@@ -65,8 +65,10 @@ public class CorenodeTests {
             worstLatencies.add(pool.submit(() -> {
                 SigningKeyPair owner = SigningKeyPair.random(crypto.random, crypto.signer);
                 SigningKeyPair writer = SigningKeyPair.random(crypto.random, crypto.signer);
-                PublicKeyHash ownerHash = network.dhtClient.putSigningKey(owner.publicSigningKey).get();
-                PublicKeyHash writerHash = network.dhtClient.putSigningKey(writer.publicSigningKey).get();
+                PublicKeyHash ownerHash = network.dhtClient.putSigningKey("",
+                        owner.secretSigningKey.signOnly(owner.publicSigningKey.serialize()), owner.publicSigningKey).get();
+                PublicKeyHash writerHash = network.dhtClient.putSigningKey("",
+                        owner.secretSigningKey.signOnly(writer.publicSigningKey.serialize()), writer.publicSigningKey).get();
 
                 byte[] data = new byte[10];
 

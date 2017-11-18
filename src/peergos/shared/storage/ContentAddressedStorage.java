@@ -1,6 +1,7 @@
 package peergos.shared.storage;
 
 import peergos.shared.cbor.*;
+import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.api.*;
@@ -8,6 +9,7 @@ import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multiaddr.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.user.*;
+import peergos.shared.util.*;
 
 import java.io.*;
 import java.net.*;
@@ -19,19 +21,29 @@ public interface ContentAddressedStorage {
 
     int MAX_OBJECT_LENGTH  = 1024*256;
 
-    default CompletableFuture<Multihash> put(PublicKeyHash writer, byte[] block) {
-        return put(writer, Arrays.asList(block)).thenApply(hashes -> hashes.get(0));
+    default CompletableFuture<Multihash> put(SigningPrivateKeyAndPublicHash writer, byte[] block) {
+        return put(writer.publicKeyHash, writer.secret.signOnly(block), block);
     }
 
-    default CompletableFuture<Multihash> putRaw(PublicKeyHash writer, byte[] block) {
-        return putRaw(writer, Arrays.asList(block)).thenApply(hashes -> hashes.get(0));
+    default CompletableFuture<Multihash> put(PublicKeyHash writer, byte[] signature, byte[] block) {
+        return put("", writer, signature, block);
     }
 
-    CompletableFuture<List<Multihash>> put(PublicKeyHash writer, List<byte[]> blocks);
+    default CompletableFuture<Multihash> put(String username, PublicKeyHash writer, byte[] signature, byte[] block) {
+        return put(username, writer, Arrays.asList(signature), Arrays.asList(block))
+                .thenApply(hashes -> hashes.get(0));
+    }
+
+    default CompletableFuture<Multihash> putRaw(String username, PublicKeyHash writer, byte[] signature, byte[] block) {
+        return putRaw(username, writer, Arrays.asList(signature), Arrays.asList(block))
+                .thenApply(hashes -> hashes.get(0));
+    }
+
+    CompletableFuture<List<Multihash>> put(String username, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks);
 
     CompletableFuture<Optional<CborObject>> get(Multihash object);
 
-    CompletableFuture<List<Multihash>> putRaw(PublicKeyHash writer, List<byte[]> blocks);
+    CompletableFuture<List<Multihash>> putRaw(String username, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks);
 
     CompletableFuture<Optional<byte[]>> getRaw(Multihash object);
 
@@ -45,13 +57,13 @@ public interface ContentAddressedStorage {
 
     CompletableFuture<Optional<Integer>> getSize(Multihash block);
 
-    default CompletableFuture<PublicKeyHash> putSigningKey(PublicSigningKey key) {
-        return put(PublicKeyHash.NULL, key.toCbor().toByteArray())
+    default CompletableFuture<PublicKeyHash> putSigningKey(String username, byte[] signature, PublicSigningKey key) {
+        return put(username, PublicKeyHash.NULL, signature, key.toCbor().toByteArray())
                 .thenApply(PublicKeyHash::new);
     }
 
-    default CompletableFuture<PublicKeyHash> putBoxingKey(PublicKeyHash controller, PublicBoxingKey key) {
-        return put(controller, key.toCbor().toByteArray())
+    default CompletableFuture<PublicKeyHash> putBoxingKey(PublicKeyHash controller, byte[] signature, PublicBoxingKey key) {
+        return put("", controller, signature, key.toCbor().toByteArray())
                 .thenApply(PublicKeyHash::new);
     }
 
@@ -91,18 +103,20 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<List<Multihash>> put(PublicKeyHash writer, List<byte[]> blocks) {
-            return put(writer, blocks, "cbor");
+        public CompletableFuture<List<Multihash>> put(String username, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
+            return put(username, writer, signatures, blocks, "cbor");
         }
 
         @Override
-        public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash writer, List<byte[]> blocks) {
-            return put(writer, blocks, "raw");
+        public CompletableFuture<List<Multihash>> putRaw(String username, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
+            return put(username, writer, signatures, blocks, "raw");
         }
 
-        private CompletableFuture<List<Multihash>> put(PublicKeyHash writer, List<byte[]> blocks, String format) {
+        private CompletableFuture<List<Multihash>> put(String username, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks, String format) {
             return poster.postMultipart(apiPrefix + "block/put?format=" + format
-                    + "&writer=" + encode(writer.toString()), blocks)
+                    + "&writer=" + encode(writer.toString())
+                    + "&username=" + username
+                    + "&signatures=" + signatures.stream().map(ArrayOps::bytesToHex).reduce("", (a, b) -> a + "," + b).substring(1), blocks)
                     .thenApply(bytes -> JSONParser.parseStream(new String(bytes))
                             .stream()
                             .map(json -> getObjectHash(json))

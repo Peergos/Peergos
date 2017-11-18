@@ -26,8 +26,8 @@ public class CachingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> put(PublicKeyHash writer, List<byte[]> blocks) {
-        return target.put(writer, blocks);
+    public CompletableFuture<List<Multihash>> put(String username, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
+        return target.put(username, writer, signatures, blocks);
     }
 
     @Override
@@ -57,8 +57,8 @@ public class CachingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash writer, List<byte[]> blocks) {
-        return target.putRaw(writer, blocks);
+    public CompletableFuture<List<Multihash>> putRaw(String username, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
+        return target.putRaw(username, writer, signatures, blocks);
     }
 
     @Override

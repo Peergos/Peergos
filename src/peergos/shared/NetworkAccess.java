@@ -152,18 +152,18 @@ public class NetworkAccess {
         });
     }
 
-    private CompletableFuture<Multihash> uploadFragment(Fragment f, PublicKeyHash targetUser) {
-        return dhtClient.putRaw(targetUser, f.data);
+    private CompletableFuture<Multihash> uploadFragment(Fragment f, PublicKeyHash writer, byte[] signature) {
+        return dhtClient.putRaw("", writer, signature, f.data);
     }
 
-    private CompletableFuture<List<Multihash>> bulkUploadFragments(List<Fragment> fragments, PublicKeyHash targetUser) {
-        return dhtClient.putRaw(targetUser, fragments
+    private CompletableFuture<List<Multihash>> bulkUploadFragments(List<Fragment> fragments, PublicKeyHash writer, List<byte[]> signatures) {
+        return dhtClient.putRaw("", writer, signatures, fragments
                 .stream()
                 .map(f -> f.data)
                 .collect(Collectors.toList()));
     }
 
-    public CompletableFuture<List<Multihash>> uploadFragments(List<Fragment> fragments, PublicKeyHash owner,
+    public CompletableFuture<List<Multihash>> uploadFragments(List<Fragment> fragments, SigningPrivateKeyAndPublicHash writer,
                                                               ProgressConsumer<Long> progressCounter, double spaceIncreaseFactor) {
         // upload in groups of 10. This means in a browser we have 6 upload threads with erasure coding on, or 4 without
         int FRAGMENTs_PER_QUERY = 1;
@@ -171,13 +171,15 @@ public class NetworkAccess {
                 .mapToObj(i -> fragments.stream().skip(FRAGMENTs_PER_QUERY * i).limit(FRAGMENTs_PER_QUERY).collect(Collectors.toList()))
                 .collect(Collectors.toList());
         List<CompletableFuture<List<Multihash>>> futures = grouped.stream()
-                .map(g -> bulkUploadFragments(g, owner)
-                        .thenApply(hash -> {
-                            if (progressCounter != null)
-                                progressCounter.accept((long)(g.stream().mapToInt(f -> f.data.length).sum() / spaceIncreaseFactor));
-                            return hash;
-                        }))
-                .collect(Collectors.toList());
+                .map(g -> bulkUploadFragments(
+                        g,
+                        writer.publicKeyHash,
+                        g.stream().map(f -> writer.secret.signOnly(f.data)).collect(Collectors.toList())
+                ).thenApply(hash -> {
+                    if (progressCounter != null)
+                        progressCounter.accept((long)(g.stream().mapToInt(f -> f.data.length).sum() / spaceIncreaseFactor));
+                    return hash;
+                })).collect(Collectors.toList());
         return Futures.combineAllInOrder(futures)
                 .thenApply(groups -> groups.stream()
                         .flatMap(g -> g.stream())
@@ -189,7 +191,7 @@ public class NetworkAccess {
             throw new IllegalStateException("Non matching location writer and signing writer key!");
         try {
             byte[] metaBlob = metadata.serialize();
-            return dhtClient.put(location.owner, metaBlob)
+            return dhtClient.put("", location.owner, writer.secret.signOnly(metaBlob), metaBlob)
                     .thenCompose(blobHash -> btree.put(writer, location.getMapKey(), metadata.committedHash(), blobHash)
                             .thenApply(res -> blobHash));
         } catch (Exception e) {

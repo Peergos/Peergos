@@ -120,7 +120,7 @@ public class WriterData implements Cborable {
                                                              UserGenerationAlgorithm newAlgorithm,
                                                              NetworkAccess network, Consumer<CommittedWriterData> updater) {
         Optional<UserStaticData> newEntryPoints = staticData.map(sd -> sd.withKey(newKey));
-        return network.dhtClient.putBoxingKey(signer.publicKeyHash, followRequestReceiver)
+        return network.dhtClient.putBoxingKey(signer.publicKeyHash, signer.secret.signOnly(followRequestReceiver.serialize()), followRequestReceiver)
                 .thenCompose(boxerHash -> {
                     WriterData updated = new WriterData(signer.publicKeyHash,
                             Optional.of(newAlgorithm),
@@ -143,7 +143,7 @@ public class WriterData implements Cborable {
                                                          Consumer<CommittedWriterData> updater) {
         byte[] raw = serialize();
 
-        return immutable.put(signer.publicKeyHash, raw)
+        return immutable.put("", signer.publicKeyHash, signer.secret.signOnly(raw), raw)
                 .thenCompose(blobHash -> {
                     MaybeMultihash newHash = MaybeMultihash.of(blobHash);
                     if (newHash.equals(currentHash)) {

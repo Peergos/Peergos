@@ -34,7 +34,7 @@ public class UserPublicKeyLinkTests {
         SigningKeyPair user = SigningKeyPair.random(new SafeRandom.Java(), new Ed25519.Java());
         UserPublicKeyLink.UsernameClaim node = UserPublicKeyLink.UsernameClaim.create("someuser", user.secretSigningKey, LocalDate.now().plusYears(2));
 
-        PublicKeyHash owner = ipfs.putSigningKey(user.publicSigningKey).get();
+        PublicKeyHash owner = ipfs.putSigningKey("", user.secretSigningKey.signOnly(user.publicSigningKey.serialize()), user.publicSigningKey).get();
         UserPublicKeyLink upl = new UserPublicKeyLink(owner, node);
         testSerialization(upl);
     }
@@ -51,8 +51,8 @@ public class UserPublicKeyLinkTests {
     public void createChain() throws Exception {
         SigningKeyPair oldUser = SigningKeyPair.random(new SafeRandom.Java(), new Ed25519.Java());
         SigningKeyPair newUser = SigningKeyPair.random(new SafeRandom.Java(), new Ed25519.Java());
-        PublicKeyHash oldHash = ipfs.putSigningKey(oldUser.publicSigningKey).get();
-        PublicKeyHash newHash = ipfs.putSigningKey(newUser.publicSigningKey).get();
+        PublicKeyHash oldHash = ipfs.putSigningKey("", oldUser.secretSigningKey.signOnly(oldUser.publicSigningKey.serialize()), oldUser.publicSigningKey).get();
+        PublicKeyHash newHash = ipfs.putSigningKey("", newUser.secretSigningKey.signOnly(newUser.publicSigningKey.serialize()), newUser.publicSigningKey).get();
 
         SigningPrivateKeyAndPublicHash oldSigner = new SigningPrivateKeyAndPublicHash(oldHash, oldUser.secretSigningKey);
         SigningPrivateKeyAndPublicHash newSigner = new SigningPrivateKeyAndPublicHash(newHash, newUser.secretSigningKey);
@@ -69,7 +69,7 @@ public class UserPublicKeyLinkTests {
 
         // register the username
         UserPublicKeyLink.UsernameClaim node = UserPublicKeyLink.UsernameClaim.create(username, user.secretSigningKey, LocalDate.now().plusMonths(2));
-        PublicKeyHash userHash = ipfs.putSigningKey(user.publicSigningKey).get();
+        PublicKeyHash userHash = ipfs.putSigningKey("", user.secretSigningKey.signOnly(user.publicSigningKey.serialize()), user.publicSigningKey).get();
         UserPublicKeyLink upl = new UserPublicKeyLink(userHash, node);
         boolean success = core.updateChain(username, Arrays.asList(upl)).get();
         List<UserPublicKeyLink> chain = core.getChain(username).get();
@@ -86,7 +86,7 @@ public class UserPublicKeyLinkTests {
 
         // now change the keys
         SigningKeyPair user2 = SigningKeyPair.insecureRandom();
-        PublicKeyHash user2Hash = ipfs.putSigningKey(user2.publicSigningKey).get();
+        PublicKeyHash user2Hash = ipfs.putSigningKey("", user2.secretSigningKey.signOnly(user2.publicSigningKey.serialize()), user2.publicSigningKey).get();
         SigningPrivateKeyAndPublicHash oldUser = new SigningPrivateKeyAndPublicHash(userHash, user.secretSigningKey);
         SigningPrivateKeyAndPublicHash newUser = new SigningPrivateKeyAndPublicHash(user2Hash, user2.secretSigningKey);
         List<UserPublicKeyLink> chain3 = UserPublicKeyLink.createChain(oldUser, newUser, username, LocalDate.now().plusWeeks(1));
@@ -111,7 +111,7 @@ public class UserPublicKeyLinkTests {
 
         // try to claim the same username with a different key
         SigningKeyPair user3 = SigningKeyPair.insecureRandom();
-        PublicKeyHash user3Hash = ipfs.putSigningKey(user3.publicSigningKey).get();
+        PublicKeyHash user3Hash = ipfs.putSigningKey("", user3.secretSigningKey.signOnly(user3.publicSigningKey.serialize()), user3.publicSigningKey).get();
         UserPublicKeyLink.UsernameClaim node3 = UserPublicKeyLink.UsernameClaim.create(username, user3.secretSigningKey, LocalDate.now().plusMonths(2));
         UserPublicKeyLink upl3 = new UserPublicKeyLink(user3Hash, node3);
         try {

@@ -10,7 +10,19 @@ public interface SecretSigningKey extends Cborable {
 
     PublicSigningKey.Type type();
 
+    /**
+     *
+     * @param message
+     * @return The signature + message
+     */
     byte[] signMessage(byte[] message);
+
+    /**
+     *
+     * @param message
+     * @return Only the signature, excluding the original message
+     */
+    byte[] signOnly(byte[] message);
 
     static SecretSigningKey fromCbor(CborObject cbor) {
         if (! (cbor instanceof CborObject.CborList))

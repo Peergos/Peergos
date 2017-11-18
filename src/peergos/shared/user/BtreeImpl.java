@@ -72,11 +72,12 @@ public class BtreeImpl implements Btree {
         return addToQueue(publicWriterKey, lock)
                 .thenCompose(committed -> {
                     WriterData holder = committed.props;
-                    MaybeMultihash btreeRootHash = holder.btree.isPresent() ? MaybeMultihash.of(holder.btree.get()) : MaybeMultihash.empty();
-                    return MerkleBTree.create(publicWriterKey, btreeRootHash, dht)
-                            .thenCompose(btree -> btree.put(publicWriterKey, mapKey, existing, value))
+                    return (holder.btree.isPresent() ?
+                            MerkleBTree.create(writer.publicKeyHash, holder.btree.get(), dht) :
+                            MerkleBTree.create(writer, dht))
+                            .thenCompose(btree -> btree.put(writer, mapKey, existing, value))
                             .thenApply(newRoot -> LOGGING ? log(newRoot, "BTREE.put (" + ArrayOps.bytesToHex(mapKey)
-                                    + ", " + value + ") => CAS(" + btreeRootHash + ", " + newRoot + ")") : newRoot)
+                                    + ", " + value + ") => CAS(" + holder.btree + ", " + newRoot + ")") : newRoot)
                             .thenCompose(newBtreeRoot -> holder.withBtree(newBtreeRoot)
                                     .commit(writer, committed.hash, mutable, dht, lock::complete))
                             .thenApply(x -> true)
@@ -97,11 +98,12 @@ public class BtreeImpl implements Btree {
                 .thenCompose(committed -> {
                     lock.complete(committed);
                     WriterData holder = committed.props;
-                    MaybeMultihash btreeRootHash = holder.btree.isPresent() ? MaybeMultihash.of(holder.btree.get()) : MaybeMultihash.empty();
-                    return MerkleBTree.create(writer, btreeRootHash, dht)
+                    if (! holder.btree.isPresent())
+                        throw new IllegalStateException("Btree root not present!");
+                    return MerkleBTree.create(writer, holder.btree.get(), dht)
                             .thenCompose(btree -> btree.get(mapKey))
                             .thenApply(maybe -> LOGGING ?
-                                    log(maybe, "BTREE.get (" + ArrayOps.bytesToHex(mapKey) + ", root="+btreeRootHash+" => " + maybe) : maybe);
+                                    log(maybe, "BTREE.get (" + ArrayOps.bytesToHex(mapKey) + ", root="+holder.btree.get()+" => " + maybe) : maybe);
                 });
     }
 
@@ -113,9 +115,10 @@ public class BtreeImpl implements Btree {
         return addToQueue(publicWriter, future)
                 .thenCompose(committed -> {
                     WriterData holder = committed.props;
-                    MaybeMultihash btreeRootHash = holder.btree.isPresent() ? MaybeMultihash.of(holder.btree.get()) : MaybeMultihash.empty();
-                    return MerkleBTree.create(publicWriter, btreeRootHash, dht)
-                            .thenCompose(btree -> btree.delete(publicWriter, mapKey, existing))
+                    if (! holder.btree.isPresent())
+                        throw new IllegalStateException("Btree root not present!");
+                    return MerkleBTree.create(writer.publicKeyHash, holder.btree.get(), dht)
+                            .thenCompose(btree -> btree.delete(writer, mapKey, existing))
                             .thenApply(pair -> LOGGING ? log(pair, "BTREE.rm (" + ArrayOps.bytesToHex(mapKey) + "  => " + pair) : pair)
                             .thenCompose(newBtreeRoot -> holder.withBtree(newBtreeRoot)
                                     .commit(writer, committed.hash, mutable, dht, future::complete))
