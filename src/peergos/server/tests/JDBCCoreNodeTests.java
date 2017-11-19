@@ -52,7 +52,7 @@ public class JDBCCoreNodeTests {
         UserPublicKeyLink.UsernameClaim node = UserPublicKeyLink.UsernameClaim.create(
             username, user.secretSigningKey, LocalDate.now().plusYears(2));
         try {
-            PublicKeyHash owner = STORAGE.putSigningKey("a",
+            PublicKeyHash owner = STORAGE.putSigningKey(
                     user.secretSigningKey.signOnly(user.publicSigningKey.serialize()),
                     STORAGE.hashKey(user.publicSigningKey),
                     user.publicSigningKey).get();

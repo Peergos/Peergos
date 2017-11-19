@@ -143,7 +143,7 @@ public class WriterData implements Cborable {
                                                          Consumer<CommittedWriterData> updater) {
         byte[] raw = serialize();
 
-        return immutable.put("", signer.publicKeyHash, signer.secret.signOnly(raw), raw)
+        return immutable.put(signer.publicKeyHash, signer.secret.signOnly(raw), raw)
                 .thenCompose(blobHash -> {
                     MaybeMultihash newHash = MaybeMultihash.of(blobHash);
                     if (newHash.equals(currentHash)) {

@@ -153,11 +153,11 @@ public class NetworkAccess {
     }
 
     private CompletableFuture<Multihash> uploadFragment(Fragment f, PublicKeyHash writer, byte[] signature) {
-        return dhtClient.putRaw("", writer, signature, f.data);
+        return dhtClient.putRaw(writer, signature, f.data);
     }
 
     private CompletableFuture<List<Multihash>> bulkUploadFragments(List<Fragment> fragments, PublicKeyHash writer, List<byte[]> signatures) {
-        return dhtClient.putRaw("", writer, signatures, fragments
+        return dhtClient.putRaw(writer, signatures, fragments
                 .stream()
                 .map(f -> f.data)
                 .collect(Collectors.toList()));
@@ -191,7 +191,7 @@ public class NetworkAccess {
             throw new IllegalStateException("Non matching location writer and signing writer key!");
         try {
             byte[] metaBlob = metadata.serialize();
-            return dhtClient.put("", location.writer, writer.secret.signOnly(metaBlob), metaBlob)
+            return dhtClient.put(location.writer, writer.secret.signOnly(metaBlob), metaBlob)
                     .thenCompose(blobHash -> btree.put(writer, location.getMapKey(), metadata.committedHash(), blobHash)
                             .thenApply(res -> blobHash));
         } catch (Exception e) {

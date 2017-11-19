@@ -140,7 +140,7 @@ public class UserContext {
                             System.out.println("Couldn't register username");
                             throw new IllegalStateException("Couldn't register username: " + username);
                         }
-                        return network.dhtClient.putSigningKey(username,
+                        return network.dhtClient.putSigningKey(
                                 secretSigningKey.signOnly(publicSigningKey.serialize()),
                                 network.dhtClient.hashKey(publicSigningKey),
                                 publicSigningKey)
@@ -388,7 +388,6 @@ public class UserContext {
                                         .thenCompose(wd -> {
                                             PublicSigningKey newPublicSigningKey = updatedUser.getUser().publicSigningKey;
                                                     return network.dhtClient.putSigningKey(
-                                                            username,
                                                             existingUser.getUser().secretSigningKey.signOnly(newPublicSigningKey.serialize()),
                                                             network.dhtClient.hashKey(existingUser.getUser().publicSigningKey),
                                                             newPublicSigningKey
@@ -423,7 +422,7 @@ public class UserContext {
         long t1 = System.currentTimeMillis();
         SigningKeyPair writer = SigningKeyPair.random(crypto.random, crypto.signer);
         System.out.println("Random User generation took " + (System.currentTimeMillis()-t1) + " mS");
-        return network.dhtClient.putSigningKey(username,
+        return network.dhtClient.putSigningKey(
                 owner.secret.signOnly(writer.publicSigningKey.serialize()),
                 owner.publicKeyHash,
                 writer.publicSigningKey).thenCompose(writerHash -> {

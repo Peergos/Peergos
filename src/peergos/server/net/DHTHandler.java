@@ -64,7 +64,6 @@ public class DHTHandler implements HttpHandler
             switch (path) {
                 case "block/put": {
                     PublicKeyHash writerHash = PublicKeyHash.fromString(last.apply("writer"));
-                    String username = last.apply("username");
                     List<byte[]> signatures = Arrays.stream(last.apply("signatures").split(","))
                             .map(ArrayOps::hexToBytes)
                             .collect(Collectors.toList());
@@ -103,8 +102,8 @@ public class DHTHandler implements HttpHandler
                     }
 
                     (isRaw ?
-                            dht.putRaw(username, writerHash, signatures, data) :
-                            dht.put(username, writerHash, signatures, data)).thenAccept(hashes -> {
+                            dht.putRaw(writerHash, signatures, data) :
+                            dht.put(writerHash, signatures, data)).thenAccept(hashes -> {
                         List<Object> json = hashes.stream().map(h -> wrapHash(h)).collect(Collectors.toList());
                         // make stream of JSON objects
                         String jsonStream = json.stream().map(m -> JSONParser.toString(m)).reduce("", (a, b) -> a + b);

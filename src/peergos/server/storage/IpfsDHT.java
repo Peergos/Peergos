@@ -30,16 +30,16 @@ public class IpfsDHT implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> put(String username, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
-        return put(username, writer, signatures, blocks, "cbor");
+    public CompletableFuture<List<Multihash>> put(PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
+        return put(writer, signatures, blocks, "cbor");
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> putRaw(String username, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
-        return put(username, writer, signatures, blocks, "raw");
+    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
+        return put(writer, signatures, blocks, "raw");
     }
 
-    private CompletableFuture<List<Multihash>> put(String username, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks, String format) {
+    private CompletableFuture<List<Multihash>> put(PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks, String format) {
         try {
             return CompletableFuture.completedFuture(ipfs.block.put(blocks, Optional.of(format)))
                     .thenApply(nodes -> nodes.stream().map(n -> n.hash).collect(Collectors.toList()));
