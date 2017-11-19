@@ -219,7 +219,7 @@ public class MerkleBtree {
         }
 
         int size = ((RAMStorage)tree.storage).size();
-        if (size != 30)
+        if (size != 31)
             throw new IllegalStateException("Storage size != 3");
 
         long t1 = System.currentTimeMillis();
