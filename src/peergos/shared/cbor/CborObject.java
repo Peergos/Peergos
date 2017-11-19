@@ -7,6 +7,9 @@ import java.io.*;
 import java.util.*;
 import java.util.stream.*;
 
+import static peergos.shared.cbor.CborConstants.TYPE_BYTE_STRING;
+import static peergos.shared.cbor.CborConstants.TYPE_TEXT_STRING;
+
 public interface CborObject {
 
     void serialize(CborEncoder encoder);
@@ -26,11 +29,67 @@ public interface CborObject {
         return deserialize(new CborDecoder(new ByteArrayInputStream(cbor)));
     }
 
+    static boolean hasLargerGroup(byte[] cbor, int max) {
+        return hasLargerGroup(new CborDecoder(new ByteArrayInputStream(cbor)), max);
+    }
+
+    static boolean hasLargerGroup(CborDecoder decoder, int maxGroupSize) {
+        try {
+            CborType type = decoder.peekType();
+            switch (type.getMajorType()) {
+                case TYPE_TEXT_STRING: {
+                    long len = decoder.readMajorTypeWithSize(TYPE_TEXT_STRING);
+                    return len > maxGroupSize;
+                }
+                case CborConstants.TYPE_BYTE_STRING: {
+                    long len = decoder.readMajorTypeWithSize(TYPE_BYTE_STRING);
+                    return len > maxGroupSize;
+                }
+                case CborConstants.TYPE_UNSIGNED_INTEGER:
+                case CborConstants.TYPE_NEGATIVE_INTEGER:
+                case CborConstants.TYPE_FLOAT_SIMPLE:
+                    return false;
+                case CborConstants.TYPE_MAP: {
+                    long nValues = decoder.readMapLength();
+                    if (nValues > maxGroupSize)
+                        return true;
+                    for (long i=0; i < nValues; i++) {
+                        if (hasLargerGroup(decoder, maxGroupSize))
+                            return true;
+                        if (hasLargerGroup(decoder, maxGroupSize))
+                            return true;
+                    }
+                    return false;
+                }
+                case CborConstants.TYPE_ARRAY:
+                    long nItems = decoder.readArrayLength();
+                    if (nItems > maxGroupSize)
+                        return true;
+                    for (long i=0; i < nItems; i++)
+                        if (hasLargerGroup(decoder, maxGroupSize))
+                            return true;
+                    return false;
+                case CborConstants.TYPE_TAG:
+                    long tag = decoder.readTag();
+                    if (tag == LINK_TAG) {
+                        if (hasLargerGroup(decoder, maxGroupSize))
+                            return true;
+                        return false;
+                    }
+                    throw new IllegalStateException("Unknown TAG in CBOR: " + type.getAdditionalInfo());
+                default:
+                    throw new IllegalStateException("Unimplemented cbor type: " + type);
+            }
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     static CborObject deserialize(CborDecoder decoder) {
         try {
             CborType type = decoder.peekType();
             switch (type.getMajorType()) {
-                case CborConstants.TYPE_TEXT_STRING:
+                case TYPE_TEXT_STRING:
                     return new CborString(decoder.readTextString());
                 case CborConstants.TYPE_BYTE_STRING:
                     return new CborByteArray(decoder.readByteString());

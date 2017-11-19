@@ -61,6 +61,12 @@ public interface PublicSigningKey extends Cborable {
         }
     }
 
+    static boolean maybeValidKey(byte[] raw) {
+        if (raw.length > 64) // All currently supported public keys are smaller than this
+            return false;
+        return ! CborObject.hasLargerGroup(raw, 64);
+    }
+
     static PublicSigningKey createNull() {
         return new Ed25519PublicKey(new byte[32], PublicSigningKey.PROVIDERS.get(PublicSigningKey.Type.Ed25519));
     }

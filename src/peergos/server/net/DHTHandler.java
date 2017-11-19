@@ -99,12 +99,14 @@ public class DHTHandler implements HttpHandler
                         try {
                             // find better way to check if this is a valid public key first without potentially
                             // causing an OOM by deserializing random data
-                            PublicSigningKey candidateKey = PublicSigningKey.fromByteArray(data.get(0));
-                            PublicKeyHash calculatedHash = dht.hashKey(candidateKey);
-                            if (calculatedHash.equals(writerHash)) {
-                                // If signature is not valid then the signing key has already been written, retrieve it
-                                candidateKey.unsignMessage(ArrayOps.concat(signatures.get(0), data.get(0)));
-                                return candidateKey;
+                            if (PublicSigningKey.maybeValidKey(data.get(0))) {
+                                PublicSigningKey candidateKey = PublicSigningKey.fromByteArray(data.get(0));
+                                PublicKeyHash calculatedHash = dht.hashKey(candidateKey);
+                                if (calculatedHash.equals(writerHash)) {
+                                    // If signature is not valid then the signing key has already been written, retrieve it
+                                    candidateKey.unsignMessage(ArrayOps.concat(signatures.get(0), data.get(0)));
+                                    return candidateKey;
+                                }
                             }
                         } catch (Throwable e) {}
                         return fromDht.get();
