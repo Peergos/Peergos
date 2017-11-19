@@ -21,18 +21,16 @@ public class DHTHandler implements HttpHandler
 {
     private static final boolean LOGGING = true;
     private final ContentAddressedStorage dht;
-    private final MutablePointers mutable;
     private final String apiPrefix;
 
-    public DHTHandler(ContentAddressedStorage dht, MutablePointers mutable, String apiPrefix) throws IOException
+    public DHTHandler(ContentAddressedStorage dht, String apiPrefix) throws IOException
     {
         this.dht = dht;
-        this.mutable = mutable;
         this.apiPrefix = apiPrefix;
     }
 
-    public DHTHandler(ContentAddressedStorage dht, MutablePointers mutable) throws IOException {
-        this(dht, mutable, "/api/v0/");
+    public DHTHandler(ContentAddressedStorage dht) throws IOException {
+        this(dht, "/api/v0/");
     }
 
     private Map<String, List<String>> parseQuery(String query) {
@@ -83,7 +81,8 @@ public class DHTHandler implements HttpHandler
                     // check writer is allowed to write to this server, and check their free space
 
                     // get the actual key, unless this is the initial write of the signing key during sign up
-                    Optional<byte[]> pointerCas = mutable.getPointer(writerHash).get();
+                    // In the initial put of a signing key during signup the key signs itself (we still check the hash
+                    // against the corenode)
                     Supplier<PublicSigningKey> fromDht = () -> {
                         try {
                             return PublicSigningKey.fromCbor(dht.get(writerHash.hash).get().get());
@@ -91,9 +90,7 @@ public class DHTHandler implements HttpHandler
                             throw new RuntimeException(e);
                         }
                     };
-                    Supplier<PublicSigningKey> inBand = () -> {
-                        if (data.size() > 1)
-                            throw new IllegalStateException("Cannot write more than one blob during signup!");
+                    Supplier<PublicSigningKey> inBandOrDht = () -> {
                         try {
                             PublicSigningKey candidateKey = PublicSigningKey.fromByteArray(data.get(0));
                             // If signature is not valid then the signing key has already been written, retrive it
@@ -103,9 +100,7 @@ public class DHTHandler implements HttpHandler
                             return fromDht.get();
                         }
                     };
-                    PublicSigningKey writer = pointerCas.isPresent() ?
-                            fromDht.get() :
-                            inBand.get();
+                    PublicSigningKey writer = data.size() > 1 ? fromDht.get() : inBandOrDht.get();
 
                     // verify signatures
                     for (int i = 0; i < data.size(); i++) {

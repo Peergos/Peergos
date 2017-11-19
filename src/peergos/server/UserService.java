@@ -157,7 +157,7 @@ public class UserService
 
         Function<HttpHandler, HttpHandler> wrap = h -> !isLocal ? new HSTSHandler(h) : h;
 
-        server.createContext(DHT_URL, wrap.apply(new DHTHandler(dht, mutable)));
+        server.createContext(DHT_URL, wrap.apply(new DHTHandler(dht)));
         server.createContext(SIGNUP_URL, wrap.apply(new InverseProxyHandler("startDemo.peergos.net", isLocal)));
         server.createContext(ACTIVATION_URL, wrap.apply(new InverseProxyHandler("startDemo.peergos.net", isLocal)));
 
