@@ -74,6 +74,12 @@ public class WriterData implements Cborable {
         return new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver, owned, staticData, btree);
     }
 
+    public WriterData addOwnedKey(PublicKeyHash newOwned) {
+        Set<PublicKeyHash> updated = new HashSet<>(ownedKeys);
+        updated.add(newOwned);
+        return new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver, updated, staticData, btree);
+    }
+
     public static WriterData createEmpty(PublicKeyHash controller) {
         return new WriterData(controller,
                 Optional.empty(),
@@ -116,22 +122,30 @@ public class WriterData implements Cborable {
         }).orElse(CompletableFuture.completedFuture(committed(currentHash)));
     }
 
-    public CompletableFuture<CommittedWriterData> changeKeys(SigningPrivateKeyAndPublicHash signer, MaybeMultihash currentHash,
-                                                             PublicBoxingKey followRequestReceiver, SymmetricKey newKey,
+    public CompletableFuture<CommittedWriterData> changeKeys(SigningPrivateKeyAndPublicHash oldSigner,
+                                                             SigningPrivateKeyAndPublicHash signer,
+                                                             MaybeMultihash currentHash,
+                                                             PublicBoxingKey followRequestReceiver,
+                                                             SymmetricKey newKey,
                                                              UserGenerationAlgorithm newAlgorithm,
-                                                             NetworkAccess network, Consumer<CommittedWriterData> updater) {
-        Optional<UserStaticData> newEntryPoints = staticData.map(sd -> sd.withKey(newKey));
-        return network.dhtClient.putBoxingKey(signer.publicKeyHash, signer.secret.signOnly(followRequestReceiver.serialize()), followRequestReceiver)
-                .thenCompose(boxerHash -> {
-                    WriterData updated = new WriterData(signer.publicKeyHash,
-                            Optional.of(newAlgorithm),
-                            publicData,
-                            Optional.of(new PublicKeyHash(boxerHash)),
-                            ownedKeys,
-                            newEntryPoints,
-                            btree);
-                    return updated.commit(signer, MaybeMultihash.empty(), network, updater);
-                });
+                                                             NetworkAccess network,
+                                                             Consumer<CommittedWriterData> updater) {
+        // auth new key by adding to existing writer data first
+        WriterData tmp = addOwnedKey(signer.publicKeyHash);
+        return tmp.commit(oldSigner, currentHash, network, x -> {}).thenCompose(tmpCommited -> {
+            Optional<UserStaticData> newEntryPoints = staticData.map(sd -> sd.withKey(newKey));
+            return network.dhtClient.putBoxingKey(signer.publicKeyHash, signer.secret.signOnly(followRequestReceiver.serialize()), followRequestReceiver)
+                    .thenCompose(boxerHash -> {
+                        WriterData updated = new WriterData(signer.publicKeyHash,
+                                Optional.of(newAlgorithm),
+                                publicData,
+                                Optional.of(new PublicKeyHash(boxerHash)),
+                                ownedKeys,
+                                newEntryPoints,
+                                btree);
+                        return updated.commit(signer, MaybeMultihash.empty(), network, updater);
+                    });
+        });
     }
 
     public CompletableFuture<CommittedWriterData> commit(SigningPrivateKeyAndPublicHash signer, MaybeMultihash currentHash,

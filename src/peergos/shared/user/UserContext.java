@@ -392,7 +392,9 @@ public class UserContext {
                                                             network.dhtClient.hashKey(existingUser.getUser().publicSigningKey),
                                                             newPublicSigningKey
                                                     ).thenCompose(newSignerHash -> wd.props
-                                                            .changeKeys(new SigningPrivateKeyAndPublicHash(newSignerHash, updatedUser.getUser().secretSigningKey),
+                                                            .changeKeys(
+                                                                    signer,
+                                                                    new SigningPrivateKeyAndPublicHash(newSignerHash, updatedUser.getUser().secretSigningKey),
                                                                     wd.hash,
                                                                     updatedUser.getBoxingPair().publicBoxingKey,
                                                                     updatedUser.getRoot(),
