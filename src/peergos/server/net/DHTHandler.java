@@ -93,12 +93,14 @@ public class DHTHandler implements HttpHandler
                     Supplier<PublicSigningKey> inBandOrDht = () -> {
                         try {
                             PublicSigningKey candidateKey = PublicSigningKey.fromByteArray(data.get(0));
-                            // If signature is not valid then the signing key has already been written, retrive it
-                            candidateKey.unsignMessage(ArrayOps.concat(signatures.get(0), data.get(0)));
-                            return candidateKey;
-                        } catch (Exception e) {
-                            return fromDht.get();
-                        }
+                            PublicKeyHash calculatedHash = dht.hashKey(candidateKey);
+                            if (calculatedHash.equals(writerHash)) {
+                                // If signature is not valid then the signing key has already been written, retrieve it
+                                candidateKey.unsignMessage(ArrayOps.concat(signatures.get(0), data.get(0)));
+                                return candidateKey;
+                            }
+                        } catch (Exception e) {}
+                        return fromDht.get();
                     };
                     PublicSigningKey writer = data.size() > 1 ? fromDht.get() : inBandOrDht.get();
 
