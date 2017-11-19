@@ -85,9 +85,9 @@ public class DHTHandler implements HttpHandler
                     if (! keyFilter.isAllowed(writerHash))
                         throw new IllegalStateException("Key not allowed to write to this server: " + writerHash);
 
-                    // get the actual key, unless this is the initial write of the signing key during sign up
-                    // In the initial put of a signing key during signup the key signs itself (we still check the hash
-                    // against the corenode)
+                    // Get the actual key, unless this is the initial write of the signing key during sign up
+                    // In the initial put of a signing key during sign up the key signs itself (we still check the hash
+                    // against the core node)
                     Supplier<PublicSigningKey> fromDht = () -> {
                         try {
                             return PublicSigningKey.fromCbor(dht.get(writerHash.hash).get().get());
@@ -97,18 +97,19 @@ public class DHTHandler implements HttpHandler
                     };
                     Supplier<PublicSigningKey> inBandOrDht = () -> {
                         try {
-                            // find better way to check if this is a valid public key first without potentially
-                            // causing an OOM by deserializing random data
+                            // Check if this is possible to cause an OOM error before parsing it as cbor
                             if (PublicSigningKey.maybeValidKey(data.get(0))) {
                                 PublicSigningKey candidateKey = PublicSigningKey.fromByteArray(data.get(0));
                                 PublicKeyHash calculatedHash = dht.hashKey(candidateKey);
                                 if (calculatedHash.equals(writerHash)) {
-                                    // If signature is not valid then the signing key has already been written, retrieve it
                                     candidateKey.unsignMessage(ArrayOps.concat(signatures.get(0), data.get(0)));
                                     return candidateKey;
                                 }
                             }
-                        } catch (Throwable e) {}
+                        } catch (Throwable e) {
+                            // If signature is not valid then the signing key has already been written, retrieve it
+                            // This happens for the boxing key during sign up for example
+                        }
                         return fromDht.get();
                     };
                     PublicSigningKey writer = data.size() > 1 ? fromDht.get() : inBandOrDht.get();
