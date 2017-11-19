@@ -63,7 +63,7 @@ public class DHTHandler implements HttpHandler
 
             switch (path) {
                 case "block/put": {
-                    PublicKeyHash writer = PublicKeyHash.fromString(last.apply("writer"));
+                    PublicKeyHash writerHash = PublicKeyHash.fromString(last.apply("writer"));
                     String username = last.apply("username");
                     List<byte[]> signatures = Arrays.stream(last.apply("signatures").split(","))
                             .map(ArrayOps::hexToBytes)
@@ -77,9 +77,28 @@ public class DHTHandler implements HttpHandler
                     List<byte[]> data = MultipartReceiver.extractFiles(httpExchange.getRequestBody(), boundary);
                     boolean isRaw = last.apply("format").equals("raw");
 
+                    // check writer is allowed to write to this server, and check their free space
+                    boolean isNullKey = PublicKeyHash.NULL.equals(writerHash);
+                    //TODO make username claim happen before signing key during sign up, and remove null hash
+
+                    Optional<CborObject> writerCbor = isNullKey ? Optional.empty() : dht.get(writerHash.hash).get();
+                    if (! writerCbor.isPresent() && ! isNullKey)
+                        throw new IllegalStateException("Couldn't retrieve signing key for " + writerHash);
+                    if (! isNullKey) {
+                        PublicSigningKey writer = PublicSigningKey.fromCbor(writerCbor.get());
+
+                        // verify signatures
+                        for (int i = 0; i < data.size(); i++) {
+                            byte[] signature = signatures.get(i);
+                            byte[] unsigned = writer.unsignMessage(ArrayOps.concat(signature, data.get(i)));
+                            if (!Arrays.equals(unsigned, data.get(i)))
+                                throw new IllegalStateException("Invalid signature for block!");
+                        }
+                    }
+
                     (isRaw ?
-                            dht.putRaw(username, writer, signatures, data) :
-                            dht.put(username, writer, signatures, data)).thenAccept(hashes -> {
+                            dht.putRaw(username, writerHash, signatures, data) :
+                            dht.put(username, writerHash, signatures, data)).thenAccept(hashes -> {
                         List<Object> json = hashes.stream().map(h -> wrapHash(h)).collect(Collectors.toList());
                         // make stream of JSON objects
                         String jsonStream = json.stream().map(m -> JSONParser.toString(m)).reduce("", (a, b) -> a + b);

@@ -191,7 +191,7 @@ public class NetworkAccess {
             throw new IllegalStateException("Non matching location writer and signing writer key!");
         try {
             byte[] metaBlob = metadata.serialize();
-            return dhtClient.put("", location.owner, writer.secret.signOnly(metaBlob), metaBlob)
+            return dhtClient.put("", location.writer, writer.secret.signOnly(metaBlob), metaBlob)
                     .thenCompose(blobHash -> btree.put(writer, location.getMapKey(), metadata.committedHash(), blobHash)
                             .thenApply(res -> blobHash));
         } catch (Exception e) {
