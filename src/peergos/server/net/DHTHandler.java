@@ -1,5 +1,6 @@
 package peergos.server.net;
 
+import peergos.server.storage.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
@@ -21,16 +22,18 @@ public class DHTHandler implements HttpHandler
 {
     private static final boolean LOGGING = true;
     private final ContentAddressedStorage dht;
+    private final KeyFilter keyFilter;
     private final String apiPrefix;
 
-    public DHTHandler(ContentAddressedStorage dht, String apiPrefix) throws IOException
+    public DHTHandler(ContentAddressedStorage dht, KeyFilter keyFilter, String apiPrefix) throws IOException
     {
         this.dht = dht;
+        this.keyFilter = keyFilter;
         this.apiPrefix = apiPrefix;
     }
 
-    public DHTHandler(ContentAddressedStorage dht) throws IOException {
-        this(dht, "/api/v0/");
+    public DHTHandler(ContentAddressedStorage dht, KeyFilter keyFilter) throws IOException {
+        this(dht, keyFilter, "/api/v0/");
     }
 
     private Map<String, List<String>> parseQuery(String query) {
@@ -79,6 +82,8 @@ public class DHTHandler implements HttpHandler
                     boolean isRaw = last.apply("format").equals("raw");
 
                     // check writer is allowed to write to this server, and check their free space
+                    if (! keyFilter.isAllowed(writerHash))
+                        throw new IllegalStateException("Key not allowed to write to this server: " + writerHash);
 
                     // get the actual key, unless this is the initial write of the signing key during sign up
                     // In the initial put of a signing key during signup the key signs itself (we still check the hash
