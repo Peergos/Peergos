@@ -135,6 +135,7 @@ public class UserContext {
                     SecretSigningKey secretSigningKey = userWithRoot.getUser().secretSigningKey;
                     PublicKeyHash signerHash = network.dhtClient.hashKey(publicSigningKey);
                     SigningPrivateKeyAndPublicHash signer = new SigningPrivateKeyAndPublicHash(signerHash, secretSigningKey);
+                    System.out.println("Registering username " + username);
                     return UserContext.register(username, signer, network).thenCompose(registered -> {
                         if (! registered) {
                             System.out.println("Couldn't register username");
@@ -156,7 +157,6 @@ public class UserContext {
                                             CommittedWriterData notCommitted = new CommittedWriterData(MaybeMultihash.empty(), newUserData);
                                             UserContext context = new UserContext(username, signer, userWithRoot.getBoxingPair(),
                                                     network, crypto, CompletableFuture.completedFuture(notCommitted), new TrieNode());
-                                            System.out.println("Registering username " + username);
 
                                                 System.out.println("Creating user's root directory");
                                                 long t1 = System.currentTimeMillis();

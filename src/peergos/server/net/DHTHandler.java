@@ -6,12 +6,14 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.api.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.io.ipfs.cid.*;
+import peergos.shared.mutable.*;
 import peergos.shared.storage.ContentAddressedStorage;
 import com.sun.net.httpserver.*;
 import peergos.shared.util.*;
 
 import java.io.*;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.function.*;
 import java.util.stream.*;
 
@@ -19,16 +21,18 @@ public class DHTHandler implements HttpHandler
 {
     private static final boolean LOGGING = true;
     private final ContentAddressedStorage dht;
+    private final MutablePointers mutable;
     private final String apiPrefix;
 
-    public DHTHandler(ContentAddressedStorage dht, String apiPrefix) throws IOException
+    public DHTHandler(ContentAddressedStorage dht, MutablePointers mutable, String apiPrefix) throws IOException
     {
         this.dht = dht;
+        this.mutable = mutable;
         this.apiPrefix = apiPrefix;
     }
 
-    public DHTHandler(ContentAddressedStorage dht) throws IOException {
-        this(dht, "/api/v0/");
+    public DHTHandler(ContentAddressedStorage dht, MutablePointers mutable) throws IOException {
+        this(dht, mutable, "/api/v0/");
     }
 
     private Map<String, List<String>> parseQuery(String query) {
@@ -77,21 +81,31 @@ public class DHTHandler implements HttpHandler
                     boolean isRaw = last.apply("format").equals("raw");
 
                     // check writer is allowed to write to this server, and check their free space
-                    PublicSigningKey writer;
-                    // get the actual key
-                    try {
-                        Optional<CborObject> writerCbor = dht.get(writerHash.hash).get();
-                        writer = PublicSigningKey.fromCbor(writerCbor.get());
-                    } catch (IllegalStateException ex) {
-                        // check if this is the initial write of the signing key during sign up
+
+                    // get the actual key, unless this is the initial write of the signing key during sign up
+                    Optional<byte[]> pointerCas = mutable.getPointer(writerHash).get();
+                    Supplier<PublicSigningKey> fromDht = () -> {
                         try {
-                            if (data.size() > 1)
-                                throw new IllegalStateException("Cannot write more than one blob during signup!");
-                            writer = PublicSigningKey.fromByteArray(data.get(0));
+                            return PublicSigningKey.fromCbor(dht.get(writerHash.hash).get().get());
                         } catch (Exception e) {
-                            throw new IllegalStateException("Couldn't retrieve signing key for " + writerHash);
+                            throw new RuntimeException(e);
                         }
-                    }
+                    };
+                    Supplier<PublicSigningKey> inBand = () -> {
+                        if (data.size() > 1)
+                            throw new IllegalStateException("Cannot write more than one blob during signup!");
+                        try {
+                            PublicSigningKey candidateKey = PublicSigningKey.fromByteArray(data.get(0));
+                            // If signature is not valid then the signing key has already been written, retrive it
+                            candidateKey.unsignMessage(ArrayOps.concat(signatures.get(0), data.get(0)));
+                            return candidateKey;
+                        } catch (Exception e) {
+                            return fromDht.get();
+                        }
+                    };
+                    PublicSigningKey writer = pointerCas.isPresent() ?
+                            fromDht.get() :
+                            inBand.get();
 
                     // verify signatures
                     for (int i = 0; i < data.size(); i++) {
