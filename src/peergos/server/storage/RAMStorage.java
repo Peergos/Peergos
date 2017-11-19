@@ -56,7 +56,7 @@ public class RAMStorage implements ContentAddressedStorage {
     }
 
     private synchronized CborObject getAndParseObject(Multihash hash) {
-        if (!storage.containsKey(hash))
+        if (! storage.containsKey(hash))
             throw new IllegalStateException("Hash not present! "+ hash);
         return CborObject.fromByteArray(storage.get(hash));
     }

@@ -57,9 +57,18 @@ public interface ContentAddressedStorage {
 
     CompletableFuture<Optional<Integer>> getSize(Multihash block);
 
-    default CompletableFuture<PublicKeyHash> putSigningKey(String username, byte[] signature, PublicSigningKey key) {
-        return put(username, PublicKeyHash.NULL, signature, key.toCbor().toByteArray())
+    default CompletableFuture<PublicKeyHash> putSigningKey(String username,
+                                                           byte[] signature,
+                                                           PublicKeyHash authKeyHash,
+                                                           PublicSigningKey newKey) {
+        return put(username, authKeyHash, signature, newKey.toCbor().toByteArray())
                 .thenApply(PublicKeyHash::new);
+    }
+
+    default PublicKeyHash hashKey(PublicSigningKey key) {
+        return new PublicKeyHash(new Cid(1, Cid.Codec.DagCbor, new Multihash(
+                            Multihash.Type.sha2_256,
+                            Hash.sha256(key.serialize()))));
     }
 
     default CompletableFuture<PublicKeyHash> putBoxingKey(PublicKeyHash controller, byte[] signature, PublicBoxingKey key) {

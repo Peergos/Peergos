@@ -133,10 +133,20 @@ public class UserContext {
                 .thenCompose(userWithRoot -> {
                     PublicSigningKey publicSigningKey = userWithRoot.getUser().publicSigningKey;
                     SecretSigningKey secretSigningKey = userWithRoot.getUser().secretSigningKey;
-                    return network.dhtClient.putSigningKey(username, secretSigningKey.signOnly(publicSigningKey.serialize()), publicSigningKey)
-                            .thenCompose(signerHash -> {
-                                PublicBoxingKey publicBoxingKey = userWithRoot.getBoxingPair().publicBoxingKey;
-                                return network.dhtClient.putBoxingKey(signerHash, secretSigningKey.signOnly(publicBoxingKey.serialize()), publicBoxingKey)
+                    PublicKeyHash signerHash = network.dhtClient.hashKey(publicSigningKey);
+                    SigningPrivateKeyAndPublicHash signer = new SigningPrivateKeyAndPublicHash(signerHash, secretSigningKey);
+                    return UserContext.register(username, signer, network).thenCompose(registered -> {
+                        if (! registered) {
+                            System.out.println("Couldn't register username");
+                            throw new IllegalStateException("Couldn't register username: " + username);
+                        }
+                        return network.dhtClient.putSigningKey(username,
+                                secretSigningKey.signOnly(publicSigningKey.serialize()),
+                                network.dhtClient.hashKey(publicSigningKey),
+                                publicSigningKey)
+                                .thenCompose(returnedSignerHash -> {
+                                    PublicBoxingKey publicBoxingKey = userWithRoot.getBoxingPair().publicBoxingKey;
+                                    return network.dhtClient.putBoxingKey(signerHash, secretSigningKey.signOnly(publicBoxingKey.serialize()), publicBoxingKey)
                                         .thenCompose(boxerHash -> {
                                             WriterData newUserData = WriterData.createEmpty(
                                                     signerHash,
@@ -144,15 +154,10 @@ public class UserContext {
                                                     userWithRoot.getRoot());
 
                                             CommittedWriterData notCommitted = new CommittedWriterData(MaybeMultihash.empty(), newUserData);
-                                            SigningPrivateKeyAndPublicHash signer = new SigningPrivateKeyAndPublicHash(signerHash, secretSigningKey);
                                             UserContext context = new UserContext(username, signer, userWithRoot.getBoxingPair(),
                                                     network, crypto, CompletableFuture.completedFuture(notCommitted), new TrieNode());
                                             System.out.println("Registering username " + username);
-                                            return context.register().thenCompose(successfullyRegistered -> {
-                                                if (!successfullyRegistered) {
-                                                    System.out.println("Couldn't register username");
-                                                    throw new IllegalStateException("Couldn't register username: " + username);
-                                                }
+
                                                 System.out.println("Creating user's root directory");
                                                 long t1 = System.currentTimeMillis();
                                                 return context.createEntryDirectory(signer, username).thenCompose(userRoot -> {
@@ -273,13 +278,17 @@ public class UserContext {
         return isRegistered().thenCompose(exists -> {
             if (exists)
                 throw new IllegalStateException("Account already exists with username: " + username);
-            LocalDate now = LocalDate.now();
-            // set claim expiry to two months from now
-            LocalDate expiry = now.plusMonths(2);
-            System.out.println("claiming username: " + this.username + " with expiry " + expiry);
-            List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createInitial(signer, this.username, expiry);
-            return network.coreNode.updateChain(this.username, claimChain);
+            return register(this.username, signer, network);
         });
+    }
+
+    public static CompletableFuture<Boolean> register(String username, SigningPrivateKeyAndPublicHash signer, NetworkAccess network) {
+        LocalDate now = LocalDate.now();
+        // set claim expiry to two months from now
+        LocalDate expiry = now.plusMonths(2);
+        System.out.println("claiming username: " + username + " with expiry " + expiry);
+        List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createInitial(signer, username, expiry);
+        return network.coreNode.updateChain(username, claimChain);
     }
 
     public CompletableFuture<LocalDate> getUsernameClaimExpiry() {
@@ -381,6 +390,7 @@ public class UserContext {
                                                     return network.dhtClient.putSigningKey(
                                                             username,
                                                             existingUser.getUser().secretSigningKey.signOnly(newPublicSigningKey.serialize()),
+                                                            network.dhtClient.hashKey(existingUser.getUser().publicSigningKey),
                                                             newPublicSigningKey
                                                     ).thenCompose(newSignerHash -> wd.props
                                                             .changeKeys(new SigningPrivateKeyAndPublicHash(newSignerHash, updatedUser.getUser().secretSigningKey),
@@ -413,7 +423,10 @@ public class UserContext {
         long t1 = System.currentTimeMillis();
         SigningKeyPair writer = SigningKeyPair.random(crypto.random, crypto.signer);
         System.out.println("Random User generation took " + (System.currentTimeMillis()-t1) + " mS");
-        return network.dhtClient.putSigningKey(username, owner.secret.signOnly(writer.publicSigningKey.serialize()), writer.publicSigningKey).thenCompose(writerHash -> {
+        return network.dhtClient.putSigningKey(username,
+                owner.secret.signOnly(writer.publicSigningKey.serialize()),
+                owner.publicKeyHash,
+                writer.publicSigningKey).thenCompose(writerHash -> {
             byte[] rootMapKey = new byte[32]; // root will be stored under this in the core node
             crypto.random.randombytes(rootMapKey, 0, 32);
             SymmetricKey rootRKey = SymmetricKey.random();

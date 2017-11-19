@@ -78,22 +78,28 @@ public class DHTHandler implements HttpHandler
                     boolean isRaw = last.apply("format").equals("raw");
 
                     // check writer is allowed to write to this server, and check their free space
-                    boolean isNullKey = PublicKeyHash.NULL.equals(writerHash);
-                    //TODO make username claim happen before signing key during sign up, and remove null hash
-
-                    Optional<CborObject> writerCbor = isNullKey ? Optional.empty() : dht.get(writerHash.hash).get();
-                    if (! writerCbor.isPresent() && ! isNullKey)
-                        throw new IllegalStateException("Couldn't retrieve signing key for " + writerHash);
-                    if (! isNullKey) {
-                        PublicSigningKey writer = PublicSigningKey.fromCbor(writerCbor.get());
-
-                        // verify signatures
-                        for (int i = 0; i < data.size(); i++) {
-                            byte[] signature = signatures.get(i);
-                            byte[] unsigned = writer.unsignMessage(ArrayOps.concat(signature, data.get(i)));
-                            if (!Arrays.equals(unsigned, data.get(i)))
-                                throw new IllegalStateException("Invalid signature for block!");
+                    PublicSigningKey writer;
+                    // get the actual key
+                    try {
+                        Optional<CborObject> writerCbor = dht.get(writerHash.hash).get();
+                        writer = PublicSigningKey.fromCbor(writerCbor.get());
+                    } catch (IllegalStateException ex) {
+                        // check if this is the initial write of the signing key during sign up
+                        try {
+                            if (data.size() > 1)
+                                throw new IllegalStateException("Cannot write more than one blob during signup!");
+                            writer = PublicSigningKey.fromByteArray(data.get(0));
+                        } catch (Exception e) {
+                            throw new IllegalStateException("Couldn't retrieve signing key for " + writerHash);
                         }
+                    }
+
+                    // verify signatures
+                    for (int i = 0; i < data.size(); i++) {
+                        byte[] signature = signatures.get(i);
+                        byte[] unsigned = writer.unsignMessage(ArrayOps.concat(signature, data.get(i)));
+                        if (!Arrays.equals(unsigned, data.get(i)))
+                            throw new IllegalStateException("Invalid signature for block!");
                     }
 
                     (isRaw ?

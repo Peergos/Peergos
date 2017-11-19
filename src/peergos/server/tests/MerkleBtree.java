@@ -29,7 +29,11 @@ public class MerkleBtree {
     public SigningPrivateKeyAndPublicHash createUser() {
         SigningKeyPair random = SigningKeyPair.random(crypto.random, crypto.signer);
         try {
-            PublicKeyHash publicHash = createStorage().putSigningKey("", random.secretSigningKey.signOnly(random.publicSigningKey.serialize()), random.publicSigningKey).get();
+            RAMStorage storage = createStorage();
+            PublicKeyHash publicHash = storage.putSigningKey("",
+                    random.secretSigningKey.signOnly(random.publicSigningKey.serialize()),
+                    storage.hashKey(random.publicSigningKey),
+                    random.publicSigningKey).get();
             return new SigningPrivateKeyAndPublicHash(publicHash, random.secretSigningKey);
         } catch (Exception e) {
             throw new RuntimeException(e);
