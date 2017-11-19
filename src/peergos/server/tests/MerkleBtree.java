@@ -123,7 +123,7 @@ public class MerkleBtree {
 
         long t1 = System.currentTimeMillis();
         Random r = new Random(1);
-        int lim = 140000;
+        int lim = 14000;
         for (int i = 0; i < lim; i++) {
             if (i % (lim/10) == 0)
                 System.out.println((10*i/lim)+"0 %");
