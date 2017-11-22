@@ -158,25 +158,25 @@ public class UserContext {
                                             UserContext context = new UserContext(username, signer, userWithRoot.getBoxingPair(),
                                                     network, crypto, CompletableFuture.completedFuture(notCommitted), new TrieNode());
 
-                                                System.out.println("Creating user's root directory");
-                                                long t1 = System.currentTimeMillis();
-                                                return context.createEntryDirectory(signer, username).thenCompose(userRoot -> {
-                                                    System.out.println("Creating root directory took " + (System.currentTimeMillis() - t1) + " mS");
-                                                    return ((DirAccess) userRoot.fileAccess).mkdir(
-                                                            SHARED_DIR_NAME,
-                                                            network,
-                                                            userRoot.filePointer.getLocation().owner,
-                                                            userRoot.filePointer.signer(),
-                                                            userRoot.filePointer.location.getMapKey(),
-                                                            userRoot.filePointer.baseKey,
-                                                            null,
-                                                            true,
-                                                            crypto.random)
-                                                            .thenCompose(x -> signIn(username, password, network.clear(), crypto));
-                                                });
+                                            System.out.println("Creating user's root directory");
+                                            long t1 = System.currentTimeMillis();
+                                            return context.createEntryDirectory(signer, username).thenCompose(userRoot -> {
+                                                System.out.println("Creating root directory took " + (System.currentTimeMillis() - t1) + " mS");
+                                                return ((DirAccess) userRoot.fileAccess).mkdir(
+                                                        SHARED_DIR_NAME,
+                                                        network,
+                                                        userRoot.filePointer.getLocation().owner,
+                                                        userRoot.filePointer.signer(),
+                                                        userRoot.filePointer.location.getMapKey(),
+                                                        userRoot.filePointer.baseKey,
+                                                        null,
+                                                        true,
+                                                        crypto.random)
+                                                        .thenCompose(x -> signIn(username, password, network.clear(), crypto));
                                             });
                                         });
-                            });
+                                });
+                    });
                 }).exceptionally(Futures::logError);
     }
 

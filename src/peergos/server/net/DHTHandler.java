@@ -22,17 +22,17 @@ public class DHTHandler implements HttpHandler
 {
     private static final boolean LOGGING = true;
     private final ContentAddressedStorage dht;
-    private final KeyFilter keyFilter;
+    private final Predicate<PublicKeyHash> keyFilter;
     private final String apiPrefix;
 
-    public DHTHandler(ContentAddressedStorage dht, KeyFilter keyFilter, String apiPrefix) throws IOException
+    public DHTHandler(ContentAddressedStorage dht, Predicate<PublicKeyHash> keyFilter, String apiPrefix) throws IOException
     {
         this.dht = dht;
         this.keyFilter = keyFilter;
         this.apiPrefix = apiPrefix;
     }
 
-    public DHTHandler(ContentAddressedStorage dht, KeyFilter keyFilter) throws IOException {
+    public DHTHandler(ContentAddressedStorage dht, Predicate<PublicKeyHash> keyFilter) throws IOException {
         this(dht, keyFilter, "/api/v0/");
     }
 
@@ -82,7 +82,7 @@ public class DHTHandler implements HttpHandler
                     boolean isRaw = last.apply("format").equals("raw");
 
                     // check writer is allowed to write to this server, and check their free space
-                    if (! keyFilter.isAllowed(writerHash))
+                    if (! keyFilter.test(writerHash))
                         throw new IllegalStateException("Key not allowed to write to this server: " + writerHash);
 
                     // Get the actual key, unless this is the initial write of the signing key during sign up

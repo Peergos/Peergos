@@ -11,7 +11,7 @@ import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
 
-public class RegisteredUserKeyFilter implements KeyFilter {
+public class RegisteredUserKeyFilter {
 
     private final CoreNode core;
     private final MutablePointers mutable;
@@ -41,7 +41,6 @@ public class RegisteredUserKeyFilter implements KeyFilter {
         }
     }
 
-    @Override
     public boolean isAllowed(PublicKeyHash signerHash) {
         if (allowedKeys.getOrDefault(signerHash, false))
             return true;
