@@ -38,7 +38,7 @@ public class MerkleBTree
     public static CompletableFuture<MerkleBTree> create(SigningPrivateKeyAndPublicHash writer, ContentAddressedStorage dht) {
         TreeNode newRoot = new TreeNode(new TreeSet<>());
         byte[] raw = newRoot.serialize();
-        return dht.put(writer.publicKeyHash, writer.secret.signOnly(raw), raw)
+        return dht.put(writer.publicKeyHash, writer.secret.signatureOnly(raw), raw)
                 .thenApply(put -> new MerkleBTree(newRoot, put, dht, MAX_NODE_CHILDREN));
     }
 
@@ -81,7 +81,7 @@ public class MerkleBTree
             return CompletableFuture.completedFuture(newRoot.hash.get());
         }
         byte[] raw = newRoot.serialize();
-        return storage.put(writer.publicKeyHash, writer.secret.signOnly(raw), raw).thenApply(newRootHash -> {
+        return storage.put(writer.publicKeyHash, writer.secret.signatureOnly(raw), raw).thenApply(newRootHash -> {
             root = new TreeNode(newRoot.keys, newRootHash);
             return newRootHash;
         });

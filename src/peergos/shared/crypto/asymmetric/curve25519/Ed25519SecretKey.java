@@ -50,7 +50,7 @@ public class Ed25519SecretKey implements SecretSigningKey {
     }
 
     @Override
-    public byte[] signOnly(byte[] message) {
+    public byte[] signatureOnly(byte[] message) {
         return Arrays.copyOfRange(implementation.crypto_sign(message, secretKey), 0, TweetNaCl.SIGNATURE_SIZE_BYTES);
     }
 

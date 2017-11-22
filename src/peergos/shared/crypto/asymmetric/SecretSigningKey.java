@@ -22,7 +22,7 @@ public interface SecretSigningKey extends Cborable {
      * @param message
      * @return Only the signature, excluding the original message
      */
-    byte[] signOnly(byte[] message);
+    byte[] signatureOnly(byte[] message);
 
     static SecretSigningKey fromCbor(CborObject cbor) {
         if (! (cbor instanceof CborObject.CborList))

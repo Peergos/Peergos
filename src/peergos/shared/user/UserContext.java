@@ -142,12 +142,12 @@ public class UserContext {
                             throw new IllegalStateException("Couldn't register username: " + username);
                         }
                         return network.dhtClient.putSigningKey(
-                                secretSigningKey.signOnly(publicSigningKey.serialize()),
+                                secretSigningKey.signatureOnly(publicSigningKey.serialize()),
                                 network.dhtClient.hashKey(publicSigningKey),
                                 publicSigningKey)
                                 .thenCompose(returnedSignerHash -> {
                                     PublicBoxingKey publicBoxingKey = userWithRoot.getBoxingPair().publicBoxingKey;
-                                    return network.dhtClient.putBoxingKey(signerHash, secretSigningKey.signOnly(publicBoxingKey.serialize()), publicBoxingKey)
+                                    return network.dhtClient.putBoxingKey(signerHash, secretSigningKey.signatureOnly(publicBoxingKey.serialize()), publicBoxingKey)
                                         .thenCompose(boxerHash -> {
                                             WriterData newUserData = WriterData.createEmpty(
                                                     signerHash,
@@ -388,7 +388,7 @@ public class UserContext {
                                         .thenCompose(wd -> {
                                             PublicSigningKey newPublicSigningKey = updatedUser.getUser().publicSigningKey;
                                                     return network.dhtClient.putSigningKey(
-                                                            existingUser.getUser().secretSigningKey.signOnly(newPublicSigningKey.serialize()),
+                                                            existingUser.getUser().secretSigningKey.signatureOnly(newPublicSigningKey.serialize()),
                                                             network.dhtClient.hashKey(existingUser.getUser().publicSigningKey),
                                                             newPublicSigningKey
                                                     ).thenCompose(newSignerHash -> wd.props
@@ -425,7 +425,7 @@ public class UserContext {
         SigningKeyPair writer = SigningKeyPair.random(crypto.random, crypto.signer);
         System.out.println("Random User generation took " + (System.currentTimeMillis()-t1) + " mS");
         return network.dhtClient.putSigningKey(
-                owner.secret.signOnly(writer.publicSigningKey.serialize()),
+                owner.secret.signatureOnly(writer.publicSigningKey.serialize()),
                 owner.publicKeyHash,
                 writer.publicSigningKey).thenCompose(writerHash -> {
             byte[] rootMapKey = new byte[32]; // root will be stored under this in the core node

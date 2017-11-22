@@ -134,7 +134,7 @@ public class WriterData implements Cborable {
         WriterData tmp = addOwnedKey(signer.publicKeyHash);
         return tmp.commit(oldSigner, currentHash, network, x -> {}).thenCompose(tmpCommited -> {
             Optional<UserStaticData> newEntryPoints = staticData.map(sd -> sd.withKey(newKey));
-            return network.dhtClient.putBoxingKey(signer.publicKeyHash, signer.secret.signOnly(followRequestReceiver.serialize()), followRequestReceiver)
+            return network.dhtClient.putBoxingKey(signer.publicKeyHash, signer.secret.signatureOnly(followRequestReceiver.serialize()), followRequestReceiver)
                     .thenCompose(boxerHash -> {
                         WriterData updated = new WriterData(signer.publicKeyHash,
                                 Optional.of(newAlgorithm),
@@ -158,7 +158,7 @@ public class WriterData implements Cborable {
                                                          Consumer<CommittedWriterData> updater) {
         byte[] raw = serialize();
 
-        return immutable.put(signer.publicKeyHash, signer.secret.signOnly(raw), raw)
+        return immutable.put(signer.publicKeyHash, signer.secret.signatureOnly(raw), raw)
                 .thenCompose(blobHash -> {
                     MaybeMultihash newHash = MaybeMultihash.of(blobHash);
                     if (newHash.equals(currentHash)) {

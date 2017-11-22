@@ -31,7 +31,7 @@ public class MerkleBtree {
         try {
             RAMStorage storage = createStorage();
             PublicKeyHash publicHash = storage.putSigningKey(
-                    random.secretSigningKey.signOnly(random.publicSigningKey.serialize()),
+                    random.secretSigningKey.signatureOnly(random.publicSigningKey.serialize()),
                     storage.hashKey(random.publicSigningKey),
                     random.publicSigningKey).get();
             return new SigningPrivateKeyAndPublicHash(publicHash, random.secretSigningKey);

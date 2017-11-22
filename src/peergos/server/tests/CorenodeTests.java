@@ -66,11 +66,11 @@ public class CorenodeTests {
                 SigningKeyPair owner = SigningKeyPair.random(crypto.random, crypto.signer);
                 SigningKeyPair writer = SigningKeyPair.random(crypto.random, crypto.signer);
                 PublicKeyHash ownerHash = network.dhtClient.putSigningKey(
-                        owner.secretSigningKey.signOnly(owner.publicSigningKey.serialize()),
+                        owner.secretSigningKey.signatureOnly(owner.publicSigningKey.serialize()),
                         network.dhtClient.hashKey(owner.publicSigningKey),
                         owner.publicSigningKey).get();
                 PublicKeyHash writerHash = network.dhtClient.putSigningKey(
-                        owner.secretSigningKey.signOnly(writer.publicSigningKey.serialize()),
+                        owner.secretSigningKey.signatureOnly(writer.publicSigningKey.serialize()),
                         ownerHash, writer.publicSigningKey).get();
 
                 byte[] data = new byte[10];

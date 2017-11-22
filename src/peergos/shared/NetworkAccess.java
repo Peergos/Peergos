@@ -2,11 +2,9 @@ package peergos.shared;
 
 import jsinterop.annotations.*;
 import peergos.client.*;
-import peergos.server.tests.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
-import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.cid.*;
@@ -174,7 +172,7 @@ public class NetworkAccess {
                 .map(g -> bulkUploadFragments(
                         g,
                         writer.publicKeyHash,
-                        g.stream().map(f -> writer.secret.signOnly(f.data)).collect(Collectors.toList())
+                        g.stream().map(f -> writer.secret.signatureOnly(f.data)).collect(Collectors.toList())
                 ).thenApply(hash -> {
                     if (progressCounter != null)
                         progressCounter.accept((long)(g.stream().mapToInt(f -> f.data.length).sum() / spaceIncreaseFactor));
@@ -191,7 +189,7 @@ public class NetworkAccess {
             throw new IllegalStateException("Non matching location writer and signing writer key!");
         try {
             byte[] metaBlob = metadata.serialize();
-            return dhtClient.put(location.writer, writer.secret.signOnly(metaBlob), metaBlob)
+            return dhtClient.put(location.writer, writer.secret.signatureOnly(metaBlob), metaBlob)
                     .thenCompose(blobHash -> btree.put(writer, location.getMapKey(), metadata.committedHash(), blobHash)
                             .thenApply(res -> blobHash));
         } catch (Exception e) {

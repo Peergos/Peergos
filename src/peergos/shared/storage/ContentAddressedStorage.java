@@ -22,7 +22,7 @@ public interface ContentAddressedStorage {
     int MAX_OBJECT_LENGTH  = 1024*256;
 
     default CompletableFuture<Multihash> put(SigningPrivateKeyAndPublicHash writer, byte[] block) {
-        return put(writer.publicKeyHash, writer.secret.signOnly(block), block);
+        return put(writer.publicKeyHash, writer.secret.signatureOnly(block), block);
     }
 
     default CompletableFuture<Multihash> put(PublicKeyHash writer, byte[] signature, byte[] block) {
