@@ -89,7 +89,7 @@ public class HttpMutablePointerServer
 
         void getPointer(DataInputStream din, DataOutputStream dout) throws Exception
         {
-            PublicKeyHash encodedSharingKey = PublicKeyHash.fromCbor(CborObject.deserialize(new CborDecoder(din)));
+            PublicKeyHash encodedSharingKey = PublicKeyHash.fromCbor(CborObject.deserialize(new CborDecoder(din), 1024));
             byte[] metadataBlob = mutable.getPointer(encodedSharingKey).get().orElse(new byte[0]);
 
             dout.write(metadataBlob);

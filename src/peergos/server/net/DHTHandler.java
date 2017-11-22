@@ -97,14 +97,11 @@ public class DHTHandler implements HttpHandler
                     };
                     Supplier<PublicSigningKey> inBandOrDht = () -> {
                         try {
-                            // Check if this is possible to cause an OOM error before parsing it as cbor
-                            if (PublicSigningKey.maybeValidKey(data.get(0))) {
-                                PublicSigningKey candidateKey = PublicSigningKey.fromByteArray(data.get(0));
-                                PublicKeyHash calculatedHash = dht.hashKey(candidateKey);
-                                if (calculatedHash.equals(writerHash)) {
-                                    candidateKey.unsignMessage(ArrayOps.concat(signatures.get(0), data.get(0)));
-                                    return candidateKey;
-                                }
+                            PublicSigningKey candidateKey = PublicSigningKey.fromByteArray(data.get(0));
+                            PublicKeyHash calculatedHash = dht.hashKey(candidateKey);
+                            if (calculatedHash.equals(writerHash)) {
+                                candidateKey.unsignMessage(ArrayOps.concat(signatures.get(0), data.get(0)));
+                                return candidateKey;
                             }
                         } catch (Throwable e) {
                             // If signature is not valid then the signing key has already been written, retrieve it

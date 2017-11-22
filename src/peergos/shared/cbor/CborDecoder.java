@@ -99,14 +99,14 @@ public class CborDecoder {
      * @return the read byte string, never <code>null</code>. In case the encoded string has a length of <tt>0</tt>, an empty string is returned.
      * @throws IOException in case of I/O problems reading the CBOR-encoded value from the underlying input stream.
      */
-    public byte[] readByteString() throws IOException {
+    public byte[] readByteString(int maxLen) throws IOException {
         long len = readMajorTypeWithSize(TYPE_BYTE_STRING);
-        if (len < 0) {
+        if (len < 0)
             fail("Infinite-length byte strings not supported!");
-        }
-        if (len > Integer.MAX_VALUE) {
+        if (len > Integer.MAX_VALUE)
             fail("String length too long!");
-        }
+        if (len > maxLen)
+            fail("Invalid cbor: byte string longer than original bytes!");
         return readFully(new byte[(int) len]);
     }
 
@@ -309,14 +309,14 @@ public class CborDecoder {
      * @return the read UTF-8 encoded string, never <code>null</code>. In case the encoded string has a length of <tt>0</tt>, an empty string is returned.
      * @throws IOException in case of I/O problems reading the CBOR-encoded value from the underlying input stream.
      */
-    public String readTextString() throws IOException {
+    public String readTextString(int maxLen) throws IOException {
         long len = readMajorTypeWithSize(TYPE_TEXT_STRING);
-        if (len < 0) {
+        if (len < 0)
             fail("Infinite-length text strings not supported!");
-        }
-        if (len > Integer.MAX_VALUE) {
+        if (len > Integer.MAX_VALUE)
             fail("String length too long!");
-        }
+        if (len > maxLen)
+            fail("Invalid cbor: text string longer than original bytes!");
         return new String(readFully(new byte[(int) len]), "UTF-8");
     }
 
