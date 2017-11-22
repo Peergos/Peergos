@@ -26,6 +26,8 @@ public interface CborObject {
     int LINK_TAG = 42;
 
     static CborObject fromByteArray(byte[] cbor) {
+        if (hasLargerGroup(cbor, cbor.length))
+            throw new IllegalStateException("Invalid cbor: element size larger than original bytes!");
         return deserialize(new CborDecoder(new ByteArrayInputStream(cbor)));
     }
 
