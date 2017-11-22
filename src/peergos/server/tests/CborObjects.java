@@ -3,6 +3,7 @@ package peergos.server.tests;
 import org.junit.*;
 import peergos.shared.cbor.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.util.*;
 
 import java.util.*;
 
@@ -13,6 +14,16 @@ public class CborObjects {
         byte[] res = new byte[len];
         rnd.nextBytes(res);
         return res;
+    }
+
+    @Test
+    public void dosCborObject() throws Throwable {
+        // make a header for a byte[] that is 2^50 long
+        byte[] raw = ArrayOps.hexToBytes("5b0004000000000000");
+        try {
+            CborObject.fromByteArray(raw);
+            throw new Throwable("Should have failed!");
+        } catch (RuntimeException e) {}
     }
 
     @Test
