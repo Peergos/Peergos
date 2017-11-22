@@ -51,7 +51,7 @@ public class Ed25519SecretKey implements SecretSigningKey {
 
     @Override
     public byte[] signatureOnly(byte[] message) {
-        return Arrays.copyOfRange(implementation.crypto_sign(message, secretKey), 0, TweetNaCl.SIGNATURE_SIZE_BYTES);
+        return Arrays.copyOf(implementation.crypto_sign(message, secretKey), TweetNaCl.SIGNATURE_SIZE_BYTES);
     }
 
     public static SecretSigningKey fromCbor(CborObject cbor, Ed25519 provider) {
