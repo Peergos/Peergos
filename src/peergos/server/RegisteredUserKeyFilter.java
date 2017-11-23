@@ -1,13 +1,11 @@
 package peergos.server;
 
-import peergos.server.storage.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
 
-import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -27,23 +25,27 @@ public class RegisteredUserKeyFilter {
     private void reloadKeys() {
         try {
             List<String> usernames = core.getUsernames("").get();
+            Set<PublicKeyHash> updated = new HashSet<>();
             for (String username : usernames) {
-                loadSigningKeys(username);
+                updated.addAll(WriterData.getOwnedKeysRecursive(username, core, mutable, dht));
             }
+            Set<PublicKeyHash> toRemove = new HashSet<>();
+            for (PublicKeyHash hash : allowedKeys.keySet())
+                if (! updated.contains(hash))
+                    toRemove.add(hash);
+            for (PublicKeyHash hash : toRemove)
+                allowedKeys.put(hash, false);
+            for (PublicKeyHash hash : updated)
+                allowedKeys.put(hash, true);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
 
-    private void loadSigningKeys(String username) {
-        for (PublicKeyHash hash : WriterData.getOwnedKeysRecursive(username, core, mutable, dht)) {
-            allowedKeys.put(hash, true);
-        }
-    }
-
     public boolean isAllowed(PublicKeyHash signerHash) {
-        if (allowedKeys.getOrDefault(signerHash, false))
-            return true;
+        Boolean value = allowedKeys.get(signerHash);
+        if (value != null)
+            return value;
         // slow reload
         reloadKeys();
         return allowedKeys.getOrDefault(signerHash, false);
