@@ -11,6 +11,7 @@ import java.util.concurrent.*;
 
 public class RegisteredUserKeyFilter {
 
+    private static final int TEN_MINUTES = 600_000;
     private final CoreNode core;
     private final MutablePointers mutable;
     private final ContentAddressedStorage dht;
@@ -20,6 +21,16 @@ public class RegisteredUserKeyFilter {
         this.core = core;
         this.mutable = mutable;
         this.dht = dht;
+        ForkJoinPool.commonPool().submit(() -> {
+            while(true) {
+                try {
+                    reloadKeys();
+                    Thread.sleep(TEN_MINUTES);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        });
     }
 
     private void reloadKeys() {
