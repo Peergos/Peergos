@@ -49,7 +49,7 @@ public class NetworkAccess {
         this.creationTime = LocalDateTime.now();
         this.isJavascript = isJavascript;
     }
-    
+
     public boolean isJavascript() {
     	return isJavascript;
     }
@@ -226,5 +226,20 @@ public class NetworkAccess {
 
         return Futures.combineAllInOrder(futures)
                 .thenApply(optList -> optList.stream().filter(Optional::isPresent).map(Optional::get).collect(Collectors.toList()));
+    }
+
+    /**
+     * Pin all files associated with all the keys of a user. For
+     * self-hosting.
+     *
+     * @param username
+     */
+    public void pinAllUserFiles(String username) throws ExecutionException, InterruptedException {
+        Set<PublicKeyHash> ownedKeysRecursive = WriterData.getOwnedKeysRecursive(username, coreNode, mutable, dhtClient);
+
+        for (PublicKeyHash keyHash: ownedKeysRecursive) {
+            Multihash casKeyHash = mutable.getPointerKeyHash(keyHash, dhtClient).get().get();
+            dhtClient.recursivePin(casKeyHash).get();
+        }
     }
 }
