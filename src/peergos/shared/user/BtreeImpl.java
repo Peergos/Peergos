@@ -99,7 +99,7 @@ public class BtreeImpl implements Btree {
                     lock.complete(committed);
                     WriterData holder = committed.props;
                     if (! holder.btree.isPresent())
-                        throw new IllegalStateException("Btree root not present!");
+                        return CompletableFuture.completedFuture(MaybeMultihash.empty());
                     return MerkleBTree.create(writer, holder.btree.get(), dht)
                             .thenCompose(btree -> btree.get(mapKey))
                             .thenApply(maybe -> LOGGING ?
