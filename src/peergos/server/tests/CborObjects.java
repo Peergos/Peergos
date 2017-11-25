@@ -22,7 +22,7 @@ public class CborObjects {
         byte[] raw = ArrayOps.hexToBytes("5b0004000000000000");
         try {
             CborObject.fromByteArray(raw);
-            throw new Throwable("Should have failed!");
+            Assert.fail("Should have failed!");
         } catch (RuntimeException e) {}
     }
 
