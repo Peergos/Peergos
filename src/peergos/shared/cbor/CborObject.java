@@ -7,6 +7,9 @@ import java.io.*;
 import java.util.*;
 import java.util.stream.*;
 
+import static peergos.shared.cbor.CborConstants.TYPE_BYTE_STRING;
+import static peergos.shared.cbor.CborConstants.TYPE_TEXT_STRING;
+
 public interface CborObject {
 
     void serialize(CborEncoder encoder);
@@ -23,17 +26,17 @@ public interface CborObject {
     int LINK_TAG = 42;
 
     static CborObject fromByteArray(byte[] cbor) {
-        return deserialize(new CborDecoder(new ByteArrayInputStream(cbor)));
+        return deserialize(new CborDecoder(new ByteArrayInputStream(cbor)), cbor.length);
     }
 
-    static CborObject deserialize(CborDecoder decoder) {
+    static CborObject deserialize(CborDecoder decoder, int maxGroupSize) {
         try {
             CborType type = decoder.peekType();
             switch (type.getMajorType()) {
-                case CborConstants.TYPE_TEXT_STRING:
-                    return new CborString(decoder.readTextString());
+                case TYPE_TEXT_STRING:
+                    return new CborString(decoder.readTextString(maxGroupSize));
                 case CborConstants.TYPE_BYTE_STRING:
-                    return new CborByteArray(decoder.readByteString());
+                    return new CborByteArray(decoder.readByteString(maxGroupSize));
                 case CborConstants.TYPE_UNSIGNED_INTEGER:
                     return new CborLong(decoder.readInt());
                 case CborConstants.TYPE_NEGATIVE_INTEGER:
@@ -54,24 +57,28 @@ public interface CborObject {
                     throw new IllegalStateException("Unimplemented simple type! " + type.getAdditionalInfo());
                 case CborConstants.TYPE_MAP: {
                     long nValues = decoder.readMapLength();
+                    if (nValues > maxGroupSize)
+                        throw new IllegalStateException("Invalid cbor: more map elements than original bytes!");
                     SortedMap<CborObject, CborObject> result = new TreeMap<>();
                     for (long i=0; i < nValues; i++) {
-                        CborObject key = deserialize(decoder);
-                        CborObject value = deserialize(decoder);
+                        CborObject key = deserialize(decoder, maxGroupSize);
+                        CborObject value = deserialize(decoder, maxGroupSize);
                         result.put(key, value);
                     }
                     return new CborMap(result);
                 }
                 case CborConstants.TYPE_ARRAY:
                     long nItems = decoder.readArrayLength();
+                    if (nItems > maxGroupSize)
+                        throw new IllegalStateException("Invalid cbor: more array elements than original bytes!");
                     List<CborObject> res = new ArrayList<>((int) nItems);
                     for (long i=0; i < nItems; i++)
-                        res.add(deserialize(decoder));
+                        res.add(deserialize(decoder, maxGroupSize));
                     return new CborList(res);
                 case CborConstants.TYPE_TAG:
                     long tag = decoder.readTag();
                     if (tag == LINK_TAG) {
-                        CborObject value = deserialize(decoder);
+                        CborObject value = deserialize(decoder, maxGroupSize);
                         if (value instanceof CborString)
                             return new CborMerkleLink(Cid.decode(((CborString) value).value));
                         if (value instanceof CborByteArray) {

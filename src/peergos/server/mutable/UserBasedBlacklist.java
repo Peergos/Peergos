@@ -79,53 +79,9 @@ public class UserBasedBlacklist implements PublicKeyBlackList {
     private Set<PublicKeyHash> buildBlackList(Set<String> usernames) {
         Set<PublicKeyHash> res = new HashSet<>();
         for (String username : usernames) {
-            res.addAll(buildBlackList(username));
+            res.addAll(WriterData.getOwnedKeysRecursive(username, core, mutable, dht));
         }
         return res;
-    }
-
-    private Set<PublicKeyHash> buildBlackList(String username) {
-        try {
-            Optional<PublicKeyHash> publicKeyHash = core.getPublicKeyHash(username).get();
-            return publicKeyHash
-                    .map(this::buildBlackList)
-                    .orElseGet(Collections::emptySet);
-        } catch (InterruptedException e) {
-            return Collections.emptySet();
-        } catch (ExecutionException e) {
-            throw new RuntimeException(e.getCause());
-        }
-    }
-
-    private Set<PublicKeyHash> buildBlackList(PublicKeyHash writer) {
-        Set<PublicKeyHash> res = new HashSet<>();
-        res.add(writer);
-        try {
-            CommittedWriterData subspaceDescriptor = mutable.getPointer(writer)
-                    .thenCompose(dataOpt -> dht.getSigningKey(writer)
-                            .thenApply(signer -> dataOpt.isPresent() ?
-                                    HashCasPair.fromCbor(CborObject.fromByteArray(signer.get().unsignMessage(dataOpt.get()))).updated :
-                                    MaybeMultihash.empty())
-                            .thenCompose(x -> getWriterData(writer, x))).get();
-
-            for (PublicKeyHash subKey : subspaceDescriptor.props.ownedKeys) {
-                res.addAll(buildBlackList(subKey));
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        return res;
-    }
-
-    private CompletableFuture<CommittedWriterData> getWriterData(PublicKeyHash controller, MaybeMultihash hash) {
-        if (!hash.isPresent())
-            return CompletableFuture.completedFuture(new CommittedWriterData(MaybeMultihash.empty(), WriterData.createEmpty(controller)));
-        return dht.get(hash.get())
-                .thenApply(cborOpt -> {
-                    if (! cborOpt.isPresent())
-                        throw new IllegalStateException("Couldn't retrieve WriterData from dht! " + hash);
-                    return new CommittedWriterData(hash, WriterData.fromCbor(cborOpt.get(), null));
-                });
     }
 
     @Override

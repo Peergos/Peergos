@@ -2,6 +2,8 @@ package peergos.server.tests;
 
 import org.junit.*;
 import peergos.server.storage.*;
+import peergos.shared.*;
+import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.merklebtree.*;
@@ -14,20 +16,32 @@ import java.util.concurrent.*;
 
 public class MerkleBtree {
 
+    private Crypto crypto = Crypto.initJava();
+
     public RAMStorage createStorage() {
         return RAMStorage.getSingleton();
     }
 
-    public CompletableFuture<MerkleBTree> createTree(PublicKeyHash user) throws IOException {
+    public CompletableFuture<MerkleBTree> createTree(SigningPrivateKeyAndPublicHash user) throws IOException {
         return createTree(user, RAMStorage.getSingleton());
     }
 
-    public PublicKeyHash createUser() {
-        return PublicKeyHash.NULL;
+    public SigningPrivateKeyAndPublicHash createUser() {
+        SigningKeyPair random = SigningKeyPair.random(crypto.random, crypto.signer);
+        try {
+            RAMStorage storage = createStorage();
+            PublicKeyHash publicHash = storage.putSigningKey(
+                    random.secretSigningKey.signatureOnly(random.publicSigningKey.serialize()),
+                    storage.hashKey(random.publicSigningKey),
+                    random.publicSigningKey).get();
+            return new SigningPrivateKeyAndPublicHash(publicHash, random.secretSigningKey);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
-    public CompletableFuture<MerkleBTree> createTree(PublicKeyHash user, ContentAddressedStorage dht) throws IOException {
-        return MerkleBTree.create(user, MaybeMultihash.empty(), dht);
+    public CompletableFuture<MerkleBTree> createTree(SigningPrivateKeyAndPublicHash user, ContentAddressedStorage dht) throws IOException {
+        return MerkleBTree.create(user, dht);
     }
 
     public Multihash hash(byte[] in) {
@@ -36,7 +50,7 @@ public class MerkleBtree {
 
     @Test
     public void basic() throws Exception {
-        PublicKeyHash user = createUser();
+        SigningPrivateKeyAndPublicHash user = createUser();
         MerkleBTree tree = createTree(user).get();
         byte[] key1 = new byte[]{0, 1, 2, 3};
         Multihash value1 = hash(new byte[]{1, 1, 1, 1});
@@ -48,7 +62,7 @@ public class MerkleBtree {
 
     @Test
     public void basic2() throws Exception {
-        PublicKeyHash user = createUser();
+        SigningPrivateKeyAndPublicHash user = createUser();
         RAMStorage dht = createStorage();
         MerkleBTree tree = createTree(user, dht).get();
         for (int i=0; i < 16; i++) {
@@ -65,7 +79,7 @@ public class MerkleBtree {
 
     @Test
     public void overwriteValue() throws Exception {
-        PublicKeyHash user = createUser();
+        SigningPrivateKeyAndPublicHash user = createUser();
         MerkleBTree tree = createTree(user).get();
         byte[] key1 = new byte[]{0, 1, 2, 3};
         Multihash value1 = hash(new byte[]{1, 1, 1, 1});
@@ -82,7 +96,7 @@ public class MerkleBtree {
 
 //    @Test
     public void huge() throws Exception {
-        PublicKeyHash user = createUser();
+        SigningPrivateKeyAndPublicHash user = createUser();
         MerkleBTree tree = createTree(user).get();
         long t1 = System.currentTimeMillis();
         for (int i=0; i < 1000000; i++) {
@@ -107,13 +121,13 @@ public class MerkleBtree {
 
     @Test
     public void random() throws Exception {
-        PublicKeyHash user = createUser();
+        SigningPrivateKeyAndPublicHash user = createUser();
         MerkleBTree tree = createTree(user).get();
         int keylen = 32;
 
         long t1 = System.currentTimeMillis();
         Random r = new Random(1);
-        int lim = 140000;
+        int lim = 14000;
         for (int i = 0; i < lim; i++) {
             if (i % (lim/10) == 0)
                 System.out.println((10*i/lim)+"0 %");
@@ -135,7 +149,7 @@ public class MerkleBtree {
 
 //    @Test
     public void delete() throws Exception {
-        PublicKeyHash user = createUser();
+        SigningPrivateKeyAndPublicHash user = createUser();
         MerkleBTree tree = createTree(user).get();
         int keylen = 32;
 
@@ -185,7 +199,7 @@ public class MerkleBtree {
 
     @Test
     public void storageSize() throws Exception {
-        PublicKeyHash user = createUser();
+        SigningPrivateKeyAndPublicHash user = createUser();
         MerkleBTree tree = createTree(user).get();
         int keylen = 32;
 
@@ -209,7 +223,7 @@ public class MerkleBtree {
         }
 
         int size = ((RAMStorage)tree.storage).size();
-        if (size != 30)
+        if (size != 31)
             throw new IllegalStateException("Storage size != 3");
 
         long t1 = System.currentTimeMillis();

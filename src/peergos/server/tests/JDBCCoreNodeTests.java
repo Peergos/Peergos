@@ -20,10 +20,8 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.LocalDate;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.Random;
-import java.util.function.Consumer;
 import java.util.function.Function;
 
 public class JDBCCoreNodeTests {
@@ -52,7 +50,10 @@ public class JDBCCoreNodeTests {
         UserPublicKeyLink.UsernameClaim node = UserPublicKeyLink.UsernameClaim.create(
             username, user.secretSigningKey, LocalDate.now().plusYears(2));
         try {
-            PublicKeyHash owner = STORAGE.putSigningKey(user.publicSigningKey).get();
+            PublicKeyHash owner = STORAGE.putSigningKey(
+                    user.secretSigningKey.signatureOnly(user.publicSigningKey.serialize()),
+                    STORAGE.hashKey(user.publicSigningKey),
+                    user.publicSigningKey).get();
             UserPublicKeyLink upl = new UserPublicKeyLink(owner, node);
             return coreNode.updateChain(
                 username, Arrays.asList(), Arrays.asList(upl), Arrays.asList(upl));

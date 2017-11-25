@@ -21,12 +21,12 @@ public class RAMStorage implements ContentAddressedStorage {
     private final Set<Multihash> pinnedRoots = new HashSet<>();
 
     @Override
-    public CompletableFuture<List<Multihash>> put(PublicKeyHash writer, List<byte[]> blocks) {
+    public CompletableFuture<List<Multihash>> put(PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
         return put(writer, blocks, false);
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash writer, List<byte[]> blocks) {
+    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
         return put(writer, blocks, true);
     }
 
@@ -56,7 +56,7 @@ public class RAMStorage implements ContentAddressedStorage {
     }
 
     private synchronized CborObject getAndParseObject(Multihash hash) {
-        if (!storage.containsKey(hash))
+        if (! storage.containsKey(hash))
             throw new IllegalStateException("Hash not present! "+ hash);
         return CborObject.fromByteArray(storage.get(hash));
     }

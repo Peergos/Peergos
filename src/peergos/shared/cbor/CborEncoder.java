@@ -10,8 +10,7 @@ package peergos.shared.cbor;
 
 import static peergos.shared.cbor.CborConstants.*;
 
-import java.io.IOException;
-import java.io.OutputStream;
+import java.io.*;
 
 /**
  * Provides an encoder capable of encoding data into CBOR format to a given {@link OutputStream}.

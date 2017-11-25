@@ -76,8 +76,7 @@ public class MerkleNode implements Cborable {
      * @throws IOException for an invalid encoding
      */
     public static MerkleNode deserialize(byte[] in) {
-        CborDecoder decoder = new CborDecoder(new ByteArrayInputStream(in));
-        CborObject cbor = CborObject.deserialize(decoder);
+        CborObject cbor = CborObject.fromByteArray(in);
         return fromCbor(cbor);
     }
 

@@ -1,5 +1,6 @@
 package peergos.shared.merklebtree;
 
+import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.ContentAddressedStorage;
@@ -27,20 +28,18 @@ public class MerkleBTree
     }
 
     public static CompletableFuture<MerkleBTree> create(PublicKeyHash writer, Multihash rootHash, ContentAddressedStorage dht) {
-        return create(writer, MaybeMultihash.of(rootHash), dht);
-    }
-
-    public static CompletableFuture<MerkleBTree> create(PublicKeyHash writer, MaybeMultihash rootHash, ContentAddressedStorage dht) {
-        if (!  rootHash.isPresent()) {
-            TreeNode newRoot = new TreeNode(new TreeSet<>());
-            return dht.put(writer, newRoot.serialize())
-                    .thenApply(put -> new MerkleBTree(newRoot, put, dht, MAX_NODE_CHILDREN));
-        }
-        return dht.get(rootHash.get()).thenApply(rawOpt -> {
+        return dht.get(rootHash).thenApply(rawOpt -> {
             if (! rawOpt.isPresent())
-                throw new IllegalStateException("Null byte[] returned by DHT for hash: " + rootHash.get());
+                throw new IllegalStateException("Null byte[] returned by DHT for hash: " + rootHash);
             return new MerkleBTree(TreeNode.fromCbor(rawOpt.get()), rootHash, dht, MAX_NODE_CHILDREN);
         });
+    }
+
+    public static CompletableFuture<MerkleBTree> create(SigningPrivateKeyAndPublicHash writer, ContentAddressedStorage dht) {
+        TreeNode newRoot = new TreeNode(new TreeSet<>());
+        byte[] raw = newRoot.serialize();
+        return dht.put(writer.publicKeyHash, writer.secret.signatureOnly(raw), raw)
+                .thenApply(put -> new MerkleBTree(newRoot, put, dht, MAX_NODE_CHILDREN));
     }
 
     /**
@@ -60,7 +59,7 @@ public class MerkleBTree
      * @return hash of new tree root
      * @throws IOException
      */
-    public CompletableFuture<Multihash> put(PublicKeyHash writer, byte[] rawKey, MaybeMultihash existing, Multihash value) {
+    public CompletableFuture<Multihash> put(SigningPrivateKeyAndPublicHash writer, byte[] rawKey, MaybeMultihash existing, Multihash value) {
         return root.put(writer, new ByteArrayWrapper(rawKey), existing, value, storage, maxChildren)
                 .thenCompose(newRoot -> commit(writer, newRoot));
     }
@@ -71,17 +70,18 @@ public class MerkleBTree
      * @return hash of new tree root
      * @throws IOException
      */
-    public CompletableFuture<Multihash> delete(PublicKeyHash writer, byte[] rawKey, MaybeMultihash existing) {
+    public CompletableFuture<Multihash> delete(SigningPrivateKeyAndPublicHash writer, byte[] rawKey, MaybeMultihash existing) {
         return root.delete(writer, new ByteArrayWrapper(rawKey), existing, storage, maxChildren)
                 .thenCompose(newRoot -> commit(writer, newRoot));
     }
 
-    private CompletableFuture<Multihash> commit(PublicKeyHash writer, TreeNode newRoot) {
+    private CompletableFuture<Multihash> commit(SigningPrivateKeyAndPublicHash writer, TreeNode newRoot) {
         if (newRoot.hash.isPresent()) {
             root = newRoot;
             return CompletableFuture.completedFuture(newRoot.hash.get());
         }
-        return storage.put(writer, newRoot.serialize()).thenApply(newRootHash -> {
+        byte[] raw = newRoot.serialize();
+        return storage.put(writer.publicKeyHash, writer.secret.signatureOnly(raw), raw).thenApply(newRootHash -> {
             root = new TreeNode(newRoot.keys, newRootHash);
             return newRootHash;
         });

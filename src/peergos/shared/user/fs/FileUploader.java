@@ -121,7 +121,7 @@ public class FileUploader implements AutoCloseable {
             byte[] nextLocationNonce = chunkKey.createNonce();
             byte[] nextLocation = nextChunkLocation.encrypt(chunkKey, nextLocationNonce);
             CipherText encryptedNextChunkLocation = new CipherText(nextLocationNonce, nextLocation);
-            return network.uploadFragments(fragments, chunk.location.owner, monitor, fragmenter.storageIncreaseFactor())
+            return network.uploadFragments(fragments, writer, monitor, fragmenter.storageIncreaseFactor())
                     .thenCompose(hashes -> {
                         FileRetriever retriever = new EncryptedChunkRetriever(chunk.chunk.nonce(), encryptedChunk.getAuth(),
                                 hashes, Optional.of(encryptedNextChunkLocation), fragmenter);

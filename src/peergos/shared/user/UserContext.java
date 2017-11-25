@@ -132,28 +132,35 @@ public class UserContext {
         return UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer, algorithm)
                 .thenCompose(userWithRoot -> {
                     PublicSigningKey publicSigningKey = userWithRoot.getUser().publicSigningKey;
-                    return network.dhtClient.putSigningKey(publicSigningKey)
-                            .thenCompose(signerHash ->
-                                    network.dhtClient.putBoxingKey(signerHash, userWithRoot.getBoxingPair().publicBoxingKey)
-                                    .thenCompose(boxerHash -> {
-                                        WriterData newUserData = WriterData.createEmpty(
-                                                signerHash,
-                                                Optional.of(new PublicKeyHash(boxerHash)),
-                                                userWithRoot.getRoot());
+                    SecretSigningKey secretSigningKey = userWithRoot.getUser().secretSigningKey;
+                    PublicKeyHash signerHash = network.dhtClient.hashKey(publicSigningKey);
+                    SigningPrivateKeyAndPublicHash signer = new SigningPrivateKeyAndPublicHash(signerHash, secretSigningKey);
+                    System.out.println("Registering username " + username);
+                    return UserContext.register(username, signer, network).thenCompose(registered -> {
+                        if (! registered) {
+                            System.out.println("Couldn't register username");
+                            throw new IllegalStateException("Couldn't register username: " + username);
+                        }
+                        return network.dhtClient.putSigningKey(
+                                secretSigningKey.signatureOnly(publicSigningKey.serialize()),
+                                network.dhtClient.hashKey(publicSigningKey),
+                                publicSigningKey)
+                                .thenCompose(returnedSignerHash -> {
+                                    PublicBoxingKey publicBoxingKey = userWithRoot.getBoxingPair().publicBoxingKey;
+                                    return network.dhtClient.putBoxingKey(signerHash, secretSigningKey.signatureOnly(publicBoxingKey.serialize()), publicBoxingKey)
+                                        .thenCompose(boxerHash -> {
+                                            WriterData newUserData = WriterData.createEmpty(
+                                                    signerHash,
+                                                    Optional.of(new PublicKeyHash(boxerHash)),
+                                                    userWithRoot.getRoot());
 
-                                        CommittedWriterData notCommitted = new CommittedWriterData(MaybeMultihash.empty(), newUserData);
-                                        SigningPrivateKeyAndPublicHash signer = new SigningPrivateKeyAndPublicHash(signerHash, userWithRoot.getUser().secretSigningKey);
-                                        UserContext context = new UserContext(username, signer, userWithRoot.getBoxingPair(),
-                                                network, crypto, CompletableFuture.completedFuture(notCommitted), new TrieNode());
-                                        System.out.println("Registering username " + username);
-                                        return context.register().thenCompose(successfullyRegistered -> {
-                                            if (!successfullyRegistered) {
-                                                System.out.println("Couldn't register username");
-                                                throw new IllegalStateException("Couldn't register username: " + username);
-                                            }
+                                            CommittedWriterData notCommitted = new CommittedWriterData(MaybeMultihash.empty(), newUserData);
+                                            UserContext context = new UserContext(username, signer, userWithRoot.getBoxingPair(),
+                                                    network, crypto, CompletableFuture.completedFuture(notCommitted), new TrieNode());
+
                                             System.out.println("Creating user's root directory");
                                             long t1 = System.currentTimeMillis();
-                                            return context.createEntryDirectory(username).thenCompose(userRoot -> {
+                                            return context.createEntryDirectory(signer, username).thenCompose(userRoot -> {
                                                 System.out.println("Creating root directory took " + (System.currentTimeMillis() - t1) + " mS");
                                                 return ((DirAccess) userRoot.fileAccess).mkdir(
                                                         SHARED_DIR_NAME,
@@ -168,7 +175,8 @@ public class UserContext {
                                                         .thenCompose(x -> signIn(username, password, network.clear(), crypto));
                                             });
                                         });
-                                    }));
+                                });
+                    });
                 }).exceptionally(Futures::logError);
     }
 
@@ -270,13 +278,17 @@ public class UserContext {
         return isRegistered().thenCompose(exists -> {
             if (exists)
                 throw new IllegalStateException("Account already exists with username: " + username);
-            LocalDate now = LocalDate.now();
-            // set claim expiry to two months from now
-            LocalDate expiry = now.plusMonths(2);
-            System.out.println("claiming username: " + this.username + " with expiry " + expiry);
-            List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createInitial(signer, this.username, expiry);
-            return network.coreNode.updateChain(this.username, claimChain);
+            return register(this.username, signer, network);
         });
+    }
+
+    public static CompletableFuture<Boolean> register(String username, SigningPrivateKeyAndPublicHash signer, NetworkAccess network) {
+        LocalDate now = LocalDate.now();
+        // set claim expiry to two months from now
+        LocalDate expiry = now.plusMonths(2);
+        System.out.println("claiming username: " + username + " with expiry " + expiry);
+        List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createInitial(signer, username, expiry);
+        return network.coreNode.updateChain(username, claimChain);
     }
 
     public CompletableFuture<LocalDate> getUsernameClaimExpiry() {
@@ -373,38 +385,49 @@ public class UserContext {
                             .thenCompose(updatedUser ->{
                                 CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
                                 return addToUserDataQueue(lock)
-                                        .thenCompose(wd -> network.dhtClient.putSigningKey(updatedUser.getUser().publicSigningKey)
-                                                .thenCompose(newSignerHash -> wd.props
-                                                        .changeKeys(new SigningPrivateKeyAndPublicHash(newSignerHash, updatedUser.getUser().secretSigningKey),
-                                                                wd.hash,
-                                                                updatedUser.getBoxingPair().publicBoxingKey,
-                                                                updatedUser.getRoot(),
-                                                                newAlgorithm,
-                                                                network,
-                                                                lock::complete)
-                                                        .thenCompose(userData -> {
-                                                            SigningPrivateKeyAndPublicHash newUser =
-                                                                    new SigningPrivateKeyAndPublicHash(newSignerHash, updatedUser.getUser().secretSigningKey);
-                                                            List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createChain(signer, newUser, username, expiry);
-                                                            return network.coreNode.updateChain(username, claimChain)
-                                                                    .thenCompose(updatedChain -> {
-                                                                        if (!updatedChain)
-                                                                            throw new IllegalStateException("Couldn't register new public keys during password change!");
+                                        .thenCompose(wd -> {
+                                            PublicSigningKey newPublicSigningKey = updatedUser.getUser().publicSigningKey;
+                                                    return network.dhtClient.putSigningKey(
+                                                            existingUser.getUser().secretSigningKey.signatureOnly(newPublicSigningKey.serialize()),
+                                                            network.dhtClient.hashKey(existingUser.getUser().publicSigningKey),
+                                                            newPublicSigningKey
+                                                    ).thenCompose(newSignerHash -> wd.props
+                                                            .changeKeys(
+                                                                    signer,
+                                                                    new SigningPrivateKeyAndPublicHash(newSignerHash, updatedUser.getUser().secretSigningKey),
+                                                                    wd.hash,
+                                                                    updatedUser.getBoxingPair().publicBoxingKey,
+                                                                    updatedUser.getRoot(),
+                                                                    newAlgorithm,
+                                                                    network,
+                                                                    lock::complete)
+                                                            .thenCompose(userData -> {
+                                                                SigningPrivateKeyAndPublicHash newUser =
+                                                                        new SigningPrivateKeyAndPublicHash(newSignerHash, updatedUser.getUser().secretSigningKey);
+                                                                List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createChain(signer, newUser, username, expiry);
+                                                                return network.coreNode.updateChain(username, claimChain)
+                                                                        .thenCompose(updatedChain -> {
+                                                                            if (!updatedChain)
+                                                                                throw new IllegalStateException("Couldn't register new public keys during password change!");
 
-                                                                        return UserContext.ensureSignedUp(username, newPassword, network, crypto);
-                                                                    });
-                                                        })
-                                                )
+                                                                            return UserContext.ensureSignedUp(username, newPassword, network, crypto);
+                                                                        });
+                                                            })
+                                                    );
+                                                }
                                         );
                             });
                 });
     }
 
-    public CompletableFuture<RetrievedFilePointer> createEntryDirectory(String directoryName) {
+    public CompletableFuture<RetrievedFilePointer> createEntryDirectory(SigningPrivateKeyAndPublicHash owner, String directoryName) {
         long t1 = System.currentTimeMillis();
         SigningKeyPair writer = SigningKeyPair.random(crypto.random, crypto.signer);
         System.out.println("Random User generation took " + (System.currentTimeMillis()-t1) + " mS");
-        return network.dhtClient.putSigningKey(writer.publicSigningKey).thenCompose(writerHash -> {
+        return network.dhtClient.putSigningKey(
+                owner.secret.signatureOnly(writer.publicSigningKey.serialize()),
+                owner.publicKeyHash,
+                writer.publicSigningKey).thenCompose(writerHash -> {
             byte[] rootMapKey = new byte[32]; // root will be stored under this in the core node
             crypto.random.randombytes(rootMapKey, 0, 32);
             SymmetricKey rootRKey = SymmetricKey.random();
@@ -414,22 +437,21 @@ public class UserContext {
             SigningPrivateKeyAndPublicHash writerWithHash = new SigningPrivateKeyAndPublicHash(writerHash, writer.secretSigningKey);
             FilePointer rootPointer = new FilePointer(this.signer.publicKeyHash, writerWithHash, rootMapKey, rootRKey);
             EntryPoint entry = new EntryPoint(rootPointer, this.username, Collections.emptySet(), Collections.emptySet());
+            return addOwnedKeyAndCommit(entry.pointer.location.writer)
+                    .thenCompose(x -> {
+                        long t2 = System.currentTimeMillis();
+                        DirAccess root = DirAccess.create(MaybeMultihash.empty(), rootRKey, new FileProperties(directoryName, "",
+                                0, LocalDateTime.now(), false, Optional.empty()), (Location) null, null, null);
+                        Location rootLocation = new Location(this.signer.publicKeyHash, writerHash, rootMapKey);
+                        System.out.println("Uploading entry point directory");
+                        return network.uploadChunk(root, rootLocation, writerWithHash).thenApply(chunkHash -> {
+                            long t3 = System.currentTimeMillis();
+                            System.out.println("Uploading root dir metadata took " + (t3 - t2) + " mS");
 
-            long t2 = System.currentTimeMillis();
-            DirAccess root = DirAccess.create(MaybeMultihash.empty(), rootRKey, new FileProperties(directoryName, "",
-                    0, LocalDateTime.now(), false, Optional.empty()), (Location) null, null, null);
-            Location rootLocation = new Location(this.signer.publicKeyHash, writerHash, rootMapKey);
-            System.out.println("Uploading entry point directory");
-            return network.uploadChunk(root, rootLocation, writerWithHash).thenCompose(chunkHash -> {
-                long t3 = System.currentTimeMillis();
-                System.out.println("Uploading root dir metadata took " + (t3 - t2) + " mS");
-                return addToStaticDataAndCommit(entry)
-                        .thenCompose(x -> addOwnedKeyAndCommit(entry.pointer.location.writer))
-                        .thenApply(x -> {
                             System.out.println("Committing static data took " + (System.currentTimeMillis() - t3) + " mS");
                             return new RetrievedFilePointer(rootPointer, root.withHash(chunkHash));
                         });
-            });
+                    }).thenCompose(x -> addToStaticDataAndCommit(entry).thenApply(y -> x));
         });
     }
 

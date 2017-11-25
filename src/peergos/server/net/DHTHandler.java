@@ -1,17 +1,20 @@
 package peergos.server.net;
 
+import peergos.server.storage.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.api.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.io.ipfs.cid.*;
+import peergos.shared.mutable.*;
 import peergos.shared.storage.ContentAddressedStorage;
 import com.sun.net.httpserver.*;
 import peergos.shared.util.*;
 
 import java.io.*;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.function.*;
 import java.util.stream.*;
 
@@ -19,16 +22,18 @@ public class DHTHandler implements HttpHandler
 {
     private static final boolean LOGGING = true;
     private final ContentAddressedStorage dht;
+    private final Predicate<PublicKeyHash> keyFilter;
     private final String apiPrefix;
 
-    public DHTHandler(ContentAddressedStorage dht, String apiPrefix) throws IOException
+    public DHTHandler(ContentAddressedStorage dht, Predicate<PublicKeyHash> keyFilter, String apiPrefix) throws IOException
     {
         this.dht = dht;
+        this.keyFilter = keyFilter;
         this.apiPrefix = apiPrefix;
     }
 
-    public DHTHandler(ContentAddressedStorage dht) throws IOException {
-        this(dht, "/api/v0/");
+    public DHTHandler(ContentAddressedStorage dht, Predicate<PublicKeyHash> keyFilter) throws IOException {
+        this(dht, keyFilter, "/api/v0/");
     }
 
     private Map<String, List<String>> parseQuery(String query) {
@@ -63,7 +68,10 @@ public class DHTHandler implements HttpHandler
 
             switch (path) {
                 case "block/put": {
-                    PublicKeyHash writer = PublicKeyHash.fromString(last.apply("writer"));
+                    PublicKeyHash writerHash = PublicKeyHash.fromString(last.apply("writer"));
+                    List<byte[]> signatures = Arrays.stream(last.apply("signatures").split(","))
+                            .map(ArrayOps::hexToBytes)
+                            .collect(Collectors.toList());
                     String boundary = httpExchange.getRequestHeaders().get("Content-Type")
                             .stream()
                             .filter(s -> s.contains("boundary="))
@@ -73,7 +81,47 @@ public class DHTHandler implements HttpHandler
                     List<byte[]> data = MultipartReceiver.extractFiles(httpExchange.getRequestBody(), boundary);
                     boolean isRaw = last.apply("format").equals("raw");
 
-                    (isRaw ? dht.putRaw(writer, data) : dht.put(writer, data)).thenAccept(hashes -> {
+                    // check writer is allowed to write to this server, and check their free space
+                    if (! keyFilter.test(writerHash))
+                        throw new IllegalStateException("Key not allowed to write to this server: " + writerHash);
+
+                    // Get the actual key, unless this is the initial write of the signing key during sign up
+                    // In the initial put of a signing key during sign up the key signs itself (we still check the hash
+                    // against the core node)
+                    Supplier<PublicSigningKey> fromDht = () -> {
+                        try {
+                            return PublicSigningKey.fromCbor(dht.get(writerHash.hash).get().get());
+                        } catch (Exception e) {
+                            throw new RuntimeException(e);
+                        }
+                    };
+                    Supplier<PublicSigningKey> inBandOrDht = () -> {
+                        try {
+                            PublicSigningKey candidateKey = PublicSigningKey.fromByteArray(data.get(0));
+                            PublicKeyHash calculatedHash = dht.hashKey(candidateKey);
+                            if (calculatedHash.equals(writerHash)) {
+                                candidateKey.unsignMessage(ArrayOps.concat(signatures.get(0), data.get(0)));
+                                return candidateKey;
+                            }
+                        } catch (Throwable e) {
+                            // If signature is not valid then the signing key has already been written, retrieve it
+                            // This happens for the boxing key during sign up for example
+                        }
+                        return fromDht.get();
+                    };
+                    PublicSigningKey writer = data.size() > 1 ? fromDht.get() : inBandOrDht.get();
+
+                    // verify signatures
+                    for (int i = 0; i < data.size(); i++) {
+                        byte[] signature = signatures.get(i);
+                        byte[] unsigned = writer.unsignMessage(ArrayOps.concat(signature, data.get(i)));
+                        if (!Arrays.equals(unsigned, data.get(i)))
+                            throw new IllegalStateException("Invalid signature for block!");
+                    }
+
+                    (isRaw ?
+                            dht.putRaw(writerHash, signatures, data) :
+                            dht.put(writerHash, signatures, data)).thenAccept(hashes -> {
                         List<Object> json = hashes.stream().map(h -> wrapHash(h)).collect(Collectors.toList());
                         // make stream of JSON objects
                         String jsonStream = json.stream().map(m -> JSONParser.toString(m)).reduce("", (a, b) -> a + b);

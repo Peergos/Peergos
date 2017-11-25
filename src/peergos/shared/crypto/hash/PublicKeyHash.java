@@ -5,6 +5,7 @@ import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 
 public class PublicKeyHash extends Multihash implements Cborable {
+    public static final int MAX_KEY_HASH_SIZE = 1024;
     public static final PublicKeyHash NULL = new PublicKeyHash(new Multihash(Type.sha2_256, new byte[32]));
 
     public final Multihash hash;
