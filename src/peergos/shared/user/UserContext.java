@@ -437,8 +437,8 @@ public class UserContext {
             SigningPrivateKeyAndPublicHash writerWithHash = new SigningPrivateKeyAndPublicHash(writerHash, writer.secretSigningKey);
             FilePointer rootPointer = new FilePointer(this.signer.publicKeyHash, writerWithHash, rootMapKey, rootRKey);
             EntryPoint entry = new EntryPoint(rootPointer, this.username, Collections.emptySet(), Collections.emptySet());
-            return addToStaticDataAndCommit(entry)
-                    .thenCompose(x -> addOwnedKeyAndCommit(entry.pointer.location.writer)).thenCompose(x -> {
+            return addOwnedKeyAndCommit(entry.pointer.location.writer)
+                    .thenCompose(x -> {
                         long t2 = System.currentTimeMillis();
                         DirAccess root = DirAccess.create(MaybeMultihash.empty(), rootRKey, new FileProperties(directoryName, "",
                                 0, LocalDateTime.now(), false, Optional.empty()), (Location) null, null, null);
@@ -451,7 +451,7 @@ public class UserContext {
                             System.out.println("Committing static data took " + (System.currentTimeMillis() - t3) + " mS");
                             return new RetrievedFilePointer(rootPointer, root.withHash(chunkHash));
                         });
-                    });
+                    }).thenCompose(x -> addToStaticDataAndCommit(entry).thenApply(y -> x));
         });
     }
 
