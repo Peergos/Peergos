@@ -93,6 +93,7 @@ public class Start
     );
 
     public static void startPeergos(Args a) {
+
         try {
             PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, new Ed25519.Java());
 
@@ -113,13 +114,18 @@ public class Start
             MutablePointers mutable = HttpMutablePointers.getInstance(coreAddress);
             String blacklistPath = "blacklist.txt";
             PublicKeyBlackList blacklist = new UserBasedBlacklist(Paths.get(blacklistPath), core, mutable, dht);
-            MutablePointers pinner = new BlockingMutablePointers(new PinningMutablePointers(mutable, dht), blacklist);
+            MutablePointers mutablePointers = new BlockingMutablePointers(new PinningMutablePointers(mutable, dht), blacklist);
 
+            Path userPath = Paths.get(a.getArg("whitelist_path", "user_whitelist.txt"));
+            int delayMs = a.getInt("whitelist_sleep_period", 1000 * 60 * 10);
+
+            new UserFilePinner(userPath, core, mutablePointers, dht, delayMs).start();
             InetSocketAddress httpsMessengerAddress = new InetSocketAddress(hostname, userAPIAddress.getPort());
-            new UserService(httpsMessengerAddress, Logger.getLogger("IPFS"), dht, core, pinner, a);
+            new UserService(httpsMessengerAddress, Logger.getLogger("IPFS"), dht, core, mutablePointers, a);
         } catch (Exception e) {
             e.printStackTrace();
-            System.exit(-1);
+
+            System.exit(1);
         }
     }
 
