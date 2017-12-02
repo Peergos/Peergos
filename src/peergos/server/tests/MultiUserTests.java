@@ -512,6 +512,45 @@ public class MultiUserTests {
     }
 
     @Test
+    public void acceptAndReciprocateFollowRequestThenRemoveFollowRequest() throws Exception {
+        UserContext u1 = UserTests.ensureSignedUp("q", "q", network, crypto);
+        UserContext u2 = UserTests.ensureSignedUp("w", "w", network, crypto);
+        u2.sendFollowRequest(u1.username, SymmetricKey.random()).get();
+        List<FollowRequest> u1Requests = u1.processFollowRequests().get();
+        assertTrue("Receive a follow request", u1Requests.size() > 0);
+        u1.sendReplyFollowRequest(u1Requests.get(0), true, true).get();
+        List<FollowRequest> u2FollowRequests = u2.processFollowRequests().get();
+        Optional<FileTreeNode> u1ToU2 = u2.getByPath("/" + u1.username).get();
+        assertTrue("Friend root present after accepted follow request", u1ToU2.isPresent());
+
+        Optional<FileTreeNode> u2ToU1 = u1.getByPath("/" + u2.username).get();
+        assertTrue("Friend root present after accepted follow request", u2ToU1.isPresent());
+
+        Set<String> u1Following = UserTests.ensureSignedUp("q", "q", network.clear(), crypto).getSocialState().get()
+                .followingRoots.stream().map(f -> f.getName())
+                .collect(Collectors.toSet());
+        assertTrue("Following correct", u1Following.contains(u2.username));
+
+        Set<String> u2Following = UserTests.ensureSignedUp("w", "w", network.clear(), crypto).getSocialState().get()
+                .followingRoots.stream().map(f -> f.getName())
+                .collect(Collectors.toSet());
+        assertTrue("Following correct", u2Following.contains(u1.username));
+
+        UserContext q = u1;
+        UserContext w = u2;
+
+        q.removeFollower("w").get();
+
+        Optional<FileTreeNode> u2ToU1Again = q.getByPath("/" + u2.username).get();
+        assertTrue("Friend root present after unfollow request", u2ToU1Again.isPresent());
+
+        w = UserTests.ensureSignedUp("w", "w", network, crypto);
+
+        Optional<FileTreeNode> u1ToU2Again = w.getByPath("/" + u1.username).get();
+        assertTrue("Friend root NOT present after unfollow", !u1ToU2Again.isPresent());
+    }
+
+    @Test
     public void reciprocateButNotAcceptFollowRequest() throws Exception {
         UserContext u1 = UserTests.ensureSignedUp("q", "q", network, crypto);
         UserContext u2 = UserTests.ensureSignedUp("w", "w", network, crypto);
