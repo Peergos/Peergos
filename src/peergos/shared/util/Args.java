@@ -98,6 +98,13 @@ public class Args
         return Long.parseLong(params.get(param));
     }
 
+    public long getLong(String param, long def)
+    {
+        if (!params.containsKey(param))
+            return def;
+        return Long.parseLong(params.get(param));
+    }
+
     public double getDouble(String param)
     {
         if (!params.containsKey(param))

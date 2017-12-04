@@ -242,9 +242,9 @@ public class WriterData implements Cborable {
         }
     }
 
-    private static Set<PublicKeyHash> getOwnedKeysRecursive(PublicKeyHash writer,
-                                                     MutablePointers mutable,
-                                                     ContentAddressedStorage dht) {
+    public static Set<PublicKeyHash> getOwnedKeysRecursive(PublicKeyHash writer,
+                                                           MutablePointers mutable,
+                                                           ContentAddressedStorage dht) {
         Set<PublicKeyHash> res = new HashSet<>();
         res.add(writer);
         try {
@@ -265,7 +265,27 @@ public class WriterData implements Cborable {
         return res;
     }
 
-    private static CompletableFuture<CommittedWriterData> getWriterData(PublicKeyHash controller,
+    public static Set<PublicKeyHash> getDirectOwnedKeys(PublicKeyHash writer,
+                                                        MutablePointers mutable,
+                                                        ContentAddressedStorage dht) {
+        Set<PublicKeyHash> res = new HashSet<>();
+        try {
+            CommittedWriterData subspaceDescriptor = mutable.getPointer(writer)
+                    .thenCompose(dataOpt -> dataOpt.isPresent() ?
+                            dht.getSigningKey(writer)
+                                    .thenApply(signer -> HashCasPair.fromCbor(CborObject.fromByteArray(signer.get()
+                                            .unsignMessage(dataOpt.get()))).updated) :
+                            CompletableFuture.completedFuture(MaybeMultihash.empty()))
+                    .thenCompose(x -> getWriterData(writer, x, dht)).get();
+
+            res.addAll(subspaceDescriptor.props.ownedKeys);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return res;
+    }
+
+    public static CompletableFuture<CommittedWriterData> getWriterData(PublicKeyHash controller,
                                                                         MaybeMultihash hash,
                                                                         ContentAddressedStorage dht) {
         if (!hash.isPresent())

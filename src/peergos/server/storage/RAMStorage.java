@@ -52,13 +52,13 @@ public class RAMStorage implements ContentAddressedStorage {
     public CompletableFuture<Optional<CborObject>> get(Multihash hash) {
         if (hash instanceof Cid && ((Cid) hash).codec == Cid.Codec.Raw)
             throw new IllegalStateException("Need to call getRaw if cid is not cbor!");
-        return CompletableFuture.completedFuture(Optional.of(getAndParseObject(hash)));
+        return CompletableFuture.completedFuture(getAndParseObject(hash));
     }
 
-    private synchronized CborObject getAndParseObject(Multihash hash) {
+    private synchronized Optional<CborObject> getAndParseObject(Multihash hash) {
         if (! storage.containsKey(hash))
-            throw new IllegalStateException("Hash not present! "+ hash);
-        return CborObject.fromByteArray(storage.get(hash));
+            return Optional.empty();
+        return Optional.of(CborObject.fromByteArray(storage.get(hash)));
     }
 
     public synchronized void clear() {
