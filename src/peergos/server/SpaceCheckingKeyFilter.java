@@ -105,16 +105,14 @@ public class SpaceCheckingKeyFilter {
     }
 
     public void accept(MutableEvent event) {
-        ForkJoinPool.commonPool().submit(() -> {
-            try {
-                HashCasPair hashCasPair = dht.getSigningKey(event.writer)
-                        .thenApply(signer -> HashCasPair.fromCbor(CborObject.fromByteArray(signer.get()
-                                .unsignMessage(event.writerSignedBtreeRootHash)))).get();
-                processMutablePointerEvent(event.writer, hashCasPair.original, hashCasPair.updated);
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        });
+        try {
+            HashCasPair hashCasPair = dht.getSigningKey(event.writer)
+                    .thenApply(signer -> HashCasPair.fromCbor(CborObject.fromByteArray(signer.get()
+                            .unsignMessage(event.writerSignedBtreeRootHash)))).get();
+            processMutablePointerEvent(event.writer, hashCasPair.original, hashCasPair.updated);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     public void processMutablePointerEvent(PublicKeyHash writer, MaybeMultihash existingRoot, MaybeMultihash newRoot) {
