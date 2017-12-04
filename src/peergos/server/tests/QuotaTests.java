@@ -73,8 +73,13 @@ public class QuotaTests {
         FileTreeNode home = context.getByPath(Paths.get(username).toString()).get().get();
         byte[] data = new byte[1024*1024];
         random.nextBytes(data);
-        home.uploadFile("file-1", new AsyncReader.ArrayBacked(data), data.length, network, crypto.random, x -> {}, context.fragmenter()).get();
+        FileTreeNode newHome = home.uploadFile("file-1", new AsyncReader.ArrayBacked(data), data.length,
+                network, crypto.random, x -> { }, context.fragmenter()).get();
 
-        home.uploadFile("file-2", new AsyncReader.ArrayBacked(data), data.length, network, crypto.random, x -> {}, context.fragmenter()).get();
+        try {
+            newHome.uploadFile("file-2", new AsyncReader.ArrayBacked(data), data.length, network, crypto.random, x -> {
+            }, context.fragmenter()).get();
+            Assert.fail("Quota wasn't enforced");
+        } catch (Exception e) {}
     }
 }
