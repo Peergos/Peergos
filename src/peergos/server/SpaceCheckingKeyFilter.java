@@ -128,18 +128,18 @@ public class SpaceCheckingKeyFilter {
 
         try {
             synchronized (current) {
-                long updatedDirectSize = dht.getRecursiveBlockSize(newRoot.get()).get();
+                long changeInStorage = dht.getChangeInContainedSize(current.target, newRoot.get(), current.directRetainedStorage).get();
                 Set<PublicKeyHash> updatedOwned = WriterData.getWriterData(writer, newRoot, dht).get().props.ownedKeys;
                 for (PublicKeyHash owned : updatedOwned) {
                     currentView.computeIfAbsent(owned, k -> new Stat(current.owner, MaybeMultihash.empty(), 0, Collections.emptySet()));
                 }
                 while (true) {
                     Long currentUsage = usage.get(current.owner);
-                    boolean casSucceeded = usage.replace(current.owner, currentUsage, currentUsage + updatedDirectSize - current.directRetainedStorage);
+                    boolean casSucceeded = usage.replace(current.owner, currentUsage, currentUsage + changeInStorage);
                     if (casSucceeded)
                         break;
                 }
-                current.update(newRoot, updatedOwned, updatedDirectSize);
+                current.update(newRoot, updatedOwned, current.directRetainedStorage + changeInStorage);
             }
         } catch (Exception e) {
             e.printStackTrace();

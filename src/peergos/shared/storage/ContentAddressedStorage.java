@@ -8,6 +8,7 @@ import peergos.shared.io.ipfs.api.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multiaddr.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.merklebtree.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
@@ -93,7 +94,11 @@ public interface ContentAddressedStorage {
         });
     }
 
-
+    default CompletableFuture<Long> getChangeInContainedSize(MaybeMultihash original, Multihash updated, long originalSize) {
+        // TODO exponentially optimise this like ipfs.pin.update
+        return getRecursiveBlockSize(updated)
+                .thenApply(newSize -> newSize - originalSize);
+    }
 
     class HTTP implements ContentAddressedStorage {
 
