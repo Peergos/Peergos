@@ -123,7 +123,7 @@ public class SpaceCheckingKeyFilter {
             Set<PublicKeyHash> childrenKeys = WriterData.getDirectOwnedKeys(ownedKeyHash, mutable, dht);
             currentView.computeIfAbsent(ownedKeyHash, k -> new Stat(username, MaybeMultihash.empty(), 0, childrenKeys));
             Stat current = currentView.get(ownedKeyHash);
-            MaybeMultihash updatedRoot = mutable.getPointerKeyHash(ownedKeyHash, dht).get();
+            MaybeMultihash updatedRoot = mutable.getPointerTarget(ownedKeyHash, dht).get();
             processMutablePointerEvent(ownedKeyHash, current.target, updatedRoot);
             for (PublicKeyHash childKey : childrenKeys) {
                 processCorenodeEvent(username, childKey);
@@ -187,7 +187,7 @@ public class SpaceCheckingKeyFilter {
     private void processRemovedOwnedKeys(Set<PublicKeyHash> removed) {
         for (PublicKeyHash ownedKey : removed) {
             try {
-                MaybeMultihash currentTarget = mutable.getPointerKeyHash(ownedKey, dht).get();
+                MaybeMultihash currentTarget = mutable.getPointerTarget(ownedKey, dht).get();
                 processMutablePointerEvent(ownedKey, currentTarget, MaybeMultihash.empty());
             } catch (Exception e) {
                 e.printStackTrace();

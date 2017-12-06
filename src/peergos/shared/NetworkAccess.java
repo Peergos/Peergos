@@ -238,7 +238,7 @@ public class NetworkAccess {
         Set<PublicKeyHash> ownedKeysRecursive = WriterData.getOwnedKeysRecursive(username, coreNode, mutable, dhtClient);
 
         for (PublicKeyHash keyHash: ownedKeysRecursive) {
-            Multihash casKeyHash = mutable.getPointerKeyHash(keyHash, dhtClient).get().get();
+            Multihash casKeyHash = mutable.getPointerTarget(keyHash, dhtClient).get().get();
             dhtClient.recursivePin(casKeyHash).get();
         }
     }

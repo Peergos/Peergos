@@ -35,7 +35,7 @@ public interface MutablePointers {
      * @throws InterruptedException
      * @throws ExecutionException
      */
-    default CompletableFuture<MaybeMultihash> getPointerKeyHash(PublicKeyHash writerKeyHash, ContentAddressedStorage ipfs) {
+    default CompletableFuture<MaybeMultihash> getPointerTarget(PublicKeyHash writerKeyHash, ContentAddressedStorage ipfs) {
         return getPointer(writerKeyHash)
                 .thenCompose(current -> ipfs.getSigningKey(writerKeyHash)
                         .thenApply(writerOpt -> writerOpt.map(writerKey -> current
