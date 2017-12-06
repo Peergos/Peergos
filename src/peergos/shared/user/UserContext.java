@@ -1027,7 +1027,7 @@ public class UserContext {
                             return root;
                         });
             }
-            return CompletableFuture.completedFuture(root);//throw new IllegalStateException("Metadata blob not Present downloading entry point!");
+            return CompletableFuture.completedFuture(root);
         }).exceptionally(Futures::logError);
     }
 
