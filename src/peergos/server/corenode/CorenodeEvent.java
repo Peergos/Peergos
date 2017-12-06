@@ -2,6 +2,9 @@ package peergos.server.corenode;
 
 import peergos.shared.crypto.hash.*;
 
+/** This propagates a user changing their root public key (by signing up, or changing their password)
+ *
+ */
 public class CorenodeEvent {
 
     public final String username;

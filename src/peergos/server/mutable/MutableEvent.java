@@ -2,6 +2,9 @@ package peergos.server.mutable;
 
 import peergos.shared.crypto.hash.*;
 
+/** This propagates a change in a mutable pointer's target
+ *
+ */
 public class MutableEvent {
 
     public final PublicKeyHash writer;
