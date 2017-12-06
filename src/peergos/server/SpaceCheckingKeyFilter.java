@@ -123,6 +123,15 @@ public class SpaceCheckingKeyFilter {
             throw new IllegalStateException("Unknown writer key hash: " + writer);
         if (! newRoot.isPresent()) {
             current.update(MaybeMultihash.empty(), Collections.emptySet(), 0);
+            if (existingRoot.isPresent()) {
+                try {
+                    // subtract data size from orphaned child keys (this assumes the keys form a tree without dups)
+                    Set<PublicKeyHash> updatedOwned = WriterData.getWriterData(writer, newRoot, dht).get().props.ownedKeys;
+                    processRemovedOwnedKeys(updatedOwned);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
             return;
         }
 
@@ -139,10 +148,24 @@ public class SpaceCheckingKeyFilter {
                     if (casSucceeded)
                         break;
                 }
+                HashSet<PublicKeyHash> removedChildren = new HashSet<>(current.ownedKeys);
+                removedChildren.removeAll(updatedOwned);
+                processRemovedOwnedKeys(removedChildren);
                 current.update(newRoot, updatedOwned, current.directRetainedStorage + changeInStorage);
             }
         } catch (Exception e) {
             e.printStackTrace();
+        }
+    }
+
+    private void processRemovedOwnedKeys(Set<PublicKeyHash> removed) {
+        for (PublicKeyHash ownedKey : removed) {
+            try {
+                MaybeMultihash currentTarget = mutable.getPointerKeyHash(ownedKey, dht).get();
+                processMutablePointerEvent(ownedKey, currentTarget, MaybeMultihash.empty());
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
         }
     }
 
