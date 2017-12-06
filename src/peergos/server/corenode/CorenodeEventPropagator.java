@@ -14,13 +14,13 @@ import java.util.function.*;
 public class CorenodeEventPropagator implements CoreNode {
 
     private final CoreNode target;
-    private final List<Consumer<CorenodeEvent>> listeners = new ArrayList<>();
+    private final List<Consumer<? super CorenodeEvent>> listeners = new ArrayList<>();
 
     public CorenodeEventPropagator(CoreNode target) {
         this.target = target;
     }
 
-    public void addListener(Consumer<CorenodeEvent> listener) {
+    public void addListener(Consumer<? super CorenodeEvent> listener) {
         listeners.add(listener);
     }
 
@@ -30,7 +30,7 @@ public class CorenodeEventPropagator implements CoreNode {
                 .thenApply(res -> {
                     if (res) {
                         CorenodeEvent event = new CorenodeEvent(username, chain.get(chain.size() - 1).owner);
-                        for (Consumer<CorenodeEvent> listener : listeners) {
+                        for (Consumer<? super CorenodeEvent> listener : listeners) {
                             listener.accept(event);
                         }
                     }

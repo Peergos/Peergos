@@ -10,13 +10,13 @@ import java.util.function.*;
 public class MutableEventPropagator implements MutablePointers {
 
     private final MutablePointers target;
-    private final List<Consumer<MutableEvent>> listeners = new ArrayList<>();
+    private final List<Consumer<? super MutableEvent>> listeners = new ArrayList<>();
 
     public MutableEventPropagator(MutablePointers target) {
         this.target = target;
     }
 
-    public void addListener(Consumer<MutableEvent> listener) {
+    public void addListener(Consumer<? super MutableEvent> listener) {
         listeners.add(listener);
     }
 
@@ -26,7 +26,7 @@ public class MutableEventPropagator implements MutablePointers {
                 .thenApply(res -> {
                     if (res) {
                         MutableEvent event = new MutableEvent(writer, writerSignedBtreeRootHash);
-                        for (Consumer<MutableEvent> listener : listeners) {
+                        for (Consumer<? super MutableEvent> listener : listeners) {
                             listener.accept(event);
                         }
                     }
