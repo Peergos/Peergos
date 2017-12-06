@@ -24,7 +24,7 @@ public class SpaceCheckingKeyFilter {
     private final long defaultQuota;
 
     private final Map<PublicKeyHash, Stat> currentView = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, Long> usage = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Usage> usage = new ConcurrentHashMap<>();
 
     private static class Stat {
         public final String owner;
@@ -58,6 +58,27 @@ public class SpaceCheckingKeyFilter {
         }
     }
 
+    private static class Usage {
+        private long usage, quota;
+
+        public Usage(long usage, long quota) {
+            this.usage = usage;
+            this.quota = quota;
+        }
+
+        protected synchronized void addUsage(long usageDelta) {
+            usage += usageDelta;
+        }
+
+        protected synchronized void setQuota(long newQuota) {
+            quota = newQuota;
+        }
+
+        protected synchronized long remainingQuota() {
+            return quota - usage;
+        }
+    }
+
     /**
      *
      * @param core
@@ -88,7 +109,7 @@ public class SpaceCheckingKeyFilter {
 
     public void accept(CorenodeEvent event) {
         currentView.computeIfAbsent(event.keyHash, k -> new Stat(event.username, MaybeMultihash.empty(), 0, Collections.emptySet()));
-        usage.putIfAbsent(event.username, 0L);
+        usage.putIfAbsent(event.username, new Usage(0, defaultQuota));
         ForkJoinPool.commonPool().submit(() -> processCorenodeEvent(event.username, event.keyHash));
     }
 
@@ -150,12 +171,9 @@ public class SpaceCheckingKeyFilter {
                 for (PublicKeyHash owned : updatedOwned) {
                     currentView.computeIfAbsent(owned, k -> new Stat(current.owner, MaybeMultihash.empty(), 0, Collections.emptySet()));
                 }
-                while (true) {
-                    Long currentUsage = usage.get(current.owner);
-                    boolean casSucceeded = usage.replace(current.owner, currentUsage, currentUsage + changeInStorage);
-                    if (casSucceeded)
-                        break;
-                }
+                Usage currentUsage = usage.get(current.owner);
+                currentUsage.addUsage(changeInStorage);
+
                 HashSet<PublicKeyHash> removedChildren = new HashSet<>(current.getOwnedKeys());
                 removedChildren.removeAll(updatedOwned);
                 processRemovedOwnedKeys(removedChildren);
@@ -177,27 +195,11 @@ public class SpaceCheckingKeyFilter {
         }
     }
 
-    private long getQuota(String username) {
-        return defaultQuota;
-    }
-
-    private long getUsage(String username) {
-        Long cached = usage.get(username);
-        if (cached != null) {
-            return cached;
-        }
-        throw new IllegalStateException("Unknown user!");
-    }
-
-    private String getOwner(PublicKeyHash writer) {
-        Stat state = currentView.get(writer);
-        if (state != null)
-            return state.owner;
-        throw new IllegalStateException("Unknown writing key hash: " + writer);
-    }
-
     public boolean allowWrite(PublicKeyHash signerHash) {
-        String owner = getOwner(signerHash);
-        return getUsage(owner) < getQuota(owner);
+        Stat state = currentView.get(signerHash);
+        if (state == null)
+            throw new IllegalStateException("Unknown writing key hash: " + signerHash);
+
+        return usage.get(state.owner).remainingQuota() > 0;
     }
 }
