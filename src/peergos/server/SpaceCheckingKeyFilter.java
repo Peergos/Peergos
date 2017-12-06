@@ -13,6 +13,9 @@ import peergos.shared.user.*;
 import java.util.*;
 import java.util.concurrent.*;
 
+/** This class checks whether a given user is using more storage space than their quota
+ *
+ */
 public class SpaceCheckingKeyFilter {
 
     private final CoreNode core;
@@ -51,7 +54,7 @@ public class SpaceCheckingKeyFilter {
         }
 
         public synchronized Set<PublicKeyHash> getOwnedKeys() {
-            return ownedKeys;
+            return Collections.unmodifiableSet(ownedKeys);
         }
     }
 
@@ -89,6 +92,11 @@ public class SpaceCheckingKeyFilter {
         ForkJoinPool.commonPool().submit(() -> processCorenodeEvent(event.username, event.keyHash));
     }
 
+    /** Update our view of the world because a user has changed their public key (or registered)
+     *
+     * @param username
+     * @param ownedKeyHash
+     */
     public void processCorenodeEvent(String username, PublicKeyHash ownedKeyHash) {
         try {
             Set<PublicKeyHash> childrenKeys = WriterData.getDirectOwnedKeys(ownedKeyHash, mutable, dht);
@@ -148,7 +156,7 @@ public class SpaceCheckingKeyFilter {
                     if (casSucceeded)
                         break;
                 }
-                HashSet<PublicKeyHash> removedChildren = new HashSet<>(current.ownedKeys);
+                HashSet<PublicKeyHash> removedChildren = new HashSet<>(current.getOwnedKeys());
                 removedChildren.removeAll(updatedOwned);
                 processRemovedOwnedKeys(removedChildren);
                 current.update(newRoot, updatedOwned, current.directRetainedStorage + changeInStorage);
