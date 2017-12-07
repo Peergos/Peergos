@@ -235,6 +235,10 @@ public class NetworkAccess {
      * @param username
      */
     public void pinAllUserFiles(String username) throws ExecutionException, InterruptedException {
+        pinAllUserFiles(username, coreNode, mutable, dhtClient);
+    }
+
+    public static void pinAllUserFiles(String username, CoreNode coreNode, MutablePointers mutable, ContentAddressedStorage dhtClient) throws ExecutionException, InterruptedException {
         Set<PublicKeyHash> ownedKeysRecursive = WriterData.getOwnedKeysRecursive(username, coreNode, mutable, dhtClient);
 
         for (PublicKeyHash keyHash: ownedKeysRecursive) {
