@@ -100,4 +100,21 @@ public class QuotaTests {
             home = file.remove(network, home).get();
         }
     }
+
+    @Test
+    public void deletionAtQuota() throws Exception {
+        String username = generateUsername();
+        String password = "badpassword";
+
+        UserContext context = ensureSignedUp(username, password, network, crypto);
+        FileTreeNode home = context.getByPath(Paths.get(username).toString()).get().get();
+        // signing up uses just over 4k and the quota is 2 MiB, so use within 1 KiB of our quota
+        byte[] data = new byte[2 * 1024 * 1024 - 5 * 1024];
+        random.nextBytes(data);
+        String filename = "file-1";
+        home = home.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length,
+                network, crypto.random, x -> {}, context.fragmenter()).get();
+        FileTreeNode file = context.getByPath("/" + username + "/" + filename).get().get();
+        file.remove(network, home).get();
+    }
 }
