@@ -82,4 +82,22 @@ public class QuotaTests {
             Assert.fail("Quota wasn't enforced");
         } catch (Exception e) {}
     }
+
+    @Test
+    public void deletionsReduceUsage() throws Exception {
+        String username = generateUsername();
+        String password = "badpassword";
+
+        UserContext context = ensureSignedUp(username, password, network, crypto);
+        FileTreeNode home = context.getByPath(Paths.get(username).toString()).get().get();
+        byte[] data = new byte[1024 * 1024];
+        random.nextBytes(data);
+        for (int i=0; i < 5; i++) {
+            String filename = "file-1";
+            home = home.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length,
+                    network, crypto.random, x -> {}, context.fragmenter()).get();
+            FileTreeNode file = context.getByPath("/" + username + "/" + filename).get().get();
+            home = file.remove(network, home).get();
+        }
+    }
 }

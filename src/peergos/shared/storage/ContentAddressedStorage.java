@@ -95,7 +95,7 @@ public interface ContentAddressedStorage {
         });
     }
 
-    default CompletableFuture<Long> getChangeInContainedSize(MaybeMultihash original, Multihash updated, long originalSize) {
+    default CompletableFuture<Long> getChangeInContainedSize(MaybeMultihash original, Multihash updated) {
         // TODO optimise cases which result from btree rebalancing or splitting
         if (! original.isPresent())
             return getRecursiveBlockSize(updated);
@@ -109,7 +109,7 @@ public interface ContentAddressedStorage {
                     List<Multihash> onlyBefore = new ArrayList<>(before.right);
                     onlyBefore.removeAll(after.right);
                     List<Multihash> onlyAfter = new ArrayList<>(after.right);
-                    onlyBefore.removeAll(before.right);
+                    onlyAfter.removeAll(before.right);
 
                     int nPairs = Math.min(onlyBefore.size(), onlyAfter.size());
                     List<Pair<Multihash, Multihash>> pairs = IntStream.range(0, nPairs)

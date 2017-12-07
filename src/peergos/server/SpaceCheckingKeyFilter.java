@@ -166,7 +166,7 @@ public class SpaceCheckingKeyFilter {
 
         try {
             synchronized (current) {
-                long changeInStorage = dht.getChangeInContainedSize(current.target, newRoot.get(), current.directRetainedStorage).get();
+                long changeInStorage = dht.getChangeInContainedSize(current.target, newRoot.get()).get();
                 Set<PublicKeyHash> updatedOwned = WriterData.getWriterData(writer, newRoot, dht).get().props.ownedKeys;
                 for (PublicKeyHash owned : updatedOwned) {
                     currentView.computeIfAbsent(owned, k -> new Stat(current.owner, MaybeMultihash.empty(), 0, Collections.emptySet()));
