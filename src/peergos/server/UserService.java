@@ -1,12 +1,12 @@
 package peergos.server;
 
 import com.sun.net.httpserver.*;
+import peergos.server.corenode.*;
 import peergos.server.mutable.*;
 import peergos.shared.corenode.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.ContentAddressedStorage;
 
-import peergos.server.corenode.HttpCoreNodeServer;
 import peergos.server.net.*;
 import peergos.shared.util.*;
 
@@ -157,9 +157,26 @@ public class UserService
 
         Function<HttpHandler, HttpHandler> wrap = h -> !isLocal ? new HSTSHandler(h) : h;
 
-        server.createContext(DHT_URL, wrap.apply(new DHTHandler(dht, new RegisteredUserKeyFilter(coreNode, mutable, dht)::isAllowed)));
-        server.createContext(SIGNUP_URL, wrap.apply(new InverseProxyHandler("startDemo.peergos.net", isLocal)));
-        server.createContext(ACTIVATION_URL, wrap.apply(new InverseProxyHandler("startDemo.peergos.net", isLocal)));
+        long defaultQuota = args.getLong("default-quota", 1024L * 1024 * 1024);
+        SpaceCheckingKeyFilter spaceChecker = new SpaceCheckingKeyFilter(coreNode, mutable, dht, defaultQuota);
+
+        server.createContext(DHT_URL,
+                wrap.apply(new DHTHandler(dht, spaceChecker::allowWrite)));
+
+        CorenodeEventPropagator corenodePropagator = new CorenodeEventPropagator(this.coreNode);
+        corenodePropagator.addListener(spaceChecker::accept);
+        server.createContext("/" + HttpCoreNodeServer.CORE_URL,
+                wrap.apply(new HttpCoreNodeServer.CoreNodeHandler(corenodePropagator)));
+
+        MutableEventPropagator mutablePropagator = new MutableEventPropagator(this.mutable);
+        mutablePropagator.addListener(spaceChecker::accept);
+        server.createContext("/" + HttpMutablePointerServer.MUTABLE_POINTERS_URL,
+                wrap.apply(new HttpMutablePointerServer.MutationHandler(mutablePropagator)));
+
+        server.createContext(SIGNUP_URL,
+                wrap.apply(new InverseProxyHandler("demo.peergos.net", isLocal)));
+        server.createContext(ACTIVATION_URL,
+                wrap.apply(new InverseProxyHandler("demo.peergos.net", isLocal)));
 
         //define  web-root static-handler
         StaticHandler handler;
@@ -179,8 +196,6 @@ public class UserService
         }
 
         server.createContext(UI_URL, wrap.apply(handler));
-        server.createContext("/" + HttpCoreNodeServer.CORE_URL, wrap.apply(new HttpCoreNodeServer.CoreNodeHandler(coreNode)));
-        server.createContext("/" + HttpMutablePointerServer.MUTABLE_POINTERS_URL, wrap.apply(new HttpMutablePointerServer.MutationHandler(mutable)));
 
         server.setExecutor(Executors.newFixedThreadPool(HANDLER_THREADS));
         server.start();

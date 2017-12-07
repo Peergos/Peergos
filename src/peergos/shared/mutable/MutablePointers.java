@@ -1,11 +1,7 @@
 package peergos.shared.mutable;
 
-import peergos.server.storage.IPFS;
 import peergos.shared.cbor.CborObject;
-import peergos.shared.crypto.TweetNaCl;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.crypto.asymmetric.*;
-import peergos.shared.io.ipfs.multihash.Multihash;
 import peergos.shared.merklebtree.HashCasPair;
 import peergos.shared.merklebtree.MaybeMultihash;
 import peergos.shared.storage.ContentAddressedStorage;
@@ -39,16 +35,15 @@ public interface MutablePointers {
      * @throws InterruptedException
      * @throws ExecutionException
      */
-    default CompletableFuture<MaybeMultihash> getPointerKeyHash(PublicKeyHash writerKeyHash, ContentAddressedStorage ipfs) {
+    default CompletableFuture<MaybeMultihash> getPointerTarget(PublicKeyHash writerKeyHash, ContentAddressedStorage ipfs) {
         return getPointer(writerKeyHash)
-            .thenCompose(current -> ipfs.getSigningKey(writerKeyHash)
-                .thenApply(writerOpt -> {
-                        PublicSigningKey writerKey = writerOpt.get();
-                        return current
-                            .map(signed -> HashCasPair.fromCbor(CborObject.fromByteArray(writerKey.unsignMessage(signed))).updated)
-                            .orElse(MaybeMultihash.empty());
-
-                }));
+                .thenCompose(current -> ipfs.getSigningKey(writerKeyHash)
+                        .thenApply(writerOpt -> writerOpt.map(writerKey -> current
+                                .map(signed -> HashCasPair.fromCbor(CborObject.fromByteArray(writerKey.unsignMessage(signed))).updated)
+                                .orElse(MaybeMultihash.empty()))
+                                .orElse(MaybeMultihash.empty())
+                        )
+                );
     }
 
 }

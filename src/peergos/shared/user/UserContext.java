@@ -330,21 +330,9 @@ public class UserContext {
                                             .map(writer -> getTotalSpaceUsed(writer))
                                             .collect(Collectors.toList()),
                                     0L, (t, fut) -> fut.thenApply(x -> x + t), (a, b) -> a + b);
-                            return subtree.thenCompose(ownedSize -> getRecursiveBlockSize(cwd.hash.get())
+                            return subtree.thenCompose(ownedSize -> network.dhtClient.getRecursiveBlockSize(cwd.hash.get())
                                     .thenApply(descendentSize -> descendentSize + ownedSize));
                         }));
-    }
-
-    private CompletableFuture<Long> getRecursiveBlockSize(Multihash block) {
-        return network.dhtClient.getLinks(block).thenCompose(links -> {
-            List<CompletableFuture<Long>> subtrees = links.stream().map(this::getRecursiveBlockSize).collect(Collectors.toList());
-            return network.dhtClient.getSize(block)
-                    .thenCompose(sizeOpt -> {
-                        CompletableFuture<Long> reduced = Futures.reduceAll(subtrees,
-                                0L, (t, fut) -> fut.thenApply(x -> x + t), (a, b) -> a + b);
-                        return reduced.thenApply(sum -> sum + sizeOpt.orElse(0));
-                    });
-        });
     }
 
     public CompletableFuture<UserGenerationAlgorithm> getKeyGenAlgorithm() {

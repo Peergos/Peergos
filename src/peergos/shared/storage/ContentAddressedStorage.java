@@ -8,6 +8,7 @@ import peergos.shared.io.ipfs.api.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multiaddr.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.merklebtree.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
@@ -15,6 +16,7 @@ import java.io.*;
 import java.net.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.*;
 import java.util.stream.*;
 
 public interface ContentAddressedStorage {
@@ -79,6 +81,64 @@ public interface ContentAddressedStorage {
     default CompletableFuture<Optional<PublicBoxingKey>> getBoxingKey(PublicKeyHash hash) {
         return get(hash.hash)
                 .thenApply(opt -> opt.map(PublicBoxingKey::fromCbor));
+    }
+
+    default CompletableFuture<Long> getRecursiveBlockSize(Multihash block) {
+        return getLinks(block).thenCompose(links -> {
+            List<CompletableFuture<Long>> subtrees = links.stream().map(this::getRecursiveBlockSize).collect(Collectors.toList());
+            return getSize(block)
+                    .thenCompose(sizeOpt -> {
+                        CompletableFuture<Long> reduced = Futures.reduceAll(subtrees,
+                                0L, (t, fut) -> fut.thenApply(x -> x + t), (a, b) -> a + b);
+                        return reduced.thenApply(sum -> sum + sizeOpt.orElse(0));
+                    });
+        });
+    }
+
+    default CompletableFuture<Long> getChangeInContainedSize(MaybeMultihash original, Multihash updated) {
+        // TODO optimise cases which result from btree rebalancing or splitting
+        if (! original.isPresent())
+            return getRecursiveBlockSize(updated);
+        return getChangeInContainedSize(original.get(), updated);
+    }
+
+    default CompletableFuture<Long> getChangeInContainedSize(Multihash original, Multihash updated) {
+        return getLinksAndSize(original)
+                .thenCompose(before -> getLinksAndSize(updated).thenCompose(after -> {
+                    int objectDelta = after.left - before.left;
+                    List<Multihash> onlyBefore = new ArrayList<>(before.right);
+                    onlyBefore.removeAll(after.right);
+                    List<Multihash> onlyAfter = new ArrayList<>(after.right);
+                    onlyAfter.removeAll(before.right);
+
+                    int nPairs = Math.min(onlyBefore.size(), onlyAfter.size());
+                    List<Pair<Multihash, Multihash>> pairs = IntStream.range(0, nPairs)
+                            .mapToObj(i -> new Pair<>(onlyBefore.get(i), onlyAfter.get(i)))
+                            .collect(Collectors.toList());
+
+                    List<Multihash> extraBefore = onlyBefore.subList(nPairs, onlyBefore.size());
+                    List<Multihash> extraAfter = onlyAfter.subList(nPairs, onlyAfter.size());
+                    Function<List<Multihash>, CompletableFuture<Long>> getAllRecursiveSizes =
+                            extra -> Futures.reduceAll(extra,
+                                    0L,
+                                    (s, h) -> getRecursiveBlockSize(h).thenApply(size -> size + s),
+                                    (a, b) -> a + b);
+
+                    Function<List<Pair<Multihash, Multihash>>, CompletableFuture<Long>> getSizeDiff =
+                            ps -> Futures.reduceAll(ps,
+                                    0L,
+                                    (s, p) -> getChangeInContainedSize(p.left, p.right).thenApply(size -> size + s),
+                                    (a, b) -> a + b);
+                    return getAllRecursiveSizes.apply(extraBefore)
+                            .thenCompose(priorSize -> getAllRecursiveSizes.apply(extraAfter)
+                                    .thenApply(postSize -> postSize - priorSize + objectDelta))
+                            .thenCompose(total -> getSizeDiff.apply(pairs).thenApply(res -> res + total));
+                }));
+    }
+
+    default CompletableFuture<Pair<Integer, List<Multihash>>> getLinksAndSize(Multihash block) {
+        return getLinks(block)
+                .thenCompose(links -> getSize(block).thenApply(size -> new Pair<>(size.orElse(0), links)));
     }
 
     class HTTP implements ContentAddressedStorage {
