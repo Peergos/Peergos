@@ -120,6 +120,7 @@ public class SpaceCheckingKeyFilter {
      */
     public void processCorenodeEvent(String username, PublicKeyHash ownedKeyHash) {
         try {
+            usage.putIfAbsent(username, new Usage(0, defaultQuota));
             Set<PublicKeyHash> childrenKeys = WriterData.getDirectOwnedKeys(ownedKeyHash, mutable, dht);
             currentView.computeIfAbsent(ownedKeyHash, k -> new Stat(username, MaybeMultihash.empty(), 0, childrenKeys));
             Stat current = currentView.get(ownedKeyHash);
