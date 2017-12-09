@@ -179,7 +179,7 @@ public class UserContext {
                                 });
                     });
                 }).thenCompose(context -> network.coreNode.getUsernames(PEERGOS_USERNAME)
-                        .thenCompose(usernames -> usernames.contains(PEERGOS_USERNAME) ?
+                        .thenCompose(usernames -> usernames.contains(PEERGOS_USERNAME) && ! username.equals(PEERGOS_USERNAME) ?
                                 context.sendInitialFollowRequest(PEERGOS_USERNAME) :
                                 CompletableFuture.completedFuture(true))
                         .thenApply(b -> context))
