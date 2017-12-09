@@ -25,6 +25,7 @@ import jsinterop.annotations.*;
 public class UserContext {
     private static final boolean LOGGING = false;
 
+    public static final String PEERGOS_USERNAME = "peergos";
     public static final String SHARED_DIR_NAME = "shared";
     @JsProperty
     public final String username;
@@ -177,7 +178,12 @@ public class UserContext {
                                         });
                                 });
                     });
-                }).exceptionally(Futures::logError);
+                }).thenCompose(context -> network.coreNode.getUsernames(PEERGOS_USERNAME)
+                        .thenCompose(usernames -> usernames.contains(PEERGOS_USERNAME) && ! username.equals(PEERGOS_USERNAME) ?
+                                context.sendInitialFollowRequest(PEERGOS_USERNAME) :
+                                CompletableFuture.completedFuture(true))
+                        .thenApply(b -> context))
+                .exceptionally(Futures::logError);
     }
 
     @JsMethod
