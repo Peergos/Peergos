@@ -479,6 +479,15 @@ public class MultiUserTests {
     }
 
     @Test
+    public void followPeergos() throws Exception {
+        UserContext u1 = UserTests.ensureSignedUp("peergos", "peergos", network, crypto);
+        UserContext u2 = UserTests.ensureSignedUp("w", "w", network, crypto);
+
+        List<FollowRequest> u1Requests = u1.processFollowRequests().get();
+        assertTrue("Receive a follow request", u1Requests.size() > 0);
+    }
+
+    @Test
     public void acceptButNotReciprocateFollowRequest() throws Exception {
         UserContext u1 = UserTests.ensureSignedUp("q", "q", network, crypto);
         UserContext u2 = UserTests.ensureSignedUp("w", "w", network, crypto);
