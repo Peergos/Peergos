@@ -83,7 +83,7 @@ public class MimeTypes {
 
         if (allAscii(start))
             return "text/plain";
-        return "";
+        return "application/octet-stream";
     }
 
     private static boolean allAscii(byte[] data) {
