@@ -90,7 +90,7 @@ public class MimeTypes {
         for (byte b : data) {
             if ((b & 0xff) > 0x80)
                 return false;
-            if ((b & 0xff) < 0x20 && b != (byte)0x10 && b != (byte) 0x13)
+            if ((b & 0xff) < 0x20 && b != (byte)0xA && b != (byte) 0xD)
                 return false;
         }
         return true;
