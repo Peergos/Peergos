@@ -5,5 +5,5 @@ import jsinterop.annotations.*;
 public class Usernames {
 
     @JsProperty
-    public static final String REGEX = "^(?=.{1,32}$)(?![_-])(?!.*[_-]{2})[a-z0-9_-]+(?<![_-])$";
+    public static final String REGEX = "^[a-z0-9](?:[a-z0-9]|[_-](?=[a-z0-9])){0,31}$";
 }

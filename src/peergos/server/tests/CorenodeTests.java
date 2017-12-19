@@ -120,9 +120,11 @@ public class CorenodeTests {
                 "ch_ris",
                 "123456789012345678901234567890ab",
                 "1337",
-                "alpha-beta");
+                "alpha-beta",
+                "the-god-father");
 
         List<String> areNotValid = Arrays.asList(
+                "123456789012345678901234567890abc",
                 "",
                 " ",
                 "super_califragilistic_expialidocious",
@@ -133,6 +135,14 @@ public class CorenodeTests {
                 "_ted",
                 "t__ed",
                 "ted_",
+                " ted",
+                "<ted>",
+                "ted-",
+                "a-_b",
+                "a_-b",
+                "a--b",
+                "fred--flinstone",
+                "peter-_pan",
                 "_hello",
                 "hello.",
                 "\b0");
