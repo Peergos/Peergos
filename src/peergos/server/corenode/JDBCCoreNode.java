@@ -454,7 +454,7 @@ public class JDBCCoreNode {
 
                     long userCount = conn.createStatement().executeQuery("select count(name) from usernames;").getLong(1);
                     if (userCount >= this.maxUsernameCount)
-                        return false;
+                        throw new IllegalStateException("Not currently accepting new users.");
 
                     user = conn.prepareStatement("insert into usernames (name) VALUES(?);");
                     user.setString(1, username);

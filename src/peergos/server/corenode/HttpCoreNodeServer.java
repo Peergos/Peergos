@@ -91,7 +91,12 @@ public class HttpCoreNodeServer
                 exchange.sendResponseHeaders(200, b.length);
                 exchange.getResponseBody().write(b);
             } catch (Exception e) {
-                e.printStackTrace();
+                Throwable cause = e.getCause();
+                if (cause != null)
+                    exchange.getResponseHeaders().set("Trailer", cause.getMessage());
+                else
+                    exchange.getResponseHeaders().set("Trailer", e.getMessage());
+
                 exchange.sendResponseHeaders(400, 0);
             } finally {
                 exchange.close();

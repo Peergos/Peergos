@@ -23,4 +23,7 @@ public class HttpURLConnection extends URLConnection{
 	}
 	public void disconnect() {
 	}
+	public String getHeaderField(String name) {
+		return null;
+	}
 }

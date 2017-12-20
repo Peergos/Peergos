@@ -51,7 +51,12 @@ public class JavaPoster implements HttpPoster {
             din.close();
             res.complete(resp);
         } catch (IOException e) {
-            res.completeExceptionally(e);
+            if (conn != null){
+                String trailer = conn.getHeaderField("Trailer");
+                System.err.println("Trailer:" + trailer);
+                res.completeExceptionally(new RuntimeException(trailer));
+            } else
+                res.completeExceptionally(e);
         } finally {
             if (conn != null)
                 conn.disconnect();
