@@ -133,6 +133,17 @@ public abstract class UserTests {
     }
 
     @Test
+    public void duplicateSignUp() throws Exception {
+        UserContext.ensureSignedUp("q", "q", network, crypto).get();
+        try {
+            UserContext.signUp("q", "w", network, crypto).get();
+        } catch (Exception e) {
+            if (! e.getMessage().contains("User already exists"))
+                Assert.fail("Incorrect error message");
+        }
+    }
+
+    @Test
     public void changePassword() throws Exception {
         String username = generateUsername();
         String password = "password";
