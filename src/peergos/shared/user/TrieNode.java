@@ -126,6 +126,14 @@ public class TrieNode {
         return new TrieNode(children, value, newLinks);
     }
 
+    public boolean hasWriteAccess() {
+        if (children.size() == 0)
+            return value.map(e -> e.pointer.isWritable()).orElse(false);
+        return children.values()
+                .stream()
+                .anyMatch(c -> c.hasWriteAccess());
+    }
+
     public boolean isEmpty() {
         return children.size() == 0 && !value.isPresent();
     }
