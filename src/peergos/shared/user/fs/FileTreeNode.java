@@ -527,7 +527,8 @@ public class FileTreeNode {
                     setModified();
                     result.complete(this.withCryptreeNode(uploadResult));
                 }).exceptionally(e -> {
-            if (e.getCause() instanceof Btree.CasException) {
+
+            if (e instanceof Btree.CasException || e.getCause() instanceof Btree.CasException) {
                 // reload directory and try again
                 network.getMetadata(getLocation()).thenCompose(opt -> {
                     DirAccess updatedUs = (DirAccess) opt.get();
@@ -539,6 +540,12 @@ public class FileTreeNode {
                         Set<String> childNames = children.stream()
                                 .map(f -> f.getName())
                                 .collect(Collectors.toSet());
+                        if (! childNames.contains(filename)) {
+                            return us.addChildPointer(filename, childPointer, network, random, retries)
+                                    .thenAccept(res -> {
+                                        result.complete(res);
+                                    });
+                        }
                         String safeName = nextSafeReplacementFilename(filename, childNames);
                         // rename file in place as we've already uploaded it
                         return network.getMetadata(childPointer.location).thenCompose(renameOpt -> {
@@ -558,7 +565,8 @@ public class FileTreeNode {
                         });
                     });
                 }).exceptionally(ex -> {
-                    if (e.getCause() instanceof Btree.CasException && retries > 0)
+                    if ((e instanceof Btree.CasException ||
+                            e.getCause() instanceof Btree.CasException) && retries > 0)
                         addChildPointer(filename, childPointer, network, random, retries - 1)
                                 .thenApply(f -> result.complete(f))
                                 .exceptionally(e2 -> {
