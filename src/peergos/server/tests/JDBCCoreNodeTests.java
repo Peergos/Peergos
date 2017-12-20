@@ -67,6 +67,9 @@ public class JDBCCoreNodeTests {
       Assert.assertTrue(signup.apply(username));
     }
     // can't keep signing  up
-    Assert.assertFalse(signup.apply("f"));
+      try {
+          signup.apply("f");
+          Assert.fail();
+      } catch (IllegalStateException e) {}
   }
 }
