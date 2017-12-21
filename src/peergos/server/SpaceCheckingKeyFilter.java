@@ -103,7 +103,7 @@ public class SpaceCheckingKeyFilter {
                 publicKeyHash.ifPresent(keyHash -> processCorenodeEvent(username, keyHash));
             }
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            e.printStackTrace();
         }
     }
 
@@ -129,7 +129,9 @@ public class SpaceCheckingKeyFilter {
             for (PublicKeyHash childKey : childrenKeys) {
                 processCorenodeEvent(username, childKey);
             }
-        } catch (Exception e) {
+        } catch (Throwable e) {
+            System.err.println("Error loading storage for user: " + username + ", disabling their quota");
+            usage.get(username).setQuota(0);
             e.printStackTrace();
         }
     }
