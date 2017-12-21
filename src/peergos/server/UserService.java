@@ -157,7 +157,7 @@ public class UserService
 
         Function<HttpHandler, HttpHandler> wrap = h -> !isLocal ? new HSTSHandler(h) : h;
 
-        long defaultQuota = args.getLong("default-quota", 1024L * 1024 * 1024);
+        long defaultQuota = args.getLong("default-quota");
         SpaceCheckingKeyFilter spaceChecker = new SpaceCheckingKeyFilter(coreNode, mutable, dht, defaultQuota);
 
         server.createContext(DHT_URL,

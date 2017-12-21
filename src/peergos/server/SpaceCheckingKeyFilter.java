@@ -201,6 +201,10 @@ public class SpaceCheckingKeyFilter {
         if (state == null)
             throw new IllegalStateException("Unknown writing key hash: " + signerHash);
 
-        return usage.get(state.owner).remainingQuota() > 0;
+        Usage usage = this.usage.get(state.owner);
+        if (usage.remainingQuota() <= 0)
+            throw new IllegalStateException("Storage quota exceeded! Used "
+                    + usage.usage + " out of " + usage.quota + " bytes.");
+        return true;
     }
 }

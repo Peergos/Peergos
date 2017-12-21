@@ -49,7 +49,8 @@ public class Start
                     new Command.Arg("domain", "Domain name to bind to,", false, "localhost"),
                     new Command.Arg("useIPFS", "Use IPFS for storage or ephemeral RAM store", false, "true"),
                     new Command.Arg("webroot", "the path to the directory to serve as the web root", false),
-                    new Command.Arg("publicserver", "listen on all network interfaces, not just localhost", false)
+                    new Command.Arg("publicserver", "listen on all network interfaces, not just localhost", false),
+                    new Command.Arg("default-quota", "default maximum storage per user", false, Long.toString(1024L * 1024 * 1024))
             ).collect(Collectors.toList())
     );
 

@@ -14,7 +14,6 @@ import peergos.shared.util.*;
 
 import java.io.*;
 import java.util.*;
-import java.util.concurrent.*;
 import java.util.function.*;
 import java.util.stream.*;
 
@@ -189,6 +188,7 @@ public class DHTHandler implements HttpHandler
             e.printStackTrace();
             replyError(httpExchange, e);
         } finally {
+            httpExchange.close();
             long t2 = System.currentTimeMillis();
             if (LOGGING)
                 System.out.println("DHT Handler handled " + path + " query in: " + (t2 - t1) + " mS");
@@ -207,12 +207,8 @@ public class DHTHandler implements HttpHandler
 
     private static void replyError(HttpExchange exchange, Throwable t) {
         try {
-            exchange.sendResponseHeaders(500, 0);
-            DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());
-            String body = t.getMessage();
-            dout.write(body.getBytes());
-            dout.flush();
-            dout.close();
+            exchange.getResponseHeaders().set("Trailer", t.getMessage());
+            exchange.sendResponseHeaders(400, 0);
         } catch (IOException e)
         {
             e.printStackTrace();
