@@ -60,14 +60,28 @@ public class SpaceCheckingKeyFilter {
 
     private static class Usage {
         private long usage, quota;
+        private Map<PublicKeyHash, Long> pending = new HashMap<>();
 
         public Usage(long usage, long quota) {
             this.usage = usage;
             this.quota = quota;
         }
 
-        protected synchronized void addUsage(long usageDelta) {
+        protected synchronized void confirmUsage(PublicKeyHash writer, long usageDelta) {
+            pending.remove(writer);
             usage += usageDelta;
+        }
+
+        protected synchronized void addPending(PublicKeyHash writer, long usageDelta) {
+            pending.put(writer, pending.getOrDefault(writer, 0L) + usageDelta);
+        }
+
+        protected synchronized void clearPending(PublicKeyHash writer) {
+            pending.remove(writer);
+        }
+
+        protected synchronized long getPending(PublicKeyHash writer) {
+            return pending.getOrDefault(writer, 0L);
         }
 
         protected synchronized void setQuota(long newQuota) {
@@ -75,7 +89,7 @@ public class SpaceCheckingKeyFilter {
         }
 
         protected synchronized long remainingQuota() {
-            return quota - usage;
+            return quota - usage - pending.values().stream().mapToLong(x -> x).sum();
         }
     }
 
@@ -175,7 +189,7 @@ public class SpaceCheckingKeyFilter {
                     currentView.computeIfAbsent(owned, k -> new Stat(current.owner, MaybeMultihash.empty(), 0, Collections.emptySet()));
                 }
                 Usage currentUsage = usage.get(current.owner);
-                currentUsage.addUsage(changeInStorage);
+                currentUsage.confirmUsage(writer, changeInStorage);
 
                 HashSet<PublicKeyHash> removedChildren = new HashSet<>(current.getOwnedKeys());
                 removedChildren.removeAll(updatedOwned);
@@ -198,15 +212,19 @@ public class SpaceCheckingKeyFilter {
         }
     }
 
-    public boolean allowWrite(PublicKeyHash signerHash) {
-        Stat state = currentView.get(signerHash);
+    public boolean allowWrite(PublicKeyHash writer, int size) {
+        Stat state = currentView.get(writer);
         if (state == null)
-            throw new IllegalStateException("Unknown writing key hash: " + signerHash);
+            throw new IllegalStateException("Unknown writing key hash: " + writer);
 
         Usage usage = this.usage.get(state.owner);
-        if (usage.remainingQuota() <= 0)
-            throw new IllegalStateException("Storage quota exceeded! Used "
-                    + usage.usage + " out of " + usage.quota + " bytes.");
+        if (usage.remainingQuota() <= size) {
+            long pending = usage.getPending(writer);
+            usage.clearPending(writer);
+            throw new IllegalStateException("Storage quota reached! Used "
+                    + usage.usage + " out of " + usage.quota + " bytes. Rejecting write of size " + (size + pending) + ". Please delete some files.");
+        }
+        usage.addPending(writer, size);
         return true;
     }
 }
