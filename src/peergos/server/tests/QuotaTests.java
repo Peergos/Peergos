@@ -46,7 +46,7 @@ public class QuotaTests {
     @Parameterized.Parameters()
     public static Collection<Object[]> parameters() {
         return Arrays.asList(new Object[][]{
-                {"IPFS", new Random(0)}
+                {"IPFrS", new Random(0)}
         });
     }
 
@@ -109,7 +109,7 @@ public class QuotaTests {
         UserContext context = ensureSignedUp(username, password, network, crypto);
         FileTreeNode home = context.getByPath(Paths.get(username).toString()).get().get();
         // signing up uses just over 4k and the quota is 2 MiB, so use within 1 KiB of our quota
-        byte[] data = new byte[2 * 1024 * 1024 - 5 * 1024];
+        byte[] data = new byte[2 * 1024 * 1024 - 6 * 1024];
         random.nextBytes(data);
         String filename = "file-1";
         home = home.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length,
