@@ -8,10 +8,10 @@ Centralized Alpha
 ------------
  - &#10004; Stable web interface and data formats (at least pre-crdt)
  - &#10004; Streaming E2E encrypted video (streaming disabled by default)
- - &#10004;Streaming download of arbitrarily large files (disabled by default)
- - Max user count to deny new user signups after some limit (And display error to user)
- - Max storage quota per user (enforced on puts) and error shown to user
- - Whitelist of users that can write to this server
+ - &#10004; Streaming download of arbitrarily large files (disabled by default)
+ - &#10004; Max user count to deny new user signups after some limit (And display error to user)
+ - &#10004; Max storage quota per user (enforced on puts) and error shown to user
+ - &#10004; Whitelist of users that can write to this server
  - &#10004; Blacklist of users that can't be read from this server (illegal content guard)
  
 Self-hostable storage
