@@ -218,7 +218,7 @@ public class SpaceCheckingKeyFilter {
             throw new IllegalStateException("Unknown writing key hash: " + writer);
 
         Usage usage = this.usage.get(state.owner);
-        if (usage.remainingQuota() <= size) {
+        if (usage.remainingQuota() - size <= 0) {
             long pending = usage.getPending(writer);
             usage.clearPending(writer);
             throw new IllegalStateException("Storage quota reached! Used "
