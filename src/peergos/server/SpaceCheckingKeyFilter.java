@@ -12,6 +12,7 @@ import peergos.shared.user.*;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.*;
 
 /** This class checks whether a given user is using more storage space than their quota
  *
@@ -21,7 +22,7 @@ public class SpaceCheckingKeyFilter {
     private final CoreNode core;
     private final MutablePointers mutable;
     private final ContentAddressedStorage dht;
-    private final long defaultQuota;
+    private Function<String, Long> quotaSupplier;
 
     private final Map<PublicKeyHash, Stat> currentView = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Usage> usage = new ConcurrentHashMap<>();
@@ -59,12 +60,11 @@ public class SpaceCheckingKeyFilter {
     }
 
     private static class Usage {
-        private long usage, quota;
+        private long usage;
         private Map<PublicKeyHash, Long> pending = new HashMap<>();
 
-        public Usage(long usage, long quota) {
+        public Usage(long usage) {
             this.usage = usage;
-            this.quota = quota;
         }
 
         protected synchronized void confirmUsage(PublicKeyHash writer, long usageDelta) {
@@ -84,12 +84,8 @@ public class SpaceCheckingKeyFilter {
             return pending.getOrDefault(writer, 0L);
         }
 
-        protected synchronized void setQuota(long newQuota) {
-            quota = newQuota;
-        }
-
-        protected synchronized long remainingQuota() {
-            return quota - usage - pending.values().stream().mapToLong(x -> x).sum();
+        protected synchronized long usage() {
+            return usage + pending.values().stream().mapToLong(x -> x).sum();
         }
     }
 
@@ -98,14 +94,16 @@ public class SpaceCheckingKeyFilter {
      * @param core
      * @param mutable
      * @param dht
-     * @param defaultQuota The quota for users who aren't explicitly listed in the whitelist
+     * @param quotaSupplier The quota supplier
      */
-    public SpaceCheckingKeyFilter(CoreNode core, MutablePointers mutable, ContentAddressedStorage dht, long defaultQuota) {
-        System.out.println("Using default user space quota of " + defaultQuota);
+    public SpaceCheckingKeyFilter(CoreNode core,
+                                  MutablePointers mutable,
+                                  ContentAddressedStorage dht,
+                                  Function<String, Long> quotaSupplier) {
         this.core = core;
         this.mutable = mutable;
         this.dht = dht;
-        this.defaultQuota = defaultQuota;
+        this.quotaSupplier = quotaSupplier;
         // It's okay to do this asynchronously, as any users that try to write will get an error until their usage has
         // been loaded
         new Thread(this::loadAllOwners).start();
@@ -125,7 +123,7 @@ public class SpaceCheckingKeyFilter {
 
     public void accept(CorenodeEvent event) {
         currentView.computeIfAbsent(event.keyHash, k -> new Stat(event.username, MaybeMultihash.empty(), 0, Collections.emptySet()));
-        usage.putIfAbsent(event.username, new Usage(0, defaultQuota));
+        usage.putIfAbsent(event.username, new Usage(0));
         ForkJoinPool.commonPool().submit(() -> processCorenodeEvent(event.username, event.keyHash));
     }
 
@@ -136,7 +134,7 @@ public class SpaceCheckingKeyFilter {
      */
     public void processCorenodeEvent(String username, PublicKeyHash ownedKeyHash) {
         try {
-            usage.putIfAbsent(username, new Usage(0, defaultQuota));
+            usage.putIfAbsent(username, new Usage(0));
             Set<PublicKeyHash> childrenKeys = WriterData.getDirectOwnedKeys(ownedKeyHash, mutable, dht);
             currentView.computeIfAbsent(ownedKeyHash, k -> new Stat(username, MaybeMultihash.empty(), 0, childrenKeys));
             Stat current = currentView.get(ownedKeyHash);
@@ -146,8 +144,7 @@ public class SpaceCheckingKeyFilter {
                 processCorenodeEvent(username, childKey);
             }
         } catch (Throwable e) {
-            System.err.println("Error loading storage for user: " + username + ", disabling their quota");
-            usage.get(username).setQuota(0);
+            System.err.println("Error loading storage for user: " + username);
             e.printStackTrace();
         }
     }
@@ -220,11 +217,13 @@ public class SpaceCheckingKeyFilter {
             throw new IllegalStateException("Unknown writing key hash: " + writer);
 
         Usage usage = this.usage.get(state.owner);
-        if (usage.remainingQuota() - size <= 0) {
+        long spaceUsed = usage.usage();
+        long quota = quotaSupplier.apply(state.owner);
+        if (spaceUsed > quota || quota - spaceUsed - size <= 0) {
             long pending = usage.getPending(writer);
             usage.clearPending(writer);
             throw new IllegalStateException("Storage quota reached! Used "
-                    + usage.usage + " out of " + usage.quota + " bytes. Rejecting write of size " + (size + pending) + ". Please delete some files.");
+                    + usage.usage + " out of " + quota + " bytes. Rejecting write of size " + (size + pending) + ". Please delete some files.");
         }
         usage.addPending(writer, size);
         return true;

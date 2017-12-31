@@ -3,6 +3,7 @@ package peergos.server;
 import com.sun.net.httpserver.*;
 import peergos.server.corenode.*;
 import peergos.server.mutable.*;
+import peergos.server.storage.*;
 import peergos.shared.corenode.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.ContentAddressedStorage;
@@ -13,7 +14,7 @@ import peergos.shared.util.*;
 import javax.net.ssl.*;
 import java.io.*;
 import java.net.*;
-import java.nio.file.Paths;
+import java.nio.file.*;
 import java.security.*;
 import java.security.cert.*;
 import java.util.concurrent.*;
@@ -158,7 +159,10 @@ public class UserService
         Function<HttpHandler, HttpHandler> wrap = h -> !isLocal ? new HSTSHandler(h) : h;
 
         long defaultQuota = args.getLong("default-quota");
-        SpaceCheckingKeyFilter spaceChecker = new SpaceCheckingKeyFilter(coreNode, mutable, dht, defaultQuota);
+        System.out.println("Using default user space quota of " + defaultQuota);
+        Path quotaFilePath = Paths.get("quotas.txt");
+        UserQuotas userQuotas = new UserQuotas(quotaFilePath, defaultQuota);
+        SpaceCheckingKeyFilter spaceChecker = new SpaceCheckingKeyFilter(coreNode, mutable, dht, userQuotas::quota);
 
         server.createContext(DHT_URL,
                 wrap.apply(new DHTHandler(dht, spaceChecker::allowWrite)));
