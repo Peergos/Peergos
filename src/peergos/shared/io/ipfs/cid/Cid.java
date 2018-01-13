@@ -169,7 +169,7 @@ public class Cid extends Multihash {
 
     private static long readVarint(InputStream in) throws IOException {
         long x = 0;
-        int s=0;
+        int s = 0;
         for (int i=0; i < 10; i++) {
             int b = in.read();
             if (b == -1)
