@@ -220,6 +220,76 @@ public class MultiUserTests {
         Assert.assertTrue("Different data key", ! UserTests.getDataKey(copy).equals(UserTests.getDataKey(u1File)));
     }
 
+    @Ignore // until we figure out how to solve this issue
+    @Test
+    public void shareTwoFilesWithSameName() throws Exception {
+        UserContext u1 = UserTests.ensureSignedUp("a", "a", network.clear(), crypto);
+
+        // send follow requests from each other user to "a"
+        List<UserContext> userContexts = getUserContexts(1);
+        for (UserContext userContext : userContexts) {
+            userContext.sendFollowRequest(u1.username, SymmetricKey.random()).get();
+        }
+
+        // make "a" reciprocate all the follow requests
+        List<FollowRequest> u1Requests = u1.processFollowRequests().get();
+        for (FollowRequest u1Request : u1Requests) {
+            boolean accept = true;
+            boolean reciprocate = true;
+            u1.sendReplyFollowRequest(u1Request, accept, reciprocate).get();
+        }
+
+        // complete the friendship connection
+        for (UserContext userContext : userContexts) {
+            userContext.processFollowRequests().get();//needed for side effect
+        }
+
+        // upload a file to "a"'s space
+        FileTreeNode u1Root = u1.getUserRoot().get();
+        String filename = "somefile.txt";
+        byte[] data1 = "Hello Peergos friend!".getBytes();
+        AsyncReader file1Reader = new AsyncReader.ArrayBacked(data1);
+        FileTreeNode uploaded = u1Root.uploadFile(filename, file1Reader, data1.length,
+                u1.network, u1.crypto.random,l -> {}, u1.fragmenter()).get();
+
+        // upload a different file with the same name in a sub folder
+        uploaded.mkdir("subdir", network, false, crypto.random).get();
+        FileTreeNode subdir = u1.getByPath("/" + u1.username + "/subdir").get().get();
+        byte[] data2 = "Goodbye Peergos friend!".getBytes();
+        AsyncReader file2Reader = new AsyncReader.ArrayBacked(data2);
+        subdir.uploadFile(filename, file2Reader, data2.length,
+                u1.network, u1.crypto.random,l -> {}, u1.fragmenter()).get();
+
+        // share the file from "a" to each of the others
+        u1.shareWith(Paths.get(u1.username, filename), userContexts.stream().map(u -> u.username).collect(Collectors.toSet())).get();
+
+        u1.shareWith(Paths.get(u1.username, "subdir", filename), userContexts.stream().map(u -> u.username).collect(Collectors.toSet())).get();
+
+        // check other users can read the file
+        for (UserContext userContext : userContexts) {
+            Optional<FileTreeNode> sharedFile = userContext.getByPath(u1.username + "/" + filename).get();
+            Assert.assertTrue("shared file present", sharedFile.isPresent());
+
+            AsyncReader inputStream = sharedFile.get().getInputStream(userContext.network,
+                    userContext.crypto.random, l -> {}).get();
+
+            byte[] fileContents = Serialize.readFully(inputStream, sharedFile.get().getFileProperties().size).get();
+            Assert.assertTrue("shared file contents correct", Arrays.equals(data1, fileContents));
+        }
+
+        // check other users can read the file
+        for (UserContext userContext : userContexts) {
+            Optional<FileTreeNode> sharedFile = userContext.getByPath(u1.username + "/" + "somefile[1].txt").get();
+            Assert.assertTrue("shared file present", sharedFile.isPresent());
+
+            AsyncReader inputStream = sharedFile.get().getInputStream(userContext.network,
+                    userContext.crypto.random, l -> {}).get();
+
+            byte[] fileContents = Serialize.readFully(inputStream, sharedFile.get().getFileProperties().size).get();
+            Assert.assertTrue("shared file contents correct", Arrays.equals(data2, fileContents));
+        }
+    }
+
     @Test
     public void cleanRenamedFiles() throws Exception {
         UserContext u1 = UserTests.ensureSignedUp("a", "a", network.clear(), crypto);

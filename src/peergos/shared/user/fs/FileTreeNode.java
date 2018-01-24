@@ -242,7 +242,7 @@ public class FileTreeNode {
         ensureUnmodified();
         CompletableFuture<FileTreeNode> error = new CompletableFuture<>();
         if (!this.isDirectory() || !this.isWritable()) {
-            error.completeExceptionally(new IllegalArgumentException("Can only add link toa writable directory!"));
+            error.completeExceptionally(new IllegalArgumentException("Can only add link to a writable directory!"));
             return error;
         }
         String name = file.getFileProperties().name;
