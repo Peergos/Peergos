@@ -411,7 +411,7 @@ public class FileTreeNode {
                 String tmpFilename = ArrayOps.bytesToHex(tmp) + ".tmp";
 
                 CompletableFuture<FileTreeNode> reuploaded = parent.uploadFileSection(tmpFilename, in, 0, props.size,
-                        Optional.of(baseKey), network, random, l -> {}, fragmenter);
+                        Optional.of(baseKey), true, network, random, l -> {}, fragmenter);
                 return reuploaded.thenCompose(upload -> upload.getDescendentByPath(tmpFilename, network)
                         .thenCompose(tmpChild -> tmpChild.get().rename(props.name, network, upload, true))
                         .thenApply(res -> {
@@ -423,47 +423,65 @@ public class FileTreeNode {
     }
 
     @JsMethod
-    public CompletableFuture<FileTreeNode> uploadFileJS(String filename, AsyncReader fileData, int lengthHi, int lengthLow,
+    public CompletableFuture<FileTreeNode> uploadFileJS(String filename, AsyncReader fileData,
+                                                        int lengthHi, int lengthLow,
+                                                        boolean overwriteExisting,
                                                         NetworkAccess network, SafeRandom random,
                                                         ProgressConsumer<Long> monitor, Fragmenter fragmenter) {
-        return uploadFile(filename, fileData, lengthLow + ((lengthHi & 0xFFFFFFFFL) << 32), network, random, monitor, fragmenter);
+        return uploadFileSection(filename, fileData, 0, lengthLow + ((lengthHi & 0xFFFFFFFFL) << 32),
+                Optional.empty(), overwriteExisting, network, random, monitor, fragmenter);
     }
 
-    public CompletableFuture<FileTreeNode> uploadFile(String filename, AsyncReader fileData, long length,
-                                                      NetworkAccess network, SafeRandom random,
-                                                      ProgressConsumer<Long> monitor, Fragmenter fragmenter) {
-        return uploadFileSection(filename, fileData, 0, length, Optional.empty(), network, random, monitor, fragmenter);
+    public CompletableFuture<FileTreeNode> uploadFile(String filename,
+                                                      AsyncReader fileData,
+                                                      long length,
+                                                      NetworkAccess network,
+                                                      SafeRandom random,
+                                                      ProgressConsumer<Long> monitor,
+                                                      Fragmenter fragmenter) {
+        return uploadFileSection(filename, fileData, 0, length, Optional.empty(),
+                true, network, random, monitor, fragmenter);
     }
 
     public CompletableFuture<FileTreeNode> uploadFile(String filename,
                                                       AsyncReader fileData,
                                                       boolean isHidden,
                                                       long length,
-                                                      NetworkAccess network, SafeRandom random,
+                                                      boolean overwriteExisting,
+                                                      NetworkAccess network,
+                                                      SafeRandom random,
                                                       ProgressConsumer<Long> monitor,
                                                       Fragmenter fragmenter) {
-        return uploadFileSection(filename, fileData, isHidden, 0, length, Optional.empty(), network, random, monitor, fragmenter);
+        return uploadFileSection(filename, fileData, isHidden, 0, length, Optional.empty(),
+                overwriteExisting, network, random, monitor, fragmenter);
     }
 
     public CompletableFuture<FileTreeNode> uploadFileSection(String filename, AsyncReader fileData, long startIndex, long endIndex,
                                                              NetworkAccess network, SafeRandom random,
                                                              ProgressConsumer<Long> monitor, Fragmenter fragmenter) {
-        return uploadFileSection(filename, fileData, startIndex, endIndex, Optional.empty(), network, random, monitor, fragmenter);
+        return uploadFileSection(filename, fileData, startIndex, endIndex, Optional.empty(), true, network, random, monitor, fragmenter);
     }
 
-    public CompletableFuture<FileTreeNode> uploadFileSection(String filename, AsyncReader fileData,
-                                                             long startIndex, long endIndex,
+    public CompletableFuture<FileTreeNode> uploadFileSection(String filename,
+                                                             AsyncReader fileData,
+                                                             long startIndex,
+                                                             long endIndex,
                                                              Optional<SymmetricKey> baseKey,
-                                                             NetworkAccess network, SafeRandom random,
+                                                             boolean overwriteExisting,
+                                                             NetworkAccess network,
+                                                             SafeRandom random,
                                                              ProgressConsumer<Long> monitor,
                                                              Fragmenter fragmenter) {
-        return uploadFileSection(filename, fileData, false, startIndex, endIndex, baseKey, network, random, monitor, fragmenter);
+        return uploadFileSection(filename, fileData, false, startIndex, endIndex, baseKey,
+                overwriteExisting, network, random, monitor, fragmenter);
     }
 
     public CompletableFuture<FileTreeNode> uploadFileSection(String filename, AsyncReader fileData,
                                                              boolean isHidden,
-                                                             long startIndex, long endIndex,
+                                                             long startIndex,
+                                                             long endIndex,
                                                              Optional<SymmetricKey> baseKey,
+                                                             boolean overwriteExisting,
                                                              NetworkAccess network,
                                                              SafeRandom random,
                                                              ProgressConsumer<Long> monitor,
@@ -480,6 +498,8 @@ public class FileTreeNode {
         }
         return getDescendentByPath(filename, network).thenCompose(childOpt -> {
             if (childOpt.isPresent()) {
+                if (! overwriteExisting)
+                    throw new IllegalStateException("File already exists with name " + filename);
                 return updateExistingChild(childOpt.get(), fileData, startIndex, endIndex, network, random, monitor, fragmenter);
             }
             if (startIndex > 0) {
@@ -869,7 +889,8 @@ public class FileTreeNode {
                         });
             } else {
                 return getInputStream(network, random, x -> {})
-                        .thenCompose(stream -> target.uploadFile(getName(), stream, getSize(), network, random, x -> {}, fragmenter)
+                        .thenCompose(stream -> target.uploadFileSection(getName(), stream, 0, getSize(),
+                                Optional.empty(), false, network, random, x -> {}, fragmenter)
                         .thenApply(b -> target));
             }
         });
