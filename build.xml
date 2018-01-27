@@ -122,7 +122,8 @@
     <jar jarfile="${dist}/PeergosServer.jar" basedir="${build}" includes="peergos/server/**,peergos/shared/**,peergos/client/**"></jar>
     <mkdir dir="META-INF"/>
     <echo file="META-INF/MANIFEST.MF">Main-Class: peergos.server.Start
-Class-Path: ${manifest_cp}</echo>
+Class-Path: ${manifest_cp}
+</echo>
     <touch millis="0">
       <fileset dir="META-INF"/>
     </touch>
