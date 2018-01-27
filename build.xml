@@ -15,6 +15,7 @@
   <property name="build" location="build"/>
   <property name="dist" location="dist"/>
   <property name="test.reports" location="test.reports"/>
+  <property name="timestamp.millis" value="1489731900000"/>
 
   <path id="dep.runtime">
     <fileset dir="./lib">
@@ -115,12 +116,18 @@
     <manifestclasspath property="manifest_cp" jarfile="myjar.jar">
       <classpath refid="dep.runtime" />
     </manifestclasspath>
-    <jar jarfile="${dist}/PeergosServer.jar" basedir="${build}" includes="peergos/server/**,peergos/shared/**,peergos/client/**">
-      <manifest>
-	  <attribute name="Class-Path" value="${manifest_cp}"/>
-	  <attribute name="Main-Class" value="peergos.server.Start"/>
-      </manifest>
-    </jar>
+    <touch millis="${timestamp.millis}">
+      <fileset dir="${build}"/>
+    </touch>
+    <jar jarfile="${dist}/PeergosServer.jar" basedir="${build}" includes="peergos/server/**,peergos/shared/**,peergos/client/**"></jar>
+    <mkdir dir="META-INF"/>
+    <echo file="META-INF/MANIFEST.MF">Main-Class: peergos.server.Start
+Class-Path: ${manifest_cp}</echo>
+    <touch millis="0">
+      <fileset dir="META-INF"/>
+    </touch>
+    <zip destfile="${dist}/PeergosServer.jar" basedir="." includes="META-INF/MANIFEST.MF" update="true"></zip>
+    <delete dir="META-INF"/>
     <copy todir=".">
       <fileset file="${dist}/PeergosServer.jar"/>
     </copy>
