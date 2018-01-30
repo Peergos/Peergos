@@ -417,9 +417,11 @@ public abstract class UserTests {
         FileTreeNode userRoot = context.getUserRoot().get();
 
         String filename = "small.txt";
-        byte[] data = new byte[10];
+        byte[] data = "G'day mate".getBytes();
         userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
                 context.crypto.random, l -> {}, context.fragmenter()).get();
+        String mimeType = context.getByPath(Paths.get(username, filename).toString()).get().get().getFileProperties().mimeType;
+        Assert.assertTrue("Incorrect mimetype: " + mimeType, mimeType.equals("text/plain"));
     }
 
     @Test

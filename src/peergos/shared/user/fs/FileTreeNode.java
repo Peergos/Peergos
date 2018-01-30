@@ -513,10 +513,9 @@ public class FileTreeNode {
             SymmetricKey dirParentKey = dirAccess.getParentKey(rootRKey);
             Location parentLocation = getLocation();
             int thumbnailSrcImageSize = startIndex == 0 && endIndex < Integer.MAX_VALUE ? (int) endIndex : 0;
-            boolean hasMime = thumbnailSrcImageSize >= MimeTypes.HEADER_BYTES_TO_IDENTIFY_MIME_TYPE;
             return generateThumbnail(network, fileData, thumbnailSrcImageSize, filename)
                     .thenCompose(thumbData -> fileData.reset()
-                            .thenCompose(forMime -> (hasMime ? calculateMimeType(forMime) : CompletableFuture.completedFuture(""))
+                            .thenCompose(forMime -> calculateMimeType(forMime, endIndex)
                                     .thenCompose(mimeType -> fileData.reset().thenCompose(resetReader -> {
                                         FileProperties fileProps = new FileProperties(filename, mimeType, endIndex,
                                                 LocalDateTime.now(), isHidden, Optional.of(thumbData));
@@ -1049,8 +1048,8 @@ public class FileTreeNode {
         return result;
     }
 
-    public static CompletableFuture<String> calculateMimeType(AsyncReader data) {
-        byte[] header = new byte[MimeTypes.HEADER_BYTES_TO_IDENTIFY_MIME_TYPE];
+    public static CompletableFuture<String> calculateMimeType(AsyncReader data, long fileSize) {
+        byte[] header = new byte[(int) Math.min(fileSize, MimeTypes.HEADER_BYTES_TO_IDENTIFY_MIME_TYPE)];
         return data.readIntoArray(header, 0, header.length)
                 .thenApply(read -> MimeTypes.calculateMimeType(header));
     }
