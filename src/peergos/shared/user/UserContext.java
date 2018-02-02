@@ -195,7 +195,14 @@ public class UserContext {
 
     @JsMethod
     public static CompletableFuture<UserContext> fromPublicLink(String link, NetworkAccess network, Crypto crypto) {
-        FilePointer entryPoint = FilePointer.fromLink(link);
+        FilePointer entryPoint = null;
+        try {
+            entryPoint = FilePointer.fromLink(link);
+        } catch (Exception e) { //link was invalid
+            CompletableFuture<UserContext> invalidLink = new CompletableFuture<>();
+            invalidLink.completeExceptionally(e);
+            return invalidLink;
+        }
         EntryPoint entry = new EntryPoint(entryPoint, "", Collections.emptySet(), Collections.emptySet());
         WriterData empty = WriterData.createEmpty(entryPoint.location.owner, Optional.empty(), null);
         CommittedWriterData committed = new CommittedWriterData(MaybeMultihash.empty(), empty);
