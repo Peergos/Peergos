@@ -9,30 +9,105 @@ import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
+import peergos.server.storage.IPFS;
+import peergos.server.storage.IpfsDHT;
+import peergos.server.storage.UserQuotas;
+import peergos.shared.io.ipfs.api.JSONParser;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
+import java.net.URL;
+import java.nio.file.Paths;
 import java.time.*;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
+import java.util.stream.Collectors;
 
 /** This class checks whether a given user is using more storage space than their quota
  *
  */
 public class SpaceCheckingKeyFilter {
     private static final Logger LOG = Logging.LOG();
+    private static final long DEFAULT_STORE_PERIOD = 60*1000*10; //10M
     private final CoreNode core;
     private final MutablePointers mutable;
     private final ContentAddressedStorage dht;
     private Function<String, Long> quotaSupplier;
+    private final Path statePath;
+    private final State state;
 
-    private final Map<PublicKeyHash, Stat> currentView = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, Usage> usage = new ConcurrentHashMap<>();
+    public static class State implements Cborable {
+        final Map<PublicKeyHash, Stat> currentView;
+        final Map<String, Usage> usage;
 
-    private static class Stat {
+        public State(Map<PublicKeyHash, Stat> currentView, Map<String, Usage> usage) {
+            this.currentView = currentView;
+            this.usage = usage;
+        }
+
+        @Override
+        public CborObject toCbor() {
+            TreeMap<CborObject, ? extends Cborable> viewsMap = currentView.entrySet()
+                .stream()
+                .collect(Collectors.toMap(
+                    e -> e.getKey().toCbor(),
+                    e -> (Cborable) (e.getValue()),
+                    (a,b) -> a,
+                    () -> new TreeMap<>()
+                ));
+
+            CborObject.CborMap views = new CborObject.CborMap(viewsMap);
+            CborObject.CborMap usages = CborObject.CborMap.build(usage);
+            Map<String, Cborable> map = new HashMap<>();
+            map.put("views", views);
+            map.put("usages", usages);
+            return CborObject.CborMap.build(map);
+        }
+
+        public Map<String, Usage> getUsage() {
+            return new ConcurrentHashMap<>(usage);
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+
+            State state = (State) o;
+
+            if (currentView != null ? !currentView.equals(state.currentView) : state.currentView != null) return false;
+            return usage != null ? usage.equals(state.usage) : state.usage == null;
+        }
+
+        @Override
+        public int hashCode() {
+            int result = currentView != null ? currentView.hashCode() : 0;
+            result = 31 * result + (usage != null ? usage.hashCode() : 0);
+            return result;
+        }
+    }
+
+    public static State fromCbor(CborObject cbor) {
+        CborObject.CborMap map = (CborObject.CborMap) cbor;
+        CborObject.CborMap viewsMap = (CborObject.CborMap) map.get("views");
+        CborObject.CborMap usagesMap = (CborObject.CborMap) map.get("usages");
+
+        return new State(
+            viewsMap.getMap(PublicKeyHash::fromCbor, Stat::fromCbor),
+            usagesMap.getMap(
+                e -> ((CborObject.CborString) e).value,
+                Usage::fromCbor));
+    }
+
+    public static class Stat implements Cborable {
         public final String owner;
         private MaybeMultihash target;
         private long directRetainedStorage;
@@ -62,9 +137,50 @@ public class SpaceCheckingKeyFilter {
         public synchronized Set<PublicKeyHash> getOwnedKeys() {
             return Collections.unmodifiableSet(ownedKeys);
         }
+
+        @Override
+        public CborObject toCbor() {
+            Map<String, Cborable> map = new HashMap<>();
+            map.put("owner", new CborObject.CborString(owner));
+            map.put("target", target);
+            map.put("storage", new CborObject.CborLong(directRetainedStorage));
+            map.put("ownedKey", new CborObject.CborList(ownedKeys.stream().collect(Collectors.toList())));
+            return CborObject.CborMap.build(map);
+        }
+
+        public static Stat fromCbor(Cborable cbor) {
+            CborObject.CborMap map = (CborObject.CborMap) cbor;
+            String owner = map.getString("owner");
+            MaybeMultihash target = map.get("target", MaybeMultihash::fromCbor);
+            long storage  = map.getLong("storage");
+            List<PublicKeyHash> ownedKeys = map.getList("ownedKey").map(PublicKeyHash::fromCbor);
+            return new Stat(owner, target, storage, new HashSet<>(ownedKeys));
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+
+            Stat stat = (Stat) o;
+
+            if (directRetainedStorage != stat.directRetainedStorage) return false;
+            if (owner != null ? !owner.equals(stat.owner) : stat.owner != null) return false;
+            if (target != null ? !target.equals(stat.target) : stat.target != null) return false;
+            return ownedKeys != null ? ownedKeys.equals(stat.ownedKeys) : stat.ownedKeys == null;
+        }
+
+        @Override
+        public int hashCode() {
+            int result = owner != null ? owner.hashCode() : 0;
+            result = 31 * result + (target != null ? target.hashCode() : 0);
+            result = 31 * result + (int) (directRetainedStorage ^ (directRetainedStorage >>> 32));
+            result = 31 * result + (ownedKeys != null ? ownedKeys.hashCode() : 0);
+            return result;
+        }
     }
 
-    private static class Usage {
+    public static class Usage implements Cborable {
         private long usage;
         private Map<PublicKeyHash, Long> pending = new HashMap<>();
 
@@ -92,6 +208,34 @@ public class SpaceCheckingKeyFilter {
         protected synchronized long usage() {
             return usage + pending.values().stream().mapToLong(x -> x).sum();
         }
+
+        @Override
+        public CborObject toCbor() {
+            return new CborObject.CborLong(usage);
+        }
+
+        public static Usage fromCbor(Cborable cborable) {
+            long usage = ((CborObject.CborLong) cborable).value;
+            return new Usage(usage);
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+
+            Usage usage1 = (Usage) o;
+
+            if (usage != usage1.usage) return false;
+            return pending != null ? pending.equals(usage1.pending) : usage1.pending == null;
+        }
+
+        @Override
+        public int hashCode() {
+            int result = (int) (usage ^ (usage >>> 32));
+            result = 31 * result + (pending != null ? pending.hashCode() : 0);
+            return result;
+        }
     }
 
     /**
@@ -100,59 +244,130 @@ public class SpaceCheckingKeyFilter {
      * @param mutable
      * @param dht
      * @param quotaSupplier The quota supplier
+     * @param statePath path to local file with user usages
      */
     public SpaceCheckingKeyFilter(CoreNode core,
                                   MutablePointers mutable,
                                   ContentAddressedStorage dht,
-                                  Function<String, Long> quotaSupplier) {
+                                  Function<String, Long> quotaSupplier,
+                                  Path statePath) throws IOException{
         this.core = core;
         this.mutable = mutable;
         this.dht = dht;
         this.quotaSupplier = quotaSupplier;
+        this.statePath = statePath;
+        this.state = initState();
     }
 
-    public void loadAllOwnerAndUsage() {
-        // It's okay to do this asynchronously, as any users that try to write will get an error until their usage has
-        // been loaded
-        new Thread(this::loadAllOwners).start();
-    }
-
-    private void loadAllOwners() {
+    /**
+     *
+     */
+    private State initState() throws IOException {
+        State state = null;
         try {
-            List<String> usernames = core.getUsernames("").get();
-            if (usernames.size() == 0)
-                return;
-            int threads = Math.min(usernames.size(), 1000);
-            ExecutorService pool = Executors.newFixedThreadPool(threads);
-            int usersPerThread = (usernames.size() + usernames.size() - 1)/ threads;
-            long t1 = System.currentTimeMillis();
-            List<Future<Boolean>> progress = new ArrayList<>();
-            for (int t=0; t < threads; t++) {
-                List<String> ourUsernames = usernames.subList(t * usersPerThread, Math.min((t + 1) * usersPerThread, usernames.size()));
-                progress.add(pool.submit(() -> {
-                    for (String username : ourUsernames) {
-                        LOG.info(LocalDateTime.now() + " Loading " + username);
-                        Optional<PublicKeyHash> publicKeyHash = core.getPublicKeyHash(username).get();
-                        publicKeyHash.ifPresent(keyHash -> processCorenodeEvent(username, keyHash));
-                        LOG.info(LocalDateTime.now() + " finished loading " + username);
+            // Read stored usages and update current view.
+            state = load();
+            System.out.println("Successfully loaded usage-state from "+ this.statePath);
+        } catch (IOException ioe) {
+            System.out.println("Could not read usage-state from "+ this.statePath);
+            // calculate usage from scratch
+            state = new State(
+                new ConcurrentHashMap<>(),
+                new ConcurrentHashMap<>());
+        }
+        try {
+            for (Map.Entry<PublicKeyHash, Stat> entry : state.currentView.entrySet()) {
+                PublicKeyHash writerKey = entry.getKey();
+                Stat stat = entry.getValue();
+                MaybeMultihash rootHash = mutable.getPointerTarget(writerKey, dht).get();
+                boolean isChanged = stat.target.equals(rootHash);
+                if (isChanged) {
+                    long updatedSize = dht.getRecursiveBlockSize(rootHash.get()).get();
+                    long deltaUsage = updatedSize - stat.directRetainedStorage;
+                    state.usage.get(stat.owner).confirmUsage(writerKey, deltaUsage); //NB: writerKey is a dummy value
+                    Set<PublicKeyHash> directOwnedKeys = WriterData.getDirectOwnedKeys(writerKey, mutable, dht);
+                    List<PublicKeyHash> newOwnedKeys = directOwnedKeys.stream()
+                        .filter(key -> !stat.ownedKeys.contains(key))
+                        .collect(Collectors.toList());
+                    for (PublicKeyHash newOwnedKey : newOwnedKeys) {
+                        state.currentView.putIfAbsent(newOwnedKey, new Stat(stat.owner, MaybeMultihash.empty(), 0, Collections.emptySet()));
+                        processMutablePointerEvent(newOwnedKey, MaybeMultihash.empty(), mutable.getPointerTarget(newOwnedKey, dht).get());
                     }
-                    return true;
-                }));
+                    stat.update(rootHash, directOwnedKeys, updatedSize);
+                }
             }
-            for (Future<Boolean> future : progress) {
-                future.get();
+        } catch (InterruptedException | ExecutionException ex) {
+                throw new IOException(ex);
+        }
+        //add shutdown-hook to call close
+        Runtime.getRuntime().addShutdownHook(new Thread(this::close));
+        return state;
+    }
+
+    /**
+     * Write current view of usages to this.statePath, completing any pending operations
+     */
+    private synchronized void close() {
+        try {
+            store();
+            System.out.println("Successfully stored usage-state to " + this.statePath);
+        } catch (Throwable t) {
+            System.out.println("Failed to  store "+ this);
+            t.printStackTrace();
+        }
+    }
+    /**
+     * Read local file with cached user usages.
+     * @return previous usages
+     * @throws IOException
+     */
+    private State load() throws IOException {
+        System.out.println("Reading state from "+ statePath +" which exists ? "+ Files.exists(statePath) +" from cwd "+ System.getProperty("cwd"));
+        byte[] data = Files.readAllBytes(statePath);
+        CborObject object = CborObject.deserialize(new CborDecoder(new ByteArrayInputStream(data)), 1000);
+        return fromCbor(object);
+    }
+
+    /**
+     * Store usages
+     * @throws IOException
+     */
+    private synchronized void store() throws IOException {
+        byte[] serialized = state.toCbor().serialize();
+        System.out.println("Writing "+ serialized.length +" bytes to "+ statePath);
+        Files.write(
+            statePath,
+            serialized,
+            StandardOpenOption.CREATE);
+    }
+
+    /**
+     * Walk the virtual file-system to calculate space used by each owner not already checked
+     */
+    public void calculateUsage() {
+        try {
+      List<String> usernames =
+          core.getUsernames("")
+              .get()
+              .stream()
+              .filter(e -> !state.usage.containsKey(e))
+              .collect(Collectors.toList());
+            long t1 = System.currentTimeMillis();
+            for (String username : usernames) {
+                System.out.printf("Processing %s\n", username);
+                Optional<PublicKeyHash> publicKeyHash = core.getPublicKeyHash(username).get();
+                publicKeyHash.ifPresent(keyHash -> processCorenodeEvent(username, keyHash));
             }
             long t2 = System.currentTimeMillis();
-            pool.shutdown();
-            LOG.info(LocalDateTime.now() + " Finished loading space usage for all usernames in " + (t2 - t1)/1000 + " s");
+            System.out.println(LocalDateTime.now() + " Finished loading space usage for all usernames in " + (t2 - t1)/1000 + " s");
         } catch (Exception e) {
             LOG.log(Level.WARNING, e.getMessage(), e);
         }
     }
 
     public void accept(CorenodeEvent event) {
-        currentView.computeIfAbsent(event.keyHash, k -> new Stat(event.username, MaybeMultihash.empty(), 0, Collections.emptySet()));
-        usage.putIfAbsent(event.username, new Usage(0));
+        state.currentView.computeIfAbsent(event.keyHash, k -> new Stat(event.username, MaybeMultihash.empty(), 0, Collections.emptySet()));
+        state.usage.putIfAbsent(event.username, new Usage(0));
         ForkJoinPool.commonPool().submit(() -> processCorenodeEvent(event.username, event.keyHash));
     }
 
@@ -163,12 +378,12 @@ public class SpaceCheckingKeyFilter {
      */
     public void processCorenodeEvent(String username, PublicKeyHash owner) {
         try {
-            usage.putIfAbsent(username, new Usage(0));
-            Set<PublicKeyHash> childrenKeys = WriterData.getDirectOwnedKeys(owner, owner, mutable, dht);
-            currentView.computeIfAbsent(owner, k -> new Stat(username, MaybeMultihash.empty(), 0, childrenKeys));
-            Stat current = currentView.get(owner);
-            MaybeMultihash updatedRoot = mutable.getPointerTarget(owner, owner, dht).get();
-            processMutablePointerEvent(owner, owner, current.target, updatedRoot);
+            state.usage.putIfAbsent(username, new Usage(0));
+            Set<PublicKeyHash> childrenKeys = WriterData.getDirectOwnedKeys(ownedKeyHash, mutable, dht);
+            state.currentView.computeIfAbsent(ownedKeyHash, k -> new Stat(username, MaybeMultihash.empty(), 0, childrenKeys));
+            Stat current = state.currentView.get(ownedKeyHash);
+            MaybeMultihash updatedRoot = mutable.getPointerTarget(ownedKeyHash, dht).get();
+            processMutablePointerEvent(ownedKeyHash, current.target, updatedRoot);
             for (PublicKeyHash childKey : childrenKeys) {
                 processCorenodeEvent(username, childKey);
             }
@@ -192,7 +407,7 @@ public class SpaceCheckingKeyFilter {
     public void processMutablePointerEvent(PublicKeyHash owner, PublicKeyHash writer, MaybeMultihash existingRoot, MaybeMultihash newRoot) {
         if (existingRoot.equals(newRoot))
             return;
-        Stat current = currentView.get(writer);
+        Stat current = state.currentView.get(writer);
         if (current == null)
             throw new IllegalStateException("Unknown writer key hash: " + writer);
         if (! newRoot.isPresent()) {
@@ -214,9 +429,9 @@ public class SpaceCheckingKeyFilter {
                 long changeInStorage = dht.getChangeInContainedSize(current.target, newRoot.get()).get();
                 Set<PublicKeyHash> updatedOwned = WriterData.getWriterData(writer, newRoot, dht).get().props.ownedKeys;
                 for (PublicKeyHash owned : updatedOwned) {
-                    currentView.computeIfAbsent(owned, k -> new Stat(current.owner, MaybeMultihash.empty(), 0, Collections.emptySet()));
+                    state.currentView.computeIfAbsent(owned, k -> new Stat(current.owner, MaybeMultihash.empty(), 0, Collections.emptySet()));
                 }
-                Usage currentUsage = usage.get(current.owner);
+                Usage currentUsage = state.usage.get(current.owner);
                 currentUsage.confirmUsage(writer, changeInStorage);
 
                 HashSet<PublicKeyHash> removedChildren = new HashSet<>(current.getOwnedKeys());
@@ -241,13 +456,13 @@ public class SpaceCheckingKeyFilter {
     }
 
     public boolean allowWrite(PublicKeyHash writer, int size) {
-        Stat state = currentView.get(writer);
-        if (state == null)
+        Stat stat = state.currentView.get(writer);
+        if (stat == null)
             throw new IllegalStateException("Unknown writing key hash: " + writer);
 
-        Usage usage = this.usage.get(state.owner);
+        Usage usage = state.usage.get(stat.owner);
         long spaceUsed = usage.usage();
-        long quota = quotaSupplier.apply(state.owner);
+        long quota = quotaSupplier.apply(stat.owner);
         if (spaceUsed > quota || quota - spaceUsed - size <= 0) {
             long pending = usage.getPending(writer);
             usage.clearPending(writer);
@@ -256,5 +471,30 @@ public class SpaceCheckingKeyFilter {
         }
         usage.addPending(writer, size);
         return true;
+    }
+
+    public static void main(String[] args) throws Exception {
+        Args parsed = Args.parse(args);
+        String peergosAddress = parsed.getArg("peergos_address");
+        long defaultQuota = parsed.getLong("default-quota", 1000L);
+        String quota = parsed.getArg("quota_path", "quotas.txt");
+        String state = parsed.getArg("state_path", "state.cbor");
+
+        Crypto.initJava();
+
+        System.out.println(
+            String.format("Starting space-checking-key-filter with peergos-addres %s, default-quota %d, quota_path %s",peergosAddress, defaultQuota, quota));
+
+        Path quotaFilePath = Paths.get(quota);
+        UserQuotas userQuotas = new UserQuotas(quotaFilePath, defaultQuota);
+
+        System.out.println("Connecting to " + peergosAddress);
+        NetworkAccess network = NetworkAccess.buildJava(new URL(peergosAddress)).get();
+
+
+        SpaceCheckingKeyFilter spaceCheckingKeyFilter = new SpaceCheckingKeyFilter(network.coreNode, network.mutable, network.dhtClient, userQuotas::quota, Paths.get(state));
+        System.out.println("Calculating usages...");
+        spaceCheckingKeyFilter.calculateUsage();
+        System.out.println("Finished calculating usages");
     }
 }
