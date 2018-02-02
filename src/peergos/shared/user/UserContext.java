@@ -1001,8 +1001,40 @@ public class UserContext {
                 .stream()
                 .filter(e -> ! e.owner.equals(ourName))
                 .collect(Collectors.toList());
-        return Futures.reduceAll(notOurFileSystemEntries, ourRoot, (t, e) -> addEntryPoint(ourName, t, e, network), (a, b) -> a)
+        List<CompletableFuture<Pair<EntryPoint, Optional<String>>>> retrievedEntries = notOurFileSystemEntries.stream()
+                .map(entry -> network.retrieveEntryPoint(entry)
+                        .thenCompose(opt -> opt.map(f -> f.getPath(network).thenApply(path -> new Pair<>(entry, Optional.of(path))))
+                        .orElse(CompletableFuture.completedFuture(new Pair<>(entry, Optional.empty())))))
+                .collect(Collectors.toList());
+        return Futures.reduceAll(retrievedEntries, ourRoot, (t, p) -> addRetrievedEntryPoint(ourName, t, p, network), (a, b) -> a)
                 .exceptionally(Futures::logError);
+    }
+
+    private static CompletableFuture<TrieNode> addRetrievedEntryPoint(String ourName,
+                                                                      TrieNode root,
+                                                                      CompletableFuture<Pair<EntryPoint, Optional<String>>> futureWithPath,
+                                                                      NetworkAccess network) {
+        return futureWithPath.thenCompose(pair -> {
+            if (! pair.right.isPresent())
+                return CompletableFuture.completedFuture(root);
+            String path = pair.right.get();
+            EntryPoint e = pair.left;
+            // check entrypoint doesn't forge the owner
+            return  (e.owner.equals(ourName) ? CompletableFuture.completedFuture(true) :
+                    e.isValid(path, network)).thenApply(valid -> {
+
+                String[] parts = path.split("/");
+                if (parts.length < 3 || !parts[2].equals(SHARED_DIR_NAME))
+                    return root.put(path, e);
+                TrieNode rootWithMapping = parts[1].equals(ourName) ? root : root.addPathMapping("/" + parts[1] + "/", path + "/");
+                return rootWithMapping.put(path, e);
+            });
+        }).exceptionally(t -> {
+            t.printStackTrace();
+            System.err.println("Couldn't add entry point (failed retrieving parent dir or it was invalid)!");
+            // Allow the system to continue without this entry point
+            return root;
+        });
     }
 
     private static CompletableFuture<TrieNode> addEntryPoint(String ourName, TrieNode root, EntryPoint e, NetworkAccess network) {
