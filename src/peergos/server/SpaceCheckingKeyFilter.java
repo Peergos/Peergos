@@ -10,6 +10,7 @@ import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
 
+import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
@@ -112,10 +113,15 @@ public class SpaceCheckingKeyFilter {
     private void loadAllOwners() {
         try {
             List<String> usernames = core.getUsernames("").get();
+            long t1 = System.currentTimeMillis();
             for (String username : usernames) {
+                System.out.println(LocalDateTime.now() + " Loading " + username);
                 Optional<PublicKeyHash> publicKeyHash = core.getPublicKeyHash(username).get();
                 publicKeyHash.ifPresent(keyHash -> processCorenodeEvent(username, keyHash));
+                System.out.println(LocalDateTime.now() + " finished loading " + username);
             }
+            long t2 = System.currentTimeMillis();
+            System.out.println(LocalDateTime.now() + " Finished loading space usage for all usernames in " + (t2 - t1)/1000 + " s");
         } catch (Exception e) {
             e.printStackTrace();
         }
