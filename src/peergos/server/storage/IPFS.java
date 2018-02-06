@@ -506,6 +506,8 @@ public class IPFS {
         HttpURLConnection conn = (HttpURLConnection) target.openConnection();
         conn.setRequestMethod("GET");
         conn.setRequestProperty("Content-Type", "application/json");
+        conn.setConnectTimeout(10_000);
+        conn.setReadTimeout(60_000);
 
         try {
             InputStream in = conn.getInputStream();
