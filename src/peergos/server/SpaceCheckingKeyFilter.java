@@ -113,6 +113,8 @@ public class SpaceCheckingKeyFilter {
     private void loadAllOwners() {
         try {
             List<String> usernames = core.getUsernames("").get();
+            if (usernames.size() == 0)
+                return;
             int threads = Math.min(usernames.size(), 1000);
             ExecutorService pool = Executors.newFixedThreadPool(threads);
             int usersPerThread = (usernames.size() + usernames.size() - 1)/ threads;
