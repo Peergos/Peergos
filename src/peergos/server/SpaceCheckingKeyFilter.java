@@ -119,7 +119,7 @@ public class SpaceCheckingKeyFilter {
             long t1 = System.currentTimeMillis();
             List<Future<Boolean>> progress = new ArrayList<>();
             for (int t=0; t < threads; t++) {
-                List<String> ourUsernames = usernames.subList(t * usersPerThread, (t + 1) * usersPerThread);
+                List<String> ourUsernames = usernames.subList(t * usersPerThread, Math.min((t + 1) * usersPerThread, usernames.size()));
                 progress.add(pool.submit(() -> {
                     for (String username : ourUsernames) {
                         System.out.println(LocalDateTime.now() + " Loading " + username);
