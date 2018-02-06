@@ -521,7 +521,8 @@ public class IPFS {
         } catch (ConnectException e) {
             throw new RuntimeException("Couldn't connect to IPFS daemon at "+target+"\n Is IPFS running?");
         } catch (IOException e) {
-            String err = readFully(conn.getErrorStream());
+            InputStream errorStream = conn.getErrorStream();
+            String err = errorStream == null ? e.getMessage() : readFully(errorStream);
             throw new RuntimeException("IOException contacting IPFS daemon.\n"+err+"\nTrailer: " + conn.getHeaderFields().get("Trailer"), e);
         }
     }
