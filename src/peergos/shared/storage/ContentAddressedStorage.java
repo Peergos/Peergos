@@ -75,12 +75,12 @@ public interface ContentAddressedStorage {
 
     default CompletableFuture<Optional<PublicSigningKey>> getSigningKey(PublicKeyHash hash) {
         return get(hash.hash)
-                .thenApply(opt -> opt.map(PublicSigningKey::fromCbor));
+                .thenApply(opt -> Optional.ofNullable(opt).orElse(Optional.empty()).map(PublicSigningKey::fromCbor));
     }
 
     default CompletableFuture<Optional<PublicBoxingKey>> getBoxingKey(PublicKeyHash hash) {
         return get(hash.hash)
-                .thenApply(opt -> opt.map(PublicBoxingKey::fromCbor));
+                .thenApply(opt -> Optional.ofNullable(opt).orElse(Optional.empty()).map(PublicBoxingKey::fromCbor));
     }
 
     default CompletableFuture<Long> getRecursiveBlockSize(Multihash block) {
