@@ -9,6 +9,7 @@ import peergos.shared.merklebtree.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
+import peergos.shared.util.*;
 
 import java.time.*;
 import java.util.*;
@@ -167,7 +168,7 @@ public class SpaceCheckingKeyFilter {
             }
         } catch (Throwable e) {
             System.err.println("Error loading storage for user: " + username);
-            e.printStackTrace();
+            Exceptions.getRootCause(e).printStackTrace();
         }
     }
 
@@ -218,7 +219,7 @@ public class SpaceCheckingKeyFilter {
                 current.update(newRoot, updatedOwned, current.directRetainedStorage + changeInStorage);
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            Exceptions.getRootCause(e).printStackTrace();
         }
     }
 
