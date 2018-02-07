@@ -7,8 +7,8 @@ public class Exceptions {
         Throwable cause = t.getCause();
         if (t instanceof ExecutionException)
             return getRootCause(cause);
-        if (t instanceof RuntimeException && cause != null)
+        if (t instanceof RuntimeException && cause != null && cause != t)
             return getRootCause(cause);
-        return cause;
+        return t;
     }
 }
