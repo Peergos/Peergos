@@ -35,7 +35,7 @@ public interface UserGenerationAlgorithm extends Cborable {
         return new ScryptEd25519Curve25519(ScryptEd25519Curve25519.MIN_MEMORY_COST, 8, 1, 96);
     }
 
-    static UserGenerationAlgorithm fromCbor(CborObject cbor) {
+    static UserGenerationAlgorithm fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Incorrect cbor type for UserGenerationAlgorithm: " + cbor);
         Type type = Type.byValue((int)((CborObject.CborLong) ((CborObject.CborMap) cbor).values.get(new CborObject.CborString("type"))).value);

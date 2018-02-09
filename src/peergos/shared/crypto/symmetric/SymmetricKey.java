@@ -67,7 +67,7 @@ public interface SymmetricKey extends Cborable
         return fromCbor(CborObject.fromByteArray(raw));
     }
 
-    static SymmetricKey fromCbor(CborObject cbor) {
+    static SymmetricKey fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Invalid cbor for PublicBoxingKey! " + cbor);
         CborObject.CborLong type = (CborObject.CborLong) ((CborObject.CborList) cbor).value.get(0);

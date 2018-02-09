@@ -48,7 +48,7 @@ public interface FileRetriever extends Cborable {
                                                                   MaybeMultihash ourExistingHash,
                                                                   ProgressConsumer<Long> monitor);
 
-    static FileRetriever fromCbor(CborObject cbor) {
+    static FileRetriever fromCbor(Cborable cbor) {
         return EncryptedChunkRetriever.fromCbor(cbor);
     }
 }

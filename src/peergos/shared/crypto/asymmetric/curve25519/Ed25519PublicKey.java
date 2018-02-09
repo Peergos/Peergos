@@ -49,7 +49,7 @@ public class Ed25519PublicKey implements PublicSigningKey {
         return implementation.crypto_sign_open(signed, publicKey);
     }
 
-    public static Ed25519PublicKey fromCbor(CborObject cbor, Ed25519 provider) {
+    public static Ed25519PublicKey fromCbor(Cborable cbor, Ed25519 provider) {
         if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Invalid cbor for Ed25519 public key! " + cbor);
         CborObject.CborByteArray key = (CborObject.CborByteArray) ((CborObject.CborList) cbor).value.get(1);

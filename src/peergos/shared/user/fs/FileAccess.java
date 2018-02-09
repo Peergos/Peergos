@@ -172,20 +172,20 @@ public class FileAccess implements CryptreeNode {
         if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Incorrect cbor for FileAccess: " + cbor);
 
-        List<CborObject> value = ((CborObject.CborList) cbor).value;
+        List<? extends Cborable> value = ((CborObject.CborList) cbor).value;
 
         int index = 0;
         int versionAndType = (int) ((CborObject.CborLong) value.get(index++)).value;
         SymmetricLink parentToMeta = SymmetricLink.fromCbor(value.get(index++));
         SymmetricLink parentToData = SymmetricLink.fromCbor(value.get(index++));
 
-        CborObject parentLinkCbor = value.get(index++);
+        Cborable parentLinkCbor = value.get(index++);
         SymmetricLocationLink parentLink = parentLinkCbor instanceof CborObject.CborNull ?
                 null :
                 SymmetricLocationLink.fromCbor(parentLinkCbor);
 
         byte[] properties = ((CborObject.CborByteArray)value.get(index++)).value;
-        CborObject retrieverCbor = value.get(index++);
+        Cborable retrieverCbor = value.get(index++);
         FileRetriever retriever = retrieverCbor instanceof CborObject.CborNull ?
                 null :
                 FileRetriever.fromCbor(retrieverCbor);

@@ -197,7 +197,7 @@ public class WriterData implements Cborable {
 
     public static Optional<UserGenerationAlgorithm> extractUserGenerationAlgorithm(CborObject cbor) {
         CborObject.CborMap map = (CborObject.CborMap) cbor;
-        Function<String, Optional<CborObject>> extract = key -> {
+        Function<String, Optional<Cborable>> extract = key -> {
             CborObject.CborString cborKey = new CborObject.CborString(key);
             return map.values.containsKey(cborKey) ? Optional.of(map.values.get(cborKey)) : Optional.empty();
         };
@@ -209,7 +209,7 @@ public class WriterData implements Cborable {
             throw new IllegalStateException("Cbor for WriterData should be a map! " + cbor);
 
         CborObject.CborMap map = (CborObject.CborMap) cbor;
-        Function<String, Optional<CborObject>> extract = key -> {
+        Function<String, Optional<Cborable>> extract = key -> {
             CborObject.CborString cborKey = new CborObject.CborString(key);
             return map.values.containsKey(cborKey) ? Optional.of(map.values.get(cborKey)) : Optional.empty();
         };

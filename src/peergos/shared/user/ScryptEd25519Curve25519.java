@@ -32,7 +32,7 @@ public class ScryptEd25519Curve25519 implements UserGenerationAlgorithm {
         return CborObject.CborMap.build(props);
     }
 
-    static peergos.shared.user.ScryptEd25519Curve25519 fromCbor(CborObject cbor) {
+    static peergos.shared.user.ScryptEd25519Curve25519 fromCbor(Cborable cbor) {
         int memoryCost = (int) ((CborObject.CborLong) ((CborObject.CborMap) cbor).values.get(new CborObject.CborString("m"))).value;
         int cpuCost = (int) ((CborObject.CborLong) ((CborObject.CborMap) cbor).values.get(new CborObject.CborString("c"))).value;
         int parallelsm = (int) ((CborObject.CborLong) ((CborObject.CborMap) cbor).values.get(new CborObject.CborString("p"))).value;

@@ -33,7 +33,7 @@ public class SymmetricLink implements Cborable
         return SymmetricKey.fromByteArray(encoded);
     }
 
-    public static SymmetricLink fromCbor(CborObject cbor) {
+    public static SymmetricLink fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborByteArray))
             throw new IllegalStateException("Incorrect cbor type for SymmetricLink: " + cbor);
 

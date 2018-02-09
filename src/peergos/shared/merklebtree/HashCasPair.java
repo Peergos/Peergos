@@ -34,7 +34,7 @@ public class HashCasPair implements Cborable {
         if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Incorrect cbor for HashCasPair: " + cbor);
 
-        List<CborObject> value = ((CborObject.CborList) cbor).value;
+        List<? extends Cborable> value = ((CborObject.CborList) cbor).value;
         return new HashCasPair(MaybeMultihash.fromCbor(value.get(0)), MaybeMultihash.fromCbor(value.get(1)));
     }
 }

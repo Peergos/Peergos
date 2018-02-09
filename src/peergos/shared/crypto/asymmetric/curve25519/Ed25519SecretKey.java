@@ -54,7 +54,7 @@ public class Ed25519SecretKey implements SecretSigningKey {
         return Arrays.copyOf(implementation.crypto_sign(message, secretKey), TweetNaCl.SIGNATURE_SIZE_BYTES);
     }
 
-    public static SecretSigningKey fromCbor(CborObject cbor, Ed25519 provider) {
+    public static SecretSigningKey fromCbor(Cborable cbor, Ed25519 provider) {
         if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Invalid cbor for Ed25519 secret key! " + cbor);
         CborObject.CborByteArray key = (CborObject.CborByteArray) ((CborObject.CborList) cbor).value.get(1);

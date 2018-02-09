@@ -83,7 +83,7 @@ public class UserStaticData implements Cborable {
         return new CborObject.CborByteArray(serialize());
     }
 
-    public static UserStaticData fromCbor(CborObject cbor, SymmetricKey rootKey) {
+    public static UserStaticData fromCbor(Cborable cbor, SymmetricKey rootKey) {
         if (! (cbor instanceof CborObject.CborByteArray))
             throw new IllegalStateException("UserStaticData cbor must be a byte[]! " + cbor);
         return deserialize(((CborObject.CborByteArray) cbor).value, rootKey);

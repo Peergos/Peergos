@@ -62,10 +62,10 @@ public class FilePointer implements Cborable {
         return fromCbor(CborObject.fromByteArray(raw));
     }
 
-    public static FilePointer fromCbor(CborObject cbor) {
+    public static FilePointer fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Incorrect cbor for FilePointer: " + cbor);
-        SortedMap<CborObject, CborObject> map = ((CborObject.CborMap) cbor).values;
+        SortedMap<CborObject, ? extends Cborable> map = ((CborObject.CborMap) cbor).values;
         Location loc = Location.fromCbor(map.get(new CborObject.CborString("l")));
         SymmetricKey baseKey = SymmetricKey.fromCbor(map.get(new CborObject.CborString("k")));
         CborObject.CborString secretLabel = new CborObject.CborString("s");
