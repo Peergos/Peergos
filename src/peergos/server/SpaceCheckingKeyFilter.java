@@ -9,6 +9,7 @@ import peergos.shared.merklebtree.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
+import peergos.shared.util.*;
 
 import java.time.*;
 import java.util.*;
@@ -113,14 +114,30 @@ public class SpaceCheckingKeyFilter {
     private void loadAllOwners() {
         try {
             List<String> usernames = core.getUsernames("").get();
+            if (usernames.size() == 0)
+                return;
+            int threads = Math.min(usernames.size(), 1000);
+            ExecutorService pool = Executors.newFixedThreadPool(threads);
+            int usersPerThread = (usernames.size() + usernames.size() - 1)/ threads;
             long t1 = System.currentTimeMillis();
-            for (String username : usernames) {
-                System.out.println(LocalDateTime.now() + " Loading " + username);
-                Optional<PublicKeyHash> publicKeyHash = core.getPublicKeyHash(username).get();
-                publicKeyHash.ifPresent(keyHash -> processCorenodeEvent(username, keyHash));
-                System.out.println(LocalDateTime.now() + " finished loading " + username);
+            List<Future<Boolean>> progress = new ArrayList<>();
+            for (int t=0; t < threads; t++) {
+                List<String> ourUsernames = usernames.subList(t * usersPerThread, Math.min((t + 1) * usersPerThread, usernames.size()));
+                progress.add(pool.submit(() -> {
+                    for (String username : ourUsernames) {
+                        System.out.println(LocalDateTime.now() + " Loading " + username);
+                        Optional<PublicKeyHash> publicKeyHash = core.getPublicKeyHash(username).get();
+                        publicKeyHash.ifPresent(keyHash -> processCorenodeEvent(username, keyHash));
+                        System.out.println(LocalDateTime.now() + " finished loading " + username);
+                    }
+                    return true;
+                }));
+            }
+            for (Future<Boolean> future : progress) {
+                future.get();
             }
             long t2 = System.currentTimeMillis();
+            pool.shutdown();
             System.out.println(LocalDateTime.now() + " Finished loading space usage for all usernames in " + (t2 - t1)/1000 + " s");
         } catch (Exception e) {
             e.printStackTrace();
@@ -151,7 +168,7 @@ public class SpaceCheckingKeyFilter {
             }
         } catch (Throwable e) {
             System.err.println("Error loading storage for user: " + username);
-            e.printStackTrace();
+            Exceptions.getRootCause(e).printStackTrace();
         }
     }
 
@@ -202,7 +219,7 @@ public class SpaceCheckingKeyFilter {
                 current.update(newRoot, updatedOwned, current.directRetainedStorage + changeInStorage);
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            Exceptions.getRootCause(e).printStackTrace();
         }
     }
 

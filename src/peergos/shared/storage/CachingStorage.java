@@ -40,7 +40,9 @@ public class CachingStorage implements ContentAddressedStorage {
 
         CompletableFuture<Optional<CborObject>> pipe = new CompletableFuture<>();
         pending.put(key, pipe);
-        return target.get(key).thenApply(cborOpt -> {
+
+        CompletableFuture<Optional<CborObject>> result = new CompletableFuture<>();
+        target.get(key).thenAccept(cborOpt -> {
             if (cborOpt.isPresent()) {
                 byte[] value = cborOpt.get().toByteArray();
                 if (value.length > 0 && value.length < maxValueSize)
@@ -48,12 +50,14 @@ public class CachingStorage implements ContentAddressedStorage {
             }
             pending.remove(key);
             pipe.complete(cborOpt);
-            return cborOpt;
+            result.complete(cborOpt);
         }).exceptionally(t -> {
             pending.remove(key);
             pipe.completeExceptionally(t);
+            result.completeExceptionally(t);
             return null;
         });
+        return result;
     }
 
     @Override
