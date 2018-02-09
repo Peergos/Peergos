@@ -17,6 +17,7 @@ import peergos.server.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
+import peergos.shared.util.Exceptions;
 
 import java.io.*;
 import java.lang.reflect.*;
@@ -139,6 +140,17 @@ public abstract class UserTests {
             UserContext.signUp("q", "w", network, crypto).get();
         } catch (Exception e) {
             if (! e.getMessage().contains("User already exists"))
+                Assert.fail("Incorrect error message");
+        }
+    }
+
+    @Test
+    public void repeatedSignUp() throws Exception {
+        UserContext.ensureSignedUp("q", "q", network, crypto).get();
+        try {
+            UserContext.signUp("q", "q", network, crypto).get();
+        } catch (Exception e) {
+            if (!Exceptions.getRootCause(e).getMessage().contains("User already exists"))
                 Assert.fail("Incorrect error message");
         }
     }

@@ -308,7 +308,11 @@ public class UserContext {
         LocalDate expiry = now.plusMonths(2);
         System.out.println("claiming username: " + username + " with expiry " + expiry);
         List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createInitial(signer, username, expiry);
-        return network.coreNode.updateChain(username, claimChain);
+        return network.coreNode.getChain(username).thenCompose(existing -> {
+            if (existing.size() > 0)
+                throw new IllegalStateException("User already exists!");
+            return network.coreNode.updateChain(username, claimChain);
+        });
     }
 
     public CompletableFuture<LocalDate> getUsernameClaimExpiry() {
