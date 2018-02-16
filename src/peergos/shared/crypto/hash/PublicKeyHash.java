@@ -50,7 +50,7 @@ public class PublicKeyHash extends Multihash implements Cborable {
         return new PublicKeyHash(Cid.cast(raw));
     }
 
-    public static PublicKeyHash fromCbor(CborObject cbor) {
+    public static PublicKeyHash fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborMerkleLink))
             throw new IllegalStateException("Invalid cbor for PublicKeyHash! " + cbor);
         return new PublicKeyHash(((CborObject.CborMerkleLink) cbor).target);

@@ -40,7 +40,7 @@ public class MaybeMultihash implements Cborable {
         return hash != null ? hash.hashCode() : 0;
     }
 
-    public static MaybeMultihash fromCbor(CborObject cbor) {
+    public static MaybeMultihash fromCbor(Cborable cbor) {
         if (cbor instanceof CborObject.CborNull)
             return MaybeMultihash.empty();
 

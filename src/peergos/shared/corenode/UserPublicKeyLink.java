@@ -68,10 +68,10 @@ public class UserPublicKeyLink implements Cborable{
         return CborObject.CborMap.build(values);
     }
 
-    public static UserPublicKeyLink fromCbor(CborObject cbor) {
+    public static UserPublicKeyLink fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Invalid cbor for UserPublicKeyLink: " + cbor);
-        SortedMap<CborObject, CborObject> values = ((CborObject.CborMap) cbor).values;
+        SortedMap<CborObject, ? extends Cborable> values = ((CborObject.CborMap) cbor).values;
         PublicKeyHash owner = PublicKeyHash.fromCbor(values.get(new CborObject.CborString("owner")));
         UsernameClaim claim  = UsernameClaim.fromCbor(values.get(new CborObject.CborString("claim")));
         CborObject.CborString proofKey = new CborObject.CborString("keychange");
@@ -114,7 +114,7 @@ public class UserPublicKeyLink implements Cborable{
                     new CborObject.CborByteArray(signedContents)));
         }
 
-        public static UsernameClaim fromCbor(CborObject cbor) {
+        public static UsernameClaim fromCbor(Cborable cbor) {
             if (! (cbor instanceof CborObject.CborList))
                 throw new IllegalStateException("Invalid cbor for Username claim: " + cbor);
             String username = ((CborObject.CborString)((CborObject.CborList) cbor).value.get(0)).value;

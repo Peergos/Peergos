@@ -59,7 +59,7 @@ public class MerkleNode implements Cborable {
         CborObject.CborString dataLabel = new CborObject.CborString("Data");
         CborObject.CborByteArray data = (CborObject.CborByteArray) map.values.get(dataLabel);
         List<Link> links = new ArrayList<>(map.values.size() - 1);
-        for (Map.Entry<CborObject, CborObject> entry : map.values.entrySet()) {
+        for (Map.Entry<CborObject, ? extends Cborable> entry : map.values.entrySet()) {
             if (entry.getKey().equals(dataLabel))
                 continue;
             String label = ((CborObject.CborString) entry.getKey()).value;

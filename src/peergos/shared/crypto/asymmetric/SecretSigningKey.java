@@ -24,7 +24,7 @@ public interface SecretSigningKey extends Cborable {
      */
     byte[] signatureOnly(byte[] message);
 
-    static SecretSigningKey fromCbor(CborObject cbor) {
+    static SecretSigningKey fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Invalid cbor for PublicSigningKey! " + cbor);
         CborObject.CborLong type = (CborObject.CborLong) ((CborObject.CborList) cbor).value.get(0);

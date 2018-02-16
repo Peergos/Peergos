@@ -48,7 +48,7 @@ public interface PublicSigningKey extends Cborable {
         return fromCbor(CborObject.fromByteArray(raw));
     }
 
-    static PublicSigningKey fromCbor(CborObject cbor) {
+    static PublicSigningKey fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Invalid cbor for PublicSigningKey! " + cbor);
         CborObject.CborLong type = (CborObject.CborLong) ((CborObject.CborList) cbor).value.get(0);

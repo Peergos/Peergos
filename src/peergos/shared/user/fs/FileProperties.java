@@ -60,7 +60,7 @@ public class FileProperties implements Cborable {
     }
 
     public static FileProperties fromCbor(CborObject cbor) {
-        List<CborObject> elements = ((CborObject.CborList) cbor).value;
+        List<? extends Cborable> elements = ((CborObject.CborList) cbor).value;
         String name = ((CborObject.CborString)elements.get(0)).value;
         String mimeType = ((CborObject.CborString)elements.get(1)).value;
         long size = ((CborObject.CborLong)elements.get(2)).value;

@@ -18,11 +18,11 @@ public interface Fragmenter extends Cborable {
 
     byte[] recombine(byte[][] encoded, int inputLength);
 
-    static Fragmenter fromCbor(CborObject cbor) {
+    static Fragmenter fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Incorrect cbor for Fragmenter: " + cbor);
 
-        SortedMap<CborObject, CborObject> values = ((CborObject.CborMap) cbor).values;
+        SortedMap<CborObject, ? extends Cborable> values = ((CborObject.CborMap) cbor).values;
 
         long t = ((CborObject.CborLong) values.get(new CborObject.CborString("t"))).value;
         Type type = Type.ofVal((int) t);

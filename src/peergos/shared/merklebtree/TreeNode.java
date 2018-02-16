@@ -478,11 +478,11 @@ public class TreeNode implements Cborable {
             return CborObject.CborMap.build(cbor);
         }
 
-        public static KeyElement fromCbor(CborObject cbor) {
+        public static KeyElement fromCbor(Cborable cbor) {
             if (! (cbor instanceof CborObject.CborMap))
                 throw new IllegalStateException("Incorrect cbor for TreeNode$KeyElement: " + cbor);
 
-            SortedMap<CborObject, CborObject> values = ((CborObject.CborMap) cbor).values;
+            SortedMap<CborObject, ? extends Cborable> values = ((CborObject.CborMap) cbor).values;
 
             ByteArrayWrapper key = new ByteArrayWrapper(getOrDefault(values, "k", c -> ((CborObject.CborByteArray)c).value, () -> new byte[0]));
             MaybeMultihash value = getOrDefault(values, "v",
@@ -494,7 +494,7 @@ public class TreeNode implements Cborable {
             return new KeyElement(key, value, target);
         }
 
-        private static <T> T getOrDefault(SortedMap<CborObject, CborObject> values, String skey, Function<CborObject, T> converter, Supplier<T> def) {
+        private static <T> T getOrDefault(SortedMap<CborObject, ? extends Cborable> values, String skey, Function<Cborable, T> converter, Supplier<T> def) {
             CborObject.CborString key = new CborObject.CborString(skey);
             if (! values.containsKey(key))
                 return def.get();

@@ -57,7 +57,7 @@ public interface PublicBoxingKey extends Cborable {
         return fromCbor(CborObject.fromByteArray(raw));
     }
 
-    static PublicBoxingKey fromCbor(CborObject cbor) {
+    static PublicBoxingKey fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Invalid cbor for PublicBoxingKey! " + cbor);
         CborObject.CborLong type = (CborObject.CborLong) ((CborObject.CborList) cbor).value.get(0);

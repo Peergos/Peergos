@@ -63,7 +63,7 @@ public class Curve25519PublicKey implements PublicBoxingKey {
         return new CborObject.CborList(Arrays.asList(new CborObject.CborLong(type().value), new CborObject.CborByteArray(publicKey)));
     }
 
-    public static Curve25519PublicKey fromCbor(CborObject cbor, Curve25519 provider, SafeRandom random) {
+    public static Curve25519PublicKey fromCbor(Cborable cbor, Curve25519 provider, SafeRandom random) {
         if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Invalid cbor for PublicBoxingKey! " + cbor);
         CborObject.CborByteArray key = (CborObject.CborByteArray) ((CborObject.CborList) cbor).value.get(1);

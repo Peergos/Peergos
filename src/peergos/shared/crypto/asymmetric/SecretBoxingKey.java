@@ -16,7 +16,7 @@ public interface SecretBoxingKey extends Cborable {
     @JsMethod
     byte[] decryptMessage(byte[] cipher, PublicBoxingKey from);
 
-    static SecretBoxingKey fromCbor(CborObject cbor) {
+    static SecretBoxingKey fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Invalid cbor for PublicBoxingKey! " + cbor);
         CborObject.CborLong type = (CborObject.CborLong) ((CborObject.CborList) cbor).value.get(0);

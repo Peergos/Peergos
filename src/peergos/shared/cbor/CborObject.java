@@ -10,7 +10,7 @@ import java.util.stream.*;
 import static peergos.shared.cbor.CborConstants.TYPE_BYTE_STRING;
 import static peergos.shared.cbor.CborConstants.TYPE_TEXT_STRING;
 
-public interface CborObject {
+public interface CborObject extends Cborable {
 
     void serialize(CborEncoder encoder);
 
@@ -21,6 +21,11 @@ public interface CborObject {
         CborEncoder encoder = new CborEncoder(bout);
         serialize(encoder);
         return bout.toByteArray();
+    }
+
+    @Override
+    default CborObject toCbor() {
+        return this;
     }
 
     int LINK_TAG = 42;
@@ -59,7 +64,7 @@ public interface CborObject {
                     long nValues = decoder.readMapLength();
                     if (nValues > maxGroupSize)
                         throw new IllegalStateException("Invalid cbor: more map elements than original bytes!");
-                    SortedMap<CborObject, CborObject> result = new TreeMap<>();
+                    SortedMap<CborObject, Cborable> result = new TreeMap<>();
                     for (long i=0; i < nValues; i++) {
                         CborObject key = deserialize(decoder, maxGroupSize);
                         CborObject value = deserialize(decoder, maxGroupSize);
@@ -99,14 +104,14 @@ public interface CborObject {
     }
 
     final class CborMap implements CborObject {
-        public final SortedMap<CborObject, CborObject> values;
+        public final SortedMap<CborObject,? extends Cborable> values;
 
-        public CborMap(SortedMap<CborObject, CborObject> values) {
+        public CborMap(SortedMap<CborObject,? extends Cborable> values) {
             this.values = values;
         }
 
-        public static CborMap build(Map<String, CborObject> values) {
-            SortedMap<CborObject, CborObject> transformed = values.entrySet()
+        public static CborMap build(Map<String, ? extends Cborable> values) {
+            SortedMap<CborObject, Cborable> transformed = values.entrySet()
                     .stream()
                     .collect(Collectors.toMap(
                             e -> new CborString(e.getKey()),
@@ -119,9 +124,9 @@ public interface CborObject {
         public void serialize(CborEncoder encoder) {
             try {
                 encoder.writeMapStart(values.size());
-                for (Map.Entry<CborObject, CborObject> entry : values.entrySet()) {
+                for (Map.Entry<CborObject, ? extends Cborable>  entry : values.entrySet()) {
                     entry.getKey().serialize(encoder);
-                    entry.getValue().serialize(encoder);
+                    entry.getValue().toCbor().serialize(encoder);
                 }
             } catch (IOException e) {
                 throw new RuntimeException(e);
@@ -131,7 +136,7 @@ public interface CborObject {
         @Override
         public List<Multihash> links() {
             return values.values().stream()
-                    .flatMap(cbor -> cbor.links().stream())
+                    .flatMap(cbor -> cbor.toCbor().links().stream())
                     .collect(Collectors.toList());
         }
 
@@ -195,9 +200,9 @@ public interface CborObject {
     }
 
     final class CborList implements CborObject {
-        public final List<CborObject> value;
+        public final List<? extends Cborable> value;
 
-        public CborList(List<CborObject> value) {
+        public CborList(List<? extends Cborable> value) {
             this.value = value;
         }
 
@@ -205,8 +210,8 @@ public interface CborObject {
         public void serialize(CborEncoder encoder) {
             try {
                 encoder.writeArrayStart(value.size());
-                for (CborObject object : value) {
-                    object.serialize(encoder);
+                for (Cborable object : value) {
+                    object.toCbor().serialize(encoder);
                 }
             } catch (IOException e) {
                 throw new RuntimeException(e);
@@ -216,7 +221,7 @@ public interface CborObject {
         @Override
         public List<Multihash> links() {
             return value.stream()
-                    .flatMap(cbor -> cbor.links().stream())
+                    .flatMap(cbor -> cbor.toCbor().links().stream())
                     .collect(Collectors.toList());
         }
 
