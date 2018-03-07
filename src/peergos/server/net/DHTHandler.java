@@ -206,7 +206,7 @@ public class DHTHandler implements HttpHandler
     private static void replyError(HttpExchange exchange, Throwable t) {
         try {
             exchange.getResponseHeaders().set("Trailer", t.getMessage());
-            exchange.sendResponseHeaders(400, 0);
+            exchange.sendResponseHeaders(400, -1);
         } catch (IOException e)
         {
             e.printStackTrace();
@@ -219,9 +219,10 @@ public class DHTHandler implements HttpHandler
                 exchange.getResponseHeaders().set("Cache-Control", "public, max-age=31622400 immutable");
                 exchange.getResponseHeaders().set("ETag", "\"" + key.get().toString() + "\"");
             }
-            exchange.sendResponseHeaders(200, 0);
+            byte[] raw = json.getBytes();
+            exchange.sendResponseHeaders(200, raw.length);
             DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());
-            dout.write(json.getBytes());
+            dout.write(raw);
             dout.flush();
             dout.close();
         } catch (IOException e)
@@ -236,7 +237,7 @@ public class DHTHandler implements HttpHandler
                 exchange.getResponseHeaders().set("Cache-Control", "public, max-age=31622400 immutable");
                 exchange.getResponseHeaders().set("ETag", "\"" + key.get().toString() + "\"");
             }
-            exchange.sendResponseHeaders(200, 0);
+            exchange.sendResponseHeaders(200, body.length);
             DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());
             dout.write(body);
             dout.flush();

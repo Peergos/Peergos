@@ -76,6 +76,18 @@ public class Serialize
         return bout.toByteArray();
     }
 
+    public static byte[] read(InputStream in, int size) throws IOException {
+        byte[] res = new byte[size];
+        byte[] b =  new  byte[0x1000];
+        int nRead;
+        int offset = 0;
+        while (offset < size && (nRead = in.read(b, 0, b.length)) != -1 ) {
+            System.arraycopy(b, 0, res, offset, nRead);
+            offset += nRead;
+        }
+        return res;
+    }
+
     public static CompletableFuture<byte[]> readFully(AsyncReader in, long size) {
         byte[] res = new byte[(int)size];
         return in.readIntoArray(res, 0, (int) size).thenApply(i -> res);

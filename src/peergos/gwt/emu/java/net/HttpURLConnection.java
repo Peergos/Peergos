@@ -22,6 +22,9 @@ public class HttpURLConnection extends URLConnection{
 	public int getResponseCode() {
 		return HTTP_OK;
 	}
+	public int getContentLength() {
+		return -1;
+	}
 	public void connect() {
 	}
 	public void disconnect() {

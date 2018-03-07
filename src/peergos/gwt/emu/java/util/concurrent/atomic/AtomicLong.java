@@ -23,6 +23,10 @@ public class AtomicLong extends Number implements Serializable {
         return value;
     }
 
+    public long incrementAndGet() {
+        return ++value;
+    }
+
     @Override
     public float floatValue() {
         return (float) value;
