@@ -13,6 +13,7 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.*;
 
 public class MerkleBtree {
 
@@ -75,6 +76,43 @@ public class MerkleBtree {
         }
         if (tree.root.keys.size() != 2)
             throw new IllegalStateException("New root should have two children!");
+    }
+
+    @Test
+    public void insertionOrderIndependence() throws Exception {
+        SigningPrivateKeyAndPublicHash user = createUser();
+        Random r = new Random(28);
+
+        List<Pair<byte[], Multihash>> mappings = new ArrayList<>();
+        for (int i=0; i < 100; i++)
+            mappings.add(new Pair<>(randomData(32, r), new Multihash(Multihash.Type.sha2_256, randomData(32, r))));
+
+        BiConsumer<RAMStorage, List<Pair<byte[], Multihash>>> fillTree = (store, map) -> {
+            try {
+                MerkleBTree tree1 = createTree(user, store).get();
+                for (Pair<byte[], Multihash> mapping : map) {
+                    tree1.put(user, mapping.left, MaybeMultihash.empty(), mapping.right).get();
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        };
+
+        RAMStorage store1 = new RAMStorage();
+        fillTree.accept(store1, mappings);
+
+//        Collections.shuffle(mappings, r); // Uncomment this to test insertion order independence
+        RAMStorage store2 = new RAMStorage();
+        fillTree.accept(store2, mappings);
+
+        boolean equal = store1.equals(store2);
+        Assert.assertTrue("Independent of order", equal);
+    }
+
+    private static byte[] randomData(int len, Random source) {
+        byte[] res = new byte[len];
+        source.nextBytes(res);
+        return res;
     }
 
     @Test

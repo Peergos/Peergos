@@ -119,6 +119,31 @@ public class RAMStorage implements ContentAddressedStorage {
         }
     }
 
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+
+        RAMStorage that = (RAMStorage) o;
+
+        for (Multihash ourKey : storage.keySet()) {
+            if (! Arrays.equals(storage.get(ourKey), ((RAMStorage) o).storage.get(ourKey)))
+                return false;
+        }
+        for (Multihash theirKey : ((RAMStorage) o).storage.keySet()) {
+            if (! Arrays.equals(storage.get(theirKey), ((RAMStorage) o).storage.get(theirKey)))
+                return false;
+        }
+        return pinnedRoots != null ? pinnedRoots.equals(that.pinnedRoots) : that.pinnedRoots == null;
+    }
+
+    @Override
+    public int hashCode() {
+        int result = storage != null ? storage.hashCode() : 0;
+        result = 31 * result + (pinnedRoots != null ? pinnedRoots.hashCode() : 0);
+        return result;
+    }
+
     private static RAMStorage singleton = new RAMStorage();
     public static RAMStorage getSingleton() {
         return singleton;
