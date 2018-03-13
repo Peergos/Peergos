@@ -380,7 +380,7 @@ public class Champ implements Cborable {
         final KeyElement[] src = this.contents;
         final KeyElement[] dst = new KeyElement[src.length - 1];
 
-        // copy 'src' and remove element at position 'idx'
+        // copy src and remove element at position index
         System.arraycopy(src, 0, dst, 0, index);
         System.arraycopy(src, index + 1, dst, index, src.length - index - 1);
 
@@ -404,7 +404,8 @@ public class Champ implements Cborable {
         Map<ByteArrayWrapper, MaybeMultihash> state = new HashMap<>();
 
         Champ current = EMPTY;
-        for (int i=0; i < 1000; i++) {
+        Multihash currentHash = null;
+        for (int i = 0; i < 1000; i++) {
             ByteArrayWrapper key = new ByteArrayWrapper(randomHash.get().toBytes());
             Multihash value = randomHash.get();
             Pair<Champ, Multihash> updated = current.put(user, key, 0, MaybeMultihash.empty(), value, storage).get();
@@ -412,6 +413,7 @@ public class Champ implements Cborable {
             if (! result.equals(MaybeMultihash.of(value)))
                 throw new IllegalStateException("Incorrect result!");
             current = updated.left;
+            currentHash = updated.right;
             state.put(key, MaybeMultihash.of(value));
         }
 
@@ -430,6 +432,7 @@ public class Champ implements Cborable {
             if (! result.equals(MaybeMultihash.of(value)))
                 throw new IllegalStateException("Incorrect result!");
             current = updated.left;
+            currentHash = updated.right;
         }
 
         for (Map.Entry<ByteArrayWrapper, MaybeMultihash> e : state.entrySet()) {
@@ -438,6 +441,15 @@ public class Champ implements Cborable {
             MaybeMultihash result = updated.left.get(key, 0, storage).get();
             if (! result.equals(MaybeMultihash.empty()))
                 throw new IllegalStateException("Incorrect state!");
+        }
+
+        for (int i = 0; i < 100; i++) {
+            ByteArrayWrapper key = new ByteArrayWrapper(randomHash.get().toBytes());
+            Multihash value = randomHash.get();
+            Pair<Champ, Multihash> updated = current.put(user, key, 0, MaybeMultihash.empty(), value, storage).get();
+            Pair<Champ, Multihash> removed = updated.left.remove(user, key, 0, storage).get();
+            if (! removed.right.equals(currentHash))
+                throw new IllegalStateException("Non canonical state!");
         }
     }
 
