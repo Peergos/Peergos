@@ -66,6 +66,24 @@ public class Champ implements Cborable {
                 throw new IllegalStateException();
     }
 
+    private int keyCount() {
+        int count = 0;
+        for (KeyElement p : contents) {
+            if (p.key != null)
+                count++;
+        }
+        return count;
+    }
+
+    private int nodeCount() {
+        int count = 0;
+        for (KeyElement p : contents) {
+            if (p.key == null)
+                count++;
+        }
+        return count;
+    }
+
     private static int mask(ByteArrayWrapper key, int depth) {
         return key.data[depth] & 0xff;
     }
@@ -265,6 +283,112 @@ public class Champ implements Cborable {
         return new Champ(dataMap, nodeMap, dst);
     }
 
+    public CompletableFuture<Pair<Champ, Multihash>> remove(SigningPrivateKeyAndPublicHash writer,
+                                                            ByteArrayWrapper key,
+                                                            int depth,
+                                                            ContentAddressedStorage storage) {
+        int bitpos = mask(key, depth);
+
+        if (dataMap.get(bitpos)) { // in place value
+            final int dataIndex = index(dataMap, bitpos);
+
+            if (Objects.equals(contents[dataIndex].key, key)) {
+                final MaybeMultihash currentVal = getValue(key, depth);
+
+                if (this.keyCount() == 2 && this.nodeCount() == 0) {
+                    /*
+						 * Create new node with remaining pair. The new node
+						 * will a) either become the new root returned, or b)
+						 * unwrapped and inlined during returning.
+						 */
+                    final BitSet newDataMap = (depth == 0) ? BitSet.valueOf(dataMap.toByteArray()) : new BitSet();
+                    if (depth == 0)
+                        newDataMap.clear(bitpos);
+                    else
+                        newDataMap.set(mask(key, 0));
+
+                    Champ champ = dataIndex == 0 ?
+                            new Champ(newDataMap, new BitSet(), new KeyElement[] {contents[1]}) :
+                            new Champ(newDataMap, new BitSet(), new KeyElement[] {contents[0]});
+                    return storage.put(writer, champ.serialize()).thenApply(h -> new Pair<>(champ, h));
+                } else {
+                    Champ champ = copyAndRemoveValue(bitpos);
+                    return storage.put(writer, champ.serialize()).thenApply(h -> new Pair<>(champ, h));
+                }
+            } else {
+                // Todo don't reserialize this
+                return storage.put(writer, this.serialize()).thenApply(h -> new Pair<>(this, h));
+            }
+        } else if (nodeMap.get(bitpos)) { // node (not value)
+            return getChild(key, depth, storage)
+                    .thenCompose(childOpt -> childOpt.get().remove(writer, key, depth + 1, storage))
+                    .thenCompose(newChild -> {
+                        // Todo shortcut here if hash == existing
+
+                        switch (newChild.left.contents.length) {
+                            case 0: {
+                                throw new IllegalStateException("Sub-node must have at least one element.");
+                            }
+                            case 1: {
+                                if (this.keyCount() == 0 && this.nodeCount() == 1) {
+                                    // escalate (singleton or empty) result
+                                    return CompletableFuture.completedFuture(newChild);
+                                } else {
+                                    // inline value (move to front)
+                                    Champ champ = copyAndMigrateFromNodeToInline(bitpos, newChild.left);
+                                    return storage.put(writer, champ.serialize()).thenApply(h -> new Pair<>(champ, h));
+                                }
+                            }
+                            default: {
+                                // modify current node (set replacement node)
+                                Champ champ = copyAndSetNode(bitpos, newChild);
+                                return storage.put(writer, champ.serialize()).thenApply(h -> new Pair<>(champ, h));
+                            }
+                        }
+                    });
+        }
+
+        // Todo don't reserialize this
+        return storage.put(writer, this.serialize()).thenApply(h -> new Pair<>(this, h));
+    }
+
+    private Champ copyAndMigrateFromNodeToInline(final int bitpos, final Champ node) {
+
+        final int oldIndex = this.contents.length - 1 - index(nodeMap, bitpos);
+        final int newIndex = index(dataMap, bitpos);
+
+        final KeyElement[] src = this.contents;
+        final KeyElement[] dst = new KeyElement[src.length];
+
+        // copy src and remove element at position oldIndex and insert element at position newIndex
+        assert oldIndex >= newIndex;
+        System.arraycopy(src, 0, dst, 0, newIndex);
+        dst[newIndex] = node.contents[0];
+        System.arraycopy(src, newIndex, dst, newIndex + 1, oldIndex - newIndex);
+        System.arraycopy(src, oldIndex + 1, dst, oldIndex + 1, src.length - oldIndex - 1);
+
+        BitSet newNodeMap = BitSet.valueOf(nodeMap.toByteArray());
+        newNodeMap.set(bitpos, false);
+        BitSet newDataMap = BitSet.valueOf(dataMap.toByteArray());
+        newDataMap.set(bitpos, true);
+        return new Champ(newDataMap, newNodeMap, dst);
+    }
+
+    private Champ copyAndRemoveValue(final int bitpos) {
+        final int index = index(dataMap, bitpos);
+
+        final KeyElement[] src = this.contents;
+        final KeyElement[] dst = new KeyElement[src.length - 1];
+
+        // copy 'src' and remove element at position 'idx'
+        System.arraycopy(src, 0, dst, 0, index);
+        System.arraycopy(src, index + 1, dst, index, src.length - index - 1);
+
+        BitSet newDataMap = BitSet.valueOf(dataMap.toByteArray());
+        newDataMap.clear(bitpos);
+        return new Champ(newDataMap, nodeMap, dst);
+    }
+
     public static void main(String[] args) throws Exception {
         Crypto crypto = Crypto.initJava();
         RAMStorage storage = new RAMStorage();
@@ -306,6 +430,14 @@ public class Champ implements Cborable {
             if (! result.equals(MaybeMultihash.of(value)))
                 throw new IllegalStateException("Incorrect result!");
             current = updated.left;
+        }
+
+        for (Map.Entry<ByteArrayWrapper, MaybeMultihash> e : state.entrySet()) {
+            ByteArrayWrapper key = e.getKey();
+            Pair<Champ, Multihash> updated = current.remove(user, key, 0, storage).get();
+            MaybeMultihash result = updated.left.get(key, 0, storage).get();
+            if (! result.equals(MaybeMultihash.empty()))
+                throw new IllegalStateException("Incorrect state!");
         }
     }
 
