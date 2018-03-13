@@ -204,7 +204,7 @@ public class Champ implements Cborable {
     }
 
     private Champ copyAndSetValue(final int bitpos, final MaybeMultihash val) {
-        final int setIndex = index(dataMap, bitpos) + 1;
+        final int setIndex = index(dataMap, bitpos);
 
         final KeyElement[] src = this.contents;
         final KeyElement[] dst = new KeyElement[src.length];
@@ -295,6 +295,17 @@ public class Champ implements Cborable {
             MaybeMultihash res = current.get(e.getKey(), 0, storage).get();
             if (! res.equals(e.getValue()))
                 throw new IllegalStateException("Incorrect state!");
+        }
+
+        for (Map.Entry<ByteArrayWrapper, MaybeMultihash> e : state.entrySet()) {
+            ByteArrayWrapper key = e.getKey();
+            Multihash value = randomHash.get();
+            MaybeMultihash currentValue = current.get(e.getKey(), 0, storage).get();
+            Pair<Champ, Multihash> updated = current.put(user, key, 0, currentValue, value, storage).get();
+            MaybeMultihash result = updated.left.get(key, 0, storage).get();
+            if (! result.equals(MaybeMultihash.of(value)))
+                throw new IllegalStateException("Incorrect result!");
+            current = updated.left;
         }
     }
 
