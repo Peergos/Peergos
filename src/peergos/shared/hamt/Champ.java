@@ -215,7 +215,7 @@ public class Champ implements Cborable {
                     .thenCompose(p -> {
                         final BitSet nodeMap = new BitSet();
                         nodeMap.set(mask0);
-                        Champ champ = new Champ(new BitSet(), nodeMap, new KeyElement[]{new KeyElement(key0, MaybeMultihash.of(p.right))});
+                        Champ champ = new Champ(new BitSet(), nodeMap, new KeyElement[]{new KeyElement(null, MaybeMultihash.of(p.right))});
                         return storage.put(writer, champ.serialize()).thenApply(h -> new Pair<>(champ, h));
                     });
         }
@@ -260,7 +260,7 @@ public class Champ implements Cborable {
         assert oldIndex <= newIndex;
         System.arraycopy(src, 0, dst, 0, oldIndex);
         System.arraycopy(src, oldIndex + 1, dst, oldIndex, newIndex - oldIndex);
-        dst[newIndex] = new KeyElement(contents[oldIndex].key, MaybeMultihash.of(node.right));
+        dst[newIndex] = new KeyElement(null, MaybeMultihash.of(node.right));
         System.arraycopy(src, newIndex + 1, dst, newIndex + 1, src.length - newIndex - 1);
 
         BitSet newNodeMap = BitSet.valueOf(nodeMap.toByteArray());
@@ -278,7 +278,7 @@ public class Champ implements Cborable {
         final KeyElement[] dst = new KeyElement[src.length];
 
         System.arraycopy(src, 0, dst, 0, src.length);
-        dst[setIndex] = new KeyElement(contents[setIndex].key, MaybeMultihash.of(node.right));
+        dst[setIndex] = new KeyElement(null, MaybeMultihash.of(node.right));
 
         return new Champ(dataMap, nodeMap, dst);
     }
