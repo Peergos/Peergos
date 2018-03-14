@@ -18,34 +18,13 @@ public class Champ implements Cborable {
 
     private static final int HASH_CODE_LENGTH = 32;
 
-    private static class KeyElement implements Cborable {
+    private static class KeyElement {
         public final ByteArrayWrapper key;
         public final MaybeMultihash valueHash;
 
         public KeyElement(ByteArrayWrapper key, MaybeMultihash valueHash) {
             this.key = key;
             this.valueHash = valueHash;
-        }
-
-        @Override
-        public CborObject toCbor() {
-            return new CborObject.CborList(Arrays.asList(
-                    key == null ? new CborObject.CborNull() : new CborObject.CborByteArray(key.data),
-                    valueHash.isPresent() ? new CborObject.CborMerkleLink(valueHash.get()) : new CborObject.CborNull()));
-        }
-
-        public static KeyElement fromCbor(Cborable cbor) {
-            if (! (cbor instanceof CborObject.CborList))
-                throw new IllegalStateException("Invalid cbor for KeyElement! " + cbor);
-            List<? extends Cborable> list = ((CborObject.CborList) cbor).value;
-            ByteArrayWrapper key = list.get(0) instanceof CborObject.CborNull ?
-                    null :
-                    new ByteArrayWrapper(((CborObject.CborByteArray) list.get(0)).value);
-            Cborable rawValue = list.get(1);
-            MaybeMultihash value = rawValue instanceof CborObject.CborNull ?
-                    MaybeMultihash.empty() :
-                    MaybeMultihash.of(((CborObject.CborMerkleLink)rawValue).target);
-            return new KeyElement(key, value);
         }
     }
 
@@ -392,7 +371,11 @@ public class Champ implements Cborable {
         return new CborObject.CborList(Arrays.asList(
                 new CborObject.CborByteArray(dataMap.toByteArray()),
                 new CborObject.CborByteArray(nodeMap.toByteArray()),
-                new CborObject.CborList(Arrays.stream(contents).map(Cborable::toCbor).collect(Collectors.toList()))
+                new CborObject.CborList(Arrays.stream(contents)
+                        .flatMap(e -> e.key == null ?
+                                Stream.of(new CborObject.CborMerkleLink(e.valueHash.get())) :
+                                Stream.of(new CborObject.CborByteArray(e.key.data), new CborObject.CborMerkleLink(e.valueHash.get())))
+                        .collect(Collectors.toList()))
         ));
     }
 
@@ -403,9 +386,19 @@ public class Champ implements Cborable {
 
         BitSet dataMap = BitSet.valueOf(((CborObject.CborByteArray)list.get(0)).value);
         BitSet nodeMap = BitSet.valueOf(((CborObject.CborByteArray)list.get(1)).value);
-        List<KeyElement> contents = ((CborObject.CborList)list.get(2)).value.stream()
-                .map(KeyElement::fromCbor)
-                .collect(Collectors.toList());
+        List<? extends Cborable> contentsCbor = ((CborObject.CborList) list.get(2)).value;
+
+        List<KeyElement> contents = new ArrayList<>();
+        for (int i=0; i < contentsCbor.size(); i++) {
+            Cborable keyOrHash = contentsCbor.get(i);
+            if (keyOrHash instanceof CborObject.CborByteArray) {
+                contents.add(new KeyElement(new ByteArrayWrapper(((CborObject.CborByteArray) keyOrHash).value),
+                        MaybeMultihash.of(((CborObject.CborMerkleLink)contentsCbor.get(i + 1)).target)));
+                i++;
+            } else {
+                contents.add(new KeyElement(null, MaybeMultihash.of(((CborObject.CborMerkleLink)keyOrHash).target)));
+            }
+        }
         return new Champ(dataMap, nodeMap, contents.toArray(new KeyElement[contents.size()]));
     }
 }
