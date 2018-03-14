@@ -54,6 +54,11 @@ public class Champ implements Cborable {
     }
 
     private static final Champ EMPTY = new Champ(new BitSet(), new BitSet(), new KeyElement[0]);
+
+    public static Champ empty() {
+        return EMPTY;
+    }
+
     private final BitSet dataMap, nodeMap;
     private final KeyElement[] contents;
 
@@ -114,7 +119,7 @@ public class Champ implements Cborable {
     }
 
 
-    CompletableFuture<MaybeMultihash> get(ByteArrayWrapper key, int depth, ContentAddressedStorage storage) {
+    public CompletableFuture<MaybeMultihash> get(ByteArrayWrapper key, int depth, ContentAddressedStorage storage) {
         final int bitpos = mask(key, depth);
 
         if (dataMap.get(bitpos)) { // local value
@@ -135,7 +140,7 @@ public class Champ implements Cborable {
         return CompletableFuture.completedFuture(MaybeMultihash.empty());
     }
 
-    CompletableFuture<Pair<Champ, Multihash>> put(SigningPrivateKeyAndPublicHash writer,
+    public CompletableFuture<Pair<Champ, Multihash>> put(SigningPrivateKeyAndPublicHash writer,
                                                   ByteArrayWrapper key,
                                                   int depth,
                                                   MaybeMultihash expected,
@@ -325,25 +330,21 @@ public class Champ implements Cborable {
                     .thenCompose(newChild -> {
                         // Todo shortcut here if hash == existing
 
-                        switch (newChild.left.contents.length) {
-                            case 0: {
-                                throw new IllegalStateException("Sub-node must have at least one element.");
-                            }
-                            case 1: {
-                                if (this.keyCount() == 0 && this.nodeCount() == 1) {
-                                    // escalate (singleton or empty) result
-                                    return CompletableFuture.completedFuture(newChild);
-                                } else {
-                                    // inline value (move to front)
-                                    Champ champ = copyAndMigrateFromNodeToInline(bitpos, newChild.left);
-                                    return storage.put(writer, champ.serialize()).thenApply(h -> new Pair<>(champ, h));
-                                }
-                            }
-                            default: {
-                                // modify current node (set replacement node)
-                                Champ champ = copyAndSetNode(bitpos, newChild);
+                        if (newChild.left.contents.length == 0) {
+                            throw new IllegalStateException("Sub-node must have at least one element.");
+                        } else if (depth > 0 && newChild.left.contents.length == 1) {
+                            if (this.keyCount() == 0 && this.nodeCount() == 1) {
+                                // escalate (singleton or empty) result
+                                return CompletableFuture.completedFuture(newChild);
+                            } else {
+                                // inline value (move to front)
+                                Champ champ = copyAndMigrateFromNodeToInline(bitpos, newChild.left);
                                 return storage.put(writer, champ.serialize()).thenApply(h -> new Pair<>(champ, h));
                             }
+                        } else {
+                            // modify current node (set replacement node)
+                            Champ champ = copyAndSetNode(bitpos, newChild);
+                            return storage.put(writer, champ.serialize()).thenApply(h -> new Pair<>(champ, h));
                         }
                     });
         }
@@ -387,83 +388,6 @@ public class Champ implements Cborable {
         BitSet newDataMap = BitSet.valueOf(dataMap.toByteArray());
         newDataMap.clear(bitpos);
         return new Champ(newDataMap, nodeMap, dst);
-    }
-
-    public static void main(String[] args) throws Exception {
-        Crypto crypto = Crypto.initJava();
-        RAMStorage storage = new RAMStorage();
-        SigningPrivateKeyAndPublicHash user = createUser(storage, crypto);
-        Random r = new Random(28);
-
-        Supplier<Multihash> randomHash = () -> {
-            byte[] hash = new byte[32];
-            r.nextBytes(hash);
-            return new Multihash(Multihash.Type.sha2_256, hash);
-        };
-
-        Map<ByteArrayWrapper, MaybeMultihash> state = new HashMap<>();
-
-        Champ current = EMPTY;
-        Multihash currentHash = null;
-        for (int i = 0; i < 1000; i++) {
-            ByteArrayWrapper key = new ByteArrayWrapper(randomHash.get().toBytes());
-            Multihash value = randomHash.get();
-            Pair<Champ, Multihash> updated = current.put(user, key, 0, MaybeMultihash.empty(), value, storage).get();
-            MaybeMultihash result = updated.left.get(key, 0, storage).get();
-            if (! result.equals(MaybeMultihash.of(value)))
-                throw new IllegalStateException("Incorrect result!");
-            current = updated.left;
-            currentHash = updated.right;
-            state.put(key, MaybeMultihash.of(value));
-        }
-
-        for (Map.Entry<ByteArrayWrapper, MaybeMultihash> e : state.entrySet()) {
-            MaybeMultihash res = current.get(e.getKey(), 0, storage).get();
-            if (! res.equals(e.getValue()))
-                throw new IllegalStateException("Incorrect state!");
-        }
-
-        for (Map.Entry<ByteArrayWrapper, MaybeMultihash> e : state.entrySet()) {
-            ByteArrayWrapper key = e.getKey();
-            Multihash value = randomHash.get();
-            MaybeMultihash currentValue = current.get(e.getKey(), 0, storage).get();
-            Pair<Champ, Multihash> updated = current.put(user, key, 0, currentValue, value, storage).get();
-            MaybeMultihash result = updated.left.get(key, 0, storage).get();
-            if (! result.equals(MaybeMultihash.of(value)))
-                throw new IllegalStateException("Incorrect result!");
-            current = updated.left;
-            currentHash = updated.right;
-        }
-
-        for (Map.Entry<ByteArrayWrapper, MaybeMultihash> e : state.entrySet()) {
-            ByteArrayWrapper key = e.getKey();
-            Pair<Champ, Multihash> updated = current.remove(user, key, 0, storage).get();
-            MaybeMultihash result = updated.left.get(key, 0, storage).get();
-            if (! result.equals(MaybeMultihash.empty()))
-                throw new IllegalStateException("Incorrect state!");
-        }
-
-        for (int i = 0; i < 100; i++) {
-            ByteArrayWrapper key = new ByteArrayWrapper(randomHash.get().toBytes());
-            Multihash value = randomHash.get();
-            Pair<Champ, Multihash> updated = current.put(user, key, 0, MaybeMultihash.empty(), value, storage).get();
-            Pair<Champ, Multihash> removed = updated.left.remove(user, key, 0, storage).get();
-            if (! removed.right.equals(currentHash))
-                throw new IllegalStateException("Non canonical state!");
-        }
-    }
-
-    private static SigningPrivateKeyAndPublicHash createUser(RAMStorage storage, Crypto crypto) {
-        SigningKeyPair random = SigningKeyPair.random(crypto.random, crypto.signer);
-        try {
-            PublicKeyHash publicHash = storage.putSigningKey(
-                    random.secretSigningKey.signatureOnly(random.publicSigningKey.serialize()),
-                    storage.hashKey(random.publicSigningKey),
-                    random.publicSigningKey).get();
-            return new SigningPrivateKeyAndPublicHash(publicHash, random.secretSigningKey);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
     }
 
     @Override

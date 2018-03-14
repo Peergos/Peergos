@@ -15,7 +15,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
 
-public class MerkleBtree {
+public class MerkleBtreeTests {
 
     private Crypto crypto = Crypto.initJava();
 
