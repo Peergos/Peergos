@@ -332,9 +332,9 @@ public class Champ implements Cborable {
 
                         if (newChild.left.contents.length == 0) {
                             throw new IllegalStateException("Sub-node must have at least one element.");
-                        } else if (depth > 0 && newChild.left.contents.length == 1) {
+                        } else if (newChild.left.nodeCount() == 0 && newChild.left.keyCount() == 1) {
                             if (this.keyCount() == 0 && this.nodeCount() == 1) {
-                                // escalate (singleton or empty) result
+                                // escalate singleton result (the child already has the depth corrected index)
                                 return CompletableFuture.completedFuture(newChild);
                             } else {
                                 // inline value (move to front)
