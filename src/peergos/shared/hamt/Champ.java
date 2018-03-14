@@ -65,7 +65,9 @@ public class Champ implements Cborable {
     }
 
     private static int mask(ByteArrayWrapper key, int depth) {
-        return key.data[depth] & 0xff;
+        boolean even = depth % 2 == 0;
+        int shift = even ? 0 : 4;
+        return (key.data[depth/2] & (0xf << shift)) >> shift;
     }
 
     private static int index(BitSet bitmap, int bitpos) {
@@ -78,12 +80,6 @@ public class Champ implements Cborable {
             i = next + 1;
         }
         return total;
-    }
-
-    MaybeMultihash getValue(ByteArrayWrapper key, int depth) {
-        int bitpos = mask(key, depth);
-        int index = index(this.dataMap, bitpos);
-        return contents[index].valueHash;
     }
 
     CompletableFuture<Pair<Multihash, Optional<Champ>>> getChild(ByteArrayWrapper key, int depth, ContentAddressedStorage storage) {

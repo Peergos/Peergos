@@ -127,7 +127,7 @@ public class ChampTests {
 
         // build a random tree and keep track of the state
         for (int i = 0; i < 1000; i++) {
-            ByteArrayWrapper key = new ByteArrayWrapper(randomHash.get().toBytes());
+            ByteArrayWrapper key = new ByteArrayWrapper(randomHash.get().getHash());
             Multihash value = randomHash.get();
             state.put(key, MaybeMultihash.of(value));
         }
