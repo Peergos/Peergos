@@ -113,6 +113,48 @@ public class ChampTests {
             }
     }
 
+    @Test
+    public void sizeComparisonToBtree() throws Exception {
+        Random r = new Random(28);
+
+        Supplier<Multihash> randomHash = () -> {
+            byte[] hash = new byte[32];
+            r.nextBytes(hash);
+            return new Multihash(Multihash.Type.sha2_256, hash);
+        };
+
+        Map<ByteArrayWrapper, MaybeMultihash> state = new HashMap<>();
+
+        // build a random tree and keep track of the state
+        for (int i = 0; i < 1000; i++) {
+            ByteArrayWrapper key = new ByteArrayWrapper(randomHash.get().toBytes());
+            Multihash value = randomHash.get();
+            state.put(key, MaybeMultihash.of(value));
+        }
+
+        RAMStorage champStorage = new RAMStorage();
+        SigningPrivateKeyAndPublicHash champUser = createUser(champStorage, crypto);
+        Pair<Champ, Multihash> current = new Pair<>(Champ.empty(), champStorage.put(champUser, Champ.empty().serialize()).get());
+
+        RAMStorage btreeStorage = new RAMStorage();
+        SigningPrivateKeyAndPublicHash btreeUser = createUser(champStorage, crypto);
+        MerkleBTree btree = MerkleBTree.create(btreeUser, btreeStorage).get();
+
+        for (Map.Entry<ByteArrayWrapper, MaybeMultihash> e : state.entrySet()) {
+            current = current.left.put(champUser, e.getKey(), 0, MaybeMultihash.empty(), e.getValue().get(), champStorage, current.right).get();
+            btree.put(btreeUser, e.getKey().data, MaybeMultihash.empty(), e.getValue().get()).get();
+        }
+
+        int btreeSize = btreeStorage.totalSize();
+        int champSize = champStorage.totalSize();
+        long btreeUsage = btreeStorage.getRecursiveBlockSize(btree.root.hash.get()).get();
+        long champUsage = champStorage.getRecursiveBlockSize(current.right).get();
+
+        System.out.println("Btree used size: " + btreeSize + ", Champ used size: " + champSize
+                + ", Btree usage after gc: " + btreeUsage + ", Champ usage after gc: " + champUsage);
+    }
+
+
     private static byte[] randomKey(byte[] startingWith, int extraBytes, Random r) {
         byte[] suffix = new byte[extraBytes];
         r.nextBytes(suffix);
