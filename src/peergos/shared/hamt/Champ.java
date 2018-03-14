@@ -1,10 +1,7 @@
 package peergos.shared.hamt;
 
-import peergos.server.storage.*;
-import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
-import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.merklebtree.*;
 import peergos.shared.storage.*;
@@ -12,7 +9,6 @@ import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.function.*;
 import java.util.stream.*;
 
 /**
@@ -111,11 +107,12 @@ public class Champ implements Cborable {
         return contents[index].valueHash;
     }
 
-    CompletableFuture<Optional<Champ>> getChild(ByteArrayWrapper key, int depth, ContentAddressedStorage storage) {
+    CompletableFuture<Pair<Multihash, Optional<Champ>>> getChild(ByteArrayWrapper key, int depth, ContentAddressedStorage storage) {
         int bitpos = mask(key, depth);
         int index = contents.length - 1 - index(this.nodeMap, bitpos);
-        return storage.get(contents[index].valueHash.get())
-                .thenApply(x -> x.map(Champ::fromCbor));
+        Multihash childHash = contents[index].valueHash.get();
+        return storage.get(childHash)
+                .thenApply(x -> new Pair<>(childHash, x.map(Champ::fromCbor)));
     }
 
 
@@ -133,7 +130,7 @@ public class Champ implements Cborable {
 
         if (nodeMap.get(bitpos)) { // child node
             return getChild(key, depth, storage)
-                    .thenCompose(childOpt -> childOpt.map(c -> c.get(key, depth + 1, storage))
+                    .thenCompose(child -> child.right.map(c -> c.get(key, depth + 1, storage))
                             .orElse(CompletableFuture.completedFuture(MaybeMultihash.empty())));
         }
 
@@ -141,11 +138,12 @@ public class Champ implements Cborable {
     }
 
     public CompletableFuture<Pair<Champ, Multihash>> put(SigningPrivateKeyAndPublicHash writer,
-                                                  ByteArrayWrapper key,
-                                                  int depth,
-                                                  MaybeMultihash expected,
-                                                  Multihash value,
-                                                  ContentAddressedStorage storage) {
+                                                         ByteArrayWrapper key,
+                                                         int depth,
+                                                         MaybeMultihash expected,
+                                                         Multihash value,
+                                                         ContentAddressedStorage storage,
+                                                         Multihash ourHash) {
         int bitpos = mask(key, depth);
 
         if (dataMap.get(bitpos)) { // local value
@@ -174,12 +172,13 @@ public class Champ implements Cborable {
             }
         } else if (nodeMap.get(bitpos)) { // child node
             return getChild(key, depth, storage)
-                    .thenCompose(childOpt -> childOpt.get().put(writer, key, depth + 1, expected, value, storage))
-                    .thenCompose(newChild -> {
-                        Champ champ = copyAndSetNode(bitpos, newChild);
-                        // Todo shortcut here if hash == existing
-                        return storage.put(writer, champ.serialize()).thenApply(h -> new Pair<>(champ, h));
-                    });
+                    .thenCompose(child -> child.right.get().put(writer, key, depth + 1, expected, value, storage, child.left)
+                            .thenCompose(newChild -> {
+                                if (newChild.right.equals(child.left))
+                                    return CompletableFuture.completedFuture(new Pair<>(this, ourHash));
+                                Champ champ = copyAndSetNode(bitpos, newChild);
+                                return storage.put(writer, champ.serialize()).thenApply(h -> new Pair<>(champ, h));
+                            }));
         } else {
             // no value
             Champ champ = copyAndInsertValue(bitpos, key, MaybeMultihash.of(value));
@@ -291,15 +290,14 @@ public class Champ implements Cborable {
     public CompletableFuture<Pair<Champ, Multihash>> remove(SigningPrivateKeyAndPublicHash writer,
                                                             ByteArrayWrapper key,
                                                             int depth,
-                                                            ContentAddressedStorage storage) {
+                                                            ContentAddressedStorage storage,
+                                                            Multihash ourHash) {
         int bitpos = mask(key, depth);
 
         if (dataMap.get(bitpos)) { // in place value
             final int dataIndex = index(dataMap, bitpos);
 
             if (Objects.equals(contents[dataIndex].key, key)) {
-                final MaybeMultihash currentVal = getValue(key, depth);
-
                 if (this.keyCount() == 2 && this.nodeCount() == 0) {
                     /*
 						 * Create new node with remaining pair. The new node
@@ -321,36 +319,35 @@ public class Champ implements Cborable {
                     return storage.put(writer, champ.serialize()).thenApply(h -> new Pair<>(champ, h));
                 }
             } else {
-                // Todo don't reserialize this
-                return storage.put(writer, this.serialize()).thenApply(h -> new Pair<>(this, h));
+                return CompletableFuture.completedFuture(new Pair<>(this, ourHash));
             }
         } else if (nodeMap.get(bitpos)) { // node (not value)
             return getChild(key, depth, storage)
-                    .thenCompose(childOpt -> childOpt.get().remove(writer, key, depth + 1, storage))
-                    .thenCompose(newChild -> {
-                        // Todo shortcut here if hash == existing
+                    .thenCompose(child -> child.right.get().remove(writer, key, depth + 1, storage, child.left)
+                            .thenCompose(newChild -> {
+                                if (child.left.equals(newChild.right))
+                                    return CompletableFuture.completedFuture(new Pair<>(this, ourHash));
 
-                        if (newChild.left.contents.length == 0) {
-                            throw new IllegalStateException("Sub-node must have at least one element.");
-                        } else if (newChild.left.nodeCount() == 0 && newChild.left.keyCount() == 1) {
-                            if (this.keyCount() == 0 && this.nodeCount() == 1) {
-                                // escalate singleton result (the child already has the depth corrected index)
-                                return CompletableFuture.completedFuture(newChild);
-                            } else {
-                                // inline value (move to front)
-                                Champ champ = copyAndMigrateFromNodeToInline(bitpos, newChild.left);
-                                return storage.put(writer, champ.serialize()).thenApply(h -> new Pair<>(champ, h));
-                            }
-                        } else {
-                            // modify current node (set replacement node)
-                            Champ champ = copyAndSetNode(bitpos, newChild);
-                            return storage.put(writer, champ.serialize()).thenApply(h -> new Pair<>(champ, h));
-                        }
-                    });
+                                if (newChild.left.contents.length == 0) {
+                                    throw new IllegalStateException("Sub-node must have at least one element.");
+                                } else if (newChild.left.nodeCount() == 0 && newChild.left.keyCount() == 1) {
+                                    if (this.keyCount() == 0 && this.nodeCount() == 1) {
+                                        // escalate singleton result (the child already has the depth corrected index)
+                                        return CompletableFuture.completedFuture(newChild);
+                                    } else {
+                                        // inline value (move to front)
+                                        Champ champ = copyAndMigrateFromNodeToInline(bitpos, newChild.left);
+                                        return storage.put(writer, champ.serialize()).thenApply(h -> new Pair<>(champ, h));
+                                    }
+                                } else {
+                                    // modify current node (set replacement node)
+                                    Champ champ = copyAndSetNode(bitpos, newChild);
+                                    return storage.put(writer, champ.serialize()).thenApply(h -> new Pair<>(champ, h));
+                                }
+                            }));
         }
 
-        // Todo don't reserialize this
-        return storage.put(writer, this.serialize()).thenApply(h -> new Pair<>(this, h));
+        return CompletableFuture.completedFuture(new Pair<>(this, ourHash));
     }
 
     private Champ copyAndMigrateFromNodeToInline(final int bitpos, final Champ node) {
