@@ -53,6 +53,10 @@ public class ChampTests {
                 throw new IllegalStateException("Incorrect state!");
         }
 
+        long size = current.size(0, storage).get();
+        if (size != 1000)
+            throw new IllegalStateException("Incorrect number of mappings! " + size);
+
         // change the value for every key and check
         for (Map.Entry<ByteArrayWrapper, MaybeMultihash> e : state.entrySet()) {
             ByteArrayWrapper key = e.getKey();
@@ -69,7 +73,8 @@ public class ChampTests {
         // remove each key and check the mapping is gone
         for (Map.Entry<ByteArrayWrapper, MaybeMultihash> e : state.entrySet()) {
             ByteArrayWrapper key = e.getKey();
-            Pair<Champ, Multihash> updated = current.remove(user, key, 0, storage, currentHash).get();
+            MaybeMultihash currentValue = current.get(e.getKey(), 0, storage).get();
+            Pair<Champ, Multihash> updated = current.remove(user, key, 0, currentValue, storage, currentHash).get();
             MaybeMultihash result = updated.left.get(key, 0, storage).get();
             if (! result.equals(MaybeMultihash.empty()))
                 throw new IllegalStateException("Incorrect state!");
@@ -80,7 +85,7 @@ public class ChampTests {
             ByteArrayWrapper key = new ByteArrayWrapper(randomHash.get().toBytes());
             Multihash value = randomHash.get();
             Pair<Champ, Multihash> updated = current.put(user, key, 0, MaybeMultihash.empty(), value, storage, currentHash).get();
-            Pair<Champ, Multihash> removed = updated.left.remove(user, key, 0, storage, updated.right).get();
+            Pair<Champ, Multihash> removed = updated.left.remove(user, key, 0, MaybeMultihash.of(value), storage, updated.right).get();
             if (! removed.right.equals(currentHash))
                 throw new IllegalStateException("Non canonical state!");
         }
@@ -106,8 +111,9 @@ public class ChampTests {
                 byte[] keyBytes = new byte[prefixLen + suffixLen];
                 r.nextBytes(keyBytes);
                 ByteArrayWrapper key = new ByteArrayWrapper(keyBytes);
-                Pair<Champ, Multihash> added = root.left.put(user, key, 0, MaybeMultihash.empty(), randomHash.get(), storage, root.right).get();
-                Pair<Champ, Multihash> removed = added.left.remove(user, key, 0, storage, added.right).get();
+                Multihash value = randomHash.get();
+                Pair<Champ, Multihash> added = root.left.put(user, key, 0, MaybeMultihash.empty(), value, storage, root.right).get();
+                Pair<Champ, Multihash> removed = added.left.remove(user, key, 0, MaybeMultihash.of(value), storage, added.right).get();
                 if (! removed.right.equals(root.right))
                     throw new IllegalStateException("Non canonical delete!");
             }
