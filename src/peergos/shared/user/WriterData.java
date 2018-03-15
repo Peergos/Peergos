@@ -38,8 +38,8 @@ public class WriterData implements Cborable {
     // Encrypted
     // accessible under IPFS address $hash/static (present on owner keys)
     public final Optional<UserStaticData> staticData;
-    // accessible under IPFS address $hash/btree (present on writer keys)
-    public final Optional<Multihash> btree;
+    // accessible under IPFS address $hash/tree (present on writer keys)
+    public final Optional<Multihash> tree;
 
     /**
      *
@@ -48,7 +48,7 @@ public class WriterData implements Cborable {
      * @param publicData A readable pointer to a subtree made public by this key
      * @param ownedKeys Any public keys owned by this key
      * @param staticData Any static data owner by this key (list of entry points)
-     * @param btree Any file tree owned by this key
+     * @param tree Any file tree owned by this key
      */
     public WriterData(PublicKeyHash controller,
                       Optional<UserGenerationAlgorithm> generationAlgorithm,
@@ -56,14 +56,14 @@ public class WriterData implements Cborable {
                       Optional<PublicKeyHash> followRequestReceiver,
                       Set<PublicKeyHash> ownedKeys,
                       Optional<UserStaticData> staticData,
-                      Optional<Multihash> btree) {
+                      Optional<Multihash> tree) {
         this.controller = controller;
         this.generationAlgorithm = generationAlgorithm;
         this.publicData = publicData;
         this.followRequestReceiver = followRequestReceiver;
         this.ownedKeys = ownedKeys;
         this.staticData = staticData;
-        this.btree = btree;
+        this.tree = tree;
     }
 
     public WriterData withBtree(Multihash treeRoot) {
@@ -71,13 +71,13 @@ public class WriterData implements Cborable {
     }
 
     public WriterData withOwnedKeys(Set<PublicKeyHash> owned) {
-        return new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver, owned, staticData, btree);
+        return new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver, owned, staticData, tree);
     }
 
     public WriterData addOwnedKey(PublicKeyHash newOwned) {
         Set<PublicKeyHash> updated = new HashSet<>(ownedKeys);
         updated.add(newOwned);
-        return new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver, updated, staticData, btree);
+        return new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver, updated, staticData, tree);
     }
 
     public static WriterData createEmpty(PublicKeyHash controller) {
@@ -142,7 +142,7 @@ public class WriterData implements Cborable {
                                 Optional.of(new PublicKeyHash(boxerHash)),
                                 ownedKeys,
                                 newEntryPoints,
-                                btree);
+                                tree);
                         return updated.commit(signer, MaybeMultihash.empty(), network, updater);
                     });
         });
@@ -191,7 +191,7 @@ public class WriterData implements Cborable {
         List<CborObject> ownedKeyStrings = ownedKeys.stream().map(CborObject.CborMerkleLink::new).collect(Collectors.toList());
         result.put("owned", new CborObject.CborList(ownedKeyStrings));
         staticData.ifPresent(sd -> result.put("static", sd.toCbor()));
-        btree.ifPresent(btree -> result.put("btree", new CborObject.CborMerkleLink(btree)));
+        tree.ifPresent(btree -> result.put("tree", new CborObject.CborMerkleLink(btree)));
         return CborObject.CborMap.build(result);
     }
 
@@ -222,7 +222,7 @@ public class WriterData implements Cborable {
         Set<PublicKeyHash> owned = ownedList.value.stream().map(PublicKeyHash::fromCbor).collect(Collectors.toSet());
         // rootKey is null for other people parsing our WriterData who don't have our root key
         Optional<UserStaticData> staticData = rootKey == null ? Optional.empty() : extract.apply("static").map(raw -> UserStaticData.fromCbor(raw, rootKey));
-        Optional<Multihash> btree = extract.apply("btree").map(val -> ((CborObject.CborMerkleLink)val).target);
+        Optional<Multihash> btree = extract.apply("tree").map(val -> ((CborObject.CborMerkleLink)val).target);
         return new WriterData(controller, algo, publicData, followRequestReceiver, owned, staticData, btree);
     }
 

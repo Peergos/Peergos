@@ -30,17 +30,17 @@ public class NetworkAccess {
     public final CoreNode coreNode;
     public final ContentAddressedStorage dhtClient;
     public final MutablePointers mutable;
-    public final Btree btree;
+    public final Tree btree;
     @JsProperty
     public final List<String> usernames;
     private final LocalDateTime creationTime;
     private final boolean isJavascript;
 
-    public NetworkAccess(CoreNode coreNode, ContentAddressedStorage dhtClient, MutablePointers mutable, Btree btree, List<String> usernames) {
+    public NetworkAccess(CoreNode coreNode, ContentAddressedStorage dhtClient, MutablePointers mutable, Tree btree, List<String> usernames) {
         this(coreNode, dhtClient, mutable, btree, usernames, false);
     }
 
-    public NetworkAccess(CoreNode coreNode, ContentAddressedStorage dhtClient, MutablePointers mutable, Btree btree, List<String> usernames, boolean isJavascript) {
+    public NetworkAccess(CoreNode coreNode, ContentAddressedStorage dhtClient, MutablePointers mutable, Tree btree, List<String> usernames, boolean isJavascript) {
         this.coreNode = coreNode;
         this.dhtClient = new HashVerifyingStorage(dhtClient);
         this.mutable = mutable;
@@ -66,7 +66,7 @@ public class NetworkAccess {
     }
 
     public NetworkAccess clear() {
-        return new NetworkAccess(coreNode, dhtClient, mutable, new BtreeImpl(mutable, dhtClient), usernames, isJavascript);
+        return new NetworkAccess(coreNode, dhtClient, mutable, new TreeImpl(mutable, dhtClient), usernames, isJavascript);
     }
 
     public static CompletableFuture<NetworkAccess> build(HttpPoster poster, boolean isJavascript) {
@@ -75,9 +75,9 @@ public class NetworkAccess {
         CoreNode coreNode = new HTTPCoreNode(poster);
         MutablePointers mutable = new CachingPointers(new HttpMutablePointers(poster), cacheTTL);
 
-        // allow 10MiB of ram for caching btree entries
+        // allow 10MiB of ram for caching tree entries
         ContentAddressedStorage dht = new CachingStorage(new ContentAddressedStorage.HTTP(poster), 10_000, 50 * 1024);
-        Btree btree = new BtreeImpl(mutable, dht);
+        Tree btree = new TreeImpl(mutable, dht);
         return coreNode.getUsernames("").thenApply(usernames -> new NetworkAccess(coreNode, dht, mutable, btree, usernames, isJavascript));
     }
 

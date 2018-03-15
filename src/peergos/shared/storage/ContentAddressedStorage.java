@@ -96,7 +96,6 @@ public interface ContentAddressedStorage {
     }
 
     default CompletableFuture<Long> getChangeInContainedSize(MaybeMultihash original, Multihash updated) {
-        // TODO optimise cases which result from btree rebalancing or splitting
         if (! original.isPresent())
             return getRecursiveBlockSize(updated);
         return getChangeInContainedSize(original.get(), updated);

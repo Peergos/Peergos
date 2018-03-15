@@ -442,7 +442,7 @@ public class DirAccess implements CryptreeNode {
                                                 SymmetricKey baseKey, SymmetricKey optionalBaseKey,
                                                 boolean isSystemFolder, SafeRandom random) {
         SymmetricKey dirReadKey = optionalBaseKey != null ? optionalBaseKey : SymmetricKey.random();
-        byte[] dirMapKey = new byte[32]; // root will be stored under this in the btree
+        byte[] dirMapKey = new byte[32]; // root will be stored under this in the tree
         random.randombytes(dirMapKey, 0, 32);
         SymmetricKey ourParentKey = this.getParentKey(baseKey);
         Location ourLocation = new Location(ownerPublic, writer.publicKeyHash, ourMapKey);

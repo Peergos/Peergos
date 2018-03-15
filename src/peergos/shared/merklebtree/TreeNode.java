@@ -2,7 +2,6 @@ package peergos.shared.merklebtree;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
-import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.ContentAddressedStorage;
 import peergos.shared.user.*;
@@ -104,7 +103,7 @@ public class TreeNode implements Cborable {
             // ensure CAS, without allowing replacing a tombstone
             if (! nextSmallest.valueHash.equals(existing) && ! nextSmallest.valueHash.equals(MaybeMultihash.empty())) {
                 CompletableFuture<TreeNode> res = new CompletableFuture<>();
-                res.completeExceptionally(new Btree.CasException(nextSmallest.valueHash, existing));
+                res.completeExceptionally(new Tree.CasException(nextSmallest.valueHash, existing));
                 return res;
             }
             keys.remove(nextSmallest);
@@ -236,7 +235,7 @@ public class TreeNode implements Cborable {
                 // CAS on existing value
                 if (! nextSmallest.valueHash.equals(existing)) {
                     CompletableFuture<TreeNode> res = new CompletableFuture<>();
-                    res.completeExceptionally(new Btree.CasException(nextSmallest.valueHash, existing));
+                    res.completeExceptionally(new Tree.CasException(nextSmallest.valueHash, existing));
                     return res;
                 }
                 keys.remove(nextSmallest);
