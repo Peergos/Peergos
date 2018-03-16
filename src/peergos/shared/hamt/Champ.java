@@ -5,6 +5,7 @@ import peergos.shared.crypto.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.merklebtree.*;
 import peergos.shared.storage.*;
+import peergos.shared.user.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -167,8 +168,7 @@ public class Champ implements Cborable {
             if (currentKey.equals(key)) {
                 if (! currentVal.equals(expected)) {
                     CompletableFuture<Pair<Champ, Multihash>> err = new CompletableFuture<>();
-                    err.completeExceptionally(new IllegalStateException(
-                            "Champ CAS exception: expected " + expected +", actual: " + currentVal));
+                    err.completeExceptionally(new Tree.CasException(currentVal, expected));
                     return err;
                 }
 
