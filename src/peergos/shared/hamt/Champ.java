@@ -326,15 +326,13 @@ public class Champ implements Cborable {
 						 * will a) either become the new root returned, or b)
 						 * unwrapped and inlined during returning.
 						 */
-                    final BitSet newDataMap = (depth == 0) ? BitSet.valueOf(dataMap.toByteArray()) : new BitSet();
+                    final BitSet newDataMap = BitSet.valueOf((depth == 0) ? dataMap.toByteArray() : new byte[0]);
                     if (depth == 0)
                         newDataMap.clear(bitpos);
                     else
                         newDataMap.set(mask(key, 0));
 
-                    Champ champ = dataIndex == 0 ?
-                            new Champ(newDataMap, new BitSet(), new KeyElement[] {contents[1]}) :
-                            new Champ(newDataMap, new BitSet(), new KeyElement[] {contents[0]});
+                    Champ champ = new Champ(newDataMap, new BitSet(), new KeyElement[] {contents[(dataIndex + 1) % 2]});
                     return storage.put(writer, champ.serialize()).thenApply(h -> new Pair<>(champ, h));
                 } else {
                     Champ champ = copyAndRemoveValue(bitpos);
