@@ -34,12 +34,13 @@ public class ChampTests {
         Champ current = Champ.empty();
         Multihash currentHash = storage.put(user, current.serialize()).get();
         int bitWidth = 5;
+        int maxCollisions = 3;
         // build a random tree and keep track of the state
         int nKeys = 1000;
         for (int i = 0; i < nKeys; i++) {
             ByteArrayWrapper key = new ByteArrayWrapper(randomHash.get().toBytes());
             Multihash value = randomHash.get();
-            Pair<Champ, Multihash> updated = current.put(user, key, 0, MaybeMultihash.empty(), value, bitWidth, storage, currentHash).get();
+            Pair<Champ, Multihash> updated = current.put(user, key, 0, MaybeMultihash.empty(), value, bitWidth, maxCollisions, storage, currentHash).get();
             MaybeMultihash result = updated.left.get(key, 0, bitWidth, storage).get();
             if (! result.equals(MaybeMultihash.of(value)))
                 throw new IllegalStateException("Incorrect result!");
@@ -64,7 +65,7 @@ public class ChampTests {
             ByteArrayWrapper key = e.getKey();
             Multihash value = randomHash.get();
             MaybeMultihash currentValue = current.get(e.getKey(), 0, bitWidth, storage).get();
-            Pair<Champ, Multihash> updated = current.put(user, key, 0, currentValue, value, bitWidth, storage, currentHash).get();
+            Pair<Champ, Multihash> updated = current.put(user, key, 0, currentValue, value, bitWidth, maxCollisions, storage, currentHash).get();
             MaybeMultihash result = updated.left.get(key, 0, bitWidth, storage).get();
             if (! result.equals(MaybeMultihash.of(value)))
                 throw new IllegalStateException("Incorrect result!");
@@ -76,7 +77,7 @@ public class ChampTests {
         for (Map.Entry<ByteArrayWrapper, MaybeMultihash> e : state.entrySet()) {
             ByteArrayWrapper key = e.getKey();
             MaybeMultihash currentValue = current.get(e.getKey(), 0, bitWidth, storage).get();
-            Pair<Champ, Multihash> updated = current.remove(user, key, 0, currentValue, bitWidth, storage, currentHash).get();
+            Pair<Champ, Multihash> updated = current.remove(user, key, 0, currentValue, bitWidth, maxCollisions, storage, currentHash).get();
             MaybeMultihash result = updated.left.get(key, 0, bitWidth, storage).get();
             if (! result.equals(MaybeMultihash.empty()))
                 throw new IllegalStateException("Incorrect state!");
@@ -86,8 +87,8 @@ public class ChampTests {
         for (int i = 0; i < 100; i++) {
             ByteArrayWrapper key = new ByteArrayWrapper(randomHash.get().toBytes());
             Multihash value = randomHash.get();
-            Pair<Champ, Multihash> updated = current.put(user, key, 0, MaybeMultihash.empty(), value, bitWidth, storage, currentHash).get();
-            Pair<Champ, Multihash> removed = updated.left.remove(user, key, 0, MaybeMultihash.of(value), bitWidth, storage, updated.right).get();
+            Pair<Champ, Multihash> updated = current.put(user, key, 0, MaybeMultihash.empty(), value, bitWidth, maxCollisions, storage, currentHash).get();
+            Pair<Champ, Multihash> removed = updated.left.remove(user, key, 0, MaybeMultihash.of(value), bitWidth, maxCollisions, storage, updated.right).get();
             if (! removed.right.equals(currentHash))
                 throw new IllegalStateException("Non canonical state!");
         }
@@ -97,6 +98,7 @@ public class ChampTests {
     public void canonicalDelete() throws Exception {
         RAMStorage storage = new RAMStorage();
         int bitWidth = 5;
+        int maxCollisions = 3;
         SigningPrivateKeyAndPublicHash user = createUser(storage, crypto);
         Random r = new Random(28);
 
@@ -110,20 +112,19 @@ public class ChampTests {
             for (int i=0; i < 100; i++) {
                 int suffixLen = 5;
                 int nKeys = r.nextInt(10);
-                Pair<Champ, Multihash> root = randomTree(user, r, prefixLen, suffixLen, nKeys, bitWidth, randomHash, storage);
+                Pair<Champ, Multihash> root = randomTree(user, r, prefixLen, suffixLen, nKeys, bitWidth, maxCollisions, randomHash, storage);
                 byte[] keyBytes = new byte[prefixLen + suffixLen];
                 r.nextBytes(keyBytes);
                 ByteArrayWrapper key = new ByteArrayWrapper(keyBytes);
                 Multihash value = randomHash.get();
-                Pair<Champ, Multihash> added = root.left.put(user, key, 0, MaybeMultihash.empty(), value, bitWidth, storage, root.right).get();
-                Pair<Champ, Multihash> removed = added.left.remove(user, key, 0, MaybeMultihash.of(value), bitWidth, storage, added.right).get();
+                Pair<Champ, Multihash> added = root.left.put(user, key, 0, MaybeMultihash.empty(), value, bitWidth, maxCollisions, storage, root.right).get();
+                Pair<Champ, Multihash> removed = added.left.remove(user, key, 0, MaybeMultihash.of(value), bitWidth, maxCollisions, storage, added.right).get();
                 if (! removed.right.equals(root.right))
                     throw new IllegalStateException("Non canonical delete!");
             }
     }
 
-    @Test
-    public void sizeComparisonToBtree() throws Exception {
+    public static void main(String[] a) throws Exception {
         Random r = new Random(28);
 
         Supplier<Multihash> randomHash = () -> {
@@ -135,36 +136,41 @@ public class ChampTests {
         Map<ByteArrayWrapper, MaybeMultihash> state = new HashMap<>();
 
         // build a random tree and keep track of the state
-        int nKeys = 1000;
+        int nKeys = 10000;
         for (int i = 0; i < nKeys; i++) {
             ByteArrayWrapper key = new ByteArrayWrapper(randomHash.get().getHash());
             Multihash value = randomHash.get();
             state.put(key, MaybeMultihash.of(value));
         }
-
-        for (int bitWidth = 3; bitWidth <= 8; bitWidth++) {
-            RAMStorage champStorage = new RAMStorage();
-            SigningPrivateKeyAndPublicHash champUser = createUser(champStorage, crypto);
-            Pair<Champ, Multihash> current = new Pair<>(Champ.empty(), champStorage.put(champUser, Champ.empty().serialize()).get());
-
-            for (Map.Entry<ByteArrayWrapper, MaybeMultihash> e : state.entrySet()) {
-                current = current.left.put(champUser, e.getKey(), 0, MaybeMultihash.empty(), e.getValue().get(), bitWidth, champStorage, current.right).get();
-            }
-
-            int champSize = champStorage.totalSize();
-            long champUsage = champStorage.getRecursiveBlockSize(current.right).get();
-
-            int idealUsage = state.size() * (32 + 34);
-            System.out.println(bitWidth + "-bit champ, 5 max-collisions");
-            System.out.println("Champ used size: " + champSize + ", Champ usage after gc: " + champUsage + ", ideal: "
-                    + idealUsage + ", champ overhead: " + (double) (champUsage * 100 / idealUsage) / 100);
-            System.out.println();
-        }
-
-        calculateBtreeOverhead(state);
+        calculateChampOverhead(state);
+//        calculateBtreeOverhead(state);
     }
 
-    private void calculateBtreeOverhead(Map<ByteArrayWrapper, MaybeMultihash> state) throws Exception {
+    public static void calculateChampOverhead(Map<ByteArrayWrapper, MaybeMultihash> state) throws Exception {
+        for (int bitWidth = 2; bitWidth <= 8; bitWidth++) {
+            for (int maxCollisions = 1; maxCollisions <= 6; maxCollisions++) {
+                RAMStorage champStorage = new RAMStorage();
+                SigningPrivateKeyAndPublicHash champUser = createUser(champStorage, crypto);
+                Pair<Champ, Multihash> current = new Pair<>(Champ.empty(), champStorage.put(champUser, Champ.empty().serialize()).get());
+
+                for (Map.Entry<ByteArrayWrapper, MaybeMultihash> e : state.entrySet()) {
+                    current = current.left.put(champUser, e.getKey(), 0, MaybeMultihash.empty(),
+                            e.getValue().get(), bitWidth, maxCollisions, champStorage, current.right).get();
+                }
+
+                int champSize = champStorage.totalSize();
+                long champUsage = champStorage.getRecursiveBlockSize(current.right).get();
+
+                int idealUsage = state.size() * (32 + 34);
+                System.out.println(bitWidth + "-bit champ, " + maxCollisions + " max-collisions");
+                System.out.println("Champ used size: " + champSize + ", Champ usage after gc: " + champUsage + ", ideal: "
+                        + idealUsage + ", champ overhead: " + (double) (champUsage * 100 / idealUsage) / 100);
+            }
+            System.out.println();
+        }
+    }
+
+    private static void calculateBtreeOverhead(Map<ByteArrayWrapper, MaybeMultihash> state) throws Exception {
         RAMStorage btreeStorage = new RAMStorage();
         SigningPrivateKeyAndPublicHash btreeUser = createUser(btreeStorage, crypto);
         MerkleBTree btree = MerkleBTree.create(btreeUser, btreeStorage).get();
@@ -193,6 +199,7 @@ public class ChampTests {
                                                      int suffixLen,
                                                      int nKeys,
                                                      int bitWidth,
+                                                     int maxCollisions,
                                                      Supplier<Multihash> randomHash,
                                                      RAMStorage storage) throws Exception {
         Champ current = Champ.empty();
@@ -203,7 +210,8 @@ public class ChampTests {
         for (int i = 0; i < nKeys; i++) {
             ByteArrayWrapper key = new ByteArrayWrapper(randomKey(prefix, suffixLen, r));
             Multihash value = randomHash.get();
-            Pair<Champ, Multihash> updated = current.put(user, key, 0, MaybeMultihash.empty(), value, bitWidth, storage, currentHash).get();
+            Pair<Champ, Multihash> updated = current.put(user, key, 0, MaybeMultihash.empty(), value,
+                    bitWidth, maxCollisions, storage, currentHash).get();
             current = updated.left;
             currentHash = updated.right;
         }
