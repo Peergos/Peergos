@@ -86,8 +86,8 @@ public class Champ implements Cborable {
     }
 
     private static int mask(ByteArrayWrapper key, int depth, int nbits) {
-        int index = depth * nbits / 8;
-        int shift = depth * nbits % 8;
+        int index = (depth * nbits) / 8;
+        int shift = (depth * nbits) % 8;
         int lowBits = Math.min(nbits, 8 - shift);
         int hiBits = nbits - lowBits;
         return ((key.data[index] >> shift) & ((1 << lowBits) - 1)) |
