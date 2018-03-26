@@ -32,13 +32,15 @@ public class ChampTests {
         Map<ByteArrayWrapper, MaybeMultihash> state = new HashMap<>();
 
         Champ current = Champ.empty();
-        Multihash currentHash = storage.put(user, current.serialize()).get();;
+        Multihash currentHash = storage.put(user, current.serialize()).get();
+        int bitWidth = 5;
         // build a random tree and keep track of the state
-        for (int i = 0; i < 1000; i++) {
+        int nKeys = 1000;
+        for (int i = 0; i < nKeys; i++) {
             ByteArrayWrapper key = new ByteArrayWrapper(randomHash.get().toBytes());
             Multihash value = randomHash.get();
-            Pair<Champ, Multihash> updated = current.put(user, key, 0, MaybeMultihash.empty(), value, storage, currentHash).get();
-            MaybeMultihash result = updated.left.get(key, 0, storage).get();
+            Pair<Champ, Multihash> updated = current.put(user, key, 0, MaybeMultihash.empty(), value, bitWidth, storage, currentHash).get();
+            MaybeMultihash result = updated.left.get(key, 0, bitWidth, storage).get();
             if (! result.equals(MaybeMultihash.of(value)))
                 throw new IllegalStateException("Incorrect result!");
             current = updated.left;
@@ -48,22 +50,22 @@ public class ChampTests {
 
         // check every mapping
         for (Map.Entry<ByteArrayWrapper, MaybeMultihash> e : state.entrySet()) {
-            MaybeMultihash res = current.get(e.getKey(), 0, storage).get();
+            MaybeMultihash res = current.get(e.getKey(), 0, bitWidth, storage).get();
             if (! res.equals(e.getValue()))
                 throw new IllegalStateException("Incorrect state!");
         }
 
         long size = current.size(0, storage).get();
-        if (size != 1000)
+        if (size != nKeys)
             throw new IllegalStateException("Incorrect number of mappings! " + size);
 
         // change the value for every key and check
         for (Map.Entry<ByteArrayWrapper, MaybeMultihash> e : state.entrySet()) {
             ByteArrayWrapper key = e.getKey();
             Multihash value = randomHash.get();
-            MaybeMultihash currentValue = current.get(e.getKey(), 0, storage).get();
-            Pair<Champ, Multihash> updated = current.put(user, key, 0, currentValue, value, storage, currentHash).get();
-            MaybeMultihash result = updated.left.get(key, 0, storage).get();
+            MaybeMultihash currentValue = current.get(e.getKey(), 0, bitWidth, storage).get();
+            Pair<Champ, Multihash> updated = current.put(user, key, 0, currentValue, value, bitWidth, storage, currentHash).get();
+            MaybeMultihash result = updated.left.get(key, 0, bitWidth, storage).get();
             if (! result.equals(MaybeMultihash.of(value)))
                 throw new IllegalStateException("Incorrect result!");
             current = updated.left;
@@ -73,9 +75,9 @@ public class ChampTests {
         // remove each key and check the mapping is gone
         for (Map.Entry<ByteArrayWrapper, MaybeMultihash> e : state.entrySet()) {
             ByteArrayWrapper key = e.getKey();
-            MaybeMultihash currentValue = current.get(e.getKey(), 0, storage).get();
-            Pair<Champ, Multihash> updated = current.remove(user, key, 0, currentValue, storage, currentHash).get();
-            MaybeMultihash result = updated.left.get(key, 0, storage).get();
+            MaybeMultihash currentValue = current.get(e.getKey(), 0, bitWidth, storage).get();
+            Pair<Champ, Multihash> updated = current.remove(user, key, 0, currentValue, bitWidth, storage, currentHash).get();
+            MaybeMultihash result = updated.left.get(key, 0, bitWidth, storage).get();
             if (! result.equals(MaybeMultihash.empty()))
                 throw new IllegalStateException("Incorrect state!");
         }
@@ -84,8 +86,8 @@ public class ChampTests {
         for (int i = 0; i < 100; i++) {
             ByteArrayWrapper key = new ByteArrayWrapper(randomHash.get().toBytes());
             Multihash value = randomHash.get();
-            Pair<Champ, Multihash> updated = current.put(user, key, 0, MaybeMultihash.empty(), value, storage, currentHash).get();
-            Pair<Champ, Multihash> removed = updated.left.remove(user, key, 0, MaybeMultihash.of(value), storage, updated.right).get();
+            Pair<Champ, Multihash> updated = current.put(user, key, 0, MaybeMultihash.empty(), value, bitWidth, storage, currentHash).get();
+            Pair<Champ, Multihash> removed = updated.left.remove(user, key, 0, MaybeMultihash.of(value), bitWidth, storage, updated.right).get();
             if (! removed.right.equals(currentHash))
                 throw new IllegalStateException("Non canonical state!");
         }
@@ -94,6 +96,7 @@ public class ChampTests {
     @Test
     public void canonicalDelete() throws Exception {
         RAMStorage storage = new RAMStorage();
+        int bitWidth = 5;
         SigningPrivateKeyAndPublicHash user = createUser(storage, crypto);
         Random r = new Random(28);
 
@@ -107,13 +110,13 @@ public class ChampTests {
             for (int i=0; i < 100; i++) {
                 int suffixLen = 5;
                 int nKeys = r.nextInt(10);
-                Pair<Champ, Multihash> root = randomTree(user, r, prefixLen, suffixLen, nKeys, randomHash, storage);
+                Pair<Champ, Multihash> root = randomTree(user, r, prefixLen, suffixLen, nKeys, bitWidth, randomHash, storage);
                 byte[] keyBytes = new byte[prefixLen + suffixLen];
                 r.nextBytes(keyBytes);
                 ByteArrayWrapper key = new ByteArrayWrapper(keyBytes);
                 Multihash value = randomHash.get();
-                Pair<Champ, Multihash> added = root.left.put(user, key, 0, MaybeMultihash.empty(), value, storage, root.right).get();
-                Pair<Champ, Multihash> removed = added.left.remove(user, key, 0, MaybeMultihash.of(value), storage, added.right).get();
+                Pair<Champ, Multihash> added = root.left.put(user, key, 0, MaybeMultihash.empty(), value, bitWidth, storage, root.right).get();
+                Pair<Champ, Multihash> removed = added.left.remove(user, key, 0, MaybeMultihash.of(value), bitWidth, storage, added.right).get();
                 if (! removed.right.equals(root.right))
                     throw new IllegalStateException("Non canonical delete!");
             }
@@ -132,34 +135,48 @@ public class ChampTests {
         Map<ByteArrayWrapper, MaybeMultihash> state = new HashMap<>();
 
         // build a random tree and keep track of the state
-        for (int i = 0; i < 1000; i++) {
+        int nKeys = 1000;
+        for (int i = 0; i < nKeys; i++) {
             ByteArrayWrapper key = new ByteArrayWrapper(randomHash.get().getHash());
             Multihash value = randomHash.get();
             state.put(key, MaybeMultihash.of(value));
         }
 
-        RAMStorage champStorage = new RAMStorage();
-        SigningPrivateKeyAndPublicHash champUser = createUser(champStorage, crypto);
-        Pair<Champ, Multihash> current = new Pair<>(Champ.empty(), champStorage.put(champUser, Champ.empty().serialize()).get());
+        for (int bitWidth = 3; bitWidth <= 8; bitWidth++) {
+            RAMStorage champStorage = new RAMStorage();
+            SigningPrivateKeyAndPublicHash champUser = createUser(champStorage, crypto);
+            Pair<Champ, Multihash> current = new Pair<>(Champ.empty(), champStorage.put(champUser, Champ.empty().serialize()).get());
 
-        RAMStorage btreeStorage = new RAMStorage();
-        SigningPrivateKeyAndPublicHash btreeUser = createUser(champStorage, crypto);
-        MerkleBTree btree = MerkleBTree.create(btreeUser, btreeStorage).get();
+            for (Map.Entry<ByteArrayWrapper, MaybeMultihash> e : state.entrySet()) {
+                current = current.left.put(champUser, e.getKey(), 0, MaybeMultihash.empty(), e.getValue().get(), bitWidth, champStorage, current.right).get();
+            }
 
-        for (Map.Entry<ByteArrayWrapper, MaybeMultihash> e : state.entrySet()) {
-            current = current.left.put(champUser, e.getKey(), 0, MaybeMultihash.empty(), e.getValue().get(), champStorage, current.right).get();
-            btree.put(btreeUser, e.getKey().data, MaybeMultihash.empty(), e.getValue().get()).get();
+            int champSize = champStorage.totalSize();
+            long champUsage = champStorage.getRecursiveBlockSize(current.right).get();
+
+            int idealUsage = state.size() * (32 + 34);
+            System.out.println(bitWidth + "-bit champ, 5 max-collisions");
+            System.out.println("Champ used size: " + champSize + ", Champ usage after gc: " + champUsage + ", ideal: "
+                    + idealUsage + ", champ overhead: " + (double) (champUsage * 100 / idealUsage) / 100);
+            System.out.println();
         }
 
-        int btreeSize = btreeStorage.totalSize();
-        int champSize = champStorage.totalSize();
-        long btreeUsage = btreeStorage.getRecursiveBlockSize(btree.root.hash.get()).get();
-        long champUsage = champStorage.getRecursiveBlockSize(current.right).get();
-
-        System.out.println("Btree used size: " + btreeSize + ", Champ used size: " + champSize
-                + ", Btree usage after gc: " + btreeUsage + ", Champ usage after gc: " + champUsage);
+        calculateBtreeOverhead(state);
     }
 
+    private void calculateBtreeOverhead(Map<ByteArrayWrapper, MaybeMultihash> state) throws Exception {
+        RAMStorage btreeStorage = new RAMStorage();
+        SigningPrivateKeyAndPublicHash btreeUser = createUser(btreeStorage, crypto);
+        MerkleBTree btree = MerkleBTree.create(btreeUser, btreeStorage).get();
+        for (Map.Entry<ByteArrayWrapper, MaybeMultihash> e : state.entrySet()) {
+            btree.put(btreeUser, e.getKey().data, MaybeMultihash.empty(), e.getValue().get()).get();
+        }
+        int btreeSize = btreeStorage.totalSize();
+        long btreeUsage = btreeStorage.getRecursiveBlockSize(btree.root.hash.get()).get();
+        int idealUsage = state.size() * (32 + 34);
+        System.out.println("Btree used size: " + btreeSize + ", Btree usage after gc: " + btreeUsage + ", ideal: "
+                + idealUsage + ", btree overhead: " + (double)(btreeUsage * 100 / idealUsage)/100);
+    }
 
     private static byte[] randomKey(byte[] startingWith, int extraBytes, Random r) {
         byte[] suffix = new byte[extraBytes];
@@ -175,6 +192,7 @@ public class ChampTests {
                                                      int prefixLen,
                                                      int suffixLen,
                                                      int nKeys,
+                                                     int bitWidth,
                                                      Supplier<Multihash> randomHash,
                                                      RAMStorage storage) throws Exception {
         Champ current = Champ.empty();
@@ -185,7 +203,7 @@ public class ChampTests {
         for (int i = 0; i < nKeys; i++) {
             ByteArrayWrapper key = new ByteArrayWrapper(randomKey(prefix, suffixLen, r));
             Multihash value = randomHash.get();
-            Pair<Champ, Multihash> updated = current.put(user, key, 0, MaybeMultihash.empty(), value, storage, currentHash).get();
+            Pair<Champ, Multihash> updated = current.put(user, key, 0, MaybeMultihash.empty(), value, bitWidth, storage, currentHash).get();
             current = updated.left;
             currentHash = updated.right;
         }

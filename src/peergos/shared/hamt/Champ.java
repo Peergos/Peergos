@@ -18,6 +18,8 @@ import java.util.stream.*;
 public class Champ implements Cborable {
 
     private static final int HASH_CODE_LENGTH = 32;
+    private static final int MAX_KEY_COLLISIONS_PER_LEVEL = 5;
+
 
     private static class KeyElement {
         public final ByteArrayWrapper key;
@@ -29,16 +31,38 @@ public class Champ implements Cborable {
         }
     }
 
-    private static final Champ EMPTY = new Champ(new BitSet(), new BitSet(), new KeyElement[0]);
+    private static class HashPrefixPayload {
+        public final KeyElement[] mappings;
+        public final MaybeMultihash link;
+
+        public HashPrefixPayload(KeyElement[] mappings, MaybeMultihash link) {
+            this.mappings = mappings;
+            this.link = link;
+            if ((mappings == null) ^ (link != null))
+                throw new IllegalStateException("Payload can either be mappings or a link, not both!");
+            if (mappings != null && mappings.length > MAX_KEY_COLLISIONS_PER_LEVEL)
+                throw new IllegalStateException("Exceeded max mappings per hsh prefix");
+        }
+
+        public boolean isShard() {
+            return link != null;
+        }
+
+        public int keyCount() {
+            return mappings.length;
+        }
+    }
+
+    private static final Champ EMPTY = new Champ(new BitSet(), new BitSet(), new HashPrefixPayload[0]);
 
     public static Champ empty() {
         return EMPTY;
     }
 
     private final BitSet dataMap, nodeMap;
-    private final KeyElement[] contents;
+    private final HashPrefixPayload[] contents;
 
-    public Champ(BitSet dataMap, BitSet nodeMap, KeyElement[] contents) {
+    public Champ(BitSet dataMap, BitSet nodeMap, HashPrefixPayload[] contents) {
         this.dataMap = dataMap;
         this.nodeMap = nodeMap;
         this.contents = contents;
@@ -49,43 +73,29 @@ public class Champ implements Cborable {
 
     private int keyCount() {
         int count = 0;
-        for (KeyElement p : contents) {
-            if (p.key != null)
-                count++;
+        for (HashPrefixPayload payload : contents) {
+            if (! payload.isShard())
+                    count += payload.keyCount();
         }
         return count;
     }
 
     private int nodeCount() {
         int count = 0;
-        for (KeyElement p : contents) {
-            if (p.key == null)
+        for (HashPrefixPayload payload : contents)
+            if (payload.isShard())
                 count++;
-        }
+
         return count;
     }
 
-    private static int mask(ByteArrayWrapper key, int depth) {
-        return masknbit(key, depth, 6);
-    }
-
-    private static int mask8bit(ByteArrayWrapper key, int depth) {
-        return key.data[depth] & 0xff;
-    }
-
-    private static int masknbit(ByteArrayWrapper key, int depth, int nbits) {
+    private static int mask(ByteArrayWrapper key, int depth, int nbits) {
         int index = depth * nbits / 8;
         int shift = depth * nbits % 8;
         int lowBits = Math.min(nbits, 8 - shift);
         int hiBits = nbits - lowBits;
         return ((key.data[index] >> shift) & ((1 << lowBits) - 1)) |
                 ((key.data[index + 1] & ((1 << hiBits) - 1)) << lowBits);
-    }
-
-    private static int mask4bit(ByteArrayWrapper key, int depth) {
-        boolean even = depth % 2 == 0;
-        int shift = even ? 0 : 4;
-        return (key.data[depth/2] & (0xf << shift)) >> shift;
     }
 
     private static int index(BitSet bitmap, int bitpos) {
@@ -100,10 +110,10 @@ public class Champ implements Cborable {
         return total;
     }
 
-    CompletableFuture<Pair<Multihash, Optional<Champ>>> getChild(ByteArrayWrapper key, int depth, ContentAddressedStorage storage) {
-        int bitpos = mask(key, depth);
+    CompletableFuture<Pair<Multihash, Optional<Champ>>> getChild(ByteArrayWrapper key, int depth, int bitWidth, ContentAddressedStorage storage) {
+        int bitpos = mask(key, depth, bitWidth);
         int index = contents.length - 1 - index(this.nodeMap, bitpos);
-        Multihash childHash = contents[index].valueHash.get();
+        Multihash childHash = contents[index].link.get();
         return storage.get(childHash)
                 .thenApply(x -> new Pair<>(childHash, x.map(Champ::fromCbor)));
     }
@@ -115,11 +125,11 @@ public class Champ implements Cborable {
 
         List<CompletableFuture<Long>> childCounts = new ArrayList<>();
         for (int i = contents.length - 1; i >= 0; i--) {
-            KeyElement pointer = contents[i];
-            if (pointer.key != null)
+            HashPrefixPayload pointer = contents[i];
+            if (! pointer.isShard())
                 break; // we reach the key section
-            childCounts.add(storage.get(pointer.valueHash.get())
-                    .thenApply(x -> new Pair<>(pointer.valueHash.get(), x.map(Champ::fromCbor)))
+            childCounts.add(storage.get(pointer.link.get())
+                    .thenApply(x -> new Pair<>(pointer.link.get(), x.map(Champ::fromCbor)))
                     .thenCompose(child -> child.right.map(c -> c.size(depth + 1, storage))
                             .orElse(CompletableFuture.completedFuture(0L)))
             );
@@ -130,21 +140,24 @@ public class Champ implements Cborable {
         return Futures.reduceAll(indices, keys, (t, index) -> childCounts.get(index).thenApply(c -> c + t), (a, b) -> a + b);
     }
 
-    public CompletableFuture<MaybeMultihash> get(ByteArrayWrapper key, int depth, ContentAddressedStorage storage) {
-        final int bitpos = mask(key, depth);
+    public CompletableFuture<MaybeMultihash> get(ByteArrayWrapper key, int depth, int bitWidth, ContentAddressedStorage storage) {
+        final int bitpos = mask(key, depth, bitWidth);
 
         if (dataMap.get(bitpos)) { // local value
             int index = index(this.dataMap, bitpos);
-            if (contents[index].key.equals(key)) {
-                return CompletableFuture.completedFuture(contents[index].valueHash);
+            HashPrefixPayload payload = contents[index];
+            for (KeyElement candidate : payload.mappings) {
+                if (candidate.key.equals(key)) {
+                    return CompletableFuture.completedFuture(candidate.valueHash);
+                }
             }
 
             return CompletableFuture.completedFuture(MaybeMultihash.empty());
         }
 
         if (nodeMap.get(bitpos)) { // child node
-            return getChild(key, depth, storage)
-                    .thenCompose(child -> child.right.map(c -> c.get(key, depth + 1, storage))
+            return getChild(key, depth, bitWidth, storage)
+                    .thenCompose(child -> child.right.map(c -> c.get(key, depth + 1, bitWidth, storage))
                             .orElse(CompletableFuture.completedFuture(MaybeMultihash.empty())));
         }
 
@@ -156,109 +169,118 @@ public class Champ implements Cborable {
                                                          int depth,
                                                          MaybeMultihash expected,
                                                          Multihash value,
+                                                         int bitWidth,
                                                          ContentAddressedStorage storage,
                                                          Multihash ourHash) {
-        int bitpos = mask(key, depth);
+        int bitpos = mask(key, depth, bitWidth);
 
         if (dataMap.get(bitpos)) { // local value
             int index = index(this.dataMap, bitpos);
-            final ByteArrayWrapper currentKey = contents[index].key;
-            final MaybeMultihash currentVal = contents[index].valueHash;
+            HashPrefixPayload payload = contents[index];
+            KeyElement[] mappings = payload.mappings;
+            for (int payloadIndex = 0; payloadIndex < mappings.length; payloadIndex++) {
+                KeyElement mapping = mappings[payloadIndex];
+                final ByteArrayWrapper currentKey = mapping.key;
+                final MaybeMultihash currentVal = mapping.valueHash;
+                if (currentKey.equals(key)) {
+                    if (! currentVal.equals(expected)) {
+                        CompletableFuture<Pair<Champ, Multihash>> err = new CompletableFuture<>();
+                        err.completeExceptionally(new Tree.CasException(currentVal, expected));
+                        return err;
+                    }
 
-            if (currentKey.equals(key)) {
-                if (! currentVal.equals(expected)) {
-                    CompletableFuture<Pair<Champ, Multihash>> err = new CompletableFuture<>();
-                    err.completeExceptionally(new Tree.CasException(currentVal, expected));
-                    return err;
+                    // update mapping
+                    Champ champ = copyAndSetValue(index, payloadIndex, MaybeMultihash.of(value));
+                    return storage.put(writer, champ.serialize()).thenApply(h -> new Pair<>(champ, h));
                 }
-
-                // update mapping
-                Champ champ = copyAndSetValue(bitpos, MaybeMultihash.of(value));
-                return storage.put(writer, champ.serialize()).thenApply(h -> new Pair<>(champ, h));
-            } else {
-                return mergeTwoKeyValPairs(writer, currentKey,
-                        currentVal, key, MaybeMultihash.of(value), depth + 1, storage)
-                        .thenCompose(p -> {
-                            Champ champ = copyAndMigrateFromInlineToNode(bitpos, p);
-                            return storage.put(writer, champ.serialize()).thenApply(h -> new Pair<>(champ, h));
-                        });
             }
+            if (mappings.length < MAX_KEY_COLLISIONS_PER_LEVEL) {
+                Champ champ = insertIntoPrefix(index, key, MaybeMultihash.of(value));
+                return storage.put(writer, champ.serialize()).thenApply(h -> new Pair<>(champ, h));
+            }
+
+            return pushMappingsDownALevel(writer, mappings,
+                    key, MaybeMultihash.of(value), depth + 1, bitWidth, storage)
+                    .thenCompose(p -> {
+                        Champ champ = copyAndMigrateFromInlineToNode(bitpos, p);
+                        return storage.put(writer, champ.serialize()).thenApply(h -> new Pair<>(champ, h));
+                    });
         } else if (nodeMap.get(bitpos)) { // child node
-            return getChild(key, depth, storage)
-                    .thenCompose(child -> child.right.get().put(writer, key, depth + 1, expected, value, storage, child.left)
+            return getChild(key, depth, bitWidth, storage)
+                    .thenCompose(child -> child.right.get().put(writer, key, depth + 1, expected, value, bitWidth, storage, child.left)
                             .thenCompose(newChild -> {
                                 if (newChild.right.equals(child.left))
                                     return CompletableFuture.completedFuture(new Pair<>(this, ourHash));
-                                Champ champ = copyAndSetNode(bitpos, newChild);
+                                Champ champ = overwriteChildLink(bitpos, newChild);
                                 return storage.put(writer, champ.serialize()).thenApply(h -> new Pair<>(champ, h));
                             }));
         } else {
             // no value
-            Champ champ = copyAndInsertValue(bitpos, key, MaybeMultihash.of(value));
+            Champ champ = addNewPrefix(bitpos, key, MaybeMultihash.of(value));
             return storage.put(writer, champ.serialize()).thenApply(h -> new Pair<>(champ, h));
         }
     }
 
-    private CompletableFuture<Pair<Champ, Multihash>> mergeTwoKeyValPairs(SigningPrivateKeyAndPublicHash writer,
-                                                                          ByteArrayWrapper key0, MaybeMultihash val0,
-                                                                          ByteArrayWrapper key1, MaybeMultihash val1,
-                                                                          final int depth,
-                                                                          ContentAddressedStorage storage) {
-        assert !(key0.equals(key1));
-
+    private CompletableFuture<Pair<Champ, Multihash>> pushMappingsDownALevel(SigningPrivateKeyAndPublicHash writer,
+                                                                             KeyElement[] mappings,
+                                                                             ByteArrayWrapper key1, MaybeMultihash val1,
+                                                                             final int depth,
+                                                                             int bitWidth,
+                                                                             ContentAddressedStorage storage) {
         if (depth >= HASH_CODE_LENGTH) {
              throw new IllegalStateException("Hash collision!");
         }
 
-        final int mask0 = mask(key0, depth);
-        final int mask1 = mask(key1, depth);
-
-        if (mask0 != mask1) {
-            // both nodes fit on same level
-            final BitSet dataMap = new BitSet();
-            dataMap.set(mask0);
-            dataMap.set(mask1);
-
-            if (mask0 < mask1) {
-                Champ champ = new Champ(dataMap, new BitSet(), new KeyElement[]{new KeyElement(key0, val0), new KeyElement(key1, val1)});
-                return storage.put(writer, champ.serialize()).thenApply(h -> new Pair<>(champ, h));
-            } else {
-                Champ champ = new Champ(dataMap, new BitSet(), new KeyElement[]{new KeyElement(key1, val1), new KeyElement(key0, val0)});
-                return storage.put(writer, champ.serialize()).thenApply(h -> new Pair<>(champ, h));
-            }
-        } else {
-            // values fit on a deeper level
-            return mergeTwoKeyValPairs(writer, key0, val0, key1, val1,depth + 1, storage)
-                    .thenCompose(p -> {
-                        final BitSet nodeMap = new BitSet();
-                        nodeMap.set(mask0);
-                        Champ champ = new Champ(new BitSet(), nodeMap, new KeyElement[]{new KeyElement(null, MaybeMultihash.of(p.right))});
-                        return storage.put(writer, champ.serialize()).thenApply(h -> new Pair<>(champ, h));
-                    });
-        }
+        Champ empty = empty();
+        return storage.put(writer, empty.serialize())
+                .thenApply(h -> new Pair<>(empty, h))
+                .thenCompose(p -> p.left.put(writer, key1, depth, MaybeMultihash.empty(), val1.get(), bitWidth, storage, p.right))
+                .thenCompose(one -> Futures.reduceAll(
+                        Arrays.stream(mappings).collect(Collectors.toList()),
+                        one,
+                        (p, e) -> p.left.put(writer, e.key, depth, MaybeMultihash.empty(), e.valueHash.get(), bitWidth, storage, p.right),
+                        (a, b) -> a)
+                );
     }
 
-    private Champ copyAndSetValue(final int bitpos, final MaybeMultihash val) {
-        final int setIndex = index(dataMap, bitpos);
-
-        final KeyElement[] src = this.contents;
-        final KeyElement[] dst = new KeyElement[src.length];
+    private Champ copyAndSetValue(final int setIndex, final int payloadIndex, final MaybeMultihash val) {
+        final HashPrefixPayload[] src = this.contents;
+        final HashPrefixPayload[] dst = new HashPrefixPayload[src.length];
 
         System.arraycopy(src, 0, dst, 0, src.length);
-        dst[setIndex] = new KeyElement(contents[setIndex].key, val);
+        HashPrefixPayload existing = dst[setIndex];
+        KeyElement[] updated = new KeyElement[existing.mappings.length];
+        System.arraycopy(existing.mappings, 0, updated, 0, existing.mappings.length);
+        updated[payloadIndex] = new KeyElement(existing.mappings[payloadIndex].key, val);
+        dst[setIndex] = new HashPrefixPayload(updated, null);
 
         return new Champ(dataMap, nodeMap, dst);
     }
 
-    private Champ copyAndInsertValue(final int bitpos, final ByteArrayWrapper key, final MaybeMultihash val) {
+    private Champ insertIntoPrefix(final int index, final ByteArrayWrapper key, final MaybeMultihash val) {
+        final HashPrefixPayload[] src = this.contents;
+        final HashPrefixPayload[] result = new HashPrefixPayload[src.length];
+
+        System.arraycopy(src, 0, result, 0, src.length);
+        KeyElement[] prefix = new KeyElement[src[index].mappings.length + 1];
+        System.arraycopy(src[index].mappings, 0, prefix, 0, src[index].mappings.length);
+        prefix[prefix.length - 1] = new KeyElement(key, val);
+        // ensure canonical structure
+        Arrays.sort(prefix, Comparator.comparing(m -> m.key));
+        result[index] = new HashPrefixPayload(prefix, null);
+
+        return new Champ(dataMap, nodeMap, result);
+    }
+
+    private Champ addNewPrefix(final int bitpos, final ByteArrayWrapper key, final MaybeMultihash val) {
         final int insertIndex = index(dataMap, bitpos);
 
-        final KeyElement[] src = this.contents;
-        final KeyElement[] result = new KeyElement[src.length + 1];
+        final HashPrefixPayload[] src = this.contents;
+        final HashPrefixPayload[] result = new HashPrefixPayload[src.length + 1];
 
         System.arraycopy(src, 0, result, 0, insertIndex);
-        result[insertIndex] = new KeyElement(key, val);
         System.arraycopy(src, insertIndex, result, insertIndex + 1, src.length - insertIndex);
+        result[insertIndex] = new HashPrefixPayload(new KeyElement[]{new KeyElement(key, val)}, null);
 
         BitSet newDataMap = BitSet.valueOf(dataMap.toByteArray());
         newDataMap.set(bitpos);
@@ -270,14 +292,14 @@ public class Champ implements Cborable {
         final int oldIndex = index(dataMap, bitpos);
         final int newIndex = this.contents.length - 1 - index(nodeMap, bitpos);
 
-        final KeyElement[] src = this.contents;
-        final KeyElement[] dst = new KeyElement[src.length];
+        final HashPrefixPayload[] src = this.contents;
+        final HashPrefixPayload[] dst = new HashPrefixPayload[src.length];
 
         // copy 'src' and remove 1 element at position oldIndex and insert 1 element at position newIndex
         assert oldIndex <= newIndex;
         System.arraycopy(src, 0, dst, 0, oldIndex);
         System.arraycopy(src, oldIndex + 1, dst, oldIndex, newIndex - oldIndex);
-        dst[newIndex] = new KeyElement(null, MaybeMultihash.of(node.right));
+        dst[newIndex] = new HashPrefixPayload(null, MaybeMultihash.of(node.right));
         System.arraycopy(src, newIndex + 1, dst, newIndex + 1, src.length - newIndex - 1);
 
         BitSet newNodeMap = BitSet.valueOf(nodeMap.toByteArray());
@@ -287,15 +309,15 @@ public class Champ implements Cborable {
         return new Champ(newDataMap, newNodeMap, dst);
     }
 
-    private Champ copyAndSetNode(final int bitpos, final Pair<Champ, Multihash> node) {
+    private Champ overwriteChildLink(final int bitpos, final Pair<Champ, Multihash> node) {
 
         final int setIndex = this.contents.length - 1 - index(nodeMap, bitpos);
 
-        final KeyElement[] src = this.contents;
-        final KeyElement[] dst = new KeyElement[src.length];
+        final HashPrefixPayload[] src = this.contents;
+        final HashPrefixPayload[] dst = new HashPrefixPayload[src.length];
 
         System.arraycopy(src, 0, dst, 0, src.length);
-        dst[setIndex] = new KeyElement(null, MaybeMultihash.of(node.right));
+        dst[setIndex] = new HashPrefixPayload(null, MaybeMultihash.of(node.right));
 
         return new Champ(dataMap, nodeMap, dst);
     }
@@ -304,53 +326,71 @@ public class Champ implements Cborable {
                                                             ByteArrayWrapper key,
                                                             int depth,
                                                             MaybeMultihash expected,
+                                                            int bitWidth,
                                                             ContentAddressedStorage storage,
                                                             Multihash ourHash) {
-        int bitpos = mask(key, depth);
+        int bitpos = mask(key, depth, bitWidth);
 
         if (dataMap.get(bitpos)) { // in place value
             final int dataIndex = index(dataMap, bitpos);
 
-            if (Objects.equals(contents[dataIndex].key, key)) {
-                final MaybeMultihash currentVal = contents[dataIndex].valueHash;
-                if (! currentVal.equals(expected)) {
-                    CompletableFuture<Pair<Champ, Multihash>> err = new CompletableFuture<>();
-                    err.completeExceptionally(new IllegalStateException(
-                            "Champ CAS exception: expected " + expected +", actual: " + currentVal));
-                    return err;
-                }
+            HashPrefixPayload payload = contents[dataIndex];
+            KeyElement[] mappings = payload.mappings;
+            for (int payloadIndex = 0; payloadIndex < mappings.length; payloadIndex++) {
+                KeyElement mapping = mappings[payloadIndex];
+                final ByteArrayWrapper currentKey = mapping.key;
+                final MaybeMultihash currentVal = mapping.valueHash;
+                if (Objects.equals(currentKey, key)) {
+                    if (!currentVal.equals(expected)) {
+                        CompletableFuture<Pair<Champ, Multihash>> err = new CompletableFuture<>();
+                        err.completeExceptionally(new IllegalStateException(
+                                "Champ CAS exception: expected " + expected + ", actual: " + currentVal));
+                        return err;
+                    }
 
-                if (this.keyCount() == 2 && this.nodeCount() == 0) {
+                    if (this.keyCount() == MAX_KEY_COLLISIONS_PER_LEVEL + 1 && this.nodeCount() == 0) {
                     /*
-						 * Create new node with remaining pair. The new node
+						 * Create new node with remaining pairs. The new node
 						 * will a) either become the new root returned, or b)
 						 * unwrapped and inlined during returning.
 						 */
-                    final BitSet newDataMap = BitSet.valueOf((depth == 0) ? dataMap.toByteArray() : new byte[0]);
-                    if (depth == 0)
-                        newDataMap.clear(bitpos);
-                    else
-                        newDataMap.set(mask(key, 0));
+                        final BitSet newDataMap = BitSet.valueOf((depth == 0) ? dataMap.toByteArray() : new byte[0]);
+                        boolean lastInPrefix = mappings.length == 1;
+                        if (depth == 0 && lastInPrefix)
+                            newDataMap.clear(bitpos);
+                        else
+                            newDataMap.set(mask(key, 0, bitWidth));
 
-                    Champ champ = new Champ(newDataMap, new BitSet(), new KeyElement[] {contents[(dataIndex + 1) % 2]});
-                    return storage.put(writer, champ.serialize()).thenApply(h -> new Pair<>(champ, h));
-                } else {
-                    Champ champ = copyAndRemoveValue(bitpos);
-                    return storage.put(writer, champ.serialize()).thenApply(h -> new Pair<>(champ, h));
+                        HashPrefixPayload[] src = this.contents;
+                        HashPrefixPayload[] dst = new HashPrefixPayload[src.length - (lastInPrefix ? 1 : 0)];
+                        System.arraycopy(src, 0, dst, 0, dataIndex);
+                        System.arraycopy(src, dataIndex + 1, dst, dataIndex + (lastInPrefix ? 0 : 1), src.length - dataIndex - 1);
+                        if (! lastInPrefix) {
+                            KeyElement[] remaining = new KeyElement[mappings.length - 1];
+                            System.arraycopy(mappings, 0, remaining, 0, payloadIndex);
+                            System.arraycopy(mappings, payloadIndex + 1, remaining, payloadIndex, mappings.length - payloadIndex - 1);
+                            dst[dataIndex] = new HashPrefixPayload(remaining, null);
+                        }
+
+                        Champ champ = new Champ(newDataMap, new BitSet(), dst);
+                        return storage.put(writer, champ.serialize()).thenApply(h -> new Pair<>(champ, h));
+                    } else {
+                        Champ champ = removeMapping(bitpos, payloadIndex);
+                        return storage.put(writer, champ.serialize()).thenApply(h -> new Pair<>(champ, h));
+                    }
                 }
-            } else {
-                return CompletableFuture.completedFuture(new Pair<>(this, ourHash));
             }
+            return CompletableFuture.completedFuture(new Pair<>(this, ourHash));
         } else if (nodeMap.get(bitpos)) { // node (not value)
-            return getChild(key, depth, storage)
-                    .thenCompose(child -> child.right.get().remove(writer, key, depth + 1, expected, storage, child.left)
+            return getChild(key, depth, bitWidth, storage)
+                    .thenCompose(child -> child.right.get().remove(writer, key, depth + 1, expected, bitWidth, storage, child.left)
                             .thenCompose(newChild -> {
                                 if (child.left.equals(newChild.right))
                                     return CompletableFuture.completedFuture(new Pair<>(this, ourHash));
 
                                 if (newChild.left.contents.length == 0) {
                                     throw new IllegalStateException("Sub-node must have at least one element.");
-                                } else if (newChild.left.nodeCount() == 0 && newChild.left.keyCount() == 1) {
+                                } else if (newChild.left.nodeCount() == 0 && newChild.left.keyCount() == MAX_KEY_COLLISIONS_PER_LEVEL) {
                                     if (this.keyCount() == 0 && this.nodeCount() == 1) {
                                         // escalate singleton result (the child already has the depth corrected index)
                                         return CompletableFuture.completedFuture(newChild);
@@ -361,7 +401,7 @@ public class Champ implements Cborable {
                                     }
                                 } else {
                                     // modify current node (set replacement node)
-                                    Champ champ = copyAndSetNode(bitpos, newChild);
+                                    Champ champ = overwriteChildLink(bitpos, newChild);
                                     return storage.put(writer, champ.serialize()).thenApply(h -> new Pair<>(champ, h));
                                 }
                             }));
@@ -375,13 +415,21 @@ public class Champ implements Cborable {
         final int oldIndex = this.contents.length - 1 - index(nodeMap, bitpos);
         final int newIndex = index(dataMap, bitpos);
 
-        final KeyElement[] src = this.contents;
-        final KeyElement[] dst = new KeyElement[src.length];
+        final HashPrefixPayload[] src = this.contents;
+        final HashPrefixPayload[] dst = new HashPrefixPayload[src.length];
 
         // copy src and remove element at position oldIndex and insert element at position newIndex
         assert oldIndex >= newIndex;
         System.arraycopy(src, 0, dst, 0, newIndex);
-        dst[newIndex] = node.contents[0];
+        KeyElement[] merged = new KeyElement[node.keyCount()];
+        int count = 0;
+        for (int i=0; i < node.contents.length; i++) {
+            KeyElement[] toAdd = node.contents[i].mappings;
+            System.arraycopy(toAdd, 0, merged, count, toAdd.length);
+            count += toAdd.length;
+        }
+        Arrays.sort(merged, Comparator.comparing(x -> x.key));
+        dst[newIndex] = new HashPrefixPayload(merged, null);
         System.arraycopy(src, newIndex, dst, newIndex + 1, oldIndex - newIndex);
         System.arraycopy(src, oldIndex + 1, dst, oldIndex + 1, src.length - oldIndex - 1);
 
@@ -392,18 +440,26 @@ public class Champ implements Cborable {
         return new Champ(newDataMap, newNodeMap, dst);
     }
 
-    private Champ copyAndRemoveValue(final int bitpos) {
+    private Champ removeMapping(final int bitpos, final int payloadIndex) {
         final int index = index(dataMap, bitpos);
-
-        final KeyElement[] src = this.contents;
-        final KeyElement[] dst = new KeyElement[src.length - 1];
+        final HashPrefixPayload[] src = this.contents;
+        KeyElement[] existing = src[index].mappings;
+        boolean lastInPrefix = existing.length == 1;
+        final HashPrefixPayload[] dst = new HashPrefixPayload[src.length - (lastInPrefix ? 1 : 0)];
 
         // copy src and remove element at position index
         System.arraycopy(src, 0, dst, 0, index);
-        System.arraycopy(src, index + 1, dst, index, src.length - index - 1);
+        System.arraycopy(src, index + 1, dst, lastInPrefix ? index : index + 1, src.length - index - 1);
+        if (! lastInPrefix) {
+            KeyElement[] remaining = new KeyElement[existing.length - 1];
+            System.arraycopy(existing, 0, remaining, 0, payloadIndex);
+            System.arraycopy(existing, payloadIndex + 1, remaining, payloadIndex, existing.length - payloadIndex - 1);
+            dst[index] = new HashPrefixPayload(remaining, null);
+        }
 
         BitSet newDataMap = BitSet.valueOf(dataMap.toByteArray());
-        newDataMap.clear(bitpos);
+        if (lastInPrefix)
+            newDataMap.clear(bitpos);
         return new Champ(newDataMap, nodeMap, dst);
     }
 
@@ -413,9 +469,13 @@ public class Champ implements Cborable {
                 new CborObject.CborByteArray(dataMap.toByteArray()),
                 new CborObject.CborByteArray(nodeMap.toByteArray()),
                 new CborObject.CborList(Arrays.stream(contents)
-                        .flatMap(e -> e.key == null ?
-                                Stream.of(new CborObject.CborMerkleLink(e.valueHash.get())) :
-                                Stream.of(new CborObject.CborByteArray(e.key.data), new CborObject.CborMerkleLink(e.valueHash.get())))
+                        .flatMap(e -> e.link != null ?
+                                Stream.of(new CborObject.CborMerkleLink(e.link.get())) :
+                                Stream.of(new CborObject.CborList(Arrays.stream(e.mappings)
+                                        .flatMap(m -> Stream.of(
+                                                new CborObject.CborByteArray(m.key.data),
+                                                new CborObject.CborMerkleLink(m.valueHash.get())))
+                                        .collect(Collectors.toList()))))
                         .collect(Collectors.toList()))
         ));
     }
@@ -429,17 +489,21 @@ public class Champ implements Cborable {
         BitSet nodeMap = BitSet.valueOf(((CborObject.CborByteArray)list.get(1)).value);
         List<? extends Cborable> contentsCbor = ((CborObject.CborList) list.get(2)).value;
 
-        List<KeyElement> contents = new ArrayList<>();
+        List<HashPrefixPayload> contents = new ArrayList<>();
         for (int i=0; i < contentsCbor.size(); i++) {
             Cborable keyOrHash = contentsCbor.get(i);
-            if (keyOrHash instanceof CborObject.CborByteArray) {
-                contents.add(new KeyElement(new ByteArrayWrapper(((CborObject.CborByteArray) keyOrHash).value),
-                        MaybeMultihash.of(((CborObject.CborMerkleLink)contentsCbor.get(i + 1)).target)));
-                i++;
+            if (keyOrHash instanceof CborObject.CborList) {
+                List<KeyElement> mappings = new ArrayList<>();
+                List<? extends Cborable> mappingsCbor = ((CborObject.CborList) keyOrHash).value;
+                for (int j=0; j < mappingsCbor.size(); j += 2) {
+                    mappings.add(new KeyElement(new ByteArrayWrapper(((CborObject.CborByteArray) mappingsCbor.get(j)).value),
+                        MaybeMultihash.of(((CborObject.CborMerkleLink)mappingsCbor.get(j + 1)).target)));
+                }
+                contents.add(new HashPrefixPayload(mappings.toArray(new KeyElement[0]), null));
             } else {
-                contents.add(new KeyElement(null, MaybeMultihash.of(((CborObject.CborMerkleLink)keyOrHash).target)));
+                contents.add(new HashPrefixPayload(null, MaybeMultihash.of(((CborObject.CborMerkleLink)keyOrHash).target)));
             }
         }
-        return new Champ(dataMap, nodeMap, contents.toArray(new KeyElement[contents.size()]));
+        return new Champ(dataMap, nodeMap, contents.toArray(new HashPrefixPayload[contents.size()]));
     }
 }

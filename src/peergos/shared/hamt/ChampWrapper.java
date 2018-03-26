@@ -13,6 +13,8 @@ import java.util.concurrent.*;
 
 public class ChampWrapper
 {
+    private static final int BIT_WIDTH = 5;
+
     public final ContentAddressedStorage storage;
     public final int bitWidth;
     private Pair<Champ, Multihash> root;
@@ -45,7 +47,7 @@ public class ChampWrapper
      * @throws IOException
      */
     public CompletableFuture<MaybeMultihash> get(byte[] rawKey) {
-        return root.left.get(new ByteArrayWrapper(rawKey), 0, storage);
+        return root.left.get(new ByteArrayWrapper(rawKey), 0, BIT_WIDTH, storage);
     }
 
     /**
@@ -56,7 +58,7 @@ public class ChampWrapper
      * @throws IOException
      */
     public CompletableFuture<Multihash> put(SigningPrivateKeyAndPublicHash writer, byte[] rawKey, MaybeMultihash existing, Multihash value) {
-        return root.left.put(writer, new ByteArrayWrapper(rawKey), 0, existing, value, storage, root.right)
+        return root.left.put(writer, new ByteArrayWrapper(rawKey), 0, existing, value, BIT_WIDTH, storage, root.right)
                 .thenCompose(newRoot -> commit(writer, newRoot));
     }
 
@@ -67,7 +69,7 @@ public class ChampWrapper
      * @throws IOException
      */
     public CompletableFuture<Multihash> delete(SigningPrivateKeyAndPublicHash writer, byte[] rawKey, MaybeMultihash existing) {
-        return root.left.remove(writer, new ByteArrayWrapper(rawKey), 0, existing, storage, root.right)
+        return root.left.remove(writer, new ByteArrayWrapper(rawKey), 0, existing, BIT_WIDTH, storage, root.right)
                 .thenCompose(newRoot -> commit(writer, newRoot));
     }
 
