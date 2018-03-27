@@ -547,7 +547,7 @@ public class FileTreeNode {
                     result.complete(this.withCryptreeNode(uploadResult));
                 }).exceptionally(e -> {
 
-            if (e instanceof Tree.CasException || e.getCause() instanceof Tree.CasException) {
+            if (e instanceof MutableTree.CasException || e.getCause() instanceof MutableTree.CasException) {
                 // reload directory and try again
                 network.getMetadata(getLocation()).thenCompose(opt -> {
                     DirAccess updatedUs = (DirAccess) opt.get();
@@ -584,8 +584,8 @@ public class FileTreeNode {
                         });
                     });
                 }).exceptionally(ex -> {
-                    if ((e instanceof Tree.CasException ||
-                            e.getCause() instanceof Tree.CasException) && retries > 0)
+                    if ((e instanceof MutableTree.CasException ||
+                            e.getCause() instanceof MutableTree.CasException) && retries > 0)
                         addChildPointer(filename, childPointer, network, random, retries - 1)
                                 .thenApply(f -> result.complete(f))
                                 .exceptionally(e2 -> {

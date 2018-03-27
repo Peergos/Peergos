@@ -13,13 +13,13 @@ import peergos.shared.util.*;
 import java.util.*;
 import java.util.concurrent.*;
 
-public class TreeImpl implements Tree {
+public class MutableTreeImpl implements MutableTree {
     private final MutablePointers mutable;
     private final ContentAddressedStorage dht;
     private static final boolean LOGGING = false;
     private final Map<PublicKeyHash, CompletableFuture<CommittedWriterData>> pending = new HashMap<>();
 
-    public TreeImpl(MutablePointers mutable, ContentAddressedStorage dht) {
+    public MutableTreeImpl(MutablePointers mutable, ContentAddressedStorage dht) {
         this.mutable = mutable;
         this.dht = dht;
     }
@@ -73,13 +73,16 @@ public class TreeImpl implements Tree {
         return addToQueue(publicWriterKey, lock)
                 .thenCompose(committed -> {
                     WriterData holder = committed.props;
+                    boolean isChamp = ! holder.btree.isPresent();
                     return (holder.tree.isPresent() ?
                             ChampWrapper.create(writer.publicKeyHash, holder.tree.get(), dht) :
-                            ChampWrapper.create(writer, dht))
-                            .thenCompose(tree -> tree.put(writer, mapKey, existing, value))
+                            isChamp ?
+                                    ChampWrapper.create(writer, dht) :
+                                    MerkleBTree.create(writer.publicKeyHash, holder.btree.get(), dht)
+                    ).thenCompose(tree -> tree.put(writer, mapKey, existing, value))
                             .thenApply(newRoot -> LOGGING ? log(newRoot, "TREE.put (" + ArrayOps.bytesToHex(mapKey)
                                     + ", " + value + ") => CAS(" + holder.tree + ", " + newRoot + ")") : newRoot)
-                            .thenCompose(newTreeRoot -> holder.withBtree(newTreeRoot)
+                            .thenCompose(newTreeRoot -> holder.withChamp(newTreeRoot)
                                     .commit(writer, committed.hash, mutable, dht, lock::complete))
                             .thenApply(x -> true)
                             .exceptionally(e -> {
@@ -101,8 +104,11 @@ public class TreeImpl implements Tree {
                     WriterData holder = committed.props;
                     if (! holder.tree.isPresent())
                         throw new IllegalStateException("Tree root not present for " + writer);
-                    return ChampWrapper.create(writer, holder.tree.get(), dht)
-                            .thenCompose(tree -> tree.get(mapKey))
+                    boolean isChamp = ! holder.btree.isPresent();
+                    return (isChamp ?
+                            ChampWrapper.create(writer, holder.tree.get(), dht) :
+                            MerkleBTree.create(writer, holder.btree.get(), dht)
+                    ).thenCompose(tree -> tree.get(mapKey))
                             .thenApply(maybe -> LOGGING ?
                                     log(maybe, "TREE.get (" + ArrayOps.bytesToHex(mapKey) + ", root="+holder.tree.get()+" => " + maybe) : maybe);
                 });
@@ -116,12 +122,15 @@ public class TreeImpl implements Tree {
         return addToQueue(publicWriter, future)
                 .thenCompose(committed -> {
                     WriterData holder = committed.props;
-                    if (! holder.tree.isPresent())
+                    if (! holder.tree.isPresent() && ! holder.btree.isPresent())
                         throw new IllegalStateException("Tree root not present!");
-                    return ChampWrapper.create(writer.publicKeyHash, holder.tree.get(), dht)
-                            .thenCompose(tree -> tree.delete(writer, mapKey, existing))
+                    boolean isChamp = ! holder.btree.isPresent();
+                    return (isChamp ?
+                            ChampWrapper.create(writer.publicKeyHash, holder.tree.get(), dht) :
+                            MerkleBTree.create(writer.publicKeyHash, holder.btree.get(), dht)
+                    ).thenCompose(tree -> tree.remove(writer, mapKey, existing))
                             .thenApply(pair -> LOGGING ? log(pair, "TREE.rm (" + ArrayOps.bytesToHex(mapKey) + "  => " + pair) : pair)
-                            .thenCompose(newTreeRoot -> holder.withBtree(newTreeRoot)
+                            .thenCompose(newTreeRoot -> holder.withChamp(newTreeRoot)
                                     .commit(writer, committed.hash, mutable, dht, future::complete))
                             .thenApply(x -> true);
                 });

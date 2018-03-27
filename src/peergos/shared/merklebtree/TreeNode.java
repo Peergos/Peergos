@@ -103,7 +103,7 @@ public class TreeNode implements Cborable {
             // ensure CAS, without allowing replacing a tombstone
             if (! nextSmallest.valueHash.equals(existing) && ! nextSmallest.valueHash.equals(MaybeMultihash.empty())) {
                 CompletableFuture<TreeNode> res = new CompletableFuture<>();
-                res.completeExceptionally(new Tree.CasException(nextSmallest.valueHash, existing));
+                res.completeExceptionally(new MutableTree.CasException(nextSmallest.valueHash, existing));
                 return res;
             }
             keys.remove(nextSmallest);
@@ -235,7 +235,7 @@ public class TreeNode implements Cborable {
                 // CAS on existing value
                 if (! nextSmallest.valueHash.equals(existing)) {
                     CompletableFuture<TreeNode> res = new CompletableFuture<>();
-                    res.completeExceptionally(new Tree.CasException(nextSmallest.valueHash, existing));
+                    res.completeExceptionally(new MutableTree.CasException(nextSmallest.valueHash, existing));
                     return res;
                 }
                 keys.remove(nextSmallest);

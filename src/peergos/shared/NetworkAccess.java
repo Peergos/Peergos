@@ -30,21 +30,21 @@ public class NetworkAccess {
     public final CoreNode coreNode;
     public final ContentAddressedStorage dhtClient;
     public final MutablePointers mutable;
-    public final Tree btree;
+    public final MutableTree tree;
     @JsProperty
     public final List<String> usernames;
     private final LocalDateTime creationTime;
     private final boolean isJavascript;
 
-    public NetworkAccess(CoreNode coreNode, ContentAddressedStorage dhtClient, MutablePointers mutable, Tree btree, List<String> usernames) {
-        this(coreNode, dhtClient, mutable, btree, usernames, false);
+    public NetworkAccess(CoreNode coreNode, ContentAddressedStorage dhtClient, MutablePointers mutable, MutableTree tree, List<String> usernames) {
+        this(coreNode, dhtClient, mutable, tree, usernames, false);
     }
 
-    public NetworkAccess(CoreNode coreNode, ContentAddressedStorage dhtClient, MutablePointers mutable, Tree btree, List<String> usernames, boolean isJavascript) {
+    public NetworkAccess(CoreNode coreNode, ContentAddressedStorage dhtClient, MutablePointers mutable, MutableTree tree, List<String> usernames, boolean isJavascript) {
         this.coreNode = coreNode;
         this.dhtClient = new HashVerifyingStorage(dhtClient);
         this.mutable = mutable;
-        this.btree = btree;
+        this.tree = tree;
         this.usernames = usernames;
         this.creationTime = LocalDateTime.now();
         this.isJavascript = isJavascript;
@@ -55,7 +55,7 @@ public class NetworkAccess {
     }
 
     public NetworkAccess withCorenode(CoreNode newCore) {
-        return new NetworkAccess(newCore, dhtClient, mutable, btree, usernames, isJavascript);
+        return new NetworkAccess(newCore, dhtClient, mutable, tree, usernames, isJavascript);
     }
 
     @JsMethod
@@ -66,7 +66,7 @@ public class NetworkAccess {
     }
 
     public NetworkAccess clear() {
-        return new NetworkAccess(coreNode, dhtClient, mutable, new TreeImpl(mutable, dhtClient), usernames, isJavascript);
+        return new NetworkAccess(coreNode, dhtClient, mutable, new MutableTreeImpl(mutable, dhtClient), usernames, isJavascript);
     }
 
     public static CompletableFuture<NetworkAccess> build(HttpPoster poster, boolean isJavascript) {
@@ -77,7 +77,7 @@ public class NetworkAccess {
 
         // allow 10MiB of ram for caching tree entries
         ContentAddressedStorage dht = new CachingStorage(new ContentAddressedStorage.HTTP(poster), 10_000, 50 * 1024);
-        Tree btree = new TreeImpl(mutable, dht);
+        MutableTree btree = new MutableTreeImpl(mutable, dht);
         return coreNode.getUsernames("").thenApply(usernames -> new NetworkAccess(coreNode, dht, mutable, btree, usernames, isJavascript));
     }
 
@@ -105,7 +105,7 @@ public class NetworkAccess {
         List<CompletableFuture<Optional<RetrievedFilePointer>>> all = links.stream()
                 .map(link -> {
                     Location loc = link.targetLocation(baseKey);
-                    return btree.get(loc.writer, loc.getMapKey())
+                    return tree.get(loc.writer, loc.getMapKey())
                             .thenCompose(key -> {
                                 if (key.isPresent())
                                     return dhtClient.get(key.get())
@@ -142,7 +142,7 @@ public class NetworkAccess {
 
     private CompletableFuture<Optional<CryptreeNode>> downloadEntryPoint(EntryPoint entry) {
         // download the metadata blob for this entry point
-        return btree.get(entry.pointer.location.writer, entry.pointer.location.getMapKey()).thenCompose(btreeValue -> {
+        return tree.get(entry.pointer.location.writer, entry.pointer.location.getMapKey()).thenCompose(btreeValue -> {
             if (btreeValue.isPresent())
                 return dhtClient.get(btreeValue.get())
                         .thenApply(value -> value.map(cbor -> CryptreeNode.fromCbor(cbor,  btreeValue.get())));
@@ -190,7 +190,7 @@ public class NetworkAccess {
         try {
             byte[] metaBlob = metadata.serialize();
             return dhtClient.put(location.writer, writer.secret.signatureOnly(metaBlob), metaBlob)
-                    .thenCompose(blobHash -> btree.put(writer, location.getMapKey(), metadata.committedHash(), blobHash)
+                    .thenCompose(blobHash -> tree.put(writer, location.getMapKey(), metadata.committedHash(), blobHash)
                             .thenApply(res -> blobHash));
         } catch (Exception e) {
             System.out.println(e.getMessage());
@@ -201,7 +201,7 @@ public class NetworkAccess {
     public CompletableFuture<Optional<CryptreeNode>> getMetadata(Location loc) {
         if (loc == null)
             return CompletableFuture.completedFuture(Optional.empty());
-        return btree.get(loc.writer, loc.getMapKey()).thenCompose(blobHash -> {
+        return tree.get(loc.writer, loc.getMapKey()).thenCompose(blobHash -> {
             if (!blobHash.isPresent())
                 return CompletableFuture.completedFuture(Optional.empty());
             return dhtClient.get(blobHash.get())

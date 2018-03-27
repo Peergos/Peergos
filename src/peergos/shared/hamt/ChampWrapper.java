@@ -5,13 +5,13 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.merklebtree.*;
 import peergos.shared.storage.*;
+import peergos.shared.user.*;
 import peergos.shared.util.*;
 
 import java.io.*;
-import java.util.*;
 import java.util.concurrent.*;
 
-public class ChampWrapper
+public class ChampWrapper implements ImmutableTree
 {
     private static final int BIT_WIDTH = 5;
     private static final int MAX_HASH_COLLISIONS_PER_LEVEL = 3;
@@ -69,7 +69,7 @@ public class ChampWrapper
      * @return hash of new tree root
      * @throws IOException
      */
-    public CompletableFuture<Multihash> delete(SigningPrivateKeyAndPublicHash writer, byte[] rawKey, MaybeMultihash existing) {
+    public CompletableFuture<Multihash> remove(SigningPrivateKeyAndPublicHash writer, byte[] rawKey, MaybeMultihash existing) {
         return root.left.remove(writer, new ByteArrayWrapper(rawKey), 0, existing, BIT_WIDTH, MAX_HASH_COLLISIONS_PER_LEVEL, storage, root.right)
                 .thenCompose(newRoot -> commit(writer, newRoot));
     }

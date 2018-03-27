@@ -182,7 +182,7 @@ public class Champ implements Cborable {
                 if (currentKey.equals(key)) {
                     if (! currentVal.equals(expected)) {
                         CompletableFuture<Pair<Champ, Multihash>> err = new CompletableFuture<>();
-                        err.completeExceptionally(new Tree.CasException(currentVal, expected));
+                        err.completeExceptionally(new MutableTree.CasException(currentVal, expected));
                         return err;
                     }
 
@@ -342,8 +342,7 @@ public class Champ implements Cborable {
                 if (Objects.equals(currentKey, key)) {
                     if (!currentVal.equals(expected)) {
                         CompletableFuture<Pair<Champ, Multihash>> err = new CompletableFuture<>();
-                        err.completeExceptionally(new IllegalStateException(
-                                "Champ CAS exception: expected " + expected + ", actual: " + currentVal));
+                        err.completeExceptionally(new MutableTree.CasException(currentVal, expected));
                         return err;
                     }
 
