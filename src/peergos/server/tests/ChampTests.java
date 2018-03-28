@@ -40,7 +40,7 @@ public class ChampTests {
         for (int i = 0; i < nKeys; i++) {
             ByteArrayWrapper key = new ByteArrayWrapper(randomHash.get().toBytes());
             Multihash value = randomHash.get();
-            Pair<Champ, Multihash> updated = current.put(user, key, 0, MaybeMultihash.empty(), value, bitWidth, maxCollisions, storage, currentHash).get();
+            Pair<Champ, Multihash> updated = current.put(user, key, 0, MaybeMultihash.empty(), MaybeMultihash.of(value), bitWidth, maxCollisions, storage, currentHash).get();
             MaybeMultihash result = updated.left.get(key, 0, bitWidth, storage).get();
             if (! result.equals(MaybeMultihash.of(value)))
                 throw new IllegalStateException("Incorrect result!");
@@ -65,7 +65,7 @@ public class ChampTests {
             ByteArrayWrapper key = e.getKey();
             Multihash value = randomHash.get();
             MaybeMultihash currentValue = current.get(e.getKey(), 0, bitWidth, storage).get();
-            Pair<Champ, Multihash> updated = current.put(user, key, 0, currentValue, value, bitWidth, maxCollisions, storage, currentHash).get();
+            Pair<Champ, Multihash> updated = current.put(user, key, 0, currentValue, MaybeMultihash.of(value), bitWidth, maxCollisions, storage, currentHash).get();
             MaybeMultihash result = updated.left.get(key, 0, bitWidth, storage).get();
             if (! result.equals(MaybeMultihash.of(value)))
                 throw new IllegalStateException("Incorrect result!");
@@ -87,7 +87,7 @@ public class ChampTests {
         for (int i = 0; i < 100; i++) {
             ByteArrayWrapper key = new ByteArrayWrapper(randomHash.get().toBytes());
             Multihash value = randomHash.get();
-            Pair<Champ, Multihash> updated = current.put(user, key, 0, MaybeMultihash.empty(), value, bitWidth, maxCollisions, storage, currentHash).get();
+            Pair<Champ, Multihash> updated = current.put(user, key, 0, MaybeMultihash.empty(), MaybeMultihash.of(value), bitWidth, maxCollisions, storage, currentHash).get();
             Pair<Champ, Multihash> removed = updated.left.remove(user, key, 0, MaybeMultihash.of(value), bitWidth, maxCollisions, storage, updated.right).get();
             if (! removed.right.equals(currentHash))
                 throw new IllegalStateException("Non canonical state!");
@@ -117,7 +117,7 @@ public class ChampTests {
                 r.nextBytes(keyBytes);
                 ByteArrayWrapper key = new ByteArrayWrapper(keyBytes);
                 Multihash value = randomHash.get();
-                Pair<Champ, Multihash> added = root.left.put(user, key, 0, MaybeMultihash.empty(), value, bitWidth, maxCollisions, storage, root.right).get();
+                Pair<Champ, Multihash> added = root.left.put(user, key, 0, MaybeMultihash.empty(), MaybeMultihash.of(value), bitWidth, maxCollisions, storage, root.right).get();
                 Pair<Champ, Multihash> removed = added.left.remove(user, key, 0, MaybeMultihash.of(value), bitWidth, maxCollisions, storage, added.right).get();
                 if (! removed.right.equals(root.right))
                     throw new IllegalStateException("Non canonical delete!");
@@ -150,7 +150,7 @@ public class ChampTests {
         for (int i = 0; i < nKeys; i++) {
             ByteArrayWrapper key = new ByteArrayWrapper(randomKey(prefix, suffixLen, r));
             Multihash value = randomHash.get();
-            Pair<Champ, Multihash> updated = current.put(user, key, 0, MaybeMultihash.empty(), value,
+            Pair<Champ, Multihash> updated = current.put(user, key, 0, MaybeMultihash.empty(), MaybeMultihash.of(value),
                     bitWidth, maxCollisions, storage, currentHash).get();
             current = updated.left;
             currentHash = updated.right;

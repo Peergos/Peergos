@@ -59,7 +59,7 @@ public class ChampWrapper implements ImmutableTree
      * @throws IOException
      */
     public CompletableFuture<Multihash> put(SigningPrivateKeyAndPublicHash writer, byte[] rawKey, MaybeMultihash existing, Multihash value) {
-        return root.left.put(writer, new ByteArrayWrapper(rawKey), 0, existing, value, BIT_WIDTH, MAX_HASH_COLLISIONS_PER_LEVEL, storage, root.right)
+        return root.left.put(writer, new ByteArrayWrapper(rawKey), 0, existing, MaybeMultihash.of(value), BIT_WIDTH, MAX_HASH_COLLISIONS_PER_LEVEL, storage, root.right)
                 .thenCompose(newRoot -> commit(writer, newRoot));
     }
 
@@ -70,7 +70,7 @@ public class ChampWrapper implements ImmutableTree
      * @throws IOException
      */
     public CompletableFuture<Multihash> remove(SigningPrivateKeyAndPublicHash writer, byte[] rawKey, MaybeMultihash existing) {
-        return root.left.remove(writer, new ByteArrayWrapper(rawKey), 0, existing, BIT_WIDTH, MAX_HASH_COLLISIONS_PER_LEVEL, storage, root.right)
+        return root.left.put(writer, new ByteArrayWrapper(rawKey), 0, existing, MaybeMultihash.empty(), BIT_WIDTH, MAX_HASH_COLLISIONS_PER_LEVEL, storage, root.right)
                 .thenCompose(newRoot -> commit(writer, newRoot));
     }
 

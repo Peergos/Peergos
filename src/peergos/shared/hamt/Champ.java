@@ -164,7 +164,7 @@ public class Champ implements Cborable {
                                                          ByteArrayWrapper key,
                                                          int depth,
                                                          MaybeMultihash expected,
-                                                         Multihash value,
+                                                         MaybeMultihash value,
                                                          int bitWidth,
                                                          int maxCollisions,
                                                          ContentAddressedStorage storage,
@@ -187,17 +187,17 @@ public class Champ implements Cborable {
                     }
 
                     // update mapping
-                    Champ champ = copyAndSetValue(index, payloadIndex, MaybeMultihash.of(value));
+                    Champ champ = copyAndSetValue(index, payloadIndex, value);
                     return storage.put(writer, champ.serialize()).thenApply(h -> new Pair<>(champ, h));
                 }
             }
             if (mappings.length < maxCollisions) {
-                Champ champ = insertIntoPrefix(index, key, MaybeMultihash.of(value));
+                Champ champ = insertIntoPrefix(index, key, value);
                 return storage.put(writer, champ.serialize()).thenApply(h -> new Pair<>(champ, h));
             }
 
             return pushMappingsDownALevel(writer, mappings,
-                    key, MaybeMultihash.of(value), depth + 1, bitWidth, maxCollisions, storage)
+                    key, value, depth + 1, bitWidth, maxCollisions, storage)
                     .thenCompose(p -> {
                         Champ champ = copyAndMigrateFromInlineToNode(bitpos, p);
                         return storage.put(writer, champ.serialize()).thenApply(h -> new Pair<>(champ, h));
@@ -213,7 +213,7 @@ public class Champ implements Cborable {
                             }));
         } else {
             // no value
-            Champ champ = addNewPrefix(bitpos, key, MaybeMultihash.of(value));
+            Champ champ = addNewPrefix(bitpos, key, value);
             return storage.put(writer, champ.serialize()).thenApply(h -> new Pair<>(champ, h));
         }
     }
@@ -232,11 +232,11 @@ public class Champ implements Cborable {
         Champ empty = empty();
         return storage.put(writer, empty.serialize())
                 .thenApply(h -> new Pair<>(empty, h))
-                .thenCompose(p -> p.left.put(writer, key1, depth, MaybeMultihash.empty(), val1.get(), bitWidth, maxCollisions, storage, p.right))
+                .thenCompose(p -> p.left.put(writer, key1, depth, MaybeMultihash.empty(), val1, bitWidth, maxCollisions, storage, p.right))
                 .thenCompose(one -> Futures.reduceAll(
                         Arrays.stream(mappings).collect(Collectors.toList()),
                         one,
-                        (p, e) -> p.left.put(writer, e.key, depth, MaybeMultihash.empty(), e.valueHash.get(), bitWidth, maxCollisions, storage, p.right),
+                        (p, e) -> p.left.put(writer, e.key, depth, MaybeMultihash.empty(), e.valueHash, bitWidth, maxCollisions, storage, p.right),
                         (a, b) -> a)
                 );
     }
@@ -472,7 +472,10 @@ public class Champ implements Cborable {
                                 Stream.of(new CborObject.CborList(Arrays.stream(e.mappings)
                                         .flatMap(m -> Stream.of(
                                                 new CborObject.CborByteArray(m.key.data),
-                                                new CborObject.CborMerkleLink(m.valueHash.get())))
+                                                m.valueHash.isPresent() ?
+                                                        new CborObject.CborMerkleLink(m.valueHash.get()) :
+                                                        new CborObject.CborNull()
+                                        ))
                                         .collect(Collectors.toList()))))
                         .collect(Collectors.toList()))
         ));
@@ -494,8 +497,12 @@ public class Champ implements Cborable {
                 List<KeyElement> mappings = new ArrayList<>();
                 List<? extends Cborable> mappingsCbor = ((CborObject.CborList) keyOrHash).value;
                 for (int j=0; j < mappingsCbor.size(); j += 2) {
-                    mappings.add(new KeyElement(new ByteArrayWrapper(((CborObject.CborByteArray) mappingsCbor.get(j)).value),
-                        MaybeMultihash.of(((CborObject.CborMerkleLink)mappingsCbor.get(j + 1)).target)));
+                    byte[] key = ((CborObject.CborByteArray) mappingsCbor.get(j)).value;
+                    Cborable value = mappingsCbor.get(j + 1);
+                    mappings.add(new KeyElement(new ByteArrayWrapper(key),
+                        value instanceof CborObject.CborNull ?
+                                MaybeMultihash.empty() :
+                                MaybeMultihash.of(((CborObject.CborMerkleLink) value).target)));
                 }
                 contents.add(new HashPrefixPayload(mappings.toArray(new KeyElement[0]), null));
             } else {
