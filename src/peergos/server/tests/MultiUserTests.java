@@ -399,7 +399,7 @@ public class MultiUserTests {
         AsyncReader suffixStream = new AsyncReader.ArrayBacked(suffix);
         FileTreeNode parent = u1New.getByPath(u1New.username).get().get();
         parent.uploadFileSection(newname, suffixStream, originalFileContents.length, originalFileContents.length + suffix.length,
-                Optional.empty(), true, u1New.network, u1New.crypto.random, l -> {}, u1New.fragmenter());
+                Optional.empty(), true, u1New.network, u1New.crypto.random, l -> {}, u1New.fragmenter()).get();
         AsyncReader extendedContents = u1New.getByPath(u1.username + "/" + newname).get().get()
                 .getInputStream(u1New.network, u1New.crypto.random, l -> {}).get();
         byte[] newFileContents = Serialize.readFully(extendedContents, originalFileContents.length + suffix.length).get();
