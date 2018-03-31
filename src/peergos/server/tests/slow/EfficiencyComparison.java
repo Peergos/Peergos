@@ -46,8 +46,8 @@ public class EfficiencyComparison {
                 Pair<Champ, Multihash> current = new Pair<>(Champ.empty(), champStorage.put(champUser, Champ.empty().serialize()).get());
 
                 for (Map.Entry<ByteArrayWrapper, MaybeMultihash> e : state.entrySet()) {
-                    current = current.left.put(champUser, e.getKey(), 0, MaybeMultihash.empty(),
-                            e.getValue(), bitWidth, maxCollisions, champStorage, current.right).get();
+                    current = current.left.put(champUser, e.getKey(), e.getKey().data, 0, MaybeMultihash.empty(),
+                            e.getValue(), bitWidth, maxCollisions, x -> x.data, champStorage, current.right).get();
                 }
 
                 int champSize = champStorage.totalSize();

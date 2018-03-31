@@ -10,6 +10,7 @@ import peergos.shared.util.*;
 
 import java.io.*;
 import java.util.concurrent.*;
+import java.util.function.*;
 
 public class ChampWrapper implements ImmutableTree
 {
@@ -18,27 +19,29 @@ public class ChampWrapper implements ImmutableTree
 
     public final ContentAddressedStorage storage;
     public final int bitWidth;
+    private final Function<ByteArrayWrapper, byte[]> hasher;
     private Pair<Champ, Multihash> root;
 
-    public ChampWrapper(Champ root, Multihash rootHash, ContentAddressedStorage storage, int bitWidth) {
+    public ChampWrapper(Champ root, Multihash rootHash, Function<ByteArrayWrapper, byte[]> hasher, ContentAddressedStorage storage, int bitWidth) {
         this.storage = storage;
+        this.hasher = hasher;
         this.root = new Pair<>(root, rootHash);
         this.bitWidth = bitWidth;
     }
 
-    public static CompletableFuture<ChampWrapper> create(PublicKeyHash writer, Multihash rootHash, ContentAddressedStorage dht) {
+    public static CompletableFuture<ChampWrapper> create(PublicKeyHash writer, Multihash rootHash, Function<ByteArrayWrapper, byte[]> hasher, ContentAddressedStorage dht) {
         return dht.get(rootHash).thenApply(rawOpt -> {
             if (! rawOpt.isPresent())
                 throw new IllegalStateException("Null byte[] returned by DHT for hash: " + rootHash);
-            return new ChampWrapper(Champ.fromCbor(rawOpt.get()), rootHash, dht, 6);
+            return new ChampWrapper(Champ.fromCbor(rawOpt.get()), rootHash, hasher, dht, 6);
         });
     }
 
-    public static CompletableFuture<ChampWrapper> create(SigningPrivateKeyAndPublicHash writer, ContentAddressedStorage dht) {
+    public static CompletableFuture<ChampWrapper> create(SigningPrivateKeyAndPublicHash writer, Function<ByteArrayWrapper, byte[]> hasher, ContentAddressedStorage dht) {
         Champ newRoot = Champ.empty();
         byte[] raw = newRoot.serialize();
         return dht.put(writer.publicKeyHash, writer.secret.signatureOnly(raw), raw)
-                .thenApply(put -> new ChampWrapper(newRoot, put, dht, 6));
+                .thenApply(put -> new ChampWrapper(newRoot, put, hasher, dht, 6));
     }
 
     /**
@@ -48,7 +51,8 @@ public class ChampWrapper implements ImmutableTree
      * @throws IOException
      */
     public CompletableFuture<MaybeMultihash> get(byte[] rawKey) {
-        return root.left.get(new ByteArrayWrapper(rawKey), 0, BIT_WIDTH, storage);
+        ByteArrayWrapper key = new ByteArrayWrapper(rawKey);
+        return root.left.get(key, hasher.apply(key), 0, BIT_WIDTH, storage);
     }
 
     /**
@@ -59,7 +63,9 @@ public class ChampWrapper implements ImmutableTree
      * @throws IOException
      */
     public CompletableFuture<Multihash> put(SigningPrivateKeyAndPublicHash writer, byte[] rawKey, MaybeMultihash existing, Multihash value) {
-        return root.left.put(writer, new ByteArrayWrapper(rawKey), 0, existing, MaybeMultihash.of(value), BIT_WIDTH, MAX_HASH_COLLISIONS_PER_LEVEL, storage, root.right)
+        ByteArrayWrapper key = new ByteArrayWrapper(rawKey);
+        return root.left.put(writer, key, hasher.apply(key), 0, existing, MaybeMultihash.of(value),
+                BIT_WIDTH, MAX_HASH_COLLISIONS_PER_LEVEL, hasher, storage, root.right)
                 .thenCompose(newRoot -> commit(writer, newRoot));
     }
 
@@ -70,7 +76,9 @@ public class ChampWrapper implements ImmutableTree
      * @throws IOException
      */
     public CompletableFuture<Multihash> remove(SigningPrivateKeyAndPublicHash writer, byte[] rawKey, MaybeMultihash existing) {
-        return root.left.put(writer, new ByteArrayWrapper(rawKey), 0, existing, MaybeMultihash.empty(), BIT_WIDTH, MAX_HASH_COLLISIONS_PER_LEVEL, storage, root.right)
+        ByteArrayWrapper key = new ByteArrayWrapper(rawKey);
+        return root.left.put(writer, key, hasher.apply(key), 0, existing, MaybeMultihash.empty(),
+                BIT_WIDTH, MAX_HASH_COLLISIONS_PER_LEVEL, hasher, storage, root.right)
                 .thenCompose(newRoot -> commit(writer, newRoot));
     }
 

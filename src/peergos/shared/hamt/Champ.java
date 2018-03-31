@@ -10,6 +10,7 @@ import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.*;
 import java.util.stream.*;
 
 /**
@@ -85,13 +86,13 @@ public class Champ implements Cborable {
         return count;
     }
 
-    private static int mask(ByteArrayWrapper key, int depth, int nbits) {
+    private static int mask(byte[] hash, int depth, int nbits) {
         int index = (depth * nbits) / 8;
         int shift = (depth * nbits) % 8;
         int lowBits = Math.min(nbits, 8 - shift);
         int hiBits = nbits - lowBits;
-        return ((key.data[index] >> shift) & ((1 << lowBits) - 1)) |
-                ((key.data[index + 1] & ((1 << hiBits) - 1)) << lowBits);
+        return ((hash[index] >> shift) & ((1 << lowBits) - 1)) |
+                ((hash[index + 1] & ((1 << hiBits) - 1)) << lowBits);
     }
 
     private static int index(BitSet bitmap, int bitpos) {
@@ -106,8 +107,8 @@ public class Champ implements Cborable {
         return total;
     }
 
-    CompletableFuture<Pair<Multihash, Optional<Champ>>> getChild(ByteArrayWrapper key, int depth, int bitWidth, ContentAddressedStorage storage) {
-        int bitpos = mask(key, depth, bitWidth);
+    CompletableFuture<Pair<Multihash, Optional<Champ>>> getChild(byte[] hash, int depth, int bitWidth, ContentAddressedStorage storage) {
+        int bitpos = mask(hash, depth, bitWidth);
         int index = contents.length - 1 - index(this.nodeMap, bitpos);
         Multihash childHash = contents[index].link.get();
         return storage.get(childHash)
@@ -136,8 +137,8 @@ public class Champ implements Cborable {
         return Futures.reduceAll(indices, keys, (t, index) -> childCounts.get(index).thenApply(c -> c + t), (a, b) -> a + b);
     }
 
-    public CompletableFuture<MaybeMultihash> get(ByteArrayWrapper key, int depth, int bitWidth, ContentAddressedStorage storage) {
-        final int bitpos = mask(key, depth, bitWidth);
+    public CompletableFuture<MaybeMultihash> get(ByteArrayWrapper key, byte[] hash, int depth, int bitWidth, ContentAddressedStorage storage) {
+        final int bitpos = mask(hash, depth, bitWidth);
 
         if (dataMap.get(bitpos)) { // local value
             int index = index(this.dataMap, bitpos);
@@ -152,8 +153,8 @@ public class Champ implements Cborable {
         }
 
         if (nodeMap.get(bitpos)) { // child node
-            return getChild(key, depth, bitWidth, storage)
-                    .thenCompose(child -> child.right.map(c -> c.get(key, depth + 1, bitWidth, storage))
+            return getChild(hash, depth, bitWidth, storage)
+                    .thenCompose(child -> child.right.map(c -> c.get(key, hash, depth + 1, bitWidth, storage))
                             .orElse(CompletableFuture.completedFuture(MaybeMultihash.empty())));
         }
 
@@ -162,14 +163,16 @@ public class Champ implements Cborable {
 
     public CompletableFuture<Pair<Champ, Multihash>> put(SigningPrivateKeyAndPublicHash writer,
                                                          ByteArrayWrapper key,
+                                                         byte[] hash,
                                                          int depth,
                                                          MaybeMultihash expected,
                                                          MaybeMultihash value,
                                                          int bitWidth,
                                                          int maxCollisions,
+                                                         Function<ByteArrayWrapper, byte[]> hasher,
                                                          ContentAddressedStorage storage,
                                                          Multihash ourHash) {
-        int bitpos = mask(key, depth, bitWidth);
+        int bitpos = mask(hash, depth, bitWidth);
 
         if (dataMap.get(bitpos)) { // local value
             int index = index(this.dataMap, bitpos);
@@ -197,14 +200,15 @@ public class Champ implements Cborable {
             }
 
             return pushMappingsDownALevel(writer, mappings,
-                    key, value, depth + 1, bitWidth, maxCollisions, storage)
+                    key, hash, value, depth + 1, bitWidth, maxCollisions, hasher, storage)
                     .thenCompose(p -> {
                         Champ champ = copyAndMigrateFromInlineToNode(bitpos, p);
                         return storage.put(writer, champ.serialize()).thenApply(h -> new Pair<>(champ, h));
                     });
         } else if (nodeMap.get(bitpos)) { // child node
-            return getChild(key, depth, bitWidth, storage)
-                    .thenCompose(child -> child.right.get().put(writer, key, depth + 1, expected, value, bitWidth, maxCollisions, storage, child.left)
+            return getChild(hash, depth, bitWidth, storage)
+                    .thenCompose(child -> child.right.get().put(writer, key, hash, depth + 1, expected, value,
+                            bitWidth, maxCollisions, hasher, storage, child.left)
                             .thenCompose(newChild -> {
                                 if (newChild.right.equals(child.left))
                                     return CompletableFuture.completedFuture(new Pair<>(this, ourHash));
@@ -220,10 +224,13 @@ public class Champ implements Cborable {
 
     private CompletableFuture<Pair<Champ, Multihash>> pushMappingsDownALevel(SigningPrivateKeyAndPublicHash writer,
                                                                              KeyElement[] mappings,
-                                                                             ByteArrayWrapper key1, MaybeMultihash val1,
+                                                                             ByteArrayWrapper key1,
+                                                                             byte[] hash1,
+                                                                             MaybeMultihash val1,
                                                                              final int depth,
                                                                              int bitWidth,
                                                                              int maxCollisions,
+                                                                             Function<ByteArrayWrapper, byte[]> hasher,
                                                                              ContentAddressedStorage storage) {
         if (depth >= HASH_CODE_LENGTH) {
              throw new IllegalStateException("Hash collision!");
@@ -232,11 +239,13 @@ public class Champ implements Cborable {
         Champ empty = empty();
         return storage.put(writer, empty.serialize())
                 .thenApply(h -> new Pair<>(empty, h))
-                .thenCompose(p -> p.left.put(writer, key1, depth, MaybeMultihash.empty(), val1, bitWidth, maxCollisions, storage, p.right))
+                .thenCompose(p -> p.left.put(writer, key1, hash1, depth, MaybeMultihash.empty(), val1,
+                        bitWidth, maxCollisions, hasher, storage, p.right))
                 .thenCompose(one -> Futures.reduceAll(
                         Arrays.stream(mappings).collect(Collectors.toList()),
                         one,
-                        (p, e) -> p.left.put(writer, e.key, depth, MaybeMultihash.empty(), e.valueHash, bitWidth, maxCollisions, storage, p.right),
+                        (p, e) -> p.left.put(writer, e.key, hasher.apply(e.key), depth, MaybeMultihash.empty(), e.valueHash,
+                                bitWidth, maxCollisions, hasher, storage, p.right),
                         (a, b) -> a)
                 );
     }
@@ -322,13 +331,14 @@ public class Champ implements Cborable {
 
     public CompletableFuture<Pair<Champ, Multihash>> remove(SigningPrivateKeyAndPublicHash writer,
                                                             ByteArrayWrapper key,
+                                                            byte[] hash,
                                                             int depth,
                                                             MaybeMultihash expected,
                                                             int bitWidth,
                                                             int maxCollisions,
                                                             ContentAddressedStorage storage,
                                                             Multihash ourHash) {
-        int bitpos = mask(key, depth, bitWidth);
+        int bitpos = mask(hash, depth, bitWidth);
 
         if (dataMap.get(bitpos)) { // in place value
             final int dataIndex = index(dataMap, bitpos);
@@ -357,7 +367,7 @@ public class Champ implements Cborable {
                         if (depth == 0 && lastInPrefix)
                             newDataMap.clear(bitpos);
                         else
-                            newDataMap.set(mask(key, 0, bitWidth));
+                            newDataMap.set(mask(hash, 0, bitWidth));
 
                         HashPrefixPayload[] src = this.contents;
                         HashPrefixPayload[] dst = new HashPrefixPayload[src.length - (lastInPrefix ? 1 : 0)];
@@ -380,8 +390,8 @@ public class Champ implements Cborable {
             }
             return CompletableFuture.completedFuture(new Pair<>(this, ourHash));
         } else if (nodeMap.get(bitpos)) { // node (not value)
-            return getChild(key, depth, bitWidth, storage)
-                    .thenCompose(child -> child.right.get().remove(writer, key, depth + 1, expected, bitWidth, maxCollisions, storage, child.left)
+            return getChild(hash, depth, bitWidth, storage)
+                    .thenCompose(child -> child.right.get().remove(writer, key, hash, depth + 1, expected, bitWidth, maxCollisions, storage, child.left)
                             .thenCompose(newChild -> {
                                 if (child.left.equals(newChild.right))
                                     return CompletableFuture.completedFuture(new Pair<>(this, ourHash));
