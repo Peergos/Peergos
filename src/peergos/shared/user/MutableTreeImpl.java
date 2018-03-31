@@ -104,7 +104,7 @@ public class MutableTreeImpl implements MutableTree {
                 .thenCompose(committed -> {
                     lock.complete(committed);
                     WriterData holder = committed.props;
-                    if (! holder.tree.isPresent())
+                    if (! holder.tree.isPresent() && ! holder.btree.isPresent())
                         throw new IllegalStateException("Tree root not present for " + writer);
                     boolean isChamp = ! holder.btree.isPresent();
                     return (isChamp ?
