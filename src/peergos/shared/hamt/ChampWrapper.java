@@ -14,8 +14,8 @@ import java.util.function.*;
 
 public class ChampWrapper implements ImmutableTree
 {
-    private static final int BIT_WIDTH = 5;
-    private static final int MAX_HASH_COLLISIONS_PER_LEVEL = 3;
+    private static final int BIT_WIDTH = 3;
+    private static final int MAX_HASH_COLLISIONS_PER_LEVEL = 4;
 
     public final ContentAddressedStorage storage;
     public final int bitWidth;
