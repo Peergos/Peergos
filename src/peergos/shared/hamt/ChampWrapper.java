@@ -14,8 +14,8 @@ import java.util.function.*;
 
 public class ChampWrapper implements ImmutableTree
 {
-    private static final int BIT_WIDTH = 3;
-    private static final int MAX_HASH_COLLISIONS_PER_LEVEL = 4;
+    public static final int BIT_WIDTH = 3;
+    public static final int MAX_HASH_COLLISIONS_PER_LEVEL = 4;
 
     public final ContentAddressedStorage storage;
     public final int bitWidth;
@@ -29,7 +29,7 @@ public class ChampWrapper implements ImmutableTree
         this.bitWidth = bitWidth;
     }
 
-    public static CompletableFuture<ChampWrapper> create(PublicKeyHash writer, Multihash rootHash, Function<ByteArrayWrapper, byte[]> hasher, ContentAddressedStorage dht) {
+    public static CompletableFuture<ChampWrapper> create(Multihash rootHash, Function<ByteArrayWrapper, byte[]> hasher, ContentAddressedStorage dht) {
         return dht.get(rootHash).thenApply(rawOpt -> {
             if (! rawOpt.isPresent())
                 throw new IllegalStateException("Null byte[] returned by DHT for hash: " + rootHash);

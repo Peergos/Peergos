@@ -10,6 +10,7 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.*;
 
 public class MerkleBTree implements ImmutableTree
 {
@@ -95,6 +96,16 @@ public class MerkleBTree implements ImmutableTree
      */
     public CompletableFuture<Integer> size() {
         return root.size(storage);
+    }
+
+    /**
+     *
+     * @return true
+     * @throws IOException
+     */
+    public <T> CompletableFuture<T> applyToAllMappings(T identity,
+                                                       BiFunction<T, Pair<ByteArrayWrapper, MaybeMultihash>, CompletableFuture<T>> consumer) {
+        return root.applyToAllMappings(identity, consumer, storage);
     }
 
     public void print(PrintStream w) throws Exception {

@@ -77,7 +77,7 @@ public class MutableTreeImpl implements MutableTree {
                     WriterData holder = committed.props;
                     boolean isChamp = ! holder.btree.isPresent();
                     return (holder.tree.isPresent() ?
-                            ChampWrapper.create(writer.publicKeyHash, holder.tree.get(), hasher, dht) :
+                            ChampWrapper.create(holder.tree.get(), hasher, dht) :
                             isChamp ?
                                     ChampWrapper.create(writer, x -> x.data, dht) :
                                     MerkleBTree.create(writer.publicKeyHash, holder.btree.get(), dht)
@@ -108,7 +108,7 @@ public class MutableTreeImpl implements MutableTree {
                         throw new IllegalStateException("Tree root not present for " + writer);
                     boolean isChamp = ! holder.btree.isPresent();
                     return (isChamp ?
-                            ChampWrapper.create(writer, holder.tree.get(), hasher, dht) :
+                            ChampWrapper.create(holder.tree.get(), hasher, dht) :
                             MerkleBTree.create(writer, holder.btree.get(), dht)
                     ).thenCompose(tree -> tree.get(mapKey))
                             .thenApply(maybe -> LOGGING ?
@@ -128,7 +128,7 @@ public class MutableTreeImpl implements MutableTree {
                         throw new IllegalStateException("Tree root not present!");
                     boolean isChamp = ! holder.btree.isPresent();
                     return (isChamp ?
-                            ChampWrapper.create(writer.publicKeyHash, holder.tree.get(), hasher, dht) :
+                            ChampWrapper.create(holder.tree.get(), hasher, dht) :
                             MerkleBTree.create(writer.publicKeyHash, holder.btree.get(), dht)
                     ).thenCompose(tree -> tree.remove(writer, mapKey, existing))
                             .thenApply(pair -> LOGGING ? log(pair, "TREE.rm (" + ArrayOps.bytesToHex(mapKey) + "  => " + pair) : pair)
