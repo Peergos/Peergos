@@ -33,7 +33,7 @@ public class ChampWrapper implements ImmutableTree
         return dht.get(rootHash).thenApply(rawOpt -> {
             if (! rawOpt.isPresent())
                 throw new IllegalStateException("Null byte[] returned by DHT for hash: " + rootHash);
-            return new ChampWrapper(Champ.fromCbor(rawOpt.get()), rootHash, hasher, dht, 6);
+            return new ChampWrapper(Champ.fromCbor(rawOpt.get()), rootHash, hasher, dht, BIT_WIDTH);
         });
     }
 
@@ -41,7 +41,7 @@ public class ChampWrapper implements ImmutableTree
         Champ newRoot = Champ.empty();
         byte[] raw = newRoot.serialize();
         return dht.put(writer.publicKeyHash, writer.secret.signatureOnly(raw), raw)
-                .thenApply(put -> new ChampWrapper(newRoot, put, hasher, dht, 6));
+                .thenApply(put -> new ChampWrapper(newRoot, put, hasher, dht, BIT_WIDTH));
     }
 
     /**
