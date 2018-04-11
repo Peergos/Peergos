@@ -333,7 +333,8 @@ public class Champ implements Cborable {
         final HashPrefixPayload[] dst = new HashPrefixPayload[src.length];
 
         // copy 'src' and remove 1 element at position oldIndex and insert 1 element at position newIndex
-        assert oldIndex <= newIndex;
+        if (oldIndex > newIndex)
+            throw new IllegalStateException("Invalid champ!");
         System.arraycopy(src, 0, dst, 0, oldIndex);
         System.arraycopy(src, oldIndex + 1, dst, oldIndex, newIndex - oldIndex);
         dst[newIndex] = new HashPrefixPayload(MaybeMultihash.of(node.right));
@@ -470,7 +471,8 @@ public class Champ implements Cborable {
         final HashPrefixPayload[] dst = new HashPrefixPayload[src.length];
 
         // copy src and remove element at position oldIndex and insert element at position newIndex
-        assert oldIndex >= newIndex;
+        if (oldIndex > newIndex)
+            throw new IllegalStateException("Invalid champ!");
         System.arraycopy(src, 0, dst, 0, newIndex);
         KeyElement[] merged = new KeyElement[node.keyCount()];
         int count = 0;
