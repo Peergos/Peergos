@@ -103,7 +103,7 @@ public class Champ implements Cborable {
                 ((hash[index + 1] & ((1 << hiBits) - 1)) << lowBits);
     }
 
-    private static int index(BitSet bitmap, int bitpos) {
+    private static int getIndex(BitSet bitmap, int bitpos) {
         int total = 0;
         for (int i = 0; i < bitpos;) {
             int next = bitmap.nextSetBit(i);
@@ -117,7 +117,7 @@ public class Champ implements Cborable {
 
     CompletableFuture<Pair<Multihash, Optional<Champ>>> getChild(byte[] hash, int depth, int bitWidth, ContentAddressedStorage storage) {
         int bitpos = mask(hash, depth, bitWidth);
-        int index = contents.length - 1 - index(this.nodeMap, bitpos);
+        int index = contents.length - 1 - getIndex(this.nodeMap, bitpos);
         Multihash childHash = contents[index].link.get();
         return storage.get(childHash)
                 .thenApply(x -> new Pair<>(childHash, x.map(Champ::fromCbor)));
@@ -149,7 +149,7 @@ public class Champ implements Cborable {
         final int bitpos = mask(hash, depth, bitWidth);
 
         if (dataMap.get(bitpos)) { // local value
-            int index = index(this.dataMap, bitpos);
+            int index = getIndex(this.dataMap, bitpos);
             HashPrefixPayload payload = contents[index];
             for (KeyElement candidate : payload.mappings) {
                 if (candidate.key.equals(key)) {
@@ -183,7 +183,7 @@ public class Champ implements Cborable {
         int bitpos = mask(hash, depth, bitWidth);
 
         if (dataMap.get(bitpos)) { // local value
-            int index = index(this.dataMap, bitpos);
+            int index = getIndex(this.dataMap, bitpos);
             HashPrefixPayload payload = contents[index];
             KeyElement[] mappings = payload.mappings;
             for (int payloadIndex = 0; payloadIndex < mappings.length; payloadIndex++) {
@@ -288,7 +288,7 @@ public class Champ implements Cborable {
     }
 
     private Champ addNewPrefix(final int bitpos, final ByteArrayWrapper key, final MaybeMultihash val) {
-        final int insertIndex = index(dataMap, bitpos);
+        final int insertIndex = getIndex(dataMap, bitpos);
 
         final HashPrefixPayload[] src = this.contents;
         final HashPrefixPayload[] result = new HashPrefixPayload[src.length + 1];
@@ -304,8 +304,8 @@ public class Champ implements Cborable {
 
     private Champ copyAndMigrateFromInlineToNode(final int bitpos, final Pair<Champ, Multihash> node) {
 
-        final int oldIndex = index(dataMap, bitpos);
-        final int newIndex = this.contents.length - 1 - index(nodeMap, bitpos);
+        final int oldIndex = getIndex(dataMap, bitpos);
+        final int newIndex = this.contents.length - 1 - getIndex(nodeMap, bitpos);
 
         final HashPrefixPayload[] src = this.contents;
         final HashPrefixPayload[] dst = new HashPrefixPayload[src.length];
@@ -326,7 +326,7 @@ public class Champ implements Cborable {
 
     private Champ overwriteChildLink(final int bitpos, final Pair<Champ, Multihash> node) {
 
-        final int setIndex = this.contents.length - 1 - index(nodeMap, bitpos);
+        final int setIndex = this.contents.length - 1 - getIndex(nodeMap, bitpos);
 
         final HashPrefixPayload[] src = this.contents;
         final HashPrefixPayload[] dst = new HashPrefixPayload[src.length];
@@ -349,7 +349,7 @@ public class Champ implements Cborable {
         int bitpos = mask(hash, depth, bitWidth);
 
         if (dataMap.get(bitpos)) { // in place value
-            final int dataIndex = index(dataMap, bitpos);
+            final int dataIndex = getIndex(dataMap, bitpos);
 
             HashPrefixPayload payload = contents[dataIndex];
             KeyElement[] mappings = payload.mappings;
@@ -428,8 +428,8 @@ public class Champ implements Cborable {
 
     private Champ copyAndMigrateFromNodeToInline(final int bitpos, final Champ node) {
 
-        final int oldIndex = this.contents.length - 1 - index(nodeMap, bitpos);
-        final int newIndex = index(dataMap, bitpos);
+        final int oldIndex = this.contents.length - 1 - getIndex(nodeMap, bitpos);
+        final int newIndex = getIndex(dataMap, bitpos);
 
         final HashPrefixPayload[] src = this.contents;
         final HashPrefixPayload[] dst = new HashPrefixPayload[src.length];
@@ -457,7 +457,7 @@ public class Champ implements Cborable {
     }
 
     private Champ removeMapping(final int bitpos, final int payloadIndex) {
-        final int index = index(dataMap, bitpos);
+        final int index = getIndex(dataMap, bitpos);
         final HashPrefixPayload[] src = this.contents;
         KeyElement[] existing = src[index].mappings;
         boolean lastInPrefix = existing.length == 1;
