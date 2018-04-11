@@ -62,6 +62,10 @@ public class Multihash {
         return res;
     }
 
+    public byte[] getHash() {
+        return Arrays.copyOfRange(hash, 0, hash.length);
+    }
+
     public void serialize(DataOutput dout) throws IOException {
         dout.write(toBytes());
     }

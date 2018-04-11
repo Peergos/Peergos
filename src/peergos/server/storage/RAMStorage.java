@@ -144,6 +144,10 @@ public class RAMStorage implements ContentAddressedStorage {
         return result;
     }
 
+    public int totalSize() {
+        return storage.values().stream().mapToInt(a -> a.length).sum();
+    }
+
     private static RAMStorage singleton = new RAMStorage();
     public static RAMStorage getSingleton() {
         return singleton;

@@ -3,6 +3,7 @@ package peergos.shared.user;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.hamt.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.merklebtree.*;
 import peergos.shared.mutable.*;
@@ -11,14 +12,16 @@ import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.*;
 
-public class BtreeImpl implements Btree {
+public class MutableTreeImpl implements MutableTree {
     private final MutablePointers mutable;
     private final ContentAddressedStorage dht;
     private static final boolean LOGGING = false;
+    private final Function<ByteArrayWrapper, byte[]> hasher = x -> x.data;
     private final Map<PublicKeyHash, CompletableFuture<CommittedWriterData>> pending = new HashMap<>();
 
-    public BtreeImpl(MutablePointers mutable, ContentAddressedStorage dht) {
+    public MutableTreeImpl(MutablePointers mutable, ContentAddressedStorage dht) {
         this.mutable = mutable;
         this.dht = dht;
     }
@@ -72,13 +75,16 @@ public class BtreeImpl implements Btree {
         return addToQueue(publicWriterKey, lock)
                 .thenCompose(committed -> {
                     WriterData holder = committed.props;
-                    return (holder.btree.isPresent() ?
-                            MerkleBTree.create(writer.publicKeyHash, holder.btree.get(), dht) :
-                            MerkleBTree.create(writer, dht))
-                            .thenCompose(btree -> btree.put(writer, mapKey, existing, value))
-                            .thenApply(newRoot -> LOGGING ? log(newRoot, "BTREE.put (" + ArrayOps.bytesToHex(mapKey)
-                                    + ", " + value + ") => CAS(" + holder.btree + ", " + newRoot + ")") : newRoot)
-                            .thenCompose(newBtreeRoot -> holder.withBtree(newBtreeRoot)
+                    boolean isChamp = ! holder.btree.isPresent();
+                    return (holder.tree.isPresent() ?
+                            ChampWrapper.create(writer.publicKeyHash, holder.tree.get(), hasher, dht) :
+                            isChamp ?
+                                    ChampWrapper.create(writer, x -> x.data, dht) :
+                                    MerkleBTree.create(writer.publicKeyHash, holder.btree.get(), dht)
+                    ).thenCompose(tree -> tree.put(writer, mapKey, existing, value))
+                            .thenApply(newRoot -> LOGGING ? log(newRoot, "TREE.put (" + ArrayOps.bytesToHex(mapKey)
+                                    + ", " + value + ") => CAS(" + holder.tree + ", " + newRoot + ")") : newRoot)
+                            .thenCompose(newTreeRoot -> holder.withChamp(newTreeRoot)
                                     .commit(writer, committed.hash, mutable, dht, lock::complete))
                             .thenApply(x -> true)
                             .exceptionally(e -> {
@@ -98,12 +104,15 @@ public class BtreeImpl implements Btree {
                 .thenCompose(committed -> {
                     lock.complete(committed);
                     WriterData holder = committed.props;
-                    if (! holder.btree.isPresent())
-                        throw new IllegalStateException("Btree root not present for " + writer);
-                    return MerkleBTree.create(writer, holder.btree.get(), dht)
-                            .thenCompose(btree -> btree.get(mapKey))
+                    if (! holder.tree.isPresent() && ! holder.btree.isPresent())
+                        throw new IllegalStateException("Tree root not present for " + writer);
+                    boolean isChamp = ! holder.btree.isPresent();
+                    return (isChamp ?
+                            ChampWrapper.create(writer, holder.tree.get(), hasher, dht) :
+                            MerkleBTree.create(writer, holder.btree.get(), dht)
+                    ).thenCompose(tree -> tree.get(mapKey))
                             .thenApply(maybe -> LOGGING ?
-                                    log(maybe, "BTREE.get (" + ArrayOps.bytesToHex(mapKey) + ", root="+holder.btree.get()+" => " + maybe) : maybe);
+                                    log(maybe, "TREE.get (" + ArrayOps.bytesToHex(mapKey) + ", root="+holder.tree.get()+" => " + maybe) : maybe);
                 });
     }
 
@@ -115,12 +124,15 @@ public class BtreeImpl implements Btree {
         return addToQueue(publicWriter, future)
                 .thenCompose(committed -> {
                     WriterData holder = committed.props;
-                    if (! holder.btree.isPresent())
-                        throw new IllegalStateException("Btree root not present!");
-                    return MerkleBTree.create(writer.publicKeyHash, holder.btree.get(), dht)
-                            .thenCompose(btree -> btree.delete(writer, mapKey, existing))
-                            .thenApply(pair -> LOGGING ? log(pair, "BTREE.rm (" + ArrayOps.bytesToHex(mapKey) + "  => " + pair) : pair)
-                            .thenCompose(newBtreeRoot -> holder.withBtree(newBtreeRoot)
+                    if (! holder.tree.isPresent() && ! holder.btree.isPresent())
+                        throw new IllegalStateException("Tree root not present!");
+                    boolean isChamp = ! holder.btree.isPresent();
+                    return (isChamp ?
+                            ChampWrapper.create(writer.publicKeyHash, holder.tree.get(), hasher, dht) :
+                            MerkleBTree.create(writer.publicKeyHash, holder.btree.get(), dht)
+                    ).thenCompose(tree -> tree.remove(writer, mapKey, existing))
+                            .thenApply(pair -> LOGGING ? log(pair, "TREE.rm (" + ArrayOps.bytesToHex(mapKey) + "  => " + pair) : pair)
+                            .thenCompose(newTreeRoot -> holder.withChamp(newTreeRoot)
                                     .commit(writer, committed.hash, mutable, dht, future::complete))
                             .thenApply(x -> true);
                 });
