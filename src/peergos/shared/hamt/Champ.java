@@ -284,9 +284,8 @@ public class Champ implements Cborable {
 
     private Champ copyAndSetValue(final int setIndex, final int payloadIndex, final MaybeMultihash val) {
         final HashPrefixPayload[] src = this.contents;
-        final HashPrefixPayload[] dst = new HashPrefixPayload[src.length];
+        final HashPrefixPayload[] dst = Arrays.copyOf(src, src.length);
 
-        System.arraycopy(src, 0, dst, 0, src.length);
         HashPrefixPayload existing = dst[setIndex];
         KeyElement[] updated = new KeyElement[existing.mappings.length];
         System.arraycopy(existing.mappings, 0, updated, 0, existing.mappings.length);
@@ -298,9 +297,8 @@ public class Champ implements Cborable {
 
     private Champ insertIntoPrefix(final int index, final ByteArrayWrapper key, final MaybeMultihash val) {
         final HashPrefixPayload[] src = this.contents;
-        final HashPrefixPayload[] result = new HashPrefixPayload[src.length];
+        final HashPrefixPayload[] result = Arrays.copyOf(src, src.length);
 
-        System.arraycopy(src, 0, result, 0, src.length);
         KeyElement[] prefix = new KeyElement[src[index].mappings.length + 1];
         System.arraycopy(src[index].mappings, 0, prefix, 0, src[index].mappings.length);
         prefix[prefix.length - 1] = new KeyElement(key, val);
