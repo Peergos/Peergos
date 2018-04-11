@@ -7,6 +7,9 @@ import peergos.shared.merklebtree.*;
 import java.io.*;
 import java.util.concurrent.*;
 
+/**
+ * A content-addressed version of a Map&lt;byte[], Multihash&gt;
+ */
 public interface ImmutableTree {
 
     /**
