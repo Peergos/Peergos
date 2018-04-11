@@ -352,9 +352,8 @@ public class Champ implements Cborable {
         final int setIndex = this.contents.length - 1 - getIndex(nodeMap, bitpos);
 
         final HashPrefixPayload[] src = this.contents;
-        final HashPrefixPayload[] dst = new HashPrefixPayload[src.length];
+        final HashPrefixPayload[] dst = Arrays.copyOf(src, src.length);
 
-        System.arraycopy(src, 0, dst, 0, src.length);
         dst[setIndex] = new HashPrefixPayload(MaybeMultihash.of(node.right));
 
         return new Champ(dataMap, nodeMap, dst);
