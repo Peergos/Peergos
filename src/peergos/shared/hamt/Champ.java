@@ -41,6 +41,14 @@ public class Champ implements Cborable {
                 throw new IllegalStateException("Payload can either be mappings or a link, not both!");
         }
 
+        public HashPrefixPayload(KeyElement[] mappings) {
+            this(mappings, null);
+        }
+
+        public HashPrefixPayload(MaybeMultihash link) {
+            this(null, link);
+        }
+
         public boolean isShard() {
             return link != null;
         }
@@ -259,7 +267,7 @@ public class Champ implements Cborable {
         KeyElement[] updated = new KeyElement[existing.mappings.length];
         System.arraycopy(existing.mappings, 0, updated, 0, existing.mappings.length);
         updated[payloadIndex] = new KeyElement(existing.mappings[payloadIndex].key, val);
-        dst[setIndex] = new HashPrefixPayload(updated, null);
+        dst[setIndex] = new HashPrefixPayload(updated);
 
         return new Champ(dataMap, nodeMap, dst);
     }
@@ -274,7 +282,7 @@ public class Champ implements Cborable {
         prefix[prefix.length - 1] = new KeyElement(key, val);
         // ensure canonical structure
         Arrays.sort(prefix, Comparator.comparing(m -> m.key));
-        result[index] = new HashPrefixPayload(prefix, null);
+        result[index] = new HashPrefixPayload(prefix);
 
         return new Champ(dataMap, nodeMap, result);
     }
@@ -287,7 +295,7 @@ public class Champ implements Cborable {
 
         System.arraycopy(src, 0, result, 0, insertIndex);
         System.arraycopy(src, insertIndex, result, insertIndex + 1, src.length - insertIndex);
-        result[insertIndex] = new HashPrefixPayload(new KeyElement[]{new KeyElement(key, val)}, null);
+        result[insertIndex] = new HashPrefixPayload(new KeyElement[]{new KeyElement(key, val)});
 
         BitSet newDataMap = BitSet.valueOf(dataMap.toByteArray());
         newDataMap.set(bitpos);
@@ -306,7 +314,7 @@ public class Champ implements Cborable {
         assert oldIndex <= newIndex;
         System.arraycopy(src, 0, dst, 0, oldIndex);
         System.arraycopy(src, oldIndex + 1, dst, oldIndex, newIndex - oldIndex);
-        dst[newIndex] = new HashPrefixPayload(null, MaybeMultihash.of(node.right));
+        dst[newIndex] = new HashPrefixPayload(MaybeMultihash.of(node.right));
         System.arraycopy(src, newIndex + 1, dst, newIndex + 1, src.length - newIndex - 1);
 
         BitSet newNodeMap = BitSet.valueOf(nodeMap.toByteArray());
@@ -324,7 +332,7 @@ public class Champ implements Cborable {
         final HashPrefixPayload[] dst = new HashPrefixPayload[src.length];
 
         System.arraycopy(src, 0, dst, 0, src.length);
-        dst[setIndex] = new HashPrefixPayload(null, MaybeMultihash.of(node.right));
+        dst[setIndex] = new HashPrefixPayload(MaybeMultihash.of(node.right));
 
         return new Champ(dataMap, nodeMap, dst);
     }
@@ -377,7 +385,7 @@ public class Champ implements Cborable {
                             KeyElement[] remaining = new KeyElement[mappings.length - 1];
                             System.arraycopy(mappings, 0, remaining, 0, payloadIndex);
                             System.arraycopy(mappings, payloadIndex + 1, remaining, payloadIndex, mappings.length - payloadIndex - 1);
-                            dst[dataIndex] = new HashPrefixPayload(remaining, null);
+                            dst[dataIndex] = new HashPrefixPayload(remaining);
                         }
 
                         Champ champ = new Champ(newDataMap, new BitSet(), dst);
@@ -437,7 +445,7 @@ public class Champ implements Cborable {
             count += toAdd.length;
         }
         Arrays.sort(merged, Comparator.comparing(x -> x.key));
-        dst[newIndex] = new HashPrefixPayload(merged, null);
+        dst[newIndex] = new HashPrefixPayload(merged);
         System.arraycopy(src, newIndex, dst, newIndex + 1, oldIndex - newIndex);
         System.arraycopy(src, oldIndex + 1, dst, oldIndex + 1, src.length - oldIndex - 1);
 
@@ -462,7 +470,7 @@ public class Champ implements Cborable {
             KeyElement[] remaining = new KeyElement[existing.length - 1];
             System.arraycopy(existing, 0, remaining, 0, payloadIndex);
             System.arraycopy(existing, payloadIndex + 1, remaining, payloadIndex, existing.length - payloadIndex - 1);
-            dst[index] = new HashPrefixPayload(remaining, null);
+            dst[index] = new HashPrefixPayload(remaining);
         }
 
         BitSet newDataMap = BitSet.valueOf(dataMap.toByteArray());
@@ -514,9 +522,9 @@ public class Champ implements Cborable {
                                 MaybeMultihash.empty() :
                                 MaybeMultihash.of(((CborObject.CborMerkleLink) value).target)));
                 }
-                contents.add(new HashPrefixPayload(mappings.toArray(new KeyElement[0]), null));
+                contents.add(new HashPrefixPayload(mappings.toArray(new KeyElement[0])));
             } else {
-                contents.add(new HashPrefixPayload(null, MaybeMultihash.of(((CborObject.CborMerkleLink)keyOrHash).target)));
+                contents.add(new HashPrefixPayload(MaybeMultihash.of(((CborObject.CborMerkleLink)keyOrHash).target)));
             }
         }
         return new Champ(dataMap, nodeMap, contents.toArray(new HashPrefixPayload[contents.size()]));
