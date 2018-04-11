@@ -145,6 +145,15 @@ public class Champ implements Cborable {
         return Futures.reduceAll(indices, keys, (t, index) -> childCounts.get(index).thenApply(c -> c + t), (a, b) -> a + b);
     }
 
+    /**
+     *
+     * @param key The key to get the value for
+     * @param hash The hash of the key
+     * @param depth The current depth in the champ (top = 0)
+     * @param bitWidth The champ bitwidth
+     * @param storage The storage
+     * @return The value, if any, that this key maps to
+     */
     public CompletableFuture<MaybeMultihash> get(ByteArrayWrapper key, byte[] hash, int depth, int bitWidth, ContentAddressedStorage storage) {
         final int bitpos = mask(hash, depth, bitWidth);
 
@@ -169,6 +178,21 @@ public class Champ implements Cborable {
         return CompletableFuture.completedFuture(MaybeMultihash.empty());
     }
 
+    /**
+     *
+     * @param writer The writer key with permission to write
+     * @param key The key to set the value for
+     * @param hash The hash of the key
+     * @param depth The current depth in the champ (top = 0)
+     * @param expected The expected value, if any, currently stored for this key
+     * @param value The new value to map this key to
+     * @param bitWidth The champ bitwidth
+     * @param maxCollisions The maximum number of hash collision per layer in this champ
+     * @param hasher The function to calculate the hash of keys
+     * @param storage The storage
+     * @param ourHash The hash of the current champ node
+     * @return A new champ and its hash after the put
+     */
     public CompletableFuture<Pair<Champ, Multihash>> put(SigningPrivateKeyAndPublicHash writer,
                                                          ByteArrayWrapper key,
                                                          byte[] hash,
@@ -337,6 +361,19 @@ public class Champ implements Cborable {
         return new Champ(dataMap, nodeMap, dst);
     }
 
+    /**
+     *
+     * @param writer The writer key with permission to write
+     * @param key The key to remove the value for
+     * @param hash The hash of the key
+     * @param depth The current depth in the champ (top = 0)
+     * @param expected The expected value, if any, currently stored for this key
+     * @param bitWidth The champ bitwidth
+     * @param maxCollisions The maximum number of hash collision per layer in this champ
+     * @param storage The storage
+     * @param ourHash The hash of the current champ node
+     * @return A new champ and its hash after the remove
+     */
     public CompletableFuture<Pair<Champ, Multihash>> remove(SigningPrivateKeyAndPublicHash writer,
                                                             ByteArrayWrapper key,
                                                             byte[] hash,
