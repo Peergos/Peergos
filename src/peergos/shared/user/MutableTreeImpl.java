@@ -84,7 +84,7 @@ public class MutableTreeImpl implements MutableTree {
                     ).thenCompose(tree -> tree.put(writer, mapKey, existing, value))
                             .thenApply(newRoot -> LOGGING ? log(newRoot, "TREE.put (" + ArrayOps.bytesToHex(mapKey)
                                     + ", " + value + ") => CAS(" + holder.tree + ", " + newRoot + ")") : newRoot)
-                            .thenCompose(newTreeRoot -> holder.withChamp(newTreeRoot)
+                            .thenCompose(newTreeRoot -> (isChamp ? holder.withChamp(newTreeRoot) : holder.withBtree(newTreeRoot))
                                     .commit(writer, committed.hash, mutable, dht, lock::complete))
                             .thenApply(x -> true)
                             .exceptionally(e -> {
@@ -132,7 +132,7 @@ public class MutableTreeImpl implements MutableTree {
                             MerkleBTree.create(writer.publicKeyHash, holder.btree.get(), dht)
                     ).thenCompose(tree -> tree.remove(writer, mapKey, existing))
                             .thenApply(pair -> LOGGING ? log(pair, "TREE.rm (" + ArrayOps.bytesToHex(mapKey) + "  => " + pair) : pair)
-                            .thenCompose(newTreeRoot -> holder.withChamp(newTreeRoot)
+                            .thenCompose(newTreeRoot -> (isChamp ? holder.withChamp(newTreeRoot) : holder.withBtree(newTreeRoot))
                                     .commit(writer, committed.hash, mutable, dht, future::complete))
                             .thenApply(x -> true);
                 });

@@ -540,6 +540,8 @@ public class Champ implements Cborable {
             throw new IllegalStateException("Invalid cbor for CHAMP! " + cbor);
         List<? extends Cborable> list = ((CborObject.CborList) cbor).value;
 
+        if (! (list.get(0) instanceof CborObject.CborByteArray))
+            throw new IllegalStateException("Invalid cbor for a champ, is this a btree?");
         BitSet dataMap = BitSet.valueOf(((CborObject.CborByteArray)list.get(0)).value);
         BitSet nodeMap = BitSet.valueOf(((CborObject.CborByteArray)list.get(1)).value);
         List<? extends Cborable> contentsCbor = ((CborObject.CborList) list.get(2)).value;
