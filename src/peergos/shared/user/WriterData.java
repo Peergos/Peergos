@@ -7,11 +7,13 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
+import peergos.shared.hamt.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.merklebtree.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.fs.*;
+import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
@@ -158,6 +160,43 @@ public class WriterData implements Cborable {
                         return updated.commit(signer, MaybeMultihash.empty(), network, updater);
                     });
         });
+    }
+
+    public CompletableFuture<CommittedWriterData> migrateToChamp(SigningPrivateKeyAndPublicHash writer,
+                                                                 MaybeMultihash currentHash,
+                                                                 NetworkAccess network,
+                                                                 Consumer<CommittedWriterData> updater) {
+        CommittedWriterData original = this.committed(currentHash);
+        if (tree.isPresent())
+            return CompletableFuture.completedFuture(original);
+        if (! btree.isPresent())
+            throw new IllegalStateException("btree not present!");
+
+        Function<ByteArrayWrapper, byte[]> hasher = b -> b.data;
+        BiFunction<Pair<Champ, Multihash>,
+                Pair<ByteArrayWrapper, MaybeMultihash>,
+                CompletableFuture<Pair<Champ, Multihash>>> inserter =
+                (root, pair) -> root.left.put(writer, pair.left, pair.left.data, 0, MaybeMultihash.empty(), pair.right,
+                            ChampWrapper.BIT_WIDTH, ChampWrapper.MAX_HASH_COLLISIONS_PER_LEVEL, hasher, network.dhtClient, root.right);
+
+        Champ newRoot = Champ.empty();
+        byte[] raw = newRoot.serialize();
+        return network.dhtClient.put(writer.publicKeyHash, writer.secret.signatureOnly(raw), raw)
+                .thenApply(rootHash -> new Pair<>(newRoot, rootHash))
+                .thenCompose(empty -> MerkleBTree.create(writer.publicKeyHash, btree.get(), network.dhtClient)
+                        .thenCompose(mbtree -> mbtree.applyToAllMappings(empty, inserter))
+                        .thenCompose(champPair -> {
+                            WriterData updated = new WriterData(writer.publicKeyHash,
+                                    generationAlgorithm,
+                                    publicData,
+                                    followRequestReceiver,
+                                    ownedKeys,
+                                    staticData,
+                                    Optional.of(champPair.right),
+                                    Optional.empty());
+                            return updated.commit(writer, currentHash, network, updater);
+                        })
+                );
     }
 
     public CompletableFuture<CommittedWriterData> commit(SigningPrivateKeyAndPublicHash signer, MaybeMultihash currentHash,

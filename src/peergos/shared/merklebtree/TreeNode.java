@@ -205,6 +205,22 @@ public class TreeNode implements Cborable {
                 CompletableFuture.completedFuture(total), (a, b) -> a + b);
     }
 
+    public <T> CompletableFuture<T> applyToAllMappings(T identity,
+                                                       BiFunction<T, Pair<ByteArrayWrapper, MaybeMultihash>, CompletableFuture<T>> consumer,
+                                                       ContentAddressedStorage storage) {
+        return Futures.reduceAll(keys, identity, (res, key) ->
+                (key.valueHash.isPresent() ?
+                        consumer.apply(res, new Pair<>(key.key, key.valueHash)) :
+                        CompletableFuture.completedFuture(res)
+                ).thenCompose(newRes ->
+                        key.targetHash.isPresent() ?
+                                storage.get(key.targetHash.get())
+                                        .thenApply(rawOpt -> TreeNode.fromCbor(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present! " + key.targetHash.get()))))
+                                        .thenCompose(child -> child.applyToAllMappings(newRes, consumer, storage)) :
+                                CompletableFuture.completedFuture(newRes)
+                ), (a, b) -> a);
+    }
+
     private KeyElement smallestNonZeroKey() {
         return keys.tailSet(new KeyElement(new ByteArrayWrapper(new byte[]{0}), MaybeMultihash.empty(), MaybeMultihash.empty())).first();
     }
