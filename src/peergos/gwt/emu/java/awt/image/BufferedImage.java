@@ -20,4 +20,16 @@ public class BufferedImage extends Image implements RenderedImage {
     public Graphics2D createGraphics() {
         return null;
     }
+
+    public int getWidth() {
+        return -1;
+    }
+
+    public int getHeight() {
+        return -1;
+    }
+
+    public int getRGB(int x, int y) {
+        return -1;
+    }
 }

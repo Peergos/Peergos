@@ -207,12 +207,11 @@ Class-Path: ${manifest_cp}
     <copy todir="war/WEB-INF/lib" file="${gwt.sdk}/gwt-servlet-deps.jar" />
     <!-- Add any additional server libs that need to be copied -->
     <copy todir="war/WEB-INF/lib" file="lib/jnr-fuse-0.3-all.jar" />
-    <copy todir="war/WEB-INF/lib" file="lib/orchid-1.0.0.jar" />
   </target>
 
   <target name="javac" depends="libs" description="Compile java source to bytecode">
     <mkdir dir="war/WEB-INF/classes"/>
-    <javac srcdir="src" includes="**" encoding="utf-8"
+    <javac srcdir="src" includes="peergos/client/**" encoding="utf-8"
         destdir="war/WEB-INF/classes"
         source="1.8" target="1.8" nowarn="true"
         debug="true" debuglevel="lines,vars,source">
