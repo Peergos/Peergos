@@ -350,4 +350,20 @@ public class WriterData implements Cborable {
                     return new CommittedWriterData(hash, WriterData.fromCbor(cborOpt.get(), null));
                 });
     }
+
+    public static CompletableFuture<CommittedWriterData> getWriterData(PublicKeyHash controller,
+                                                                       MutablePointers mutable,
+                                                                       ContentAddressedStorage dht) {
+        return mutable.getPointerTarget(controller, dht)
+                .thenCompose(opt -> {
+                    if (! opt.isPresent())
+                        throw new IllegalStateException("No root pointer present for controller " + controller);
+                    return dht.get(opt.get())
+                            .thenApply(cborOpt -> {
+                                if (!cborOpt.isPresent())
+                                    throw new IllegalStateException("Couldn't retrieve WriterData from dht! " + opt);
+                                return new CommittedWriterData(opt, WriterData.fromCbor(cborOpt.get(), null));
+                            });
+                });
+    }
 }
