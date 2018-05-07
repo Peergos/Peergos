@@ -37,7 +37,7 @@ public abstract class UserTests {
 
     public UserTests(String useIPFS, Random r) throws Exception {
         int portMin = 9000;
-        int portRange = 4000;
+        int portRange = 8000;
         int webPort = portMin + r.nextInt(portRange);
         int corePort = portMin + portRange + r.nextInt(portRange);
         int socialPort = portMin + portRange + r.nextInt(portRange);
