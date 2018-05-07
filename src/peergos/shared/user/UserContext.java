@@ -585,9 +585,9 @@ public class UserContext {
                 DataSink resp = new DataSink();
                 resp.writeArray(tmp.publicBoxingKey.serialize());
                 resp.writeArray(payload);
-                network.coreNode.sendFollowRequest(initialRequest.entry.get().pointer.location.owner, resp.toByteArray());
+                network.social.sendFollowRequest(initialRequest.entry.get().pointer.location.owner, resp.toByteArray());
                 // remove pending follow request from them
-                return network.coreNode.removeFollowRequest(signer.publicKeyHash, signer.secret.signMessage(initialRequest.rawCipher));
+                return network.social.removeFollowRequest(signer.publicKeyHash, signer.secret.signMessage(initialRequest.rawCipher));
             });
         }
 
@@ -631,7 +631,7 @@ public class UserContext {
                 DataSink resp = new DataSink();
                 resp.writeArray(tmp.publicBoxingKey.serialize());
                 resp.writeArray(payload);
-                return network.coreNode.sendFollowRequest(initialRequest.entry.get().pointer.location.owner, resp.toByteArray());
+                return network.social.sendFollowRequest(initialRequest.entry.get().pointer.location.owner, resp.toByteArray());
             });
         }).thenCompose(b -> {
             if (reciprocate)
@@ -640,7 +640,7 @@ public class UserContext {
         }).thenCompose(trie -> {
             // remove original request
             entrie = trie;
-            return network.coreNode.removeFollowRequest(signer.publicKeyHash, signer.secret.signMessage(initialRequest.rawCipher));
+            return network.social.removeFollowRequest(signer.publicKeyHash, signer.secret.signMessage(initialRequest.rawCipher));
         });
     }
 
@@ -681,7 +681,7 @@ public class UserContext {
                             res.writeArray(tmp.publicBoxingKey.serialize());
                             res.writeArray(payload);
                             PublicKeyHash targetSigner = targetUserOpt.get().left;
-                            return network.coreNode.sendFollowRequest(targetSigner, res.toByteArray());
+                            return network.social.sendFollowRequest(targetSigner, res.toByteArray());
                         });
                     });
                 });
@@ -864,7 +864,7 @@ public class UserContext {
      * @return initial follow requests
      */
     public CompletableFuture<List<FollowRequest>> processFollowRequests() {
-        return network.coreNode.getFollowRequests(signer.publicKeyHash).thenCompose(reqs -> {
+        return network.social.getFollowRequests(signer.publicKeyHash).thenCompose(reqs -> {
             DataSource din = new DataSource(reqs);
             List<FollowRequest> all;
             try {
@@ -902,7 +902,7 @@ public class UserContext {
                             return updatedRoot.thenCompose(newRoot -> {
                                 entrie = newRoot;
                                 // clear their response follow req too
-                                return network.coreNode.removeFollowRequest(signer.publicKeyHash, signer.secret.signMessage(freq.rawCipher))
+                                return network.social.removeFollowRequest(signer.publicKeyHash, signer.secret.signMessage(freq.rawCipher))
                                         .thenApply(b -> newRoot);
                             });
                         }

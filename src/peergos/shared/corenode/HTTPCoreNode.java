@@ -17,7 +17,6 @@ import java.util.concurrent.*;
 
 public class HTTPCoreNode implements CoreNode
 {
-    private static final boolean LOGGING = true;
     private final HttpPoster poster;
 
     public static CoreNode getInstance(URL coreURL) throws IOException {
@@ -30,7 +29,8 @@ public class HTTPCoreNode implements CoreNode
         this.poster = poster;
     }
 
-    @Override public CompletableFuture<Optional<PublicKeyHash>> getPublicKeyHash(String username)
+    @Override
+    public CompletableFuture<Optional<PublicKeyHash>> getPublicKeyHash(String username)
     {
         try {
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
@@ -85,7 +85,8 @@ public class HTTPCoreNode implements CoreNode
         }
     }
 
-    @Override public CompletableFuture<List<UserPublicKeyLink>> getChain(String username) {
+    @Override
+    public CompletableFuture<List<UserPublicKeyLink>> getChain(String username) {
         try
         {
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
@@ -113,7 +114,8 @@ public class HTTPCoreNode implements CoreNode
         }
     }
 
-    @Override public CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> chain) {
+    @Override
+    public CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> chain) {
         try
         {
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
@@ -140,87 +142,10 @@ public class HTTPCoreNode implements CoreNode
         }
     }
 
-    @Override
-    public CompletableFuture<Boolean> sendFollowRequest(PublicKeyHash target, byte[] encryptedPermission)
-    {
-        try
-        {
-            ByteArrayOutputStream bout = new ByteArrayOutputStream();
-            DataOutputStream dout = new DataOutputStream(bout);
-
-            Serialize.serialize(target.serialize(), dout);
-            Serialize.serialize(encryptedPermission, dout);
-            dout.flush();
-
-            return poster.postUnzip("core/followRequest", bout.toByteArray()).thenApply(res -> {
-                DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
-                try {
-                    return din.readBoolean();
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
-            });
-        } catch (IOException ioe) {
-            ioe.printStackTrace();
-            return CompletableFuture.completedFuture(false);
-        }
-    }
-
     @Override public CompletableFuture<List<String>> getUsernames(String prefix)
     {
         return poster.postUnzip("core/getUsernamesGzip/"+prefix, new byte[0])
                 .thenApply(raw -> (List) JSONParser.parse(new String(raw)));
-    }
-
-    @Override public CompletableFuture<byte[]> getFollowRequests(PublicKeyHash owner)
-    {
-        try
-        {
-            ByteArrayOutputStream bout = new ByteArrayOutputStream();
-            DataOutputStream dout = new DataOutputStream(bout);
-
-
-            Serialize.serialize(owner.serialize(), dout);
-            dout.flush();
-
-            return poster.postUnzip("core/getFollowRequests", bout.toByteArray()).thenApply(res -> {
-                DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
-                try {
-                    return CoreNodeUtils.deserializeByteArray(din);
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
-            });
-        } catch (IOException ioe) {
-            ioe.printStackTrace();
-            return null;
-        }
-    }
-    
-    @Override
-    public CompletableFuture<Boolean> removeFollowRequest(PublicKeyHash owner, byte[] signedRequest)
-    {
-        try
-        {
-            ByteArrayOutputStream bout = new ByteArrayOutputStream();
-            DataOutputStream dout = new DataOutputStream(bout);
-
-            Serialize.serialize(owner.serialize(), dout);
-            Serialize.serialize(signedRequest, dout);
-            dout.flush();
-
-            return poster.postUnzip("core/removeFollowRequest", bout.toByteArray()).thenApply(res -> {
-                DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
-                try {
-                    return din.readBoolean();
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
-            });
-        } catch (IOException ioe) {
-            ioe.printStackTrace();
-            return CompletableFuture.completedFuture(false);
-        }
     }
 
     @Override public void close() {}

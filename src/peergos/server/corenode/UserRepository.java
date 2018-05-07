@@ -1,13 +1,11 @@
 package peergos.server.corenode;
 
-import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.io.ipfs.multihash.*;
-import peergos.shared.merklebtree.*;
 import peergos.shared.mutable.*;
+import peergos.shared.social.*;
 import peergos.shared.storage.*;
 
 import java.io.*;
@@ -16,8 +14,7 @@ import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 
-public class UserRepository implements CoreNode, MutablePointers {
-    public static final boolean LOGGING = false;
+public class UserRepository implements CoreNode, SocialNetwork, MutablePointers {
 
     private final ContentAddressedStorage ipfs;
     private final JDBCCoreNode store;

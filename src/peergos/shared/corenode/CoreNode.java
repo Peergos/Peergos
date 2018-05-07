@@ -7,8 +7,7 @@ import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
 
-public interface CoreNode extends SocialNetwork {
-    int MAX_PENDING_FOLLOWERS = 100;
+public interface CoreNode {
     int MAX_USERNAME_SIZE = 100;
     int MAX_USERNAME_COUNT = 1024;
 
