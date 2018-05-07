@@ -30,8 +30,8 @@ public class Playground {
         NetworkAccess source = NetworkAccess.buildJava(new URL("https://demo.peergos.net")).get();
 
         ContentAddressedStorage nonWriteThroughIpfs = new NonWriteThroughStorage(source.dhtClient);
-        NonWriteThroughCoreNode nonWriteThroughCoreNode = new NonWriteThroughCoreNode(source.coreNode, nonWriteThroughIpfs);
         MutablePointers nonWriteThroughPointers = new NonWriteThroughMutablePointers(source.mutable, nonWriteThroughIpfs);
+        NonWriteThroughCoreNode nonWriteThroughCoreNode = new NonWriteThroughCoreNode(source.coreNode, nonWriteThroughIpfs);
         MutableTreeImpl nonWriteThroughTree = new MutableTreeImpl(nonWriteThroughPointers, nonWriteThroughIpfs);
         NetworkAccess nonWriteThrough = new NetworkAccess(nonWriteThroughCoreNode,
                 nonWriteThroughIpfs,
@@ -42,22 +42,30 @@ public class Playground {
         Console console = System.console();
         String password = new String(console.readPassword("Enter password for " + username + ":"));
         UserContext context = UserContext.signIn(username, password, nonWriteThrough, crypto).get();
-        // Do something
-        Set<PublicKeyHash> ownedKeys = WriterData.getOwnedKeysRecursive(username, nonWriteThroughCoreNode, nonWriteThroughPointers, nonWriteThroughIpfs);
+
+        // invert the following two lines to actually commit the experiment
+        experiment(username, context, nonWriteThrough);
+//        experiment(username, context, source);
+
+        // Can we still log in?
+        UserContext context2 = UserContext.signIn(username, password, nonWriteThrough, crypto).get();
+        System.out.println(context2.getUserRoot().get().getName());
+    }
+
+    private static void experiment(String username,
+                                   UserContext context,
+                                   NetworkAccess network) throws Exception {
+        // Do something dangerous (you only live once)
+        Set<PublicKeyHash> ownedKeys = WriterData.getOwnedKeysRecursive(username, network.coreNode, network.mutable, network.dhtClient);
         for (PublicKeyHash ownedKey : ownedKeys) {
             if (ownedKey.equals(context.signer.publicKeyHash))
                 continue; // only the writer has a tree
-            CommittedWriterData existing = WriterData.getWriterData(ownedKey, nonWriteThroughPointers, nonWriteThroughIpfs).get();
+            CommittedWriterData existing = WriterData.getWriterData(ownedKey, network.mutable, network.dhtClient).get();
             if (existing.props.tree.isPresent())
                 continue;
             SecretSigningKey signingKey = context.getUserRoot().get().getEntryWriterKey().get();
             SigningPrivateKeyAndPublicHash writer = new SigningPrivateKeyAndPublicHash(ownedKey, signingKey);
-            // invert the following two lines to actually commit the migration
-            existing.props.migrateToChamp(writer, existing.hash, nonWriteThrough, res -> {}).get();
-//            existing.props.migrateToChamp(writer, existing.hash, source, res -> {}).get();
+            existing.props.migrateToChamp(writer, existing.hash, network, res -> {}).get();
         }
-        // Can we still log in?
-        UserContext context2 = UserContext.signIn(username, password, nonWriteThrough, crypto).get();
-        System.out.println(context2.getUserRoot().get().getName());
     }
 }
