@@ -29,7 +29,7 @@ public class Playground {
         Crypto crypto = Crypto.initJava();
         NetworkAccess source = NetworkAccess.buildJava(new URL("https://demo.peergos.net")).get();
 
-        ContentAddressedStorage nonWriteThroughIpfs = new NonWriteThroughStorage(source.dhtClient, new RAMStorage());
+        ContentAddressedStorage nonWriteThroughIpfs = new NonWriteThroughStorage(source.dhtClient);
         NonWriteThroughCoreNode nonWriteThroughCoreNode = new NonWriteThroughCoreNode(source.coreNode, nonWriteThroughIpfs);
         MutablePointers nonWriteThroughPointers = new NonWriteThroughMutablePointers(source.mutable, nonWriteThroughIpfs);
         MutableTreeImpl nonWriteThroughTree = new MutableTreeImpl(nonWriteThroughPointers, nonWriteThroughIpfs);

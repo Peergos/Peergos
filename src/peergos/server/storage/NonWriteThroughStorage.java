@@ -13,9 +13,9 @@ public class NonWriteThroughStorage implements ContentAddressedStorage {
     private final ContentAddressedStorage source;
     private final ContentAddressedStorage modifications;
 
-    public NonWriteThroughStorage(ContentAddressedStorage source, ContentAddressedStorage modifications) {
+    public NonWriteThroughStorage(ContentAddressedStorage source) {
         this.source = source;
-        this.modifications = modifications;
+        this.modifications = new RAMStorage();
     }
 
     @Override
