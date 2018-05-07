@@ -110,8 +110,8 @@ public class TofuCoreNode implements CoreNode {
     }
 
     @Override
-    public CompletableFuture<Boolean> addFollowRequest(PublicKeyHash target, byte[] encryptedPermission) {
-        return source.addFollowRequest(target, encryptedPermission);
+    public CompletableFuture<Boolean> sendFollowRequest(PublicKeyHash target, byte[] encryptedPermission) {
+        return source.sendFollowRequest(target, encryptedPermission);
     }
 
     @Override

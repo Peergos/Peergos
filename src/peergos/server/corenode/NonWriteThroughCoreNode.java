@@ -96,7 +96,7 @@ public class NonWriteThroughCoreNode implements CoreNode {
     private final Map<PublicKeyHash, List<ByteArrayWrapper>> newFollowRequests = new ConcurrentHashMap<>();
 
     @Override
-    public CompletableFuture<Boolean> addFollowRequest(PublicKeyHash target, byte[] encryptedPermission) {
+    public CompletableFuture<Boolean> sendFollowRequest(PublicKeyHash target, byte[] encryptedPermission) {
         newFollowRequests.putIfAbsent(target, new ArrayList<>());
         ByteArrayWrapper wrappped = new ByteArrayWrapper(encryptedPermission);
         newFollowRequests.get(target).add(wrappped);

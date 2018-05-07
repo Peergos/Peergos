@@ -72,7 +72,7 @@ public class UserRepository implements CoreNode, MutablePointers {
     }
 
     @Override
-    public CompletableFuture<Boolean> addFollowRequest(PublicKeyHash target, byte[] encryptedPermission) {
+    public CompletableFuture<Boolean> sendFollowRequest(PublicKeyHash target, byte[] encryptedPermission) {
         return store.addFollowRequest(target, encryptedPermission);
     }
 

@@ -169,7 +169,7 @@ public class HttpCoreNodeServer
             PublicKeyHash target = PublicKeyHash.fromCbor(CborObject.fromByteArray(encodedKey));
             byte[] encodedSharingPublicKey = CoreNodeUtils.deserializeByteArray(din);
 
-            boolean followRequested = coreNode.addFollowRequest(target, encodedSharingPublicKey).get();
+            boolean followRequested = coreNode.sendFollowRequest(target, encodedSharingPublicKey).get();
             dout.writeBoolean(followRequested);
         }
         void getFollowRequests(DataInputStream din, DataOutputStream dout) throws Exception
