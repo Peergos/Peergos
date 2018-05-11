@@ -100,19 +100,9 @@ public class UserRepository implements CoreNode, MutablePointers {
                         .thenCompose(writerOpt -> {
                             try {
                                 PublicSigningKey writerKey = writerOpt.get();
-                                byte[] bothHashes = writerKey.unsignMessage(writerSignedBtreeRootHash);
-                                // check CAS [current hash, new hash]
-                                HashCasPair cas = HashCasPair.fromCbor(CborObject.fromByteArray(bothHashes));
-                                MaybeMultihash claimedCurrentHash = cas.original;
-                                Multihash newHash = cas.updated.get();
-
-                                MaybeMultihash existing = current
-                                        .map(signed -> HashCasPair.fromCbor(CborObject.fromByteArray(writerKey.unsignMessage(signed))).updated)
-                                        .orElse(MaybeMultihash.empty());
-                                if (! existing.equals(claimedCurrentHash))
+                                if (! MutablePointers.isValidUpdate(writerKey, current, writerSignedBtreeRootHash))
                                     return CompletableFuture.completedFuture(false);
-                                if (LOGGING)
-                                    System.out.println("Core::setMetadata for " + writer + " from " + current + " to " + newHash);
+
                                 return store.setPointer(owner, writer, writerSignedBtreeRootHash);
                             } catch (TweetNaCl.InvalidSignatureException e) {
                                 System.err.println("Invalid signature during setMetadataBlob for sharer: " + writer);

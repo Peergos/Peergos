@@ -45,7 +45,9 @@ public class RAMStorage implements ContentAddressedStorage {
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(Multihash object) {
-        return CompletableFuture.completedFuture(Optional.of(storage.getOrDefault(object, new byte[0])));
+        return CompletableFuture.completedFuture(storage.containsKey(object) ?
+                Optional.of(storage.get(object)) :
+                Optional.empty());
     }
 
     @Override
