@@ -2,13 +2,8 @@ package peergos.server.corenode;
 
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
-import peergos.shared.crypto.asymmetric.*;
-import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.io.ipfs.multihash.*;
-import peergos.shared.merklebtree.*;
-import peergos.shared.mutable.*;
-import peergos.shared.storage.*;
+import peergos.shared.social.*;
 import peergos.shared.util.*;
 
 import java.io.*;
@@ -577,7 +572,7 @@ public class JDBCCoreNode {
         byte[] dummy = null;
         FollowRequestData selector = new FollowRequestData(owner, dummy);
         RowData[] requests = selector.select();
-        if (requests != null && requests.length > CoreNode.MAX_PENDING_FOLLOWERS)
+        if (requests != null && requests.length > SocialNetwork.MAX_PENDING_FOLLOWERS)
             return CompletableFuture.completedFuture(false);
         // ToDo add a crypto currency transaction to prevent spam
 

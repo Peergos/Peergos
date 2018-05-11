@@ -35,11 +35,17 @@ public class MultiUserTests {
         int portRange = 2000;
         int webPort = portMin + r.nextInt(portRange);
         int corePort = portMin + portRange + r.nextInt(portRange);
+        int socialPort = portMin + portRange + r.nextInt(portRange);
         this.userCount = userCount;
         if (userCount  < 2)
             throw new IllegalStateException();
 
-        Args args = Args.parse(new String[]{"useIPFS", ""+useIPFS.equals("IPFS"), "-port", Integer.toString(webPort), "-corenodePort", Integer.toString(corePort)});
+        Args args = Args.parse(new String[]{
+                "useIPFS", ""+useIPFS.equals("IPFS"),
+                "-port", Integer.toString(webPort),
+                "-corenodePort", Integer.toString(corePort),
+                "-socialnodePort", Integer.toString(socialPort)
+        });
         Start.LOCAL.main(args);
         this.network = NetworkAccess.buildJava(new URL("http://localhost:" + webPort)).get();
         this.crypto = crypto;

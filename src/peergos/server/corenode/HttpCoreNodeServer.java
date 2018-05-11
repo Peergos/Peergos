@@ -13,7 +13,6 @@ import java.util.concurrent.*;
 import java.util.zip.*;
 
 import com.sun.net.httpserver.*;
-import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.api.*;
 import peergos.shared.mutable.*;
@@ -71,15 +70,6 @@ public class HttpCoreNodeServer
                         exchange.getResponseHeaders().set("Content-Encoding", "gzip");
                         exchange.getResponseHeaders().set("Content-Type", "application/json");
                         getAllUsernamesGzip(subComponents.length > 1 ? subComponents[1] : "", din, dout);
-                        break;
-                    case "followRequest":
-                        followRequest(din, dout);
-                        break;
-                    case "getFollowRequests":
-                        getFollowRequests(din, dout);
-                        break;
-                    case "removeFollowRequest":
-                        removeFollowRequest(din, dout);
                         break;
                     default:
                         throw new IOException("Unknown method "+ method);
@@ -161,32 +151,6 @@ public class HttpCoreNodeServer
             gout.flush();
             gout.close();
             dout.write(bout.toByteArray());
-        }
-
-        void followRequest(DataInputStream din, DataOutputStream dout) throws Exception
-        {
-            byte[] encodedKey = Serialize.deserializeByteArray(din, PublicSigningKey.MAX_SIZE);
-            PublicKeyHash target = PublicKeyHash.fromCbor(CborObject.fromByteArray(encodedKey));
-            byte[] encodedSharingPublicKey = CoreNodeUtils.deserializeByteArray(din);
-
-            boolean followRequested = coreNode.addFollowRequest(target, encodedSharingPublicKey).get();
-            dout.writeBoolean(followRequested);
-        }
-        void getFollowRequests(DataInputStream din, DataOutputStream dout) throws Exception
-        {
-            byte[] encodedKey = Serialize.deserializeByteArray(din, PublicSigningKey.MAX_SIZE);
-            PublicKeyHash ownerPublicKey = PublicKeyHash.fromCbor(CborObject.fromByteArray(encodedKey));
-            byte[] res = coreNode.getFollowRequests(ownerPublicKey).get();
-            Serialize.serialize(res, dout);
-        }
-        void removeFollowRequest(DataInputStream din, DataOutputStream dout) throws Exception
-        {
-            byte[] encodedKey = Serialize.deserializeByteArray(din, PublicSigningKey.MAX_SIZE);
-            PublicKeyHash owner = PublicKeyHash.fromCbor(CborObject.fromByteArray(encodedKey));
-            byte[] signedFollowRequest = CoreNodeUtils.deserializeByteArray(din);
-
-            boolean isRemoved = coreNode.removeFollowRequest(owner, signedFollowRequest).get();
-            dout.writeBoolean(isRemoved);
         }
 
         public void close() throws IOException{

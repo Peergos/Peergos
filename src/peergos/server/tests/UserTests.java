@@ -37,10 +37,16 @@ public abstract class UserTests {
 
     public UserTests(String useIPFS, Random r) throws Exception {
         int portMin = 9000;
-        int portRange = 4000;
+        int portRange = 8000;
         int webPort = portMin + r.nextInt(portRange);
         int corePort = portMin + portRange + r.nextInt(portRange);
-        Args args = Args.parse(new String[]{"useIPFS", ""+useIPFS.equals("IPFS"), "-port", Integer.toString(webPort), "-corenodePort", Integer.toString(corePort)});
+        int socialPort = portMin + portRange + r.nextInt(portRange);
+        Args args = Args.parse(new String[]{
+                "useIPFS", ""+useIPFS.equals("IPFS"),
+                "-port", Integer.toString(webPort),
+                "-corenodePort", Integer.toString(corePort),
+                "-socialnodePort", Integer.toString(socialPort)
+        });
         Start.LOCAL.main(args);
         this.network = NetworkAccess.buildJava(new URL("http://localhost:" + webPort)).get();
         // use insecure random otherwise tests take ages

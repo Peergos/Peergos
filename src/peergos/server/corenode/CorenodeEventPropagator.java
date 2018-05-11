@@ -54,21 +54,6 @@ public class CorenodeEventPropagator implements CoreNode {
     }
 
     @Override
-    public CompletableFuture<Boolean> addFollowRequest(PublicKeyHash target, byte[] encryptedPermission) {
-        return this.target.addFollowRequest(target, encryptedPermission);
-    }
-
-    @Override
-    public CompletableFuture<byte[]> getFollowRequests(PublicKeyHash owner) {
-        return target.getFollowRequests(owner);
-    }
-
-    @Override
-    public CompletableFuture<Boolean> removeFollowRequest(PublicKeyHash owner, byte[] data) {
-        return target.removeFollowRequest(owner, data);
-    }
-
-    @Override
     public void close() throws IOException {
 
     }
