@@ -6,16 +6,13 @@ import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.io.ipfs.api.*;
 import peergos.shared.mutable.*;
 import peergos.shared.social.*;
 import peergos.shared.util.*;
 
 import java.io.*;
 import java.net.*;
-import java.util.*;
 import java.util.concurrent.*;
-import java.util.zip.*;
 
 public class HttpSocialNetworkServer
 {
@@ -47,7 +44,7 @@ public class HttpSocialNetworkServer
                 path = path.substring(1);
             String[] subComponents = path.substring(SOCIAL_URL.length()).split("/");
             String method = subComponents[0];
-//            System.out.println("core method "+ method +" from path "+ path);
+//            System.out.println("social method "+ method +" from path "+ path);
 
             try {
                 switch (method)
@@ -82,7 +79,7 @@ public class HttpSocialNetworkServer
                 exchange.close();
                 long t2 = System.currentTimeMillis();
                 if (LOGGING)
-                    System.out.println("Corenode server handled " + method + " request in: " + (t2 - t1) + " mS");
+                    System.out.println("Social Network server handled " + method + " request in: " + (t2 - t1) + " mS");
             }
 
         }
@@ -147,7 +144,6 @@ public class HttpSocialNetworkServer
 
     public static void createAndStart(String keyfile, char[] passphrase, int port, SocialNetwork social, MutablePointers mutable, Args args)
     {
-        // eventually will need our own keypair to sign traffic to other core nodes
         try {
             String hostname = args.getArg("domain", "localhost");
             System.out.println("Starting social network server listening on: " + hostname+":"+port +" proxying to "+social);
@@ -157,7 +153,7 @@ public class HttpSocialNetworkServer
         } catch (Exception e)
         {
             e.printStackTrace();
-            System.out.println("Couldn't start Corenode server!");
+            System.out.println("Couldn't start Social Network server!");
         }
     }
 }
