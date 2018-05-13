@@ -119,7 +119,7 @@ public class HttpSocialNetworkServer
     {
 
         this.address = address;
-        if (address.getHostName().contains("local"))
+        if (address.getHostName().toLowerCase().contains("local"))
             server = HttpServer.create(address, CONNECTION_BACKLOG);
         else
             server = HttpServer.create(new InetSocketAddress(InetAddress.getLocalHost(), address.getPort()), CONNECTION_BACKLOG);
