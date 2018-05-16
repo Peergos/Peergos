@@ -2,6 +2,7 @@ package peergos.server;
 
 import peergos.server.corenode.*;
 import peergos.server.mutable.*;
+import peergos.server.social.*;
 import peergos.server.storage.*;
 import peergos.shared.*;
 import peergos.shared.crypto.*;
@@ -32,8 +33,10 @@ public class Playground {
         ContentAddressedStorage nonWriteThroughIpfs = new NonWriteThroughStorage(source.dhtClient);
         MutablePointers nonWriteThroughPointers = new NonWriteThroughMutablePointers(source.mutable, nonWriteThroughIpfs);
         NonWriteThroughCoreNode nonWriteThroughCoreNode = new NonWriteThroughCoreNode(source.coreNode, nonWriteThroughIpfs);
+        NonWriteThroughSocialNetwork nonWriteThroughSocial = new NonWriteThroughSocialNetwork(source.social, nonWriteThroughIpfs);
         MutableTreeImpl nonWriteThroughTree = new MutableTreeImpl(nonWriteThroughPointers, nonWriteThroughIpfs);
         NetworkAccess nonWriteThrough = new NetworkAccess(nonWriteThroughCoreNode,
+                nonWriteThroughSocial,
                 nonWriteThroughIpfs,
                 nonWriteThroughPointers,
                 nonWriteThroughTree, source.usernames, false);

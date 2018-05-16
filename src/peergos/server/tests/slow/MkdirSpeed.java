@@ -39,7 +39,7 @@ public class MkdirSpeed {
         ContentAddressedStorage dht = RAMStorage.getSingleton();
         UserRepository core = UserRepository.buildSqlLite(":memory:", dht, CoreNode.MAX_USERNAME_COUNT);
         MutableTree btree = new MutableTreeImpl(core, dht);
-        return new NetworkAccess(core, dht, core, btree, Collections.emptyList());
+        return new NetworkAccess(core, core, dht, core, btree, Collections.emptyList());
     }
 
     private static NetworkAccess buildHttpNetworkAccess(boolean useIpfs, Random r) throws Exception {

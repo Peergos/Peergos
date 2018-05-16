@@ -10,6 +10,7 @@ import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.mutable.*;
+import peergos.shared.social.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
@@ -28,6 +29,7 @@ import java.util.stream.*;
 public class NetworkAccess {
 
     public final CoreNode coreNode;
+    public final SocialNetwork social;
     public final ContentAddressedStorage dhtClient;
     public final MutablePointers mutable;
     public final MutableTree tree;
@@ -36,12 +38,13 @@ public class NetworkAccess {
     private final LocalDateTime creationTime;
     private final boolean isJavascript;
 
-    public NetworkAccess(CoreNode coreNode, ContentAddressedStorage dhtClient, MutablePointers mutable, MutableTree tree, List<String> usernames) {
-        this(coreNode, dhtClient, mutable, tree, usernames, false);
+    public NetworkAccess(CoreNode coreNode, SocialNetwork social, ContentAddressedStorage dhtClient, MutablePointers mutable, MutableTree tree, List<String> usernames) {
+        this(coreNode, social, dhtClient, mutable, tree, usernames, false);
     }
 
-    public NetworkAccess(CoreNode coreNode, ContentAddressedStorage dhtClient, MutablePointers mutable, MutableTree tree, List<String> usernames, boolean isJavascript) {
+    public NetworkAccess(CoreNode coreNode, SocialNetwork social, ContentAddressedStorage dhtClient, MutablePointers mutable, MutableTree tree, List<String> usernames, boolean isJavascript) {
         this.coreNode = coreNode;
+        this.social = social;
         this.dhtClient = new HashVerifyingStorage(dhtClient);
         this.mutable = mutable;
         this.tree = tree;
@@ -55,7 +58,7 @@ public class NetworkAccess {
     }
 
     public NetworkAccess withCorenode(CoreNode newCore) {
-        return new NetworkAccess(newCore, dhtClient, mutable, tree, usernames, isJavascript);
+        return new NetworkAccess(newCore, social, dhtClient, mutable, tree, usernames, isJavascript);
     }
 
     @JsMethod
@@ -66,19 +69,21 @@ public class NetworkAccess {
     }
 
     public NetworkAccess clear() {
-        return new NetworkAccess(coreNode, dhtClient, mutable, new MutableTreeImpl(mutable, dhtClient), usernames, isJavascript);
+        return new NetworkAccess(coreNode, social, dhtClient, mutable, new MutableTreeImpl(mutable, dhtClient), usernames, isJavascript);
     }
 
     public static CompletableFuture<NetworkAccess> build(HttpPoster poster, boolean isJavascript) {
         int cacheTTL = 7_000;
         System.out.println("Using caching corenode with TTL: " + cacheTTL + " mS");
         CoreNode coreNode = new HTTPCoreNode(poster);
+        SocialNetwork social = new HttpSocialNetwork(poster);
         MutablePointers mutable = new CachingPointers(new HttpMutablePointers(poster), cacheTTL);
 
         // allow 10MiB of ram for caching tree entries
         ContentAddressedStorage dht = new CachingStorage(new ContentAddressedStorage.HTTP(poster), 10_000, 50 * 1024);
         MutableTree btree = new MutableTreeImpl(mutable, dht);
-        return coreNode.getUsernames("").thenApply(usernames -> new NetworkAccess(coreNode, dht, mutable, btree, usernames, isJavascript));
+        return coreNode.getUsernames("")
+                .thenApply(usernames -> new NetworkAccess(coreNode, social, dht, mutable, btree, usernames, isJavascript));
     }
 
     @JsMethod

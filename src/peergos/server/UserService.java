@@ -3,9 +3,11 @@ package peergos.server;
 import com.sun.net.httpserver.*;
 import peergos.server.corenode.*;
 import peergos.server.mutable.*;
+import peergos.server.social.*;
 import peergos.server.storage.*;
 import peergos.shared.corenode.*;
 import peergos.shared.mutable.*;
+import peergos.shared.social.*;
 import peergos.shared.storage.ContentAddressedStorage;
 
 import peergos.server.net.*;
@@ -66,14 +68,22 @@ public class UserService
     private final Logger LOGGER;
     private final InetSocketAddress local;
     private final CoreNode coreNode;
+    private final SocialNetwork social;
     private final MutablePointers mutable;
     private HttpServer server;
 
-    public UserService(InetSocketAddress local, Logger LOGGER, ContentAddressedStorage dht, CoreNode coreNode, MutablePointers mutable, Args args) throws IOException
+    public UserService(InetSocketAddress local,
+                       Logger LOGGER,
+                       ContentAddressedStorage dht,
+                       CoreNode coreNode,
+                       SocialNetwork social,
+                       MutablePointers mutable,
+                       Args args) throws IOException
     {
         this.LOGGER = LOGGER;
         this.local = local;
         this.coreNode = coreNode;
+        this.social = social;
         this.mutable = mutable;
         init(dht, args);
     }
@@ -172,6 +182,9 @@ public class UserService
         server.createContext("/" + HttpCoreNodeServer.CORE_URL,
                 wrap.apply(new HttpCoreNodeServer.CoreNodeHandler(corenodePropagator)));
 
+        server.createContext("/" + HttpSocialNetworkServer.SOCIAL_URL,
+                wrap.apply(new HttpSocialNetworkServer.SocialHandler(this.social)));
+
         MutableEventPropagator mutablePropagator = new MutableEventPropagator(this.mutable);
         mutablePropagator.addListener(spaceChecker::accept);
         server.createContext("/" + HttpMutablePointerServer.MUTABLE_POINTERS_URL,
@@ -182,7 +195,7 @@ public class UserService
         server.createContext(ACTIVATION_URL,
                 wrap.apply(new InverseProxyHandler("demo.peergos.net", isLocal)));
 
-        //define  web-root static-handler
+        //define web-root static-handler
         StaticHandler handler;
         try {
             String webroot = args.getArg("webroot");

@@ -2,11 +2,13 @@ package peergos.server;
 
 import peergos.server.corenode.*;
 import peergos.server.mutable.*;
+import peergos.server.social.*;
 import peergos.shared.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
 import peergos.shared.mutable.*;
+import peergos.shared.social.*;
 import peergos.shared.storage.*;
 import peergos.server.fuse.*;
 import peergos.server.storage.*;
@@ -40,12 +42,24 @@ public class Start
             ).collect(Collectors.toList())
     );
 
+    public static Command SOCIAL = new Command("social",
+            "Start a social network node which stores follow requests.",
+            Start::startSocialNode,
+            Stream.of(
+                    new Command.Arg("socialnodePath", "Path to a local social node sql file (created if it doesn't exist)", false, ":memory:"),
+                    new Command.Arg("keyfile", "Path to keyfile", false),
+                    new Command.Arg("passphrase", "Passphrase for keyfile", false),
+                    new Command.Arg("socialnodePort", "Service port", true, "" + HttpSocialNetworkServer.PORT)
+            ).collect(Collectors.toList())
+    );
+
     public static final Command PEERGOS = new Command("peergos",
             "The user facing Peergos server",
             Start::startPeergos,
             Stream.of(
                     new Command.Arg("port",  "service port", false, "8000"),
                     new Command.Arg("corenodeURL", "Core node address", false, "http://localhost:" + HttpCoreNodeServer.PORT),
+                    new Command.Arg("socialnodeURL", "Social network node address", false, "http://localhost:" + HttpSocialNetworkServer.PORT),
                     new Command.Arg("domain", "Domain name to bind to,", false, "localhost"),
                     new Command.Arg("useIPFS", "Use IPFS for storage or ephemeral RAM store", false, "true"),
                     new Command.Arg("webroot", "the path to the directory to serve as the web root", false),
@@ -59,11 +73,14 @@ public class Start
             args -> {
                 args.setIfAbsent("domain", "demo.peergos.net");
                 args.setIfAbsent("corenodePath", "core.sql");
+                args.setIfAbsent("socialnodePath", "social.sql");
                 args.setIfAbsent("useIPFS", "true");
                 args.setIfAbsent("publicserver", "true");
                 CORE_NODE.main(args);
+                SOCIAL.main(args);
                 args.setArg("port", "443");
                 args.setIfAbsent("corenodeURL", "http://localhost:" + args.getArg("corenodePort"));
+                args.setIfAbsent("socialnodeURL", "http://localhost:" + args.getArg("socialnodePort"));
                 PEERGOS.main(args);
             },
             Collections.emptyList()
@@ -74,9 +91,12 @@ public class Start
             args -> {
                 args.setIfAbsent("domain", "localhost");
                 args.setIfAbsent("corenodePath", ":memory:");
+                args.setIfAbsent("socialnodePath", ":memory:");
                 args.setIfAbsent("useIPFS", "false");
                 CORE_NODE.main(args);
+                SOCIAL.main(args);
                 args.setIfAbsent("corenodeURL", "http://localhost:" + args.getArg("corenodePort"));
+                args.setIfAbsent("socialnodeURL", "http://localhost:" + args.getArg("socialnodePort"));
                 PEERGOS.main(args);
             },
             Collections.emptyList()
@@ -100,6 +120,7 @@ public class Start
 
             int webPort = a.getInt("port");
             URL coreAddress = new URI(a.getArg("corenodeURL")).toURL();
+            URL socialAddress = new URI(a.getArg("socialnodeURL")).toURL();
             String domain = a.getArg("domain");
             InetSocketAddress userAPIAddress = new InetSocketAddress(domain, webPort);
 
@@ -112,6 +133,7 @@ public class Start
             String hostname = a.getArg("domain");
 
             CoreNode core = HTTPCoreNode.getInstance(coreAddress);
+            SocialNetwork social = HttpSocialNetwork.getInstance(socialAddress);
             MutablePointers mutable = HttpMutablePointers.getInstance(coreAddress);
             String blacklistPath = "blacklist.txt";
             PublicKeyBlackList blacklist = new UserBasedBlacklist(Paths.get(blacklistPath), core, mutable, dht);
@@ -122,7 +144,7 @@ public class Start
 
             new UserFilePinner(userPath, core, mutablePointers, dht, delayMs).start();
             InetSocketAddress httpsMessengerAddress = new InetSocketAddress(hostname, userAPIAddress.getPort());
-            new UserService(httpsMessengerAddress, Logger.getLogger("IPFS"), dht, core, mutablePointers, a);
+            new UserService(httpsMessengerAddress, Logger.getLogger("IPFS"), dht, core, social, mutablePointers, a);
         } catch (Exception e) {
             e.printStackTrace();
 
@@ -182,8 +204,29 @@ public class Start
         }
     }
 
+    public static void startSocialNode(Args a) {
+        String keyfile = a.getArg("keyfile", "social.key");
+        char[] passphrase = a.getArg("passphrase", "password").toCharArray();
+        String path = a.getArg("socialnodePath");
+        int socialnodePort = a.getInt("socialnodePort");
+        int maxUserCount = a.getInt("maxUserCount", CoreNode.MAX_USERNAME_COUNT);
+        System.out.println("Using social node path " + path);
+        boolean useIPFS = a.getBoolean("useIPFS");
+        int dhtCacheEntries = 1000;
+        int maxValueSizeToCache = 2 * 1024 * 1024;
+        ContentAddressedStorage dht = useIPFS ?
+                new CachingStorage(new IpfsDHT(), dhtCacheEntries, maxValueSizeToCache) :
+                RAMStorage.getSingleton();
+        try {
+            UserRepository userRepository = UserRepository.buildSqlLite(path, dht, maxUserCount);
+            HttpSocialNetworkServer.createAndStart(keyfile, passphrase, socialnodePort, userRepository, userRepository, a);
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     public static final Command MAIN = new Command("Main",
-            "Run a Peergos server and/or a corenode server",
+            "Run a Peergos server, corenode server, social network server or combination thereof",
             args -> {
                 Optional<String> top = args.head();
                 if (! top.isPresent()) {
@@ -198,6 +241,7 @@ public class Start
             Collections.emptyList(),
             Arrays.asList(
                     CORE_NODE,
+                    SOCIAL,
                     PEERGOS,
                     LOCAL,
                     DEMO,
