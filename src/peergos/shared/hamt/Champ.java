@@ -515,6 +515,88 @@ public class Champ implements Cborable {
         return new Champ(newDataMap, nodeMap, dst);
     }
 
+    public <T> CompletableFuture<T> applyToAllMappings(T identity,
+                                                       BiFunction<T, Pair<ByteArrayWrapper, MaybeMultihash>, CompletableFuture<T>> consumer,
+                                                       ContentAddressedStorage storage) {
+        return Futures.reduceAll(Arrays.stream(contents).collect(Collectors.toList()), identity, (res, payload) ->
+                (! payload.isShard() ?
+                        Futures.reduceAll(
+                                Arrays.stream(payload.mappings).collect(Collectors.toList()),
+                                res,
+                                (x, mapping) -> consumer.apply(x, new Pair<>(mapping.key, mapping.valueHash)),
+                                (a, b) ->  a) :
+                        CompletableFuture.completedFuture(res)
+                ).thenCompose(newRes ->
+                        payload.isShard() && payload.link.isPresent() ?
+                                storage.get(payload.link.get())
+                                        .thenApply(rawOpt -> Champ.fromCbor(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present! " + payload.link))))
+                                        .thenCompose(child -> child.applyToAllMappings(newRes, consumer, storage)) :
+                                CompletableFuture.completedFuture(newRes)
+                ), (a, b) -> a);
+    }
+
+    private List<KeyElement> getMappings() {
+        return Arrays.stream(contents)
+                .filter(p -> !p.isShard())
+                .flatMap(p -> Arrays.stream(p.mappings))
+                .collect(Collectors.toList());
+    }
+
+    private List<HashPrefixPayload> getLinks() {
+        return Arrays.stream(contents)
+                .filter(p -> p.isShard())
+                .collect(Collectors.toList());
+    }
+
+    public static CompletableFuture<Boolean> applyToDiff(
+            MaybeMultihash original,
+            MaybeMultihash updated,
+            Consumer<Triple<ByteArrayWrapper, MaybeMultihash, MaybeMultihash>> consumer,
+            ContentAddressedStorage storage) {
+
+        return original.map(storage::get).orElseGet(() -> CompletableFuture.completedFuture(Optional.empty()))
+                .thenApply(rawOpt -> rawOpt.map(Champ::fromCbor))
+                .thenCompose(left -> updated.map(storage::get).orElseGet(() -> CompletableFuture.completedFuture(Optional.empty()))
+                        .thenApply(rawOpt -> rawOpt.map(Champ::fromCbor))
+                        .thenCompose(right -> {
+                            List<KeyElement> leftMappings = left.map(Champ::getMappings).orElseGet(Collections::emptyList);
+                            List<KeyElement> rightMappings = right.map(Champ::getMappings).orElseGet(Collections::emptyList);
+                            Map<ByteArrayWrapper, MaybeMultihash> leftMap = leftMappings.stream()
+                                    .collect(Collectors.toMap(e -> e.key, e -> e.valueHash));
+                            Map<ByteArrayWrapper, MaybeMultihash> rightMap = rightMappings.stream()
+                                    .collect(Collectors.toMap(e -> e.key, e -> e.valueHash));
+
+                            HashSet<ByteArrayWrapper> both = new HashSet<>(leftMap.keySet());
+                            both.retainAll(rightMap.keySet());
+                            for (Map.Entry<ByteArrayWrapper, MaybeMultihash> entry : leftMap.entrySet()) {
+                                if (! both.contains(entry.getKey()))
+                                    consumer.accept(new Triple<>(entry.getKey(), entry.getValue(), MaybeMultihash.empty()));
+                                else
+                                    consumer.accept(new Triple<>(entry.getKey(), entry.getValue(), rightMap.get(entry.getKey())));
+                            }
+                            for (Map.Entry<ByteArrayWrapper, MaybeMultihash> entry : rightMap.entrySet()) {
+                                if (! both.contains(entry.getKey()))
+                                    consumer.accept(new Triple<>(entry.getKey(), MaybeMultihash.empty(), entry.getValue()));
+                            }
+
+                            // Now descend recursively, diffing equal indexed elements
+                            List<HashPrefixPayload> leftLinks = left.map(Champ::getLinks).orElseGet(Collections::emptyList);
+                            List<HashPrefixPayload> rightLinks = right.map(Champ::getLinks).orElseGet(Collections::emptyList);
+
+                            List<Pair<MaybeMultihash, MaybeMultihash>> linkPairs = new ArrayList<>();
+                            for (int i=0; i < Math.max(leftLinks.size(), rightLinks.size()); i++) {
+                                linkPairs.add(new Pair<>(i < leftLinks.size() ? leftLinks.get(i).link : MaybeMultihash.empty(),
+                                        i < rightLinks.size() ? rightLinks.get(i).link : MaybeMultihash.empty()));
+                            }
+
+                            return Futures.combineAll(linkPairs.stream()
+                                    .map(p -> applyToDiff(p.left, p.right, consumer, storage))
+                                    .collect(Collectors.toList()))
+                                    .thenApply(x -> true);
+                        })
+        );
+    }
+
     @Override
     public CborObject toCbor() {
         return new CborObject.CborList(Arrays.asList(
