@@ -29,7 +29,6 @@ import java.util.stream.*;
 public class FileTreeNode {
 
     final static int THUMBNAIL_SIZE = 100;
-    private enum FileType { Image, Video, Unknown };
     private final NativeJSThumbnail thumbnail;
     private final RetrievedFilePointer pointer;
     private final FileProperties props;
@@ -304,7 +303,6 @@ public class FileTreeNode {
         return ((DirAccess) pointer.fileAccess).getChildrenLocations(pointer.filePointer.baseKey);
     }
 
-    @JsMethod
     public CompletableFuture<Optional<FileTreeNode>> retrieveParent(NetworkAccess network) {
         ensureUnmodified();
         if (pointer == null)
@@ -1029,8 +1027,8 @@ public class FileTreeNode {
     private CompletableFuture<byte[]> generateThumbnail(NetworkAccess network, AsyncReader fileData, int fileSize, String filename) {
         CompletableFuture<byte[]> fut = new CompletableFuture<>();
         if (fileSize > MimeTypes.HEADER_BYTES_TO_IDENTIFY_MIME_TYPE) {
-            getFileType(fileData).thenAccept(type -> {
-                if (type == FileType.Image) {
+            getFileType(fileData).thenAccept(mimeType -> {
+                if (mimeType.startsWith("image")) {
                     if (network.isJavascript()) {
                         thumbnail.generateThumbnail(fileData, fileSize, filename).thenAccept(base64Str -> {
                             byte[] bytesOfData = Base64.getDecoder().decode(base64Str);
@@ -1042,7 +1040,7 @@ public class FileTreeNode {
                             fut.complete(generateThumbnail(bytes));
                         });
                     }
-                }else if(type == FileType.Video) {
+                }else if(mimeType.startsWith("video")) {
                     if (network.isJavascript()) {
                         thumbnail.generateVideoThumbnail(fileData, fileSize, filename).thenAccept(base64Str -> {
                             byte[] bytesOfData = Base64.getDecoder().decode(base64Str);
@@ -1064,22 +1062,16 @@ public class FileTreeNode {
         return fut;
     }
 
-    private CompletableFuture<FileType> getFileType(AsyncReader imageBlob) {
-        CompletableFuture<FileType> result = new CompletableFuture<>();
+    private CompletableFuture<String> getFileType(AsyncReader imageBlob) {
+        CompletableFuture<String> result = new CompletableFuture<>();
         byte[] data = new byte[MimeTypes.HEADER_BYTES_TO_IDENTIFY_MIME_TYPE];
         imageBlob.readIntoArray(data, 0, data.length).thenAccept(numBytesRead -> {
             imageBlob.reset().thenAccept(resetResult -> {
                 if (numBytesRead < data.length) {
-                    result.complete(FileType.Unknown);
+                    result.complete("");
                 } else {
                     String mimeType = MimeTypes.calculateMimeType(data);
-                    if (mimeType.startsWith("image")) {
-                        result.complete(FileType.Image);
-                    }else if (mimeType.startsWith("video")) {
-                        result.complete(FileType.Video);
-                    } else {
-                        result.complete(FileType.Unknown);
-                    }
+                    result.complete(mimeType);
                 }
             });
         });
