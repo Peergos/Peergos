@@ -1,5 +1,6 @@
 package peergos.server.tests;
 
+import javafx.application.*;
 import org.junit.*;
 import static org.junit.Assert.*;
 
@@ -847,7 +848,10 @@ public abstract class UserTests {
 
     }
 
-
+    @AfterClass
+    public void cleanup() {
+        Platform.exit();
+    }
 
     public static String randomString() {
         return UUID.randomUUID().toString();
