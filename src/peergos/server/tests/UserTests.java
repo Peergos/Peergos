@@ -1,5 +1,6 @@
 package peergos.server.tests;
 
+import javafx.application.*;
 import org.junit.*;
 import static org.junit.Assert.*;
 
@@ -458,6 +459,23 @@ public abstract class UserTests {
         Assert.assertTrue("Has thumbnail", thumbnail.length() > 0);
     }
 
+    @Ignore // until we figure out how to manage javafx in tests
+    @Test
+    public void javaVideoThumbnail() throws Exception {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = ensureSignedUp(username, password, network, crypto);
+        FileTreeNode userRoot = context.getUserRoot().get();
+
+        String filename = "trailer.mp4";
+        byte[] data = Files.readAllBytes(Paths.get("assets", filename));
+        userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
+                context.crypto.random, l -> {}, context.fragmenter()).get();
+        FileTreeNode file = context.getByPath(Paths.get(username, filename).toString()).get().get();
+        String thumbnail = file.getBase64Thumbnail();
+        Assert.assertTrue("Has thumbnail", thumbnail.length() > 0);
+    }
+
     @Test
     public void mediumFileWrite() throws Exception {
         String username = generateUsername();
@@ -836,8 +854,6 @@ public abstract class UserTests {
         }
 
     }
-
-
 
     public static String randomString() {
         return UUID.randomUUID().toString();

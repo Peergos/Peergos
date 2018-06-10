@@ -17,6 +17,8 @@ import java.awt.Graphics2D;
 import java.awt.AlphaComposite;
 import java.awt.RenderingHints;
 import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.StandardOpenOption;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -27,7 +29,6 @@ import java.util.stream.*;
 public class FileTreeNode {
 
     final static int THUMBNAIL_SIZE = 100;
-
     private final NativeJSThumbnail thumbnail;
     private final RetrievedFilePointer pointer;
     private final FileProperties props;
@@ -1003,11 +1004,31 @@ public class FileTreeNode {
         return new byte[0];
     }
 
+    public static byte[] generateVideoThumbnail(byte[] videoBlob) {
+        File tempFile = null;
+        try {
+            tempFile = File.createTempFile(UUID.randomUUID().toString(), ".mp4");
+            Files.write(tempFile.toPath(), videoBlob, StandardOpenOption.WRITE);
+            return VideoThumbnail.create(tempFile.getAbsolutePath(), THUMBNAIL_SIZE, THUMBNAIL_SIZE);
+        } catch (IOException ioe) {
+            ioe.printStackTrace();
+        } finally {
+            if(tempFile != null) {
+                try {
+                    Files.delete(tempFile.toPath());
+                }catch(IOException ioe){
+
+                }
+            }
+        }
+        return new byte[0];
+    }
+
     private CompletableFuture<byte[]> generateThumbnail(NetworkAccess network, AsyncReader fileData, int fileSize, String filename) {
         CompletableFuture<byte[]> fut = new CompletableFuture<>();
         if (fileSize > MimeTypes.HEADER_BYTES_TO_IDENTIFY_MIME_TYPE) {
-            isImage(fileData).thenAccept(isThumbnail -> {
-                if (isThumbnail) {
+            getFileType(fileData).thenAccept(mimeType -> {
+                if (mimeType.startsWith("image")) {
                     if (network.isJavascript()) {
                         thumbnail.generateThumbnail(fileData, fileSize, filename).thenAccept(base64Str -> {
                             byte[] bytesOfData = Base64.getDecoder().decode(base64Str);
@@ -1017,6 +1038,18 @@ public class FileTreeNode {
                         byte[] bytes = new byte[fileSize];
                         fileData.readIntoArray(bytes, 0, fileSize).thenAccept(data -> {
                             fut.complete(generateThumbnail(bytes));
+                        });
+                    }
+                }else if(mimeType.startsWith("video")) {
+                    if (network.isJavascript()) {
+                        thumbnail.generateVideoThumbnail(fileData, fileSize, filename).thenAccept(base64Str -> {
+                            byte[] bytesOfData = Base64.getDecoder().decode(base64Str);
+                            fut.complete(bytesOfData);
+                        });
+                    } else {
+                        byte[] bytes = new byte[fileSize];
+                        fileData.readIntoArray(bytes, 0, fileSize).thenAccept(data -> {
+                            fut.complete(generateVideoThumbnail(bytes));
                         });
                     }
                 } else {
@@ -1029,19 +1062,16 @@ public class FileTreeNode {
         return fut;
     }
 
-    private CompletableFuture<Boolean> isImage(AsyncReader imageBlob) {
-        CompletableFuture<Boolean> result = new CompletableFuture<>();
+    private CompletableFuture<String> getFileType(AsyncReader imageBlob) {
+        CompletableFuture<String> result = new CompletableFuture<>();
         byte[] data = new byte[MimeTypes.HEADER_BYTES_TO_IDENTIFY_MIME_TYPE];
         imageBlob.readIntoArray(data, 0, data.length).thenAccept(numBytesRead -> {
             imageBlob.reset().thenAccept(resetResult -> {
                 if (numBytesRead < data.length) {
-                    result.complete(false);
+                    result.complete("");
                 } else {
-                    if (MimeTypes.calculateMimeType(data).startsWith("image")) {
-                        result.complete(true);
-                    } else {
-                        result.complete(false);
-                    }
+                    String mimeType = MimeTypes.calculateMimeType(data);
+                    result.complete(mimeType);
                 }
             });
         });
