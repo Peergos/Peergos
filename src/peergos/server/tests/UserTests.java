@@ -849,7 +849,7 @@ public abstract class UserTests {
     }
 
     @AfterClass
-    public void cleanup() {
+    public static void cleanup() {
         Platform.exit();
     }
 
