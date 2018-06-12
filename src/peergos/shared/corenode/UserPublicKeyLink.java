@@ -167,14 +167,24 @@ public class UserPublicKeyLink implements Cborable{
     }
 
     public static CompletableFuture<List<UserPublicKeyLink>> merge(List<UserPublicKeyLink> existing,
-                                                List<UserPublicKeyLink> tail,
-                                                ContentAddressedStorage ipfs) {
+                                                                   List<UserPublicKeyLink> updated,
+                                                                   ContentAddressedStorage ipfs) {
         if (existing.size() == 0)
-            return CompletableFuture.completedFuture(tail);
+            return CompletableFuture.completedFuture(updated);
+        int indexOfChange = 0;
+        for (int i=0; i < updated.size(); i++)
+            if (updated.get(i).equals(existing.get(i)))
+                indexOfChange++;
+            else
+                break;
+        List<UserPublicKeyLink> tail = updated.subList(indexOfChange, updated.size());
         if (! tail.get(0).owner.equals(existing.get(existing.size()-1).owner)) {
+            CompletableFuture<List<UserPublicKeyLink>> err = new CompletableFuture<>();
             if (tail.size() == 1)
-                throw new IllegalStateException("User already exists: Invalid key change attempt!");
-            throw new IllegalStateException("Different keys in merge chains intersection!");
+                err.completeExceptionally(new IllegalStateException("User already exists: Invalid key change attempt!"));
+            else
+                err.completeExceptionally(new IllegalStateException("Different keys in merge chains intersection!"));
+            return err;
         }
         List<UserPublicKeyLink> result = Stream.concat(existing.subList(0, existing.size() - 1).stream(), tail.stream()).collect(Collectors.toList());
         return validChain(result, tail.get(0).claim.username, ipfs)

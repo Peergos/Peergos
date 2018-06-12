@@ -554,6 +554,8 @@ public class Champ implements Cborable {
             Consumer<Triple<ByteArrayWrapper, MaybeMultihash, MaybeMultihash>> consumer,
             ContentAddressedStorage storage) {
 
+        if (updated.equals(original))
+            return CompletableFuture.completedFuture(true);
         return original.map(storage::get).orElseGet(() -> CompletableFuture.completedFuture(Optional.empty()))
                 .thenApply(rawOpt -> rawOpt.map(Champ::fromCbor))
                 .thenCompose(left -> updated.map(storage::get).orElseGet(() -> CompletableFuture.completedFuture(Optional.empty()))
