@@ -3,10 +3,12 @@ package peergos.server.corenode;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.hamt.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.merklebtree.*;
+import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
@@ -18,7 +20,11 @@ import java.util.stream.*;
 
 public class IpfsCoreNode implements CoreNode {
 
+    public static final PublicSigningKey PEERGOS_IDENTITY_KEY = PublicSigningKey.fromString("ggFYIE7uD1ViM9KfiA1w69n774/jk6hERINN3xACPyabWiBp");
+    public static final PublicKeyHash PEERGOS_IDENTITY_KEY_HASH = PublicKeyHash.fromString("zdpuAvZynWLuyvovJwa34bj24M7cspt5M8seFfrFLrPWDGFDW");
+
     private final ContentAddressedStorage ipfs;
+    private final MutablePointers mutable;
     private final SigningPrivateKeyAndPublicHash signer;
 
     private final Map<String, List<UserPublicKeyLink>> chains = new ConcurrentHashMap<>();
@@ -27,10 +33,14 @@ public class IpfsCoreNode implements CoreNode {
 
     private MaybeMultihash currentRoot;
 
-    public IpfsCoreNode(SigningPrivateKeyAndPublicHash signer, MaybeMultihash currentRoot, ContentAddressedStorage ipfs) {
+    public IpfsCoreNode(SigningPrivateKeyAndPublicHash signer,
+                        MaybeMultihash currentRoot,
+                        ContentAddressedStorage ipfs,
+                        MutablePointers mutable) {
         this.currentRoot = MaybeMultihash.empty();
         this.ipfs = ipfs;
         this.signer = signer;
+        this.mutable = mutable;
         this.update(currentRoot);
     }
 
@@ -105,11 +115,11 @@ public class IpfsCoreNode implements CoreNode {
                 Multihash mergedChainHash = ipfs.put(signer, mergedChainCbor.toByteArray()).get();
                 synchronized (this) {
                     Multihash newPkiRoot = champ.put(signer, username.getBytes(), existing, mergedChainHash).get();
-                    // sign and publish this pki root
+                    // commit new root, and publish signed cas to network
+                    HashCasPair cas = new HashCasPair(currentRoot, MaybeMultihash.of(newPkiRoot));
                     currentRoot = MaybeMultihash.of(newPkiRoot);
-                    // save to disk, and publish to network
-//                    todo
-                    return CompletableFuture.completedFuture(true);
+                    byte[] signedCas = signer.secret.signMessage(cas.serialize());
+                    return mutable.setPointer(PEERGOS_IDENTITY_KEY_HASH, signer.publicKeyHash, signedCas);
                 }
             } catch (Exception e) {
                 throw new RuntimeException(e.getMessage(), e);
