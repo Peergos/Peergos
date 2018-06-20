@@ -1102,7 +1102,7 @@ public class UserContext {
                 .thenApply(pair -> new CommittedWriterData(MaybeMultihash.of(pair.left), WriterData.fromCbor(pair.right, null)));
     }
 
-    private static CompletableFuture<Pair<Multihash, CborObject>> getWriterDataCbor(NetworkAccess network, String username) {
+    public static CompletableFuture<Pair<Multihash, CborObject>> getWriterDataCbor(NetworkAccess network, String username) {
         return network.coreNode.getPublicKeyHash(username)
                 .thenCompose(signer -> {
                     PublicKeyHash publicSigningKey = signer.orElseThrow(
