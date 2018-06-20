@@ -293,10 +293,12 @@ public class WriterData implements Cborable {
         Set<PublicKeyHash> owned = ownedList.value.stream().map(PublicKeyHash::fromCbor).collect(Collectors.toSet());
 
         CborObject.CborMap namedMap = (CborObject.CborMap) map.values.get(new CborObject.CborString("named"));
-        Map<String, PublicKeyHash> named = namedMap.values.entrySet().stream()
-                .collect(Collectors.toMap(
-                        e -> ((CborObject.CborString)e.getKey()).value,
-                        e -> new PublicKeyHash(((CborObject.CborMerkleLink) e.getValue()).target)));
+        Map<String, PublicKeyHash> named = namedMap == null ?
+                Collections.emptyMap() :
+                namedMap.values.entrySet().stream()
+                        .collect(Collectors.toMap(
+                                e -> ((CborObject.CborString)e.getKey()).value,
+                                e -> new PublicKeyHash(((CborObject.CborMerkleLink) e.getValue()).target)));
 
         // rootKey is null for other people parsing our WriterData who don't have our root key
         Optional<UserStaticData> staticData = rootKey == null ? Optional.empty() : extract.apply("static").map(raw -> UserStaticData.fromCbor(raw, rootKey));
