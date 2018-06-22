@@ -195,7 +195,7 @@ public class IpfsCoreNode implements CoreNode {
                 ownerIdentity.secret.signatureOnly(pkiPublicKey.serialize()),
                 ownerProperties.controller,
                 pkiPublicKey).get();
-        if (! ownerProperties.ownedKeys.contains(pkiPublicHash)) {
+        if (! ownerProperties.namedOwnedKeys.containsKey("pki")) {
             WriterData withKey = ownerProperties.addNamedKey("pki", pkiPublicHash);
             withKey.commit(ownerIdentity, MaybeMultihash.of(pair.left), network, x -> {}).get();
         }
