@@ -92,6 +92,7 @@ public class IpfsCoreNode implements CoreNode {
                 };
         try {
             Champ.applyToDiff(currentRoot, newRoot, consumer, ipfs).get();
+            this.currentRoot = newRoot;
         } catch (Exception e) {
             throw new RuntimeException(e.getMessage(), e);
         }
@@ -101,16 +102,21 @@ public class IpfsCoreNode implements CoreNode {
     public CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> updatedChain) {
             try {
                 Function<ByteArrayWrapper, byte[]> identityHash = arr -> Arrays.copyOfRange(arr.data, 0, CoreNode.MAX_USERNAME_SIZE);
-                ChampWrapper champ = ChampWrapper.create(currentRoot.get(), identityHash, ipfs).get();
+                ChampWrapper champ = currentRoot.isPresent() ?
+                        ChampWrapper.create(currentRoot.get(), identityHash, ipfs).get() :
+                        ChampWrapper.create(signer, identityHash, ipfs).get();
                 MaybeMultihash existing = champ.get(username.getBytes()).get();
-                Optional<CborObject> cborOpt = ipfs.get(existing.get()).get();
+                Optional<CborObject> cborOpt = existing.isPresent() ?
+                        ipfs.get(existing.get()).get() :
+                        Optional.empty();
                 if (! cborOpt.isPresent() && existing.isPresent()) {
                     System.err.println("Couldn't retrieve existing claim chain from " + existing + " for " + username);
                     return CompletableFuture.completedFuture(true);
                 }
-                List<UserPublicKeyLink> existingChain = ((CborObject.CborList) cborOpt.get()).value.stream()
+                List<UserPublicKeyLink> existingChain = cborOpt.map(cbor -> ((CborObject.CborList) cbor).value.stream()
                         .map(UserPublicKeyLink::fromCbor)
-                        .collect(Collectors.toList());
+                        .collect(Collectors.toList()))
+                        .orElse(Collections.emptyList());
 
                 List<UserPublicKeyLink> mergedChain = UserPublicKeyLink.merge(existingChain, updatedChain, ipfs).get();
                 CborObject.CborList mergedChainCbor = new CborObject.CborList(mergedChain.stream()
@@ -123,7 +129,17 @@ public class IpfsCoreNode implements CoreNode {
                     HashCasPair cas = new HashCasPair(currentRoot, MaybeMultihash.of(newPkiRoot));
                     currentRoot = MaybeMultihash.of(newPkiRoot);
                     byte[] signedCas = signer.secret.signMessage(cas.serialize());
-                    return mutable.setPointer(PEERGOS_IDENTITY_KEY_HASH, signer.publicKeyHash, signedCas);
+                    return mutable.setPointer(PEERGOS_IDENTITY_KEY_HASH, signer.publicKeyHash, signedCas).thenApply(success -> {
+                        // update derived mappings
+                        if (success) {
+                            if (existingChain.isEmpty())
+                                usernames.add(username);
+                            PublicKeyHash owner = updatedChain.get(updatedChain.size() - 1).owner;
+                            reverseLookup.put(owner, username);
+                            chains.put(username, mergedChain);
+                        }
+                        return success;
+                    });
                 }
             } catch (Exception e) {
                 throw new RuntimeException(e.getMessage(), e);
@@ -198,5 +214,15 @@ public class IpfsCoreNode implements CoreNode {
         HashCasPair cas = new HashCasPair(priorChampRoot, target.currentRoot);
         byte[] signed = pkiSigner.secret.signMessage(cas.serialize());
         network.mutable.setPointer(ownerProperties.controller, pkiPublicHash, signed).get();
+
+        // Test all mappings
+        MaybeMultihash currentRoot = network.mutable.getPointerTarget(pkiPublicHash, network.dhtClient).get();
+        IpfsCoreNode fromIpfs = new IpfsCoreNode(pkiSigner, currentRoot, network.dhtClient, network.mutable);
+        for (String username : usernames) {
+            if (! target.getChain(username).get().equals(fromIpfs.getChain(username).get()))
+                throw new IllegalStateException("Non equal chain for " + username);
+            if (! network.coreNode.getChain(username).get().equals(fromIpfs.getChain(username).get()))
+                throw new IllegalStateException("Non equal chain for " + username);
+        }
     }
 }
