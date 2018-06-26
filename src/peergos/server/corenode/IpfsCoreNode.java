@@ -58,6 +58,10 @@ public class IpfsCoreNode implements CoreNode {
         this(signer, currentRoot, ipfs, mutable, PEERGOS_IDENTITY_KEY_HASH);
     }
 
+    /** Update the existing mappings based on the diff between the current champ and the champ with the supplied root.
+     *
+     * @param newRoot The root of the new champ
+     */
     private synchronized void update(MaybeMultihash newRoot) {
         Consumer<Triple<ByteArrayWrapper, MaybeMultihash, MaybeMultihash>> consumer =
                 triple -> {
@@ -108,6 +112,12 @@ public class IpfsCoreNode implements CoreNode {
         }
     }
 
+    /** Update a user's public key chain, keeping the in memory mappings correct and committing the new pki root
+     *
+     * @param username
+     * @param updatedChain
+     * @return
+     */
     @Override
     public CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> updatedChain) {
             try {
