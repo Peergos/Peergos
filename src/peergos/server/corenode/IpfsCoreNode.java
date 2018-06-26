@@ -27,6 +27,7 @@ public class IpfsCoreNode implements CoreNode {
     public static final PublicSigningKey PEERGOS_IDENTITY_KEY = PublicSigningKey.fromString("ggFYIE7uD1ViM9KfiA1w69n774/jk6hERINN3xACPyabWiBp");
     public static final PublicKeyHash PEERGOS_IDENTITY_KEY_HASH = PublicKeyHash.fromString("zdpuAvZynWLuyvovJwa34bj24M7cspt5M8seFfrFLrPWDGFDW");
 
+    private final PublicKeyHash peergosIdentity;
     private final ContentAddressedStorage ipfs;
     private final MutablePointers mutable;
     private final SigningPrivateKeyAndPublicHash signer;
@@ -40,12 +41,21 @@ public class IpfsCoreNode implements CoreNode {
     public IpfsCoreNode(SigningPrivateKeyAndPublicHash signer,
                         MaybeMultihash currentRoot,
                         ContentAddressedStorage ipfs,
-                        MutablePointers mutable) {
+                        MutablePointers mutable,
+                        PublicKeyHash peergosIdentity) {
         this.currentRoot = MaybeMultihash.empty();
         this.ipfs = ipfs;
         this.signer = signer;
         this.mutable = mutable;
+        this.peergosIdentity = peergosIdentity;
         this.update(currentRoot);
+    }
+
+    public IpfsCoreNode(SigningPrivateKeyAndPublicHash signer,
+                        MaybeMultihash currentRoot,
+                        ContentAddressedStorage ipfs,
+                        MutablePointers mutable) {
+        this(signer, currentRoot, ipfs, mutable, PEERGOS_IDENTITY_KEY_HASH);
     }
 
     private synchronized void update(MaybeMultihash newRoot) {
@@ -129,7 +139,7 @@ public class IpfsCoreNode implements CoreNode {
                     HashCasPair cas = new HashCasPair(currentRoot, MaybeMultihash.of(newPkiRoot));
                     currentRoot = MaybeMultihash.of(newPkiRoot);
                     byte[] signedCas = signer.secret.signMessage(cas.serialize());
-                    return mutable.setPointer(PEERGOS_IDENTITY_KEY_HASH, signer.publicKeyHash, signedCas).thenApply(success -> {
+                    return mutable.setPointer(peergosIdentity, signer.publicKeyHash, signedCas).thenApply(success -> {
                         // update derived mappings
                         if (success) {
                             if (existingChain.isEmpty())
