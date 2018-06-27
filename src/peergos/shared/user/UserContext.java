@@ -125,7 +125,7 @@ public class UserContext {
                                                                         CompletableFuture.completedFuture(true))
                                                                 .thenCompose(x -> {
                                                                     System.out.println("Initializing context..");
-                                                                    return result.init();
+                                                                    return result.init(progressCallback);
                                                                 }).exceptionally(Futures::logError);
                                                     }));
                                 } catch (Throwable t) {
@@ -266,7 +266,8 @@ public class UserContext {
         });
     }
 
-    private CompletableFuture<UserContext> init() {
+    private CompletableFuture<UserContext> init(Consumer<String> progressCallback) {
+        progressCallback.accept("Retrieving Friends");
         CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
         return addToUserDataQueue(lock)
                 .thenCompose(wd -> createFileTree(entrie, username, wd.props, network)
