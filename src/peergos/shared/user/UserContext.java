@@ -88,18 +88,26 @@ public class UserContext {
 
     }
 
+    public static CompletableFuture<UserContext> signIn(String username, String password, NetworkAccess network
+            , Crypto crypto) {
+        return signIn(username, password, network, crypto, t -> {});
+    }
+
     @JsMethod
-    public static CompletableFuture<UserContext> signIn(String username, String password, NetworkAccess network, Crypto crypto) {
+    public static CompletableFuture<UserContext> signIn(String username, String password, NetworkAccess network
+            , Crypto crypto, Consumer<String> progressCallback) {
         return getWriterDataCbor(network, username)
                 .thenCompose(pair -> {
                     Optional<UserGenerationAlgorithm> algorithmOpt = WriterData.extractUserGenerationAlgorithm(pair.right);
                     if (!algorithmOpt.isPresent())
                         throw new IllegalStateException("No login algorithm specified in user data!");
                     UserGenerationAlgorithm algorithm = algorithmOpt.get();
+                    progressCallback.accept("Generating keys");
                     return UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider,
                             crypto.random, crypto.signer, crypto.boxer, algorithm)
                             .thenCompose(userWithRoot -> {
                                 try {
+                                    progressCallback.accept("Logging in");
                                     WriterData userData = WriterData.fromCbor(pair.right, userWithRoot.getRoot());
                                     return createOurFileTreeOnly(username, userData, network)
                                             .thenCompose(root -> TofuCoreNode.load(username, root, network, crypto.random)
@@ -128,15 +136,23 @@ public class UserContext {
     }
 
     @JsMethod
-    public static CompletableFuture<UserContext> signUp(String username, String password, NetworkAccess network, Crypto crypto) {
-        return signUpGeneral(username, password, network, crypto, UserGenerationAlgorithm.getDefault());
+    public static CompletableFuture<UserContext> signUp(String username, String password, NetworkAccess network
+            , Crypto crypto, Consumer<String> progressCallback) {
+        return signUpGeneral(username, password, network, crypto, UserGenerationAlgorithm.getDefault(), progressCallback);
+    }
+
+    public static CompletableFuture<UserContext> signUp(String username, String password, NetworkAccess network
+            , Crypto crypto) {
+        return signUpGeneral(username, password, network, crypto, UserGenerationAlgorithm.getDefault(), t -> {});
     }
 
     public static CompletableFuture<UserContext> signUpGeneral(String username,
                                                                String password,
                                                                NetworkAccess network,
                                                                Crypto crypto,
-                                                               UserGenerationAlgorithm algorithm) {
+                                                               UserGenerationAlgorithm algorithm,
+                                                               Consumer<String> progressCallback) {
+        progressCallback.accept("Generating keys");
         return UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer, algorithm)
                 .thenCompose(userWithRoot -> {
                     PublicSigningKey publicSigningKey = userWithRoot.getUser().publicSigningKey;
@@ -144,6 +160,7 @@ public class UserContext {
                     PublicKeyHash signerHash = network.dhtClient.hashKey(publicSigningKey);
                     SigningPrivateKeyAndPublicHash signer = new SigningPrivateKeyAndPublicHash(signerHash, secretSigningKey);
                     System.out.println("Registering username " + username);
+                    progressCallback.accept("Registering username");
                     return UserContext.register(username, signer, network).thenCompose(registered -> {
                         if (! registered) {
                             System.out.println("Couldn't register username");
@@ -157,6 +174,7 @@ public class UserContext {
                                     PublicBoxingKey publicBoxingKey = userWithRoot.getBoxingPair().publicBoxingKey;
                                     return network.dhtClient.putBoxingKey(signerHash, secretSigningKey.signatureOnly(publicBoxingKey.serialize()), publicBoxingKey)
                                         .thenCompose(boxerHash -> {
+                                            progressCallback.accept("Creating filesystem");
                                             WriterData newUserData = WriterData.createEmpty(
                                                     signerHash,
                                                     Optional.of(new PublicKeyHash(boxerHash)),
@@ -180,7 +198,7 @@ public class UserContext {
                                                         null,
                                                         true,
                                                         crypto.random)
-                                                        .thenCompose(x -> signIn(username, password, network.clear(), crypto));
+                                                        .thenCompose(x -> signIn(username, password, network.clear(), crypto, progressCallback));
                                             });
                                         });
                                 });
