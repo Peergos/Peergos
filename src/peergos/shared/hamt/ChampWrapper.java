@@ -95,4 +95,14 @@ public class ChampWrapper implements ImmutableTree
     public CompletableFuture<Long> size() {
         return root.left.size(0, storage);
     }
+
+    /**
+     *
+     * @return true
+     * @throws IOException
+     */
+    public <T> CompletableFuture<T> applyToAllMappings(T identity,
+                                                       BiFunction<T, Pair<ByteArrayWrapper, MaybeMultihash>, CompletableFuture<T>> consumer) {
+        return root.left.applyToAllMappings(identity, consumer, storage);
+    }
 }

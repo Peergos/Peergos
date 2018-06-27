@@ -34,8 +34,6 @@ public interface MutablePointers {
      * @param writerKeyHash
      * @param ipfs
      * @return
-     * @throws InterruptedException
-     * @throws ExecutionException
      */
     default CompletableFuture<MaybeMultihash> getPointerTarget(PublicKeyHash writerKeyHash, ContentAddressedStorage ipfs) {
         return getPointer(writerKeyHash)

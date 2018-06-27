@@ -58,7 +58,7 @@
     <exec executable="/bin/bash">
       <arg value="./data.service.sh"/>
       <arg value="install"/>
-      <arg value="v0.4.10"/>
+      <arg value="v0.4.15"/>
       <arg value="."/>
       <arg value="."/>
     </exec>
