@@ -1,4 +1,5 @@
 package peergos.server;
+import java.util.logging.*;
 
 import peergos.shared.*;
 import peergos.shared.user.*;
@@ -7,6 +8,7 @@ import java.io.*;
 import java.net.*;
 
 public class Login {
+	private static final Logger LOG = Logger.getGlobal();
 
     public static void main(String[] args) throws Exception {
         Crypto crypto = Crypto.initJava();
@@ -15,6 +17,6 @@ public class Login {
         Console console = System.console();
         String password = new String(console.readPassword("Enter password for " + username + ":"));
         UserContext context = UserContext.signIn(username, password, network, crypto).get();
-        System.out.println("Logged in " + username + " successfully!");
+        LOG.info("Logged in " + username + " successfully!");
     }
 }

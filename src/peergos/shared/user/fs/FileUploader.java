@@ -1,4 +1,5 @@
 package peergos.shared.user.fs;
+import java.util.logging.*;
 
 import jsinterop.annotations.*;
 import peergos.shared.*;
@@ -17,6 +18,7 @@ import java.util.concurrent.*;
 import java.util.stream.*;
 
 public class FileUploader implements AutoCloseable {
+	private static final Logger LOG = Logger.getGlobal();
 
     private final String name;
     private final long offset, length;
@@ -75,7 +77,7 @@ public class FileUploader implements AutoCloseable {
                                                    Location currentLocation,
                                                    MaybeMultihash ourExistingHash,
                                                    ProgressConsumer<Long> monitor) {
-	    System.out.println("uploading chunk: "+chunkIndex + " of "+name);
+	    LOG.info("uploading chunk: "+chunkIndex + " of "+name);
 
         long position = chunkIndex * Chunk.MAX_SIZE;
 
@@ -106,7 +108,7 @@ public class FileUploader implements AutoCloseable {
         return Futures.reduceAll(input, currentChunk, (loc, i) -> uploadChunk(network, random, owner, writer, i,
                 loc, MaybeMultihash.empty(), monitor), (a, b) -> b)
                 .thenApply(loc -> {
-                    System.out.println("File encryption, erasure coding and upload took: " +(System.currentTimeMillis()-t1) + " mS");
+                    LOG.info("File encryption, erasure coding and upload took: " +(System.currentTimeMillis()-t1) + " mS");
                     return originalChunk;
                 });
     }
@@ -116,7 +118,7 @@ public class FileUploader implements AutoCloseable {
                                                            NetworkAccess network, ProgressConsumer<Long> monitor) {
         return chunk.chunk.encrypt().thenCompose(encryptedChunk -> {
             List<Fragment> fragments = encryptedChunk.generateFragments(fragmenter);
-            System.out.println(StringUtils.format("Uploading chunk with %d fragments\n", fragments.size()));
+            LOG.info(StringUtils.format("Uploading chunk with %d fragments\n", fragments.size()));
             SymmetricKey chunkKey = chunk.chunk.key();
             byte[] nextLocationNonce = chunkKey.createNonce();
             byte[] nextLocation = nextChunkLocation.encrypt(chunkKey, nextLocationNonce);

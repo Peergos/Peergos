@@ -1,4 +1,5 @@
 package peergos.server;
+import java.util.logging.*;
 
 import peergos.shared.*;
 import peergos.shared.crypto.random.*;
@@ -13,6 +14,7 @@ import java.util.concurrent.*;
 import java.util.function.*;
 
 public class Downloader {
+	private static final Logger LOG = Logger.getGlobal();
 
     public static void main(String[] args) throws Exception {
         Crypto crypto = Crypto.initJava();
@@ -27,7 +29,7 @@ public class Downloader {
         long t1 = System.currentTimeMillis();
         downloadTo(context, fromPath, Paths.get(toPath), props -> true, pool);
         long t2 = System.currentTimeMillis();
-        System.out.println("Download took " + (t2-t1) + " mS");
+        LOG.info("Download took " + (t2-t1) + " mS");
     }
 
     /**
@@ -57,8 +59,8 @@ public class Downloader {
                     throw new IllegalStateException("Couldn't create directory: " + us);
                 children.stream().parallel().forEach(child -> downloadTo(child, us, network, random, saveFile));
             } catch (Exception e) {
-                System.err.println("Error downloading children of " + source.getName());
-                e.printStackTrace();
+                LOG.severe("Error downloading children of " + source.getName());
+                LOG.log(Level.WARNING, e.getMessage(), e);
             }
         } else if (saveFile.test(source.getFileProperties())) {
             try (FileOutputStream fout = new FileOutputStream(us.toFile())) {
@@ -71,8 +73,8 @@ public class Downloader {
                         .get();
                 fout.write(buf);
             } catch (Exception e) {
-                System.err.println("Error downloading " + source.getName());
-                e.printStackTrace();
+                LOG.severe("Error downloading " + source.getName());
+                LOG.log(Level.WARNING, e.getMessage(), e);
             }
         }
     }

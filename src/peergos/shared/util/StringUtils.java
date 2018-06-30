@@ -1,6 +1,8 @@
 package peergos.shared.util;
+import java.util.logging.*;
 
 public class StringUtils {
+	private static final Logger LOG = Logger.getGlobal();
 	
     public static String format(String format, Object ... args) {
 		return sprintf(format, args);
@@ -124,7 +126,7 @@ public class StringUtils {
                             } else if (args[argIndex] instanceof String) {
                                 value = (String)args[argIndex];
                             } else {
-                                System.out.println("Invalid printf argument type for %c: "+args[argIndex].getClass());
+                                LOG.info("Invalid printf argument type for %c: "+args[argIndex].getClass());
                                 return buffer.toString();
                             }
                             if (value.length()>1)
@@ -135,7 +137,7 @@ public class StringUtils {
                             } else if (args[argIndex] instanceof String) {
                                 value = (String)args[argIndex];
                             } else {
-                                System.out.println("Invalid printf argument type for %s: "+args[argIndex].getClass());
+                                LOG.info("Invalid printf argument type for %s: "+args[argIndex].getClass());
                                 return buffer.toString();
                             }
                             if (precision>0 && value.length()>precision) {
@@ -147,7 +149,7 @@ public class StringUtils {
                             } else if (args[argIndex] instanceof Long) {
                                 value = Long.toString(((Long)args[argIndex]).longValue(), 16);
                             } else {
-                                System.out.println("Invalid printf argument type for %x: "+args[argIndex].getClass());
+                                LOG.info("Invalid printf argument type for %x: "+args[argIndex].getClass());
                                 return buffer.toString();
                             }
                             negnumber = value.startsWith("-");
@@ -166,7 +168,7 @@ public class StringUtils {
                             } else if (args[argIndex] instanceof Long) {
                                 value = Long.toString(((Long)args[argIndex]).longValue(), 16);
                             } else {
-                                System.out.println("Invalid printf argument type for %X: "+args[argIndex].getClass());
+                                LOG.info("Invalid printf argument type for %X: "+args[argIndex].getClass());
                                 return buffer.toString();
                             }
                             negnumber = value.startsWith("-");
@@ -191,7 +193,7 @@ public class StringUtils {
                             } else if (args[argIndex] instanceof Long) {
                                 value = String.valueOf(((Long)args[argIndex]).longValue());
                             } else {
-                                System.out.println("Invalid printf argument type for %d: "+args[argIndex].getClass());
+                                LOG.info("Invalid printf argument type for %d: "+args[argIndex].getClass());
                                 return buffer.toString();
                             }
                             negnumber = value.startsWith("-");
@@ -212,7 +214,7 @@ public class StringUtils {
                             } else if (args[argIndex] instanceof Float) {
                                 value = String.valueOf(((Float)args[argIndex]).doubleValue());
                             } else {
-                                System.out.println("Invalid printf argument type for %f: "+args[argIndex].getClass());
+                                LOG.info("Invalid printf argument type for %f: "+args[argIndex].getClass());
                                 return buffer.toString();
                             }
                             negnumber = value.startsWith("-");

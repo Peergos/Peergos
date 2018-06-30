@@ -1,5 +1,6 @@
 
 package peergos.shared.corenode;
+import java.util.logging.*;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
@@ -15,8 +16,9 @@ import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
 
-public class HTTPCoreNode implements CoreNode
-{
+public class HTTPCoreNode implements CoreNode {
+	private static final Logger LOG = Logger.getGlobal();
+
     private final HttpPoster poster;
 
     public static CoreNode getInstance(URL coreURL) throws IOException {
@@ -25,7 +27,7 @@ public class HTTPCoreNode implements CoreNode
 
     public HTTPCoreNode(HttpPoster poster)
     {
-        System.out.println("Creating HTTP Corenode API at " + poster);
+        LOG.info("Creating HTTP Corenode API at " + poster);
         this.poster = poster;
     }
 
@@ -53,7 +55,7 @@ public class HTTPCoreNode implements CoreNode
                 }
             });
         } catch (IOException ioe) {
-            ioe.printStackTrace();
+            LOG.log(Level.WARNING, ioe.getMessage(), ioe);
             return CompletableFuture.completedFuture(Optional.empty());
         }
     }
@@ -79,8 +81,8 @@ public class HTTPCoreNode implements CoreNode
                 }
             });
         } catch (IOException ioe) {
-            System.err.println("Couldn't connect to " + poster);
-            ioe.printStackTrace();
+            LOG.severe("Couldn't connect to " + poster);
+            LOG.log(Level.WARNING, ioe.getMessage(), ioe);
             return null;
         }
     }
@@ -109,7 +111,7 @@ public class HTTPCoreNode implements CoreNode
                 }
             });
         } catch (IOException ioe) {
-            ioe.printStackTrace();
+            LOG.log(Level.WARNING, ioe.getMessage(), ioe);
             throw new IllegalStateException(ioe);
         }
     }
@@ -137,7 +139,7 @@ public class HTTPCoreNode implements CoreNode
                 }
             });
         } catch (IOException ioe) {
-            ioe.printStackTrace();
+            LOG.log(Level.WARNING, ioe.getMessage(), ioe);
             return CompletableFuture.completedFuture(false);
         }
     }

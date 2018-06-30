@@ -1,4 +1,5 @@
 package peergos.server.social;
+import java.util.logging.*;
 
 import com.sun.net.httpserver.*;
 import peergos.server.mutable.*;
@@ -14,8 +15,9 @@ import java.io.*;
 import java.net.*;
 import java.util.concurrent.*;
 
-public class HttpSocialNetworkServer
-{
+public class HttpSocialNetworkServer  {
+	private static final Logger LOG = Logger.getGlobal();
+
     private static final boolean LOGGING = true;
     private static final int CONNECTION_BACKLOG = 100;
     private static final int HANDLER_THREAD_COUNT = 100;
@@ -44,7 +46,7 @@ public class HttpSocialNetworkServer
                 path = path.substring(1);
             String[] subComponents = path.substring(SOCIAL_URL.length()).split("/");
             String method = subComponents[0];
-//            System.out.println("social method "+ method +" from path "+ path);
+//            LOG.info("social method "+ method +" from path "+ path);
 
             try {
                 switch (method)
@@ -79,7 +81,7 @@ public class HttpSocialNetworkServer
                 exchange.close();
                 long t2 = System.currentTimeMillis();
                 if (LOGGING)
-                    System.out.println("Social Network server handled " + method + " request in: " + (t2 - t1) + " mS");
+                    LOG.info("Social Network server handled " + method + " request in: " + (t2 - t1) + " mS");
             }
 
         }
@@ -145,14 +147,14 @@ public class HttpSocialNetworkServer
     {
         try {
             String hostname = args.getArg("domain", "localhost");
-            System.out.println("Starting social network server listening on: " + hostname+":"+port +" proxying to "+social);
+            LOG.info("Starting social network server listening on: " + hostname+":"+port +" proxying to "+social);
             InetSocketAddress address = new InetSocketAddress(hostname, port);
             HttpSocialNetworkServer server = new HttpSocialNetworkServer(social, address);
             server.start();
         } catch (Exception e)
         {
-            e.printStackTrace();
-            System.out.println("Couldn't start Social Network server!");
+            LOG.log(Level.WARNING, e.getMessage(), e);
+            LOG.info("Couldn't start Social Network server!");
         }
     }
 }

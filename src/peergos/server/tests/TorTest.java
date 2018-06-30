@@ -1,4 +1,5 @@
 package peergos.server.tests;
+import java.util.logging.*;
 
 import org.junit.*;
 import peergos.shared.util.*;
@@ -10,6 +11,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 
 public class TorTest {
+	private static final Logger LOG = Logger.getGlobal();
 
     @Ignore
     @Test
@@ -50,17 +52,17 @@ public class TorTest {
                         InputStream in = conn.getInputStream();
                         int size = conn.getContentLength();
                         if (size < 0) {
-                            System.err.println("negative body size!");
+                            LOG.severe("negative body size!");
                             continue;
                         }
                         byte[] bytes = Serialize.read(in, size);
                         long now = System.currentTimeMillis();
                         long reqs = requests.incrementAndGet();
                         if (reqs % 1 == 0) {
-                            System.out.println("Average bandwidth: " + reqs * respSize * 1000/ (now - t0)/1024 + " kiB/S, Average " + reqs * 1000.0/ (now - t0) + " requests/s");
+                            LOG.info("Average bandwidth: " + reqs * respSize * 1000/ (now - t0)/1024 + " kiB/S, Average " + reqs * 1000.0/ (now - t0) + " requests/s");
                         }
                     } catch (IOException e) {
-                        e.printStackTrace();
+                        LOG.log(Level.WARNING, e.getMessage(), e);
                     }
                 }
             }));

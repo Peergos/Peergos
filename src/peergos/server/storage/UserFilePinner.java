@@ -1,4 +1,5 @@
 package peergos.server.storage;
+import java.util.logging.*;
 
 import peergos.shared.NetworkAccess;
 import peergos.shared.corenode.CoreNode;
@@ -16,6 +17,7 @@ import java.util.stream.Collectors;
  * Periodically reads file for username and  pins files for each.
  */
 public class UserFilePinner implements Runnable {
+	private static final Logger LOG = Logger.getGlobal();
 
     private final Path userPath;
     private final CoreNode coreNode;
@@ -39,18 +41,18 @@ public class UserFilePinner implements Runnable {
                 Thread.sleep(delayMs);
                 // get usernames
                 List<String> usernames = getUsernames();
-                System.out.println("File pinner read usernames "+ usernames);
+                LOG.info("File pinner read usernames "+ usernames);
                 // pin their files
                 for (String username : usernames) {
                     NetworkAccess.pinAllUserFiles(username, coreNode, mutablePointers, dhtClient);
-                    System.out.println("Pinned files for user "+ username);
+                    LOG.info("Pinned files for user "+ username);
                 }
             } catch (IOException ioe) {
-                System.out.println("Failed to read usernames");
-                ioe.printStackTrace();
+                LOG.info("Failed to read usernames");
+                LOG.log(Level.WARNING, ioe.getMessage(), ioe);
             } catch (InterruptedException | ExecutionException ie) {
-                System.out.println("Failed to pin user files");
-                ie.printStackTrace();
+                LOG.info("Failed to pin user files");
+                LOG.log(Level.WARNING, ie.getMessage(), ie);
             }
         }
     }

@@ -1,5 +1,5 @@
 package peergos.server;
-
+import java.util.logging.*;
 import peergos.server.corenode.*;
 import peergos.server.mutable.*;
 import peergos.server.social.*;
@@ -29,8 +29,8 @@ import java.util.logging.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-public class Start
-{
+public class Start {
+    private static final Logger LOG = Logger.getGlobal();
     static {
         PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, new Ed25519.Java());
     }
@@ -246,7 +246,7 @@ public class Start
             InetSocketAddress httpsMessengerAddress = new InetSocketAddress(hostname, userAPIAddress.getPort());
             new UserService(httpsMessengerAddress, Logger.getLogger("IPFS"), dht, core, social, mutablePointers, a);
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.log(Level.WARNING, e.getMessage(), e);
 
             System.exit(1);
         }
@@ -267,7 +267,7 @@ public class Start
 
         path.toFile().mkdirs();
 
-        System.out.println("\n\nPeergos mounted at " + path + "\n\n");
+        LOG.info("\n\nPeergos mounted at " + path + "\n\n");
         try {
             NetworkAccess network = NetworkAccess.buildJava(webPort).get();
             Crypto crypto = Crypto.initJava();
@@ -289,7 +289,7 @@ public class Start
         String path = a.getArg("corenodePath");
         int corenodePort = a.getInt("corenodePort");
         int maxUserCount = a.getInt("maxUserCount", CoreNode.MAX_USERNAME_COUNT);
-        System.out.println("Using core node path " + path);
+        LOG.info("Using core node path " + path);
         boolean useIPFS = a.getBoolean("useIPFS");
         int dhtCacheEntries = 1000;
         int maxValueSizeToCache = 2 * 1024 * 1024;
@@ -323,7 +323,7 @@ public class Start
         String path = a.getArg("socialnodePath");
         int socialnodePort = a.getInt("socialnodePort");
         int maxUserCount = a.getInt("maxUserCount", CoreNode.MAX_USERNAME_COUNT);
-        System.out.println("Using social node path " + path);
+        LOG.info("Using social node path " + path);
         boolean useIPFS = a.getBoolean("useIPFS");
         int dhtCacheEntries = 1000;
         int maxValueSizeToCache = 2 * 1024 * 1024;
@@ -343,7 +343,7 @@ public class Start
             args -> {
                 Optional<String> top = args.head();
                 if (! top.isPresent()) {
-                    System.out.println("Run with -help to show options");
+                    LOG.info("Run with -help to show options");
                     return;
                 }
                 args.setIfAbsent("domain", "localhost");

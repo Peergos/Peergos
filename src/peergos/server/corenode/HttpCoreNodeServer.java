@@ -1,4 +1,5 @@
 package peergos.server.corenode;
+import java.util.logging.*;
 
 import peergos.server.mutable.*;
 import peergos.shared.cbor.*;
@@ -19,8 +20,9 @@ import peergos.shared.mutable.*;
 import peergos.shared.util.Args;
 import peergos.shared.util.Serialize;
 
-public class HttpCoreNodeServer
-{
+public class HttpCoreNodeServer {
+	private static final Logger LOG = Logger.getGlobal();
+
     private static final boolean LOGGING = true;
     private static final int CONNECTION_BACKLOG = 100;
     private static final int HANDLER_THREAD_COUNT = 100;
@@ -49,7 +51,7 @@ public class HttpCoreNodeServer
                 path = path.substring(1);
             String[] subComponents = path.substring(CORE_URL.length()).split("/");
             String method = subComponents[0];
-//            System.out.println("core method "+ method +" from path "+ path);
+//            LOG.info("core method "+ method +" from path "+ path);
 
             try {
                 switch (method)
@@ -92,7 +94,7 @@ public class HttpCoreNodeServer
                 exchange.close();
                 long t2 = System.currentTimeMillis();
                 if (LOGGING)
-                    System.out.println("Corenode server handled " + method + " request in: " + (t2 - t1) + " mS");
+                    LOG.info("Corenode server handled " + method + " request in: " + (t2 - t1) + " mS");
             }
 
         }
@@ -195,14 +197,14 @@ public class HttpCoreNodeServer
         // eventually will need our own keypair to sign traffic to other core nodes
         try {
             String hostname = args.getArg("domain", "localhost");
-            System.out.println("Starting core node server listening on: " + hostname+":"+port +" proxying to "+coreNode);
+            LOG.info("Starting core node server listening on: " + hostname+":"+port +" proxying to "+coreNode);
             InetSocketAddress address = new InetSocketAddress(hostname, port);
             HttpCoreNodeServer server = new HttpCoreNodeServer(coreNode, mutable, address);
             server.start();
         } catch (Exception e)
         {
-            e.printStackTrace();
-            System.out.println("Couldn't start Corenode server!");
+            LOG.log(Level.WARNING, e.getMessage(), e);
+            LOG.info("Couldn't start Corenode server!");
         }
     }
 }

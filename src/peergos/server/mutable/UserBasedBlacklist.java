@@ -1,4 +1,5 @@
 package peergos.server.mutable;
+import java.util.logging.*;
 
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
@@ -15,6 +16,7 @@ import java.util.concurrent.*;
 import java.util.stream.*;
 
 public class UserBasedBlacklist implements PublicKeyBlackList {
+	private static final Logger LOG = Logger.getGlobal();
 
     private static final long RELOAD_PERIOD_MS = 3_600_000;
 
@@ -36,7 +38,7 @@ public class UserBasedBlacklist implements PublicKeyBlackList {
                 try {
                     updateBlackList();
                 } catch (Throwable t) {
-                    t.printStackTrace();
+                    LOG.log(Level.WARNING, t.getMessage(), t);
                 }
                 try {
                     Thread.sleep(5000);
@@ -51,7 +53,7 @@ public class UserBasedBlacklist implements PublicKeyBlackList {
         long modified = source.toFile().lastModified();
         long now = System.currentTimeMillis();
         if (modified != lastModified || (now - lastReloaded > RELOAD_PERIOD_MS)) {
-            System.out.println("Updating blacklist...");
+            LOG.info("Updating blacklist...");
             lastModified = modified;
             lastReloaded = now;
             Set<String> usernames = readUsernamesFromFile();
@@ -71,7 +73,7 @@ public class UserBasedBlacklist implements PublicKeyBlackList {
                     .map(String::trim)
                     .collect(Collectors.toSet());
         } catch (IOException e) {
-            e.printStackTrace();
+            LOG.log(Level.WARNING, e.getMessage(), e);
             return Collections.emptySet();
         }
     }

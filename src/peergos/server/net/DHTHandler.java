@@ -1,4 +1,5 @@
 package peergos.server.net;
+import java.util.logging.*;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
@@ -15,8 +16,9 @@ import java.util.*;
 import java.util.function.*;
 import java.util.stream.*;
 
-public class DHTHandler implements HttpHandler
-{
+public class DHTHandler implements HttpHandler {
+	private static final Logger LOG = Logger.getGlobal();
+
     private static final boolean LOGGING = true;
     private final ContentAddressedStorage dht;
     private final BiFunction<PublicKeyHash, Integer, Boolean> keyFilter;
@@ -182,14 +184,14 @@ public class DHTHandler implements HttpHandler
                 }
             }
         } catch (Exception e) {
-            System.err.println("Error handling " +httpExchange.getRequestURI());
-            e.printStackTrace();
+            LOG.severe("Error handling " +httpExchange.getRequestURI());
+            LOG.log(Level.WARNING, e.getMessage(), e);
             replyError(httpExchange, e);
         } finally {
             httpExchange.close();
             long t2 = System.currentTimeMillis();
             if (LOGGING)
-                System.out.println("DHT Handler handled " + path + " query in: " + (t2 - t1) + " mS");
+                LOG.info("DHT Handler handled " + path + " query in: " + (t2 - t1) + " mS");
         }
     }
 
@@ -209,7 +211,7 @@ public class DHTHandler implements HttpHandler
             exchange.sendResponseHeaders(400, -1);
         } catch (IOException e)
         {
-            e.printStackTrace();
+            LOG.log(Level.WARNING, e.getMessage(), e);
         }
     }
 
@@ -227,7 +229,7 @@ public class DHTHandler implements HttpHandler
             dout.close();
         } catch (IOException e)
         {
-            e.printStackTrace();
+            LOG.log(Level.WARNING, e.getMessage(), e);
         }
     }
 
@@ -244,7 +246,7 @@ public class DHTHandler implements HttpHandler
             dout.close();
         } catch (IOException e)
         {
-            e.printStackTrace();
+            LOG.log(Level.WARNING, e.getMessage(), e);
         }
     }
 }

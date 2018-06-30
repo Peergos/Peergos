@@ -1,4 +1,5 @@
 package peergos.server;
+import java.util.logging.*;
 
 import peergos.shared.*;
 import peergos.shared.crypto.*;
@@ -15,6 +16,7 @@ import java.util.concurrent.*;
 import java.util.function.*;
 
 public class RenewUsernameClaim {
+	private static final Logger LOG = Logger.getGlobal();
 
     public static void main(String[] args) throws Exception {
         Crypto crypto = Crypto.initJava();
@@ -27,6 +29,6 @@ public class RenewUsernameClaim {
         UserContext context = UserContext.signIn(username, password, network, crypto).get();
         boolean isExpired = context.usernameIsExpired().get();
         if (isExpired)
-            System.out.println(context.renewUsernameClaim(expiry).get() ? "Renewed username" : "Failed to renew username");
+            LOG.info(context.renewUsernameClaim(expiry).get() ? "Renewed username" : "Failed to renew username");
     }
 }

@@ -1,4 +1,5 @@
 package peergos.server.tests;
+import java.util.logging.*;
 
 import org.junit.*;
 import org.junit.runner.*;
@@ -21,6 +22,7 @@ import java.util.concurrent.*;
 
 @RunWith(Parameterized.class)
 public class CorenodeTests {
+	private static final Logger LOG = Logger.getGlobal();
 
     public static int RANDOM_SEED = 666;
     private final NetworkAccess network;
@@ -81,7 +83,7 @@ public class CorenodeTests {
                             maxLatency = latency;
                         current = MaybeMultihash.of(cid);
                     } catch (Exception e) {
-                        e.printStackTrace();
+                        LOG.log(Level.WARNING, e.getMessage(), e);
                     }
                 }
                 long t2 = System.currentTimeMillis();
@@ -95,7 +97,7 @@ public class CorenodeTests {
                 return Long.MIN_VALUE;
             }
         }).max().getAsLong();
-        System.out.println("Worst Latency: " + worstLatency);
+        LOG.info("Worst Latency: " + worstLatency);
         Assert.assertTrue("Worst latency < 1 second: " + worstLatency, worstLatency < 2000);
         pool.awaitQuiescence(5, TimeUnit.MINUTES);
     }

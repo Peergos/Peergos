@@ -1,4 +1,5 @@
 package peergos.server.fuse;
+import java.util.logging.*;
 
 import jnr.ffi.Pointer;
 import jnr.ffi.types.off_t;
@@ -16,6 +17,7 @@ import java.util.concurrent.*;
 import java.util.function.*;
 
 public class CachingPeergosFS extends PeergosFS {
+	private static final Logger LOG = Logger.getGlobal();
 
     private static final int DEFAULT_SYNC_SLEEP = 1000*30;
     private static final int DEFAULT_CACHE_SIZE = 1;
@@ -42,7 +44,7 @@ public class CachingPeergosFS extends PeergosFS {
         try {
             return read(s, pointer, 0, size, offset, fuseFileInfo);
         } catch (Throwable t) {
-            t.printStackTrace();
+            LOG.log(Level.WARNING, t.getMessage(), t);
             throw t;
         }
     }
@@ -75,7 +77,7 @@ public class CachingPeergosFS extends PeergosFS {
         try {
             return write(s, pointer, 0, size, offset, fuseFileInfo);
         } catch (Throwable t) {
-            t.printStackTrace();
+            LOG.log(Level.WARNING, t.getMessage(), t);
             throw t;
         }
     }
@@ -113,7 +115,7 @@ public class CachingPeergosFS extends PeergosFS {
                 cacheEntryHolder.syncAndClear();
             return 0;
         } catch (Throwable t) {
-            t.printStackTrace();
+            LOG.log(Level.WARNING, t.getMessage(), t);
             throw t;
         }
     }
@@ -129,7 +131,7 @@ public class CachingPeergosFS extends PeergosFS {
             }
             return super.flush(s, fuseFileInfo);
         } catch (Throwable t) {
-            t.printStackTrace();
+            LOG.log(Level.WARNING, t.getMessage(), t);
             throw t;
         }
     }
@@ -178,7 +180,7 @@ public class CachingPeergosFS extends PeergosFS {
                 long oldOffset = entry != null ? entry.offset : -1;
                 syncAndClear();
                 setEntry(supplier.get());
-                System.out.println("Ejecting chunk from " + entry.path + " " + oldOffset + " -> "+ entry.offset);
+                LOG.info("Ejecting chunk from " + entry.path + " " + oldOffset + " -> "+ entry.offset);
 
             }
             return func.apply(entry);

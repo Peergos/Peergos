@@ -1,4 +1,5 @@
 package peergos.server.fuse;
+import java.util.logging.*;
 
 import jnr.ffi.Pointer;
 import jnr.ffi.types.*;
@@ -24,6 +25,7 @@ import java.util.function.*;
  * https://github.com/libfuse/libfuse/blob/master/include/fuse.h
  */
 public class PeergosFS extends FuseStubFS implements AutoCloseable {
+	private static final Logger LOG = Logger.getGlobal();
 
     protected static class PeergosStat {
         public final FileTreeNode treeNode;
@@ -77,7 +79,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
             fileStat.st_atim.tv_nsec.set(nanoSeconds);
             return 0;
         } catch (Throwable t) {
-            t.printStackTrace();
+            LOG.log(Level.WARNING, t.getMessage(), t);
             return 1;
         }
     }
@@ -105,7 +107,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
         try {
             return Optional.of(node.mkdir(name, context.network, isSystemFolder, context.crypto.random).get());
         } catch (Exception ioe) {
-            ioe.printStackTrace();
+            LOG.log(Level.WARNING, ioe.getMessage(), ioe);
             return Optional.empty();
         }
     }
@@ -145,7 +147,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
             FileTreeNode updatedParent = file.get().remove(context.network, parent.get()).get();
             return updatedParent != parent.get() ? 0 : 1;
         } catch (Exception ioe) {
-            ioe.printStackTrace();
+            LOG.log(Level.WARNING, ioe.getMessage(), ioe);
             return 1;
         }
     }
@@ -183,7 +185,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
             }
             return 0;
         } catch (Exception ioe) {
-            ioe.printStackTrace();
+            LOG.log(Level.WARNING, ioe.getMessage(), ioe);
             return 1;
         }
     }
@@ -354,7 +356,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
 
     @Override
     public int lock(String s, FuseFileInfo fuseFileInfo, int i, Flock flock) {
-        System.out.println("LOCK: "+s);
+        LOG.info("LOCK: "+s);
         ensureNotClosed();
         return 0;
     }
@@ -389,7 +391,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
                 boolean isUpdated = stat.treeNode.setProperties(updated, context.network, parentOpt.get().treeNode).get();
                 return isUpdated ? 0 : 1;
             } catch (Exception ex) {
-                ex.printStackTrace();
+                LOG.log(Level.WARNING, ex.getMessage(), ex);
                 return 1;
             }
         }, aDefault);
@@ -434,7 +436,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
 
     private int unimp() {
         IllegalStateException ex = new IllegalStateException("Unimlemented!");
-        ex.printStackTrace();
+        LOG.log(Level.WARNING, ex.getMessage(), ex);
         throw ex;
     }
 
@@ -486,7 +488,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
             FileTreeNode updatedParent = treeNode.remove(context.network, parentStat.treeNode).get();
             return 0;
         } catch (Exception ioe) {
-            ioe.printStackTrace();
+            LOG.log(Level.WARNING, ioe.getMessage(), ioe);
             return 1;
         }
     }
@@ -499,7 +501,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
                     .forEach(e -> fuseFillDir.apply(pointer, e, null, 0));
             return 0;
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.log(Level.WARNING, e.getMessage(), e);
             return 1;
         }
     }
@@ -530,7 +532,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
 
             return Optional.of(data);
         } catch (Exception  ioe) {
-            ioe.printStackTrace();
+            LOG.log(Level.WARNING, ioe.getMessage(), ioe);
             return Optional.empty();
         }
     }
@@ -577,7 +579,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
                     }, context.fragmenter()).get();
             return (int) size;
         } catch (Throwable t) {
-            t.printStackTrace();
+            LOG.log(Level.WARNING, t.getMessage(), t);
             return 1;
         }
     }
@@ -594,7 +596,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
                     context.network, context.crypto.random, l -> {}, context.fragmenter()).get();
             return (int) size;
         } catch (Throwable t) {
-            t.printStackTrace();
+            LOG.log(Level.WARNING, t.getMessage(), t);
             return 1;
         }
     }
@@ -609,6 +611,6 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
      */
     private void debug(String template, Object... obj) {
         String msg = String.format(template, obj);
-        System.out.println(msg);
+        LOG.info(msg);
     }
 }

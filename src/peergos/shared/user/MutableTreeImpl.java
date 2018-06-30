@@ -1,4 +1,5 @@
 package peergos.shared.user;
+import java.util.logging.*;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
@@ -15,6 +16,7 @@ import java.util.concurrent.*;
 import java.util.function.*;
 
 public class MutableTreeImpl implements MutableTree {
+	private static final Logger LOG = Logger.getGlobal();
     private final MutablePointers mutable;
     private final ContentAddressedStorage dht;
     private static final boolean LOGGING = false;
@@ -28,7 +30,7 @@ public class MutableTreeImpl implements MutableTree {
 
     private <T> T log(T result, String toPrint) {
         if (LOGGING)
-            System.out.println(toPrint);
+            LOG.info(toPrint);
         return result;
     }
 

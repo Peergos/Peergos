@@ -1,4 +1,5 @@
 package peergos.server.tests.slow;
+import java.util.logging.*;
 
 import com.sun.net.httpserver.*;
 import org.junit.*;
@@ -12,6 +13,7 @@ import java.util.concurrent.*;
 import java.util.stream.*;
 
 public class MultipartProfiling {
+	private static final Logger LOG = Logger.getGlobal();
 
     private final int port;
     private final HttpServer server;
@@ -48,7 +50,7 @@ public class MultipartProfiling {
             dout.flush();
             dout.close();
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.log(Level.WARNING, e.getMessage(), e);
         }
     }
 

@@ -1,4 +1,5 @@
 package peergos.server.tests;
+import java.util.logging.*;
 
 import org.junit.*;
 import static org.junit.Assert.*;
@@ -26,6 +27,7 @@ import java.util.concurrent.*;
 import java.util.stream.*;
 
 public abstract class UserTests {
+	private static final Logger LOG = Logger.getGlobal();
 
     public static int RANDOM_SEED = 666;
     private final NetworkAccess network;
@@ -91,7 +93,7 @@ public abstract class UserTests {
             long t1 = System.currentTimeMillis();
             UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer, p).get();
             long t2 = System.currentTimeMillis();
-            System.out.println("User gen took " + (t2 - t1) + " mS");
+            LOG.info("User gen took " + (t2 - t1) + " mS");
             System.gc();
         }
     }
@@ -282,7 +284,7 @@ public abstract class UserTests {
                                 data.length, context.network, context.crypto.random, l -> {}, context.fragmenter()).get();
                         Optional<FileTreeNode> childOpt = result.getChild(filename, network).get();
                         checkFileContents(data, childOpt.get(), context);
-                        System.out.println("Finished a file");
+                        LOG.info("Finished a file");
                         return true;
                     } catch (Exception e) {
                         throw new RuntimeException(e.getMessage(), e);
@@ -487,7 +489,7 @@ public abstract class UserTests {
                 context.network).get().get().getFileProperties().size);
 
         // insert data in the middle of second chunk
-        System.out.println("\n***** Mid 2nd chunk write test");
+        LOG.info("\n***** Mid 2nd chunk write test");
         byte[] dataInsert = "some data to insert somewhere else".getBytes();
         int start = 5*1024*1024 + 4*1024;
         FileTreeNode userRoot4 = userRoot3.uploadFileSection(filename, new AsyncReader.ArrayBacked(dataInsert), start, start + dataInsert.length,
@@ -521,7 +523,7 @@ public abstract class UserTests {
         updatedRoot.uploadFileSection(filename, new AsyncReader.ArrayBacked(data5), 0, data5.length,
                 context.network, context.crypto.random, l -> {}, context.fragmenter()).get();
         long t2 = System.currentTimeMillis();
-        System.out.println("Write time per chunk " + (t2-t1)/2 + "mS");
+        LOG.info("Write time per chunk " + (t2-t1)/2 + "mS");
         Assert.assertTrue("Timely write", (t2-t1)/2 < 20000);
     }
 
@@ -633,7 +635,7 @@ public abstract class UserTests {
         for (int i = 0; i < nReads; i++) {
             long pos = i * readLength;
             long len = Math.min(readLength , expected.length - pos);
-            System.out.println("Reading from "+ pos +" to "+ (pos + len) +" with total "+ expected.length);
+            LOG.info("Reading from "+ pos +" to "+ (pos + len) +" with total "+ expected.length);
             byte[] retrievedData = Serialize.readFully(
                     in,
                     len).get();

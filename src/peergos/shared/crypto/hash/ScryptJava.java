@@ -1,4 +1,5 @@
 package peergos.shared.crypto.hash;
+import java.util.logging.*;
 
 import java.security.*;
 import java.util.*;
@@ -8,6 +9,7 @@ import peergos.shared.scrypt.com.lambdaworks.crypto.SCrypt;
 import peergos.shared.user.*;
 
 public class ScryptJava implements LoginHasher {
+	private static final Logger LOG = Logger.getGlobal();
     private static final int LOG_2_MIN_RAM = 17;
 
     @Override
@@ -25,7 +27,7 @@ public class ScryptJava implements LoginHasher {
                 int memoryCost = 1 << params.memoryCost; // Amount of ram required to run algorithm in bytes
                 byte[] scryptHash = SCrypt.scrypt(hash, salt, memoryCost, cpuCost, parallelism, nOutputBytes);
                 long t2 = System.currentTimeMillis();
-                System.out.println("Scrypt hashing took: " + (t2 - t1) + " mS");
+                LOG.info("Scrypt hashing took: " + (t2 - t1) + " mS");
                 res.complete(scryptHash);
                 return res;
             } catch (GeneralSecurityException gse) {

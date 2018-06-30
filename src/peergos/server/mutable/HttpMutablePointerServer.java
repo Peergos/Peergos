@@ -1,4 +1,5 @@
 package peergos.server.mutable;
+import java.util.logging.*;
 
 import com.sun.net.httpserver.*;
 import peergos.shared.cbor.*;
@@ -10,8 +11,9 @@ import java.io.*;
 import java.net.*;
 import java.util.concurrent.*;
 
-public class HttpMutablePointerServer
-{
+public class HttpMutablePointerServer {
+	private static final Logger LOG = Logger.getGlobal();
+
     public static final int PORT = 9998;
 
     private static final boolean LOGGING = true;
@@ -41,7 +43,7 @@ public class HttpMutablePointerServer
                 path = path.substring(1);
             String[] subComponents = path.substring(MUTABLE_POINTERS_URL.length()).split("/");
             String method = subComponents[0];
-//            System.out.println("core method "+ method +" from path "+ path);
+//            LOG.info("core method "+ method +" from path "+ path);
 
             try {
                 switch (method)
@@ -62,7 +64,7 @@ public class HttpMutablePointerServer
                 exchange.sendResponseHeaders(200, b.length);
                 exchange.getResponseBody().write(b);
             } catch (Exception e) {
-                e.printStackTrace();
+                LOG.log(Level.WARNING, e.getMessage(), e);
                 exchange.sendResponseHeaders(400, 0);
                 OutputStream body = exchange.getResponseBody();
                 body.write(e.getMessage().getBytes());
@@ -70,7 +72,7 @@ public class HttpMutablePointerServer
                 exchange.close();
                 long t2 = System.currentTimeMillis();
                 if (LOGGING)
-                    System.out.println("Mutable pointers server handled " + method + " request in: " + (t2 - t1) + " mS");
+                    LOG.info("Mutable pointers server handled " + method + " request in: " + (t2 - t1) + " mS");
             }
 
         }

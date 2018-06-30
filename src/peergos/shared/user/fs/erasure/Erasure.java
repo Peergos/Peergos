@@ -1,4 +1,5 @@
 package peergos.shared.user.fs.erasure;
+import java.util.logging.*;
 
 import java.io.ByteArrayOutputStream;
 import java.util.*;
@@ -6,6 +7,7 @@ import java.util.*;
 import peergos.shared.util.StringUtils;
 
 public class Erasure {
+	private static final Logger LOG = Logger.getGlobal();
 
     public static byte[][] split(byte[] input, int originalBlobs, int allowedFailures)
     {
@@ -42,7 +44,7 @@ public class Erasure {
         for (int i=0; i < n; i++)
             res[i] = bouts[i].toByteArray();
         long t2 = System.currentTimeMillis();
-        System.out.println("Erasure encoding took "+(t2-t1)+ " mS");
+        LOG.info("Erasure encoding took "+(t2-t1)+ " mS");
         return res;
     }
 
@@ -96,7 +98,7 @@ public class Erasure {
             return Arrays.copyOfRange(res.toByteArray(), 0, truncateTo);
         } finally {
             long t2 = System.currentTimeMillis();
-            System.out.println("Erasure decoding took " + (t2 - t1) + " mS");
+            LOG.info("Erasure decoding took " + (t2 - t1) + " mS");
         }
     }
 

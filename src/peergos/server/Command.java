@@ -7,7 +7,6 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 public class Command {
-
     public static class Arg {
         public final String name, description;
         public final boolean isRequired;

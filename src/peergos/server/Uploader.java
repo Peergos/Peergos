@@ -1,4 +1,5 @@
 package peergos.server;
+import java.util.logging.*;
 
 import peergos.server.storage.*;
 import peergos.shared.*;
@@ -15,6 +16,7 @@ import java.util.function.*;
 import java.util.stream.*;
 
 public class Uploader {
+	private static final Logger LOG = Logger.getGlobal();
 
     public static void main(String[] args) throws Exception {
         Crypto crypto = Crypto.initJava();
@@ -29,7 +31,7 @@ public class Uploader {
         long t1 = System.currentTimeMillis();
         uploadTo(context, Paths.get(fromPath), toPath, context.fragmenter(), props -> true, pool);
         long t2 = System.currentTimeMillis();
-        System.out.println("Upload took " + (t2-t1) + " mS");
+        LOG.info("Upload took " + (t2-t1) + " mS");
     }
 
     private static void createPath(FileTreeNode parent, Path path, NetworkAccess network, SafeRandom random) throws Exception {
@@ -109,16 +111,16 @@ public class Uploader {
                         .map(childName -> source.resolve(childName))
                         .forEach(childPath -> uploadTo(childPath, newDir, updatedTarget, network, random, fragmenter, filter)));
             } catch (Exception e) {
-                System.err.println("Error uploading children of " + source);
-                e.printStackTrace();
+                LOG.severe("Error uploading children of " + source);
+                LOG.log(Level.WARNING, e.getMessage(), e);
             }
         } else {
             try {
                 ResetableFileInputStream fileData = new ResetableFileInputStream(file);
                 target.uploadFile(file.getName(), fileData, file.length(), network, random, c -> {}, fragmenter).get();
             } catch (Exception e) {
-                System.err.println("Error uploading " + source);
-                e.printStackTrace();
+                LOG.severe("Error uploading " + source);
+                LOG.log(Level.WARNING, e.getMessage(), e);
             }
         }
     }
