@@ -62,7 +62,7 @@ public interface ContentAddressedStorage {
                 .thenApply(PublicKeyHash::new);
     }
 
-    default PublicKeyHash hashKey(PublicSigningKey key) {
+    static PublicKeyHash hashKey(PublicSigningKey key) {
         return new PublicKeyHash(new Cid(1, Cid.Codec.DagCbor, new Multihash(
                             Multihash.Type.sha2_256,
                             Hash.sha256(key.serialize()))));

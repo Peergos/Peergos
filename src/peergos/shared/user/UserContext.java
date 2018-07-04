@@ -9,6 +9,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multihash.Multihash;
 import peergos.shared.merklebtree.*;
+import peergos.shared.storage.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
@@ -169,7 +170,7 @@ public class UserContext {
                 .thenCompose(userWithRoot -> {
                     PublicSigningKey publicSigningKey = userWithRoot.getUser().publicSigningKey;
                     SecretSigningKey secretSigningKey = userWithRoot.getUser().secretSigningKey;
-                    PublicKeyHash signerHash = network.dhtClient.hashKey(publicSigningKey);
+                    PublicKeyHash signerHash = ContentAddressedStorage.hashKey(publicSigningKey);
                     SigningPrivateKeyAndPublicHash signer = new SigningPrivateKeyAndPublicHash(signerHash, secretSigningKey);
                     System.out.println("Registering username " + username);
                     progressCallback.accept("Registering username");
@@ -180,7 +181,7 @@ public class UserContext {
                         }
                         return network.dhtClient.putSigningKey(
                                 secretSigningKey.signatureOnly(publicSigningKey.serialize()),
-                                network.dhtClient.hashKey(publicSigningKey),
+                                ContentAddressedStorage.hashKey(publicSigningKey),
                                 publicSigningKey)
                                 .thenCompose(returnedSignerHash -> {
                                     PublicBoxingKey publicBoxingKey = userWithRoot.getBoxingPair().publicBoxingKey;
@@ -432,7 +433,7 @@ public class UserContext {
                                             PublicSigningKey newPublicSigningKey = updatedUser.getUser().publicSigningKey;
                                                     return network.dhtClient.putSigningKey(
                                                             existingUser.getUser().secretSigningKey.signatureOnly(newPublicSigningKey.serialize()),
-                                                            network.dhtClient.hashKey(existingUser.getUser().publicSigningKey),
+                                                            ContentAddressedStorage.hashKey(existingUser.getUser().publicSigningKey),
                                                             newPublicSigningKey
                                                     ).thenCompose(newSignerHash -> wd.props
                                                             .changeKeys(

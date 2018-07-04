@@ -32,7 +32,7 @@ public class UserPublicKeyLinkTests {
     private PublicKeyHash putPublicSigningKey(SigningKeyPair user) throws Exception {
         return ipfs.putSigningKey(
                 user.secretSigningKey.signatureOnly(user.publicSigningKey.serialize()),
-                ipfs.hashKey(user.publicSigningKey),
+                ContentAddressedStorage.hashKey(user.publicSigningKey),
                 user.publicSigningKey).get();
     }
 

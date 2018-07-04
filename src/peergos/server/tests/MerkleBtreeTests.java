@@ -33,7 +33,7 @@ public class MerkleBtreeTests {
             RAMStorage storage = createStorage();
             PublicKeyHash publicHash = storage.putSigningKey(
                     random.secretSigningKey.signatureOnly(random.publicSigningKey.serialize()),
-                    storage.hashKey(random.publicSigningKey),
+                    ContentAddressedStorage.hashKey(random.publicSigningKey),
                     random.publicSigningKey).get();
             return new SigningPrivateKeyAndPublicHash(publicHash, random.secretSigningKey);
         } catch (Exception e) {

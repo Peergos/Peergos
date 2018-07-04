@@ -11,6 +11,7 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.merklebtree.*;
+import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
 import java.lang.reflect.*;
@@ -67,7 +68,7 @@ public class CorenodeTests {
                 SigningKeyPair writer = SigningKeyPair.random(crypto.random, crypto.signer);
                 PublicKeyHash ownerHash = network.dhtClient.putSigningKey(
                         owner.secretSigningKey.signatureOnly(owner.publicSigningKey.serialize()),
-                        network.dhtClient.hashKey(owner.publicSigningKey),
+                        ContentAddressedStorage.hashKey(owner.publicSigningKey),
                         owner.publicSigningKey).get();
                 PublicKeyHash writerHash = network.dhtClient.putSigningKey(
                         owner.secretSigningKey.signatureOnly(writer.publicSigningKey.serialize()),

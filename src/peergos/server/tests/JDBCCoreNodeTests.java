@@ -52,7 +52,7 @@ public class JDBCCoreNodeTests {
         try {
             PublicKeyHash owner = STORAGE.putSigningKey(
                     user.secretSigningKey.signatureOnly(user.publicSigningKey.serialize()),
-                    STORAGE.hashKey(user.publicSigningKey),
+                    ContentAddressedStorage.hashKey(user.publicSigningKey),
                     user.publicSigningKey).get();
             UserPublicKeyLink upl = new UserPublicKeyLink(owner, node);
             return coreNode.updateChain(

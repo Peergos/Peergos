@@ -90,9 +90,76 @@ public class Start
             Collections.emptyList()
     );
 
+    public static final Command BOOTSTRAP = new Command("bootstrap",
+            "Bootstrap a new peergos network",
+            args -> {
+                try {
+                    Crypto crypto = Crypto.initJava();
+                    // setup peergos user and pki keys
+                    String testpassword = args.getArg("peergos.password", "testpassword");
+                    String pkiUsername = "peergos";
+                    UserWithRoot peergos = UserUtil.generateUser(pkiUsername, testpassword, crypto.hasher, crypto.symmetricProvider,
+                            crypto.random, crypto.signer, crypto.boxer, UserGenerationAlgorithm.getDefault()).get();
+
+                    SigningKeyPair peergosIdentityKeys = peergos.getUser();
+                    PublicKeyHash peergosPublicHash = ContentAddressedStorage.hashKey(peergosIdentityKeys.publicSigningKey);
+                    SigningKeyPair pkiKeys = SigningKeyPair.insecureRandom();
+                    Files.write(Paths.get("test.pki.secret.key"), pkiKeys.secretSigningKey.toCbor().toByteArray());
+                    Files.write(Paths.get("test.pki.public.key"), pkiKeys.publicSigningKey.toCbor().toByteArray());
+                    PublicKeyHash pkiPublicHash = ContentAddressedStorage.hashKey(pkiKeys.publicSigningKey);
+                    args.setIfAbsent("peergos.identity.hash", peergosPublicHash.toString());
+                    args.setIfAbsent("pki.secret.key", "test.pki.secret.key");
+                    args.setIfAbsent("pki.public.key", "test.pki.public.key");
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    System.exit(1);
+                }
+            },
+            Collections.emptyList()
+    );
+
+    public static final Command POSTSTRAP = new Command("poststrap",
+            "The final step of bootstrapping a new peergos network, which must be run after it is started",
+            args -> {
+                try {
+                    Crypto crypto = Crypto.initJava();
+                    // recreate peergos user and pki keys
+                    String testpassword = args.getArg("peergos.password", "testpassword");
+                    String pkiUsername = "peergos";
+                    UserWithRoot peergos = UserUtil.generateUser(pkiUsername, testpassword, crypto.hasher, crypto.symmetricProvider,
+                            crypto.random, crypto.signer, crypto.boxer, UserGenerationAlgorithm.getDefault()).get();
+
+                    SigningKeyPair peergosIdentityKeys = peergos.getUser();
+                    PublicKeyHash peergosPublicHash = ContentAddressedStorage.hashKey(peergosIdentityKeys.publicSigningKey);
+                    PublicSigningKey pkiPublic = args.hasArg("pki.public.key") ?
+                            PublicSigningKey.fromByteArray(
+                                    Files.readAllBytes(Paths.get(args.getArg("pki.public.key")))) :
+                            IpfsCoreNode.PKI_PUBLIC_KEY;
+                    SecretSigningKey pkiSecretKey = SecretSigningKey.fromCbor(CborObject.fromByteArray(
+                            Files.readAllBytes(Paths.get(args.getArg("pki.secret.key")))));
+                    SigningKeyPair pkiKeys = new SigningKeyPair(pkiPublic, pkiSecretKey);
+                    PublicKeyHash pkiPublicHash = ContentAddressedStorage.hashKey(pkiKeys.publicSigningKey);
+                    int webPort = args.getInt("port");
+                    NetworkAccess network = NetworkAccess.buildJava(new URL("http://localhost:" + webPort)).get();
+
+                    // sign up peergos user
+                    UserContext context = UserContext.ensureSignedUp(pkiUsername, testpassword, network, crypto).get();
+                    context.addNamedOwnedKeyAndCommit("pki", pkiPublicHash);
+                    // write pki public key to ipfs
+                    network.dhtClient.putSigningKey(peergosIdentityKeys.secretSigningKey
+                            .signatureOnly(pkiKeys.publicSigningKey.serialize()), peergosPublicHash, pkiKeys.publicSigningKey).get();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    System.exit(1);
+                }
+            },
+            Collections.emptyList()
+    );
+
     public static final Command LOCAL = new Command("local",
             "Start an ephemeral Peergos Server and CoreNode server",
             args -> {
+                BOOTSTRAP.main(args);
                 args.setIfAbsent("domain", "localhost");
                 args.setIfAbsent("corenodePath", ":memory:");
                 args.setIfAbsent("socialnodePath", ":memory:");
@@ -102,6 +169,7 @@ public class Start
                 args.setIfAbsent("corenodeURL", "http://localhost:" + args.getArg("corenodePort"));
                 args.setIfAbsent("socialnodeURL", "http://localhost:" + args.getArg("socialnodePort"));
                 PEERGOS.main(args);
+                POSTSTRAP.main(args);
             },
             Collections.emptyList()
     );
@@ -213,7 +281,7 @@ public class Start
             SecretSigningKey pkiSecretKey = SecretSigningKey.fromCbor(CborObject.fromByteArray(
                     Files.readAllBytes(Paths.get(a.getArg("pki.secret.key")))));
             SigningKeyPair pkiKeys = new SigningKeyPair(pkiPublic, pkiSecretKey);
-            PublicKeyHash pkiPublicHash = new RAMStorage().hashKey(pkiKeys.publicSigningKey);
+            PublicKeyHash pkiPublicHash = ContentAddressedStorage.hashKey(pkiKeys.publicSigningKey);
 
             MaybeMultihash currentPkiRoot = mutable.getPointerTarget(pkiPublicHash, dht).get();
 
