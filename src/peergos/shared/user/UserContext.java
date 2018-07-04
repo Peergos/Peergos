@@ -105,34 +105,46 @@ public class UserContext {
                     progressCallback.accept("Generating keys");
                     return UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider,
                             crypto.random, crypto.signer, crypto.boxer, algorithm)
-                            .thenCompose(userWithRoot -> {
-                                try {
-                                    progressCallback.accept("Logging in");
-                                    WriterData userData = WriterData.fromCbor(pair.right, userWithRoot.getRoot());
-                                    return createOurFileTreeOnly(username, userData, network)
-                                            .thenCompose(root -> TofuCoreNode.load(username, root, network, crypto.random)
-                                                    .thenCompose(keystore -> {
-                                                        TofuCoreNode tofu = new TofuCoreNode(network.coreNode, keystore);
-                                                        UserContext result = new UserContext(username,
-                                                                new SigningPrivateKeyAndPublicHash(userData.controller, userWithRoot.getUser().secretSigningKey),
-                                                                userWithRoot.getBoxingPair(), network.withCorenode(tofu), crypto,
-                                                                CompletableFuture.completedFuture(new CommittedWriterData(MaybeMultihash.of(pair.left), userData)),
-                                                                root);
-                                                        tofu.setContext(result);
-                                                        return result.getUsernameClaimExpiry()
-                                                                .thenCompose(expiry -> expiry.isBefore(LocalDate.now().plusMonths(1)) ?
-                                                                        result.renewUsernameClaim(LocalDate.now().plusMonths(2)) :
-                                                                        CompletableFuture.completedFuture(true))
-                                                                .thenCompose(x -> {
-                                                                    System.out.println("Initializing context..");
-                                                                    return result.init(progressCallback);
-                                                                }).exceptionally(Futures::logError);
-                                                    }));
-                                } catch (Throwable t) {
-                                    throw new IllegalStateException("Incorrect password");
-                                }
-                            });
+                            .thenCompose(userWithRoot ->
+                                    login(username, userWithRoot, pair, network, crypto, progressCallback));
                 }).exceptionally(Futures::logError);
+    }
+
+    public static CompletableFuture<UserContext> signIn(String username, UserWithRoot userWithRoot, NetworkAccess network
+            , Crypto crypto, Consumer<String> progressCallback) {
+        return getWriterDataCbor(network, username)
+                .thenCompose(pair -> {
+                    return login(username, userWithRoot, pair, network, crypto, progressCallback);
+                }).exceptionally(Futures::logError);
+    }
+
+    private static CompletableFuture<UserContext> login(String username, UserWithRoot userWithRoot, Pair<Multihash, CborObject> pair
+            , NetworkAccess network, Crypto crypto, Consumer<String> progressCallback) {
+        try {
+            progressCallback.accept("Logging in");
+            WriterData userData = WriterData.fromCbor(pair.right, userWithRoot.getRoot());
+            return createOurFileTreeOnly(username, userData, network)
+                    .thenCompose(root -> TofuCoreNode.load(username, root, network, crypto.random)
+                            .thenCompose(keystore -> {
+                                TofuCoreNode tofu = new TofuCoreNode(network.coreNode, keystore);
+                                UserContext result = new UserContext(username,
+                                        new SigningPrivateKeyAndPublicHash(userData.controller, userWithRoot.getUser().secretSigningKey),
+                                        userWithRoot.getBoxingPair(), network.withCorenode(tofu), crypto,
+                                        CompletableFuture.completedFuture(new CommittedWriterData(MaybeMultihash.of(pair.left), userData)),
+                                        root);
+                                tofu.setContext(result);
+                                return result.getUsernameClaimExpiry()
+                                        .thenCompose(expiry -> expiry.isBefore(LocalDate.now().plusMonths(1)) ?
+                                                result.renewUsernameClaim(LocalDate.now().plusMonths(2)) :
+                                                CompletableFuture.completedFuture(true))
+                                        .thenCompose(x -> {
+                                            System.out.println("Initializing context..");
+                                            return result.init(progressCallback);
+                                        }).exceptionally(Futures::logError);
+                            }));
+        } catch (Throwable t) {
+            throw new IllegalStateException("Incorrect password");
+        }
     }
 
     @JsMethod
@@ -198,7 +210,7 @@ public class UserContext {
                                                         null,
                                                         true,
                                                         crypto.random)
-                                                        .thenCompose(x -> signIn(username, password, network.clear(), crypto, progressCallback));
+                                                        .thenCompose(x -> signIn(username, userWithRoot, network.clear(), crypto, progressCallback));
                                             });
                                         });
                                 });
