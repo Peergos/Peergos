@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<appengine-web-app xmlns="http://appengine.google.com/ns/1.0">
+  <application>no-such-app</application>
+  <version>dev</version>
+  <!-- TODO(???) please update threadsafe to true if code is threadsafe -->
+  <threadsafe>false</threadsafe>
+
+  <!-- Continue to use urlfetch to open URLs in Java.
+       Delete this to use the socket API, which is more performant but could
+       conceivably lead to different behavior. -->
+  <url-stream-handler>urlfetch</url-stream-handler>
+</appengine-web-app>

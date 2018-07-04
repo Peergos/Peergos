@@ -34,7 +34,7 @@
 
   <!-- Configure path to GWT SDK -->
   <!--<property name="gwt.sdk" location="/home/ian/gwt-2.8.0-rc1" />-->
-  <property name="gwt.sdk" location="gwt/gwt-2.8.0-rc3" />
+  <property name="gwt.sdk" location="gwt/gwt-2.8.2" />
 
 
   <path id="project.class.path">

@@ -1,1 +1,0 @@
-$wnd.showcase.runAsyncCallback12("function teb(){var a,b;a=new oGb;a.e[kac]=5;for(b=1;b<5;b++){lGb(a,new Ryb(Ybc+b))}mGb(a);return a}\nfunction mGb(a){var b,c;CPb((Mvb(),a.hb),'',Zbc);c=a.j.c;for(b=0;b<c;b++){CPb(Tyb(a,WPb(a.j,b)),Zbc,''+b)}}\nvar Zbc='cwHorizontalPanel';zX(417,1,O8b);_.Bc=function yeb(){PZ(this.a,teb())};P5b(zl)(12);\n//# sourceURL=showcase-12.js\n")

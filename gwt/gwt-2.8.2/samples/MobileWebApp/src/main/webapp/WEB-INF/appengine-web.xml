@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<appengine-web-app xmlns="http://appengine.google.com/ns/1.0">
+  <!-- Fill in the app name and version -->
+  <application></application>
+  <version></version>
+  <!-- TODO(???) please update threadsafe to true if code is threadsafe -->
+  <threadsafe>false</threadsafe>
+
+  <!-- Continue to use urlfetch to open URLs in Java.
+       Delete this to use the socket API, which is more performant but could
+       conceivably lead to different behavior. -->
+  <url-stream-handler>urlfetch</url-stream-handler>
+
+  <!-- Configure serving/caching of GWT files -->
+  <static-files>
+    <include path="**" />
+
+    <!-- The following line requires App Engine 1.3.2 SDK -->
+    <include path="**.nocache.*" expiration="0s" />
+
+    <include path="**.cache.*" expiration="365d" />
+    <exclude path="**.gwt.rpc" />
+  </static-files>
+
+</appengine-web-app>
