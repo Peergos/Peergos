@@ -1,1 +1,0 @@
-$wnd.showcase.runAsyncCallback13("function bvc(a){var b,c;Ouc(a.hb,'',HTc);c=a.j.c;for(b=0;b<c;b++){Ouc(gec(a,gvc(a.j,b)),HTc,''+b)}}\nfunction YVb(){var a,b;b=new dvc;b.e[MRc]=5;for(a=1;a<10;a++){avc(b,new eec('Button '+a))}bvc(b);return b}\nvar HTc='cwVerticalPanel';ECb(449,1,sQc);_.Bc=function bWb(){YEb(this.a,YVb())};VMc(wl)(13);\n//# sourceURL=showcase-13.js\n")
