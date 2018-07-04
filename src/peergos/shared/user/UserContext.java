@@ -534,6 +534,15 @@ public class UserContext {
                 });
     }
 
+    public CompletableFuture<CommittedWriterData> addNamedOwnedKeyAndCommit(String keyName, PublicKeyHash owned) {
+        CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
+        return addToUserDataQueue(lock)
+                .thenCompose(wd -> {
+                    WriterData writerData = wd.props.addNamedKey(keyName, owned);
+                    return writerData.commit(signer, wd.hash, network, lock::complete);
+                });
+    }
+
     @JsMethod
     public CompletableFuture<Set<FileTreeNode>> getFriendRoots() {
         List<CompletableFuture<Optional<FileTreeNode>>> friendRoots = entrie.getChildNames()

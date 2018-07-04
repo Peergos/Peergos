@@ -4,9 +4,13 @@ import peergos.server.corenode.*;
 import peergos.server.mutable.*;
 import peergos.server.social.*;
 import peergos.shared.*;
+import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
+import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
+import peergos.shared.crypto.hash.*;
+import peergos.shared.merklebtree.*;
 import peergos.shared.mutable.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.*;
@@ -197,9 +201,25 @@ public class Start
                 new CachingStorage(new IpfsDHT(), dhtCacheEntries, maxValueSizeToCache) :
                 RAMStorage.getSingleton();
         try {
-            UserRepository userRepository = UserRepository.buildSqlLite(path, dht, maxUserCount);
-            HttpCoreNodeServer.createAndStart(keyfile, passphrase, corenodePort, userRepository, userRepository, a);
-        } catch (SQLException e) {
+            UserRepository mutable = UserRepository.buildSqlLite(path, dht, maxUserCount);
+            PublicKeyHash peergosIdentity = a.hasArg("peergos.identity.hash") ?
+                    PublicKeyHash.fromString(a.getArg("peergos.identity.hash")) :
+                    IpfsCoreNode.PEERGOS_IDENTITY_KEY_HASH;
+
+            PublicSigningKey pkiPublic = a.hasArg("pki.public.key") ?
+                    PublicSigningKey.fromByteArray(
+                            Files.readAllBytes(Paths.get(a.getArg("pki.public.key")))) :
+                    IpfsCoreNode.PKI_PUBLIC_KEY;
+            SecretSigningKey pkiSecretKey = SecretSigningKey.fromCbor(CborObject.fromByteArray(
+                    Files.readAllBytes(Paths.get(a.getArg("pki.secret.key")))));
+            SigningKeyPair pkiKeys = new SigningKeyPair(pkiPublic, pkiSecretKey);
+            PublicKeyHash pkiPublicHash = new RAMStorage().hashKey(pkiKeys.publicSigningKey);
+
+            MaybeMultihash currentPkiRoot = mutable.getPointerTarget(pkiPublicHash, dht).get();
+
+            IpfsCoreNode core = new IpfsCoreNode(pkiKeys, currentPkiRoot, dht, mutable, peergosIdentity);
+            HttpCoreNodeServer.createAndStart(keyfile, passphrase, corenodePort, core, mutable, a);
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }

@@ -1,12 +1,9 @@
 package peergos.server.tests;
 
-import javafx.application.*;
 import org.junit.*;
 import static org.junit.Assert.*;
 
-import org.junit.runner.*;
-import org.junit.runners.*;
-import peergos.server.storage.ResetableFileInputStream;
+import peergos.server.storage.*;
 import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
@@ -42,14 +39,41 @@ public abstract class UserTests {
         int webPort = portMin + r.nextInt(portRange);
         int corePort = portMin + portRange + r.nextInt(portRange);
         int socialPort = portMin + portRange + r.nextInt(portRange);
+
+        // setup peergos user and pki keys
+        RAMStorage tmp = new RAMStorage(); // only used to figure out hashes
+        String testpassword = "testpassword";
+        String pkiUsername = "peergos";
+        UserWithRoot peergos = UserUtil.generateUser(pkiUsername, testpassword, crypto.hasher, crypto.symmetricProvider,
+                crypto.random, crypto.signer, crypto.boxer, UserGenerationAlgorithm.getDefault()).get();
+
+        SigningKeyPair peergosIdentityKeys = peergos.getUser();
+        PublicKeyHash peergosPublicHash = tmp.hashKey(peergosIdentityKeys.publicSigningKey);
+        SigningKeyPair pkiKeys = SigningKeyPair.insecureRandom();
+        Files.write(Paths.get("pki.secret.key"), pkiKeys.secretSigningKey.toCbor().toByteArray());
+        Files.write(Paths.get("pki.public.key"), pkiKeys.publicSigningKey.toCbor().toByteArray());
+        PublicKeyHash pkiPublicHash = tmp.hashKey(pkiKeys.publicSigningKey);
+
         Args args = Args.parse(new String[]{
                 "useIPFS", ""+useIPFS.equals("IPFS"),
                 "-port", Integer.toString(webPort),
                 "-corenodePort", Integer.toString(corePort),
-                "-socialnodePort", Integer.toString(socialPort)
+                "-socialnodePort", Integer.toString(socialPort),
+                "-peergos.identity.hash", peergosPublicHash.toString(),
+                "-pki.secret.key", "pki.secret.key",
+                "-pki.public.key", "pki.public.key"
         });
+
         Start.LOCAL.main(args);
         this.network = NetworkAccess.buildJava(new URL("http://localhost:" + webPort)).get();
+
+        // sign up peergos user
+        UserContext context = UserContext.ensureSignedUp(pkiUsername, testpassword, network, crypto).get();
+        context.addNamedOwnedKeyAndCommit("pki", pkiPublicHash);
+        // write pki public key to ipfs
+        network.dhtClient.putSigningKey(peergosIdentityKeys.secretSigningKey
+                .signatureOnly(pkiKeys.publicSigningKey.serialize()), peergosPublicHash, pkiKeys.publicSigningKey).get();
+
         // use insecure random otherwise tests take ages
         setFinalStatic(TweetNaCl.class.getDeclaredField("prng"), new Random(1));
     }

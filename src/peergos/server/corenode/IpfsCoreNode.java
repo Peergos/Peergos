@@ -26,6 +26,7 @@ public class IpfsCoreNode implements CoreNode {
 
     public static final PublicSigningKey PEERGOS_IDENTITY_KEY = PublicSigningKey.fromString("ggFYIE7uD1ViM9KfiA1w69n774/jk6hERINN3xACPyabWiBp");
     public static final PublicKeyHash PEERGOS_IDENTITY_KEY_HASH = PublicKeyHash.fromString("zdpuAvZynWLuyvovJwa34bj24M7cspt5M8seFfrFLrPWDGFDW");
+    public static final PublicSigningKey PKI_PUBLIC_KEY = null; // Fill in once generated
 
     private final PublicKeyHash peergosIdentity;
     private final ContentAddressedStorage ipfs;
@@ -38,20 +39,26 @@ public class IpfsCoreNode implements CoreNode {
 
     private MaybeMultihash currentRoot;
 
-    public IpfsCoreNode(SigningPrivateKeyAndPublicHash signer,
+    public IpfsCoreNode(SigningKeyPair pkiKeys,
                         MaybeMultihash currentRoot,
                         ContentAddressedStorage ipfs,
                         MutablePointers mutable,
                         PublicKeyHash peergosIdentity) {
         this.currentRoot = MaybeMultihash.empty();
         this.ipfs = ipfs;
-        this.signer = signer;
         this.mutable = mutable;
         this.peergosIdentity = peergosIdentity;
+        byte[] signature = pkiKeys.secretSigningKey.signatureOnly(pkiKeys.publicSigningKey.serialize());
+        try {
+            PublicKeyHash pkiPublicHash = this.ipfs.putSigningKey(signature, peergosIdentity, pkiKeys.publicSigningKey).get();
+            this.signer = new SigningPrivateKeyAndPublicHash(pkiPublicHash, pkiKeys.secretSigningKey);
+        } catch (Exception e) {
+            throw new RuntimeException(e.getMessage(), e);
+        }
         this.update(currentRoot);
     }
 
-    public IpfsCoreNode(SigningPrivateKeyAndPublicHash signer,
+    public IpfsCoreNode(SigningKeyPair signer,
                         MaybeMultihash currentRoot,
                         ContentAddressedStorage ipfs,
                         MutablePointers mutable) {
@@ -168,7 +175,7 @@ public class IpfsCoreNode implements CoreNode {
 
     @Override
     public CompletableFuture<List<UserPublicKeyLink>> getChain(String username) {
-        return CompletableFuture.completedFuture(chains.get(username));
+        return CompletableFuture.completedFuture(chains.getOrDefault(username, Collections.emptyList()));
     }
 
     @Override
@@ -223,7 +230,7 @@ public class IpfsCoreNode implements CoreNode {
         SigningPrivateKeyAndPublicHash pkiSigner = new SigningPrivateKeyAndPublicHash(pkiPublicHash, pkiKeys.getUser().secretSigningKey);
 
         MaybeMultihash priorChampRoot = network.mutable.getPointerTarget(pkiPublicHash, network.dhtClient).get();
-        IpfsCoreNode target = new IpfsCoreNode(pkiSigner, priorChampRoot, network.dhtClient, tmpMutable);
+        IpfsCoreNode target = new IpfsCoreNode(pkiKeys.getUser(), priorChampRoot, network.dhtClient, tmpMutable);
         List<String> usernames = network.coreNode.getUsernames("").get();
         for (String username : usernames) {
             target.updateChain(username, network.coreNode.getChain(username).get()).get();
@@ -237,7 +244,7 @@ public class IpfsCoreNode implements CoreNode {
 
         // Test all mappings
         MaybeMultihash currentRoot = network.mutable.getPointerTarget(pkiPublicHash, network.dhtClient).get();
-        IpfsCoreNode fromIpfs = new IpfsCoreNode(pkiSigner, currentRoot, network.dhtClient, network.mutable);
+        IpfsCoreNode fromIpfs = new IpfsCoreNode(pkiKeys.getUser(), currentRoot, network.dhtClient, network.mutable);
         for (String username : usernames) {
             if (! target.getChain(username).get().equals(fromIpfs.getChain(username).get()))
                 throw new IllegalStateException("Non equal chain for " + username);
