@@ -101,12 +101,21 @@ public class Start
                     UserWithRoot peergos = UserUtil.generateUser(pkiUsername, testpassword, crypto.hasher, crypto.symmetricProvider,
                             crypto.random, crypto.signer, crypto.boxer, UserGenerationAlgorithm.getDefault()).get();
 
+
+                    boolean useIPFS = args.getBoolean("useIPFS");
+                    ContentAddressedStorage dht = useIPFS ? new IpfsDHT() : RAMStorage.getSingleton();
+
                     SigningKeyPair peergosIdentityKeys = peergos.getUser();
                     PublicKeyHash peergosPublicHash = ContentAddressedStorage.hashKey(peergosIdentityKeys.publicSigningKey);
+
                     SigningKeyPair pkiKeys = SigningKeyPair.insecureRandom();
+                    dht.putSigningKey(peergosIdentityKeys.secretSigningKey.signatureOnly(
+                            pkiKeys.publicSigningKey.serialize()),
+                            peergosPublicHash,
+                            pkiKeys.publicSigningKey).get();
+
                     Files.write(Paths.get("test.pki.secret.key"), pkiKeys.secretSigningKey.toCbor().toByteArray());
                     Files.write(Paths.get("test.pki.public.key"), pkiKeys.publicSigningKey.toCbor().toByteArray());
-                    PublicKeyHash pkiPublicHash = ContentAddressedStorage.hashKey(pkiKeys.publicSigningKey);
                     args.setIfAbsent("peergos.identity.hash", peergosPublicHash.toString());
                     args.setIfAbsent("pki.secret.key", "test.pki.secret.key");
                     args.setIfAbsent("pki.public.key", "test.pki.public.key");
