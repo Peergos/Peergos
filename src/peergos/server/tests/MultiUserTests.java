@@ -556,7 +556,7 @@ public class MultiUserTests {
 
     @Test
     public void followPeergos() throws Exception {
-        UserContext u1 = UserTests.ensureSignedUp("peergos", "peergos", network, crypto);
+        UserContext u1 = UserTests.ensureSignedUp("peergos", "testpassword", network, crypto);
         UserContext u2 = UserTests.ensureSignedUp("w", "w", network, crypto);
 
         List<FollowRequest> u1Requests = u1.processFollowRequests().get();
