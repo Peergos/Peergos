@@ -153,7 +153,7 @@ public class Start
 
                     // sign up peergos user
                     UserContext context = UserContext.ensureSignedUp(pkiUsername, testpassword, network, crypto).get();
-                    context.addNamedOwnedKeyAndCommit("pki", pkiPublicHash);
+                    context.addNamedOwnedKeyAndCommit("pki", pkiPublicHash).get();
                     // write pki public key to ipfs
                     network.dhtClient.putSigningKey(peergosIdentityKeys.secretSigningKey
                             .signatureOnly(pkiKeys.publicSigningKey.serialize()), peergosPublicHash, pkiKeys.publicSigningKey).get();
