@@ -298,7 +298,9 @@ public class MultiUserTests {
 
     @Test
     public void cleanRenamedFiles() throws Exception {
-        UserContext u1 = UserTests.ensureSignedUp("a", "a", network.clear(), crypto);
+        String username = random();
+        String password = random();
+        UserContext u1 = UserTests.ensureSignedUp(username, password, network.clear(), crypto);
 
         // send follow requests from each other user to "a"
         List<UserContext> friends = getUserContexts(userCount);
@@ -387,7 +389,7 @@ public class MultiUserTests {
                 .skip(1)
                 .collect(Collectors.toList());
 
-        UserContext u1New = UserTests.ensureSignedUp("a", "a", network.clear(), crypto);
+        UserContext u1New = UserTests.ensureSignedUp(username, password, network.clear(), crypto);
 
         // check remaining users can still read it
         for (UserContext userContext : remainingUsers) {
@@ -414,7 +416,7 @@ public class MultiUserTests {
     }
 
     private String random() {
-        return UUID.randomUUID().toString().replace("-", "_").substring(0, 30);
+        return ArrayOps.bytesToHex(crypto.random.randomBytes(15));
     }
 
     @Test
@@ -530,8 +532,12 @@ public class MultiUserTests {
 
     @Test
     public void acceptAndReciprocateFollowRequest() throws Exception {
-        UserContext u1 = UserTests.ensureSignedUp("q", "q", network, crypto);
-        UserContext u2 = UserTests.ensureSignedUp("w", "w", network, crypto);
+        String username1 = random();
+        String password1 = random();
+        UserContext u1 = UserTests.ensureSignedUp(username1, password1, network, crypto);
+        String username2 = random();
+        String password2 = random();
+        UserContext u2 = UserTests.ensureSignedUp(username2, password2, network, crypto);
         u2.sendFollowRequest(u1.username, SymmetricKey.random()).get();
         List<FollowRequest> u1Requests = u1.processFollowRequests().get();
         assertTrue("Receive a follow request", u1Requests.size() > 0);
@@ -543,12 +549,12 @@ public class MultiUserTests {
         Optional<FileTreeNode> u2ToU1 = u1.getByPath("/" + u2.username).get();
         assertTrue("Friend root present after accepted follow request", u2ToU1.isPresent());
 
-        Set<String> u1Following = UserTests.ensureSignedUp("q", "q", network.clear(), crypto).getSocialState().get()
+        Set<String> u1Following = UserTests.ensureSignedUp(username1, password1, network.clear(), crypto).getSocialState().get()
                 .followingRoots.stream().map(f -> f.getName())
                 .collect(Collectors.toSet());
         assertTrue("Following correct", u1Following.contains(u2.username));
 
-        Set<String> u2Following = UserTests.ensureSignedUp("w", "w", network.clear(), crypto).getSocialState().get()
+        Set<String> u2Following = UserTests.ensureSignedUp(username2, password2, network.clear(), crypto).getSocialState().get()
                 .followingRoots.stream().map(f -> f.getName())
                 .collect(Collectors.toSet());
         assertTrue("Following correct", u2Following.contains(u1.username));
@@ -582,8 +588,12 @@ public class MultiUserTests {
 
     @Test
     public void rejectFollowRequest() throws Exception {
-        UserContext u1 = UserTests.ensureSignedUp("q", "q", network, crypto);
-        UserContext u2 = UserTests.ensureSignedUp("w", "w", network, crypto);
+        String username1 = random();
+        String password1 = random();
+        UserContext u1 = UserTests.ensureSignedUp(username1, password1, network, crypto);
+        String username2 = random();
+        String password2 = random();
+        UserContext u2 = UserTests.ensureSignedUp(username2, password2, network, crypto);
         u2.sendFollowRequest(u1.username, SymmetricKey.random());
         List<FollowRequest> u1Requests = u1.processFollowRequests().get();
         assertTrue("Receive a follow request", u1Requests.size() > 0);
@@ -598,8 +608,12 @@ public class MultiUserTests {
 
     @Test
     public void acceptAndReciprocateFollowRequestThenRemoveFollowRequest() throws Exception {
-        UserContext u1 = UserTests.ensureSignedUp("q", "q", network, crypto);
-        UserContext u2 = UserTests.ensureSignedUp("w", "w", network, crypto);
+        String username1 = random();
+        String password1 = random();
+        UserContext u1 = UserTests.ensureSignedUp(username1, password1, network, crypto);
+        String username2 = random();
+        String password2 = random();
+        UserContext u2 = UserTests.ensureSignedUp(username2, password2, network, crypto);
         u2.sendFollowRequest(u1.username, SymmetricKey.random()).get();
         List<FollowRequest> u1Requests = u1.processFollowRequests().get();
         assertTrue("Receive a follow request", u1Requests.size() > 0);
@@ -611,12 +625,12 @@ public class MultiUserTests {
         Optional<FileTreeNode> u2ToU1 = u1.getByPath("/" + u2.username).get();
         assertTrue("Friend root present after accepted follow request", u2ToU1.isPresent());
 
-        Set<String> u1Following = UserTests.ensureSignedUp("q", "q", network.clear(), crypto).getSocialState().get()
+        Set<String> u1Following = UserTests.ensureSignedUp(username1, password1, network.clear(), crypto).getSocialState().get()
                 .followingRoots.stream().map(f -> f.getName())
                 .collect(Collectors.toSet());
         assertTrue("Following correct", u1Following.contains(u2.username));
 
-        Set<String> u2Following = UserTests.ensureSignedUp("w", "w", network.clear(), crypto).getSocialState().get()
+        Set<String> u2Following = UserTests.ensureSignedUp(username2, password2, network.clear(), crypto).getSocialState().get()
                 .followingRoots.stream().map(f -> f.getName())
                 .collect(Collectors.toSet());
         assertTrue("Following correct", u2Following.contains(u1.username));
@@ -624,12 +638,12 @@ public class MultiUserTests {
         UserContext q = u1;
         UserContext w = u2;
 
-        q.removeFollower("w").get();
+        q.removeFollower(username2).get();
 
         Optional<FileTreeNode> u2ToU1Again = q.getByPath("/" + u2.username).get();
         assertTrue("Friend root present after unfollow request", u2ToU1Again.isPresent());
 
-        w = UserTests.ensureSignedUp("w", "w", network, crypto);
+        w = UserTests.ensureSignedUp(username2, password2, network, crypto);
 
         Optional<FileTreeNode> u1ToU2Again = w.getByPath("/" + u1.username).get();
         assertTrue("Friend root NOT present after unfollow", !u1ToU2Again.isPresent());
@@ -637,8 +651,12 @@ public class MultiUserTests {
 
     @Test
     public void reciprocateButNotAcceptFollowRequest() throws Exception {
-        UserContext u1 = UserTests.ensureSignedUp("q", "q", network, crypto);
-        UserContext u2 = UserTests.ensureSignedUp("w", "w", network, crypto);
+        String username1 = random();
+        String password1 = random();
+        UserContext u1 = UserTests.ensureSignedUp(username1, password1, network, crypto);
+        String username2 = random();
+        String password2 = random();
+        UserContext u2 = UserTests.ensureSignedUp(username2, password2, network, crypto);
         u2.sendFollowRequest(u1.username, SymmetricKey.random());
         List<FollowRequest> u1Requests = u1.processFollowRequests().get();
         assertTrue("Receive a follow request", u1Requests.size() > 0);
