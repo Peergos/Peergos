@@ -108,7 +108,9 @@ public class Start
                     SigningKeyPair peergosIdentityKeys = peergos.getUser();
                     PublicKeyHash peergosPublicHash = ContentAddressedStorage.hashKey(peergosIdentityKeys.publicSigningKey);
 
-                    SigningKeyPair pkiKeys = SigningKeyPair.insecureRandom();
+                    String pkiPassword = "testPkiPassword";
+                    SigningKeyPair pkiKeys = UserUtil.generateUser(pkiUsername, pkiPassword, crypto.hasher, crypto.symmetricProvider,
+                            crypto.random, crypto.signer, crypto.boxer, UserGenerationAlgorithm.getDefault()).get().getUser();
                     dht.putSigningKey(peergosIdentityKeys.secretSigningKey.signatureOnly(
                             pkiKeys.publicSigningKey.serialize()),
                             peergosPublicHash,
