@@ -11,7 +11,7 @@ The name Peergos comes from the Greek word Πύργος (Pyrgos), which means st
 
 There is a single machine demo running at [https://demo.peergos.net](https://demo.peergos.net). 
 
-The slides of the first talk introducing Peergos are [here](https://speakerdeck.com/ianopolous/introducing-peergos).
+The slides of a talk introducing Peergos are [here](https://speakerdeck.com/ianopolous/peergos-architecture).
 
 **WARNING:** Peergos is still alpha software, and needs an independent security audit. Don't use it for data you can't afford to lose or expose, yet.
 
