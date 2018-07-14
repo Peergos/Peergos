@@ -115,7 +115,7 @@ public class HttpSocialNetworkServer
     private final InetSocketAddress address;
     private final SocialHandler ch;
 
-    public HttpSocialNetworkServer(SocialNetwork social, MutablePointers mutable, InetSocketAddress address) throws IOException
+    public HttpSocialNetworkServer(SocialNetwork social, InetSocketAddress address) throws IOException
     {
 
         this.address = address;
@@ -125,7 +125,6 @@ public class HttpSocialNetworkServer
             server = HttpServer.create(new InetSocketAddress(InetAddress.getLocalHost(), address.getPort()), CONNECTION_BACKLOG);
         ch = new SocialHandler(social);
         server.createContext("/" + SOCIAL_URL, ch);
-        server.createContext("/" + HttpMutablePointerServer.MUTABLE_POINTERS_URL, new HttpMutablePointerServer.MutationHandler(mutable));
         server.setExecutor(Executors.newFixedThreadPool(HANDLER_THREAD_COUNT));
     }
 
@@ -142,13 +141,13 @@ public class HttpSocialNetworkServer
     }
 
 
-    public static void createAndStart(String keyfile, char[] passphrase, int port, SocialNetwork social, MutablePointers mutable, Args args)
+    public static void createAndStart(String keyfile, char[] passphrase, int port, SocialNetwork social, Args args)
     {
         try {
             String hostname = args.getArg("domain", "localhost");
             System.out.println("Starting social network server listening on: " + hostname+":"+port +" proxying to "+social);
             InetSocketAddress address = new InetSocketAddress(hostname, port);
-            HttpSocialNetworkServer server = new HttpSocialNetworkServer(social, mutable, address);
+            HttpSocialNetworkServer server = new HttpSocialNetworkServer(social, address);
             server.start();
         } catch (Exception e)
         {

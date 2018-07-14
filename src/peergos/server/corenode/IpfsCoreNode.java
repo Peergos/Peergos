@@ -126,7 +126,7 @@ public class IpfsCoreNode implements CoreNode {
      * @return
      */
     @Override
-    public CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> updatedChain) {
+    public synchronized CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> updatedChain) {
             try {
                 Function<ByteArrayWrapper, byte[]> identityHash = arr -> Arrays.copyOfRange(arr.data, 0, CoreNode.MAX_USERNAME_SIZE);
                 ChampWrapper champ = currentRoot.isPresent() ?
@@ -174,12 +174,12 @@ public class IpfsCoreNode implements CoreNode {
     }
 
     @Override
-    public CompletableFuture<List<UserPublicKeyLink>> getChain(String username) {
+    public synchronized CompletableFuture<List<UserPublicKeyLink>> getChain(String username) {
         return CompletableFuture.completedFuture(chains.getOrDefault(username, Collections.emptyList()));
     }
 
     @Override
-    public CompletableFuture<String> getUsername(PublicKeyHash key) {
+    public synchronized CompletableFuture<String> getUsername(PublicKeyHash key) {
         return CompletableFuture.completedFuture(reverseLookup.get(key));
     }
 

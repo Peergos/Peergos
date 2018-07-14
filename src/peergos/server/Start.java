@@ -317,8 +317,8 @@ public class Start
                 new CachingStorage(new IpfsDHT(), dhtCacheEntries, maxValueSizeToCache) :
                 RAMStorage.getSingleton();
         try {
-            UserRepository userRepository = UserRepository.buildSqlLite(path, dht, maxUserCount);
-            HttpSocialNetworkServer.createAndStart(keyfile, passphrase, socialnodePort, userRepository, userRepository, a);
+            SocialNetwork social = UserRepository.buildSqlLite(path, dht, maxUserCount);
+            HttpSocialNetworkServer.createAndStart(keyfile, passphrase, socialnodePort, social, a);
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }

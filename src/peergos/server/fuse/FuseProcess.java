@@ -74,16 +74,6 @@ public class FuseProcess implements Runnable, AutoCloseable {
             throw new IllegalStateException();
     }
 
-    static void setFinalStatic(Field field, Object newValue) throws Exception {
-        field.setAccessible(true);
-
-        Field modifiersField = Field.class.getDeclaredField("modifiers");
-        modifiersField.setAccessible(true);
-        modifiersField.setInt(field, field.getModifiers() & ~Modifier.FINAL);
-
-        field.set(null, newValue);
-    }
-
     public static void main(String[] args) throws Exception {
         int WEB_PORT = 8000;
         int CORE_PORT = 9999;
@@ -93,9 +83,6 @@ public class FuseProcess implements Runnable, AutoCloseable {
                 "-corenodePort", Integer.toString(CORE_PORT)});
 
         Start.LOCAL.main(a);
-
-        // TODO find a faster high quality randomness source
-        setFinalStatic(TweetNaCl.class.getDeclaredField("prng"), new Random());
 
         a = Args.parse(args);
         String username = a.getArg("username", "test01");

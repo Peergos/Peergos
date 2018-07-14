@@ -31,8 +31,6 @@ public class JDBCCoreNodeTests {
   @BeforeClass
   public static void initClass() throws Exception {
     PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, new Ed25519.Java());
-    // use insecure random otherwise tests take ages
-    UserTests.setFinalStatic(TweetNaCl.class.getDeclaredField("prng"), new Random(1));
   }
 
   @Before
