@@ -401,6 +401,11 @@ public class UserContext {
                 });
     }
 
+    public CompletableFuture<Optional<PublicKeyHash>> getNamedKey(String name) {
+        return getWriterDataCbor(this.network, this.username)
+                .thenApply(p -> Optional.ofNullable(WriterData.fromCbor(p.right, null).namedOwnedKeys.get(name)));
+    }
+
     @JsMethod
     public CompletableFuture<UserContext> changePassword(String oldPassword, String newPassword) {
 

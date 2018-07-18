@@ -105,14 +105,13 @@ public class Start
                     UserWithRoot peergos = UserUtil.generateUser(pkiUsername, testpassword, crypto.hasher, crypto.symmetricProvider,
                             crypto.random, crypto.signer, crypto.boxer, UserGenerationAlgorithm.getDefault()).get();
 
-
                     boolean useIPFS = args.getBoolean("useIPFS");
                     ContentAddressedStorage dht = useIPFS ? new IpfsDHT() : RAMStorage.getSingleton();
 
                     SigningKeyPair peergosIdentityKeys = peergos.getUser();
                     PublicKeyHash peergosPublicHash = ContentAddressedStorage.hashKey(peergosIdentityKeys.publicSigningKey);
 
-                    String pkiPassword = "testPkiPassword";
+                    String pkiPassword = args.getArg("pki.keygen.password");
                     SigningKeyPair pkiKeys = UserUtil.generateUser(pkiUsername, pkiPassword, crypto.hasher, crypto.symmetricProvider,
                             crypto.random, crypto.signer, crypto.boxer, UserGenerationAlgorithm.getDefault()).get().getUser();
                     dht.putSigningKey(peergosIdentityKeys.secretSigningKey.signatureOnly(
@@ -130,8 +129,10 @@ public class Start
                 }
             },
             Arrays.asList(
+                    new Command.Arg("useIPFS", "Use IPFS for storage or ephemeral RAM store", false, "true"),
                     new Command.Arg("peergos.password",
                             "The password for the peergos user required to bootstrap the network", true),
+                    new Command.Arg("pki.keygen.password", "The password used to generate the pki key pair", true),
                     new Command.Arg("pki.public.key.path", "The path to the pki public key file", true),
                     new Command.Arg("pki.secret.key.path", "The path to the pki secret key file", true)
             )
@@ -154,19 +155,19 @@ public class Start
                     PublicSigningKey pkiPublic =
                             PublicSigningKey.fromByteArray(
                                     Files.readAllBytes(Paths.get(args.getArg("pki.public.key.path"))));
-                    SecretSigningKey pkiSecretKey = SecretSigningKey.fromCbor(CborObject.fromByteArray(
-                            Files.readAllBytes(Paths.get(args.getArg("pki.secret.key.path")))));
-                    SigningKeyPair pkiKeys = new SigningKeyPair(pkiPublic, pkiSecretKey);
-                    PublicKeyHash pkiPublicHash = ContentAddressedStorage.hashKey(pkiKeys.publicSigningKey);
+                    PublicKeyHash pkiPublicHash = ContentAddressedStorage.hashKey(pkiPublic);
                     int webPort = args.getInt("port");
                     NetworkAccess network = NetworkAccess.buildJava(new URL("http://localhost:" + webPort)).get();
 
                     // sign up peergos user
                     UserContext context = UserContext.ensureSignedUp(pkiUsername, password, network, crypto).get();
-                    context.addNamedOwnedKeyAndCommit("pki", pkiPublicHash).get();
-                    // write pki public key to ipfs
-                    network.dhtClient.putSigningKey(peergosIdentityKeys.secretSigningKey
-                            .signatureOnly(pkiKeys.publicSigningKey.serialize()), peergosPublicHash, pkiKeys.publicSigningKey).get();
+                    Optional<PublicKeyHash> existingPkiKey = context.getNamedKey("pki").get();
+                    if (! existingPkiKey.isPresent() || existingPkiKey.get().equals(pkiPublicHash)) {
+                        context.addNamedOwnedKeyAndCommit("pki", pkiPublicHash).get();
+                        // write pki public key to ipfs
+                        network.dhtClient.putSigningKey(peergosIdentityKeys.secretSigningKey
+                                .signatureOnly(pkiPublic.serialize()), peergosPublicHash, pkiPublic).get();
+                    }
                 } catch (Exception e) {
                     e.printStackTrace();
                     System.exit(1);
@@ -175,8 +176,7 @@ public class Start
             Arrays.asList(
                     new Command.Arg("peergos.password",
                     "The password for the peergos user required to bootstrap the network", true),
-                    new Command.Arg("pki.public.key.path", "The path to the pki public key file", true),
-                    new Command.Arg("pki.secret.key.path", "The path to the pki secret key file", true)
+                    new Command.Arg("pki.public.key.path", "The path to the pki public key file", true)
             )
     );
 
@@ -186,6 +186,7 @@ public class Start
                 args.setIfAbsent("peergos.password", "testpassword");
                 args.setIfAbsent("pki.secret.key.path", "test.pki.secret.key");
                 args.setIfAbsent("pki.public.key.path", "test.pki.public.key");
+                args.setIfAbsent("pki.keygen.password", "testPkiPassword");
                 BOOTSTRAP.main(args);
                 args.setIfAbsent("domain", "localhost");
                 args.setIfAbsent("corenodePath", ":memory:");
