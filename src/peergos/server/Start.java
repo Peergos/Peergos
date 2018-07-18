@@ -205,8 +205,8 @@ public class Start
             "Mount a Peergos user's filesystem natively",
             Start::startFuse,
             Stream.of(
-                    new Command.Arg("username", "Peergos username", false),
-                    new Command.Arg("password", "Peergos password", false),
+                    new Command.Arg("username", "Peergos username", true),
+                    new Command.Arg("password", "Peergos password", true),
                     new Command.Arg("webport", "Peergos service address port", false, "8000"),
                     new Command.Arg("mountPoint", "The directory to mount the Peergos filesystem in", true, "peergos")
             ).collect(Collectors.toList())
@@ -252,8 +252,8 @@ public class Start
     }
 
     public static void startFuse(Args a) {
-        String username = a.getArg("username", "test01");
-        String password = a.getArg("password", "test01");
+        String username = a.getArg("username");
+        String password = a.getArg("password");
 
         int webPort  = a.getInt("webport");
         try {
