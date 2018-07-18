@@ -44,7 +44,8 @@ public class Start
                     new Command.Arg("passphrase", "Passphrase for keyfile", false),
                     new Command.Arg("corenodePort", "Service port", true, "" + HttpCoreNodeServer.PORT),
                     new Command.Arg("pki.public.key.path", "The path to the pki public key file", true),
-                    new Command.Arg("pki.secret.key.path", "The path to the pki secret key file", true)
+                    new Command.Arg("pki.secret.key.path", "The path to the pki secret key file", true),
+                    new Command.Arg("peergos.identity.hash", "The hash of the public identity key of the peergos user", true)
             )
     );
 
@@ -93,7 +94,8 @@ public class Start
     );
 
     public static final Command BOOTSTRAP = new Command("bootstrap",
-            "Bootstrap a new peergos network",
+            "Bootstrap a new peergos network\n" +
+                    "This means creating a pki keypair and publishing the public key",
             args -> {
                 try {
                     Crypto crypto = Crypto.initJava();
@@ -136,7 +138,8 @@ public class Start
     );
 
     public static final Command POSTSTRAP = new Command("poststrap",
-            "The final step of bootstrapping a new peergos network, which must be run once after it is started",
+            "The final step of bootstrapping a new peergos network, which must be run once after network bootstrap\n" +
+                    "This means signing up the peergos user, and adding the pki public key to the peergos user",
             args -> {
                 try {
                     Crypto crypto = Crypto.initJava();
