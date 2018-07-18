@@ -26,7 +26,6 @@ public class IpfsCoreNode implements CoreNode {
 
     public static final PublicSigningKey PEERGOS_IDENTITY_KEY = PublicSigningKey.fromString("ggFYIE7uD1ViM9KfiA1w69n774/jk6hERINN3xACPyabWiBp");
     public static final PublicKeyHash PEERGOS_IDENTITY_KEY_HASH = PublicKeyHash.fromString("zdpuAvZynWLuyvovJwa34bj24M7cspt5M8seFfrFLrPWDGFDW");
-    public static final PublicSigningKey PKI_PUBLIC_KEY = null; // Fill in once generated
 
     private final PublicKeyHash peergosIdentity;
     private final ContentAddressedStorage ipfs;

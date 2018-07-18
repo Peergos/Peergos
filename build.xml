@@ -145,7 +145,8 @@ Class-Path: ${manifest_cp}
     </pathconvert>
     <!-- run one particular test -->
     <junit fork="true" printsummary="true" haltonfailure="yes">
-      <jvmarg value="-Xmx2g -Xms2g"/>
+      <jvmarg value="-Xmx3g"/>
+      <jvmarg value="-Xms3g"/>
       <classpath>
 	<pathelement location="lib-build/junit-4.11.jar" />
 	<pathelement location="lib-build/hamcrest-core-1.3.jar" />
