@@ -39,8 +39,6 @@ public class QuotaTests {
         });
         Start.LOCAL.main(args);
         this.network = NetworkAccess.buildJava(new URL("http://localhost:" + webPort)).get();
-        // use insecure random otherwise tests take ages
-        setFinalStatic(TweetNaCl.class.getDeclaredField("prng"), new Random(1));
     }
 
     @Parameterized.Parameters()
@@ -48,16 +46,6 @@ public class QuotaTests {
         return Arrays.asList(new Object[][]{
                 {"IPFrS", new Random(0)}
         });
-    }
-
-    static void setFinalStatic(Field field, Object newValue) throws Exception {
-        field.setAccessible(true);
-
-        Field modifiersField = Field.class.getDeclaredField("modifiers");
-        modifiersField.setAccessible(true);
-        modifiersField.setInt(field, field.getModifiers() & ~Modifier.FINAL);
-
-        field.set(null, newValue);
     }
 
     private String generateUsername() {
@@ -108,8 +96,9 @@ public class QuotaTests {
 
         UserContext context = ensureSignedUp(username, password, network, crypto);
         FileTreeNode home = context.getByPath(Paths.get(username).toString()).get().get();
-        // signing up uses just over 4k and the quota is 2 MiB, so use within 1 KiB of our quota
-        byte[] data = new byte[2 * 1024 * 1024 - 6 * 1024];
+        int used = context.getTotalSpaceUsed(context.signer.publicKeyHash).get().intValue();
+        // use within a few KiB of our quota, before deletion
+        byte[] data = new byte[2 * 1024 * 1024 - used - 3 * 1024];
         random.nextBytes(data);
         String filename = "file-1";
         home = home.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length,

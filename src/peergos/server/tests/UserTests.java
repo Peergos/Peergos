@@ -1,12 +1,9 @@
 package peergos.server.tests;
 
-import javafx.application.*;
 import org.junit.*;
 import static org.junit.Assert.*;
 
-import org.junit.runner.*;
-import org.junit.runners.*;
-import peergos.server.storage.ResetableFileInputStream;
+import peergos.server.storage.*;
 import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
@@ -42,26 +39,16 @@ public abstract class UserTests {
         int webPort = portMin + r.nextInt(portRange);
         int corePort = portMin + portRange + r.nextInt(portRange);
         int socialPort = portMin + portRange + r.nextInt(portRange);
+
         Args args = Args.parse(new String[]{
                 "useIPFS", ""+useIPFS.equals("IPFS"),
                 "-port", Integer.toString(webPort),
                 "-corenodePort", Integer.toString(corePort),
                 "-socialnodePort", Integer.toString(socialPort)
         });
+
         Start.LOCAL.main(args);
         this.network = NetworkAccess.buildJava(new URL("http://localhost:" + webPort)).get();
-        // use insecure random otherwise tests take ages
-        setFinalStatic(TweetNaCl.class.getDeclaredField("prng"), new Random(1));
-    }
-
-    static void setFinalStatic(Field field, Object newValue) throws Exception {
-        field.setAccessible(true);
-
-        Field modifiersField = Field.class.getDeclaredField("modifiers");
-        modifiersField.setAccessible(true);
-        modifiersField.setInt(field, field.getModifiers() & ~Modifier.FINAL);
-
-        field.set(null, newValue);
     }
 
     private String generateUsername() {

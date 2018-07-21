@@ -8,6 +8,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.hamt.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.merklebtree.*;
+import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -166,7 +167,7 @@ public class ChampTests {
         try {
             PublicKeyHash publicHash = storage.putSigningKey(
                     random.secretSigningKey.signatureOnly(random.publicSigningKey.serialize()),
-                    storage.hashKey(random.publicSigningKey),
+                    ContentAddressedStorage.hashKey(random.publicSigningKey),
                     random.publicSigningKey).get();
             return new SigningPrivateKeyAndPublicHash(publicHash, random.secretSigningKey);
         } catch (Exception e) {

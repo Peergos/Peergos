@@ -96,6 +96,8 @@ public class UserRepository implements CoreNode, SocialNetwork, MutablePointers 
                 .thenCompose(current -> ipfs.getSigningKey(writer)
                         .thenCompose(writerOpt -> {
                             try {
+                                if (! writerOpt.isPresent())
+                                    throw new IllegalStateException("Couldn't retrieve writer key from ipfs with hash " + writer);
                                 PublicSigningKey writerKey = writerOpt.get();
                                 if (! MutablePointers.isValidUpdate(writerKey, current, writerSignedBtreeRootHash))
                                     return CompletableFuture.completedFuture(false);

@@ -25,14 +25,12 @@ public class UserPublicKeyLinkTests {
     @BeforeClass
     public static void init() throws Exception {
         PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, new Ed25519.Java());
-        // use insecure random otherwise tests take ages
-        UserTests.setFinalStatic(TweetNaCl.class.getDeclaredField("prng"), new Random(1));
     }
 
     private PublicKeyHash putPublicSigningKey(SigningKeyPair user) throws Exception {
         return ipfs.putSigningKey(
                 user.secretSigningKey.signatureOnly(user.publicSigningKey.serialize()),
-                ipfs.hashKey(user.publicSigningKey),
+                ContentAddressedStorage.hashKey(user.publicSigningKey),
                 user.publicSigningKey).get();
     }
 

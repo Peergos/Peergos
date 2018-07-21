@@ -95,7 +95,7 @@ public class DHTHandler implements HttpHandler
                     Supplier<PublicSigningKey> inBandOrDht = () -> {
                         try {
                             PublicSigningKey candidateKey = PublicSigningKey.fromByteArray(data.get(0));
-                            PublicKeyHash calculatedHash = dht.hashKey(candidateKey);
+                            PublicKeyHash calculatedHash = ContentAddressedStorage.hashKey(candidateKey);
                             if (calculatedHash.equals(writerHash)) {
                                 candidateKey.unsignMessage(ArrayOps.concat(signatures.get(0), data.get(0)));
                                 return candidateKey;

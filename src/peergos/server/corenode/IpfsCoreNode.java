@@ -38,20 +38,26 @@ public class IpfsCoreNode implements CoreNode {
 
     private MaybeMultihash currentRoot;
 
-    public IpfsCoreNode(SigningPrivateKeyAndPublicHash signer,
+    public IpfsCoreNode(SigningKeyPair pkiKeys,
                         MaybeMultihash currentRoot,
                         ContentAddressedStorage ipfs,
                         MutablePointers mutable,
                         PublicKeyHash peergosIdentity) {
         this.currentRoot = MaybeMultihash.empty();
         this.ipfs = ipfs;
-        this.signer = signer;
         this.mutable = mutable;
         this.peergosIdentity = peergosIdentity;
+        byte[] signature = pkiKeys.secretSigningKey.signatureOnly(pkiKeys.publicSigningKey.serialize());
+        try {
+            PublicKeyHash pkiPublicHash = this.ipfs.putSigningKey(signature, peergosIdentity, pkiKeys.publicSigningKey).get();
+            this.signer = new SigningPrivateKeyAndPublicHash(pkiPublicHash, pkiKeys.secretSigningKey);
+        } catch (Exception e) {
+            throw new RuntimeException(e.getMessage(), e);
+        }
         this.update(currentRoot);
     }
 
-    public IpfsCoreNode(SigningPrivateKeyAndPublicHash signer,
+    public IpfsCoreNode(SigningKeyPair signer,
                         MaybeMultihash currentRoot,
                         ContentAddressedStorage ipfs,
                         MutablePointers mutable) {
@@ -119,7 +125,7 @@ public class IpfsCoreNode implements CoreNode {
      * @return
      */
     @Override
-    public CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> updatedChain) {
+    public synchronized CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> updatedChain) {
             try {
                 Function<ByteArrayWrapper, byte[]> identityHash = arr -> Arrays.copyOfRange(arr.data, 0, CoreNode.MAX_USERNAME_SIZE);
                 ChampWrapper champ = currentRoot.isPresent() ?
@@ -167,12 +173,12 @@ public class IpfsCoreNode implements CoreNode {
     }
 
     @Override
-    public CompletableFuture<List<UserPublicKeyLink>> getChain(String username) {
-        return CompletableFuture.completedFuture(chains.get(username));
+    public synchronized CompletableFuture<List<UserPublicKeyLink>> getChain(String username) {
+        return CompletableFuture.completedFuture(chains.getOrDefault(username, Collections.emptyList()));
     }
 
     @Override
-    public CompletableFuture<String> getUsername(PublicKeyHash key) {
+    public synchronized CompletableFuture<String> getUsername(PublicKeyHash key) {
         return CompletableFuture.completedFuture(reverseLookup.get(key));
     }
 
@@ -223,7 +229,7 @@ public class IpfsCoreNode implements CoreNode {
         SigningPrivateKeyAndPublicHash pkiSigner = new SigningPrivateKeyAndPublicHash(pkiPublicHash, pkiKeys.getUser().secretSigningKey);
 
         MaybeMultihash priorChampRoot = network.mutable.getPointerTarget(pkiPublicHash, network.dhtClient).get();
-        IpfsCoreNode target = new IpfsCoreNode(pkiSigner, priorChampRoot, network.dhtClient, tmpMutable);
+        IpfsCoreNode target = new IpfsCoreNode(pkiKeys.getUser(), priorChampRoot, network.dhtClient, tmpMutable);
         List<String> usernames = network.coreNode.getUsernames("").get();
         for (String username : usernames) {
             target.updateChain(username, network.coreNode.getChain(username).get()).get();
@@ -237,7 +243,7 @@ public class IpfsCoreNode implements CoreNode {
 
         // Test all mappings
         MaybeMultihash currentRoot = network.mutable.getPointerTarget(pkiPublicHash, network.dhtClient).get();
-        IpfsCoreNode fromIpfs = new IpfsCoreNode(pkiSigner, currentRoot, network.dhtClient, network.mutable);
+        IpfsCoreNode fromIpfs = new IpfsCoreNode(pkiKeys.getUser(), currentRoot, network.dhtClient, network.mutable);
         for (String username : usernames) {
             if (! target.getChain(username).get().equals(fromIpfs.getChain(username).get()))
                 throw new IllegalStateException("Non equal chain for " + username);

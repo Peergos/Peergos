@@ -30,9 +30,6 @@ public class MkdirSpeed {
 
     public MkdirSpeed(boolean useHttp, String useIPFS, Random r) throws Exception {
         this.network = ! useHttp ? buildInProcessAccess(r) : buildHttpNetworkAccess(useIPFS.equals("IPFS"), r);
-
-        // use insecure random otherwise tests take ages
-        setFinalStatic(TweetNaCl.class.getDeclaredField("prng"), new Random(1));
     }
 
     private static NetworkAccess buildInProcessAccess(Random r) throws Exception {
@@ -59,16 +56,6 @@ public class MkdirSpeed {
                 {true, "NOTIPFS", new Random(0)}
 //                {false, "IPFS", new Random(0)}
         });
-    }
-
-    static void setFinalStatic(Field field, Object newValue) throws Exception {
-        field.setAccessible(true);
-
-        Field modifiersField = Field.class.getDeclaredField("modifiers");
-        modifiersField.setAccessible(true);
-        modifiersField.setInt(field, field.getModifiers() & ~Modifier.FINAL);
-
-        field.set(null, newValue);
     }
 
     private String generateUsername() {

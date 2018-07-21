@@ -4,9 +4,13 @@ import peergos.server.corenode.*;
 import peergos.server.mutable.*;
 import peergos.server.social.*;
 import peergos.shared.*;
+import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
+import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
+import peergos.shared.crypto.hash.*;
+import peergos.shared.merklebtree.*;
 import peergos.shared.mutable.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.*;
@@ -34,12 +38,15 @@ public class Start
     public static Command CORE_NODE = new Command("core",
             "Start a Corenode.",
             Start::startCoreNode,
-            Stream.of(
+            Arrays.asList(
                     new Command.Arg("corenodePath", "Path to a local corenode sql file (created if it doesn't exist)", false, ":memory:"),
                     new Command.Arg("keyfile", "Path to keyfile", false),
                     new Command.Arg("passphrase", "Passphrase for keyfile", false),
-                    new Command.Arg("corenodePort", "Service port", true, "" + HttpCoreNodeServer.PORT)
-            ).collect(Collectors.toList())
+                    new Command.Arg("corenodePort", "Service port", true, "" + HttpCoreNodeServer.PORT),
+                    new Command.Arg("pki.public.key.path", "The path to the pki public key file", true),
+                    new Command.Arg("pki.secret.key.path", "The path to the pki secret key file", true),
+                    new Command.Arg("peergos.identity.hash", "The hash of the public identity key of the peergos user", true)
+            )
     );
 
     public static Command SOCIAL = new Command("social",
@@ -86,9 +93,101 @@ public class Start
             Collections.emptyList()
     );
 
+    public static final Command BOOTSTRAP = new Command("bootstrap",
+            "Bootstrap a new peergos network\n" +
+                    "This means creating a pki keypair and publishing the public key",
+            args -> {
+                try {
+                    Crypto crypto = Crypto.initJava();
+                    // setup peergos user and pki keys
+                    String testpassword = args.getArg("peergos.password");
+                    String pkiUsername = "peergos";
+                    UserWithRoot peergos = UserUtil.generateUser(pkiUsername, testpassword, crypto.hasher, crypto.symmetricProvider,
+                            crypto.random, crypto.signer, crypto.boxer, UserGenerationAlgorithm.getDefault()).get();
+
+                    boolean useIPFS = args.getBoolean("useIPFS");
+                    ContentAddressedStorage dht = useIPFS ? new IpfsDHT() : RAMStorage.getSingleton();
+
+                    SigningKeyPair peergosIdentityKeys = peergos.getUser();
+                    PublicKeyHash peergosPublicHash = ContentAddressedStorage.hashKey(peergosIdentityKeys.publicSigningKey);
+
+                    String pkiPassword = args.getArg("pki.keygen.password");
+                    SigningKeyPair pkiKeys = UserUtil.generateUser(pkiUsername, pkiPassword, crypto.hasher, crypto.symmetricProvider,
+                            crypto.random, crypto.signer, crypto.boxer, UserGenerationAlgorithm.getDefault()).get().getUser();
+                    dht.putSigningKey(peergosIdentityKeys.secretSigningKey.signatureOnly(
+                            pkiKeys.publicSigningKey.serialize()),
+                            peergosPublicHash,
+                            pkiKeys.publicSigningKey).get();
+
+                    Files.write(Paths.get(args.getArg("pki.secret.key.path")), pkiKeys.secretSigningKey.toCbor().toByteArray());
+                    Files.write(Paths.get(args.getArg("pki.public.key.path")), pkiKeys.publicSigningKey.toCbor().toByteArray());
+                    args.setIfAbsent("peergos.identity.hash", peergosPublicHash.toString());
+
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    System.exit(1);
+                }
+            },
+            Arrays.asList(
+                    new Command.Arg("useIPFS", "Use IPFS for storage or ephemeral RAM store", false, "true"),
+                    new Command.Arg("peergos.password",
+                            "The password for the peergos user required to bootstrap the network", true),
+                    new Command.Arg("pki.keygen.password", "The password used to generate the pki key pair", true),
+                    new Command.Arg("pki.public.key.path", "The path to the pki public key file", true),
+                    new Command.Arg("pki.secret.key.path", "The path to the pki secret key file", true)
+            )
+    );
+
+    public static final Command POSTSTRAP = new Command("poststrap",
+            "The final step of bootstrapping a new peergos network, which must be run once after network bootstrap\n" +
+                    "This means signing up the peergos user, and adding the pki public key to the peergos user",
+            args -> {
+                try {
+                    Crypto crypto = Crypto.initJava();
+                    // recreate peergos user and pki keys
+                    String password = args.getArg("peergos.password");
+                    String pkiUsername = "peergos";
+                    UserWithRoot peergos = UserUtil.generateUser(pkiUsername, password, crypto.hasher, crypto.symmetricProvider,
+                            crypto.random, crypto.signer, crypto.boxer, UserGenerationAlgorithm.getDefault()).get();
+
+                    SigningKeyPair peergosIdentityKeys = peergos.getUser();
+                    PublicKeyHash peergosPublicHash = ContentAddressedStorage.hashKey(peergosIdentityKeys.publicSigningKey);
+                    PublicSigningKey pkiPublic =
+                            PublicSigningKey.fromByteArray(
+                                    Files.readAllBytes(Paths.get(args.getArg("pki.public.key.path"))));
+                    PublicKeyHash pkiPublicHash = ContentAddressedStorage.hashKey(pkiPublic);
+                    int webPort = args.getInt("port");
+                    NetworkAccess network = NetworkAccess.buildJava(new URL("http://localhost:" + webPort)).get();
+
+                    // sign up peergos user
+                    UserContext context = UserContext.ensureSignedUp(pkiUsername, password, network, crypto).get();
+                    Optional<PublicKeyHash> existingPkiKey = context.getNamedKey("pki").get();
+                    if (! existingPkiKey.isPresent() || existingPkiKey.get().equals(pkiPublicHash)) {
+                        context.addNamedOwnedKeyAndCommit("pki", pkiPublicHash).get();
+                        // write pki public key to ipfs
+                        network.dhtClient.putSigningKey(peergosIdentityKeys.secretSigningKey
+                                .signatureOnly(pkiPublic.serialize()), peergosPublicHash, pkiPublic).get();
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    System.exit(1);
+                }
+            },
+            Arrays.asList(
+                    new Command.Arg("peergos.password",
+                    "The password for the peergos user required to bootstrap the network", true),
+                    new Command.Arg("pki.public.key.path", "The path to the pki public key file", true)
+            )
+    );
+
     public static final Command LOCAL = new Command("local",
             "Start an ephemeral Peergos Server and CoreNode server",
             args -> {
+                args.setIfAbsent("peergos.password", "testpassword");
+                args.setIfAbsent("pki.secret.key.path", "test.pki.secret.key");
+                args.setIfAbsent("pki.public.key.path", "test.pki.public.key");
+                args.setIfAbsent("pki.keygen.password", "testPkiPassword");
+                BOOTSTRAP.main(args);
                 args.setIfAbsent("domain", "localhost");
                 args.setIfAbsent("corenodePath", ":memory:");
                 args.setIfAbsent("socialnodePath", ":memory:");
@@ -98,6 +197,7 @@ public class Start
                 args.setIfAbsent("corenodeURL", "http://localhost:" + args.getArg("corenodePort"));
                 args.setIfAbsent("socialnodeURL", "http://localhost:" + args.getArg("socialnodePort"));
                 PEERGOS.main(args);
+                POSTSTRAP.main(args);
             },
             Collections.emptyList()
     );
@@ -106,8 +206,8 @@ public class Start
             "Mount a Peergos user's filesystem natively",
             Start::startFuse,
             Stream.of(
-                    new Command.Arg("username", "Peergos username", false),
-                    new Command.Arg("password", "Peergos password", false),
+                    new Command.Arg("username", "Peergos username", true),
+                    new Command.Arg("password", "Peergos password", true),
                     new Command.Arg("webport", "Peergos service address port", false, "8000"),
                     new Command.Arg("mountPoint", "The directory to mount the Peergos filesystem in", true, "peergos")
             ).collect(Collectors.toList())
@@ -153,8 +253,8 @@ public class Start
     }
 
     public static void startFuse(Args a) {
-        String username = a.getArg("username", "test01");
-        String password = a.getArg("password", "test01");
+        String username = a.getArg("username");
+        String password = a.getArg("password");
 
         int webPort  = a.getInt("webport");
         try {
@@ -197,9 +297,22 @@ public class Start
                 new CachingStorage(new IpfsDHT(), dhtCacheEntries, maxValueSizeToCache) :
                 RAMStorage.getSingleton();
         try {
-            UserRepository userRepository = UserRepository.buildSqlLite(path, dht, maxUserCount);
-            HttpCoreNodeServer.createAndStart(keyfile, passphrase, corenodePort, userRepository, userRepository, a);
-        } catch (SQLException e) {
+            MutablePointers mutable = UserRepository.buildSqlLite(path, dht, maxUserCount);
+            PublicKeyHash peergosIdentity = PublicKeyHash.fromString(a.getArg("peergos.identity.hash"));
+
+            PublicSigningKey pkiPublic =
+                    PublicSigningKey.fromByteArray(
+                            Files.readAllBytes(Paths.get(a.getArg("pki.public.key.path"))));
+            SecretSigningKey pkiSecretKey = SecretSigningKey.fromCbor(CborObject.fromByteArray(
+                    Files.readAllBytes(Paths.get(a.getArg("pki.secret.key.path")))));
+            SigningKeyPair pkiKeys = new SigningKeyPair(pkiPublic, pkiSecretKey);
+            PublicKeyHash pkiPublicHash = ContentAddressedStorage.hashKey(pkiKeys.publicSigningKey);
+
+            MaybeMultihash currentPkiRoot = mutable.getPointerTarget(pkiPublicHash, dht).get();
+
+            IpfsCoreNode core = new IpfsCoreNode(pkiKeys, currentPkiRoot, dht, mutable, peergosIdentity);
+            HttpCoreNodeServer.createAndStart(keyfile, passphrase, corenodePort, core, mutable, a);
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
@@ -218,8 +331,8 @@ public class Start
                 new CachingStorage(new IpfsDHT(), dhtCacheEntries, maxValueSizeToCache) :
                 RAMStorage.getSingleton();
         try {
-            UserRepository userRepository = UserRepository.buildSqlLite(path, dht, maxUserCount);
-            HttpSocialNetworkServer.createAndStart(keyfile, passphrase, socialnodePort, userRepository, userRepository, a);
+            SocialNetwork social = UserRepository.buildSqlLite(path, dht, maxUserCount);
+            HttpSocialNetworkServer.createAndStart(keyfile, passphrase, socialnodePort, social, a);
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }

@@ -37,16 +37,6 @@ public class FuseTests {
         CORE_PORT = corePort;
     }
 
-    static void setFinalStatic(Field field, Object newValue) throws Exception {
-        field.setAccessible(true);
-
-        Field modifiersField = Field.class.getDeclaredField("modifiers");
-        modifiersField.setAccessible(true);
-        modifiersField.setInt(field, field.getModifiers() & ~Modifier.FINAL);
-
-        field.set(null, newValue);
-    }
-
     @BeforeClass
     public static void init() throws Exception {
         Random  random  = new Random();
@@ -57,8 +47,6 @@ public class FuseTests {
 
         System.out.println("Using web-port "+ WEB_PORT);
         System.out.flush();
-        // use insecure random otherwise tests take ages
-        setFinalStatic(TweetNaCl.class.getDeclaredField("prng"), new Random(1));
 
         Args args = Args.parse(new String[]{"useIPFS", "false",
                 "-port", Integer.toString(WEB_PORT),
