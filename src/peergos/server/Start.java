@@ -297,7 +297,7 @@ public class Start
                 new CachingStorage(new IpfsDHT(), dhtCacheEntries, maxValueSizeToCache) :
                 RAMStorage.getSingleton();
         try {
-            UserRepository mutable = UserRepository.buildSqlLite(path, dht, maxUserCount);
+            MutablePointers mutable = UserRepository.buildSqlLite(path, dht, maxUserCount);
             PublicKeyHash peergosIdentity = PublicKeyHash.fromString(a.getArg("peergos.identity.hash"));
 
             PublicSigningKey pkiPublic =
