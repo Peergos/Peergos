@@ -202,10 +202,10 @@ public class IpfsCoreNode implements CoreNode {
         String user = "peergos";
         String password = new String(console.readPassword("Enter password for " + user + ":"));
         Pair<Multihash, CborObject> pair = UserContext.getWriterDataCbor(network, user).get();
-        Optional<UserGenerationAlgorithm> algorithmOpt = WriterData.extractUserGenerationAlgorithm(pair.right);
+        Optional<SecretGenerationAlgorithm> algorithmOpt = WriterData.extractUserGenerationAlgorithm(pair.right);
         if (!algorithmOpt.isPresent())
             throw new IllegalStateException("No login algorithm specified in user data!");
-        UserGenerationAlgorithm algorithm = algorithmOpt.get();
+        SecretGenerationAlgorithm algorithm = algorithmOpt.get();
         UserWithRoot owner = UserUtil.generateUser(user, password, crypto.hasher, crypto.symmetricProvider,
                 crypto.random, crypto.signer, crypto.boxer, algorithm).get();
         WriterData ownerProperties = WriterData.fromCbor(pair.right, owner.getRoot());
@@ -213,7 +213,7 @@ public class IpfsCoreNode implements CoreNode {
 
         String pkiPassword = new String(console.readPassword("Enter password for pki:"));
         UserWithRoot pkiKeys = UserUtil.generateUser(user, pkiPassword, crypto.hasher, crypto.symmetricProvider,
-                crypto.random, crypto.signer, crypto.boxer, new ScryptEd25519Curve25519(ScryptEd25519Curve25519.MIN_MEMORY_COST, 8, 1, 96)).get();
+                crypto.random, crypto.signer, crypto.boxer, new ScryptGenerator(ScryptGenerator.MIN_MEMORY_COST, 8, 1, 96)).get();
 
         // ensure the user has the owned key for the pki
         PublicSigningKey pkiPublicKey = pkiKeys.getUser().publicSigningKey;

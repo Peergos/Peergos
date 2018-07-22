@@ -18,7 +18,7 @@ public class UserUtil {
                                                                SafeRandom random,
                                                                Ed25519 signer,
                                                                Curve25519 boxer,
-                                                               UserGenerationAlgorithm algorithm) {
+                                                               SecretGenerationAlgorithm algorithm) {
         CompletableFuture<byte[]> fut = hasher.hashToKeyBytes(username, password, algorithm);
         return fut.thenApply(keyBytes -> {
             byte[] signBytesSeed = Arrays.copyOfRange(keyBytes, 0, 32);

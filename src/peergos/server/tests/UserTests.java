@@ -18,7 +18,6 @@ import peergos.shared.util.*;
 import peergos.shared.util.Exceptions;
 
 import java.io.*;
-import java.lang.reflect.*;
 import java.net.*;
 import java.nio.file.*;
 import java.util.*;
@@ -81,13 +80,13 @@ public abstract class UserTests {
         String username = generateUsername();
         String password = "letmein";
         Crypto crypto = Crypto.initJava();
-        List<ScryptEd25519Curve25519> params = Arrays.asList(
-                new ScryptEd25519Curve25519(17, 8, 1, 96),
-                new ScryptEd25519Curve25519(18, 8, 1, 96),
-                new ScryptEd25519Curve25519(19, 8, 1, 96),
-                new ScryptEd25519Curve25519(17, 9, 1, 96)
+        List<ScryptGenerator> params = Arrays.asList(
+                new ScryptGenerator(17, 8, 1, 96),
+                new ScryptGenerator(18, 8, 1, 96),
+                new ScryptGenerator(19, 8, 1, 96),
+                new ScryptGenerator(17, 9, 1, 96)
         );
-        for (ScryptEd25519Curve25519 p: params) {
+        for (ScryptGenerator p: params) {
             long t1 = System.currentTimeMillis();
             UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer, p).get();
             long t2 = System.currentTimeMillis();
@@ -102,7 +101,7 @@ public abstract class UserTests {
         String password = "test01";
 
         UserUtil.generateUser(username, password, new ScryptJava(), new Salsa20Poly1305.Java(),
-                new SafeRandom.Java(), new Ed25519.Java(), new Curve25519.Java(), UserGenerationAlgorithm.getDefault()).thenAccept(userWithRoot -> {
+                new SafeRandom.Java(), new Ed25519.Java(), new Curve25519.Java(), SecretGenerationAlgorithm.getDefault()).thenAccept(userWithRoot -> {
 		    PublicSigningKey expected = PublicSigningKey.fromString("7HvEWP6yd1UD8rOorfFrieJ8S7yC8+l3VisV9kXNiHmI7Eav7+3GTRSVBRCymItrzebUUoCi39M6rdgeOU9sXXFD");
 		    if (! expected.equals(userWithRoot.getUser().publicSigningKey))
 		        throw new IllegalStateException("Generated user different from the Javascript! \n"+userWithRoot.getUser().publicSigningKey + " != \n"+expected);
@@ -180,8 +179,8 @@ public abstract class UserTests {
         String username = generateUsername();
         String password = "password";
         UserContext userContext = ensureSignedUp(username, password, network, crypto);
-        UserGenerationAlgorithm algo = userContext.getKeyGenAlgorithm().get();
-        ScryptEd25519Curve25519 newAlgo = new ScryptEd25519Curve25519(19, 8, 1, 96);
+        SecretGenerationAlgorithm algo = userContext.getKeyGenAlgorithm().get();
+        ScryptGenerator newAlgo = new ScryptGenerator(19, 8, 1, 96);
         userContext.changePassword(password, password, algo, newAlgo).get();
         ensureSignedUp(username, password, network, crypto);
     }

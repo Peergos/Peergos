@@ -29,7 +29,7 @@ public class WriterData implements Cborable {
     public final PublicKeyHash controller;
 
     // publicly readable and present on owner keys
-    public final Optional<UserGenerationAlgorithm> generationAlgorithm;
+    public final Optional<SecretGenerationAlgorithm> generationAlgorithm;
     // accessible under IPFS address $hash/public
     public final Optional<FilePointer> publicData;
     // The public boxing key to encrypt follow requests to, accessible under IPFS address $hash/inbound
@@ -57,7 +57,7 @@ public class WriterData implements Cborable {
      * @param tree Any file tree owned by this key
      */
     public WriterData(PublicKeyHash controller,
-                      Optional<UserGenerationAlgorithm> generationAlgorithm,
+                      Optional<SecretGenerationAlgorithm> generationAlgorithm,
                       Optional<FilePointer> publicData,
                       Optional<PublicKeyHash> followRequestReceiver,
                       Set<PublicKeyHash> ownedKeys,
@@ -118,7 +118,7 @@ public class WriterData implements Cborable {
                                          Optional<PublicKeyHash> followRequestReceiver,
                                          SymmetricKey rootKey) {
         return new WriterData(controller,
-                Optional.of(UserGenerationAlgorithm.getDefault()),
+                Optional.of(SecretGenerationAlgorithm.getDefault()),
                 Optional.empty(),
                 followRequestReceiver,
                 Collections.emptySet(),
@@ -153,7 +153,7 @@ public class WriterData implements Cborable {
                                                              MaybeMultihash currentHash,
                                                              PublicBoxingKey followRequestReceiver,
                                                              SymmetricKey newKey,
-                                                             UserGenerationAlgorithm newAlgorithm,
+                                                             SecretGenerationAlgorithm newAlgorithm,
                                                              NetworkAccess network,
                                                              Consumer<CommittedWriterData> updater) {
         // auth new key by adding to existing writer data first
@@ -266,13 +266,13 @@ public class WriterData implements Cborable {
         return CborObject.CborMap.build(result);
     }
 
-    public static Optional<UserGenerationAlgorithm> extractUserGenerationAlgorithm(CborObject cbor) {
+    public static Optional<SecretGenerationAlgorithm> extractUserGenerationAlgorithm(CborObject cbor) {
         CborObject.CborMap map = (CborObject.CborMap) cbor;
         Function<String, Optional<Cborable>> extract = key -> {
             CborObject.CborString cborKey = new CborObject.CborString(key);
             return map.values.containsKey(cborKey) ? Optional.of(map.values.get(cborKey)) : Optional.empty();
         };
-        return extract.apply("algorithm").map(UserGenerationAlgorithm::fromCbor);
+        return extract.apply("algorithm").map(SecretGenerationAlgorithm::fromCbor);
     }
 
     public static WriterData fromCbor(CborObject cbor, SymmetricKey rootKey) {
@@ -286,7 +286,7 @@ public class WriterData implements Cborable {
         };
 
         PublicKeyHash controller = extract.apply("controller").map(PublicKeyHash::fromCbor).get();
-        Optional<UserGenerationAlgorithm> algo  = extractUserGenerationAlgorithm(cbor);
+        Optional<SecretGenerationAlgorithm> algo  = extractUserGenerationAlgorithm(cbor);
         Optional<FilePointer> publicData = extract.apply("public").map(FilePointer::fromCbor);
         Optional<PublicKeyHash> followRequestReceiver = extract.apply("inbound").map(PublicKeyHash::fromCbor);
         CborObject.CborList ownedList = (CborObject.CborList) map.values.get(new CborObject.CborString("owned"));

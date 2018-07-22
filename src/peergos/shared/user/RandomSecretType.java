@@ -4,9 +4,9 @@ import peergos.shared.cbor.*;
 
 import java.util.*;
 
-public class RandomUserType implements UserGenerationAlgorithm {
+public class RandomSecretType implements SecretGenerationAlgorithm {
 
-    public RandomUserType() {
+    public RandomSecretType() {
     }
 
     @Override
@@ -16,8 +16,8 @@ public class RandomUserType implements UserGenerationAlgorithm {
         return CborObject.CborMap.build(props);
     }
 
-    static RandomUserType fromCbor(CborObject cbor) {
-        return new RandomUserType();
+    static RandomSecretType fromCbor(CborObject cbor) {
+        return new RandomSecretType();
     }
 
     @Override
