@@ -18,7 +18,7 @@ public class PasswordProtection {
         String password = "notagoodpassword";
         Cborable cbor = PasswordProtected.encryptWithPassword(secret, password, crypto.hasher, crypto.symmetricProvider, crypto.random);
 
-        byte[] retrieved = PasswordProtected.decryptFromCbor(cbor, password, crypto.hasher, crypto.symmetricProvider, crypto.random);
+        byte[] retrieved = PasswordProtected.decryptWithPassword(cbor, password, crypto.hasher, crypto.symmetricProvider, crypto.random);
         Assert.assertTrue("invertible", Arrays.equals(retrieved, secret));
     }
 }

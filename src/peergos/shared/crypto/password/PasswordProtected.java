@@ -49,14 +49,14 @@ public class PasswordProtected {
         }
     }
 
-    public static byte[] decryptFromCbor(Cborable cbor,
-                                         String password,
-                                         LoginHasher hasher,
-                                         Salsa20Poly1305 provider,
-                                         SafeRandom random) {
-        if (! (cbor instanceof CborObject.CborList))
-            throw new IllegalStateException("Invalid cbor for SecretSigningKey! " + cbor);
-        List<? extends Cborable> list = ((CborObject.CborList) cbor).value;
+    public static byte[] decryptWithPassword(Cborable wrappedCipherText,
+                                             String password,
+                                             LoginHasher hasher,
+                                             Salsa20Poly1305 provider,
+                                             SafeRandom random) {
+        if (! (wrappedCipherText instanceof CborObject.CborList))
+            throw new IllegalStateException("Invalid cbor for SecretSigningKey! " + wrappedCipherText);
+        List<? extends Cborable> list = ((CborObject.CborList) wrappedCipherText).value;
 
         SecretGenerationAlgorithm algorithm = SecretGenerationAlgorithm.fromCbor(list.get(0));
         String salt = ArrayOps.bytesToHex(((CborObject.CborByteArray) list.get(1)).value);
