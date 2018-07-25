@@ -1,5 +1,4 @@
 package peergos.server;
-import java.util.logging.*;
 
 import peergos.shared.*;
 import peergos.shared.user.*;
@@ -9,7 +8,6 @@ import java.net.*;
 import java.time.*;
 
 public class Renew {
-	private static final Logger LOG = Logger.getGlobal();
 
     public static void main(String[] args) throws Exception {
         Crypto crypto = Crypto.initJava();
@@ -20,6 +18,6 @@ public class Renew {
         String password = new String(console.readPassword("Enter password for " + username + ":"));
         UserContext context = UserContext.signIn(username, password, network, crypto).get();
         context.renewUsernameClaim(expiry).get();
-        LOG.info("Logged in " + username + " successfully!");
+        System.out.println("Logged in " + username + " successfully!");
     }
 }

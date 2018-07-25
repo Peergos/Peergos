@@ -1,5 +1,4 @@
 package peergos.server;
-import java.util.logging.*;
 
 import peergos.shared.*;
 import peergos.shared.corenode.*;
@@ -13,7 +12,6 @@ import java.util.*;
 import java.util.stream.*;
 
 public class UserStats {
-	private static final Logger LOG = Logger.getGlobal();
 
     public static void main(String[] args) throws Exception {
         Crypto crypto = Crypto.initJava();
@@ -32,11 +30,11 @@ public class UserStats {
                         total += network.dhtClient.getRecursiveBlockSize(target.get()).get();
                 }
                 String summary = "User: " + username + ", expiry: " + expiry + " usage: " + total + "\n";
-                LOG.info(summary);
+                System.out.println(summary);
                 return Stream.of(new Summary(username, expiry, total));
             } catch (Exception e) {
-                LOG.severe("Error for " + username);
-                LOG.log(Level.WARNING, e.getMessage(), e);
+                System.err.println("Error for " + username);
+                e.printStackTrace();
                 return Stream.empty();
             }
         }).collect(Collectors.toList());

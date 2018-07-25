@@ -200,7 +200,7 @@ public class NetworkAccess {
                     .thenCompose(blobHash -> tree.put(writer, location.getMapKey(), metadata.committedHash(), blobHash)
                             .thenApply(res -> blobHash));
         } catch (Exception e) {
-            LOG.info(e.getMessage());
+            LOG.severe(e.getMessage());
             throw new RuntimeException(e);
         }
     }
