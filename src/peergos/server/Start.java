@@ -140,6 +140,7 @@ public class Start
                     new Command.Arg("peergos.password",
                             "The password for the peergos user required to bootstrap the network", true),
                     new Command.Arg("pki.keygen.password", "The password used to generate the pki key pair", true),
+                    new Command.Arg("pki.keyfile.password", "The password used to protect the pki private key on disk", true),
                     new Command.Arg("pki.public.key.path", "The path to the pki public key file", true),
                     new Command.Arg("pki.secret.key.path", "The path to the pki secret key file", true)
             )
