@@ -101,10 +101,10 @@ public class UserContext {
             , Crypto crypto, Consumer<String> progressCallback) {
         return getWriterDataCbor(network, username)
                 .thenCompose(pair -> {
-                    Optional<UserGenerationAlgorithm> algorithmOpt = WriterData.extractUserGenerationAlgorithm(pair.right);
+                    Optional<SecretGenerationAlgorithm> algorithmOpt = WriterData.extractUserGenerationAlgorithm(pair.right);
                     if (!algorithmOpt.isPresent())
                         throw new IllegalStateException("No login algorithm specified in user data!");
-                    UserGenerationAlgorithm algorithm = algorithmOpt.get();
+                    SecretGenerationAlgorithm algorithm = algorithmOpt.get();
                     progressCallback.accept("Generating keys");
                     return UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider,
                             crypto.random, crypto.signer, crypto.boxer, algorithm)
@@ -153,19 +153,19 @@ public class UserContext {
     @JsMethod
     public static CompletableFuture<UserContext> signUp(String username, String password, NetworkAccess network
             , Crypto crypto, Consumer<String> progressCallback) {
-        return signUpGeneral(username, password, network, crypto, UserGenerationAlgorithm.getDefault(), progressCallback);
+        return signUpGeneral(username, password, network, crypto, SecretGenerationAlgorithm.getDefault(), progressCallback);
     }
 
     public static CompletableFuture<UserContext> signUp(String username, String password, NetworkAccess network
             , Crypto crypto) {
-        return signUpGeneral(username, password, network, crypto, UserGenerationAlgorithm.getDefault(), t -> {});
+        return signUpGeneral(username, password, network, crypto, SecretGenerationAlgorithm.getDefault(), t -> {});
     }
 
     public static CompletableFuture<UserContext> signUpGeneral(String username,
                                                                String password,
                                                                NetworkAccess network,
                                                                Crypto crypto,
-                                                               UserGenerationAlgorithm algorithm,
+                                                               SecretGenerationAlgorithm algorithm,
                                                                Consumer<String> progressCallback) {
         progressCallback.accept("Generating keys");
         return UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer, algorithm)
@@ -394,10 +394,10 @@ public class UserContext {
                         }));
     }
 
-    public CompletableFuture<UserGenerationAlgorithm> getKeyGenAlgorithm() {
+    public CompletableFuture<SecretGenerationAlgorithm> getKeyGenAlgorithm() {
         return getWriterDataCbor(this.network, this.username)
                 .thenApply(pair -> {
-                    Optional<UserGenerationAlgorithm> algorithmOpt = WriterData.extractUserGenerationAlgorithm(pair.right);
+                    Optional<SecretGenerationAlgorithm> algorithmOpt = WriterData.extractUserGenerationAlgorithm(pair.right);
                     if (!algorithmOpt.isPresent())
                         throw new IllegalStateException("No login algorithm specified in user data!");
                     return algorithmOpt.get();
@@ -414,16 +414,16 @@ public class UserContext {
 
         return getWriterDataCbor(this.network, this.username)
                 .thenCompose(pair -> {
-                    Optional<UserGenerationAlgorithm> algorithmOpt = WriterData.extractUserGenerationAlgorithm(pair.right);
+                    Optional<SecretGenerationAlgorithm> algorithmOpt = WriterData.extractUserGenerationAlgorithm(pair.right);
                     if (! algorithmOpt.isPresent())
                         throw new IllegalStateException("No login algorithm specified in user data!");
-                    UserGenerationAlgorithm algorithm = algorithmOpt.get();
+                    SecretGenerationAlgorithm algorithm = algorithmOpt.get();
                     return changePassword(oldPassword, newPassword, algorithm, algorithm);
                 });
     }
     public CompletableFuture<UserContext> changePassword(String oldPassword, String newPassword,
-                                                         UserGenerationAlgorithm existingAlgorithm,
-                                                         UserGenerationAlgorithm newAlgorithm) {
+                                                         SecretGenerationAlgorithm existingAlgorithm,
+                                                         SecretGenerationAlgorithm newAlgorithm) {
         // set claim expiry to two months from now
         LocalDate expiry = LocalDate.now().plusMonths(2);
         LOG.info("Changing password and setting expiry to: " + expiry);

@@ -1,10 +1,15 @@
 package peergos.shared.crypto.asymmetric;
 
 import peergos.shared.cbor.*;
-import peergos.shared.crypto.asymmetric.curve25519.Ed25519SecretKey;
+import peergos.shared.crypto.asymmetric.curve25519.*;
+import peergos.shared.crypto.hash.*;
+import peergos.shared.crypto.random.*;
+import peergos.shared.crypto.symmetric.*;
+import peergos.shared.user.*;
 import peergos.shared.util.*;
 
 import java.io.*;
+import java.util.*;
 
 public interface SecretSigningKey extends Cborable {
 
@@ -26,7 +31,7 @@ public interface SecretSigningKey extends Cborable {
 
     static SecretSigningKey fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborList))
-            throw new IllegalStateException("Invalid cbor for PublicSigningKey! " + cbor);
+            throw new IllegalStateException("Invalid cbor for SecretSigningKey! " + cbor);
         CborObject.CborLong type = (CborObject.CborLong) ((CborObject.CborList) cbor).value.get(0);
         PublicSigningKey.Type t = PublicSigningKey.Type.byValue((int) type.value);
         switch (t) {

@@ -6,12 +6,12 @@ import peergos.shared.util.*;
 
 import java.util.*;
 
-public interface UserGenerationAlgorithm extends Cborable {
+public interface SecretGenerationAlgorithm extends Cborable {
     Map<Integer, Type> byValue = new HashMap<>();
     @JsType
     enum Type {
         Random(0x0),
-        ScryptEd25519Curve25519(0x1);
+        Scrypt(0x1);
         // TODO find a post-quantum algorithm
 
         public final int value;
@@ -31,18 +31,18 @@ public interface UserGenerationAlgorithm extends Cborable {
     @JsMethod
     Type getType();
 
-    static UserGenerationAlgorithm getDefault() {
-        return new ScryptEd25519Curve25519(ScryptEd25519Curve25519.MIN_MEMORY_COST, 8, 1, 96);
+    static SecretGenerationAlgorithm getDefault() {
+        return new ScryptGenerator(ScryptGenerator.MIN_MEMORY_COST, 8, 1, 96);
     }
 
-    static UserGenerationAlgorithm fromCbor(Cborable cbor) {
+    static SecretGenerationAlgorithm fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborMap))
-            throw new IllegalStateException("Incorrect cbor type for UserGenerationAlgorithm: " + cbor);
+            throw new IllegalStateException("Incorrect cbor type for SecretGenerationAlgorithm: " + cbor);
         Type type = Type.byValue((int)((CborObject.CborLong) ((CborObject.CborMap) cbor).values.get(new CborObject.CborString("type"))).value);
-        if (type == Type.ScryptEd25519Curve25519)
-            return ScryptEd25519Curve25519.fromCbor(cbor);
+        if (type == Type.Scrypt)
+            return ScryptGenerator.fromCbor(cbor);
         if (type == Type.Random)
-            return new RandomUserType();
+            return new RandomSecretType();
         throw new IllegalStateException("Unimplemented UserGeneration type algorithm: " + type);
     }
 }
