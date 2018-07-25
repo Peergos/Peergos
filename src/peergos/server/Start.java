@@ -10,6 +10,7 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.crypto.password.*;
 import peergos.shared.merklebtree.*;
 import peergos.shared.mutable.*;
 import peergos.shared.social.*;
@@ -119,7 +120,13 @@ public class Start
                             peergosPublicHash,
                             pkiKeys.publicSigningKey).get();
 
-                    Files.write(Paths.get(args.getArg("pki.secret.key.path")), pkiKeys.secretSigningKey.toCbor().toByteArray());
+                    String pkiKeyfilePassword = args.getArg("pki.keyfile.password");
+                    Cborable cipherTextCbor = PasswordProtected.encryptWithPassword(pkiKeys.secretSigningKey.toCbor().toByteArray(),
+                            pkiKeyfilePassword,
+                            crypto.hasher,
+                            crypto.symmetricProvider,
+                            crypto.random);
+                    Files.write(Paths.get(args.getArg("pki.secret.key.path")), cipherTextCbor.serialize());
                     Files.write(Paths.get(args.getArg("pki.public.key.path")), pkiKeys.publicSigningKey.toCbor().toByteArray());
                     args.setIfAbsent("peergos.identity.hash", peergosPublicHash.toString());
 
@@ -133,6 +140,7 @@ public class Start
                     new Command.Arg("peergos.password",
                             "The password for the peergos user required to bootstrap the network", true),
                     new Command.Arg("pki.keygen.password", "The password used to generate the pki key pair", true),
+                    new Command.Arg("pki.keyfile.password", "The password used to protect the pki private key on disk", true),
                     new Command.Arg("pki.public.key.path", "The path to the pki public key file", true),
                     new Command.Arg("pki.secret.key.path", "The path to the pki secret key file", true)
             )
@@ -187,6 +195,7 @@ public class Start
                 args.setIfAbsent("pki.secret.key.path", "test.pki.secret.key");
                 args.setIfAbsent("pki.public.key.path", "test.pki.public.key");
                 args.setIfAbsent("pki.keygen.password", "testPkiPassword");
+                args.setIfAbsent("pki.keyfile.password", "testPkiFilePassword");
                 BOOTSTRAP.main(args);
                 args.setIfAbsent("domain", "localhost");
                 args.setIfAbsent("corenodePath", ":memory:");
@@ -297,14 +306,23 @@ public class Start
                 new CachingStorage(new IpfsDHT(), dhtCacheEntries, maxValueSizeToCache) :
                 RAMStorage.getSingleton();
         try {
+            Crypto crypto = Crypto.initJava();
             MutablePointers mutable = UserRepository.buildSqlLite(path, dht, maxUserCount);
             PublicKeyHash peergosIdentity = PublicKeyHash.fromString(a.getArg("peergos.identity.hash"));
+
+            String pkiSecretKeyfilePassword = a.getArg("pki.keyfile.password");
 
             PublicSigningKey pkiPublic =
                     PublicSigningKey.fromByteArray(
                             Files.readAllBytes(Paths.get(a.getArg("pki.public.key.path"))));
             SecretSigningKey pkiSecretKey = SecretSigningKey.fromCbor(CborObject.fromByteArray(
-                    Files.readAllBytes(Paths.get(a.getArg("pki.secret.key.path")))));
+                    PasswordProtected.decryptWithPassword(
+                            CborObject.fromByteArray(Files.readAllBytes(Paths.get(a.getArg("pki.secret.key.path")))),
+                            pkiSecretKeyfilePassword,
+                            crypto.hasher,
+                            crypto.symmetricProvider,
+                            crypto.random
+                    )));
             SigningKeyPair pkiKeys = new SigningKeyPair(pkiPublic, pkiSecretKey);
             PublicKeyHash pkiPublicHash = ContentAddressedStorage.hashKey(pkiKeys.publicSigningKey);
 
