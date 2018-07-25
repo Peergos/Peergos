@@ -1,4 +1,5 @@
 package peergos.shared.user.fs;
+import java.util.logging.*;
 
 import jsinterop.annotations.*;
 import peergos.shared.*;
@@ -27,6 +28,7 @@ import java.util.function.*;
 import java.util.stream.*;
 
 public class FileTreeNode {
+	private static final Logger LOG = Logger.getGlobal();
 
     final static int THUMBNAIL_SIZE = 100;
     private final NativeJSThumbnail thumbnail;
@@ -624,7 +626,7 @@ public class FileTreeNode {
                                                                 ProgressConsumer<Long> monitor, Fragmenter fragmenter) {
 
         String filename = existingChild.getFileProperties().name;
-        System.out.println("Overwriting section [" + Long.toHexString(inputStartIndex) + ", " + Long.toHexString(endIndex) + "] of child with name: " + filename);
+        LOG.info("Overwriting section [" + Long.toHexString(inputStartIndex) + ", " + Long.toHexString(endIndex) + "] of child with name: " + filename);
 
         Supplier<Location> locationSupplier = () -> new Location(getLocation().owner, getLocation().writer, random.randomBytes(32));
 
@@ -671,7 +673,7 @@ public class FileTreeNode {
                             LocatedChunk currentOriginal = pair.left.get();
                             Optional<Location> nextChunkLocationOpt = pair.right;
                             Location nextChunkLocation = nextChunkLocationOpt.orElseGet(locationSupplier);
-                            System.out.println("********** Writing to chunk at mapkey: " + ArrayOps.bytesToHex(currentOriginal.location.getMapKey()) + " next: " + nextChunkLocation);
+                            LOG.info("********** Writing to chunk at mapkey: " + ArrayOps.bytesToHex(currentOriginal.location.getMapKey()) + " next: " + nextChunkLocation);
 
                             // modify chunk, re-encrypt and upload
                             int internalStart = (int) (startIndex % Chunk.MAX_SIZE);
@@ -999,7 +1001,7 @@ public class FileTreeNode {
             baos.close();
             return baos.toByteArray();
         } catch (IOException ioe) {
-            ioe.printStackTrace();
+            LOG.log(Level.WARNING, ioe.getMessage(), ioe);
         }
         return new byte[0];
     }
@@ -1011,7 +1013,7 @@ public class FileTreeNode {
             Files.write(tempFile.toPath(), videoBlob, StandardOpenOption.WRITE);
             return VideoThumbnail.create(tempFile.getAbsolutePath(), THUMBNAIL_SIZE, THUMBNAIL_SIZE);
         } catch (IOException ioe) {
-            ioe.printStackTrace();
+            LOG.log(Level.WARNING, ioe.getMessage(), ioe);
         } finally {
             if(tempFile != null) {
                 try {

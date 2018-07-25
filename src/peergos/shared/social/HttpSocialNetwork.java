@@ -1,4 +1,5 @@
 package peergos.shared.social;
+import java.util.logging.*;
 
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
@@ -10,6 +11,7 @@ import java.net.*;
 import java.util.concurrent.*;
 
 public class HttpSocialNetwork implements SocialNetwork {
+	private static final Logger LOG = Logger.getGlobal();
 
     private final HttpPoster poster;
 
@@ -19,7 +21,7 @@ public class HttpSocialNetwork implements SocialNetwork {
 
     public HttpSocialNetwork(HttpPoster poster)
     {
-        System.out.println("Creating HTTP SocialNetwork API at " + poster);
+        LOG.info("Creating HTTP SocialNetwork API at " + poster);
         this.poster = poster;
     }
 
@@ -44,7 +46,7 @@ public class HttpSocialNetwork implements SocialNetwork {
                 }
             });
         } catch (IOException ioe) {
-            ioe.printStackTrace();
+            LOG.log(Level.WARNING, ioe.getMessage(), ioe);
             return CompletableFuture.completedFuture(false);
         }
     }
@@ -70,7 +72,7 @@ public class HttpSocialNetwork implements SocialNetwork {
                 }
             });
         } catch (IOException ioe) {
-            ioe.printStackTrace();
+            LOG.log(Level.WARNING, ioe.getMessage(), ioe);
             return null;
         }
     }
@@ -96,7 +98,7 @@ public class HttpSocialNetwork implements SocialNetwork {
                 }
             });
         } catch (IOException ioe) {
-            ioe.printStackTrace();
+            LOG.log(Level.WARNING, ioe.getMessage(), ioe);
             return CompletableFuture.completedFuture(false);
         }
     }

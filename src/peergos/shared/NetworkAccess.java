@@ -1,4 +1,5 @@
 package peergos.shared;
+import java.util.logging.*;
 
 import jsinterop.annotations.*;
 import peergos.client.*;
@@ -27,6 +28,7 @@ import java.util.stream.*;
  *  This class is unprivileged - doesn't have any private keys
  */
 public class NetworkAccess {
+    private static final Logger LOG = Logger.getGlobal();
 
     public final CoreNode coreNode;
     public final SocialNetwork social;
@@ -74,7 +76,7 @@ public class NetworkAccess {
 
     public static CompletableFuture<NetworkAccess> build(HttpPoster poster, boolean isJavascript) {
         int cacheTTL = 7_000;
-        System.out.println("Using caching corenode with TTL: " + cacheTTL + " mS");
+        LOG.info("Using caching corenode with TTL: " + cacheTTL + " mS");
         CoreNode coreNode = new HTTPCoreNode(poster);
         SocialNetwork social = new HttpSocialNetwork(poster);
         MutablePointers mutable = new CachingPointers(new HttpMutablePointers(poster), cacheTTL);
@@ -118,7 +120,7 @@ public class NetworkAccess {
                                                     .map(cbor -> new RetrievedFilePointer(
                                                             link.toReadableFilePointer(baseKey),
                                                             CryptreeNode.fromCbor(cbor, key.get()))));
-                                System.err.println("Couldn't download link at: " + loc);
+                                LOG.severe("Couldn't download link at: " + loc);
                                 Optional<RetrievedFilePointer> result = Optional.empty();
                                 return CompletableFuture.completedFuture(result);
                             });
@@ -198,7 +200,7 @@ public class NetworkAccess {
                     .thenCompose(blobHash -> tree.put(writer, location.getMapKey(), metadata.committedHash(), blobHash)
                             .thenApply(res -> blobHash));
         } catch (Exception e) {
-            System.out.println(e.getMessage());
+            LOG.severe(e.getMessage());
             throw new RuntimeException(e);
         }
     }

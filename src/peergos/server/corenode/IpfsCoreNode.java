@@ -1,4 +1,5 @@
 package peergos.server.corenode;
+import java.util.logging.*;
 
 import peergos.server.mutable.*;
 import peergos.shared.*;
@@ -23,6 +24,7 @@ import java.util.function.*;
 import java.util.stream.*;
 
 public class IpfsCoreNode implements CoreNode {
+	private static final Logger LOG = Logger.getGlobal();
 
     public static final PublicSigningKey PEERGOS_IDENTITY_KEY = PublicSigningKey.fromString("ggFYIE7uD1ViM9KfiA1w69n774/jk6hERINN3xACPyabWiBp");
     public static final PublicKeyHash PEERGOS_IDENTITY_KEY_HASH = PublicKeyHash.fromString("zdpuAvZynWLuyvovJwa34bj24M7cspt5M8seFfrFLrPWDGFDW");
@@ -77,7 +79,7 @@ public class IpfsCoreNode implements CoreNode {
                     try {
                         Optional<CborObject> cborOpt = ipfs.get(newValue.get()).get();
                         if (!cborOpt.isPresent()) {
-                            System.err.println("Couldn't retrieve new claim chain from " + newValue);
+                            LOG.severe("Couldn't retrieve new claim chain from " + newValue);
                             return;
                         }
 
@@ -89,7 +91,7 @@ public class IpfsCoreNode implements CoreNode {
                         if (oldValue.isPresent()) {
                             Optional<CborObject> existingCborOpt = ipfs.get(oldValue.get()).get();
                             if (!existingCborOpt.isPresent()) {
-                                System.err.println("Couldn't retrieve existing claim chain from " + newValue);
+                                LOG.severe("Couldn't retrieve existing claim chain from " + newValue);
                                 return;
                             }
                             List<UserPublicKeyLink> existingChain = ((CborObject.CborList) existingCborOpt.get()).value.stream()
@@ -107,7 +109,7 @@ public class IpfsCoreNode implements CoreNode {
                             usernames.add(username);
                         }
                     } catch (Exception e) {
-                        e.printStackTrace();
+                        LOG.log(Level.WARNING, e.getMessage(), e);
                     }
                 };
         try {
@@ -136,7 +138,7 @@ public class IpfsCoreNode implements CoreNode {
                         ipfs.get(existing.get()).get() :
                         Optional.empty();
                 if (! cborOpt.isPresent() && existing.isPresent()) {
-                    System.err.println("Couldn't retrieve existing claim chain from " + existing + " for " + username);
+                    LOG.severe("Couldn't retrieve existing claim chain from " + existing + " for " + username);
                     return CompletableFuture.completedFuture(true);
                 }
                 List<UserPublicKeyLink> existingChain = cborOpt.map(cbor -> ((CborObject.CborList) cbor).value.stream()
@@ -234,7 +236,7 @@ public class IpfsCoreNode implements CoreNode {
         for (String username : usernames) {
             target.updateChain(username, network.coreNode.getChain(username).get()).get();
         }
-        System.out.println("Final PKI root: " + target.currentRoot);
+        LOG.info("Final PKI root: " + target.currentRoot);
 
         // finally update the mutable pointer to the new champ
         HashCasPair cas = new HashCasPair(priorChampRoot, target.currentRoot);

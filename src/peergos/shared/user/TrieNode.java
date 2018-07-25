@@ -1,4 +1,5 @@
 package peergos.shared.user;
+import java.util.logging.*;
 
 import peergos.shared.*;
 import peergos.shared.user.fs.*;
@@ -9,6 +10,7 @@ import java.util.concurrent.*;
 import java.util.stream.*;
 
 public class TrieNode {
+	private static final Logger LOG = Logger.getGlobal();
     private final Map<String, TrieNode> children;
     private final Optional<EntryPoint> value;
     private final Map<String, String> pathMappings;
@@ -24,7 +26,7 @@ public class TrieNode {
     }
 
     public CompletableFuture<Optional<FileTreeNode>> getByPath(String path, NetworkAccess network) {
-        System.out.println("GetByPath: " + path);
+        LOG.info("GetByPath: " + path);
         for (String prefix: pathMappings.keySet()) {
             if (path.startsWith(prefix)) {
                 path = pathMappings.get(prefix) + path.substring(prefix.length());
@@ -81,7 +83,7 @@ public class TrieNode {
     }
 
     public TrieNode put(String path, EntryPoint e) {
-        System.out.println("Entrie.put(" + path + ")");
+        LOG.info("Entrie.put(" + path + ")");
         if (path.startsWith("/"))
             path = path.substring(1);
         if (path.length() == 0) {
@@ -97,7 +99,7 @@ public class TrieNode {
     }
 
     public TrieNode removeEntry(String path) {
-        System.out.println("Entrie.rm(" + path + ")");
+        LOG.info("Entrie.rm(" + path + ")");
         for (String prefix: pathMappings.keySet()) {
             if (path.startsWith(prefix)) {
                 path = pathMappings.get(prefix) + path.substring(prefix.length());

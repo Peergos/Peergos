@@ -1,4 +1,5 @@
 package peergos.server.tests;
+import java.util.logging.*;
 
 import org.junit.*;
 import static org.junit.Assert.*;
@@ -21,6 +22,7 @@ import java.util.*;
 import java.util.stream.*;
 
 public class FuseTests {
+	private static final Logger LOG = Logger.getGlobal();
     public static int WEB_PORT = 8888;
     public static int CORE_PORT = 7777;
     public static String username = "test02";
@@ -45,7 +47,7 @@ public class FuseTests {
         setWebPort(8888 + offset);
         setCorePort(7777 + offset);
 
-        System.out.println("Using web-port "+ WEB_PORT);
+        LOG.info("Using web-port "+ WEB_PORT);
         System.out.flush();
 
         Args args = Args.parse(new String[]{"useIPFS", "false",
@@ -63,7 +65,7 @@ public class FuseTests {
         mountPoint.toFile().mkdirs();
         home = mountPoint.resolve(username);
 
-        System.out.println("\n\nMountpoint "+ mountPoint +"\n\n");
+        LOG.info("\n\nMountpoint "+ mountPoint +"\n\n");
 //        PeergosFS peergosFS = new PeergosFS(userContext);
         PeergosFS peergosFS = new CachingPeergosFS(userContext);
         fuseProcess = new FuseProcess(peergosFS, mountPoint);

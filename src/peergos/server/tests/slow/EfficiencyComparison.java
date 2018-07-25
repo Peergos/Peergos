@@ -1,4 +1,5 @@
 package peergos.server.tests.slow;
+import java.util.logging.*;
 
 import peergos.server.storage.*;
 import peergos.server.tests.*;
@@ -13,6 +14,7 @@ import java.util.*;
 import java.util.function.*;
 
 public class EfficiencyComparison {
+	private static final Logger LOG = Logger.getGlobal();
 
     private static final Crypto crypto = Crypto.initJava();
 
@@ -54,11 +56,10 @@ public class EfficiencyComparison {
                 long champUsage = champStorage.getRecursiveBlockSize(current.right).get();
 
                 int idealUsage = state.size() * (32 + 34);
-                System.out.println(bitWidth + "-bit champ, " + maxCollisions + " max-collisions");
-                System.out.println("Champ used size: " + champSize + ", Champ usage after gc: " + champUsage + ", ideal: "
+                LOG.info(bitWidth + "-bit champ, " + maxCollisions + " max-collisions");
+                LOG.info("Champ used size: " + champSize + ", Champ usage after gc: " + champUsage + ", ideal: "
                         + idealUsage + ", champ overhead: " + (double) (champUsage * 100 / idealUsage) / 100);
             }
-            System.out.println();
         }
     }
 
@@ -72,7 +73,7 @@ public class EfficiencyComparison {
         int btreeSize = btreeStorage.totalSize();
         long btreeUsage = btreeStorage.getRecursiveBlockSize(btree.root.hash.get()).get();
         int idealUsage = state.size() * (32 + 34);
-        System.out.println("Btree used size: " + btreeSize + ", Btree usage after gc: " + btreeUsage + ", ideal: "
+        LOG.info("Btree used size: " + btreeSize + ", Btree usage after gc: " + btreeUsage + ", ideal: "
                 + idealUsage + ", btree overhead: " + (double)(btreeUsage * 100 / idealUsage)/100);
     }
 }

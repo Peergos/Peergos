@@ -1,4 +1,5 @@
 package peergos.server.tests;
+import java.util.logging.*;
 
 import org.junit.*;
 import peergos.server.storage.*;
@@ -16,6 +17,7 @@ import java.util.concurrent.*;
 import java.util.function.*;
 
 public class MerkleBtreeTests {
+	private static final Logger LOG = Logger.getGlobal();
 
     private Crypto crypto = Crypto.initJava();
 
@@ -94,7 +96,7 @@ public class MerkleBtreeTests {
                     tree1.put(user, mapping.left, MaybeMultihash.empty(), mapping.right).get();
                 }
             } catch (Exception e) {
-                e.printStackTrace();
+                LOG.log(Level.WARNING, e.getMessage(), e);
             }
         };
 
@@ -168,7 +170,7 @@ public class MerkleBtreeTests {
         int lim = 14000;
         for (int i = 0; i < lim; i++) {
             if (i % (lim/10) == 0)
-                System.out.println((10*i/lim)+"0 %");
+                LOG.info((10*i/lim)+"0 %");
             byte[] key1 = new byte[keylen];
             r.nextBytes(key1);
             byte[] value1Raw = new byte[keylen];
@@ -196,7 +198,7 @@ public class MerkleBtreeTests {
         int lim = 10000;
         for (int i = 0; i < lim; i++) {
             if (i % (lim/10) == 0)
-                System.out.println((10*i/lim)+"0 % of building");
+                LOG.info((10*i/lim)+"0 % of building");
             byte[] key1 = new byte[keylen];
             keys.add(new ByteArrayWrapper(key1));
             r.nextBytes(key1);
@@ -217,7 +219,7 @@ public class MerkleBtreeTests {
         long t1 = System.currentTimeMillis();
         for (int i = 0; i < lim; i++) {
             if (i % (lim / 10) == 0)
-                System.out.println((10 * i / lim) + "0 % of deleting");
+                LOG.info((10 * i / lim) + "0 % of deleting");
             int size = tree.size().get();
             if (size != lim)
                 throw new IllegalStateException("Missing keys from tree!");
@@ -247,7 +249,7 @@ public class MerkleBtreeTests {
         int lim = 22;
         for (int i = 0; i < lim; i++) {
             if (i % (lim/10) == 0)
-                System.out.println((10*i/lim)+"0 % of building");
+                LOG.info((10*i/lim)+"0 % of building");
             byte[] key1 = toLittleEndian(i);
             keys.add(new ByteArrayWrapper(key1));
             byte[] value1Raw = new byte[keylen];

@@ -1,4 +1,5 @@
 package peergos.shared.user;
+import java.util.logging.*;
 
 import peergos.shared.*;
 import peergos.shared.cbor.*;
@@ -24,6 +25,7 @@ import java.util.stream.*;
 import jsinterop.annotations.*;
 
 public class UserContext {
+	private static final Logger LOG = Logger.getGlobal();
     private static final boolean LOGGING = false;
 
     public static final String PEERGOS_USERNAME = "peergos";
@@ -172,11 +174,12 @@ public class UserContext {
                     SecretSigningKey secretSigningKey = userWithRoot.getUser().secretSigningKey;
                     PublicKeyHash signerHash = ContentAddressedStorage.hashKey(publicSigningKey);
                     SigningPrivateKeyAndPublicHash signer = new SigningPrivateKeyAndPublicHash(signerHash, secretSigningKey);
-                    System.out.println("Registering username " + username);
+
+                    LOG.info("Registering username " + username);
                     progressCallback.accept("Registering username");
                     return UserContext.register(username, signer, network).thenCompose(registered -> {
                         if (! registered) {
-                            System.out.println("Couldn't register username");
+                            LOG.info("Couldn't register username");
                             throw new IllegalStateException("Couldn't register username: " + username);
                         }
                         return network.dhtClient.putSigningKey(
@@ -197,10 +200,10 @@ public class UserContext {
                                             UserContext context = new UserContext(username, signer, userWithRoot.getBoxingPair(),
                                                     network, crypto, CompletableFuture.completedFuture(notCommitted), new TrieNode());
 
-                                            System.out.println("Creating user's root directory");
+                                            LOG.info("Creating user's root directory");
                                             long t1 = System.currentTimeMillis();
                                             return context.createEntryDirectory(signer, username).thenCompose(userRoot -> {
-                                                System.out.println("Creating root directory took " + (System.currentTimeMillis() - t1) + " mS");
+                                                LOG.info("Creating root directory took " + (System.currentTimeMillis() - t1) + " mS");
                                                 return ((DirAccess) userRoot.fileAccess).mkdir(
                                                         SHARED_DIR_NAME,
                                                         network,
@@ -312,9 +315,9 @@ public class UserContext {
 
     @JsMethod
     public CompletableFuture<Boolean> isRegistered() {
-        System.out.println("isRegistered");
+        LOG.info("isRegistered");
         return network.coreNode.getUsername(signer.publicKeyHash).thenApply(registeredUsername -> {
-            System.out.println("got username \"" + registeredUsername + "\"");
+            LOG.info("got username \"" + registeredUsername + "\"");
             return this.username.equals(registeredUsername);
         });
     }
@@ -338,7 +341,7 @@ public class UserContext {
         LocalDate now = LocalDate.now();
         // set claim expiry to two months from now
         LocalDate expiry = now.plusMonths(2);
-        System.out.println("claiming username: " + username + " with expiry " + expiry);
+        LOG.info("claiming username: " + username + " with expiry " + expiry);
         List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createInitial(signer, username, expiry);
         return network.coreNode.getChain(username).thenCompose(existing -> {
             if (existing.size() > 0)
@@ -365,7 +368,7 @@ public class UserContext {
                                                                 SigningPrivateKeyAndPublicHash signer,
                                                                 LocalDate expiry,
                                                                 NetworkAccess network) {
-        System.out.println("renewing username: " + username + " with expiry " + expiry);
+        LOG.info("renewing username: " + username + " with expiry " + expiry);
         List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createInitial(signer, username, expiry);
         return network.coreNode.updateChain(username, claimChain);
     }
@@ -423,7 +426,7 @@ public class UserContext {
                                                          UserGenerationAlgorithm newAlgorithm) {
         // set claim expiry to two months from now
         LocalDate expiry = LocalDate.now().plusMonths(2);
-        System.out.println("Changing password and setting expiry to: " + expiry);
+        LOG.info("Changing password and setting expiry to: " + expiry);
 
         return UserUtil.generateUser(username, oldPassword, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer, existingAlgorithm)
                 .thenCompose(existingUser -> {
@@ -472,7 +475,7 @@ public class UserContext {
     public CompletableFuture<RetrievedFilePointer> createEntryDirectory(SigningPrivateKeyAndPublicHash owner, String directoryName) {
         long t1 = System.currentTimeMillis();
         SigningKeyPair writer = SigningKeyPair.random(crypto.random, crypto.signer);
-        System.out.println("Random User generation took " + (System.currentTimeMillis()-t1) + " mS");
+        LOG.info("Random User generation took " + (System.currentTimeMillis()-t1) + " mS");
         return network.dhtClient.putSigningKey(
                 owner.secret.signatureOnly(writer.publicSigningKey.serialize()),
                 owner.publicKeyHash,
@@ -480,7 +483,7 @@ public class UserContext {
             byte[] rootMapKey = new byte[32]; // root will be stored under this in the core node
             crypto.random.randombytes(rootMapKey, 0, 32);
             SymmetricKey rootRKey = SymmetricKey.random();
-            System.out.println("Random keys generation took " + (System.currentTimeMillis() - t1) + " mS");
+            LOG.info("Random keys generation took " + (System.currentTimeMillis() - t1) + " mS");
 
             // and authorise the writer key
             SigningPrivateKeyAndPublicHash writerWithHash = new SigningPrivateKeyAndPublicHash(writerHash, writer.secretSigningKey);
@@ -492,12 +495,12 @@ public class UserContext {
                         DirAccess root = DirAccess.create(MaybeMultihash.empty(), rootRKey, new FileProperties(directoryName, "",
                                 0, LocalDateTime.now(), false, Optional.empty()), (Location) null, null, null);
                         Location rootLocation = new Location(this.signer.publicKeyHash, writerHash, rootMapKey);
-                        System.out.println("Uploading entry point directory");
+                        LOG.info("Uploading entry point directory");
                         return network.uploadChunk(root, rootLocation, writerWithHash).thenApply(chunkHash -> {
                             long t3 = System.currentTimeMillis();
-                            System.out.println("Uploading root dir metadata took " + (t3 - t2) + " mS");
+                            LOG.info("Uploading root dir metadata took " + (t3 - t2) + " mS");
 
-                            System.out.println("Committing static data took " + (System.currentTimeMillis() - t3) + " mS");
+                            LOG.info("Committing static data took " + (System.currentTimeMillis() - t3) + " mS");
                             return new RetrievedFilePointer(rootPointer, root.withHash(chunkHash));
                         });
                     }).thenCompose(x -> addToStaticDataAndCommit(entry).thenApply(y -> x));
@@ -1087,8 +1090,8 @@ public class UserContext {
                 return rootWithMapping.put(path, e);
             });
         }).exceptionally(t -> {
-            t.printStackTrace();
-            System.err.println("Couldn't add entry point (failed retrieving parent dir or it was invalid)!");
+            LOG.log(Level.WARNING, t.getMessage(), t);
+            LOG.severe("Couldn't add entry point (failed retrieving parent dir or it was invalid)!");
             // Allow the system to continue without this entry point
             return root;
         });
@@ -1103,7 +1106,7 @@ public class UserContext {
                             return  (e.owner.equals(ourName) ? CompletableFuture.completedFuture(true) :
                              e.isValid(path, network)).thenApply(valid -> {
 
-                                System.out.println("Added entry point: " + metadata.get() + " at path " + path);
+                                LOG.info("Added entry point: " + metadata.get() + " at path " + path);
                                 String[] parts = path.split("/");
                                 if (parts.length < 3 || !parts[2].equals(SHARED_DIR_NAME))
                                     return root.put(path, e);
@@ -1111,8 +1114,8 @@ public class UserContext {
                                 return rootWithMapping.put(path, e);
                             });
                         }).exceptionally(t -> {
-                            t.printStackTrace();
-                            System.err.println("Couldn't add entry point (failed retrieving parent dir or it was invalid): " + metadata.get().getName());
+                            LOG.log(Level.WARNING, t.getMessage(), t);
+                            LOG.severe("Couldn't add entry point (failed retrieving parent dir or it was invalid): " + metadata.get().getName());
                             // Allow the system to continue without this entry point
                             return root;
                         });
@@ -1171,7 +1174,7 @@ public class UserContext {
 
     @JsMethod
     public CompletableFuture<Boolean> unfollow(String friendName) {
-        System.out.println("Unfollowing: "+friendName);
+        LOG.info("Unfollowing: "+friendName);
         // remove entry point from static data
         String friendPath = "/" + friendName + "/";
         return getByPath(friendPath)
@@ -1185,7 +1188,7 @@ public class UserContext {
 
     @JsMethod
     public CompletableFuture<CommittedWriterData> removeFollower(String username) {
-        System.out.println("Remove follower: " + username);
+        LOG.info("Remove follower: " + username);
         // remove /$us/shared/$them
         return getSharingFolder()
                 .thenCompose(sharing -> getByPath("/"+this.username+"/shared/"+username)

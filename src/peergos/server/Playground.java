@@ -1,4 +1,5 @@
 package peergos.server;
+import java.util.logging.*;
 
 import peergos.server.corenode.*;
 import peergos.server.mutable.*;
@@ -25,6 +26,7 @@ import java.util.function.*;
  *  Use this class to experiment with existing data without committing any changes or writing any data to disk
  */
 public class Playground {
+    private static final Logger LOG = Logger.getGlobal();
 
     public static void main(String[] args) throws Exception {
         Crypto crypto = Crypto.initJava();
@@ -52,7 +54,7 @@ public class Playground {
 
         // Can we still log in?
         UserContext context2 = UserContext.signIn(username, password, nonWriteThrough, crypto).get();
-        System.out.println(context2.getUserRoot().get().getName());
+        LOG.info(context2.getUserRoot().get().getName());
     }
 
     private static void experiment(String username,
