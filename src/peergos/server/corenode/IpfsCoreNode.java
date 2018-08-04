@@ -113,7 +113,11 @@ public class IpfsCoreNode implements CoreNode {
                     }
                 };
         try {
-            Champ.applyToDiff(currentRoot, newRoot, consumer, ipfs).get();
+            CommittedWriterData current = WriterData.getWriterData(signer.publicKeyHash, currentRoot, ipfs).get();
+            CommittedWriterData updated = WriterData.getWriterData(signer.publicKeyHash, newRoot, ipfs).get();
+            MaybeMultihash currentTree = current.props.tree.map(MaybeMultihash::of).orElseGet(MaybeMultihash::empty);
+            MaybeMultihash updatedTree = updated.props.tree.map(MaybeMultihash::of).orElseGet(MaybeMultihash::empty);
+            Champ.applyToDiff(currentTree, updatedTree, consumer, ipfs).get();
             this.currentRoot = newRoot;
         } catch (Exception e) {
             throw new RuntimeException(e.getMessage(), e);
@@ -130,8 +134,11 @@ public class IpfsCoreNode implements CoreNode {
     public synchronized CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> updatedChain) {
             try {
                 Function<ByteArrayWrapper, byte[]> identityHash = arr -> Arrays.copyOfRange(arr.data, 0, CoreNode.MAX_USERNAME_SIZE);
-                ChampWrapper champ = currentRoot.isPresent() ?
-                        ChampWrapper.create(currentRoot.get(), identityHash, ipfs).get() :
+                CommittedWriterData current = WriterData.getWriterData(signer.publicKeyHash, currentRoot, ipfs).get();
+                MaybeMultihash currentTree = current.props.tree.map(MaybeMultihash::of).orElseGet(MaybeMultihash::empty);
+
+                ChampWrapper champ = currentTree.isPresent() ?
+                        ChampWrapper.create(currentTree.get(), identityHash, ipfs).get() :
                         ChampWrapper.create(signer, identityHash, ipfs).get();
                 MaybeMultihash existing = champ.get(username.getBytes()).get();
                 Optional<CborObject> cborOpt = existing.isPresent() ?
@@ -153,21 +160,16 @@ public class IpfsCoreNode implements CoreNode {
                 Multihash mergedChainHash = ipfs.put(signer, mergedChainCbor.toByteArray()).get();
                 synchronized (this) {
                     Multihash newPkiRoot = champ.put(signer, username.getBytes(), existing, mergedChainHash).get();
-                    // commit new root, and publish signed cas to network
-                    HashCasPair cas = new HashCasPair(currentRoot, MaybeMultihash.of(newPkiRoot));
-                    currentRoot = MaybeMultihash.of(newPkiRoot);
-                    byte[] signedCas = signer.secret.signMessage(cas.serialize());
-                    return mutable.setPointer(peergosIdentity, signer.publicKeyHash, signedCas).thenApply(success -> {
-                        // update derived mappings
-                        if (success) {
-                            if (existingChain.isEmpty())
-                                usernames.add(username);
-                            PublicKeyHash owner = updatedChain.get(updatedChain.size() - 1).owner;
-                            reverseLookup.put(owner, username);
-                            chains.put(username, mergedChain);
-                        }
-                        return success;
-                    });
+                    return current.props.withChamp(newPkiRoot)
+                            .commit(signer, currentRoot, mutable, ipfs, c -> {})
+                            .thenApply(committed -> {
+                                if (existingChain.isEmpty())
+                                    usernames.add(username);
+                                PublicKeyHash owner = updatedChain.get(updatedChain.size() - 1).owner;
+                                reverseLookup.put(owner, username);
+                                chains.put(username, mergedChain);
+                                return true;
+                            });
                 }
             } catch (Exception e) {
                 throw new RuntimeException(e.getMessage(), e);

@@ -370,16 +370,11 @@ public class WriterData implements Cborable {
     }
 
     public static CompletableFuture<CommittedWriterData> getWriterData(PublicKeyHash controller,
-                                                                        MaybeMultihash hash,
-                                                                        ContentAddressedStorage dht) {
+                                                                       MaybeMultihash hash,
+                                                                       ContentAddressedStorage dht) {
         if (!hash.isPresent())
             return CompletableFuture.completedFuture(new CommittedWriterData(MaybeMultihash.empty(), WriterData.createEmpty(controller)));
-        return dht.get(hash.get())
-                .thenApply(cborOpt -> {
-                    if (! cborOpt.isPresent())
-                        throw new IllegalStateException("Couldn't retrieve WriterData from dht! " + hash);
-                    return new CommittedWriterData(hash, WriterData.fromCbor(cborOpt.get(), null));
-                });
+        return getWriterData(hash.get(), dht);
     }
 
     public static CompletableFuture<CommittedWriterData> getWriterData(PublicKeyHash controller,
@@ -389,12 +384,16 @@ public class WriterData implements Cborable {
                 .thenCompose(opt -> {
                     if (! opt.isPresent())
                         throw new IllegalStateException("No root pointer present for controller " + controller);
-                    return dht.get(opt.get())
-                            .thenApply(cborOpt -> {
-                                if (!cborOpt.isPresent())
-                                    throw new IllegalStateException("Couldn't retrieve WriterData from dht! " + opt);
-                                return new CommittedWriterData(opt, WriterData.fromCbor(cborOpt.get(), null));
-                            });
+                    return getWriterData(opt.get(), dht);
+                });
+    }
+
+    public static CompletableFuture<CommittedWriterData> getWriterData(Multihash hash, ContentAddressedStorage dht) {
+        return dht.get(hash)
+                .thenApply(cborOpt -> {
+                    if (! cborOpt.isPresent())
+                        throw new IllegalStateException("Couldn't retrieve WriterData from dht! " + hash);
+                    return new CommittedWriterData(MaybeMultihash.of(hash), WriterData.fromCbor(cborOpt.get(), null));
                 });
     }
 }
