@@ -255,7 +255,8 @@ public class WriterData implements Cborable {
         publicData.ifPresent(rfp -> result.put("public", rfp.toCbor()));
         followRequestReceiver.ifPresent(boxer -> result.put("inbound", new CborObject.CborMerkleLink(boxer)));
         List<CborObject> ownedKeyStrings = ownedKeys.stream().map(CborObject.CborMerkleLink::new).collect(Collectors.toList());
-        result.put("owned", new CborObject.CborList(ownedKeyStrings));
+        if (! ownedKeyStrings.isEmpty())
+            result.put("owned", new CborObject.CborList(ownedKeyStrings));
         if (! namedOwnedKeys.isEmpty())
             result.put("named", new CborObject.CborMap(new TreeMap<>(namedOwnedKeys.entrySet()
                     .stream()
@@ -290,7 +291,9 @@ public class WriterData implements Cborable {
         Optional<FilePointer> publicData = extract.apply("public").map(FilePointer::fromCbor);
         Optional<PublicKeyHash> followRequestReceiver = extract.apply("inbound").map(PublicKeyHash::fromCbor);
         CborObject.CborList ownedList = (CborObject.CborList) map.values.get(new CborObject.CborString("owned"));
-        Set<PublicKeyHash> owned = ownedList.value.stream().map(PublicKeyHash::fromCbor).collect(Collectors.toSet());
+        Set<PublicKeyHash> owned = ownedList == null ?
+                Collections.emptySet() :
+                ownedList.value.stream().map(PublicKeyHash::fromCbor).collect(Collectors.toSet());
 
         CborObject.CborMap namedMap = (CborObject.CborMap) map.values.get(new CborObject.CborString("named"));
         Map<String, PublicKeyHash> named = namedMap == null ?
