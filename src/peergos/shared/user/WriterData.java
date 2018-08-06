@@ -255,7 +255,8 @@ public class WriterData implements Cborable {
         publicData.ifPresent(rfp -> result.put("public", rfp.toCbor()));
         followRequestReceiver.ifPresent(boxer -> result.put("inbound", new CborObject.CborMerkleLink(boxer)));
         List<CborObject> ownedKeyStrings = ownedKeys.stream().map(CborObject.CborMerkleLink::new).collect(Collectors.toList());
-        result.put("owned", new CborObject.CborList(ownedKeyStrings));
+        if (! ownedKeyStrings.isEmpty())
+            result.put("owned", new CborObject.CborList(ownedKeyStrings));
         if (! namedOwnedKeys.isEmpty())
             result.put("named", new CborObject.CborMap(new TreeMap<>(namedOwnedKeys.entrySet()
                     .stream()
@@ -290,7 +291,9 @@ public class WriterData implements Cborable {
         Optional<FilePointer> publicData = extract.apply("public").map(FilePointer::fromCbor);
         Optional<PublicKeyHash> followRequestReceiver = extract.apply("inbound").map(PublicKeyHash::fromCbor);
         CborObject.CborList ownedList = (CborObject.CborList) map.values.get(new CborObject.CborString("owned"));
-        Set<PublicKeyHash> owned = ownedList.value.stream().map(PublicKeyHash::fromCbor).collect(Collectors.toSet());
+        Set<PublicKeyHash> owned = ownedList == null ?
+                Collections.emptySet() :
+                ownedList.value.stream().map(PublicKeyHash::fromCbor).collect(Collectors.toSet());
 
         CborObject.CborMap namedMap = (CborObject.CborMap) map.values.get(new CborObject.CborString("named"));
         Map<String, PublicKeyHash> named = namedMap == null ?
@@ -367,16 +370,11 @@ public class WriterData implements Cborable {
     }
 
     public static CompletableFuture<CommittedWriterData> getWriterData(PublicKeyHash controller,
-                                                                        MaybeMultihash hash,
-                                                                        ContentAddressedStorage dht) {
+                                                                       MaybeMultihash hash,
+                                                                       ContentAddressedStorage dht) {
         if (!hash.isPresent())
             return CompletableFuture.completedFuture(new CommittedWriterData(MaybeMultihash.empty(), WriterData.createEmpty(controller)));
-        return dht.get(hash.get())
-                .thenApply(cborOpt -> {
-                    if (! cborOpt.isPresent())
-                        throw new IllegalStateException("Couldn't retrieve WriterData from dht! " + hash);
-                    return new CommittedWriterData(hash, WriterData.fromCbor(cborOpt.get(), null));
-                });
+        return getWriterData(hash.get(), dht);
     }
 
     public static CompletableFuture<CommittedWriterData> getWriterData(PublicKeyHash controller,
@@ -386,12 +384,16 @@ public class WriterData implements Cborable {
                 .thenCompose(opt -> {
                     if (! opt.isPresent())
                         throw new IllegalStateException("No root pointer present for controller " + controller);
-                    return dht.get(opt.get())
-                            .thenApply(cborOpt -> {
-                                if (!cborOpt.isPresent())
-                                    throw new IllegalStateException("Couldn't retrieve WriterData from dht! " + opt);
-                                return new CommittedWriterData(opt, WriterData.fromCbor(cborOpt.get(), null));
-                            });
+                    return getWriterData(opt.get(), dht);
+                });
+    }
+
+    public static CompletableFuture<CommittedWriterData> getWriterData(Multihash hash, ContentAddressedStorage dht) {
+        return dht.get(hash)
+                .thenApply(cborOpt -> {
+                    if (! cborOpt.isPresent())
+                        throw new IllegalStateException("Couldn't retrieve WriterData from dht! " + hash);
+                    return new CommittedWriterData(MaybeMultihash.of(hash), WriterData.fromCbor(cborOpt.get(), null));
                 });
     }
 }
