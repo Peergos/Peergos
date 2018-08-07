@@ -3,6 +3,10 @@ import java.util.logging.*;
 
 import jsinterop.annotations.*;
 import peergos.client.*;
+import peergos.server.corenode.*;
+import peergos.server.mutable.*;
+import peergos.server.social.*;
+import peergos.server.storage.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
@@ -252,5 +256,18 @@ public class NetworkAccess {
             Multihash casKeyHash = mutable.getPointerTarget(keyHash, dhtClient).get().get();
             dhtClient.recursivePin(casKeyHash).get();
         }
+    }
+
+    public static NetworkAccess nonWriteThrough(NetworkAccess source) {
+        NonWriteThroughStorage storage = new NonWriteThroughStorage(source.dhtClient);
+        NonWriteThroughMutablePointers mutable = new NonWriteThroughMutablePointers(source.mutable, storage);
+        return new NetworkAccess(
+                new NonWriteThroughCoreNode(source.coreNode, storage),
+                new NonWriteThroughSocialNetwork(source.social, storage),
+                storage,
+                mutable,
+                new MutableTreeImpl(mutable, storage),
+                source.usernames,
+                source.isJavascript);
     }
 }
