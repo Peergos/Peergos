@@ -257,17 +257,4 @@ public class NetworkAccess {
             dhtClient.recursivePin(casKeyHash).get();
         }
     }
-
-    public static NetworkAccess nonWriteThrough(NetworkAccess source) {
-        NonWriteThroughStorage storage = new NonWriteThroughStorage(source.dhtClient);
-        NonWriteThroughMutablePointers mutable = new NonWriteThroughMutablePointers(source.mutable, storage);
-        return new NetworkAccess(
-                new NonWriteThroughCoreNode(source.coreNode, storage),
-                new NonWriteThroughSocialNetwork(source.social, storage),
-                storage,
-                mutable,
-                new MutableTreeImpl(mutable, storage),
-                source.usernames,
-                source.isJavascript);
-    }
 }
