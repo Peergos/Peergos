@@ -49,13 +49,8 @@ public class IpfsCoreNode implements CoreNode {
         this.ipfs = ipfs;
         this.mutable = mutable;
         this.peergosIdentity = peergosIdentity;
-        byte[] signature = pkiKeys.secretSigningKey.signatureOnly(pkiKeys.publicSigningKey.serialize());
-        try {
-            PublicKeyHash pkiPublicHash = this.ipfs.putSigningKey(signature, peergosIdentity, pkiKeys.publicSigningKey).get();
-            this.signer = new SigningPrivateKeyAndPublicHash(pkiPublicHash, pkiKeys.secretSigningKey);
-        } catch (Exception e) {
-            throw new RuntimeException(e.getMessage(), e);
-        }
+        PublicKeyHash pkiPublicHash = ContentAddressedStorage.hashKey(pkiKeys.publicSigningKey);
+        this.signer = new SigningPrivateKeyAndPublicHash(pkiPublicHash, pkiKeys.secretSigningKey);
         this.update(currentRoot);
     }
 
