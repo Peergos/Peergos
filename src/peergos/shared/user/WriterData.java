@@ -363,6 +363,7 @@ public class WriterData implements Cborable {
                     .thenCompose(x -> getWriterData(writer, x, dht)).get();
 
             res.addAll(subspaceDescriptor.props.ownedKeys);
+            res.addAll(subspaceDescriptor.props.namedOwnedKeys.values());
         } catch (Exception e) {
             e.printStackTrace();
         }
