@@ -48,6 +48,7 @@ public class FileProperties implements Cborable {
     }
 
     @Override
+    @SuppressWarnings("unusable-by-js")
     public CborObject toCbor() {
         return new CborObject.CborList(Arrays.asList(
                 new CborObject.CborString(name),
@@ -59,6 +60,7 @@ public class FileProperties implements Cborable {
         ));
     }
 
+    @SuppressWarnings("unusable-by-js")
     public static FileProperties fromCbor(CborObject cbor) {
         List<? extends Cborable> elements = ((CborObject.CborList) cbor).value;
         String name = ((CborObject.CborString)elements.get(0)).value;

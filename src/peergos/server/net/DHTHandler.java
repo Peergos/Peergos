@@ -89,7 +89,7 @@ public class DHTHandler implements HttpHandler {
                     // against the core node)
                     Supplier<PublicSigningKey> fromDht = () -> {
                         try {
-                            return PublicSigningKey.fromCbor(dht.get(writerHash.hash).get().get());
+                            return PublicSigningKey.fromCbor(dht.get(writerHash.multihash).get().get());
                         } catch (Exception e) {
                             throw new RuntimeException(e);
                         }

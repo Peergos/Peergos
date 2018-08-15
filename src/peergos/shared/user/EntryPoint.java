@@ -29,6 +29,7 @@ public class EntryPoint implements Cborable{
         this.writers = writers;
     }
 
+    @SuppressWarnings("unusable-by-js")
     public byte[] serializeAndEncrypt(BoxingKeyPair user, PublicBoxingKey target) throws IOException {
         return target.encryptMessageFor(this.serialize(), user.secretBoxingKey);
     }
@@ -60,6 +61,7 @@ public class EntryPoint implements Cborable{
     }
 
     @Override
+    @SuppressWarnings("unusable-by-js")
     public CborObject toCbor() {
         return new CborObject.CborList(Arrays.asList(
                 pointer.toCbor(),

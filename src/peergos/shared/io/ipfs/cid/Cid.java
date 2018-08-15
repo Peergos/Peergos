@@ -50,7 +50,7 @@ public class Cid extends Multihash {
     public final Codec codec;
 
     public Cid(long version, Codec codec, Multihash hash) {
-        super(hash);
+        super(hash.type, hash.hash);
         this.version = version;
         this.codec = codec;
     }
@@ -147,7 +147,7 @@ public class Cid extends Multihash {
 
     public static Cid cast(byte[] data) {
         if (data.length == 34 && data[0] == 18 && data[1] == 32)
-            return buildCidV0(new Multihash(data));
+            return buildCidV0(Multihash.create(data));
 
         InputStream in = new ByteArrayInputStream(data);
         try {

@@ -198,7 +198,7 @@ public class UserContext {
 
                                             CommittedWriterData notCommitted = new CommittedWriterData(MaybeMultihash.empty(), newUserData);
                                             UserContext context = new UserContext(username, signer, userWithRoot.getBoxingPair(),
-                                                    network, crypto, CompletableFuture.completedFuture(notCommitted), new TrieNode());
+                                                    network, crypto, CompletableFuture.completedFuture(notCommitted), TrieNode.create());
 
                                             LOG.info("Creating user's root directory");
                                             long t1 = System.currentTimeMillis();
@@ -241,7 +241,7 @@ public class UserContext {
         WriterData empty = WriterData.createEmpty(entryPoint.location.owner, Optional.empty(), null);
         CommittedWriterData committed = new CommittedWriterData(MaybeMultihash.empty(), empty);
         CompletableFuture<CommittedWriterData> userData = CompletableFuture.completedFuture(committed);
-        UserContext context = new UserContext(null, null, null, network.clear(), crypto, userData, new TrieNode());
+        UserContext context = new UserContext(null, null, null, network.clear(), crypto, userData, TrieNode.create());
         return context.addEntryPoint(null, context.entrie, entry, network).thenApply(trieNode -> {
             context.entrie = trieNode;
             return context;
@@ -1039,7 +1039,7 @@ public class UserContext {
      * @return TrieNode for root of filesystem containing only our files
      */
     private static CompletableFuture<TrieNode> createOurFileTreeOnly(String ourName, WriterData userData, NetworkAccess network) {
-        TrieNode root = new TrieNode();
+        TrieNode root = TrieNode.create();
         if (! userData.staticData.isPresent())
             throw new IllegalStateException("Cannot retrieve file tree for a filesystem without entrypoints!");
         List<EntryPoint> ourFileSystemEntries = userData.staticData.get()

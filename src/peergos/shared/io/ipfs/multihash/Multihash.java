@@ -1,11 +1,15 @@
 package peergos.shared.io.ipfs.multihash;
 
+import jsinterop.annotations.JsConstructor;
+import jsinterop.annotations.JsType;
 import peergos.shared.io.ipfs.multibase.*;
 
 import java.io.*;
 import java.util.*;
 
+@JsType
 public class Multihash {
+    @JsType
     public enum Type {
         sha1(0x11, 20),
         sha2_256(0x12, 32),
@@ -35,8 +39,9 @@ public class Multihash {
     }
 
     public final Type type;
-    private final byte[] hash;
+    public final byte[] hash;
 
+    @JsConstructor
     public Multihash(Type type, byte[] hash) {
         if (hash.length > 127)
             throw new IllegalStateException("Unsupported hash size: "+hash.length);
@@ -46,12 +51,8 @@ public class Multihash {
         this.hash = hash;
     }
 
-    public Multihash(Multihash toClone) {
-        this(toClone.type, toClone.hash); // N.B. despite being a byte[], hash is immutable
-    }
-
-    public Multihash(byte[] multihash) {
-        this(Type.lookup(multihash[0] & 0xff), Arrays.copyOfRange(multihash, 2, multihash.length));
+    public static Multihash create(byte[] multihash) {
+        return new Multihash(Type.lookup(multihash[0] & 0xff), Arrays.copyOfRange(multihash, 2, multihash.length));
     }
 
     public byte[] toBytes() {
@@ -66,10 +67,12 @@ public class Multihash {
         return Arrays.copyOfRange(hash, 0, hash.length);
     }
 
+    @SuppressWarnings("unusable-by-js")
     public void serialize(DataOutput dout) throws IOException {
         dout.write(toBytes());
     }
 
+    @SuppressWarnings("unusable-by-js")
     public static Multihash deserialize(DataInput din) throws IOException {
         int type = din.readUnsignedByte();
         int len = din.readUnsignedByte();
@@ -101,6 +104,6 @@ public class Multihash {
     }
 
     public static Multihash fromBase58(String base58) {
-        return new Multihash(Base58.decode(base58));
+        return Multihash.create(Base58.decode(base58));
     }
 }
