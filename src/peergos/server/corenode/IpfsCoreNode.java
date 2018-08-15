@@ -66,56 +66,71 @@ public class IpfsCoreNode implements CoreNode {
      * @param newRoot The root of the new champ
      */
     private synchronized void update(MaybeMultihash newRoot) {
-        Consumer<Triple<ByteArrayWrapper, MaybeMultihash, MaybeMultihash>> consumer =
-                triple -> {
-                    ByteArrayWrapper key = triple.left;
-                    MaybeMultihash oldValue = triple.middle;
-                    MaybeMultihash newValue = triple.right;
-                    try {
-                        Optional<CborObject> cborOpt = ipfs.get(newValue.get()).get();
-                        if (!cborOpt.isPresent()) {
-                            LOG.severe("Couldn't retrieve new claim chain from " + newValue);
-                            return;
-                        }
+        updateAllMappings(signer.publicKeyHash, currentRoot, newRoot, ipfs, chains, reverseLookup, usernames);
+        this.currentRoot = newRoot;
+    }
 
-                        String username = new String(key.data);
-                        List<UserPublicKeyLink> updatedChain = ((CborObject.CborList) cborOpt.get()).value.stream()
-                                .map(UserPublicKeyLink::fromCbor)
-                                .collect(Collectors.toList());
-
-                        if (oldValue.isPresent()) {
-                            Optional<CborObject> existingCborOpt = ipfs.get(oldValue.get()).get();
-                            if (!existingCborOpt.isPresent()) {
-                                LOG.severe("Couldn't retrieve existing claim chain from " + newValue);
-                                return;
-                            }
-                            List<UserPublicKeyLink> existingChain = ((CborObject.CborList) existingCborOpt.get()).value.stream()
-                                .map(UserPublicKeyLink::fromCbor)
-                                .collect(Collectors.toList());
-                            // Check legality
-                            UserPublicKeyLink.merge(existingChain, updatedChain, ipfs).get();
-                        }
-                        PublicKeyHash owner = updatedChain.get(updatedChain.size() - 1).owner;
-
-                        reverseLookup.put(owner, username);
-                        chains.put(username, updatedChain);
-                        if (! oldValue.isPresent()) {
-                            // This is a new user
-                            usernames.add(username);
-                        }
-                    } catch (Exception e) {
-                        LOG.log(Level.WARNING, e.getMessage(), e);
-                    }
-                };
+    public static void updateAllMappings(PublicKeyHash pkiSigner,
+                                         MaybeMultihash currentChampRoot,
+                                         MaybeMultihash newChampRoot,
+                                         ContentAddressedStorage ipfs,
+                                         Map<String, List<UserPublicKeyLink>> chains,
+                                         Map<PublicKeyHash, String> reverseLookup,
+                                         List<String> usernames) {
         try {
-            CommittedWriterData current = WriterData.getWriterData(signer.publicKeyHash, currentRoot, ipfs).get();
-            CommittedWriterData updated = WriterData.getWriterData(signer.publicKeyHash, newRoot, ipfs).get();
+            CommittedWriterData current = WriterData.getWriterData(pkiSigner, currentChampRoot, ipfs).get();
+            CommittedWriterData updated = WriterData.getWriterData(pkiSigner, newChampRoot, ipfs).get();
             MaybeMultihash currentTree = current.props.tree.map(MaybeMultihash::of).orElseGet(MaybeMultihash::empty);
             MaybeMultihash updatedTree = updated.props.tree.map(MaybeMultihash::of).orElseGet(MaybeMultihash::empty);
+            Consumer<Triple<ByteArrayWrapper, MaybeMultihash, MaybeMultihash>> consumer =
+                    t -> updateMapping(t.left, t.middle, t.right, ipfs, chains, reverseLookup, usernames);
             Champ.applyToDiff(currentTree, updatedTree, consumer, ipfs).get();
-            this.currentRoot = newRoot;
         } catch (Exception e) {
             throw new RuntimeException(e.getMessage(), e);
+        }
+    }
+
+    public static void updateMapping(ByteArrayWrapper key,
+                                     MaybeMultihash oldValue,
+                                     MaybeMultihash newValue,
+                                     ContentAddressedStorage ipfs,
+                                     Map<String, List<UserPublicKeyLink>> chains,
+                                     Map<PublicKeyHash, String> reverseLookup,
+                                     List<String> usernames) {
+        try {
+            Optional<CborObject> cborOpt = ipfs.get(newValue.get()).get();
+            if (!cborOpt.isPresent()) {
+                LOG.severe("Couldn't retrieve new claim chain from " + newValue);
+                return;
+            }
+
+            String username = new String(key.data);
+            List<UserPublicKeyLink> updatedChain = ((CborObject.CborList) cborOpt.get()).value.stream()
+                    .map(UserPublicKeyLink::fromCbor)
+                    .collect(Collectors.toList());
+
+            if (oldValue.isPresent()) {
+                Optional<CborObject> existingCborOpt = ipfs.get(oldValue.get()).get();
+                if (!existingCborOpt.isPresent()) {
+                    LOG.severe("Couldn't retrieve existing claim chain from " + newValue);
+                    return;
+                }
+                List<UserPublicKeyLink> existingChain = ((CborObject.CborList) existingCborOpt.get()).value.stream()
+                        .map(UserPublicKeyLink::fromCbor)
+                        .collect(Collectors.toList());
+                // Check legality
+                UserPublicKeyLink.merge(existingChain, updatedChain, ipfs).get();
+            }
+            PublicKeyHash owner = updatedChain.get(updatedChain.size() - 1).owner;
+
+            reverseLookup.put(owner, username);
+            chains.put(username, updatedChain);
+            if (! oldValue.isPresent()) {
+                // This is a new user
+                usernames.add(username);
+            }
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, e.getMessage(), e);
         }
     }
 
