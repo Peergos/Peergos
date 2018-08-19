@@ -19,6 +19,11 @@ public class NonWriteThroughStorage implements ContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<Multihash> id() {
+        return source.id();
+    }
+
+    @Override
     public CompletableFuture<List<Multihash>> put(PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
         return modifications.put(writer, signatures, blocks);
     }

@@ -1,7 +1,6 @@
 package peergos.server.storage;
 
 import peergos.shared.cbor.*;
-import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multiaddr.MultiAddress;
 import peergos.shared.io.ipfs.multihash.Multihash;
@@ -27,6 +26,18 @@ public class IpfsDHT implements ContentAddressedStorage {
 
     public IpfsDHT() {
         this(new IPFS(new MultiAddress("/ip4/127.0.0.1/tcp/5001")));
+    }
+
+    @Override
+    public CompletableFuture<Multihash> id() {
+        CompletableFuture<Multihash> res = new CompletableFuture<>();
+        try {
+            Map id = ipfs.id();
+            res.complete(Multihash.fromBase58((String)id.get("ID")));
+        } catch (Exception e) {
+            res.completeExceptionally(e);
+        }
+        return res;
     }
 
     @Override

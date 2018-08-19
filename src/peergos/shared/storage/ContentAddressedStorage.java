@@ -37,6 +37,12 @@ public interface ContentAddressedStorage {
                 .thenApply(hashes -> hashes.get(0));
     }
 
+    /**
+     *
+     * @return The identity (hash of the public key) of the storage node we are talking to
+     */
+    CompletableFuture<Multihash> id();
+
     CompletableFuture<List<Multihash>> put(PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks);
 
     CompletableFuture<Optional<CborObject>> get(Multihash object);
@@ -163,6 +169,12 @@ public interface ContentAddressedStorage {
             } catch (UnsupportedEncodingException e) {
                 throw new RuntimeException(e);
             }
+        }
+
+        @Override
+        public CompletableFuture<Multihash> id() {
+            return poster.get(apiPrefix + "id")
+                    .thenApply(raw -> Multihash.fromBase58((String)((Map)JSONParser.parse(new String(raw))).get("ID")));
         }
 
         @Override

@@ -179,6 +179,13 @@ public class DHTHandler implements HttpHandler {
                     }).exceptionally(Futures::logError);
                     break;
                 }
+                case "id": {
+                    dht.id().thenAccept(id -> {
+                        Object json = wrapHash("ID", id);
+                        replyJson(httpExchange, JSONParser.toString(json), Optional.empty());
+                    }).exceptionally(Futures::logError);
+                    break;
+                }
                 default: {
                     httpExchange.sendResponseHeaders(404, 0);
                 }
