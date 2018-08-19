@@ -429,8 +429,8 @@ public class IPFS {
         return retrieveMap("ping/" + target.toString());
     }
 
-    public Map id(String target) throws IOException {
-        return retrieveMap("id/" + target.toString());
+    public Map id() throws IOException {
+        return retrieveMap("id");
     }
 
     public class Stats {

@@ -21,6 +21,11 @@ public class RAMStorage implements ContentAddressedStorage {
     private final Set<Multihash> pinnedRoots = new HashSet<>();
 
     @Override
+    public CompletableFuture<Multihash> id() {
+        return CompletableFuture.completedFuture(new Multihash(Multihash.Type.sha2_256, new byte[32]));
+    }
+
+    @Override
     public CompletableFuture<List<Multihash>> put(PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
         return put(writer, blocks, false);
     }
