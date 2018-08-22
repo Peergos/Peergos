@@ -1,7 +1,9 @@
 package peergos.shared.crypto.random;
 
+import jsinterop.annotations.JsType;
 import peergos.shared.crypto.*;
 
+@JsType
 public interface SafeRandom {
 
     void randombytes(byte[] b, int offset, int len);
