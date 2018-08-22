@@ -13,7 +13,7 @@ public class PublicKeyHash extends Multihash implements Cborable {
     public final Multihash multihash;
 
     public PublicKeyHash(Multihash multihash) {
-        super(multihash.type, multihash.hash);
+        super(multihash.type, multihash.getHash());
         if (! isSafe(multihash))
             throw new IllegalStateException("Must use a safe hash for a public key!");
         this.multihash = multihash;

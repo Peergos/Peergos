@@ -25,7 +25,7 @@ public class TrieNode {
         this.pathMappings = Collections.unmodifiableMap(pathMappings);
     }
 
-    public static TrieNode create() {
+    public static TrieNode empty() {
         return new TrieNode(Collections.emptyMap(), Optional.empty(), Collections.emptyMap());
     }
 
@@ -94,7 +94,7 @@ public class TrieNode {
             return new TrieNode(children, Optional.of(e), pathMappings);
         }
         String[] elements = path.split("/");
-        TrieNode existing = children.getOrDefault(elements[0], TrieNode.create());
+        TrieNode existing = children.getOrDefault(elements[0], TrieNode.empty());
         TrieNode newChild = existing.put(path.substring(elements[0].length()), e);
 
         HashMap<String, TrieNode> newChildren = new HashMap<>(children);
@@ -115,7 +115,7 @@ public class TrieNode {
             return new TrieNode(children, Optional.empty(), pathMappings);
         }
         String[] elements = path.split("/");
-        TrieNode existing = children.getOrDefault(elements[0], TrieNode.create());
+        TrieNode existing = children.getOrDefault(elements[0], TrieNode.empty());
         TrieNode newChild = existing.removeEntry(path.substring(elements[0].length()));
 
         HashMap<String, TrieNode> newChildren = new HashMap<>(children);
@@ -145,6 +145,6 @@ public class TrieNode {
     }
 
     public TrieNode clear() {
-        return TrieNode.create();
+        return TrieNode.empty();
     }
 }

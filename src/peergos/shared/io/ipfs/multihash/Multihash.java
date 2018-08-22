@@ -39,7 +39,7 @@ public class Multihash {
     }
 
     public final Type type;
-    public final byte[] hash;
+    private final byte[] hash;
 
     @JsConstructor
     public Multihash(Type type, byte[] hash) {
@@ -51,7 +51,7 @@ public class Multihash {
         this.hash = hash;
     }
 
-    public static Multihash create(byte[] multihash) {
+    public static Multihash decode(byte[] multihash) {
         return new Multihash(Type.lookup(multihash[0] & 0xff), Arrays.copyOfRange(multihash, 2, multihash.length));
     }
 
@@ -104,6 +104,6 @@ public class Multihash {
     }
 
     public static Multihash fromBase58(String base58) {
-        return Multihash.create(Base58.decode(base58));
+        return Multihash.decode(Base58.decode(base58));
     }
 }
