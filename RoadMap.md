@@ -14,23 +14,12 @@ Centralized Alpha
  - &#10004; Whitelist of users that can write to this server
  - &#10004; Blacklist of users that can't be read from this server (illegal content guard)
  
-Self-hostable storage
+Decentralized writes + Self-hostable storage
 ------------
- - Dynamically pin all of a users files (for each user in the write whitelist)
- - Tor hidden service which IPFS connects through
- - Connections to core node go through Tor
- - Consider using I2P or Freenet as Tor alternatives (ensure low switching cost in architecture)
-
-Decentralized writes
-------------
- - Change MutablePointers to use authenticated pub-sub in IPFS
- - Move to CRDTs for filesystem and btree
-
-Full decentralization
-------------
- - Move core node's PKI data to append only log in IPFS
- - Zk-SNARKs for follow requests? https://blog.ethereum.org/2016/12/05/zksnarks-in-a-nutshell/
- - Each user designates a Tor hidden service (publicly in the WriterData) to send follow requests to them to
+ - Each user stores an ipfs node id (cid) in their PKI which is the server responsible for storing their data
+ - Implement MutablePointers and SocialNetwork in terms of ipfs p2p stream
+ - Mirror core node PKI on every node for private friend lookups
+ - Implement cornode in terms of ipfs p2p stream to allow self hosting in ipfs itself
 
 Keymail
 ------------
@@ -55,6 +44,7 @@ Fully Quantum proof
  - Move asymmetric crypto (follow requests and signing roots) to a post-quantum algorithm
  - http://sphincs.cr.yp.to/software.html
  - https://www.win.tue.nl/~tchou/mcbits/
+  - Zk-SNARKs for follow requests? https://blog.ethereum.org/2016/12/05/zksnarks-in-a-nutshell/
 
 Sustainable
 ------------

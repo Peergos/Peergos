@@ -1,4 +1,5 @@
 package peergos.server.net;
+import java.util.logging.*;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
@@ -15,8 +16,9 @@ import java.util.*;
 import java.util.function.*;
 import java.util.stream.*;
 
-public class DHTHandler implements HttpHandler
-{
+public class DHTHandler implements HttpHandler {
+	private static final Logger LOG = Logger.getGlobal();
+
     private static final boolean LOGGING = true;
     private final ContentAddressedStorage dht;
     private final BiFunction<PublicKeyHash, Integer, Boolean> keyFilter;
@@ -87,7 +89,7 @@ public class DHTHandler implements HttpHandler
                     // against the core node)
                     Supplier<PublicSigningKey> fromDht = () -> {
                         try {
-                            return PublicSigningKey.fromCbor(dht.get(writerHash.hash).get().get());
+                            return PublicSigningKey.fromCbor(dht.get(writerHash.multihash).get().get());
                         } catch (Exception e) {
                             throw new RuntimeException(e);
                         }
@@ -95,7 +97,7 @@ public class DHTHandler implements HttpHandler
                     Supplier<PublicSigningKey> inBandOrDht = () -> {
                         try {
                             PublicSigningKey candidateKey = PublicSigningKey.fromByteArray(data.get(0));
-                            PublicKeyHash calculatedHash = dht.hashKey(candidateKey);
+                            PublicKeyHash calculatedHash = ContentAddressedStorage.hashKey(candidateKey);
                             if (calculatedHash.equals(writerHash)) {
                                 candidateKey.unsignMessage(ArrayOps.concat(signatures.get(0), data.get(0)));
                                 return candidateKey;
@@ -177,19 +179,26 @@ public class DHTHandler implements HttpHandler
                     }).exceptionally(Futures::logError);
                     break;
                 }
+                case "id": {
+                    dht.id().thenAccept(id -> {
+                        Object json = wrapHash("ID", id);
+                        replyJson(httpExchange, JSONParser.toString(json), Optional.empty());
+                    }).exceptionally(Futures::logError);
+                    break;
+                }
                 default: {
                     httpExchange.sendResponseHeaders(404, 0);
                 }
             }
         } catch (Exception e) {
-            System.err.println("Error handling " +httpExchange.getRequestURI());
-            e.printStackTrace();
+            LOG.severe("Error handling " +httpExchange.getRequestURI());
+            LOG.log(Level.WARNING, e.getMessage(), e);
             replyError(httpExchange, e);
         } finally {
             httpExchange.close();
             long t2 = System.currentTimeMillis();
             if (LOGGING)
-                System.out.println("DHT Handler handled " + path + " query in: " + (t2 - t1) + " mS");
+                LOG.info("DHT Handler handled " + path + " query in: " + (t2 - t1) + " mS");
         }
     }
 
@@ -206,10 +215,10 @@ public class DHTHandler implements HttpHandler
     private static void replyError(HttpExchange exchange, Throwable t) {
         try {
             exchange.getResponseHeaders().set("Trailer", t.getMessage());
-            exchange.sendResponseHeaders(400, 0);
+            exchange.sendResponseHeaders(400, -1);
         } catch (IOException e)
         {
-            e.printStackTrace();
+            LOG.log(Level.WARNING, e.getMessage(), e);
         }
     }
 
@@ -219,14 +228,15 @@ public class DHTHandler implements HttpHandler
                 exchange.getResponseHeaders().set("Cache-Control", "public, max-age=31622400 immutable");
                 exchange.getResponseHeaders().set("ETag", "\"" + key.get().toString() + "\"");
             }
-            exchange.sendResponseHeaders(200, 0);
+            byte[] raw = json.getBytes();
+            exchange.sendResponseHeaders(200, raw.length);
             DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());
-            dout.write(json.getBytes());
+            dout.write(raw);
             dout.flush();
             dout.close();
         } catch (IOException e)
         {
-            e.printStackTrace();
+            LOG.log(Level.WARNING, e.getMessage(), e);
         }
     }
 
@@ -236,14 +246,14 @@ public class DHTHandler implements HttpHandler
                 exchange.getResponseHeaders().set("Cache-Control", "public, max-age=31622400 immutable");
                 exchange.getResponseHeaders().set("ETag", "\"" + key.get().toString() + "\"");
             }
-            exchange.sendResponseHeaders(200, 0);
+            exchange.sendResponseHeaders(200, body.length);
             DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());
             dout.write(body);
             dout.flush();
             dout.close();
         } catch (IOException e)
         {
-            e.printStackTrace();
+            LOG.log(Level.WARNING, e.getMessage(), e);
         }
     }
 }

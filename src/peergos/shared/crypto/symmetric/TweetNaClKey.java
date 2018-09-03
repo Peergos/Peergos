@@ -117,7 +117,7 @@ public class TweetNaClKey implements SymmetricKey
                 new CborObject.CborBoolean(isDirty)));
     }
 
-    public static TweetNaClKey fromCbor(CborObject cbor, Salsa20Poly1305 provider, SafeRandom random) {
+    public static TweetNaClKey fromCbor(Cborable cbor, Salsa20Poly1305 provider, SafeRandom random) {
         if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Invalid cbor for PublicBoxingKey! " + cbor);
         CborObject.CborByteArray secretKey = (CborObject.CborByteArray) ((CborObject.CborList) cbor).value.get(1);

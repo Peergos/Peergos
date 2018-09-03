@@ -1,11 +1,15 @@
 package peergos.server;
+import java.util.logging.Logger;
+import java.util.logging.Level;
 
 import com.sun.net.httpserver.*;
 import peergos.server.corenode.*;
 import peergos.server.mutable.*;
+import peergos.server.social.*;
 import peergos.server.storage.*;
 import peergos.shared.corenode.*;
 import peergos.shared.mutable.*;
+import peergos.shared.social.*;
 import peergos.shared.storage.ContentAddressedStorage;
 
 import peergos.server.net.*;
@@ -21,8 +25,9 @@ import java.util.concurrent.*;
 import java.util.function.*;
 import java.util.logging.Logger;
 
-public class UserService
-{
+public class UserService {
+	private static final Logger LOG = Logger.getGlobal();
+
     public static final String DHT_URL = "/api/v0/";
     public static final String SIGNUP_URL = "/signup/";
     public static final String ACTIVATION_URL = "/activation/";
@@ -33,7 +38,7 @@ public class UserService
 
     static {
         // disable weak algorithms
-        System.out.println("\nInitial security properties:");
+        LOG.info("\nInitial security properties:");
         printSecurityProperties();
 
         // The ECDH and RSA ket exchange algorithms are disabled because they don't provide forward secrecy
@@ -51,29 +56,37 @@ public class UserService
                 "RC4, MD2, MD4, MD5, SHA1, DSA, RSA keySize < 2048, EC keySize < 160");
         Security.setProperty("jdk.tls.rejectClientInitializedRenegotiation", "true");
 
-        System.out.println("\nUpdated security properties:");
+        LOG.info("\nUpdated security properties:");
         printSecurityProperties();
 
         Security.setProperty("jdk.tls.ephemeralDHKeySize", "2048");
     }
 
     static void printSecurityProperties() {
-        System.out.println("jdk.tls.disabledAlgorithms: " + Security.getProperty("jdk.tls.disabledAlgorithms"));
-        System.out.println("jdk.certpath.disabledAlgorithms: " + Security.getProperty("jdk.certpath.disabledAlgorithms"));
-        System.out.println("jdk.tls.rejectClientInitializedRenegotiation: "+Security.getProperty("jdk.tls.rejectClientInitializedRenegotiation"));
+        LOG.info("jdk.tls.disabledAlgorithms: " + Security.getProperty("jdk.tls.disabledAlgorithms"));
+        LOG.info("jdk.certpath.disabledAlgorithms: " + Security.getProperty("jdk.certpath.disabledAlgorithms"));
+        LOG.info("jdk.tls.rejectClientInitializedRenegotiation: "+Security.getProperty("jdk.tls.rejectClientInitializedRenegotiation"));
     }
 
     private final Logger LOGGER;
     private final InetSocketAddress local;
     private final CoreNode coreNode;
+    private final SocialNetwork social;
     private final MutablePointers mutable;
     private HttpServer server;
 
-    public UserService(InetSocketAddress local, Logger LOGGER, ContentAddressedStorage dht, CoreNode coreNode, MutablePointers mutable, Args args) throws IOException
+    public UserService(InetSocketAddress local,
+                       Logger LOGGER,
+                       ContentAddressedStorage dht,
+                       CoreNode coreNode,
+                       SocialNetwork social,
+                       MutablePointers mutable,
+                       Args args) throws IOException
     {
         this.LOGGER = LOGGER;
         this.local = local;
         this.coreNode = coreNode;
+        this.social = social;
         this.mutable = mutable;
         init(dht, args);
     }
@@ -87,16 +100,16 @@ public class UserService
                 httpServer.bind(new InetSocketAddress(InetAddress.getByName("::"), 80), CONNECTION_BACKLOG);
                 httpServer.start();
             } catch (Exception e) {
-                e.printStackTrace();
-                System.out.println("Couldn't start http redirect to https for user server!");
+                LOG.log(Level.WARNING, e.getMessage(), e);
+                LOG.info("Couldn't start http redirect to https for user server!");
             }
-        System.out.println("Starting user API server at: " + local.getHostName() + ":" + local.getPort());
+        LOG.info("Starting user API server at: " + local.getHostName() + ":" + local.getPort());
 
         if (isLocal) {
-            System.out.println("Starting user server on localhost:"+local.getPort()+" only.");
+            LOG.info("Starting user server on localhost:"+local.getPort()+" only.");
             server = HttpServer.create(local, CONNECTION_BACKLOG);
         } else if (args.hasArg("publicserver")) {
-            System.out.println("Starting user server on all interfaces.");
+            LOG.info("Starting user server on all interfaces.");
             server = HttpsServer.create(new InetSocketAddress(InetAddress.getByName("::"), local.getPort()), CONNECTION_BACKLOG);
         } else
             server = HttpsServer.create(local, CONNECTION_BACKLOG);
@@ -140,7 +153,7 @@ public class UserService
                             SSLParameters defaultSSLParameters = c.getDefaultSSLParameters();
                             params.setSSLParameters(defaultSSLParameters);
                         } catch (Exception ex) {
-                            System.err.println("Failed to create HTTPS port");
+                            LOG.severe("Failed to create HTTPS port");
                             ex.printStackTrace(System.err);
                         }
                     }
@@ -150,7 +163,7 @@ public class UserService
                     NoSuchProviderException | SignatureException |
                     UnrecoverableKeyException | KeyManagementException ex)
             {
-                System.err.println("Failed to create HTTPS port");
+                LOG.severe("Failed to create HTTPS port");
                 ex.printStackTrace(System.err);
                 return false;
             }
@@ -159,7 +172,7 @@ public class UserService
         Function<HttpHandler, HttpHandler> wrap = h -> !isLocal ? new HSTSHandler(h) : h;
 
         long defaultQuota = args.getLong("default-quota");
-        System.out.println("Using default user space quota of " + defaultQuota);
+        LOG.info("Using default user space quota of " + defaultQuota);
         Path quotaFilePath = Paths.get("quotas.txt");
         UserQuotas userQuotas = new UserQuotas(quotaFilePath, defaultQuota);
         SpaceCheckingKeyFilter spaceChecker = new SpaceCheckingKeyFilter(coreNode, mutable, dht, userQuotas::quota);
@@ -172,6 +185,9 @@ public class UserService
         server.createContext("/" + HttpCoreNodeServer.CORE_URL,
                 wrap.apply(new HttpCoreNodeServer.CoreNodeHandler(corenodePropagator)));
 
+        server.createContext("/" + HttpSocialNetworkServer.SOCIAL_URL,
+                wrap.apply(new HttpSocialNetworkServer.SocialHandler(this.social)));
+
         MutableEventPropagator mutablePropagator = new MutableEventPropagator(this.mutable);
         mutablePropagator.addListener(spaceChecker::accept);
         server.createContext("/" + HttpMutablePointerServer.MUTABLE_POINTERS_URL,
@@ -182,20 +198,20 @@ public class UserService
         server.createContext(ACTIVATION_URL,
                 wrap.apply(new InverseProxyHandler("demo.peergos.net", isLocal)));
 
-        //define  web-root static-handler
+        //define web-root static-handler
         StaticHandler handler;
         try {
             String webroot = args.getArg("webroot");
-            System.out.println("Using webroot from local file system: " + webroot);
+            LOG.info("Using webroot from local file system: " + webroot);
             handler = new FileHandler(Paths.get(webroot), true);
         } catch (IllegalStateException ile) {
-            System.out.println("Using webroot from jar");
+            LOG.info("Using webroot from jar");
             handler = new JarHandler(true, Paths.get("webroot"));
         }
 
         boolean webcache = args.getBoolean("webcache", true);
         if (webcache) {
-            System.out.println("Caching web-resources");
+            LOG.info("Caching web-resources");
             handler = handler.withCache();
         }
 

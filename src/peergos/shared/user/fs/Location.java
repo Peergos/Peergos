@@ -50,10 +50,10 @@ public class Location implements Cborable {
         return fromCbor(CborObject.fromByteArray(raw));
     }
 
-    public static Location fromCbor(CborObject cbor) {
+    public static Location fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Incorrect cbor for Location: " + cbor);
-        List<CborObject> values = ((CborObject.CborList) cbor).value;
+        List<? extends Cborable> values = ((CborObject.CborList) cbor).value;
         return new Location(
                 PublicKeyHash.fromCbor(values.get(0)),
                 PublicKeyHash.fromCbor(values.get(1)),

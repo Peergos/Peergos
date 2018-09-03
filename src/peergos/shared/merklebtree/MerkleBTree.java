@@ -4,13 +4,15 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.ContentAddressedStorage;
+import peergos.shared.user.*;
 import peergos.shared.util.*;
 
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.*;
 
-public class MerkleBTree
+public class MerkleBTree implements ImmutableTree
 {
     public static final int MAX_NODE_CHILDREN = 16;
     public final ContentAddressedStorage storage;
@@ -70,7 +72,7 @@ public class MerkleBTree
      * @return hash of new tree root
      * @throws IOException
      */
-    public CompletableFuture<Multihash> delete(SigningPrivateKeyAndPublicHash writer, byte[] rawKey, MaybeMultihash existing) {
+    public CompletableFuture<Multihash> remove(SigningPrivateKeyAndPublicHash writer, byte[] rawKey, MaybeMultihash existing) {
         return root.delete(writer, new ByteArrayWrapper(rawKey), existing, storage, maxChildren)
                 .thenCompose(newRoot -> commit(writer, newRoot));
     }
@@ -94,6 +96,16 @@ public class MerkleBTree
      */
     public CompletableFuture<Integer> size() {
         return root.size(storage);
+    }
+
+    /**
+     *
+     * @return true
+     * @throws IOException
+     */
+    public <T> CompletableFuture<T> applyToAllMappings(T identity,
+                                                       BiFunction<T, Pair<ByteArrayWrapper, MaybeMultihash>, CompletableFuture<T>> consumer) {
+        return root.applyToAllMappings(identity, consumer, storage);
     }
 
     public void print(PrintStream w) throws Exception {

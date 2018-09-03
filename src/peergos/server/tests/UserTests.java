@@ -1,11 +1,10 @@
 package peergos.server.tests;
+import java.util.logging.*;
 
 import org.junit.*;
 import static org.junit.Assert.*;
 
-import org.junit.runner.*;
-import org.junit.runners.*;
-import peergos.server.storage.ResetableFileInputStream;
+import peergos.server.storage.*;
 import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
@@ -17,9 +16,9 @@ import peergos.server.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
+import peergos.shared.util.Exceptions;
 
 import java.io.*;
-import java.lang.reflect.*;
 import java.net.*;
 import java.nio.file.*;
 import java.util.*;
@@ -27,6 +26,7 @@ import java.util.concurrent.*;
 import java.util.stream.*;
 
 public abstract class UserTests {
+	private static final Logger LOG = Logger.getGlobal();
 
     public static int RANDOM_SEED = 666;
     private final NetworkAccess network;
@@ -36,24 +36,20 @@ public abstract class UserTests {
 
     public UserTests(String useIPFS, Random r) throws Exception {
         int portMin = 9000;
-        int portRange = 4000;
+        int portRange = 8000;
         int webPort = portMin + r.nextInt(portRange);
         int corePort = portMin + portRange + r.nextInt(portRange);
-        Args args = Args.parse(new String[]{"useIPFS", ""+useIPFS.equals("IPFS"), "-port", Integer.toString(webPort), "-corenodePort", Integer.toString(corePort)});
+        int socialPort = portMin + portRange + r.nextInt(portRange);
+
+        Args args = Args.parse(new String[]{
+                "useIPFS", ""+useIPFS.equals("IPFS"),
+                "-port", Integer.toString(webPort),
+                "-corenodePort", Integer.toString(corePort),
+                "-socialnodePort", Integer.toString(socialPort)
+        });
+
         Start.LOCAL.main(args);
         this.network = NetworkAccess.buildJava(new URL("http://localhost:" + webPort)).get();
-        // use insecure random otherwise tests take ages
-        setFinalStatic(TweetNaCl.class.getDeclaredField("prng"), new Random(1));
-    }
-
-    static void setFinalStatic(Field field, Object newValue) throws Exception {
-        field.setAccessible(true);
-
-        Field modifiersField = Field.class.getDeclaredField("modifiers");
-        modifiersField.setAccessible(true);
-        modifiersField.setInt(field, field.getModifiers() & ~Modifier.FINAL);
-
-        field.set(null, newValue);
     }
 
     private String generateUsername() {
@@ -86,17 +82,17 @@ public abstract class UserTests {
         String username = generateUsername();
         String password = "letmein";
         Crypto crypto = Crypto.initJava();
-        List<ScryptEd25519Curve25519> params = Arrays.asList(
-                new ScryptEd25519Curve25519(17, 8, 1, 96),
-                new ScryptEd25519Curve25519(18, 8, 1, 96),
-                new ScryptEd25519Curve25519(19, 8, 1, 96),
-                new ScryptEd25519Curve25519(17, 9, 1, 96)
+        List<ScryptGenerator> params = Arrays.asList(
+                new ScryptGenerator(17, 8, 1, 96),
+                new ScryptGenerator(18, 8, 1, 96),
+                new ScryptGenerator(19, 8, 1, 96),
+                new ScryptGenerator(17, 9, 1, 96)
         );
-        for (ScryptEd25519Curve25519 p: params) {
+        for (ScryptGenerator p: params) {
             long t1 = System.currentTimeMillis();
             UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer, p).get();
             long t2 = System.currentTimeMillis();
-            System.out.println("User gen took " + (t2 - t1) + " mS");
+            LOG.info("User gen took " + (t2 - t1) + " mS");
             System.gc();
         }
     }
@@ -107,7 +103,7 @@ public abstract class UserTests {
         String password = "test01";
 
         UserUtil.generateUser(username, password, new ScryptJava(), new Salsa20Poly1305.Java(),
-                new SafeRandom.Java(), new Ed25519.Java(), new Curve25519.Java(), UserGenerationAlgorithm.getDefault()).thenAccept(userWithRoot -> {
+                new SafeRandom.Java(), new Ed25519.Java(), new Curve25519.Java(), SecretGenerationAlgorithm.getDefault()).thenAccept(userWithRoot -> {
 		    PublicSigningKey expected = PublicSigningKey.fromString("7HvEWP6yd1UD8rOorfFrieJ8S7yC8+l3VisV9kXNiHmI7Eav7+3GTRSVBRCymItrzebUUoCi39M6rdgeOU9sXXFD");
 		    if (! expected.equals(userWithRoot.getUser().publicSigningKey))
 		        throw new IllegalStateException("Generated user different from the Javascript! \n"+userWithRoot.getUser().publicSigningKey + " != \n"+expected);
@@ -144,6 +140,17 @@ public abstract class UserTests {
     }
 
     @Test
+    public void repeatedSignUp() throws Exception {
+        UserContext.ensureSignedUp("q", "q", network, crypto).get();
+        try {
+            UserContext.signUp("q", "q", network, crypto).get();
+        } catch (Exception e) {
+            if (!Exceptions.getRootCause(e).getMessage().contains("User already exists"))
+                Assert.fail("Incorrect error message");
+        }
+    }
+
+    @Test
     public void changePassword() throws Exception {
         String username = generateUsername();
         String password = "password";
@@ -174,8 +181,8 @@ public abstract class UserTests {
         String username = generateUsername();
         String password = "password";
         UserContext userContext = ensureSignedUp(username, password, network, crypto);
-        UserGenerationAlgorithm algo = userContext.getKeyGenAlgorithm().get();
-        ScryptEd25519Curve25519 newAlgo = new ScryptEd25519Curve25519(19, 8, 1, 96);
+        SecretGenerationAlgorithm algo = userContext.getKeyGenAlgorithm().get();
+        ScryptGenerator newAlgo = new ScryptGenerator(19, 8, 1, 96);
         userContext.changePassword(password, password, algo, newAlgo).get();
         ensureSignedUp(username, password, network, crypto);
     }
@@ -276,7 +283,7 @@ public abstract class UserTests {
                                 data.length, context.network, context.crypto.random, l -> {}, context.fragmenter()).get();
                         Optional<FileTreeNode> childOpt = result.getChild(filename, network).get();
                         checkFileContents(data, childOpt.get(), context);
-                        System.out.println("Finished a file");
+                        LOG.info("Finished a file");
                         return true;
                     } catch (Exception e) {
                         throw new RuntimeException(e.getMessage(), e);
@@ -417,9 +424,11 @@ public abstract class UserTests {
         FileTreeNode userRoot = context.getUserRoot().get();
 
         String filename = "small.txt";
-        byte[] data = new byte[10];
+        byte[] data = "G'day mate".getBytes();
         userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
                 context.crypto.random, l -> {}, context.fragmenter()).get();
+        String mimeType = context.getByPath(Paths.get(username, filename).toString()).get().get().getFileProperties().mimeType;
+        Assert.assertTrue("Incorrect mimetype: " + mimeType, mimeType.equals("text/plain"));
     }
 
     @Test
@@ -431,6 +440,23 @@ public abstract class UserTests {
 
         String filename = "small.png";
         byte[] data = Files.readAllBytes(Paths.get("assets", "logo.png"));
+        userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
+                context.crypto.random, l -> {}, context.fragmenter()).get();
+        FileTreeNode file = context.getByPath(Paths.get(username, filename).toString()).get().get();
+        String thumbnail = file.getBase64Thumbnail();
+        Assert.assertTrue("Has thumbnail", thumbnail.length() > 0);
+    }
+
+    @Ignore // until we figure out how to manage javafx in tests
+    @Test
+    public void javaVideoThumbnail() throws Exception {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = ensureSignedUp(username, password, network, crypto);
+        FileTreeNode userRoot = context.getUserRoot().get();
+
+        String filename = "trailer.mp4";
+        byte[] data = Files.readAllBytes(Paths.get("assets", filename));
         userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
                 context.crypto.random, l -> {}, context.fragmenter()).get();
         FileTreeNode file = context.getByPath(Paths.get(username, filename).toString()).get().get();
@@ -462,7 +488,7 @@ public abstract class UserTests {
                 context.network).get().get().getFileProperties().size);
 
         // insert data in the middle of second chunk
-        System.out.println("\n***** Mid 2nd chunk write test");
+        LOG.info("\n***** Mid 2nd chunk write test");
         byte[] dataInsert = "some data to insert somewhere else".getBytes();
         int start = 5*1024*1024 + 4*1024;
         FileTreeNode userRoot4 = userRoot3.uploadFileSection(filename, new AsyncReader.ArrayBacked(dataInsert), start, start + dataInsert.length,
@@ -496,7 +522,7 @@ public abstract class UserTests {
         updatedRoot.uploadFileSection(filename, new AsyncReader.ArrayBacked(data5), 0, data5.length,
                 context.network, context.crypto.random, l -> {}, context.fragmenter()).get();
         long t2 = System.currentTimeMillis();
-        System.out.println("Write time per chunk " + (t2-t1)/2 + "mS");
+        LOG.info("Write time per chunk " + (t2-t1)/2 + "mS");
         Assert.assertTrue("Timely write", (t2-t1)/2 < 20000);
     }
 
@@ -608,7 +634,7 @@ public abstract class UserTests {
         for (int i = 0; i < nReads; i++) {
             long pos = i * readLength;
             long len = Math.min(readLength , expected.length - pos);
-            System.out.println("Reading from "+ pos +" to "+ (pos + len) +" with total "+ expected.length);
+            LOG.info("Reading from "+ pos +" to "+ (pos + len) +" with total "+ expected.length);
             byte[] retrievedData = Serialize.readFully(
                     in,
                     len).get();
@@ -816,8 +842,6 @@ public abstract class UserTests {
         }
 
     }
-
-
 
     public static String randomString() {
         return UUID.randomUUID().toString();

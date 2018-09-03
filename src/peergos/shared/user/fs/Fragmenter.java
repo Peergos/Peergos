@@ -1,11 +1,13 @@
 package peergos.shared.user.fs;
 
+import jsinterop.annotations.JsType;
 import peergos.shared.cbor.*;
 
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+@JsType
 public interface Fragmenter extends Cborable {
 
     /** The amount of extra space required by this fragmenter compared to the original file
@@ -18,11 +20,12 @@ public interface Fragmenter extends Cborable {
 
     byte[] recombine(byte[][] encoded, int inputLength);
 
-    static Fragmenter fromCbor(CborObject cbor) {
+    @SuppressWarnings("unusable-by-js")
+    static Fragmenter fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Incorrect cbor for Fragmenter: " + cbor);
 
-        SortedMap<CborObject, CborObject> values = ((CborObject.CborMap) cbor).values;
+        SortedMap<CborObject, ? extends Cborable> values = ((CborObject.CborMap) cbor).values;
 
         long t = ((CborObject.CborLong) values.get(new CborObject.CborString("t"))).value;
         Type type = Type.ofVal((int) t);

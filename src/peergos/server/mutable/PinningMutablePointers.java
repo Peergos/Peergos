@@ -1,4 +1,5 @@
 package peergos.server.mutable;
+import java.util.logging.*;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
@@ -14,6 +15,7 @@ import java.util.concurrent.*;
 import java.util.stream.*;
 
 public class PinningMutablePointers implements MutablePointers {
+	private static final Logger LOG = Logger.getGlobal();
     private static final boolean LOGGING = true;
     private final MutablePointers target;
     private final ContentAddressedStorage storage;
@@ -40,7 +42,7 @@ public class PinningMutablePointers implements MutablePointers {
                 }
                 long t2 = System.currentTimeMillis();
                 if (LOGGING)
-                    System.out.println("Btree:Pin update " + cas.updated + " took: " + (t2 - t1) + " mS");
+                    LOG.info("Tree:Pin update " + cas.updated + " took: " + (t2 - t1) + " mS");
                 return target.setPointer(owner, signerHash, sharingKeySignedBtreeRootHashes)
                         .thenCompose(b -> {
                             if (!b) {
@@ -56,7 +58,7 @@ public class PinningMutablePointers implements MutablePointers {
                                             .thenApply(unpins -> {
                                                 long t4 = System.currentTimeMillis();
                                                 if (LOGGING)
-                                                    System.out.println("Unpinning " + cas.original + " took: " + (t4 - t3) + " mS");
+                                                    LOG.info("Unpinning " + cas.original + " took: " + (t4 - t3) + " mS");
                                                 return unpins.contains(cas.original.get());
                                             });
                         });

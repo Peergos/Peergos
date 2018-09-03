@@ -36,6 +36,11 @@ public class HashVerifyingStorage implements ContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<Multihash> id() {
+        return source.id();
+    }
+
+    @Override
     public CompletableFuture<List<Multihash>> put(PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
         return source.put(writer, signatures, blocks)
                 .thenApply(hashes -> hashes.stream()

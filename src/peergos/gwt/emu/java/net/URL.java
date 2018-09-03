@@ -21,6 +21,10 @@ public class URL {
     	return null;
     }
     
+    public URLConnection openConnection(Proxy proxy) throws java.io.IOException {
+    	return null;
+    }
+
     public final InputStream openStream() throws java.io.IOException {
     	return null;
     }

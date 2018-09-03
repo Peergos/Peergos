@@ -1,4 +1,5 @@
 package peergos.server;
+import java.util.logging.*;
 
 import peergos.server.corenode.*;
 import peergos.server.mutable.*;
@@ -9,7 +10,9 @@ import peergos.shared.merklebtree.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
+import peergos.shared.util.*;
 
+import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
@@ -18,7 +21,7 @@ import java.util.function.*;
  *
  */
 public class SpaceCheckingKeyFilter {
-
+    private static final Logger LOG = Logger.getGlobal();
     private final CoreNode core;
     private final MutablePointers mutable;
     private final ContentAddressedStorage dht;
@@ -112,12 +115,33 @@ public class SpaceCheckingKeyFilter {
     private void loadAllOwners() {
         try {
             List<String> usernames = core.getUsernames("").get();
-            for (String username : usernames) {
-                Optional<PublicKeyHash> publicKeyHash = core.getPublicKeyHash(username).get();
-                publicKeyHash.ifPresent(keyHash -> processCorenodeEvent(username, keyHash));
+            if (usernames.size() == 0)
+                return;
+            int threads = Math.min(usernames.size(), 1000);
+            ExecutorService pool = Executors.newFixedThreadPool(threads);
+            int usersPerThread = (usernames.size() + usernames.size() - 1)/ threads;
+            long t1 = System.currentTimeMillis();
+            List<Future<Boolean>> progress = new ArrayList<>();
+            for (int t=0; t < threads; t++) {
+                List<String> ourUsernames = usernames.subList(t * usersPerThread, Math.min((t + 1) * usersPerThread, usernames.size()));
+                progress.add(pool.submit(() -> {
+                    for (String username : ourUsernames) {
+                        LOG.info(LocalDateTime.now() + " Loading " + username);
+                        Optional<PublicKeyHash> publicKeyHash = core.getPublicKeyHash(username).get();
+                        publicKeyHash.ifPresent(keyHash -> processCorenodeEvent(username, keyHash));
+                        LOG.info(LocalDateTime.now() + " finished loading " + username);
+                    }
+                    return true;
+                }));
             }
+            for (Future<Boolean> future : progress) {
+                future.get();
+            }
+            long t2 = System.currentTimeMillis();
+            pool.shutdown();
+            LOG.info(LocalDateTime.now() + " Finished loading space usage for all usernames in " + (t2 - t1)/1000 + " s");
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.log(Level.WARNING, e.getMessage(), e);
         }
     }
 
@@ -144,8 +168,8 @@ public class SpaceCheckingKeyFilter {
                 processCorenodeEvent(username, childKey);
             }
         } catch (Throwable e) {
-            System.err.println("Error loading storage for user: " + username);
-            e.printStackTrace();
+            LOG.severe("Error loading storage for user: " + username);
+            Exceptions.getRootCause(e).printStackTrace();
         }
     }
 
@@ -156,7 +180,7 @@ public class SpaceCheckingKeyFilter {
                             .unsignMessage(event.writerSignedBtreeRootHash)))).get();
             processMutablePointerEvent(event.writer, hashCasPair.original, hashCasPair.updated);
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.log(Level.WARNING, e.getMessage(), e);
         }
     }
 
@@ -174,7 +198,7 @@ public class SpaceCheckingKeyFilter {
                     Set<PublicKeyHash> updatedOwned = WriterData.getWriterData(writer, newRoot, dht).get().props.ownedKeys;
                     processRemovedOwnedKeys(updatedOwned);
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    LOG.log(Level.WARNING, e.getMessage(), e);
                 }
             }
             return;
@@ -196,7 +220,7 @@ public class SpaceCheckingKeyFilter {
                 current.update(newRoot, updatedOwned, current.directRetainedStorage + changeInStorage);
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            Exceptions.getRootCause(e).printStackTrace();
         }
     }
 
@@ -206,7 +230,7 @@ public class SpaceCheckingKeyFilter {
                 MaybeMultihash currentTarget = mutable.getPointerTarget(ownedKey, dht).get();
                 processMutablePointerEvent(ownedKey, currentTarget, MaybeMultihash.empty());
             } catch (Exception e) {
-                e.printStackTrace();
+                LOG.log(Level.WARNING, e.getMessage(), e);
             }
         }
     }

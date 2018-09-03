@@ -58,7 +58,7 @@ public class SigningKeyPair implements Cborable
         if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Incorrect cbor for SigningKeyPair: " + cbor);
 
-        List<CborObject> values = ((CborObject.CborList) cbor).value;
+        List<? extends Cborable> values = ((CborObject.CborList) cbor).value;
         PublicSigningKey pub = PublicSigningKey.fromCbor(values.get(0));
         SecretSigningKey secret = SecretSigningKey.fromCbor(values.get(1));
         return new SigningKeyPair(pub, secret);

@@ -1,4 +1,5 @@
 package peergos.server.tests.slow;
+import java.util.logging.*;
 
 import org.junit.*;
 import peergos.server.*;
@@ -18,6 +19,7 @@ import java.util.stream.*;
 import static org.junit.Assert.*;
 
 public class IpfsStressTest {
+	private static final Logger LOG = Logger.getGlobal();
 
     private final NetworkAccess network;
     private final Crypto crypto = Crypto.initJava();
@@ -33,22 +35,10 @@ public class IpfsStressTest {
         Args args = Args.parse(new String[]{"useIPFS", "true", "-port", Integer.toString(webPort), "-corenodePort", Integer.toString(corePort)});
         Start.LOCAL.main(args);
         this.network = NetworkAccess.buildJava(new URL("http://localhost:" + webPort)).get();
-        // use insecure random otherwise tests take ages
-        setFinalStatic(TweetNaCl.class.getDeclaredField("prng"), new Random(1));
     }
 
     public static void main(String[] args) throws Exception {
         new IpfsStressTest(new Random(0)).stressTest();
-    }
-
-    static void setFinalStatic(Field field, Object newValue) throws Exception {
-        field.setAccessible(true);
-
-        Field modifiersField = Field.class.getDeclaredField("modifiers");
-        modifiersField.setAccessible(true);
-        modifiersField.setInt(field, field.getModifiers() & ~Modifier.FINAL);
-
-        field.set(null, newValue);
     }
 
     private String generateUsername() {
@@ -66,10 +56,10 @@ public class IpfsStressTest {
         UserContext context = ensureSignedUp(username, password, network, crypto);
 
         // first generate a random file tree
-        System.out.println("Building file tree...");
+        LOG.info("Building file tree...");
         int depth = 4;
         int filesAndFolders = generateFileTree(context, Paths.get(username), random, depth);
-        System.out.println("Built file tree with " + filesAndFolders + " files/dirs to depth " + depth);
+        LOG.info("Built file tree with " + filesAndFolders + " files/dirs to depth " + depth);
     }
 
     public static int generateFileTree(UserContext context, Path root, Random rnd, int maxDepth) throws Exception {
@@ -131,7 +121,7 @@ public class IpfsStressTest {
         for (int i = 0; i < nReads; i++) {
             long pos = i * readLength;
             long len = Math.min(readLength , expected.length - pos);
-            System.out.println("Reading from "+ pos +" to "+ (pos + len) +" with total "+ expected.length);
+            LOG.info("Reading from "+ pos +" to "+ (pos + len) +" with total "+ expected.length);
             byte[] retrievedData = Serialize.readFully(
                     in,
                     len).get();

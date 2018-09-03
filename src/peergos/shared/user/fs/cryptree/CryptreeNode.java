@@ -67,7 +67,7 @@ public interface CryptreeNode extends Cborable {
         if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Incorrect cbor for FileAccess: " + cbor);
 
-        List<CborObject> value = ((CborObject.CborList) cbor).value;
+        List<? extends Cborable> value = ((CborObject.CborList) cbor).value;
         int versionAndType = (int) ((CborObject.CborLong) value.get(0)).value;
         boolean isFile = (versionAndType & 1) != 0;
         if (isFile)

@@ -1,14 +1,10 @@
 package peergos.server.corenode;
+import java.util.logging.*;
 
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
-import peergos.shared.crypto.asymmetric.*;
-import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.io.ipfs.multihash.*;
-import peergos.shared.merklebtree.*;
-import peergos.shared.mutable.*;
-import peergos.shared.storage.*;
+import peergos.shared.social.*;
 import peergos.shared.util.*;
 
 import java.io.*;
@@ -19,6 +15,7 @@ import java.util.concurrent.*;
 import java.util.stream.*;
 
 public class JDBCCoreNode {
+	private static final Logger LOG = Logger.getGlobal();
     public static final boolean LOGGING = false;
 
     public static final long MIN_USERNAME_SET_REFRESH_PERIOD = 60*1000000000L;
@@ -102,7 +99,7 @@ public class JDBCCoreNode {
                 stmt.executeUpdate();
                 return true;
             } catch (SQLException sqe) {
-                sqe.printStackTrace();
+                LOG.log(Level.WARNING, sqe.getMessage(), sqe);
                 return false;
             } finally {
                 if (stmt != null)
@@ -131,7 +128,7 @@ public class JDBCCoreNode {
                 }
                 return list.toArray(new RowData[0]);
             } catch (SQLException sqe) {
-                sqe.printStackTrace();
+                LOG.log(Level.WARNING, sqe.getMessage(), sqe);
                 return null;
             }finally {
                 if (stmt != null)
@@ -154,8 +151,8 @@ public class JDBCCoreNode {
                 stmt.executeUpdate(deleteStatement());
                 return true;
             } catch (SQLException sqe) {
-                System.err.println(deleteStatement());
-                sqe.printStackTrace();
+                LOG.severe(deleteStatement());
+                LOG.log(Level.WARNING, sqe.getMessage(), sqe);
                 return false;
             } finally {
                 if (stmt != null)
@@ -245,7 +242,7 @@ public class JDBCCoreNode {
                 stmt.executeUpdate();
                 return true;
             } catch (SQLException sqe) {
-                sqe.printStackTrace();
+                LOG.log(Level.WARNING, sqe.getMessage(), sqe);
                 return false;
             } finally {
                 if (stmt != null)
@@ -270,7 +267,7 @@ public class JDBCCoreNode {
                 stmt.executeUpdate();
                 return true;
             } catch (SQLException sqe) {
-                sqe.printStackTrace();
+                LOG.log(Level.WARNING, sqe.getMessage(), sqe);
                 return false;
             } finally {
                 if (stmt != null)
@@ -312,8 +309,8 @@ public class JDBCCoreNode {
 
                 return list.toArray(new MetadataBlob[0]);
             } catch (SQLException sqe) {
-                System.err.println("Error selecting: "+selectString);
-                sqe.printStackTrace();
+                LOG.severe("Error selecting: "+selectString);
+                LOG.log(Level.WARNING, sqe.getMessage(), sqe);
                 return null;
             } finally {
                 if (stmt != null)
@@ -363,12 +360,12 @@ public class JDBCCoreNode {
             try
             {
                 Statement createStmt = conn.createStatement();
-                //System.out.println("Adding table "+ missingTable);
+                //LOG.info("Adding table "+ missingTable);
                 createStmt.executeUpdate(TABLES.get(missingTable));
                 createStmt.close();
 
             } catch ( Exception e ) {
-                System.err.println( e.getClass().getName() + ": " + e.getMessage() );
+                LOG.severe( e.getClass().getName() + ": " + e.getMessage() );
             }
         }
     }
@@ -577,7 +574,7 @@ public class JDBCCoreNode {
         byte[] dummy = null;
         FollowRequestData selector = new FollowRequestData(owner, dummy);
         RowData[] requests = selector.select();
-        if (requests != null && requests.length > CoreNode.MAX_PENDING_FOLLOWERS)
+        if (requests != null && requests.length > SocialNetwork.MAX_PENDING_FOLLOWERS)
             return CompletableFuture.completedFuture(false);
         // ToDo add a crypto currency transaction to prevent spam
 
@@ -606,7 +603,7 @@ public class JDBCCoreNode {
                 Serialize.serialize(req.data, dout);
             return CompletableFuture.completedFuture(bout.toByteArray());
         } catch (IOException e) {
-            e.printStackTrace();
+            LOG.log(Level.WARNING, e.getMessage(), e);
             return null;
         }
     }
@@ -635,7 +632,7 @@ public class JDBCCoreNode {
                 conn.close();
             isClosed = true;
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.log(Level.WARNING, e.getMessage(), e);
         }
     }
 
@@ -648,7 +645,7 @@ public class JDBCCoreNode {
             stmt.executeUpdate("delete from "+table+" where "+ deleteString +";");
             return true;
         } catch (SQLException sqe) {
-            sqe.printStackTrace();
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             return false;
         } finally {
             if (stmt != null)

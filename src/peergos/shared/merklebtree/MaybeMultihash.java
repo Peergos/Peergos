@@ -4,6 +4,9 @@ import peergos.shared.cbor.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.io.ipfs.cid.*;
 
+import java.util.*;
+import java.util.function.*;
+
 public class MaybeMultihash implements Cborable {
     private final Multihash hash;
 
@@ -13,6 +16,10 @@ public class MaybeMultihash implements Cborable {
 
     public boolean isPresent() {
         return hash != null;
+    }
+
+    public <T> Optional<T> map(Function<Multihash, T> func) {
+        return isPresent() ? Optional.of(func.apply(hash)) : Optional.empty();
     }
 
     public Multihash get() {
@@ -40,7 +47,7 @@ public class MaybeMultihash implements Cborable {
         return hash != null ? hash.hashCode() : 0;
     }
 
-    public static MaybeMultihash fromCbor(CborObject cbor) {
+    public static MaybeMultihash fromCbor(Cborable cbor) {
         if (cbor instanceof CborObject.CborNull)
             return MaybeMultihash.empty();
 

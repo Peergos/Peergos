@@ -1,8 +1,8 @@
 package peergos.shared.merklebtree;
+import java.util.logging.*;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
-import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.ContentAddressedStorage;
 import peergos.shared.user.*;
@@ -15,6 +15,7 @@ import java.util.function.*;
 import java.util.stream.*;
 
 public class TreeNode implements Cborable {
+	private static final Logger LOG = Logger.getGlobal();
     public final MaybeMultihash hash;
     public final SortedSet<KeyElement> keys;
 
@@ -104,7 +105,7 @@ public class TreeNode implements Cborable {
             // ensure CAS, without allowing replacing a tombstone
             if (! nextSmallest.valueHash.equals(existing) && ! nextSmallest.valueHash.equals(MaybeMultihash.empty())) {
                 CompletableFuture<TreeNode> res = new CompletableFuture<>();
-                res.completeExceptionally(new Btree.CasException(nextSmallest.valueHash, existing));
+                res.completeExceptionally(new MutableTree.CasException(nextSmallest.valueHash, existing));
                 return res;
             }
             keys.remove(nextSmallest);
@@ -121,7 +122,7 @@ public class TreeNode implements Cborable {
                         .thenApply(multihash -> new TreeNode(this.keys, MaybeMultihash.of(multihash)));
             }
             // split into two and make new parent
-            System.out.println("Btree:Splitting");
+            LOG.info("Btree:Splitting");
             keys.add(new KeyElement(key, MaybeMultihash.of(value), MaybeMultihash.empty()));
             KeyElement[] tmp = new KeyElement[keys.size()];
             KeyElement median = keys.toArray(tmp)[keys.size()/2];
@@ -169,7 +170,7 @@ public class TreeNode implements Cborable {
                         keys.add(updated);
 
                         // now split
-                        System.out.println("Btree:Splitting");
+                        LOG.info("Btree:Splitting");
                         KeyElement[] tmp = new KeyElement[keys.size()];
                         KeyElement median = keys.toArray(tmp)[keys.size() / 2];
                         // commit left child
@@ -206,6 +207,22 @@ public class TreeNode implements Cborable {
                 CompletableFuture.completedFuture(total), (a, b) -> a + b);
     }
 
+    public <T> CompletableFuture<T> applyToAllMappings(T identity,
+                                                       BiFunction<T, Pair<ByteArrayWrapper, MaybeMultihash>, CompletableFuture<T>> consumer,
+                                                       ContentAddressedStorage storage) {
+        return Futures.reduceAll(keys, identity, (res, key) ->
+                (key.valueHash.isPresent() ?
+                        consumer.apply(res, new Pair<>(key.key, key.valueHash)) :
+                        CompletableFuture.completedFuture(res)
+                ).thenCompose(newRes ->
+                        key.targetHash.isPresent() ?
+                                storage.get(key.targetHash.get())
+                                        .thenApply(rawOpt -> TreeNode.fromCbor(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present! " + key.targetHash.get()))))
+                                        .thenCompose(child -> child.applyToAllMappings(newRes, consumer, storage)) :
+                                CompletableFuture.completedFuture(newRes)
+                ), (a, b) -> a);
+    }
+
     private KeyElement smallestNonZeroKey() {
         return keys.tailSet(new KeyElement(new ByteArrayWrapper(new byte[]{0}), MaybeMultihash.empty(), MaybeMultihash.empty())).first();
     }
@@ -236,7 +253,7 @@ public class TreeNode implements Cborable {
                 // CAS on existing value
                 if (! nextSmallest.valueHash.equals(existing)) {
                     CompletableFuture<TreeNode> res = new CompletableFuture<>();
-                    res.completeExceptionally(new Btree.CasException(nextSmallest.valueHash, existing));
+                    res.completeExceptionally(new MutableTree.CasException(nextSmallest.valueHash, existing));
                     return res;
                 }
                 keys.remove(nextSmallest);
@@ -299,7 +316,7 @@ public class TreeNode implements Cborable {
 
     private static CompletableFuture<TreeNode> rebalance(SigningPrivateKeyAndPublicHash writer, TreeNode parent, TreeNode child, Multihash originalChildHash,
                                                          ContentAddressedStorage storage, int maxChildren) {
-        System.out.println("Btree:rebalance");
+        LOG.info("Btree:rebalance");
         // child has too few children
         Multihash childHash = originalChildHash;
         KeyElement[] parentKeys = parent.keys.toArray(new KeyElement[parent.keys.size()]);
@@ -478,11 +495,11 @@ public class TreeNode implements Cborable {
             return CborObject.CborMap.build(cbor);
         }
 
-        public static KeyElement fromCbor(CborObject cbor) {
+        public static KeyElement fromCbor(Cborable cbor) {
             if (! (cbor instanceof CborObject.CborMap))
                 throw new IllegalStateException("Incorrect cbor for TreeNode$KeyElement: " + cbor);
 
-            SortedMap<CborObject, CborObject> values = ((CborObject.CborMap) cbor).values;
+            SortedMap<CborObject, ? extends Cborable> values = ((CborObject.CborMap) cbor).values;
 
             ByteArrayWrapper key = new ByteArrayWrapper(getOrDefault(values, "k", c -> ((CborObject.CborByteArray)c).value, () -> new byte[0]));
             MaybeMultihash value = getOrDefault(values, "v",
@@ -494,7 +511,7 @@ public class TreeNode implements Cborable {
             return new KeyElement(key, value, target);
         }
 
-        private static <T> T getOrDefault(SortedMap<CborObject, CborObject> values, String skey, Function<CborObject, T> converter, Supplier<T> def) {
+        private static <T> T getOrDefault(SortedMap<CborObject, ? extends Cborable> values, String skey, Function<Cborable, T> converter, Supplier<T> def) {
             CborObject.CborString key = new CborObject.CborString(skey);
             if (! values.containsKey(key))
                 return def.get();

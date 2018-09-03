@@ -21,6 +21,11 @@ public class RAMStorage implements ContentAddressedStorage {
     private final Set<Multihash> pinnedRoots = new HashSet<>();
 
     @Override
+    public CompletableFuture<Multihash> id() {
+        return CompletableFuture.completedFuture(new Multihash(Multihash.Type.sha2_256, new byte[32]));
+    }
+
+    @Override
     public CompletableFuture<List<Multihash>> put(PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
         return put(writer, blocks, false);
     }
@@ -45,7 +50,9 @@ public class RAMStorage implements ContentAddressedStorage {
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(Multihash object) {
-        return CompletableFuture.completedFuture(Optional.of(storage.getOrDefault(object, new byte[0])));
+        return CompletableFuture.completedFuture(storage.containsKey(object) ?
+                Optional.of(storage.get(object)) :
+                Optional.empty());
     }
 
     @Override
@@ -117,6 +124,35 @@ public class RAMStorage implements ContentAddressedStorage {
         {
             throw new IllegalStateException("couldn't find hash algorithm");
         }
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+
+        RAMStorage that = (RAMStorage) o;
+
+        for (Multihash ourKey : storage.keySet()) {
+            if (! Arrays.equals(storage.get(ourKey), ((RAMStorage) o).storage.get(ourKey)))
+                return false;
+        }
+        for (Multihash theirKey : ((RAMStorage) o).storage.keySet()) {
+            if (! Arrays.equals(storage.get(theirKey), ((RAMStorage) o).storage.get(theirKey)))
+                return false;
+        }
+        return pinnedRoots != null ? pinnedRoots.equals(that.pinnedRoots) : that.pinnedRoots == null;
+    }
+
+    @Override
+    public int hashCode() {
+        int result = storage != null ? storage.hashCode() : 0;
+        result = 31 * result + (pinnedRoots != null ? pinnedRoots.hashCode() : 0);
+        return result;
+    }
+
+    public int totalSize() {
+        return storage.values().stream().mapToInt(a -> a.length).sum();
     }
 
     private static RAMStorage singleton = new RAMStorage();

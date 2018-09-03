@@ -1,5 +1,6 @@
 
 package peergos.shared.mutable;
+import java.util.logging.*;
 
 import peergos.shared.crypto.hash.*;
 import peergos.shared.user.*;
@@ -10,8 +11,9 @@ import java.net.*;
 import java.util.*;
 import java.util.concurrent.*;
 
-public class HttpMutablePointers implements MutablePointers
-{
+public class HttpMutablePointers implements MutablePointers {
+	private static final Logger LOG = Logger.getGlobal();
+
     private static final boolean LOGGING = true;
     private final HttpPoster poster;
 
@@ -21,7 +23,7 @@ public class HttpMutablePointers implements MutablePointers
 
     public HttpMutablePointers(HttpPoster poster)
     {
-        System.out.println("Creating Http Mutable Pointers API at " + poster);
+        LOG.info("Creating Http Mutable Pointers API at " + poster);
         this.poster = poster;
     }
    
@@ -48,12 +50,12 @@ public class HttpMutablePointers implements MutablePointers
                 }
             });
         } catch (IOException ioe) {
-            ioe.printStackTrace();
+            LOG.log(Level.WARNING, ioe.getMessage(), ioe);
             return CompletableFuture.completedFuture(false);
         } finally {
             long t2 = System.currentTimeMillis();
             if (LOGGING)
-                System.out.println("HttpMutablePointers.set took " + (t2 -t1) + "mS");
+                LOG.info("HttpMutablePointers.set took " + (t2 -t1) + "mS");
         }
     }
 
@@ -65,12 +67,12 @@ public class HttpMutablePointers implements MutablePointers
             return poster.postUnzip("mutable/getPointer", writer.serialize())
                     .thenApply(meta -> meta.length == 0 ? Optional.empty() : Optional.of(meta));
         } catch (Exception ioe) {
-            ioe.printStackTrace();
+            LOG.log(Level.WARNING, ioe.getMessage(), ioe);
             return CompletableFuture.completedFuture(Optional.empty());
         } finally {
             long t2 = System.currentTimeMillis();
             if (LOGGING)
-                System.out.println("HttpMutablePointers.get took " + (t2 -t1) + "mS");
+                LOG.info("HttpMutablePointers.get took " + (t2 -t1) + "mS");
         }
     }
 }

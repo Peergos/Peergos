@@ -1,7 +1,9 @@
 package peergos.server.tests;
 
+import org.junit.*;
 import org.junit.runner.*;
 import org.junit.runners.*;
+import peergos.server.storage.*;
 
 import java.util.*;
 
@@ -10,6 +12,11 @@ public class RamUserTests extends UserTests {
 
     public RamUserTests(Random rnd) throws Exception {
         super("RAM", rnd);
+    }
+
+    @After
+    public void clearRamIpfs() {
+        RAMStorage.getSingleton().clear();
     }
 
     @Parameterized.Parameters()

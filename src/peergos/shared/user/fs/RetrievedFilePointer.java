@@ -3,7 +3,6 @@ package peergos.shared.user.fs;
 import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
-import peergos.shared.user.*;
 import peergos.shared.user.fs.cryptree.*;
 
 import java.util.*;
@@ -35,7 +34,7 @@ public class RetrievedFilePointer {
             return CompletableFuture.completedFuture(false);
         if (! fileAccess.isDirectory()) {
             CompletableFuture<Boolean> result = new CompletableFuture<>();
-            network.btree.remove(signer, this.filePointer.location.getMapKey(), fileAccess.committedHash()).thenAccept(removed -> {
+            network.tree.remove(signer, this.filePointer.location.getMapKey(), fileAccess.committedHash()).thenAccept(removed -> {
                 // remove from parent
                 if (parentRetrievedFilePointer != null)
                     ((DirAccess) parentRetrievedFilePointer.fileAccess).removeChild(this, parentRetrievedFilePointer.filePointer, signer, network);
@@ -47,7 +46,7 @@ public class RetrievedFilePointer {
             for (RetrievedFilePointer file : files)
                 file.remove(network, null, signer);
             CompletableFuture<Boolean> result = new CompletableFuture<>();
-            network.btree.remove(signer, this.filePointer.location.getMapKey(), fileAccess.committedHash()).thenAccept(removed -> {
+            network.tree.remove(signer, this.filePointer.location.getMapKey(), fileAccess.committedHash()).thenAccept(removed -> {
                 // remove from parent
                 if (parentRetrievedFilePointer != null)
                     ((DirAccess) parentRetrievedFilePointer.fileAccess).removeChild(this, parentRetrievedFilePointer.filePointer, signer, network);

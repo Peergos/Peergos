@@ -37,6 +37,12 @@ public interface ContentAddressedStorage {
                 .thenApply(hashes -> hashes.get(0));
     }
 
+    /**
+     *
+     * @return The identity (hash of the public key) of the storage node we are talking to
+     */
+    CompletableFuture<Multihash> id();
+
     CompletableFuture<List<Multihash>> put(PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks);
 
     CompletableFuture<Optional<CborObject>> get(Multihash object);
@@ -62,7 +68,7 @@ public interface ContentAddressedStorage {
                 .thenApply(PublicKeyHash::new);
     }
 
-    default PublicKeyHash hashKey(PublicSigningKey key) {
+    static PublicKeyHash hashKey(PublicSigningKey key) {
         return new PublicKeyHash(new Cid(1, Cid.Codec.DagCbor, new Multihash(
                             Multihash.Type.sha2_256,
                             Hash.sha256(key.serialize()))));
@@ -74,13 +80,13 @@ public interface ContentAddressedStorage {
     }
 
     default CompletableFuture<Optional<PublicSigningKey>> getSigningKey(PublicKeyHash hash) {
-        return get(hash.hash)
-                .thenApply(opt -> opt.map(PublicSigningKey::fromCbor));
+        return get(hash.multihash)
+                .thenApply(opt -> Optional.ofNullable(opt).orElse(Optional.empty()).map(PublicSigningKey::fromCbor));
     }
 
     default CompletableFuture<Optional<PublicBoxingKey>> getBoxingKey(PublicKeyHash hash) {
-        return get(hash.hash)
-                .thenApply(opt -> opt.map(PublicBoxingKey::fromCbor));
+        return get(hash.multihash)
+                .thenApply(opt -> Optional.ofNullable(opt).orElse(Optional.empty()).map(PublicBoxingKey::fromCbor));
     }
 
     default CompletableFuture<Long> getRecursiveBlockSize(Multihash block) {
@@ -96,7 +102,6 @@ public interface ContentAddressedStorage {
     }
 
     default CompletableFuture<Long> getChangeInContainedSize(MaybeMultihash original, Multihash updated) {
-        // TODO optimise cases which result from btree rebalancing or splitting
         if (! original.isPresent())
             return getRecursiveBlockSize(updated);
         return getChangeInContainedSize(original.get(), updated);
@@ -164,6 +169,12 @@ public interface ContentAddressedStorage {
             } catch (UnsupportedEncodingException e) {
                 throw new RuntimeException(e);
             }
+        }
+
+        @Override
+        public CompletableFuture<Multihash> id() {
+            return poster.get(apiPrefix + "id")
+                    .thenApply(raw -> Multihash.fromBase58((String)((Map)JSONParser.parse(new String(raw))).get("ID")));
         }
 
         @Override

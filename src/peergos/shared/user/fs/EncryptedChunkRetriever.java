@@ -156,11 +156,11 @@ public class EncryptedChunkRetriever implements FileRetriever {
         ));
     }
 
-    public static EncryptedChunkRetriever fromCbor(CborObject cbor) {
+    public static EncryptedChunkRetriever fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Incorrect cbor for EncryptedChunkRetriever: " + cbor);
 
-        List<CborObject> value = ((CborObject.CborList) cbor).value;
+        List<? extends Cborable> value = ((CborObject.CborList) cbor).value;
         byte[] chunkNonce = ((CborObject.CborByteArray)value.get(0)).value;
         byte[] chunkAuth = ((CborObject.CborByteArray)value.get(1)).value;
         List<Multihash> fragmentHashes = ((CborObject.CborList)value.get(2)).value

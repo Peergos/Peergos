@@ -101,7 +101,7 @@ public class MimeTypes {
     }
 
     private static boolean equalArrays(byte[] a, int aOffset, int[] target) {
-        if (a == null || target == null){
+        if (a == null || target == null || aOffset + target.length > a.length){
             return false;
         }
 

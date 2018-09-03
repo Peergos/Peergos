@@ -9,7 +9,6 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.util.*;
 
-
 public class BoxingKeyPair implements Cborable
 {
     public final PublicBoxingKey publicBoxingKey;
@@ -31,7 +30,7 @@ public class BoxingKeyPair implements Cborable
         if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Incorrect cbor for SigningKeyPair: " + cbor);
 
-        List<CborObject> values = ((CborObject.CborList) cbor).value;
+        List<? extends Cborable> values = ((CborObject.CborList) cbor).value;
         PublicBoxingKey pub = PublicBoxingKey.fromCbor(values.get(0));
         SecretBoxingKey secret = SecretBoxingKey.fromCbor(values.get(1));
         return new BoxingKeyPair(pub, secret);

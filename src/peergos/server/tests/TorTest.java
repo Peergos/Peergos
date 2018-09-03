@@ -1,44 +1,73 @@
 package peergos.server.tests;
+import java.util.logging.*;
 
-import org.junit.Test;
-import com.subgraph.orchid.*;
+import org.junit.*;
+import peergos.shared.util.*;
 
 import java.io.*;
 import java.net.*;
-import javax.net.*;
-import javax.net.ssl.*;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
 
 public class TorTest {
+	private static final Logger LOG = Logger.getGlobal();
 
-//    @Test
-    public void connect() throws IOException {
-        TorClient tor = new TorClient();
-        tor.start();
-        while (true)
-            try {
-                tor.waitUntilReady();
-                break;
-            } catch (InterruptedException e) {}
+    @Ignore
+    @Test
+    public void connectlToHiddenServiceNatively() throws Exception {
+//        boolean tor = true;
+        boolean tor = false;
+        boolean smallFile = true;
+        SocketAddress addr = tor ?
+                new InetSocketAddress("localhost", 9050) :
+                new InetSocketAddress("localhost", 4444);
+        Proxy proxy = tor ?
+                new Proxy(Proxy.Type.SOCKS, addr) :
+                new Proxy(Proxy.Type.HTTP, addr);
+        long t0 = System.currentTimeMillis();
 
-        SocketFactory sf = tor.getSocketFactory();
-
-        String websiteAddress = "www.google.com";
-        SSLSocketFactory ssl = (SSLSocketFactory)SSLSocketFactory.getDefault();
-
-        String file = "/";
-        Socket unsafeSocket = sf.createSocket(websiteAddress, 443);
-        Socket sslSocket = ssl.createSocket(unsafeSocket, websiteAddress, 443, false);
-        BufferedReader response = new BufferedReader(new InputStreamReader(sslSocket.getInputStream()));
-        OutputStreamWriter outWriter = new OutputStreamWriter(sslSocket.getOutputStream());
-        outWriter.write("GET " + file + " HTTP/1.0\r\n\n");
-        outWriter.flush();
-
-        StringBuilder b = new StringBuilder();
-        String line;
-        while ((line = response.readLine()) != null)
-            b.append(line + "\n");
-
-        String resp = b.toString();
-        System.out.println(resp);
+        int respSize = smallFile ?
+                128 * 1024 :
+                100 * 1024 * 1024;
+        int threads = 2;
+        AtomicLong requests = new AtomicLong(0);
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        List<Future> futs = new ArrayList<>();
+        for (int t=0; t < threads; t++)
+            futs.add(pool.submit(() -> {
+                List<String> files = smallFile ?
+                        Arrays.asList(
+                                "api/v0/block/get?stream-channels=true&arg=zb2rhZ2ME5SAUFnqe8b6sgkPnSAMBUruQBjayJo1p7kE7gdsc",
+                                "api/v0/block/get?stream-channels=true&arg=zb2rhfT1FuzXQodxCLYkR76mxnpm2xLtMrTJzYTWvoe9ARZ96"
+                                ) :
+                        Arrays.asList("big.tar.gz");
+                for (int i = 0; i < 10000; i++) {
+                    try {
+                        URL url = tor ?
+                                new URL("http://s2prds2oc2ujvnmm.onion/" + files.get(i % files.size())) :
+                                new URL("http://cpozng3fspyr7vg5i3ebqlncnzfn2lmxfkfkqbcyg52xnrs2vydq.b32.i2p/" + files.get(i % files.size()));
+                        HttpURLConnection conn = (HttpURLConnection) url.openConnection(proxy);
+                        conn.connect();
+                        InputStream in = conn.getInputStream();
+                        int size = conn.getContentLength();
+                        if (size < 0) {
+                            LOG.severe("negative body size!");
+                            continue;
+                        }
+                        byte[] bytes = Serialize.read(in, size);
+                        long now = System.currentTimeMillis();
+                        long reqs = requests.incrementAndGet();
+                        if (reqs % 1 == 0) {
+                            LOG.info("Average bandwidth: " + reqs * respSize * 1000/ (now - t0)/1024 + " kiB/S, Average " + reqs * 1000.0/ (now - t0) + " requests/s");
+                        }
+                    } catch (IOException e) {
+                        LOG.log(Level.WARNING, e.getMessage(), e);
+                    }
+                }
+            }));
+        for (Future fut : futs) {
+            fut.get();
+        }
     }
 }

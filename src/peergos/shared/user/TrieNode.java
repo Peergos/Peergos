@@ -1,5 +1,8 @@
 package peergos.shared.user;
+import java.util.logging.*;
 
+import jsinterop.annotations.JsConstructor;
+import jsinterop.annotations.JsType;
 import peergos.shared.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
@@ -8,23 +11,26 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
 
+@JsType
 public class TrieNode {
+	private static final Logger LOG = Logger.getGlobal();
     private final Map<String, TrieNode> children;
     private final Optional<EntryPoint> value;
     private final Map<String, String> pathMappings;
 
-    public TrieNode(Map<String, TrieNode> children, Optional<EntryPoint> value, Map<String, String> pathMappings) {
+    @JsConstructor
+    private TrieNode(Map<String, TrieNode> children, Optional<EntryPoint> value, Map<String, String> pathMappings) {
         this.children = Collections.unmodifiableMap(children);
         this.value = value;
         this.pathMappings = Collections.unmodifiableMap(pathMappings);
     }
 
-    public TrieNode() {
-        this(Collections.emptyMap(), Optional.empty(), Collections.emptyMap());
+    public static TrieNode empty() {
+        return new TrieNode(Collections.emptyMap(), Optional.empty(), Collections.emptyMap());
     }
 
     public CompletableFuture<Optional<FileTreeNode>> getByPath(String path, NetworkAccess network) {
-        System.out.println("GetByPath: " + path);
+        LOG.info("GetByPath: " + path);
         for (String prefix: pathMappings.keySet()) {
             if (path.startsWith(prefix)) {
                 path = pathMappings.get(prefix) + path.substring(prefix.length());
@@ -81,14 +87,14 @@ public class TrieNode {
     }
 
     public TrieNode put(String path, EntryPoint e) {
-        System.out.println("Entrie.put(" + path + ")");
+        LOG.info("Entrie.put(" + path + ")");
         if (path.startsWith("/"))
             path = path.substring(1);
         if (path.length() == 0) {
             return new TrieNode(children, Optional.of(e), pathMappings);
         }
         String[] elements = path.split("/");
-        TrieNode existing = children.getOrDefault(elements[0], new TrieNode());
+        TrieNode existing = children.getOrDefault(elements[0], TrieNode.empty());
         TrieNode newChild = existing.put(path.substring(elements[0].length()), e);
 
         HashMap<String, TrieNode> newChildren = new HashMap<>(children);
@@ -97,7 +103,7 @@ public class TrieNode {
     }
 
     public TrieNode removeEntry(String path) {
-        System.out.println("Entrie.rm(" + path + ")");
+        LOG.info("Entrie.rm(" + path + ")");
         for (String prefix: pathMappings.keySet()) {
             if (path.startsWith(prefix)) {
                 path = pathMappings.get(prefix) + path.substring(prefix.length());
@@ -109,7 +115,7 @@ public class TrieNode {
             return new TrieNode(children, Optional.empty(), pathMappings);
         }
         String[] elements = path.split("/");
-        TrieNode existing = children.getOrDefault(elements[0], new TrieNode());
+        TrieNode existing = children.getOrDefault(elements[0], TrieNode.empty());
         TrieNode newChild = existing.removeEntry(path.substring(elements[0].length()));
 
         HashMap<String, TrieNode> newChildren = new HashMap<>(children);
@@ -139,6 +145,6 @@ public class TrieNode {
     }
 
     public TrieNode clear() {
-        return new TrieNode();
+        return TrieNode.empty();
     }
 }

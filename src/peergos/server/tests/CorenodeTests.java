@@ -1,4 +1,5 @@
 package peergos.server.tests;
+import java.util.logging.*;
 
 import org.junit.*;
 import org.junit.runner.*;
@@ -11,6 +12,7 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.merklebtree.*;
+import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
 import java.lang.reflect.*;
@@ -20,6 +22,7 @@ import java.util.concurrent.*;
 
 @RunWith(Parameterized.class)
 public class CorenodeTests {
+	private static final Logger LOG = Logger.getGlobal();
 
     public static int RANDOM_SEED = 666;
     private final NetworkAccess network;
@@ -32,8 +35,6 @@ public class CorenodeTests {
         Args args = Args.parse(new String[]{"useIPFS", ""+useIPFS.equals("IPFS"), "-port", Integer.toString(webPort), "-corenodePort", Integer.toString(corePort)});
         Start.LOCAL.main(args);
         this.network = NetworkAccess.buildJava(new URL("http://localhost:" + webPort)).get();
-        // use insecure random otherwise tests take ages
-        setFinalStatic(TweetNaCl.class.getDeclaredField("prng"), new Random(1));
     }
 
     @Parameterized.Parameters(name = "{index}: {0}")
@@ -43,16 +44,6 @@ public class CorenodeTests {
 //                {"IPFS", r},
                 {"RAM", r}
         });
-    }
-
-    static void setFinalStatic(Field field, Object newValue) throws Exception {
-        field.setAccessible(true);
-
-        Field modifiersField = Field.class.getDeclaredField("modifiers");
-        modifiersField.setAccessible(true);
-        modifiersField.setInt(field, field.getModifiers() & ~Modifier.FINAL);
-
-        field.set(null, newValue);
     }
 
     @Test
@@ -67,7 +58,7 @@ public class CorenodeTests {
                 SigningKeyPair writer = SigningKeyPair.random(crypto.random, crypto.signer);
                 PublicKeyHash ownerHash = network.dhtClient.putSigningKey(
                         owner.secretSigningKey.signatureOnly(owner.publicSigningKey.serialize()),
-                        network.dhtClient.hashKey(owner.publicSigningKey),
+                        ContentAddressedStorage.hashKey(owner.publicSigningKey),
                         owner.publicSigningKey).get();
                 PublicKeyHash writerHash = network.dhtClient.putSigningKey(
                         owner.secretSigningKey.signatureOnly(writer.publicSigningKey.serialize()),
@@ -92,7 +83,7 @@ public class CorenodeTests {
                             maxLatency = latency;
                         current = MaybeMultihash.of(cid);
                     } catch (Exception e) {
-                        e.printStackTrace();
+                        LOG.log(Level.WARNING, e.getMessage(), e);
                     }
                 }
                 long t2 = System.currentTimeMillis();
@@ -106,7 +97,7 @@ public class CorenodeTests {
                 return Long.MIN_VALUE;
             }
         }).max().getAsLong();
-        System.out.println("Worst Latency: " + worstLatency);
+        LOG.info("Worst Latency: " + worstLatency);
         Assert.assertTrue("Worst latency < 1 second: " + worstLatency, worstLatency < 2000);
         pool.awaitQuiescence(5, TimeUnit.MINUTES);
     }

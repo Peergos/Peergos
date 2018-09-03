@@ -1,7 +1,9 @@
 package peergos.shared.mutable;
 
 import peergos.shared.cbor.CborObject;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.merklebtree.HashCasPair;
 import peergos.shared.merklebtree.MaybeMultihash;
 import peergos.shared.storage.ContentAddressedStorage;
@@ -32,8 +34,6 @@ public interface MutablePointers {
      * @param writerKeyHash
      * @param ipfs
      * @return
-     * @throws InterruptedException
-     * @throws ExecutionException
      */
     default CompletableFuture<MaybeMultihash> getPointerTarget(PublicKeyHash writerKeyHash, ContentAddressedStorage ipfs) {
         return getPointer(writerKeyHash)
@@ -46,4 +46,16 @@ public interface MutablePointers {
                 );
     }
 
+    static boolean isValidUpdate(PublicSigningKey writerKey, Optional<byte[]> current, byte[] writerSignedBtreeRootHash) {
+        byte[] bothHashes = writerKey.unsignMessage(writerSignedBtreeRootHash);
+        // check CAS [current hash, new hash]
+        HashCasPair cas = HashCasPair.fromCbor(CborObject.fromByteArray(bothHashes));
+        MaybeMultihash claimedCurrentHash = cas.original;
+        Multihash newHash = cas.updated.get();
+
+        MaybeMultihash existing = current
+                .map(signed -> HashCasPair.fromCbor(CborObject.fromByteArray(writerKey.unsignMessage(signed))).updated)
+                .orElse(MaybeMultihash.empty());
+        return existing.equals(claimedCurrentHash);
+    }
 }

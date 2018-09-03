@@ -41,11 +41,11 @@ public class SymmetricLocationLink implements Cborable {
        return new FilePointer(loc.owner, loc.writer, loc.getMapKey(), key);
     }
 
-    public static SymmetricLocationLink fromCbor(CborObject cbor) {
+    public static SymmetricLocationLink fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Incorrect cbor type for SymmetricLocationLink: " + cbor);
 
-        List<CborObject> value = ((CborObject.CborList) cbor).value;
+        List<? extends Cborable> value = ((CborObject.CborList) cbor).value;
         return new SymmetricLocationLink(SymmetricLink.fromCbor(value.get(0)), ((CborObject.CborByteArray)value.get(1)).value);
     }
 

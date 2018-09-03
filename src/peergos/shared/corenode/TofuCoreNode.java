@@ -53,7 +53,7 @@ public class TofuCoreNode implements CoreNode {
                     byte[] data = tofu.serialize();
                     AsyncReader.ArrayBacked dataReader = new AsyncReader.ArrayBacked(data);
                     return home.uploadFile(KEY_STORE_NAME, dataReader, true, (long) data.length,
-                            context.network, context.crypto.random, x-> {}, context.fragmenter());
+                            true, context.network, context.crypto.random, x-> {}, context.fragmenter());
                 }).thenApply(x -> true);
     }
 
@@ -107,21 +107,6 @@ public class TofuCoreNode implements CoreNode {
     @Override
     public CompletableFuture<List<String>> getUsernames(String prefix) {
         return source.getUsernames(prefix);
-    }
-
-    @Override
-    public CompletableFuture<Boolean> addFollowRequest(PublicKeyHash target, byte[] encryptedPermission) {
-        return source.addFollowRequest(target, encryptedPermission);
-    }
-
-    @Override
-    public CompletableFuture<byte[]> getFollowRequests(PublicKeyHash owner) {
-        return source.getFollowRequests(owner);
-    }
-
-    @Override
-    public CompletableFuture<Boolean> removeFollowRequest(PublicKeyHash owner, byte[] data) {
-        return source.removeFollowRequest(owner, data);
     }
 
     @Override

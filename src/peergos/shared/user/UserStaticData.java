@@ -1,4 +1,5 @@
 package peergos.shared.user;
+import java.util.logging.*;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.symmetric.SymmetricKey;
@@ -9,6 +10,7 @@ import java.io.*;
 import java.util.*;
 
 public class UserStaticData implements Cborable {
+	private static final Logger LOG = Logger.getGlobal();
 
     private final List<EntryPoint> staticData;
     public final SymmetricKey rootKey;
@@ -61,7 +63,7 @@ public class UserStaticData implements Cborable {
         try {
             DataSource source = new DataSource(raw);
             int count = source.readInt();
-            System.out.println("Found "+count+" entry points");
+            LOG.info("Found "+count+" entry points");
 
             UserStaticData staticData = new UserStaticData(rootKey);
             for (int i = 0; i < count; i++) {
@@ -83,7 +85,7 @@ public class UserStaticData implements Cborable {
         return new CborObject.CborByteArray(serialize());
     }
 
-    public static UserStaticData fromCbor(CborObject cbor, SymmetricKey rootKey) {
+    public static UserStaticData fromCbor(Cborable cbor, SymmetricKey rootKey) {
         if (! (cbor instanceof CborObject.CborByteArray))
             throw new IllegalStateException("UserStaticData cbor must be a byte[]! " + cbor);
         return deserialize(((CborObject.CborByteArray) cbor).value, rootKey);

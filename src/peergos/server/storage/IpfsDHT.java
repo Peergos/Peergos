@@ -1,7 +1,6 @@
 package peergos.server.storage;
 
 import peergos.shared.cbor.*;
-import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multiaddr.MultiAddress;
 import peergos.shared.io.ipfs.multihash.Multihash;
@@ -30,6 +29,18 @@ public class IpfsDHT implements ContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<Multihash> id() {
+        CompletableFuture<Multihash> res = new CompletableFuture<>();
+        try {
+            Map id = ipfs.id();
+            res.complete(Multihash.fromBase58((String)id.get("ID")));
+        } catch (Exception e) {
+            res.completeExceptionally(e);
+        }
+        return res;
+    }
+
+    @Override
     public CompletableFuture<List<Multihash>> put(PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
         return put(writer, signatures, blocks, "cbor");
     }
@@ -40,62 +51,76 @@ public class IpfsDHT implements ContentAddressedStorage {
     }
 
     private CompletableFuture<List<Multihash>> put(PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks, String format) {
+        CompletableFuture<List<Multihash>> res = new CompletableFuture<>();
         try {
-            return CompletableFuture.completedFuture(ipfs.block.put(blocks, Optional.of(format)))
-                    .thenApply(nodes -> nodes.stream().map(n -> n.hash).collect(Collectors.toList()));
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+            res.complete(ipfs.block.put(blocks, Optional.of(format))
+                    .stream()
+                    .map(n -> n.hash)
+                    .collect(Collectors.toList()));
+        } catch (Exception e) {
+            res.completeExceptionally(e);
         }
+        return res;
     }
 
     @Override
     public CompletableFuture<Optional<CborObject>> get(Multihash hash) {
+        CompletableFuture<Optional<CborObject>> res = new CompletableFuture<>();
         try {
             byte[] raw = ipfs.block.get(hash);
-            return CompletableFuture.completedFuture(Optional.of(CborObject.fromByteArray(raw)));
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+            res.complete(Optional.of(CborObject.fromByteArray(raw)));
+        } catch (Exception e) {
+            res.completeExceptionally(e);
         }
+        return res;
     }
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash) {
+        CompletableFuture<Optional<byte[]>> res = new CompletableFuture<>();
         try {
             byte[] raw = ipfs.block.get(hash);
-            return CompletableFuture.completedFuture(Optional.of(raw));
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+            res.complete(Optional.of(raw));
+        } catch (Exception e) {
+            res.completeExceptionally(e);
         }
+        return res;
     }
 
     @Override
     public CompletableFuture<List<MultiAddress>> pinUpdate(Multihash existing, Multihash updated) {
+        CompletableFuture<List<MultiAddress>> res = new CompletableFuture<>();
         try {
             List<MultiAddress> added = ipfs.pin.update(existing, updated, false);
-            return CompletableFuture.completedFuture(added);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+            res.complete(added);
+        } catch (Exception e) {
+            res.completeExceptionally(e);
         }
+        return res;
     }
 
     @Override
     public CompletableFuture<List<Multihash>> recursivePin(Multihash h) {
+        CompletableFuture<List<Multihash>> res = new CompletableFuture<>();
         try {
             List<Multihash> added = ipfs.pin.add(h);
-            return CompletableFuture.completedFuture(added);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+            res.complete(added);
+        } catch (Exception e) {
+            res.completeExceptionally(e);
         }
+        return res;
     }
 
     @Override
     public CompletableFuture<List<Multihash>> recursiveUnpin(Multihash h) {
+        CompletableFuture<List<Multihash>> res = new CompletableFuture<>();
         try {
             List<Multihash> removed = ipfs.pin.rm(h, true);
-            return CompletableFuture.completedFuture(removed);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+            res.complete(removed);
+        } catch (Exception e) {
+            res.completeExceptionally(e);
         }
+        return res;
     }
 
     @Override
@@ -103,7 +128,7 @@ public class IpfsDHT implements ContentAddressedStorage {
         CompletableFuture<List<Multihash>> res = new CompletableFuture<>();
         try {
             res.complete(ipfs.refs(root, false));
-        } catch (IOException e) {
+        } catch (Exception e) {
             res.completeExceptionally(e);
         }
         return res;
@@ -114,7 +139,7 @@ public class IpfsDHT implements ContentAddressedStorage {
         CompletableFuture<Optional<Integer>> res = new CompletableFuture<>();
         try {
             res.complete(Optional.of((Integer)ipfs.block.stat(block).get("Size")));
-        } catch (IOException e) {
+        } catch (Exception e) {
             res.completeExceptionally(e);
         }
         return res;

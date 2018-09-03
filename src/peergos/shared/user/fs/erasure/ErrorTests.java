@@ -1,4 +1,5 @@
 package peergos.shared.user.fs.erasure;
+import java.util.logging.*;
 
 import org.junit.*;
 
@@ -10,6 +11,7 @@ import java.util.function.*;
 import java.util.stream.*;
 
 public class ErrorTests {
+	private static final Logger LOG = Logger.getGlobal();
     public static class ErasureParameters {
         @org.junit.Test
         public void findAcceptableErasureParameters() {
@@ -20,7 +22,7 @@ public class ErrorTests {
                     .forEach(k -> Stream.of(0.5, 0.7, 0.8, 0.9).forEach(p -> {
                         BigDecimal prFail = probabilityFailure(n, k, p);
                         if (acceptableFailure.test(prFail))
-                            System.out.println(StringUtils.format("%d, %d, %.2f -> %.15f\n", n, k, p, prFail));
+                            LOG.info(StringUtils.format("%d, %d, %.2f -> %.15f\n", n, k, p, prFail));
                     }
                     )
                     )
@@ -42,7 +44,7 @@ public class ErrorTests {
                 if (Math.abs(max_p - min_p) < 0.01)
                     break;
             }
-            System.out.println(StringUtils.format("%d, %d, %.2f -> %.15f\n", n, k, p, probabilityFailure(n, k, p)));
+            LOG.info(StringUtils.format("%d, %d, %.2f -> %.15f\n", n, k, p, probabilityFailure(n, k, p)));
         }
     }
 
@@ -111,6 +113,6 @@ public class ErrorTests {
         byte[] recovered = Erasure.recombine(encoded, 5 * 1024 * 1024, fragments, maxErrors);
         if (!Arrays.equals(original, recovered))
             throw new IllegalStateException("Different result from original with "+actualErrors+" errors!");
-        System.out.println();
+
     }
 }

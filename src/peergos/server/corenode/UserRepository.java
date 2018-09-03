@@ -1,13 +1,11 @@
 package peergos.server.corenode;
 
-import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.io.ipfs.multihash.*;
-import peergos.shared.merklebtree.*;
 import peergos.shared.mutable.*;
+import peergos.shared.social.*;
 import peergos.shared.storage.*;
 
 import java.io.*;
@@ -16,8 +14,7 @@ import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 
-public class UserRepository implements CoreNode, MutablePointers {
-    public static final boolean LOGGING = false;
+public class UserRepository implements CoreNode, SocialNetwork, MutablePointers {
 
     private final ContentAddressedStorage ipfs;
     private final JDBCCoreNode store;
@@ -72,7 +69,7 @@ public class UserRepository implements CoreNode, MutablePointers {
     }
 
     @Override
-    public CompletableFuture<Boolean> addFollowRequest(PublicKeyHash target, byte[] encryptedPermission) {
+    public CompletableFuture<Boolean> sendFollowRequest(PublicKeyHash target, byte[] encryptedPermission) {
         return store.addFollowRequest(target, encryptedPermission);
     }
 
@@ -99,20 +96,12 @@ public class UserRepository implements CoreNode, MutablePointers {
                 .thenCompose(current -> ipfs.getSigningKey(writer)
                         .thenCompose(writerOpt -> {
                             try {
+                                if (! writerOpt.isPresent())
+                                    throw new IllegalStateException("Couldn't retrieve writer key from ipfs with hash " + writer);
                                 PublicSigningKey writerKey = writerOpt.get();
-                                byte[] bothHashes = writerKey.unsignMessage(writerSignedBtreeRootHash);
-                                // check CAS [current hash, new hash]
-                                HashCasPair cas = HashCasPair.fromCbor(CborObject.fromByteArray(bothHashes));
-                                MaybeMultihash claimedCurrentHash = cas.original;
-                                Multihash newHash = cas.updated.get();
-
-                                MaybeMultihash existing = current
-                                        .map(signed -> HashCasPair.fromCbor(CborObject.fromByteArray(writerKey.unsignMessage(signed))).updated)
-                                        .orElse(MaybeMultihash.empty());
-                                if (! existing.equals(claimedCurrentHash))
+                                if (! MutablePointers.isValidUpdate(writerKey, current, writerSignedBtreeRootHash))
                                     return CompletableFuture.completedFuture(false);
-                                if (LOGGING)
-                                    System.out.println("Core::setMetadata for " + writer + " from " + current + " to " + newHash);
+
                                 return store.setPointer(owner, writer, writerSignedBtreeRootHash);
                             } catch (TweetNaCl.InvalidSignatureException e) {
                                 System.err.println("Invalid signature during setMetadataBlob for sharer: " + writer);

@@ -1,4 +1,5 @@
 package peergos.server.corenode;
+import java.util.logging.*;
 
 import peergos.server.mutable.*;
 import peergos.shared.cbor.*;
@@ -13,15 +14,15 @@ import java.util.concurrent.*;
 import java.util.zip.*;
 
 import com.sun.net.httpserver.*;
-import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.api.*;
 import peergos.shared.mutable.*;
 import peergos.shared.util.Args;
 import peergos.shared.util.Serialize;
 
-public class HttpCoreNodeServer
-{
+public class HttpCoreNodeServer {
+	private static final Logger LOG = Logger.getGlobal();
+
     private static final boolean LOGGING = true;
     private static final int CONNECTION_BACKLOG = 100;
     private static final int HANDLER_THREAD_COUNT = 100;
@@ -50,7 +51,7 @@ public class HttpCoreNodeServer
                 path = path.substring(1);
             String[] subComponents = path.substring(CORE_URL.length()).split("/");
             String method = subComponents[0];
-//            System.out.println("core method "+ method +" from path "+ path);
+//            LOG.info("core method "+ method +" from path "+ path);
 
             try {
                 switch (method)
@@ -71,15 +72,6 @@ public class HttpCoreNodeServer
                         exchange.getResponseHeaders().set("Content-Encoding", "gzip");
                         exchange.getResponseHeaders().set("Content-Type", "application/json");
                         getAllUsernamesGzip(subComponents.length > 1 ? subComponents[1] : "", din, dout);
-                        break;
-                    case "followRequest":
-                        followRequest(din, dout);
-                        break;
-                    case "getFollowRequests":
-                        getFollowRequests(din, dout);
-                        break;
-                    case "removeFollowRequest":
-                        removeFollowRequest(din, dout);
                         break;
                     default:
                         throw new IOException("Unknown method "+ method);
@@ -102,7 +94,7 @@ public class HttpCoreNodeServer
                 exchange.close();
                 long t2 = System.currentTimeMillis();
                 if (LOGGING)
-                    System.out.println("Corenode server handled " + method + " request in: " + (t2 - t1) + " mS");
+                    LOG.info("Corenode server handled " + method + " request in: " + (t2 - t1) + " mS");
             }
 
         }
@@ -163,32 +155,6 @@ public class HttpCoreNodeServer
             dout.write(bout.toByteArray());
         }
 
-        void followRequest(DataInputStream din, DataOutputStream dout) throws Exception
-        {
-            byte[] encodedKey = Serialize.deserializeByteArray(din, PublicSigningKey.MAX_SIZE);
-            PublicKeyHash target = PublicKeyHash.fromCbor(CborObject.fromByteArray(encodedKey));
-            byte[] encodedSharingPublicKey = CoreNodeUtils.deserializeByteArray(din);
-
-            boolean followRequested = coreNode.addFollowRequest(target, encodedSharingPublicKey).get();
-            dout.writeBoolean(followRequested);
-        }
-        void getFollowRequests(DataInputStream din, DataOutputStream dout) throws Exception
-        {
-            byte[] encodedKey = Serialize.deserializeByteArray(din, PublicSigningKey.MAX_SIZE);
-            PublicKeyHash ownerPublicKey = PublicKeyHash.fromCbor(CborObject.fromByteArray(encodedKey));
-            byte[] res = coreNode.getFollowRequests(ownerPublicKey).get();
-            Serialize.serialize(res, dout);
-        }
-        void removeFollowRequest(DataInputStream din, DataOutputStream dout) throws Exception
-        {
-            byte[] encodedKey = Serialize.deserializeByteArray(din, PublicSigningKey.MAX_SIZE);
-            PublicKeyHash owner = PublicKeyHash.fromCbor(CborObject.fromByteArray(encodedKey));
-            byte[] signedFollowRequest = CoreNodeUtils.deserializeByteArray(din);
-
-            boolean isRemoved = coreNode.removeFollowRequest(owner, signedFollowRequest).get();
-            dout.writeBoolean(isRemoved);
-        }
-
         public void close() throws IOException{
             coreNode.close();
         }
@@ -202,7 +168,7 @@ public class HttpCoreNodeServer
     {
 
         this.address = address;
-        if (address.getHostName().contains("local"))
+        if (address.getHostName().toLowerCase().contains("local"))
             server = HttpServer.create(address, CONNECTION_BACKLOG);
         else
             server = HttpServer.create(new InetSocketAddress(InetAddress.getLocalHost(), address.getPort()), CONNECTION_BACKLOG);
@@ -231,14 +197,14 @@ public class HttpCoreNodeServer
         // eventually will need our own keypair to sign traffic to other core nodes
         try {
             String hostname = args.getArg("domain", "localhost");
-            System.out.println("Starting core node server listening on: " + hostname+":"+port +" proxying to "+coreNode);
+            LOG.info("Starting core node server listening on: " + hostname+":"+port +" proxying to "+coreNode);
             InetSocketAddress address = new InetSocketAddress(hostname, port);
             HttpCoreNodeServer server = new HttpCoreNodeServer(coreNode, mutable, address);
             server.start();
         } catch (Exception e)
         {
-            e.printStackTrace();
-            System.out.println("Couldn't start Corenode server!");
+            LOG.log(Level.WARNING, e.getMessage(), e);
+            LOG.info("Couldn't start Corenode server!");
         }
     }
 }

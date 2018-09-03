@@ -1,4 +1,5 @@
 package peergos.server.fuse;
+import java.util.logging.*;
 
 import peergos.shared.*;
 import peergos.shared.crypto.*;
@@ -13,6 +14,7 @@ import java.nio.file.Paths;
 import java.util.*;
 
 public class FuseProcess implements Runnable, AutoCloseable {
+	private static final Logger LOG = Logger.getGlobal();
 
     private final PeergosFS peergosFS;
     private final Path mountPoint;
@@ -58,30 +60,20 @@ public class FuseProcess implements Runnable, AutoCloseable {
         synchronized (this) {
             notify();
         }
-        System.out.println("CLOSE");
+        LOG.info("CLOSE");
         while (! isClosed) {
             try {
                 Thread.sleep(1000);
             }  catch (InterruptedException ie){}
-            System.out.println("CALLING UNMOUNT");
+            LOG.info("CALLING UNMOUNT");
             peergosFS.umount();
         }
-        System.out.println("DONE");
+        LOG.info("DONE");
     }
 
     private void ensureNotFinished() {
         if (isFinished)
             throw new IllegalStateException();
-    }
-
-    static void setFinalStatic(Field field, Object newValue) throws Exception {
-        field.setAccessible(true);
-
-        Field modifiersField = Field.class.getDeclaredField("modifiers");
-        modifiersField.setAccessible(true);
-        modifiersField.setInt(field, field.getModifiers() & ~Modifier.FINAL);
-
-        field.set(null, newValue);
     }
 
     public static void main(String[] args) throws Exception {
@@ -94,9 +86,6 @@ public class FuseProcess implements Runnable, AutoCloseable {
 
         Start.LOCAL.main(a);
 
-        // TODO find a faster high quality randomness source
-        setFinalStatic(TweetNaCl.class.getDeclaredField("prng"), new Random());
-
         a = Args.parse(args);
         String username = a.getArg("username", "test01");
         String password = a.getArg("password", "test01");
@@ -106,7 +95,7 @@ public class FuseProcess implements Runnable, AutoCloseable {
         path = path.resolve(UUID.randomUUID().toString());
         path.toFile().mkdirs();
 
-        System.out.println("\n\nPeergos mounted at "+ path+"\n\n");
+        LOG.info("\n\nPeergos mounted at "+ path+"\n\n");
 
         NetworkAccess network = NetworkAccess.buildJava(WEB_PORT).get();
         Crypto crypto = Crypto.initJava();

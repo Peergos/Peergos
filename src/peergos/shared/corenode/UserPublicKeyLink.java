@@ -68,10 +68,10 @@ public class UserPublicKeyLink implements Cborable{
         return CborObject.CborMap.build(values);
     }
 
-    public static UserPublicKeyLink fromCbor(CborObject cbor) {
+    public static UserPublicKeyLink fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Invalid cbor for UserPublicKeyLink: " + cbor);
-        SortedMap<CborObject, CborObject> values = ((CborObject.CborMap) cbor).values;
+        SortedMap<CborObject, ? extends Cborable> values = ((CborObject.CborMap) cbor).values;
         PublicKeyHash owner = PublicKeyHash.fromCbor(values.get(new CborObject.CborString("owner")));
         UsernameClaim claim  = UsernameClaim.fromCbor(values.get(new CborObject.CborString("claim")));
         CborObject.CborString proofKey = new CborObject.CborString("keychange");
@@ -114,7 +114,7 @@ public class UserPublicKeyLink implements Cborable{
                     new CborObject.CborByteArray(signedContents)));
         }
 
-        public static UsernameClaim fromCbor(CborObject cbor) {
+        public static UsernameClaim fromCbor(Cborable cbor) {
             if (! (cbor instanceof CborObject.CborList))
                 throw new IllegalStateException("Invalid cbor for Username claim: " + cbor);
             String username = ((CborObject.CborString)((CborObject.CborList) cbor).value.get(0)).value;
@@ -167,14 +167,24 @@ public class UserPublicKeyLink implements Cborable{
     }
 
     public static CompletableFuture<List<UserPublicKeyLink>> merge(List<UserPublicKeyLink> existing,
-                                                List<UserPublicKeyLink> tail,
-                                                ContentAddressedStorage ipfs) {
-        if (existing.size() == 0)
-            return CompletableFuture.completedFuture(tail);
+                                                                   List<UserPublicKeyLink> updated,
+                                                                   ContentAddressedStorage ipfs) {
+        if (existing.size() == 0 || updated.equals(existing))
+            return CompletableFuture.completedFuture(updated);
+        int indexOfChange = 0;
+        for (int i=0; i < updated.size(); i++)
+            if (updated.get(i).equals(existing.get(i)))
+                indexOfChange++;
+            else
+                break;
+        List<UserPublicKeyLink> tail = updated.subList(indexOfChange, updated.size());
         if (! tail.get(0).owner.equals(existing.get(existing.size()-1).owner)) {
+            CompletableFuture<List<UserPublicKeyLink>> err = new CompletableFuture<>();
             if (tail.size() == 1)
-                throw new IllegalStateException("User already exists: Invalid key change attempt!");
-            throw new IllegalStateException("Different keys in merge chains intersection!");
+                err.completeExceptionally(new IllegalStateException("User already exists: Invalid key change attempt!"));
+            else
+                err.completeExceptionally(new IllegalStateException("Different keys in merge chains intersection!"));
+            return err;
         }
         List<UserPublicKeyLink> result = Stream.concat(existing.subList(0, existing.size() - 1).stream(), tail.stream()).collect(Collectors.toList());
         return validChain(result, tail.get(0).claim.username, ipfs)

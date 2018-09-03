@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project
+   xmlns="http://maven.apache.org/POM/4.0.0"
+   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.google.gwt.sample.dynatablerf</groupId>
+  <artifactId>DynaTableRf</artifactId>
+  <packaging>war</packaging>
+  <version>1.0-SNAPSHOT</version>
+  <name>com.google.gwt.sample.dynatablerf.DynaTableRf</name>
+
+  <properties>
+    <!-- Convenience property to set the GWT version -->
+    <gwt.version>HEAD-SNAPSHOT</gwt.version>
+
+    <!-- Setting maven.compiler.source to something different to 1.8
+         needs that you configure the sourceLevel in gwt-maven-plugin since
+         GWT 2.8 requires 1.8 (see gwt-maven-plugin block below) -->
+    <maven.compiler.source>1.7</maven.compiler.source>
+    <maven.compiler.target>1.7</maven.compiler.target>
+
+    <!-- Don't let your Mac use a crazy non-standard encoding -->
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>com.google.gwt</groupId>
+        <artifactId>gwt</artifactId>
+        <version>${gwt.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <dependencies>
+    <!-- GWT -->
+    <dependency>
+      <groupId>com.google.gwt</groupId>
+      <artifactId>gwt-user</artifactId>
+      <!-- "provided" so that we don't deploy -->
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.google.gwt</groupId>
+      <artifactId>gwt-dev</artifactId>
+      <!-- "provided" so that we don't deploy -->
+      <scope>provided</scope>
+    </dependency>
+
+    <!-- For the servlet filter -->
+    <dependency>
+      <groupId>javax.servlet</groupId>
+      <artifactId>javax.servlet-api</artifactId>
+      <scope>provided</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>com.google.web.bindery</groupId>
+      <artifactId>requestfactory-server</artifactId>
+    </dependency>
+    <!-- Need to run the RF Validation tool. This works on both the command-line
+         and in Eclipse, provided that m2e-apt is installed. -->
+    <dependency>
+      <groupId>com.google.web.bindery</groupId>
+      <artifactId>requestfactory-apt</artifactId>
+      <!-- "provided" so that we don't deploy -->
+      <scope>provided</scope>
+    </dependency>
+
+    <!-- RequestFactory will use JSR 303 javax.validation if you let it -->
+    <dependency>
+      <groupId>javax.validation</groupId>
+      <artifactId>validation-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.hibernate</groupId>
+      <artifactId>hibernate-validator</artifactId>
+      <version>4.1.0.Final</version>
+      <exclusions>
+        <exclusion>
+          <groupId>javax.xml.bind</groupId>
+          <artifactId>jaxb-api</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>com.sun.xml.bind</groupId>
+          <artifactId>jaxb-impl</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+
+    <!-- Required by Hibernate validator because slf4j-log4j is
+         optional in the hibernate-validator POM  -->
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-log4j12</artifactId>
+      <version>1.7.12</version>
+    </dependency>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-api</artifactId>
+      <version>1.7.12</version>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <!-- Output classes directly into the webapp, so that IDEs and "mvn process-classes" update them in DevMode -->
+    <outputDirectory>${project.build.directory}/${project.build.finalName}/WEB-INF/classes</outputDirectory>
+
+    <plugins>
+
+      <!-- GWT Maven Plugin-->
+      <plugin>
+        <groupId>net.ltgt.gwt.maven</groupId>
+        <artifactId>gwt-maven-plugin</artifactId>
+        <version>1.0-rc-8</version>
+        <executions>
+          <execution>
+            <goals>
+              <goal>compile</goal>
+            </goals>
+          </execution>
+        </executions>
+        <configuration>
+          <moduleName>com.google.gwt.sample.dynatablerf.DynaTableRf</moduleName>
+          <moduleShortName>DynaTableRf</moduleShortName>
+          <failOnError>true</failOnError>
+          <!-- GWT and Java Compilers might not use the same source language.
+               GWT 2.8 requires 1.8, hence define sourceLevel here if you use
+               a different source language for java compilation -->
+          <sourceLevel>1.8</sourceLevel>
+          <!-- Compiler configuration -->
+          <compilerArgs>
+            <!-- Ask GWT to create the Story of Your Compile (SOYC) (gwt:compile) -->
+            <arg>-compileReport</arg>
+            <arg>-XcompilerMetrics</arg>
+          </compilerArgs>
+          <!-- DevMode configuration -->
+          <warDir>${project.build.directory}/${project.build.finalName}</warDir>
+          <classpathScope>compile+runtime</classpathScope>
+          <!-- URL(s) that should be opened by DevMode (gwt:devmode). -->
+          <startupUrls>
+            <startupUrl>DynaTableRf.html</startupUrl>
+          </startupUrls>
+        </configuration>
+      </plugin>
+
+    </plugins>
+  </build>
+
+  <repositories>
+    <repository>
+      <id>google-snapshots</id>
+      <url>https://oss.sonatype.org/content/repositories/google-snapshots/</url>
+      <releases>
+        <enabled>false</enabled>
+      </releases>
+      <snapshots>
+        <enabled>true</enabled>
+      </snapshots>
+    </repository>
+  </repositories>
+</project>

@@ -129,14 +129,14 @@ public class DirAccess implements CryptreeNode {
         if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Incorrect cbor for DirAccess: " + cbor);
 
-        List<CborObject> value = ((CborObject.CborList) cbor).value;
+        List<? extends Cborable> value = ((CborObject.CborList) cbor).value;
 
         int index = 0;
         int version = (int) ((CborObject.CborLong) value.get(index++)).value >> 1;
         SymmetricLink subfoldersToParent = SymmetricLink.fromCbor(value.get(index++));
         SymmetricLink subfoldersToFiles = SymmetricLink.fromCbor(value.get(index++));
         SymmetricLink parentToMeta = SymmetricLink.fromCbor(value.get(index++));
-        CborObject parentLinkCbor = value.get(index++);
+        Cborable parentLinkCbor = value.get(index++);
         SymmetricLocationLink parentLink = parentLinkCbor instanceof CborObject.CborNull ?
                 null :
                 SymmetricLocationLink.fromCbor(parentLinkCbor);
@@ -149,7 +149,7 @@ public class DirAccess implements CryptreeNode {
                 .stream()
                 .map(SymmetricLocationLink::fromCbor)
                 .collect(Collectors.toList());
-        CborObject linkToNext = value.get(index++);
+        Cborable linkToNext = value.get(index++);
         Optional<SymmetricLocationLink> moreFolderContents = linkToNext instanceof CborObject.CborNull ?
                 Optional.empty() :
                 Optional.of(SymmetricLocationLink.fromCbor(linkToNext));
@@ -442,7 +442,7 @@ public class DirAccess implements CryptreeNode {
                                                 SymmetricKey baseKey, SymmetricKey optionalBaseKey,
                                                 boolean isSystemFolder, SafeRandom random) {
         SymmetricKey dirReadKey = optionalBaseKey != null ? optionalBaseKey : SymmetricKey.random();
-        byte[] dirMapKey = new byte[32]; // root will be stored under this in the btree
+        byte[] dirMapKey = new byte[32]; // root will be stored under this in the tree
         random.randombytes(dirMapKey, 0, 32);
         SymmetricKey ourParentKey = this.getParentKey(baseKey);
         Location ourLocation = new Location(ownerPublic, writer.publicKeyHash, ourMapKey);

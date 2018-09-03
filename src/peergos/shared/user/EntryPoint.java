@@ -29,6 +29,7 @@ public class EntryPoint implements Cborable{
         this.writers = writers;
     }
 
+    @SuppressWarnings("unusable-by-js")
     public byte[] serializeAndEncrypt(BoxingKeyPair user, PublicBoxingKey target) throws IOException {
         return target.encryptMessageFor(this.serialize(), user.secretBoxingKey);
     }
@@ -60,6 +61,7 @@ public class EntryPoint implements Cborable{
     }
 
     @Override
+    @SuppressWarnings("unusable-by-js")
     public CborObject toCbor() {
         return new CborObject.CborList(Arrays.asList(
                 pointer.toCbor(),
@@ -73,7 +75,7 @@ public class EntryPoint implements Cborable{
         if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Incorrect cbor type for EntryPoint: " + cbor);
 
-        List<CborObject> value = ((CborObject.CborList) cbor).value;
+        List<? extends Cborable> value = ((CborObject.CborList) cbor).value;
         FilePointer pointer = FilePointer.fromCbor(value.get(0));
         String owner = ((CborObject.CborString) value.get(1)).value;
         Set<String> readers = ((CborObject.CborList) value.get(2)).value

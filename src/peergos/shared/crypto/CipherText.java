@@ -20,11 +20,11 @@ public class CipherText implements Cborable {
         return new CborObject.CborList(Arrays.asList(new CborObject.CborByteArray(nonce), new CborObject.CborByteArray(cipherText)));
     }
 
-    public static CipherText fromCbor(CborObject cbor) {
+    public static CipherText fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Invalid cbor for cipher text: " + cbor);
 
-        List<CborObject> parts = ((CborObject.CborList) cbor).value;
+        List<? extends Cborable> parts = ((CborObject.CborList) cbor).value;
         return new CipherText(((CborObject.CborByteArray) parts.get(0)).value, ((CborObject.CborByteArray) parts.get(1)).value);
     }
 

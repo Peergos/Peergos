@@ -429,8 +429,8 @@ public class IPFS {
         return retrieveMap("ping/" + target.toString());
     }
 
-    public Map id(String target) throws IOException {
-        return retrieveMap("id/" + target.toString());
+    public Map id() throws IOException {
+        return retrieveMap("id");
     }
 
     public class Stats {
@@ -506,6 +506,8 @@ public class IPFS {
         HttpURLConnection conn = (HttpURLConnection) target.openConnection();
         conn.setRequestMethod("GET");
         conn.setRequestProperty("Content-Type", "application/json");
+        conn.setConnectTimeout(10_000);
+        conn.setReadTimeout(60_000);
 
         try {
             InputStream in = conn.getInputStream();
@@ -519,7 +521,8 @@ public class IPFS {
         } catch (ConnectException e) {
             throw new RuntimeException("Couldn't connect to IPFS daemon at "+target+"\n Is IPFS running?");
         } catch (IOException e) {
-            String err = readFully(conn.getErrorStream());
+            InputStream errorStream = conn.getErrorStream();
+            String err = errorStream == null ? e.getMessage() : readFully(errorStream);
             throw new RuntimeException("IOException contacting IPFS daemon.\n"+err+"\nTrailer: " + conn.getHeaderFields().get("Trailer"), e);
         }
     }
