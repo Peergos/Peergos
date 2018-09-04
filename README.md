@@ -95,6 +95,28 @@ Architecture
  - sharing of a text file with another user could constitute a secure email
  - a public link can be generated to a file or a folder which can be shared with anyone through any medium. A public link is of the form https://demo.peergos.net/#KEY_MATERIAL which has the property that even a public link doesn't leak the file contents to the network, as the key material after the # is not sent to the server, but interpreted locally in the browser.
 
+Development
+--------
+### Dependencies
+Requires jdk8, ant and javafx to build. Use the following to install dependencies on debian:
+```shell
+sudo apt-get install ant
+sudo apt-get install openjdk-8-jdk
+sudo apt-get install openjfx
+```
+### Build
+```shell
+ant dist
+```
+### Cross compile to JS
+```shell
+ant gwtc
+```
+### Run tests
+```shell
+ant test
+```
+
 Usage
 -----
 Instructions for self hosting will be written once it is supported. 
