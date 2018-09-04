@@ -113,6 +113,7 @@ ant dist
 ant gwtc
 ```
 ### Run tests
+To run tests, IPFS daemon must be running on 127.0.0.1 interface. data.service.sh can be used in build servers to automate installing, running and terminating a given ipfs version. 
 ```shell
 ant test
 ```
