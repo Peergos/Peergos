@@ -161,7 +161,7 @@ public class UserPublicKeyLink implements Cborable{
             ByteArrayInputStream bin = new ByteArrayInputStream(contents);
             DataInputStream din = new DataInputStream(bin);
             String username = Serialize.deserializeString(din, MAX_USERNAME_SIZE);
-            LocalDate expiry = LocalDate.parse(Serialize.deserializeString(din, 10));
+            LocalDate expiry = LocalDate.parse(Serialize.deserializeString(din, 16));
             int nStorageProviders = din.readInt();
             List<Multihash> storageProviders = new ArrayList<>();
             for (int i=0; i < nStorageProviders; i++) {
