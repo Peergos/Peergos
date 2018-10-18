@@ -111,6 +111,7 @@ public class UserPublicKeyLink implements Cborable{
             this.username = username;
             this.expiry = expiry;
             this.storageProviders = storageProviders;
+
             this.signedContents = signedContents;
         }
 
