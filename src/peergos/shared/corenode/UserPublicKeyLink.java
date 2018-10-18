@@ -156,6 +156,20 @@ public class UserPublicKeyLink implements Cborable{
             }
         }
 
+        public static Claim deserialize(byte[] signedContents, PublicSigningKey signer) throws IOException {
+            byte[] contents = signer.unsignMessage(signedContents);
+            ByteArrayInputStream bin = new ByteArrayInputStream(contents);
+            DataInputStream din = new DataInputStream(bin);
+            String username = Serialize.deserializeString(din, MAX_USERNAME_SIZE);
+            LocalDate expiry = LocalDate.parse(Serialize.deserializeString(din, 8));
+            int nStorageProviders = din.readInt();
+            List<Multihash> storageProviders = new ArrayList<>();
+            for (int i=0; i < nStorageProviders; i++) {
+                storageProviders.add(Multihash.decode(Serialize.deserializeByteArray(din, 100)));
+            }
+            return new Claim(username, expiry, storageProviders, signedContents);
+        }
+
         @Override
         public boolean equals(Object o) {
             if (this == o) return true;
@@ -227,14 +241,11 @@ public class UserPublicKeyLink implements Cborable{
                 true,
                 composer,
                 (a, b) -> a && b)
-                .thenApply(valid -> {
+                .thenCompose(valid -> {
                     if (!valid)
-                        return valid;
+                        return CompletableFuture.completedFuture(false);
                     UserPublicKeyLink last = chain.get(chain.size() - 1);
-                    if (!validClaim(last, username)) {
-                        return false;
-                    }
-                    return true;
+                    return validClaim(last, username, ipfs);
                 });
     }
 
@@ -242,31 +253,43 @@ public class UserPublicKeyLink implements Cborable{
                                                 PublicKeyHash target,
                                                 String username,
                                                 ContentAddressedStorage ipfs) {
-        if (!validClaim(from, username))
-            return CompletableFuture.completedFuture(true);
+        return validClaim(from, username, ipfs).thenCompose(valid -> {
+            if (!valid)
+                return CompletableFuture.completedFuture(false);
 
-        Optional<byte[]> keyChangeProof = from.getKeyChangeProof();
-        if (!keyChangeProof.isPresent())
-            return CompletableFuture.completedFuture(false);
-        return ipfs.getSigningKey(from.owner).thenApply(ownerKeyOpt -> {
-            if (! ownerKeyOpt.isPresent())
-                return false;
-            PublicKeyHash targetKey = PublicKeyHash.fromCbor(CborObject.fromByteArray(ownerKeyOpt.get().unsignMessage(keyChangeProof.get())));
-            if (!Arrays.equals(targetKey.serialize(), target.serialize()))
-                return false;
+            Optional<byte[]> keyChangeProof = from.getKeyChangeProof();
+            if (!keyChangeProof.isPresent())
+                return CompletableFuture.completedFuture(false);
+            return ipfs.getSigningKey(from.owner).thenApply(ownerKeyOpt -> {
+                if (!ownerKeyOpt.isPresent())
+                    return false;
+                PublicKeyHash targetKey = PublicKeyHash.fromCbor(CborObject.fromByteArray(ownerKeyOpt.get().unsignMessage(keyChangeProof.get())));
+                if (!Arrays.equals(targetKey.serialize(), target.serialize()))
+                    return false;
 
-            return true;
+                return true;
+            });
         });
     }
 
-    static boolean validClaim(UserPublicKeyLink from, String username) {
+    static CompletableFuture<Boolean> validClaim(UserPublicKeyLink from, String username, ContentAddressedStorage ipfs) {
         if (username.contains(" ") || username.contains("\t") || username.contains("\n"))
-            return false;
+            return CompletableFuture.completedFuture(false);
         if (username.length() > MAX_USERNAME_SIZE)
-            return false;
+            return CompletableFuture.completedFuture(false);
         if (!from.claim.username.equals(username))
-            return false;
-        return true;
+            return CompletableFuture.completedFuture(false);
+        return ipfs.getSigningKey(from.owner).thenApply(ownerKeyOpt -> {
+            if (!ownerKeyOpt.isPresent())
+                return false;
+            byte[] unsignedClaim = ownerKeyOpt.get().unsignMessage(from.claim.signedContents);
+            try {
+                return from.claim.equals(Claim.deserialize(unsignedClaim, ownerKeyOpt.get()));
+            } catch (Exception e) {
+                e.printStackTrace();
+                return false;
+            }
+        });
     }
 
     public static boolean isExpiredClaim(UserPublicKeyLink from) {
