@@ -342,12 +342,15 @@ public class UserContext {
         // set claim expiry to two months from now
         LocalDate expiry = now.plusMonths(2);
         LOG.info("claiming username: " + username + " with expiry " + expiry);
-        List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createInitial(signer, username, expiry);
-        return network.coreNode.getChain(username).thenCompose(existing -> {
-            if (existing.size() > 0)
-                throw new IllegalStateException("User already exists!");
-            return network.coreNode.updateChain(username, claimChain);
-        });
+        return network.dhtClient.id()
+                .thenCompose(id -> {
+                    List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createInitial(signer, username, expiry, Arrays.asList(id));
+                    return network.coreNode.getChain(username).thenCompose(existing -> {
+                        if (existing.size() > 0)
+                            throw new IllegalStateException("User already exists!");
+                        return network.coreNode.updateChain(username, claimChain);
+                    });
+                });
     }
 
     public CompletableFuture<LocalDate> getUsernameClaimExpiry() {
@@ -369,8 +372,11 @@ public class UserContext {
                                                                 LocalDate expiry,
                                                                 NetworkAccess network) {
         LOG.info("renewing username: " + username + " with expiry " + expiry);
-        List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createInitial(signer, username, expiry);
-        return network.coreNode.updateChain(username, claimChain);
+        return network.coreNode.getChain(username).thenCompose(existing -> {
+            List<Multihash> storage = existing.get(existing.size() - 1).claim.storageProviders;
+            List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createInitial(signer, username, expiry, storage);
+            return network.coreNode.updateChain(username, claimChain);
+        });
     }
 
     @JsMethod
@@ -456,14 +462,17 @@ public class UserContext {
                                                             .thenCompose(userData -> {
                                                                 SigningPrivateKeyAndPublicHash newUser =
                                                                         new SigningPrivateKeyAndPublicHash(newSignerHash, updatedUser.getUser().secretSigningKey);
-                                                                List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createChain(signer, newUser, username, expiry);
-                                                                return network.coreNode.updateChain(username, claimChain)
-                                                                        .thenCompose(updatedChain -> {
-                                                                            if (!updatedChain)
-                                                                                throw new IllegalStateException("Couldn't register new public keys during password change!");
+                                                                return network.coreNode.getChain(username).thenCompose(existing -> {
+                                                                    List<Multihash> storage = existing.get(existing.size() - 1).claim.storageProviders;
+                                                                    List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createChain(signer, newUser, username, expiry, storage);
+                                                                    return network.coreNode.updateChain(username, claimChain)
+                                                                            .thenCompose(updatedChain -> {
+                                                                                if (!updatedChain)
+                                                                                    throw new IllegalStateException("Couldn't register new public keys during password change!");
 
-                                                                            return UserContext.ensureSignedUp(username, newPassword, network, crypto);
-                                                                        });
+                                                                                return UserContext.ensureSignedUp(username, newPassword, network, crypto);
+                                                                            });
+                                                                });
                                                             })
                                                     );
                                                 }
