@@ -119,7 +119,7 @@ public class UserPublicKeyLink implements Cborable{
                     new CborObject.CborString(username),
                     new CborObject.CborString(expiry.toString()),
                     new CborObject.CborList(storageProviders.stream()
-                            .map(CborObject.CborMerkleLink::new)
+                            .map(id -> new CborObject.CborByteArray(id.toBytes()))
                             .collect(Collectors.toList())),
                     new CborObject.CborByteArray(signedContents)));
         }
@@ -132,7 +132,7 @@ public class UserPublicKeyLink implements Cborable{
             LocalDate expiry = LocalDate.parse(((CborObject.CborString) contents.get(1)).value);
             List<Multihash> storageProviders = ((CborObject.CborList)contents.get(2))
                     .value.stream()
-                    .map(x -> ((CborObject.CborMerkleLink)x).target)
+                    .map(x -> Multihash.decode(((CborObject.CborByteArray)x).value))
                     .collect(Collectors.toList());
             byte[] signedContents = ((CborObject.CborByteArray) contents.get(3)).value;
             return new Claim(username, expiry, storageProviders, signedContents);
