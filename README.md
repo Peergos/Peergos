@@ -13,7 +13,7 @@ There is a single machine demo running at [https://demo.peergos.net](https://dem
 
 You can read more detail about our features and architecture in our [book](https://peergos.github.io/book).
 
-The slides of a talk introducing Peergos are [here](https://speakerdeck.com/ianopolous/peergos-architecture).
+The slides of a talk introducing Peergos are [here](https://speakerdeck.com/ianopolous/peergos-architecture) and [video here](https://www.youtube.com/watch?v=h54pShffxvI).
 
 If you would like to support Peergos development, then please make a 
 
