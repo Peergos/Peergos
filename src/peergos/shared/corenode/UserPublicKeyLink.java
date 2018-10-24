@@ -106,10 +106,10 @@ public class UserPublicKeyLink implements Cborable{
         public final List<Multihash> storageProviders;
         private final byte[] signedContents;
 
-        public Claim(String username, LocalDate expiry, List<Multihash> storagePRoviders, byte[] signedContents) {
+        public Claim(String username, LocalDate expiry, List<Multihash> storageProviders, byte[] signedContents) {
             this.username = username;
             this.expiry = expiry;
-            this.storageProviders = storagePRoviders;
+            this.storageProviders = storageProviders;
             this.signedContents = signedContents;
         }
 
