@@ -19,10 +19,6 @@ public class HttpMutablePointers implements MutablePointersProxy {
     private static final boolean LOGGING = true;
     private final HttpPoster poster;
 
-    public static MutablePointers getInstance(URL coreURL) throws IOException {
-        return new HttpMutablePointers(new JavaPoster(coreURL));
-    }
-
     public HttpMutablePointers(HttpPoster poster)
     {
         LOG.info("Creating Http Mutable Pointers API at " + poster);
