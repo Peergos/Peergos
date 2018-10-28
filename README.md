@@ -113,6 +113,10 @@ ant dist
 ant gwtc
 ```
 ### Run tests
+You need to have ant-optional installed:
+```shell
+sudo apt-get install ant-optional
+```
 To run tests, IPFS daemon must be running on 127.0.0.1 interface. data.service.sh can be used in build servers to automate installing, running and terminating a given ipfs version. 
 ```shell
 ant test
