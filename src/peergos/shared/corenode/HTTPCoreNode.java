@@ -21,10 +21,6 @@ public class HTTPCoreNode implements CoreNode {
 
     private final HttpPoster poster;
 
-    public static CoreNode getInstance(URL coreURL) throws IOException {
-        return new HTTPCoreNode(new JavaPoster(coreURL));
-    }
-
     public HTTPCoreNode(HttpPoster poster)
     {
         LOG.info("Creating HTTP Corenode API at " + poster);
