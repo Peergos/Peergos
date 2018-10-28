@@ -247,10 +247,12 @@ public class Start
             // start the User Service
             String hostname = a.getArg("domain");
 
-            CoreNode core = HTTPCoreNode.getInstance(coreAddress);
-            SocialNetwork social = HttpSocialNetwork.getInstance(socialAddress);
-
             Multihash nodeId = dht.id().get();
+            CoreNode core = HTTPCoreNode.getInstance(coreAddress);
+
+            SocialNetworkProxy httpSocial = new HttpSocialNetwork(new JavaPoster(socialAddress));
+            SocialNetwork p2pSocial = new ProxyingSocialNetwork(nodeId, core, httpSocial);
+
             MutablePointersProxy httpMutable = new HttpMutablePointers(new JavaPoster(coreAddress));
             MutablePointers p2mMutable = new ProxyingMutablePointers(nodeId, core, httpMutable);
             Path blacklistPath = a.fromPeergosDir("blacklist_file", "blacklist.txt");
@@ -262,7 +264,7 @@ public class Start
 
             new UserFilePinner(userPath, core, mutablePointers, dht, delayMs).start();
             InetSocketAddress httpsMessengerAddress = new InetSocketAddress(hostname, userAPIAddress.getPort());
-            new UserService(httpsMessengerAddress, dht, core, social, mutablePointers, a);
+            new UserService(httpsMessengerAddress, dht, core, p2pSocial, mutablePointers, a);
         } catch (Exception e) {
             e.printStackTrace();
 

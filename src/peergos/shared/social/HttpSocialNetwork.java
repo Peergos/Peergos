@@ -3,6 +3,7 @@ import java.util.logging.*;
 
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
@@ -10,14 +11,11 @@ import java.io.*;
 import java.net.*;
 import java.util.concurrent.*;
 
-public class HttpSocialNetwork implements SocialNetwork {
+public class HttpSocialNetwork implements SocialNetworkProxy {
+    private static final String P2P_PROXY_PROTOCOL = "http";
 	private static final Logger LOG = Logger.getGlobal();
 
     private final HttpPoster poster;
-
-    public static SocialNetwork getInstance(URL coreURL) throws IOException {
-        return new HttpSocialNetwork(new JavaPoster(coreURL));
-    }
 
     public HttpSocialNetwork(HttpPoster poster)
     {
@@ -25,8 +23,21 @@ public class HttpSocialNetwork implements SocialNetwork {
         this.poster = poster;
     }
 
+    private static String getProxyUrlPrefix(Multihash targetId) {
+        return "/http/proxy/" + targetId.toBase58() + "/" + P2P_PROXY_PROTOCOL + "/";
+    }
+
     @Override
-    public CompletableFuture<Boolean> sendFollowRequest(PublicKeyHash target, byte[] encryptedPermission)
+    public CompletableFuture<Boolean> sendFollowRequest(PublicKeyHash target, byte[] encryptedPermission) {
+        return sendFollowRequest("", target, encryptedPermission);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> sendFollowRequest(Multihash targetServerId, PublicKeyHash target, byte[] encryptedPermission) {
+        return sendFollowRequest(getProxyUrlPrefix(targetServerId), target, encryptedPermission);
+    }
+
+    private CompletableFuture<Boolean> sendFollowRequest(String urlPrefix, PublicKeyHash target, byte[] encryptedPermission)
     {
         try
         {
@@ -37,7 +48,7 @@ public class HttpSocialNetwork implements SocialNetwork {
             Serialize.serialize(encryptedPermission, dout);
             dout.flush();
 
-            return poster.postUnzip("social/followRequest", bout.toByteArray()).thenApply(res -> {
+            return poster.postUnzip(urlPrefix + "social/followRequest", bout.toByteArray()).thenApply(res -> {
                 DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
                 try {
                     return din.readBoolean();
@@ -52,7 +63,16 @@ public class HttpSocialNetwork implements SocialNetwork {
     }
 
     @Override
-    public CompletableFuture<byte[]> getFollowRequests(PublicKeyHash owner)
+    public CompletableFuture<byte[]> getFollowRequests(PublicKeyHash owner) {
+        return getFollowRequests("", owner);
+    }
+
+    @Override
+    public CompletableFuture<byte[]> getFollowRequests(Multihash targetServerId, PublicKeyHash owner) {
+        return getFollowRequests(getProxyUrlPrefix(targetServerId), owner);
+    }
+
+    private CompletableFuture<byte[]> getFollowRequests(String urlPrefix, PublicKeyHash owner)
     {
         try
         {
@@ -63,7 +83,7 @@ public class HttpSocialNetwork implements SocialNetwork {
             Serialize.serialize(owner.serialize(), dout);
             dout.flush();
 
-            return poster.postUnzip("social/getFollowRequests", bout.toByteArray()).thenApply(res -> {
+            return poster.postUnzip(urlPrefix + "social/getFollowRequests", bout.toByteArray()).thenApply(res -> {
                 DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
                 try {
                     return CoreNodeUtils.deserializeByteArray(din);
@@ -78,7 +98,16 @@ public class HttpSocialNetwork implements SocialNetwork {
     }
 
     @Override
-    public CompletableFuture<Boolean> removeFollowRequest(PublicKeyHash owner, byte[] signedRequest)
+    public CompletableFuture<Boolean> removeFollowRequest(PublicKeyHash owner, byte[] signedRequest) {
+        return removeFollowRequest("", owner, signedRequest);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> removeFollowRequest(Multihash targetServerId, PublicKeyHash owner, byte[] data) {
+        return removeFollowRequest(getProxyUrlPrefix(targetServerId), owner, data);
+    }
+
+    private CompletableFuture<Boolean> removeFollowRequest(String urlPrefix, PublicKeyHash owner, byte[] signedRequest)
     {
         try
         {
@@ -89,7 +118,7 @@ public class HttpSocialNetwork implements SocialNetwork {
             Serialize.serialize(signedRequest, dout);
             dout.flush();
 
-            return poster.postUnzip("social/removeFollowRequest", bout.toByteArray()).thenApply(res -> {
+            return poster.postUnzip(urlPrefix + "social/removeFollowRequest", bout.toByteArray()).thenApply(res -> {
                 DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
                 try {
                     return din.readBoolean();
