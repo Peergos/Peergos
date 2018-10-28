@@ -17,12 +17,13 @@ public class HttpMutablePointers implements MutablePointersProxy {
 	private static final String P2P_PROXY_PROTOCOL = "http";
 
     private static final boolean LOGGING = true;
-    private final HttpPoster poster;
+    private final HttpPoster direct, p2p;
 
-    public HttpMutablePointers(HttpPoster poster)
+    public HttpMutablePointers(HttpPoster direct, HttpPoster p2p)
     {
-        LOG.info("Creating Http Mutable Pointers API at " + poster);
-        this.poster = poster;
+        LOG.info("Creating Http Mutable Pointers API at " + direct + " and " + p2p);
+        this.direct = direct;
+        this.p2p = p2p;
     }
 
     private static String getProxyUrlPrefix(Multihash targetId) {
@@ -33,7 +34,7 @@ public class HttpMutablePointers implements MutablePointersProxy {
     public CompletableFuture<Boolean> setPointer(PublicKeyHash ownerPublicKey,
                                                  PublicKeyHash sharingPublicKey,
                                                  byte[] sharingKeySignedPayload) {
-        return setPointer("", ownerPublicKey, sharingPublicKey, sharingKeySignedPayload);
+        return setPointer("", direct, ownerPublicKey, sharingPublicKey, sharingKeySignedPayload);
     }
 
     @Override
@@ -41,10 +42,11 @@ public class HttpMutablePointers implements MutablePointersProxy {
                                                         PublicKeyHash ownerPublicKey,
                                                         PublicKeyHash sharingPublicKey,
                                                         byte[] sharingKeySignedPayload) {
-        return setPointer(getProxyUrlPrefix(targetId), ownerPublicKey, sharingPublicKey, sharingKeySignedPayload);
+        return setPointer(getProxyUrlPrefix(targetId), p2p, ownerPublicKey, sharingPublicKey, sharingKeySignedPayload);
     }
 
     private CompletableFuture<Boolean> setPointer(String urlPrefix,
+                                                  HttpPoster poster,
                                                   PublicKeyHash ownerPublicKey,
                                                   PublicKeyHash sharingPublicKey,
                                                   byte[] sharingKeySignedPayload) {
@@ -79,15 +81,15 @@ public class HttpMutablePointers implements MutablePointersProxy {
 
     @Override
     public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash writer) {
-        return getPointer("", writer);
+        return getPointer("", direct, writer);
     }
 
     @Override
     public CompletableFuture<Optional<byte[]>> getPointer(Multihash targetId, PublicKeyHash writer) {
-        return getPointer(getProxyUrlPrefix(targetId), writer);
+        return getPointer(getProxyUrlPrefix(targetId), p2p, writer);
     }
 
-    public CompletableFuture<Optional<byte[]>> getPointer(String urlPrefix, PublicKeyHash writer) {
+    public CompletableFuture<Optional<byte[]>> getPointer(String urlPrefix, HttpPoster poster, PublicKeyHash writer) {
         long t1 = System.currentTimeMillis();
         try {
             return poster.postUnzip(urlPrefix + "mutable/getPointer", writer.serialize())
