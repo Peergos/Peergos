@@ -241,6 +241,109 @@ public class FileTreeNode {
                         writers, entryWriterKey));
     }
 
+    public CompletableFuture<Boolean> getSharingLinks(List<Capability> capabilityCache, NetworkAccess network, SafeRandom random) {
+        ensureUnmodified();
+        return this.getChildren(network)
+                .thenCompose(children -> {
+                    List<FileTreeNode> sharingFiles = children.stream()
+                            .sorted(Comparator.comparing(f -> f.getFileProperties().modified))
+                            .collect(Collectors.toList());
+                    return Futures.reduceAll(sharingFiles,
+                            true,
+                            (x, sharingFile) -> readSharingFile(sharingFile, this.getName(), capabilityCache, network, random),
+                            (a, b) -> a && b);
+                });
+    }
+
+    private CompletableFuture<Boolean> readSharingFile(FileTreeNode file, String friendName, List<Capability> capabilityCache
+            , NetworkAccess network, SafeRandom random) {
+        return file.getInputStream(network, random, x -> {}).thenCompose(reader -> {
+            int currentFileSize = (int) file.getSize();
+            List<Integer> offsets = IntStream.range(0, currentFileSize / Sharing.FILE_POINTER_SIZE)
+                    .mapToObj(e -> e * Sharing.FILE_POINTER_SIZE).collect(Collectors.toList());
+            return Futures.reduceAll(offsets,
+                    true,
+                    (x, offset) -> readSharingRecord(friendName, reader, offset, capabilityCache, network),
+                    (a, b) -> a && b);
+        });
+    }
+
+    private CompletableFuture<Boolean> readSharingRecord(String friendName, AsyncReader reader, int offset, List<Capability> capabilityCache
+            , NetworkAccess network) {
+        byte[] serialisedFilePointer = new byte[Sharing.FILE_POINTER_SIZE];
+        return reader.seek( 0, offset).thenCompose( currentPos ->
+             currentPos.readIntoArray(serialisedFilePointer, 0, Sharing.FILE_POINTER_SIZE)
+                .thenCompose(bytesRead -> {
+                    FilePointer pointer = FilePointer.fromByteArray(serialisedFilePointer);
+                    EntryPoint entry = new EntryPoint(pointer, this.ownername, Collections.emptySet(), Collections.emptySet());
+                    return network.retrieveEntryPoint(entry).thenCompose( optFTN -> {
+                        if(optFTN.isPresent()) {
+                            FileTreeNode ftn = optFTN.get();
+                            try {
+                                return ftn.getPath(network).thenCompose(path -> {
+                                    capabilityCache.add(new Capability(friendName, path, pointer));
+                                    return CompletableFuture.completedFuture(true);
+                                });
+                            } catch (NoSuchElementException nsee) {
+                                return CompletableFuture.completedFuture(true); //file no longer exists
+                            }
+                        } else {
+                            return CompletableFuture.completedFuture(true);
+                        }
+                    });
+                })
+        );
+    }
+    //kev
+    public CompletableFuture<FileTreeNode> addSharingLinkTo(FileTreeNode file, NetworkAccess network, SafeRandom random,
+                                                            Fragmenter fragmenter) {
+        ensureUnmodified();
+        if (!this.isDirectory() || !this.isWritable()) {
+            CompletableFuture<FileTreeNode> error = new CompletableFuture<>();
+            error.completeExceptionally(new IllegalArgumentException("Can only add link to a writable directory!"));
+            return error;
+        }
+
+        return this.getChildren(network)
+            .thenCompose(children -> {
+                List<FileTreeNode> sharingFiles = children.stream()
+                        .sorted(Comparator.comparing(f -> f.getFileProperties().modified))
+                        .collect(Collectors.toList());
+                FileTreeNode currentSharingFile = sharingFiles.isEmpty() ? null : sharingFiles.get(sharingFiles.size() - 1);
+                if (currentSharingFile != null
+                        && currentSharingFile.getFileProperties().size + Sharing.FILE_POINTER_SIZE <= Sharing.SHARING_FILE_MAX_SIZE) {
+                    return currentSharingFile.getInputStream(network, random, x -> {}).thenCompose(reader -> {
+                        int currentFileSize = (int) currentSharingFile.getSize();
+                        byte[] shareFileContents = new byte[currentFileSize + Sharing.FILE_POINTER_SIZE];
+                        return reader.readIntoArray(shareFileContents, 0, currentFileSize)
+                                .thenCompose(bytesRead -> uploadSharingFile(file.pointer.filePointer, shareFileContents,
+                                        sharingFiles.size() -1, network, random, fragmenter));
+                    });
+                } else {
+                    int sharingFileIndex = currentSharingFile == null ? 0 : sharingFiles.size();
+                    byte[] shareFileContents = new byte[Sharing.FILE_POINTER_SIZE];
+                    return uploadSharingFile(file.pointer.filePointer, shareFileContents, sharingFileIndex,
+                            network, random, fragmenter);
+                }
+            });
+    }
+
+    private CompletableFuture<FileTreeNode> uploadSharingFile(FilePointer fp, byte[] fileContents, int fileIndex
+            , NetworkAccess network, SafeRandom random, Fragmenter fragmenter) {
+        byte[] serialisedFilePointer = fp.toCbor().toByteArray();
+        if(serialisedFilePointer.length != Sharing.FILE_POINTER_SIZE) {
+            CompletableFuture<FileTreeNode> error = new CompletableFuture<>();
+            error.completeExceptionally(new IllegalArgumentException("Unexpected FilePointer length:" + serialisedFilePointer));
+            return error;
+        }
+        System.arraycopy(serialisedFilePointer, 0, fileContents,
+                fileContents.length - Sharing.FILE_POINTER_SIZE, serialisedFilePointer.length);
+        AsyncReader.ArrayBacked dataReader = new AsyncReader.ArrayBacked(fileContents);
+        return uploadFile(Sharing.SHARING_FILE_PREFIX + fileIndex, dataReader, true,
+                (long) fileContents.length,true, network, random, x-> {}, fragmenter)
+                .thenApply(newFile -> newFile);
+    }
+
     public CompletableFuture<FileTreeNode> addLinkTo(FileTreeNode file, NetworkAccess network, SafeRandom random) {
         ensureUnmodified();
         CompletableFuture<FileTreeNode> error = new CompletableFuture<>();

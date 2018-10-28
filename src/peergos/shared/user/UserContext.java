@@ -869,6 +869,48 @@ public class UserContext {
 //        throw new IllegalStateException("Unimplemented!");
     }
 
+
+    //kev
+    public void buildCapabilityCache() {
+        List<Capability> capabilityCache = new ArrayList<>();
+        getSharingFolder()
+                .thenCompose(sharing -> sharing.getChildren(network))
+                .thenCompose(children -> {
+                    List<FileTreeNode> friends = children.stream().collect(Collectors.toList());
+                    return Futures.reduceAll(friends,
+                            true,
+                            (x, friend) -> friend.getSharingLinks(capabilityCache, network, crypto.random),
+                            (a, b) -> a && b)
+                            .thenApply(result -> saveCapabilityCache(new CapabilityCache(capabilityCache)));
+                });
+    }
+
+    public CompletableFuture<Boolean> saveCapabilityCache(CapabilityCache capabilityCache) {
+        return this.getUserRoot()
+            .thenCompose(home -> {
+                byte[] data = capabilityCache.serialize();
+                AsyncReader.ArrayBacked dataReader = new AsyncReader.ArrayBacked(data);
+                return home.uploadFile(Sharing.CAPABILITY_CACHE_FILE, dataReader, true, (long) data.length,
+                        true, this.network, this.crypto.random, x-> {}, this.fragmenter());
+            }).thenApply(x -> true);
+    }
+
+    public CompletableFuture<CapabilityCache> readCapabilityCache() {
+        return this.getUserRoot().thenCompose(home ->
+             home.getChild(Sharing.CAPABILITY_CACHE_FILE, network).thenCompose(fileOpt -> {
+                if (!fileOpt.isPresent())
+                    return CompletableFuture.completedFuture(new CapabilityCache());
+
+                return fileOpt.get().getInputStream(network, this.crypto.random, x -> { })
+                        .thenCompose(reader -> {
+                    byte[] storeData = new byte[(int) fileOpt.get().getSize()];
+                    return reader.readIntoArray(storeData, 0, storeData.length)
+                            .thenApply(x -> CapabilityCache.deserialize(storeData));
+                });
+            })
+        );
+    }
+
     public CompletableFuture<Boolean> shareWith(Path path, Set<String> readersToAdd) {
         return getByPath(path.toString())
                 .thenCompose(file -> shareWithAll(file.orElseThrow(() -> new IllegalStateException("Could not find path " + path.toString())), readersToAdd));
@@ -888,7 +930,7 @@ public class UserContext {
                     if (!shared.isPresent())
                         return CompletableFuture.completedFuture(true);
                     FileTreeNode sharedTreeNode = shared.get();
-                    return sharedTreeNode.addLinkTo(file, network, crypto.random)
+                    return sharedTreeNode.addSharingLinkTo(file, network, crypto.random, fragmenter)
                             .thenCompose(ee -> CompletableFuture.completedFuture(true));
                 });
     }
