@@ -15,12 +15,13 @@ public class HttpSocialNetwork implements SocialNetworkProxy {
     private static final String P2P_PROXY_PROTOCOL = "http";
 	private static final Logger LOG = Logger.getGlobal();
 
-    private final HttpPoster poster;
+    private final HttpPoster direct, p2p;
 
-    public HttpSocialNetwork(HttpPoster poster)
+    public HttpSocialNetwork(HttpPoster direct, HttpPoster p2p)
     {
-        LOG.info("Creating HTTP SocialNetwork API at " + poster);
-        this.poster = poster;
+        LOG.info("Creating HTTP SocialNetwork API at " + direct + "and " + p2p);
+        this.direct = direct;
+        this.p2p = p2p;
     }
 
     private static String getProxyUrlPrefix(Multihash targetId) {
@@ -29,15 +30,15 @@ public class HttpSocialNetwork implements SocialNetworkProxy {
 
     @Override
     public CompletableFuture<Boolean> sendFollowRequest(PublicKeyHash target, byte[] encryptedPermission) {
-        return sendFollowRequest("", target, encryptedPermission);
+        return sendFollowRequest("", direct, target, encryptedPermission);
     }
 
     @Override
     public CompletableFuture<Boolean> sendFollowRequest(Multihash targetServerId, PublicKeyHash target, byte[] encryptedPermission) {
-        return sendFollowRequest(getProxyUrlPrefix(targetServerId), target, encryptedPermission);
+        return sendFollowRequest(getProxyUrlPrefix(targetServerId), p2p, target, encryptedPermission);
     }
 
-    private CompletableFuture<Boolean> sendFollowRequest(String urlPrefix, PublicKeyHash target, byte[] encryptedPermission)
+    private CompletableFuture<Boolean> sendFollowRequest(String urlPrefix, HttpPoster poster, PublicKeyHash target, byte[] encryptedPermission)
     {
         try
         {
@@ -64,15 +65,15 @@ public class HttpSocialNetwork implements SocialNetworkProxy {
 
     @Override
     public CompletableFuture<byte[]> getFollowRequests(PublicKeyHash owner) {
-        return getFollowRequests("", owner);
+        return getFollowRequests("", direct, owner);
     }
 
     @Override
     public CompletableFuture<byte[]> getFollowRequests(Multihash targetServerId, PublicKeyHash owner) {
-        return getFollowRequests(getProxyUrlPrefix(targetServerId), owner);
+        return getFollowRequests(getProxyUrlPrefix(targetServerId), p2p, owner);
     }
 
-    private CompletableFuture<byte[]> getFollowRequests(String urlPrefix, PublicKeyHash owner)
+    private CompletableFuture<byte[]> getFollowRequests(String urlPrefix, HttpPoster poster, PublicKeyHash owner)
     {
         try
         {
@@ -99,15 +100,15 @@ public class HttpSocialNetwork implements SocialNetworkProxy {
 
     @Override
     public CompletableFuture<Boolean> removeFollowRequest(PublicKeyHash owner, byte[] signedRequest) {
-        return removeFollowRequest("", owner, signedRequest);
+        return removeFollowRequest("", direct, owner, signedRequest);
     }
 
     @Override
     public CompletableFuture<Boolean> removeFollowRequest(Multihash targetServerId, PublicKeyHash owner, byte[] data) {
-        return removeFollowRequest(getProxyUrlPrefix(targetServerId), owner, data);
+        return removeFollowRequest(getProxyUrlPrefix(targetServerId), p2p, owner, data);
     }
 
-    private CompletableFuture<Boolean> removeFollowRequest(String urlPrefix, PublicKeyHash owner, byte[] signedRequest)
+    private CompletableFuture<Boolean> removeFollowRequest(String urlPrefix, HttpPoster poster, PublicKeyHash owner, byte[] signedRequest)
     {
         try
         {

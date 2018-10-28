@@ -82,7 +82,7 @@ public class NetworkAccess {
         int cacheTTL = 7_000;
         LOG.info("Using caching corenode with TTL: " + cacheTTL + " mS");
         CoreNode coreNode = new HTTPCoreNode(poster);
-        SocialNetwork social = new HttpSocialNetwork(poster);
+        SocialNetwork social = new HttpSocialNetwork(poster, poster);
         MutablePointers mutable = new CachingPointers(new HttpMutablePointers(poster), cacheTTL);
 
         // allow 10MiB of ram for caching tree entries
