@@ -87,14 +87,14 @@ public class UserPublicKeyLink implements Cborable{
                                                       LocalDate expiry,
                                                       List<Multihash> storageProviders) {
         // sign new claim to username, with provided expiry
-        Claim newClaim = Claim.create(username, newUser.secret, expiry, storageProviders);
+        Claim newClaim = Claim.build(username, newUser.secret, expiry, storageProviders);
 
         // sign new key with old
         byte[] link = oldUser.secret.signMessage(newUser.publicKeyHash.serialize());
 
         // create link from old that never expires
         UserPublicKeyLink fromOld = new UserPublicKeyLink(oldUser.publicKeyHash,
-                Claim.create(username, oldUser.secret, LocalDate.MAX, Collections.emptyList()),
+                Claim.build(username, oldUser.secret, LocalDate.MAX, Collections.emptyList()),
                 Optional.of(link));
 
         return Arrays.asList(fromOld, new UserPublicKeyLink(newUser.publicKeyHash, newClaim));
@@ -103,6 +103,7 @@ public class UserPublicKeyLink implements Cborable{
     public static class Claim implements Cborable {
         public final String username;
         public final LocalDate expiry;
+        // a list of storage-node ids
         public final List<Multihash> storageProviders;
         private final byte[] signedContents;
 
@@ -138,7 +139,7 @@ public class UserPublicKeyLink implements Cborable{
             return new Claim(username, expiry, storageProviders, signedContents);
         }
 
-        public static Claim create(String username, SecretSigningKey from, LocalDate expiryDate, List<Multihash> storageProviders) {
+        public static Claim build(String username, SecretSigningKey from, LocalDate expiryDate, List<Multihash> storageProviders) {
             try {
                 ByteArrayOutputStream bout = new ByteArrayOutputStream();
                 DataOutputStream dout = new DataOutputStream(bout);
@@ -198,7 +199,7 @@ public class UserPublicKeyLink implements Cborable{
                                                         String username,
                                                         LocalDate expiry,
                                                         List<Multihash> storageProviders) {
-        Claim newClaim = Claim.create(username, signer.secret, expiry, storageProviders);
+        Claim newClaim = Claim.build(username, signer.secret, expiry, storageProviders);
 
         return Collections.singletonList(new UserPublicKeyLink(signer.publicKeyHash, newClaim));
     }

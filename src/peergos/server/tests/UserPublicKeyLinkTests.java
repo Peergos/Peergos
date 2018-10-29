@@ -44,7 +44,7 @@ public class UserPublicKeyLinkTests {
     @Test
     public void createInitial() throws Exception {
         SigningKeyPair user = SigningKeyPair.random(new SafeRandom.Java(), new Ed25519.Java());
-        UserPublicKeyLink.Claim node = UserPublicKeyLink.Claim.create("someuser", user.secretSigningKey, LocalDate.now().plusYears(2), id);
+        UserPublicKeyLink.Claim node = UserPublicKeyLink.Claim.build("someuser", user.secretSigningKey, LocalDate.now().plusYears(2), id);
 
         PublicKeyHash owner = putPublicSigningKey(user);
         UserPublicKeyLink upl = new UserPublicKeyLink(owner, node);
@@ -80,7 +80,7 @@ public class UserPublicKeyLinkTests {
         String username = "someuser";
 
         // register the username
-        UserPublicKeyLink.Claim node = UserPublicKeyLink.Claim.create(username, user.secretSigningKey, LocalDate.now().plusMonths(2), id);
+        UserPublicKeyLink.Claim node = UserPublicKeyLink.Claim.build(username, user.secretSigningKey, LocalDate.now().plusMonths(2), id);
         PublicKeyHash userHash = putPublicSigningKey(user);
         UserPublicKeyLink upl = new UserPublicKeyLink(userHash, node);
         boolean success = core.updateChain(username, Arrays.asList(upl)).get();
@@ -89,7 +89,7 @@ public class UserPublicKeyLinkTests {
             throw new IllegalStateException("Retrieved chain element different "+chain +" != "+Arrays.asList(upl));
 
         // now change the expiry
-        UserPublicKeyLink.Claim node2 = UserPublicKeyLink.Claim.create(username, user.secretSigningKey, LocalDate.now().plusMonths(3), id);
+        UserPublicKeyLink.Claim node2 = UserPublicKeyLink.Claim.build(username, user.secretSigningKey, LocalDate.now().plusMonths(3), id);
         UserPublicKeyLink upl2 = new UserPublicKeyLink(userHash, node2);
         boolean success2 = core.updateChain(username, Arrays.asList(upl2)).get();
         List<UserPublicKeyLink> chain2 = core.getChain(username).get();
@@ -108,7 +108,7 @@ public class UserPublicKeyLinkTests {
             throw new IllegalStateException("Retrieved chain element different");
 
         // update the expiry at the end of the chain
-        UserPublicKeyLink.Claim node4 = UserPublicKeyLink.Claim.create(username, user2.secretSigningKey, LocalDate.now().plusWeeks(2), id);
+        UserPublicKeyLink.Claim node4 = UserPublicKeyLink.Claim.build(username, user2.secretSigningKey, LocalDate.now().plusWeeks(2), id);
         UserPublicKeyLink upl4 = new UserPublicKeyLink(user2Hash, node4);
         List<UserPublicKeyLink> chain4 = Arrays.asList(upl4);
         boolean success4 = core.updateChain(username, chain4).get();
@@ -124,7 +124,7 @@ public class UserPublicKeyLinkTests {
         // try to claim the same username with a different key
         SigningKeyPair user3 = SigningKeyPair.insecureRandom();
         PublicKeyHash user3Hash = putPublicSigningKey(user3);
-        UserPublicKeyLink.Claim node3 = UserPublicKeyLink.Claim.create(username, user3.secretSigningKey, LocalDate.now().plusMonths(2), id);
+        UserPublicKeyLink.Claim node3 = UserPublicKeyLink.Claim.build(username, user3.secretSigningKey, LocalDate.now().plusMonths(2), id);
         UserPublicKeyLink upl3 = new UserPublicKeyLink(user3Hash, node3);
         try {
             boolean shouldFail = core.updateChain(username, Arrays.asList(upl3)).get();
