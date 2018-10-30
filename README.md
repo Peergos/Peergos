@@ -125,3 +125,7 @@ ant test
 Usage
 -----
 Instructions for self hosting will be written once it is supported. 
+
+
+### Development Notes
+The ``ant compile`` target will only compile sources in src/peergos/{client,server,shared} folders.

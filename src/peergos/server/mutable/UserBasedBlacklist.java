@@ -1,10 +1,9 @@
 package peergos.server.mutable;
 import java.util.logging.*;
+import peergos.server.util.Logging;
 
-import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.merklebtree.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
@@ -16,7 +15,7 @@ import java.util.concurrent.*;
 import java.util.stream.*;
 
 public class UserBasedBlacklist implements PublicKeyBlackList {
-	private static final Logger LOG = Logger.getGlobal();
+	private static final Logger LOG = Logging.LOG();
 
     private static final long RELOAD_PERIOD_MS = 3_600_000;
 

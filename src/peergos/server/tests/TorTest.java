@@ -1,5 +1,6 @@
 package peergos.server.tests;
 import java.util.logging.*;
+import peergos.server.util.Logging;
 
 import org.junit.*;
 import peergos.shared.util.*;
@@ -11,7 +12,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 
 public class TorTest {
-	private static final Logger LOG = Logger.getGlobal();
+	private static final Logger LOG = Logging.LOG();
 
     @Ignore
     @Test

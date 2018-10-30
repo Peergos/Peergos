@@ -1,5 +1,6 @@
 package peergos.server.net;
 import java.util.logging.*;
+import peergos.server.util.Logging;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
@@ -17,7 +18,7 @@ import java.util.function.*;
 import java.util.stream.*;
 
 public class DHTHandler implements HttpHandler {
-	private static final Logger LOG = Logger.getGlobal();
+	private static final Logger LOG = Logging.LOG();
 
     private static final boolean LOGGING = true;
     private final ContentAddressedStorage dht;

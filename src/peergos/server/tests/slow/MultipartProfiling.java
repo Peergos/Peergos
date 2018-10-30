@@ -1,6 +1,8 @@
 package peergos.server.tests.slow;
 import java.util.logging.*;
 
+import peergos.server.util.Logging;
+
 import com.sun.net.httpserver.*;
 import org.junit.*;
 import peergos.server.net.*;
@@ -10,10 +12,9 @@ import java.io.*;
 import java.net.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.stream.*;
 
 public class MultipartProfiling {
-	private static final Logger LOG = Logger.getGlobal();
+	private static final Logger LOG = Logging.LOG();
 
     private final int port;
     private final HttpServer server;

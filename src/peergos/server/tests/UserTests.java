@@ -1,6 +1,9 @@
 package peergos.server.tests;
 import java.util.logging.*;
 
+import peergos.server.util.Args;
+import peergos.server.util.Logging;
+
 import org.junit.*;
 import static org.junit.Assert.*;
 
@@ -26,7 +29,7 @@ import java.util.concurrent.*;
 import java.util.stream.*;
 
 public abstract class UserTests {
-	private static final Logger LOG = Logger.getGlobal();
+	private static final Logger LOG = Logging.LOG();
 
     public static int RANDOM_SEED = 666;
     private final NetworkAccess network;

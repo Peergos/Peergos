@@ -1,6 +1,8 @@
 package peergos.server.corenode;
 import java.util.logging.*;
 
+import peergos.server.util.Logging;
+
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
@@ -15,7 +17,7 @@ import java.util.concurrent.*;
 import java.util.stream.*;
 
 public class JDBCCoreNode {
-	private static final Logger LOG = Logger.getGlobal();
+	private static final Logger LOG = Logging.LOG();
     public static final boolean LOGGING = false;
 
     public static final long MIN_USERNAME_SET_REFRESH_PERIOD = 60*1000000000L;

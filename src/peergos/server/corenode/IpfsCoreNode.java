@@ -1,6 +1,8 @@
 package peergos.server.corenode;
 import java.util.logging.*;
 
+import peergos.server.util.Logging;
+
 import peergos.server.mutable.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
@@ -24,7 +26,7 @@ import java.util.function.*;
 import java.util.stream.*;
 
 public class IpfsCoreNode implements CoreNode {
-	private static final Logger LOG = Logger.getGlobal();
+	private static final Logger LOG = Logging.LOG();
 
     public static final PublicSigningKey PEERGOS_IDENTITY_KEY = PublicSigningKey.fromString("ggFYIE7uD1ViM9KfiA1w69n774/jk6hERINN3xACPyabWiBp");
     public static final PublicKeyHash PEERGOS_IDENTITY_KEY_HASH = PublicKeyHash.fromString("zdpuAvZynWLuyvovJwa34bj24M7cspt5M8seFfrFLrPWDGFDW");

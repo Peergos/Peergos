@@ -1,6 +1,7 @@
 package peergos.server;
 
-import peergos.shared.util.Args;
+import peergos.server.util.Args;
+import peergos.server.util.Logging;
 
 import java.util.*;
 import java.util.function.Consumer;
@@ -69,6 +70,7 @@ public class Command {
         }
 
         ensureArgs(args);
+        Logging.init(args);
         Runnable runnable = () -> entryPoint.accept(args);
         runnable.run();
     }

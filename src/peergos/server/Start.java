@@ -3,6 +3,7 @@ package peergos.server;
 import peergos.server.corenode.*;
 import peergos.server.mutable.*;
 import peergos.server.social.*;
+import peergos.server.util.Args;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
@@ -19,14 +20,12 @@ import peergos.server.fuse.*;
 import peergos.server.storage.*;
 import peergos.server.tests.*;
 import peergos.shared.user.*;
-import peergos.shared.util.*;
 
 import java.io.IOException;
 import java.net.*;
 import java.nio.file.*;
 import java.sql.*;
 import java.util.*;
-import java.util.logging.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -40,7 +39,7 @@ public class Start
             "Start a Corenode.",
             Start::startCoreNode,
             Arrays.asList(
-                    new Command.Arg("corenodePath", "Path to a local corenode sql file (created if it doesn't exist)", false, ":memory:"),
+                    new Command.Arg("corenodeFile", "Name of a local corenode sql file (created if it doesn't exist)", false, ":memory:"),
                     new Command.Arg("keyfile", "Path to keyfile", false),
                     new Command.Arg("passphrase", "Passphrase for keyfile", false),
                     new Command.Arg("corenodePort", "Service port", true, "" + HttpCoreNodeServer.PORT),
@@ -54,7 +53,7 @@ public class Start
             "Start a social network node which stores follow requests.",
             Start::startSocialNode,
             Stream.of(
-                    new Command.Arg("socialnodePath", "Path to a local social node sql file (created if it doesn't exist)", false, ":memory:"),
+                    new Command.Arg("socialnodeFile", "Name of local social node sql file (created if it doesn't exist)", false, ":memory:"),
                     new Command.Arg("keyfile", "Path to keyfile", false),
                     new Command.Arg("passphrase", "Passphrase for keyfile", false),
                     new Command.Arg("socialnodePort", "Service port", true, "" + HttpSocialNetworkServer.PORT)
@@ -80,8 +79,8 @@ public class Start
             "Run in demo server mode",
             args -> {
                 args.setIfAbsent("domain", "demo.peergos.net");
-                args.setIfAbsent("corenodePath", "core.sql");
-                args.setIfAbsent("socialnodePath", "social.sql");
+                args.setIfAbsent("corenodeFile", "core.sql");
+                args.setIfAbsent("socialnodeFile", "social.sql");
                 args.setIfAbsent("useIPFS", "true");
                 args.setIfAbsent("publicserver", "true");
                 CORE_NODE.main(args);
@@ -198,8 +197,8 @@ public class Start
                 args.setIfAbsent("pki.keyfile.password", "testPkiFilePassword");
                 BOOTSTRAP.main(args);
                 args.setIfAbsent("domain", "localhost");
-                args.setIfAbsent("corenodePath", ":memory:");
-                args.setIfAbsent("socialnodePath", ":memory:");
+                args.setIfAbsent("corenodeFile", ":memory:");
+                args.setIfAbsent("socialnodeFile", ":memory:");
                 args.setIfAbsent("useIPFS", "false");
                 CORE_NODE.main(args);
                 SOCIAL.main(args);
@@ -244,16 +243,16 @@ public class Start
             CoreNode core = HTTPCoreNode.getInstance(coreAddress);
             SocialNetwork social = HttpSocialNetwork.getInstance(socialAddress);
             MutablePointers mutable = HttpMutablePointers.getInstance(coreAddress);
-            String blacklistPath = "blacklist.txt";
-            PublicKeyBlackList blacklist = new UserBasedBlacklist(Paths.get(blacklistPath), core, mutable, dht);
+            Path blacklistPath = a.fromPeergosDir("blacklist_file", "blacklist.txt");
+            PublicKeyBlackList blacklist = new UserBasedBlacklist(blacklistPath, core, mutable, dht);
             MutablePointers mutablePointers = new BlockingMutablePointers(new PinningMutablePointers(mutable, dht), blacklist);
 
-            Path userPath = Paths.get(a.getArg("whitelist_path", "user_whitelist.txt"));
+            Path userPath = a.fromPeergosDir("whitelist_file", "user_whitelist.txt");
             int delayMs = a.getInt("whitelist_sleep_period", 1000 * 60 * 10);
 
             new UserFilePinner(userPath, core, mutablePointers, dht, delayMs).start();
             InetSocketAddress httpsMessengerAddress = new InetSocketAddress(hostname, userAPIAddress.getPort());
-            new UserService(httpsMessengerAddress, Logger.getLogger("IPFS"), dht, core, social, mutablePointers, a);
+            new UserService(httpsMessengerAddress, dht, core, social, mutablePointers, a);
         } catch (Exception e) {
             e.printStackTrace();
 
@@ -293,9 +292,8 @@ public class Start
     }
 
     public static void startCoreNode(Args a) {
-        String keyfile = a.getArg("keyfile", "core.key");
-        char[] passphrase = a.getArg("passphrase", "password").toCharArray();
-        String path = a.getArg("corenodePath");
+        String corenodeFile = a.getArg("corenodeFile");
+        String path = corenodeFile.equals(":memory:") ? corenodeFile : a.fromPeergosDir("corenodeFile").toString();
         int corenodePort = a.getInt("corenodePort");
         int maxUserCount = a.getInt("maxUserCount", CoreNode.MAX_USERNAME_COUNT);
         System.out.println("Using core node path " + path);
@@ -307,7 +305,8 @@ public class Start
                 RAMStorage.getSingleton();
         try {
             Crypto crypto = Crypto.initJava();
-            MutablePointers mutable = UserRepository.buildSqlLite(path, dht, maxUserCount);
+            MutablePointers mutable = UserRepository.buildSqlLite(path
+                    , dht, maxUserCount);
             PublicKeyHash peergosIdentity = PublicKeyHash.fromString(a.getArg("peergos.identity.hash"));
 
             String pkiSecretKeyfilePassword = a.getArg("pki.keyfile.password");
@@ -329,7 +328,7 @@ public class Start
             MaybeMultihash currentPkiRoot = mutable.getPointerTarget(pkiPublicHash, dht).get();
 
             IpfsCoreNode core = new IpfsCoreNode(pkiKeys, currentPkiRoot, dht, mutable, peergosIdentity);
-            HttpCoreNodeServer.createAndStart(keyfile, passphrase, corenodePort, core, mutable, a);
+            HttpCoreNodeServer.createAndStart(corenodePort, core, mutable, a);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -338,7 +337,8 @@ public class Start
     public static void startSocialNode(Args a) {
         String keyfile = a.getArg("keyfile", "social.key");
         char[] passphrase = a.getArg("passphrase", "password").toCharArray();
-        String path = a.getArg("socialnodePath");
+        String socialNodeFile = a.getArg("socialnodeFile");
+        String path = socialNodeFile.equals(":memory:") ? socialNodeFile : a.fromPeergosDir("socialnodeFile").toString();
         int socialnodePort = a.getInt("socialnodePort");
         int maxUserCount = a.getInt("maxUserCount", CoreNode.MAX_USERNAME_COUNT);
         System.out.println("Using social node path " + path);
@@ -365,7 +365,7 @@ public class Start
                     return;
                 }
                 args.setIfAbsent("domain", "localhost");
-                args.setIfAbsent("corenodePath", ":memory:");
+                args.setIfAbsent("corenodeFile", ":memory:");
                 startCoreNode(args);
                 startPeergos(args);
             },

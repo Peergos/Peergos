@@ -1,12 +1,14 @@
 package peergos.server.tests;
 import java.util.logging.*;
 
+import peergos.server.util.Args;
+import peergos.server.util.Logging;
+
 import org.junit.*;
 import static org.junit.Assert.*;
 import static java.util.UUID.*;
 
 import peergos.shared.*;
-import peergos.shared.crypto.*;
 import peergos.server.fuse.*;
 import peergos.server.Start;
 import peergos.shared.user.*;
@@ -14,7 +16,6 @@ import peergos.shared.util.*;
 
 import java.io.*;
 import java.lang.*;
-import java.lang.reflect.*;
 import java.nio.file.*;
 import java.nio.file.attribute.FileTime;
 import java.time.ZonedDateTime;
@@ -22,7 +23,7 @@ import java.util.*;
 import java.util.stream.*;
 
 public class FuseTests {
-	private static final Logger LOG = Logger.getGlobal();
+	private static final Logger LOG = Logging.LOG();
     public static int WEB_PORT = 8888;
     public static int CORE_PORT = 7777;
     public static String username = "test02";

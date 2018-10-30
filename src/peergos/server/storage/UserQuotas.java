@@ -1,6 +1,8 @@
 package peergos.server.storage;
 import java.util.logging.*;
 
+import peergos.server.util.Logging;
+
 import java.io.*;
 import java.nio.file.*;
 import java.util.*;
@@ -8,7 +10,7 @@ import java.util.concurrent.*;
 import java.util.stream.*;
 
 public class UserQuotas {
-	private static final Logger LOG = Logger.getGlobal();
+	private static final Logger LOG = Logging.LOG();
 
     private static final long RELOAD_PERIOD_MS = 3_600_000;
 

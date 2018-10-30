@@ -1,6 +1,8 @@
 package peergos.server.corenode;
 import java.util.logging.*;
 
+import peergos.server.util.Logging;
+
 import peergos.server.mutable.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.CoreNode;
@@ -17,11 +19,11 @@ import com.sun.net.httpserver.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.api.*;
 import peergos.shared.mutable.*;
-import peergos.shared.util.Args;
+import peergos.server.util.Args;
 import peergos.shared.util.Serialize;
 
 public class HttpCoreNodeServer {
-	private static final Logger LOG = Logger.getGlobal();
+	private static final Logger LOG = Logging.LOG();
 
     private static final boolean LOGGING = true;
     private static final int CONNECTION_BACKLOG = 100;
@@ -192,9 +194,8 @@ public class HttpCoreNodeServer {
     }
 
 
-    public static void createAndStart(String keyfile, char[] passphrase, int port, CoreNode coreNode, MutablePointers mutable, Args args)
+    public static void createAndStart(int port, CoreNode coreNode, MutablePointers mutable, Args args)
     {
-        // eventually will need our own keypair to sign traffic to other core nodes
         try {
             String hostname = args.getArg("domain", "localhost");
             LOG.info("Starting core node server listening on: " + hostname+":"+port +" proxying to "+coreNode);

@@ -1,6 +1,8 @@
 package peergos.server.fuse;
 import java.util.logging.*;
 
+import peergos.server.util.Logging;
+
 import jnr.ffi.Pointer;
 import jnr.ffi.types.*;
 import peergos.shared.user.UserContext;
@@ -25,7 +27,7 @@ import java.util.function.*;
  * https://github.com/libfuse/libfuse/blob/master/include/fuse.h
  */
 public class PeergosFS extends FuseStubFS implements AutoCloseable {
-	private static final Logger LOG = Logger.getGlobal();
+	private static final Logger LOG = Logging.LOG();
 
     protected static class PeergosStat {
         public final FileTreeNode treeNode;

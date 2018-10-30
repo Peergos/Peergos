@@ -1,5 +1,6 @@
 package peergos.server.tests;
 import java.util.logging.*;
+import peergos.server.util.Logging;
 
 import org.junit.*;
 import peergos.server.storage.*;
@@ -17,7 +18,7 @@ import java.util.concurrent.*;
 import java.util.function.*;
 
 public class MerkleBtreeTests {
-	private static final Logger LOG = Logger.getGlobal();
+	private static final Logger LOG = Logging.LOG();
 
     private Crypto crypto = Crypto.initJava();
 

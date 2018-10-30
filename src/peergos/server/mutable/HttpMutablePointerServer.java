@@ -1,6 +1,8 @@
 package peergos.server.mutable;
 import java.util.logging.*;
 
+import peergos.server.util.Logging;
+
 import com.sun.net.httpserver.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
@@ -12,7 +14,7 @@ import java.net.*;
 import java.util.concurrent.*;
 
 public class HttpMutablePointerServer {
-	private static final Logger LOG = Logger.getGlobal();
+	private static final Logger LOG = Logging.LOG();
 
     public static final int PORT = 9998;
 
