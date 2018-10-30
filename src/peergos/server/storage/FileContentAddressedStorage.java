@@ -220,9 +220,9 @@ public class FileContentAddressedStorage implements ContentAddressedStorage {
             Path child = file.resolve(filename);
             if (child.toFile().isDirectory()) {
                 getFilesRecursive(child, accumulator);
-            } else if (filename.startsWith("Q")) { // tolerate non content addressed files in the same space
+            } else if (filename.startsWith("Q") || filename.startsWith("z")) { // tolerate non content addressed files in the same space
                 try {
-                    accumulator.accept(Multihash.fromBase58(child.toFile().getName()));
+                    accumulator.accept(Cid.decode(child.toFile().getName()));
                 } catch (IllegalStateException e) {
                     // ignore files who's name isn't a valid multihash
                 }
