@@ -106,7 +106,7 @@ public class Start
                             crypto.random, crypto.signer, crypto.boxer, SecretGenerationAlgorithm.getDefault()).get();
 
                     boolean useIPFS = args.getBoolean("useIPFS");
-                    ContentAddressedStorage dht = useIPFS ? new IpfsDHT() : RAMStorage.getSingleton();
+                    ContentAddressedStorage dht = useIPFS ? new IpfsDHT() : new FileContentAddressedStorage(Paths.get("blockstore"));
 
                     SigningKeyPair peergosIdentityKeys = peergos.getUser();
                     PublicKeyHash peergosPublicHash = ContentAddressedStorage.hashKey(peergosIdentityKeys.publicSigningKey);
@@ -235,7 +235,11 @@ public class Start
             boolean useIPFS = a.getBoolean("useIPFS");
             int dhtCacheEntries = 1000;
             int maxValueSizeToCache = 50 * 1024;
-            ContentAddressedStorage dht = useIPFS ? new CachingStorage(new IpfsDHT(), dhtCacheEntries, maxValueSizeToCache) : RAMStorage.getSingleton();
+            URL ipfsAddress = new URI(a.getArg("ipfsURL", "http://127.0.0.1:5001")).toURL();
+            JavaPoster ipfsPoster = new JavaPoster(ipfsAddress);
+            ContentAddressedStorage dht = useIPFS ?
+                    new CachingStorage(new ContentAddressedStorage.HTTP(ipfsPoster), dhtCacheEntries, maxValueSizeToCache) :
+                    new FileContentAddressedStorage(Paths.get("blockstore"));
 
             // start the User Service
             String hostname = a.getArg("domain");
@@ -302,7 +306,7 @@ public class Start
         int maxValueSizeToCache = 2 * 1024 * 1024;
         ContentAddressedStorage dht = useIPFS ?
                 new CachingStorage(new IpfsDHT(), dhtCacheEntries, maxValueSizeToCache) :
-                RAMStorage.getSingleton();
+                new FileContentAddressedStorage(Paths.get("blockstore"));
         try {
             Crypto crypto = Crypto.initJava();
             MutablePointers mutable = UserRepository.buildSqlLite(path
@@ -347,7 +351,7 @@ public class Start
         int maxValueSizeToCache = 2 * 1024 * 1024;
         ContentAddressedStorage dht = useIPFS ?
                 new CachingStorage(new IpfsDHT(), dhtCacheEntries, maxValueSizeToCache) :
-                RAMStorage.getSingleton();
+                new FileContentAddressedStorage(Paths.get("blockstore"));
         try {
             SocialNetwork social = UserRepository.buildSqlLite(path, dht, maxUserCount);
             HttpSocialNetworkServer.createAndStart(keyfile, passphrase, socialnodePort, social, a);

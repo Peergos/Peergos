@@ -7,6 +7,7 @@ import peergos.shared.io.ipfs.multiaddr.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.storage.ContentAddressedStorage;
+import peergos.shared.util.*;
 
 import java.security.*;
 import java.util.*;
@@ -16,7 +17,7 @@ import java.util.stream.*;
 public class RAMStorage implements ContentAddressedStorage {
     private static final int CID_V1 = 1;
 
-    private Map<Multihash, byte[]> storage = new HashMap<>();
+    private Map<Multihash, byte[]> storage = new EfficientHashMap<>();
 
     private final Set<Multihash> pinnedRoots = new HashSet<>();
 

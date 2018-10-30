@@ -1,0 +1,263 @@
+package peergos.server.storage;
+
+import peergos.shared.cbor.*;
+import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.cid.*;
+import peergos.shared.io.ipfs.multiaddr.*;
+import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.storage.*;
+import peergos.shared.util.*;
+
+import java.io.*;
+import java.nio.channels.*;
+import java.nio.file.*;
+import java.nio.file.attribute.*;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.function.*;
+import java.util.logging.*;
+import java.util.stream.*;
+
+/** A local directory implementation of ContentAddressedStorage.
+ *
+ */
+public class FileContentAddressedStorage implements ContentAddressedStorage {
+    private static final Logger LOG = Logger.getGlobal();
+    private static final int CID_V1 = 1;
+
+    private final Path root;
+
+    public FileContentAddressedStorage(Path root) {
+        this.root = root;
+        if (!root.toFile().exists()) {
+            final boolean mkdirs = root.toFile().mkdirs();
+            if (!mkdirs)
+                throw new IllegalStateException("Unable to create directory " + root);
+        }
+        if (!root.toFile().isDirectory())
+            throw new IllegalStateException("File store path must be a directory! " + root);
+    }
+
+    @Override
+    public CompletableFuture<Multihash> id() {
+        return CompletableFuture.completedFuture(new Multihash(Multihash.Type.sha2_256, RAMStorage.hash("FileStorage".getBytes())));
+    }
+
+    @Override
+    public CompletableFuture<List<Multihash>> put(PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
+        return put(writer, signatures, blocks, false);
+    }
+
+    @Override
+    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
+        return put(writer, signatures, blocks, true);
+    }
+
+    private CompletableFuture<List<Multihash>> put(PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks, boolean isRaw) {
+        return CompletableFuture.completedFuture(blocks.stream()
+                .map(b -> put(b, isRaw))
+                .collect(Collectors.toList()));
+    }
+
+    @Override
+    public CompletableFuture<List<MultiAddress>> pinUpdate(Multihash existing, Multihash updated) {
+        return CompletableFuture.completedFuture(Arrays.asList(new MultiAddress("/ipfs/"+existing), new MultiAddress("/ipfs/"+updated)));
+    }
+
+    @Override
+    public CompletableFuture<List<Multihash>> recursivePin(Multihash h) {
+        return CompletableFuture.completedFuture(Arrays.asList(h));
+    }
+
+    @Override
+    public CompletableFuture<List<Multihash>> recursiveUnpin(Multihash h) {
+        return CompletableFuture.completedFuture(Arrays.asList(h));
+    }
+
+    @Override
+    public CompletableFuture<List<Multihash>> getLinks(Multihash root) {
+        if (root instanceof Cid && ((Cid) root).codec == Cid.Codec.Raw)
+            return CompletableFuture.completedFuture(Collections.emptyList());
+        return get(root).thenApply(opt -> opt
+                .map(cbor -> cbor.links())
+                .orElse(Collections.emptyList())
+        );
+    }
+
+    private Path getFilePath(Multihash h) {
+        String name = h.toString();
+        int depth = 5;
+        Path path = Paths.get("");
+        for (int i=0; i < depth; i++)
+            path = path.resolve(Character.toString(name.charAt(i)));
+        // include full name in filename
+        path = path.resolve(name);
+        return path;
+    }
+
+    @Override
+    public CompletableFuture<Optional<CborObject>> get(Multihash hash) {
+        if (hash instanceof Cid && ((Cid) hash).codec == Cid.Codec.Raw)
+            throw new IllegalStateException("Need to call getRaw if cid is not cbor!");
+        return getRaw(hash).thenApply(opt -> opt.map(CborObject::fromByteArray));
+    }
+
+    @Override
+    public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash) {
+        try {
+            Path path = getFilePath(hash);
+            File file = root.resolve(path).toFile();
+            if (! file.exists()){
+                return CompletableFuture.completedFuture(Optional.empty());
+            }
+            try (DataInputStream din = new DataInputStream(new BufferedInputStream(new FileInputStream(file)))) {
+                return CompletableFuture.completedFuture(Optional.of(Serialize.readFully(din)));
+            }
+        } catch (IOException e) {
+            throw new RuntimeException(e.getMessage(), e);
+        }
+    }
+
+    public Multihash put(byte[] data, boolean isRaw) {
+        try {
+            Multihash rawhash = new Multihash(Multihash.Type.sha2_256, RAMStorage.hash(data));
+            Cid cid = new Cid(CID_V1, isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor, rawhash);
+            Path filePath = getFilePath(cid);
+            Path target = root.resolve(filePath);
+            Path parent = target.getParent();
+            File parentDir = parent.toFile();
+            if (! parentDir.exists() && ! parentDir.mkdirs())
+                throw new IllegalStateException("Couldn't create directory: " + parent);
+            for (Path someParent = parent; !someParent.equals(root); someParent = someParent.getParent()) {
+                final File someParentFile = someParent.toFile();
+                if ("root".equals(System.getProperty("user.name")) || ! someParentFile.canWrite()) {
+                    final boolean b = someParentFile.setWritable(true, false);
+                    if (!b)
+                        throw new IllegalStateException("Could not make " + someParent.toString() + ", ancestor of " + parentDir.toString() + " writable");
+                }
+            }
+            File targetFile = target.toFile();
+            Path tmp = Files.createTempFile(root, "tmp", "");
+            File tmpFile = tmp.toFile();
+            Path lockPath = parent.resolve("lock." + filePath.toFile().getName());
+            try (RandomAccessFile rw = new RandomAccessFile(lockPath.toFile(), "rw");
+                 FileLock lock = rw.getChannel().lock()) {
+                DataOutputStream dout = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(tmpFile)));
+                dout.write(data, 0, data.length);
+                dout.flush();
+                dout.close();
+                final boolean setWritableSuccess = tmpFile.setWritable(false, false);
+                final boolean setReadableSuccess = tmpFile.setReadable(true, false);
+                final boolean renameSuccess = tmpFile.renameTo(targetFile);
+                final boolean deleteSuccess = lockPath.toFile().delete();
+                final boolean lockExists = lockPath.toFile().exists();
+                if (!setWritableSuccess)
+                    throw new IllegalStateException("Error setting " + tmpFile.getName() + " to writable");
+                if (!setReadableSuccess)
+                    throw new IllegalStateException("Error setting " + tmpFile.getName() + " to readable");
+                if (!renameSuccess)
+                    throw new IllegalStateException("Error renaming " + tmpFile.getName() + " to " + targetFile.getName());
+                if (!deleteSuccess && lockExists)
+                    throw new IllegalStateException("Error deleting " + lockPath.toFile().getName());
+            } finally {
+                if (tmpFile.exists())
+                    tmpFile.delete();
+            }
+            return cid;
+        } catch (IOException e) {
+            throw new RuntimeException(e.getMessage(), e);
+        }
+    }
+
+    protected List<Multihash> getFiles() {
+        List<Multihash> existing = new ArrayList<>();
+        getFilesRecursive(root, existing::add);
+        return existing;
+    }
+
+    @Override
+    public CompletableFuture<Optional<Integer>> getSize(Multihash h) {
+        Path path = getFilePath(h);
+        File file = root.resolve(path).toFile();
+        return CompletableFuture.completedFuture(file.exists() ? Optional.of((int) file.length()) : Optional.empty());
+    }
+
+    protected boolean delete(Multihash h) {
+        Path path = getFilePath(h);
+        File file = root.resolve(path).toFile();
+        return file.exists() && file.delete();
+    }
+
+    public Optional<Long> getLastAccessTimeMillis(Multihash h) {
+        Path path = getFilePath(h);
+        File file = root.resolve(path).toFile();
+        if (! file.exists())
+            return Optional.empty();
+        try {
+            BasicFileAttributes attrs = Files.readAttributes(root.resolve(path), BasicFileAttributes.class);
+            FileTime time = attrs.lastAccessTime();
+            return Optional.of(time.toMillis());
+        } catch (NoSuchFileException nope) {
+            return Optional.empty();
+        } catch (IOException e) {
+            throw new RuntimeException(e.getMessage(), e);
+        }
+    }
+
+    public void applyToAll(Consumer<Multihash> processor) {
+        getFilesRecursive(root, processor);
+    }
+
+    private void getFilesRecursive(Path file, Consumer<Multihash> accumulator) {
+        if (file.toFile().isFile()) {
+            accumulator.accept(Multihash.fromBase58(file.toFile().getName()));
+            return;
+        }
+        String[] filenames = file.toFile().list();
+        if (filenames == null)
+            throw new IllegalStateException("Couldn't retrieve children of directory: " + file);
+        for (String filename : filenames) {
+            Path child = file.resolve(filename);
+            if (child.toFile().isDirectory()) {
+                getFilesRecursive(child, accumulator);
+            } else if (filename.startsWith("Q")) { // tolerate non content addressed files in the same space
+                try {
+                    accumulator.accept(Multihash.fromBase58(child.toFile().getName()));
+                } catch (IllegalStateException e) {
+                    // ignore files who's name isn't a valid multihash
+                }
+            }
+        }
+    }
+
+    public Set<Multihash> retainOnly(Set<Multihash> pins) {
+        List<Multihash> existing = getFiles();
+        Set<Multihash> removed = new HashSet<>();
+        for (Multihash h : existing) {
+            if (! pins.contains(h)) {
+                removed.add(h);
+                File file = root.resolve(getFilePath(h)).toFile();
+                if (file.exists() && !file.delete())
+                    LOG.warning("Could not delete " + file);
+                File legacy = root.resolve(h.toBase58()).toFile();
+                if (legacy.exists() && ! legacy.delete())
+                    LOG.warning("Could not delete " + legacy);
+            }
+        }
+        return removed;
+    }
+
+    public boolean contains(Multihash multihash) {
+        Path path = getFilePath(multihash);
+        File file = root.resolve(path).toFile();
+        if (! file.exists()) { // for backwards compatibility with existing data
+            file = root.resolve(path.getFileName()).toFile();
+        }
+        return file.exists();
+    }
+
+    @Override
+    public String toString() {
+        return "FileContentAddressedStorage " + root;
+    }
+}

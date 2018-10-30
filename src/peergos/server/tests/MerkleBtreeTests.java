@@ -1,4 +1,5 @@
 package peergos.server.tests;
+import java.nio.file.*;
 import java.util.logging.*;
 import peergos.server.util.Logging;
 
@@ -15,25 +16,24 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.function.*;
 
 public class MerkleBtreeTests {
 	private static final Logger LOG = Logging.LOG();
 
     private Crypto crypto = Crypto.initJava();
 
-    public RAMStorage createStorage() {
-        return RAMStorage.getSingleton();
+    public ContentAddressedStorage createStorage() {
+        return new FileContentAddressedStorage(Paths.get("blockstore"));
     }
 
     public CompletableFuture<MerkleBTree> createTree(SigningPrivateKeyAndPublicHash user) throws IOException {
-        return createTree(user, RAMStorage.getSingleton());
+        return createTree(user, createStorage());
     }
 
     public SigningPrivateKeyAndPublicHash createUser() {
         SigningKeyPair random = SigningKeyPair.random(crypto.random, crypto.signer);
         try {
-            RAMStorage storage = createStorage();
+            ContentAddressedStorage storage = createStorage();
             PublicKeyHash publicHash = storage.putSigningKey(
                     random.secretSigningKey.signatureOnly(random.publicSigningKey.serialize()),
                     ContentAddressedStorage.hashKey(random.publicSigningKey),
@@ -67,7 +67,7 @@ public class MerkleBtreeTests {
     @Test
     public void basic2() throws Exception {
         SigningPrivateKeyAndPublicHash user = createUser();
-        RAMStorage dht = createStorage();
+        ContentAddressedStorage dht = createStorage();
         MerkleBTree tree = createTree(user, dht).get();
         for (int i=0; i < 16; i++) {
             byte[] key1 = new byte[]{0, 1, 2, (byte)i};
@@ -79,37 +79,6 @@ public class MerkleBtreeTests {
         }
         if (tree.root.keys.size() != 2)
             throw new IllegalStateException("New root should have two children!");
-    }
-
-    @Test
-    public void insertionOrderIndependence() throws Exception {
-        SigningPrivateKeyAndPublicHash user = createUser();
-        Random r = new Random(28);
-
-        List<Pair<byte[], Multihash>> mappings = new ArrayList<>();
-        for (int i=0; i < 100; i++)
-            mappings.add(new Pair<>(randomData(32, r), new Multihash(Multihash.Type.sha2_256, randomData(32, r))));
-
-        BiConsumer<RAMStorage, List<Pair<byte[], Multihash>>> fillTree = (store, map) -> {
-            try {
-                MerkleBTree tree1 = createTree(user, store).get();
-                for (Pair<byte[], Multihash> mapping : map) {
-                    tree1.put(user, mapping.left, MaybeMultihash.empty(), mapping.right).get();
-                }
-            } catch (Exception e) {
-                LOG.log(Level.WARNING, e.getMessage(), e);
-            }
-        };
-
-        RAMStorage store1 = new RAMStorage();
-        fillTree.accept(store1, mappings);
-
-//        Collections.shuffle(mappings, r); // Uncomment this to test insertion order independence
-        RAMStorage store2 = new RAMStorage();
-        fillTree.accept(store2, mappings);
-
-        boolean equal = store1.equals(store2);
-        Assert.assertTrue("Independent of order", equal);
     }
 
     private static byte[] randomData(int len, Random source) {
@@ -157,7 +126,6 @@ public class MerkleBtreeTests {
                 throw new IllegalStateException("Results not equal");
         }
         System.out.printf("Put+get rate = %f /s\n", 1000000.0 / (t2 - t1) * 1000);
-        ((RAMStorage)tree.storage).clear();
     }
 
     @Test
@@ -185,7 +153,6 @@ public class MerkleBtreeTests {
         }
         long t2 = System.currentTimeMillis();
         System.out.printf("Put+get rate = %f /s\n", (double)lim / (t2 - t1) * 1000);
-        ((RAMStorage)tree.storage).clear();
     }
 
 //    @Test
@@ -235,57 +202,5 @@ public class MerkleBtreeTests {
         }
         long t2 = System.currentTimeMillis();
         System.out.printf("size+get+delete+get+put rate = %f /s\n", (double)lim / (t2 - t1) * 1000);
-        ((RAMStorage)tree.storage).clear();
-    }
-
-    @Test
-    public void storageSize() throws Exception {
-        SigningPrivateKeyAndPublicHash user = createUser();
-        MerkleBTree tree = createTree(user).get();
-        int keylen = 32;
-
-        Random r = new Random(1);
-        SortedSet<ByteArrayWrapper> keys = new TreeSet<>();
-        // make a 3 node tree
-        int lim = 22;
-        for (int i = 0; i < lim; i++) {
-            if (i % (lim/10) == 0)
-                LOG.info((10*i/lim)+"0 % of building");
-            byte[] key1 = toLittleEndian(i);
-            keys.add(new ByteArrayWrapper(key1));
-            byte[] value1Raw = new byte[keylen];
-            r.nextBytes(value1Raw);
-            Multihash value1 = hash(value1Raw);
-            tree.put(user, key1, MaybeMultihash.empty(), value1).get();
-
-            MaybeMultihash res1 = tree.get(key1).get();
-            if (! res1.get().equals(value1))
-                throw new IllegalStateException("Results not equal");
-        }
-
-        int size = ((RAMStorage)tree.storage).size();
-        if (size != 31)
-            throw new IllegalStateException("Storage size != 3");
-
-        long t1 = System.currentTimeMillis();
-        for (int i = 16; i < 22; i++) {
-            byte[] key = toLittleEndian(i);
-            MaybeMultihash value = tree.get(key).get();
-            if (! value.isPresent())
-                throw new IllegalStateException("Key not present!");
-            tree.remove(user, key, value).get();
-            if (tree.get(key).get().isPresent())
-                throw new IllegalStateException("Key still present!");
-        }
-        long t2 = System.currentTimeMillis();
-        System.out.printf("size+get+delete+get+put rate = %f /s\n", (double)lim / (t2 - t1) * 1000);
-        ((RAMStorage)tree.storage).clear();
-    }
-
-    private static byte[] toLittleEndian(int x) {
-        byte[] res = new byte[4];
-        for (int i=0; i < 4; i++)
-            res[i] = (byte) (x >> 8*i);
-        return res;
     }
 }
