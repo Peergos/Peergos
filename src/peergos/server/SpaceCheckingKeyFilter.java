@@ -1,6 +1,8 @@
 package peergos.server;
 import java.util.logging.*;
 
+import peergos.server.util.Logging;
+
 import peergos.server.corenode.*;
 import peergos.server.mutable.*;
 import peergos.shared.cbor.*;
@@ -21,7 +23,7 @@ import java.util.function.*;
  *
  */
 public class SpaceCheckingKeyFilter {
-    private static final Logger LOG = Logger.getGlobal();
+    private static final Logger LOG = Logging.LOG();
     private final CoreNode core;
     private final MutablePointers mutable;
     private final ContentAddressedStorage dht;

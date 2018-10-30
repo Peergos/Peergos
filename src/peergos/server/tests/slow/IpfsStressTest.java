@@ -1,16 +1,17 @@
 package peergos.server.tests.slow;
 import java.util.logging.*;
 
+import peergos.server.util.Args;
+import peergos.server.util.Logging;
+
 import org.junit.*;
 import peergos.server.*;
 import peergos.shared.*;
-import peergos.shared.crypto.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
 import java.io.*;
-import java.lang.reflect.*;
 import java.net.*;
 import java.nio.file.*;
 import java.util.*;
@@ -19,7 +20,7 @@ import java.util.stream.*;
 import static org.junit.Assert.*;
 
 public class IpfsStressTest {
-	private static final Logger LOG = Logger.getGlobal();
+	private static final Logger LOG = Logging.LOG();
 
     private final NetworkAccess network;
     private final Crypto crypto = Crypto.initJava();

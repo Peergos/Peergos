@@ -2,9 +2,6 @@ package peergos.shared.user;
 
 import peergos.shared.merklebtree.*;
 
-import java.nio.file.Path;
-import java.nio.file.Paths;
-
 public class CommittedWriterData {
 
     public final MaybeMultihash hash;
@@ -14,4 +11,6 @@ public class CommittedWriterData {
         this.hash = hash;
         this.props = props;
     }
+
+
 }

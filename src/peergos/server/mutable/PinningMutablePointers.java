@@ -1,6 +1,8 @@
 package peergos.server.mutable;
 import java.util.logging.*;
 
+import peergos.server.util.Logging;
+
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
@@ -15,7 +17,7 @@ import java.util.concurrent.*;
 import java.util.stream.*;
 
 public class PinningMutablePointers implements MutablePointers {
-	private static final Logger LOG = Logger.getGlobal();
+	private static final Logger LOG = Logging.LOG();
     private static final boolean LOGGING = true;
     private final MutablePointers target;
     private final ContentAddressedStorage storage;

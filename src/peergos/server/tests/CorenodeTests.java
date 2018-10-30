@@ -1,6 +1,9 @@
 package peergos.server.tests;
 import java.util.logging.*;
 
+import peergos.server.util.Args;
+import peergos.server.util.Logging;
+
 import org.junit.*;
 import org.junit.runner.*;
 import org.junit.runners.*;
@@ -13,16 +16,14 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.merklebtree.*;
 import peergos.shared.storage.*;
-import peergos.shared.util.*;
 
-import java.lang.reflect.*;
 import java.net.*;
 import java.util.*;
 import java.util.concurrent.*;
 
 @RunWith(Parameterized.class)
 public class CorenodeTests {
-	private static final Logger LOG = Logger.getGlobal();
+	private static final Logger LOG = Logging.LOG();
 
     public static int RANDOM_SEED = 666;
     private final NetworkAccess network;

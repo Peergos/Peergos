@@ -1,6 +1,8 @@
 package peergos.server.fuse;
 import java.util.logging.*;
 
+import peergos.server.util.Logging;
+
 import jnr.ffi.Pointer;
 import jnr.ffi.types.off_t;
 import jnr.ffi.types.size_t;
@@ -17,7 +19,7 @@ import java.util.concurrent.*;
 import java.util.function.*;
 
 public class CachingPeergosFS extends PeergosFS {
-	private static final Logger LOG = Logger.getGlobal();
+	private static final Logger LOG = Logging.LOG();
 
     private static final int DEFAULT_SYNC_SLEEP = 1000*30;
     private static final int DEFAULT_CACHE_SIZE = 1;

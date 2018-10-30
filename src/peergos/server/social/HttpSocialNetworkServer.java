@@ -1,13 +1,14 @@
 package peergos.server.social;
 import java.util.logging.*;
 
+import peergos.server.util.Args;
+import peergos.server.util.Logging;
+
 import com.sun.net.httpserver.*;
-import peergos.server.mutable.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.mutable.*;
 import peergos.shared.social.*;
 import peergos.shared.util.*;
 
@@ -16,7 +17,7 @@ import java.net.*;
 import java.util.concurrent.*;
 
 public class HttpSocialNetworkServer  {
-	private static final Logger LOG = Logger.getGlobal();
+	private static final Logger LOG = Logging.LOG();
 
     private static final boolean LOGGING = true;
     private static final int CONNECTION_BACKLOG = 100;

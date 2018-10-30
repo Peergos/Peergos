@@ -1,5 +1,6 @@
 package peergos.server.storage;
 import java.util.logging.*;
+import peergos.server.util.Logging;
 
 import peergos.shared.NetworkAccess;
 import peergos.shared.corenode.CoreNode;
@@ -17,7 +18,7 @@ import java.util.stream.Collectors;
  * Periodically reads file for username and  pins files for each.
  */
 public class UserFilePinner implements Runnable {
-	private static final Logger LOG = Logger.getGlobal();
+	private static final Logger LOG = Logging.LOG();
 
     private final Path userPath;
     private final CoreNode coreNode;

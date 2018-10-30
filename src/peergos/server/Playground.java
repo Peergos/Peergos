@@ -1,5 +1,6 @@
 package peergos.server;
 import java.util.logging.*;
+import peergos.server.util.Logging;
 
 import peergos.server.corenode.*;
 import peergos.server.mutable.*;
@@ -9,24 +10,19 @@ import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.crypto.random.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
-import peergos.shared.user.fs.*;
 
 import java.io.*;
 import java.net.*;
-import java.nio.file.*;
 import java.util.*;
-import java.util.concurrent.*;
-import java.util.function.*;
 
 /**
  *  Use this class to experiment with existing data without committing any changes or writing any data to disk
  */
 public class Playground {
-    private static final Logger LOG = Logger.getGlobal();
+    private static final Logger LOG = Logging.LOG();
 
     public static void main(String[] args) throws Exception {
         Crypto crypto = Crypto.initJava();

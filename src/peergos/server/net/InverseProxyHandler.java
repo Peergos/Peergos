@@ -1,6 +1,8 @@
 package peergos.server.net;
 import java.util.logging.*;
 
+import peergos.server.util.Logging;
+
 import com.sun.net.httpserver.*;
 
 import java.io.*;
@@ -9,7 +11,7 @@ import java.util.*;
 import java.util.stream.*;
 
 public class InverseProxyHandler implements HttpHandler {
-	private static final Logger LOG = Logger.getGlobal();
+	private static final Logger LOG = Logging.LOG();
     private final String targetDomain;
     private final boolean isLocal;
 

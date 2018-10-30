@@ -1,20 +1,19 @@
 package peergos.server.fuse;
 import java.util.logging.*;
+import peergos.server.util.Logging;
 
 import peergos.shared.*;
-import peergos.shared.crypto.*;
 import peergos.server.Start;
 import peergos.server.tests.UserTests;
 import peergos.shared.user.UserContext;
-import peergos.shared.util.Args;
+import peergos.server.util.Args;
 
-import java.lang.reflect.*;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 
 public class FuseProcess implements Runnable, AutoCloseable {
-	private static final Logger LOG = Logger.getGlobal();
+	private static final Logger LOG = Logging.LOG();
 
     private final PeergosFS peergosFS;
     private final Path mountPoint;

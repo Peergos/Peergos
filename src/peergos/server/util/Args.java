@@ -1,13 +1,19 @@
-package peergos.shared.util;
+package peergos.server.util;
+
+import peergos.shared.util.Pair;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class Args {
-    private final Map<String, String> params = new LinkedHashMap<>(16, 0.75f, false);//insertion order
+    public static final String PEERGOS_DIR = "PEERGOS_DIR";
+
+    private final Map<String, String> params = paramMap();//insertion order
 
     public String getArg(String param, String def) {
         if (!params.containsKey(param))
@@ -116,15 +122,36 @@ public class Args {
     }
 
     public Args with(String key, String value) {
-        Map<String, String> map = new HashMap<>(params);
+        Map<String, String> map = paramMap();
+        map.putAll(params);
         map.put(key, value);
         Args args = new Args();
         args.params.putAll(map);
         return args;
     }
 
+    public Path fromPeergosDir(String fileName) {
+        return fromPeergosDir(fileName, null);
+    }
+
+    /**
+     * Get the path to a file-name in the PEERGOS_DIR
+     *
+     * @param fileName
+     * @param defaultName
+     * @return
+     */
+    public Path fromPeergosDir(String fileName, String defaultName) {
+        return Paths.get(
+                getArg(Args.PEERGOS_DIR, System.getProperty("user.dir")),
+                defaultName == null ? getArg(fileName) : getArg(fileName, defaultName));
+    }
+
+
     private static Map<String, String> parseEnv() {
-        return new HashMap<>(System.getenv());
+        Map<String, String> map = paramMap();
+        map.putAll(System.getenv());
+        return map;
     }
 
     private static Map<String, String> parseFile(Path path) {
@@ -148,7 +175,7 @@ public class Args {
     }
 
     private static Map<String, String> parseParams(String[] args) {
-        HashMap<String, String> map = new HashMap<>();
+        Map<String, String> map = paramMap();
         for (int i = 0; i < args.length; i++) {
             String argName = args[i];
             if (argName.startsWith("-"))
@@ -163,7 +190,8 @@ public class Args {
     }
 
     /**
-     *  params overrides configFile overrides env
+     * params overrides configFile overrides env
+     *
      * @param params
      * @param configFile
      * @param includeEnv
@@ -176,9 +204,14 @@ public class Args {
 
         Args args = new Args();
 
-        args.params.putAll(fromEnv);
-        args.params.putAll(fromConfig);
-        args.params.putAll(fromParams);
+        Stream.of(
+                fromParams.entrySet(),
+                fromConfig.entrySet(),
+                fromEnv.entrySet()
+        )
+                .flatMap(e -> e.stream())
+                .forEach(e -> args.params.putIfAbsent(e.getKey(), e.getValue()));
+
 
         return args;
     }
@@ -216,4 +249,9 @@ public class Args {
 
         return Optional.of(new Pair<>(left, right));
     }
+
+    private static <K, V> Map<K, V> paramMap() {
+        return new LinkedHashMap<>(16, 0.75f, false);
+    }
+
 }

@@ -1,5 +1,8 @@
 package peergos.server;
 import java.util.logging.Logger;
+
+import peergos.server.util.Args;
+import peergos.server.util.Logging;
 import java.util.logging.Level;
 
 import com.sun.net.httpserver.*;
@@ -13,7 +16,6 @@ import peergos.shared.social.*;
 import peergos.shared.storage.ContentAddressedStorage;
 
 import peergos.server.net.*;
-import peergos.shared.util.*;
 
 import javax.net.ssl.*;
 import java.io.*;
@@ -23,10 +25,9 @@ import java.security.*;
 import java.security.cert.*;
 import java.util.concurrent.*;
 import java.util.function.*;
-import java.util.logging.Logger;
 
 public class UserService {
-	private static final Logger LOG = Logger.getGlobal();
+	private static final Logger LOG = Logging.LOG();
 
     public static final String DHT_URL = "/api/v0/";
     public static final String SIGNUP_URL = "/signup/";
@@ -68,7 +69,6 @@ public class UserService {
         LOG.info("jdk.tls.rejectClientInitializedRenegotiation: "+Security.getProperty("jdk.tls.rejectClientInitializedRenegotiation"));
     }
 
-    private final Logger LOGGER;
     private final InetSocketAddress local;
     private final CoreNode coreNode;
     private final SocialNetwork social;
@@ -76,14 +76,12 @@ public class UserService {
     private HttpServer server;
 
     public UserService(InetSocketAddress local,
-                       Logger LOGGER,
                        ContentAddressedStorage dht,
                        CoreNode coreNode,
                        SocialNetwork social,
                        MutablePointers mutable,
                        Args args) throws IOException
     {
-        this.LOGGER = LOGGER;
         this.local = local;
         this.coreNode = coreNode;
         this.social = social;
@@ -173,7 +171,7 @@ public class UserService {
 
         long defaultQuota = args.getLong("default-quota");
         LOG.info("Using default user space quota of " + defaultQuota);
-        Path quotaFilePath = Paths.get("quotas.txt");
+        Path quotaFilePath = args.fromPeergosDir("quotas_file","quotas.txt");
         UserQuotas userQuotas = new UserQuotas(quotaFilePath, defaultQuota);
         SpaceCheckingKeyFilter spaceChecker = new SpaceCheckingKeyFilter(coreNode, mutable, dht, userQuotas::quota);
 
