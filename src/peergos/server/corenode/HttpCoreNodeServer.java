@@ -192,9 +192,8 @@ public class HttpCoreNodeServer {
     }
 
 
-    public static void createAndStart(String keyfile, char[] passphrase, int port, CoreNode coreNode, MutablePointers mutable, Args args)
+    public static void createAndStart(int port, CoreNode coreNode, MutablePointers mutable, Args args)
     {
-        // eventually will need our own keypair to sign traffic to other core nodes
         try {
             String hostname = args.getArg("domain", "localhost");
             LOG.info("Starting core node server listening on: " + hostname+":"+port +" proxying to "+coreNode);

@@ -40,7 +40,7 @@ public class Start
             "Start a Corenode.",
             Start::startCoreNode,
             Arrays.asList(
-                    new Command.Arg("corenodePath", "Path to a local corenode sql file (created if it doesn't exist)", false, ":memory:"),
+                    new Command.Arg("corenodeFile", "Name of a local corenode sql file (created if it doesn't exist)", false, ":memory:"),
                     new Command.Arg("keyfile", "Path to keyfile", false),
                     new Command.Arg("passphrase", "Passphrase for keyfile", false),
                     new Command.Arg("corenodePort", "Service port", true, "" + HttpCoreNodeServer.PORT),
@@ -80,7 +80,7 @@ public class Start
             "Run in demo server mode",
             args -> {
                 args.setIfAbsent("domain", "demo.peergos.net");
-                args.setIfAbsent("corenodePath", "core.sql");
+                args.setIfAbsent("corenodeFile", "core.sql");
                 args.setIfAbsent("socialnodePath", "social.sql");
                 args.setIfAbsent("useIPFS", "true");
                 args.setIfAbsent("publicserver", "true");
@@ -198,7 +198,7 @@ public class Start
                 args.setIfAbsent("pki.keyfile.password", "testPkiFilePassword");
                 BOOTSTRAP.main(args);
                 args.setIfAbsent("domain", "localhost");
-                args.setIfAbsent("corenodePath", ":memory:");
+                args.setIfAbsent("corenodeFile", ":memory:");
                 args.setIfAbsent("socialnodePath", ":memory:");
                 args.setIfAbsent("useIPFS", "false");
                 CORE_NODE.main(args);
@@ -292,10 +292,14 @@ public class Start
         }
     }
 
+    private static Path fromPeergosDir(Args a, String fileName) {
+        return Paths.get(
+                a.getArg("PEERGOS_DIR", ""),
+                a.getArg(fileName));
+
+    }
     public static void startCoreNode(Args a) {
-        String keyfile = a.getArg("keyfile", "core.key");
-        char[] passphrase = a.getArg("passphrase", "password").toCharArray();
-        String path = a.getArg("corenodePath");
+        Path path = fromPeergosDir(a, "corenodeFile");
         int corenodePort = a.getInt("corenodePort");
         int maxUserCount = a.getInt("maxUserCount", CoreNode.MAX_USERNAME_COUNT);
         System.out.println("Using core node path " + path);
@@ -307,7 +311,7 @@ public class Start
                 RAMStorage.getSingleton();
         try {
             Crypto crypto = Crypto.initJava();
-            MutablePointers mutable = UserRepository.buildSqlLite(path, dht, maxUserCount);
+            MutablePointers mutable = UserRepository.buildSqlLite(path.toString(), dht, maxUserCount);
             PublicKeyHash peergosIdentity = PublicKeyHash.fromString(a.getArg("peergos.identity.hash"));
 
             String pkiSecretKeyfilePassword = a.getArg("pki.keyfile.password");
@@ -329,7 +333,7 @@ public class Start
             MaybeMultihash currentPkiRoot = mutable.getPointerTarget(pkiPublicHash, dht).get();
 
             IpfsCoreNode core = new IpfsCoreNode(pkiKeys, currentPkiRoot, dht, mutable, peergosIdentity);
-            HttpCoreNodeServer.createAndStart(keyfile, passphrase, corenodePort, core, mutable, a);
+            HttpCoreNodeServer.createAndStart(corenodePort, core, mutable, a);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -365,7 +369,7 @@ public class Start
                     return;
                 }
                 args.setIfAbsent("domain", "localhost");
-                args.setIfAbsent("corenodePath", ":memory:");
+                args.setIfAbsent("corenodeFile", ":memory:");
                 startCoreNode(args);
                 startPeergos(args);
             },
