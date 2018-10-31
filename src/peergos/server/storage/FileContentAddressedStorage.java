@@ -1,5 +1,6 @@
 package peergos.server.storage;
 
+import peergos.server.util.Logging;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
@@ -22,19 +23,20 @@ import java.util.stream.*;
  *
  */
 public class FileContentAddressedStorage implements ContentAddressedStorage {
-    private static final Logger LOG = Logger.getGlobal();
+    private static final Logger LOG = Logging.LOG();
     private static final int CID_V1 = 1;
-
+    private static final int DIRECTORY_DEPTH = 5;
     private final Path root;
 
     public FileContentAddressedStorage(Path root) {
         this.root = root;
-        if (!root.toFile().exists()) {
+        File rootDir = root.toFile();
+        if (!rootDir.exists()) {
             final boolean mkdirs = root.toFile().mkdirs();
             if (!mkdirs)
                 throw new IllegalStateException("Unable to create directory " + root);
         }
-        if (!root.toFile().isDirectory())
+        if (!rootDir.isDirectory())
             throw new IllegalStateException("File store path must be a directory! " + root);
     }
 
@@ -86,7 +88,8 @@ public class FileContentAddressedStorage implements ContentAddressedStorage {
 
     private Path getFilePath(Multihash h) {
         String name = h.toString();
-        int depth = 5;
+
+        int depth = DIRECTORY_DEPTH;
         Path path = Paths.get("");
         for (int i=0; i < depth; i++)
             path = path.resolve(Character.toString(name.charAt(i)));
@@ -95,6 +98,30 @@ public class FileContentAddressedStorage implements ContentAddressedStorage {
         return path;
     }
 
+    /**
+     * DFS
+     * @param f
+     */
+    private void remove(File f) {
+        if (! f.exists())
+            return;
+        if (f.isDirectory()) {
+            File[] files = f.listFiles();
+            if (files == null)
+                return;
+            for (File child : files)
+                remove(child);
+        }
+        if (! f.delete())
+            throw new IllegalStateException("Could not delete "+ f);
+    }
+
+    /**
+     * Remove all files stored as part of this FileContentAddressedStorage.
+     */
+    public void remove() {
+           remove(root.toFile());
+    }
     @Override
     public CompletableFuture<Optional<CborObject>> get(Multihash hash) {
         if (hash instanceof Cid && ((Cid) hash).codec == Cid.Codec.Raw)
@@ -126,6 +153,7 @@ public class FileContentAddressedStorage implements ContentAddressedStorage {
             Path target = root.resolve(filePath);
             Path parent = target.getParent();
             File parentDir = parent.toFile();
+
             if (! parentDir.exists() && ! parentDir.mkdirs())
                 throw new IllegalStateException("Couldn't create directory: " + parent);
             for (Path someParent = parent; !someParent.equals(root); someParent = someParent.getParent()) {
@@ -143,9 +171,12 @@ public class FileContentAddressedStorage implements ContentAddressedStorage {
             try (RandomAccessFile rw = new RandomAccessFile(lockPath.toFile(), "rw");
                  FileLock lock = rw.getChannel().lock()) {
                 DataOutputStream dout = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(tmpFile)));
-                dout.write(data, 0, data.length);
-                dout.flush();
-                dout.close();
+                try {
+                    dout.write(data, 0, data.length);
+                }
+                finally {
+                    dout.close();
+                }
                 final boolean setWritableSuccess = tmpFile.setWritable(false, false);
                 final boolean setReadableSuccess = tmpFile.setReadable(true, false);
                 final boolean renameSuccess = tmpFile.renameTo(targetFile);
@@ -208,16 +239,20 @@ public class FileContentAddressedStorage implements ContentAddressedStorage {
         getFilesRecursive(root, processor);
     }
 
-    private void getFilesRecursive(Path file, Consumer<Multihash> accumulator) {
-        if (file.toFile().isFile()) {
-            accumulator.accept(Multihash.fromBase58(file.toFile().getName()));
+    private void getFilesRecursive(Path path, Consumer<Multihash> accumulator) {
+        File pathFile = path.toFile();
+        if (pathFile.isFile()) {
+            accumulator.accept(Multihash.fromBase58(pathFile.getName()));
             return;
         }
-        String[] filenames = file.toFile().list();
+        else if (!  pathFile.isDirectory())
+            throw new IllegalStateException("Specified path "+ path +" is not a file or directory");
+
+        String[] filenames = pathFile.list();
         if (filenames == null)
-            throw new IllegalStateException("Couldn't retrieve children of directory: " + file);
+            throw new IllegalStateException("Couldn't retrieve children of directory: " + path);
         for (String filename : filenames) {
-            Path child = file.resolve(filename);
+            Path child = path.resolve(filename);
             if (child.toFile().isDirectory()) {
                 getFilesRecursive(child, accumulator);
             } else if (filename.startsWith("Q") || filename.startsWith("z")) { // tolerate non content addressed files in the same space
@@ -225,6 +260,7 @@ public class FileContentAddressedStorage implements ContentAddressedStorage {
                     accumulator.accept(Cid.decode(child.toFile().getName()));
                 } catch (IllegalStateException e) {
                     // ignore files who's name isn't a valid multihash
+                    LOG.info("Ignoring file "+ child +" since name is not a valid multihash");
                 }
             }
         }
