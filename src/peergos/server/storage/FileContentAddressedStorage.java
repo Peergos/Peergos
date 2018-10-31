@@ -99,29 +99,12 @@ public class FileContentAddressedStorage implements ContentAddressedStorage {
     }
 
     /**
-     * DFS
-     * @param f
-     */
-    private void remove(File f) {
-        if (! f.exists())
-            return;
-        if (f.isDirectory()) {
-            File[] files = f.listFiles();
-            if (files == null)
-                return;
-            for (File child : files)
-                remove(child);
-        }
-        if (! f.delete())
-            throw new IllegalStateException("Could not delete "+ f);
-    }
-
-    /**
      * Remove all files stored as part of this FileContentAddressedStorage.
      */
     public void remove() {
-           remove(root.toFile());
+        root.toFile().delete();
     }
+
     @Override
     public CompletableFuture<Optional<CborObject>> get(Multihash hash) {
         if (hash instanceof Cid && ((Cid) hash).codec == Cid.Codec.Raw)
@@ -157,8 +140,8 @@ public class FileContentAddressedStorage implements ContentAddressedStorage {
             if (! parentDir.exists() && ! parentDir.mkdirs())
                 throw new IllegalStateException("Couldn't create directory: " + parent);
             for (Path someParent = parent; !someParent.equals(root); someParent = someParent.getParent()) {
-                final File someParentFile = someParent.toFile();
-                if ("root".equals(System.getProperty("user.name")) || ! someParentFile.canWrite()) {
+                File someParentFile = someParent.toFile();
+                if (! someParentFile.canWrite()) {
                     final boolean b = someParentFile.setWritable(true, false);
                     if (!b)
                         throw new IllegalStateException("Could not make " + someParent.toString() + ", ancestor of " + parentDir.toString() + " writable");
@@ -169,19 +152,15 @@ public class FileContentAddressedStorage implements ContentAddressedStorage {
             File tmpFile = tmp.toFile();
             Path lockPath = parent.resolve("lock." + filePath.toFile().getName());
             try (RandomAccessFile rw = new RandomAccessFile(lockPath.toFile(), "rw");
-                 FileLock lock = rw.getChannel().lock()) {
-                DataOutputStream dout = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(tmpFile)));
-                try {
-                    dout.write(data, 0, data.length);
-                }
-                finally {
-                    dout.close();
-                }
-                final boolean setWritableSuccess = tmpFile.setWritable(false, false);
-                final boolean setReadableSuccess = tmpFile.setReadable(true, false);
-                final boolean renameSuccess = tmpFile.renameTo(targetFile);
-                final boolean deleteSuccess = lockPath.toFile().delete();
-                final boolean lockExists = lockPath.toFile().exists();
+                 FileLock lock = rw.getChannel().lock();
+                 DataOutputStream dout = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(tmpFile)))) {
+
+                dout.write(data, 0, data.length);
+                boolean setWritableSuccess = tmpFile.setWritable(false, false);
+                boolean setReadableSuccess = tmpFile.setReadable(true, false);
+                boolean renameSuccess = tmpFile.renameTo(targetFile);
+                boolean deleteSuccess = lockPath.toFile().delete();
+                boolean lockExists = lockPath.toFile().exists();
                 if (!setWritableSuccess)
                     throw new IllegalStateException("Error setting " + tmpFile.getName() + " to writable");
                 if (!setReadableSuccess)
