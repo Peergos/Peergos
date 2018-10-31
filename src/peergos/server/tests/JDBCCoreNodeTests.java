@@ -5,10 +5,9 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import peergos.server.corenode.JDBCCoreNode;
-import peergos.server.storage.RAMStorage;
+import peergos.server.storage.*;
 import peergos.shared.corenode.UserPublicKeyLink;
 import peergos.shared.crypto.SigningKeyPair;
-import peergos.shared.crypto.TweetNaCl;
 import peergos.shared.crypto.asymmetric.PublicSigningKey;
 import peergos.shared.crypto.asymmetric.curve25519.Ed25519;
 import peergos.shared.crypto.hash.PublicKeyHash;
@@ -16,16 +15,16 @@ import peergos.shared.crypto.random.SafeRandom;
 import peergos.shared.storage.ContentAddressedStorage;
 
 import java.io.IOException;
+import java.nio.file.*;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Random;
 import java.util.function.Function;
 
 public class JDBCCoreNodeTests {
-  private final ContentAddressedStorage STORAGE = RAMStorage.getSingleton();
+  private final ContentAddressedStorage STORAGE = new FileContentAddressedStorage(Paths.get("blockstore"));
   private Connection conn;
 
   @BeforeClass

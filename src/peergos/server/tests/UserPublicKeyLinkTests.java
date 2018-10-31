@@ -11,8 +11,10 @@ import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
+import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
 
+import java.nio.file.*;
 import java.sql.SQLException;
 import java.time.LocalDate;
 import java.util.*;
@@ -20,7 +22,12 @@ import java.util.concurrent.*;
 
 
 public class UserPublicKeyLinkTests {
-    private final ContentAddressedStorage ipfs = RAMStorage.getSingleton();
+    private final ContentAddressedStorage ipfs = new FileContentAddressedStorage(Paths.get("blockstore"));
+    private final List<Multihash> id;
+
+    public UserPublicKeyLinkTests() throws Exception {
+        id = Arrays.asList(ipfs.id().get());
+    }
 
     @BeforeClass
     public static void init() throws Exception {
@@ -125,9 +132,9 @@ public class UserPublicKeyLinkTests {
         } catch (ExecutionException e) {}
     }
 
-    static CoreNode getDefaultCoreNode() {
+    private CoreNode getDefaultCoreNode() {
         try {
-            return UserRepository.buildSqlLite(":memory:", RAMStorage.getSingleton(), CoreNode.MAX_USERNAME_COUNT);
+            return UserRepository.buildSqlLite(":memory:", ipfs, CoreNode.MAX_USERNAME_COUNT);
         } catch (SQLException s) {
             throw new IllegalStateException(s);
         }

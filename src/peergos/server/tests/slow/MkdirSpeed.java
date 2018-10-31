@@ -14,6 +14,7 @@ import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 
 import java.net.*;
+import java.nio.file.*;
 import java.util.*;
 import java.util.stream.*;
 
@@ -31,7 +32,7 @@ public class MkdirSpeed {
     }
 
     private static NetworkAccess buildInProcessAccess(Random r) throws Exception {
-        ContentAddressedStorage dht = RAMStorage.getSingleton();
+        ContentAddressedStorage dht = new FileContentAddressedStorage(Paths.get("blockstore"));
         UserRepository core = UserRepository.buildSqlLite(":memory:", dht, CoreNode.MAX_USERNAME_COUNT);
         MutableTree btree = new MutableTreeImpl(core, dht);
         return new NetworkAccess(core, core, dht, core, btree, Collections.emptyList());

@@ -14,11 +14,6 @@ public class RamUserTests extends UserTests {
         super("RAM", rnd);
     }
 
-    @After
-    public void clearRamIpfs() {
-        RAMStorage.getSingleton().clear();
-    }
-
     @Parameterized.Parameters()
     public static Collection<Object[]> parameters() {
         return Arrays.asList(new Object[][] {
