@@ -583,37 +583,6 @@ public class EfficientHashMap<K, V> implements Map<K, V>, Serializable {
     }
 
     /**
-     * Adapted from {@link org.apache.commons.collections.map.AbstractHashedMap}.
-     */
-    @SuppressWarnings("unchecked")
-    protected void doReadObject(ObjectInputStream in) throws IOException,
-            ClassNotFoundException {
-        int capacity = in.readInt();
-        initTable(capacity);
-        int items = in.readInt();
-        for (int i = 0; i < items; i++) {
-            Object key = in.readObject();
-            Object value = in.readObject();
-            put((K) key, (V) value);
-        }
-    }
-
-    /**
-     * Adapted from {@link org.apache.commons.collections.map.AbstractHashedMap}.
-     */
-    protected void doWriteObject(ObjectOutputStream out) throws IOException {
-        out.writeInt(keys.length);
-        out.writeInt(size);
-        for (int i = 0; i < keys.length; ++i) {
-            Object key = keys[i];
-            if (key != null) {
-                out.writeObject(unmaskNullKey(key));
-                out.writeObject(values[i]);
-            }
-        }
-    }
-
-    /**
      * Returns whether two keys are equal for the purposes of this set.
      */
     protected boolean keyEquals(Object a, Object b) {
@@ -802,16 +771,5 @@ public class EfficientHashMap<K, V> implements Map<K, V>, Serializable {
                 index = 0;
             }
         }
-    }
-
-    private void readObject(ObjectInputStream in) throws IOException,
-            ClassNotFoundException {
-        in.defaultReadObject();
-        doReadObject(in);
-    }
-
-    private void writeObject(ObjectOutputStream out) throws IOException {
-        out.defaultWriteObject();
-        doWriteObject(out);
     }
 }
