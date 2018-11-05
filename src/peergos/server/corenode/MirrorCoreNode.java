@@ -44,7 +44,7 @@ public class MirrorCoreNode implements CoreNode {
     }
 
     private PublicKeyHash getPkiKey() throws Exception {
-        CommittedWriterData current = WriterData.getWriterData(pkiOwnerIdentity, mutable, ipfs).get();
+        CommittedWriterData current = WriterData.getWriterData(pkiOwnerIdentity, pkiOwnerIdentity, mutable, ipfs).get();
         PublicKeyHash pki = current.props.namedOwnedKeys.get("pki");
         if (pki == null)
             throw new IllegalStateException("No pki key on owner: " + pkiOwnerIdentity);
@@ -54,7 +54,7 @@ public class MirrorCoreNode implements CoreNode {
     private synchronized boolean update() {
         try {
             PublicKeyHash pkiKey = getPkiKey();
-            MaybeMultihash newRoot = mutable.getPointerTarget(pkiKey, ipfs).get();
+            MaybeMultihash newRoot = mutable.getPointerTarget(pkiOwnerIdentity, pkiKey, ipfs).get();
             IpfsCoreNode.updateAllMappings(pkiKey, currentRoot, newRoot, ipfs, chains, reverseLookup, usernames);
             currentRoot = newRoot;
             return true;

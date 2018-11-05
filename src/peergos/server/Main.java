@@ -374,7 +374,7 @@ public class Main
             SigningKeyPair pkiKeys = new SigningKeyPair(pkiPublic, pkiSecretKey);
             PublicKeyHash pkiPublicHash = ContentAddressedStorage.hashKey(pkiKeys.publicSigningKey);
 
-            MaybeMultihash currentPkiRoot = mutable.getPointerTarget(pkiPublicHash, dht).get();
+            MaybeMultihash currentPkiRoot = mutable.getPointerTarget(peergosIdentity, pkiPublicHash, dht).get();
 
             IpfsCoreNode core = new IpfsCoreNode(pkiKeys, currentPkiRoot, dht, mutable, peergosIdentity);
             HttpCoreNodeServer.createAndStart(corenodePort, core, mutable, a);

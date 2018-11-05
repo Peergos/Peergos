@@ -36,7 +36,7 @@ public class DHTHandler implements HttpHandler {
         this(dht, keyFilter, "/api/v0/");
     }
 
-    private Map<String, List<String>> parseQuery(String query) {
+    public static Map<String, List<String>> parseQuery(String query) {
         if (query == null)
             return Collections.emptyMap();
         if (query.startsWith("?"))

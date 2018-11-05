@@ -7,10 +7,12 @@ import peergos.shared.crypto.hash.*;
  */
 public class MutableEvent {
 
+    public final PublicKeyHash owner;
     public final PublicKeyHash writer;
     public final byte[] writerSignedBtreeRootHash;
 
-    public MutableEvent(PublicKeyHash writer, byte[] writerSignedBtreeRootHash) {
+    public MutableEvent(PublicKeyHash owner, PublicKeyHash writer, byte[] writerSignedBtreeRootHash) {
+        this.owner = owner;
         this.writer = writer;
         this.writerSignedBtreeRootHash = writerSignedBtreeRootHash;
     }

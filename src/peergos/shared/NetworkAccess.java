@@ -116,7 +116,7 @@ public class NetworkAccess {
         List<CompletableFuture<Optional<RetrievedFilePointer>>> all = links.stream()
                 .map(link -> {
                     Location loc = link.targetLocation(baseKey);
-                    return tree.get(loc.writer, loc.getMapKey())
+                    return tree.get(loc.owner, loc.writer, loc.getMapKey())
                             .thenCompose(key -> {
                                 if (key.isPresent())
                                     return dhtClient.get(key.get())
@@ -153,7 +153,7 @@ public class NetworkAccess {
 
     private CompletableFuture<Optional<CryptreeNode>> downloadEntryPoint(EntryPoint entry) {
         // download the metadata blob for this entry point
-        return tree.get(entry.pointer.location.writer, entry.pointer.location.getMapKey()).thenCompose(btreeValue -> {
+        return tree.get(entry.pointer.location.owner, entry.pointer.location.writer, entry.pointer.location.getMapKey()).thenCompose(btreeValue -> {
             if (btreeValue.isPresent())
                 return dhtClient.get(btreeValue.get())
                         .thenApply(value -> value.map(cbor -> CryptreeNode.fromCbor(cbor,  btreeValue.get())));
@@ -201,7 +201,7 @@ public class NetworkAccess {
         try {
             byte[] metaBlob = metadata.serialize();
             return dhtClient.put(location.writer, writer.secret.signatureOnly(metaBlob), metaBlob)
-                    .thenCompose(blobHash -> tree.put(writer, location.getMapKey(), metadata.committedHash(), blobHash)
+                    .thenCompose(blobHash -> tree.put(location.owner, writer, location.getMapKey(), metadata.committedHash(), blobHash)
                             .thenApply(res -> blobHash));
         } catch (Exception e) {
             LOG.severe(e.getMessage());
@@ -212,7 +212,7 @@ public class NetworkAccess {
     public CompletableFuture<Optional<CryptreeNode>> getMetadata(Location loc) {
         if (loc == null)
             return CompletableFuture.completedFuture(Optional.empty());
-        return tree.get(loc.writer, loc.getMapKey()).thenCompose(blobHash -> {
+        return tree.get(loc.owner, loc.writer, loc.getMapKey()).thenCompose(blobHash -> {
             if (!blobHash.isPresent())
                 return CompletableFuture.completedFuture(Optional.empty());
             return dhtClient.get(blobHash.get())
@@ -251,9 +251,12 @@ public class NetworkAccess {
 
     public static void pinAllUserFiles(String username, CoreNode coreNode, MutablePointers mutable, ContentAddressedStorage dhtClient) throws ExecutionException, InterruptedException {
         Set<PublicKeyHash> ownedKeysRecursive = WriterData.getOwnedKeysRecursive(username, coreNode, mutable, dhtClient);
-
+        Optional<PublicKeyHash> ownerOpt = coreNode.getPublicKeyHash(username).get();
+        if (! ownerOpt.isPresent())
+            throw new IllegalStateException("Couldn't retrieve public key for " + username);
+        PublicKeyHash owner = ownerOpt.get();
         for (PublicKeyHash keyHash: ownedKeysRecursive) {
-            Multihash casKeyHash = mutable.getPointerTarget(keyHash, dhtClient).get().get();
+            Multihash casKeyHash = mutable.getPointerTarget(owner, keyHash, dhtClient).get().get();
             dhtClient.recursivePin(casKeyHash).get();
         }
     }

@@ -156,16 +156,16 @@ public class SpaceCheckingKeyFilter {
     /** Update our view of the world because a user has changed their public key (or registered)
      *
      * @param username
-     * @param ownedKeyHash
+     * @param owner
      */
-    public void processCorenodeEvent(String username, PublicKeyHash ownedKeyHash) {
+    public void processCorenodeEvent(String username, PublicKeyHash owner) {
         try {
             usage.putIfAbsent(username, new Usage(0));
-            Set<PublicKeyHash> childrenKeys = WriterData.getDirectOwnedKeys(ownedKeyHash, mutable, dht);
-            currentView.computeIfAbsent(ownedKeyHash, k -> new Stat(username, MaybeMultihash.empty(), 0, childrenKeys));
-            Stat current = currentView.get(ownedKeyHash);
-            MaybeMultihash updatedRoot = mutable.getPointerTarget(ownedKeyHash, dht).get();
-            processMutablePointerEvent(ownedKeyHash, current.target, updatedRoot);
+            Set<PublicKeyHash> childrenKeys = WriterData.getDirectOwnedKeys(owner, owner, mutable, dht);
+            currentView.computeIfAbsent(owner, k -> new Stat(username, MaybeMultihash.empty(), 0, childrenKeys));
+            Stat current = currentView.get(owner);
+            MaybeMultihash updatedRoot = mutable.getPointerTarget(owner, owner, dht).get();
+            processMutablePointerEvent(owner, owner, current.target, updatedRoot);
             for (PublicKeyHash childKey : childrenKeys) {
                 processCorenodeEvent(username, childKey);
             }
@@ -180,13 +180,13 @@ public class SpaceCheckingKeyFilter {
             HashCasPair hashCasPair = dht.getSigningKey(event.writer)
                     .thenApply(signer -> HashCasPair.fromCbor(CborObject.fromByteArray(signer.get()
                             .unsignMessage(event.writerSignedBtreeRootHash)))).get();
-            processMutablePointerEvent(event.writer, hashCasPair.original, hashCasPair.updated);
+            processMutablePointerEvent(event.owner, event.writer, hashCasPair.original, hashCasPair.updated);
         } catch (Exception e) {
             LOG.log(Level.WARNING, e.getMessage(), e);
         }
     }
 
-    public void processMutablePointerEvent(PublicKeyHash writer, MaybeMultihash existingRoot, MaybeMultihash newRoot) {
+    public void processMutablePointerEvent(PublicKeyHash owner, PublicKeyHash writer, MaybeMultihash existingRoot, MaybeMultihash newRoot) {
         if (existingRoot.equals(newRoot))
             return;
         Stat current = currentView.get(writer);
@@ -198,7 +198,7 @@ public class SpaceCheckingKeyFilter {
                 try {
                     // subtract data size from orphaned child keys (this assumes the keys form a tree without dups)
                     Set<PublicKeyHash> updatedOwned = WriterData.getWriterData(writer, newRoot, dht).get().props.ownedKeys;
-                    processRemovedOwnedKeys(updatedOwned);
+                    processRemovedOwnedKeys(owner, updatedOwned);
                 } catch (Exception e) {
                     LOG.log(Level.WARNING, e.getMessage(), e);
                 }
@@ -218,7 +218,7 @@ public class SpaceCheckingKeyFilter {
 
                 HashSet<PublicKeyHash> removedChildren = new HashSet<>(current.getOwnedKeys());
                 removedChildren.removeAll(updatedOwned);
-                processRemovedOwnedKeys(removedChildren);
+                processRemovedOwnedKeys(owner, removedChildren);
                 current.update(newRoot, updatedOwned, current.directRetainedStorage + changeInStorage);
             }
         } catch (Exception e) {
@@ -226,11 +226,11 @@ public class SpaceCheckingKeyFilter {
         }
     }
 
-    private void processRemovedOwnedKeys(Set<PublicKeyHash> removed) {
+    private void processRemovedOwnedKeys(PublicKeyHash owner, Set<PublicKeyHash> removed) {
         for (PublicKeyHash ownedKey : removed) {
             try {
-                MaybeMultihash currentTarget = mutable.getPointerTarget(ownedKey, dht).get();
-                processMutablePointerEvent(ownedKey, currentTarget, MaybeMultihash.empty());
+                MaybeMultihash currentTarget = mutable.getPointerTarget(owner, ownedKey, dht).get();
+                processMutablePointerEvent(owner, ownedKey, currentTarget, MaybeMultihash.empty());
             } catch (Exception e) {
                 LOG.log(Level.WARNING, e.getMessage(), e);
             }
