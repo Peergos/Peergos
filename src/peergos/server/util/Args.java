@@ -11,7 +11,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class Args {
-    public static final String PEERGOS_DIR = "PEERGOS_DIR";
+    public static final String PEERGOS_DIR = "PEERGOS_PATH";
     public static final Path DEFAULT_PEERGOS_DIR_PATH = Paths.get(
             System.getProperty("user.dir"),
             ".peergos");
