@@ -1042,7 +1042,7 @@ public class FileTreeNode {
                             fut.complete(generateThumbnail(bytes));
                         });
                     }
-                }else if(mimeType.startsWith("video")) {
+                } else if (mimeType.startsWith("video")) {
                     if (network.isJavascript()) {
                         thumbnail.generateVideoThumbnail(fileData, fileSize, filename).thenAccept(base64Str -> {
                             byte[] bytesOfData = Base64.getDecoder().decode(base64Str);
@@ -1054,6 +1054,21 @@ public class FileTreeNode {
                             fut.complete(generateVideoThumbnail(bytes));
                         });
                     }
+                } else if (mimeType.startsWith("audio/mpeg")) {
+                    byte[] mp3Data = new byte[fileSize];
+                    fileData.readIntoArray(mp3Data, 0, fileSize).thenAccept(read -> {
+                        Mp3CoverImage mp3CoverImage = Mp3CoverImage.extractCoverArt(mp3Data);
+                        if (network.isJavascript()) {
+                            AsyncReader.ArrayBacked imageBlob = new AsyncReader.ArrayBacked(mp3CoverImage.imageData);
+                            thumbnail.generateThumbnail(imageBlob, mp3CoverImage.imageData.length, filename)
+                                    .thenAccept(base64Str -> {
+                                        byte[] bytesOfData = Base64.getDecoder().decode(base64Str);
+                                        fut.complete(bytesOfData);
+                                    });
+                        } else {
+                            fut.complete(generateThumbnail(mp3CoverImage.imageData));
+                        }
+                    });
                 } else {
                     fut.complete(new byte[0]);
                 }
