@@ -55,7 +55,6 @@ public class EntryPoint implements Cborable{
                 throw new IllegalStateException("No owner key present for user " + claimedOwner);
            return UserContext.getWriterData(network, ownerKey.get(), ownerKey.get()).thenApply(wd -> {
                // TODO do this recursively to handle arbitrary trees of key ownership
-               // IMPORTANT TODO this doesn't prove anything, we need a signature in the reverse direction from writer to owner
                return wd.props.ownedKeys.contains(entryWriter);
            });
         });
