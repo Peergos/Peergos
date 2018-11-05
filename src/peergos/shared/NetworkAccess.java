@@ -81,7 +81,7 @@ public class NetworkAccess {
     public static CompletableFuture<NetworkAccess> build(HttpPoster poster, boolean isJavascript) {
         int cacheTTL = 7_000;
         LOG.info("Using caching corenode with TTL: " + cacheTTL + " mS");
-        CoreNode coreNode = new HTTPCoreNode(poster);
+        CoreNode coreNode = new HTTPCoreNode(poster, poster);
         SocialNetwork social = new HttpSocialNetwork(poster, poster);
         MutablePointers mutable = new CachingPointers(new HttpMutablePointers(poster, poster), cacheTTL);
 

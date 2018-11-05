@@ -273,7 +273,7 @@ public class Main
             String hostname = a.getArg("domain");
 
             Multihash nodeId = dht.id().get();
-            CoreNode core = new HTTPCoreNode(new JavaPoster(coreAddress));
+            CoreNode core = new HTTPCoreNode(new JavaPoster(coreAddress), ipfsPoster);
 
             SocialNetworkProxy httpSocial = new HttpSocialNetwork(new JavaPoster(socialAddress), ipfsPoster);
             SocialNetwork p2pSocial = new ProxyingSocialNetwork(nodeId, core, httpSocial);
