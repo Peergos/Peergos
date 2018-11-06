@@ -78,10 +78,17 @@ public class NetworkAccess {
         return new NetworkAccess(coreNode, social, dhtClient, mutable, new MutableTreeImpl(mutable, dhtClient), usernames, isJavascript);
     }
 
-    public static CompletableFuture<NetworkAccess> build(HttpPoster poster, boolean isJavascript) {
+    public static CoreNode buildProxyingCorenode(HttpPoster poster, Multihash pkiServerNodeId) {
+        return new HTTPCoreNode(poster, pkiServerNodeId);
+    }
+
+    public static CoreNode buildDirectCorenode(HttpPoster poster) {
+        return new HTTPCoreNode(poster);
+    }
+
+    public static CompletableFuture<NetworkAccess> build(CoreNode coreNode, HttpPoster poster, boolean isJavascript) {
         int cacheTTL = 7_000;
         LOG.info("Using caching corenode with TTL: " + cacheTTL + " mS");
-        CoreNode coreNode = new HTTPCoreNode(poster, poster);
         SocialNetwork social = new HttpSocialNetwork(poster, poster);
         MutablePointers mutable = new CachingPointers(new HttpMutablePointers(poster, poster), cacheTTL);
 
@@ -93,14 +100,20 @@ public class NetworkAccess {
     }
 
     @JsMethod
-    public static CompletableFuture<NetworkAccess> buildJS() {
+    public static CompletableFuture<NetworkAccess> buildJS(String pkiNodeId, boolean isPeergosServer) {
+        Multihash pkiServerNodeId = Cid.decode(pkiNodeId);
         System.setOut(new ConsolePrintStream());
         System.setErr(new ConsolePrintStream());
-        return build(new JavaScriptPoster(), true);
+        JavaScriptPoster poster = new JavaScriptPoster();
+        CoreNode core = isPeergosServer ?
+                buildDirectCorenode(poster) :
+                buildProxyingCorenode(poster, pkiServerNodeId);
+        return build(core, poster, true);
     }
 
     public static CompletableFuture<NetworkAccess> buildJava(URL target) {
-        return build(new JavaPoster(target), false);
+        JavaPoster poster = new JavaPoster(target);
+        return build(buildDirectCorenode(poster), poster, false);
     }
 
     public static CompletableFuture<NetworkAccess> buildJava(int targetPort) {

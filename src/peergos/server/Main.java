@@ -15,6 +15,7 @@ import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.password.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.merklebtree.*;
 import peergos.shared.mutable.*;
@@ -255,6 +256,7 @@ public class Main
 
             int webPort = a.getInt("port");
             URL coreAddress = new URI(a.getArg("corenodeURL")).toURL();
+            Multihash pkiServerNodeId = Cid.decode(a.getArg("pkiNodeId"));
             URL socialAddress = new URI(a.getArg("socialnodeURL")).toURL();
             URL ipfsAddress = new URI(a.getArg("ipfsURL", "http://localhost:5001")).toURL();
             String domain = a.getArg("domain");
@@ -273,7 +275,8 @@ public class Main
             String hostname = a.getArg("domain");
 
             Multihash nodeId = dht.id().get();
-            CoreNode core = new HTTPCoreNode(new JavaPoster(coreAddress), ipfsPoster);
+            // build a proxying corenode
+            CoreNode core = new HTTPCoreNode(ipfsPoster, pkiServerNodeId);
 
             SocialNetworkProxy httpSocial = new HttpSocialNetwork(new JavaPoster(socialAddress), ipfsPoster);
             SocialNetwork p2pSocial = new ProxyingSocialNetwork(nodeId, core, httpSocial);

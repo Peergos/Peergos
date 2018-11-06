@@ -17,17 +17,25 @@ import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
 
-public class HTTPCoreNode implements CoreNodeProxy {
+public class HTTPCoreNode implements CoreNode {
 	private static final Logger LOG = Logger.getGlobal();
 	private static final String P2P_PROXY_PROTOCOL = "http";
 
-    private final HttpPoster direct, p2p;
+    private final HttpPoster poster;
+    private final String urlPrefix;
 
-    public HTTPCoreNode(HttpPoster direct, HttpPoster p2p)
+    public HTTPCoreNode(HttpPoster p2p, Multihash pkiServerNodeId)
     {
-        LOG.info("Creating HTTP Corenode API at " + direct + " and " + p2p);
-        this.direct = direct;
-        this.p2p = p2p;
+        LOG.info("Creating HTTP Corenode API at " + p2p);
+        this.poster = p2p;
+        this.urlPrefix = getProxyUrlPrefix(pkiServerNodeId);
+    }
+
+    public HTTPCoreNode(HttpPoster direct)
+    {
+        LOG.info("Creating HTTP Corenode API at " + direct);
+        this.poster = direct;
+        this.urlPrefix = "";
     }
 
     private static String getProxyUrlPrefix(Multihash targetId) {
@@ -36,15 +44,6 @@ public class HTTPCoreNode implements CoreNodeProxy {
 
     @Override
     public CompletableFuture<Optional<PublicKeyHash>> getPublicKeyHash(String username) {
-        return getPublicKeyHash("", direct, username);
-    }
-
-    @Override
-    public CompletableFuture<Optional<PublicKeyHash>> getPublicKeyHash(Multihash targetServerId, String username) {
-        return getPublicKeyHash(getProxyUrlPrefix(targetServerId), p2p, username);
-    }
-
-    public CompletableFuture<Optional<PublicKeyHash>> getPublicKeyHash(String urlPrefix, HttpPoster poster, String username) {
         try {
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
             DataOutputStream dout = new DataOutputStream(bout);
@@ -73,15 +72,6 @@ public class HTTPCoreNode implements CoreNodeProxy {
 
     @Override
     public CompletableFuture<String> getUsername(PublicKeyHash owner) {
-        return getUsername("", direct, owner);
-    }
-
-    @Override
-    public CompletableFuture<String> getUsername(Multihash targetServerId, PublicKeyHash owner) {
-        return getUsername(getProxyUrlPrefix(targetServerId), p2p, owner);
-    }
-
-    public CompletableFuture<String> getUsername(String urlPrefix, HttpPoster poster, PublicKeyHash owner) {
         try
         {
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
@@ -108,15 +98,6 @@ public class HTTPCoreNode implements CoreNodeProxy {
 
     @Override
     public CompletableFuture<List<UserPublicKeyLink>> getChain(String username) {
-        return getChain("", direct, username);
-    }
-
-    @Override
-    public CompletableFuture<List<UserPublicKeyLink>> getChain(Multihash targetServerId, String username) {
-        return getChain(getProxyUrlPrefix(targetServerId), p2p, username);
-    }
-
-    public CompletableFuture<List<UserPublicKeyLink>> getChain(String urlPrefix, HttpPoster poster, String username) {
         try
         {
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
@@ -146,15 +127,6 @@ public class HTTPCoreNode implements CoreNodeProxy {
 
     @Override
     public CompletableFuture<Boolean> updateChain(String username, List<UserPublicKeyLink> chain) {
-        return updateChain("", direct, username, chain);
-    }
-
-    @Override
-    public CompletableFuture<Boolean> updateChain(Multihash targetServerId, String username, List<UserPublicKeyLink> chain) {
-        return updateChain(getProxyUrlPrefix(targetServerId), p2p, username, chain);
-    }
-
-    public CompletableFuture<Boolean> updateChain(String urlPrefix, HttpPoster poster, String username, List<UserPublicKeyLink> chain) {
         try
         {
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
@@ -183,15 +155,6 @@ public class HTTPCoreNode implements CoreNodeProxy {
 
     @Override
     public CompletableFuture<List<String>> getUsernames(String prefix) {
-        return getUsernames("", direct, prefix);
-    }
-
-    @Override
-    public CompletableFuture<List<String>> getUsernames(Multihash targetServerId, String prefix) {
-        return getUsernames(getProxyUrlPrefix(targetServerId), p2p, prefix);
-    }
-
-    public CompletableFuture<List<String>> getUsernames(String urlPrefix, HttpPoster poster, String prefix) {
         return poster.postUnzip(urlPrefix + "core/getUsernamesGzip/"+prefix, new byte[0])
                 .thenApply(raw -> (List) JSONParser.parse(new String(raw)));
     }
