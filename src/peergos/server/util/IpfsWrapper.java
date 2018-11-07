@@ -13,11 +13,47 @@ import static peergos.server.util.Logging.LOG;
 public class IpfsWrapper implements AutoCloseable, Runnable {
     /**
      * A utility class for managing the IPFS daemon runtime including:
-     *
+     * <p>
      * start/stop process
      * logging
      * configuring including bootstrapping
      */
+
+    public static class Config {
+        /**
+         * Encapsulate IPFS configuration state.
+         */
+        public final Optional<String> bootstrapNode;
+        public final int apiPort, gatewayPort, swarmPort;
+
+        private Config(Optional<String> bootstrapNode, int apiPort, int gatewayPort, int swarmPort) {
+            this.bootstrapNode = bootstrapNode;
+            this.apiPort = apiPort;
+            this.gatewayPort = gatewayPort;
+            this.swarmPort = swarmPort;
+        }
+
+        private List<String[]> configCmds() {
+            return Stream.of(
+                    "config --json Experimental.Libp2pStreamMounting true",
+                    String.format("config --json Addresses.API \"/ip4/127.0.0.1/tcp/%d\"", apiPort),
+                    String.format("config --json Addresses.Gateway \"/ip4/127.0.0.1/tcp/%d\"", gatewayPort),
+                    String.format("config --json Addresses.Swarm [\"/ip4/127.0.0.1/tcp/%d\",\"/ip6/::/tcp/%d\"]", swarmPort, swarmPort))
+                    .map(e -> e.replaceAll("\"", "\\\""))  //escape "
+                    .map(e -> e.split("\\s+"))
+                    .collect(Collectors.toList());
+        }
+    }
+
+    private static Config buildConfig(Args args) {
+        Optional<String> bootstrapNodeAddress = Optional.ofNullable(args.getArg("ipfs-config-bootstrap-node", null));
+        int apiPort = args.getInt("ipfs-config-api-port", 5001);
+        int gatewayPort = args.getInt("ipfs-config-gateway-port", 8080);
+        int swarmPort = args.getInt("ipfs-config-swarm-port", 4001);
+
+        return new Config(bootstrapNodeAddress, apiPort, gatewayPort, swarmPort);
+    }
+
 
     private static final String IPFS_DIR = "IPFS_PATH";
     private static final String IPFS_EXE = "ipfs-exe-path";
@@ -32,33 +68,36 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
      */
     public final Path ipfsPath, ipfsDir;
     //ipfs config commands (everything after config)
-    private final List<List<String>> configCmds;
     private Process process;
 
 
-    public IpfsWrapper(Path ipfsPath, Path ipfsDir, List<List<String>> configCmds) {
+    public IpfsWrapper(Path ipfsPath, Path ipfsDir) {
         if (!Files.exists(ipfsDir))
             throw new IllegalStateException("Specified path to IPFS_DIR'" + ipfsDir + "' does not exist");
         if (!Files.exists(ipfsPath))
             throw new IllegalStateException("Specified path to ipfs binary '" + ipfsPath + "' does not exist");
         this.ipfsPath = ipfsPath;
         this.ipfsDir = ipfsDir;
-        this.configCmds = new ArrayList<>(configCmds);
-
         // add shutdown-hook to ensure ipfs daemon is killed on exit
         Runtime.getRuntime().addShutdownHook(new Thread(this::close));
     }
 
 
-    public synchronized void setup() {
-        //ipfs init
+    public synchronized void config(Config config) {
+
+        LOG().info("Initializing ipfs");
         runIpfsCmd("init");
 
-        for (List<String> configCmd : configCmds) {
-            LinkedList<String> list = new LinkedList<>(configCmd);
-            list.addFirst("config");
-            //ipfs config ...
-            runIpfsCmd(list.toArray(new String[0]));
+        if (config.bootstrapNode.isPresent()) {
+            LOG().info("Setting ipfs bootstrap node " + config.bootstrapNode);
+            runIpfsCmd("bootstrap", "rm", "all");
+            runIpfsCmd("bootstrap", "add", config.bootstrapNode.get());
+        }
+
+        LOG().info("Running ipfs config");
+        for (String[] configCmd : config.configCmds()) {
+            //ipfs config x y z
+            runIpfsCmd(configCmd);
         }
     }
 
@@ -75,7 +114,7 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
 
     /**
      * Wait until the ipfs id comamnd returns a sensible response.
-     *
+     * <p>
      * The ipfs daemon can take up to 30 seconds to start
      * responding to requests once the daemon is started.
      */
@@ -96,7 +135,8 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
 
             try {
                 Thread.sleep(1000);
-            } catch (InterruptedException  ie) {}
+            } catch (InterruptedException ie) {
+            }
 
             long current = System.currentTimeMillis();
 
@@ -104,7 +144,7 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
         }
 
         // still not ready?
-        throw new IllegalStateException("ipfs daemon is not ready after specified timeout "+ timeoutSeconds +" seconds.");
+        throw new IllegalStateException("ipfs daemon is not ready after specified timeout " + timeoutSeconds + " seconds.");
     }
 
     @Override
@@ -114,7 +154,7 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
     }
 
     public synchronized void stop() {
-        if (process == null || ! process.isAlive())
+        if (process == null || !process.isAlive())
             throw new IllegalStateException("ipfs daemon is not running");
 
         LOG().info("Stopping ipfs daemon");
@@ -145,7 +185,7 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
             int rc = process.waitFor();
 
             String cmd = Stream.of(subCmd).collect(Collectors.joining(" ", "ipfs ", ""));
-            if (showLog) {
+            if (showLog || rc != 0) {
                 Logging.log(process.getInputStream(), cmd + " out : ");
                 Logging.log(process.getErrorStream(), cmd + " err : ");
             }
@@ -187,7 +227,6 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
     }
 
     public static void main(String[] args) throws Exception {
-
         Path ipfsPath = Paths.get(
                 System.getenv().getOrDefault("GOPATH", "/home/chris/go"),
                 "src/github.com/ipfs/go-ipfs/cmd/ipfs/ipfs");
@@ -195,48 +234,51 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
 
         Logging.init(Paths.get("log.log"), 1_000_000, 1, false, true, true);
 
-        IpfsWrapper ipfsWrapper = new IpfsWrapper(ipfsPath, ipfsDir, Collections.emptyList());
-        ipfsWrapper.setup();
+        IpfsWrapper ipfsWrapper = new IpfsWrapper(ipfsPath, ipfsDir);
+
+        Config config = new Config(Optional.empty(), 5001, 8080, 4001);
+        ipfsWrapper.config(config);
+
         new Thread(ipfsWrapper::run).start();
         ipfsWrapper.waitForDaemon(30);
 
         try {
             Thread.sleep(10_000);
-        } catch (InterruptedException ie){}
+        } catch (InterruptedException ie) {
+        }
 
         ipfsWrapper.stop();
     }
 
-    public static IpfsWrapper build(Args args,  boolean setup) {
+    public static IpfsWrapper build(Args args) {
         //$IPFS_DIR, defaults to $PEERGOS_PATH/.ipfs
-        Path ipfsDir =  args.hasArg(IPFS_DIR) ?
+        Path ipfsDir = args.hasArg(IPFS_DIR) ?
                 Paths.get(args.getArg(IPFS_DIR)) :
                 args.fromPeergosDir("ipfs-name", DEFAULT_DIR_NAME);
 
         //ipfs exe defaults to $PEERGOS_PATH/ipfs
-        Path  ipfsExe = args.hasArg(IPFS_EXE) ?
+        Path ipfsExe = args.hasArg(IPFS_EXE) ?
                 Paths.get(args.getArg(IPFS_EXE)) :
                 args.fromPeergosDir("ipfs-exe", DEFAULT_IPFS_EXE);
 
-        // TODO
-        List<List<String>> config = setup ? Collections.emptyList():  Collections.emptyList();
-
-        return new IpfsWrapper(ipfsExe, ipfsDir, config);
+        return new IpfsWrapper(ipfsExe, ipfsDir);
     }
 
     /**
      * Build an IpfsWrapper based on args.
-     *
+     * <p>
      * Start running it in a sub-process.
-     *
+     * <p>
      * Block until the ipfs-daemon is ready for requests.
      *
      * @param args
-     * @param setup will init and bootstrap when true
+     * @param configure will init and bootstrap ipfs when true
      * @return
      */
-    public static IpfsWrapper launch(Args args,  boolean setup) {
-        IpfsWrapper ipfs = IpfsWrapper.build(args, setup);
+    public static IpfsWrapper launch(Args args, boolean configure) {
+        IpfsWrapper ipfs = IpfsWrapper.build(args);
+        if (configure)
+            ipfs.config(buildConfig(args));
 
         LOG().info("Starting ipfs daemon");
 
