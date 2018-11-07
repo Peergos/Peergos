@@ -44,7 +44,16 @@ public class IpfsWrapper {
         this.ipfsPath = ipfsPath;
         this.ipfsDir = ipfsDir;
         this.configCmds = new ArrayList<>(configCmds);
+
+        // add shutdown-hook to ensure ipfs daemon is killed on exit
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            synchronized (this) {
+                if (process != null && process.isAlive())
+                    stop();
+            }
+        }));
     }
+
 
     public synchronized void setup() {
         //ipfs init
@@ -175,6 +184,7 @@ public class IpfsWrapper {
     }
 
     public static void main(String[] args) throws Exception {
+
         Path ipfsPath = Paths.get(
                 System.getenv().getOrDefault("GOPATH", "/home/chris/go"),
                 "src/github.com/ipfs/go-ipfs/cmd/ipfs/ipfs");
@@ -224,6 +234,9 @@ public class IpfsWrapper {
      */
     public static IpfsWrapper launch(Args args,  boolean setup) {
         IpfsWrapper ipfs = IpfsWrapper.build(args, setup);
+
+        LOG().info("Starting ipfs daemon");
+
         new Thread(ipfs::run).start();
 
         int timeout = args.getInt("ipfs-timeout-seconds", 30);
