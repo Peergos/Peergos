@@ -1,10 +1,12 @@
 package peergos.server;
 
+import org.eclipse.jetty.util.log.Log;
 import peergos.server.corenode.*;
 import peergos.server.mutable.*;
 import peergos.server.social.*;
 import peergos.server.util.Args;
 import peergos.server.util.IpfsWrapper;
+import peergos.server.util.Logging;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
@@ -36,6 +38,19 @@ public class Main
     static {
         PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, new Ed25519.Java());
     }
+    public static Command IPFS  = new Command("ipfs",
+            "Start IPFS daemon and ensure configuration, optionally manage runtime.",
+            Main::startIpfs,
+            Arrays.asList(
+                    new Command.Arg("IPFS_PATH", "Path to IPFS directory. Defaults to $PEERGOS_PATH/.ipfs, or ~/.peergos/.ipfs", false),
+                    new Command.Arg("ipfs-exe-path", "Path to IPFS executasble. Defaults to $PEERGOS_PATH/ipfs", false),
+                    new Command.Arg("ipfs-config-api-port", "IPFS API port", false, "5001"),
+                    new Command.Arg("ipfs-config-gateway-port", "IPFS Gateway port", false, "8080"),
+                    new Command.Arg("ipfs-config-swarm-port", "IPFS Swarm port", false, "4001"),
+                    new Command.Arg("ipfs-config-bootstrap-node-list", "Comma separated list of IPFS bootstrap nodes. Uses existing bootstrap nodes by default.", false),
+                    new Command.Arg("ipfs-manage-runtime", "Will manage the IPFS daemon runtime when set (restart on exit)", false, "true")
+                    )
+    );
 
     public static Command CORE_NODE = new Command("core",
             "Start a Corenode.",
@@ -136,6 +151,9 @@ public class Main
                 } catch (Exception e) {
                     e.printStackTrace();
                     System.exit(1);
+                } finally {
+                    if  (ipfsWrapper != null)
+                        ipfsWrapper.close();
                 }
             },
             Arrays.asList(
@@ -226,7 +244,6 @@ public class Main
     );
 
     public static void startPeergos(Args a) {
-        IpfsWrapper ipfsWrapper = null;
         try {
             PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, new Ed25519.Java());
 
@@ -237,14 +254,11 @@ public class Main
             String domain = a.getArg("domain");
             InetSocketAddress userAPIAddress = new InetSocketAddress(domain, webPort);
 
-            boolean useIPFS = a.getBoolean("useIPFS");
-
-            if (useIPFS)
-                ipfsWrapper = IpfsWrapper.launch(a);
-
             int dhtCacheEntries = 1000;
             int maxValueSizeToCache = 50 * 1024;
             JavaPoster ipfsPoster = new JavaPoster(ipfsAddress);
+
+            boolean useIPFS = a.getBoolean("useIPFS");
             ContentAddressedStorage dht = useIPFS ?
                     new CachingStorage(new ContentAddressedStorage.HTTP(ipfsPoster), dhtCacheEntries, maxValueSizeToCache) :
                     new FileContentAddressedStorage(blockstorePath(a));
@@ -274,9 +288,6 @@ public class Main
             e.printStackTrace();
 
             System.exit(1);
-        } finally {
-            if (ipfsWrapper != null)
-                ipfsWrapper.stop();
         }
     }
 
@@ -311,6 +322,17 @@ public class Main
         }
     }
 
+
+    public static void startIpfs(Args a) {
+        IpfsWrapper ipfs = IpfsWrapper.build(a);
+        IpfsWrapper.Config config = IpfsWrapper.buildConfig(a);
+
+        if (a.getBoolean("ipfs-manage-runtime", true))
+            IpfsWrapper.launchAndManage(ipfs, config);
+        else {
+            IpfsWrapper.launchOnce(ipfs, config);
+        }
+    }
     public static void startCoreNode(Args a) {
         String corenodeFile = a.getArg("corenodeFile");
         String path = corenodeFile.equals(":memory:") ? corenodeFile : a.fromPeergosDir("corenodeFile").toString();
@@ -387,6 +409,8 @@ public class Main
                 }
                 args.setIfAbsent("domain", "localhost");
                 args.setIfAbsent("corenodeFile", ":memory:");
+                if (args.getBoolean("useIPFS", true))
+                    startIpfs(args);
                 startCoreNode(args);
                 startPeergos(args);
             },

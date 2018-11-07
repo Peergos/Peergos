@@ -20,14 +20,12 @@ public class  Logging {
      * @param a
      */
     public static synchronized void init(Args a) {
-        String logName = a.getArg("logName", "peergos.%g.log");
+        Path logPath = a.fromPeergosDir("logName", "peergos.%g.log");
         int logLimit = a.getInt("logLimit", 1024 * 1024);
         int logCount = a.getInt("logCount", 10);
         boolean logAppend = a.getBoolean("logAppend", true);
         boolean logToConsole = a.getBoolean("logToConsole", false);
         boolean logToFile = a.getBoolean("logToFile", true);
-        String peergosDir = a.getArg(Args.PEERGOS_DIR, System.getProperty("user.dir"));
-        Path logPath = Paths.get(peergosDir, logName);
 
         init(logPath, logLimit, logCount, logAppend, logToConsole, logToFile);
     }

@@ -13,7 +13,7 @@ import java.util.stream.Stream;
 public class Args {
     public static final String PEERGOS_DIR = "PEERGOS_PATH";
     public static final Path DEFAULT_PEERGOS_DIR_PATH = Paths.get(
-            System.getProperty("user.dir"),
+            System.getProperty("user.home"),
             ".peergos");
 
     private final Map<String, String> params = paramMap();//insertion order

@@ -2,6 +2,7 @@ package peergos.server.util;
 
 import peergos.shared.io.ipfs.multiaddr.MultiAddress;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -54,7 +55,7 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
                 .map(MultiAddress::new)
                 .collect(Collectors.toList());
     }
-    private static Config buildConfig(Args args) {
+    public static Config buildConfig(Args args) {
 
 
         Optional<List<MultiAddress>> bootstrapNodes = args.hasArg(IPFS_BOOTSTRAP_NODES) ?
@@ -86,8 +87,12 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
 
 
     public IpfsWrapper(Path ipfsPath, Path ipfsDir) {
-        if (!Files.exists(ipfsDir))
-            throw new IllegalStateException("Specified path to IPFS_DIR'" + ipfsDir + "' does not exist");
+
+        File ipfsDirF = ipfsDir.toFile();
+        if (! ipfsDirF.isDirectory() && ! ipfsDirF.mkdirs()) {
+            throw new IllegalStateException("Specified IPFS_PATH '" + ipfsDir + " is not a directory and/or could not be created");
+        }
+
         if (!Files.exists(ipfsPath))
             throw new IllegalStateException("Specified path to ipfs binary '" + ipfsPath + "' does not exist");
         this.ipfsPath = ipfsPath;
