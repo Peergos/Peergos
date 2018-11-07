@@ -98,6 +98,7 @@ public class Main
             "Bootstrap a new peergos network\n" +
                     "This means creating a pki keypair and publishing the public key",
             args -> {
+                IpfsWrapper ipfsWrapper = null;
                 try {
                     Crypto crypto = Crypto.initJava();
                     // setup peergos user and pki keys
@@ -107,6 +108,9 @@ public class Main
                             crypto.random, crypto.signer, crypto.boxer, SecretGenerationAlgorithm.getDefault()).get();
 
                     boolean useIPFS = args.getBoolean("useIPFS");
+                    if (useIPFS)
+                        ipfsWrapper = IpfsWrapper.launch(args);
+
                     ContentAddressedStorage dht = useIPFS ?
                             new IpfsDHT() :
                             new FileContentAddressedStorage(blockstorePath(args));
@@ -135,6 +139,9 @@ public class Main
                 } catch (Exception e) {
                     e.printStackTrace();
                     System.exit(1);
+                } finally {
+                    if  (ipfsWrapper != null)
+                        ipfsWrapper.close();
                 }
             },
             Arrays.asList(
@@ -270,7 +277,7 @@ public class Main
             System.exit(1);
         } finally {
             if (ipfsWrapper != null)
-                ipfsWrapper.stop();
+                ipfsWrapper.close();
         }
     }
 
