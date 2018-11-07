@@ -25,16 +25,6 @@ public class IpfsWrapper {
     private static final String DEFAULT_DIR_NAME = ".ipfs";
     private static final String DEFAULT_IPFS_EXE = "ipfs";
 
-    /**
-     *
-     *
-     * @param args
-     * @return
-     */
-
-
-
-
     private volatile boolean shouldBeRunning;
 
     /**
@@ -79,6 +69,40 @@ public class IpfsWrapper {
         new Thread(() -> Logging.log(process.getErrorStream(), "IPFS err : ")).start();
     }
 
+    /**
+     * Wait until the ipfs id comamnd returns a sensible response.
+     *
+     * The ipfs daemon can take up to 30 seconds to start
+     * responding to requests once the daemon is started.
+     */
+    private void waitForDaemon(int timeoutSeconds) {
+        long start = System.currentTimeMillis();
+        double duration = 0;
+
+        while (duration < timeoutSeconds) {
+
+            // ready now?
+            try {
+                runIpfsCmd(false, "id");
+                // ready
+                return;
+            } catch (IllegalStateException ile) {
+                // not ready
+            }
+
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException  ie) {}
+
+            long current = System.currentTimeMillis();
+
+            duration = (double) (current - start) / 1000.0;
+        }
+
+        // still not ready?
+        throw new IllegalStateException("ipfs daemon is not ready after specified timeout "+ timeoutSeconds +" seconds.");
+    }
+
     public synchronized void stop() {
         if (process == null || ! process.isAlive())
             throw new IllegalStateException("ipfs daemon is not running");
@@ -101,13 +125,20 @@ public class IpfsWrapper {
     }
 
     private void runIpfsCmd(String... subCmd) {
+        boolean showLog = false;
+        runIpfsCmd(showLog, subCmd);
+    }
+
+    private void runIpfsCmd(boolean showLog, String... subCmd) {
         Process process = startIpfsCmd(subCmd);
         try {
             int rc = process.waitFor();
 
-            String cmd = Stream.of(subCmd).collect(Collectors.joining(" ", "ipfs", ""));
-            Logging.log(process.getInputStream(), cmd + " out : ");
-            Logging.log(process.getErrorStream(), cmd + " err : ");
+            String cmd = Stream.of(subCmd).collect(Collectors.joining(" ", "ipfs ", ""));
+            if (showLog) {
+                Logging.log(process.getInputStream(), cmd + " out : ");
+                Logging.log(process.getErrorStream(), cmd + " err : ");
+            }
 
             if (rc != 0) {
                 throw new IllegalStateException("ipfs " + Arrays.asList(subCmd) + " returned exit-code " + rc);
@@ -154,8 +185,11 @@ public class IpfsWrapper {
         IpfsWrapper ipfsWrapper = new IpfsWrapper(ipfsPath, ipfsDir, Collections.emptyList());
         ipfsWrapper.setup();
         new Thread(ipfsWrapper::run).start();
+        ipfsWrapper.waitForDaemon(30);
 
-        Thread.sleep(10_000);
+        try {
+            Thread.sleep(10_000);
+        } catch (InterruptedException ie){}
 
         ipfsWrapper.stop();
     }
@@ -178,15 +212,22 @@ public class IpfsWrapper {
     }
 
     /**
-     * Build an IpfsWrapper based on args,  and start  running it in a sub-process.
+     * Build an IpfsWrapper based on args.
+     *
+     * Start running it in a sub-process.
+     *
+     * Block until the ipfs-daemon is ready for requests.
      *
      * @param args
-     * @param setup
+     * @param setup will init and bootstrap when true
      * @return
      */
     public static IpfsWrapper launch(Args args,  boolean setup) {
         IpfsWrapper ipfs = IpfsWrapper.build(args, setup);
         new Thread(ipfs::run).start();
+
+        int timeout = args.getInt("ipfs-timeout-seconds", 30);
+        ipfs.waitForDaemon(timeout);
         return ipfs;
     }
 
