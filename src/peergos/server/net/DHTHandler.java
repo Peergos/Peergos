@@ -1,6 +1,7 @@
 package peergos.server.net;
 import java.util.logging.*;
-import peergos.server.util.Logging;
+
+import peergos.server.util.*;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
@@ -36,23 +37,6 @@ public class DHTHandler implements HttpHandler {
         this(dht, keyFilter, "/api/v0/");
     }
 
-    public static Map<String, List<String>> parseQuery(String query) {
-        if (query == null)
-            return Collections.emptyMap();
-        if (query.startsWith("?"))
-            query = query.substring(1);
-        String[] parts = query.split("&");
-        Map<String, List<String>> res = new HashMap<>();
-        for (String part : parts) {
-            int sep = part.indexOf("=");
-            String key = part.substring(0, sep);
-            String value = part.substring(sep + 1);
-            res.putIfAbsent(key, new ArrayList<>());
-            res.get(key).add(value);
-        }
-        return res;
-    }
-
     @Override
     public void handle(HttpExchange httpExchange) throws IOException {
         long t1 = System.currentTimeMillis();
@@ -62,7 +46,7 @@ public class DHTHandler implements HttpHandler {
                 throw new IllegalStateException("Unsupported api version, required: " + apiPrefix);
             path = path.substring(apiPrefix.length());
             // N.B. URI.getQuery() decodes the query string
-            Map<String, List<String>> params = parseQuery(httpExchange.getRequestURI().getQuery());
+            Map<String, List<String>> params = HttpUtil.parseQuery(httpExchange.getRequestURI().getQuery());
             List<String> args = params.get("arg");
             Function<String, String> last = key -> params.get(key).get(params.get(key).size() - 1);
 

@@ -2,8 +2,7 @@ package peergos.server.mutable;
 import java.util.*;
 import java.util.logging.*;
 
-import peergos.server.net.*;
-import peergos.server.util.Logging;
+import peergos.server.util.*;
 
 import com.sun.net.httpserver.*;
 import peergos.shared.cbor.*;
@@ -56,7 +55,7 @@ public class HttpMutablePointerServer {
                         setPointer(din, dout);
                         break;
                     case "getPointer":
-                        Map<String, List<String>> params = DHTHandler.parseQuery(exchange.getRequestURI().getQuery());
+                        Map<String, List<String>> params = HttpUtil.parseQuery(exchange.getRequestURI().getQuery());
                         PublicKeyHash owner = PublicKeyHash.fromString(params.get("owner").get(0));
                         getPointer(din, dout, owner);
                         break;
