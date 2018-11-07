@@ -20,21 +20,20 @@ public class IpfsWrapper {
      */
 
     private static final String IPFS_DIR = "IPFS_PATH";
+    private static final String IPFS_EXE = "ipfs-exe-path";
+
     private static final String DEFAULT_DIR_NAME = ".ipfs";
+    private static final String DEFAULT_IPFS_EXE = "ipfs";
 
     /**
-     * $IPFS_DIR, defaults to $PEERGOS_DIR/.ipfs
+     *
      *
      * @param args
      * @return
      */
 
-    public static Path getIpfsDir(Args args) {
-        if (args.hasArg(IPFS_DIR))
-            return Paths.get(args.getArg(IPFS_DIR));
 
-        return args.fromPeergosDir("ipfs-name", DEFAULT_DIR_NAME);
-    }
+
 
     private volatile boolean shouldBeRunning;
 
@@ -45,6 +44,7 @@ public class IpfsWrapper {
     //ipfs config commands (everything after config)
     private final List<List<String>> configCmds;
     private Process process;
+
 
     public IpfsWrapper(Path ipfsPath, Path ipfsDir, List<List<String>> configCmds) {
         if (!Files.exists(ipfsDir))
@@ -159,4 +159,35 @@ public class IpfsWrapper {
 
         ipfsWrapper.stop();
     }
+
+    public static IpfsWrapper build(Args args,  boolean setup) {
+        //$IPFS_DIR, defaults to $PEERGOS_PATH/.ipfs
+        Path ipfsDir =  args.hasArg(IPFS_DIR) ?
+                Paths.get(args.getArg(IPFS_DIR)) :
+                args.fromPeergosDir("ipfs-name", DEFAULT_DIR_NAME);
+
+        //ipfs exe defaults to $PEERGOS_PATH/ipfs
+        Path  ipfsExe = args.hasArg(IPFS_EXE) ?
+                Paths.get(args.getArg(IPFS_EXE)) :
+                args.fromPeergosDir("ipfs-exe", DEFAULT_IPFS_EXE);
+
+        // TODO
+        List<List<String>> config = setup ? Collections.emptyList():  Collections.emptyList();
+
+        return new IpfsWrapper(ipfsExe, ipfsDir, config);
+    }
+
+    /**
+     * Build an IpfsWrapper based on args,  and start  running it in a sub-process.
+     *
+     * @param args
+     * @param setup
+     * @return
+     */
+    public static IpfsWrapper launch(Args args,  boolean setup) {
+        IpfsWrapper ipfs = IpfsWrapper.build(args, setup);
+        new Thread(ipfs::run).start();
+        return ipfs;
+    }
+
 }

@@ -1,6 +1,7 @@
 package peergos.server.tests;
 import java.util.logging.*;
 
+import peergos.server.Main;
 import peergos.server.util.Args;
 import peergos.server.util.Logging;
 
@@ -10,7 +11,6 @@ import static java.util.UUID.*;
 
 import peergos.shared.*;
 import peergos.server.fuse.*;
-import peergos.server.Start;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
@@ -55,7 +55,7 @@ public class FuseTests {
                 "-port", Integer.toString(WEB_PORT),
                 "-corenodePort", Integer.toString(CORE_PORT)});
 
-        Start.LOCAL.main(args);
+        Main.LOCAL.main(args);
         NetworkAccess network = NetworkAccess.buildJava(WEB_PORT).get();
         UserContext userContext = UserContext.ensureSignedUp(username, password, network, Crypto.initJava()).get();
 

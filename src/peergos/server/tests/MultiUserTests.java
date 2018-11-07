@@ -46,7 +46,7 @@ public class MultiUserTests {
                 "-corenodePort", Integer.toString(corePort),
                 "-socialnodePort", Integer.toString(socialPort)
         });
-        Start.LOCAL.main(args);
+        Main.LOCAL.main(args);
         this.network = NetworkAccess.buildJava(new URL("http://localhost:" + webPort)).get();
         this.crypto = crypto;
     }

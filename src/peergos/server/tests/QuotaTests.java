@@ -35,7 +35,7 @@ public class QuotaTests {
                 "-corenodePort", Integer.toString(corePort),
                 "default-quota", Long.toString(2 * 1024 * 1024)
         });
-        Start.LOCAL.main(args);
+        Main.LOCAL.main(args);
         this.network = NetworkAccess.buildJava(new URL("http://localhost:" + webPort)).get();
     }
 
