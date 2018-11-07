@@ -4,6 +4,7 @@ import peergos.server.corenode.*;
 import peergos.server.mutable.*;
 import peergos.server.social.*;
 import peergos.server.util.Args;
+import peergos.server.util.IpfsWrapper;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
@@ -29,7 +30,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-public class Start
+public class Main
 {
     static {
         PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, new Ed25519.Java());
@@ -37,7 +38,7 @@ public class Start
 
     public static Command CORE_NODE = new Command("core",
             "Start a Corenode.",
-            Start::startCoreNode,
+            Main::startCoreNode,
             Arrays.asList(
                     new Command.Arg("corenodeFile", "Name of a local corenode sql file (created if it doesn't exist)", false, ":memory:"),
                     new Command.Arg("keyfile", "Path to keyfile", false),
@@ -51,7 +52,7 @@ public class Start
 
     public static Command SOCIAL = new Command("social",
             "Start a social network node which stores follow requests.",
-            Start::startSocialNode,
+            Main::startSocialNode,
             Stream.of(
                     new Command.Arg("socialnodeFile", "Name of local social node sql file (created if it doesn't exist)", false, ":memory:"),
                     new Command.Arg("keyfile", "Path to keyfile", false),
@@ -62,7 +63,7 @@ public class Start
 
     public static final Command PEERGOS = new Command("peergos",
             "The user facing Peergos server",
-            Start::startPeergos,
+            Main::startPeergos,
             Stream.of(
                     new Command.Arg("port",  "service port", false, "8000"),
                     new Command.Arg("corenodeURL", "Core node address", false, "http://localhost:" + HttpCoreNodeServer.PORT),
@@ -214,7 +215,7 @@ public class Start
 
     public static final Command FUSE = new Command("fuse",
             "Mount a Peergos user's filesystem natively",
-            Start::startFuse,
+            Main::startFuse,
             Stream.of(
                     new Command.Arg("username", "Peergos username", true),
                     new Command.Arg("password", "Peergos password", true),
@@ -224,7 +225,7 @@ public class Start
     );
 
     public static void startPeergos(Args a) {
-
+        IpfsWrapper ipfsWrapper = null;
         try {
             PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, new Ed25519.Java());
 
@@ -235,6 +236,10 @@ public class Start
             InetSocketAddress userAPIAddress = new InetSocketAddress(domain, webPort);
 
             boolean useIPFS = a.getBoolean("useIPFS");
+
+            if (useIPFS)
+                ipfsWrapper = IpfsWrapper.launch(a, false);
+
             int dhtCacheEntries = 1000;
             int maxValueSizeToCache = 50 * 1024;
             URL ipfsAddress = new URI(a.getArg("ipfsURL", "http://127.0.0.1:5001")).toURL();
@@ -263,6 +268,9 @@ public class Start
             e.printStackTrace();
 
             System.exit(1);
+        } finally {
+            if (ipfsWrapper != null)
+                ipfsWrapper.stop();
         }
     }
 
@@ -304,6 +312,7 @@ public class Start
         int maxUserCount = a.getInt("maxUserCount", CoreNode.MAX_USERNAME_COUNT);
         System.out.println("Using core node path " + path);
         boolean useIPFS = a.getBoolean("useIPFS");
+
         int dhtCacheEntries = 1000;
         int maxValueSizeToCache = 2 * 1024 * 1024;
         ContentAddressedStorage dht = useIPFS ?

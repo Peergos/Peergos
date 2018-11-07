@@ -34,7 +34,7 @@ public class CorenodeTests {
         int webPort = 9000 + r.nextInt(1000);
         int corePort = 10000 + r.nextInt(1000);
         Args args = Args.parse(new String[]{"useIPFS", ""+useIPFS.equals("IPFS"), "-port", Integer.toString(webPort), "-corenodePort", Integer.toString(corePort)});
-        Start.LOCAL.main(args);
+        Main.LOCAL.main(args);
         this.network = NetworkAccess.buildJava(new URL("http://localhost:" + webPort)).get();
     }
 

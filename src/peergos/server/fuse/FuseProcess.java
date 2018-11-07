@@ -3,7 +3,7 @@ import java.util.logging.*;
 import peergos.server.util.Logging;
 
 import peergos.shared.*;
-import peergos.server.Start;
+import peergos.server.Main;
 import peergos.server.tests.UserTests;
 import peergos.shared.user.UserContext;
 import peergos.server.util.Args;
@@ -83,7 +83,7 @@ public class FuseProcess implements Runnable, AutoCloseable {
                 "-port", Integer.toString(WEB_PORT),
                 "-corenodePort", Integer.toString(CORE_PORT)});
 
-        Start.LOCAL.main(a);
+        Main.LOCAL.main(a);
 
         a = Args.parse(args);
         String username = a.getArg("username", "test01");

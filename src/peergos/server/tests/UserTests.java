@@ -51,7 +51,7 @@ public abstract class UserTests {
                 "-socialnodePort", Integer.toString(socialPort)
         });
 
-        Start.LOCAL.main(args);
+        Main.LOCAL.main(args);
         this.network = NetworkAccess.buildJava(new URL("http://localhost:" + webPort)).get();
     }
 
