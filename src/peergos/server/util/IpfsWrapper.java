@@ -10,7 +10,7 @@ import java.util.stream.Stream;
 
 import static peergos.server.util.Logging.LOG;
 
-public class IpfsWrapper {
+public class IpfsWrapper implements AutoCloseable, Runnable {
     /**
      * A utility class for managing the IPFS daemon runtime including:
      *
@@ -46,12 +46,7 @@ public class IpfsWrapper {
         this.configCmds = new ArrayList<>(configCmds);
 
         // add shutdown-hook to ensure ipfs daemon is killed on exit
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            synchronized (this) {
-                if (process != null && process.isAlive())
-                    stop();
-            }
-        }));
+        Runtime.getRuntime().addShutdownHook(new Thread(this::close));
     }
 
 
@@ -112,6 +107,12 @@ public class IpfsWrapper {
         throw new IllegalStateException("ipfs daemon is not ready after specified timeout "+ timeoutSeconds +" seconds.");
     }
 
+    @Override
+    public synchronized void close() {
+        if (process != null && process.isAlive())
+            stop();
+    }
+
     public synchronized void stop() {
         if (process == null || ! process.isAlive())
             throw new IllegalStateException("ipfs daemon is not running");
@@ -170,8 +171,10 @@ public class IpfsWrapper {
 
         while (shouldBeRunning) {
             // start daemon if it isn't running
-            if (process == null ||  ! process.isAlive())
-                start();
+            synchronized (this) {
+                if (process == null || !process.isAlive())
+                    start();
+            }
 
             try {
                 int rc = process.waitFor();
