@@ -240,7 +240,7 @@ public class Main
             boolean useIPFS = a.getBoolean("useIPFS");
 
             if (useIPFS)
-                ipfsWrapper = IpfsWrapper.launch(a, false);
+                ipfsWrapper = IpfsWrapper.launch(a);
 
             int dhtCacheEntries = 1000;
             int maxValueSizeToCache = 50 * 1024;

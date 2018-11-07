@@ -1,5 +1,7 @@
 package peergos.server.util;
 
+import peergos.shared.io.ipfs.multiaddr.MultiAddress;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -18,15 +20,16 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
      * logging
      * configuring including bootstrapping
      */
+    private static final String IPFS_BOOTSTRAP_NODES = "ipfs-config-bootstrap-node-list";
 
     public static class Config {
         /**
          * Encapsulate IPFS configuration state.
          */
-        public final Optional<String> bootstrapNode;
+        public final Optional<List<MultiAddress>> bootstrapNode;
         public final int apiPort, gatewayPort, swarmPort;
 
-        private Config(Optional<String> bootstrapNode, int apiPort, int gatewayPort, int swarmPort) {
+        public Config(Optional<List<MultiAddress>> bootstrapNode, int apiPort, int gatewayPort, int swarmPort) {
             this.bootstrapNode = bootstrapNode;
             this.apiPort = apiPort;
             this.gatewayPort = gatewayPort;
@@ -36,6 +39,7 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
         private List<String[]> configCmds() {
             return Stream.of(
                     "config --json Experimental.Libp2pStreamMounting true",
+                    "config --json Experimental.P2pHttpProxy true",
                     String.format("config --json Addresses.API \"/ip4/127.0.0.1/tcp/%d\"", apiPort),
                     String.format("config --json Addresses.Gateway \"/ip4/127.0.0.1/tcp/%d\"", gatewayPort),
                     String.format("config --json Addresses.Swarm [\"/ip4/127.0.0.1/tcp/%d\",\"/ip6/::/tcp/%d\"]", swarmPort, swarmPort))
@@ -45,13 +49,23 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
         }
     }
 
+    private static List<MultiAddress> parseMultiAddresses(String s) {
+        return Stream.of(s.split(","))
+                .map(MultiAddress::new)
+                .collect(Collectors.toList());
+    }
     private static Config buildConfig(Args args) {
-        Optional<String> bootstrapNodeAddress = Optional.ofNullable(args.getArg("ipfs-config-bootstrap-node", null));
+
+
+        Optional<List<MultiAddress>> bootstrapNodes = args.hasArg(IPFS_BOOTSTRAP_NODES) ?
+                Optional.of(parseMultiAddresses(args.getArg(IPFS_BOOTSTRAP_NODES))) :
+                Optional.empty();
+
         int apiPort = args.getInt("ipfs-config-api-port", 5001);
         int gatewayPort = args.getInt("ipfs-config-gateway-port", 8080);
         int swarmPort = args.getInt("ipfs-config-swarm-port", 4001);
 
-        return new Config(bootstrapNodeAddress, apiPort, gatewayPort, swarmPort);
+        return new Config(bootstrapNodes, apiPort, gatewayPort, swarmPort);
     }
 
 
@@ -83,15 +97,22 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
     }
 
 
-    public synchronized void config(Config config) {
+    public synchronized void configure(Config config) {
 
-        LOG().info("Initializing ipfs");
-        runIpfsCmd("init");
+
+        try {
+            runIpfsCmd("id");
+        } catch (IllegalStateException ile) {
+            LOG().info("Initializing ipfs");
+            runIpfsCmd("init");
+        }
+
 
         if (config.bootstrapNode.isPresent()) {
-            LOG().info("Setting ipfs bootstrap node " + config.bootstrapNode);
+            LOG().info("Setting ipfs bootstrap nodes " + config.bootstrapNode.get());
             runIpfsCmd("bootstrap", "rm", "all");
-            runIpfsCmd("bootstrap", "add", config.bootstrapNode.get());
+            for (MultiAddress bootstrapNode : config.bootstrapNode.get())
+                runIpfsCmd("bootstrap", "add", bootstrapNode.toString());
         }
 
         LOG().info("Running ipfs config");
@@ -125,6 +146,11 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
         while (duration < timeoutSeconds) {
 
             // ready now?
+            synchronized (this) {
+                if (process !=  null && ! process.isAlive())
+                    throw new IllegalStateException("ipfs daemon terminated with return code "+ process.exitValue());
+            }
+
             try {
                 runIpfsCmd(false, "id");
                 // ready
@@ -220,6 +246,7 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
                 int rc = process.waitFor();
                 if (rc != 0) {
                     LOG().warning("IPFS exited with return-code " + rc);
+                    Thread.sleep(1_000);
                 }
             } catch (InterruptedException ie) {
             }
@@ -237,13 +264,13 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
         IpfsWrapper ipfsWrapper = new IpfsWrapper(ipfsPath, ipfsDir);
 
         Config config = new Config(Optional.empty(), 5001, 8080, 4001);
-        ipfsWrapper.config(config);
+        ipfsWrapper.configure(config);
 
-        new Thread(ipfsWrapper::run).start();
+        new Thread(ipfsWrapper).start();
         ipfsWrapper.waitForDaemon(30);
 
         try {
-            Thread.sleep(10_000);
+            Thread.sleep(100_000);
         } catch (InterruptedException ie) {
         }
 
@@ -268,25 +295,50 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
      * Build an IpfsWrapper based on args.
      * <p>
      * Start running it in a sub-process.
-     * <p>
+     *
      * Block until the ipfs-daemon is ready for requests.
      *
+     * Restart the daemon if it dies.
+     *
      * @param args
-     * @param configure will init and bootstrap ipfs when true
      * @return
      */
-    public static IpfsWrapper launch(Args args, boolean configure) {
+    public static IpfsWrapper launch(Args args) {
         IpfsWrapper ipfs = IpfsWrapper.build(args);
-        if (configure)
-            ipfs.config(buildConfig(args));
+        Config config = buildConfig(args);
+        return launchAndManage(ipfs, config);
+    }
+
+    // Useful for tests
+    public static IpfsWrapper launch(Path peergosDir, List<MultiAddress>  bootstrapNodes, int apiPort, int gatewayPort, int swarmPort) {
+        IpfsWrapper ipfs = IpfsWrapper.build(new Args().with("PEERGOS_PATH", peergosDir.toString()));
+        Config config = new Config(Optional.of(bootstrapNodes), apiPort, gatewayPort, swarmPort);
+        return launchOnce(ipfs, config);
+    }
+
+    public static IpfsWrapper launchAndManage(IpfsWrapper ipfs, Config config) {
+
+        ipfs.configure(config);
 
         LOG().info("Starting ipfs daemon");
 
-        new Thread(ipfs::run).start();
+        new Thread(ipfs).start();
 
-        int timeout = args.getInt("ipfs-timeout-seconds", 30);
-        ipfs.waitForDaemon(timeout);
+        ipfs.waitForDaemon(30);
+
         return ipfs;
     }
 
+    public static IpfsWrapper launchOnce(IpfsWrapper ipfs, Config config) {
+
+        ipfs.configure(config);
+
+        LOG().info("Starting ipfs daemon");
+
+        ipfs.start();
+
+        ipfs.waitForDaemon(30);
+
+        return ipfs;
+    }
 }
