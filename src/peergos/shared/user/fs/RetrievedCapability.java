@@ -6,13 +6,11 @@ import java.util.Map;
 import java.util.SortedMap;
 import java.util.TreeMap;
 
-public class Capability implements Cborable {
-    public String friend;
+public class RetrievedCapability implements Cborable {
     public String path;
     public FilePointer fp;
 
-    public Capability(String friend, String path, FilePointer fp) {
-        this.friend = friend;
+    public RetrievedCapability(String path, FilePointer fp) {
         this.path = path;
         this.fp = fp;
     }
@@ -20,24 +18,22 @@ public class Capability implements Cborable {
     @Override
     public CborObject toCbor() {
         Map<String, CborObject> cbor = new TreeMap<>();
-        cbor.put("f", new CborObject.CborString(friend));
         cbor.put("p", new CborObject.CborString(path));
         cbor.put("fp", fp.toCbor());
         return CborObject.CborMap.build(cbor);
     }
 
-    public static Capability fromByteArray(byte[] raw) {
+    public static RetrievedCapability fromByteArray(byte[] raw) {
         return fromCbor(CborObject.fromByteArray(raw));
     }
 
-    public static Capability fromCbor(Cborable cbor) {
+    public static RetrievedCapability fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborMap))
-            throw new IllegalStateException("Incorrect cbor for Capability: " + cbor);
+            throw new IllegalStateException("Incorrect cbor for RetrievedCapability: " + cbor);
         SortedMap<CborObject, ? extends Cborable> map = ((CborObject.CborMap) cbor).values;
-        CborObject.CborString friend = (CborObject.CborString)map.get(new CborObject.CborString("f"));
         CborObject.CborString path = (CborObject.CborString)map.get(new CborObject.CborString("p"));
         FilePointer fp = FilePointer.fromCbor(map.get(new CborObject.CborString("fp")));
-        return new Capability(friend.value, path.value, fp);
+        return new RetrievedCapability(path.value, fp);
     }
 
     @Override
@@ -45,24 +41,21 @@ public class Capability implements Cborable {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
 
-        Capability that = (Capability) o;
+        RetrievedCapability that = (RetrievedCapability) o;
 
-        if (friend != null ? !friend.equals(that.friend) : that.friend != null) return false;
         if (path != null ? !path.equals(that.path) : that.path != null) return false;
         return fp != null ? fp.equals(that.fp) : that.fp == null;
-
     }
 
     @Override
     public int hashCode() {
-        int result = friend != null ? friend.hashCode() : 0;
-        result = 31 * result + (path != null ? path.hashCode() : 0);
+        int result = (path != null ? path.hashCode() : 0);
         result = 31 * result + (fp != null ? fp.hashCode() : 0);
         return result;
     }
 
     @Override
     public String toString() {
-        return "friend:" + friend + " path:" + path;
+        return " path:" + path;
     }
 }
