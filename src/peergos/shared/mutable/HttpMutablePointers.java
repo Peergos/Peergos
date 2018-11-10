@@ -14,7 +14,7 @@ import java.util.concurrent.*;
 
 public class HttpMutablePointers implements MutablePointersProxy {
 	private static final Logger LOG = Logger.getGlobal();
-	private static final String P2P_PROXY_PROTOCOL = "http";
+	private static final String P2P_PROXY_PROTOCOL = "/http";
 
     private static final boolean LOGGING = true;
     private final HttpPoster direct, p2p;
@@ -27,7 +27,7 @@ public class HttpMutablePointers implements MutablePointersProxy {
     }
 
     private static String getProxyUrlPrefix(Multihash targetId) {
-        return "/http/proxy/" + targetId.toBase58() + "/" + P2P_PROXY_PROTOCOL + "/";
+        return "/p2p/" + targetId.toBase58() + P2P_PROXY_PROTOCOL + "/";
     }
    
     @Override

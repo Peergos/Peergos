@@ -19,7 +19,7 @@ import java.util.concurrent.*;
 
 public class HTTPCoreNode implements CoreNode {
 	private static final Logger LOG = Logger.getGlobal();
-	private static final String P2P_PROXY_PROTOCOL = "http";
+	private static final String P2P_PROXY_PROTOCOL = "/http";
 
     private final HttpPoster poster;
     private final String urlPrefix;
@@ -39,7 +39,7 @@ public class HTTPCoreNode implements CoreNode {
     }
 
     private static String getProxyUrlPrefix(Multihash targetId) {
-        return "/http/proxy/" + targetId.toBase58() + "/" + P2P_PROXY_PROTOCOL + "/";
+        return "/p2p/" + targetId.toBase58() + P2P_PROXY_PROTOCOL + "/";
     }
 
     @Override
