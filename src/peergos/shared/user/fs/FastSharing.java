@@ -14,7 +14,7 @@ import java.util.stream.IntStream;
 
 public class FastSharing {
     public static final int FILE_POINTER_SIZE = 159; // fp.toCbor().toByteArray() DOESN'T INCLUDE .secret
-    public static final int SHARING_FILE_MAX_SIZE = FILE_POINTER_SIZE * 2;//1000; // record size * 10000
+    public static final int SHARING_FILE_MAX_SIZE = FILE_POINTER_SIZE * 10000; // record size * x
     public static final String SHARING_FILE_PREFIX = "sharing.";
     public static final String SEPARATOR = "#";
     public static final String RETRIEVED_CAPABILITY_CACHE = SEPARATOR + ".cache";
@@ -58,5 +58,46 @@ public class FastSharing {
                             });
                         })
         );
+    }
+
+    public static CompletableFuture<Boolean> saveRetrievedCapabilityCache(FileTreeNode home, String friend,
+                                                                  NetworkAccess network, SafeRandom random, Fragmenter fragmenter,
+                                                                  List<RetrievedCapability> retrievedCapabilities) {
+        RetrievedCapabilityCache retrievedCapabilityCache = new RetrievedCapabilityCache(retrievedCapabilities);
+        byte[] data = retrievedCapabilityCache.serialize();
+        AsyncReader.ArrayBacked dataReader = new AsyncReader.ArrayBacked(data);
+        return home.uploadFile(friend + FastSharing.RETRIEVED_CAPABILITY_CACHE, dataReader, true, (long) data.length,
+                true, network, random, x-> {}, fragmenter).thenApply(x -> true);
+    }
+
+    public static CompletableFuture<Map<String, List<RetrievedCapability>>> readRetrievedCapabilityCache(Set<FileTreeNode> children,
+                                                                             NetworkAccess network, SafeRandom random) {
+        Map<String, List<RetrievedCapability>> combinedRetrievedCapabilityCache = new HashMap<>();
+
+        List<FileTreeNode> capabilityCacheFiles = children.stream()
+                .filter(f -> f.getName().endsWith(FastSharing.RETRIEVED_CAPABILITY_CACHE))
+                .collect(Collectors.toList());
+        List<Pair<String, FileTreeNode>> friendAndCapabilityCacheFileList = capabilityCacheFiles.stream()
+                .map(f -> new Pair<>(f.getName().substring(0, f.getName().indexOf(FastSharing.SEPARATOR)), f))
+                .collect(Collectors.toList());
+        return Futures.reduceAll(friendAndCapabilityCacheFileList,
+                true,
+                (x, cacheFile) -> {
+                    return readRetrievedCapabilityCache(cacheFile.right, network, random).thenApply(cache -> {
+                        combinedRetrievedCapabilityCache.put(cacheFile.left, cache.getRetrievedCapabilities());
+                        return true;
+                    });
+                },
+                (a, b) -> a && b)
+                .thenApply(result -> combinedRetrievedCapabilityCache);
+    }
+
+    private static CompletableFuture<RetrievedCapabilityCache> readRetrievedCapabilityCache(FileTreeNode cacheFile, NetworkAccess network, SafeRandom random) {
+        return cacheFile.getInputStream(network, random, x -> { })
+                .thenCompose(reader -> {
+                    byte[] storeData = new byte[(int) cacheFile.getSize()];
+                    return reader.readIntoArray(storeData, 0, storeData.length)
+                            .thenApply(x -> RetrievedCapabilityCache.deserialize(storeData));
+                });
     }
 }

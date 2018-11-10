@@ -253,9 +253,12 @@ public class FileTreeNode {
 
         return this.getChildren(network)
             .thenCompose(children -> {
+                List<FileTreeNode> capabilityCacheFiles = children.stream()
+                        .filter(f -> f.getName().startsWith(FastSharing.SHARING_FILE_PREFIX))
+                        .collect(Collectors.toList());
                 //GWT complains about the following line
                 //List<FileTreeNode> sharingFiles = children.stream().sorted(Comparator.comparing(f -> f.getFileProperties().modified)).collect(Collectors.toList());
-                List<FileTreeNode> sharingFiles = new ArrayList<>(children);
+                List<FileTreeNode> sharingFiles = new ArrayList<>(capabilityCacheFiles);
                 Collections.sort(sharingFiles, new Comparator<FileTreeNode>() {
                     @Override
                     public int compare(FileTreeNode o1, FileTreeNode o2) {

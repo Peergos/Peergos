@@ -38,6 +38,10 @@ public class UserContext {
     public final Fragmenter fragmenter;
 
     private CompletableFuture<CommittedWriterData> userData;
+
+    private HashMap<String, List<RetrievedCapability>> friendToRetrievedCapabilityCache = new HashMap<>(); // files shared with me
+    private HashMap<String, Set<String>> sharedWithCache = new HashMap<>(); //path to friends SharedWith
+
     @JsProperty
     public TrieNode entrie; // ba dum che!
 
@@ -75,8 +79,10 @@ public class UserContext {
         return entrie.hasWriteAccess();
     }
     @JsMethod
-    public boolean isShared(FileTreeNode file) {
-        return false;
+    public CompletableFuture<Boolean> isShared(FileTreeNode file) {
+        return file.getPath(network).thenApply(pathString -> {
+            return sharedWithCache.containsKey(pathString);
+        });
     }
     
     public boolean isJavascript() {
@@ -287,17 +293,36 @@ public class UserContext {
         progressCallback.accept("Retrieving Friends");
         CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
         return addToUserDataQueue(lock)
-                .thenCompose(wd -> createFileTree(entrie, username, wd.props, network, crypto.random)
+                .thenCompose(wd -> createFileTree(entrie, username, wd.props, friendToRetrievedCapabilityCache, network, crypto.random)
                         .thenCompose(root -> {
                             this.entrie = root;
                             return getByPath("/" + username + "/" + "shared")
-                                    .thenApply(sharedOpt -> {
+                                    .thenCompose(sharedOpt -> {
                                         if (!sharedOpt.isPresent())
                                             throw new IllegalStateException("Couldn't find shared folder!");
                                         lock.complete(wd);
-                                        return this;
-                                    });
+                                        return buildSharedWithCache(sharedOpt.get()).thenApply(res -> res);
+                                    }).thenApply(res -> this);
                         }));
+    }
+    public CompletableFuture<Boolean> buildSharedWithCache(FileTreeNode sharedFolder) {
+        return sharedFolder.getChildren(network)
+                .thenCompose(children ->
+                        Futures.reduceAll(children,
+                                true,
+                                (x, friendDirectory) -> {
+                                    List<RetrievedCapability> retrievedCapabilityCache = new ArrayList<>();
+                                    return getSharingLinks(friendDirectory, retrievedCapabilityCache, network, crypto.random)
+                                            .thenApply( res -> {
+                                                String friendName = friendDirectory.getName();
+                                                retrievedCapabilityCache.stream().forEach(rc -> {
+                                                    Set<String> existingEntries = sharedWithCache.getOrDefault(rc.path, new HashSet<>());
+                                                    sharedWithCache.put(rc.path, existingEntries);
+                                                    existingEntries.add(friendName);
+                                                });
+                                                return res;
+                                            });
+                                }, (a, b) -> a && b).thenApply(done -> done));
     }
 
     public CompletableFuture<Boolean> cleanEntryPoints() {
@@ -778,152 +803,47 @@ public class UserContext {
 
     public CompletableFuture<Boolean> unShare(Path path, Set<String> readersToRemove) {
         String pathString = path.toString();
-        CompletableFuture<Optional<FileTreeNode>> byPath = getByPath(pathString);
-        return byPath.thenCompose(opt -> {
-            //
-            // first remove links from shared directory
-            //
+        return getByPath(pathString).thenCompose(opt -> {
             FileTreeNode toUnshare = opt.orElseThrow(() -> new IllegalStateException("Specified un-shareWith path " + pathString + " does not exist"));
-            Optional<String> empty = Optional.empty();
-
-            Function<String, CompletableFuture<Optional<String>>> unshareWith = user -> getByPath("/" + username + "/shared/" + user)
-                    .thenCompose(sharedWithOpt -> {
-                        if (!sharedWithOpt.isPresent())
-                            return CompletableFuture.completedFuture(empty);
-                        FileTreeNode sharedRoot = sharedWithOpt.get();
-                        return sharedRoot.removeChild(toUnshare, network)
-                                .thenCompose(x -> CompletableFuture.completedFuture(Optional.of(user)));
-                    });
-
             // now change to new base keys, clean some keys and mark others as dirty
             return getByPath(path.getParent().toString())
                     .thenCompose(parent -> sharedWith(toUnshare)
                             .thenCompose(sharedWithUsers ->
                                     toUnshare.makeDirty(network, crypto.random, parent.get(), readersToRemove)
-                                            .thenCompose(markedDirty -> {
-                                                Set<CompletableFuture<Optional<String>>> collect = sharedWithUsers.stream()
-                                                        .map(unshareWith::apply) //remove link from shared directory
-                                                        .collect(Collectors.toSet());
-
-                                                return Futures.combineAll(collect);})
-                                            .thenCompose(x -> {
-                                                List<String> allSharees = x.stream()
-                                                        .flatMap(e -> e.isPresent() ? Stream.of(e.get()) : Stream.empty())
-                                                        .collect(Collectors.toList());
-
-                                                Set<String> remainingReaders = allSharees.stream()
-                                                        .filter(reader -> !readersToRemove.contains(reader))
-                                                        .collect(Collectors.toSet());
-
-                                                return shareWith(path, remainingReaders);
+                                            .thenApply(markedDirty -> {
+                                                Set<String> existingEntries = sharedWithCache.getOrDefault("/" + pathString, new HashSet<>());
+                                                existingEntries.removeAll(readersToRemove);
+                                                return true;
                                             })));
         });
     }
 
     @JsMethod
     public CompletableFuture<Set<String>> sharedWith(FileTreeNode file) {
-
-        Location fileLocation = file.getLocation();
-        String path = "/" + username + "/shared";
-
-        Function<FileTreeNode, CompletableFuture<Optional<String>>> func = sharedUserDir -> {
-            CompletableFuture<Set<FileTreeNode>> children = sharedUserDir.getChildren(network);
-            return children.thenCompose(e -> {
-                boolean present = e.stream()
-                        .filter(sharedFile -> sharedFile.getLocation().equals(fileLocation))
-                        .findFirst()
-                        .isPresent();
-                String userName = present ? sharedUserDir.getFileProperties().name : null;
-                return CompletableFuture.completedFuture(Optional.ofNullable(userName));
-            });
-        };
-
-        return getByPath(path)
-                .thenCompose(sharedDirOpt -> {
-                    FileTreeNode sharedDir = sharedDirOpt.orElseThrow(() -> new IllegalStateException("No such directory" + path));
-                    return sharedDir.getChildren(network)
-                            .thenCompose(sharedUserDirs -> {
-                                List<CompletableFuture<Optional<String>>> collect = sharedUserDirs.stream()
-                                        .map(func::apply)
-                                        .collect(Collectors.toList());
-
-                                return Futures.combineAll(collect);
-                            }).thenCompose(optSet -> {
-                                Set<String> sharedWith = optSet.stream()
-                                        .flatMap(e -> e.isPresent() ? Stream.of(e.get()) : Stream.empty())
-                                        .collect(Collectors.toSet());
-                                return CompletableFuture.completedFuture(sharedWith);
-                            });
-                });
-
-        /*
-        FileTreeNode sharedDir = getByPath("/" + username + "/shared").get();
-        Set<FileTreeNode> friendDirs = sharedDir.getChildren(this);
-        return friendDirs.stream()
-                .filter(friendDir -> friendDir.getChildren(this)
-                        .stream()
-                        .filter(f -> f.getLocation().equals(file.getLocation()))
-                        .findAny()
-                        .isPresent())
-                .map(u -> u.getFileProperties().name)
-                .collect(Collectors.toSet());*/
-//        throw new IllegalStateException("Unimplemented!");
+        return file.getPath(network).thenCompose(path -> {
+            Set<String> sharedWith = sharedWithCache.getOrDefault(path, new HashSet<>());
+            return CompletableFuture.completedFuture(sharedWith);
+        });
     }
 
-
-    //kev when should i call this?
+    //kev
     public CompletableFuture<Boolean> saveRetrievedCapabilityCache(Map<String, List<RetrievedCapability>> combinedRetrievedCapabilityCache) {
         List<String> friends = combinedRetrievedCapabilityCache.keySet().stream().collect(Collectors.toList());
-        return Futures.reduceAll(friends,
-                true,
-                (x, friend) -> saveRetrievedCapabilityCache(friend, combinedRetrievedCapabilityCache.get(friend)),
-                (a, b) -> a && b)
-                .thenApply(result -> true);
-    }
-
-    private CompletableFuture<Boolean> saveRetrievedCapabilityCache(String friend, List<RetrievedCapability> retrievedCapabilities) {
-        RetrievedCapabilityCache retrievedCapabilityCache = new RetrievedCapabilityCache(retrievedCapabilities);
         return this.getUserRoot()
-            .thenCompose(home -> {
-                byte[] data = retrievedCapabilityCache.serialize();
-                AsyncReader.ArrayBacked dataReader = new AsyncReader.ArrayBacked(data);
-                return home.uploadFile(friend + FastSharing.RETRIEVED_CAPABILITY_CACHE, dataReader, true, (long) data.length,
-                        true, this.network, this.crypto.random, x-> {}, this.fragmenter());
-            }).thenApply(x -> true);
+                .thenCompose(home -> Futures.reduceAll(friends,
+                true,
+                (x, friend) -> FastSharing.saveRetrievedCapabilityCache(home, friend, this.network, this.crypto.random
+                        , this.fragmenter(), combinedRetrievedCapabilityCache.get(friend)),
+                (a, b) -> a && b)
+                .thenApply(result -> true));
     }
 
-    //kev when should i call this?
-    public CompletableFuture<Map<String, List<RetrievedCapability>>> readCapabilityCache() {
-        Map<String, List<RetrievedCapability>> combinedRetrievedCapabilityCache = new HashMap<>();
+    public CompletableFuture<Map<String, List<RetrievedCapability>>> readRetrievedCapabilityCache() {
         return this.getUserRoot().thenCompose(home ->
                 home.getChildren(network).thenCompose(children -> {
-                    List<FileTreeNode> capabilityCacheFiles = children.stream()
-                            .filter(f -> f.getName().endsWith(FastSharing.RETRIEVED_CAPABILITY_CACHE))
-                            .collect(Collectors.toList());
-                    List<Pair<String, FileTreeNode>> friendAndCapabilityCacheFileList = capabilityCacheFiles.stream()
-                            .map(f -> new Pair<>(f.getName().substring(0, f.getName().indexOf(FastSharing.SEPARATOR)), f))
-                            .collect(Collectors.toList());
-                    return Futures.reduceAll(friendAndCapabilityCacheFileList,
-                            true,
-                            (x, cacheFile) -> {
-                                return readCapabilityCache(cacheFile.right).thenApply(cache -> {
-                                    combinedRetrievedCapabilityCache.put(cacheFile.left, cache.getRetrievedCapabilities());
-                                    return true;
-                                });
-                            },
-                            (a, b) -> a && b)
-                            .thenApply(result -> combinedRetrievedCapabilityCache);
+                    return FastSharing.readRetrievedCapabilityCache(children, this.network, this.crypto.random);
                 })
         );
-    }
-
-    private CompletableFuture<RetrievedCapabilityCache> readCapabilityCache(FileTreeNode cacheFile) {
-        return cacheFile.getInputStream(network, this.crypto.random, x -> { })
-                .thenCompose(reader -> {
-                    byte[] storeData = new byte[(int) cacheFile.getSize()];
-                    return reader.readIntoArray(storeData, 0, storeData.length)
-                            .thenApply(x -> RetrievedCapabilityCache.deserialize(storeData));
-                });
     }
 
     public CompletableFuture<Boolean> shareWith(Path path, Set<String> readersToAdd) {
@@ -934,19 +854,43 @@ public class UserContext {
     public CompletableFuture<Boolean> shareWithAll(FileTreeNode file, Set<String> readersToAdd) {
         return Futures.reduceAll(readersToAdd,
                 true,
-                (x, username) -> shareWith(file, username),
-                (a, b) -> a && b);
+                (x, username) -> shareFileWith(file, username),
+                (a, b) -> a && b).thenCompose( result -> {
+                    if(!result) {
+                        CompletableFuture<Boolean> res = new CompletableFuture<>();
+                        res.complete(false);
+                        return res;
+                    }
+                    return updatedSharedWithCache(file, readersToAdd);
+        });
+    }
+
+    private CompletableFuture<Boolean> updatedSharedWithCache(FileTreeNode file, Set<String> readersToAdd) {
+        return file.getPath(network).thenCompose(path -> {
+            Set<String> existingEntries = sharedWithCache.getOrDefault(path, new HashSet<>());
+            sharedWithCache.put(path, existingEntries);
+            existingEntries.addAll(readersToAdd);
+            CompletableFuture<Boolean> res = new CompletableFuture<>();
+            res.complete(true);
+            return res;
+        });
     }
 
     @JsMethod
     public CompletableFuture<Boolean> shareWith(FileTreeNode file, String usernameToGrantReadAccess) {
+        Set<String> readersToAdd = new HashSet<>();
+        readersToAdd.add(usernameToGrantReadAccess);
+        return shareWithAll(file, readersToAdd);
+    }
+
+    public CompletableFuture<Boolean> shareFileWith(FileTreeNode file, String usernameToGrantReadAccess) {
         return getByPath("/" + username + "/shared/" + usernameToGrantReadAccess)
                 .thenCompose(shared -> {
                     if (!shared.isPresent())
                         return CompletableFuture.completedFuture(true);
                     FileTreeNode sharedTreeNode = shared.get();
                     return sharedTreeNode.addSharingLinkTo(file, network, crypto.random, fragmenter)
-                            .thenCompose(ee -> CompletableFuture.completedFuture(true));
+                        .thenCompose(ee -> CompletableFuture.completedFuture(true));
                 });
     }
 
@@ -1122,6 +1066,7 @@ public class UserContext {
      * @return TrieNode for root of filesystem
      */
     private static CompletableFuture<TrieNode> createFileTree(TrieNode ourRoot, String ourName, WriterData userData,
+                                                              HashMap<String, List<RetrievedCapability>> friendToRetrievedCapabilityCache,
                                                               NetworkAccess network, SafeRandom random) {
         List<EntryPoint> notOurFileSystemEntries = userData.staticData.get()
                 .getEntryPoints()
@@ -1136,14 +1081,13 @@ public class UserContext {
                             return  f.getPath(network).thenApply(path -> new Pair<>(f, entry.owner));
                         }))
                 .collect(Collectors.toList());
-        HashMap<String, List<RetrievedCapability>> combinedRetrievedCapabilityCache = new HashMap<>();
 
         return Futures.reduceAll(otherEntryPoints,
                 true,
                 (x, friend) -> {
                     List<RetrievedCapability> retrievedCapabilityCache = new ArrayList<>();
                     return friend.thenCompose(f -> {
-                        combinedRetrievedCapabilityCache.put(f.right, retrievedCapabilityCache);
+                        friendToRetrievedCapabilityCache.put(f.right, retrievedCapabilityCache);
                         return getSharingLinks(f.left, retrievedCapabilityCache, network, random);
                     });},
                 (a, b) -> a && b).thenCompose(done -> {
@@ -1154,7 +1098,7 @@ public class UserContext {
                                     .orElse(CompletableFuture.completedFuture(new Pair<>(entry, Optional.empty())))))
                     .collect(Collectors.toList());
 
-            List<CompletableFuture<Pair<EntryPoint, Optional<String>>>> sharedWithMe = retrievedCapabilityToEntryPoint(combinedRetrievedCapabilityCache).stream()
+            List<CompletableFuture<Pair<EntryPoint, Optional<String>>>> sharedWithMe = retrievedCapabilityToEntryPoint(friendToRetrievedCapabilityCache).stream()
                     .map(entry -> network.retrieveEntryPoint(entry)
                             .thenCompose(opt -> opt.map(f -> f.getPath(network).thenApply(path -> new Pair<>(entry, Optional.of(path))))
                                     .orElse(CompletableFuture.completedFuture(new Pair<>(entry, Optional.empty())))))
