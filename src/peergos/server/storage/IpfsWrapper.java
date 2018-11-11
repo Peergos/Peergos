@@ -1,5 +1,6 @@
-package peergos.server.util;
+package peergos.server.storage;
 
+import peergos.server.util.*;
 import peergos.shared.io.ipfs.multiaddr.MultiAddress;
 
 import java.io.File;
