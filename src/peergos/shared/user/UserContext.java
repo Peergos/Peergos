@@ -39,7 +39,6 @@ public class UserContext {
 
     private CompletableFuture<CommittedWriterData> userData;
 
-    private HashMap<String, List<RetrievedCapability>> friendToRetrievedCapabilityCache = new HashMap<>(); // files shared with me
     private HashMap<String, Set<String>> sharedWithCache = new HashMap<>(); //path to friends SharedWith
 
     @JsProperty
@@ -78,11 +77,12 @@ public class UserContext {
 
         return entrie.hasWriteAccess();
     }
+
     @JsMethod
     public CompletableFuture<Boolean> isShared(FileTreeNode file) {
-        return file.getPath(network).thenApply(pathString -> {
-            return sharedWithCache.containsKey(pathString);
-        });
+        return file.getPath(network).thenApply(pathString ->
+                sharedWithCache.containsKey(pathString)
+        );
     }
     
     public boolean isJavascript() {
@@ -92,10 +92,9 @@ public class UserContext {
     @JsMethod
      public CompletableFuture<Boolean> unShare(FileTreeNode file, String readerToRemove) {
 
-        return file.getPath(network).thenCompose(pathString -> {
-            return unShare(Paths.get(pathString), Collections.singleton(readerToRemove));
-        });
-
+        return file.getPath(network).thenCompose(pathString ->
+            unShare(Paths.get(pathString), Collections.singleton(readerToRemove))
+        );
     }
 
     public static CompletableFuture<UserContext> signIn(String username, String password, NetworkAccess network
@@ -293,7 +292,7 @@ public class UserContext {
         progressCallback.accept("Retrieving Friends");
         CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
         return addToUserDataQueue(lock)
-                .thenCompose(wd -> createFileTree(entrie, username, wd.props, friendToRetrievedCapabilityCache, network, crypto.random)
+                .thenCompose(wd -> createFileTree(entrie, username, wd.props, network, crypto.random, fragmenter)
                         .thenCompose(root -> {
                             this.entrie = root;
                             return getByPath("/" + username + "/" + "shared")
@@ -305,6 +304,7 @@ public class UserContext {
                                     }).thenApply(res -> this);
                         }));
     }
+
     public CompletableFuture<Boolean> buildSharedWithCache(FileTreeNode sharedFolder) {
         return sharedFolder.getChildren(network)
                 .thenCompose(children ->
@@ -312,7 +312,8 @@ public class UserContext {
                                 true,
                                 (x, friendDirectory) -> {
                                     List<RetrievedCapability> retrievedCapabilityCache = new ArrayList<>();
-                                    return getSharingLinks(friendDirectory, retrievedCapabilityCache, network, crypto.random)
+                                    //kev need to fast share
+                                    return FastSharing.getSharingLinks(friendDirectory, retrievedCapabilityCache, network, crypto.random)
                                             .thenApply( res -> {
                                                 String friendName = friendDirectory.getName();
                                                 retrievedCapabilityCache.stream().forEach(rc -> {
@@ -826,18 +827,6 @@ public class UserContext {
         });
     }
 
-    //kev
-    public CompletableFuture<Boolean> saveRetrievedCapabilityCache(Map<String, List<RetrievedCapability>> combinedRetrievedCapabilityCache) {
-        List<String> friends = combinedRetrievedCapabilityCache.keySet().stream().collect(Collectors.toList());
-        return this.getUserRoot()
-                .thenCompose(home -> Futures.reduceAll(friends,
-                true,
-                (x, friend) -> FastSharing.saveRetrievedCapabilityCache(home, friend, this.network, this.crypto.random
-                        , this.fragmenter(), combinedRetrievedCapabilityCache.get(friend)),
-                (a, b) -> a && b)
-                .thenApply(result -> true));
-    }
-
     public CompletableFuture<Map<String, List<RetrievedCapability>>> readRetrievedCapabilityCache() {
         return this.getUserRoot().thenCompose(home ->
                 home.getChildren(network).thenCompose(children -> {
@@ -1066,8 +1055,7 @@ public class UserContext {
      * @return TrieNode for root of filesystem
      */
     private static CompletableFuture<TrieNode> createFileTree(TrieNode ourRoot, String ourName, WriterData userData,
-                                                              HashMap<String, List<RetrievedCapability>> friendToRetrievedCapabilityCache,
-                                                              NetworkAccess network, SafeRandom random) {
+                                                              NetworkAccess network, SafeRandom random, Fragmenter fragmenter) {
         List<EntryPoint> notOurFileSystemEntries = userData.staticData.get()
                 .getEntryPoints()
                 .stream()
@@ -1082,13 +1070,15 @@ public class UserContext {
                         }))
                 .collect(Collectors.toList());
 
+        HashMap<String, List<RetrievedCapability>> friendToRetrievedCapabilities = new HashMap<>();
         return Futures.reduceAll(otherEntryPoints,
                 true,
                 (x, friend) -> {
                     List<RetrievedCapability> retrievedCapabilityCache = new ArrayList<>();
                     return friend.thenCompose(f -> {
-                        friendToRetrievedCapabilityCache.put(f.right, retrievedCapabilityCache);
-                        return getSharingLinks(f.left, retrievedCapabilityCache, network, random);
+                        friendToRetrievedCapabilities.put(f.right, retrievedCapabilityCache);
+                        return ourRoot.getByPath("/" + ourName, network).thenCompose(fileOpt ->
+                            FastSharing.getSharingLinks(fileOpt.get(), f, retrievedCapabilityCache, network, random, fragmenter));
                     });},
                 (a, b) -> a && b).thenCompose(done -> {
 
@@ -1098,7 +1088,7 @@ public class UserContext {
                                     .orElse(CompletableFuture.completedFuture(new Pair<>(entry, Optional.empty())))))
                     .collect(Collectors.toList());
 
-            List<CompletableFuture<Pair<EntryPoint, Optional<String>>>> sharedWithMe = retrievedCapabilityToEntryPoint(friendToRetrievedCapabilityCache).stream()
+            List<CompletableFuture<Pair<EntryPoint, Optional<String>>>> sharedWithMe = retrievedCapabilityToEntryPoint(friendToRetrievedCapabilities).stream()
                     .map(entry -> network.retrieveEntryPoint(entry)
                             .thenCompose(opt -> opt.map(f -> f.getPath(network).thenApply(path -> new Pair<>(entry, Optional.of(path))))
                                     .orElse(CompletableFuture.completedFuture(new Pair<>(entry, Optional.empty())))))
@@ -1111,31 +1101,13 @@ public class UserContext {
         });
     }
 
-    private static CompletableFuture<Boolean> getSharingLinks(FileTreeNode node, List<RetrievedCapability> retrievedCapabilityCache, NetworkAccess network, SafeRandom random) {
-        return node.getChildren(network)
-                .thenCompose(children -> {
-                    //GWT complains about following line
-                    //List<FileTreeNode> sharingFiles = children.stream().sorted(Comparator.comparing(f -> f.getFileProperties().modified)).collect(Collectors.toList());
-                    List<FileTreeNode> sharingFiles = new ArrayList<>(children);
-                    Collections.sort(sharingFiles, new Comparator<FileTreeNode>() {
-                        @Override
-                        public int compare(FileTreeNode o1, FileTreeNode o2) {
-                            return o1.getFileProperties().modified.compareTo(o2.getFileProperties().modified);
-                        }
-                    });
-                    return Futures.reduceAll(sharingFiles,
-                            true,
-                            (x, sharingFile) -> FastSharing.readSharingFile(node.getName(), sharingFile, retrievedCapabilityCache, network, random),
-                            (a, b) -> a && b);
-                });
-    }
-
     private static List<EntryPoint> retrievedCapabilityToEntryPoint(HashMap<String, List<RetrievedCapability>> combinedRetrievedCapabilityCache) {
         return combinedRetrievedCapabilityCache.entrySet().stream().flatMap(e -> {
             List<EntryPoint> result = e.getValue().stream().map( rc -> new EntryPoint(rc.fp, e.getKey(), Collections.emptySet(), Collections.emptySet())).collect(Collectors.toList());
             return result.stream();
         }).collect(Collectors.toList());
     }
+
     private static CompletableFuture<TrieNode> addRetrievedEntryPoint(String ourName,
                                                                       TrieNode root,
                                                                       CompletableFuture<Pair<EntryPoint, Optional<String>>> futureWithPath,

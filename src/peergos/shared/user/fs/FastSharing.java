@@ -3,6 +3,7 @@ package peergos.shared.user.fs;
 import peergos.shared.NetworkAccess;
 import peergos.shared.crypto.random.SafeRandom;
 import peergos.shared.user.EntryPoint;
+import peergos.shared.user.TrieNode;
 import peergos.shared.user.WriterData;
 import peergos.shared.util.Futures;
 import peergos.shared.util.Pair;
@@ -19,6 +20,39 @@ public class FastSharing {
     public static final String SEPARATOR = "#";
     public static final String RETRIEVED_CAPABILITY_CACHE = SEPARATOR + ".cache";
 
+    public static CompletableFuture<Boolean> getSharingLinks(FileTreeNode root, Pair<FileTreeNode, String> friend,
+                                                              List<RetrievedCapability> retrievedCapabilityCache,
+                                                              NetworkAccess network, SafeRandom random, Fragmenter fragmenter) {
+        return getSharingLinks(friend.left, retrievedCapabilityCache, network, random).thenCompose(res ->
+            FastSharing.saveRetrievedCapabilityCache(root, friend.right, network, random, fragmenter, retrievedCapabilityCache)
+        );
+    }
+
+    public static CompletableFuture<Boolean> getSharingLinks(FileTreeNode root, List<RetrievedCapability> retrievedCapabilityCache, NetworkAccess network, SafeRandom random) {
+        return root.getChildren(network)
+                .thenCompose(children -> {
+                    //GWT complains about following line
+                    //List<FileTreeNode> sharingFiles = children.stream().sorted(Comparator.comparing(f -> f.getFileProperties().modified)).collect(Collectors.toList());
+                    List<FileTreeNode> sharingFiles = new ArrayList<>(children);
+                    Collections.sort(sharingFiles, new Comparator<FileTreeNode>() {
+                        @Override
+                        public int compare(FileTreeNode o1, FileTreeNode o2) {
+                            return o1.getFileProperties().modified.compareTo(o2.getFileProperties().modified);
+                        }
+                    });
+                    return Futures.reduceAll(sharingFiles,
+                            true,
+                            (x, sharingFile) -> FastSharing.readSharingFile(root.getName(), sharingFile, retrievedCapabilityCache, network, random),
+                            (a, b) -> a && b);
+                });
+    }
+
+    private static List<EntryPoint> retrievedCapabilityToEntryPoint(HashMap<String, List<RetrievedCapability>> combinedRetrievedCapabilityCache) {
+        return combinedRetrievedCapabilityCache.entrySet().stream().flatMap(e -> {
+            List<EntryPoint> result = e.getValue().stream().map( rc -> new EntryPoint(rc.fp, e.getKey(), Collections.emptySet(), Collections.emptySet())).collect(Collectors.toList());
+            return result.stream();
+        }).collect(Collectors.toList());
+    }
 
     public static CompletableFuture<Boolean> readSharingFile(String ownerName, FileTreeNode file, List<RetrievedCapability> retrievedCapabilityCache
             , NetworkAccess network, SafeRandom random) {
