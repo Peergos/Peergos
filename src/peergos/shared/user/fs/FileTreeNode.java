@@ -241,7 +241,6 @@ public class FileTreeNode {
                         writers, entryWriterKey));
     }
 
-    //kev
     public CompletableFuture<FileTreeNode> addSharingLinkTo(FileTreeNode file, NetworkAccess network, SafeRandom random,
                                                             Fragmenter fragmenter) {
         ensureUnmodified();

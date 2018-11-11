@@ -11,14 +11,17 @@ import java.util.List;
 
 public class RetrievedCapabilityCache implements Cborable {
 
+    private final long recordsRead;
     private final List<RetrievedCapability> retrievedCapabilities;
 
-    public RetrievedCapabilityCache() {
-        this.retrievedCapabilities = new ArrayList<>();
+
+    public RetrievedCapabilityCache(long recordsRead, List<RetrievedCapability> retrievedCapabilities) {
+        this.recordsRead = recordsRead;
+        this.retrievedCapabilities = retrievedCapabilities;
     }
 
-    public RetrievedCapabilityCache(List<RetrievedCapability> retrievedCapabilities) {
-        this.retrievedCapabilities = retrievedCapabilities;
+    public long getRecordsRead() {
+        return recordsRead;
     }
 
     public List<RetrievedCapability> getRetrievedCapabilities() {
@@ -27,6 +30,7 @@ public class RetrievedCapabilityCache implements Cborable {
 
     public byte[] serialize() {
         DataSink sink = new DataSink();
+        sink.writeLong(recordsRead);
         sink.writeInt(retrievedCapabilities.size());
         retrievedCapabilities.forEach(entry -> sink.writeArray(entry.serialize()));
         return sink.toByteArray();
@@ -35,6 +39,7 @@ public class RetrievedCapabilityCache implements Cborable {
     public static RetrievedCapabilityCache deserialize(byte[] raw) {
         try {
             DataSource source = new DataSource(raw);
+            long recordsReadCount = source.readLong();
             int count = source.readInt();
 
             List<RetrievedCapability> capabilities = new ArrayList<>();
@@ -42,7 +47,7 @@ public class RetrievedCapabilityCache implements Cborable {
                 RetrievedCapability entry = RetrievedCapability.fromByteArray(source.readArray());
                 capabilities.add(entry);
             }
-            return new RetrievedCapabilityCache(capabilities);
+            return new RetrievedCapabilityCache(recordsReadCount, capabilities);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

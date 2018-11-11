@@ -307,23 +307,23 @@ public class UserContext {
 
     public CompletableFuture<Boolean> buildSharedWithCache(FileTreeNode sharedFolder) {
         return sharedFolder.getChildren(network)
-                .thenCompose(children ->
-                        Futures.reduceAll(children,
-                                true,
-                                (x, friendDirectory) -> {
-                                    List<RetrievedCapability> retrievedCapabilityCache = new ArrayList<>();
-                                    //kev need to fast share
-                                    return FastSharing.getSharingLinks(friendDirectory, retrievedCapabilityCache, network, crypto.random)
-                                            .thenApply( res -> {
-                                                String friendName = friendDirectory.getName();
-                                                retrievedCapabilityCache.stream().forEach(rc -> {
-                                                    Set<String> existingEntries = sharedWithCache.getOrDefault(rc.path, new HashSet<>());
-                                                    sharedWithCache.put(rc.path, existingEntries);
-                                                    existingEntries.add(friendName);
+                    .thenCompose(children ->
+                            Futures.reduceAll(children,
+                                    true,
+                                    (x, friendDirectory) -> {
+                                        List<RetrievedCapability> retrievedCapabilityCache = new ArrayList<>();
+                                        return FastSharing.loadSharingLinks(friendDirectory, friendDirectory, this.username, retrievedCapabilityCache
+                                                , network, crypto.random, fragmenter, false)
+                                                .thenApply(res -> {
+                                                    String friendName = friendDirectory.getName();
+                                                    retrievedCapabilityCache.stream().forEach(rc -> {
+                                                        Set<String> existingEntries = sharedWithCache.getOrDefault(rc.path, new HashSet<>());
+                                                        sharedWithCache.put(rc.path, existingEntries);
+                                                        existingEntries.add(friendName);
+                                                    });
+                                                    return res;
                                                 });
-                                                return res;
-                                            });
-                                }, (a, b) -> a && b).thenApply(done -> done));
+                                    }, (a, b) -> a && b).thenApply(done -> done));
     }
 
     public CompletableFuture<Boolean> cleanEntryPoints() {
@@ -827,14 +827,6 @@ public class UserContext {
         });
     }
 
-    public CompletableFuture<Map<String, List<RetrievedCapability>>> readRetrievedCapabilityCache() {
-        return this.getUserRoot().thenCompose(home ->
-                home.getChildren(network).thenCompose(children -> {
-                    return FastSharing.readRetrievedCapabilityCache(children, this.network, this.crypto.random);
-                })
-        );
-    }
-
     public CompletableFuture<Boolean> shareWith(Path path, Set<String> readersToAdd) {
         return getByPath(path.toString())
                 .thenCompose(file -> shareWithAll(file.orElseThrow(() -> new IllegalStateException("Could not find path " + path.toString())), readersToAdd));
@@ -1078,7 +1070,7 @@ public class UserContext {
                     return friend.thenCompose(f -> {
                         friendToRetrievedCapabilities.put(f.right, retrievedCapabilityCache);
                         return ourRoot.getByPath("/" + ourName, network).thenCompose(fileOpt ->
-                            FastSharing.getSharingLinks(fileOpt.get(), f, retrievedCapabilityCache, network, random, fragmenter));
+                            FastSharing.loadSharingLinks(fileOpt.get(), f.left, f.right, retrievedCapabilityCache, network, random, fragmenter, true));
                     });},
                 (a, b) -> a && b).thenCompose(done -> {
 
