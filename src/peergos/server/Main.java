@@ -1,12 +1,13 @@
 package peergos.server;
 
+import peergos.shared.*;
 import peergos.server.corenode.*;
+import peergos.server.fuse.*;
 import peergos.server.mutable.*;
 import peergos.server.social.*;
-import peergos.server.util.Args;
-import peergos.server.util.IpfsWrapper;
-import peergos.server.util.Logging;
-import peergos.shared.*;
+import peergos.server.storage.*;
+import peergos.server.tests.*;
+import peergos.server.util.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
@@ -19,12 +20,9 @@ import peergos.shared.merklebtree.*;
 import peergos.shared.mutable.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.*;
-import peergos.server.fuse.*;
-import peergos.server.storage.*;
-import peergos.server.tests.*;
 import peergos.shared.user.*;
 
-import java.io.IOException;
+import java.io.*;
 import java.net.*;
 import java.nio.file.*;
 import java.sql.*;
@@ -37,12 +35,13 @@ public class Main
     static {
         PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, new Ed25519.Java());
     }
+
     public static Command IPFS  = new Command("ipfs",
             "Start IPFS daemon and ensure configuration, optionally manage runtime.",
             Main::startIpfs,
             Arrays.asList(
                     new Command.Arg("IPFS_PATH", "Path to IPFS directory. Defaults to $PEERGOS_PATH/.ipfs, or ~/.peergos/.ipfs", false),
-                    new Command.Arg("ipfs-exe-path", "Path to IPFS executasble. Defaults to $PEERGOS_PATH/ipfs", false),
+                    new Command.Arg("ipfs-exe-path", "Path to IPFS executable. Defaults to $PEERGOS_PATH/ipfs", false),
                     new Command.Arg("ipfs-config-api-port", "IPFS API port", false, "5001"),
                     new Command.Arg("ipfs-config-gateway-port", "IPFS Gateway port", false, "8080"),
                     new Command.Arg("ipfs-config-swarm-port", "IPFS Swarm port", false, "4001"),
@@ -208,22 +207,33 @@ public class Main
     public static final Command LOCAL = new Command("local",
             "Start an ephemeral Peergos Server and CoreNode server",
             args -> {
-                args.setIfAbsent("peergos.password", "testpassword");
-                args.setIfAbsent("pki.secret.key.path", "test.pki.secret.key");
-                args.setIfAbsent("pki.public.key.path", "test.pki.public.key");
-                args.setIfAbsent("pki.keygen.password", "testPkiPassword");
-                args.setIfAbsent("pki.keyfile.password", "testPkiFilePassword");
-                BOOTSTRAP.main(args);
-                args.setIfAbsent("domain", "localhost");
-                args.setIfAbsent("corenodeFile", ":memory:");
-                args.setIfAbsent("socialnodeFile", ":memory:");
-                args.setIfAbsent("useIPFS", "false");
-                CORE_NODE.main(args);
-                SOCIAL.main(args);
-                args.setIfAbsent("corenodeURL", "http://localhost:" + args.getArg("corenodePort"));
-                args.setIfAbsent("socialnodeURL", "http://localhost:" + args.getArg("socialnodePort"));
-                PEERGOS.main(args);
-                POSTSTRAP.main(args);
+                try {
+                    // Start an ipfs node for the corenode
+                    Path corenodePeergosDir = Files.createTempDirectory("peergos-core");
+                    IPFS.main(args.with(Args.PEERGOS_DIR, corenodePeergosDir.toString()));
+                    args.setIfAbsent("peergos.password", "testpassword");
+                    args.setIfAbsent("pki.secret.key.path", "test.pki.secret.key");
+                    args.setIfAbsent("pki.public.key.path", "test.pki.public.key");
+                    args.setIfAbsent("pki.keygen.password", "testPkiPassword");
+                    args.setIfAbsent("pki.keyfile.password", "testPkiFilePassword");
+                    BOOTSTRAP.main(args);
+                    args.setIfAbsent("domain", "localhost");
+                    args.setIfAbsent("corenodeFile", ":memory:");
+                    args.setIfAbsent("socialnodeFile", ":memory:");
+                    args.setIfAbsent("useIPFS", "false");
+                    CORE_NODE.main(args);
+
+                    // Start a second ipfs instance for the Peergos server
+                    Path peergosDir = Files.createTempDirectory("peergos");
+                    IPFS.main(args.with(Args.PEERGOS_DIR, peergosDir.toString()));
+                    SOCIAL.main(args);
+                    args.setIfAbsent("corenodeURL", "http://localhost:" + args.getArg("corenodePort"));
+                    args.setIfAbsent("socialnodeURL", "http://localhost:" + args.getArg("socialnodePort"));
+                    PEERGOS.main(args);
+                    POSTSTRAP.main(args);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
             },
             Collections.emptyList()
     );
