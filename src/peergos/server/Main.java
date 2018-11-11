@@ -203,8 +203,8 @@ public class Main
             args -> {
                 try {
                     int peergosPort = args.getInt("port", 8000);
-                    int ipfsApiPort = 5001;
-                    int ipfsGatewayPort = 8080;
+                    int ipfsApiPort = 10001;
+                    int ipfsGatewayPort = 10002;
                     args.setIfAbsent("ipfs-config-api-port", "" + ipfsApiPort);
                     args.setIfAbsent("ipfs-config-gateway-port", "" + ipfsGatewayPort);
                     args.setIfAbsent("proxy-target", getLocalMultiAddress(peergosPort).toString());
@@ -219,7 +219,7 @@ public class Main
                     BOOTSTRAP.main(args);
                     args.setIfAbsent("domain", "localhost");
                     args.setIfAbsent("mutable-pointers-file", ":memory:");
-                    args.setIfAbsent("social-file", ":memory:");
+                    args.setIfAbsent("social-sql-file", ":memory:");
                     args.setIfAbsent("useIPFS", "false");
 
                     Multihash pkiIpfsNodeId = new IpfsDHT(getLocalMultiAddress(ipfsApiPort)).id().get();
@@ -250,8 +250,8 @@ public class Main
 
             int webPort = a.getInt("port");
             Multihash pkiServerNodeId = Cid.decode(a.getArg("pki-node-id"));
-            URL ipfsApiAddress = new URI(a.getArg("ipfsURL", "http://localhost:5001")).toURL();
-            URL ipfsGatewayAddress = new URI(a.getArg("ipfs-gateway-address", "http://localhost:8080")).toURL();
+            URL ipfsApiAddress = new URI("http://localhost:" + a.getArg("ipfs-config-api-port", "5001")).toURL();
+            URL ipfsGatewayAddress = new URI("http://localhost:" + a.getArg("ipfs-gateway-port", "8080")).toURL();
             String domain = a.getArg("domain");
             InetSocketAddress userAPIAddress = new InetSocketAddress(domain, webPort);
 
