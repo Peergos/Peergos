@@ -272,19 +272,21 @@ public class Main
 
             int webPort = a.getInt("port");
             URL coreAddress = new URI(a.getArg("corenodeURL")).toURL();
-            Multihash pkiServerNodeId = Cid.decode(a.getArg("pkiNodeId"));
+            Multihash pkiServerNodeId = Cid.decode(a.getArg("pki-nore-id"));
             URL socialAddress = new URI(a.getArg("socialnodeURL")).toURL();
-            URL ipfsAddress = new URI(a.getArg("ipfsURL", "http://localhost:5001")).toURL();
+            URL ipfsApiAddress = new URI(a.getArg("ipfsURL", "http://localhost:5001")).toURL();
+            URL ipfsGatewayAddress = new URI(a.getArg("ipfs-gateway-address", "http://localhost:8080")).toURL();
             String domain = a.getArg("domain");
             InetSocketAddress userAPIAddress = new InetSocketAddress(domain, webPort);
 
             int dhtCacheEntries = 1000;
             int maxValueSizeToCache = 50 * 1024;
-            JavaPoster ipfsPoster = new JavaPoster(ipfsAddress);
+            JavaPoster ipfsApi = new JavaPoster(ipfsApiAddress);
+            JavaPoster ipfsGateway = new JavaPoster(ipfsGatewayAddress);
 
             boolean useIPFS = a.getBoolean("useIPFS");
             ContentAddressedStorage dht = useIPFS ?
-                    new CachingStorage(new ContentAddressedStorage.HTTP(ipfsPoster), dhtCacheEntries, maxValueSizeToCache) :
+                    new CachingStorage(new ContentAddressedStorage.HTTP(ipfsApi), dhtCacheEntries, maxValueSizeToCache) :
                     new FileContentAddressedStorage(blockstorePath(a));
 
             // start the User Service
@@ -292,12 +294,12 @@ public class Main
 
             Multihash nodeId = dht.id().get();
             // build a proxying corenode
-            CoreNode core = new HTTPCoreNode(ipfsPoster, pkiServerNodeId);
+            CoreNode core = new HTTPCoreNode(ipfsGateway, pkiServerNodeId);
 
-            SocialNetworkProxy httpSocial = new HttpSocialNetwork(new JavaPoster(socialAddress), ipfsPoster);
+            SocialNetworkProxy httpSocial = new HttpSocialNetwork(new JavaPoster(socialAddress), ipfsGateway);
             SocialNetwork p2pSocial = new ProxyingSocialNetwork(nodeId, core, httpSocial);
 
-            MutablePointersProxy httpMutable = new HttpMutablePointers(new JavaPoster(coreAddress), ipfsPoster);
+            MutablePointersProxy httpMutable = new HttpMutablePointers(new JavaPoster(coreAddress), ipfsGateway);
             MutablePointers p2mMutable = new ProxyingMutablePointers(nodeId, core, httpMutable);
             Path blacklistPath = a.fromPeergosDir("blacklist_file", "blacklist.txt");
             PublicKeyBlackList blacklist = new UserBasedBlacklist(blacklistPath, core, p2mMutable, dht);
