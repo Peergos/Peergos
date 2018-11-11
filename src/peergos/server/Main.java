@@ -1,6 +1,5 @@
 package peergos.server;
 
-import org.eclipse.jetty.util.log.Log;
 import peergos.server.corenode.*;
 import peergos.server.mutable.*;
 import peergos.server.social.*;
@@ -151,9 +150,6 @@ public class Main
                 } catch (Exception e) {
                     e.printStackTrace();
                     System.exit(1);
-                } finally {
-                    if  (ipfsWrapper != null)
-                        ipfsWrapper.close();
                 }
             },
             Arrays.asList(
