@@ -13,33 +13,35 @@ public class ProxyingSocialNetwork implements SocialNetwork {
 
     private final Multihash serverId;
     private final CoreNode core;
-    private final SocialNetworkProxy social;
+    private final SocialNetwork local;
+    private final SocialNetworkProxy p2p;
 
-    public ProxyingSocialNetwork(Multihash serverId, CoreNode core, SocialNetworkProxy social) {
+    public ProxyingSocialNetwork(Multihash serverId, CoreNode core, SocialNetwork local, SocialNetworkProxy p2p) {
         this.serverId = serverId;
         this.core = core;
-        this.social = social;
+        this.local = local;
+        this.p2p = p2p;
     }
 
     @Override
     public CompletableFuture<Boolean> sendFollowRequest(PublicKeyHash targetUser, byte[] encryptedPermission) {
         return redirectCall(targetUser,
-                () -> social.sendFollowRequest(targetUser, encryptedPermission),
-                targetServer -> social.sendFollowRequest(targetServer, targetUser, encryptedPermission));
+                () -> local.sendFollowRequest(targetUser, encryptedPermission),
+                targetServer -> p2p.sendFollowRequest(targetServer, targetUser, encryptedPermission));
     }
 
     @Override
     public CompletableFuture<byte[]> getFollowRequests(PublicKeyHash owner) {
         return redirectCall(owner,
-                () -> social.getFollowRequests(owner),
-                targetServer -> social.getFollowRequests(targetServer, owner));
+                () -> local.getFollowRequests(owner),
+                targetServer -> p2p.getFollowRequests(targetServer, owner));
     }
 
     @Override
     public CompletableFuture<Boolean> removeFollowRequest(PublicKeyHash owner, byte[] signedRequest) {
         return redirectCall(owner,
-                () -> social.removeFollowRequest(owner, signedRequest),
-                targetServer -> social.removeFollowRequest(targetServer, owner, signedRequest));
+                () -> local.removeFollowRequest(owner, signedRequest),
+                targetServer -> p2p.removeFollowRequest(targetServer, owner, signedRequest));
     }
 
     public <V> CompletableFuture<V> redirectCall(PublicKeyHash writer, Supplier<CompletableFuture<V>> direct, Function<Multihash, CompletableFuture<V>> proxied) {

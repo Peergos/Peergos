@@ -39,9 +39,9 @@ public class HttpMutablePointers implements MutablePointersProxy {
 
     @Override
     public CompletableFuture<Boolean> setPointer(Multihash targetId,
-                                                        PublicKeyHash ownerPublicKey,
-                                                        PublicKeyHash sharingPublicKey,
-                                                        byte[] sharingKeySignedPayload) {
+                                                 PublicKeyHash ownerPublicKey,
+                                                 PublicKeyHash sharingPublicKey,
+                                                 byte[] sharingKeySignedPayload) {
         return setPointer(getProxyUrlPrefix(targetId), p2p, ownerPublicKey, sharingPublicKey, sharingKeySignedPayload);
     }
 

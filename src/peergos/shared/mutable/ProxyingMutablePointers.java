@@ -12,26 +12,28 @@ public class ProxyingMutablePointers implements MutablePointers {
 
     private final Multihash serverId;
     private final CoreNode core;
-    private final MutablePointersProxy mutable;
+    private final MutablePointers local;
+    private final MutablePointersProxy p2p;
 
-    public ProxyingMutablePointers(Multihash serverId, CoreNode core, MutablePointersProxy mutable) {
+    public ProxyingMutablePointers(Multihash serverId, CoreNode core, MutablePointers local, MutablePointersProxy p2p) {
         this.serverId = serverId;
         this.core = core;
-        this.mutable = mutable;
+        this.local = local;
+        this.p2p = p2p;
     }
 
     @Override
     public CompletableFuture<Boolean> setPointer(PublicKeyHash owner, PublicKeyHash writer, byte[] writerSignedBtreeRootHash) {
         return redirectCall(writer,
-                () -> mutable.setPointer(owner, writer, writerSignedBtreeRootHash),
-                target -> mutable.setPointer(target, owner, writer, writerSignedBtreeRootHash));
+                () -> local.setPointer(owner, writer, writerSignedBtreeRootHash),
+                target -> p2p.setPointer(target, owner, writer, writerSignedBtreeRootHash));
     }
 
     @Override
     public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash owner, PublicKeyHash writer) {
         return redirectCall(owner,
-                () -> mutable.getPointer(owner, writer),
-                target -> mutable.getPointer(target, owner, writer));
+                () -> local.getPointer(owner, writer),
+                target -> p2p.getPointer(target, owner, writer));
     }
 
     public <V> CompletableFuture<V> redirectCall(PublicKeyHash ownerKey, Supplier<CompletableFuture<V>> direct, Function<Multihash, CompletableFuture<V>> proxied) {

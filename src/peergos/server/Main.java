@@ -70,17 +70,6 @@ public class Main
             )
     );
 
-    public static Command SOCIAL = new Command("social",
-            "Start a social network node which stores follow requests.",
-            Main::startSocialNode,
-            Stream.of(
-                    new Command.Arg("socialnodeFile", "Name of local social node sql file (created if it doesn't exist)", false, ":memory:"),
-                    new Command.Arg("keyfile", "Path to keyfile", false),
-                    new Command.Arg("passphrase", "Passphrase for keyfile", false),
-                    new Command.Arg("socialnodePort", "Service port", true, "" + HttpSocialNetworkServer.PORT)
-            ).collect(Collectors.toList())
-    );
-
     public static final Command PEERGOS = new Command("peergos",
             "The user facing Peergos server",
             Main::startPeergos,
@@ -105,10 +94,8 @@ public class Main
                 args.setIfAbsent("useIPFS", "true");
                 args.setIfAbsent("publicserver", "true");
                 CORE_NODE.main(args);
-                SOCIAL.main(args);
                 args.setArg("port", "443");
                 args.setIfAbsent("corenodeURL", "http://localhost:" + args.getArg("corenodePort"));
-                args.setIfAbsent("socialnodeURL", "http://localhost:" + args.getArg("socialnodePort"));
                 PEERGOS.main(args);
             },
             Collections.emptyList()
@@ -215,41 +202,30 @@ public class Main
             "Start an ephemeral Peergos Server and CoreNode server",
             args -> {
                 try {
-                    // Start an ipfs node for the corenode
-                    Path corenodePeergosDir = Files.createTempDirectory("peergos-core");
-                    Args coreArgs = args.with(PEERGOS_DIR, corenodePeergosDir.toString());
-                    int coreIpfsApiPort = 9000;
-                    int coreIpfsGatewayPort = 9001;
-                    int corenodePort = args.getInt("corenodePort", 9999);
-                    coreArgs.setArg("ipfs-config-api-port", "" + coreIpfsApiPort);
-                    coreArgs.setArg("ipfs-config-gateway-port", "" + coreIpfsGatewayPort);
-                    coreArgs.setArg("proxy-target", getLocalMultiAddress(corenodePort).toString());
-                    IPFS.main(coreArgs);
-                    coreArgs.setIfAbsent("peergos.password", "testpassword");
-                    coreArgs.setIfAbsent("pki.secret.key.path", "test.pki.secret.key");
-                    coreArgs.setIfAbsent("pki.public.key.path", "test.pki.public.key");
-                    coreArgs.setIfAbsent("pki.keygen.password", "testPkiPassword");
-                    coreArgs.setIfAbsent("pki.keyfile.password", "testPkiFilePassword");
-                    coreArgs.setArg("ipfs-api-address", getLocalMultiAddress(coreIpfsApiPort).toString());
-                    BOOTSTRAP.main(coreArgs);
-                    coreArgs.setIfAbsent("domain", "localhost");
-                    coreArgs.setIfAbsent("corenodeFile", ":memory:");
-                    coreArgs.setIfAbsent("socialnodeFile", ":memory:");
-                    coreArgs.setIfAbsent("useIPFS", "false");
-                    CORE_NODE.main(coreArgs);
-                    POSTSTRAP.main(coreArgs);
-                    Multihash pkiIpfsNodeId = new IpfsDHT(getLocalMultiAddress(coreIpfsApiPort)).id().get();
-
-                    // Start a second ipfs instance for the Peergos server
+                    int peergosPort = args.getInt("port", 8000);
                     int ipfsApiPort = 5001;
-                    args.setArg("ipfs-config-api-port", "" + ipfsApiPort);
-                    args.setArg("proxy-target", getLocalMultiAddress(args.getInt("port", 8000)).toString());
+                    int ipfsGatewayPort = 8080;
+                    args.setIfAbsent("ipfs-config-api-port", "" + ipfsApiPort);
+                    args.setIfAbsent("ipfs-config-gateway-port", "" + ipfsGatewayPort);
+                    args.setIfAbsent("proxy-target", getLocalMultiAddress(peergosPort).toString());
                     IPFS.main(args);
 
-                    SOCIAL.main(args);
+                    args.setIfAbsent("peergos.password", "testpassword");
+                    args.setIfAbsent("pki.secret.key.path", "test.pki.secret.key");
+                    args.setIfAbsent("pki.public.key.path", "test.pki.public.key");
+                    args.setIfAbsent("pki.keygen.password", "testPkiPassword");
+                    args.setIfAbsent("pki.keyfile.password", "testPkiFilePassword");
+                    args.setArg("ipfs-api-address", getLocalMultiAddress(ipfsApiPort).toString());
+                    BOOTSTRAP.main(args);
+                    args.setIfAbsent("domain", "localhost");
+                    args.setIfAbsent("mutable-pointers-file", ":memory:");
+                    args.setIfAbsent("social-file", ":memory:");
+                    args.setIfAbsent("useIPFS", "false");
+
+                    Multihash pkiIpfsNodeId = new IpfsDHT(getLocalMultiAddress(ipfsApiPort)).id().get();
                     args.setIfAbsent("pki-node-id", pkiIpfsNodeId.toBase58());
-                    args.setIfAbsent("socialnodeURL", "http://localhost:" + args.getArg("socialnodePort"));
                     PEERGOS.main(args);
+                    POSTSTRAP.main(args);
                 } catch (Exception e) {
                     throw new RuntimeException(e);
                 }
@@ -273,9 +249,7 @@ public class Main
             PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, new Ed25519.Java());
 
             int webPort = a.getInt("port");
-            URL coreAddress = new URI(a.getArg("corenodeURL")).toURL();
-            Multihash pkiServerNodeId = Cid.decode(a.getArg("pki-nore-id"));
-            URL socialAddress = new URI(a.getArg("socialnodeURL")).toURL();
+            Multihash pkiServerNodeId = Cid.decode(a.getArg("pki-node-id"));
             URL ipfsApiAddress = new URI(a.getArg("ipfsURL", "http://localhost:5001")).toURL();
             URL ipfsGatewayAddress = new URI(a.getArg("ipfs-gateway-address", "http://localhost:8080")).toURL();
             String domain = a.getArg("domain");
@@ -291,21 +265,34 @@ public class Main
                     new CachingStorage(new ContentAddressedStorage.HTTP(ipfsApi), dhtCacheEntries, maxValueSizeToCache) :
                     new FileContentAddressedStorage(blockstorePath(a));
 
-            // start the User Service
             String hostname = a.getArg("domain");
-
+            int maxUserCount = a.getInt("max-user-count", CoreNode.MAX_USERNAME_COUNT);
             Multihash nodeId = dht.id().get();
-            // build a proxying corenode
-            CoreNode core = new HTTPCoreNode(ipfsGateway, pkiServerNodeId);
 
-            SocialNetworkProxy httpSocial = new HttpSocialNetwork(new JavaPoster(socialAddress), ipfsGateway);
-            SocialNetwork p2pSocial = new ProxyingSocialNetwork(nodeId, core, httpSocial);
+            String mutablePointersSqlFile = a.getArg("mutable-pointers-file");
+            String path = mutablePointersSqlFile.equals(":memory:") ?
+                    mutablePointersSqlFile :
+                    a.fromPeergosDir("mutable.sql").toString();
+            MutablePointers localMutable = UserRepository.buildSqlLite(path, dht, maxUserCount);
 
-            MutablePointersProxy httpMutable = new HttpMutablePointers(new JavaPoster(coreAddress), ipfsGateway);
-            MutablePointers p2mMutable = new ProxyingMutablePointers(nodeId, core, httpMutable);
+            // build a proxying corenode, unless we are the pki node
+            CoreNode core = nodeId.equals(pkiServerNodeId) ?
+                    buildPkiCorenode(localMutable, dht, a):
+                    new HTTPCoreNode(ipfsGateway, pkiServerNodeId);
+
+            MutablePointersProxy proxingMutable = new HttpMutablePointers(ipfsGateway, ipfsGateway);
+            MutablePointers p2mMutable = new ProxyingMutablePointers(nodeId, core, localMutable, proxingMutable);
             Path blacklistPath = a.fromPeergosDir("blacklist_file", "blacklist.txt");
             PublicKeyBlackList blacklist = new UserBasedBlacklist(blacklistPath, core, p2mMutable, dht);
             MutablePointers mutablePointers = new BlockingMutablePointers(new PinningMutablePointers(p2mMutable, dht), blacklist);
+
+            SocialNetworkProxy httpSocial = new HttpSocialNetwork(ipfsGateway, ipfsGateway);
+            String socialNodeFile = a.getArg("social-sql-file");
+            String socialPath = socialNodeFile.equals(":memory:") ?
+                    socialNodeFile :
+                    a.fromPeergosDir("socialnodeFile").toString();
+            SocialNetwork local = UserRepository.buildSqlLite(socialPath, dht, maxUserCount);
+            SocialNetwork p2pSocial = new ProxyingSocialNetwork(nodeId, core, local, httpSocial);
 
             Path userPath = a.fromPeergosDir("whitelist_file", "user_whitelist.txt");
             int delayMs = a.getInt("whitelist_sleep_period", 1000 * 60 * 10);
@@ -367,11 +354,13 @@ public class Main
     }
 
     public static void startCoreNode(Args a) {
-        String corenodeFile = a.getArg("corenodeFile");
-        String path = corenodeFile.equals(":memory:") ? corenodeFile : a.fromPeergosDir("corenodeFile").toString();
-        int corenodePort = a.getInt("corenodePort");
-        int maxUserCount = a.getInt("maxUserCount", CoreNode.MAX_USERNAME_COUNT);
-        System.out.println("Using core node path " + path);
+        String mutablePointersSqlFile = a.getArg("mutable-pointers-file");
+        String path = mutablePointersSqlFile.equals(":memory:") ?
+                mutablePointersSqlFile :
+                a.fromPeergosDir("mutable.sql").toString();
+        int corenodePort = a.getInt("corenode-port");
+        int maxUserCount = a.getInt("max-user-count", CoreNode.MAX_USERNAME_COUNT);
+        System.out.println("Using mutable-pointers path " + path);
         boolean useIPFS = a.getBoolean("useIPFS");
 
         int dhtCacheEntries = 1000;
@@ -410,24 +399,31 @@ public class Main
         }
     }
 
-    public static void startSocialNode(Args a) {
-        String keyfile = a.getArg("keyfile", "social.key");
-        char[] passphrase = a.getArg("passphrase", "password").toCharArray();
-        String socialNodeFile = a.getArg("socialnodeFile");
-        String path = socialNodeFile.equals(":memory:") ? socialNodeFile : a.fromPeergosDir("socialnodeFile").toString();
-        int socialnodePort = a.getInt("socialnodePort");
-        int maxUserCount = a.getInt("maxUserCount", CoreNode.MAX_USERNAME_COUNT);
-        System.out.println("Using social node path " + path);
-        boolean useIPFS = a.getBoolean("useIPFS");
-        int dhtCacheEntries = 1000;
-        int maxValueSizeToCache = 2 * 1024 * 1024;
-        ContentAddressedStorage dht = useIPFS ?
-                new CachingStorage(new IpfsDHT(), dhtCacheEntries, maxValueSizeToCache) :
-                new FileContentAddressedStorage(blockstorePath(a));
+    private static CoreNode buildPkiCorenode(MutablePointers mutable, ContentAddressedStorage dht, Args a) {
         try {
-            SocialNetwork social = UserRepository.buildSqlLite(path, dht, maxUserCount);
-            HttpSocialNetworkServer.createAndStart(keyfile, passphrase, socialnodePort, social, a);
-        } catch (SQLException e) {
+            Crypto crypto = Crypto.initJava();
+            PublicKeyHash peergosIdentity = PublicKeyHash.fromString(a.getArg("peergos.identity.hash"));
+
+            String pkiSecretKeyfilePassword = a.getArg("pki.keyfile.password");
+
+            PublicSigningKey pkiPublic =
+                    PublicSigningKey.fromByteArray(
+                            Files.readAllBytes(Paths.get(a.getArg("pki.public.key.path"))));
+            SecretSigningKey pkiSecretKey = SecretSigningKey.fromCbor(CborObject.fromByteArray(
+                    PasswordProtected.decryptWithPassword(
+                            CborObject.fromByteArray(Files.readAllBytes(Paths.get(a.getArg("pki.secret.key.path")))),
+                            pkiSecretKeyfilePassword,
+                            crypto.hasher,
+                            crypto.symmetricProvider,
+                            crypto.random
+                    )));
+            SigningKeyPair pkiKeys = new SigningKeyPair(pkiPublic, pkiSecretKey);
+            PublicKeyHash pkiPublicHash = ContentAddressedStorage.hashKey(pkiKeys.publicSigningKey);
+
+            MaybeMultihash currentPkiRoot = mutable.getPointerTarget(peergosIdentity, pkiPublicHash, dht).get();
+
+            return new IpfsCoreNode(pkiKeys, currentPkiRoot, dht, mutable, peergosIdentity);
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
@@ -450,7 +446,6 @@ public class Main
             Collections.emptyList(),
             Arrays.asList(
                     CORE_NODE,
-                    SOCIAL,
                     PEERGOS,
                     LOCAL,
                     DEMO,
