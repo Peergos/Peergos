@@ -191,11 +191,7 @@ public class IpfsCoreNode implements CoreNode {
 
     @Override
     public synchronized CompletableFuture<List<UserPublicKeyLink>> getChain(String username) {
-        try {
-            return CompletableFuture.completedFuture(chains.getOrDefault(username, Collections.emptyList()));
-        } catch (NullPointerException n) {
-            throw n;
-        }
+        return CompletableFuture.completedFuture(chains.getOrDefault(username, Collections.emptyList()));
     }
 
     @Override
