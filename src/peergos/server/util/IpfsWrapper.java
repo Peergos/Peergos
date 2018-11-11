@@ -103,15 +103,12 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
 
 
     public synchronized void configure(Config config) {
-
-
         try {
             runIpfsCmd("id");
         } catch (IllegalStateException ile) {
             LOG().info("Initializing ipfs");
             runIpfsCmd("init");
         }
-
 
         if (config.bootstrapNode.isPresent()) {
             LOG().info("Setting ipfs bootstrap nodes " + config.bootstrapNode.get());
@@ -191,6 +188,10 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
         LOG().info("Stopping ipfs daemon");
         shouldBeRunning = false;
         process.destroy();
+    }
+
+    public void startP2pProxy(MultiAddress target) {
+        runIpfsCmd(true, "p2p", "listen", "--allow-custom-protocol", "/http", target.toString());
     }
 
     private Process startIpfsCmd(String... subCmd) {

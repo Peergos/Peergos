@@ -1,5 +1,6 @@
 package peergos.server.util;
 
+import peergos.server.*;
 import peergos.shared.util.Pair;
 
 import java.io.IOException;
@@ -11,10 +12,6 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class Args {
-    public static final String PEERGOS_DIR = "PEERGOS_PATH";
-    public static final Path DEFAULT_PEERGOS_DIR_PATH = Paths.get(
-            System.getProperty("user.home"),
-            ".peergos");
 
     private final Map<String, String> params = paramMap();//insertion order
 
@@ -145,7 +142,7 @@ public class Args {
      * @return
      */
     public Path fromPeergosDir(String fileName, String defaultName) {
-        Path peergosDir = hasArg(Args.PEERGOS_DIR) ? Paths.get(getArg(Args.PEERGOS_DIR)) : DEFAULT_PEERGOS_DIR_PATH;
+        Path peergosDir = hasArg(Main.PEERGOS_DIR) ? Paths.get(getArg(Main.PEERGOS_DIR)) : Main.DEFAULT_PEERGOS_DIR_PATH;
         String fName = defaultName == null ? getArg(fileName) : getArg(fileName, defaultName);
         return peergosDir.resolve(fName);
     }

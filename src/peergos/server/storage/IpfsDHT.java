@@ -18,14 +18,18 @@ public class IpfsDHT implements ContentAddressedStorage {
         this.ipfs = ipfs;
         try {
             // test connectivity
-            ipfs.object._new(Optional.empty());
-        } catch (IOException e) {
+            id().get();
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
 
     public IpfsDHT() {
         this(new IPFS(new MultiAddress("/ip4/127.0.0.1/tcp/5001")));
+    }
+
+    public IpfsDHT(MultiAddress ipfsAddress) {
+        this(new IPFS(ipfsAddress));
     }
 
     @Override

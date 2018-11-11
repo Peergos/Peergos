@@ -15,6 +15,7 @@ import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.password.*;
+import peergos.shared.io.ipfs.multiaddr.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.merklebtree.*;
@@ -33,6 +34,10 @@ import java.util.stream.Stream;
 
 public class Main
 {
+    public static final String PEERGOS_DIR = "PEERGOS_PATH";
+    public static final Path DEFAULT_PEERGOS_DIR_PATH =
+            Paths.get(System.getProperty("user.home"), ".peergos");
+
     static {
         PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, new Ed25519.Java());
     }
@@ -81,7 +86,7 @@ public class Main
             Main::startPeergos,
             Stream.of(
                     new Command.Arg("port",  "service port", false, "8000"),
-                    new Command.Arg("corenodeURL", "Core node address", false, "http://localhost:" + HttpCoreNodeServer.PORT),
+                    new Command.Arg("pki-node-id", "Ipfs node id of the pki node", true),
                     new Command.Arg("socialnodeURL", "Social network node address", false, "http://localhost:" + HttpSocialNetworkServer.PORT),
                     new Command.Arg("domain", "Domain name to bind to,", false, "localhost"),
                     new Command.Arg("useIPFS", "Use IPFS for storage or ephemeral RAM store", false, "true"),
@@ -122,8 +127,9 @@ public class Main
                             crypto.random, crypto.signer, crypto.boxer, SecretGenerationAlgorithm.getDefault()).get();
 
                     boolean useIPFS = args.getBoolean("useIPFS");
+                    String ipfsApiAddress = args.getArg("ipfs-api-address", "/ip4/127.0.0.1/tcp/5001");
                     ContentAddressedStorage dht = useIPFS ?
-                            new IpfsDHT() :
+                            new IpfsDHT(new MultiAddress(ipfsApiAddress)) :
                             new FileContentAddressedStorage(blockstorePath(args));
 
                     SigningKeyPair peergosIdentityKeys = peergos.getUser();
@@ -211,28 +217,38 @@ public class Main
                 try {
                     // Start an ipfs node for the corenode
                     Path corenodePeergosDir = Files.createTempDirectory("peergos-core");
-                    IPFS.main(args.with(Args.PEERGOS_DIR, corenodePeergosDir.toString()));
-                    args.setIfAbsent("peergos.password", "testpassword");
-                    args.setIfAbsent("pki.secret.key.path", "test.pki.secret.key");
-                    args.setIfAbsent("pki.public.key.path", "test.pki.public.key");
-                    args.setIfAbsent("pki.keygen.password", "testPkiPassword");
-                    args.setIfAbsent("pki.keyfile.password", "testPkiFilePassword");
+                    Args coreArgs = args.with(PEERGOS_DIR, corenodePeergosDir.toString());
+                    int coreIpfsApiPort = 9000;
+                    int corenodePort = args.getInt("corenodePort", 9999);
+                    coreArgs.setArg("ipfs-config-api-port", "" + coreIpfsApiPort);
+                    coreArgs.setArg("proxy-target", getLocalMultiAddress(corenodePort).toString());
+                    IPFS.main(coreArgs);
+                    coreArgs.setIfAbsent("peergos.password", "testpassword");
+                    coreArgs.setIfAbsent("pki.secret.key.path", "test.pki.secret.key");
+                    coreArgs.setIfAbsent("pki.public.key.path", "test.pki.public.key");
+                    coreArgs.setIfAbsent("pki.keygen.password", "testPkiPassword");
+                    coreArgs.setIfAbsent("pki.keyfile.password", "testPkiFilePassword");
+                    coreArgs.setArg("ipfs-api-address", getLocalMultiAddress(coreIpfsApiPort).toString());
                     BOOTSTRAP.main(args);
-                    args.setIfAbsent("domain", "localhost");
-                    args.setIfAbsent("corenodeFile", ":memory:");
-                    args.setIfAbsent("socialnodeFile", ":memory:");
-                    args.setIfAbsent("useIPFS", "false");
-                    CORE_NODE.main(args);
+                    coreArgs.setIfAbsent("domain", "localhost");
+                    coreArgs.setIfAbsent("corenodeFile", ":memory:");
+                    coreArgs.setIfAbsent("socialnodeFile", ":memory:");
+                    coreArgs.setIfAbsent("useIPFS", "false");
+                    CORE_NODE.main(coreArgs);
+                    POSTSTRAP.main(coreArgs);
+                    Multihash pkiIpfsNodeId = new IpfsDHT(getLocalMultiAddress(coreIpfsApiPort)).id().get();
 
                     // Start a second ipfs instance for the Peergos server
-                    Path peergosDir = Files.createTempDirectory("peergos");
-                    IPFS.main(args.with(Args.PEERGOS_DIR, peergosDir.toString()));
+                    int ipfsApiPort = 5001;
+                    args.setArg("ipfs-config-api-port", "" + ipfsApiPort);
+                    args.setArg("proxy-target", getLocalMultiAddress(args.getInt("port", 8000)).toString());
+                    IPFS.main(args);
+
                     SOCIAL.main(args);
-                    args.setIfAbsent("corenodeURL", "http://localhost:" + args.getArg("corenodePort"));
+                    args.setIfAbsent("pki-node-id", pkiIpfsNodeId.toBase58());
                     args.setIfAbsent("socialnodeURL", "http://localhost:" + args.getArg("socialnodePort"));
                     PEERGOS.main(args);
-                    POSTSTRAP.main(args);
-                } catch (IOException e) {
+                } catch (Exception e) {
                     throw new RuntimeException(e);
                 }
             },
@@ -295,7 +311,6 @@ public class Main
             new UserService(httpsMessengerAddress, dht, core, p2pSocial, mutablePointers, a);
         } catch (Exception e) {
             e.printStackTrace();
-
             System.exit(1);
         }
     }
@@ -341,6 +356,8 @@ public class Main
         else {
             IpfsWrapper.launchOnce(ipfs, config);
         }
+        // set up p2p proxy receiver
+        ipfs.startP2pProxy(new MultiAddress(a.getArg("proxy-target")));
     }
     public static void startCoreNode(Args a) {
         String corenodeFile = a.getArg("corenodeFile");
@@ -441,6 +458,10 @@ public class Main
      */
     private static Path blockstorePath(Args args) {
         return args.fromPeergosDir("blockstore_dir", "blockstore");
+    }
+
+    private static MultiAddress getLocalMultiAddress(int port) {
+        return new MultiAddress("/ip4/127.0.0.1/tcp/" + port);
     }
 
     public static void main(String[] args) {

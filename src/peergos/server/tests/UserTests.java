@@ -44,12 +44,13 @@ public abstract class UserTests {
         int corePort = portMin + portRange + r.nextInt(portRange);
         int socialPort = portMin + portRange + r.nextInt(portRange);
 
+        Path peergosDir = Files.createTempDirectory("peergos");
         Args args = Args.parse(new String[]{
                 "useIPFS", ""+useIPFS.equals("IPFS"),
                 "-port", Integer.toString(webPort),
                 "-corenodePort", Integer.toString(corePort),
                 "-socialnodePort", Integer.toString(socialPort)
-        });
+        }).with(Main.PEERGOS_DIR, peergosDir.toString());
 
         Main.LOCAL.main(args);
         this.network = NetworkAccess.buildJava(new URL("http://localhost:" + webPort)).get();
