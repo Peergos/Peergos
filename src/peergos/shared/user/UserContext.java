@@ -548,7 +548,7 @@ public class UserContext {
                     ).collect(Collectors.toSet());
 
                     WriterData writerData = wd.props.withOwnedKeys(updated);
-                    return writerData.commit(signer, wd.hash, network, lock::complete);
+                    return writerData.commit(signer.publicKeyHash, signer, wd.hash, network, lock::complete);
                 });
     }
 
@@ -557,7 +557,7 @@ public class UserContext {
         return addToUserDataQueue(lock)
                 .thenCompose(wd -> {
                     WriterData writerData = wd.props.addNamedKey(keyName, owned);
-                    return writerData.commit(signer, wd.hash, network, lock::complete);
+                    return writerData.commit(signer.publicKeyHash, signer, wd.hash, network, lock::complete);
                 });
     }
 
@@ -901,7 +901,7 @@ public class UserContext {
         CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
         return addToUserDataQueue(lock).thenCompose(wd -> {
             wd.props.staticData.ifPresent(sd -> sd.add(entry));
-            return wd.props.commit(signer, wd.hash, network, lock::complete)
+            return wd.props.commit(signer.publicKeyHash, signer, wd.hash, network, lock::complete)
                     .thenCompose(res -> addEntryPoint(username, root, entry, network))
                     .exceptionally(t -> {
                         lock.complete(wd);

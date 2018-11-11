@@ -173,7 +173,7 @@ public class IpfsCoreNode implements CoreNode {
                 synchronized (this) {
                     Multihash newPkiRoot = champ.put(signer, username.getBytes(), existing, mergedChainHash).get();
                     return current.props.withChamp(newPkiRoot)
-                            .commit(signer, currentRoot, mutable, ipfs, c -> {})
+                            .commit(peergosIdentity, signer, currentRoot, mutable, ipfs, c -> {})
                             .thenApply(committed -> {
                                 if (existingChain.isEmpty())
                                     usernames.add(username);
@@ -191,7 +191,11 @@ public class IpfsCoreNode implements CoreNode {
 
     @Override
     public synchronized CompletableFuture<List<UserPublicKeyLink>> getChain(String username) {
-        return CompletableFuture.completedFuture(chains.getOrDefault(username, Collections.emptyList()));
+        try {
+            return CompletableFuture.completedFuture(chains.getOrDefault(username, Collections.emptyList()));
+        } catch (NullPointerException n) {
+            throw n;
+        }
     }
 
     @Override

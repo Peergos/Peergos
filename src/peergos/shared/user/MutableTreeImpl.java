@@ -87,7 +87,7 @@ public class MutableTreeImpl implements MutableTree {
                             .thenApply(newRoot -> LOGGING ? log(newRoot, "TREE.put (" + ArrayOps.bytesToHex(mapKey)
                                     + ", " + value + ") => CAS(" + holder.tree + ", " + newRoot + ")") : newRoot)
                             .thenCompose(newTreeRoot -> (isChamp ? holder.withChamp(newTreeRoot) : holder.withBtree(newTreeRoot))
-                                    .commit(writer, committed.hash, mutable, dht, lock::complete))
+                                    .commit(owner, writer, committed.hash, mutable, dht, lock::complete))
                             .thenApply(x -> true)
                             .exceptionally(e -> {
                                 lock.complete(committed);
@@ -135,7 +135,7 @@ public class MutableTreeImpl implements MutableTree {
                     ).thenCompose(tree -> tree.remove(writer, mapKey, existing))
                             .thenApply(pair -> LOGGING ? log(pair, "TREE.rm (" + ArrayOps.bytesToHex(mapKey) + "  => " + pair) : pair)
                             .thenCompose(newTreeRoot -> (isChamp ? holder.withChamp(newTreeRoot) : holder.withBtree(newTreeRoot))
-                                    .commit(writer, committed.hash, mutable, dht, future::complete))
+                                    .commit(owner, writer, committed.hash, mutable, dht, future::complete))
                             .thenApply(x -> true);
                 });
     }

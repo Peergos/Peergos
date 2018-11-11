@@ -66,7 +66,7 @@ public class Playground {
                 continue;
             SecretSigningKey signingKey = context.getUserRoot().get().getEntryWriterKey().get();
             SigningPrivateKeyAndPublicHash writer = new SigningPrivateKeyAndPublicHash(ownedKey, signingKey);
-            existing.props.migrateToChamp(writer, existing.hash, network, res -> {}).get();
+            existing.props.migrateToChamp(context.signer.publicKeyHash, writer, existing.hash, network, res -> {}).get();
         }
     }
 }
