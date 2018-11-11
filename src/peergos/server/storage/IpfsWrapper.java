@@ -133,8 +133,8 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
         LOG().info("Starting ipfs daemon");
         process = startIpfsCmd("daemon");
 
-        new Thread(() -> Logging.log(process.getInputStream(), "IPFS out : ")).start();
-        new Thread(() -> Logging.log(process.getErrorStream(), "IPFS err : ")).start();
+        new Thread(() -> Logging.log(process.getInputStream(), "$(ipfs daemon) out: ")).start();
+        new Thread(() -> Logging.log(process.getErrorStream(), "$(ipfs daemon) err: ")).start();
     }
 
     /**
@@ -218,7 +218,7 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
         try {
             int rc = process.waitFor();
 
-            String cmd = Stream.of(subCmd).collect(Collectors.joining(" ", "ipfs ", ""));
+            String cmd = Stream.of(subCmd).collect(Collectors.joining(" ", "$(ipfs ", ")"));
             if (showLog || rc != 0) {
                 Logging.log(process.getInputStream(), cmd + " out : ");
                 Logging.log(process.getErrorStream(), cmd + " err : ");
@@ -267,7 +267,7 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
                 "src/github.com/ipfs/go-ipfs/cmd/ipfs/ipfs");
         Path ipfsDir = Files.createTempDirectory(null);
 
-        Logging.init(Paths.get("log.log"), 1_000_000, 1, false, true, true);
+        Logging.init(Paths.get("log.log"), 1_000_000, 1, false, false, true);
 
         IpfsWrapper ipfsWrapper = new IpfsWrapper(ipfsPath, ipfsDir);
 
@@ -278,7 +278,7 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
         ipfsWrapper.waitForDaemon(30);
 
         try {
-            Thread.sleep(100_000);
+            Thread.sleep(10_000);
         } catch (InterruptedException ie) {
         }
 

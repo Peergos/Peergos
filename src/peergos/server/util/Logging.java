@@ -4,15 +4,19 @@ package peergos.server.util;
 import java.io.*;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.logging.FileHandler;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import java.util.logging.*;
 
 public class  Logging {
     private static final Logger LOG = Logger.getGlobal();
+    private  static final String NULL_FORMAT =  "NULL_FORMAT";
+    private static final Logger NULL_LOG = Logger.getLogger(NULL_FORMAT);
+
     private static boolean isInitialised = false;
     public static Logger LOG() {
         return LOG;
+    }
+    private static Logger nullLog() {
+        return NULL_LOG;
     }
 
     /**
@@ -27,6 +31,8 @@ public class  Logging {
         boolean logAppend = a.getBoolean("logAppend", true);
         boolean logToConsole = a.getBoolean("logToConsole", false);
         boolean logToFile = a.getBoolean("logToFile", true);
+
+        NULL_LOG.setParent(LOG());
 
         init(logPath, logLimit, logCount, logAppend, logToConsole, logToFile);
     }
@@ -43,9 +49,11 @@ public class  Logging {
 
             String logPathS = logPath.toString();
             FileHandler fileHandler = new FileHandler(logPathS, logLimit, logCount, logAppend);
+            fileHandler.setFormatter(new WithNullFormatter());
 
-            // tell  console where we're logging to
+            // tell console where we're logging to
             LOG().info("Logging to "+ logPathS.replace("%g", "0"));
+            nullLog().setParent(LOG());
             LOG().addHandler(fileHandler);
             // also logging to stdout?
             if (! logToConsole)
@@ -58,8 +66,29 @@ public class  Logging {
         }
     }
 
+    private static final Formatter SIMPLE_FORMATTER = new SimpleFormatter();
+    private static class WithNullFormatter  extends Formatter {
+
+        /**
+         * If the logger-name is NULL_FORMAT just post the message, otherwise use SimpleFormatter.format.
+         * @param logRecord
+         * @return
+         */
+        @Override
+        public String format(LogRecord logRecord) {
+            boolean noFormatting = NULL_FORMAT.equals(logRecord.getLoggerName());
+
+            if (noFormatting)
+                return logRecord.getMessage() + "\n";
+            return SIMPLE_FORMATTER.format(logRecord);
+        }
+    }
+
     /**
-     * stream an InputStream to LOG.
+     * Stream an InputStream to LOG without any formatting.
+     *
+     * This is useful when logging from another processes stdout/stderr.
+     *
      * @param in Inputstream to be logged
      *
      */
@@ -72,16 +101,27 @@ public class  Logging {
                 if (s ==  null)
                     return;
                 if (prefix != null)
-                    s  = prefix + s;
-                LOG().info(s);
+                    s = prefix + s;
+
+                nullLog().info(s);
             }
         } catch (EOFException eofe) {
 
         } catch (IOException ioe) {
-            if ("Stream closed".equals(ioe.getMessage()))
-                LOG().info("Logging from stream  '" + prefix +"' closed");
-            else
+            if (! "Stream closed".equals(ioe.getMessage()))
                 LOG().log(Level.WARNING, "Failed to read log message from stream", ioe);
         }
+    }
+
+    public static void main(String[] args) {
+        Path path = Paths.get("log.log");
+        init(path, 1024*1024, 1, false, false, true);
+
+        LOG().info("something");
+
+        Logger logger = Logger.getLogger("my-logger");
+        logger.setParent(LOG());
+        logger.warning("else");
+
     }
 }
