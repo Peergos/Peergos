@@ -94,8 +94,9 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
             throw new IllegalStateException("Specified IPFS_PATH '" + ipfsDir + " is not a directory and/or could not be created");
         }
 
-        if (!Files.exists(ipfsPath))
-            throw new IllegalStateException("Specified path to ipfs binary '" + ipfsPath + "' does not exist");
+        if (!Files.exists(ipfsPath)) {
+            IpfsInstaller.install(ipfsPath);
+        }
         this.ipfsPath = ipfsPath;
         this.ipfsDir = ipfsDir;
         // add shutdown-hook to ensure ipfs daemon is killed on exit
