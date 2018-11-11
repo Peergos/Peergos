@@ -219,8 +219,10 @@ public class Main
                     Path corenodePeergosDir = Files.createTempDirectory("peergos-core");
                     Args coreArgs = args.with(PEERGOS_DIR, corenodePeergosDir.toString());
                     int coreIpfsApiPort = 9000;
+                    int coreIpfsGatewayPort = 9001;
                     int corenodePort = args.getInt("corenodePort", 9999);
                     coreArgs.setArg("ipfs-config-api-port", "" + coreIpfsApiPort);
+                    coreArgs.setArg("ipfs-config-gateway-port", "" + coreIpfsGatewayPort);
                     coreArgs.setArg("proxy-target", getLocalMultiAddress(corenodePort).toString());
                     IPFS.main(coreArgs);
                     coreArgs.setIfAbsent("peergos.password", "testpassword");
@@ -358,9 +360,12 @@ public class Main
         else {
             IpfsWrapper.launchOnce(ipfs, config);
         }
+        // wait for daemon to finish starting
+        ipfs.waitForDaemon(10);
         // set up p2p proxy receiver
         ipfs.startP2pProxy(new MultiAddress(a.getArg("proxy-target")));
     }
+
     public static void startCoreNode(Args a) {
         String corenodeFile = a.getArg("corenodeFile");
         String path = corenodeFile.equals(":memory:") ? corenodeFile : a.fromPeergosDir("corenodeFile").toString();

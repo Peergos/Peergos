@@ -143,7 +143,7 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
      * The ipfs daemon can take up to 30 seconds to start
      * responding to requests once the daemon is started.
      */
-    private void waitForDaemon(int timeoutSeconds) {
+    public void waitForDaemon(int timeoutSeconds) {
         long start = System.currentTimeMillis();
         double duration = 0;
 

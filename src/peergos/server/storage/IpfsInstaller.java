@@ -25,7 +25,7 @@ public class IpfsInstaller {
     private static class Linux {
         public static void install(Path targetFile) {
             try {
-                URI uri = new URI("https://ipfs.io/ipfs/QmUkvZb5wLdVR13eTueJbAidqA1piCfRs7nuGy3PU4nGi9");
+                URI uri = new URI("http://localhost:8080/ipfs/QmUkvZb5wLdVR13eTueJbAidqA1piCfRs7nuGy3PU4nGi9");
                 Logging.LOG().info("Downloading IPFs binary...");
                 byte[] raw = Serialize.readFully(uri.toURL().openStream());
                 Multihash computed = new Multihash(Multihash.Type.sha2_256, Hash.sha256(raw));
@@ -33,6 +33,7 @@ public class IpfsInstaller {
                 if (! computed.equals(expected))
                     throw new IllegalStateException("Incorrect hash for ipfs binary, aborting install!");
                 Files.write(targetFile, raw);
+                targetFile.toFile().setExecutable(true);
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
