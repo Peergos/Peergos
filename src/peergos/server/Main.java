@@ -231,7 +231,7 @@ public class Main
                     coreArgs.setIfAbsent("pki.keygen.password", "testPkiPassword");
                     coreArgs.setIfAbsent("pki.keyfile.password", "testPkiFilePassword");
                     coreArgs.setArg("ipfs-api-address", getLocalMultiAddress(coreIpfsApiPort).toString());
-                    BOOTSTRAP.main(args);
+                    BOOTSTRAP.main(coreArgs);
                     coreArgs.setIfAbsent("domain", "localhost");
                     coreArgs.setIfAbsent("corenodeFile", ":memory:");
                     coreArgs.setIfAbsent("socialnodeFile", ":memory:");
