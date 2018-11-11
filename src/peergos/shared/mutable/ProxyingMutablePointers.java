@@ -28,14 +28,14 @@ public class ProxyingMutablePointers implements MutablePointers {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash writer) {
-        return redirectCall(writer,
-                () -> mutable.getPointer(writer),
-                target -> mutable.getPointer(target, writer));
+    public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash owner, PublicKeyHash writer) {
+        return redirectCall(owner,
+                () -> mutable.getPointer(owner, writer),
+                target -> mutable.getPointer(target, owner, writer));
     }
 
-    public <V> CompletableFuture<V> redirectCall(PublicKeyHash writer, Supplier<CompletableFuture<V>> direct, Function<Multihash, CompletableFuture<V>> proxied) {
-        return core.getUsername(writer)
+    public <V> CompletableFuture<V> redirectCall(PublicKeyHash ownerKey, Supplier<CompletableFuture<V>> direct, Function<Multihash, CompletableFuture<V>> proxied) {
+        return core.getUsername(ownerKey)
                 .thenCompose(owner -> core.getChain(owner)
                         .thenCompose(chain -> {
                             if (chain.isEmpty()) {

@@ -11,6 +11,7 @@ import java.util.*;
 public class Multihash {
     @JsType
     public enum Type {
+        id(0, -1),
         sha1(0x11, 20),
         sha2_256(0x12, 32),
         sha2_512(0x13, 64),
@@ -45,7 +46,7 @@ public class Multihash {
     public Multihash(Type type, byte[] hash) {
         if (hash.length > 127)
             throw new IllegalStateException("Unsupported hash size: "+hash.length);
-        if (hash.length != type.length)
+        if (hash.length != type.length && type != Type.id)
             throw new IllegalStateException("Incorrect hash length: " + hash.length + " != "+type.length);
         this.type = type;
         this.hash = hash;

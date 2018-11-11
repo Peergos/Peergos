@@ -86,13 +86,13 @@ public class UserRepository implements CoreNode, SocialNetwork, MutablePointers 
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash writer) {
+    public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash owner, PublicKeyHash writer) {
         return store.getPointer(writer);
     }
 
     @Override
     public CompletableFuture<Boolean> setPointer(PublicKeyHash owner, PublicKeyHash writer, byte[] writerSignedBtreeRootHash) {
-        return getPointer(writer)
+        return getPointer(owner, writer)
                 .thenCompose(current -> ipfs.getSigningKey(writer)
                         .thenCompose(writerOpt -> {
                             try {

@@ -25,7 +25,7 @@ public class MutableEventPropagator implements MutablePointers {
         return target.setPointer(owner, writer, writerSignedBtreeRootHash)
                 .thenApply(res -> {
                     if (res) {
-                        MutableEvent event = new MutableEvent(writer, writerSignedBtreeRootHash);
+                        MutableEvent event = new MutableEvent(owner, writer, writerSignedBtreeRootHash);
                         for (Consumer<? super MutableEvent> listener : listeners) {
                             listener.accept(event);
                         }
@@ -35,7 +35,7 @@ public class MutableEventPropagator implements MutablePointers {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash writer) {
-        return target.getPointer(writer);
+    public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash owner, PublicKeyHash writer) {
+        return target.getPointer(owner, writer);
     }
 }

@@ -317,7 +317,7 @@ public class WriterData implements Cborable {
         try {
             Optional<PublicKeyHash> publicKeyHash = core.getPublicKeyHash(username).get();
             return publicKeyHash
-                    .map(h -> getOwnedKeysRecursive(h, mutable, dht))
+                    .map(h -> getOwnedKeysRecursive(h, h, mutable, dht))
                     .orElseGet(Collections::emptySet);
         } catch (InterruptedException e) {
             return Collections.emptySet();
@@ -326,13 +326,14 @@ public class WriterData implements Cborable {
         }
     }
 
-    public static Set<PublicKeyHash> getOwnedKeysRecursive(PublicKeyHash writer,
+    public static Set<PublicKeyHash> getOwnedKeysRecursive(PublicKeyHash owner,
+                                                           PublicKeyHash writer,
                                                            MutablePointers mutable,
                                                            ContentAddressedStorage dht) {
         Set<PublicKeyHash> res = new HashSet<>();
         res.add(writer);
         try {
-            CommittedWriterData subspaceDescriptor = mutable.getPointer(writer)
+            CommittedWriterData subspaceDescriptor = mutable.getPointer(owner, writer)
                     .thenCompose(dataOpt -> dataOpt.isPresent() ?
                             dht.getSigningKey(writer)
                                     .thenApply(signer -> HashCasPair.fromCbor(CborObject.fromByteArray(signer.get()
@@ -341,7 +342,7 @@ public class WriterData implements Cborable {
                     .thenCompose(x -> getWriterData(writer, x, dht)).get();
 
             for (PublicKeyHash subKey : subspaceDescriptor.props.ownedKeys) {
-                res.addAll(getOwnedKeysRecursive(subKey, mutable, dht));
+                res.addAll(getOwnedKeysRecursive(owner, subKey, mutable, dht));
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -349,12 +350,13 @@ public class WriterData implements Cborable {
         return res;
     }
 
-    public static Set<PublicKeyHash> getDirectOwnedKeys(PublicKeyHash writer,
+    public static Set<PublicKeyHash> getDirectOwnedKeys(PublicKeyHash owner,
+                                                        PublicKeyHash writer,
                                                         MutablePointers mutable,
                                                         ContentAddressedStorage dht) {
         Set<PublicKeyHash> res = new HashSet<>();
         try {
-            CommittedWriterData subspaceDescriptor = mutable.getPointer(writer)
+            CommittedWriterData subspaceDescriptor = mutable.getPointer(owner, writer)
                     .thenCompose(dataOpt -> dataOpt.isPresent() ?
                             dht.getSigningKey(writer)
                                     .thenApply(signer -> HashCasPair.fromCbor(CborObject.fromByteArray(signer.get()
@@ -378,10 +380,11 @@ public class WriterData implements Cborable {
         return getWriterData(hash.get(), dht);
     }
 
-    public static CompletableFuture<CommittedWriterData> getWriterData(PublicKeyHash controller,
+    public static CompletableFuture<CommittedWriterData> getWriterData(PublicKeyHash owner,
+                                                                       PublicKeyHash controller,
                                                                        MutablePointers mutable,
                                                                        ContentAddressedStorage dht) {
-        return mutable.getPointerTarget(controller, dht)
+        return mutable.getPointerTarget(owner, controller, dht)
                 .thenCompose(opt -> {
                     if (! opt.isPresent())
                         throw new IllegalStateException("No root pointer present for controller " + controller);

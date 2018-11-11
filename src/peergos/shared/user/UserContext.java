@@ -388,7 +388,7 @@ public class UserContext {
     public CompletableFuture<Long> getTotalSpaceUsed(PublicKeyHash ownerHash) {
         // assume no cycles in owned keys
         return getSigningKey(ownerHash)
-                .thenCompose(owner -> getWriterData(network, ownerHash)
+                .thenCompose(owner -> getWriterData(network, ownerHash, ownerHash)
                         .thenCompose(cwd -> {
                             CompletableFuture<Long> subtree = Futures.reduceAll(cwd.props.ownedKeys
                                             .stream()
@@ -527,7 +527,7 @@ public class UserContext {
     public CompletableFuture<Optional<Pair<PublicKeyHash, PublicBoxingKey>>> getPublicKeys(String username) {
         return network.coreNode.getPublicKeyHash(username)
                 .thenCompose(signerOpt -> getSigningKey(signerOpt.get())
-                        .thenCompose(signer -> getWriterData(network, signerOpt.get())
+                        .thenCompose(signer -> getWriterData(network, signerOpt.get(), signerOpt.get())
                                 .thenCompose(wd -> getBoxingKey(wd.props.followRequestReceiver.get())
                                         .thenApply(boxer -> Optional.of(new Pair<>(signerOpt.get(), boxer))))));
     }
@@ -1155,23 +1155,23 @@ public class UserContext {
         });
     }
 
-    public static CompletableFuture<CommittedWriterData> getWriterData(NetworkAccess network, PublicKeyHash signer) {
-        return getWriterDataCbor(network, signer)
+    public static CompletableFuture<CommittedWriterData> getWriterData(NetworkAccess network, PublicKeyHash owner, PublicKeyHash writer) {
+        return getWriterDataCbor(network, owner, writer)
                 .thenApply(pair -> new CommittedWriterData(MaybeMultihash.of(pair.left), WriterData.fromCbor(pair.right, null)));
     }
 
     public static CompletableFuture<Pair<Multihash, CborObject>> getWriterDataCbor(NetworkAccess network, String username) {
         return network.coreNode.getPublicKeyHash(username)
                 .thenCompose(signer -> {
-                    PublicKeyHash publicSigningKey = signer.orElseThrow(
+                    PublicKeyHash owner = signer.orElseThrow(
                             () -> new IllegalStateException("No public-key for user " + username));
-                    return getWriterDataCbor(network, publicSigningKey);
+                    return getWriterDataCbor(network, owner, owner);
                 });
     }
 
-    private static CompletableFuture<Pair<Multihash, CborObject>> getWriterDataCbor(NetworkAccess network, PublicKeyHash signerHash) {
-        return network.mutable.getPointer(signerHash)
-                .thenCompose(casOpt -> network.dhtClient.getSigningKey(signerHash)
+    private static CompletableFuture<Pair<Multihash, CborObject>> getWriterDataCbor(NetworkAccess network, PublicKeyHash owner, PublicKeyHash writer) {
+        return network.mutable.getPointer(owner, writer)
+                .thenCompose(casOpt -> network.dhtClient.getSigningKey(writer)
                         .thenApply(signer -> casOpt.map(raw -> HashCasPair.fromCbor(CborObject.fromByteArray(
                                 signer.get().unsignMessage(raw))).updated)
                                 .orElse(MaybeMultihash.empty())))

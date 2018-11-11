@@ -1,7 +1,8 @@
 package peergos.server.mutable;
+import java.util.*;
 import java.util.logging.*;
 
-import peergos.server.util.Logging;
+import peergos.server.util.*;
 
 import com.sun.net.httpserver.*;
 import peergos.shared.cbor.*;
@@ -54,7 +55,9 @@ public class HttpMutablePointerServer {
                         setPointer(din, dout);
                         break;
                     case "getPointer":
-                        getPointer(din, dout);
+                        Map<String, List<String>> params = HttpUtil.parseQuery(exchange.getRequestURI().getQuery());
+                        PublicKeyHash owner = PublicKeyHash.fromString(params.get("owner").get(0));
+                        getPointer(din, dout, owner);
                         break;
                     default:
                         throw new IOException("Unknown method "+ method);
@@ -91,10 +94,10 @@ public class HttpMutablePointerServer {
             dout.writeBoolean(isAdded);
         }
 
-        void getPointer(DataInputStream din, DataOutputStream dout) throws Exception
+        void getPointer(DataInputStream din, DataOutputStream dout, PublicKeyHash owner) throws Exception
         {
             PublicKeyHash encodedSharingKey = PublicKeyHash.fromCbor(CborObject.deserialize(new CborDecoder(din), PublicKeyHash.MAX_KEY_HASH_SIZE));
-            byte[] metadataBlob = mutable.getPointer(encodedSharingKey).get().orElse(new byte[0]);
+            byte[] metadataBlob = mutable.getPointer(owner, encodedSharingKey).get().orElse(new byte[0]);
 
             dout.write(metadataBlob);
         }

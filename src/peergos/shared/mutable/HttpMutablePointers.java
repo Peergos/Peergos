@@ -14,7 +14,7 @@ import java.util.concurrent.*;
 
 public class HttpMutablePointers implements MutablePointersProxy {
 	private static final Logger LOG = Logger.getGlobal();
-	private static final String P2P_PROXY_PROTOCOL = "http";
+	private static final String P2P_PROXY_PROTOCOL = "/http";
 
     private static final boolean LOGGING = true;
     private final HttpPoster direct, p2p;
@@ -27,7 +27,7 @@ public class HttpMutablePointers implements MutablePointersProxy {
     }
 
     private static String getProxyUrlPrefix(Multihash targetId) {
-        return "/http/proxy/" + targetId.toBase58() + "/" + P2P_PROXY_PROTOCOL + "/";
+        return "/p2p/" + targetId.toBase58() + P2P_PROXY_PROTOCOL + "/";
     }
    
     @Override
@@ -80,19 +80,19 @@ public class HttpMutablePointers implements MutablePointersProxy {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash writer) {
-        return getPointer("", direct, writer);
+    public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash owner, PublicKeyHash writer) {
+        return getPointer("", direct, owner, writer);
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getPointer(Multihash targetId, PublicKeyHash writer) {
-        return getPointer(getProxyUrlPrefix(targetId), p2p, writer);
+    public CompletableFuture<Optional<byte[]>> getPointer(Multihash targetId, PublicKeyHash owner, PublicKeyHash writer) {
+        return getPointer(getProxyUrlPrefix(targetId), p2p, owner, writer);
     }
 
-    public CompletableFuture<Optional<byte[]>> getPointer(String urlPrefix, HttpPoster poster, PublicKeyHash writer) {
+    public CompletableFuture<Optional<byte[]>> getPointer(String urlPrefix, HttpPoster poster, PublicKeyHash owner, PublicKeyHash writer) {
         long t1 = System.currentTimeMillis();
         try {
-            return poster.postUnzip(urlPrefix + "mutable/getPointer", writer.serialize())
+            return poster.postUnzip(urlPrefix + "mutable/getPointer?owner=" + owner, writer.serialize())
                     .thenApply(meta -> meta.length == 0 ? Optional.empty() : Optional.of(meta));
         } catch (Exception ioe) {
             LOG.log(Level.WARNING, ioe.getMessage(), ioe);

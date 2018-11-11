@@ -25,9 +25,9 @@ public class BlockingMutablePointers implements MutablePointers {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash writer) {
+    public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash owner, PublicKeyHash writer) {
         if (blacklist.isAllowed(writer))
-            return source.getPointer(writer);
+            return source.getPointer(owner, writer);
         CompletableFuture<Optional<byte[]>> res = new CompletableFuture<>();
         res.completeExceptionally(new IllegalStateException("This Peergos subspace has been banned from this server"));
         return res;

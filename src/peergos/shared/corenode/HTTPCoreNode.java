@@ -7,6 +7,7 @@ import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.api.*;
 import peergos.shared.io.ipfs.cid.*;
+import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.merklebtree.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
@@ -18,18 +19,31 @@ import java.util.concurrent.*;
 
 public class HTTPCoreNode implements CoreNode {
 	private static final Logger LOG = Logger.getGlobal();
+	private static final String P2P_PROXY_PROTOCOL = "/http";
 
     private final HttpPoster poster;
+    private final String urlPrefix;
 
-    public HTTPCoreNode(HttpPoster poster)
+    public HTTPCoreNode(HttpPoster p2p, Multihash pkiServerNodeId)
     {
-        LOG.info("Creating HTTP Corenode API at " + poster);
-        this.poster = poster;
+        LOG.info("Creating HTTP Corenode API at " + p2p);
+        this.poster = p2p;
+        this.urlPrefix = getProxyUrlPrefix(pkiServerNodeId);
+    }
+
+    public HTTPCoreNode(HttpPoster direct)
+    {
+        LOG.info("Creating HTTP Corenode API at " + direct);
+        this.poster = direct;
+        this.urlPrefix = "";
+    }
+
+    private static String getProxyUrlPrefix(Multihash targetId) {
+        return "/p2p/" + targetId.toBase58() + P2P_PROXY_PROTOCOL + "/";
     }
 
     @Override
-    public CompletableFuture<Optional<PublicKeyHash>> getPublicKeyHash(String username)
-    {
+    public CompletableFuture<Optional<PublicKeyHash>> getPublicKeyHash(String username) {
         try {
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
             DataOutputStream dout = new DataOutputStream(bout);
@@ -37,7 +51,7 @@ public class HTTPCoreNode implements CoreNode {
             Serialize.serialize(username, dout);
             dout.flush();
 
-            CompletableFuture<byte[]> fut = poster.postUnzip("core/getPublicKey", bout.toByteArray());
+            CompletableFuture<byte[]> fut = poster.postUnzip(urlPrefix + "core/getPublicKey", bout.toByteArray());
             return fut.thenApply(res -> {
                 DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
 
@@ -57,16 +71,15 @@ public class HTTPCoreNode implements CoreNode {
     }
 
     @Override
-    public CompletableFuture<String> getUsername(PublicKeyHash publicKey)
-    {
+    public CompletableFuture<String> getUsername(PublicKeyHash owner) {
         try
         {
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
             DataOutputStream dout = new DataOutputStream(bout);
 
-            Serialize.serialize(publicKey.serialize(), dout);
+            Serialize.serialize(owner.serialize(), dout);
             dout.flush();
-            CompletableFuture<byte[]> fut = poster.post("core/getUsername", bout.toByteArray(), true);
+            CompletableFuture<byte[]> fut = poster.post(urlPrefix + "core/getUsername", bout.toByteArray(), true);
             return fut.thenApply(res -> {
                 DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
                 try {
@@ -93,7 +106,7 @@ public class HTTPCoreNode implements CoreNode {
             Serialize.serialize(username, dout);
             dout.flush();
 
-            return poster.postUnzip("core/getChain", bout.toByteArray()).thenApply(res -> {
+            return poster.postUnzip(urlPrefix + "core/getChain", bout.toByteArray()).thenApply(res -> {
                 DataSource din = new DataSource(res);
                 try {
                     int count = din.readInt();
@@ -126,7 +139,7 @@ public class HTTPCoreNode implements CoreNode {
             }
             dout.flush();
 
-            return poster.postUnzip("core/updateChain", bout.toByteArray()).thenApply(res -> {
+            return poster.postUnzip(urlPrefix + "core/updateChain", bout.toByteArray()).thenApply(res -> {
                 DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
                 try {
                     return din.readBoolean();
@@ -140,9 +153,9 @@ public class HTTPCoreNode implements CoreNode {
         }
     }
 
-    @Override public CompletableFuture<List<String>> getUsernames(String prefix)
-    {
-        return poster.postUnzip("core/getUsernamesGzip/"+prefix, new byte[0])
+    @Override
+    public CompletableFuture<List<String>> getUsernames(String prefix) {
+        return poster.postUnzip(urlPrefix + "core/getUsernamesGzip/"+prefix, new byte[0])
                 .thenApply(raw -> (List) JSONParser.parse(new String(raw)));
     }
 

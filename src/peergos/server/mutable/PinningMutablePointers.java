@@ -76,7 +76,7 @@ public class PinningMutablePointers implements MutablePointers {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash writer) {
-        return target.getPointer(writer);
+    public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash owner, PublicKeyHash writer) {
+        return target.getPointer(owner, writer);
     }
 }

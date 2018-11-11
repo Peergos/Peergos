@@ -78,10 +78,17 @@ public class NetworkAccess {
         return new NetworkAccess(coreNode, social, dhtClient, mutable, new MutableTreeImpl(mutable, dhtClient), usernames, isJavascript);
     }
 
-    public static CompletableFuture<NetworkAccess> build(HttpPoster poster, boolean isJavascript) {
+    public static CoreNode buildProxyingCorenode(HttpPoster poster, Multihash pkiServerNodeId) {
+        return new HTTPCoreNode(poster, pkiServerNodeId);
+    }
+
+    public static CoreNode buildDirectCorenode(HttpPoster poster) {
+        return new HTTPCoreNode(poster);
+    }
+
+    public static CompletableFuture<NetworkAccess> build(CoreNode coreNode, HttpPoster poster, boolean isJavascript) {
         int cacheTTL = 7_000;
         LOG.info("Using caching corenode with TTL: " + cacheTTL + " mS");
-        CoreNode coreNode = new HTTPCoreNode(poster);
         SocialNetwork social = new HttpSocialNetwork(poster, poster);
         MutablePointers mutable = new CachingPointers(new HttpMutablePointers(poster, poster), cacheTTL);
 
@@ -93,14 +100,20 @@ public class NetworkAccess {
     }
 
     @JsMethod
-    public static CompletableFuture<NetworkAccess> buildJS() {
+    public static CompletableFuture<NetworkAccess> buildJS(String pkiNodeId, boolean isPeergosServer) {
+        Multihash pkiServerNodeId = Cid.decode(pkiNodeId);
         System.setOut(new ConsolePrintStream());
         System.setErr(new ConsolePrintStream());
-        return build(new JavaScriptPoster(), true);
+        JavaScriptPoster poster = new JavaScriptPoster();
+        CoreNode core = isPeergosServer ?
+                buildDirectCorenode(poster) :
+                buildProxyingCorenode(poster, pkiServerNodeId);
+        return build(core, poster, true);
     }
 
     public static CompletableFuture<NetworkAccess> buildJava(URL target) {
-        return build(new JavaPoster(target), false);
+        JavaPoster poster = new JavaPoster(target);
+        return build(buildDirectCorenode(poster), poster, false);
     }
 
     public static CompletableFuture<NetworkAccess> buildJava(int targetPort) {
@@ -116,7 +129,7 @@ public class NetworkAccess {
         List<CompletableFuture<Optional<RetrievedFilePointer>>> all = links.stream()
                 .map(link -> {
                     Location loc = link.targetLocation(baseKey);
-                    return tree.get(loc.writer, loc.getMapKey())
+                    return tree.get(loc.owner, loc.writer, loc.getMapKey())
                             .thenCompose(key -> {
                                 if (key.isPresent())
                                     return dhtClient.get(key.get())
@@ -153,7 +166,7 @@ public class NetworkAccess {
 
     private CompletableFuture<Optional<CryptreeNode>> downloadEntryPoint(EntryPoint entry) {
         // download the metadata blob for this entry point
-        return tree.get(entry.pointer.location.writer, entry.pointer.location.getMapKey()).thenCompose(btreeValue -> {
+        return tree.get(entry.pointer.location.owner, entry.pointer.location.writer, entry.pointer.location.getMapKey()).thenCompose(btreeValue -> {
             if (btreeValue.isPresent())
                 return dhtClient.get(btreeValue.get())
                         .thenApply(value -> value.map(cbor -> CryptreeNode.fromCbor(cbor,  btreeValue.get())));
@@ -201,7 +214,7 @@ public class NetworkAccess {
         try {
             byte[] metaBlob = metadata.serialize();
             return dhtClient.put(location.writer, writer.secret.signatureOnly(metaBlob), metaBlob)
-                    .thenCompose(blobHash -> tree.put(writer, location.getMapKey(), metadata.committedHash(), blobHash)
+                    .thenCompose(blobHash -> tree.put(location.owner, writer, location.getMapKey(), metadata.committedHash(), blobHash)
                             .thenApply(res -> blobHash));
         } catch (Exception e) {
             LOG.severe(e.getMessage());
@@ -212,7 +225,7 @@ public class NetworkAccess {
     public CompletableFuture<Optional<CryptreeNode>> getMetadata(Location loc) {
         if (loc == null)
             return CompletableFuture.completedFuture(Optional.empty());
-        return tree.get(loc.writer, loc.getMapKey()).thenCompose(blobHash -> {
+        return tree.get(loc.owner, loc.writer, loc.getMapKey()).thenCompose(blobHash -> {
             if (!blobHash.isPresent())
                 return CompletableFuture.completedFuture(Optional.empty());
             return dhtClient.get(blobHash.get())
@@ -251,9 +264,12 @@ public class NetworkAccess {
 
     public static void pinAllUserFiles(String username, CoreNode coreNode, MutablePointers mutable, ContentAddressedStorage dhtClient) throws ExecutionException, InterruptedException {
         Set<PublicKeyHash> ownedKeysRecursive = WriterData.getOwnedKeysRecursive(username, coreNode, mutable, dhtClient);
-
+        Optional<PublicKeyHash> ownerOpt = coreNode.getPublicKeyHash(username).get();
+        if (! ownerOpt.isPresent())
+            throw new IllegalStateException("Couldn't retrieve public key for " + username);
+        PublicKeyHash owner = ownerOpt.get();
         for (PublicKeyHash keyHash: ownedKeysRecursive) {
-            Multihash casKeyHash = mutable.getPointerTarget(keyHash, dhtClient).get().get();
+            Multihash casKeyHash = mutable.getPointerTarget(owner, keyHash, dhtClient).get().get();
             dhtClient.recursivePin(casKeyHash).get();
         }
     }

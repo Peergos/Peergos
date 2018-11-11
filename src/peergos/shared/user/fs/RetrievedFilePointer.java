@@ -34,7 +34,7 @@ public class RetrievedFilePointer {
             return CompletableFuture.completedFuture(false);
         if (! fileAccess.isDirectory()) {
             CompletableFuture<Boolean> result = new CompletableFuture<>();
-            network.tree.remove(signer, this.filePointer.location.getMapKey(), fileAccess.committedHash()).thenAccept(removed -> {
+            network.tree.remove(this.filePointer.location.owner, signer, this.filePointer.location.getMapKey(), fileAccess.committedHash()).thenAccept(removed -> {
                 // remove from parent
                 if (parentRetrievedFilePointer != null)
                     ((DirAccess) parentRetrievedFilePointer.fileAccess).removeChild(this, parentRetrievedFilePointer.filePointer, signer, network);
@@ -46,7 +46,7 @@ public class RetrievedFilePointer {
             for (RetrievedFilePointer file : files)
                 file.remove(network, null, signer);
             CompletableFuture<Boolean> result = new CompletableFuture<>();
-            network.tree.remove(signer, this.filePointer.location.getMapKey(), fileAccess.committedHash()).thenAccept(removed -> {
+            network.tree.remove(this.filePointer.location.owner, signer, this.filePointer.location.getMapKey(), fileAccess.committedHash()).thenAccept(removed -> {
                 // remove from parent
                 if (parentRetrievedFilePointer != null)
                     ((DirAccess) parentRetrievedFilePointer.fileAccess).removeChild(this, parentRetrievedFilePointer.filePointer, signer, network);

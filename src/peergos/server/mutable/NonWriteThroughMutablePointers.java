@@ -24,7 +24,7 @@ public class NonWriteThroughMutablePointers implements MutablePointers {
     public CompletableFuture<Boolean> setPointer(PublicKeyHash owner, PublicKeyHash writer, byte[] writerSignedBtreeRootHash) {
         try {
             if (! modifications.containsKey(writer)) {
-                Optional<byte[]> existing = source.getPointer(writer).get();
+                Optional<byte[]> existing = source.getPointer(owner, writer).get();
                 existing.map(val -> modifications.put(writer, val));
             }
             Optional<PublicSigningKey> opt = storage.getSigningKey(writer).get();
@@ -41,11 +41,11 @@ public class NonWriteThroughMutablePointers implements MutablePointers {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash writer) {
+    public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash owner, PublicKeyHash writer) {
         try {
             if (modifications.containsKey(writer))
                 return CompletableFuture.completedFuture(Optional.of(modifications.get(writer)));
-            return source.getPointer(writer);
+            return source.getPointer(owner, writer);
         } catch (Exception e) {
             throw new RuntimeException(e.getMessage(), e);
         }
