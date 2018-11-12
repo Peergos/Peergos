@@ -25,7 +25,7 @@ public class  Logging {
      */
     public static synchronized void init(Args a) {
         Path logPath = a.fromPeergosDir("logName", "peergos.%g.log");
-        logPath.toFile().mkdirs();
+        logPath.toFile().getParentFile().mkdirs();
         int logLimit = a.getInt("logLimit", 1024 * 1024);
         int logCount = a.getInt("logCount", 10);
         boolean logAppend = a.getBoolean("logAppend", true);
