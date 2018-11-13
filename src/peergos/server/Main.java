@@ -89,7 +89,6 @@ public class Main {
             Stream.of(
                     new Command.Arg("port", "service port", false, "8000"),
                     new Command.Arg("pki-node-id", "Ipfs node id of the pki node", true),
-                    new Command.Arg("socialnodeURL", "Social network node address", false, "http://localhost:" + HttpSocialNetworkServer.PORT),
                     new Command.Arg("domain", "Domain name to bind to,", false, "localhost"),
                     new Command.Arg("useIPFS", "Use IPFS for storage or ephemeral RAM store", false, "true"),
                     new Command.Arg("webroot", "the path to the directory to serve as the web root", false),
@@ -484,7 +483,7 @@ public class Main {
         return args.fromPeergosDir("blockstore_dir", "blockstore");
     }
 
-    private static MultiAddress getLocalMultiAddress(int port) {
+    public static MultiAddress getLocalMultiAddress(int port) {
         return new MultiAddress("/ip4/127.0.0.1/tcp/" + port);
     }
 
