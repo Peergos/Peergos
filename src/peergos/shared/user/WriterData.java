@@ -173,7 +173,7 @@ public class WriterData implements Cborable {
                                 newEntryPoints,
                                 tree,
                                 btree);
-                        return updated.commit(signer.publicKeyHash, signer, MaybeMultihash.empty(), network, updater);
+                        return updated.commit(oldSigner.publicKeyHash, signer, MaybeMultihash.empty(), network, updater);
                     });
         });
     }
