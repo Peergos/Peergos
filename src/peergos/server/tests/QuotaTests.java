@@ -18,33 +18,30 @@ import static peergos.server.tests.UserTests.ensureSignedUp;
 @RunWith(Parameterized.class)
 public class QuotaTests {
 
-    public static int RANDOM_SEED = 666;
+    private static Args args = UserTests.buildArgs()
+            .with("useIPFS", "true")
+            .with("default-quota", Long.toString(2 * 1024 * 1024));
+
+    private static int RANDOM_SEED = 666;
     private final NetworkAccess network;
     private final Crypto crypto = Crypto.initJava();
 
     private static Random random = new Random(RANDOM_SEED);
 
-    public QuotaTests(String useIPFS, Random r) throws Exception {
-        int portMin = 9000;
-        int portRange = 4000;
-        int webPort = portMin + r.nextInt(portRange);
-        int corePort = portMin + portRange + r.nextInt(portRange);
-        Args args = Args.parse(new String[]{
-                "useIPFS", "" + useIPFS.equals("IPFS"),
-                "-port", Integer.toString(webPort),
-                "-corenodePort", Integer.toString(corePort),
-                "-logConsole", "true",
-                "default-quota", Long.toString(2 * 1024 * 1024)
-        });
-        Main.LOCAL.main(args);
-        this.network = NetworkAccess.buildJava(new URL("http://localhost:" + webPort)).get();
+    public QuotaTests(Args args) throws Exception {
+        this.network = NetworkAccess.buildJava(new URL("http://localhost:" + args.getInt("port"))).get();
     }
 
     @Parameterized.Parameters()
     public static Collection<Object[]> parameters() {
         return Arrays.asList(new Object[][]{
-                {"IPFrS", new Random(0)}
+                {args}
         });
+    }
+
+    @BeforeClass
+    public static void init() {
+        Main.LOCAL.main(args);
     }
 
     private String generateUsername() {
