@@ -48,7 +48,7 @@ public abstract class UserTests {
     public static Args buildArgs() {
         try {
             Path peergosDir = Files.createTempDirectory("peergos");
-            Random r = new Random(0);
+            Random r = new Random();
             int port = 9000 + r.nextInt(8000);
             return Args.parse(new String[]{
                     "-port", Integer.toString(port),

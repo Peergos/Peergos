@@ -10,7 +10,7 @@ import java.util.*;
 
 @RunWith(Parameterized.class)
 public class RamUserTests extends UserTests {
-    private static Args args = buildArgs().with("-useIPFS", "false");
+    private static Args args = buildArgs().with("useIPFS", "false");
 
     public RamUserTests(Args args) {
         super(args);

@@ -19,7 +19,7 @@ public class HttpSocialNetwork implements SocialNetworkProxy {
 
     public HttpSocialNetwork(HttpPoster direct, HttpPoster p2p)
     {
-        LOG.info("Creating HTTP SocialNetwork API at " + direct + "and " + p2p);
+        LOG.info("Creating HTTP SocialNetwork API at " + direct + " and " + p2p);
         this.direct = direct;
         this.p2p = p2p;
     }

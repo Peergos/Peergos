@@ -11,7 +11,7 @@ import java.util.*;
 @RunWith(Parameterized.class)
 public class IpfsUserTests extends UserTests {
 
-    private static Args args = buildArgs().with("-useIPFS", "true");
+    private static Args args = buildArgs().with("useIPFS", "true");
 
     public IpfsUserTests(Args args) {
         super(args);
