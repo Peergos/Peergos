@@ -37,48 +37,25 @@ public abstract class UserTests {
 
     private static Random random = new Random(RANDOM_SEED);
 
-    public static class TestBuilder {
-        public final Random random;
-        public final boolean useIPFS;
-        public final int  webPort, corePort, socialPort;
-
-        public TestBuilder(Random r, boolean useIPFS) {
-            this.random = r;
-            this.useIPFS = useIPFS;
-            int portMin = 9000;
-            int portRange = 8000;
-            this.webPort = portMin + r.nextInt(portRange);
-            this.corePort = portMin + portRange + r.nextInt(portRange);
-            this.socialPort = portMin + portRange + r.nextInt(portRange);
-
-        }
-
-        void setup() {
-
-            Path peergosDir =  null;
-            try {
-                peergosDir = Files.createTempDirectory("peergos");
-            } catch (IOException ioe) {
-                throw new IllegalStateException(ioe.getMessage(), ioe);
-            }
-
-            Args args = Args.parse(new String[]{
-                    "-useIPFS", ""+useIPFS,
-                    "-port", Integer.toString(webPort),
-                    "-corenodePort", Integer.toString(corePort),
-                    "-logToConsole", "true",
-                    "-socialnodePort", Integer.toString(socialPort)
-            }).with(Main.PEERGOS_PATH, peergosDir.toString());
-
-            Main.LOCAL.main(args);
+    public UserTests(Args args) {
+        try {
+            this.network = NetworkAccess.buildJava(new URL("http://localhost:" + args.getInt("port"))).get();
+        } catch (Exception ex) {
+            throw new IllegalStateException(ex.getMessage(), ex);
         }
     }
 
-    public UserTests(TestBuilder testBuilder) {
+    public static Args buildArgs() {
         try {
-            this.network = NetworkAccess.buildJava(new URL("http://localhost:" + testBuilder.webPort)).get();
-        } catch (Exception ex) {
-            throw new IllegalStateException(ex.getMessage(), ex);
+            Path peergosDir = Files.createTempDirectory("peergos");
+            Random r = new Random(0);
+            int port = 9000 + r.nextInt(8000);
+            return Args.parse(new String[]{
+                    "-port", Integer.toString(port),
+                    "-logToConsole", "true",
+                    Main.PEERGOS_PATH, peergosDir.toString()});
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         }
     }
 

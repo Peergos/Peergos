@@ -71,7 +71,7 @@ public class IpfsInstaller {
             }
         }
         else {
-            LOG().info("ipfs-exe "+ targetFile + " not available, ,downloading");
+            LOG().info("ipfs-exe "+ targetFile + " not available, downloading");
         }
         install(targetFile, downloadTarget);
     }
@@ -79,7 +79,7 @@ public class IpfsInstaller {
     private static void install(Path targetFile, DownloadTarget downloadTarget) {
         try {
             URI uri = new URI(downloadTarget.url);
-            LOG().info("Downloading IPFs binary "+ downloadTarget.url +"...");
+            LOG().info("Downloading IPFS binary "+ downloadTarget.url +"...");
             byte[] raw = Serialize.readFully(uri.toURL().openStream());
             Multihash computed = new Multihash(Multihash.Type.sha2_256, Hash.sha256(raw));
 

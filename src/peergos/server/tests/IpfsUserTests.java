@@ -3,27 +3,29 @@ package peergos.server.tests;
 import org.junit.BeforeClass;
 import org.junit.runner.*;
 import org.junit.runners.*;
+import peergos.server.*;
+import peergos.server.util.*;
 
 import java.util.*;
 
 @RunWith(Parameterized.class)
 public class IpfsUserTests extends UserTests {
-    private static TestBuilder IPFS_USER_TEST_BUILDER = new TestBuilder(new Random(0), true);
 
-    public IpfsUserTests(TestBuilder testBuilder) {
-        super(testBuilder);
+    private static Args args = buildArgs().with("-useIPFS", "true");
+
+    public IpfsUserTests(Args args) {
+        super(args);
     }
 
     @Parameterized.Parameters()
     public static Collection<Object[]> parameters() {
         return Arrays.asList(new Object[][] {
-                {IPFS_USER_TEST_BUILDER}
+                {args}
         });
     }
 
-    @BeforeClass public static void init() {
-        IPFS_USER_TEST_BUILDER.setup();
+    @BeforeClass
+    public static void init() {
+        Main.LOCAL.main(args);
     }
-
-
 }
