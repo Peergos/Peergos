@@ -223,9 +223,11 @@ public class Main {
                     args.setIfAbsent("proxy-target", getLocalMultiAddress(peergosPort).toString());
                     args.setIfAbsent("useIPFS", "false");
 
-                    ENSURE_IPFS_INSTALLED.main(args);
-
-                    IPFS.main(args);
+                    boolean useIPFS = args.getBoolean("useIPFS");
+                    if (useIPFS) {
+                        ENSURE_IPFS_INSTALLED.main(args);
+                        IPFS.main(args);
+                    }
 
                     args.setIfAbsent("peergos.password", "testpassword");
                     args.setIfAbsent("pki.secret.key.path", "test.pki.secret.key");
@@ -239,7 +241,9 @@ public class Main {
                     args.setIfAbsent("social-sql-file", ":memory:");
 
 
-                    Multihash pkiIpfsNodeId = new IpfsDHT(getLocalMultiAddress(ipfsApiPort)).id().get();
+                    Multihash pkiIpfsNodeId = useIPFS ?
+                            new IpfsDHT(getLocalMultiAddress(ipfsApiPort)).id().get() :
+                            new FileContentAddressedStorage(blockstorePath(args)).id().get();
                     args.setIfAbsent("pki-node-id", pkiIpfsNodeId.toBase58());
                     PEERGOS.main(args);
                     POSTSTRAP.main(args);
