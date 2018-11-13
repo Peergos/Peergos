@@ -551,8 +551,8 @@ public class MultiUserTests {
 
     @Test
     public void acceptButNotReciprocateFollowRequest() throws Exception {
-        UserContext u1 = UserTests.ensureSignedUp("q", "q", network, crypto);
-        UserContext u2 = UserTests.ensureSignedUp("w", "w", network, crypto);
+        UserContext u1 = UserTests.ensureSignedUp(random(), random(), network, crypto);
+        UserContext u2 = UserTests.ensureSignedUp(random(), random(), network, crypto);
         u2.sendFollowRequest(u1.username, SymmetricKey.random()).get();
         List<FollowRequest> u1Requests = u1.processFollowRequests().get();
         assertTrue("Receive a follow request", u1Requests.size() > 0);
@@ -651,8 +651,8 @@ public class MultiUserTests {
 
     @Test
     public void unfollow() throws Exception {
-        UserContext u1 = UserTests.ensureSignedUp("q", "q", network, crypto);
-        UserContext u2 = UserTests.ensureSignedUp("w", "w", network, crypto);
+        UserContext u1 = UserTests.ensureSignedUp(random(), random(), network, crypto);
+        UserContext u2 = UserTests.ensureSignedUp(random(), random(), network, crypto);
         u2.sendFollowRequest(u1.username, SymmetricKey.random());
         List<FollowRequest> u1Requests = u1.processFollowRequests().get();
         u1.sendReplyFollowRequest(u1Requests.get(0), true, true);
@@ -669,8 +669,8 @@ public class MultiUserTests {
 
     @Test
     public void removeFollower() throws Exception {
-        UserContext u1 = UserTests.ensureSignedUp("q", "q", network, crypto);
-        UserContext u2 = UserTests.ensureSignedUp("w", "w", network, crypto);
+        UserContext u1 = UserTests.ensureSignedUp(random(), random(), network, crypto);
+        UserContext u2 = UserTests.ensureSignedUp(random(), random(), network, crypto);
         u2.sendFollowRequest(u1.username, SymmetricKey.random());
         List<FollowRequest> u1Requests = u1.processFollowRequests().get();
         u1.sendReplyFollowRequest(u1Requests.get(0), true, true);
