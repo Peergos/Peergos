@@ -26,39 +26,30 @@ import static org.junit.Assert.assertTrue;
 @RunWith(Parameterized.class)
 public class MultiUserTests {
 
+    private static Args args = UserTests.buildArgs().with("useIPFS", "true");
+
     private final NetworkAccess network;
-    private final Crypto crypto;
+    private final Crypto crypto = Crypto.initJava();
     private final int userCount;
 
-    public MultiUserTests(String useIPFS, Random r, int userCount, Crypto crypto) throws Exception {
-        int portMin = 9000;
-        int portRange = 2000;
-        int webPort = portMin + r.nextInt(portRange);
-        int corePort = portMin + portRange + r.nextInt(portRange);
-        int socialPort = portMin + portRange + r.nextInt(portRange);
+    public MultiUserTests(Args args, int userCount) throws Exception {
         this.userCount = userCount;
         if (userCount  < 2)
             throw new IllegalStateException();
 
-        Args args = Args.parse(new String[]{
-                "useIPFS", ""+useIPFS.equals("IPFS"),
-                "-port", Integer.toString(webPort),
-                "-corenodePort", Integer.toString(corePort),
-                "-socialnodePort", Integer.toString(socialPort),
-                "-logConsole", "true"
-        });
-        Main.LOCAL.main(args);
-        this.network = NetworkAccess.buildJava(new URL("http://localhost:" + webPort)).get();
-        this.crypto = crypto;
+        this.network = NetworkAccess.buildJava(new URL("http://localhost:" + args.getInt("port"))).get();
     }
 
     @Parameterized.Parameters(name = "{index}: {0}")
     public static Collection<Object[]> parameters() {
-        Random r = new Random(123);
-        Crypto crypto = Crypto.initJava();
         return Arrays.asList(new Object[][] {
-                {"RAM", r, 2, crypto}
+                {args, 2}
         });
+    }
+
+    @BeforeClass
+    public static void init() {
+        Main.LOCAL.main(args);
     }
 
     private static String username(int i){
