@@ -44,7 +44,8 @@ public class MultiUserTests {
                 "useIPFS", ""+useIPFS.equals("IPFS"),
                 "-port", Integer.toString(webPort),
                 "-corenodePort", Integer.toString(corePort),
-                "-socialnodePort", Integer.toString(socialPort)
+                "-socialnodePort", Integer.toString(socialPort),
+                "-logConsole", "true"
         });
         Main.LOCAL.main(args);
         this.network = NetworkAccess.buildJava(new URL("http://localhost:" + webPort)).get();

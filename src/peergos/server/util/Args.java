@@ -130,19 +130,28 @@ public class Args {
         return args;
     }
 
+    public Args with(Args overrides) {
+        Map<String, String> map = paramMap();
+        map.putAll(params);
+        map.putAll(overrides.params);
+        Args args = new Args();
+        args.params.putAll(map);
+        return args;
+    }
+
     public Path fromPeergosDir(String fileName) {
         return fromPeergosDir(fileName, null);
     }
 
     /**
-     * Get the path to a file-name in the PEERGOS_DIR
+     * Get the path to a file-name in the PEERGOS_PATH
      *
      * @param fileName
      * @param defaultName
      * @return
      */
     public Path fromPeergosDir(String fileName, String defaultName) {
-        Path peergosDir = hasArg(Main.PEERGOS_DIR) ? Paths.get(getArg(Main.PEERGOS_DIR)) : Main.DEFAULT_PEERGOS_DIR_PATH;
+        Path peergosDir = hasArg(Main.PEERGOS_PATH) ? Paths.get(getArg(Main.PEERGOS_PATH)) : Main.DEFAULT_PEERGOS_DIR_PATH;
         String fName = defaultName == null ? getArg(fileName) : getArg(fileName, defaultName);
         return peergosDir.resolve(fName);
     }

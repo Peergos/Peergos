@@ -20,7 +20,7 @@ public class  Logging {
     }
 
     /**
-     * Initialise logging to a file in PEERGOS_DIR
+     * Initialise logging to a file in PEERGOS_PATH
      * @param a
      */
     public static synchronized void init(Args a) {

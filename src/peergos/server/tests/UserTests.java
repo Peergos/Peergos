@@ -37,23 +37,49 @@ public abstract class UserTests {
 
     private static Random random = new Random(RANDOM_SEED);
 
-    public UserTests(String useIPFS, Random r) throws Exception {
-        int portMin = 9000;
-        int portRange = 8000;
-        int webPort = portMin + r.nextInt(portRange);
-        int corePort = portMin + portRange + r.nextInt(portRange);
-        int socialPort = portMin + portRange + r.nextInt(portRange);
+    public static class TestBuilder {
+        public final Random random;
+        public final boolean useIPFS;
+        public final int  webPort, corePort, socialPort;
 
-        Path peergosDir = Files.createTempDirectory("peergos");
-        Args args = Args.parse(new String[]{
-                "useIPFS", ""+useIPFS.equals("IPFS"),
-                "-port", Integer.toString(webPort),
-                "-corenodePort", Integer.toString(corePort),
-                "-socialnodePort", Integer.toString(socialPort)
-        }).with(Main.PEERGOS_DIR, peergosDir.toString());
+        public TestBuilder(Random r, boolean useIPFS) {
+            this.random = r;
+            this.useIPFS = useIPFS;
+            int portMin = 9000;
+            int portRange = 8000;
+            this.webPort = portMin + r.nextInt(portRange);
+            this.corePort = portMin + portRange + r.nextInt(portRange);
+            this.socialPort = portMin + portRange + r.nextInt(portRange);
 
-        Main.LOCAL.main(args);
-        this.network = NetworkAccess.buildJava(new URL("http://localhost:" + webPort)).get();
+        }
+
+        void setup() {
+
+            Path peergosDir =  null;
+            try {
+                peergosDir = Files.createTempDirectory("peergos");
+            } catch (IOException ioe) {
+                throw new IllegalStateException(ioe.getMessage(), ioe);
+            }
+
+            Args args = Args.parse(new String[]{
+                    "-useIPFS", ""+useIPFS,
+                    "-port", Integer.toString(webPort),
+                    "-corenodePort", Integer.toString(corePort),
+                    "-logToConsole", "true",
+                    "-socialnodePort", Integer.toString(socialPort)
+            }).with(Main.PEERGOS_PATH, peergosDir.toString());
+
+            Main.LOCAL.main(args);
+        }
+    }
+
+    public UserTests(TestBuilder testBuilder) {
+        try {
+            this.network = NetworkAccess.buildJava(new URL("http://localhost:" + testBuilder.webPort)).get();
+        } catch (Exception ex) {
+            throw new IllegalStateException(ex.getMessage(), ex);
+        }
     }
 
     private String generateUsername() {

@@ -53,6 +53,7 @@ public class FuseTests {
 
         Args args = Args.parse(new String[]{"useIPFS", "false",
                 "-port", Integer.toString(WEB_PORT),
+                "-logConsole", "true",
                 "-corenodePort", Integer.toString(CORE_PORT)});
 
         Main.LOCAL.main(args);

@@ -76,6 +76,7 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
 
     private static final String DEFAULT_DIR_NAME = ".ipfs";
     private static final String DEFAULT_IPFS_EXE = "ipfs";
+    private static final String DEFAULT_IPFS_TEST_EXE = "ipfs-test";
 
     private volatile boolean shouldBeRunning;
 
@@ -94,15 +95,11 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
             throw new IllegalStateException("Specified IPFS_PATH '" + ipfsDir + " is not a directory and/or could not be created");
         }
 
-        if (!Files.exists(ipfsPath)) {
-            IpfsInstaller.install(ipfsPath);
-        }
         this.ipfsPath = ipfsPath;
         this.ipfsDir = ipfsDir;
         // add shutdown-hook to ensure ipfs daemon is killed on exit
         Runtime.getRuntime().addShutdownHook(new Thread(this::close));
     }
-
 
     public synchronized void configure(Config config) {
         try {
@@ -267,7 +264,7 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
                 "src/github.com/ipfs/go-ipfs/cmd/ipfs/ipfs");
         Path ipfsDir = Files.createTempDirectory(null);
 
-        Logging.init(Paths.get("log.log"), 1_000_000, 1, false, false, true);
+        Logging.init(Paths.get("log.log"), 1_000_000, 1, false, true, false);
 
         IpfsWrapper ipfsWrapper = new IpfsWrapper(ipfsPath, ipfsDir);
 
@@ -292,9 +289,7 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
                 args.fromPeergosDir("ipfs-name", DEFAULT_DIR_NAME);
 
         //ipfs exe defaults to $PEERGOS_PATH/ipfs
-        Path ipfsExe = args.hasArg(IPFS_EXE) ?
-                Paths.get(args.getArg(IPFS_EXE)) :
-                args.fromPeergosDir("ipfs-exe", DEFAULT_IPFS_EXE);
+        Path ipfsExe = getIpfsExePath(args);
 
         return new IpfsWrapper(ipfsExe, ipfsDir);
     }
@@ -348,5 +343,19 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
         ipfs.waitForDaemon(30);
 
         return ipfs;
+    }
+
+    public static Path getIpfsExePath(Args args) {
+        return args.hasArg(IPFS_EXE) ?
+                Paths.get(args.getArg(IPFS_EXE)) :
+                args.fromPeergosDir("ipfs-exe", DEFAULT_IPFS_EXE
+                );
+    }
+
+
+    public static Path getIpfsTestExePath(Args args) {
+        return args.hasArg(IPFS_EXE) ?
+                Paths.get(args.getArg(IPFS_EXE)) :
+                args.fromPeergosDir("ipfs-exe", DEFAULT_IPFS_TEST_EXE);
     }
 }

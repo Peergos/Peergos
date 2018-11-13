@@ -32,9 +32,8 @@ import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-public class Main
-{
-    public static final String PEERGOS_DIR = "PEERGOS_PATH";
+public class Main {
+    public static final String PEERGOS_PATH = "PEERGOS_PATH";
     public static final Path DEFAULT_PEERGOS_DIR_PATH =
             Paths.get(System.getProperty("user.home"), ".peergos");
 
@@ -42,7 +41,21 @@ public class Main
         PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, new Ed25519.Java());
     }
 
-    public static Command IPFS  = new Command("ipfs",
+    public static Command ENSURE_IPFS_INSTALLED = new Command("install-ipfs",
+            "Download/update IPFS binary. Does nothing if current IPFS binary is up-to-date.",
+            args -> {
+                Path ipfsExePath = IpfsWrapper.getIpfsExePath(args);
+                File dir = ipfsExePath.getParent().toFile();
+                if (!  dir.isDirectory() && ! dir.mkdirs())
+                    throw new IllegalStateException("Specified install directory "+ dir +" doesn't exist and can't be created");
+
+                IpfsInstaller.ensureInstalled(ipfsExePath);
+            },
+            Arrays.asList(
+                    new Command.Arg("ipfs-exe-path", "Desired path to IPFS executable. Defaults to $PEERGOS_PATH/ipfs", false)
+            )
+    );
+    public static Command IPFS = new Command("ipfs",
             "Start IPFS daemon and ensure configuration, optionally manage runtime.",
             Main::startIpfs,
             Arrays.asList(
@@ -53,7 +66,7 @@ public class Main
                     new Command.Arg("ipfs-config-swarm-port", "IPFS Swarm port", false, "4001"),
                     new Command.Arg("ipfs-config-bootstrap-node-list", "Comma separated list of IPFS bootstrap nodes. Uses existing bootstrap nodes by default.", false),
                     new Command.Arg("ipfs-manage-runtime", "Will manage the IPFS daemon runtime when set (restart on exit)", false, "true")
-                    )
+            )
     );
 
     public static Command CORE_NODE = new Command("core",
@@ -74,7 +87,7 @@ public class Main
             "The user facing Peergos server",
             Main::startPeergos,
             Stream.of(
-                    new Command.Arg("port",  "service port", false, "8000"),
+                    new Command.Arg("port", "service port", false, "8000"),
                     new Command.Arg("pki-node-id", "Ipfs node id of the pki node", true),
                     new Command.Arg("socialnodeURL", "Social network node address", false, "http://localhost:" + HttpSocialNetworkServer.PORT),
                     new Command.Arg("domain", "Domain name to bind to,", false, "localhost"),
@@ -180,7 +193,7 @@ public class Main
                     // sign up peergos user
                     UserContext context = UserContext.ensureSignedUp(pkiUsername, password, network, crypto).get();
                     Optional<PublicKeyHash> existingPkiKey = context.getNamedKey("pki").get();
-                    if (! existingPkiKey.isPresent() || existingPkiKey.get().equals(pkiPublicHash)) {
+                    if (!existingPkiKey.isPresent() || existingPkiKey.get().equals(pkiPublicHash)) {
                         context.addNamedOwnedKeyAndCommit("pki", pkiPublicHash).get();
                         // write pki public key to ipfs
                         network.dhtClient.putSigningKey(peergosIdentityKeys.secretSigningKey
@@ -193,7 +206,7 @@ public class Main
             },
             Arrays.asList(
                     new Command.Arg("peergos.password",
-                    "The password for the peergos user required to bootstrap the network", true),
+                            "The password for the peergos user required to bootstrap the network", true),
                     new Command.Arg("pki.public.key.path", "The path to the pki public key file", true)
             )
     );
@@ -208,6 +221,10 @@ public class Main
                     args.setIfAbsent("ipfs-config-api-port", "" + ipfsApiPort);
                     args.setIfAbsent("ipfs-config-gateway-port", "" + ipfsGatewayPort);
                     args.setIfAbsent("proxy-target", getLocalMultiAddress(peergosPort).toString());
+                    args.setIfAbsent("useIPFS", "false");
+
+                    ENSURE_IPFS_INSTALLED.main(args);
+
                     IPFS.main(args);
 
                     args.setIfAbsent("peergos.password", "testpassword");
@@ -220,14 +237,14 @@ public class Main
                     args.setIfAbsent("domain", "localhost");
                     args.setIfAbsent("mutable-pointers-file", ":memory:");
                     args.setIfAbsent("social-sql-file", ":memory:");
-                    args.setIfAbsent("useIPFS", "false");
+
 
                     Multihash pkiIpfsNodeId = new IpfsDHT(getLocalMultiAddress(ipfsApiPort)).id().get();
                     args.setIfAbsent("pki-node-id", pkiIpfsNodeId.toBase58());
                     PEERGOS.main(args);
                     POSTSTRAP.main(args);
                 } catch (Exception e) {
-                    throw new RuntimeException(e);
+                    throw new RuntimeException(e.getMessage(), e);
                 }
             },
             Collections.emptyList()
@@ -277,7 +294,7 @@ public class Main
 
             // build a proxying corenode, unless we are the pki node
             CoreNode core = nodeId.equals(pkiServerNodeId) ?
-                    buildPkiCorenode(localMutable, dht, a):
+                    buildPkiCorenode(localMutable, dht, a) :
                     new HTTPCoreNode(ipfsGateway, pkiServerNodeId);
 
             MutablePointersProxy proxingMutable = new HttpMutablePointers(ipfsGateway, ipfsGateway);
@@ -310,7 +327,7 @@ public class Main
         String username = a.getArg("username");
         String password = a.getArg("password");
 
-        int webPort  = a.getInt("webport");
+        int webPort = a.getInt("webport");
         try {
             Files.createTempDirectory("peergos").toString();
         } catch (IOException ioe) {
@@ -432,7 +449,7 @@ public class Main
             "Run a Peergos server, corenode server, social network server or combination thereof",
             args -> {
                 Optional<String> top = args.head();
-                if (! top.isPresent()) {
+                if (!top.isPresent()) {
                     System.out.println("Run with -help to show options");
                     return;
                 }
@@ -455,6 +472,7 @@ public class Main
 
     /**
      * Create path to local blockstore directory from Args.
+     *
      * @param args
      * @return
      */

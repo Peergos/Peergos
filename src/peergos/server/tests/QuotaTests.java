@@ -33,6 +33,7 @@ public class QuotaTests {
                 "useIPFS", "" + useIPFS.equals("IPFS"),
                 "-port", Integer.toString(webPort),
                 "-corenodePort", Integer.toString(corePort),
+                "-logConsole", "true",
                 "default-quota", Long.toString(2 * 1024 * 1024)
         });
         Main.LOCAL.main(args);

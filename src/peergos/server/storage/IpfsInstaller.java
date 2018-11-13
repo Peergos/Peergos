@@ -1,6 +1,8 @@
 package peergos.server.storage;
 
 import static peergos.server.util.Logging.LOG;
+
+import peergos.server.util.Args;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
@@ -28,6 +30,10 @@ public class IpfsInstaller {
         }
     }
 
+
+    /**
+     * Ensure the ipfs executable is installed and that it's contents are correct.
+     */
     public static void ensureInstalled(Path targetFile) {
         ensureInstalled(targetFile, getForPlatform());
     }
@@ -80,7 +86,14 @@ public class IpfsInstaller {
             if (! computed.equals(downloadTarget.multihash))
                 throw new IllegalStateException("Incorrect hash for ipfs binary, aborting install!");
             LOG().info("Writing ipfs-binary to "+ targetFile);
-            Files.write(targetFile, raw);
+            Path tempFile = Files.createTempFile("ipfs-temp-exe", "");
+            Files.write(tempFile, raw);
+            try {
+                Files.move(tempFile, targetFile, StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException ex) {
+                Files.move(tempFile, targetFile);
+            }
+
             targetFile.toFile().setExecutable(true);
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -100,5 +113,14 @@ public class IpfsInstaller {
             Multihash computed = new Multihash(Multihash.Type.sha2_256, Hash.sha256(bytes));
             System.out.println(computed);
         }
+    }
+
+    public static Args testArgs() {
+        Args parse = Args.parse(new String[]{
+                "ipfs-exe-path",
+        });
+//        IpfsWrapper.getIpfsExePath()
+//        parse.with("ipfs-exe-path", )
+        return null;
     }
 }
