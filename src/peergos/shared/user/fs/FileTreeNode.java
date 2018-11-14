@@ -255,7 +255,6 @@ public class FileTreeNode {
                 List<FileTreeNode> capabilityCacheFiles = children.stream()
                         .filter(f -> f.getName().startsWith(FastSharing.SHARING_FILE_PREFIX))
                         .collect(Collectors.toList());
-                //GWT complains about the following line
                 List<FileTreeNode> sharingFiles = children.stream().sorted(Comparator.comparing(f -> f.getFileProperties().modified)).collect(Collectors.toList());
                 FileTreeNode currentSharingFile = sharingFiles.isEmpty() ? null : sharingFiles.get(sharingFiles.size() - 1);
                 if (currentSharingFile != null
