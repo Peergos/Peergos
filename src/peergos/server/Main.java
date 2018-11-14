@@ -281,45 +281,48 @@ public class Main {
             JavaPoster ipfsGateway = new JavaPoster(ipfsGatewayAddress);
 
             boolean useIPFS = a.getBoolean("useIPFS");
-            ContentAddressedStorage dht = useIPFS ?
+            ContentAddressedStorage localDht = useIPFS ?
                     new CachingStorage(new ContentAddressedStorage.HTTP(ipfsApi), dhtCacheEntries, maxValueSizeToCache) :
                     new FileContentAddressedStorage(blockstorePath(a));
 
             String hostname = a.getArg("domain");
             int maxUserCount = a.getInt("max-user-count", CoreNode.MAX_USERNAME_COUNT);
-            Multihash nodeId = dht.id().get();
+            Multihash nodeId = localDht.id().get();
 
             String mutablePointersSqlFile = a.getArg("mutable-pointers-file");
             String path = mutablePointersSqlFile.equals(":memory:") ?
                     mutablePointersSqlFile :
                     a.fromPeergosDir("mutable.sql").toString();
-            MutablePointers localMutable = UserRepository.buildSqlLite(path, dht, maxUserCount);
+            MutablePointers localMutable = UserRepository.buildSqlLite(path, localDht, maxUserCount);
 
             // build a proxying corenode, unless we are the pki node
             CoreNode core = nodeId.equals(pkiServerNodeId) ?
-                    buildPkiCorenode(localMutable, dht, a) :
+                    buildPkiCorenode(localMutable, localDht, a) :
                     new HTTPCoreNode(ipfsGateway, pkiServerNodeId);
+
+            ContentAddressedStorageProxy proxingDht = new ContentAddressedStorageProxy.HTTP(ipfsGateway);
+            ContentAddressedStorage p2pDht = new ContentAddressedStorage.Proxying(localDht, proxingDht, nodeId, core);
 
             MutablePointersProxy proxingMutable = new HttpMutablePointers(ipfsGateway, ipfsGateway);
             MutablePointers p2mMutable = new ProxyingMutablePointers(nodeId, core, localMutable, proxingMutable);
             Path blacklistPath = a.fromPeergosDir("blacklist_file", "blacklist.txt");
-            PublicKeyBlackList blacklist = new UserBasedBlacklist(blacklistPath, core, p2mMutable, dht);
-            MutablePointers mutablePointers = new BlockingMutablePointers(new PinningMutablePointers(p2mMutable, dht), blacklist);
+            PublicKeyBlackList blacklist = new UserBasedBlacklist(blacklistPath, core, p2mMutable, p2pDht);
+            MutablePointers mutablePointers = new BlockingMutablePointers(new PinningMutablePointers(p2mMutable, p2pDht), blacklist);
 
             SocialNetworkProxy httpSocial = new HttpSocialNetwork(ipfsGateway, ipfsGateway);
             String socialNodeFile = a.getArg("social-sql-file");
             String socialPath = socialNodeFile.equals(":memory:") ?
                     socialNodeFile :
                     a.fromPeergosDir("socialnodeFile").toString();
-            SocialNetwork local = UserRepository.buildSqlLite(socialPath, dht, maxUserCount);
+            SocialNetwork local = UserRepository.buildSqlLite(socialPath, p2pDht, maxUserCount);
             SocialNetwork p2pSocial = new ProxyingSocialNetwork(nodeId, core, local, httpSocial);
 
             Path userPath = a.fromPeergosDir("whitelist_file", "user_whitelist.txt");
             int delayMs = a.getInt("whitelist_sleep_period", 1000 * 60 * 10);
 
-            new UserFilePinner(userPath, core, mutablePointers, dht, delayMs).start();
+            new UserFilePinner(userPath, core, mutablePointers, p2pDht, delayMs).start();
             InetSocketAddress httpsMessengerAddress = new InetSocketAddress(hostname, userAPIAddress.getPort());
-            new UserService(httpsMessengerAddress, dht, core, p2pSocial, mutablePointers, a);
+            new UserService(httpsMessengerAddress, p2pDht, core, p2pSocial, mutablePointers, a);
         } catch (Exception e) {
             e.printStackTrace();
             System.exit(1);
