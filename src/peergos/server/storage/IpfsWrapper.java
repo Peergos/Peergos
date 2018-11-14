@@ -106,7 +106,7 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
             runIpfsCmd("id");
         } catch (IllegalStateException ile) {
             LOG().info("Initializing ipfs");
-            runIpfsCmd("init");
+            runIpfsCmd(true, "init");
         }
 
         if (config.bootstrapNode.isPresent()) {
@@ -193,7 +193,37 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
         runIpfsCmd(true, "p2p", "listen", "--allow-custom-protocol", "/http", target.toString());
     }
 
+    /**
+     * Various ipfs commands fail a high fraction of the time trying to acquire a resource lock... a  weird go/ipfs issue
+     * I don't want to debug right now.
+     * @param subCmd
+     * @return
+     */
     private Process startIpfsCmd(String... subCmd) {
+        return startIpfsCmdRetry(5, subCmd);
+    }
+
+    private Process startIpfsCmdRetry(int retryCount, String... subCmd) {
+        long sleepMs = 100;
+        Process process  = null;
+        for (int i = 0; i < retryCount; i++) {
+            process = startIpfsCmdOnce(subCmd);
+            try {
+                Thread.sleep(sleepMs);
+            } catch (InterruptedException  ie){}
+            try {
+                if  (process.exitValue() ==  0)
+                    return process;
+            } catch (IllegalThreadStateException  ex)  {
+                // still running
+                return process;
+            }
+            sleepMs *= 2;
+        }
+        return process;
+    }
+
+    private Process startIpfsCmdOnce(String... subCmd) {
         LinkedList<String> list = new LinkedList<>(Arrays.asList(subCmd));
         list.addFirst(ipfsPath.toString());
         ProcessBuilder pb = new ProcessBuilder(list);
@@ -323,8 +353,6 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
 
         ipfs.configure(config);
 
-        LOG().info("Starting ipfs daemon");
-
         new Thread(ipfs).start();
 
         ipfs.waitForDaemon(30);
@@ -335,8 +363,6 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
     public static IpfsWrapper launchOnce(IpfsWrapper ipfs, Config config) {
 
         ipfs.configure(config);
-
-        LOG().info("Starting ipfs daemon");
 
         ipfs.start();
 
