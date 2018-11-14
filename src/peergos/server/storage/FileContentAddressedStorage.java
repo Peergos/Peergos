@@ -62,17 +62,17 @@ public class FileContentAddressedStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<MultiAddress>> pinUpdate(Multihash existing, Multihash updated) {
+    public CompletableFuture<List<MultiAddress>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated) {
         return CompletableFuture.completedFuture(Arrays.asList(new MultiAddress("/ipfs/"+existing), new MultiAddress("/ipfs/"+updated)));
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> recursivePin(Multihash h) {
+    public CompletableFuture<List<Multihash>> recursivePin(PublicKeyHash owner, Multihash h) {
         return CompletableFuture.completedFuture(Arrays.asList(h));
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> recursiveUnpin(Multihash h) {
+    public CompletableFuture<List<Multihash>> recursiveUnpin(PublicKeyHash owner, Multihash h) {
         return CompletableFuture.completedFuture(Arrays.asList(h));
     }
 

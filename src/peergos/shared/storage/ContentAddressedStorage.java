@@ -51,11 +51,11 @@ public interface ContentAddressedStorage {
 
     CompletableFuture<Optional<byte[]>> getRaw(Multihash object);
 
-    CompletableFuture<List<MultiAddress>> pinUpdate(Multihash existing, Multihash updated);
+    CompletableFuture<List<MultiAddress>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated);
 
-    CompletableFuture<List<Multihash>> recursivePin(Multihash h);
+    CompletableFuture<List<Multihash>> recursivePin(PublicKeyHash owner, Multihash h);
 
-    CompletableFuture<List<Multihash>> recursiveUnpin(Multihash h);
+    CompletableFuture<List<Multihash>> recursiveUnpin(PublicKeyHash owner, Multihash h);
 
     CompletableFuture<List<Multihash>> getLinks(Multihash root);
 
@@ -211,21 +211,22 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<List<Multihash>> recursivePin(Multihash hash) {
-            return poster.get(apiPrefix + "pin/add?stream-channels=true&arg=" + hash.toString())
-                    .thenApply(this::getPins);
+        public CompletableFuture<List<Multihash>> recursivePin(PublicKeyHash owner, Multihash hash) {
+            return poster.get(apiPrefix + "pin/add?stream-channels=true&arg=" + hash.toString()
+                    + "&owner=" + encode(owner.toString())).thenApply(this::getPins);
         }
 
         @Override
-        public CompletableFuture<List<Multihash>> recursiveUnpin(Multihash hash) {
-            return poster.get(apiPrefix + "pin/rm?stream-channels=true&r=true&arg=" + hash.toString())
-                    .thenApply(this::getPins);
+        public CompletableFuture<List<Multihash>> recursiveUnpin(PublicKeyHash owner, Multihash hash) {
+            return poster.get(apiPrefix + "pin/rm?stream-channels=true&r=true&arg=" + hash.toString()
+                    + "&owner=" + encode(owner.toString())).thenApply(this::getPins);
         }
 
         @Override
-        public CompletableFuture<List<MultiAddress>> pinUpdate(Multihash existing, Multihash updated) {
-            return poster.get(apiPrefix + "pin/update?stream-channels=true&arg=" + existing.toString() + "&arg=" + updated + "&unpin=false")
-                    .thenApply(this::getMultiAddr);
+        public CompletableFuture<List<MultiAddress>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated) {
+            return poster.get(apiPrefix + "pin/update?stream-channels=true&arg=" + existing.toString()
+                    + "&arg=" + updated + "&unpin=false"
+                    + "&owner=" + encode(owner.toString())).thenApply(this::getMultiAddr);
         }
 
         private List<Multihash> getPins(byte[] raw) {

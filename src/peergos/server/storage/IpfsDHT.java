@@ -92,7 +92,7 @@ public class IpfsDHT implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<MultiAddress>> pinUpdate(Multihash existing, Multihash updated) {
+    public CompletableFuture<List<MultiAddress>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated) {
         CompletableFuture<List<MultiAddress>> res = new CompletableFuture<>();
         try {
             List<MultiAddress> added = ipfs.pin.update(existing, updated, false);
@@ -104,7 +104,7 @@ public class IpfsDHT implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> recursivePin(Multihash h) {
+    public CompletableFuture<List<Multihash>> recursivePin(PublicKeyHash owner, Multihash h) {
         CompletableFuture<List<Multihash>> res = new CompletableFuture<>();
         try {
             List<Multihash> added = ipfs.pin.add(h);
@@ -116,7 +116,7 @@ public class IpfsDHT implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> recursiveUnpin(Multihash h) {
+    public CompletableFuture<List<Multihash>> recursiveUnpin(PublicKeyHash owner, Multihash h) {
         CompletableFuture<List<Multihash>> res = new CompletableFuture<>();
         try {
             List<Multihash> removed = ipfs.pin.rm(h, true);

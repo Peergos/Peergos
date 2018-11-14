@@ -38,7 +38,7 @@ public class DHTHandler implements HttpHandler {
     }
 
     @Override
-    public void handle(HttpExchange httpExchange) throws IOException {
+    public void handle(HttpExchange httpExchange) {
         long t1 = System.currentTimeMillis();
         String path = httpExchange.getRequestURI().getPath();
         try {
@@ -125,8 +125,20 @@ public class DHTHandler implements HttpHandler {
                     break;
                 }
                 case "pin/add": {
+                    PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
                     Multihash hash = Cid.decode(args.get(0));
-                    dht.recursivePin(hash).thenAccept(pinned -> {
+                    dht.recursivePin(ownerHash, hash).thenAccept(pinned -> {
+                        Map<String, Object> json = new TreeMap<>();
+                        json.put("Pins", pinned.stream().map(h -> h.toString()).collect(Collectors.toList()));
+                        replyJson(httpExchange, JSONParser.toString(json), Optional.empty());
+                    }).exceptionally(Futures::logError);
+                    break;
+                }
+                case "pin/update": {
+                    PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
+                    Multihash existing = Cid.decode(args.get(0));
+                    Multihash updated = Cid.decode(args.get(1));
+                    dht.pinUpdate(ownerHash, existing, updated).thenAccept(pinned -> {
                         Map<String, Object> json = new TreeMap<>();
                         json.put("Pins", pinned.stream().map(h -> h.toString()).collect(Collectors.toList()));
                         replyJson(httpExchange, JSONParser.toString(json), Optional.empty());
@@ -134,11 +146,12 @@ public class DHTHandler implements HttpHandler {
                     break;
                 }
                 case "pin/rm": {
+                    PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
                     boolean recursive = params.containsKey("r") && Boolean.parseBoolean(last.apply("r"));
                     if (!recursive)
                         throw new IllegalStateException("Unimplemented: non recursive unpin!");
                     Multihash hash = Cid.decode(args.get(0));
-                    dht.recursiveUnpin(hash).thenAccept(unpinned -> {
+                    dht.recursiveUnpin(ownerHash, hash).thenAccept(unpinned -> {
                         Map<String, Object> json = new TreeMap<>();
                         json.put("Pins", unpinned.stream().map(h -> h.toString()).collect(Collectors.toList()));
                         replyJson(httpExchange, JSONParser.toString(json), Optional.empty());

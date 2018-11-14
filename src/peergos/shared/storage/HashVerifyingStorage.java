@@ -69,18 +69,18 @@ public class HashVerifyingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<MultiAddress>> pinUpdate(Multihash existing, Multihash updated) {
-        return source.pinUpdate(existing, updated);
+    public CompletableFuture<List<MultiAddress>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated) {
+        return source.pinUpdate(owner, existing, updated);
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> recursivePin(Multihash h) {
-        return source.recursivePin(h);
+    public CompletableFuture<List<Multihash>> recursivePin(PublicKeyHash owner, Multihash h) {
+        return source.recursivePin(owner, h);
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> recursiveUnpin(Multihash h) {
-        return source.recursiveUnpin(h);
+    public CompletableFuture<List<Multihash>> recursiveUnpin(PublicKeyHash owner, Multihash h) {
+        return source.recursiveUnpin(owner, h);
     }
 
     @Override

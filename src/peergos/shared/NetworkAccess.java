@@ -274,7 +274,7 @@ public class NetworkAccess {
         PublicKeyHash owner = ownerOpt.get();
         for (PublicKeyHash keyHash: ownedKeysRecursive) {
             Multihash casKeyHash = mutable.getPointerTarget(owner, keyHash, dhtClient).get().get();
-            dhtClient.recursivePin(casKeyHash).get();
+            dhtClient.recursivePin(owner, casKeyHash).get();
         }
     }
 }
