@@ -816,10 +816,10 @@ public class UserContext {
                     .thenCompose(parent -> sharedWith(toUnshare)
                             .thenCompose(sharedWithUsers ->
                                     toUnshare.makeDirty(network, crypto.random, parent.get(), readersToRemove)
-                                            .thenApply(markedDirty -> {
+                                            .thenCompose(markedDirty -> {
                                                 Set<String> existingEntries = sharedWithCache.getOrDefault("/" + pathString, new HashSet<>());
                                                 existingEntries.removeAll(readersToRemove);
-                                                return true;
+                                                return shareWith(path, existingEntries);
                                             })));
         });
     }
