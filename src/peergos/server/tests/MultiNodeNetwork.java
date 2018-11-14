@@ -33,6 +33,7 @@ public class MultiNodeNetwork {
         // other nodes
         int ipfsApiPort = 9000 + random.nextInt(8000);
         int ipfsGatewayPort = 9000 + random.nextInt(8000);
+        int ipfsSwarmPort = 9000 + random.nextInt(8000);
         int peergosPort = 9000 + random.nextInt(8000);
         Args normalNode = UserTests.buildArgs()
                 .with("useIPFS", "true")
@@ -40,6 +41,7 @@ public class MultiNodeNetwork {
                 .with("pki-node-id", pkiNodeId.toBase58())
                 .with("ipfs-config-api-port", "" + ipfsApiPort)
                 .with("ipfs-config-gateway-port", "" + ipfsGatewayPort)
+                .with("ipfs-config-swarm-port", "" + ipfsSwarmPort)
                 .with("proxy-target", Main.getLocalMultiAddress(peergosPort).toString())
                 .with("ipfs-api-address", Main.getLocalMultiAddress(ipfsApiPort).toString())
                 .with("mutable-pointers-file", ":memory:")
