@@ -1114,7 +1114,6 @@ public class UserContext {
                 return CompletableFuture.completedFuture(root);
             String path = pair.right.get();
             EntryPoint e = pair.left;
-            List<RetrievedCapability> retrievedCapabilities = new ArrayList<>();
             // check entrypoint doesn't forge the owner
             return  (e.owner.equals(ourName) ? CompletableFuture.completedFuture(true) :
                     e.isValid(path, network)).thenApply(valid -> {
