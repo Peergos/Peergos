@@ -3,6 +3,7 @@ import java.util.logging.*;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.ContentAddressedStorage;
 import peergos.shared.user.*;
@@ -82,7 +83,8 @@ public class TreeNode implements Cborable {
                         .get(key, storage));
     }
 
-    public CompletableFuture<TreeNode> put(SigningPrivateKeyAndPublicHash writer,
+    public CompletableFuture<TreeNode> put(PublicKeyHash owner,
+                                           SigningPrivateKeyAndPublicHash writer,
                                            ByteArrayWrapper key,
                                            MaybeMultihash existing,
                                            Multihash value,
@@ -111,14 +113,14 @@ public class TreeNode implements Cborable {
             keys.remove(nextSmallest);
             keys.add(modified);
             // commit this node to storage
-            return storage.put(writer, this.serialize())
+            return storage.put(owner, writer, this.serialize())
                     .thenApply(multihash -> new TreeNode(this.keys, multihash));
         }
         if (! nextSmallest.targetHash.isPresent()) {
             if (keys.size() < maxChildren) {
                 keys.add(new KeyElement(key,  MaybeMultihash.of(value), MaybeMultihash.empty()));
                 // commit this node to storage
-                return storage.put(writer, this.serialize())
+                return storage.put(owner, writer, this.serialize())
                         .thenApply(multihash -> new TreeNode(this.keys, MaybeMultihash.of(multihash)));
             }
             // split into two and make new parent
@@ -129,13 +131,13 @@ public class TreeNode implements Cborable {
             // commit left child
             SortedSet<KeyElement> left = keys.headSet(median);
             TreeNode leftChild = new TreeNode(left);
-            return storage.put(writer, leftChild.serialize()).thenCompose(leftChildHash -> {
+            return storage.put(owner, writer, leftChild.serialize()).thenCompose(leftChildHash -> {
 
                 // commit right child
                 SortedSet<KeyElement> right = keys.tailSet(median);
                 right.remove(right.first());
                 TreeNode rightChild = new TreeNode(median.targetHash, right);
-                return storage.put(writer, rightChild.serialize()).thenApply(rightChildHash -> {
+                return storage.put(owner, writer, rightChild.serialize()).thenApply(rightChildHash -> {
 
                     // now add median to parent
                     TreeSet holder = new TreeSet<>();
@@ -150,7 +152,7 @@ public class TreeNode implements Cborable {
         Multihash nextSmallestHash = nextSmallest.targetHash.get();
         return storage.get(nextSmallestHash)
                 .thenApply(rawOpt -> TreeNode.fromCbor(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present! " + nextSmallestHash))))
-                .thenCompose(modifiedChild -> modifiedChild.withHash(finalNextSmallest.targetHash).put(writer, key, existing, value, storage, maxChildren))
+                .thenCompose(modifiedChild -> modifiedChild.withHash(finalNextSmallest.targetHash).put(owner, writer, key, existing, value, storage, maxChildren))
                 .thenCompose(modifiedChild -> {
                     if (!modifiedChild.hash.isPresent()) {
                         // we split a child and need to add the median to our keys
@@ -159,7 +161,7 @@ public class TreeNode implements Cborable {
                             keys.remove(finalNextSmallest);
                             keys.add(replacementNextSmallest);
                             keys.add(modifiedChild.keys.last());
-                            return storage.put(writer, this.serialize())
+                            return storage.put(owner, writer, this.serialize())
                                     .thenApply(multihash -> new TreeNode(this.keys, MaybeMultihash.of(multihash)));
                         }
                         // we need to split as well, merge in new key and two pointers first
@@ -176,13 +178,13 @@ public class TreeNode implements Cborable {
                         // commit left child
                         SortedSet<KeyElement> left = keys.headSet(median);
                         TreeNode leftChild = new TreeNode(left);
-                        return storage.put(writer, leftChild.serialize()).thenCompose(leftChildHash -> {
+                        return storage.put(owner, writer, leftChild.serialize()).thenCompose(leftChildHash -> {
 
                             // commit right child
                             SortedSet<KeyElement> right = keys.tailSet(median);
                             right.remove(right.first());
                             TreeNode rightChild = new TreeNode(median.targetHash, right);
-                            return storage.put(writer, rightChild.serialize()).thenApply(rightChildHash -> {
+                            return storage.put(owner, writer, rightChild.serialize()).thenApply(rightChildHash -> {
                                 // now add median to parent
                                 TreeSet holder = new TreeSet<>();
                                 KeyElement newParent = new KeyElement(median.key, median.valueHash, MaybeMultihash.of(rightChildHash));
@@ -195,7 +197,7 @@ public class TreeNode implements Cborable {
                     KeyElement updated = new KeyElement(finalNextSmallest.key, finalNextSmallest.valueHash, modifiedChild.hash.get());
                     keys.remove(finalNextSmallest);
                     keys.add(updated);
-                    return storage.put(writer, this.serialize()).thenApply(multihash -> new TreeNode(this, multihash));
+                    return storage.put(owner, writer, this.serialize()).thenApply(multihash -> new TreeNode(this, multihash));
                 });
     }
 
@@ -236,7 +238,7 @@ public class TreeNode implements Cborable {
                         .smallestKey(storage));
     }
 
-    public CompletableFuture<TreeNode> delete(SigningPrivateKeyAndPublicHash writer, ByteArrayWrapper key, MaybeMultihash existing, ContentAddressedStorage storage, int maxChildren) {
+    public CompletableFuture<TreeNode> delete(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, ByteArrayWrapper key, MaybeMultihash existing, ContentAddressedStorage storage, int maxChildren) {
         KeyElement dummy = KeyElement.dummy(key);
         SortedSet<KeyElement> tailSet = keys.tailSet(dummy);
         KeyElement nextSmallest;
@@ -260,7 +262,7 @@ public class TreeNode implements Cborable {
                 // put in a tombstone
                 keys.add(new KeyElement(nextSmallest.key, MaybeMultihash.empty(), MaybeMultihash.empty()));
                 if (keys.size() >= maxChildren/2) {
-                    return storage.put(writer, this.serialize())
+                    return storage.put(owner, writer, this.serialize())
                             .thenApply(multihash -> new TreeNode(this.keys, multihash));
                 }
                 return CompletableFuture.completedFuture(new TreeNode(this.keys));
@@ -273,17 +275,17 @@ public class TreeNode implements Cborable {
                         .thenCompose(child -> {
                             // take the subtree's smallest value (in a leaf) delete it and promote it to the separator here
                             return child.smallestKey(storage).thenCompose(smallestKey -> child.get(smallestKey, storage)
-                                    .thenCompose(value -> child.delete(writer, smallestKey, existing, storage, maxChildren)
-                                                    .thenCompose(newChild -> storage.put(writer, newChild.serialize()).thenCompose(childHash -> {
+                                    .thenCompose(value -> child.delete(owner, writer, smallestKey, existing, storage, maxChildren)
+                                                    .thenCompose(newChild -> storage.put(owner, writer, newChild.serialize()).thenCompose(childHash -> {
                                                                 keys.remove(finalNextSmallest);
                                                                 KeyElement replacement = new KeyElement(smallestKey, value, childHash);
                                                                 keys.add(replacement);
                                                                 if (newChild.keys.size() >= maxChildren / 2) {
-                                                                    return storage.put(writer, this.serialize())
+                                                                    return storage.put(owner, writer, this.serialize())
                                                                             .thenApply(multihash1 -> new TreeNode(this, multihash1));
                                                                 } else {
                                                                     // re-balance
-                                                                    return rebalance(writer, this, newChild, childHash, storage, maxChildren);
+                                                                    return rebalance(owner, writer, this, newChild, childHash, storage, maxChildren);
                                                                 }
                                                             })
                                                     )
@@ -298,7 +300,7 @@ public class TreeNode implements Cborable {
         final Multihash nextSmallestHash = nextSmallest.targetHash.get();
         return storage.get(nextSmallestHash)
                 .thenCompose(rawOpt -> TreeNode.fromCbor(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present! " + nextSmallestHash)))
-                        .withHash(finalNextSmallest.targetHash).delete(writer, key, existing, storage, maxChildren))
+                        .withHash(finalNextSmallest.targetHash).delete(owner, writer, key, existing, storage, maxChildren))
                 .thenCompose(child -> {
                     // update pointer
                     if (child.hash.isPresent()) {
@@ -307,15 +309,20 @@ public class TreeNode implements Cborable {
                     }
                     if (child.keys.size() < maxChildren / 2) {
                         // re-balance
-                        return rebalance(writer, this, child, nextSmallestHash, storage, maxChildren);
+                        return rebalance(owner, writer, this, child, nextSmallestHash, storage, maxChildren);
                     }
-                    return storage.put(writer, this.serialize())
+                    return storage.put(owner, writer, this.serialize())
                             .thenApply(multihash -> new TreeNode(this, multihash));
                 });
     }
 
-    private static CompletableFuture<TreeNode> rebalance(SigningPrivateKeyAndPublicHash writer, TreeNode parent, TreeNode child, Multihash originalChildHash,
-                                                         ContentAddressedStorage storage, int maxChildren) {
+    private static CompletableFuture<TreeNode> rebalance(PublicKeyHash owner,
+                                                         SigningPrivateKeyAndPublicHash writer,
+                                                         TreeNode parent,
+                                                         TreeNode child,
+                                                         Multihash originalChildHash,
+                                                         ContentAddressedStorage storage,
+                                                         int maxChildren) {
         LOG.info("Btree:rebalance");
         // child has too few children
         Multihash childHash = originalChildHash;
@@ -346,15 +353,15 @@ public class TreeNode implements Cborable {
                 parent.keys.remove(centerKey);
 
                 child.keys.add(new KeyElement(rightKey.get().key, rightKey.get().valueHash, right.keys.first().targetHash));
-                return storage.put(writer, child.serialize()).thenCompose(newChildHash -> {
+                return storage.put(owner, writer, child.serialize()).thenCompose(newChildHash -> {
                     right.keys.remove(newSeparator);
                     right.keys.remove(KeyElement.dummy(new ByteArrayWrapper(new byte[0])));
                     TreeNode newRight = new TreeNode(newSeparator.targetHash, right.keys);
-                    return storage.put(writer, newRight.serialize()).thenCompose(newRightHash -> {
+                    return storage.put(owner, writer, newRight.serialize()).thenCompose(newRightHash -> {
                         parent.keys.remove(rightKey.get());
                         parent.keys.add(new KeyElement(centerKey.key, centerKey.valueHash, newChildHash));
                         parent.keys.add(new KeyElement(newSeparator.key, newSeparator.valueHash, newRightHash));
-                        return storage.put(writer, parent.serialize())
+                        return storage.put(owner, writer, parent.serialize())
                                 .thenApply(multihash -> new TreeNode(parent, multihash));
                     });
                 });
@@ -365,15 +372,15 @@ public class TreeNode implements Cborable {
                 parent.keys.remove(centerKey);
 
                 left.keys.remove(newSeparator);
-                return storage.put(writer, left.serialize()).thenCompose(newLeftHash -> {
+                return storage.put(owner, writer, left.serialize()).thenCompose(newLeftHash -> {
                     child.keys.add(new KeyElement(centerKey.key, centerKey.valueHash, child.keys.first().targetHash));
                     child.keys.remove(KeyElement.dummy(new ByteArrayWrapper(new byte[0])));
                     child.keys.add(new KeyElement(new ByteArrayWrapper(new byte[0]), MaybeMultihash.empty(), newSeparator.targetHash));
-                    return storage.put(writer, child.serialize()).thenCompose(newChildHash -> {
+                    return storage.put(owner, writer, child.serialize()).thenCompose(newChildHash -> {
                         parent.keys.remove(leftKey.get());
                         parent.keys.add(new KeyElement(leftKey.get().key, leftKey.get().valueHash, newLeftHash));
                         parent.keys.add(new KeyElement(newSeparator.key, newSeparator.valueHash, newChildHash));
-                        return storage.put(writer, parent.serialize())
+                        return storage.put(owner, writer, parent.serialize())
                                 .thenApply(multihash -> new TreeNode(parent, multihash));
                     });
                 });
@@ -385,12 +392,12 @@ public class TreeNode implements Cborable {
                     combinedKeys.addAll(rightSibling.get().keys);
                     combinedKeys.add(new KeyElement(rightKey.get().key, rightKey.get().valueHash, rightSibling.get().keys.first().targetHash));
                     TreeNode combined = new TreeNode(combinedKeys);
-                    return storage.put(writer, combined.serialize()).thenCompose(combinedHash -> {
+                    return storage.put(owner, writer, combined.serialize()).thenCompose(combinedHash -> {
                         parent.keys.remove(rightKey.get());
                         parent.keys.remove(centerKey);
                         parent.keys.add(new KeyElement(centerKey.key, centerKey.valueHash, combinedHash));
                         if (parent.keys.size() >= maxChildren / 2) {
-                            return storage.put(writer, parent.serialize())
+                            return storage.put(owner, writer, parent.serialize())
                                     .thenApply(multihash -> new TreeNode(parent, multihash));
                         }
                         return CompletableFuture.completedFuture(new TreeNode(parent.keys));
@@ -402,12 +409,12 @@ public class TreeNode implements Cborable {
                     combinedKeys.addAll(leftSibling.get().keys);
                     combinedKeys.add(new KeyElement(centerKey.key, centerKey.valueHash, child.keys.first().targetHash));
                     TreeNode combined = new TreeNode(combinedKeys);
-                    return storage.put(writer, combined.serialize()).thenCompose(combinedHash -> {
+                    return storage.put(owner, writer, combined.serialize()).thenCompose(combinedHash -> {
                         parent.keys.remove(leftKey.get());
                         parent.keys.remove(centerKey);
                         parent.keys.add(new KeyElement(leftKey.get().key, leftKey.get().valueHash, combinedHash));
                         if (parent.keys.size() >= maxChildren / 2) {
-                            return storage.put(writer, parent.serialize())
+                            return storage.put(owner, writer, parent.serialize())
                                     .thenApply(multihash -> new TreeNode(parent, multihash));
                         }
                         return CompletableFuture.completedFuture(new TreeNode(parent.keys));

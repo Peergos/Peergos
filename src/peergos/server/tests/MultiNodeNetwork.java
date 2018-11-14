@@ -95,6 +95,20 @@ public class MultiNodeNetwork {
         assertTrue("Following correct", u2Following.contains(u1.username));
     }
 
+    @Test
+    public void writeViaUnrelatedNode() throws Exception {
+        String username1 = generateUsername();
+        String password1 = randomString();
+        UserContext u1 = ensureSignedUp(username1, password1, nodes.get(1), crypto);
+
+        byte[] data = "G'day mate!".getBytes();
+        String filename = "hey.txt";
+        FileTreeNode upload = u1.getUserRoot().get().uploadFile(filename,
+                new AsyncReader.ArrayBacked(data), data.length, nodes.get(0), crypto.random, x -> { }, u1.fragmenter).get();
+        Optional<FileTreeNode> file = u1.getByPath("/" + username1 + "/" + filename).get();
+        Assert.assertTrue(file.isPresent());
+    }
+
     private String generateUsername() {
         return "test" + Math.abs(random.nextInt() % 10000);
     }

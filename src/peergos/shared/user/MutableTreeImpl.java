@@ -81,9 +81,9 @@ public class MutableTreeImpl implements MutableTree {
                     return (holder.tree.isPresent() ?
                             ChampWrapper.create(holder.tree.get(), hasher, dht) :
                             isChamp ?
-                                    ChampWrapper.create(writer, x -> x.data, dht) :
+                                    ChampWrapper.create(owner, writer, x -> x.data, dht) :
                                     MerkleBTree.create(writer.publicKeyHash, holder.btree.get(), dht)
-                    ).thenCompose(tree -> tree.put(writer, mapKey, existing, value))
+                    ).thenCompose(tree -> tree.put(owner, writer, mapKey, existing, value))
                             .thenApply(newRoot -> LOGGING ? log(newRoot, "TREE.put (" + ArrayOps.bytesToHex(mapKey)
                                     + ", " + value + ") => CAS(" + holder.tree + ", " + newRoot + ")") : newRoot)
                             .thenCompose(newTreeRoot -> (isChamp ? holder.withChamp(newTreeRoot) : holder.withBtree(newTreeRoot))
@@ -132,7 +132,7 @@ public class MutableTreeImpl implements MutableTree {
                     return (isChamp ?
                             ChampWrapper.create(holder.tree.get(), hasher, dht) :
                             MerkleBTree.create(writer.publicKeyHash, holder.btree.get(), dht)
-                    ).thenCompose(tree -> tree.remove(writer, mapKey, existing))
+                    ).thenCompose(tree -> tree.remove(owner, writer, mapKey, existing))
                             .thenApply(pair -> LOGGING ? log(pair, "TREE.rm (" + ArrayOps.bytesToHex(mapKey) + "  => " + pair) : pair)
                             .thenCompose(newTreeRoot -> (isChamp ? holder.withChamp(newTreeRoot) : holder.withBtree(newTreeRoot))
                                     .commit(owner, writer, committed.hash, mutable, dht, future::complete))

@@ -23,17 +23,17 @@ public interface ContentAddressedStorage {
 
     int MAX_OBJECT_LENGTH  = 1024*256;
 
-    default CompletableFuture<Multihash> put(SigningPrivateKeyAndPublicHash writer, byte[] block) {
-        return put(writer.publicKeyHash, writer.secret.signatureOnly(block), block);
+    default CompletableFuture<Multihash> put(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, byte[] block) {
+        return put(owner, writer.publicKeyHash, writer.secret.signatureOnly(block), block);
     }
 
-    default CompletableFuture<Multihash> put(PublicKeyHash writer, byte[] signature, byte[] block) {
-        return put(writer, Arrays.asList(signature), Arrays.asList(block))
+    default CompletableFuture<Multihash> put(PublicKeyHash owner, PublicKeyHash writer, byte[] signature, byte[] block) {
+        return put(owner, writer, Arrays.asList(signature), Arrays.asList(block))
                 .thenApply(hashes -> hashes.get(0));
     }
 
-    default CompletableFuture<Multihash> putRaw(PublicKeyHash writer, byte[] signature, byte[] block) {
-        return putRaw(writer, Arrays.asList(signature), Arrays.asList(block))
+    default CompletableFuture<Multihash> putRaw(PublicKeyHash owner, PublicKeyHash writer, byte[] signature, byte[] block) {
+        return putRaw(owner, writer, Arrays.asList(signature), Arrays.asList(block))
                 .thenApply(hashes -> hashes.get(0));
     }
 
@@ -43,11 +43,11 @@ public interface ContentAddressedStorage {
      */
     CompletableFuture<Multihash> id();
 
-    CompletableFuture<List<Multihash>> put(PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks);
+    CompletableFuture<List<Multihash>> put(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks);
 
     CompletableFuture<Optional<CborObject>> get(Multihash object);
 
-    CompletableFuture<List<Multihash>> putRaw(PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks);
+    CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks);
 
     CompletableFuture<Optional<byte[]>> getRaw(Multihash object);
 
@@ -64,7 +64,7 @@ public interface ContentAddressedStorage {
     default CompletableFuture<PublicKeyHash> putSigningKey(byte[] signature,
                                                            PublicKeyHash authKeyHash,
                                                            PublicSigningKey newKey) {
-        return put(authKeyHash, signature, newKey.toCbor().toByteArray())
+        return put(authKeyHash, authKeyHash, signature, newKey.toCbor().toByteArray())
                 .thenApply(PublicKeyHash::new);
     }
 
@@ -75,7 +75,7 @@ public interface ContentAddressedStorage {
     }
 
     default CompletableFuture<PublicKeyHash> putBoxingKey(PublicKeyHash controller, byte[] signature, PublicBoxingKey key) {
-        return put(controller, signature, key.toCbor().toByteArray())
+        return put(controller, controller, signature, key.toCbor().toByteArray())
                 .thenApply(PublicKeyHash::new);
     }
 
@@ -178,17 +178,18 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<List<Multihash>> put(PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
-            return put(writer, signatures, blocks, "cbor");
+        public CompletableFuture<List<Multihash>> put(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
+            return put(owner, writer, signatures, blocks, "cbor");
         }
 
         @Override
-        public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
-            return put(writer, signatures, blocks, "raw");
+        public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
+            return put(owner, writer, signatures, blocks, "raw");
         }
 
-        private CompletableFuture<List<Multihash>> put(PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks, String format) {
+        private CompletableFuture<List<Multihash>> put(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks, String format) {
             return poster.postMultipart(apiPrefix + "block/put?format=" + format
+                    + "&owner=" + encode(owner.toString())
                     + "&writer=" + encode(writer.toString())
                     + "&signatures=" + signatures.stream().map(ArrayOps::bytesToHex).reduce("", (a, b) -> a + "," + b).substring(1), blocks)
                     .thenApply(bytes -> JSONParser.parseStream(new String(bytes))

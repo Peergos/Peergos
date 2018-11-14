@@ -193,12 +193,12 @@ public class WriterData implements Cborable {
         BiFunction<Pair<Champ, Multihash>,
                 Pair<ByteArrayWrapper, MaybeMultihash>,
                 CompletableFuture<Pair<Champ, Multihash>>> inserter =
-                (root, pair) -> root.left.put(writer, pair.left, pair.left.data, 0, MaybeMultihash.empty(), pair.right,
+                (root, pair) -> root.left.put(owner, writer, pair.left, pair.left.data, 0, MaybeMultihash.empty(), pair.right,
                             ChampWrapper.BIT_WIDTH, ChampWrapper.MAX_HASH_COLLISIONS_PER_LEVEL, hasher, network.dhtClient, root.right);
 
         Champ newRoot = Champ.empty();
         byte[] raw = newRoot.serialize();
-        return network.dhtClient.put(writer.publicKeyHash, writer.secret.signatureOnly(raw), raw)
+        return network.dhtClient.put(owner, writer.publicKeyHash, writer.secret.signatureOnly(raw), raw)
                 .thenApply(rootHash -> new Pair<>(newRoot, rootHash))
                 .thenCompose(empty -> MerkleBTree.create(writer.publicKeyHash, btree.get(), network.dhtClient)
                         .thenCompose(mbtree -> mbtree.applyToAllMappings(empty, inserter))
@@ -227,7 +227,7 @@ public class WriterData implements Cborable {
                                                          Consumer<CommittedWriterData> updater) {
         byte[] raw = serialize();
 
-        return immutable.put(signer.publicKeyHash, signer.secret.signatureOnly(raw), raw)
+        return immutable.put(owner, signer.publicKeyHash, signer.secret.signatureOnly(raw), raw)
                 .thenCompose(blobHash -> {
                     MaybeMultihash newHash = MaybeMultihash.of(blobHash);
                     if (newHash.equals(currentHash)) {

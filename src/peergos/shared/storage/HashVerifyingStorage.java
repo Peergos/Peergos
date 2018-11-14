@@ -41,8 +41,8 @@ public class HashVerifyingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> put(PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
-        return source.put(writer, signatures, blocks)
+    public CompletableFuture<List<Multihash>> put(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
+        return source.put(owner, writer, signatures, blocks)
                 .thenApply(hashes -> hashes.stream()
                         .map(h -> verify(blocks.get(hashes.indexOf(h)), h, () -> h))
                         .collect(Collectors.toList()));
@@ -55,8 +55,8 @@ public class HashVerifyingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
-        return source.putRaw(writer, signatures, blocks)
+    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
+        return source.putRaw(owner, writer, signatures, blocks)
                 .thenApply(hashes -> hashes.stream()
                         .map(h -> verify(blocks.get(hashes.indexOf(h)), h, () -> h))
                         .collect(Collectors.toList()));

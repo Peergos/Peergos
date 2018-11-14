@@ -174,19 +174,22 @@ public class NetworkAccess {
         });
     }
 
-    private CompletableFuture<Multihash> uploadFragment(Fragment f, PublicKeyHash writer, byte[] signature) {
-        return dhtClient.putRaw(writer, signature, f.data);
+    private CompletableFuture<Multihash> uploadFragment(Fragment f, PublicKeyHash owner, PublicKeyHash writer, byte[] signature) {
+        return dhtClient.putRaw(owner, writer, signature, f.data);
     }
 
-    private CompletableFuture<List<Multihash>> bulkUploadFragments(List<Fragment> fragments, PublicKeyHash writer, List<byte[]> signatures) {
-        return dhtClient.putRaw(writer, signatures, fragments
+    private CompletableFuture<List<Multihash>> bulkUploadFragments(List<Fragment> fragments, PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures) {
+        return dhtClient.putRaw(owner, writer, signatures, fragments
                 .stream()
                 .map(f -> f.data)
                 .collect(Collectors.toList()));
     }
 
-    public CompletableFuture<List<Multihash>> uploadFragments(List<Fragment> fragments, SigningPrivateKeyAndPublicHash writer,
-                                                              ProgressConsumer<Long> progressCounter, double spaceIncreaseFactor) {
+    public CompletableFuture<List<Multihash>> uploadFragments(List<Fragment> fragments,
+                                                              PublicKeyHash owner,
+                                                              SigningPrivateKeyAndPublicHash writer,
+                                                              ProgressConsumer<Long> progressCounter,
+                                                              double spaceIncreaseFactor) {
         // upload in groups of 10. This means in a browser we have 6 upload threads with erasure coding on, or 4 without
         int FRAGMENTs_PER_QUERY = 1;
         List<List<Fragment>> grouped = IntStream.range(0, (fragments.size() + FRAGMENTs_PER_QUERY - 1) / FRAGMENTs_PER_QUERY)
@@ -195,6 +198,7 @@ public class NetworkAccess {
         List<CompletableFuture<List<Multihash>>> futures = grouped.stream()
                 .map(g -> bulkUploadFragments(
                         g,
+                        owner,
                         writer.publicKeyHash,
                         g.stream().map(f -> writer.secret.signatureOnly(f.data)).collect(Collectors.toList())
                 ).thenApply(hash -> {
@@ -213,7 +217,7 @@ public class NetworkAccess {
             throw new IllegalStateException("Non matching location writer and signing writer key!");
         try {
             byte[] metaBlob = metadata.serialize();
-            return dhtClient.put(location.writer, writer.secret.signatureOnly(metaBlob), metaBlob)
+            return dhtClient.put(location.owner, location.writer, writer.secret.signatureOnly(metaBlob), metaBlob)
                     .thenCompose(blobHash -> tree.put(location.owner, writer, location.getMapKey(), metadata.committedHash(), blobHash)
                             .thenApply(res -> blobHash));
         } catch (Exception e) {

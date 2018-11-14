@@ -37,10 +37,10 @@ public class ChampWrapper implements ImmutableTree
         });
     }
 
-    public static CompletableFuture<ChampWrapper> create(SigningPrivateKeyAndPublicHash writer, Function<ByteArrayWrapper, byte[]> hasher, ContentAddressedStorage dht) {
+    public static CompletableFuture<ChampWrapper> create(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, Function<ByteArrayWrapper, byte[]> hasher, ContentAddressedStorage dht) {
         Champ newRoot = Champ.empty();
         byte[] raw = newRoot.serialize();
-        return dht.put(writer.publicKeyHash, writer.secret.signatureOnly(raw), raw)
+        return dht.put(owner, writer.publicKeyHash, writer.secret.signatureOnly(raw), raw)
                 .thenApply(put -> new ChampWrapper(newRoot, put, hasher, dht, BIT_WIDTH));
     }
 
@@ -62,9 +62,9 @@ public class ChampWrapper implements ImmutableTree
      * @return hash of new tree root
      * @throws IOException
      */
-    public CompletableFuture<Multihash> put(SigningPrivateKeyAndPublicHash writer, byte[] rawKey, MaybeMultihash existing, Multihash value) {
+    public CompletableFuture<Multihash> put(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, byte[] rawKey, MaybeMultihash existing, Multihash value) {
         ByteArrayWrapper key = new ByteArrayWrapper(rawKey);
-        return root.left.put(writer, key, hasher.apply(key), 0, existing, MaybeMultihash.of(value),
+        return root.left.put(owner, writer, key, hasher.apply(key), 0, existing, MaybeMultihash.of(value),
                 BIT_WIDTH, MAX_HASH_COLLISIONS_PER_LEVEL, hasher, storage, root.right)
                 .thenCompose(newRoot -> commit(writer, newRoot));
     }
@@ -75,9 +75,9 @@ public class ChampWrapper implements ImmutableTree
      * @return hash of new tree root
      * @throws IOException
      */
-    public CompletableFuture<Multihash> remove(SigningPrivateKeyAndPublicHash writer, byte[] rawKey, MaybeMultihash existing) {
+    public CompletableFuture<Multihash> remove(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, byte[] rawKey, MaybeMultihash existing) {
         ByteArrayWrapper key = new ByteArrayWrapper(rawKey);
-        return root.left.put(writer, key, hasher.apply(key), 0, existing, MaybeMultihash.empty(),
+        return root.left.put(owner, writer, key, hasher.apply(key), 0, existing, MaybeMultihash.empty(),
                 BIT_WIDTH, MAX_HASH_COLLISIONS_PER_LEVEL, hasher, storage, root.right)
                 .thenCompose(newRoot -> commit(writer, newRoot));
     }
