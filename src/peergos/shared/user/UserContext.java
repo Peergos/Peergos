@@ -79,11 +79,16 @@ public class UserContext {
     }
 
     @JsMethod
+    public boolean isShared(FileTreeNode file) {
+        return false;
+    }
+    /*
+    @JsMethod
     public CompletableFuture<Boolean> isShared(FileTreeNode file) {
         return file.getPath(network).thenApply(pathString ->
                 sharedWithCache.containsKey(pathString)
         );
-    }
+    }*/
     
     public boolean isJavascript() {
     	return this.network.isJavascript();
