@@ -22,15 +22,7 @@ public class FastSharing {
             , NetworkAccess network, SafeRandom random, Fragmenter fragmenter, boolean saveCache) {
         return friendSharedDir.getChildren(network)
             .thenCompose(files -> {
-                //GWT complains about following line
-                //List<FileTreeNode> sharingFiles = children.stream().sorted(Comparator.comparing(f -> f.getFileProperties().modified)).collect(Collectors.toList());
-                List<FileTreeNode> sharingFiles = new ArrayList<>(files);
-                Collections.sort(sharingFiles, new Comparator<FileTreeNode>() {
-                    @Override
-                    public int compare(FileTreeNode o1, FileTreeNode o2) {
-                        return o1.getFileProperties().modified.compareTo(o2.getFileProperties().modified);
-                    }
-                });
+                List<FileTreeNode> sharingFiles = files.stream().sorted(Comparator.comparing(f -> f.getFileProperties().modified)).collect(Collectors.toList());
                 return ourRoot.getChild(friendName + RETRIEVED_CAPABILITY_CACHE, network).thenCompose( optCachedFile -> {
                     long totalRecords = sharingFiles.stream().mapToLong(f -> f.getFileProperties().size).sum() / FILE_POINTER_SIZE;
                     if(!optCachedFile.isPresent() ) {

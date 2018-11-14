@@ -256,14 +256,7 @@ public class FileTreeNode {
                         .filter(f -> f.getName().startsWith(FastSharing.SHARING_FILE_PREFIX))
                         .collect(Collectors.toList());
                 //GWT complains about the following line
-                //List<FileTreeNode> sharingFiles = children.stream().sorted(Comparator.comparing(f -> f.getFileProperties().modified)).collect(Collectors.toList());
-                List<FileTreeNode> sharingFiles = new ArrayList<>(capabilityCacheFiles);
-                Collections.sort(sharingFiles, new Comparator<FileTreeNode>() {
-                    @Override
-                    public int compare(FileTreeNode o1, FileTreeNode o2) {
-                        return o1.getFileProperties().modified.compareTo(o2.getFileProperties().modified);
-                    }
-                });
+                List<FileTreeNode> sharingFiles = children.stream().sorted(Comparator.comparing(f -> f.getFileProperties().modified)).collect(Collectors.toList());
                 FileTreeNode currentSharingFile = sharingFiles.isEmpty() ? null : sharingFiles.get(sharingFiles.size() - 1);
                 if (currentSharingFile != null
                         && currentSharingFile.getFileProperties().size + FastSharing.FILE_POINTER_SIZE <= FastSharing.SHARING_FILE_MAX_SIZE) {
