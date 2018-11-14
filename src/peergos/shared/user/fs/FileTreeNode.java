@@ -255,7 +255,7 @@ public class FileTreeNode {
                 List<FileTreeNode> capabilityCacheFiles = children.stream()
                         .filter(f -> f.getName().startsWith(FastSharing.SHARING_FILE_PREFIX))
                         .collect(Collectors.toList());
-                List<FileTreeNode> sharingFiles = children.stream().sorted(Comparator.comparing(f -> f.getFileProperties().modified)).collect(Collectors.toList());
+                List<FileTreeNode> sharingFiles = capabilityCacheFiles.stream().sorted(Comparator.comparing(f -> f.getFileProperties().modified)).collect(Collectors.toList());
                 FileTreeNode currentSharingFile = sharingFiles.isEmpty() ? null : sharingFiles.get(sharingFiles.size() - 1);
                 if (currentSharingFile != null
                         && currentSharingFile.getFileProperties().size + FastSharing.FILE_POINTER_SIZE <= FastSharing.SHARING_FILE_MAX_SIZE) {
