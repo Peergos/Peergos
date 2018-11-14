@@ -78,6 +78,17 @@ public class IpfsInstaller {
 
     private static void install(Path targetFile, DownloadTarget downloadTarget) {
         try {
+            Path cacheFile = getLocalCacheDir().resolve(downloadTarget.multihash.toString());
+            if (cacheFile.toFile().exists()) {
+                byte[] raw = Files.readAllBytes(cacheFile);
+                Multihash computed = new Multihash(Multihash.Type.sha2_256, Hash.sha256(raw));
+                if (computed.equals(downloadTarget.multihash)) {
+                    atomicallySaveToFile(targetFile, raw);
+                    targetFile.toFile().setExecutable(true);
+                    return;
+                }
+            }
+
             URI uri = new URI(downloadTarget.url);
             LOG().info("Downloading IPFS binary "+ downloadTarget.url +"...");
             byte[] raw = Serialize.readFully(uri.toURL().openStream());
@@ -85,22 +96,32 @@ public class IpfsInstaller {
 
             if (! computed.equals(downloadTarget.multihash))
                 throw new IllegalStateException("Incorrect hash for ipfs binary, aborting install!");
+
             LOG().info("Writing ipfs-binary to "+ targetFile);
-            Path tempFile = Files.createTempFile("ipfs-temp-exe", "");
-            Files.write(tempFile, raw);
-            try {
-                Files.move(tempFile, targetFile, StandardCopyOption.ATOMIC_MOVE);
-            } catch (AtomicMoveNotSupportedException ex) {
-                Files.move(tempFile, targetFile);
-            }
+            atomicallySaveToFile(targetFile, raw);
+            // save to local cache
+            cacheFile.getParent().toFile().mkdirs();
+            atomicallySaveToFile(cacheFile, raw);
 
             targetFile.toFile().setExecutable(true);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
-
     }
 
+    private static void atomicallySaveToFile(Path targetFile, byte[] data) throws IOException {
+        Path tempFile = Files.createTempFile("ipfs-temp-exe", "");
+        Files.write(tempFile, data);
+        try {
+            Files.move(tempFile, targetFile, StandardCopyOption.ATOMIC_MOVE);
+        } catch (AtomicMoveNotSupportedException ex) {
+            Files.move(tempFile, targetFile);
+        }
+    }
+
+    private static Path getLocalCacheDir() {
+        return Paths.get(System.getProperty("user.home"), ".cache");
+    }
 
     public static void main(String[] args) throws Exception {
         Path ipfsPath = Files.createTempFile("something", ".tmp");
