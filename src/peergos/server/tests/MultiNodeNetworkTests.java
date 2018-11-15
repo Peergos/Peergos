@@ -16,7 +16,7 @@ import java.util.stream.*;
 
 import static org.junit.Assert.*;
 
-public class MultiNodeNetwork {
+public class MultiNodeNetworkTests {
     private static Args args = UserTests.buildArgs().with("useIPFS", "true");
 
     private static Random random = new Random(0);

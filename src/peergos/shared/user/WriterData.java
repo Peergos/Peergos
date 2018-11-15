@@ -162,7 +162,7 @@ public class WriterData implements Cborable {
         WriterData tmp = addOwnedKey(signer.publicKeyHash);
         return tmp.commit(oldSigner.publicKeyHash, oldSigner, currentHash, network, x -> {}).thenCompose(tmpCommited -> {
             Optional<UserStaticData> newEntryPoints = staticData.map(sd -> sd.withKey(newKey));
-            return network.dhtClient.putBoxingKey(signer.publicKeyHash, signer.secret.signatureOnly(followRequestReceiver.serialize()), followRequestReceiver)
+            return network.dhtClient.putBoxingKey(oldSigner.publicKeyHash, oldSigner.secret.signatureOnly(followRequestReceiver.serialize()), followRequestReceiver)
                     .thenCompose(boxerHash -> {
                         WriterData updated = new WriterData(signer.publicKeyHash,
                                 Optional.of(newAlgorithm),

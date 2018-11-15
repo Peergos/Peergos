@@ -80,16 +80,17 @@ public class UserService {
                        CoreNode coreNode,
                        SocialNetwork social,
                        MutablePointers mutable,
-                       Args args) throws IOException
+                       Args args,
+                       SpaceCheckingKeyFilter keyFilter) throws IOException
     {
         this.local = local;
         this.coreNode = coreNode;
         this.social = social;
         this.mutable = mutable;
-        init(dht, args);
+        init(dht, args, keyFilter);
     }
 
-    public boolean init(ContentAddressedStorage dht, Args args) throws IOException {
+    public boolean init(ContentAddressedStorage dht, Args args, SpaceCheckingKeyFilter spaceChecker) throws IOException {
         boolean isLocal = this.local.getHostName().contains("local");
         if (!isLocal)
             try {
@@ -169,14 +170,8 @@ public class UserService {
 
         Function<HttpHandler, HttpHandler> wrap = h -> !isLocal ? new HSTSHandler(h) : h;
 
-        long defaultQuota = args.getLong("default-quota");
-        LOG.info("Using default user space quota of " + defaultQuota);
-        Path quotaFilePath = args.fromPeergosDir("quotas_file","quotas.txt");
-        UserQuotas userQuotas = new UserQuotas(quotaFilePath, defaultQuota);
-        SpaceCheckingKeyFilter spaceChecker = new SpaceCheckingKeyFilter(coreNode, mutable, dht, userQuotas::quota);
-
         server.createContext(DHT_URL,
-                wrap.apply(new DHTHandler(dht, spaceChecker::allowWrite)));
+                wrap.apply(new DHTHandler(dht, (h, i) -> true)));
 
         CorenodeEventPropagator corenodePropagator = new CorenodeEventPropagator(this.coreNode);
         corenodePropagator.addListener(spaceChecker::accept);

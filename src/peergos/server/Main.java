@@ -271,7 +271,7 @@ public class Main {
             int webPort = a.getInt("port");
             Multihash pkiServerNodeId = Cid.decode(a.getArg("pki-node-id"));
             URL ipfsApiAddress = new URI("http://localhost:" + a.getArg("ipfs-config-api-port", "5001")).toURL();
-            URL ipfsGatewayAddress = new URI("http://localhost:" + a.getArg("ipfs-gateway-port", "8080")).toURL();
+            URL ipfsGatewayAddress = new URI("http://localhost:" + a.getArg("ipfs-config-gateway-port", "8080")).toURL();
             String domain = a.getArg("domain");
             InetSocketAddress userAPIAddress = new InetSocketAddress(domain, webPort);
 
@@ -300,8 +300,14 @@ public class Main {
                     buildPkiCorenode(localMutable, localDht, a) :
                     new HTTPCoreNode(ipfsGateway, pkiServerNodeId);
 
+            long defaultQuota = a.getLong("default-quota");
+            Logging.LOG().info("Using default user space quota of " + defaultQuota);
+            Path quotaFilePath = a.fromPeergosDir("quotas_file","quotas.txt");
+            UserQuotas userQuotas = new UserQuotas(quotaFilePath, defaultQuota);
+            SpaceCheckingKeyFilter spaceChecker = new SpaceCheckingKeyFilter(core, localMutable, localDht, userQuotas::quota);
+            ContentAddressedStorage filteringDht = new WriteFilter(localDht, spaceChecker::allowWrite);
             ContentAddressedStorageProxy proxingDht = new ContentAddressedStorageProxy.HTTP(ipfsGateway);
-            ContentAddressedStorage p2pDht = new ContentAddressedStorage.Proxying(localDht, proxingDht, nodeId, core);
+            ContentAddressedStorage p2pDht = new ContentAddressedStorage.Proxying(filteringDht, proxingDht, nodeId, core);
 
             MutablePointersProxy proxingMutable = new HttpMutablePointers(ipfsGateway, ipfsGateway);
             MutablePointers p2mMutable = new ProxyingMutablePointers(nodeId, core, localMutable, proxingMutable);
@@ -321,8 +327,9 @@ public class Main {
             int delayMs = a.getInt("whitelist_sleep_period", 1000 * 60 * 10);
 
             new UserFilePinner(userPath, core, mutablePointers, p2pDht, delayMs).start();
+
             InetSocketAddress httpsMessengerAddress = new InetSocketAddress(hostname, userAPIAddress.getPort());
-            new UserService(httpsMessengerAddress, p2pDht, core, p2pSocial, mutablePointers, a);
+            new UserService(httpsMessengerAddress, p2pDht, core, p2pSocial, mutablePointers, a, spaceChecker);
         } catch (Exception e) {
             e.printStackTrace();
             System.exit(1);
