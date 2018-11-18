@@ -4,7 +4,6 @@ import peergos.shared.*;
 import peergos.server.corenode.*;
 import peergos.server.fuse.*;
 import peergos.server.mutable.*;
-import peergos.server.social.*;
 import peergos.server.storage.*;
 import peergos.server.tests.*;
 import peergos.server.util.*;
@@ -23,6 +22,7 @@ import peergos.shared.mutable.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
+import peergos.shared.util.*;
 
 import java.io.*;
 import java.net.*;
@@ -273,8 +273,8 @@ public class Main {
 
             int webPort = a.getInt("port");
             Multihash pkiServerNodeId = Cid.decode(a.getArg("pki-node-id"));
-            URL ipfsApiAddress = getLocalAddress(a.getInt("ipfs-config-api-port", 5001));
-            URL ipfsGatewayAddress = getLocalAddress(a.getInt("ipfs-config-gateway-port", 8080));
+            URL ipfsApiAddress = AddressUtil.getLocalAddress(a.getInt("ipfs-config-api-port", 5001));
+            URL ipfsGatewayAddress = AddressUtil.getLocalAddress(a.getInt("ipfs-config-gateway-port", 8080));
             String domain = a.getArg("domain");
             InetSocketAddress userAPIAddress = new InetSocketAddress(domain, webPort);
 
@@ -374,20 +374,17 @@ public class Main {
     public static void startIpfs(Args a) {
         // test if ipfs is already running
         int ipfsApiPort = IpfsWrapper.getApiPort(a);
-        try {
-            ContentAddressedStorage.HTTP api = new ContentAddressedStorage.HTTP(new JavaPoster(getLocalAddress(ipfsApiPort)));
-            api.id().get();
+        if (IpfsWrapper.isHttpApiListening(ipfsApiPort)) {
             Logger.getGlobal().info("IPFS is already running, using existing instance at " + ipfsApiPort);
             return;
-        } catch (Exception e) {}
+        }
 
         IpfsWrapper ipfs = IpfsWrapper.build(a);
-        IpfsWrapper.Config config = IpfsWrapper.buildConfig(a);
 
         if (a.getBoolean("ipfs-manage-runtime", true))
-            IpfsWrapper.launchAndManage(ipfs, config);
+            IpfsWrapper.launchAndManage(ipfs);
         else {
-            IpfsWrapper.launchOnce(ipfs, config);
+            IpfsWrapper.launchOnce(ipfs);
         }
         // wait for daemon to finish starting
         ipfs.waitForDaemon(10);
@@ -502,14 +499,6 @@ public class Main {
      */
     private static Path blockstorePath(Args args) {
         return args.fromPeergosDir("blockstore_dir", "blockstore");
-    }
-
-    public static URL getLocalAddress(int port) {
-        try {
-            return new URI("http://localhost:" + port).toURL();
-        } catch (URISyntaxException | MalformedURLException e) {
-            throw new RuntimeException(e);
-        }
     }
 
     public static MultiAddress getLocalMultiAddress(int port) {
