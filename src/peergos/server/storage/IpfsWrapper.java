@@ -15,7 +15,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static peergos.server.util.Logging.LOG;
-import static peergos.shared.util.AddressUtil.getLocalAddress;
+import static peergos.server.util.AddressUtil.getLocalAddress;
 
 public class IpfsWrapper implements AutoCloseable, Runnable {
     /**

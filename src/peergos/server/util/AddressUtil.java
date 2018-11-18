@@ -1,4 +1,4 @@
-package peergos.shared.util;
+package peergos.server.util;
 
 import java.net.*;
 

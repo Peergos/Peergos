@@ -22,7 +22,6 @@ import peergos.shared.mutable.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
-import peergos.shared.util.*;
 
 import java.io.*;
 import java.net.*;
