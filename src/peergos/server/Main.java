@@ -27,8 +27,8 @@ import peergos.shared.user.*;
 import java.io.*;
 import java.net.*;
 import java.nio.file.*;
-import java.sql.*;
 import java.util.*;
+import java.util.logging.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -148,8 +148,8 @@ public class Main {
                             crypto.hasher,
                             crypto.symmetricProvider,
                             crypto.random);
-                    Files.write(Paths.get(args.getArg("pki.secret.key.path")), cipherTextCbor.serialize());
-                    Files.write(Paths.get(args.getArg("pki.public.key.path")), pkiKeys.publicSigningKey.toCbor().toByteArray());
+                    Files.write(args.fromPeergosDir("pki.secret.key.path"), cipherTextCbor.serialize());
+                    Files.write(args.fromPeergosDir("pki.public.key.path"), pkiKeys.publicSigningKey.toCbor().toByteArray());
                     args.setIfAbsent("peergos.identity.hash", peergosPublicHash.toString());
 
                 } catch (Exception e) {
@@ -184,7 +184,7 @@ public class Main {
                     PublicKeyHash peergosPublicHash = ContentAddressedStorage.hashKey(peergosIdentityKeys.publicSigningKey);
                     PublicSigningKey pkiPublic =
                             PublicSigningKey.fromByteArray(
-                                    Files.readAllBytes(Paths.get(args.getArg("pki.public.key.path"))));
+                                    Files.readAllBytes(args.fromPeergosDir("pki.public.key.path")));
                     PublicKeyHash pkiPublicHash = ContentAddressedStorage.hashKey(pkiPublic);
                     int webPort = args.getInt("port");
                     NetworkAccess network = NetworkAccess.buildJava(new URL("http://localhost:" + webPort)).get();
@@ -268,10 +268,13 @@ public class Main {
         try {
             PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, new Ed25519.Java());
 
+            ENSURE_IPFS_INSTALLED.main(a);
+            IPFS.main(a);
+
             int webPort = a.getInt("port");
             Multihash pkiServerNodeId = Cid.decode(a.getArg("pki-node-id"));
-            URL ipfsApiAddress = new URI("http://localhost:" + a.getArg("ipfs-config-api-port", "5001")).toURL();
-            URL ipfsGatewayAddress = new URI("http://localhost:" + a.getArg("ipfs-config-gateway-port", "8080")).toURL();
+            URL ipfsApiAddress = getLocalAddress(a.getInt("ipfs-config-api-port", 5001));
+            URL ipfsGatewayAddress = getLocalAddress(a.getInt("ipfs-config-gateway-port", 8080));
             String domain = a.getArg("domain");
             InetSocketAddress userAPIAddress = new InetSocketAddress(domain, webPort);
 
@@ -292,7 +295,7 @@ public class Main {
             String mutablePointersSqlFile = a.getArg("mutable-pointers-file");
             String path = mutablePointersSqlFile.equals(":memory:") ?
                     mutablePointersSqlFile :
-                    a.fromPeergosDir("mutable.sql").toString();
+                    a.fromPeergosDir("mutable-pointers-file").toString();
             MutablePointers localMutable = UserRepository.buildSqlLite(path, localDht, maxUserCount);
 
             // build a proxying corenode, unless we are the pki node
@@ -319,7 +322,7 @@ public class Main {
             String socialNodeFile = a.getArg("social-sql-file");
             String socialPath = socialNodeFile.equals(":memory:") ?
                     socialNodeFile :
-                    a.fromPeergosDir("socialnodeFile").toString();
+                    a.fromPeergosDir("social-sql-file").toString();
             SocialNetwork local = UserRepository.buildSqlLite(socialPath, p2pDht, maxUserCount);
             SocialNetwork p2pSocial = new ProxyingSocialNetwork(nodeId, core, local, httpSocial);
 
@@ -369,6 +372,15 @@ public class Main {
 
 
     public static void startIpfs(Args a) {
+        // test if ipfs is already running
+        int ipfsApiPort = IpfsWrapper.getApiPort(a);
+        try {
+            ContentAddressedStorage.HTTP api = new ContentAddressedStorage.HTTP(new JavaPoster(getLocalAddress(ipfsApiPort)));
+            api.id().get();
+            Logger.getGlobal().info("IPFS is already running, using existing instance at " + ipfsApiPort);
+            return;
+        } catch (Exception e) {}
+
         IpfsWrapper ipfs = IpfsWrapper.build(a);
         IpfsWrapper.Config config = IpfsWrapper.buildConfig(a);
 
@@ -438,10 +450,10 @@ public class Main {
 
             PublicSigningKey pkiPublic =
                     PublicSigningKey.fromByteArray(
-                            Files.readAllBytes(Paths.get(a.getArg("pki.public.key.path"))));
+                            Files.readAllBytes(a.fromPeergosDir("pki.public.key.path")));
             SecretSigningKey pkiSecretKey = SecretSigningKey.fromCbor(CborObject.fromByteArray(
                     PasswordProtected.decryptWithPassword(
-                            CborObject.fromByteArray(Files.readAllBytes(Paths.get(a.getArg("pki.secret.key.path")))),
+                            CborObject.fromByteArray(Files.readAllBytes(a.fromPeergosDir("pki.secret.key.path"))),
                             pkiSecretKeyfilePassword,
                             crypto.hasher,
                             crypto.symmetricProvider,
@@ -459,7 +471,7 @@ public class Main {
     }
 
     public static final Command MAIN = new Command("Main",
-            "Run a Peergos server, corenode server, social network server or combination thereof",
+            "Run a Peergos server",
             args -> {
                 Optional<String> top = args.head();
                 if (!top.isPresent()) {
@@ -467,7 +479,6 @@ public class Main {
                     return;
                 }
                 args.setIfAbsent("domain", "localhost");
-                args.setIfAbsent("corenodeFile", ":memory:");
                 if (args.getBoolean("useIPFS", true))
                     startIpfs(args);
                 startCoreNode(args);
@@ -491,6 +502,14 @@ public class Main {
      */
     private static Path blockstorePath(Args args) {
         return args.fromPeergosDir("blockstore_dir", "blockstore");
+    }
+
+    public static URL getLocalAddress(int port) {
+        try {
+            return new URI("http://localhost:" + port).toURL();
+        } catch (URISyntaxException | MalformedURLException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public static MultiAddress getLocalMultiAddress(int port) {

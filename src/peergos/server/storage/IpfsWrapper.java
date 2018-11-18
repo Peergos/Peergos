@@ -63,13 +63,16 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
                 Optional.of(parseMultiAddresses(args.getArg(IPFS_BOOTSTRAP_NODES))) :
                 Optional.empty();
 
-        int apiPort = args.getInt("ipfs-config-api-port", 5001);
+        int apiPort = getApiPort(args);
         int gatewayPort = args.getInt("ipfs-config-gateway-port", 8080);
         int swarmPort = args.getInt("ipfs-config-swarm-port", 4001);
 
         return new Config(bootstrapNodes, apiPort, gatewayPort, swarmPort);
     }
 
+    public static int getApiPort(Args args) {
+        return args.getInt("ipfs-config-api-port", 5001);
+    }
 
     private static final String IPFS_DIR = "IPFS_PATH";
     private static final String IPFS_EXE = "ipfs-exe-path";
@@ -102,9 +105,7 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
     }
 
     public synchronized void configure(Config config) {
-        try {
-            runIpfsCmd("id");
-        } catch (IllegalStateException ile) {
+        if (! ipfsDir.resolve("config").toFile().exists()) {
             LOG().info("Initializing ipfs");
             runIpfsCmd(true, "init");
         }
@@ -316,11 +317,12 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
         //$IPFS_DIR, defaults to $PEERGOS_PATH/.ipfs
         Path ipfsDir = args.hasArg(IPFS_DIR) ?
                 Paths.get(args.getArg(IPFS_DIR)) :
-                args.fromPeergosDir("ipfs-name", DEFAULT_DIR_NAME);
+                args.fromPeergosDir(IPFS_DIR, DEFAULT_DIR_NAME);
 
         //ipfs exe defaults to $PEERGOS_PATH/ipfs
         Path ipfsExe = getIpfsExePath(args);
 
+        LOG().info("Using IPFS dir " + ipfsDir + " and IPFS binary " + ipfsExe);
         return new IpfsWrapper(ipfsExe, ipfsDir);
     }
 

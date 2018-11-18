@@ -49,8 +49,6 @@ public class MultiNodeNetworkTests {
                 .with("mutable-pointers-file", ":memory:")
                 .with("social-sql-file", ":memory:");
 
-        Main.ENSURE_IPFS_INSTALLED.main(normalNode);
-        Main.IPFS.main(normalNode);
         Main.PEERGOS.main(normalNode);
         nodes.add(buildApi(normalNode));
     }
@@ -95,7 +93,7 @@ public class MultiNodeNetworkTests {
         assertTrue("Following correct", u2Following.contains(u1.username));
     }
 
-    @Ignore // ipfs seems to drop the p2p stream before the receiver can write the response
+//    @Ignore // ipfs seems to drop the p2p stream before the receiver can write the response
     @Test
     public void writeViaUnrelatedNode() throws Exception {
         String username1 = generateUsername();
