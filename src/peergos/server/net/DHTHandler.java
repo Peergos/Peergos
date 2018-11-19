@@ -104,14 +104,17 @@ public class DHTHandler implements HttpHandler {
                             throw new IllegalStateException("Invalid signature for block!");
                     }
 
-                    (isRaw ?
+                    List<Multihash> hashes = (isRaw ?
                             dht.putRaw(ownerHash, writerHash, signatures, data) :
-                            dht.put(ownerHash, writerHash, signatures, data)).thenAccept(hashes -> {
-                        List<Object> json = hashes.stream().map(h -> wrapHash(h)).collect(Collectors.toList());
-                        // make stream of JSON objects
-                        String jsonStream = json.stream().map(m -> JSONParser.toString(m)).reduce("", (a, b) -> a + b);
-                        replyJson(httpExchange, jsonStream, Optional.empty());
-                    }).exceptionally(Futures::logError).get();
+                            dht.put(ownerHash, writerHash, signatures, data)).get();
+                    List<Object> json = hashes.stream()
+                            .map(h -> wrapHash(h))
+                            .collect(Collectors.toList());
+                    // make stream of JSON objects
+                    String jsonStream = json.stream()
+                            .map(m -> JSONParser.toString(m))
+                            .reduce("", (a, b) -> a + b);
+                    replyJson(httpExchange, jsonStream, Optional.empty());
                     break;
                 }
                 case "block/get":{
