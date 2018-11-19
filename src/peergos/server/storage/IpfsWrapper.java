@@ -188,6 +188,7 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
     public synchronized void close() {
         if (process != null && process.isAlive())
             stop();
+        ensureIpfsApiFileRemoved();
     }
 
     public synchronized void stop() {
@@ -197,6 +198,7 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
         LOG().info("Stopping ipfs daemon");
         shouldBeRunning = false;
         process.destroy();
+        ensureIpfsApiFileRemoved();
     }
 
     public void startP2pProxy(MultiAddress target) {
@@ -210,6 +212,7 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
      * @return
      */
     private Process startIpfsCmd(String... subCmd) {
+        ensureReadyForCmd();
         return startIpfsCmdRetry(5, subCmd);
     }
 
@@ -387,5 +390,27 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
         return args.hasArg(IPFS_EXE) ?
                 Paths.get(args.getArg(IPFS_EXE)) :
                 args.fromPeergosDir("ipfs-exe", DEFAULT_IPFS_TEST_EXE);
+    }
+
+    /**
+     *
+     */
+    private synchronized void ensureReadyForCmd() {
+
+        if (process != null && process.isAlive())
+            // we are running the daemon process
+            return;
+
+        // we're not running the daemon, ensure the API file is removed.
+        ensureIpfsApiFileRemoved();
+    }
+
+    private void ensureIpfsApiFileRemoved() {
+        Path apiPath = ipfsDir.resolve("api");
+        try {
+            Files.deleteIfExists(apiPath);
+        } catch (IOException ioe) {
+            throw new IllegalStateException(ioe.getMessage(), ioe);
+        }
     }
 }
