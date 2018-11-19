@@ -111,7 +111,7 @@ public class DHTHandler implements HttpHandler {
                         // make stream of JSON objects
                         String jsonStream = json.stream().map(m -> JSONParser.toString(m)).reduce("", (a, b) -> a + b);
                         replyJson(httpExchange, jsonStream, Optional.empty());
-                    }).exceptionally(Futures::logError);
+                    }).exceptionally(Futures::logError).get();
                     break;
                 }
                 case "block/get":{
@@ -121,7 +121,7 @@ public class DHTHandler implements HttpHandler {
                             dht.get(hash).thenApply(opt -> opt.map(CborObject::toByteArray)))
                             .thenAccept(opt -> replyBytes(httpExchange,
                                     opt.orElse(new byte[0]), opt.map(x -> hash)))
-                            .exceptionally(Futures::logError);
+                            .exceptionally(Futures::logError).get();
                     break;
                 }
                 case "pin/add": {
@@ -131,7 +131,7 @@ public class DHTHandler implements HttpHandler {
                         Map<String, Object> json = new TreeMap<>();
                         json.put("Pins", pinned.stream().map(h -> h.toString()).collect(Collectors.toList()));
                         replyJson(httpExchange, JSONParser.toString(json), Optional.empty());
-                    }).exceptionally(Futures::logError);
+                    }).exceptionally(Futures::logError).get();
                     break;
                 }
                 case "pin/update": {
@@ -142,7 +142,7 @@ public class DHTHandler implements HttpHandler {
                         Map<String, Object> json = new TreeMap<>();
                         json.put("Pins", pinned.stream().map(h -> h.toString()).collect(Collectors.toList()));
                         replyJson(httpExchange, JSONParser.toString(json), Optional.empty());
-                    }).exceptionally(Futures::logError);
+                    }).exceptionally(Futures::logError).get();
                     break;
                 }
                 case "pin/rm": {
@@ -155,7 +155,7 @@ public class DHTHandler implements HttpHandler {
                         Map<String, Object> json = new TreeMap<>();
                         json.put("Pins", unpinned.stream().map(h -> h.toString()).collect(Collectors.toList()));
                         replyJson(httpExchange, JSONParser.toString(json), Optional.empty());
-                    }).exceptionally(Futures::logError);
+                    }).exceptionally(Futures::logError).get();
                     break;
                 }
                 case "block/stat": {
@@ -165,7 +165,7 @@ public class DHTHandler implements HttpHandler {
                         res.put("Size", sizeOpt.orElse(0));
                         String json = JSONParser.toString(res);
                         replyJson(httpExchange, json, Optional.of(block));
-                    }).exceptionally(Futures::logError);
+                    }).exceptionally(Futures::logError).get();
                     break;
                 }
                 case "refs": {
@@ -175,14 +175,14 @@ public class DHTHandler implements HttpHandler {
                         // make stream of JSON objects
                         String jsonStream = json.stream().map(m -> JSONParser.toString(m)).reduce("", (a, b) -> a + b);
                         replyJson(httpExchange, jsonStream, Optional.of(block));
-                    }).exceptionally(Futures::logError);
+                    }).exceptionally(Futures::logError).get();
                     break;
                 }
                 case "id": {
                     dht.id().thenAccept(id -> {
                         Object json = wrapHash("ID", id);
                         replyJson(httpExchange, JSONParser.toString(json), Optional.empty());
-                    }).exceptionally(Futures::logError);
+                    }).exceptionally(Futures::logError).get();
                     break;
                 }
                 default: {
