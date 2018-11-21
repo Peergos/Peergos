@@ -4,7 +4,6 @@ import static peergos.server.util.Logging.LOG;
 
 import peergos.server.util.Args;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.util.*;
 
@@ -71,7 +70,7 @@ public class IpfsInstaller {
             }
         }
         else {
-            LOG().info("ipfs-exe "+ targetFile + " not available, downloading");
+            LOG().info("ipfs-exe "+ targetFile + " not available");
         }
         install(targetFile, downloadTarget);
     }
@@ -80,10 +79,11 @@ public class IpfsInstaller {
         try {
             Path cacheFile = getLocalCacheDir().resolve(downloadTarget.multihash.toString());
             if (cacheFile.toFile().exists()) {
+                LOG().info("Using  cached IPFS "+  cacheFile);
                 byte[] raw = Files.readAllBytes(cacheFile);
                 Multihash computed = new Multihash(Multihash.Type.sha2_256, Hash.sha256(raw));
                 if (computed.equals(downloadTarget.multihash)) {
-                    atomicallySaveToFile(targetFile, raw);
+                    Files.createSymbolicLink(targetFile, cacheFile);
                     targetFile.toFile().setExecutable(true);
                     return;
                 }
