@@ -312,10 +312,10 @@ public class Main {
             ContentAddressedStorage p2pDht = new ContentAddressedStorage.Proxying(filteringDht, proxingDht, nodeId, core);
 
             MutablePointersProxy proxingMutable = new HttpMutablePointers(ipfsGateway, ipfsGateway);
-            MutablePointers p2mMutable = new ProxyingMutablePointers(nodeId, core, localMutable, proxingMutable);
             Path blacklistPath = a.fromPeergosDir("blacklist_file", "blacklist.txt");
-            PublicKeyBlackList blacklist = new UserBasedBlacklist(blacklistPath, core, p2mMutable, p2pDht);
-            MutablePointers mutablePointers = new BlockingMutablePointers(new PinningMutablePointers(p2mMutable, p2pDht), blacklist);
+            PublicKeyBlackList blacklist = new UserBasedBlacklist(blacklistPath, core, localMutable, p2pDht);
+            MutablePointers blockingMutablePointers = new BlockingMutablePointers(new PinningMutablePointers(localMutable, p2pDht), blacklist);
+            MutablePointers p2mMutable = new ProxyingMutablePointers(nodeId, core, blockingMutablePointers, proxingMutable);
 
             SocialNetworkProxy httpSocial = new HttpSocialNetwork(ipfsGateway, ipfsGateway);
             String socialNodeFile = a.getArg("social-sql-file");
@@ -328,10 +328,10 @@ public class Main {
             Path userPath = a.fromPeergosDir("whitelist_file", "user_whitelist.txt");
             int delayMs = a.getInt("whitelist_sleep_period", 1000 * 60 * 10);
 
-            new UserFilePinner(userPath, core, mutablePointers, p2pDht, delayMs).start();
+            new UserFilePinner(userPath, core, p2mMutable, p2pDht, delayMs).start();
 
             InetSocketAddress httpsMessengerAddress = new InetSocketAddress(hostname, userAPIAddress.getPort());
-            new UserService(httpsMessengerAddress, p2pDht, core, p2pSocial, mutablePointers, a, spaceChecker);
+            new UserService(httpsMessengerAddress, p2pDht, core, p2pSocial, p2mMutable, a, spaceChecker);
         } catch (Exception e) {
             e.printStackTrace();
             System.exit(1);
