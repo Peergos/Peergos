@@ -25,7 +25,7 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
      * logging
      * configuring including bootstrapping
      */
-    private static final String IPFS_BOOTSTRAP_NODES = "ipfs-config-bootstrap-node-list";
+    public static final String IPFS_BOOTSTRAP_NODES = "ipfs-config-bootstrap-node-list";
 
     public static class Config {
         /**
@@ -56,6 +56,7 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
 
     private static List<MultiAddress> parseMultiAddresses(String s) {
         return Stream.of(s.split(","))
+                .filter(e -> ! e.isEmpty())
                 .map(MultiAddress::new)
                 .collect(Collectors.toList());
     }
@@ -106,7 +107,7 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
         this.ipfsDir = ipfsDir;
         this.config = config;
         // add shutdown-hook to ensure ipfs daemon is killed on exit
-        Runtime.getRuntime().addShutdownHook(new Thread(this::close));
+        ALL_IPFSES.add(this);
     }
 
     public synchronized void configure() {
@@ -412,5 +413,19 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
         } catch (IOException ioe) {
             throw new IllegalStateException(ioe.getMessage(), ioe);
         }
+    }
+
+    private static List<IpfsWrapper> ALL_IPFSES = new ArrayList<>();
+
+    public static List<IpfsWrapper> ipfsRegistry()  {
+        return new ArrayList<>(ALL_IPFSES);
+    }
+
+    static {
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            for (IpfsWrapper ipfs : ALL_IPFSES) {
+                ipfs.close();
+            }
+        }));
     }
 }

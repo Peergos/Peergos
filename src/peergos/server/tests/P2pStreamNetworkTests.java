@@ -5,6 +5,7 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 import peergos.server.Main;
 import peergos.server.storage.IpfsInstaller;
+import peergos.server.storage.IpfsWrapper;
 import peergos.server.util.Args;
 import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
@@ -26,7 +27,9 @@ import static peergos.server.Main.ENSURE_IPFS_INSTALLED;
 import static peergos.server.Main.IPFS;
 
 public class P2pStreamNetworkTests {
-    private static Args args = UserTests.buildArgs().with("useIPFS", "true");
+    private static Args args = UserTests
+            .buildArgs().with("useIPFS", "true")
+            .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, ""); // no bootstrapping
 
     private static Random random = new Random(0);
     private static List<NetworkAccess> nodes = new ArrayList<>();
@@ -49,6 +52,7 @@ public class P2pStreamNetworkTests {
                 .with("ipfs-config-api-port", "" + ipfsApiPort)
                 .with("ipfs-config-gateway-port", "" + ipfsGatewayPort)
                 .with("ipfs-config-swarm-port", "" + ipfsSwarmPort)
+                .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, "" + Main.getLocalBootstrapAddress(ipfsSwarmPort, pkiNodeId))
                 .with("proxy-target", Main.getLocalMultiAddress(args.getInt("ipfs-config-gateway-port")).toString())
                 .with("ipfs-api-address", Main.getLocalMultiAddress(ipfsApiPort).toString());
 

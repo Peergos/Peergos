@@ -509,6 +509,10 @@ public class Main {
         return new MultiAddress("/ip4/127.0.0.1/tcp/" + port);
     }
 
+    public static MultiAddress getLocalBootstrapAddress(int port, Multihash nodeId) {
+        return new MultiAddress("/ip4/127.0.0.1/tcp/" + port + "/ipfs/"+ nodeId);
+    }
+
     public static void main(String[] args) {
         MAIN.main(Args.parse(args));
     }

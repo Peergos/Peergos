@@ -2,6 +2,7 @@ package peergos.server.tests;
 
 import org.junit.*;
 import peergos.server.*;
+import peergos.server.storage.IpfsWrapper;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.crypto.symmetric.*;
@@ -17,7 +18,9 @@ import java.util.stream.*;
 import static org.junit.Assert.*;
 
 public class MultiNodeNetworkTests {
-    private static Args args = UserTests.buildArgs().with("useIPFS", "true");
+    private static Args args = UserTests.buildArgs()
+            .with("useIPFS", "true")
+            .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, ""); // no bootstrapping
 
     private static Random random = new Random(0);
     private static List<NetworkAccess> nodes = new ArrayList<>();
@@ -44,6 +47,7 @@ public class MultiNodeNetworkTests {
                 .with("ipfs-config-api-port", "" + ipfsApiPort)
                 .with("ipfs-config-gateway-port", "" + ipfsGatewayPort)
                 .with("ipfs-config-swarm-port", "" + ipfsSwarmPort)
+                .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, "" + Main.getLocalBootstrapAddress(ipfsSwarmPort, pkiNodeId))
                 .with("proxy-target", Main.getLocalMultiAddress(peergosPort).toString())
                 .with("ipfs-api-address", Main.getLocalMultiAddress(ipfsApiPort).toString())
                 .with("mutable-pointers-file", ":memory:")
