@@ -295,18 +295,23 @@ public class Main {
             String path = mutablePointersSqlFile.equals(":memory:") ?
                     mutablePointersSqlFile :
                     a.fromPeergosDir("mutable-pointers-file").toString();
-            MutablePointers localMutable = UserRepository.buildSqlLite(path, localDht, maxUserCount);
+            MutablePointers sqlMutable = UserRepository.buildSqlLite(path, localDht, maxUserCount);
 
             // build a proxying corenode, unless we are the pki node
             CoreNode core = nodeId.equals(pkiServerNodeId) ?
-                    buildPkiCorenode(localMutable, localDht, a) :
+                    buildPkiCorenode(sqlMutable, localDht, a) :
                     new HTTPCoreNode(ipfsGateway, pkiServerNodeId);
 
             long defaultQuota = a.getLong("default-quota");
             Logging.LOG().info("Using default user space quota of " + defaultQuota);
             Path quotaFilePath = a.fromPeergosDir("quotas_file","quotas.txt");
             UserQuotas userQuotas = new UserQuotas(quotaFilePath, defaultQuota);
-            SpaceCheckingKeyFilter spaceChecker = new SpaceCheckingKeyFilter(core, localMutable, localDht, userQuotas::quota);
+            SpaceCheckingKeyFilter spaceChecker = new SpaceCheckingKeyFilter(core, sqlMutable, localDht, userQuotas::quota);
+            CorenodeEventPropagator corePropagator = new CorenodeEventPropagator(core);
+            corePropagator.addListener(spaceChecker::accept);
+            MutableEventPropagator localMutable = new MutableEventPropagator(sqlMutable);
+            localMutable.addListener(spaceChecker::accept);
+
             ContentAddressedStorage filteringDht = new WriteFilter(localDht, spaceChecker::allowWrite);
             ContentAddressedStorageProxy proxingDht = new ContentAddressedStorageProxy.HTTP(ipfsGateway);
             ContentAddressedStorage p2pDht = new ContentAddressedStorage.Proxying(filteringDht, proxingDht, nodeId, core);
@@ -331,7 +336,7 @@ public class Main {
             new UserFilePinner(userPath, core, p2mMutable, p2pDht, delayMs).start();
 
             InetSocketAddress httpsMessengerAddress = new InetSocketAddress(hostname, userAPIAddress.getPort());
-            new UserService(httpsMessengerAddress, p2pDht, core, p2pSocial, p2mMutable, a, spaceChecker);
+            new UserService(httpsMessengerAddress, p2pDht, corePropagator, p2pSocial, p2mMutable, a);
         } catch (Exception e) {
             e.printStackTrace();
             System.exit(1);

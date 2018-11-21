@@ -80,17 +80,15 @@ public class UserService {
                        CoreNode coreNode,
                        SocialNetwork social,
                        MutablePointers mutable,
-                       Args args,
-                       SpaceCheckingKeyFilter keyFilter) throws IOException
-    {
+                       Args args) throws IOException {
         this.local = local;
         this.coreNode = coreNode;
         this.social = social;
         this.mutable = mutable;
-        init(dht, args, keyFilter);
+        init(dht, args);
     }
 
-    public boolean init(ContentAddressedStorage dht, Args args, SpaceCheckingKeyFilter spaceChecker) throws IOException {
+    public boolean init(ContentAddressedStorage dht, Args args) throws IOException {
         boolean isLocal = this.local.getHostName().contains("local");
         if (!isLocal)
             try {
@@ -173,18 +171,14 @@ public class UserService {
         server.createContext(DHT_URL,
                 wrap.apply(new DHTHandler(dht, (h, i) -> true)));
 
-        CorenodeEventPropagator corenodePropagator = new CorenodeEventPropagator(this.coreNode);
-        corenodePropagator.addListener(spaceChecker::accept);
         server.createContext("/" + HttpCoreNodeServer.CORE_URL,
-                wrap.apply(new HttpCoreNodeServer.CoreNodeHandler(corenodePropagator)));
+                wrap.apply(new HttpCoreNodeServer.CoreNodeHandler(this.coreNode)));
 
         server.createContext("/" + HttpSocialNetworkServer.SOCIAL_URL,
                 wrap.apply(new HttpSocialNetworkServer.SocialHandler(this.social)));
 
-        MutableEventPropagator mutablePropagator = new MutableEventPropagator(this.mutable);
-        mutablePropagator.addListener(spaceChecker::accept);
         server.createContext("/" + HttpMutablePointerServer.MUTABLE_POINTERS_URL,
-                wrap.apply(new HttpMutablePointerServer.MutationHandler(mutablePropagator)));
+                wrap.apply(new HttpMutablePointerServer.MutationHandler(this.mutable)));
 
         server.createContext(SIGNUP_URL,
                 wrap.apply(new InverseProxyHandler("demo.peergos.net", isLocal)));

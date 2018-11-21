@@ -103,6 +103,7 @@ public class MultiNodeNetworkTests {
         String filename = "hey.txt";
         FileTreeNode upload = u1.getUserRoot().get().uploadFile(filename,
                 new AsyncReader.ArrayBacked(data), data.length, nodes.get(0), crypto.random, x -> { }, u1.fragmenter).get();
+        Thread.sleep(7000);
         Optional<FileTreeNode> file = u1.getByPath("/" + username1 + "/" + filename).get();
         Assert.assertTrue(file.isPresent());
     }
