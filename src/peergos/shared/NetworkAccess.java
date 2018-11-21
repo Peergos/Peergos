@@ -88,12 +88,18 @@ public class NetworkAccess {
 
     public static CompletableFuture<NetworkAccess> build(CoreNode coreNode, HttpPoster poster, boolean isJavascript) {
         int cacheTTL = 7_000;
-        LOG.info("Using caching corenode with TTL: " + cacheTTL + " mS");
-        SocialNetwork social = new HttpSocialNetwork(poster, poster);
         MutablePointers mutable = new CachingPointers(new HttpMutablePointers(poster, poster), cacheTTL);
-
-        // allow 10MiB of ram for caching tree entries
+        LOG.info("Using caching mutable pointers with TTL: " + cacheTTL + " mS");
+        SocialNetwork social = new HttpSocialNetwork(poster, poster);
         ContentAddressedStorage dht = new CachingStorage(new ContentAddressedStorage.HTTP(poster), 10_000, 50 * 1024);
+        return build(dht, coreNode, mutable, social, isJavascript);
+    }
+
+    public static CompletableFuture<NetworkAccess> build(ContentAddressedStorage dht,
+                                                         CoreNode coreNode,
+                                                         MutablePointers mutable,
+                                                         SocialNetwork social,
+                                                         boolean isJavascript) {
         MutableTree btree = new MutableTreeImpl(mutable, dht);
         return coreNode.getUsernames("")
                 .thenApply(usernames -> new NetworkAccess(coreNode, social, dht, mutable, btree, usernames, isJavascript));
@@ -109,6 +115,31 @@ public class NetworkAccess {
                 buildDirectCorenode(poster) :
                 buildProxyingCorenode(poster, pkiServerNodeId);
         return build(core, poster, true);
+    }
+
+    public static CompletableFuture<NetworkAccess> buildJava(URL apiAddress, URL proxyAddress, String pkiNodeId, boolean isPeergosServer) {
+        Multihash pkiServerNodeId = Cid.decode(pkiNodeId);
+        JavaPoster p2pPoster = new JavaPoster(proxyAddress);
+        JavaPoster apiPoster = new JavaPoster(apiAddress);
+        CoreNode core = isPeergosServer ?
+                buildDirectCorenode(apiPoster) :
+                buildProxyingCorenode(p2pPoster, pkiServerNodeId);
+
+        ContentAddressedStorage localDht =
+                new CachingStorage(new ContentAddressedStorage.HTTP(apiPoster), 10_000, 50 * 1024);
+        return localDht.id().thenCompose(nodeId -> {
+            ContentAddressedStorageProxy proxingDht = new ContentAddressedStorageProxy.HTTP(p2pPoster);
+            ContentAddressedStorage p2pDht = new ContentAddressedStorage.Proxying(localDht, proxingDht, nodeId, core);
+            int cacheTTL = 7_000;
+            MutablePointersProxy httpMutable = new HttpMutablePointers(apiPoster, p2pPoster);
+            MutablePointers p2pMutable = new CachingPointers(
+                    new ProxyingMutablePointers(nodeId, core, httpMutable, httpMutable), cacheTTL);
+            LOG.info("Using caching mutable pointers with TTL: " + cacheTTL + " mS");
+
+            SocialNetworkProxy httpSocial = new HttpSocialNetwork(apiPoster, p2pPoster);
+            SocialNetwork p2pSocial = new ProxyingSocialNetwork(nodeId, core, httpSocial, httpSocial);
+            return build(p2pDht, core, p2pMutable, p2pSocial, false);
+        });
     }
 
     public static CompletableFuture<NetworkAccess> buildJava(URL target) {
