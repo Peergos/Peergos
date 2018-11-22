@@ -43,6 +43,7 @@ public class P2pStreamNetworkTests {
         NetworkAccess toPki = buildApi(args);
         Multihash pkiNodeId = toPki.dhtClient.id().get();
         nodes.add(toPki);
+        int bootstrapSwarmPort = args.getInt("ipfs-config-swarm-port");
 
         // other nodes
         int ipfsApiPort = 9000 + random.nextInt(8000);
@@ -52,7 +53,7 @@ public class P2pStreamNetworkTests {
                 .with("ipfs-config-api-port", "" + ipfsApiPort)
                 .with("ipfs-config-gateway-port", "" + ipfsGatewayPort)
                 .with("ipfs-config-swarm-port", "" + ipfsSwarmPort)
-                .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, "" + Main.getLocalBootstrapAddress(ipfsSwarmPort, pkiNodeId))
+                .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, "" + Main.getLocalBootstrapAddress(bootstrapSwarmPort, pkiNodeId))
                 .with("proxy-target", Main.getLocalMultiAddress(args.getInt("ipfs-config-gateway-port")).toString())
                 .with("ipfs-api-address", Main.getLocalMultiAddress(ipfsApiPort).toString());
 
@@ -67,7 +68,7 @@ public class P2pStreamNetworkTests {
     }
 
     private static NetworkAccess buildProxiedApi(int ipfsApiPort, int ipfsGatewayPort, Multihash pkinodeId) throws Exception {
-        return NetworkAccess.buildJava(new URL("http://localhost:" + ipfsApiPort), new URL("http://localhost:" + ipfsGatewayPort), pkinodeId.toBase58(), false).get();
+        return NetworkAccess.buildJava(new URL("http://localhost:" + ipfsApiPort), new URL("http://localhost:" + ipfsGatewayPort), pkinodeId.toBase58()).get();
     }
 
     @Test

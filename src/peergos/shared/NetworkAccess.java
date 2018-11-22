@@ -86,48 +86,65 @@ public class NetworkAccess {
         return new HTTPCoreNode(poster);
     }
 
-    public static CompletableFuture<NetworkAccess> build(CoreNode coreNode, HttpPoster poster, boolean isJavascript) {
-        int cacheTTL = 7_000;
-        MutablePointers mutable = new CachingPointers(new HttpMutablePointers(poster, poster), cacheTTL);
-        LOG.info("Using caching mutable pointers with TTL: " + cacheTTL + " mS");
-        SocialNetwork social = new HttpSocialNetwork(poster, poster);
-        ContentAddressedStorage dht = new CachingStorage(new ContentAddressedStorage.HTTP(poster), 10_000, 50 * 1024);
-        return build(dht, coreNode, mutable, social, isJavascript);
-    }
-
-    public static CompletableFuture<NetworkAccess> build(ContentAddressedStorage dht,
-                                                         CoreNode coreNode,
-                                                         MutablePointers mutable,
-                                                         SocialNetwork social,
-                                                         boolean isJavascript) {
-        MutableTree btree = new MutableTreeImpl(mutable, dht);
-        return coreNode.getUsernames("")
-                .thenApply(usernames -> new NetworkAccess(coreNode, social, dht, mutable, btree, usernames, isJavascript));
+    public static ContentAddressedStorage buildLocalDht(HttpPoster apiPoster) {
+        return new CachingStorage(new ContentAddressedStorage.HTTP(apiPoster), 10_000, 50 * 1024);
     }
 
     @JsMethod
-    public static CompletableFuture<NetworkAccess> buildJS(String pkiNodeId, boolean isPeergosServer) {
+    public static CompletableFuture<NetworkAccess> buildJS(String pkiNodeId) {
         Multihash pkiServerNodeId = Cid.decode(pkiNodeId);
         System.setOut(new ConsolePrintStream());
         System.setErr(new ConsolePrintStream());
         JavaScriptPoster poster = new JavaScriptPoster();
-        CoreNode core = isPeergosServer ?
-                buildDirectCorenode(poster) :
-                buildProxyingCorenode(poster, pkiServerNodeId);
-        return build(core, poster, true);
+
+        return build(poster, poster, pkiServerNodeId, true);
     }
 
-    public static CompletableFuture<NetworkAccess> buildJava(URL apiAddress, URL proxyAddress, String pkiNodeId, boolean isPeergosServer) {
+    public static CompletableFuture<NetworkAccess> buildJava(URL apiAddress, URL proxyAddress, String pkiNodeId) {
         Multihash pkiServerNodeId = Cid.decode(pkiNodeId);
         JavaPoster p2pPoster = new JavaPoster(proxyAddress);
         JavaPoster apiPoster = new JavaPoster(apiAddress);
-        CoreNode core = isPeergosServer ?
-                buildDirectCorenode(apiPoster) :
-                buildProxyingCorenode(p2pPoster, pkiServerNodeId);
+        return build(apiPoster, p2pPoster, pkiServerNodeId, false);
+    }
 
-        ContentAddressedStorage localDht =
-                new CachingStorage(new ContentAddressedStorage.HTTP(apiPoster), 10_000, 50 * 1024);
-        return localDht.id().thenCompose(nodeId -> {
+    public static CompletableFuture<NetworkAccess> build(HttpPoster apiPoster, HttpPoster p2pPoster, Multihash pkiServerNodeId, boolean isJavascript) {
+        ContentAddressedStorage localDht = buildLocalDht(apiPoster);
+
+        CoreNode direct = buildDirectCorenode(apiPoster);
+        CompletableFuture<NetworkAccess> result = new CompletableFuture<>();
+        direct.getUsernames("")
+                .thenAccept(usernames -> {
+                    // We are on a Peergos server
+                    CoreNode core = direct;
+                    build(core, localDht, apiPoster, p2pPoster, usernames, isJavascript)
+                            .thenApply(result::complete)
+                            .exceptionally(t -> {
+                                result.completeExceptionally(t);
+                                return true;
+                            });
+                })
+                .exceptionally(t -> {
+                    // We are not on a Peergos server, hopefully an IPFS gateway
+                    CoreNode core = buildProxyingCorenode(p2pPoster, pkiServerNodeId);
+                    core.getUsernames("").thenCompose(usernames ->
+                            build(core, localDht, apiPoster, p2pPoster, usernames, isJavascript)
+                                    .thenApply(result::complete))
+                            .exceptionally(t2 -> {
+                                result.completeExceptionally(t2);
+                                return true;
+                            });
+                    return null;
+                });
+        return result;
+    }
+
+    public static CompletableFuture<NetworkAccess> build(CoreNode core,
+                                                         ContentAddressedStorage localDht,
+                                                         HttpPoster apiPoster,
+                                                         HttpPoster p2pPoster,
+                                                         List<String> usernames,
+                                                         boolean isJavascript) {
+        return localDht.id().thenApply(nodeId -> {
             ContentAddressedStorageProxy proxingDht = new ContentAddressedStorageProxy.HTTP(p2pPoster);
             ContentAddressedStorage p2pDht = new ContentAddressedStorage.Proxying(localDht, proxingDht, nodeId, core);
             int cacheTTL = 7_000;
@@ -138,13 +155,30 @@ public class NetworkAccess {
 
             SocialNetworkProxy httpSocial = new HttpSocialNetwork(apiPoster, p2pPoster);
             SocialNetwork p2pSocial = new ProxyingSocialNetwork(nodeId, core, httpSocial, httpSocial);
-            return build(p2pDht, core, p2pMutable, p2pSocial, false);
+            return build(p2pDht, core, p2pMutable, p2pSocial, usernames, isJavascript);
         });
+    }
+
+    public static NetworkAccess build(ContentAddressedStorage dht,
+                                                         CoreNode coreNode,
+                                                         MutablePointers mutable,
+                                                         SocialNetwork social,
+                                                         List<String> usernames,
+                                                         boolean isJavascript) {
+        MutableTree btree = new MutableTreeImpl(mutable, dht);
+        return new NetworkAccess(coreNode, social, dht, mutable, btree, usernames, isJavascript);
     }
 
     public static CompletableFuture<NetworkAccess> buildJava(URL target) {
         JavaPoster poster = new JavaPoster(target);
-        return build(buildDirectCorenode(poster), poster, false);
+        CoreNode direct = buildDirectCorenode(poster);
+        try {
+            List<String> usernames = direct.getUsernames("").get();
+            ContentAddressedStorage localDht = buildLocalDht(poster);
+            return build(direct, localDht, poster, poster, usernames, false);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public static CompletableFuture<NetworkAccess> buildJava(int targetPort) {

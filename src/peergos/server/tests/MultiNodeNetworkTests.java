@@ -34,6 +34,7 @@ public class MultiNodeNetworkTests {
         NetworkAccess toPki = buildApi(args);
         Multihash pkiNodeId = toPki.dhtClient.id().get();
         nodes.add(toPki);
+        int bootstrapSwarmPort = args.getInt("ipfs-config-swarm-port");
 
         // other nodes
         int ipfsApiPort = 9000 + random.nextInt(8000);
@@ -47,7 +48,7 @@ public class MultiNodeNetworkTests {
                 .with("ipfs-config-api-port", "" + ipfsApiPort)
                 .with("ipfs-config-gateway-port", "" + ipfsGatewayPort)
                 .with("ipfs-config-swarm-port", "" + ipfsSwarmPort)
-                .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, "" + Main.getLocalBootstrapAddress(ipfsSwarmPort, pkiNodeId))
+                .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, "" + Main.getLocalBootstrapAddress(bootstrapSwarmPort, pkiNodeId))
                 .with("proxy-target", Main.getLocalMultiAddress(peergosPort).toString())
                 .with("ipfs-api-address", Main.getLocalMultiAddress(ipfsApiPort).toString())
                 .with("mutable-pointers-file", ":memory:")
