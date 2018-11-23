@@ -2,7 +2,7 @@ package peergos.server.tests;
 
 import org.junit.*;
 import peergos.server.*;
-import peergos.server.storage.IpfsWrapper;
+import peergos.server.storage.*;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.crypto.symmetric.*;
@@ -56,6 +56,9 @@ public class MultiNodeNetworkTests {
 
         Main.PEERGOS.main(normalNode);
         nodes.add(buildApi(normalNode));
+
+        IPFS node2 = new IPFS(Main.getLocalMultiAddress(ipfsApiPort));
+        node2.swarm.connect(Main.getLocalBootstrapAddress(bootstrapSwarmPort, pkiNodeId).toString());
     }
 
     private static NetworkAccess buildApi(Args args) throws Exception {

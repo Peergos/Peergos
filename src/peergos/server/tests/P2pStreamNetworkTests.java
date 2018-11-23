@@ -4,22 +4,16 @@ import org.junit.Assert;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import peergos.server.Main;
-import peergos.server.storage.IpfsInstaller;
-import peergos.server.storage.IpfsWrapper;
-import peergos.server.util.Args;
-import peergos.shared.Crypto;
-import peergos.shared.NetworkAccess;
-import peergos.shared.crypto.symmetric.SymmetricKey;
+import peergos.server.storage.*;
+import peergos.server.util.*;
+import peergos.shared.*;
 import peergos.shared.io.ipfs.multihash.Multihash;
-import peergos.shared.user.FollowRequest;
 import peergos.shared.user.UserContext;
-import peergos.shared.user.fs.AsyncReader;
-import peergos.shared.user.fs.FileTreeNode;
-import peergos.shared.util.Serialize;
+import peergos.shared.user.fs.*;
+import peergos.shared.util.*;
 
 import java.net.URL;
 import java.util.*;
-import java.util.stream.Collectors;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -59,6 +53,9 @@ public class P2pStreamNetworkTests {
 
         ENSURE_IPFS_INSTALLED.main(normalNode);
         IPFS.main(normalNode);
+
+        IPFS node2 = new IPFS(Main.getLocalMultiAddress(ipfsApiPort));
+        node2.swarm.connect(Main.getLocalBootstrapAddress(bootstrapSwarmPort, pkiNodeId).toString());
 
         nodes.add(buildProxiedApi(ipfsApiPort, ipfsGatewayPort, pkiNodeId));
     }
