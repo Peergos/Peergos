@@ -221,10 +221,11 @@ public class Main {
                     args.setIfAbsent("proxy-target", getLocalMultiAddress(peergosPort).toString());
                     args.setIfAbsent("useIPFS", "false");
 
+                    IpfsWrapper ipfs = null;
                     boolean useIPFS = args.getBoolean("useIPFS");
                     if (useIPFS) {
                         ENSURE_IPFS_INSTALLED.main(args);
-                        IPFS.main(args);
+                        ipfs = startIpfs(args);
                     }
 
                     args.setIfAbsent("peergos.password", "testpassword");
@@ -238,10 +239,12 @@ public class Main {
                     args.setIfAbsent("mutable-pointers-file", ":memory:");
                     args.setIfAbsent("social-sql-file", ":memory:");
 
-
                     Multihash pkiIpfsNodeId = useIPFS ?
                             new IpfsDHT(getLocalMultiAddress(ipfsApiPort)).id().get() :
                             new FileContentAddressedStorage(blockstorePath(args)).id().get();
+
+                    if (ipfs != null)
+                        ipfs.stop();
                     args.setIfAbsent("pki-node-id", pkiIpfsNodeId.toBase58());
                     PEERGOS.main(args);
                     POSTSTRAP.main(args);
@@ -375,12 +378,11 @@ public class Main {
     }
 
 
-    public static void startIpfs(Args a) {
+    public static IpfsWrapper startIpfs(Args a) {
         // test if ipfs is already running
         int ipfsApiPort = IpfsWrapper.getApiPort(a);
         if (IpfsWrapper.isHttpApiListening(ipfsApiPort)) {
-            Logger.getGlobal().info("IPFS is already running, using existing instance at " + ipfsApiPort);
-            return;
+            throw new IllegalStateException("IPFS is already running, using existing instance at " + ipfsApiPort);
         }
 
         IpfsWrapper ipfs = IpfsWrapper.build(a);
@@ -394,6 +396,7 @@ public class Main {
         ipfs.waitForDaemon(10);
         // set up p2p proxy receiver
         ipfs.startP2pProxy(new MultiAddress(a.getArg("proxy-target")));
+        return ipfs;
     }
 
     public static void startCoreNode(Args a) {
