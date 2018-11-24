@@ -116,7 +116,7 @@ public class NetworkAccess {
                 .thenAccept(usernames -> {
                     // We are on a Peergos server
                     CoreNode core = direct;
-                    build(core, localDht, apiPoster, p2pPoster, usernames, isJavascript)
+                    build(core, localDht, apiPoster, p2pPoster, usernames, true, isJavascript)
                             .thenApply(result::complete)
                             .exceptionally(t -> {
                                 result.completeExceptionally(t);
@@ -127,7 +127,7 @@ public class NetworkAccess {
                     // We are not on a Peergos server, hopefully an IPFS gateway
                     CoreNode core = buildProxyingCorenode(p2pPoster, pkiServerNodeId);
                     core.getUsernames("").thenCompose(usernames ->
-                            build(core, localDht, apiPoster, p2pPoster, usernames, isJavascript)
+                            build(core, localDht, apiPoster, p2pPoster, usernames, false, isJavascript)
                                     .thenApply(result::complete))
                             .exceptionally(t2 -> {
                                 result.completeExceptionally(t2);
@@ -143,18 +143,25 @@ public class NetworkAccess {
                                                          HttpPoster apiPoster,
                                                          HttpPoster p2pPoster,
                                                          List<String> usernames,
+                                                         boolean isPeergosServer,
                                                          boolean isJavascript) {
         return localDht.id().thenApply(nodeId -> {
             ContentAddressedStorageProxy proxingDht = new ContentAddressedStorageProxy.HTTP(p2pPoster);
-            ContentAddressedStorage p2pDht = new ContentAddressedStorage.Proxying(localDht, proxingDht, nodeId, core);
+            ContentAddressedStorage p2pDht = isPeergosServer ?
+                    localDht :
+                    new ContentAddressedStorage.Proxying(localDht, proxingDht, nodeId, core);
             int cacheTTL = 7_000;
             MutablePointersProxy httpMutable = new HttpMutablePointers(apiPoster, p2pPoster);
             MutablePointers p2pMutable = new CachingPointers(
-                    new ProxyingMutablePointers(nodeId, core, httpMutable, httpMutable), cacheTTL);
+                    isPeergosServer ?
+                            httpMutable :
+                            new ProxyingMutablePointers(nodeId, core, httpMutable, httpMutable), cacheTTL);
             LOG.info("Using caching mutable pointers with TTL: " + cacheTTL + " mS");
 
             SocialNetworkProxy httpSocial = new HttpSocialNetwork(apiPoster, p2pPoster);
-            SocialNetwork p2pSocial = new ProxyingSocialNetwork(nodeId, core, httpSocial, httpSocial);
+            SocialNetwork p2pSocial = isPeergosServer ?
+                    httpSocial :
+                    new ProxyingSocialNetwork(nodeId, core, httpSocial, httpSocial);
             return build(p2pDht, core, p2pMutable, p2pSocial, usernames, isJavascript);
         });
     }
@@ -175,7 +182,7 @@ public class NetworkAccess {
         try {
             List<String> usernames = direct.getUsernames("").get();
             ContentAddressedStorage localDht = buildLocalDht(poster);
-            return build(direct, localDht, poster, poster, usernames, false);
+            return build(direct, localDht, poster, poster, usernames, true, false);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

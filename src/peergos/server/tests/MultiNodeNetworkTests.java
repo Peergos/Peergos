@@ -55,10 +55,11 @@ public class MultiNodeNetworkTests {
                 .with("social-sql-file", ":memory:");
 
         Main.PEERGOS.main(normalNode);
-        nodes.add(buildApi(normalNode));
 
         IPFS node2 = new IPFS(Main.getLocalMultiAddress(ipfsApiPort));
         node2.swarm.connect(Main.getLocalBootstrapAddress(bootstrapSwarmPort, pkiNodeId).toString());
+        Thread.sleep(2000);
+        nodes.add(buildApi(normalNode));
     }
 
     private static NetworkAccess buildApi(Args args) throws Exception {
