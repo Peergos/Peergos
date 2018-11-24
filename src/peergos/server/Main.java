@@ -270,8 +270,11 @@ public class Main {
         try {
             PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, new Ed25519.Java());
 
-            ENSURE_IPFS_INSTALLED.main(a);
-            IPFS.main(a);
+            boolean useIPFS = a.getBoolean("useIPFS");
+            if (useIPFS) {
+                ENSURE_IPFS_INSTALLED.main(a);
+                IPFS.main(a);
+            }
 
             int webPort = a.getInt("port");
             Multihash pkiServerNodeId = Cid.decode(a.getArg("pki-node-id"));
@@ -285,7 +288,6 @@ public class Main {
             JavaPoster ipfsApi = new JavaPoster(ipfsApiAddress);
             JavaPoster ipfsGateway = new JavaPoster(ipfsGatewayAddress);
 
-            boolean useIPFS = a.getBoolean("useIPFS");
             ContentAddressedStorage localDht = useIPFS ?
                     new CachingStorage(new ContentAddressedStorage.HTTP(ipfsApi), dhtCacheEntries, maxValueSizeToCache) :
                     new FileContentAddressedStorage(blockstorePath(a));

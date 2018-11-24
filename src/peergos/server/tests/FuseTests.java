@@ -37,7 +37,7 @@ public class FuseTests {
 
     @BeforeClass
     public static void init() throws Exception {
-        Args args = UserTests.buildArgs().with("useIPFS", "true");
+        Args args = UserTests.buildArgs().with("useIPFS", "false");
         setWebPort(args.getInt("port"));
         LOG.info("Using web-port "+ WEB_PORT);
         System.out.flush();
