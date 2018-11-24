@@ -19,7 +19,7 @@ import static peergos.server.tests.UserTests.ensureSignedUp;
 public class QuotaTests {
 
     private static Args args = UserTests.buildArgs()
-            .with("useIPFS", "true")
+            .with("useIPFS", "false")
             .with("default-quota", Long.toString(2 * 1024 * 1024));
 
     private static int RANDOM_SEED = 666;
