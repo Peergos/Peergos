@@ -76,19 +76,16 @@ public class UserService {
     private HttpServer server;
 
     public UserService(InetSocketAddress local,
-                       ContentAddressedStorage dht,
                        CoreNode coreNode,
                        SocialNetwork social,
-                       MutablePointers mutable,
-                       Args args) throws IOException {
+                       MutablePointers mutable) {
         this.local = local;
         this.coreNode = coreNode;
         this.social = social;
         this.mutable = mutable;
-        init(dht, args);
     }
 
-    public boolean init(ContentAddressedStorage dht, Args args) throws IOException {
+    public boolean initAndStart(ContentAddressedStorage dht, Args args) throws IOException {
         boolean isLocal = this.local.getHostName().contains("local");
         if (!isLocal)
             try {

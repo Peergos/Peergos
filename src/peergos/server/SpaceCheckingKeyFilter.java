@@ -109,6 +109,9 @@ public class SpaceCheckingKeyFilter {
         this.mutable = mutable;
         this.dht = dht;
         this.quotaSupplier = quotaSupplier;
+    }
+
+    public void loadAllOwnerAndUsage() {
         // It's okay to do this asynchronously, as any users that try to write will get an error until their usage has
         // been loaded
         new Thread(this::loadAllOwners).start();

@@ -341,7 +341,9 @@ public class Main {
             new UserFilePinner(userPath, core, p2mMutable, p2pDht, delayMs).start();
 
             InetSocketAddress httpsMessengerAddress = new InetSocketAddress(hostname, userAPIAddress.getPort());
-            new UserService(httpsMessengerAddress, p2pDht, corePropagator, p2pSocial, p2mMutable, a);
+            UserService peergos = new UserService(httpsMessengerAddress, corePropagator, p2pSocial, p2mMutable);
+            peergos.initAndStart(p2pDht, a);
+            spaceChecker.loadAllOwnerAndUsage();
         } catch (Exception e) {
             e.printStackTrace();
             System.exit(1);
