@@ -70,21 +70,22 @@ public class UserService {
         LOG.info("jdk.tls.rejectClientInitializedRenegotiation: "+Security.getProperty("jdk.tls.rejectClientInitializedRenegotiation"));
     }
 
+    private final ContentAddressedStorage storage;
     private final CoreNode coreNode;
     private final SocialNetwork social;
     private final MutablePointers mutable;
-    private HttpServer server;
 
-    public UserService(CoreNode coreNode,
+    public UserService(ContentAddressedStorage storage,
+                       CoreNode coreNode,
                        SocialNetwork social,
                        MutablePointers mutable) {
+        this.storage = storage;
         this.coreNode = coreNode;
         this.social = social;
         this.mutable = mutable;
     }
 
     public boolean initAndStart(InetSocketAddress local,
-                                ContentAddressedStorage dht,
                                 Optional<Path> webroot,
                                 boolean isPublicServer,
                                 boolean useWebCache) throws IOException {
@@ -101,6 +102,7 @@ public class UserService {
             }
         LOG.info("Starting user API server at: " + local.getHostName() + ":" + local.getPort());
 
+        HttpServer server;
         if (isLocal) {
             LOG.info("Starting user server on localhost:"+local.getPort()+" only.");
             server = HttpServer.create(local, CONNECTION_BACKLOG);
@@ -168,7 +170,7 @@ public class UserService {
         Function<HttpHandler, HttpHandler> wrap = h -> !isLocal ? new HSTSHandler(h) : h;
 
         server.createContext(DHT_URL,
-                wrap.apply(new DHTHandler(dht, (h, i) -> true)));
+                wrap.apply(new DHTHandler(storage, (h, i) -> true)));
 
         server.createContext("/" + HttpCoreNodeServer.CORE_URL,
                 wrap.apply(new HttpCoreNodeServer.CoreNodeHandler(this.coreNode)));
