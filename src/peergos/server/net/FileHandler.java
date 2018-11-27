@@ -6,7 +6,7 @@ import java.nio.file.Path;
 public class FileHandler extends StaticHandler
 {
     private final Path root;
-    public FileHandler(Path root, boolean isGzip) throws IOException {
+    public FileHandler(Path root, boolean isGzip) {
         super(isGzip);
         this.root = root;
     }

@@ -1,4 +1,5 @@
 package peergos.server;
+import java.util.*;
 import java.util.logging.Logger;
 
 import peergos.server.util.Args;
@@ -69,24 +70,25 @@ public class UserService {
         LOG.info("jdk.tls.rejectClientInitializedRenegotiation: "+Security.getProperty("jdk.tls.rejectClientInitializedRenegotiation"));
     }
 
-    private final InetSocketAddress local;
     private final CoreNode coreNode;
     private final SocialNetwork social;
     private final MutablePointers mutable;
     private HttpServer server;
 
-    public UserService(InetSocketAddress local,
-                       CoreNode coreNode,
+    public UserService(CoreNode coreNode,
                        SocialNetwork social,
                        MutablePointers mutable) {
-        this.local = local;
         this.coreNode = coreNode;
         this.social = social;
         this.mutable = mutable;
     }
 
-    public boolean initAndStart(ContentAddressedStorage dht, Args args) throws IOException {
-        boolean isLocal = this.local.getHostName().contains("local");
+    public boolean initAndStart(InetSocketAddress local,
+                                ContentAddressedStorage dht,
+                                Optional<Path> webroot,
+                                boolean isPublicServer,
+                                boolean useWebCache) throws IOException {
+        boolean isLocal = local.getHostName().contains("local");
         if (!isLocal)
             try {
                 HttpServer httpServer = HttpServer.create();
@@ -102,7 +104,7 @@ public class UserService {
         if (isLocal) {
             LOG.info("Starting user server on localhost:"+local.getPort()+" only.");
             server = HttpServer.create(local, CONNECTION_BACKLOG);
-        } else if (args.hasArg("publicserver")) {
+        } else if (isPublicServer) {
             LOG.info("Starting user server on all interfaces.");
             server = HttpsServer.create(new InetSocketAddress(InetAddress.getByName("::"), local.getPort()), CONNECTION_BACKLOG);
         } else
@@ -183,18 +185,14 @@ public class UserService {
                 wrap.apply(new InverseProxyHandler("demo.peergos.net", isLocal)));
 
         //define web-root static-handler
-        StaticHandler handler;
-        try {
-            String webroot = args.getArg("webroot");
+        if (webroot.isPresent())
             LOG.info("Using webroot from local file system: " + webroot);
-            handler = new FileHandler(Paths.get(webroot), true);
-        } catch (IllegalStateException ile) {
+        else
             LOG.info("Using webroot from jar");
-            handler = new JarHandler(true, Paths.get("webroot"));
-        }
+        StaticHandler handler = webroot.map(p -> (StaticHandler) new FileHandler(p, true))
+                .orElseGet(() -> new JarHandler(true, Paths.get("webroot")));
 
-        boolean webcache = args.getBoolean("webcache", true);
-        if (webcache) {
+        if (useWebCache) {
             LOG.info("Caching web-resources");
             handler = handler.withCache();
         }

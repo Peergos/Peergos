@@ -340,9 +340,12 @@ public class Main {
 
             new UserFilePinner(userPath, core, p2mMutable, p2pDht, delayMs).start();
 
-            InetSocketAddress httpsMessengerAddress = new InetSocketAddress(hostname, userAPIAddress.getPort());
-            UserService peergos = new UserService(httpsMessengerAddress, corePropagator, p2pSocial, p2mMutable);
-            peergos.initAndStart(p2pDht, a);
+            UserService peergos = new UserService(corePropagator, p2pSocial, p2mMutable);
+            InetSocketAddress peergosAddress = new InetSocketAddress(hostname, userAPIAddress.getPort());
+            Optional<Path> webroot = a.hasArg("webroot") ?
+                    Optional.of(Paths.get(a.getArg("webroot"))) :
+                    Optional.empty();
+            peergos.initAndStart(peergosAddress, p2pDht, webroot, a.hasArg("publicserver"), a.getBoolean("webcache", true));
             spaceChecker.loadAllOwnerAndUsage();
         } catch (Exception e) {
             e.printStackTrace();
