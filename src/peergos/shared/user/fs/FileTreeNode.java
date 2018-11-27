@@ -241,6 +241,29 @@ public class FileTreeNode {
                         writers, entryWriterKey));
     }
 
+    public CompletableFuture<FileTreeNode> addLinkTo(FileTreeNode file, NetworkAccess network, SafeRandom random) {
+        ensureUnmodified();
+        CompletableFuture<FileTreeNode> error = new CompletableFuture<>();
+        if (!this.isDirectory() || !this.isWritable()) {
+            error.completeExceptionally(new IllegalArgumentException("Can only add link to a writable directory!"));
+            return error;
+        }
+        String name = file.getFileProperties().name;
+        return hasChildWithName(name, network).thenCompose(hasChild -> {
+            if (hasChild) {
+                error.completeExceptionally(new IllegalStateException("Child already exists with name: " + name));
+                return error;
+            }
+            DirAccess toUpdate = (DirAccess) pointer.fileAccess;
+            return (file.isDirectory() ?
+                    toUpdate.addSubdirAndCommit(file.pointer.filePointer, this.getKey(),
+                            pointer.filePointer, getSigner(), network, random) :
+                    toUpdate.addFileAndCommit(file.pointer.filePointer, this.getKey(),
+                            pointer.filePointer, getSigner(), network, random))
+                    .thenApply(dirAccess -> new FileTreeNode(this.pointer, ownername, readers, writers, entryWriterKey));
+        });
+    }
+
     public CompletableFuture<FileTreeNode> addSharingLinkTo(FileTreeNode file, NetworkAccess network, SafeRandom random,
                                                             Fragmenter fragmenter) {
         ensureUnmodified();
@@ -914,7 +937,7 @@ public class FileTreeNode {
                             RetrievedFilePointer newRetrievedFilePointer = new RetrievedFilePointer(newRFP, newAccess);
                             FileTreeNode newFileTreeNode = new FileTreeNode(newRetrievedFilePointer, target.getOwner(),
                                     Collections.emptySet(), Collections.emptySet(), target.getEntryWriterKey());
-                            return target.addSharingLinkTo(newFileTreeNode, network, random, fragmenter);
+                            return target.addLinkTo(newFileTreeNode, network, random);
                         });
             } else {
                 return getInputStream(network, random, x -> {})
