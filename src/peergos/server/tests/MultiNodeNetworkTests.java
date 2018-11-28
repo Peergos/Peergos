@@ -58,7 +58,6 @@ public class MultiNodeNetworkTests {
 
         IPFS node2 = new IPFS(Main.getLocalMultiAddress(ipfsApiPort));
         node2.swarm.connect(Main.getLocalBootstrapAddress(bootstrapSwarmPort, pkiNodeId).toString());
-        Thread.sleep(2000);
         nodes.add(buildApi(normalNode));
     }
 
