@@ -1,0 +1,169 @@
+package peergos.server.util;
+
+import org.junit.Assert;
+import peergos.server.storage.ResetableFileInputStream;
+import peergos.shared.Crypto;
+import peergos.shared.NetworkAccess;
+import peergos.shared.crypto.symmetric.SymmetricKey;
+import peergos.shared.user.FollowRequest;
+import peergos.shared.user.UserContext;
+import peergos.shared.user.fs.AsyncReader;
+import peergos.shared.user.fs.FileTreeNode;
+import peergos.shared.util.ArrayOps;
+import peergos.shared.util.Serialize;
+
+import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+
+public class PeergosNetworkUtils {
+
+    public static String generateUsername(Random random) {
+        return "username_" + Math.abs(random.nextInt() % 1_000_000);
+    }
+
+    public static final Crypto crypto = Crypto.initJava();
+
+    public static String randomString() {
+        return UUID.randomUUID().toString();
+    }
+
+    public static byte[] randomData(Random random, int length) {
+        byte[] data = new byte[length];
+        random.nextBytes(data);
+        return data;
+    }
+
+    public static void checkFileContents(byte[] expected, FileTreeNode f, UserContext context) throws Exception {
+        long size = f.getFileProperties().size;
+        byte[] retrievedData = Serialize.readFully(f.getInputStream(context.network, context.crypto.random,
+                size, l -> {
+                }).get(), f.getSize()).get();
+        assertEquals(expected.length, size);
+        assertTrue("Correct contents", Arrays.equals(retrievedData, expected));
+    }
+
+    public static List<UserContext> getUserContextsForNode(NetworkAccess network, Random random, int size) {
+        return IntStream.range(0, size)
+                .mapToObj(e -> {
+                    String username = generateUsername(random);
+                    try {
+                        return ensureSignedUp(username, username, network.clear(), crypto);
+                    } catch (Exception ioe) {
+                        throw new IllegalStateException(ioe);
+                    }
+                }).collect(Collectors.toList());
+    }
+
+
+    public static void shareAndUnshareFile(NetworkAccess sharerNode, NetworkAccess shareeNode, int shareeCount, Random random) throws Exception {
+
+        //sign up a user on sharerNode
+
+        String sharerUsername = generateUsername(random);
+        UserContext sharerUser = ensureSignedUp(sharerUsername, sharerUsername, sharerNode.clear(), crypto);
+
+        //sign up some users on shareeNode
+        List<UserContext> shareeUsers = getUserContextsForNode(shareeNode, random, shareeCount);
+
+        // send follow requests from sharees to sharer
+        for (UserContext userContext : shareeUsers) {
+            userContext.sendFollowRequest(sharerUser.username, SymmetricKey.random()).get();
+        }
+
+        // make sharer reciprocate all the follow requests
+        List<FollowRequest> sharerRequests = sharerUser.processFollowRequests().get();
+        for (FollowRequest u1Request : sharerRequests) {
+            boolean accept = true;
+            boolean reciprocate = true;
+            sharerUser.sendReplyFollowRequest(u1Request, accept, reciprocate).get();
+        }
+
+        // complete the friendship connection
+        for (UserContext userContext : shareeUsers) {
+            userContext.processFollowRequests().get();//needed for side effect
+        }
+
+        // upload a file to "a"'s space
+        FileTreeNode u1Root = sharerUser.getUserRoot().get();
+        String filename = "somefile.txt";
+        File f = File.createTempFile("peergos", "");
+        byte[] originalFileContents = "Hello Peergos friend!".getBytes();
+        Files.write(f.toPath(), originalFileContents);
+        ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(f);
+        FileTreeNode uploaded = u1Root.uploadFile(filename, resetableFileInputStream, f.length(),
+                sharerUser.network, sharerUser.crypto.random, l -> {
+                }, sharerUser.fragmenter()).get();
+
+        // share the file from sharer to each of the sharees
+        FileTreeNode u1File = sharerUser.getByPath(sharerUser.username + "/" + filename).get().get();
+        sharerUser.shareWith(Paths.get(sharerUser.username, filename), shareeUsers.stream().map(u -> u.username).collect(Collectors.toSet())).get();
+
+        // check other users can read the file
+        for (UserContext userContext : shareeUsers) {
+            Optional<FileTreeNode> sharedFile = userContext.getByPath(sharerUser.username + "/" + filename).get();
+            Assert.assertTrue("shared file present", sharedFile.isPresent());
+            checkFileContents(originalFileContents, sharedFile.get(), userContext);
+        }
+
+        UserContext userToUnshareWith = shareeUsers.stream().findFirst().get();
+
+        // unshare with a single user
+        sharerUser.unShare(Paths.get(sharerUser.username, filename), userToUnshareWith.username).get();
+
+        List<UserContext> updatedShareeUsers = shareeUsers.stream()
+                .map(e -> {
+                    try {
+                        return ensureSignedUp(e.username, e.username, shareeNode, crypto);
+                    } catch (Exception ex) {
+                        throw new IllegalStateException(ex.getMessage(), ex);
+
+                    }
+                }).collect(Collectors.toList());
+
+        //test that the other user cannot access it from scratch
+        Optional<FileTreeNode> otherUserView = updatedShareeUsers.get(0).getByPath(sharerUser.username + "/" + filename).get();
+        Assert.assertTrue(!otherUserView.isPresent());
+
+        List<UserContext> remainingUsers = updatedShareeUsers.stream()
+                .skip(1)
+                .collect(Collectors.toList());
+
+        UserContext updatedSharerUser = ensureSignedUp(sharerUsername, sharerUsername, sharerNode.clear(), crypto);
+
+        // check remaining users can still read it
+        for (UserContext userContext : remainingUsers) {
+            String path = sharerUser.username + "/" + filename;
+            Optional<FileTreeNode> sharedFile = userContext.getByPath(path).get();
+            Assert.assertTrue("path '" + path + "' is still available", sharedFile.isPresent());
+        }
+
+        // test that u1 can still access the original file
+        Optional<FileTreeNode> fileWithNewBaseKey = updatedSharerUser.getByPath(sharerUser.username + "/" + filename).get();
+        Assert.assertTrue(fileWithNewBaseKey.isPresent());
+
+        // Now modify the file
+        byte[] suffix = "Some new data at the end".getBytes();
+        AsyncReader suffixStream = new AsyncReader.ArrayBacked(suffix);
+        FileTreeNode parent = updatedSharerUser.getByPath(updatedSharerUser.username).get().get();
+        parent.uploadFileSection(filename, suffixStream, originalFileContents.length, originalFileContents.length + suffix.length,
+                Optional.empty(), true, updatedSharerUser.network, updatedSharerUser.crypto.random, l -> {
+                }, updatedSharerUser.fragmenter()).get();
+        AsyncReader extendedContents = updatedSharerUser.getByPath(sharerUser.username + "/" + filename).get().get().getInputStream(updatedSharerUser.network,
+                updatedSharerUser.crypto.random, l -> {
+                }).get();
+        byte[] newFileContents = Serialize.readFully(extendedContents, originalFileContents.length + suffix.length).get();
+
+        Assert.assertTrue(Arrays.equals(newFileContents, ArrayOps.concat(originalFileContents, suffix)));
+    }
+
+    public static UserContext ensureSignedUp(String username, String password, NetworkAccess network, Crypto crypto) throws Exception {
+        return UserContext.ensureSignedUp(username, password, network, crypto).get();
+    }
+}

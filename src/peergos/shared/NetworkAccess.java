@@ -78,6 +78,11 @@ public class NetworkAccess {
         return new NetworkAccess(coreNode, social, dhtClient, mutable, new MutableTreeImpl(mutable, dhtClient), usernames, isJavascript);
     }
 
+    public NetworkAccess withMutablePointerCache(int ttl) {
+        CachingPointers mutable = new CachingPointers(this.mutable, ttl);
+        return new NetworkAccess(coreNode, social, dhtClient, mutable, new MutableTreeImpl(mutable, dhtClient), usernames, isJavascript);
+    }
+
     public static CoreNode buildProxyingCorenode(HttpPoster poster, Multihash pkiServerNodeId) {
         return new HTTPCoreNode(poster, pkiServerNodeId);
     }
@@ -97,7 +102,7 @@ public class NetworkAccess {
         System.setErr(new ConsolePrintStream());
         JavaScriptPoster poster = new JavaScriptPoster();
 
-        return build(poster, poster, pkiServerNodeId, true);
+        return build(poster, poster, pkiServerNodeId, true).thenApply(e -> e.withMutablePointerCache(7_000));
     }
 
     public static CompletableFuture<NetworkAccess> buildJava(URL apiAddress, URL proxyAddress, String pkiNodeId) {
@@ -150,13 +155,11 @@ public class NetworkAccess {
             ContentAddressedStorage p2pDht = isPeergosServer ?
                     localDht :
                     new ContentAddressedStorage.Proxying(localDht, proxingDht, nodeId, core);
-            int cacheTTL = 7_000;
             MutablePointersProxy httpMutable = new HttpMutablePointers(apiPoster, p2pPoster);
-            MutablePointers p2pMutable = new CachingPointers(
+            MutablePointers p2pMutable =
                     isPeergosServer ?
                             httpMutable :
-                            new ProxyingMutablePointers(nodeId, core, httpMutable, httpMutable), cacheTTL);
-            LOG.info("Using caching mutable pointers with TTL: " + cacheTTL + " mS");
+                            new ProxyingMutablePointers(nodeId, core, httpMutable, httpMutable);
 
             SocialNetworkProxy httpSocial = new HttpSocialNetwork(apiPoster, p2pPoster);
             SocialNetwork p2pSocial = isPeergosServer ?

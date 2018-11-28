@@ -5,7 +5,6 @@ import peergos.server.corenode.*;
 import peergos.server.fuse.*;
 import peergos.server.mutable.*;
 import peergos.server.storage.*;
-import peergos.server.tests.*;
 import peergos.server.util.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
@@ -27,7 +26,6 @@ import java.io.*;
 import java.net.*;
 import java.nio.file.*;
 import java.util.*;
-import java.util.logging.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -374,7 +372,7 @@ public class Main {
         try {
             NetworkAccess network = NetworkAccess.buildJava(webPort).get();
             Crypto crypto = Crypto.initJava();
-            UserContext userContext = UserTests.ensureSignedUp(username, password, network, crypto);
+            UserContext userContext = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
             PeergosFS peergosFS = new PeergosFS(userContext);
             FuseProcess fuseProcess = new FuseProcess(peergosFS, path);
 

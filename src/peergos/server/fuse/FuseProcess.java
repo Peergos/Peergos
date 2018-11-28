@@ -2,9 +2,9 @@ package peergos.server.fuse;
 import java.util.logging.*;
 import peergos.server.util.Logging;
 
+import peergos.server.util.PeergosNetworkUtils;
 import peergos.shared.*;
 import peergos.server.Main;
-import peergos.server.tests.UserTests;
 import peergos.shared.user.UserContext;
 import peergos.server.util.Args;
 
@@ -98,7 +98,7 @@ public class FuseProcess implements Runnable, AutoCloseable {
 
         NetworkAccess network = NetworkAccess.buildJava(WEB_PORT).get();
         Crypto crypto = Crypto.initJava();
-        UserContext userContext = UserTests.ensureSignedUp(username, password, network, crypto);
+        UserContext userContext = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         PeergosFS peergosFS = new CachingPeergosFS( userContext);
         FuseProcess fuseProcess = new FuseProcess(peergosFS, path);
 

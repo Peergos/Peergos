@@ -18,6 +18,7 @@ import java.util.*;
 import java.util.stream.*;
 
 import static org.junit.Assert.*;
+import static peergos.server.tests.UserTests.randomString;
 
 @RunWith(Parameterized.class)
 public class MultiNodeNetworkTests {
@@ -136,11 +137,15 @@ public class MultiNodeNetworkTests {
         String filename = "hey.txt";
         FileTreeNode upload = u1.getUserRoot().get().uploadFile(filename,
                 new AsyncReader.ArrayBacked(data), data.length, getNode(iNode1), crypto.random, x -> { }, u1.fragmenter).get();
-        Thread.sleep(7000);
         Optional<FileTreeNode> file = u1.getByPath("/" + username1 + "/" + filename).get();
         Assert.assertTrue(file.isPresent());
     }
 
+    @Test
+    public void  shareAndUnshareFile() throws Exception {
+        int shareeCount = 2;
+        PeergosNetworkUtils.shareAndUnshareFile(getNode(iNode1), getNode(iNode2), shareeCount, random);
+    }
     private String generateUsername() {
         return "test" + Math.abs(random.nextInt() % 10000);
     }
@@ -149,21 +154,14 @@ public class MultiNodeNetworkTests {
         return UserContext.ensureSignedUp(username, password, network, crypto).get();
     }
 
-    public static void checkFileContents(byte[] expected, FileTreeNode f, UserContext context) throws Exception {
-        long size = f.getFileProperties().size;
-        byte[] retrievedData = Serialize.readFully(f.getInputStream(context.network, context.crypto.random,
-            size, l-> {}).get(), f.getSize()).get();
-        assertEquals(expected.length, size);
-        assertTrue("Correct contents", Arrays.equals(retrievedData, expected));
-    }
 
-    public static String randomString() {
-        return UUID.randomUUID().toString();
-    }
+    /**sharing a file
+     *  (multiusertests)
+     *  shareAndUnshareFile
+     *  shareAndUnshareFolder
+     *     checkFileContents
+     */
 
-    public static byte[] randomData(int length) {
-        byte[] data = new byte[length];
-        random.nextBytes(data);
-        return data;
-    }
+
+
 }

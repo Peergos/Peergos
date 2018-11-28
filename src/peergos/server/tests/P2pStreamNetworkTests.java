@@ -19,6 +19,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static peergos.server.Main.ENSURE_IPFS_INSTALLED;
 import static peergos.server.Main.IPFS;
+import static peergos.server.tests.UserTests.randomString;
 
 public class P2pStreamNetworkTests {
     private static Args args = UserTests
@@ -90,23 +91,5 @@ public class P2pStreamNetworkTests {
 
     public static UserContext ensureSignedUp(String username, String password, NetworkAccess network, Crypto crypto) throws Exception {
         return UserContext.ensureSignedUp(username, password, network, crypto).get();
-    }
-
-    public static void checkFileContents(byte[] expected, FileTreeNode f, UserContext context) throws Exception {
-        long size = f.getFileProperties().size;
-        byte[] retrievedData = Serialize.readFully(f.getInputStream(context.network, context.crypto.random,
-            size, l-> {}).get(), f.getSize()).get();
-        assertEquals(expected.length, size);
-        assertTrue("Correct contents", Arrays.equals(retrievedData, expected));
-    }
-
-    public static String randomString() {
-        return UUID.randomUUID().toString();
-    }
-
-    public static byte[] randomData(int length) {
-        byte[] data = new byte[length];
-        random.nextBytes(data);
-        return data;
     }
 }
