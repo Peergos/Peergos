@@ -1,6 +1,8 @@
 package peergos.server.tests;
 
 import org.junit.*;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 import peergos.server.*;
 import peergos.server.storage.*;
 import peergos.server.util.*;
@@ -17,6 +19,7 @@ import java.util.stream.*;
 
 import static org.junit.Assert.*;
 
+@RunWith(Parameterized.class)
 public class MultiNodeNetworkTests {
     private static Args args = UserTests.buildArgs()
             .with("useIPFS", "true")
@@ -27,6 +30,26 @@ public class MultiNodeNetworkTests {
 
     private final Crypto crypto = Crypto.initJava();
 
+    private final int iNode1, iNode2;
+
+    public MultiNodeNetworkTests(int iNode1, int iNode2) {
+        this.iNode1 = iNode1;
+        this.iNode2 = iNode2;
+    }
+
+    @Parameterized.Parameters()
+    public static Collection<Object[]> parameters() {
+        return Arrays.asList(new Object[][] {
+                {0, 1}, // PKI, normal-1
+                {1, 0}, // normal-2, PKI
+                {2, 1}  // normal-1, normal-2
+        });
+    }
+
+    private NetworkAccess getNode(int i)  {
+        return nodes.get(i);
+    }
+
     @BeforeClass
     public static void init() throws Exception {
         // start pki node
@@ -36,29 +59,31 @@ public class MultiNodeNetworkTests {
         nodes.add(toPki);
         int bootstrapSwarmPort = args.getInt("ipfs-config-swarm-port");
 
-        // other nodes
-        int ipfsApiPort = 9000 + random.nextInt(8000);
-        int ipfsGatewayPort = 9000 + random.nextInt(8000);
-        int ipfsSwarmPort = 9000 + random.nextInt(8000);
-        int peergosPort = 9000 + random.nextInt(8000);
-        Args normalNode = UserTests.buildArgs()
-                .with("useIPFS", "true")
-                .with("port", "" + peergosPort)
-                .with("pki-node-id", pkiNodeId.toBase58())
-                .with("ipfs-config-api-port", "" + ipfsApiPort)
-                .with("ipfs-config-gateway-port", "" + ipfsGatewayPort)
-                .with("ipfs-config-swarm-port", "" + ipfsSwarmPort)
-                .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, "" + Main.getLocalBootstrapAddress(bootstrapSwarmPort, pkiNodeId))
-                .with("proxy-target", Main.getLocalMultiAddress(peergosPort).toString())
-                .with("ipfs-api-address", Main.getLocalMultiAddress(ipfsApiPort).toString())
-                .with("mutable-pointers-file", ":memory:")
-                .with("social-sql-file", ":memory:");
+        // create two other nodes that use the first as a PKI-node
+        for (int i = 0; i < 2; i++) {
+            int ipfsApiPort = 9000 + random.nextInt(8000);
+            int ipfsGatewayPort = 9000 + random.nextInt(8000);
+            int ipfsSwarmPort = 9000 + random.nextInt(8000);
+            int peergosPort = 9000 + random.nextInt(8000);
+            Args normalNode = UserTests.buildArgs()
+                    .with("useIPFS", "true")
+                    .with("port", "" + peergosPort)
+                    .with("pki-node-id", pkiNodeId.toBase58())
+                    .with("ipfs-config-api-port", "" + ipfsApiPort)
+                    .with("ipfs-config-gateway-port", "" + ipfsGatewayPort)
+                    .with("ipfs-config-swarm-port", "" + ipfsSwarmPort)
+                    .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, "" + Main.getLocalBootstrapAddress(bootstrapSwarmPort, pkiNodeId))
+                    .with("proxy-target", Main.getLocalMultiAddress(peergosPort).toString())
+                    .with("ipfs-api-address", Main.getLocalMultiAddress(ipfsApiPort).toString())
+                    .with("mutable-pointers-file", ":memory:")
+                    .with("social-sql-file", ":memory:");
+            Main.PEERGOS.main(normalNode);
 
-        Main.PEERGOS.main(normalNode);
 
-        IPFS node2 = new IPFS(Main.getLocalMultiAddress(ipfsApiPort));
-        node2.swarm.connect(Main.getLocalBootstrapAddress(bootstrapSwarmPort, pkiNodeId).toString());
-        nodes.add(buildApi(normalNode));
+            IPFS ipfs = new IPFS(Main.getLocalMultiAddress(ipfsApiPort));
+            ipfs.swarm.connect(Main.getLocalBootstrapAddress(bootstrapSwarmPort, pkiNodeId).toString());
+            nodes.add(buildApi(normalNode));
+        }
     }
 
     private static NetworkAccess buildApi(Args args) throws Exception {
@@ -66,18 +91,18 @@ public class MultiNodeNetworkTests {
     }
 
     @Test
-    public void signUpOnNormalNode() throws Exception {
-        UserContext context = ensureSignedUp(generateUsername(), randomString(), nodes.get(1), crypto);
+    public void signUp() throws Exception {
+        UserContext context = ensureSignedUp(generateUsername(), randomString(), getNode(iNode1), crypto);
     }
 
     @Test
     public void internodeFriends() throws Exception {
         String username1 = generateUsername();
         String password1 = randomString();
-        UserContext u1 = ensureSignedUp(username1, password1, nodes.get(1), crypto);
+        UserContext u1 = ensureSignedUp(username1, password1, getNode(iNode2), crypto);
         String username2 = generateUsername();
         String password2 = randomString();
-        UserContext u2 = ensureSignedUp(username2, password2, nodes.get(0), crypto);
+        UserContext u2 = ensureSignedUp(username2, password2, getNode(iNode1), crypto);
 
         u2.sendFollowRequest(username1, SymmetricKey.random()).get();
         List<FollowRequest> u1Requests = u1.processFollowRequests().get();
@@ -90,12 +115,12 @@ public class MultiNodeNetworkTests {
         Optional<FileTreeNode> u2ToU1 = u1.getByPath("/" + u2.username).get();
         assertTrue("Friend root present after accepted follow request", u2ToU1.isPresent());
 
-        Set<String> u1Following = ensureSignedUp(username1, password1, nodes.get(1).clear(), crypto).getSocialState().get()
+        Set<String> u1Following = ensureSignedUp(username1, password1, getNode(iNode2).clear(), crypto).getSocialState().get()
                 .followingRoots.stream().map(f -> f.getName())
                 .collect(Collectors.toSet());
         assertTrue("Following correct", u1Following.contains(u2.username));
 
-        Set<String> u2Following = ensureSignedUp(username2, password2, nodes.get(0).clear(), crypto).getSocialState().get()
+        Set<String> u2Following = ensureSignedUp(username2, password2, getNode(iNode1).clear(), crypto).getSocialState().get()
                 .followingRoots.stream().map(f -> f.getName())
                 .collect(Collectors.toSet());
         assertTrue("Following correct", u2Following.contains(u1.username));
@@ -105,12 +130,12 @@ public class MultiNodeNetworkTests {
     public void writeViaUnrelatedNode() throws Exception {
         String username1 = generateUsername();
         String password1 = randomString();
-        UserContext u1 = ensureSignedUp(username1, password1, nodes.get(1), crypto);
+        UserContext u1 = ensureSignedUp(username1, password1, getNode(iNode2), crypto);
 
         byte[] data = "G'day mate!".getBytes();
         String filename = "hey.txt";
         FileTreeNode upload = u1.getUserRoot().get().uploadFile(filename,
-                new AsyncReader.ArrayBacked(data), data.length, nodes.get(0), crypto.random, x -> { }, u1.fragmenter).get();
+                new AsyncReader.ArrayBacked(data), data.length, getNode(iNode1), crypto.random, x -> { }, u1.fragmenter).get();
         Thread.sleep(7000);
         Optional<FileTreeNode> file = u1.getByPath("/" + username1 + "/" + filename).get();
         Assert.assertTrue(file.isPresent());
