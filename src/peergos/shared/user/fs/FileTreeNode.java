@@ -283,38 +283,22 @@ public class FileTreeNode {
                                 .substring(FastSharing.SHARING_FILE_PREFIX.length()))))
                         .collect(Collectors.toList());
                 FileTreeNode currentSharingFile = sharingFiles.isEmpty() ? null : sharingFiles.get(sharingFiles.size() - 1);
+                byte[] serializedCapability = file.pointer.filePointer.toCbor().toByteArray();
+                if (serializedCapability.length != FastSharing.FILE_POINTER_SIZE)
+                    throw new IllegalArgumentException("Unexpected FilePointer length:" + serializedCapability.length);
+                AsyncReader.ArrayBacked newCapability = new AsyncReader.ArrayBacked(serializedCapability);
                 if (currentSharingFile != null
                         && currentSharingFile.getFileProperties().size + FastSharing.FILE_POINTER_SIZE <= FastSharing.SHARING_FILE_MAX_SIZE) {
-                    return currentSharingFile.getInputStream(network, random, x -> {}).thenCompose(reader -> {
-                        int currentFileSize = (int) currentSharingFile.getSize();
-                        byte[] shareFileContents = new byte[currentFileSize + FastSharing.FILE_POINTER_SIZE];
-                        return reader.readIntoArray(shareFileContents, 0, currentFileSize)
-                                .thenCompose(bytesRead -> uploadSharingFile(file.pointer.filePointer, shareFileContents,
-                                        sharingFiles.size() -1, network, random, fragmenter));
-                    });
+                    long size = currentSharingFile.getSize();
+                    return uploadFileSection(currentSharingFile.props.name, newCapability, size, size + serializedCapability.length,
+                            Optional.of(currentSharingFile.pointer.filePointer.baseKey), true, network, random, x -> {}, fragmenter);
                 } else {
                     int sharingFileIndex = currentSharingFile == null ? 0 : sharingFiles.size();
-                    byte[] shareFileContents = new byte[FastSharing.FILE_POINTER_SIZE];
-                    return uploadSharingFile(file.pointer.filePointer, shareFileContents, sharingFileIndex,
-                            network, random, fragmenter);
+                    String capStoreFilename = FastSharing.SHARING_FILE_PREFIX + sharingFileIndex;
+                    return uploadFileSection(capStoreFilename, newCapability, 0, serializedCapability.length,
+                            Optional.empty(), false, network, random, x -> {}, fragmenter);
                 }
             });
-    }
-
-    private CompletableFuture<FileTreeNode> uploadSharingFile(FilePointer fp, byte[] fileContents, int fileIndex
-            , NetworkAccess network, SafeRandom random, Fragmenter fragmenter) {
-        byte[] serialisedFilePointer = fp.toCbor().toByteArray();
-        if(serialisedFilePointer.length != FastSharing.FILE_POINTER_SIZE) {
-            CompletableFuture<FileTreeNode> error = new CompletableFuture<>();
-            error.completeExceptionally(new IllegalArgumentException("Unexpected FilePointer length:" + serialisedFilePointer));
-            return error;
-        }
-        System.arraycopy(serialisedFilePointer, 0, fileContents,
-                fileContents.length - FastSharing.FILE_POINTER_SIZE, serialisedFilePointer.length);
-        AsyncReader.ArrayBacked dataReader = new AsyncReader.ArrayBacked(fileContents);
-        return uploadFile(FastSharing.SHARING_FILE_PREFIX + fileIndex, dataReader, true,
-                (long) fileContents.length,true, network, random, x-> {}, fragmenter)
-                .thenApply(newFile -> newFile);
     }
 
     @JsMethod
