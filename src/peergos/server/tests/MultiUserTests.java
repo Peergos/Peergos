@@ -23,6 +23,7 @@ import java.util.*;
 import java.util.stream.*;
 
 import static org.junit.Assert.assertTrue;
+import static peergos.server.util.PeergosNetworkUtils.ensureSignedUp;
 import static peergos.server.util.PeergosNetworkUtils.getUserContextsForNode;
 
 @RunWith(Parameterized.class)
@@ -269,7 +270,15 @@ public class MultiUserTests {
         Assert.assertTrue("target can't read through original path", ! unsharedView.isPresent());
         Assert.assertTrue("target can't read through new path", ! unsharedView2.isPresent());
 
-        List<UserContext> updatedUserContexts = getUserContexts(userCount);
+        List<UserContext> updatedUserContexts = friends.stream()
+                .map(e -> {
+                    try {
+                        return ensureSignedUp(e.username, e.username, network, crypto);
+                    } catch (Exception ex) {
+                        throw new IllegalStateException(ex.getMessage(), ex);
+                    }
+                })
+                .collect(Collectors.toList());
 
         List<UserContext> remainingUsers = updatedUserContexts.stream()
                 .skip(1)
