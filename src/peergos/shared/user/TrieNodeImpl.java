@@ -14,12 +14,12 @@ import java.util.stream.Collectors;
 @JsType
 public class TrieNodeImpl implements TrieNode {
 	private static final Logger LOG = Logger.getGlobal();
-    private final Map<String, TrieNodeImpl> children;
+    private final Map<String, TrieNode> children;
     private final Optional<EntryPoint> value;
     private final Map<String, String> pathMappings;
 
     @JsConstructor
-    private TrieNodeImpl(Map<String, TrieNodeImpl> children, Optional<EntryPoint> value, Map<String, String> pathMappings) {
+    private TrieNodeImpl(Map<String, TrieNode> children, Optional<EntryPoint> value, Map<String, String> pathMappings) {
         this.children = Collections.unmodifiableMap(children);
         this.value = value;
         this.pathMappings = Collections.unmodifiableMap(pathMappings);
@@ -94,10 +94,27 @@ public class TrieNodeImpl implements TrieNode {
             return new TrieNodeImpl(children, Optional.of(e), pathMappings);
         }
         String[] elements = path.split("/");
-        TrieNodeImpl existing = children.getOrDefault(elements[0], TrieNodeImpl.empty());
-        TrieNodeImpl newChild = existing.put(path.substring(elements[0].length()), e);
+        TrieNode existing = children.getOrDefault(elements[0], TrieNodeImpl.empty());
+        TrieNode newChild = existing.put(path.substring(elements[0].length()), e);
 
-        HashMap<String, TrieNodeImpl> newChildren = new HashMap<>(children);
+        HashMap<String, TrieNode> newChildren = new HashMap<>(children);
+        newChildren.put(elements[0], newChild);
+        return new TrieNodeImpl(newChildren, value, pathMappings);
+    }
+
+    @Override
+    public TrieNode put(String path, TrieNode t) {
+        LOG.info("Entrie.put(" + path + ")");
+        if (path.startsWith("/"))
+            path = path.substring(1);
+        if (path.length() == 0) {
+            return t;
+        }
+        String[] elements = path.split("/");
+        TrieNode existing = children.getOrDefault(elements[0], TrieNodeImpl.empty());
+        TrieNode newChild = existing.put(path.substring(elements[0].length()), t);
+
+        HashMap<String, TrieNode> newChildren = new HashMap<>(children);
         newChildren.put(elements[0], newChild);
         return new TrieNodeImpl(newChildren, value, pathMappings);
     }
@@ -116,10 +133,10 @@ public class TrieNodeImpl implements TrieNode {
             return new TrieNodeImpl(children, Optional.empty(), pathMappings);
         }
         String[] elements = path.split("/");
-        TrieNodeImpl existing = children.getOrDefault(elements[0], TrieNodeImpl.empty());
-        TrieNodeImpl newChild = existing.removeEntry(path.substring(elements[0].length()));
+        TrieNode existing = children.getOrDefault(elements[0], TrieNodeImpl.empty());
+        TrieNode newChild = existing.removeEntry(path.substring(elements[0].length()));
 
-        HashMap<String, TrieNodeImpl> newChildren = new HashMap<>(children);
+        HashMap<String, TrieNode> newChildren = new HashMap<>(children);
         if (newChild.isEmpty())
             newChildren.remove(elements[0]);
         else
@@ -134,11 +151,6 @@ public class TrieNodeImpl implements TrieNode {
         return new TrieNodeImpl(children, value, newLinks);
     }
 
-    @Override
-    public TrieNodeImpl clear() {
-        return TrieNodeImpl.empty();
-    }
-
     public boolean hasWriteAccess() {
         if (children.size() == 0)
             return value.map(e -> e.pointer.isWritable()).orElse(false);
@@ -151,9 +163,8 @@ public class TrieNodeImpl implements TrieNode {
         return new TrieNodeImpl(Collections.emptyMap(), Optional.empty(), Collections.emptyMap());
     }
 
+    @Override
     public boolean isEmpty() {
         return children.size() == 0 && !value.isPresent();
     }
-
-
 }

@@ -132,12 +132,16 @@ public class UserContext {
                 }).exceptionally(Futures::logError);
     }
 
-    private static CompletableFuture<UserContext> login(String username, UserWithRoot userWithRoot, Pair<Multihash, CborObject> pair
-            , NetworkAccess network, Crypto crypto, Consumer<String> progressCallback) {
+    private static CompletableFuture<UserContext> login(String username,
+                                                        UserWithRoot userWithRoot,
+                                                        Pair<Multihash, CborObject> pair,
+                                                        NetworkAccess network,
+                                                        Crypto crypto,
+                                                        Consumer<String> progressCallback) {
         try {
             progressCallback.accept("Logging in");
             WriterData userData = WriterData.fromCbor(pair.right, userWithRoot.getRoot());
-            return createOurFileTreeOnly(username, userData, network)
+            return createOurFileTreeOnly(username, userData, network, crypto.random, Fragmenter.getInstance())
                     .thenCompose(root -> TofuCoreNode.load(username, root, network, crypto.random)
                             .thenCompose(keystore -> {
                                 TofuCoreNode tofu = new TofuCoreNode(network.coreNode, keystore);
@@ -253,7 +257,7 @@ public class UserContext {
         CommittedWriterData committed = new CommittedWriterData(MaybeMultihash.empty(), empty);
         CompletableFuture<CommittedWriterData> userData = CompletableFuture.completedFuture(committed);
         UserContext context = new UserContext(null, null, null, network.clear(), crypto, userData, TrieNodeImpl.empty());
-        return context.addEntryPoint(null, context.entrie, entry, network).thenApply(trieNode -> {
+        return context.addEntryPoint(null, null, context.entrie, entry, network, crypto.random, Fragmenter.getInstance()).thenApply(trieNode -> {
             context.entrie = trieNode;
             return context;
         });
@@ -888,7 +892,7 @@ public class UserContext {
         return addToUserDataQueue(lock).thenCompose(wd -> {
             wd.props.staticData.ifPresent(sd -> sd.add(entry));
             return wd.props.commit(signer.publicKeyHash, signer, wd.hash, network, lock::complete)
-                    .thenCompose(res -> addEntryPoint(username, root, entry, network))
+                    .thenCompose(res -> getUserRoot().thenCompose(ourRoot -> addEntryPoint(username, ourRoot, root, entry, network, crypto.random, fragmenter)))
                     .exceptionally(t -> {
                         lock.complete(wd);
                         return root;
@@ -1033,7 +1037,11 @@ public class UserContext {
      *
      * @return TrieNode for root of filesystem containing only our files
      */
-    private static CompletableFuture<TrieNode> createOurFileTreeOnly(String ourName, WriterData userData, NetworkAccess network) {
+    private static CompletableFuture<TrieNode> createOurFileTreeOnly(String ourName,
+                                                                     WriterData userData,
+                                                                     NetworkAccess network,
+                                                                     SafeRandom random,
+                                                                     Fragmenter fragmenter) {
         TrieNode root = TrieNodeImpl.empty();
         if (! userData.staticData.isPresent())
             throw new IllegalStateException("Cannot retrieve file tree for a filesystem without entrypoints!");
@@ -1042,7 +1050,7 @@ public class UserContext {
                 .stream()
                 .filter(e -> e.owner.equals(ourName))
                 .collect(Collectors.toList());
-        return Futures.reduceAll(ourFileSystemEntries, root, (t, e) -> addEntryPoint(ourName, t, e, network), (a, b) -> a)
+        return Futures.reduceAll(ourFileSystemEntries, root, (t, e) -> addEntryPoint(ourName, null, t, e, network, random, fragmenter), (a, b) -> a)
                 .exceptionally(Futures::logError);
     }
 
@@ -1086,81 +1094,71 @@ public class UserContext {
                     .thenApply(friendCaps -> friendToRetrievedCapabilities.put(friend.right, friendCaps))
                     .thenApply(z -> true));
                 },
-                (a, b) -> a && b)).thenCompose(done -> {
-
-            List<CompletableFuture<Pair<EntryPoint, Optional<String>>>> retrievedEntries = notOurFileSystemEntries.stream()
-                    .map(entry -> network.retrieveEntryPoint(entry)
-                            .thenCompose(opt -> opt.map(f -> f.getPath(network).thenApply(path -> new Pair<>(entry, Optional.of(path))))
-                                    .orElse(CompletableFuture.completedFuture(new Pair<>(entry, Optional.empty())))))
+                (a, b) -> a && b)
+        ).thenCompose(done -> {
+            List<Pair<String, RetrievedCapability>> capsWithSource = friendToRetrievedCapabilities.entrySet().stream()
+                    .flatMap(e -> e.getValue().stream().map(cap -> new Pair<>(e.getKey(), cap)))
                     .collect(Collectors.toList());
-
-            List<CompletableFuture<Pair<EntryPoint, Optional<String>>>> sharedWithMe = retrievedCapabilityToEntryPoint(friendToRetrievedCapabilities).stream()
-                    .map(entry -> network.retrieveEntryPoint(entry)
-                            .thenCompose(opt -> opt.map(f -> f.getPath(network).thenApply(path -> new Pair<>(entry, Optional.of(path))))
-                                    .orElse(CompletableFuture.completedFuture(new Pair<>(entry, Optional.empty())))))
-                    .collect(Collectors.toList());
-
-            List<CompletableFuture<Pair<EntryPoint, Optional<String>>>> combinedEntries = Stream.concat(retrievedEntries.stream(), sharedWithMe.stream())
-                    .collect(Collectors.toList());
-            return Futures.reduceAll(combinedEntries, ourRoot, (t, p) -> addRetrievedEntryPoint(ourName, t, p, network), (a, b) -> a)
-                    .exceptionally(Futures::logError);
-        });
+            return Futures.reduceAll(capsWithSource,
+                    ourRoot,
+                    (aroot, pair) -> addRetrievedEntryPoint(ourName, aroot, pair.left, convert(pair.left, pair.right), pair.right.path, network),
+                    (a, b) -> a);
+        }).exceptionally(Futures::logError);
     }
 
-    private static List<EntryPoint> retrievedCapabilityToEntryPoint(HashMap<String, List<RetrievedCapability>> combinedRetrievedCapabilityCache) {
-        return combinedRetrievedCapabilityCache.entrySet().stream().flatMap(e -> {
-            List<EntryPoint> result = e.getValue().stream().map( rc -> new EntryPoint(rc.fp, e.getKey(), Collections.emptySet(), Collections.emptySet())).collect(Collectors.toList());
-            return result.stream();
-        }).collect(Collectors.toList());
+    public static EntryPoint convert(String owner, RetrievedCapability cap) {
+        return new EntryPoint(cap.fp, owner, Collections.emptySet(), Collections.emptySet());
     }
 
     private static CompletableFuture<TrieNode> addRetrievedEntryPoint(String ourName,
                                                                       TrieNode root,
-                                                                      CompletableFuture<Pair<EntryPoint, Optional<String>>> futureWithPath,
+                                                                      String friendName,
+                                                                      EntryPoint fileCap,
+                                                                      String path,
                                                                       NetworkAccess network) {
-        return futureWithPath.thenCompose(pair -> {
-            if (! pair.right.isPresent())
-                return CompletableFuture.completedFuture(root);
-            String path = pair.right.get();
-            EntryPoint e = pair.left;
-            // check entrypoint doesn't forge the owner
-            return  (e.owner.equals(ourName) ? CompletableFuture.completedFuture(true) :
-                    e.isValid(path, network)).thenApply(valid -> {
-                    String[] parts = path.split("/");
-                    if (parts.length < 3 || !parts[2].equals(SHARED_DIR_NAME))
-                        return root.put(path, e);
-                    TrieNode rootWithMapping = parts[1].equals(ourName) ? root : root.addPathMapping("/" + parts[1] + "/", path + "/");
-                    return rootWithMapping.put(path, e);
-                });
-        }).exceptionally(t -> {
-            LOG.log(Level.WARNING, t.getMessage(), t);
-            LOG.severe("Couldn't add entry point (failed retrieving parent dir or it was invalid)!");
-            // Allow the system to continue without this entry point
-            return root;
+        // check entrypoint doesn't forge the owner
+        return  (fileCap.owner.equals(ourName) ? CompletableFuture.completedFuture(true) :
+                fileCap.isValid(path, network)).thenApply(valid -> {
+            String[] parts = path.split("/");
+            if (parts.length < 3 || !parts[2].equals(SHARED_DIR_NAME))
+                return root.put(path, fileCap);
+            TrieNode rootWithMapping = parts[1].equals(ourName) ? root : root.addPathMapping("/" + parts[1] + "/", path + "/");
+            return rootWithMapping.put(path, fileCap);
         });
     }
 
-    private static CompletableFuture<TrieNode> addEntryPoint(String ourName, TrieNode root, EntryPoint e, NetworkAccess network) {
+    private static CompletableFuture<TrieNode> addEntryPoint(String ourName,
+                                                             FileTreeNode ourRoot,
+                                                             TrieNode root,
+                                                             EntryPoint e,
+                                                             NetworkAccess network,
+                                                             SafeRandom random,
+                                                             Fragmenter fragmenter) {
         return network.retrieveEntryPoint(e).thenCompose(metadata -> {
             if (metadata.isPresent()) {
                 return metadata.get().getPath(network)
                         .thenCompose(path -> {
                             // check entrypoint doesn't forge the owner
-                            return  (e.owner.equals(ourName) ? CompletableFuture.completedFuture(true) :
-                             e.isValid(path, network)).thenApply(valid -> {
-
+                            return (e.owner.equals(ourName) ?
+                                    CompletableFuture.completedFuture(true) :
+                                    e.isValid(path, network)).thenCompose(valid -> {
                                 LOG.info("Added entry point: " + metadata.get() + " at path " + path);
                                 String[] parts = path.split("/");
                                 if (parts.length < 3 || !parts[2].equals(SHARED_DIR_NAME))
-                                    return root.put(path, e);
-                                TrieNode rootWithMapping = parts[1].equals(ourName) ? root : root.addPathMapping("/" + parts[1] + "/", path + "/");
-                                return rootWithMapping.put(path, e);
+                                    return CompletableFuture.completedFuture(root.put(path, e));
+                                String username = parts[1];
+                                if (username.endsWith(ourName)) // This is a sharing directory of ours for a friend
+                                    return CompletableFuture.completedFuture(root);
+                                // This is a friend's sharing directory, create a wrapper to read the capabilities lazily from it
+                                return FriendSourcedTrieNode.build(ourRoot, e, network, random, fragmenter)
+                                        .thenApply(fromUser -> fromUser.map(userEntrie -> root.put(username, userEntrie)).orElse(root));
+                                    }
+                            ).exceptionally(t -> {
+                                LOG.log(Level.WARNING, t.getMessage(), t);
+                                LOG.severe("Couldn't add entry point (failed retrieving parent dir or it was invalid): " + metadata.get().getName());
+                                // Allow the system to continue without this entry point
+                                return root;
                             });
-                        }).exceptionally(t -> {
-                            LOG.log(Level.WARNING, t.getMessage(), t);
-                            LOG.severe("Couldn't add entry point (failed retrieving parent dir or it was invalid): " + metadata.get().getName());
-                            // Allow the system to continue without this entry point
-                            return root;
                         });
             }
             return CompletableFuture.completedFuture(root);
@@ -1241,7 +1239,7 @@ public class UserContext {
     }
 
     public void logout() {
-        entrie = entrie.clear();
+        entrie = TrieNodeImpl.empty();
     }
 
     @JsMethod
