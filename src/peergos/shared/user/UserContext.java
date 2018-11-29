@@ -316,17 +316,16 @@ public class UserContext {
                             Futures.reduceAll(children,
                                     true,
                                     (x, friendDirectory) -> {
-                                        List<RetrievedCapability> retrievedCapabilityCache = new ArrayList<>();
-                                        return FastSharing.loadSharingLinks(friendDirectory, friendDirectory, this.username, retrievedCapabilityCache
-                                                , network, crypto.random, fragmenter, false)
-                                                .thenApply(res -> {
+                                        return FastSharing.loadSharingLinks(friendDirectory, friendDirectory,
+                                                this.username, network, crypto.random, fragmenter, false)
+                                                .thenApply(caps -> {
                                                     String friendName = friendDirectory.getName();
-                                                    retrievedCapabilityCache.stream().forEach(rc -> {
+                                                    caps.stream().forEach(rc -> {
                                                         Set<String> existingEntries = sharedWithCache.getOrDefault(rc.path, new HashSet<>());
                                                         sharedWithCache.put(rc.path, existingEntries);
                                                         existingEntries.add(friendName);
                                                     });
-                                                    return res;
+                                                    return true;
                                                 });
                                     }, (a, b) -> a && b).thenApply(done -> done));
     }
@@ -1059,14 +1058,15 @@ public class UserContext {
                 .filter(e -> ! e.owner.equals(ourName))
                 .collect(Collectors.toList());
 
-        CompletableFuture<List<Pair<FileTreeNode, String>>> otherEntryPoints =
+        // need to to retrieve all the entry points of our friends, then get all teh capabilities from each of them,
+        // retrieve their paths, and add to the trie
+        CompletableFuture<List<Pair<FileTreeNode, String>>> friendSharingDirs =
                 Futures.reduceAll(notOurFileSystemEntries,
                         new ArrayList<>(),
                         (res, entry) -> network.retrieveEntryPoint(entry)
                                 .thenCompose(opt -> {
                                     if (! opt.isPresent()) {
-                                        CompletableFuture<List<Pair<FileTreeNode, String>>> fut = CompletableFuture.completedFuture(res);
-                                        return fut;
+                                        return CompletableFuture.completedFuture(res);
                                     }
                                     FileTreeNode f = opt.get();
                                     return f.getPath(network)
@@ -1078,14 +1078,13 @@ public class UserContext {
                         (a, b) -> Stream.concat(a.stream(), b.stream()).collect(Collectors.toList()));
 
         HashMap<String, List<RetrievedCapability>> friendToRetrievedCapabilities = new HashMap<>();
-        return otherEntryPoints.thenCompose(pairs -> Futures.reduceAll(pairs,
+        return friendSharingDirs.thenCompose(pairs -> Futures.reduceAll(pairs,
                 true,
                 (x, friend) -> {
-                    List<RetrievedCapability> retrievedCapabilityCache = new ArrayList<>();
-
-                    friendToRetrievedCapabilities.put(friend.right, retrievedCapabilityCache);
                     return ourRoot.getByPath("/" + ourName, network).thenCompose(fileOpt ->
-                            FastSharing.loadSharingLinks(fileOpt.get(), friend.left, friend.right, retrievedCapabilityCache, network, random, fragmenter, true));
+                            FastSharing.loadSharingLinks(fileOpt.get(), friend.left, friend.right, network, random, fragmenter, true)
+                    .thenApply(friendCaps -> friendToRetrievedCapabilities.put(friend.right, friendCaps))
+                    .thenApply(z -> true));
                 },
                 (a, b) -> a && b)).thenCompose(done -> {
 
