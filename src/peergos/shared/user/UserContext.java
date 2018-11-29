@@ -1059,25 +1059,35 @@ public class UserContext {
                 .filter(e -> ! e.owner.equals(ourName))
                 .collect(Collectors.toList());
 
-        List<CompletableFuture<Pair<FileTreeNode, String>>> otherEntryPoints = notOurFileSystemEntries.stream()
-                .map(entry -> network.retrieveEntryPoint(entry)
-                        .thenCompose(opt -> {
-                            FileTreeNode f = opt.get();
-                            return  f.getPath(network).thenApply(path -> new Pair<>(f, entry.owner));
-                        }))
-                .collect(Collectors.toList());
+        CompletableFuture<List<Pair<FileTreeNode, String>>> otherEntryPoints =
+                Futures.reduceAll(notOurFileSystemEntries,
+                        new ArrayList<>(),
+                        (res, entry) -> network.retrieveEntryPoint(entry)
+                                .thenCompose(opt -> {
+                                    if (! opt.isPresent()) {
+                                        CompletableFuture<List<Pair<FileTreeNode, String>>> fut = CompletableFuture.completedFuture(res);
+                                        return fut;
+                                    }
+                                    FileTreeNode f = opt.get();
+                                    return f.getPath(network)
+                                            .thenApply(path -> Stream.concat(
+                                                    res.stream(),
+                                                    Stream.of(new Pair<>(f, entry.owner)))
+                                                    .collect(Collectors.toList()));
+                                }),
+                        (a, b) -> Stream.concat(a.stream(), b.stream()).collect(Collectors.toList()));
 
         HashMap<String, List<RetrievedCapability>> friendToRetrievedCapabilities = new HashMap<>();
-        return Futures.reduceAll(otherEntryPoints,
+        return otherEntryPoints.thenCompose(pairs -> Futures.reduceAll(pairs,
                 true,
                 (x, friend) -> {
                     List<RetrievedCapability> retrievedCapabilityCache = new ArrayList<>();
-                    return friend.thenCompose(f -> {
-                        friendToRetrievedCapabilities.put(f.right, retrievedCapabilityCache);
-                        return ourRoot.getByPath("/" + ourName, network).thenCompose(fileOpt ->
-                            FastSharing.loadSharingLinks(fileOpt.get(), f.left, f.right, retrievedCapabilityCache, network, random, fragmenter, true));
-                    });},
-                (a, b) -> a && b).thenCompose(done -> {
+
+                    friendToRetrievedCapabilities.put(friend.right, retrievedCapabilityCache);
+                    return ourRoot.getByPath("/" + ourName, network).thenCompose(fileOpt ->
+                            FastSharing.loadSharingLinks(fileOpt.get(), friend.left, friend.right, retrievedCapabilityCache, network, random, fragmenter, true));
+                },
+                (a, b) -> a && b)).thenCompose(done -> {
 
             List<CompletableFuture<Pair<EntryPoint, Optional<String>>>> retrievedEntries = notOurFileSystemEntries.stream()
                     .map(entry -> network.retrieveEntryPoint(entry)
