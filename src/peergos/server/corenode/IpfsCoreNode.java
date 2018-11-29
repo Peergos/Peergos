@@ -151,7 +151,7 @@ public class IpfsCoreNode implements CoreNode {
 
                 ChampWrapper champ = currentTree.isPresent() ?
                         ChampWrapper.create(currentTree.get(), identityHash, ipfs).get() :
-                        ChampWrapper.create(signer, identityHash, ipfs).get();
+                        ChampWrapper.create(signer.publicKeyHash, signer, identityHash, ipfs).get();
                 MaybeMultihash existing = champ.get(username.getBytes()).get();
                 Optional<CborObject> cborOpt = existing.isPresent() ?
                         ipfs.get(existing.get()).get() :
@@ -169,11 +169,11 @@ public class IpfsCoreNode implements CoreNode {
                 CborObject.CborList mergedChainCbor = new CborObject.CborList(mergedChain.stream()
                         .map(Cborable::toCbor)
                         .collect(Collectors.toList()));
-                Multihash mergedChainHash = ipfs.put(signer, mergedChainCbor.toByteArray()).get();
+                Multihash mergedChainHash = ipfs.put(peergosIdentity, signer, mergedChainCbor.toByteArray()).get();
                 synchronized (this) {
-                    Multihash newPkiRoot = champ.put(signer, username.getBytes(), existing, mergedChainHash).get();
+                    Multihash newPkiRoot = champ.put(signer.publicKeyHash, signer, username.getBytes(), existing, mergedChainHash).get();
                     return current.props.withChamp(newPkiRoot)
-                            .commit(signer, currentRoot, mutable, ipfs, c -> {})
+                            .commit(peergosIdentity, signer, currentRoot, mutable, ipfs, c -> {})
                             .thenApply(committed -> {
                                 if (existingChain.isEmpty())
                                     usernames.add(username);
@@ -207,65 +207,4 @@ public class IpfsCoreNode implements CoreNode {
     @Override
     public void close() throws IOException {}
 
-    public static void main(String[] args) throws Exception {
-        // This method will add a named (pki) key to the peergos user,
-        // load the existing pki into a champ and store the root of that champ under the named pki key
-        // The pki key is independent of the 'peergos' user identity key
-
-        Crypto crypto = Crypto.initJava();
-        NetworkAccess network = NetworkAccess.buildJava(new URL("https://demo.peergos.net")).get();
-        NonWriteThroughMutablePointers tmpMutable = new NonWriteThroughMutablePointers(network.mutable, network.dhtClient);
-        Console console = System.console();
-        String user = "peergos";
-        String password = new String(console.readPassword("Enter password for " + user + ":"));
-        Pair<Multihash, CborObject> pair = UserContext.getWriterDataCbor(network, user).get();
-        Optional<SecretGenerationAlgorithm> algorithmOpt = WriterData.extractUserGenerationAlgorithm(pair.right);
-        if (!algorithmOpt.isPresent())
-            throw new IllegalStateException("No login algorithm specified in user data!");
-        SecretGenerationAlgorithm algorithm = algorithmOpt.get();
-        UserWithRoot owner = UserUtil.generateUser(user, password, crypto.hasher, crypto.symmetricProvider,
-                crypto.random, crypto.signer, crypto.boxer, algorithm).get();
-        WriterData ownerProperties = WriterData.fromCbor(pair.right, owner.getRoot());
-        SigningPrivateKeyAndPublicHash ownerIdentity = new SigningPrivateKeyAndPublicHash(ownerProperties.controller, owner.getUser().secretSigningKey);
-
-        String pkiPassword = new String(console.readPassword("Enter password for pki:"));
-        UserWithRoot pkiKeys = UserUtil.generateUser(user, pkiPassword, crypto.hasher, crypto.symmetricProvider,
-                crypto.random, crypto.signer, crypto.boxer, new ScryptGenerator(ScryptGenerator.MIN_MEMORY_COST, 8, 1, 96)).get();
-
-        // ensure the user has the owned key for the pki
-        PublicSigningKey pkiPublicKey = pkiKeys.getUser().publicSigningKey;
-        PublicKeyHash pkiPublicHash = network.dhtClient.putSigningKey(
-                ownerIdentity.secret.signatureOnly(pkiPublicKey.serialize()),
-                ownerProperties.controller,
-                pkiPublicKey).get();
-        if (! ownerProperties.namedOwnedKeys.containsKey("pki")) {
-            WriterData withKey = ownerProperties.addNamedKey("pki", pkiPublicHash);
-            withKey.commit(ownerIdentity, MaybeMultihash.of(pair.left), network, x -> {}).get();
-        }
-
-        SigningPrivateKeyAndPublicHash pkiSigner = new SigningPrivateKeyAndPublicHash(pkiPublicHash, pkiKeys.getUser().secretSigningKey);
-
-        MaybeMultihash priorChampRoot = network.mutable.getPointerTarget(pkiPublicHash, network.dhtClient).get();
-        IpfsCoreNode target = new IpfsCoreNode(pkiKeys.getUser(), priorChampRoot, network.dhtClient, tmpMutable);
-        List<String> usernames = network.coreNode.getUsernames("").get();
-        for (String username : usernames) {
-            target.updateChain(username, network.coreNode.getChain(username).get()).get();
-        }
-        LOG.info("Final PKI root: " + target.currentRoot);
-
-        // finally update the mutable pointer to the new champ
-        HashCasPair cas = new HashCasPair(priorChampRoot, target.currentRoot);
-        byte[] signed = pkiSigner.secret.signMessage(cas.serialize());
-        network.mutable.setPointer(ownerProperties.controller, pkiPublicHash, signed).get();
-
-        // Test all mappings
-        MaybeMultihash currentRoot = network.mutable.getPointerTarget(pkiPublicHash, network.dhtClient).get();
-        IpfsCoreNode fromIpfs = new IpfsCoreNode(pkiKeys.getUser(), currentRoot, network.dhtClient, network.mutable);
-        for (String username : usernames) {
-            if (! target.getChain(username).get().equals(fromIpfs.getChain(username).get()))
-                throw new IllegalStateException("Non equal chain for " + username);
-            if (! network.coreNode.getChain(username).get().equals(fromIpfs.getChain(username).get()))
-                throw new IllegalStateException("Non equal chain for " + username);
-        }
-    }
 }

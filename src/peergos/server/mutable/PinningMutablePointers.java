@@ -34,9 +34,9 @@ public class PinningMutablePointers implements MutablePointers {
             byte[] message = signer.get().unsignMessage(sharingKeySignedBtreeRootHashes);
             HashCasPair cas = HashCasPair.fromCbor(CborObject.fromByteArray(message));
             long t1 = System.currentTimeMillis();
-            return (cas.original.isPresent() ? storage.pinUpdate(cas.original.get(), cas.updated.get())
+            return (cas.original.isPresent() ? storage.pinUpdate(owner, cas.original.get(), cas.updated.get())
                     .thenApply(PinningMutablePointers::convert) :
-                    storage.recursivePin(cas.updated.get())).thenCompose(pins -> {
+                    storage.recursivePin(owner, cas.updated.get())).thenCompose(pins -> {
                 if (!pins.contains(cas.updated.get())) {
                     CompletableFuture<Boolean> err = new CompletableFuture<>();
                     err.completeExceptionally(new IllegalStateException("Couldn't pin new hash: " + cas.updated.get()));
@@ -56,7 +56,7 @@ public class PinningMutablePointers implements MutablePointers {
                             // unpin old root
                             return !cas.original.isPresent() ?
                                     CompletableFuture.completedFuture(true) :
-                                    storage.recursiveUnpin(cas.original.get())
+                                    storage.recursiveUnpin(owner, cas.original.get())
                                             .thenApply(unpins -> {
                                                 long t4 = System.currentTimeMillis();
                                                 if (LOGGING)
@@ -76,7 +76,7 @@ public class PinningMutablePointers implements MutablePointers {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash writer) {
-        return target.getPointer(writer);
+    public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash owner, PublicKeyHash writer) {
+        return target.getPointer(owner, writer);
     }
 }

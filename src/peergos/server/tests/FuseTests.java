@@ -1,6 +1,7 @@
 package peergos.server.tests;
 import java.util.logging.*;
 
+import peergos.server.Main;
 import peergos.server.util.Args;
 import peergos.server.util.Logging;
 
@@ -10,7 +11,6 @@ import static java.util.UUID.*;
 
 import peergos.shared.*;
 import peergos.server.fuse.*;
-import peergos.server.Start;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
@@ -25,7 +25,6 @@ import java.util.stream.*;
 public class FuseTests {
 	private static final Logger LOG = Logging.LOG();
     public static int WEB_PORT = 8888;
-    public static int CORE_PORT = 7777;
     public static String username = "test02";
     public static String password = username;
     public static Path mountPoint, home;
@@ -36,26 +35,14 @@ public class FuseTests {
         WEB_PORT = webPort;
     }
 
-    public static void setCorePort(int corePort) {
-        CORE_PORT = corePort;
-    }
-
     @BeforeClass
     public static void init() throws Exception {
-        Random  random  = new Random();
-        int offset = random.nextInt(100);
-//        int offset = 0;
-        setWebPort(8888 + offset);
-        setCorePort(7777 + offset);
-
+        Args args = UserTests.buildArgs().with("useIPFS", "false");
+        setWebPort(args.getInt("port"));
         LOG.info("Using web-port "+ WEB_PORT);
         System.out.flush();
 
-        Args args = Args.parse(new String[]{"useIPFS", "false",
-                "-port", Integer.toString(WEB_PORT),
-                "-corenodePort", Integer.toString(CORE_PORT)});
-
-        Start.LOCAL.main(args);
+        Main.LOCAL.main(args);
         NetworkAccess network = NetworkAccess.buildJava(WEB_PORT).get();
         UserContext userContext = UserContext.ensureSignedUp(username, password, network, Crypto.initJava()).get();
 

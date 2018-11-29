@@ -342,12 +342,15 @@ public class UserContext {
         // set claim expiry to two months from now
         LocalDate expiry = now.plusMonths(2);
         LOG.info("claiming username: " + username + " with expiry " + expiry);
-        List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createInitial(signer, username, expiry);
-        return network.coreNode.getChain(username).thenCompose(existing -> {
-            if (existing.size() > 0)
-                throw new IllegalStateException("User already exists!");
-            return network.coreNode.updateChain(username, claimChain);
-        });
+        return network.dhtClient.id()
+                .thenCompose(id -> {
+                    List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createInitial(signer, username, expiry, Arrays.asList(id));
+                    return network.coreNode.getChain(username).thenCompose(existing -> {
+                        if (existing.size() > 0)
+                            throw new IllegalStateException("User already exists!");
+                        return network.coreNode.updateChain(username, claimChain);
+                    });
+                });
     }
 
     public CompletableFuture<LocalDate> getUsernameClaimExpiry() {
@@ -369,24 +372,27 @@ public class UserContext {
                                                                 LocalDate expiry,
                                                                 NetworkAccess network) {
         LOG.info("renewing username: " + username + " with expiry " + expiry);
-        List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createInitial(signer, username, expiry);
-        return network.coreNode.updateChain(username, claimChain);
+        return network.coreNode.getChain(username).thenCompose(existing -> {
+            List<Multihash> storage = existing.get(existing.size() - 1).claim.storageProviders;
+            List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createInitial(signer, username, expiry, storage);
+            return network.coreNode.updateChain(username, claimChain);
+        });
     }
 
     @JsMethod
     public CompletableFuture<Pair<Integer, Integer>> getTotalSpaceUsedJS(PublicKeyHash owner) {
-        return getTotalSpaceUsed(owner)
+        return getTotalSpaceUsed(owner, owner)
                 .thenApply(size -> new Pair<>((int)(size >> 32), size.intValue()));
     }
 
-    public CompletableFuture<Long> getTotalSpaceUsed(PublicKeyHash ownerHash) {
+    public CompletableFuture<Long> getTotalSpaceUsed(PublicKeyHash ownerHash, PublicKeyHash writerHash) {
         // assume no cycles in owned keys
         return getSigningKey(ownerHash)
-                .thenCompose(owner -> getWriterData(network, ownerHash)
+                .thenCompose(owner -> getWriterData(network, ownerHash, writerHash)
                         .thenCompose(cwd -> {
                             CompletableFuture<Long> subtree = Futures.reduceAll(cwd.props.ownedKeys
                                             .stream()
-                                            .map(writer -> getTotalSpaceUsed(writer))
+                                            .map(writer -> getTotalSpaceUsed(ownerHash, writer))
                                             .collect(Collectors.toList()),
                                     0L, (t, fut) -> fut.thenApply(x -> x + t), (a, b) -> a + b);
                             return subtree.thenCompose(ownedSize -> network.dhtClient.getRecursiveBlockSize(cwd.hash.get())
@@ -456,14 +462,17 @@ public class UserContext {
                                                             .thenCompose(userData -> {
                                                                 SigningPrivateKeyAndPublicHash newUser =
                                                                         new SigningPrivateKeyAndPublicHash(newSignerHash, updatedUser.getUser().secretSigningKey);
-                                                                List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createChain(signer, newUser, username, expiry);
-                                                                return network.coreNode.updateChain(username, claimChain)
-                                                                        .thenCompose(updatedChain -> {
-                                                                            if (!updatedChain)
-                                                                                throw new IllegalStateException("Couldn't register new public keys during password change!");
+                                                                return network.coreNode.getChain(username).thenCompose(existing -> {
+                                                                    List<Multihash> storage = existing.get(existing.size() - 1).claim.storageProviders;
+                                                                    List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createChain(signer, newUser, username, expiry, storage);
+                                                                    return network.coreNode.updateChain(username, claimChain)
+                                                                            .thenCompose(updatedChain -> {
+                                                                                if (!updatedChain)
+                                                                                    throw new IllegalStateException("Couldn't register new public keys during password change!");
 
-                                                                            return UserContext.ensureSignedUp(username, newPassword, network, crypto);
-                                                                        });
+                                                                                return UserContext.ensureSignedUp(username, newPassword, network, crypto);
+                                                                            });
+                                                                });
                                                             })
                                                     );
                                                 }
@@ -518,7 +527,7 @@ public class UserContext {
     public CompletableFuture<Optional<Pair<PublicKeyHash, PublicBoxingKey>>> getPublicKeys(String username) {
         return network.coreNode.getPublicKeyHash(username)
                 .thenCompose(signerOpt -> getSigningKey(signerOpt.get())
-                        .thenCompose(signer -> getWriterData(network, signerOpt.get())
+                        .thenCompose(signer -> getWriterData(network, signerOpt.get(), signerOpt.get())
                                 .thenCompose(wd -> getBoxingKey(wd.props.followRequestReceiver.get())
                                         .thenApply(boxer -> Optional.of(new Pair<>(signerOpt.get(), boxer))))));
     }
@@ -539,7 +548,7 @@ public class UserContext {
                     ).collect(Collectors.toSet());
 
                     WriterData writerData = wd.props.withOwnedKeys(updated);
-                    return writerData.commit(signer, wd.hash, network, lock::complete);
+                    return writerData.commit(signer.publicKeyHash, signer, wd.hash, network, lock::complete);
                 });
     }
 
@@ -548,7 +557,7 @@ public class UserContext {
         return addToUserDataQueue(lock)
                 .thenCompose(wd -> {
                     WriterData writerData = wd.props.addNamedKey(keyName, owned);
-                    return writerData.commit(signer, wd.hash, network, lock::complete);
+                    return writerData.commit(signer.publicKeyHash, signer, wd.hash, network, lock::complete);
                 });
     }
 
@@ -892,7 +901,7 @@ public class UserContext {
         CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
         return addToUserDataQueue(lock).thenCompose(wd -> {
             wd.props.staticData.ifPresent(sd -> sd.add(entry));
-            return wd.props.commit(signer, wd.hash, network, lock::complete)
+            return wd.props.commit(signer.publicKeyHash, signer, wd.hash, network, lock::complete)
                     .thenCompose(res -> addEntryPoint(username, root, entry, network))
                     .exceptionally(t -> {
                         lock.complete(wd);
@@ -1146,23 +1155,23 @@ public class UserContext {
         });
     }
 
-    public static CompletableFuture<CommittedWriterData> getWriterData(NetworkAccess network, PublicKeyHash signer) {
-        return getWriterDataCbor(network, signer)
+    public static CompletableFuture<CommittedWriterData> getWriterData(NetworkAccess network, PublicKeyHash owner, PublicKeyHash writer) {
+        return getWriterDataCbor(network, owner, writer)
                 .thenApply(pair -> new CommittedWriterData(MaybeMultihash.of(pair.left), WriterData.fromCbor(pair.right, null)));
     }
 
     public static CompletableFuture<Pair<Multihash, CborObject>> getWriterDataCbor(NetworkAccess network, String username) {
         return network.coreNode.getPublicKeyHash(username)
                 .thenCompose(signer -> {
-                    PublicKeyHash publicSigningKey = signer.orElseThrow(
+                    PublicKeyHash owner = signer.orElseThrow(
                             () -> new IllegalStateException("No public-key for user " + username));
-                    return getWriterDataCbor(network, publicSigningKey);
+                    return getWriterDataCbor(network, owner, owner);
                 });
     }
 
-    private static CompletableFuture<Pair<Multihash, CborObject>> getWriterDataCbor(NetworkAccess network, PublicKeyHash signerHash) {
-        return network.mutable.getPointer(signerHash)
-                .thenCompose(casOpt -> network.dhtClient.getSigningKey(signerHash)
+    private static CompletableFuture<Pair<Multihash, CborObject>> getWriterDataCbor(NetworkAccess network, PublicKeyHash owner, PublicKeyHash writer) {
+        return network.mutable.getPointer(owner, writer)
+                .thenCompose(casOpt -> network.dhtClient.getSigningKey(writer)
                         .thenApply(signer -> casOpt.map(raw -> HashCasPair.fromCbor(CborObject.fromByteArray(
                                 signer.get().unsignMessage(raw))).updated)
                                 .orElse(MaybeMultihash.empty())))

@@ -27,7 +27,7 @@ public interface MutablePointers {
      * @param writer
      * @return
      */
-    CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash writer);
+    CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash owner, PublicKeyHash writer);
 
     /**
      * Get the CAS key-hash for the data pointed to by a writer-key.
@@ -35,8 +35,8 @@ public interface MutablePointers {
      * @param ipfs
      * @return
      */
-    default CompletableFuture<MaybeMultihash> getPointerTarget(PublicKeyHash writerKeyHash, ContentAddressedStorage ipfs) {
-        return getPointer(writerKeyHash)
+    default CompletableFuture<MaybeMultihash> getPointerTarget(PublicKeyHash owner, PublicKeyHash writerKeyHash, ContentAddressedStorage ipfs) {
+        return getPointer(owner, writerKeyHash)
                 .thenCompose(current -> ipfs.getSigningKey(writerKeyHash)
                         .thenApply(writerOpt -> writerOpt.map(writerKey -> current
                                 .map(signed -> HashCasPair.fromCbor(CborObject.fromByteArray(writerKey.unsignMessage(signed))).updated)

@@ -4,6 +4,7 @@ import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
@@ -19,16 +20,16 @@ public class UserPublicKeyLink implements Cborable{
     public static final int MAX_USERNAME_SIZE = 64;
 
     public final PublicKeyHash owner;
-    public final UsernameClaim claim;
+    public final Claim claim;
     private final Optional<byte[]> keyChangeProof;
 
-    public UserPublicKeyLink(PublicKeyHash ownerHash, UsernameClaim claim, Optional<byte[]> keyChangeProof) {
+    public UserPublicKeyLink(PublicKeyHash ownerHash, Claim claim, Optional<byte[]> keyChangeProof) {
         this.owner = ownerHash;
         this.claim = claim;
         this.keyChangeProof = keyChangeProof;
     }
 
-    public UserPublicKeyLink(PublicKeyHash owner, UsernameClaim claim) {
+    public UserPublicKeyLink(PublicKeyHash owner, Claim claim) {
         this(owner, claim, Optional.empty());
     }
 
@@ -73,7 +74,7 @@ public class UserPublicKeyLink implements Cborable{
             throw new IllegalStateException("Invalid cbor for UserPublicKeyLink: " + cbor);
         SortedMap<CborObject, ? extends Cborable> values = ((CborObject.CborMap) cbor).values;
         PublicKeyHash owner = PublicKeyHash.fromCbor(values.get(new CborObject.CborString("owner")));
-        UsernameClaim claim  = UsernameClaim.fromCbor(values.get(new CborObject.CborString("claim")));
+        Claim claim  = Claim.fromCbor(values.get(new CborObject.CborString("claim")));
         CborObject.CborString proofKey = new CborObject.CborString("keychange");
         Optional<byte[]> keyChangeProof = values.containsKey(proofKey) ?
                 Optional.of(((CborObject.CborByteArray)values.get(proofKey)).value) : Optional.empty();
@@ -83,58 +84,92 @@ public class UserPublicKeyLink implements Cborable{
     public static List<UserPublicKeyLink> createChain(SigningPrivateKeyAndPublicHash oldUser,
                                                       SigningPrivateKeyAndPublicHash newUser,
                                                       String username,
-                                                      LocalDate expiry) {
+                                                      LocalDate expiry,
+                                                      List<Multihash> storageProviders) {
         // sign new claim to username, with provided expiry
-        UsernameClaim newClaim = UsernameClaim.create(username, newUser.secret, expiry);
+        Claim newClaim = Claim.build(username, newUser.secret, expiry, storageProviders);
 
         // sign new key with old
         byte[] link = oldUser.secret.signMessage(newUser.publicKeyHash.serialize());
 
         // create link from old that never expires
-        UserPublicKeyLink fromOld = new UserPublicKeyLink(oldUser.publicKeyHash, UsernameClaim.create(username, oldUser.secret, LocalDate.MAX), Optional.of(link));
+        UserPublicKeyLink fromOld = new UserPublicKeyLink(oldUser.publicKeyHash,
+                Claim.build(username, oldUser.secret, LocalDate.MAX, Collections.emptyList()),
+                Optional.of(link));
 
         return Arrays.asList(fromOld, new UserPublicKeyLink(newUser.publicKeyHash, newClaim));
     }
 
-    public static class UsernameClaim implements Cborable {
+    public static class Claim implements Cborable {
         public final String username;
         public final LocalDate expiry;
+        // a list of storage-node ids
+        public final List<Multihash> storageProviders;
         private final byte[] signedContents;
 
-        public UsernameClaim(String username, LocalDate expiry, byte[] signedContents) {
+        public Claim(String username, LocalDate expiry, List<Multihash> storageProviders, byte[] signedContents) {
             this.username = username;
             this.expiry = expiry;
+            this.storageProviders = storageProviders;
+
             this.signedContents = signedContents;
         }
 
         @Override
         public CborObject toCbor() {
-            return new CborObject.CborList(Arrays.asList(new CborObject.CborString(username),
+            return new CborObject.CborList(Arrays.asList(
+                    new CborObject.CborString(username),
                     new CborObject.CborString(expiry.toString()),
+                    new CborObject.CborList(storageProviders.stream()
+                            .map(id -> new CborObject.CborByteArray(id.toBytes()))
+                            .collect(Collectors.toList())),
                     new CborObject.CborByteArray(signedContents)));
         }
 
-        public static UsernameClaim fromCbor(Cborable cbor) {
+        public static Claim fromCbor(Cborable cbor) {
             if (! (cbor instanceof CborObject.CborList))
                 throw new IllegalStateException("Invalid cbor for Username claim: " + cbor);
-            String username = ((CborObject.CborString)((CborObject.CborList) cbor).value.get(0)).value;
-            LocalDate expiry = LocalDate.parse(((CborObject.CborString)((CborObject.CborList) cbor).value.get(1)).value);
-            byte[] signedContents = ((CborObject.CborByteArray)((CborObject.CborList) cbor).value.get(2)).value;
-            return new UsernameClaim(username, expiry, signedContents);
+            List<? extends Cborable> contents = ((CborObject.CborList) cbor).value;
+            String username = ((CborObject.CborString) contents.get(0)).value;
+            LocalDate expiry = LocalDate.parse(((CborObject.CborString) contents.get(1)).value);
+            List<Multihash> storageProviders = ((CborObject.CborList)contents.get(2))
+                    .value.stream()
+                    .map(x -> Multihash.decode(((CborObject.CborByteArray)x).value))
+                    .collect(Collectors.toList());
+            byte[] signedContents = ((CborObject.CborByteArray) contents.get(3)).value;
+            return new Claim(username, expiry, storageProviders, signedContents);
         }
 
-        public static UsernameClaim create(String username, SecretSigningKey from, LocalDate expiryDate) {
+        public static Claim build(String username, SecretSigningKey from, LocalDate expiryDate, List<Multihash> storageProviders) {
             try {
                 ByteArrayOutputStream bout = new ByteArrayOutputStream();
                 DataOutputStream dout = new DataOutputStream(bout);
                 Serialize.serialize(username, dout);
                 Serialize.serialize(expiryDate.toString(), dout);
+                dout.writeInt(storageProviders.size());
+                for (Multihash storageProvider : storageProviders) {
+                    Serialize.serialize(storageProvider.toBytes(), dout);
+                }
                 byte[] payload = bout.toByteArray();
                 byte[] signed = from.signMessage(payload);
-                return new UsernameClaim(username, expiryDate, signed);
+                return new Claim(username, expiryDate, storageProviders, signed);
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
+        }
+
+        public static Claim deserialize(byte[] signedContents, PublicSigningKey signer) throws IOException {
+            byte[] contents = signer.unsignMessage(signedContents);
+            ByteArrayInputStream bin = new ByteArrayInputStream(contents);
+            DataInputStream din = new DataInputStream(bin);
+            String username = Serialize.deserializeString(din, MAX_USERNAME_SIZE);
+            LocalDate expiry = LocalDate.parse(Serialize.deserializeString(din, 16));
+            int nStorageProviders = din.readInt();
+            List<Multihash> storageProviders = new ArrayList<>();
+            for (int i=0; i < nStorageProviders; i++) {
+                storageProviders.add(Multihash.decode(Serialize.deserializeByteArray(din, 100)));
+            }
+            return new Claim(username, expiry, storageProviders, signedContents);
         }
 
         @Override
@@ -142,10 +177,12 @@ public class UserPublicKeyLink implements Cborable{
             if (this == o) return true;
             if (o == null || getClass() != o.getClass()) return false;
 
-            UsernameClaim that = (UsernameClaim) o;
+            Claim that = (Claim) o;
 
             if (username != null ? !username.equals(that.username) : that.username != null) return false;
             if (expiry != null ? !expiry.equals(that.expiry) : that.expiry != null) return false;
+            if (! storageProviders.equals(that.storageProviders))
+                return false;
             return Arrays.equals(signedContents, that.signedContents);
         }
 
@@ -153,6 +190,7 @@ public class UserPublicKeyLink implements Cborable{
         public int hashCode() {
             int result = username != null ? username.hashCode() : 0;
             result = 31 * result + (expiry != null ? expiry.hashCode() : 0);
+            result = 31 * result + storageProviders.hashCode();
             result = 31 * result + Arrays.hashCode(signedContents);
             return result;
         }
@@ -160,8 +198,9 @@ public class UserPublicKeyLink implements Cborable{
 
     public static List<UserPublicKeyLink> createInitial(SigningPrivateKeyAndPublicHash signer,
                                                         String username,
-                                                        LocalDate expiry) {
-        UsernameClaim newClaim = UsernameClaim.create(username, signer.secret, expiry);
+                                                        LocalDate expiry,
+                                                        List<Multihash> storageProviders) {
+        Claim newClaim = Claim.build(username, signer.secret, expiry, storageProviders);
 
         return Collections.singletonList(new UserPublicKeyLink(signer.publicKeyHash, newClaim));
     }
@@ -204,14 +243,11 @@ public class UserPublicKeyLink implements Cborable{
                 true,
                 composer,
                 (a, b) -> a && b)
-                .thenApply(valid -> {
+                .thenCompose(valid -> {
                     if (!valid)
-                        return valid;
+                        return CompletableFuture.completedFuture(false);
                     UserPublicKeyLink last = chain.get(chain.size() - 1);
-                    if (!validClaim(last, username)) {
-                        return false;
-                    }
-                    return true;
+                    return validClaim(last, username, ipfs);
                 });
     }
 
@@ -219,31 +255,42 @@ public class UserPublicKeyLink implements Cborable{
                                                 PublicKeyHash target,
                                                 String username,
                                                 ContentAddressedStorage ipfs) {
-        if (!validClaim(from, username))
-            return CompletableFuture.completedFuture(true);
+        return validClaim(from, username, ipfs).thenCompose(valid -> {
+            if (!valid)
+                return CompletableFuture.completedFuture(false);
 
-        Optional<byte[]> keyChangeProof = from.getKeyChangeProof();
-        if (!keyChangeProof.isPresent())
-            return CompletableFuture.completedFuture(false);
-        return ipfs.getSigningKey(from.owner).thenApply(ownerKeyOpt -> {
-            if (! ownerKeyOpt.isPresent())
-                return false;
-            PublicKeyHash targetKey = PublicKeyHash.fromCbor(CborObject.fromByteArray(ownerKeyOpt.get().unsignMessage(keyChangeProof.get())));
-            if (!Arrays.equals(targetKey.serialize(), target.serialize()))
-                return false;
+            Optional<byte[]> keyChangeProof = from.getKeyChangeProof();
+            if (!keyChangeProof.isPresent())
+                return CompletableFuture.completedFuture(false);
+            return ipfs.getSigningKey(from.owner).thenApply(ownerKeyOpt -> {
+                if (!ownerKeyOpt.isPresent())
+                    return false;
+                PublicKeyHash targetKey = PublicKeyHash.fromCbor(CborObject.fromByteArray(ownerKeyOpt.get().unsignMessage(keyChangeProof.get())));
+                if (!Arrays.equals(targetKey.serialize(), target.serialize()))
+                    return false;
 
-            return true;
+                return true;
+            });
         });
     }
 
-    static boolean validClaim(UserPublicKeyLink from, String username) {
+    static CompletableFuture<Boolean> validClaim(UserPublicKeyLink from, String username, ContentAddressedStorage ipfs) {
         if (username.contains(" ") || username.contains("\t") || username.contains("\n"))
-            return false;
+            return CompletableFuture.completedFuture(false);
         if (username.length() > MAX_USERNAME_SIZE)
-            return false;
+            return CompletableFuture.completedFuture(false);
         if (!from.claim.username.equals(username))
-            return false;
-        return true;
+            return CompletableFuture.completedFuture(false);
+        return ipfs.getSigningKey(from.owner).thenApply(ownerKeyOpt -> {
+            if (!ownerKeyOpt.isPresent())
+                return false;
+            try {
+                return from.claim.equals(Claim.deserialize(from.claim.signedContents, ownerKeyOpt.get()));
+            } catch (Exception e) {
+                e.printStackTrace();
+                return false;
+            }
+        });
     }
 
     public static boolean isExpiredClaim(UserPublicKeyLink from) {

@@ -46,10 +46,10 @@ public class EfficiencyComparison {
             for (int maxCollisions = 1; maxCollisions <= 6; maxCollisions++) {
                 RAMStorage champStorage = new RAMStorage();
                 SigningPrivateKeyAndPublicHash champUser = ChampTests.createUser(champStorage, crypto);
-                Pair<Champ, Multihash> current = new Pair<>(Champ.empty(), champStorage.put(champUser, Champ.empty().serialize()).get());
+                Pair<Champ, Multihash> current = new Pair<>(Champ.empty(), champStorage.put(champUser.publicKeyHash, champUser, Champ.empty().serialize()).get());
 
                 for (Map.Entry<ByteArrayWrapper, MaybeMultihash> e : state.entrySet()) {
-                    current = current.left.put(champUser, e.getKey(), e.getKey().data, 0, MaybeMultihash.empty(),
+                    current = current.left.put(champUser.publicKeyHash, champUser, e.getKey(), e.getKey().data, 0, MaybeMultihash.empty(),
                             e.getValue(), bitWidth, maxCollisions, x -> x.data, champStorage, current.right).get();
                 }
 
@@ -67,9 +67,9 @@ public class EfficiencyComparison {
     private static void calculateBtreeOverhead(Map<ByteArrayWrapper, MaybeMultihash> state) throws Exception {
         RAMStorage btreeStorage = new RAMStorage();
         SigningPrivateKeyAndPublicHash btreeUser = ChampTests.createUser(btreeStorage, crypto);
-        MerkleBTree btree = MerkleBTree.create(btreeUser, btreeStorage).get();
+        MerkleBTree btree = MerkleBTree.create(btreeUser.publicKeyHash, btreeUser, btreeStorage).get();
         for (Map.Entry<ByteArrayWrapper, MaybeMultihash> e : state.entrySet()) {
-            btree.put(btreeUser, e.getKey().data, MaybeMultihash.empty(), e.getValue().get()).get();
+            btree.put(btreeUser.publicKeyHash, btreeUser, e.getKey().data, MaybeMultihash.empty(), e.getValue().get()).get();
         }
         int btreeSize = btreeStorage.totalSize();
         long btreeUsage = btreeStorage.getRecursiveBlockSize(btree.root.hash.get()).get();

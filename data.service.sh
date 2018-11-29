@@ -20,7 +20,7 @@ fi
 if [ "$command" == "restart" ]; then
     repo_dir=$2
     target_dir=$3
-    
+
     export IPFS_PATH=$repo_dir/.ipfs
 
     pgrep ipfs && echo "ipfs already running" && exit 0
@@ -49,43 +49,43 @@ if [ "$command" == "install" ]; then
     repo_dir=$4
     bootstrap=$5
     arch="linux-amd64"
-    
+
     # test if ipfs executable is already present
     present="$(ls $target_dir/ipfs)"
     install=true
-    
+
     if [ "$present" != "" ]; then
-	existing=v"$($target_dir/ipfs version -n)"
-	echo "Version present: "$existing
-	if [ "$existing" != "$version" ]; then
-	    echo "Different version present, reinstalling..."
-	else
-	    install=false
-	fi
+        existing=v"$($target_dir/ipfs version -n)"
+        echo "Version present: "$existing
+        if [ "$existing" != "$version" ]; then
+            echo "Different version present, reinstalling..."
+        else
+            install=false
+        fi
     fi
     if [ $install == true ]; then
-	export IPFS_PATH=$repo_dir/.ipfs
-	wget https://dist.ipfs.io/go-ipfs/$version/go-ipfs_"$version"_$arch.tar.gz &&
-	    rm -rf go-ipfs &&
-	    tar_filename=go-ipfs_"$version"_$arch.tar.gz &&
-	    tar -xvzf go-ipfs_"$version"_$arch.tar.gz &&
-	    cp go-ipfs/ipfs $target_dir/ &&
-	    rm -rf go-ipfs &&
-	    rm $tar_filename &&
-	    
-	    if [ "$present" == "" ]; then
-		echo "initializing ipfs with IPFS_PATH=$IPFS_PATH"
-		./ipfs init -e
-	    fi &&
-	    
-	    ./ipfs bootstrap rm all &&
-	    if [ "$bootstrap" != "" ]; then
-		./ipfs bootstrap add $bootstrap
-	    fi
-	echo "IPFS installation successful!"
-    else
-	echo "Existing IPFS version is correct"
-    fi
-    exit 0
-fi
-echo "Unknown command: $command"
+        export IPFS_PATH=$repo_dir/.ipfs
+        wget https://dist.ipfs.io/go-ipfs/$version/go-ipfs_"$version"_$arch.tar.gz &&
+            rm -rf go-ipfs &&
+            tar_filename=go-ipfs_"$version"_$arch.tar.gz &&
+            tar -xvzf go-ipfs_"$version"_$arch.tar.gz &&
+            cp go-ipfs/ipfs $target_dir/ &&
+            rm -rf go-ipfs &&
+            rm $tar_filename &&
+
+            if [ "$present" == "" ]; then
+                echo "initializing ipfs with IPFS_PATH=$IPFS_PATH"
+                ./ipfs init -e
+            fi &&
+
+                ./ipfs bootstrap rm all &&
+                if [ "$bootstrap" != "" ]; then
+                    ./ipfs bootstrap add $bootstrap
+                fi
+                echo "IPFS installation successful!"
+            else
+                echo "Existing IPFS version is correct"
+            fi
+            exit 0
+        fi
+        echo "Unknown command: $command"

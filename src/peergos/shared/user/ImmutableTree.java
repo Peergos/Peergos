@@ -1,6 +1,7 @@
 package peergos.shared.user;
 
 import peergos.shared.crypto.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.merklebtree.*;
 
@@ -27,7 +28,7 @@ public interface ImmutableTree {
      * @return hash of new tree root
      * @throws IOException
      */
-    CompletableFuture<Multihash> put(SigningPrivateKeyAndPublicHash writer, byte[] rawKey, MaybeMultihash existing, Multihash value);
+    CompletableFuture<Multihash> put(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, byte[] rawKey, MaybeMultihash existing, Multihash value);
 
     /**
      *
@@ -35,5 +36,5 @@ public interface ImmutableTree {
      * @return hash of new tree root
      * @throws IOException
      */
-    CompletableFuture<Multihash> remove(SigningPrivateKeyAndPublicHash writer, byte[] rawKey, MaybeMultihash existing);
+    CompletableFuture<Multihash> remove(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, byte[] rawKey, MaybeMultihash existing);
 }

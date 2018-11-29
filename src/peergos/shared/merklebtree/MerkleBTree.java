@@ -37,10 +37,10 @@ public class MerkleBTree implements ImmutableTree
         });
     }
 
-    public static CompletableFuture<MerkleBTree> create(SigningPrivateKeyAndPublicHash writer, ContentAddressedStorage dht) {
+    public static CompletableFuture<MerkleBTree> create(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, ContentAddressedStorage dht) {
         TreeNode newRoot = new TreeNode(new TreeSet<>());
         byte[] raw = newRoot.serialize();
-        return dht.put(writer.publicKeyHash, writer.secret.signatureOnly(raw), raw)
+        return dht.put(owner, writer.publicKeyHash, writer.secret.signatureOnly(raw), raw)
                 .thenApply(put -> new MerkleBTree(newRoot, put, dht, MAX_NODE_CHILDREN));
     }
 
@@ -61,9 +61,9 @@ public class MerkleBTree implements ImmutableTree
      * @return hash of new tree root
      * @throws IOException
      */
-    public CompletableFuture<Multihash> put(SigningPrivateKeyAndPublicHash writer, byte[] rawKey, MaybeMultihash existing, Multihash value) {
-        return root.put(writer, new ByteArrayWrapper(rawKey), existing, value, storage, maxChildren)
-                .thenCompose(newRoot -> commit(writer, newRoot));
+    public CompletableFuture<Multihash> put(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, byte[] rawKey, MaybeMultihash existing, Multihash value) {
+        return root.put(owner, writer, new ByteArrayWrapper(rawKey), existing, value, storage, maxChildren)
+                .thenCompose(newRoot -> commit(owner, writer, newRoot));
     }
 
     /**
@@ -72,18 +72,18 @@ public class MerkleBTree implements ImmutableTree
      * @return hash of new tree root
      * @throws IOException
      */
-    public CompletableFuture<Multihash> remove(SigningPrivateKeyAndPublicHash writer, byte[] rawKey, MaybeMultihash existing) {
-        return root.delete(writer, new ByteArrayWrapper(rawKey), existing, storage, maxChildren)
-                .thenCompose(newRoot -> commit(writer, newRoot));
+    public CompletableFuture<Multihash> remove(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, byte[] rawKey, MaybeMultihash existing) {
+        return root.delete(owner, writer, new ByteArrayWrapper(rawKey), existing, storage, maxChildren)
+                .thenCompose(newRoot -> commit(owner, writer, newRoot));
     }
 
-    private CompletableFuture<Multihash> commit(SigningPrivateKeyAndPublicHash writer, TreeNode newRoot) {
+    private CompletableFuture<Multihash> commit(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, TreeNode newRoot) {
         if (newRoot.hash.isPresent()) {
             root = newRoot;
             return CompletableFuture.completedFuture(newRoot.hash.get());
         }
         byte[] raw = newRoot.serialize();
-        return storage.put(writer.publicKeyHash, writer.secret.signatureOnly(raw), raw).thenApply(newRootHash -> {
+        return storage.put(owner, writer.publicKeyHash, writer.secret.signatureOnly(raw), raw).thenApply(newRootHash -> {
             root = new TreeNode(newRoot.keys, newRootHash);
             return newRootHash;
         });

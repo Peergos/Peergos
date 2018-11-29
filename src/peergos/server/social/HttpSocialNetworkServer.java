@@ -144,7 +144,7 @@ public class HttpSocialNetworkServer  {
     }
 
 
-    public static void createAndStart(String keyfile, char[] passphrase, int port, SocialNetwork social, Args args)
+    public static void createAndStart(int port, SocialNetwork social, Args args)
     {
         try {
             String hostname = args.getArg("domain", "localhost");

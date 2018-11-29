@@ -1,4 +1,5 @@
 package peergos.server;
+import java.util.*;
 import java.util.logging.Logger;
 
 import peergos.server.util.Args;
@@ -69,28 +70,26 @@ public class UserService {
         LOG.info("jdk.tls.rejectClientInitializedRenegotiation: "+Security.getProperty("jdk.tls.rejectClientInitializedRenegotiation"));
     }
 
-    private final InetSocketAddress local;
+    private final ContentAddressedStorage storage;
     private final CoreNode coreNode;
     private final SocialNetwork social;
     private final MutablePointers mutable;
-    private HttpServer server;
 
-    public UserService(InetSocketAddress local,
-                       ContentAddressedStorage dht,
+    public UserService(ContentAddressedStorage storage,
                        CoreNode coreNode,
                        SocialNetwork social,
-                       MutablePointers mutable,
-                       Args args) throws IOException
-    {
-        this.local = local;
+                       MutablePointers mutable) {
+        this.storage = storage;
         this.coreNode = coreNode;
         this.social = social;
         this.mutable = mutable;
-        init(dht, args);
     }
 
-    public boolean init(ContentAddressedStorage dht, Args args) throws IOException {
-        boolean isLocal = this.local.getHostName().contains("local");
+    public boolean initAndStart(InetSocketAddress local,
+                                Optional<Path> webroot,
+                                boolean isPublicServer,
+                                boolean useWebCache) throws IOException {
+        boolean isLocal = local.getHostName().contains("local");
         if (!isLocal)
             try {
                 HttpServer httpServer = HttpServer.create();
@@ -103,10 +102,11 @@ public class UserService {
             }
         LOG.info("Starting user API server at: " + local.getHostName() + ":" + local.getPort());
 
+        HttpServer server;
         if (isLocal) {
             LOG.info("Starting user server on localhost:"+local.getPort()+" only.");
             server = HttpServer.create(local, CONNECTION_BACKLOG);
-        } else if (args.hasArg("publicserver")) {
+        } else if (isPublicServer) {
             LOG.info("Starting user server on all interfaces.");
             server = HttpsServer.create(new InetSocketAddress(InetAddress.getByName("::"), local.getPort()), CONNECTION_BACKLOG);
         } else
@@ -169,27 +169,17 @@ public class UserService {
 
         Function<HttpHandler, HttpHandler> wrap = h -> !isLocal ? new HSTSHandler(h) : h;
 
-        long defaultQuota = args.getLong("default-quota");
-        LOG.info("Using default user space quota of " + defaultQuota);
-        Path quotaFilePath = args.fromPeergosDir("quotas_file","quotas.txt");
-        UserQuotas userQuotas = new UserQuotas(quotaFilePath, defaultQuota);
-        SpaceCheckingKeyFilter spaceChecker = new SpaceCheckingKeyFilter(coreNode, mutable, dht, userQuotas::quota);
-
         server.createContext(DHT_URL,
-                wrap.apply(new DHTHandler(dht, spaceChecker::allowWrite)));
+                wrap.apply(new DHTHandler(storage, (h, i) -> true)));
 
-        CorenodeEventPropagator corenodePropagator = new CorenodeEventPropagator(this.coreNode);
-        corenodePropagator.addListener(spaceChecker::accept);
         server.createContext("/" + HttpCoreNodeServer.CORE_URL,
-                wrap.apply(new HttpCoreNodeServer.CoreNodeHandler(corenodePropagator)));
+                wrap.apply(new HttpCoreNodeServer.CoreNodeHandler(this.coreNode)));
 
         server.createContext("/" + HttpSocialNetworkServer.SOCIAL_URL,
                 wrap.apply(new HttpSocialNetworkServer.SocialHandler(this.social)));
 
-        MutableEventPropagator mutablePropagator = new MutableEventPropagator(this.mutable);
-        mutablePropagator.addListener(spaceChecker::accept);
         server.createContext("/" + HttpMutablePointerServer.MUTABLE_POINTERS_URL,
-                wrap.apply(new HttpMutablePointerServer.MutationHandler(mutablePropagator)));
+                wrap.apply(new HttpMutablePointerServer.MutationHandler(this.mutable)));
 
         server.createContext(SIGNUP_URL,
                 wrap.apply(new InverseProxyHandler("demo.peergos.net", isLocal)));
@@ -197,18 +187,14 @@ public class UserService {
                 wrap.apply(new InverseProxyHandler("demo.peergos.net", isLocal)));
 
         //define web-root static-handler
-        StaticHandler handler;
-        try {
-            String webroot = args.getArg("webroot");
+        if (webroot.isPresent())
             LOG.info("Using webroot from local file system: " + webroot);
-            handler = new FileHandler(Paths.get(webroot), true);
-        } catch (IllegalStateException ile) {
+        else
             LOG.info("Using webroot from jar");
-            handler = new JarHandler(true, Paths.get("webroot"));
-        }
+        StaticHandler handler = webroot.map(p -> (StaticHandler) new FileHandler(p, true))
+                .orElseGet(() -> new JarHandler(true, Paths.get("webroot")));
 
-        boolean webcache = args.getBoolean("webcache", true);
-        if (webcache) {
+        if (useWebCache) {
             LOG.info("Caching web-resources");
             handler = handler.withCache();
         }

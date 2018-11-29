@@ -44,9 +44,9 @@ public class JDBCCoreNodeTests {
 
     Function<String, Boolean> signup  = username -> {
         SigningKeyPair user = SigningKeyPair.random(new SafeRandom.Java(), new Ed25519.Java());
-        UserPublicKeyLink.UsernameClaim node = UserPublicKeyLink.UsernameClaim.create(
-            username, user.secretSigningKey, LocalDate.now().plusYears(2));
         try {
+            UserPublicKeyLink.Claim node = UserPublicKeyLink.Claim.build(
+                    username, user.secretSigningKey, LocalDate.now().plusYears(2), Arrays.asList(STORAGE.id().get()));
             PublicKeyHash owner = STORAGE.putSigningKey(
                     user.secretSigningKey.signatureOnly(user.publicSigningKey.serialize()),
                     ContentAddressedStorage.hashKey(user.publicSigningKey),

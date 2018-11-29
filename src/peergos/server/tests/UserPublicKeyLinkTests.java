@@ -30,7 +30,7 @@ public class UserPublicKeyLinkTests {
     }
 
     @BeforeClass
-    public static void init() throws Exception {
+    public static void init() {
         PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, new Ed25519.Java());
     }
 
@@ -44,7 +44,7 @@ public class UserPublicKeyLinkTests {
     @Test
     public void createInitial() throws Exception {
         SigningKeyPair user = SigningKeyPair.random(new SafeRandom.Java(), new Ed25519.Java());
-        UserPublicKeyLink.UsernameClaim node = UserPublicKeyLink.UsernameClaim.create("someuser", user.secretSigningKey, LocalDate.now().plusYears(2));
+        UserPublicKeyLink.Claim node = UserPublicKeyLink.Claim.build("someuser", user.secretSigningKey, LocalDate.now().plusYears(2), id);
 
         PublicKeyHash owner = putPublicSigningKey(user);
         UserPublicKeyLink upl = new UserPublicKeyLink(owner, node);
@@ -69,7 +69,7 @@ public class UserPublicKeyLinkTests {
         SigningPrivateKeyAndPublicHash oldSigner = new SigningPrivateKeyAndPublicHash(oldHash, oldUser.secretSigningKey);
         SigningPrivateKeyAndPublicHash newSigner = new SigningPrivateKeyAndPublicHash(newHash, newUser.secretSigningKey);
 
-        List<UserPublicKeyLink> links = UserPublicKeyLink.createChain(oldSigner, newSigner, "someuser", LocalDate.now().plusYears(2));
+        List<UserPublicKeyLink> links = UserPublicKeyLink.createChain(oldSigner, newSigner, "someuser", LocalDate.now().plusYears(2), id);
         links.forEach(link -> testSerialization(link));
     }
 
@@ -80,7 +80,7 @@ public class UserPublicKeyLinkTests {
         String username = "someuser";
 
         // register the username
-        UserPublicKeyLink.UsernameClaim node = UserPublicKeyLink.UsernameClaim.create(username, user.secretSigningKey, LocalDate.now().plusMonths(2));
+        UserPublicKeyLink.Claim node = UserPublicKeyLink.Claim.build(username, user.secretSigningKey, LocalDate.now().plusMonths(2), id);
         PublicKeyHash userHash = putPublicSigningKey(user);
         UserPublicKeyLink upl = new UserPublicKeyLink(userHash, node);
         boolean success = core.updateChain(username, Arrays.asList(upl)).get();
@@ -89,7 +89,7 @@ public class UserPublicKeyLinkTests {
             throw new IllegalStateException("Retrieved chain element different "+chain +" != "+Arrays.asList(upl));
 
         // now change the expiry
-        UserPublicKeyLink.UsernameClaim node2 = UserPublicKeyLink.UsernameClaim.create(username, user.secretSigningKey, LocalDate.now().plusMonths(3));
+        UserPublicKeyLink.Claim node2 = UserPublicKeyLink.Claim.build(username, user.secretSigningKey, LocalDate.now().plusMonths(3), id);
         UserPublicKeyLink upl2 = new UserPublicKeyLink(userHash, node2);
         boolean success2 = core.updateChain(username, Arrays.asList(upl2)).get();
         List<UserPublicKeyLink> chain2 = core.getChain(username).get();
@@ -101,14 +101,14 @@ public class UserPublicKeyLinkTests {
         PublicKeyHash user2Hash = putPublicSigningKey(user2);
         SigningPrivateKeyAndPublicHash oldUser = new SigningPrivateKeyAndPublicHash(userHash, user.secretSigningKey);
         SigningPrivateKeyAndPublicHash newUser = new SigningPrivateKeyAndPublicHash(user2Hash, user2.secretSigningKey);
-        List<UserPublicKeyLink> chain3 = UserPublicKeyLink.createChain(oldUser, newUser, username, LocalDate.now().plusWeeks(1));
+        List<UserPublicKeyLink> chain3 = UserPublicKeyLink.createChain(oldUser, newUser, username, LocalDate.now().plusWeeks(1), id);
         boolean success3 = core.updateChain(username, chain3).get();
         List<UserPublicKeyLink> chain3Retrieved = core.getChain(username).get();
         if (!chain3.equals(chain3Retrieved))
             throw new IllegalStateException("Retrieved chain element different");
 
         // update the expiry at the end of the chain
-        UserPublicKeyLink.UsernameClaim node4 = UserPublicKeyLink.UsernameClaim.create(username, user2.secretSigningKey, LocalDate.now().plusWeeks(2));
+        UserPublicKeyLink.Claim node4 = UserPublicKeyLink.Claim.build(username, user2.secretSigningKey, LocalDate.now().plusWeeks(2), id);
         UserPublicKeyLink upl4 = new UserPublicKeyLink(user2Hash, node4);
         List<UserPublicKeyLink> chain4 = Arrays.asList(upl4);
         boolean success4 = core.updateChain(username, chain4).get();
@@ -124,7 +124,7 @@ public class UserPublicKeyLinkTests {
         // try to claim the same username with a different key
         SigningKeyPair user3 = SigningKeyPair.insecureRandom();
         PublicKeyHash user3Hash = putPublicSigningKey(user3);
-        UserPublicKeyLink.UsernameClaim node3 = UserPublicKeyLink.UsernameClaim.create(username, user3.secretSigningKey, LocalDate.now().plusMonths(2));
+        UserPublicKeyLink.Claim node3 = UserPublicKeyLink.Claim.build(username, user3.secretSigningKey, LocalDate.now().plusMonths(2), id);
         UserPublicKeyLink upl3 = new UserPublicKeyLink(user3Hash, node3);
         try {
             boolean shouldFail = core.updateChain(username, Arrays.asList(upl3)).get();

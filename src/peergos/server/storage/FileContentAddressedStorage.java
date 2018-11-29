@@ -46,12 +46,12 @@ public class FileContentAddressedStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> put(PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
+    public CompletableFuture<List<Multihash>> put(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
         return put(writer, signatures, blocks, false);
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
+    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
         return put(writer, signatures, blocks, true);
     }
 
@@ -62,17 +62,17 @@ public class FileContentAddressedStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<MultiAddress>> pinUpdate(Multihash existing, Multihash updated) {
+    public CompletableFuture<List<MultiAddress>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated) {
         return CompletableFuture.completedFuture(Arrays.asList(new MultiAddress("/ipfs/"+existing), new MultiAddress("/ipfs/"+updated)));
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> recursivePin(Multihash h) {
+    public CompletableFuture<List<Multihash>> recursivePin(PublicKeyHash owner, Multihash h) {
         return CompletableFuture.completedFuture(Arrays.asList(h));
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> recursiveUnpin(Multihash h) {
+    public CompletableFuture<List<Multihash>> recursiveUnpin(PublicKeyHash owner, Multihash h) {
         return CompletableFuture.completedFuture(Arrays.asList(h));
     }
 

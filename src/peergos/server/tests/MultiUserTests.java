@@ -5,6 +5,7 @@ import org.junit.runner.*;
 import org.junit.runners.*;
 import peergos.server.storage.ResetableFileInputStream;
 import peergos.server.util.Args;
+import peergos.server.util.PeergosNetworkUtils;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
@@ -22,153 +23,51 @@ import java.util.*;
 import java.util.stream.*;
 
 import static org.junit.Assert.assertTrue;
+import static peergos.server.util.PeergosNetworkUtils.ensureSignedUp;
+import static peergos.server.util.PeergosNetworkUtils.getUserContextsForNode;
 
 @RunWith(Parameterized.class)
 public class MultiUserTests {
 
+    private static Args args = UserTests.buildArgs().with("useIPFS", "true");
+    private Random random = new Random(666);
     private final NetworkAccess network;
-    private final Crypto crypto;
+    private static final Crypto crypto = Crypto.initJava();
     private final int userCount;
 
-    public MultiUserTests(String useIPFS, Random r, int userCount, Crypto crypto) throws Exception {
-        int portMin = 9000;
-        int portRange = 2000;
-        int webPort = portMin + r.nextInt(portRange);
-        int corePort = portMin + portRange + r.nextInt(portRange);
-        int socialPort = portMin + portRange + r.nextInt(portRange);
+    public MultiUserTests(Args args, int userCount) throws Exception {
         this.userCount = userCount;
         if (userCount  < 2)
             throw new IllegalStateException();
 
-        Args args = Args.parse(new String[]{
-                "useIPFS", ""+useIPFS.equals("IPFS"),
-                "-port", Integer.toString(webPort),
-                "-corenodePort", Integer.toString(corePort),
-                "-socialnodePort", Integer.toString(socialPort)
-        });
-        Start.LOCAL.main(args);
-        this.network = NetworkAccess.buildJava(new URL("http://localhost:" + webPort)).get();
-        this.crypto = crypto;
+        this.network = NetworkAccess.buildJava(new URL("http://localhost:" + args.getInt("port"))).get();
     }
 
     @Parameterized.Parameters(name = "{index}: {0}")
     public static Collection<Object[]> parameters() {
-        Random r = new Random(123);
-        Crypto crypto = Crypto.initJava();
         return Arrays.asList(new Object[][] {
-                {"RAM", r, 2, crypto}
+                {args, 2}
         });
     }
 
-    private static String username(int i){
-        return "username_"+i;
+    @BeforeClass
+    public static void init() {
+        Main.LOCAL.main(args);
     }
 
     private List<UserContext> getUserContexts(int size) {
-        return IntStream.range(0, size)
-                .mapToObj(e -> {
-                    String username = username(e);
-                    try {
-                        return UserTests.ensureSignedUp(username, username, network.clear(), crypto);
-                    } catch (Exception ioe) {
-                        throw new IllegalStateException(ioe);
-                    }}).collect(Collectors.toList());
+        return getUserContextsForNode(network, random, size);
     }
 
     @Test
     public void shareAndUnshareFile() throws Exception {
-        UserContext u1 = UserTests.ensureSignedUp("a", "a", network.clear(), crypto);
-
-        // send follow requests from each other user to "a"
-        List<UserContext> userContexts = getUserContexts(userCount);
-        for (UserContext userContext : userContexts) {
-            userContext.sendFollowRequest(u1.username, SymmetricKey.random()).get();
-        }
-
-        // make "a" reciprocate all the follow requests
-        List<FollowRequest> u1Requests = u1.processFollowRequests().get();
-        for (FollowRequest u1Request : u1Requests) {
-            boolean accept = true;
-            boolean reciprocate = true;
-            u1.sendReplyFollowRequest(u1Request, accept, reciprocate).get();
-        }
-
-        // complete the friendship connection
-        for (UserContext userContext : userContexts) {
-            userContext.processFollowRequests().get();//needed for side effect
-        }
-
-        // upload a file to "a"'s space
-        FileTreeNode u1Root = u1.getUserRoot().get();
-        String filename = "somefile.txt";
-        File f = File.createTempFile("peergos", "");
-        byte[] originalFileContents = "Hello Peergos friend!".getBytes();
-        Files.write(f.toPath(), originalFileContents);
-        ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(f);
-        FileTreeNode uploaded = u1Root.uploadFile(filename, resetableFileInputStream, f.length(),
-                u1.network, u1.crypto.random,l -> {}, u1.fragmenter()).get();
-
-        // share the file from "a" to each of the others
-        FileTreeNode u1File = u1.getByPath(u1.username + "/" + filename).get().get();
-        u1.shareWith(Paths.get(u1.username, filename), userContexts.stream().map(u -> u.username).collect(Collectors.toSet())).get();
-
-        // check other users can read the file
-        for (UserContext userContext : userContexts) {
-            Optional<FileTreeNode> sharedFile = userContext.getByPath(u1.username + "/" + filename).get();
-            Assert.assertTrue("shared file present", sharedFile.isPresent());
-
-            AsyncReader inputStream = sharedFile.get().getInputStream(userContext.network,
-                    userContext.crypto.random, l -> {}).get();
-
-            byte[] fileContents = Serialize.readFully(inputStream, sharedFile.get().getFileProperties().size).get();
-            Assert.assertTrue("shared file contents correct", Arrays.equals(originalFileContents, fileContents));
-        }
-
-        UserContext userToUnshareWith = userContexts.stream().findFirst().get();
-
-        // unshare with a single user
-        u1.unShare(Paths.get(u1.username, filename), userToUnshareWith.username).get();
-
-        List<UserContext> updatedUserContexts = getUserContexts(userCount);
-
-        //test that the other user cannot access it from scratch
-        Optional<FileTreeNode> otherUserView = updatedUserContexts.get(0).getByPath(u1.username + "/" + filename).get();
-        Assert.assertTrue(! otherUserView.isPresent());
-
-        List<UserContext> remainingUsers = updatedUserContexts.stream()
-                .skip(1)
-                .collect(Collectors.toList());
-
-        UserContext u1New = UserTests.ensureSignedUp("a", "a", network.clear(), crypto);
-
-        // check remaining users can still read it
-        for (UserContext userContext : remainingUsers) {
-            String path = u1.username + "/" + filename;
-            Optional<FileTreeNode> sharedFile = userContext.getByPath(path).get();
-            Assert.assertTrue("path '"+ path +"' is still available", sharedFile.isPresent());
-        }
-
-        // test that u1 can still access the original file
-        Optional<FileTreeNode> fileWithNewBaseKey = u1New.getByPath(u1.username + "/" + filename).get();
-        Assert.assertTrue(fileWithNewBaseKey.isPresent());
-
-        // Now modify the file
-        byte[] suffix = "Some new data at the end".getBytes();
-        AsyncReader suffixStream = new AsyncReader.ArrayBacked(suffix);
-        FileTreeNode parent = u1New.getByPath(u1New.username).get().get();
-        parent.uploadFileSection(filename, suffixStream, originalFileContents.length, originalFileContents.length + suffix.length,
-                Optional.empty(), true, u1New.network, u1New.crypto.random, l -> {}, u1New.fragmenter()).get();
-        AsyncReader extendedContents = u1New.getByPath(u1.username + "/" + filename).get().get().getInputStream(u1New.network,
-                u1New.crypto.random, l -> {}).get();
-        byte[] newFileContents = Serialize.readFully(extendedContents, originalFileContents.length + suffix.length).get();
-
-        Assert.assertTrue(Arrays.equals(newFileContents, ArrayOps.concat(originalFileContents, suffix)));
+        PeergosNetworkUtils.shareAndUnshareFile(network, network, userCount, random);
     }
 
     @Test
     public void safeCopyOfFriendsFile() throws Exception {
-        UserContext u1 = UserTests.ensureSignedUp("a", "a", network.clear(), crypto);
-        UserContext u2 = UserTests.ensureSignedUp("b", "b", network.clear(), crypto);
+        UserContext u1 = PeergosNetworkUtils.ensureSignedUp("a", "a", network.clear(), crypto);
+        UserContext u2 = PeergosNetworkUtils.ensureSignedUp("b", "b", network.clear(), crypto);
 
         // send follow requests from each other user to "a"
         u2.sendFollowRequest(u1.username, SymmetricKey.random()).get();
@@ -217,7 +116,7 @@ public class MultiUserTests {
     @Ignore // until we figure out how to solve this issue
     @Test
     public void shareTwoFilesWithSameName() throws Exception {
-        UserContext u1 = UserTests.ensureSignedUp("a", "a", network.clear(), crypto);
+        UserContext u1 = PeergosNetworkUtils.ensureSignedUp("a", "a", network.clear(), crypto);
 
         // send follow requests from each other user to "a"
         List<UserContext> userContexts = getUserContexts(1);
@@ -288,7 +187,7 @@ public class MultiUserTests {
     public void cleanRenamedFiles() throws Exception {
         String username = random();
         String password = random();
-        UserContext u1 = UserTests.ensureSignedUp(username, password, network.clear(), crypto);
+        UserContext u1 = PeergosNetworkUtils.ensureSignedUp(username, password, network.clear(), crypto);
 
         // send follow requests from each other user to "a"
         List<UserContext> friends = getUserContexts(userCount);
@@ -371,13 +270,21 @@ public class MultiUserTests {
         Assert.assertTrue("target can't read through original path", ! unsharedView.isPresent());
         Assert.assertTrue("target can't read through new path", ! unsharedView2.isPresent());
 
-        List<UserContext> updatedUserContexts = getUserContexts(userCount);
+        List<UserContext> updatedUserContexts = friends.stream()
+                .map(e -> {
+                    try {
+                        return ensureSignedUp(e.username, e.username, network, crypto);
+                    } catch (Exception ex) {
+                        throw new IllegalStateException(ex.getMessage(), ex);
+                    }
+                })
+                .collect(Collectors.toList());
 
         List<UserContext> remainingUsers = updatedUserContexts.stream()
                 .skip(1)
                 .collect(Collectors.toList());
 
-        UserContext u1New = UserTests.ensureSignedUp(username, password, network.clear(), crypto);
+        UserContext u1New = PeergosNetworkUtils.ensureSignedUp(username, password, network.clear(), crypto);
 
         // check remaining users can still read it
         for (UserContext userContext : remainingUsers) {
@@ -409,123 +316,17 @@ public class MultiUserTests {
 
     @Test
     public void shareAndUnshareFolder() throws Exception {
-        shareAndUnshareFolder(4);
-    }
-
-    public void shareAndUnshareFolder(int userCount) throws Exception {
-        Assert.assertTrue(0 < userCount);
-
-        String u1name = "a";
-        String u1Password = "a";
-        UserContext u1 = UserTests.ensureSignedUp(u1name, u1Password, network, crypto);
-        List<UserContext> users = new ArrayList<>();
-        List<String>  userNames =  new ArrayList<>(), userPasswords = new ArrayList<>();
-        for (int i = 0; i < userCount; i++) {
-            userNames.add(random());
-            userPasswords.add(random());
-        }
-
-        for (int i = 0; i < userCount; i++)
-            users.add(UserTests.ensureSignedUp(userNames.get(i), userPasswords.get(i), network, crypto));
-
-        for (UserContext user : users)
-            user.sendFollowRequest(u1.username, SymmetricKey.random()).get();
-
-        List<FollowRequest> u1Requests = u1.processFollowRequests().get();
-        for (FollowRequest u1Request : u1Requests) {
-            boolean accept = true;
-            boolean reciprocate = true;
-            u1.sendReplyFollowRequest(u1Request, accept, reciprocate).get();
-        }
-
-        for (UserContext user : users) {
-            user.processFollowRequests().get();
-        }
-
-        // friends are now connected
-        // share a file from u1 to the others
-        FileTreeNode u1Root = u1.getUserRoot().get();
-        String folderName = "afolder";
-        u1Root.mkdir(folderName, u1.network, SymmetricKey.random(), false, u1.crypto.random).get();
-        FileTreeNode folder = u1.getByPath("/a/" + folderName).get().get();
-        String filename = "somefile.txt";
-        byte[] originalFileContents = "Hello Peergos friend!".getBytes();
-        AsyncReader resetableFileInputStream = new AsyncReader.ArrayBacked(originalFileContents);
-        FileTreeNode updatedFolder = folder.uploadFile(filename, resetableFileInputStream, originalFileContents.length, u1.network,
-                u1.crypto.random, l -> {}, u1.fragmenter()).get();
-        String originalFilePath = u1.username + "/" + folderName + "/" + filename;
-
-        // file is uploaded, do the actual sharing
-        boolean finished = u1.shareWithAll(updatedFolder, users.stream().map(c -> c.username).collect(Collectors.toSet())).get();
-
-        // check each user can see the shared folder and directory
-        for (UserContext user : users) {
-            String path = u1.username;
-
-            Optional<FileTreeNode> sharedFolder = user.getByPath(u1.username + "/" + folderName).get();
-            Assert.assertTrue("Shared folder present via direct path", sharedFolder.isPresent() && sharedFolder.get().getFileProperties().name.equals(folderName));
-
-            FileTreeNode sharedFile = user.getByPath(u1.username + "/" + folderName + "/" + filename).get().get();
-            AsyncReader inputStream = sharedFile.getInputStream(user.network, user.crypto.random, l -> {}).get();
-
-            byte[] fileContents = Serialize.readFully(inputStream, sharedFile.getSize()).get();
-
-            Assert.assertTrue("shared file contents correct", Arrays.equals(originalFileContents, fileContents));
-        }
-
-        UserContext u1New = UserTests.ensureSignedUp(u1name, u1Password, network.clear(), crypto);
-
-        List<UserContext>  usersNew = new ArrayList<>();
-        for (int i = 0; i < userCount; i++)
-            usersNew.add(UserTests.ensureSignedUp(userNames.get(i), userPasswords.get(i), network.clear(), crypto));
-
-        for (int i = 0; i < usersNew.size(); i++) {
-            UserContext user = users.get(i);
-            u1.unShare(Paths.get(u1.username, folderName), user.username).get();
-
-            Optional<FileTreeNode> updatedSharedFolder = user.getByPath(u1New.username + "/" + folderName).get();
-
-            // test that u1 can still access the original file, and user cannot
-            Optional<FileTreeNode> fileWithNewBaseKey = u1New.getByPath(u1New.username + "/" + folderName + "/" + filename).get();
-            Assert.assertTrue(! updatedSharedFolder.isPresent());
-            Assert.assertTrue(fileWithNewBaseKey.isPresent());
-
-            // Now modify the file
-            byte[] suffix = "Some new data at the end".getBytes();
-            AsyncReader suffixStream = new AsyncReader.ArrayBacked(suffix);
-            FileTreeNode parent = u1New.getByPath(u1New.username + "/" + folderName).get().get();
-            parent.uploadFileSection(filename, suffixStream, originalFileContents.length, originalFileContents.length + suffix.length,
-                    Optional.empty(), true, u1New.network, u1New.crypto.random, l -> {}, u1New.fragmenter()).get();
-            FileTreeNode extendedFile = u1New.getByPath(originalFilePath).get().get();
-            AsyncReader extendedContents = extendedFile.getInputStream(u1New.network, u1New.crypto.random, l -> {}).get();
-            byte[] newFileContents = Serialize.readFully(extendedContents, extendedFile.getSize()).get();
-
-            Assert.assertTrue(Arrays.equals(newFileContents, ArrayOps.concat(originalFileContents, suffix)));
-
-            // test remaining users can still see shared file and folder
-            for (int j = i+1; j < usersNew.size(); j++) {
-                UserContext otherUser = users.get(j);
-
-                Optional<FileTreeNode> sharedFolder = otherUser.getByPath(u1.username + "/" + folderName).get();
-                Assert.assertTrue("Shared folder present via direct path", sharedFolder.isPresent() && sharedFolder.get().getName().equals(folderName));
-
-                FileTreeNode sharedFile = otherUser.getByPath(u1.username + "/" + folderName + "/" + filename).get().get();
-                AsyncReader inputStream = sharedFile.getInputStream(otherUser.network, otherUser.crypto.random, l -> {}).get();
-
-                byte[] contents = Serialize.readFully(inputStream, sharedFile.getSize()).get();
-                Assert.assertTrue(Arrays.equals(contents, newFileContents)); //remaining users share latest view of same data
-            }
-        }
+        PeergosNetworkUtils.shareAndUnshareFolder(network, network, 4, random);
     }
 
     @Test
     public void acceptAndReciprocateFollowRequest() throws Exception {
         String username1 = random();
         String password1 = random();
-        UserContext u1 = UserTests.ensureSignedUp(username1, password1, network, crypto);
+        UserContext u1 = PeergosNetworkUtils.ensureSignedUp(username1, password1, network, crypto);
         String username2 = random();
         String password2 = random();
-        UserContext u2 = UserTests.ensureSignedUp(username2, password2, network, crypto);
+        UserContext u2 = PeergosNetworkUtils.ensureSignedUp(username2, password2, network, crypto);
         u2.sendFollowRequest(u1.username, SymmetricKey.random()).get();
         List<FollowRequest> u1Requests = u1.processFollowRequests().get();
         assertTrue("Receive a follow request", u1Requests.size() > 0);
@@ -537,12 +338,12 @@ public class MultiUserTests {
         Optional<FileTreeNode> u2ToU1 = u1.getByPath("/" + u2.username).get();
         assertTrue("Friend root present after accepted follow request", u2ToU1.isPresent());
 
-        Set<String> u1Following = UserTests.ensureSignedUp(username1, password1, network.clear(), crypto).getSocialState().get()
+        Set<String> u1Following = PeergosNetworkUtils.ensureSignedUp(username1, password1, network.clear(), crypto).getSocialState().get()
                 .followingRoots.stream().map(f -> f.getName())
                 .collect(Collectors.toSet());
         assertTrue("Following correct", u1Following.contains(u2.username));
 
-        Set<String> u2Following = UserTests.ensureSignedUp(username2, password2, network.clear(), crypto).getSocialState().get()
+        Set<String> u2Following = PeergosNetworkUtils.ensureSignedUp(username2, password2, network.clear(), crypto).getSocialState().get()
                 .followingRoots.stream().map(f -> f.getName())
                 .collect(Collectors.toSet());
         assertTrue("Following correct", u2Following.contains(u1.username));
@@ -550,8 +351,8 @@ public class MultiUserTests {
 
     @Test
     public void followPeergos() throws Exception {
-        UserContext u1 = UserTests.ensureSignedUp("peergos", "testpassword", network, crypto);
-        UserContext u2 = UserTests.ensureSignedUp("w", "w", network, crypto);
+        UserContext u1 = PeergosNetworkUtils.ensureSignedUp("peergos", "testpassword", network, crypto);
+        UserContext u2 = PeergosNetworkUtils.ensureSignedUp("w", "w", network, crypto);
 
         List<FollowRequest> u1Requests = u1.processFollowRequests().get();
         assertTrue("Receive a follow request", u1Requests.size() > 0);
@@ -559,8 +360,8 @@ public class MultiUserTests {
 
     @Test
     public void acceptButNotReciprocateFollowRequest() throws Exception {
-        UserContext u1 = UserTests.ensureSignedUp("q", "q", network, crypto);
-        UserContext u2 = UserTests.ensureSignedUp("w", "w", network, crypto);
+        UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto);
+        UserContext u2 = PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto);
         u2.sendFollowRequest(u1.username, SymmetricKey.random()).get();
         List<FollowRequest> u1Requests = u1.processFollowRequests().get();
         assertTrue("Receive a follow request", u1Requests.size() > 0);
@@ -578,10 +379,10 @@ public class MultiUserTests {
     public void rejectFollowRequest() throws Exception {
         String username1 = random();
         String password1 = random();
-        UserContext u1 = UserTests.ensureSignedUp(username1, password1, network, crypto);
+        UserContext u1 = PeergosNetworkUtils.ensureSignedUp(username1, password1, network, crypto);
         String username2 = random();
         String password2 = random();
-        UserContext u2 = UserTests.ensureSignedUp(username2, password2, network, crypto);
+        UserContext u2 = PeergosNetworkUtils.ensureSignedUp(username2, password2, network, crypto);
         u2.sendFollowRequest(u1.username, SymmetricKey.random());
         List<FollowRequest> u1Requests = u1.processFollowRequests().get();
         assertTrue("Receive a follow request", u1Requests.size() > 0);
@@ -598,10 +399,10 @@ public class MultiUserTests {
     public void acceptAndReciprocateFollowRequestThenRemoveFollowRequest() throws Exception {
         String username1 = random();
         String password1 = random();
-        UserContext u1 = UserTests.ensureSignedUp(username1, password1, network, crypto);
+        UserContext u1 = PeergosNetworkUtils.ensureSignedUp(username1, password1, network, crypto);
         String username2 = random();
         String password2 = random();
-        UserContext u2 = UserTests.ensureSignedUp(username2, password2, network, crypto);
+        UserContext u2 = PeergosNetworkUtils.ensureSignedUp(username2, password2, network, crypto);
         u2.sendFollowRequest(u1.username, SymmetricKey.random()).get();
         List<FollowRequest> u1Requests = u1.processFollowRequests().get();
         assertTrue("Receive a follow request", u1Requests.size() > 0);
@@ -613,12 +414,12 @@ public class MultiUserTests {
         Optional<FileTreeNode> u2ToU1 = u1.getByPath("/" + u2.username).get();
         assertTrue("Friend root present after accepted follow request", u2ToU1.isPresent());
 
-        Set<String> u1Following = UserTests.ensureSignedUp(username1, password1, network.clear(), crypto).getSocialState().get()
+        Set<String> u1Following = PeergosNetworkUtils.ensureSignedUp(username1, password1, network.clear(), crypto).getSocialState().get()
                 .followingRoots.stream().map(f -> f.getName())
                 .collect(Collectors.toSet());
         assertTrue("Following correct", u1Following.contains(u2.username));
 
-        Set<String> u2Following = UserTests.ensureSignedUp(username2, password2, network.clear(), crypto).getSocialState().get()
+        Set<String> u2Following = PeergosNetworkUtils.ensureSignedUp(username2, password2, network.clear(), crypto).getSocialState().get()
                 .followingRoots.stream().map(f -> f.getName())
                 .collect(Collectors.toSet());
         assertTrue("Following correct", u2Following.contains(u1.username));
@@ -631,7 +432,7 @@ public class MultiUserTests {
         Optional<FileTreeNode> u2ToU1Again = q.getByPath("/" + u2.username).get();
         assertTrue("Friend root present after unfollow request", u2ToU1Again.isPresent());
 
-        w = UserTests.ensureSignedUp(username2, password2, network, crypto);
+        w = PeergosNetworkUtils.ensureSignedUp(username2, password2, network, crypto);
 
         Optional<FileTreeNode> u1ToU2Again = w.getByPath("/" + u1.username).get();
         assertTrue("Friend root NOT present after unfollow", !u1ToU2Again.isPresent());
@@ -641,10 +442,10 @@ public class MultiUserTests {
     public void reciprocateButNotAcceptFollowRequest() throws Exception {
         String username1 = random();
         String password1 = random();
-        UserContext u1 = UserTests.ensureSignedUp(username1, password1, network, crypto);
+        UserContext u1 = PeergosNetworkUtils.ensureSignedUp(username1, password1, network, crypto);
         String username2 = random();
         String password2 = random();
-        UserContext u2 = UserTests.ensureSignedUp(username2, password2, network, crypto);
+        UserContext u2 = PeergosNetworkUtils.ensureSignedUp(username2, password2, network, crypto);
         u2.sendFollowRequest(u1.username, SymmetricKey.random());
         List<FollowRequest> u1Requests = u1.processFollowRequests().get();
         assertTrue("Receive a follow request", u1Requests.size() > 0);
@@ -659,8 +460,8 @@ public class MultiUserTests {
 
     @Test
     public void unfollow() throws Exception {
-        UserContext u1 = UserTests.ensureSignedUp("q", "q", network, crypto);
-        UserContext u2 = UserTests.ensureSignedUp("w", "w", network, crypto);
+        UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto);
+        UserContext u2 = PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto);
         u2.sendFollowRequest(u1.username, SymmetricKey.random());
         List<FollowRequest> u1Requests = u1.processFollowRequests().get();
         u1.sendReplyFollowRequest(u1Requests.get(0), true, true);
@@ -677,8 +478,8 @@ public class MultiUserTests {
 
     @Test
     public void removeFollower() throws Exception {
-        UserContext u1 = UserTests.ensureSignedUp("q", "q", network, crypto);
-        UserContext u2 = UserTests.ensureSignedUp("w", "w", network, crypto);
+        UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto);
+        UserContext u2 = PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto);
         u2.sendFollowRequest(u1.username, SymmetricKey.random());
         List<FollowRequest> u1Requests = u1.processFollowRequests().get();
         u1.sendReplyFollowRequest(u1Requests.get(0), true, true);
@@ -692,4 +493,7 @@ public class MultiUserTests {
         Set<String> newU1Followers = u1.getFollowerNames().get();
         Assert.assertTrue("u1 no longer has u2 as follower", ! newU1Followers.contains(u2.username));
     }
+
+
+
 }

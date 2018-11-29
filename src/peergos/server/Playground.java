@@ -61,12 +61,12 @@ public class Playground {
         for (PublicKeyHash ownedKey : ownedKeys) {
             if (ownedKey.equals(context.signer.publicKeyHash))
                 continue; // only the writer has a tree
-            CommittedWriterData existing = WriterData.getWriterData(ownedKey, network.mutable, network.dhtClient).get();
+            CommittedWriterData existing = WriterData.getWriterData(context.signer.publicKeyHash, ownedKey, network.mutable, network.dhtClient).get();
             if (existing.props.tree.isPresent())
                 continue;
             SecretSigningKey signingKey = context.getUserRoot().get().getEntryWriterKey().get();
             SigningPrivateKeyAndPublicHash writer = new SigningPrivateKeyAndPublicHash(ownedKey, signingKey);
-            existing.props.migrateToChamp(writer, existing.hash, network, res -> {}).get();
+            existing.props.migrateToChamp(context.signer.publicKeyHash, writer, existing.hash, network, res -> {}).get();
         }
     }
 }

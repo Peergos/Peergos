@@ -21,13 +21,13 @@ public class CachingPointers implements MutablePointers {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash writer) {
+    public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash owner, PublicKeyHash writer) {
         synchronized (cache) {
             Pair<Optional<byte[]>, Long> cached = cache.get(writer);
             if (cached != null && System.currentTimeMillis() - cached.right < cacheTTL)
                 return CompletableFuture.completedFuture(cached.left);
         }
-        return target.getPointer(writer).thenApply(m -> {
+        return target.getPointer(owner, writer).thenApply(m -> {
             synchronized (cache) {
                 cache.put(writer, new Pair<>(m, System.currentTimeMillis()));
             }

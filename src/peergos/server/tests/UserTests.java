@@ -8,6 +8,7 @@ import org.junit.*;
 import static org.junit.Assert.*;
 
 import peergos.server.storage.*;
+import peergos.server.util.PeergosNetworkUtils;
 import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
@@ -37,22 +38,26 @@ public abstract class UserTests {
 
     private static Random random = new Random(RANDOM_SEED);
 
-    public UserTests(String useIPFS, Random r) throws Exception {
-        int portMin = 9000;
-        int portRange = 8000;
-        int webPort = portMin + r.nextInt(portRange);
-        int corePort = portMin + portRange + r.nextInt(portRange);
-        int socialPort = portMin + portRange + r.nextInt(portRange);
+    public UserTests(Args args) {
+        try {
+            this.network = NetworkAccess.buildJava(new URL("http://localhost:" + args.getInt("port"))).get();
+        } catch (Exception ex) {
+            throw new IllegalStateException(ex.getMessage(), ex);
+        }
+    }
 
-        Args args = Args.parse(new String[]{
-                "useIPFS", ""+useIPFS.equals("IPFS"),
-                "-port", Integer.toString(webPort),
-                "-corenodePort", Integer.toString(corePort),
-                "-socialnodePort", Integer.toString(socialPort)
-        });
-
-        Start.LOCAL.main(args);
-        this.network = NetworkAccess.buildJava(new URL("http://localhost:" + webPort)).get();
+    public static Args buildArgs() {
+        try {
+            Path peergosDir = Files.createTempDirectory("peergos");
+            Random r = new Random();
+            int port = 9000 + r.nextInt(8000);
+            return Args.parse(new String[]{
+                    "-port", Integer.toString(port),
+                    "-logToConsole", "true",
+                    Main.PEERGOS_PATH, peergosDir.toString()});
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private String generateUsername() {
@@ -117,7 +122,7 @@ public abstract class UserTests {
     public void randomSignup() throws Exception {
         String username = generateUsername();
         String password = "password";
-        ensureSignedUp(username, password, network, crypto);
+        PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
     }
 
     @Test
@@ -125,7 +130,7 @@ public abstract class UserTests {
         // This is to ensure a user can't accidentally sign in rather than login and overwrite all their data
         String username = generateUsername();
         String password = "password";
-        ensureSignedUp(username, password, network, crypto);
+        PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         CompletableFuture<UserContext> secondSignup = UserContext.signUp(username, password, network, crypto);
 
         Assert.assertTrue("Second sign up fails", secondSignup.isCompletedExceptionally());
@@ -157,22 +162,22 @@ public abstract class UserTests {
     public void changePassword() throws Exception {
         String username = generateUsername();
         String password = "password";
-        UserContext userContext = ensureSignedUp(username, password, network, crypto);
+        UserContext userContext = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         String newPassword = "newPassword";
         userContext.changePassword(password, newPassword).get();
-        ensureSignedUp(username, newPassword, network, crypto);
+        PeergosNetworkUtils.ensureSignedUp(username, newPassword, network, crypto);
     }
 
     @Test
     public void changePasswordFAIL() throws Exception {
         String username = generateUsername();
         String password = "password";
-        UserContext userContext = ensureSignedUp(username, password, network, crypto);
+        UserContext userContext = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         String newPassword = "passwordtest";
         UserContext newContext = userContext.changePassword(password, newPassword).get();
 
         try {
-            UserContext oldContext = ensureSignedUp(username, password, network, crypto);
+            UserContext oldContext = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         } catch (Exception e) {
             if (! e.getMessage().contains("Incorrect password"))
                 throw e;
@@ -183,22 +188,18 @@ public abstract class UserTests {
     public void changeLoginAlgorithm() throws Exception {
         String username = generateUsername();
         String password = "password";
-        UserContext userContext = ensureSignedUp(username, password, network, crypto);
+        UserContext userContext = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         SecretGenerationAlgorithm algo = userContext.getKeyGenAlgorithm().get();
         ScryptGenerator newAlgo = new ScryptGenerator(19, 8, 1, 96);
         userContext.changePassword(password, password, algo, newAlgo).get();
-        ensureSignedUp(username, password, network, crypto);
-    }
-
-    public static UserContext ensureSignedUp(String username, String password, NetworkAccess network, Crypto crypto) throws Exception {
-        return UserContext.ensureSignedUp(username, password, network, crypto).get();
+        PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
     }
 
     @Test
     public void writeReadVariations() throws Exception {
         String username = generateUsername();
         String password = "test";
-        UserContext context = ensureSignedUp(username, password, network, crypto);
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         FileTreeNode userRoot = context.getUserRoot().get();
 
         String filename = "somedata.txt";
@@ -260,7 +261,7 @@ public abstract class UserTests {
         // check from the root as well
         checkFileContents(data3, context.getByPath(username + "/" + newname).get().get(), context);
         // check from a fresh log in too
-        UserContext context2 = ensureSignedUp(username, password, network.clear(), crypto);
+        UserContext context2 = PeergosNetworkUtils.ensureSignedUp(username, password, network.clear(), crypto);
         Optional<FileTreeNode> renamed = context2.getByPath(username + "/" + newname).get();
         checkFileContents(data3, renamed.get(), context);
     }
@@ -269,7 +270,7 @@ public abstract class UserTests {
     public void concurrentWritesToDir() throws Exception {
         String username = generateUsername();
         String password = "test01";
-        UserContext context = ensureSignedUp(username, password, network, crypto);
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
 
         // write empty file
         int concurrency = 8;
@@ -305,7 +306,7 @@ public abstract class UserTests {
     public void concurrentMkdirs() throws Exception {
         String username = generateUsername();
         String password = "test01";
-        UserContext context = ensureSignedUp(username, password, network, crypto);
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
 
         // write empty file
         int concurrency = 8;
@@ -338,7 +339,7 @@ public abstract class UserTests {
     public void concurrentWritesToFile() throws Exception {
         String username = generateUsername();
         String password = "test01";
-        UserContext context = ensureSignedUp(username, password, network, crypto);
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
 
         // write a n chunk file, then concurrently modify each of the chunks
         int concurrency = 2;
@@ -385,7 +386,7 @@ public abstract class UserTests {
     public void duplicateConcurrentWritesToDir() throws Exception {
         String username = generateUsername();
         String password = "test01";
-        UserContext context = ensureSignedUp(username, password, network, crypto);
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
 
         // write empty file
         int concurrency = 8;
@@ -423,7 +424,7 @@ public abstract class UserTests {
     public void smallFileWrite() throws Exception {
         String username = generateUsername();
         String password = "test01";
-        UserContext context = ensureSignedUp(username, password, network, crypto);
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         FileTreeNode userRoot = context.getUserRoot().get();
 
         String filename = "small.txt";
@@ -438,7 +439,7 @@ public abstract class UserTests {
     public void javaThumbnail() throws Exception {
         String username = generateUsername();
         String password = "test01";
-        UserContext context = ensureSignedUp(username, password, network, crypto);
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         FileTreeNode userRoot = context.getUserRoot().get();
 
         String filename = "small.png";
@@ -455,7 +456,7 @@ public abstract class UserTests {
     public void javaVideoThumbnail() throws Exception {
         String username = generateUsername();
         String password = "test01";
-        UserContext context = ensureSignedUp(username, password, network, crypto);
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         FileTreeNode userRoot = context.getUserRoot().get();
 
         String filename = "trailer.mp4";
@@ -471,7 +472,7 @@ public abstract class UserTests {
     public void mediumFileWrite() throws Exception {
         String username = generateUsername();
         String password = "test01";
-        UserContext context = ensureSignedUp(username, password, network, crypto);
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         FileTreeNode userRoot = context.getUserRoot().get();
 
         String filename = "mediumfile.bin";
@@ -502,7 +503,7 @@ public abstract class UserTests {
 
         // check used space
         PublicKeyHash signer = context.signer.publicKeyHash;
-        long totalSpaceUsed = context.getTotalSpaceUsed(signer).get();
+        long totalSpaceUsed = context.getTotalSpaceUsed(signer, signer).get();
         Assert.assertTrue("Correct used space", totalSpaceUsed > 10*1024*1024);
     }
 
@@ -510,7 +511,7 @@ public abstract class UserTests {
     public void writeTiming() throws Exception {
         String username = generateUsername();
         String password = "test01";
-        UserContext context = ensureSignedUp(username, password, network, crypto);
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         FileTreeNode userRoot = context.getUserRoot().get();
 
         String filename = "mediumfile.bin";
@@ -531,30 +532,14 @@ public abstract class UserTests {
 
     @Test
     public void publicLinkToFile() throws Exception {
-        String username = generateUsername();
-        String password = "test01";
-        UserContext context = ensureSignedUp(username, password, network, crypto);
-        FileTreeNode userRoot = context.getUserRoot().get();
-
-        String filename = "mediumfile.bin";
-        byte[] data = new byte[128*1024];
-        random.nextBytes(data);
-        long t1 = System.currentTimeMillis();
-        userRoot.uploadFileSection(filename, new AsyncReader.ArrayBacked(data), 0, data.length, context.network, context.crypto.random, l -> {}, context.fragmenter()).get();
-        long t2 = System.currentTimeMillis();
-        String path = "/" + username + "/" + filename;
-        FileTreeNode file = context.getByPath(path).get().get();
-        String link = file.toLink();
-        UserContext linkContext = UserContext.fromPublicLink(link, network, crypto).get();
-        Optional<FileTreeNode> fileThroughLink = linkContext.getByPath(path).get();
-        Assert.assertTrue("File present through link", fileThroughLink.isPresent());
+        PeergosNetworkUtils.publicLinkToFile(random, network, network);
     }
 
     @Test
     public void publicLinkToDir() throws Exception {
         String username = generateUsername();
         String password = "test01";
-        UserContext context = ensureSignedUp(username, password, network, crypto);
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         FileTreeNode userRoot = context.getUserRoot().get();
 
         String filename = "mediumfile.bin";
@@ -584,7 +569,7 @@ public abstract class UserTests {
     public void rename() throws Exception {
         String username = generateUsername();
         String password = "test01";
-        UserContext context = ensureSignedUp(username, password, network, crypto);
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         FileTreeNode userRoot = context.getUserRoot().get();
 
         String dirName = "subdir";
@@ -604,7 +589,7 @@ public abstract class UserTests {
     public void hugeFolder() throws Exception {
         String username = generateUsername();
         String password = "test01";
-        UserContext context = ensureSignedUp(username, password, network, crypto);
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         FileTreeNode userRoot = context.getUserRoot().get();
         List<String> names = new ArrayList<>();
         IntStream.range(0, 2000).forEach(i -> names.add(randomString()));
@@ -661,7 +646,7 @@ public abstract class UserTests {
     public void readWriteTest() throws Exception {
         String username = generateUsername();
         String password = "test01";
-        UserContext context = ensureSignedUp(username, password, network, crypto);
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         FileTreeNode userRoot = context.getUserRoot().get();
 
         Set<FileTreeNode> children = userRoot.getChildren(context.network).get();
@@ -700,7 +685,7 @@ public abstract class UserTests {
     public void deleteTest() throws Exception {
         String username = generateUsername();
         String password = "test01";
-        UserContext context = ensureSignedUp(username, password, network.clear(), crypto);
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network.clear(), crypto);
         FileTreeNode userRoot = context.getUserRoot().get();
 
         String name = randomString();
@@ -735,7 +720,7 @@ public abstract class UserTests {
         fileTreeNode.remove(context.network, updatedRoot2).get();
 
         //re-create user-context
-        UserContext context2 = ensureSignedUp(username, password, network.clear(), crypto);
+        UserContext context2 = PeergosNetworkUtils.ensureSignedUp(username, password, network.clear(), crypto);
         FileTreeNode userRoot2 = context2.getUserRoot().get();
 
 
@@ -765,7 +750,7 @@ public abstract class UserTests {
     public void internalCopy() throws Exception {
         String username = generateUsername();
         String password = "test01";
-        UserContext context = ensureSignedUp(username, password, network.clear(), crypto);
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network.clear(), crypto);
         FileTreeNode userRoot = context.getUserRoot().get();
         Path home = Paths.get(username);
 
@@ -800,7 +785,7 @@ public abstract class UserTests {
     public void deleteDirectoryTest() throws Exception {
         String username = generateUsername();
         String password = "test01";
-        UserContext context = ensureSignedUp(username, password, network, crypto);
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         FileTreeNode userRoot = context.getUserRoot().get();
 
         Set<FileTreeNode> children = userRoot.getChildren(context.network).get();
@@ -838,7 +823,7 @@ public abstract class UserTests {
 
         //can sign-in again
         try {
-            UserContext context2 = ensureSignedUp(username, password, network, crypto);
+            UserContext context2 = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
             FileTreeNode userRoot2 = context2.getUserRoot().get();
         } catch (Exception ex) {
             fail("Failed to log-in and see user-root " + ex.getMessage());

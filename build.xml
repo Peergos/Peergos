@@ -121,9 +121,9 @@
     </touch>
     <jar jarfile="${dist}/PeergosServer.jar" basedir="${build}" includes="peergos/server/**,peergos/shared/**,peergos/client/**"></jar>
     <mkdir dir="META-INF"/>
-    <echo file="META-INF/MANIFEST.MF">Main-Class: peergos.server.Start
-Class-Path: ${manifest_cp}
-</echo>
+    <echo file="META-INF/MANIFEST.MF">Main-Class: peergos.server.Main
+        Class-Path: ${manifest_cp}
+    </echo>
     <touch millis="0">
       <fileset dir="META-INF"/>
     </touch>
@@ -147,6 +147,8 @@ Class-Path: ${manifest_cp}
     <junit fork="true" printsummary="true" haltonfailure="yes">
       <jvmarg value="-Xmx3g"/>
       <classpath>
+	<pathelement location="lib/jnr-fuse-0.3-all.jar" />
+	<pathelement location="lib/sqlite-jdbc-3.7.2.jar" />
 	<pathelement location="lib-build/junit-4.11.jar" />
 	<pathelement location="lib-build/hamcrest-core-1.3.jar" />
 	<pathelement location="PeergosServer.jar" />

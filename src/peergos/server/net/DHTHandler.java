@@ -1,6 +1,7 @@
 package peergos.server.net;
 import java.util.logging.*;
-import peergos.server.util.Logging;
+
+import peergos.server.util.*;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
@@ -36,25 +37,8 @@ public class DHTHandler implements HttpHandler {
         this(dht, keyFilter, "/api/v0/");
     }
 
-    private Map<String, List<String>> parseQuery(String query) {
-        if (query == null)
-            return Collections.emptyMap();
-        if (query.startsWith("?"))
-            query = query.substring(1);
-        String[] parts = query.split("&");
-        Map<String, List<String>> res = new HashMap<>();
-        for (String part : parts) {
-            int sep = part.indexOf("=");
-            String key = part.substring(0, sep);
-            String value = part.substring(sep + 1);
-            res.putIfAbsent(key, new ArrayList<>());
-            res.get(key).add(value);
-        }
-        return res;
-    }
-
     @Override
-    public void handle(HttpExchange httpExchange) throws IOException {
+    public void handle(HttpExchange httpExchange) {
         long t1 = System.currentTimeMillis();
         String path = httpExchange.getRequestURI().getPath();
         try {
@@ -62,12 +46,13 @@ public class DHTHandler implements HttpHandler {
                 throw new IllegalStateException("Unsupported api version, required: " + apiPrefix);
             path = path.substring(apiPrefix.length());
             // N.B. URI.getQuery() decodes the query string
-            Map<String, List<String>> params = parseQuery(httpExchange.getRequestURI().getQuery());
+            Map<String, List<String>> params = HttpUtil.parseQuery(httpExchange.getRequestURI().getQuery());
             List<String> args = params.get("arg");
             Function<String, String> last = key -> params.get(key).get(params.get(key).size() - 1);
 
             switch (path) {
                 case "block/put": {
+                    PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
                     PublicKeyHash writerHash = PublicKeyHash.fromString(last.apply("writer"));
                     List<byte[]> signatures = Arrays.stream(last.apply("signatures").split(","))
                             .map(ArrayOps::hexToBytes)
@@ -119,14 +104,17 @@ public class DHTHandler implements HttpHandler {
                             throw new IllegalStateException("Invalid signature for block!");
                     }
 
-                    (isRaw ?
-                            dht.putRaw(writerHash, signatures, data) :
-                            dht.put(writerHash, signatures, data)).thenAccept(hashes -> {
-                        List<Object> json = hashes.stream().map(h -> wrapHash(h)).collect(Collectors.toList());
-                        // make stream of JSON objects
-                        String jsonStream = json.stream().map(m -> JSONParser.toString(m)).reduce("", (a, b) -> a + b);
-                        replyJson(httpExchange, jsonStream, Optional.empty());
-                    }).exceptionally(Futures::logError);
+                    List<Multihash> hashes = (isRaw ?
+                            dht.putRaw(ownerHash, writerHash, signatures, data) :
+                            dht.put(ownerHash, writerHash, signatures, data)).get();
+                    List<Object> json = hashes.stream()
+                            .map(h -> wrapHash(h))
+                            .collect(Collectors.toList());
+                    // make stream of JSON objects
+                    String jsonStream = json.stream()
+                            .map(m -> JSONParser.toString(m))
+                            .reduce("", (a, b) -> a + b);
+                    replyJson(httpExchange, jsonStream, Optional.empty());
                     break;
                 }
                 case "block/get":{
@@ -136,28 +124,41 @@ public class DHTHandler implements HttpHandler {
                             dht.get(hash).thenApply(opt -> opt.map(CborObject::toByteArray)))
                             .thenAccept(opt -> replyBytes(httpExchange,
                                     opt.orElse(new byte[0]), opt.map(x -> hash)))
-                            .exceptionally(Futures::logError);
+                            .exceptionally(Futures::logError).get();
                     break;
                 }
                 case "pin/add": {
+                    PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
                     Multihash hash = Cid.decode(args.get(0));
-                    dht.recursivePin(hash).thenAccept(pinned -> {
+                    dht.recursivePin(ownerHash, hash).thenAccept(pinned -> {
                         Map<String, Object> json = new TreeMap<>();
                         json.put("Pins", pinned.stream().map(h -> h.toString()).collect(Collectors.toList()));
                         replyJson(httpExchange, JSONParser.toString(json), Optional.empty());
-                    }).exceptionally(Futures::logError);
+                    }).exceptionally(Futures::logError).get();
+                    break;
+                }
+                case "pin/update": {
+                    PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
+                    Multihash existing = Cid.decode(args.get(0));
+                    Multihash updated = Cid.decode(args.get(1));
+                    dht.pinUpdate(ownerHash, existing, updated).thenAccept(pinned -> {
+                        Map<String, Object> json = new TreeMap<>();
+                        json.put("Pins", pinned.stream().map(h -> h.toString()).collect(Collectors.toList()));
+                        replyJson(httpExchange, JSONParser.toString(json), Optional.empty());
+                    }).exceptionally(Futures::logError).get();
                     break;
                 }
                 case "pin/rm": {
+                    PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
                     boolean recursive = params.containsKey("r") && Boolean.parseBoolean(last.apply("r"));
                     if (!recursive)
                         throw new IllegalStateException("Unimplemented: non recursive unpin!");
                     Multihash hash = Cid.decode(args.get(0));
-                    dht.recursiveUnpin(hash).thenAccept(unpinned -> {
+                    dht.recursiveUnpin(ownerHash, hash).thenAccept(unpinned -> {
                         Map<String, Object> json = new TreeMap<>();
                         json.put("Pins", unpinned.stream().map(h -> h.toString()).collect(Collectors.toList()));
                         replyJson(httpExchange, JSONParser.toString(json), Optional.empty());
-                    }).exceptionally(Futures::logError);
+                    }).exceptionally(Futures::logError).get();
                     break;
                 }
                 case "block/stat": {
@@ -167,7 +168,7 @@ public class DHTHandler implements HttpHandler {
                         res.put("Size", sizeOpt.orElse(0));
                         String json = JSONParser.toString(res);
                         replyJson(httpExchange, json, Optional.of(block));
-                    }).exceptionally(Futures::logError);
+                    }).exceptionally(Futures::logError).get();
                     break;
                 }
                 case "refs": {
@@ -177,14 +178,14 @@ public class DHTHandler implements HttpHandler {
                         // make stream of JSON objects
                         String jsonStream = json.stream().map(m -> JSONParser.toString(m)).reduce("", (a, b) -> a + b);
                         replyJson(httpExchange, jsonStream, Optional.of(block));
-                    }).exceptionally(Futures::logError);
+                    }).exceptionally(Futures::logError).get();
                     break;
                 }
                 case "id": {
                     dht.id().thenAccept(id -> {
                         Object json = wrapHash("ID", id);
                         replyJson(httpExchange, JSONParser.toString(json), Optional.empty());
-                    }).exceptionally(Futures::logError);
+                    }).exceptionally(Futures::logError).get();
                     break;
                 }
                 default: {

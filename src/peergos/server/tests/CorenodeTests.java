@@ -25,30 +25,31 @@ import java.util.concurrent.*;
 public class CorenodeTests {
 	private static final Logger LOG = Logging.LOG();
 
-    public static int RANDOM_SEED = 666;
-    private final NetworkAccess network;
+    private static Args args = UserTests.buildArgs().with("useIPFS", "true");
 
+    public static int RANDOM_SEED = 666;
     private static Random random = new Random(RANDOM_SEED);
 
-    public CorenodeTests(String useIPFS, Random r) throws Exception {
-        int webPort = 9000 + r.nextInt(1000);
-        int corePort = 10000 + r.nextInt(1000);
-        Args args = Args.parse(new String[]{"useIPFS", ""+useIPFS.equals("IPFS"), "-port", Integer.toString(webPort), "-corenodePort", Integer.toString(corePort)});
-        Start.LOCAL.main(args);
-        this.network = NetworkAccess.buildJava(new URL("http://localhost:" + webPort)).get();
+    private final NetworkAccess network;
+
+    public CorenodeTests(Args args) throws Exception {
+        this.network = NetworkAccess.buildJava(new URL("http://localhost:" + args.getInt("port"))).get();
     }
 
     @Parameterized.Parameters(name = "{index}: {0}")
     public static Collection<Object[]> parameters() {
-        Random r = new Random(1234);
         return Arrays.asList(new Object[][] {
-//                {"IPFS", r},
-                {"RAM", r}
+                {args}
         });
     }
 
+    @BeforeClass
+    public static void init() {
+        Main.LOCAL.main(args);
+    }
+
     @Test
-    public void writeThroughput() throws Exception {
+    public void writeThroughput() {
         Crypto crypto = Crypto.initJava();
         ForkJoinPool pool = new ForkJoinPool(10);
 

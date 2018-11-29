@@ -31,8 +31,8 @@ public class CachingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> put(PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
-        return target.put(writer, signatures, blocks);
+    public CompletableFuture<List<Multihash>> put(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
+        return target.put(owner, writer, signatures, blocks);
     }
 
     @Override
@@ -66,8 +66,8 @@ public class CachingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
-        return target.putRaw(writer, signatures, blocks);
+    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
+        return target.putRaw(owner, writer, signatures, blocks);
     }
 
     @Override
@@ -97,18 +97,18 @@ public class CachingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> recursivePin(Multihash h) {
-        return target.recursivePin(h);
+    public CompletableFuture<List<Multihash>> recursivePin(PublicKeyHash owner, Multihash h) {
+        return target.recursivePin(owner, h);
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> recursiveUnpin(Multihash h) {
-        return target.recursiveUnpin(h);
+    public CompletableFuture<List<Multihash>> recursiveUnpin(PublicKeyHash owner, Multihash h) {
+        return target.recursiveUnpin(owner, h);
     }
 
     @Override
-    public CompletableFuture<List<MultiAddress>> pinUpdate(Multihash existing, Multihash updated) {
-        return target.pinUpdate(existing, updated);
+    public CompletableFuture<List<MultiAddress>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated) {
+        return target.pinUpdate(owner, existing, updated);
     }
 
     @Override

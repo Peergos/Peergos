@@ -1,4 +1,4 @@
-package peergos.server.tests;
+package peergos.server.tests.slow;
 import java.nio.file.*;
 import java.util.logging.*;
 import peergos.server.util.Logging;
@@ -45,7 +45,7 @@ public class MerkleBtreeTests {
     }
 
     public CompletableFuture<MerkleBTree> createTree(SigningPrivateKeyAndPublicHash user, ContentAddressedStorage dht) throws IOException {
-        return MerkleBTree.create(user, dht);
+        return MerkleBTree.create(user.publicKeyHash, user, dht);
     }
 
     public Multihash hash(byte[] in) {
@@ -58,7 +58,7 @@ public class MerkleBtreeTests {
         MerkleBTree tree = createTree(user).get();
         byte[] key1 = new byte[]{0, 1, 2, 3};
         Multihash value1 = hash(new byte[]{1, 1, 1, 1});
-        tree.put(user, key1, MaybeMultihash.empty(), value1).get();
+        tree.put(user.publicKeyHash, user, key1, MaybeMultihash.empty(), value1).get();
         MaybeMultihash res1 = tree.get(key1).get();
         if (!res1.get().equals(value1))
             throw new IllegalStateException("Results not equal");
@@ -72,7 +72,7 @@ public class MerkleBtreeTests {
         for (int i=0; i < 16; i++) {
             byte[] key1 = new byte[]{0, 1, 2, (byte)i};
             Multihash value1 = hash(new byte[]{1, 1, 1, (byte)i});
-            tree.put(user, key1, MaybeMultihash.empty(), value1).get();
+            tree.put(user.publicKeyHash, user, key1, MaybeMultihash.empty(), value1).get();
             MaybeMultihash res1 = tree.get(key1).get();
             if (! res1.get().equals(value1))
                 throw new IllegalStateException("Results not equal");
@@ -93,12 +93,12 @@ public class MerkleBtreeTests {
         MerkleBTree tree = createTree(user).get();
         byte[] key1 = new byte[]{0, 1, 2, 3};
         Multihash value1 = hash(new byte[]{1, 1, 1, 1});
-        tree.put(user, key1, MaybeMultihash.empty(), value1);
+        tree.put(user.publicKeyHash, user, key1, MaybeMultihash.empty(), value1);
         MaybeMultihash res1 = tree.get(key1).get();
         if (! res1.get().equals(value1))
             throw new IllegalStateException("Results not equal");
         Multihash value2 = hash(new byte[]{2, 2, 2, 2});
-        tree.put(user, key1, MaybeMultihash.of(value1), value2);
+        tree.put(user.publicKeyHash, user, key1, MaybeMultihash.of(value1), value2);
         MaybeMultihash res2 = tree.get(key1).get();
         if (! res2.get().equals(value2))
             throw new IllegalStateException("Results not equal");
@@ -112,7 +112,7 @@ public class MerkleBtreeTests {
         for (int i=0; i < 1000000; i++) {
             byte[] key1 = new byte[]{0, 1, 2, (byte)i};
             Multihash value1 = hash(new byte[]{1, 1, 1, (byte)i});
-            tree.put(user, key1, MaybeMultihash.empty(), value1).get();
+            tree.put(user.publicKeyHash, user, key1, MaybeMultihash.empty(), value1).get();
             MaybeMultihash res1 = tree.get(key1).get();
             if (! res1.get().equals(value1))
                 throw new IllegalStateException("Results not equal");
@@ -145,7 +145,7 @@ public class MerkleBtreeTests {
             byte[] value1Raw = new byte[keylen];
             r.nextBytes(value1Raw);
             Multihash value1 = hash(value1Raw);
-            tree.put(user, key1, MaybeMultihash.empty(), value1).get();
+            tree.put(user.publicKeyHash, user, key1, MaybeMultihash.empty(), value1).get();
 
             MaybeMultihash res1 = tree.get(key1).get();
             if (! res1.get().equals(value1))
@@ -176,7 +176,7 @@ public class MerkleBtreeTests {
             MaybeMultihash existing = tree.get(key1).get();
             if (existing.isPresent())
                 throw new IllegalStateException("Already present!");
-            tree.put(user, key1, MaybeMultihash.empty(), value1).get();
+            tree.put(user.publicKeyHash, user, key1, MaybeMultihash.empty(), value1).get();
 
             MaybeMultihash res1 = tree.get(key1).get();
             if (! res1.get().equals(value1))
@@ -195,10 +195,10 @@ public class MerkleBtreeTests {
             MaybeMultihash value = tree.get(key.data).get();
             if (! value.isPresent())
                 throw new IllegalStateException("Key not present!");
-            tree.remove(user, key.data, value).get();
+            tree.remove(user.publicKeyHash, user, key.data, value).get();
             if (tree.get(key.data).get().isPresent())
                 throw new IllegalStateException("Key still present!");
-            tree.put(user, key.data, MaybeMultihash.empty(), value.get()).get();
+            tree.put(user.publicKeyHash, user, key.data, MaybeMultihash.empty(), value.get()).get();
         }
         long t2 = System.currentTimeMillis();
         System.out.printf("size+get+delete+get+put rate = %f /s\n", (double)lim / (t2 - t1) * 1000);

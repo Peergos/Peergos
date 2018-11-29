@@ -45,8 +45,8 @@ public class MutableTreeImpl implements MutableTree {
                 });
     }
 
-    private CompletableFuture<CommittedWriterData> getWriterData(PublicKeyHash hash) {
-        return mutable.getPointer(hash)
+    private CompletableFuture<CommittedWriterData> getWriterData(PublicKeyHash owner, PublicKeyHash hash) {
+        return mutable.getPointer(owner, hash)
                 .thenCompose(dataOpt -> dht.getSigningKey(hash)
                         .thenApply(signer -> dataOpt.isPresent() ?
                                 HashCasPair.fromCbor(CborObject.fromByteArray(signer.get().unsignMessage(dataOpt.get()))).updated :
@@ -54,40 +54,40 @@ public class MutableTreeImpl implements MutableTree {
                         .thenCompose(x -> getWriterData(hash, x)));
     }
 
-    private CompletableFuture<CommittedWriterData> addToQueue(PublicKeyHash pubKey, CompletableFuture<CommittedWriterData> lock) {
+    private CompletableFuture<CommittedWriterData> addToQueue(PublicKeyHash owner, PublicKeyHash writer, CompletableFuture<CommittedWriterData> lock) {
         synchronized (pending) {
             // This is subtle, but we need to ensure that there is only ever 1 thenAble waiting on the future for a given key
             // otherwise when the future completes, then the two or more waiters will both proceed with the existing hash,
             // and whoever commits first will win. We also need to retrieve the writer data again from the network after
             // a previous transaction has completed (another node/user may have updated the mapping)
 
-            if (pending.containsKey(pubKey)) {
-                return pending.put(pubKey, lock).thenCompose(x -> getWriterData(pubKey));
+            if (pending.containsKey(writer)) {
+                return pending.put(writer, lock).thenCompose(x -> getWriterData(owner, writer));
             }
-            pending.put(pubKey, lock);
-            return getWriterData(pubKey);
+            pending.put(writer, lock);
+            return getWriterData(owner, writer);
         }
     }
 
     @Override
-    public CompletableFuture<Boolean> put(SigningPrivateKeyAndPublicHash writer, byte[] mapKey, MaybeMultihash existing, Multihash value) {
+    public CompletableFuture<Boolean> put(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, byte[] mapKey, MaybeMultihash existing, Multihash value) {
         PublicKeyHash publicWriterKey = writer.publicKeyHash;
         CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
 
-        return addToQueue(publicWriterKey, lock)
+        return addToQueue(owner, publicWriterKey, lock)
                 .thenCompose(committed -> {
                     WriterData holder = committed.props;
                     boolean isChamp = ! holder.btree.isPresent();
                     return (holder.tree.isPresent() ?
                             ChampWrapper.create(holder.tree.get(), hasher, dht) :
                             isChamp ?
-                                    ChampWrapper.create(writer, x -> x.data, dht) :
+                                    ChampWrapper.create(owner, writer, x -> x.data, dht) :
                                     MerkleBTree.create(writer.publicKeyHash, holder.btree.get(), dht)
-                    ).thenCompose(tree -> tree.put(writer, mapKey, existing, value))
+                    ).thenCompose(tree -> tree.put(owner, writer, mapKey, existing, value))
                             .thenApply(newRoot -> LOGGING ? log(newRoot, "TREE.put (" + ArrayOps.bytesToHex(mapKey)
                                     + ", " + value + ") => CAS(" + holder.tree + ", " + newRoot + ")") : newRoot)
                             .thenCompose(newTreeRoot -> (isChamp ? holder.withChamp(newTreeRoot) : holder.withBtree(newTreeRoot))
-                                    .commit(writer, committed.hash, mutable, dht, lock::complete))
+                                    .commit(owner, writer, committed.hash, mutable, dht, lock::complete))
                             .thenApply(x -> true)
                             .exceptionally(e -> {
                                 lock.complete(committed);
@@ -99,10 +99,10 @@ public class MutableTreeImpl implements MutableTree {
     }
 
     @Override
-    public CompletableFuture<MaybeMultihash> get(PublicKeyHash writer, byte[] mapKey) {
+    public CompletableFuture<MaybeMultihash> get(PublicKeyHash owner, PublicKeyHash writer, byte[] mapKey) {
         CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
 
-        return addToQueue(writer, lock)
+        return addToQueue(owner, writer, lock)
                 .thenCompose(committed -> {
                     lock.complete(committed);
                     WriterData holder = committed.props;
@@ -119,11 +119,11 @@ public class MutableTreeImpl implements MutableTree {
     }
 
     @Override
-    public CompletableFuture<Boolean> remove(SigningPrivateKeyAndPublicHash writer, byte[] mapKey, MaybeMultihash existing) {
+    public CompletableFuture<Boolean> remove(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, byte[] mapKey, MaybeMultihash existing) {
         PublicKeyHash publicWriter = writer.publicKeyHash;
         CompletableFuture<CommittedWriterData> future = new CompletableFuture<>();
 
-        return addToQueue(publicWriter, future)
+        return addToQueue(owner, publicWriter, future)
                 .thenCompose(committed -> {
                     WriterData holder = committed.props;
                     if (! holder.tree.isPresent() && ! holder.btree.isPresent())
@@ -132,10 +132,10 @@ public class MutableTreeImpl implements MutableTree {
                     return (isChamp ?
                             ChampWrapper.create(holder.tree.get(), hasher, dht) :
                             MerkleBTree.create(writer.publicKeyHash, holder.btree.get(), dht)
-                    ).thenCompose(tree -> tree.remove(writer, mapKey, existing))
+                    ).thenCompose(tree -> tree.remove(owner, writer, mapKey, existing))
                             .thenApply(pair -> LOGGING ? log(pair, "TREE.rm (" + ArrayOps.bytesToHex(mapKey) + "  => " + pair) : pair)
                             .thenCompose(newTreeRoot -> (isChamp ? holder.withChamp(newTreeRoot) : holder.withBtree(newTreeRoot))
-                                    .commit(writer, committed.hash, mutable, dht, future::complete))
+                                    .commit(owner, writer, committed.hash, mutable, dht, future::complete))
                             .thenApply(x -> true);
                 });
     }

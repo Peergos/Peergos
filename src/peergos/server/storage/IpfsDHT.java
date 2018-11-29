@@ -18,14 +18,18 @@ public class IpfsDHT implements ContentAddressedStorage {
         this.ipfs = ipfs;
         try {
             // test connectivity
-            ipfs.object._new(Optional.empty());
-        } catch (IOException e) {
+            id().get();
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
 
     public IpfsDHT() {
         this(new IPFS(new MultiAddress("/ip4/127.0.0.1/tcp/5001")));
+    }
+
+    public IpfsDHT(MultiAddress ipfsAddress) {
+        this(new IPFS(ipfsAddress));
     }
 
     @Override
@@ -41,12 +45,12 @@ public class IpfsDHT implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> put(PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
+    public CompletableFuture<List<Multihash>> put(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
         return put(writer, signatures, blocks, "cbor");
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
+    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
         return put(writer, signatures, blocks, "raw");
     }
 
@@ -88,7 +92,7 @@ public class IpfsDHT implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<MultiAddress>> pinUpdate(Multihash existing, Multihash updated) {
+    public CompletableFuture<List<MultiAddress>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated) {
         CompletableFuture<List<MultiAddress>> res = new CompletableFuture<>();
         try {
             List<MultiAddress> added = ipfs.pin.update(existing, updated, false);
@@ -100,7 +104,7 @@ public class IpfsDHT implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> recursivePin(Multihash h) {
+    public CompletableFuture<List<Multihash>> recursivePin(PublicKeyHash owner, Multihash h) {
         CompletableFuture<List<Multihash>> res = new CompletableFuture<>();
         try {
             List<Multihash> added = ipfs.pin.add(h);
@@ -112,7 +116,7 @@ public class IpfsDHT implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> recursiveUnpin(Multihash h) {
+    public CompletableFuture<List<Multihash>> recursiveUnpin(PublicKeyHash owner, Multihash h) {
         CompletableFuture<List<Multihash>> res = new CompletableFuture<>();
         try {
             List<Multihash> removed = ipfs.pin.rm(h, true);

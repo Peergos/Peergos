@@ -132,16 +132,18 @@ public class WriterData implements Cborable {
         return new CommittedWriterData(hash, this);
     }
 
-    public CompletableFuture<CommittedWriterData> removeFromStaticData(FileTreeNode fileTreeNode, SigningPrivateKeyAndPublicHash signer,
+    public CompletableFuture<CommittedWriterData> removeFromStaticData(FileTreeNode fileTreeNode,
+                                                                       SigningPrivateKeyAndPublicHash signer,
                                                                        MaybeMultihash currentHash,
-                                                                       NetworkAccess network, Consumer<CommittedWriterData> updater) {
+                                                                       NetworkAccess network,
+                                                                       Consumer<CommittedWriterData> updater) {
         FilePointer pointer = fileTreeNode.getPointer().filePointer;
 
         return staticData.map(sd -> {
             boolean isRemoved = sd.remove(pointer);
 
             if (isRemoved)
-                return commit(signer, currentHash, network, updater);
+                return commit(pointer.location.owner, signer, currentHash, network, updater);
             CommittedWriterData committed = committed(currentHash);
             updater.accept(committed);
             return CompletableFuture.completedFuture(committed);
@@ -158,9 +160,9 @@ public class WriterData implements Cborable {
                                                              Consumer<CommittedWriterData> updater) {
         // auth new key by adding to existing writer data first
         WriterData tmp = addOwnedKey(signer.publicKeyHash);
-        return tmp.commit(oldSigner, currentHash, network, x -> {}).thenCompose(tmpCommited -> {
+        return tmp.commit(oldSigner.publicKeyHash, oldSigner, currentHash, network, x -> {}).thenCompose(tmpCommited -> {
             Optional<UserStaticData> newEntryPoints = staticData.map(sd -> sd.withKey(newKey));
-            return network.dhtClient.putBoxingKey(signer.publicKeyHash, signer.secret.signatureOnly(followRequestReceiver.serialize()), followRequestReceiver)
+            return network.dhtClient.putBoxingKey(oldSigner.publicKeyHash, oldSigner.secret.signatureOnly(followRequestReceiver.serialize()), followRequestReceiver)
                     .thenCompose(boxerHash -> {
                         WriterData updated = new WriterData(signer.publicKeyHash,
                                 Optional.of(newAlgorithm),
@@ -171,12 +173,13 @@ public class WriterData implements Cborable {
                                 newEntryPoints,
                                 tree,
                                 btree);
-                        return updated.commit(signer, MaybeMultihash.empty(), network, updater);
+                        return updated.commit(oldSigner.publicKeyHash, signer, MaybeMultihash.empty(), network, updater);
                     });
         });
     }
 
-    public CompletableFuture<CommittedWriterData> migrateToChamp(SigningPrivateKeyAndPublicHash writer,
+    public CompletableFuture<CommittedWriterData> migrateToChamp(PublicKeyHash owner,
+                                                                 SigningPrivateKeyAndPublicHash writer,
                                                                  MaybeMultihash currentHash,
                                                                  NetworkAccess network,
                                                                  Consumer<CommittedWriterData> updater) {
@@ -190,12 +193,12 @@ public class WriterData implements Cborable {
         BiFunction<Pair<Champ, Multihash>,
                 Pair<ByteArrayWrapper, MaybeMultihash>,
                 CompletableFuture<Pair<Champ, Multihash>>> inserter =
-                (root, pair) -> root.left.put(writer, pair.left, pair.left.data, 0, MaybeMultihash.empty(), pair.right,
+                (root, pair) -> root.left.put(owner, writer, pair.left, pair.left.data, 0, MaybeMultihash.empty(), pair.right,
                             ChampWrapper.BIT_WIDTH, ChampWrapper.MAX_HASH_COLLISIONS_PER_LEVEL, hasher, network.dhtClient, root.right);
 
         Champ newRoot = Champ.empty();
         byte[] raw = newRoot.serialize();
-        return network.dhtClient.put(writer.publicKeyHash, writer.secret.signatureOnly(raw), raw)
+        return network.dhtClient.put(owner, writer.publicKeyHash, writer.secret.signatureOnly(raw), raw)
                 .thenApply(rootHash -> new Pair<>(newRoot, rootHash))
                 .thenCompose(empty -> MerkleBTree.create(writer.publicKeyHash, btree.get(), network.dhtClient)
                         .thenCompose(mbtree -> mbtree.applyToAllMappings(empty, inserter))
@@ -209,22 +212,22 @@ public class WriterData implements Cborable {
                                     staticData,
                                     Optional.of(champPair.right),
                                     Optional.empty());
-                            return updated.commit(writer, currentHash, network, updater);
+                            return updated.commit(owner, writer, currentHash, network, updater);
                         })
                 );
     }
 
-    public CompletableFuture<CommittedWriterData> commit(SigningPrivateKeyAndPublicHash signer, MaybeMultihash currentHash,
+    public CompletableFuture<CommittedWriterData> commit(PublicKeyHash owner, SigningPrivateKeyAndPublicHash signer, MaybeMultihash currentHash,
                                                          NetworkAccess network, Consumer<CommittedWriterData> updater) {
-        return commit(signer, currentHash, network.mutable, network.dhtClient, updater);
+        return commit(owner, signer, currentHash, network.mutable, network.dhtClient, updater);
     }
 
-    public CompletableFuture<CommittedWriterData> commit(SigningPrivateKeyAndPublicHash signer, MaybeMultihash currentHash,
+    public CompletableFuture<CommittedWriterData> commit(PublicKeyHash owner, SigningPrivateKeyAndPublicHash signer, MaybeMultihash currentHash,
                                                          MutablePointers mutable, ContentAddressedStorage immutable,
                                                          Consumer<CommittedWriterData> updater) {
         byte[] raw = serialize();
 
-        return immutable.put(signer.publicKeyHash, signer.secret.signatureOnly(raw), raw)
+        return immutable.put(owner, signer.publicKeyHash, signer.secret.signatureOnly(raw), raw)
                 .thenCompose(blobHash -> {
                     MaybeMultihash newHash = MaybeMultihash.of(blobHash);
                     if (newHash.equals(currentHash)) {
@@ -235,7 +238,7 @@ public class WriterData implements Cborable {
                     }
                     HashCasPair cas = new HashCasPair(currentHash, newHash);
                     byte[] signed = signer.secret.signMessage(cas.serialize());
-                    return mutable.setPointer(signer.publicKeyHash, signer.publicKeyHash, signed)
+                    return mutable.setPointer(owner, signer.publicKeyHash, signed)
                             .thenApply(res -> {
                                 if (!res)
                                     throw new IllegalStateException("Corenode Crypto CAS failed!");
@@ -317,7 +320,7 @@ public class WriterData implements Cborable {
         try {
             Optional<PublicKeyHash> publicKeyHash = core.getPublicKeyHash(username).get();
             return publicKeyHash
-                    .map(h -> getOwnedKeysRecursive(h, mutable, dht))
+                    .map(h -> getOwnedKeysRecursive(h, h, mutable, dht))
                     .orElseGet(Collections::emptySet);
         } catch (InterruptedException e) {
             return Collections.emptySet();
@@ -326,13 +329,14 @@ public class WriterData implements Cborable {
         }
     }
 
-    public static Set<PublicKeyHash> getOwnedKeysRecursive(PublicKeyHash writer,
+    public static Set<PublicKeyHash> getOwnedKeysRecursive(PublicKeyHash owner,
+                                                           PublicKeyHash writer,
                                                            MutablePointers mutable,
                                                            ContentAddressedStorage dht) {
         Set<PublicKeyHash> res = new HashSet<>();
         res.add(writer);
         try {
-            CommittedWriterData subspaceDescriptor = mutable.getPointer(writer)
+            CommittedWriterData subspaceDescriptor = mutable.getPointer(owner, writer)
                     .thenCompose(dataOpt -> dataOpt.isPresent() ?
                             dht.getSigningKey(writer)
                                     .thenApply(signer -> HashCasPair.fromCbor(CborObject.fromByteArray(signer.get()
@@ -341,7 +345,7 @@ public class WriterData implements Cborable {
                     .thenCompose(x -> getWriterData(writer, x, dht)).get();
 
             for (PublicKeyHash subKey : subspaceDescriptor.props.ownedKeys) {
-                res.addAll(getOwnedKeysRecursive(subKey, mutable, dht));
+                res.addAll(getOwnedKeysRecursive(owner, subKey, mutable, dht));
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -349,12 +353,13 @@ public class WriterData implements Cborable {
         return res;
     }
 
-    public static Set<PublicKeyHash> getDirectOwnedKeys(PublicKeyHash writer,
+    public static Set<PublicKeyHash> getDirectOwnedKeys(PublicKeyHash owner,
+                                                        PublicKeyHash writer,
                                                         MutablePointers mutable,
                                                         ContentAddressedStorage dht) {
         Set<PublicKeyHash> res = new HashSet<>();
         try {
-            CommittedWriterData subspaceDescriptor = mutable.getPointer(writer)
+            CommittedWriterData subspaceDescriptor = mutable.getPointer(owner, writer)
                     .thenCompose(dataOpt -> dataOpt.isPresent() ?
                             dht.getSigningKey(writer)
                                     .thenApply(signer -> HashCasPair.fromCbor(CborObject.fromByteArray(signer.get()
@@ -378,10 +383,11 @@ public class WriterData implements Cborable {
         return getWriterData(hash.get(), dht);
     }
 
-    public static CompletableFuture<CommittedWriterData> getWriterData(PublicKeyHash controller,
+    public static CompletableFuture<CommittedWriterData> getWriterData(PublicKeyHash owner,
+                                                                       PublicKeyHash controller,
                                                                        MutablePointers mutable,
                                                                        ContentAddressedStorage dht) {
-        return mutable.getPointerTarget(controller, dht)
+        return mutable.getPointerTarget(owner, controller, dht)
                 .thenCompose(opt -> {
                     if (! opt.isPresent())
                         throw new IllegalStateException("No root pointer present for controller " + controller);
