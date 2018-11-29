@@ -19,6 +19,8 @@ import java.util.stream.*;
 
 import static org.junit.Assert.*;
 import static peergos.server.tests.UserTests.randomString;
+import static peergos.server.util.PeergosNetworkUtils.ensureSignedUp;
+import static peergos.server.util.PeergosNetworkUtils.generateUsername;
 
 @RunWith(Parameterized.class)
 public class MultiNodeNetworkTests {
@@ -33,12 +35,22 @@ public class MultiNodeNetworkTests {
 
     private final int iNode1, iNode2;
 
+//    @Parameterized.Parameters()
+    private final String node1Name;
+
+//    @Parameterized.Parameter()
+    private final String node2Name;
+
+
     public MultiNodeNetworkTests(int iNode1, int iNode2) {
         this.iNode1 = iNode1;
         this.iNode2 = iNode2;
+        this.node1Name = iNode1 == 0 ? "PKI-node" : String.format("normal-node %d", iNode1);
+        this.node2Name = iNode2 == 0 ? "PKI-node" : String.format("normal-node %d", iNode2);
     }
 
-    @Parameterized.Parameters()
+
+    @Parameterized.Parameters(name="nodes: {0}, {1} (0 == PKI, > 0 normal)")
     public static Collection<Object[]> parameters() {
         return Arrays.asList(new Object[][] {
                 {0, 1}, // PKI, normal-1
@@ -93,15 +105,15 @@ public class MultiNodeNetworkTests {
 
     @Test
     public void signUp() throws Exception {
-        UserContext context = ensureSignedUp(generateUsername(), randomString(), getNode(iNode1), crypto);
+        UserContext context = ensureSignedUp(generateUsername(random), randomString(), getNode(iNode1), crypto);
     }
 
     @Test
     public void internodeFriends() throws Exception {
-        String username1 = generateUsername();
+        String username1 = generateUsername(random);
         String password1 = randomString();
         UserContext u1 = ensureSignedUp(username1, password1, getNode(iNode2), crypto);
-        String username2 = generateUsername();
+        String username2 = generateUsername(random);
         String password2 = randomString();
         UserContext u2 = ensureSignedUp(username2, password2, getNode(iNode1), crypto);
 
@@ -129,7 +141,7 @@ public class MultiNodeNetworkTests {
 
     @Test
     public void writeViaUnrelatedNode() throws Exception {
-        String username1 = generateUsername();
+        String username1 = generateUsername(random);
         String password1 = randomString();
         UserContext u1 = ensureSignedUp(username1, password1, getNode(iNode2), crypto);
 
@@ -146,22 +158,10 @@ public class MultiNodeNetworkTests {
         int shareeCount = 2;
         PeergosNetworkUtils.shareAndUnshareFile(getNode(iNode1), getNode(iNode2), shareeCount, random);
     }
-    private String generateUsername() {
-        return "test" + Math.abs(random.nextInt() % 10000);
+
+    @Test
+    public void shareAndUnshareFolder() throws Exception {
+        int shareeCount = 2;
+        PeergosNetworkUtils.shareAndUnshareFolder(getNode(iNode1), getNode(iNode2), shareeCount, random);
     }
-
-    public static UserContext ensureSignedUp(String username, String password, NetworkAccess network, Crypto crypto) throws Exception {
-        return UserContext.ensureSignedUp(username, password, network, crypto).get();
-    }
-
-
-    /**sharing a file
-     *  (multiusertests)
-     *  shareAndUnshareFile
-     *  shareAndUnshareFolder
-     *     checkFileContents
-     */
-
-
-
 }
