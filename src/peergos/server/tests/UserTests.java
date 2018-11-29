@@ -532,23 +532,7 @@ public abstract class UserTests {
 
     @Test
     public void publicLinkToFile() throws Exception {
-        String username = generateUsername();
-        String password = "test01";
-        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
-        FileTreeNode userRoot = context.getUserRoot().get();
-
-        String filename = "mediumfile.bin";
-        byte[] data = new byte[128*1024];
-        random.nextBytes(data);
-        long t1 = System.currentTimeMillis();
-        userRoot.uploadFileSection(filename, new AsyncReader.ArrayBacked(data), 0, data.length, context.network, context.crypto.random, l -> {}, context.fragmenter()).get();
-        long t2 = System.currentTimeMillis();
-        String path = "/" + username + "/" + filename;
-        FileTreeNode file = context.getByPath(path).get().get();
-        String link = file.toLink();
-        UserContext linkContext = UserContext.fromPublicLink(link, network, crypto).get();
-        Optional<FileTreeNode> fileThroughLink = linkContext.getByPath(path).get();
-        Assert.assertTrue("File present through link", fileThroughLink.isPresent());
+        PeergosNetworkUtils.publicLinkToFile(random, network, network);
     }
 
     @Test

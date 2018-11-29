@@ -164,4 +164,9 @@ public class MultiNodeNetworkTests {
         int shareeCount = 2;
         PeergosNetworkUtils.shareAndUnshareFolder(getNode(iNode1), getNode(iNode2), shareeCount, random);
     }
+
+    @Test
+    public void publicLinkToFile() throws Exception {
+        PeergosNetworkUtils.publicLinkToFile(random, getNode(iNode1), getNode(iNode2));
+    }
 }

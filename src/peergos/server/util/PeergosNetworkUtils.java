@@ -1,6 +1,7 @@
 package peergos.server.util;
 
 import org.junit.Assert;
+import org.junit.Test;
 import peergos.server.storage.ResetableFileInputStream;
 import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
@@ -262,6 +263,27 @@ public class PeergosNetworkUtils {
                 checkFileContents(newFileContents, sharedFile, otherUser);
             }
         }
+    }
+
+
+    public static void publicLinkToFile(Random random, NetworkAccess writerNode, NetworkAccess readerNode) throws Exception {
+        String username = generateUsername(random);
+        String password = "test01";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, writerNode, crypto);
+        FileTreeNode userRoot = context.getUserRoot().get();
+
+        String filename = "mediumfile.bin";
+        byte[] data = new byte[128*1024];
+        random.nextBytes(data);
+        long t1 = System.currentTimeMillis();
+        userRoot.uploadFileSection(filename, new AsyncReader.ArrayBacked(data), 0, data.length, context.network, context.crypto.random, l -> {}, context.fragmenter()).get();
+        long t2 = System.currentTimeMillis();
+        String path = "/" + username + "/" + filename;
+        FileTreeNode file = context.getByPath(path).get().get();
+        String link = file.toLink();
+        UserContext linkContext = UserContext.fromPublicLink(link, readerNode, crypto).get();
+        Optional<FileTreeNode> fileThroughLink = linkContext.getByPath(path).get();
+        Assert.assertTrue("File present through link", fileThroughLink.isPresent());
     }
 
     public static UserContext ensureSignedUp(String username, String password, NetworkAccess network, Crypto crypto) throws Exception {
