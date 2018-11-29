@@ -39,19 +39,19 @@ public class ProxyingMutablePointers implements MutablePointers {
     public <V> CompletableFuture<V> redirectCall(PublicKeyHash ownerKey, Supplier<CompletableFuture<V>> direct, Function<Multihash, CompletableFuture<V>> proxied) {
         return core.getUsername(ownerKey)
                 .thenCompose(owner -> core.getChain(owner)
-                        .thenCompose(chain -> {
-                            if (chain.isEmpty()) {
-                                // This happens during sign-up, before we have a chain yet
-                                return direct.get();
-                            }
-                            List<Multihash> storageIds = chain.get(chain.size() - 1).claim.storageProviders;
-                            Multihash target = storageIds.get(0);
-                            if (target.equals(serverId)) { // don't proxy
-                                return direct.get();
-                            } else {
-                                return proxied.apply(target);
-                            }
-                        }));
+                            .thenCompose(chain -> {
+                                if (chain.isEmpty()) {
+                                    // This happens during sign-up, before we have a chain yet
+                                    return direct.get();
+                                }
+                                List<Multihash> storageIds = chain.get(chain.size() - 1).claim.storageProviders;
+                                Multihash target = storageIds.get(0);
+                                if (target.equals(serverId)) { // don't proxy
+                                    return direct.get();
+                                } else {
+                                    return proxied.apply(target);
+                                }
+                            }));
 
     }
 }

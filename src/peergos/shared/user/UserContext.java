@@ -381,18 +381,18 @@ public class UserContext {
 
     @JsMethod
     public CompletableFuture<Pair<Integer, Integer>> getTotalSpaceUsedJS(PublicKeyHash owner) {
-        return getTotalSpaceUsed(owner)
+        return getTotalSpaceUsed(owner, owner)
                 .thenApply(size -> new Pair<>((int)(size >> 32), size.intValue()));
     }
 
-    public CompletableFuture<Long> getTotalSpaceUsed(PublicKeyHash ownerHash) {
+    public CompletableFuture<Long> getTotalSpaceUsed(PublicKeyHash ownerHash, PublicKeyHash writerHash) {
         // assume no cycles in owned keys
         return getSigningKey(ownerHash)
-                .thenCompose(owner -> getWriterData(network, ownerHash, ownerHash)
+                .thenCompose(owner -> getWriterData(network, ownerHash, writerHash)
                         .thenCompose(cwd -> {
                             CompletableFuture<Long> subtree = Futures.reduceAll(cwd.props.ownedKeys
                                             .stream()
-                                            .map(writer -> getTotalSpaceUsed(writer))
+                                            .map(writer -> getTotalSpaceUsed(ownerHash, writer))
                                             .collect(Collectors.toList()),
                                     0L, (t, fut) -> fut.thenApply(x -> x + t), (a, b) -> a + b);
                             return subtree.thenCompose(ownedSize -> network.dhtClient.getRecursiveBlockSize(cwd.hash.get())

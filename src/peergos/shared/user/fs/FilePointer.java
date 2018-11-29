@@ -10,6 +10,8 @@ import peergos.shared.io.ipfs.multibase.*;
 import peergos.shared.util.*;
 
 import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class FilePointer implements Cborable {
     public final Location location;
@@ -84,7 +86,13 @@ public class FilePointer implements Cborable {
     }
 
     public String toLink() {
-        return "#" + Base58.encode(location.writer.serialize()) + "/" + Base58.encode(location.getMapKey()) + "/" + Base58.encode(baseKey.serialize());
+        String encodedWriterKey = Base58.encode(location.writer.serialize());
+        String encodedOwnerKey = Base58.encode(location.owner.serialize());
+        String encodedMapKey = Base58.encode(location.getMapKey());
+        String encodedBaseKey = Base58.encode(baseKey.serialize());
+        StringBuilder sb = new StringBuilder("#");
+        return Stream.of(encodedWriterKey, encodedOwnerKey, encodedMapKey, encodedBaseKey)
+                .collect(Collectors.joining("/", "#", ""));
     }
 
     @Override
@@ -122,11 +130,15 @@ public class FilePointer implements Cborable {
     public static FilePointer fromLink(String keysString) {
         if (keysString.startsWith("#"))
             keysString = keysString.substring(1);
+
         String[] split = keysString.split("/");
-        PublicKeyHash owner = PublicKeyHash.NULL;
+        if (split.length != 4)
+            throw new IllegalStateException("Invalid public link "+ keysString);
+
         PublicKeyHash writer = PublicKeyHash.fromCbor(CborObject.fromByteArray(Base58.decode(split[0])));
-        byte[] mapKey = Base58.decode(split[1]);
-        SymmetricKey baseKey = SymmetricKey.fromByteArray(Base58.decode(split[2]));
+        PublicKeyHash owner = PublicKeyHash.fromCbor(CborObject.fromByteArray(Base58.decode(split[1])));
+        byte[] mapKey = Base58.decode(split[2]);
+        SymmetricKey baseKey = SymmetricKey.fromByteArray(Base58.decode(split[3]));
         return new FilePointer(owner, writer, mapKey, baseKey);
     }
 

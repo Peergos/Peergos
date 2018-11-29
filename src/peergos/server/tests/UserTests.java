@@ -503,7 +503,7 @@ public abstract class UserTests {
 
         // check used space
         PublicKeyHash signer = context.signer.publicKeyHash;
-        long totalSpaceUsed = context.getTotalSpaceUsed(signer).get();
+        long totalSpaceUsed = context.getTotalSpaceUsed(signer, signer).get();
         Assert.assertTrue("Correct used space", totalSpaceUsed > 10*1024*1024);
     }
 
