@@ -9,13 +9,12 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-public class RetrievedCapabilityCache implements Cborable {
+public class CapabilitiesFromUser implements Cborable {
 
     private final long recordsRead;
     private final List<RetrievedCapability> retrievedCapabilities;
 
-
-    public RetrievedCapabilityCache(long recordsRead, List<RetrievedCapability> retrievedCapabilities) {
+    public CapabilitiesFromUser(long recordsRead, List<RetrievedCapability> retrievedCapabilities) {
         this.recordsRead = recordsRead;
         this.retrievedCapabilities = retrievedCapabilities;
     }
@@ -36,7 +35,7 @@ public class RetrievedCapabilityCache implements Cborable {
         return sink.toByteArray();
     }
 
-    public static RetrievedCapabilityCache deserialize(byte[] raw) {
+    public static CapabilitiesFromUser deserialize(byte[] raw) {
         try {
             DataSource source = new DataSource(raw);
             long recordsReadCount = source.readLong();
@@ -47,7 +46,7 @@ public class RetrievedCapabilityCache implements Cborable {
                 RetrievedCapability entry = RetrievedCapability.fromByteArray(source.readArray());
                 capabilities.add(entry);
             }
-            return new RetrievedCapabilityCache(recordsReadCount, capabilities);
+            return new CapabilitiesFromUser(recordsReadCount, capabilities);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -58,9 +57,9 @@ public class RetrievedCapabilityCache implements Cborable {
         return new CborObject.CborByteArray(serialize());
     }
 
-    public static RetrievedCapabilityCache fromCbor(Cborable cbor) {
+    public static CapabilitiesFromUser fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborByteArray))
-            throw new IllegalStateException("RetrievedCapabilityCache cbor must be a byte[]! " + cbor);
+            throw new IllegalStateException("CapabilitiesFromUser cbor must be a byte[]! " + cbor);
         return deserialize(((CborObject.CborByteArray) cbor).value);
     }
 

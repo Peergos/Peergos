@@ -9,14 +9,28 @@ import java.util.concurrent.*;
 
 public class FriendSourcedTrieNode implements TrieNode {
 
-    private final FileTreeNode sharedDir;
+    private final String owner;
+    private final FileTreeNode cacheDir;
+    private final EntryPoint sharedDir;
+    private final SafeRandom random;
+    private final Fragmenter fragmenter;
     private TrieNode root;
-    private int capCount;
+    private long capCount;
 
-    public FriendSourcedTrieNode(FileTreeNode sharedDir, TrieNode root, int capCount) {
+    public FriendSourcedTrieNode(FileTreeNode cacheDir,
+                                 String owner,
+                                 EntryPoint sharedDir,
+                                 TrieNode root,
+                                 long capCount,
+                                 SafeRandom random,
+                                 Fragmenter fragmenter) {
+        this.cacheDir = cacheDir;
+        this.owner = owner;
         this.sharedDir = sharedDir;
         this.root = root;
         this.capCount = capCount;
+        this.random = random;
+        this.fragmenter = fragmenter;
     }
 
     public static CompletableFuture<Optional<FriendSourcedTrieNode>> build(FileTreeNode cacheDir,
@@ -29,30 +43,57 @@ public class FriendSourcedTrieNode implements TrieNode {
                     if (! sharedDirOpt.isPresent())
                         return CompletableFuture.completedFuture(Optional.empty());
                     return FastSharing.loadSharingLinks(cacheDir, sharedDirOpt.get(), e.owner,
-                            network, random, fragmenter, true).thenApply(caps -> {
-                        return Optional.of(new FriendSourcedTrieNode(sharedDirOpt.get(), caps.stream()
-                                .reduce(TrieNodeImpl.empty(),
-                                        (root, cap) -> root.put(cap.path, UserContext.convert(e.owner, cap)),
-                                        (a, b) -> a),
-                                caps.size()));
-                    });
+                            network, random, fragmenter, true)
+                            .thenApply(caps ->
+                                    Optional.of(new FriendSourcedTrieNode(cacheDir,
+                                            e.owner,
+                                            e,
+                                            caps.getRetrievedCapabilities().stream()
+                                                    .reduce(TrieNodeImpl.empty(),
+                                                            (root, cap) -> root.put(trimOwner(cap.path), UserContext.convert(e.owner, cap)),
+                                                            (a, b) -> a),
+                                            caps.getRecordsRead(),
+                                            random, fragmenter)));
                 });
     }
 
-    private CompletableFuture<Boolean> ensureUptodate() {
+    private synchronized CompletableFuture<Boolean> ensureUptodate(NetworkAccess network) {
         // check there are no new capabilities in the friend's shared directory
-        // TODO
-        return CompletableFuture.completedFuture(true);
+        return network.retrieveEntryPoint(sharedDir)
+                .thenCompose(sharedDirOpt -> {
+                    if (!sharedDirOpt.isPresent())
+                        return CompletableFuture.completedFuture(true);
+                    return FastSharing.getCapabilityCount(sharedDirOpt.get(), network)
+                            .thenCompose(count -> {
+                                if (count == capCount)
+                                    return CompletableFuture.completedFuture(true);
+                                return FastSharing.loadSharingLinksFromIndex(cacheDir, sharedDirOpt.get(), owner, network, random, fragmenter, capCount, true)
+                                        .thenApply(newCaps -> {
+                                            capCount += newCaps.getRecordsRead();
+                                            root = newCaps.getRetrievedCapabilities().stream()
+                                                    .reduce(root,
+                                                            (root, cap) -> root.put(trimOwner(cap.path), UserContext.convert(owner, cap)),
+                                                            (a, b) -> a);
+                                            return true;
+                                        });
+                            });
+                });
+    }
+
+    private static String trimOwner(String path) {
+        if (path.startsWith("/"))
+            path = path.substring(1);
+        return path.substring(path.indexOf("/") + 1);
     }
 
     @Override
     public synchronized CompletableFuture<Optional<FileTreeNode>> getByPath(String path, NetworkAccess network) {
-        return ensureUptodate().thenCompose(x -> root.getByPath(path, network));
+        return ensureUptodate(network).thenCompose(x -> root.getByPath(path, network));
     }
 
     @Override
     public synchronized CompletableFuture<Set<FileTreeNode>> getChildren(String path, NetworkAccess network) {
-        return ensureUptodate().thenCompose(x -> root.getChildren(path, network));
+        return ensureUptodate(network).thenCompose(x -> root.getChildren(path, network));
     }
 
     @Override

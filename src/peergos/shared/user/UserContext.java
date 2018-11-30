@@ -324,7 +324,7 @@ public class UserContext {
                                                 this.username, network, crypto.random, fragmenter, false)
                                                 .thenApply(caps -> {
                                                     String friendName = friendDirectory.getName();
-                                                    caps.stream().forEach(rc -> {
+                                                    caps.getRetrievedCapabilities().stream().forEach(rc -> {
                                                         Set<String> existingEntries = sharedWithCache.getOrDefault(rc.path, new HashSet<>());
                                                         sharedWithCache.put(rc.path, existingEntries);
                                                         existingEntries.add(friendName);
@@ -1091,7 +1091,7 @@ public class UserContext {
                 (x, friend) -> {
                     return ourRoot.getByPath("/" + ourName, network).thenCompose(fileOpt ->
                             FastSharing.loadSharingLinks(fileOpt.get(), friend.left, friend.right, network, random, fragmenter, true)
-                    .thenApply(friendCaps -> friendToRetrievedCapabilities.put(friend.right, friendCaps))
+                    .thenApply(friendCaps -> friendToRetrievedCapabilities.put(friend.right, friendCaps.getRetrievedCapabilities()))
                     .thenApply(z -> true));
                 },
                 (a, b) -> a && b)
