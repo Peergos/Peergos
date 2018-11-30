@@ -80,6 +80,20 @@ public class FriendSourcedTrieNode implements TrieNode {
                 });
     }
 
+    private CompletableFuture<Optional<FileTreeNode>> getFriendRoot(NetworkAccess network) {
+        return network.retrieveEntryPoint(sharedDir)
+                .thenCompose(sharedDirOpt -> {
+                    if (! sharedDirOpt.isPresent())
+                        return CompletableFuture.completedFuture(Optional.empty());
+                    return sharedDirOpt.get().retrieveParent(network)
+                            .thenCompose(sharedOpt -> {
+                                if (! sharedOpt.isPresent())
+                                    return CompletableFuture.completedFuture(Optional.empty());
+                                return sharedOpt.get().retrieveParent(network);
+                            });
+                });
+    }
+
     private static String trimOwner(String path) {
         if (path.startsWith("/"))
             path = path.substring(1);
@@ -88,6 +102,8 @@ public class FriendSourcedTrieNode implements TrieNode {
 
     @Override
     public synchronized CompletableFuture<Optional<FileTreeNode>> getByPath(String path, NetworkAccess network) {
+        if (path.isEmpty() || path.equals("/"))
+            return getFriendRoot(network);
         return ensureUptodate(network).thenCompose(x -> root.getByPath(path, network));
     }
 
