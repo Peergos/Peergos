@@ -146,16 +146,19 @@ public class FastSharing {
                                                              SafeRandom random) {
         return file.getInputStream(network, random, x -> {}).thenCompose(reader -> {
             int currentFileSize = (int) file.getSize();
-            List<CompletableFuture<RetrievedCapability>> capabilities = IntStream.range(offsetIndex, currentFileSize / FILE_POINTER_SIZE)
+            List<CompletableFuture<Optional<RetrievedCapability>>> capabilities = IntStream.range(offsetIndex, currentFileSize / FILE_POINTER_SIZE)
                     .mapToObj(e -> e * FILE_POINTER_SIZE)
                     .map(offset -> readSharingRecord(ownerName, reader, offset, network))
                     .collect(Collectors.toList());
 
-            return Futures.combineAllInOrder(capabilities);
+            return Futures.combineAllInOrder(capabilities).thenApply(optList -> optList.stream()
+                    .filter(Optional::isPresent)
+                    .map(Optional::get)
+                    .collect(Collectors.toList()));
         });
     }
 
-    private static CompletableFuture<RetrievedCapability> readSharingRecord(String ownerName,
+    private static CompletableFuture<Optional<RetrievedCapability>> readSharingRecord(String ownerName,
                                                                 AsyncReader reader,
                                                                 int offset,
                                                                 NetworkAccess network) {
@@ -170,12 +173,12 @@ public class FastSharing {
                                     FileTreeNode ftn = optFTN.get();
                                     try {
                                         return ftn.getPath(network)
-                                                .thenCompose(path -> CompletableFuture.completedFuture(new RetrievedCapability(path, pointer)));
+                                                .thenCompose(path -> CompletableFuture.completedFuture(Optional.of(new RetrievedCapability(path, pointer))));
                                     } catch (NoSuchElementException nsee) {
                                         return Futures.errored(nsee); //file no longer exists
                                     }
                                 } else {
-                                    return Futures.errored(new IllegalStateException("Unable to retrieve capability!"));
+                                    return CompletableFuture.completedFuture(Optional.empty());
                                 }
                             });
                         })
