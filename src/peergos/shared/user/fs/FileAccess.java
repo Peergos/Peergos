@@ -106,41 +106,41 @@ public class FileAccess implements CryptreeNode {
         return retriever;
     }
 
-    public CompletableFuture<FileAccess> updateProperties(FilePointer writableFilePointer,
-                                             FileProperties newProps,
-                                             NetworkAccess network) {
-        if (!writableFilePointer.isWritable())
+    public CompletableFuture<FileAccess> updateProperties(Capability writableCapability,
+                                                          FileProperties newProps,
+                                                          NetworkAccess network) {
+        if (!writableCapability.isWritable())
             throw new IllegalStateException("Need a writable pointer!");
-        SymmetricKey metaKey = this.getMetaKey(writableFilePointer.baseKey);
+        SymmetricKey metaKey = this.getMetaKey(writableCapability.baseKey);
         boolean isDirty = metaKey.isDirty();
         // if the meta key is dirty then we need to generate a new one to not expose the new metadata
         if (isDirty)
             metaKey = SymmetricKey.random();
         SymmetricLink toMeta = isDirty ?
-                SymmetricLink.fromPair(writableFilePointer.baseKey, metaKey) :
+                SymmetricLink.fromPair(writableCapability.baseKey, metaKey) :
                 this.parent2meta;
 
         byte[] nonce = metaKey.createNonce();
         FileAccess fa = new FileAccess(lastCommittedHash, version, toMeta, this.parent2data, ArrayOps.concat(nonce, metaKey.encrypt(newProps.serialize(), nonce)),
                 this.retriever, this.parentLink);
-        return network.uploadChunk(fa, writableFilePointer.location, writableFilePointer.signer())
+        return network.uploadChunk(fa, writableCapability.location, writableCapability.signer())
                 .thenApply(b -> fa);
     }
 
-    public CompletableFuture<FileAccess> markDirty(FilePointer writableFilePointer, SymmetricKey newBaseKey, NetworkAccess network) {
+    public CompletableFuture<FileAccess> markDirty(Capability writableCapability, SymmetricKey newBaseKey, NetworkAccess network) {
         // keep the same metakey and data key, just marked as dirty
-        SymmetricKey metaKey = this.getMetaKey(writableFilePointer.baseKey).makeDirty();
+        SymmetricKey metaKey = this.getMetaKey(writableCapability.baseKey).makeDirty();
         SymmetricLink newParentToMeta = SymmetricLink.fromPair(newBaseKey, metaKey);
 
-        SymmetricKey dataKey = this.getDataKey(writableFilePointer.baseKey).makeDirty();
+        SymmetricKey dataKey = this.getDataKey(writableCapability.baseKey).makeDirty();
         SymmetricLink newParentToData = SymmetricLink.fromPair(newBaseKey, dataKey);
 
         SymmetricLocationLink newParentLink = SymmetricLocationLink.create(newBaseKey,
-                parentLink.target(writableFilePointer.baseKey),
-                parentLink.targetLocation(writableFilePointer.baseKey));
+                parentLink.target(writableCapability.baseKey),
+                parentLink.targetLocation(writableCapability.baseKey));
         FileAccess fa = new FileAccess(committedHash(), version, newParentToMeta, newParentToData, properties, this.retriever, newParentLink);
-        return network.uploadChunk(fa, writableFilePointer.location,
-                writableFilePointer.signer())
+        return network.uploadChunk(fa, writableCapability.location,
+                writableCapability.signer())
                 .thenApply(x -> fa);
     }
 

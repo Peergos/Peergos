@@ -5,7 +5,6 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.symmetric.SymmetricKey;
 import peergos.shared.util.*;
 
-import java.io.*;
 import java.util.*;
 
 public class SymmetricLocationLink implements Cborable {
@@ -35,10 +34,10 @@ public class SymmetricLocationLink implements Cborable {
         ));
     }
 
-    public FilePointer toReadableFilePointer(SymmetricKey baseKey) {
+    public Capability toReadableFilePointer(SymmetricKey baseKey) {
        Location loc =  targetLocation(baseKey);
        SymmetricKey key = target(baseKey);
-       return new FilePointer(loc.owner, loc.writer, loc.getMapKey(), key);
+       return new Capability(loc.owner, loc.writer, loc.getMapKey(), key);
     }
 
     public static SymmetricLocationLink fromCbor(Cborable cbor) {

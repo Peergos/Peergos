@@ -9,13 +9,13 @@ import java.util.*;
 import java.util.concurrent.*;
 
 public class RetrievedFilePointer {
-    public final FilePointer filePointer;
+    public final Capability capability;
     public final CryptreeNode fileAccess;
 
-    public RetrievedFilePointer(FilePointer filePointer, CryptreeNode fileAccess) {
+    public RetrievedFilePointer(Capability capability, CryptreeNode fileAccess) {
         if (fileAccess == null)
             throw new IllegalStateException("Null FileAccess!");
-        this.filePointer = filePointer;
+        this.capability = capability;
         this.fileAccess = fileAccess;
     }
 
@@ -24,32 +24,32 @@ public class RetrievedFilePointer {
             return false;
         if (!(that instanceof RetrievedFilePointer))
             return false;
-        return filePointer.equals(((RetrievedFilePointer)that).filePointer);
+        return capability.equals(((RetrievedFilePointer)that).capability);
     }
 
     public CompletableFuture<Boolean> remove(NetworkAccess network,
                                              RetrievedFilePointer parentRetrievedFilePointer,
                                              SigningPrivateKeyAndPublicHash signer) {
-        if (! filePointer.isWritable())
+        if (! capability.isWritable())
             return CompletableFuture.completedFuture(false);
         if (! fileAccess.isDirectory()) {
             CompletableFuture<Boolean> result = new CompletableFuture<>();
-            network.tree.remove(this.filePointer.location.owner, signer, this.filePointer.location.getMapKey(), fileAccess.committedHash()).thenAccept(removed -> {
+            network.tree.remove(this.capability.location.owner, signer, this.capability.location.getMapKey(), fileAccess.committedHash()).thenAccept(removed -> {
                 // remove from parent
                 if (parentRetrievedFilePointer != null)
-                    ((DirAccess) parentRetrievedFilePointer.fileAccess).removeChild(this, parentRetrievedFilePointer.filePointer, signer, network);
+                    ((DirAccess) parentRetrievedFilePointer.fileAccess).removeChild(this, parentRetrievedFilePointer.capability, signer, network);
                 result.complete(true);
             });
             return result;
         }
-        return ((DirAccess) fileAccess).getChildren(network, this.filePointer.baseKey).thenCompose(files -> {
+        return ((DirAccess) fileAccess).getChildren(network, this.capability.baseKey).thenCompose(files -> {
             for (RetrievedFilePointer file : files)
                 file.remove(network, null, signer);
             CompletableFuture<Boolean> result = new CompletableFuture<>();
-            network.tree.remove(this.filePointer.location.owner, signer, this.filePointer.location.getMapKey(), fileAccess.committedHash()).thenAccept(removed -> {
+            network.tree.remove(this.capability.location.owner, signer, this.capability.location.getMapKey(), fileAccess.committedHash()).thenAccept(removed -> {
                 // remove from parent
                 if (parentRetrievedFilePointer != null)
-                    ((DirAccess) parentRetrievedFilePointer.fileAccess).removeChild(this, parentRetrievedFilePointer.filePointer, signer, network);
+                    ((DirAccess) parentRetrievedFilePointer.fileAccess).removeChild(this, parentRetrievedFilePointer.capability, signer, network);
                 result.complete(removed);
             });
             return result;
@@ -57,7 +57,7 @@ public class RetrievedFilePointer {
     }
 
     public RetrievedFilePointer withWriter(Optional<SecretSigningKey> writer) {
-        return new RetrievedFilePointer(new FilePointer(this.filePointer.location.owner, this.filePointer.location.writer,
-                this.filePointer.location.getMapKey(), this.filePointer.baseKey), this.fileAccess);
+        return new RetrievedFilePointer(new Capability(this.capability.location.owner, this.capability.location.writer,
+                this.capability.location.getMapKey(), this.capability.baseKey), this.fileAccess);
     }
 }

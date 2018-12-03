@@ -8,9 +8,9 @@ import java.util.TreeMap;
 
 public class RetrievedCapability implements Cborable {
     public String path;
-    public FilePointer fp;
+    public Capability fp;
 
-    public RetrievedCapability(String path, FilePointer fp) {
+    public RetrievedCapability(String path, Capability fp) {
         this.path = path;
         this.fp = fp;
     }
@@ -32,7 +32,7 @@ public class RetrievedCapability implements Cborable {
             throw new IllegalStateException("Incorrect cbor for RetrievedCapability: " + cbor);
         SortedMap<CborObject, ? extends Cborable> map = ((CborObject.CborMap) cbor).values;
         CborObject.CborString path = (CborObject.CborString)map.get(new CborObject.CborString("p"));
-        FilePointer fp = FilePointer.fromCbor(map.get(new CborObject.CborString("fp")));
+        Capability fp = Capability.fromCbor(map.get(new CborObject.CborString("fp")));
         return new RetrievedCapability(path.value, fp);
     }
 

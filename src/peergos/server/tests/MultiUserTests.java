@@ -17,7 +17,6 @@ import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.*;
 
 import java.io.*;
-import java.lang.reflect.*;
 import java.net.*;
 import java.nio.file.*;
 import java.util.*;
@@ -109,7 +108,7 @@ public class MultiUserTests {
 
         // check that the copied file has the correct contents
         UserTests.checkFileContents(data, copy, u2);
-        Assert.assertTrue("Different base key", ! copy.getPointer().filePointer.baseKey.equals(u1File.getPointer().filePointer.baseKey));
+        Assert.assertTrue("Different base key", ! copy.getPointer().capability.baseKey.equals(u1File.getPointer().capability.baseKey));
         Assert.assertTrue("Different metadata key", ! UserTests.getMetaKey(copy).equals(UserTests.getMetaKey(u1File)));
         Assert.assertTrue("Different data key", ! UserTests.getDataKey(copy).equals(UserTests.getDataKey(u1File)));
     }
@@ -239,7 +238,7 @@ public class MultiUserTests {
         UserContext userToUnshareWith = friends.stream().findFirst().get();
         String friendsPathToFile = u1.username + "/" + filename;
         Optional<FileTreeNode> priorUnsharedView = userToUnshareWith.getByPath(friendsPathToFile).get();
-        FilePointer priorPointer = priorUnsharedView.get().getPointer().filePointer;
+        Capability priorPointer = priorUnsharedView.get().getPointer().capability;
         CryptreeNode priorFileAccess = network.getMetadata(priorPointer.getLocation()).get().get();
         SymmetricKey priorMetaKey = priorFileAccess.getMetaKey(priorPointer.baseKey);
 

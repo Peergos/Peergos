@@ -767,18 +767,18 @@ public abstract class UserTests {
         FileTreeNode subfolder = context.getByPath(home.resolve(foldername).toString()).get().get();
         FileTreeNode parentDir = original.copyTo(subfolder, network, crypto.random, context.fragmenter()).get();
         FileTreeNode copy = context.getByPath(home.resolve(foldername).resolve(filename).toString()).get().get();
-        Assert.assertTrue("Different base key", ! copy.getPointer().filePointer.baseKey.equals(original.getPointer().filePointer.baseKey));
+        Assert.assertTrue("Different base key", ! copy.getPointer().capability.baseKey.equals(original.getPointer().capability.baseKey));
         Assert.assertTrue("Different metadata key", ! getMetaKey(copy).equals(getMetaKey(original)));
         Assert.assertTrue("Same data key", getDataKey(copy).equals(getDataKey(original)));
         checkFileContents(data, copy, context);
     }
 
     public static SymmetricKey getDataKey(FileTreeNode file) {
-        return ((FileAccess)file.getPointer().fileAccess).getDataKey(file.getPointer().filePointer.baseKey);
+        return ((FileAccess)file.getPointer().fileAccess).getDataKey(file.getPointer().capability.baseKey);
     }
 
     public static SymmetricKey getMetaKey(FileTreeNode file) {
-        return file.getPointer().fileAccess.getMetaKey(file.getPointer().filePointer.baseKey);
+        return file.getPointer().fileAccess.getMetaKey(file.getPointer().capability.baseKey);
     }
 
     @Test

@@ -31,7 +31,7 @@ public class WriterData implements Cborable {
     // publicly readable and present on owner keys
     public final Optional<SecretGenerationAlgorithm> generationAlgorithm;
     // accessible under IPFS address $hash/public
-    public final Optional<FilePointer> publicData;
+    public final Optional<Capability> publicData;
     // The public boxing key to encrypt follow requests to, accessible under IPFS address $hash/inbound
     public final Optional<PublicKeyHash> followRequestReceiver;
     // accessible under IPFS address $hash/owned
@@ -58,7 +58,7 @@ public class WriterData implements Cborable {
      */
     public WriterData(PublicKeyHash controller,
                       Optional<SecretGenerationAlgorithm> generationAlgorithm,
-                      Optional<FilePointer> publicData,
+                      Optional<Capability> publicData,
                       Optional<PublicKeyHash> followRequestReceiver,
                       Set<PublicKeyHash> ownedKeys,
                       Map<String, PublicKeyHash> namedOwnedKeys,
@@ -137,7 +137,7 @@ public class WriterData implements Cborable {
                                                                        MaybeMultihash currentHash,
                                                                        NetworkAccess network,
                                                                        Consumer<CommittedWriterData> updater) {
-        FilePointer pointer = fileTreeNode.getPointer().filePointer;
+        Capability pointer = fileTreeNode.getPointer().capability;
 
         return staticData.map(sd -> {
             boolean isRemoved = sd.remove(pointer);
@@ -291,7 +291,7 @@ public class WriterData implements Cborable {
 
         PublicKeyHash controller = extract.apply("controller").map(PublicKeyHash::fromCbor).get();
         Optional<SecretGenerationAlgorithm> algo  = extractUserGenerationAlgorithm(cbor);
-        Optional<FilePointer> publicData = extract.apply("public").map(FilePointer::fromCbor);
+        Optional<Capability> publicData = extract.apply("public").map(Capability::fromCbor);
         Optional<PublicKeyHash> followRequestReceiver = extract.apply("inbound").map(PublicKeyHash::fromCbor);
         CborObject.CborList ownedList = (CborObject.CborList) map.values.get(new CborObject.CborString("owned"));
         Set<PublicKeyHash> owned = ownedList == null ?

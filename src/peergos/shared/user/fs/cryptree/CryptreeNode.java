@@ -36,7 +36,7 @@ public interface CryptreeNode extends Cborable {
 
     FileProperties getProperties(SymmetricKey parentKey);
 
-    CompletableFuture<? extends CryptreeNode> updateProperties(FilePointer writableFilePointer,
+    CompletableFuture<? extends CryptreeNode> updateProperties(Capability writableCapability,
                                                                FileProperties newProps,
                                                                NetworkAccess network);
 

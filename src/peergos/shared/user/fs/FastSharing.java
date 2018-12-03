@@ -160,7 +160,7 @@ public class FastSharing {
         return reader.seek( 0, offset).thenCompose( currentPos ->
                 currentPos.readIntoArray(serialisedFilePointer, 0, FILE_POINTER_SIZE)
                         .thenCompose(bytesRead -> {
-                            FilePointer pointer = FilePointer.fromByteArray(serialisedFilePointer);
+                            Capability pointer = Capability.fromByteArray(serialisedFilePointer);
                             EntryPoint entry = new EntryPoint(pointer, ownerName, Collections.emptySet(), Collections.emptySet());
                             return network.retrieveEntryPoint(entry).thenCompose( optFTN -> {
                                 if(optFTN.isPresent()) {

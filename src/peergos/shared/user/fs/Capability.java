@@ -13,23 +13,23 @@ import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-public class FilePointer implements Cborable {
+public class Capability implements Cborable {
     public final Location location;
     public final SymmetricKey baseKey;
     public final Optional<SecretSigningKey> writer;
 
     @JsConstructor
-    public FilePointer(Location location, Optional<SecretSigningKey> writer, SymmetricKey baseKey) {
+    public Capability(Location location, Optional<SecretSigningKey> writer, SymmetricKey baseKey) {
         this.location = location;
         this.baseKey = baseKey;
         this.writer = writer;
     }
 
-    public FilePointer(PublicKeyHash owner, PublicKeyHash writer, byte[] mapKey, SymmetricKey baseKey) {
+    public Capability(PublicKeyHash owner, PublicKeyHash writer, byte[] mapKey, SymmetricKey baseKey) {
         this(new Location(owner, writer, mapKey), Optional.empty(), baseKey);
     }
 
-    public FilePointer(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, byte[] mapKey, SymmetricKey baseKey) {
+    public Capability(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, byte[] mapKey, SymmetricKey baseKey) {
         this(new Location(owner, writer.publicKeyHash, mapKey), Optional.of(writer.secret), baseKey);
     }
 
@@ -43,12 +43,12 @@ public class FilePointer implements Cborable {
         return new SigningPrivateKeyAndPublicHash(location.writer, writer.get());
     }
 
-    public FilePointer withBaseKey(SymmetricKey newBaseKey) {
-        return new FilePointer(location, writer, newBaseKey);
+    public Capability withBaseKey(SymmetricKey newBaseKey) {
+        return new Capability(location, writer, newBaseKey);
     }
 
-    public FilePointer withWritingKey(PublicKeyHash writingKey) {
-        return new FilePointer(location.withWriter(writingKey), Optional.empty(), baseKey);
+    public Capability withWritingKey(PublicKeyHash writingKey) {
+        return new Capability(location.withWriter(writingKey), Optional.empty(), baseKey);
     }
 
     @Override
@@ -60,25 +60,25 @@ public class FilePointer implements Cborable {
         return CborObject.CborMap.build(cbor);
     }
 
-    public static FilePointer fromByteArray(byte[] raw) {
+    public static Capability fromByteArray(byte[] raw) {
         return fromCbor(CborObject.fromByteArray(raw));
     }
 
-    public static FilePointer fromCbor(Cborable cbor) {
+    public static Capability fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborMap))
-            throw new IllegalStateException("Incorrect cbor for FilePointer: " + cbor);
+            throw new IllegalStateException("Incorrect cbor for Capability: " + cbor);
         SortedMap<CborObject, ? extends Cborable> map = ((CborObject.CborMap) cbor).values;
         Location loc = Location.fromCbor(map.get(new CborObject.CborString("l")));
         SymmetricKey baseKey = SymmetricKey.fromCbor(map.get(new CborObject.CborString("k")));
         CborObject.CborString secretLabel = new CborObject.CborString("s");
         Optional<SecretSigningKey> writer = map.containsKey(secretLabel) ? Optional.of(SecretSigningKey.fromCbor(map.get(secretLabel))) : Optional.empty();
-        return new FilePointer(loc, writer, baseKey);
+        return new Capability(loc, writer, baseKey);
     }
 
-    public FilePointer readOnly() {
+    public Capability readOnly() {
         if (!isWritable())
             return this;
-        return new FilePointer(this.location, Optional.empty(), this.baseKey);
+        return new Capability(this.location, Optional.empty(), this.baseKey);
     }
 
     public boolean isWritable() {
@@ -100,7 +100,7 @@ public class FilePointer implements Cborable {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
 
-        FilePointer that = (FilePointer) o;
+        Capability that = (Capability) o;
 
         if (location != null ? !location.equals(that.location) : that.location != null) return false;
         return baseKey != null ? baseKey.equals(that.baseKey) : that.baseKey == null;
@@ -127,7 +127,7 @@ public class FilePointer implements Cborable {
                 baseKey.equals(SymmetricKey.createNull());
     }
 
-    public static FilePointer fromLink(String keysString) {
+    public static Capability fromLink(String keysString) {
         if (keysString.startsWith("#"))
             keysString = keysString.substring(1);
 
@@ -139,10 +139,10 @@ public class FilePointer implements Cborable {
         PublicKeyHash owner = PublicKeyHash.fromCbor(CborObject.fromByteArray(Base58.decode(split[1])));
         byte[] mapKey = Base58.decode(split[2]);
         SymmetricKey baseKey = SymmetricKey.fromByteArray(Base58.decode(split[3]));
-        return new FilePointer(owner, writer, mapKey, baseKey);
+        return new Capability(owner, writer, mapKey, baseKey);
     }
 
-    public static FilePointer createNull() {
-        return new FilePointer(PublicKeyHash.NULL, PublicKeyHash.NULL, new byte[32], SymmetricKey.createNull());
+    public static Capability createNull() {
+        return new Capability(PublicKeyHash.NULL, PublicKeyHash.NULL, new byte[32], SymmetricKey.createNull());
     }
 }
