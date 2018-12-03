@@ -59,34 +59,28 @@ public class FastSharing {
                         });
                     } else {
                         FileTreeNode cachedFile = optCachedFile.get();
-                        // todo decide if we need to read files based on lastread index
-                        List<FileTreeNode> unseenSharingFiles = sharingFiles.stream()
-                                .filter(f -> ! cachedFile.getFileProperties().modified.isBefore(f.getFileProperties().modified))
-                                .collect(Collectors.toList());
-                        if (unseenSharingFiles.isEmpty()) {
-                            return readRetrievedCapabilityCache(cachedFile, network, random);
-                        } else {
-                            return readRetrievedCapabilityCache(cachedFile, network, random).thenCompose(cache -> {
-                                int shareFileIndex = (int)(cache.getRecordsRead() * FILE_POINTER_SIZE) / SHARING_FILE_MAX_SIZE;
-                                int recordIndex = (int) sharingFiles.get(sharingFiles.size() -1).getFileProperties().size / FILE_POINTER_SIZE;
-                                List<FileTreeNode> sharingFilesToRead = sharingFiles.subList(shareFileIndex, sharingFiles.size());
-                                return Futures.reduceAll(sharingFilesToRead.subList(0, sharingFilesToRead.size() -1),
-                                        Collections.emptyList(),
-                                        (res, sharingFile) -> readSharingFile(friendSharedDir.getName(), sharingFile, network, random)
-                                                .thenApply(retrievedCaps -> Stream.concat(res.stream(), retrievedCaps.stream()).collect(Collectors.toList())),
-                                        (a, b) -> Stream.concat(a.stream(), b.stream()).collect(Collectors.toList()))
-                                        .thenCompose(res -> readSharingFile(recordIndex, friendSharedDir.getName(),
-                                                    sharingFilesToRead.get(sharingFilesToRead.size() -1), network, random))
-                                        .thenCompose(res -> {
-                                            if (saveCache) {
-                                                return saveRetrievedCapabilityCache(totalRecords, ourRoot, friendName,
-                                                        network, random, fragmenter, res);
-                                            } else {
-                                                return CompletableFuture.completedFuture(new CapabilitiesFromUser(totalRecords, res));
-                                            }
-                                        });
+                        return readRetrievedCapabilityCache(cachedFile, network, random).thenCompose(cache -> {
+                            if (totalRecords == cache.getRecordsRead())
+                                return CompletableFuture.completedFuture(cache);
+                            int shareFileIndex = (int)(cache.getRecordsRead() * FILE_POINTER_SIZE) / SHARING_FILE_MAX_SIZE;
+                            int recordIndex = (int) ((cache.getRecordsRead() * FILE_POINTER_SIZE) % SHARING_FILE_MAX_SIZE) / FILE_POINTER_SIZE;
+                            List<FileTreeNode> sharingFilesToRead = sharingFiles.subList(shareFileIndex, sharingFiles.size());
+                            return Futures.reduceAll(sharingFilesToRead.subList(0, sharingFilesToRead.size() -1),
+                                    Collections.emptyList(),
+                                    (res, sharingFile) -> readSharingFile(friendSharedDir.getName(), sharingFile, network, random)
+                                            .thenApply(retrievedCaps -> Stream.concat(res.stream(), retrievedCaps.stream()).collect(Collectors.toList())),
+                                    (a, b) -> Stream.concat(a.stream(), b.stream()).collect(Collectors.toList()))
+                                    .thenCompose(res -> readSharingFile(recordIndex, friendSharedDir.getName(),
+                                            sharingFilesToRead.get(sharingFilesToRead.size() -1), network, random))
+                                    .thenCompose(res -> {
+                                        if (saveCache) {
+                                            return saveRetrievedCapabilityCache(totalRecords, ourRoot, friendName,
+                                                    network, random, fragmenter, res);
+                                        } else {
+                                            return CompletableFuture.completedFuture(new CapabilitiesFromUser(totalRecords, res));
+                                        }
+                                    });
                             });
-                        }
                     }
                 });
             });
@@ -140,10 +134,10 @@ public class FastSharing {
         return readSharingFile(0, ownerName, file, network, random);
     }
     public static CompletableFuture<List<RetrievedCapability>> readSharingFile(int offsetIndex,
-                                                             String ownerName,
-                                                             FileTreeNode file,
-                                                             NetworkAccess network,
-                                                             SafeRandom random) {
+                                                                               String ownerName,
+                                                                               FileTreeNode file,
+                                                                               NetworkAccess network,
+                                                                               SafeRandom random) {
         return file.getInputStream(network, random, x -> {}).thenCompose(reader -> {
             int currentFileSize = (int) file.getSize();
             List<CompletableFuture<Optional<RetrievedCapability>>> capabilities = IntStream.range(offsetIndex, currentFileSize / FILE_POINTER_SIZE)

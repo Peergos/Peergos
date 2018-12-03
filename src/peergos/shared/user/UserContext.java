@@ -877,8 +877,8 @@ public class UserContext {
                 .thenCompose(shared -> {
                     if (!shared.isPresent())
                         return CompletableFuture.completedFuture(true);
-                    FileTreeNode sharedTreeNode = shared.get();
-                    return sharedTreeNode.addSharingLinkTo(file, network, crypto.random, fragmenter)
+                    FileTreeNode sharedDir = shared.get();
+                    return sharedDir.addSharingLinkTo(file, network, crypto.random, fragmenter)
                         .thenCompose(ee -> CompletableFuture.completedFuture(true));
                 });
     }
