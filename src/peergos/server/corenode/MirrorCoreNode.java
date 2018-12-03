@@ -33,6 +33,10 @@ public class MirrorCoreNode implements CoreNode {
         this.ipfs = ipfs;
         this.mutable = mutable;
         this.pkiOwnerIdentity = pkiOwnerIdentity;
+    }
+
+    public void start() {
+        running = true;
         new Thread(() -> {
             while (running) {
                 try {
@@ -84,7 +88,7 @@ public class MirrorCoreNode implements CoreNode {
     }
 
     @Override
-    public void close() throws IOException {
+    public void close() {
         running = false;
     }
 }

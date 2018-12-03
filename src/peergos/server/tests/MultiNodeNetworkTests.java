@@ -7,6 +7,7 @@ import peergos.server.*;
 import peergos.server.storage.*;
 import peergos.server.util.*;
 import peergos.shared.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.user.*;
@@ -68,6 +69,7 @@ public class MultiNodeNetworkTests {
         Main.PKI.main(args);
         NetworkAccess toPki = buildApi(args);
         Multihash pkiNodeId = toPki.dhtClient.id().get();
+        PublicKeyHash peergosId = PublicKeyHash.fromString(args.getArg("peergos.identity.hash"));
         nodes.add(toPki);
         int bootstrapSwarmPort = args.getInt("ipfs-config-swarm-port");
 
@@ -81,6 +83,7 @@ public class MultiNodeNetworkTests {
                     .with("useIPFS", "true")
                     .with("port", "" + peergosPort)
                     .with("pki-node-id", pkiNodeId.toBase58())
+                    .with("peergos.identity.hash", peergosId.toString())
                     .with("ipfs-config-api-port", "" + ipfsApiPort)
                     .with("ipfs-config-gateway-port", "" + ipfsGatewayPort)
                     .with("ipfs-config-swarm-port", "" + ipfsSwarmPort)
