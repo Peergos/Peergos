@@ -112,10 +112,10 @@ public class FastSharing {
                                     sharingFilesToRead.get(sharingFilesToRead.size() - 1), network, random))
                             .thenCompose(res -> {
                                 if (saveCache) {
-                                    return saveRetrievedCapabilityCache(totalRecords, ourRoot, friendName,
+                                    return saveRetrievedCapabilityCache(totalRecords - capIndex, ourRoot, friendName,
                                             network, random, fragmenter, res);
                                 } else {
-                                    return CompletableFuture.completedFuture(new CapabilitiesFromUser(totalRecords, res));
+                                    return CompletableFuture.completedFuture(new CapabilitiesFromUser(totalRecords - capIndex, res));
                                 }
                             });
                 });
