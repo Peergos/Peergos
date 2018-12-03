@@ -4,27 +4,29 @@ import peergos.shared.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.user.fs.*;
 
+import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.*;
 
 public class FriendSourcedTrieNode implements TrieNode {
 
     private final String owner;
-    private final FileTreeNode cacheDir;
+    private final Supplier<CompletableFuture<FileTreeNode>> cacheDirSupplier;
     private final EntryPoint sharedDir;
     private final SafeRandom random;
     private final Fragmenter fragmenter;
     private TrieNode root;
     private long capCount;
 
-    public FriendSourcedTrieNode(FileTreeNode cacheDir,
+    public FriendSourcedTrieNode(Supplier<CompletableFuture<FileTreeNode>> cacheDirSupplier,
                                  String owner,
                                  EntryPoint sharedDir,
                                  TrieNode root,
                                  long capCount,
                                  SafeRandom random,
                                  Fragmenter fragmenter) {
-        this.cacheDir = cacheDir;
+        this.cacheDirSupplier = cacheDirSupplier;
         this.owner = owner;
         this.sharedDir = sharedDir;
         this.root = root;
@@ -33,7 +35,7 @@ public class FriendSourcedTrieNode implements TrieNode {
         this.fragmenter = fragmenter;
     }
 
-    public static CompletableFuture<Optional<FriendSourcedTrieNode>> build(FileTreeNode cacheDir,
+    public static CompletableFuture<Optional<FriendSourcedTrieNode>> build(Supplier<CompletableFuture<FileTreeNode>> cacheDirSupplier,
                                                                            EntryPoint e,
                                                                            NetworkAccess network,
                                                                            SafeRandom random,
@@ -42,18 +44,19 @@ public class FriendSourcedTrieNode implements TrieNode {
                 .thenCompose(sharedDirOpt -> {
                     if (! sharedDirOpt.isPresent())
                         return CompletableFuture.completedFuture(Optional.empty());
-                    return FastSharing.loadSharingLinks(cacheDir, sharedDirOpt.get(), e.owner,
-                            network, random, fragmenter, true)
-                            .thenApply(caps ->
-                                    Optional.of(new FriendSourcedTrieNode(cacheDir,
-                                            e.owner,
-                                            e,
-                                            caps.getRetrievedCapabilities().stream()
-                                                    .reduce(TrieNodeImpl.empty(),
-                                                            (root, cap) -> root.put(trimOwner(cap.path), UserContext.convert(e.owner, cap)),
-                                                            (a, b) -> a),
-                                            caps.getRecordsRead(),
-                                            random, fragmenter)));
+                    return cacheDirSupplier.get()
+                            .thenCompose(cacheDir -> FastSharing.loadSharingLinks(cacheDir, sharedDirOpt.get(), e.owner,
+                                    network, random, fragmenter, true)
+                                    .thenApply(caps ->
+                                            Optional.of(new FriendSourcedTrieNode(cacheDirSupplier,
+                                                    e.owner,
+                                                    e,
+                                                    caps.getRetrievedCapabilities().stream()
+                                                            .reduce(TrieNodeImpl.empty(),
+                                                                    (root, cap) -> root.put(trimOwner(cap.path), UserContext.convert(e.owner, cap)),
+                                                                    (a, b) -> a),
+                                                    caps.getRecordsRead(),
+                                                    random, fragmenter))));
                 });
     }
 
@@ -67,15 +70,19 @@ public class FriendSourcedTrieNode implements TrieNode {
                             .thenCompose(count -> {
                                 if (count == capCount)
                                     return CompletableFuture.completedFuture(true);
-                                return FastSharing.loadSharingLinksFromIndex(cacheDir, sharedDirOpt.get(), owner, network, random, fragmenter, capCount, true)
-                                        .thenApply(newCaps -> {
-                                            capCount += newCaps.getRecordsRead();
-                                            root = newCaps.getRetrievedCapabilities().stream()
-                                                    .reduce(root,
-                                                            (root, cap) -> root.put(trimOwner(cap.path), UserContext.convert(owner, cap)),
-                                                            (a, b) -> a);
-                                            return true;
-                                        });
+                                return cacheDirSupplier.get()
+                                        .thenCompose(cacheDir ->
+                                                FastSharing.loadSharingLinksFromIndex(cacheDir, sharedDirOpt.get(),
+                                                        owner, network, random, fragmenter, capCount, true)
+                                                        .thenApply(newCaps -> {
+                                                            capCount += newCaps.getRecordsRead();
+                                                            root = newCaps.getRetrievedCapabilities().stream()
+                                                                    .reduce(root,
+                                                                            (root, cap) -> root.put(trimOwner(cap.path), UserContext.convert(owner, cap)),
+                                                                            (a, b) -> a);
+                                                            return true;
+                                                        })
+                                        );
                             });
                 });
     }

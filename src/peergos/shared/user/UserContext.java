@@ -1150,7 +1150,9 @@ public class UserContext {
                                 if (username.endsWith(ourName)) // This is a sharing directory of ours for a friend
                                     return CompletableFuture.completedFuture(root);
                                 // This is a friend's sharing directory, create a wrapper to read the capabilities lazily from it
-                                return FriendSourcedTrieNode.build(ourRoot, e, network, random, fragmenter)
+                                Supplier<CompletableFuture<FileTreeNode>> cacheDirSupplier =
+                                        () -> root.getByPath(Paths.get(ourName).toString(), network).thenApply(opt -> opt.get());
+                                return FriendSourcedTrieNode.build(cacheDirSupplier, e, network, random, fragmenter)
                                         .thenApply(fromUser -> fromUser.map(userEntrie -> root.put(username, userEntrie)).orElse(root));
                                     }
                             ).exceptionally(t -> {
