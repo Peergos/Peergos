@@ -1058,52 +1058,21 @@ public class UserContext {
      *
      * @return TrieNode for root of filesystem
      */
-    private static CompletableFuture<TrieNode> createFileTree(TrieNode ourRoot, String ourName, WriterData userData,
-                                                              NetworkAccess network, SafeRandom random, Fragmenter fragmenter) {
+    private static CompletableFuture<TrieNode> createFileTree(TrieNode ourRoot,
+                                                              String ourName,
+                                                              WriterData userData,
+                                                              NetworkAccess network,
+                                                              SafeRandom random,
+                                                              Fragmenter fragmenter) {
         List<EntryPoint> notOurFileSystemEntries = userData.staticData.get()
                 .getEntryPoints()
                 .stream()
                 .filter(e -> ! e.owner.equals(ourName))
                 .collect(Collectors.toList());
 
-        // need to to retrieve all the entry points of our friends, then get all teh capabilities from each of them,
-        // retrieve their paths, and add to the trie
-        CompletableFuture<List<Pair<FileTreeNode, String>>> friendSharingDirs =
-                Futures.reduceAll(notOurFileSystemEntries,
-                        new ArrayList<>(),
-                        (res, entry) -> network.retrieveEntryPoint(entry)
-                                .thenCompose(opt -> {
-                                    if (! opt.isPresent()) {
-                                        return CompletableFuture.completedFuture(res);
-                                    }
-                                    FileTreeNode f = opt.get();
-                                    return f.getPath(network)
-                                            .thenApply(path -> Stream.concat(
-                                                    res.stream(),
-                                                    Stream.of(new Pair<>(f, entry.owner)))
-                                                    .collect(Collectors.toList()));
-                                }),
-                        (a, b) -> Stream.concat(a.stream(), b.stream()).collect(Collectors.toList()));
-
-        HashMap<String, List<RetrievedCapability>> friendToRetrievedCapabilities = new HashMap<>();
-        return friendSharingDirs.thenCompose(pairs -> Futures.reduceAll(pairs,
-                true,
-                (x, friend) -> {
-                    return ourRoot.getByPath("/" + ourName, network).thenCompose(fileOpt ->
-                            FastSharing.loadSharingLinks(fileOpt.get(), friend.left, friend.right, network, random, fragmenter, true)
-                    .thenApply(friendCaps -> friendToRetrievedCapabilities.put(friend.right, friendCaps.getRetrievedCapabilities()))
-                    .thenApply(z -> true));
-                },
-                (a, b) -> a && b)
-        ).thenCompose(done -> {
-            List<Pair<String, RetrievedCapability>> capsWithSource = friendToRetrievedCapabilities.entrySet().stream()
-                    .flatMap(e -> e.getValue().stream().map(cap -> new Pair<>(e.getKey(), cap)))
-                    .collect(Collectors.toList());
-            return Futures.reduceAll(capsWithSource,
-                    ourRoot,
-                    (aroot, pair) -> addRetrievedEntryPoint(ourName, aroot, pair.left, convert(pair.left, pair.right), pair.right.path, network),
-                    (a, b) -> a);
-        }).exceptionally(Futures::logError);
+        // need to to retrieve all the entry points of our friends
+        return Futures.reduceAll(notOurFileSystemEntries, ourRoot, (t, e) -> addEntryPoint(ourName, null, t, e, network, random, fragmenter), (a, b) -> a)
+                .exceptionally(Futures::logError);
     }
 
     public static EntryPoint convert(String owner, RetrievedCapability cap) {
@@ -1112,18 +1081,25 @@ public class UserContext {
 
     private static CompletableFuture<TrieNode> addRetrievedEntryPoint(String ourName,
                                                                       TrieNode root,
-                                                                      String friendName,
                                                                       EntryPoint fileCap,
                                                                       String path,
-                                                                      NetworkAccess network) {
+                                                                      NetworkAccess network,
+                                                                      SafeRandom random,
+                                                                      Fragmenter fragmenter) {
         // check entrypoint doesn't forge the owner
         return  (fileCap.owner.equals(ourName) ? CompletableFuture.completedFuture(true) :
-                fileCap.isValid(path, network)).thenApply(valid -> {
+                fileCap.isValid(path, network)).thenCompose(valid -> {
             String[] parts = path.split("/");
             if (parts.length < 3 || !parts[2].equals(SHARED_DIR_NAME))
-                return root.put(path, fileCap);
-            TrieNode rootWithMapping = parts[1].equals(ourName) ? root : root.addPathMapping("/" + parts[1] + "/", path + "/");
-            return rootWithMapping.put(path, fileCap);
+                return CompletableFuture.completedFuture(root.put(path, fileCap));
+            String username = parts[1];
+            if (username.endsWith(ourName)) // This is a sharing directory of ours for a friend
+                return CompletableFuture.completedFuture(root);
+            // This is a friend's sharing directory, create a wrapper to read the capabilities lazily from it
+            Supplier<CompletableFuture<FileTreeNode>> cacheDirSupplier =
+                    () -> root.getByPath(Paths.get(ourName).toString(), network).thenApply(opt -> opt.get());
+            return FriendSourcedTrieNode.build(cacheDirSupplier, fileCap, network, random, fragmenter)
+                    .thenApply(fromUser -> fromUser.map(userEntrie -> root.put(username, userEntrie)).orElse(root));
         });
     }
 
@@ -1137,31 +1113,14 @@ public class UserContext {
         return network.retrieveEntryPoint(e).thenCompose(metadata -> {
             if (metadata.isPresent()) {
                 return metadata.get().getPath(network)
-                        .thenCompose(path -> {
-                            // check entrypoint doesn't forge the owner
-                            return (e.owner.equals(ourName) ?
-                                    CompletableFuture.completedFuture(true) :
-                                    e.isValid(path, network)).thenCompose(valid -> {
-                                LOG.info("Added entry point: " + metadata.get() + " at path " + path);
-                                String[] parts = path.split("/");
-                                if (parts.length < 3 || !parts[2].equals(SHARED_DIR_NAME))
-                                    return CompletableFuture.completedFuture(root.put(path, e));
-                                String username = parts[1];
-                                if (username.endsWith(ourName)) // This is a sharing directory of ours for a friend
-                                    return CompletableFuture.completedFuture(root);
-                                // This is a friend's sharing directory, create a wrapper to read the capabilities lazily from it
-                                Supplier<CompletableFuture<FileTreeNode>> cacheDirSupplier =
-                                        () -> root.getByPath(Paths.get(ourName).toString(), network).thenApply(opt -> opt.get());
-                                return FriendSourcedTrieNode.build(cacheDirSupplier, e, network, random, fragmenter)
-                                        .thenApply(fromUser -> fromUser.map(userEntrie -> root.put(username, userEntrie)).orElse(root));
-                                    }
-                            ).exceptionally(t -> {
-                                LOG.log(Level.WARNING, t.getMessage(), t);
-                                LOG.severe("Couldn't add entry point (failed retrieving parent dir or it was invalid): " + metadata.get().getName());
-                                // Allow the system to continue without this entry point
-                                return root;
-                            });
-                        });
+                        .thenCompose(path -> addRetrievedEntryPoint(ourName, root, e, path, network, random, fragmenter)
+                                .exceptionally(t -> {
+                                    LOG.log(Level.WARNING, t.getMessage(), t);
+                                    LOG.severe("Couldn't add entry point (failed retrieving parent dir or it was invalid): " + metadata.get().getName());
+                                    // Allow the system to continue without this entry point
+                                    return root;
+                                })
+                        );
             }
             return CompletableFuture.completedFuture(root);
         }).exceptionally(Futures::logError);
