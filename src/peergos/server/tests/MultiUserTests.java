@@ -114,7 +114,6 @@ public class MultiUserTests {
         Assert.assertTrue("Different data key", ! UserTests.getDataKey(copy).equals(UserTests.getDataKey(u1File)));
     }
 
-    @Ignore // until we figure out how to solve this issue
     @Test
     public void shareTwoFilesWithSameName() throws Exception {
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp("a", "a", network.clear(), crypto);
@@ -173,7 +172,8 @@ public class MultiUserTests {
 
         // check other users can read the file
         for (UserContext userContext : userContexts) {
-            Optional<FileTreeNode> sharedFile = userContext.getByPath(u1.username + "/" + "somefile[1].txt").get();
+            String expectedPath = Paths.get(u1.username, "subdir", filename).toString();
+            Optional<FileTreeNode> sharedFile = userContext.getByPath(expectedPath).get();
             Assert.assertTrue("shared file present", sharedFile.isPresent());
 
             AsyncReader inputStream = sharedFile.get().getInputStream(userContext.network,
