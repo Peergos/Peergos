@@ -44,12 +44,13 @@ public class FastSharing {
                 return ourRoot.getChild(friendName + RETRIEVED_CAPABILITY_CACHE, network).thenCompose(optCachedFile -> {
                     long totalRecords = sharingFiles.stream().mapToLong(f -> f.getFileProperties().size).sum() / FILE_POINTER_SIZE;
                     if(! optCachedFile.isPresent() ) {
-                        return Futures.reduceAll(sharingFiles,
-                                Collections.<RetrievedCapability>emptyList(),
+                        CompletableFuture<List<RetrievedCapability>> allFiles = Futures.reduceAll(sharingFiles,
+                                Collections.emptyList(),
                                 (res, sharingFile) -> readSharingFile(friendSharedDir.getName(), sharingFile, network, random)
                                         .thenApply(retrievedCaps -> Stream.concat(res.stream(), retrievedCaps.stream()).collect(Collectors.toList())),
                                 (a, b) -> Stream.concat(a.stream(), b.stream()).collect(Collectors.toList())
-                        ).thenCompose(res -> {
+                        );
+                        return allFiles.thenCompose(res -> {
                             if(saveCache && res.size() > 0) {
                                 return saveRetrievedCapabilityCache(totalRecords, ourRoot, friendName,
                                         network, random, fragmenter, res);
@@ -65,11 +66,12 @@ public class FastSharing {
                             int shareFileIndex = (int)(cache.getRecordsRead() * FILE_POINTER_SIZE) / SHARING_FILE_MAX_SIZE;
                             int recordIndex = (int) ((cache.getRecordsRead() * FILE_POINTER_SIZE) % SHARING_FILE_MAX_SIZE) / FILE_POINTER_SIZE;
                             List<FileTreeNode> sharingFilesToRead = sharingFiles.subList(shareFileIndex, sharingFiles.size());
-                            return Futures.reduceAll(sharingFilesToRead.subList(0, sharingFilesToRead.size() -1),
+                            CompletableFuture<List<RetrievedCapability>> allFiles = Futures.reduceAll(sharingFilesToRead.subList(0, sharingFilesToRead.size() - 1),
                                     Collections.emptyList(),
                                     (res, sharingFile) -> readSharingFile(friendSharedDir.getName(), sharingFile, network, random)
                                             .thenApply(retrievedCaps -> Stream.concat(res.stream(), retrievedCaps.stream()).collect(Collectors.toList())),
-                                    (a, b) -> Stream.concat(a.stream(), b.stream()).collect(Collectors.toList()))
+                                    (a, b) -> Stream.concat(a.stream(), b.stream()).collect(Collectors.toList()));
+                            return allFiles
                                     .thenCompose(res -> readSharingFile(recordIndex, friendSharedDir.getName(),
                                             sharingFilesToRead.get(sharingFilesToRead.size() -1), network, random))
                                     .thenCompose(res -> {
@@ -103,11 +105,13 @@ public class FastSharing {
                     int shareFileIndex = (int) (capIndex * FILE_POINTER_SIZE) / SHARING_FILE_MAX_SIZE;
                     int recordIndex = (int) (capIndex % CAPS_PER_FILE);
                     List<FileTreeNode> sharingFilesToRead = sharingFiles.subList(shareFileIndex, sharingFiles.size());
-                    return Futures.reduceAll(sharingFilesToRead.subList(0, sharingFilesToRead.size() - 1),
+
+                    CompletableFuture<List<RetrievedCapability>> allFiles = Futures.reduceAll(sharingFilesToRead.subList(0, sharingFilesToRead.size() - 1),
                             Collections.emptyList(),
                             (res, sharingFile) -> readSharingFile(friendSharedDir.getName(), sharingFile, network, random)
                                     .thenApply(retrievedCaps -> Stream.concat(res.stream(), retrievedCaps.stream()).collect(Collectors.toList())),
-                            (a, b) -> Stream.concat(a.stream(), b.stream()).collect(Collectors.toList()))
+                            (a, b) -> Stream.concat(a.stream(), b.stream()).collect(Collectors.toList()));
+                    CompletableFuture<CapabilitiesFromUser> result = allFiles
                             .thenCompose(res -> readSharingFile(recordIndex, friendSharedDir.getName(),
                                     sharingFilesToRead.get(sharingFilesToRead.size() - 1), network, random))
                             .thenCompose(res -> {
@@ -118,6 +122,7 @@ public class FastSharing {
                                     return CompletableFuture.completedFuture(new CapabilitiesFromUser(totalRecords - capIndex, res));
                                 }
                             });
+                    return result;
                 });
     }
 

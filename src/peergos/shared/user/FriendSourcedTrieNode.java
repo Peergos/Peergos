@@ -4,7 +4,6 @@ import peergos.shared.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.user.fs.*;
 
-import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
@@ -94,8 +93,10 @@ public class FriendSourcedTrieNode implements TrieNode {
                         return CompletableFuture.completedFuture(Optional.empty());
                     return sharedDirOpt.get().retrieveParent(network)
                             .thenCompose(sharedOpt -> {
-                                if (! sharedOpt.isPresent())
-                                    return CompletableFuture.completedFuture(Optional.empty());
+                                if (! sharedOpt.isPresent()) {
+                                    CompletableFuture<Optional<FileTreeNode>> empty = CompletableFuture.completedFuture(Optional.empty());
+                                    return empty;
+                                }
                                 return sharedOpt.get().retrieveParent(network);
                             });
                 });
@@ -131,8 +132,8 @@ public class FriendSourcedTrieNode implements TrieNode {
     }
 
     @Override
-    public synchronized TrieNode put(String path, TrieNode t) {
-        root = root.put(path, t);
+    public synchronized TrieNode putNode(String path, TrieNode t) {
+        root = root.putNode(path, t);
         return this;
     }
 

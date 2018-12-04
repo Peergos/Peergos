@@ -18,7 +18,7 @@ public interface TrieNode {
 
     TrieNode put(String path, EntryPoint e);
 
-    TrieNode put(String path, TrieNode t);
+    TrieNode putNode(String path, TrieNode t);
 
     TrieNode removeEntry(String path);
 

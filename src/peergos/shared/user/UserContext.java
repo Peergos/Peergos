@@ -1099,7 +1099,7 @@ public class UserContext {
             Supplier<CompletableFuture<FileTreeNode>> cacheDirSupplier =
                     () -> root.getByPath(Paths.get(ourName).toString(), network).thenApply(opt -> opt.get());
             return FriendSourcedTrieNode.build(cacheDirSupplier, fileCap, network, random, fragmenter)
-                    .thenApply(fromUser -> fromUser.map(userEntrie -> root.put(username, userEntrie)).orElse(root));
+                    .thenApply(fromUser -> fromUser.map(userEntrie -> root.putNode(username, userEntrie)).orElse(root));
         });
     }
 

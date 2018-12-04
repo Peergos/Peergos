@@ -103,7 +103,7 @@ public class TrieNodeImpl implements TrieNode {
     }
 
     @Override
-    public TrieNode put(String path, TrieNode t) {
+    public TrieNode putNode(String path, TrieNode t) {
         LOG.info("Entrie.put(" + path + ")");
         if (path.startsWith("/"))
             path = path.substring(1);
@@ -112,7 +112,7 @@ public class TrieNodeImpl implements TrieNode {
         }
         String[] elements = path.split("/");
         TrieNode existing = children.getOrDefault(elements[0], TrieNodeImpl.empty());
-        TrieNode newChild = existing.put(path.substring(elements[0].length()), t);
+        TrieNode newChild = existing.putNode(path.substring(elements[0].length()), t);
 
         HashMap<String, TrieNode> newChildren = new HashMap<>(children);
         newChildren.put(elements[0], newChild);
