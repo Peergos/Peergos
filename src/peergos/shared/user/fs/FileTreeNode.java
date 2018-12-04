@@ -772,7 +772,7 @@ public class FileTreeNode {
 
     @JsMethod
     public CompletableFuture<Capability> mkdir(String newFolderName, NetworkAccess network, boolean isSystemFolder,
-                                               SafeRandom random) throws IOException {
+                                               SafeRandom random) {
         return mkdir(newFolderName, network, null, isSystemFolder, random);
     }
 

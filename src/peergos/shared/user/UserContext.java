@@ -309,18 +309,18 @@ public class UserContext {
                                         if (!sharedOpt.isPresent())
                                             throw new IllegalStateException("Couldn't find shared folder!");
                                         lock.complete(wd);
-                                        return buildSharedWithCache(sharedOpt.get()).thenApply(res -> res);
+                                        return buildSharedWithCache(sharedOpt.get(), this::getUserRoot).thenApply(res -> res);
                                     }).thenApply(res -> this);
                         }));
     }
 
-    public CompletableFuture<Boolean> buildSharedWithCache(FileTreeNode sharedFolder) {
+    public CompletableFuture<Boolean> buildSharedWithCache(FileTreeNode sharedFolder, Supplier<CompletableFuture<FileTreeNode>> homeDirSupplier) {
         return sharedFolder.getChildren(network)
                     .thenCompose(children ->
                             Futures.reduceAll(children,
                                     true,
                                     (x, friendDirectory) -> {
-                                        return FastSharing.loadSharingLinks(friendDirectory, friendDirectory,
+                                        return FastSharing.loadSharingLinks(homeDirSupplier, friendDirectory,
                                                 this.username, network, crypto.random, fragmenter, false)
                                                 .thenApply(caps -> {
                                                     String friendName = friendDirectory.getName();

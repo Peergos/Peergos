@@ -7,12 +7,14 @@ import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.*;
 import java.util.stream.*;
 
 public class FastSharing {
     public static final int FILE_POINTER_SIZE = 159; // fp.toCbor().toByteArray() DOESN'T INCLUDE .secret
     public static final int CAPS_PER_FILE = 10000;
     public static final int SHARING_FILE_MAX_SIZE = FILE_POINTER_SIZE * CAPS_PER_FILE;
+    public static final String CAPABILITY_CACHE_DIR = ".capabilitycache";
     public static final String SHARING_FILE_PREFIX = "sharing.";
     public static final String SEPARATOR = "#";
     public static final String RETRIEVED_CAPABILITY_CACHE = SEPARATOR + ".cache";
@@ -20,7 +22,7 @@ public class FastSharing {
 
     /**
      *
-     * @param ourRoot
+     * @param homeDirSupplier
      * @param friendSharedDir
      * @param friendName
      * @param network
@@ -29,7 +31,7 @@ public class FastSharing {
      * @param saveCache
      * @return a pair of the current capability index, and the valid capabilities
      */
-    public static CompletableFuture<CapabilitiesFromUser> loadSharingLinks(FileTreeNode ourRoot,
+    public static CompletableFuture<CapabilitiesFromUser> loadSharingLinks(Supplier<CompletableFuture<FileTreeNode>> homeDirSupplier,
                                                                            FileTreeNode friendSharedDir,
                                                                            String friendName,
                                                                            NetworkAccess network,
@@ -41,7 +43,7 @@ public class FastSharing {
                 List<FileTreeNode> sharingFiles = files.stream()
                         .sorted(Comparator.comparing(f -> f.getFileProperties().modified))
                         .collect(Collectors.toList());
-                return ourRoot.getChild(friendName + RETRIEVED_CAPABILITY_CACHE, network).thenCompose(optCachedFile -> {
+                return getCacheFile(friendName, homeDirSupplier, network, random).thenCompose(optCachedFile -> {
                     long totalRecords = sharingFiles.stream().mapToLong(f -> f.getFileProperties().size).sum() / FILE_POINTER_SIZE;
                     if(! optCachedFile.isPresent() ) {
                         CompletableFuture<List<RetrievedCapability>> allFiles = Futures.reduceAll(sharingFiles,
@@ -52,7 +54,7 @@ public class FastSharing {
                         );
                         return allFiles.thenCompose(res -> {
                             if(saveCache && res.size() > 0) {
-                                return saveRetrievedCapabilityCache(totalRecords, ourRoot, friendName,
+                                return saveRetrievedCapabilityCache(totalRecords, homeDirSupplier, friendName,
                                         network, random, fragmenter, res);
                             } else {
                                 return CompletableFuture.completedFuture(new CapabilitiesFromUser(totalRecords, res));
@@ -76,7 +78,7 @@ public class FastSharing {
                                             sharingFilesToRead.get(sharingFilesToRead.size() -1), network, random))
                                     .thenCompose(res -> {
                                         if (saveCache) {
-                                            return saveRetrievedCapabilityCache(totalRecords, ourRoot, friendName,
+                                            return saveRetrievedCapabilityCache(totalRecords, homeDirSupplier, friendName,
                                                     network, random, fragmenter, res);
                                         } else {
                                             return CompletableFuture.completedFuture(new CapabilitiesFromUser(totalRecords, res));
@@ -88,7 +90,7 @@ public class FastSharing {
             });
     }
 
-    public static CompletableFuture<CapabilitiesFromUser> loadSharingLinksFromIndex(FileTreeNode ourRoot,
+    public static CompletableFuture<CapabilitiesFromUser> loadSharingLinksFromIndex(Supplier<CompletableFuture<FileTreeNode>> homeDirSupplier,
                                                                                     FileTreeNode friendSharedDir,
                                                                                     String friendName,
                                                                                     NetworkAccess network,
@@ -116,7 +118,7 @@ public class FastSharing {
                                     sharingFilesToRead.get(sharingFilesToRead.size() - 1), network, random))
                             .thenCompose(res -> {
                                 if (saveCache) {
-                                    return saveRetrievedCapabilityCache(totalRecords - capIndex, ourRoot, friendName,
+                                    return saveRetrievedCapabilityCache(totalRecords - capIndex, homeDirSupplier, friendName,
                                             network, random, fragmenter, res);
                                 } else {
                                     return CompletableFuture.completedFuture(new CapabilitiesFromUser(totalRecords - capIndex, res));
@@ -158,9 +160,9 @@ public class FastSharing {
     }
 
     private static CompletableFuture<Optional<RetrievedCapability>> readSharingRecord(String ownerName,
-                                                                AsyncReader reader,
-                                                                int offset,
-                                                                NetworkAccess network) {
+                                                                                      AsyncReader reader,
+                                                                                      int offset,
+                                                                                      NetworkAccess network) {
         byte[] serialisedFilePointer = new byte[FILE_POINTER_SIZE];
         return reader.seek( 0, offset).thenCompose( currentPos ->
                 currentPos.readIntoArray(serialisedFilePointer, 0, FILE_POINTER_SIZE)
@@ -184,14 +186,38 @@ public class FastSharing {
         );
     }
 
-    public static CompletableFuture<CapabilitiesFromUser> saveRetrievedCapabilityCache(long recordsRead, FileTreeNode home, String friend,
-                                                                                       NetworkAccess network, SafeRandom random, Fragmenter fragmenter,
+    private static CompletableFuture<Optional<FileTreeNode>> getCacheFile(String friendName,
+                                                                          Supplier<CompletableFuture<FileTreeNode>> getHome,
+                                                                          NetworkAccess network,
+                                                                          SafeRandom random) {
+        return getCapabilityCacheDir(getHome, network, random)
+                .thenCompose(cacheDir -> cacheDir.getChild(friendName, network));
+    }
+
+    private static CompletableFuture<FileTreeNode> getCapabilityCacheDir(Supplier<CompletableFuture<FileTreeNode>> getHome,
+                                                                         NetworkAccess network,
+                                                                         SafeRandom random) {
+        return getHome.get()
+                .thenCompose(home -> home.getChild(CAPABILITY_CACHE_DIR, network)
+                        .thenCompose(opt ->
+                                opt.map(CompletableFuture::completedFuture)
+                                        .orElseGet(() -> home.mkdir(CAPABILITY_CACHE_DIR, network, true, random)
+                                                .thenCompose(x -> getCapabilityCacheDir(getHome, network, random)))));
+    }
+
+    public static CompletableFuture<CapabilitiesFromUser> saveRetrievedCapabilityCache(long recordsRead,
+                                                                                       Supplier<CompletableFuture<FileTreeNode>> homeDirSupplier,
+                                                                                       String friend,
+                                                                                       NetworkAccess network,
+                                                                                       SafeRandom random,
+                                                                                       Fragmenter fragmenter,
                                                                                        List<RetrievedCapability> retrievedCapabilities) {
         CapabilitiesFromUser capabilitiesFromUser = new CapabilitiesFromUser(recordsRead, retrievedCapabilities);
         byte[] data = capabilitiesFromUser.serialize();
         AsyncReader.ArrayBacked dataReader = new AsyncReader.ArrayBacked(data);
-        return home.uploadFile(friend + RETRIEVED_CAPABILITY_CACHE, dataReader, true, (long) data.length,
-                true, network, random, x-> {}, fragmenter).thenApply(x -> capabilitiesFromUser);
+        return getCapabilityCacheDir(homeDirSupplier, network, random)
+                .thenCompose(cacheDir -> cacheDir.uploadFile(friend, dataReader, true, (long) data.length,
+                true, network, random, x-> {}, fragmenter).thenApply(x -> capabilitiesFromUser));
     }
 
     private static CompletableFuture<CapabilitiesFromUser> readRetrievedCapabilityCache(FileTreeNode cacheFile, NetworkAccess network, SafeRandom random) {
