@@ -66,8 +66,8 @@ public class MultiUserTests {
 
     @Test
     public void safeCopyOfFriendsFile() throws Exception {
-        UserContext u1 = PeergosNetworkUtils.ensureSignedUp("a", "a", network.clear(), crypto);
-        UserContext u2 = PeergosNetworkUtils.ensureSignedUp("b", "b", network.clear(), crypto);
+        UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
+        UserContext u2 = PeergosNetworkUtils.ensureSignedUp(random(), "b", network.clear(), crypto);
 
         // send follow requests from each other user to "a"
         u2.sendFollowRequest(u1.username, SymmetricKey.random()).get();
@@ -115,7 +115,7 @@ public class MultiUserTests {
 
     @Test
     public void shareTwoFilesWithSameName() throws Exception {
-        UserContext u1 = PeergosNetworkUtils.ensureSignedUp("a", "a", network.clear(), crypto);
+        UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
 
         // send follow requests from each other user to "a"
         List<UserContext> userContexts = getUserContexts(1);
