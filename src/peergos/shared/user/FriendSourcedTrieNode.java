@@ -43,7 +43,7 @@ public class FriendSourcedTrieNode implements TrieNode {
                 .thenCompose(sharedDirOpt -> {
                     if (! sharedDirOpt.isPresent())
                         return CompletableFuture.completedFuture(Optional.empty());
-                    return FastSharing.loadSharingLinks(homeDirSupplier, sharedDirOpt.get(), e.owner,
+                    return CapabilityStore.loadSharingLinks(homeDirSupplier, sharedDirOpt.get(), e.owner,
                                     network, random, fragmenter, true)
                                     .thenApply(caps ->
                                             Optional.of(new FriendSourcedTrieNode(homeDirSupplier,
@@ -64,11 +64,11 @@ public class FriendSourcedTrieNode implements TrieNode {
                 .thenCompose(sharedDirOpt -> {
                     if (!sharedDirOpt.isPresent())
                         return CompletableFuture.completedFuture(true);
-                    return FastSharing.getCapabilityCount(sharedDirOpt.get(), network)
+                    return CapabilityStore.getCapabilityCount(sharedDirOpt.get(), network)
                             .thenCompose(count -> {
                                 if (count == capCount)
                                     return CompletableFuture.completedFuture(true);
-                                return FastSharing.loadSharingLinksFromIndex(homeDirSupplier, sharedDirOpt.get(),
+                                return CapabilityStore.loadSharingLinksFromIndex(homeDirSupplier, sharedDirOpt.get(),
                                                         owner, network, random, fragmenter, capCount, true)
                                                         .thenApply(newCaps -> {
                                                             capCount += newCaps.getRecordsRead();

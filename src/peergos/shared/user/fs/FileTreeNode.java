@@ -276,25 +276,25 @@ public class FileTreeNode {
         return this.getChildren(network)
             .thenCompose(children -> {
                 List<FileTreeNode> capabilityCacheFiles = children.stream()
-                        .filter(f -> f.getName().startsWith(FastSharing.SHARING_FILE_PREFIX))
+                        .filter(f -> f.getName().startsWith(CapabilityStore.SHARING_FILE_PREFIX))
                         .collect(Collectors.toList());
                 List<FileTreeNode> sharingFiles = capabilityCacheFiles.stream()
                         .sorted(Comparator.comparingInt(f -> Integer.parseInt(f.getFileProperties().name
-                                .substring(FastSharing.SHARING_FILE_PREFIX.length()))))
+                                .substring(CapabilityStore.SHARING_FILE_PREFIX.length()))))
                         .collect(Collectors.toList());
                 FileTreeNode currentSharingFile = sharingFiles.isEmpty() ? null : sharingFiles.get(sharingFiles.size() - 1);
                 byte[] serializedCapability = file.pointer.capability.toCbor().toByteArray();
-                if (serializedCapability.length != FastSharing.FILE_POINTER_SIZE)
+                if (serializedCapability.length != CapabilityStore.CAPABILITY_SIZE)
                     throw new IllegalArgumentException("Unexpected Capability length:" + serializedCapability.length);
                 AsyncReader.ArrayBacked newCapability = new AsyncReader.ArrayBacked(serializedCapability);
                 if (currentSharingFile != null
-                        && currentSharingFile.getFileProperties().size + FastSharing.FILE_POINTER_SIZE <= FastSharing.SHARING_FILE_MAX_SIZE) {
+                        && currentSharingFile.getFileProperties().size + CapabilityStore.CAPABILITY_SIZE <= CapabilityStore.SHARING_FILE_MAX_SIZE) {
                     long size = currentSharingFile.getSize();
                     return uploadFileSection(currentSharingFile.props.name, newCapability, size, size + serializedCapability.length,
                             Optional.of(currentSharingFile.pointer.capability.baseKey), true, network, random, x -> {}, fragmenter);
                 } else {
                     int sharingFileIndex = currentSharingFile == null ? 0 : sharingFiles.size();
-                    String capStoreFilename = FastSharing.SHARING_FILE_PREFIX + sharingFileIndex;
+                    String capStoreFilename = CapabilityStore.SHARING_FILE_PREFIX + sharingFileIndex;
                     return uploadFileSection(capStoreFilename, newCapability, 0, serializedCapability.length,
                             Optional.empty(), false, network, random, x -> {}, fragmenter);
                 }

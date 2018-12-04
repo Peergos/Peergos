@@ -320,7 +320,7 @@ public class UserContext {
                             Futures.reduceAll(children,
                                     true,
                                     (x, friendDirectory) -> {
-                                        return FastSharing.loadSharingLinks(homeDirSupplier, friendDirectory,
+                                        return CapabilityStore.loadSharingLinks(homeDirSupplier, friendDirectory,
                                                 this.username, network, crypto.random, fragmenter, false)
                                                 .thenApply(caps -> {
                                                     String friendName = friendDirectory.getName();

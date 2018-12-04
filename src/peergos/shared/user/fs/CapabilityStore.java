@@ -10,15 +10,12 @@ import java.util.concurrent.CompletableFuture;
 import java.util.function.*;
 import java.util.stream.*;
 
-public class FastSharing {
-    public static final int FILE_POINTER_SIZE = 159; // fp.toCbor().toByteArray() DOESN'T INCLUDE .secret
+public class CapabilityStore {
+    public static final int CAPABILITY_SIZE = 159; // fp.toCbor().toByteArray() DOESN'T INCLUDE .secret
     public static final int CAPS_PER_FILE = 10000;
-    public static final int SHARING_FILE_MAX_SIZE = FILE_POINTER_SIZE * CAPS_PER_FILE;
+    public static final int SHARING_FILE_MAX_SIZE = CAPABILITY_SIZE * CAPS_PER_FILE;
     public static final String CAPABILITY_CACHE_DIR = ".capabilitycache";
     public static final String SHARING_FILE_PREFIX = "sharing.";
-    public static final String SEPARATOR = "#";
-    public static final String RETRIEVED_CAPABILITY_CACHE = SEPARATOR + ".cache";
-
 
     /**
      *
@@ -44,7 +41,7 @@ public class FastSharing {
                         .sorted(Comparator.comparing(f -> f.getFileProperties().modified))
                         .collect(Collectors.toList());
                 return getCacheFile(friendName, homeDirSupplier, network, random).thenCompose(optCachedFile -> {
-                    long totalRecords = sharingFiles.stream().mapToLong(f -> f.getFileProperties().size).sum() / FILE_POINTER_SIZE;
+                    long totalRecords = sharingFiles.stream().mapToLong(f -> f.getFileProperties().size).sum() / CAPABILITY_SIZE;
                     if(! optCachedFile.isPresent() ) {
                         CompletableFuture<List<RetrievedCapability>> allFiles = Futures.reduceAll(sharingFiles,
                                 Collections.emptyList(),
@@ -65,8 +62,8 @@ public class FastSharing {
                         return readRetrievedCapabilityCache(cachedFile, network, random).thenCompose(cache -> {
                             if (totalRecords == cache.getRecordsRead())
                                 return CompletableFuture.completedFuture(cache);
-                            int shareFileIndex = (int)(cache.getRecordsRead() * FILE_POINTER_SIZE) / SHARING_FILE_MAX_SIZE;
-                            int recordIndex = (int) ((cache.getRecordsRead() * FILE_POINTER_SIZE) % SHARING_FILE_MAX_SIZE) / FILE_POINTER_SIZE;
+                            int shareFileIndex = (int)(cache.getRecordsRead() * CAPABILITY_SIZE) / SHARING_FILE_MAX_SIZE;
+                            int recordIndex = (int) ((cache.getRecordsRead() * CAPABILITY_SIZE) % SHARING_FILE_MAX_SIZE) / CAPABILITY_SIZE;
                             List<FileTreeNode> sharingFilesToRead = sharingFiles.subList(shareFileIndex, sharingFiles.size());
                             CompletableFuture<List<RetrievedCapability>> allFiles = Futures.reduceAll(sharingFilesToRead.subList(0, sharingFilesToRead.size() - 1),
                                     Collections.emptyList(),
@@ -103,8 +100,8 @@ public class FastSharing {
                     List<FileTreeNode> sharingFiles = files.stream()
                             .sorted(Comparator.comparing(f -> f.getFileProperties().modified))
                             .collect(Collectors.toList());
-                    long totalRecords = sharingFiles.stream().mapToLong(f -> f.getFileProperties().size).sum() / FILE_POINTER_SIZE;
-                    int shareFileIndex = (int) (capIndex * FILE_POINTER_SIZE) / SHARING_FILE_MAX_SIZE;
+                    long totalRecords = sharingFiles.stream().mapToLong(f -> f.getFileProperties().size).sum() / CAPABILITY_SIZE;
+                    int shareFileIndex = (int) (capIndex * CAPABILITY_SIZE) / SHARING_FILE_MAX_SIZE;
                     int recordIndex = (int) (capIndex % CAPS_PER_FILE);
                     List<FileTreeNode> sharingFilesToRead = sharingFiles.subList(shareFileIndex, sharingFiles.size());
 
@@ -131,7 +128,7 @@ public class FastSharing {
     public static CompletableFuture<Long> getCapabilityCount(FileTreeNode friendSharedDir,
                                                              NetworkAccess network) {
         return friendSharedDir.getChildren(network)
-                .thenApply(capFiles -> capFiles.stream().mapToLong(f -> f.getFileProperties().size).sum() / FILE_POINTER_SIZE);
+                .thenApply(capFiles -> capFiles.stream().mapToLong(f -> f.getFileProperties().size).sum() / CAPABILITY_SIZE);
     }
 
     public static CompletableFuture<List<RetrievedCapability>> readSharingFile(String ownerName,
@@ -147,8 +144,8 @@ public class FastSharing {
                                                                                SafeRandom random) {
         return file.getInputStream(network, random, x -> {}).thenCompose(reader -> {
             int currentFileSize = (int) file.getSize();
-            List<CompletableFuture<Optional<RetrievedCapability>>> capabilities = IntStream.range(offsetIndex, currentFileSize / FILE_POINTER_SIZE)
-                    .mapToObj(e -> e * FILE_POINTER_SIZE)
+            List<CompletableFuture<Optional<RetrievedCapability>>> capabilities = IntStream.range(offsetIndex, currentFileSize / CAPABILITY_SIZE)
+                    .mapToObj(e -> e * CAPABILITY_SIZE)
                     .map(offset -> readSharingRecord(ownerName, reader, offset, network))
                     .collect(Collectors.toList());
 
@@ -163,9 +160,9 @@ public class FastSharing {
                                                                                       AsyncReader reader,
                                                                                       int offset,
                                                                                       NetworkAccess network) {
-        byte[] serialisedFilePointer = new byte[FILE_POINTER_SIZE];
+        byte[] serialisedFilePointer = new byte[CAPABILITY_SIZE];
         return reader.seek( 0, offset).thenCompose( currentPos ->
-                currentPos.readIntoArray(serialisedFilePointer, 0, FILE_POINTER_SIZE)
+                currentPos.readIntoArray(serialisedFilePointer, 0, CAPABILITY_SIZE)
                         .thenCompose(bytesRead -> {
                             Capability pointer = Capability.fromByteArray(serialisedFilePointer);
                             EntryPoint entry = new EntryPoint(pointer, ownerName, Collections.emptySet(), Collections.emptySet());
