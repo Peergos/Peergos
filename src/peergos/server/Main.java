@@ -273,7 +273,7 @@ public class Main {
                     mutablePointersSqlFile :
                     a.fromPeergosDir("mutable-pointers-file").toString();
             MutablePointers sqlMutable = UserRepository.buildSqlLite(path, localDht, maxUserCount);
-            MutablePointersProxy proxingMutable = new HttpMutablePointers(ipfsGateway, ipfsGateway);
+            MutablePointersProxy proxingMutable = new HttpMutablePointers(ipfsGateway, pkiServerNodeId);
 
             PublicKeyHash peergosId = PublicKeyHash.fromString(a.getArg("peergos.identity.hash"));
             // build a mirroring proxying corenode, unless we are the pki node

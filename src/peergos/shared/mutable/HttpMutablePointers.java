@@ -18,11 +18,26 @@ public class HttpMutablePointers implements MutablePointersProxy {
 
     private static final boolean LOGGING = true;
     private final HttpPoster direct, p2p;
+    private final String directUrlPrefix;
 
     public HttpMutablePointers(HttpPoster direct, HttpPoster p2p)
     {
         LOG.info("Creating Http Mutable Pointers API at " + direct + " and " + p2p);
+        this.directUrlPrefix = "";
         this.direct = direct;
+        this.p2p = p2p;
+    }
+
+    /** create an instance that always proxies calls to the supplied node
+     *
+     * @param p2p
+     * @param targetNodeID
+     */
+    public HttpMutablePointers(HttpPoster p2p, Multihash targetNodeID)
+    {
+        LOG.info("Creating proxying Http Mutable Pointers API at " + p2p);
+        this.directUrlPrefix = getProxyUrlPrefix(targetNodeID);
+        this.direct = p2p;
         this.p2p = p2p;
     }
 
@@ -34,7 +49,7 @@ public class HttpMutablePointers implements MutablePointersProxy {
     public CompletableFuture<Boolean> setPointer(PublicKeyHash ownerPublicKey,
                                                  PublicKeyHash sharingPublicKey,
                                                  byte[] sharingKeySignedPayload) {
-        return setPointer("", direct, ownerPublicKey, sharingPublicKey, sharingKeySignedPayload);
+        return setPointer(directUrlPrefix, direct, ownerPublicKey, sharingPublicKey, sharingKeySignedPayload);
     }
 
     @Override
@@ -81,7 +96,7 @@ public class HttpMutablePointers implements MutablePointersProxy {
 
     @Override
     public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash owner, PublicKeyHash writer) {
-        return getPointer("", direct, owner, writer);
+        return getPointer(directUrlPrefix, direct, owner, writer);
     }
 
     @Override
