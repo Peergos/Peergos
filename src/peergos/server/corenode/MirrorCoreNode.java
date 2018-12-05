@@ -69,7 +69,12 @@ public class MirrorCoreNode implements CoreNode {
 
     @Override
     public CompletableFuture<List<UserPublicKeyLink>> getChain(String username) {
-        return CompletableFuture.completedFuture(chains.getOrDefault(username, Collections.emptyList()));
+        List<UserPublicKeyLink> chain = chains.get(username);
+        if (chain != null)
+            return CompletableFuture.completedFuture(chain);
+
+        update();
+        return CompletableFuture.completedFuture(chains.get(username));
     }
 
     @Override
@@ -79,6 +84,10 @@ public class MirrorCoreNode implements CoreNode {
 
     @Override
     public CompletableFuture<String> getUsername(PublicKeyHash key) {
+        String username = reverseLookup.get(key);
+        if (username != null)
+            return CompletableFuture.completedFuture(username);
+        update();
         return CompletableFuture.completedFuture(reverseLookup.get(key));
     }
 
