@@ -23,10 +23,6 @@ public class RetrievedCapability implements Cborable {
         return CborObject.CborMap.build(cbor);
     }
 
-    public static RetrievedCapability fromByteArray(byte[] raw) {
-        return fromCbor(CborObject.fromByteArray(raw));
-    }
-
     public static RetrievedCapability fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Incorrect cbor for RetrievedCapability: " + cbor);

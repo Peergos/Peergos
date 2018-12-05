@@ -1,6 +1,7 @@
 package peergos.shared.user.fs;
 
 import peergos.shared.NetworkAccess;
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.random.SafeRandom;
 import peergos.shared.user.EntryPoint;
 import peergos.shared.util.*;
@@ -222,7 +223,7 @@ public class CapabilityStore {
                 .thenCompose(reader -> {
                     byte[] storeData = new byte[(int) cacheFile.getSize()];
                     return reader.readIntoArray(storeData, 0, storeData.length)
-                            .thenApply(x -> CapabilitiesFromUser.deserialize(storeData));
+                            .thenApply(x -> CapabilitiesFromUser.fromCbor(CborObject.fromByteArray(storeData)));
                 });
     }
 }
