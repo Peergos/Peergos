@@ -94,6 +94,7 @@ public class MultiNodeNetworkTests {
                     .with("social-sql-file", ":memory:");
             Main.PEERGOS.main(normalNode);
 
+            Thread.sleep(10_000);
             IPFS ipfs = new IPFS(Main.getLocalMultiAddress(ipfsApiPort));
             ipfs.swarm.connect(Main.getLocalBootstrapAddress(bootstrapSwarmPort, pkiNodeId).toString());
             nodes.add(buildApi(normalNode));

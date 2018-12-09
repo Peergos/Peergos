@@ -7,7 +7,6 @@ import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
 
-import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -74,7 +73,7 @@ public class MirrorCoreNode implements CoreNode {
             return CompletableFuture.completedFuture(chain);
 
         update();
-        return CompletableFuture.completedFuture(chains.get(username));
+        return CompletableFuture.completedFuture(chains.getOrDefault(username, Collections.emptyList()));
     }
 
     @Override
