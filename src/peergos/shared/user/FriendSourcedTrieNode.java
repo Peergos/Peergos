@@ -99,8 +99,7 @@ public class FriendSourcedTrieNode implements TrieNode {
     }
 
     private static String trimOwner(String path) {
-        if (path.startsWith("/"))
-            path = path.substring(1);
+        path = TrieNode.canonicalise(path);
         return path.substring(path.indexOf("/") + 1);
     }
 

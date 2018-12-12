@@ -33,7 +33,7 @@ public class TrieNodeImpl implements TrieNode {
                 path = pathMappings.get(prefix) + path.substring(prefix.length());
             }
         }
-        String finalPath = path.startsWith("/") ? path.substring(1) : path;
+        String finalPath = TrieNode.canonicalise(path);
         if (finalPath.length() == 0) {
             if (! value.isPresent()) { // find a child entry and traverse parent links
                 return children.values().stream()
@@ -58,7 +58,7 @@ public class TrieNodeImpl implements TrieNode {
 
     @Override
     public CompletableFuture<Set<FileTreeNode>> getChildren(String path, NetworkAccess network) {
-        String trimmedPath = path.startsWith("/") ? path.substring(1) : path;
+        String trimmedPath = TrieNode.canonicalise(path);
         if (trimmedPath.length() == 0) {
             if (!value.isPresent()) { // find a child entry and traverse parent links
                 Set<CompletableFuture<Optional<FileTreeNode>>> kids = children.values().stream()
@@ -88,8 +88,7 @@ public class TrieNodeImpl implements TrieNode {
     @Override
     public TrieNodeImpl put(String path, EntryPoint e) {
         LOG.info("Entrie.put(" + path + ")");
-        if (path.startsWith("/"))
-            path = path.substring(1);
+        path = TrieNode.canonicalise(path);
         if (path.length() == 0) {
             return new TrieNodeImpl(children, Optional.of(e), pathMappings);
         }
@@ -105,8 +104,7 @@ public class TrieNodeImpl implements TrieNode {
     @Override
     public TrieNode putNode(String path, TrieNode t) {
         LOG.info("Entrie.put(" + path + ")");
-        if (path.startsWith("/"))
-            path = path.substring(1);
+        path = TrieNode.canonicalise(path);
         if (path.length() == 0) {
             return t;
         }
@@ -127,8 +125,7 @@ public class TrieNodeImpl implements TrieNode {
                 path = pathMappings.get(prefix) + path.substring(prefix.length());
             }
         }
-        if (path.startsWith("/"))
-            path = path.substring(1);
+        path = TrieNode.canonicalise(path);
         if (path.length() == 0) {
             return new TrieNodeImpl(children, Optional.empty(), pathMappings);
         }
