@@ -139,11 +139,6 @@ public class FriendSourcedTrieNode implements TrieNode {
     }
 
     @Override
-    public boolean hasWriteAccess() {
-        return false;
-    }
-
-    @Override
     public boolean isEmpty() {
         return root.isEmpty();
     }

@@ -129,14 +129,6 @@ public class TrieNodeImpl implements TrieNode {
         return new TrieNodeImpl(newChildren, value);
     }
 
-    public boolean hasWriteAccess() {
-        if (children.size() == 0)
-            return value.map(e -> e.pointer.isWritable()).orElse(false);
-        return children.values()
-                .stream()
-                .anyMatch(c -> c.hasWriteAccess());
-    }
-
     public static TrieNodeImpl empty() {
         return new TrieNodeImpl(Collections.emptyMap(), Optional.empty());
     }

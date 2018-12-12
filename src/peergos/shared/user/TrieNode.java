@@ -22,8 +22,6 @@ public interface TrieNode {
 
     TrieNode removeEntry(String path);
 
-    boolean hasWriteAccess();
-
     boolean isEmpty();
 
     static String canonicalise(String path) {

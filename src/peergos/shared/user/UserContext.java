@@ -71,14 +71,6 @@ public class UserContext {
     }
 
     @JsMethod
-    public boolean hasWriteAccess() {
-        if(username != null && ! username.isEmpty())
-            return true;
-
-        return entrie.hasWriteAccess();
-    }
-
-    @JsMethod
     public boolean isShared(FileTreeNode file) {
         return false;
     }
