@@ -11,6 +11,18 @@ import java.util.concurrent.CompletableFuture;
 import java.util.function.*;
 import java.util.stream.*;
 
+/** This class implements the mechanism by which users share Capabilities with each other
+ *
+ * Each unidirectional sharing relationship has a sharing folder /source_user/sharing/recipient_user/
+ * In this sharing directory is an append only list of capabilities which the source user has granted to the recipient
+ * user. This is implemented as a series of numbered files in the directory with a maximum number of capabilities per
+ * file. Knowing the index of the capability in the overall list you can calcualte the file name, and the offset in the
+ * file at which the capability is stored. Write and read capabilities form logically separate append only lists.
+ *
+ * To avoid reparsing the entire capability list at every login, the capabilities and their retrieved paths are stored
+ * in a cache for each source user located at /recipient_user/.capabilitycache/source_user
+ * Each of these cache files is just a serialized CapabilitiesFromUser
+ */
 public class CapabilityStore {
     public static final int CAPABILITY_SIZE = 159; // fp.toCbor().toByteArray() DOESN'T INCLUDE .secret
     public static final int CAPS_PER_FILE = 10000;
