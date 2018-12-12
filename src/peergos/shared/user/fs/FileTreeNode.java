@@ -276,11 +276,11 @@ public class FileTreeNode {
         return this.getChildren(network)
             .thenCompose(children -> {
                 List<FileTreeNode> capabilityCacheFiles = children.stream()
-                        .filter(f -> f.getName().startsWith(CapabilityStore.SHARING_FILE_PREFIX))
+                        .filter(f -> f.getName().startsWith(CapabilityStore.READ_ONLY_SHARING_FILE_PREFIX))
                         .collect(Collectors.toList());
                 List<FileTreeNode> sharingFiles = capabilityCacheFiles.stream()
                         .sorted(Comparator.comparingInt(f -> Integer.parseInt(f.getFileProperties().name
-                                .substring(CapabilityStore.SHARING_FILE_PREFIX.length()))))
+                                .substring(CapabilityStore.READ_ONLY_SHARING_FILE_PREFIX.length()))))
                         .collect(Collectors.toList());
                 FileTreeNode currentSharingFile = sharingFiles.isEmpty() ? null : sharingFiles.get(sharingFiles.size() - 1);
                 byte[] serializedCapability = file.pointer.capability.toCbor().toByteArray();
@@ -294,7 +294,7 @@ public class FileTreeNode {
                             Optional.of(currentSharingFile.pointer.capability.baseKey), true, network, random, x -> {}, fragmenter);
                 } else {
                     int sharingFileIndex = currentSharingFile == null ? 0 : sharingFiles.size();
-                    String capStoreFilename = CapabilityStore.SHARING_FILE_PREFIX + sharingFileIndex;
+                    String capStoreFilename = CapabilityStore.READ_ONLY_SHARING_FILE_PREFIX + sharingFileIndex;
                     return uploadFileSection(capStoreFilename, newCapability, 0, serializedCapability.length,
                             Optional.empty(), false, network, random, x -> {}, fragmenter);
                 }

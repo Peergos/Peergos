@@ -28,7 +28,21 @@ public class CapabilityStore {
     public static final int CAPS_PER_FILE = 10000;
     public static final int SHARING_FILE_MAX_SIZE = CAPABILITY_SIZE * CAPS_PER_FILE;
     public static final String CAPABILITY_CACHE_DIR = ".capabilitycache";
-    public static final String SHARING_FILE_PREFIX = "sharing.";
+    public static final String READ_ONLY_SHARING_FILE_PREFIX = "sharing.r.";
+    public static final String WRITE_SHARING_FILE_PREFIX = "sharing.w.";
+
+    private static final Comparator<FileTreeNode> indexOrder =
+            Comparator.comparingInt(f -> filenameToIndex(f.getName()));
+
+    private static int filenameToIndex(String filename) {
+        if (! filename.startsWith(READ_ONLY_SHARING_FILE_PREFIX))
+            return -1;
+        return Integer.parseInt(filename.substring(READ_ONLY_SHARING_FILE_PREFIX.length()));
+    }
+
+    private static boolean isReadCapFile(String filename) {
+        return filename.startsWith(READ_ONLY_SHARING_FILE_PREFIX);
+    }
 
     /**
      *
@@ -51,7 +65,8 @@ public class CapabilityStore {
         return friendSharedDir.getChildren(network)
             .thenCompose(files -> {
                 List<FileTreeNode> sharingFiles = files.stream()
-                        .sorted(Comparator.comparing(f -> f.getFileProperties().modified))
+                        .filter(f -> isReadCapFile(f.getName()))
+                        .sorted(indexOrder)
                         .collect(Collectors.toList());
                 return getCacheFile(friendName, homeDirSupplier, network, random).thenCompose(optCachedFile -> {
                     long totalRecords = sharingFiles.stream().mapToLong(f -> f.getFileProperties().size).sum() / CAPABILITY_SIZE;
@@ -111,7 +126,7 @@ public class CapabilityStore {
         return friendSharedDir.getChildren(network)
                 .thenCompose(files -> {
                     List<FileTreeNode> sharingFiles = files.stream()
-                            .sorted(Comparator.comparing(f -> f.getFileProperties().modified))
+                            .sorted(indexOrder)
                             .collect(Collectors.toList());
                     long totalRecords = sharingFiles.stream().mapToLong(f -> f.getFileProperties().size).sum() / CAPABILITY_SIZE;
                     int shareFileIndex = (int) (capIndex * CAPABILITY_SIZE) / SHARING_FILE_MAX_SIZE;
