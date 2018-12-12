@@ -22,8 +22,6 @@ public interface TrieNode {
 
     TrieNode removeEntry(String path);
 
-    TrieNode addPathMapping(String prefix, String target);
-
     boolean hasWriteAccess();
 
     boolean isEmpty();

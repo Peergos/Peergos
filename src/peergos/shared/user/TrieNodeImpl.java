@@ -16,23 +16,16 @@ public class TrieNodeImpl implements TrieNode {
 	private static final Logger LOG = Logger.getGlobal();
     private final Map<String, TrieNode> children;
     private final Optional<EntryPoint> value;
-    private final Map<String, String> pathMappings;
 
     @JsConstructor
-    private TrieNodeImpl(Map<String, TrieNode> children, Optional<EntryPoint> value, Map<String, String> pathMappings) {
+    private TrieNodeImpl(Map<String, TrieNode> children, Optional<EntryPoint> value) {
         this.children = Collections.unmodifiableMap(children);
         this.value = value;
-        this.pathMappings = Collections.unmodifiableMap(pathMappings);
     }
 
     @Override
     public CompletableFuture<Optional<FileTreeNode>> getByPath(String path, NetworkAccess network) {
         LOG.info("GetByPath: " + path);
-        for (String prefix: pathMappings.keySet()) {
-            if (path.startsWith(prefix)) {
-                path = pathMappings.get(prefix) + path.substring(prefix.length());
-            }
-        }
         String finalPath = TrieNode.canonicalise(path);
         if (finalPath.length() == 0) {
             if (! value.isPresent()) { // find a child entry and traverse parent links
@@ -90,7 +83,7 @@ public class TrieNodeImpl implements TrieNode {
         LOG.info("Entrie.put(" + path + ")");
         path = TrieNode.canonicalise(path);
         if (path.length() == 0) {
-            return new TrieNodeImpl(children, Optional.of(e), pathMappings);
+            return new TrieNodeImpl(children, Optional.of(e));
         }
         String[] elements = path.split("/");
         TrieNode existing = children.getOrDefault(elements[0], TrieNodeImpl.empty());
@@ -98,7 +91,7 @@ public class TrieNodeImpl implements TrieNode {
 
         HashMap<String, TrieNode> newChildren = new HashMap<>(children);
         newChildren.put(elements[0], newChild);
-        return new TrieNodeImpl(newChildren, value, pathMappings);
+        return new TrieNodeImpl(newChildren, value);
     }
 
     @Override
@@ -114,20 +107,15 @@ public class TrieNodeImpl implements TrieNode {
 
         HashMap<String, TrieNode> newChildren = new HashMap<>(children);
         newChildren.put(elements[0], newChild);
-        return new TrieNodeImpl(newChildren, value, pathMappings);
+        return new TrieNodeImpl(newChildren, value);
     }
 
     @Override
     public TrieNodeImpl removeEntry(String path) {
         LOG.info("Entrie.rm(" + path + ")");
-        for (String prefix: pathMappings.keySet()) {
-            if (path.startsWith(prefix)) {
-                path = pathMappings.get(prefix) + path.substring(prefix.length());
-            }
-        }
         path = TrieNode.canonicalise(path);
         if (path.length() == 0) {
-            return new TrieNodeImpl(children, Optional.empty(), pathMappings);
+            return new TrieNodeImpl(children, Optional.empty());
         }
         String[] elements = path.split("/");
         TrieNode existing = children.getOrDefault(elements[0], TrieNodeImpl.empty());
@@ -138,14 +126,7 @@ public class TrieNodeImpl implements TrieNode {
             newChildren.remove(elements[0]);
         else
             newChildren.put(elements[0], newChild);
-        return new TrieNodeImpl(newChildren, value, pathMappings);
-    }
-
-    @Override
-    public TrieNodeImpl addPathMapping(String prefix, String target) {
-        Map<String, String> newLinks = new HashMap<>(pathMappings);
-        newLinks.put(prefix, target);
-        return new TrieNodeImpl(children, value, newLinks);
+        return new TrieNodeImpl(newChildren, value);
     }
 
     public boolean hasWriteAccess() {
@@ -157,7 +138,7 @@ public class TrieNodeImpl implements TrieNode {
     }
 
     public static TrieNodeImpl empty() {
-        return new TrieNodeImpl(Collections.emptyMap(), Optional.empty(), Collections.emptyMap());
+        return new TrieNodeImpl(Collections.emptyMap(), Optional.empty());
     }
 
     @Override

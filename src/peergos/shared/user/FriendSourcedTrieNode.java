@@ -139,11 +139,6 @@ public class FriendSourcedTrieNode implements TrieNode {
     }
 
     @Override
-    public TrieNode addPathMapping(String prefix, String target) {
-        throw new IllegalStateException("Unimplemented!");
-    }
-
-    @Override
     public boolean hasWriteAccess() {
         return false;
     }
