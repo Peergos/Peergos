@@ -8,18 +8,18 @@ import java.util.TreeMap;
 
 public class RetrievedCapability implements Cborable {
     public String path;
-    public Capability fp;
+    public Capability cap;
 
-    public RetrievedCapability(String path, Capability fp) {
+    public RetrievedCapability(String path, Capability cap) {
         this.path = path;
-        this.fp = fp;
+        this.cap = cap;
     }
 
     @Override
     public CborObject toCbor() {
         Map<String, CborObject> cbor = new TreeMap<>();
         cbor.put("p", new CborObject.CborString(path));
-        cbor.put("fp", fp.toCbor());
+        cbor.put("c", cap.toCbor());
         return CborObject.CborMap.build(cbor);
     }
 
@@ -28,7 +28,7 @@ public class RetrievedCapability implements Cborable {
             throw new IllegalStateException("Incorrect cbor for RetrievedCapability: " + cbor);
         SortedMap<CborObject, ? extends Cborable> map = ((CborObject.CborMap) cbor).values;
         CborObject.CborString path = (CborObject.CborString)map.get(new CborObject.CborString("p"));
-        Capability fp = Capability.fromCbor(map.get(new CborObject.CborString("fp")));
+        Capability fp = Capability.fromCbor(map.get(new CborObject.CborString("c")));
         return new RetrievedCapability(path.value, fp);
     }
 
@@ -40,13 +40,13 @@ public class RetrievedCapability implements Cborable {
         RetrievedCapability that = (RetrievedCapability) o;
 
         if (path != null ? !path.equals(that.path) : that.path != null) return false;
-        return fp != null ? fp.equals(that.fp) : that.fp == null;
+        return cap != null ? cap.equals(that.cap) : that.cap == null;
     }
 
     @Override
     public int hashCode() {
         int result = (path != null ? path.hashCode() : 0);
-        result = 31 * result + (fp != null ? fp.hashCode() : 0);
+        result = 31 * result + (cap != null ? cap.hashCode() : 0);
         return result;
     }
 

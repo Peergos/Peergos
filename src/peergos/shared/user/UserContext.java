@@ -1068,7 +1068,7 @@ public class UserContext {
     }
 
     public static EntryPoint convert(String owner, RetrievedCapability cap) {
-        return new EntryPoint(cap.fp, owner, Collections.emptySet(), Collections.emptySet());
+        return new EntryPoint(cap.cap, owner, Collections.emptySet(), Collections.emptySet());
     }
 
     private static CompletableFuture<TrieNode> addRetrievedEntryPoint(String ourName,
