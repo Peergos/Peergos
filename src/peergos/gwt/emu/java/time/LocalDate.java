@@ -6,7 +6,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.Objects;
 
-public class LocalDate {
+public class LocalDate implements Comparable<LocalDate>{
 
     private final int year;
     private final short month;
@@ -153,11 +153,11 @@ public class LocalDate {
 
     
     public boolean isBefore(LocalDate other) {
-        return compareTo0((LocalDate) other) < 0;
+        return compareTo((LocalDate) other) < 0;
     }
 
     public boolean isAfter(LocalDate other) {
-        return compareTo0((LocalDate) other) > 0;
+        return compareTo((LocalDate) other) > 0;
     }
     
     public LocalDate plusWeeks(long weeksToAdd) {
@@ -167,7 +167,9 @@ public class LocalDate {
     public LocalDate plusYears(long yearsToAdd) {
     	return null;
     }
-    private int compareTo0(LocalDate otherDate) {
+
+    @Override
+    public int compareTo(LocalDate otherDate) {
         int cmp = (year - otherDate.year);
         if (cmp == 0) {
             cmp = (month - otherDate.month);
@@ -184,7 +186,7 @@ public class LocalDate {
             return true;
         }
         if (obj instanceof LocalDate) {
-            return compareTo0((LocalDate) obj) == 0;
+            return compareTo((LocalDate) obj) == 0;
         }
         return false;
     }

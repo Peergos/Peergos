@@ -3,7 +3,7 @@ import java.util.logging.*;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.symmetric.SymmetricKey;
-import peergos.shared.user.fs.FilePointer;
+import peergos.shared.user.fs.Capability;
 import peergos.shared.util.*;
 
 import java.io.*;
@@ -41,10 +41,10 @@ public class UserStaticData implements Cborable {
             staticData.add(entryPoint);
     }
 
-    public boolean remove(FilePointer filePointer) {
+    public boolean remove(Capability capability) {
         for (Iterator<EntryPoint> it = staticData.iterator() ;it.hasNext();) {
             EntryPoint entry = it.next();
-            if (entry.pointer.equals(filePointer)) {
+            if (entry.pointer.equals(capability)) {
                 it.remove();
                 return true;
             }

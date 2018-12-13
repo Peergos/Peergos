@@ -1,6 +1,6 @@
 package java.time;
 
-public class LocalTime {
+public class LocalTime implements Comparable<LocalTime>{
 
 	static final int SECONDS_PER_MINUTE = 60;
 	static final int MINUTES_PER_HOUR = 60;
@@ -72,7 +72,22 @@ public class LocalTime {
         }
         return new LocalTime(hour, minute, second, nanoOfSecond);
     }
-    
+
+    @Override
+    public int compareTo(LocalTime other) {
+        int cmp = Integer.compare(hour, other.hour);
+        if (cmp == 0) {
+            cmp = Integer.compare(minute, other.minute);
+            if (cmp == 0) {
+                cmp = Integer.compare(second, other.second);
+                if (cmp == 0) {
+                    cmp = Integer.compare(nano, other.nano);
+                }
+            }
+        }
+        return cmp;
+    }
+
     @Override
     public boolean equals(Object obj) {
         if (this == obj) {

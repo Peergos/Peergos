@@ -7,6 +7,7 @@ import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.crypto.random.SafeRandom;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multihash.Multihash;
 import peergos.shared.merklebtree.*;
@@ -37,6 +38,9 @@ public class UserContext {
     public final Fragmenter fragmenter;
 
     private CompletableFuture<CommittedWriterData> userData;
+
+    private HashMap<String, Set<String>> sharedWithCache = new HashMap<>(); //path to friends SharedWith
+
     @JsProperty
     public TrieNode entrie; // ba dum che!
 
@@ -67,16 +71,16 @@ public class UserContext {
     }
 
     @JsMethod
-    public boolean hasWriteAccess() {
-        if(username != null && ! username.isEmpty())
-            return true;
-
-        return entrie.hasWriteAccess();
-    }
-    @JsMethod
     public boolean isShared(FileTreeNode file) {
         return false;
     }
+    /*
+    @JsMethod
+    public CompletableFuture<Boolean> isShared(FileTreeNode file) {
+        return file.getPath(network).thenApply(pathString ->
+                sharedWithCache.containsKey(pathString)
+        );
+    }*/
     
     public boolean isJavascript() {
     	return this.network.isJavascript();
@@ -85,10 +89,9 @@ public class UserContext {
     @JsMethod
      public CompletableFuture<Boolean> unShare(FileTreeNode file, String readerToRemove) {
 
-        return file.getPath(network).thenCompose(pathString -> {
-            return unShare(Paths.get(pathString), Collections.singleton(readerToRemove));
-        });
-
+        return file.getPath(network).thenCompose(pathString ->
+            unShare(Paths.get(pathString), Collections.singleton(readerToRemove))
+        );
     }
 
     public static CompletableFuture<UserContext> signIn(String username, String password, NetworkAccess network
@@ -121,12 +124,16 @@ public class UserContext {
                 }).exceptionally(Futures::logError);
     }
 
-    private static CompletableFuture<UserContext> login(String username, UserWithRoot userWithRoot, Pair<Multihash, CborObject> pair
-            , NetworkAccess network, Crypto crypto, Consumer<String> progressCallback) {
+    private static CompletableFuture<UserContext> login(String username,
+                                                        UserWithRoot userWithRoot,
+                                                        Pair<Multihash, CborObject> pair,
+                                                        NetworkAccess network,
+                                                        Crypto crypto,
+                                                        Consumer<String> progressCallback) {
         try {
             progressCallback.accept("Logging in");
             WriterData userData = WriterData.fromCbor(pair.right, userWithRoot.getRoot());
-            return createOurFileTreeOnly(username, userData, network)
+            return createOurFileTreeOnly(username, userData, network, crypto.random, Fragmenter.getInstance())
                     .thenCompose(root -> TofuCoreNode.load(username, root, network, crypto.random)
                             .thenCompose(keystore -> {
                                 TofuCoreNode tofu = new TofuCoreNode(network.coreNode, keystore);
@@ -198,7 +205,7 @@ public class UserContext {
 
                                             CommittedWriterData notCommitted = new CommittedWriterData(MaybeMultihash.empty(), newUserData);
                                             UserContext context = new UserContext(username, signer, userWithRoot.getBoxingPair(),
-                                                    network, crypto, CompletableFuture.completedFuture(notCommitted), TrieNode.empty());
+                                                    network, crypto, CompletableFuture.completedFuture(notCommitted), TrieNodeImpl.empty());
 
                                             LOG.info("Creating user's root directory");
                                             long t1 = System.currentTimeMillis();
@@ -207,10 +214,10 @@ public class UserContext {
                                                 return ((DirAccess) userRoot.fileAccess).mkdir(
                                                         SHARED_DIR_NAME,
                                                         network,
-                                                        userRoot.filePointer.getLocation().owner,
-                                                        userRoot.filePointer.signer(),
-                                                        userRoot.filePointer.location.getMapKey(),
-                                                        userRoot.filePointer.baseKey,
+                                                        userRoot.capability.getLocation().owner,
+                                                        userRoot.capability.signer(),
+                                                        userRoot.capability.location.getMapKey(),
+                                                        userRoot.capability.baseKey,
                                                         null,
                                                         true,
                                                         crypto.random)
@@ -229,9 +236,9 @@ public class UserContext {
 
     @JsMethod
     public static CompletableFuture<UserContext> fromPublicLink(String link, NetworkAccess network, Crypto crypto) {
-        FilePointer entryPoint = null;
+        Capability entryPoint = null;
         try {
-            entryPoint = FilePointer.fromLink(link);
+            entryPoint = Capability.fromLink(link);
         } catch (Exception e) { //link was invalid
             CompletableFuture<UserContext> invalidLink = new CompletableFuture<>();
             invalidLink.completeExceptionally(e);
@@ -241,8 +248,8 @@ public class UserContext {
         WriterData empty = WriterData.createEmpty(entryPoint.location.owner, Optional.empty(), null);
         CommittedWriterData committed = new CommittedWriterData(MaybeMultihash.empty(), empty);
         CompletableFuture<CommittedWriterData> userData = CompletableFuture.completedFuture(committed);
-        UserContext context = new UserContext(null, null, null, network.clear(), crypto, userData, TrieNode.empty());
-        return context.addEntryPoint(null, context.entrie, entry, network).thenApply(trieNode -> {
+        UserContext context = new UserContext(null, null, null, network.clear(), crypto, userData, TrieNodeImpl.empty());
+        return context.addEntryPoint(null, null, context.entrie, entry, network, crypto.random, Fragmenter.getInstance()).thenApply(trieNode -> {
             context.entrie = trieNode;
             return context;
         });
@@ -286,17 +293,37 @@ public class UserContext {
         progressCallback.accept("Retrieving Friends");
         CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
         return addToUserDataQueue(lock)
-                .thenCompose(wd -> createFileTree(entrie, username, wd.props, network)
+                .thenCompose(wd -> createFileTree(entrie, username, wd.props, network, crypto.random, fragmenter)
                         .thenCompose(root -> {
                             this.entrie = root;
                             return getByPath("/" + username + "/" + "shared")
-                                    .thenApply(sharedOpt -> {
+                                    .thenCompose(sharedOpt -> {
                                         if (!sharedOpt.isPresent())
                                             throw new IllegalStateException("Couldn't find shared folder!");
                                         lock.complete(wd);
-                                        return this;
-                                    });
+                                        return buildSharedWithCache(sharedOpt.get(), this::getUserRoot).thenApply(res -> res);
+                                    }).thenApply(res -> this);
                         }));
+    }
+
+    public CompletableFuture<Boolean> buildSharedWithCache(FileTreeNode sharedFolder, Supplier<CompletableFuture<FileTreeNode>> homeDirSupplier) {
+        return sharedFolder.getChildren(network)
+                    .thenCompose(children ->
+                            Futures.reduceAll(children,
+                                    true,
+                                    (x, friendDirectory) -> {
+                                        return CapabilityStore.loadSharingLinks(homeDirSupplier, friendDirectory,
+                                                this.username, network, crypto.random, fragmenter, false)
+                                                .thenApply(caps -> {
+                                                    String friendName = friendDirectory.getName();
+                                                    caps.getRetrievedCapabilities().stream().forEach(rc -> {
+                                                        Set<String> existingEntries = sharedWithCache.getOrDefault(rc.path, new HashSet<>());
+                                                        sharedWithCache.put(rc.path, existingEntries);
+                                                        existingEntries.add(friendName);
+                                                    });
+                                                    return true;
+                                                });
+                                    }, (a, b) -> a && b).thenApply(done -> done));
     }
 
     public CompletableFuture<Boolean> cleanEntryPoints() {
@@ -496,7 +523,7 @@ public class UserContext {
 
             // and authorise the writer key
             SigningPrivateKeyAndPublicHash writerWithHash = new SigningPrivateKeyAndPublicHash(writerHash, writer.secretSigningKey);
-            FilePointer rootPointer = new FilePointer(this.signer.publicKeyHash, writerWithHash, rootMapKey, rootRKey);
+            Capability rootPointer = new Capability(this.signer.publicKeyHash, writerWithHash, rootMapKey, rootRKey);
             EntryPoint entry = new EntryPoint(rootPointer, this.username, Collections.emptySet(), Collections.emptySet());
             return addOwnedKeyAndCommit(entry.pointer.location.writer)
                     .thenCompose(x -> {
@@ -629,7 +656,7 @@ public class UserContext {
             // send a null entry and null key (full rejection)
             DataSink dout = new DataSink();
             // write a null entry point
-            EntryPoint entry = new EntryPoint(FilePointer.createNull(), username, Collections.emptySet(), Collections.emptySet());
+            EntryPoint entry = new EntryPoint(Capability.createNull(), username, Collections.emptySet(), Collections.emptySet());
             dout.writeArray(entry.serialize());
             dout.writeArray(new byte[0]); // tell them we're not reciprocating
             byte[] plaintext = dout.toByteArray();
@@ -666,7 +693,7 @@ public class UserContext {
                             });
                 });
             } else {
-                EntryPoint entry = new EntryPoint(FilePointer.createNull(), username, Collections.emptySet(), Collections.emptySet());
+                EntryPoint entry = new EntryPoint(Capability.createNull(), username, Collections.emptySet(), Collections.emptySet());
                 dout.writeArray(entry.serialize());
                 return CompletableFuture.completedFuture(dout);
             }
@@ -755,7 +782,7 @@ public class UserContext {
         random.randombytes(rootMapKey, 0, 32);
 
         // add a note to our static data so we know who we sent the private key to
-        FilePointer friendRoot = new FilePointer(user, sharing, rootMapKey, SymmetricKey.random());
+        Capability friendRoot = new Capability(user, sharing, rootMapKey, SymmetricKey.random());
         return corenodeClient.getUsername(targetUser).thenCompose(name -> {
             EntryPoint entry = new EntryPoint(friendRoot, username, Collections.emptySet(), Stream.of(name).collect(Collectors.toSet()));
             try {
@@ -777,96 +804,27 @@ public class UserContext {
 
     public CompletableFuture<Boolean> unShare(Path path, Set<String> readersToRemove) {
         String pathString = path.toString();
-        CompletableFuture<Optional<FileTreeNode>> byPath = getByPath(pathString);
-        return byPath.thenCompose(opt -> {
-            //
-            // first remove links from shared directory
-            //
+        return getByPath(pathString).thenCompose(opt -> {
             FileTreeNode toUnshare = opt.orElseThrow(() -> new IllegalStateException("Specified un-shareWith path " + pathString + " does not exist"));
-            Optional<String> empty = Optional.empty();
-
-            Function<String, CompletableFuture<Optional<String>>> unshareWith = user -> getByPath("/" + username + "/shared/" + user)
-                    .thenCompose(sharedWithOpt -> {
-                        if (!sharedWithOpt.isPresent())
-                            return CompletableFuture.completedFuture(empty);
-                        FileTreeNode sharedRoot = sharedWithOpt.get();
-                        return sharedRoot.removeChild(toUnshare, network)
-                                .thenCompose(x -> CompletableFuture.completedFuture(Optional.of(user)));
-                    });
-
             // now change to new base keys, clean some keys and mark others as dirty
             return getByPath(path.getParent().toString())
                     .thenCompose(parent -> sharedWith(toUnshare)
                             .thenCompose(sharedWithUsers ->
                                     toUnshare.makeDirty(network, crypto.random, parent.get(), readersToRemove)
                                             .thenCompose(markedDirty -> {
-                                                Set<CompletableFuture<Optional<String>>> collect = sharedWithUsers.stream()
-                                                        .map(unshareWith::apply) //remove link from shared directory
-                                                        .collect(Collectors.toSet());
-
-                                                return Futures.combineAll(collect);})
-                                            .thenCompose(x -> {
-                                                List<String> allSharees = x.stream()
-                                                        .flatMap(e -> e.isPresent() ? Stream.of(e.get()) : Stream.empty())
-                                                        .collect(Collectors.toList());
-
-                                                Set<String> remainingReaders = allSharees.stream()
-                                                        .filter(reader -> !readersToRemove.contains(reader))
-                                                        .collect(Collectors.toSet());
-
-                                                return shareWith(path, remainingReaders);
+                                                Set<String> existingEntries = sharedWithCache.getOrDefault("/" + pathString, new HashSet<>());
+                                                existingEntries.removeAll(readersToRemove);
+                                                return shareWith(path, existingEntries);
                                             })));
         });
     }
 
     @JsMethod
     public CompletableFuture<Set<String>> sharedWith(FileTreeNode file) {
-
-        Location fileLocation = file.getLocation();
-        String path = "/" + username + "/shared";
-
-        Function<FileTreeNode, CompletableFuture<Optional<String>>> func = sharedUserDir -> {
-            CompletableFuture<Set<FileTreeNode>> children = sharedUserDir.getChildren(network);
-            return children.thenCompose(e -> {
-                boolean present = e.stream()
-                        .filter(sharedFile -> sharedFile.getLocation().equals(fileLocation))
-                        .findFirst()
-                        .isPresent();
-                String userName = present ? sharedUserDir.getFileProperties().name : null;
-                return CompletableFuture.completedFuture(Optional.ofNullable(userName));
-            });
-        };
-
-        return getByPath(path)
-                .thenCompose(sharedDirOpt -> {
-                    FileTreeNode sharedDir = sharedDirOpt.orElseThrow(() -> new IllegalStateException("No such directory" + path));
-                    return sharedDir.getChildren(network)
-                            .thenCompose(sharedUserDirs -> {
-                                List<CompletableFuture<Optional<String>>> collect = sharedUserDirs.stream()
-                                        .map(func::apply)
-                                        .collect(Collectors.toList());
-
-                                return Futures.combineAll(collect);
-                            }).thenCompose(optSet -> {
-                                Set<String> sharedWith = optSet.stream()
-                                        .flatMap(e -> e.isPresent() ? Stream.of(e.get()) : Stream.empty())
-                                        .collect(Collectors.toSet());
-                                return CompletableFuture.completedFuture(sharedWith);
-                            });
-                });
-
-        /*
-        FileTreeNode sharedDir = getByPath("/" + username + "/shared").get();
-        Set<FileTreeNode> friendDirs = sharedDir.getChildren(this);
-        return friendDirs.stream()
-                .filter(friendDir -> friendDir.getChildren(this)
-                        .stream()
-                        .filter(f -> f.getLocation().equals(file.getLocation()))
-                        .findAny()
-                        .isPresent())
-                .map(u -> u.getFileProperties().name)
-                .collect(Collectors.toSet());*/
-//        throw new IllegalStateException("Unimplemented!");
+        return file.getPath(network).thenCompose(path -> {
+            Set<String> sharedWith = sharedWithCache.getOrDefault(path, new HashSet<>());
+            return CompletableFuture.completedFuture(sharedWith);
+        });
     }
 
     public CompletableFuture<Boolean> shareWith(Path path, Set<String> readersToAdd) {
@@ -877,19 +835,43 @@ public class UserContext {
     public CompletableFuture<Boolean> shareWithAll(FileTreeNode file, Set<String> readersToAdd) {
         return Futures.reduceAll(readersToAdd,
                 true,
-                (x, username) -> shareWith(file, username),
-                (a, b) -> a && b);
+                (x, username) -> shareFileWith(file, username),
+                (a, b) -> a && b).thenCompose( result -> {
+                    if(!result) {
+                        CompletableFuture<Boolean> res = new CompletableFuture<>();
+                        res.complete(false);
+                        return res;
+                    }
+                    return updatedSharedWithCache(file, readersToAdd);
+        });
+    }
+
+    private CompletableFuture<Boolean> updatedSharedWithCache(FileTreeNode file, Set<String> readersToAdd) {
+        return file.getPath(network).thenCompose(path -> {
+            Set<String> existingEntries = sharedWithCache.getOrDefault(path, new HashSet<>());
+            sharedWithCache.put(path, existingEntries);
+            existingEntries.addAll(readersToAdd);
+            CompletableFuture<Boolean> res = new CompletableFuture<>();
+            res.complete(true);
+            return res;
+        });
     }
 
     @JsMethod
     public CompletableFuture<Boolean> shareWith(FileTreeNode file, String usernameToGrantReadAccess) {
+        Set<String> readersToAdd = new HashSet<>();
+        readersToAdd.add(usernameToGrantReadAccess);
+        return shareWithAll(file, readersToAdd);
+    }
+
+    public CompletableFuture<Boolean> shareFileWith(FileTreeNode file, String usernameToGrantReadAccess) {
         return getByPath("/" + username + "/shared/" + usernameToGrantReadAccess)
                 .thenCompose(shared -> {
                     if (!shared.isPresent())
                         return CompletableFuture.completedFuture(true);
-                    FileTreeNode sharedTreeNode = shared.get();
-                    return sharedTreeNode.addLinkTo(file, network, crypto.random)
-                            .thenCompose(ee -> CompletableFuture.completedFuture(true));
+                    FileTreeNode sharedDir = shared.get();
+                    return sharedDir.addSharingLinkTo(file, network, crypto.random, fragmenter)
+                        .thenCompose(ee -> CompletableFuture.completedFuture(true));
                 });
     }
 
@@ -902,7 +884,7 @@ public class UserContext {
         return addToUserDataQueue(lock).thenCompose(wd -> {
             wd.props.staticData.ifPresent(sd -> sd.add(entry));
             return wd.props.commit(signer.publicKeyHash, signer, wd.hash, network, lock::complete)
-                    .thenCompose(res -> addEntryPoint(username, root, entry, network))
+                    .thenCompose(res -> getUserRoot().thenCompose(ourRoot -> addEntryPoint(username, ourRoot, root, entry, network, crypto.random, fragmenter)))
                     .exceptionally(t -> {
                         lock.complete(wd);
                         return root;
@@ -983,13 +965,13 @@ public class UserContext {
                         } else if (freq.entry.get().pointer.isNull()) {
                             // They reciprocated, but didn't accept (they follow us, but we can't follow them)
                             // add entry point to static data to signify their acceptance
-                            EntryPoint entryWeSentToThem = new EntryPoint(ourDirForThem.getPointer().filePointer.readOnly(),
+                            EntryPoint entryWeSentToThem = new EntryPoint(ourDirForThem.getPointer().capability.readOnly(),
                                     username, Collections.singleton(ourDirForThem.getName()), Collections.emptySet());
                             return addToStaticDataAndCommit(trie, entryWeSentToThem);
                         } else {
                             // they accepted and reciprocated
                             // add entry point to static data to signify their acceptance
-                            EntryPoint entryWeSentToThem = new EntryPoint(ourDirForThem.getPointer().filePointer.readOnly(),
+                            EntryPoint entryWeSentToThem = new EntryPoint(ourDirForThem.getPointer().capability.readOnly(),
                                     username, Collections.singleton(ourDirForThem.getName()), Collections.emptySet());
 
                             // add new entry point to tree root
@@ -1047,8 +1029,12 @@ public class UserContext {
      *
      * @return TrieNode for root of filesystem containing only our files
      */
-    private static CompletableFuture<TrieNode> createOurFileTreeOnly(String ourName, WriterData userData, NetworkAccess network) {
-        TrieNode root = TrieNode.empty();
+    private static CompletableFuture<TrieNode> createOurFileTreeOnly(String ourName,
+                                                                     WriterData userData,
+                                                                     NetworkAccess network,
+                                                                     SafeRandom random,
+                                                                     Fragmenter fragmenter) {
+        TrieNode root = TrieNodeImpl.empty();
         if (! userData.staticData.isPresent())
             throw new IllegalStateException("Cannot retrieve file tree for a filesystem without entrypoints!");
         List<EntryPoint> ourFileSystemEntries = userData.staticData.get()
@@ -1056,7 +1042,7 @@ public class UserContext {
                 .stream()
                 .filter(e -> e.owner.equals(ourName))
                 .collect(Collectors.toList());
-        return Futures.reduceAll(ourFileSystemEntries, root, (t, e) -> addEntryPoint(ourName, t, e, network), (a, b) -> a)
+        return Futures.reduceAll(ourFileSystemEntries, root, (t, e) -> addEntryPoint(ourName, null, t, e, network, random, fragmenter), (a, b) -> a)
                 .exceptionally(Futures::logError);
     }
 
@@ -1064,70 +1050,69 @@ public class UserContext {
      *
      * @return TrieNode for root of filesystem
      */
-    private static CompletableFuture<TrieNode> createFileTree(TrieNode ourRoot, String ourName, WriterData userData, NetworkAccess network) {
+    private static CompletableFuture<TrieNode> createFileTree(TrieNode ourRoot,
+                                                              String ourName,
+                                                              WriterData userData,
+                                                              NetworkAccess network,
+                                                              SafeRandom random,
+                                                              Fragmenter fragmenter) {
         List<EntryPoint> notOurFileSystemEntries = userData.staticData.get()
                 .getEntryPoints()
                 .stream()
                 .filter(e -> ! e.owner.equals(ourName))
                 .collect(Collectors.toList());
-        List<CompletableFuture<Pair<EntryPoint, Optional<String>>>> retrievedEntries = notOurFileSystemEntries.stream()
-                .map(entry -> network.retrieveEntryPoint(entry)
-                        .thenCompose(opt -> opt.map(f -> f.getPath(network).thenApply(path -> new Pair<>(entry, Optional.of(path))))
-                        .orElse(CompletableFuture.completedFuture(new Pair<>(entry, Optional.empty())))))
-                .collect(Collectors.toList());
-        return Futures.reduceAll(retrievedEntries, ourRoot, (t, p) -> addRetrievedEntryPoint(ourName, t, p, network), (a, b) -> a)
+
+        // need to to retrieve all the entry points of our friends
+        return Futures.reduceAll(notOurFileSystemEntries, ourRoot, (t, e) -> addEntryPoint(ourName, null, t, e, network, random, fragmenter), (a, b) -> a)
                 .exceptionally(Futures::logError);
+    }
+
+    public static EntryPoint convert(String owner, RetrievedCapability cap) {
+        return new EntryPoint(cap.cap, owner, Collections.emptySet(), Collections.emptySet());
     }
 
     private static CompletableFuture<TrieNode> addRetrievedEntryPoint(String ourName,
                                                                       TrieNode root,
-                                                                      CompletableFuture<Pair<EntryPoint, Optional<String>>> futureWithPath,
-                                                                      NetworkAccess network) {
-        return futureWithPath.thenCompose(pair -> {
-            if (! pair.right.isPresent())
+                                                                      EntryPoint fileCap,
+                                                                      String path,
+                                                                      NetworkAccess network,
+                                                                      SafeRandom random,
+                                                                      Fragmenter fragmenter) {
+        // check entrypoint doesn't forge the owner
+        return  (fileCap.owner.equals(ourName) ? CompletableFuture.completedFuture(true) :
+                fileCap.isValid(path, network)).thenCompose(valid -> {
+            String[] parts = path.split("/");
+            if (parts.length < 3 || !parts[2].equals(SHARED_DIR_NAME))
+                return CompletableFuture.completedFuture(root.put(path, fileCap));
+            String username = parts[1];
+            if (username.endsWith(ourName)) // This is a sharing directory of ours for a friend
                 return CompletableFuture.completedFuture(root);
-            String path = pair.right.get();
-            EntryPoint e = pair.left;
-            // check entrypoint doesn't forge the owner
-            return  (e.owner.equals(ourName) ? CompletableFuture.completedFuture(true) :
-                    e.isValid(path, network)).thenApply(valid -> {
-
-                String[] parts = path.split("/");
-                if (parts.length < 3 || !parts[2].equals(SHARED_DIR_NAME))
-                    return root.put(path, e);
-                TrieNode rootWithMapping = parts[1].equals(ourName) ? root : root.addPathMapping("/" + parts[1] + "/", path + "/");
-                return rootWithMapping.put(path, e);
-            });
-        }).exceptionally(t -> {
-            LOG.log(Level.WARNING, t.getMessage(), t);
-            LOG.severe("Couldn't add entry point (failed retrieving parent dir or it was invalid)!");
-            // Allow the system to continue without this entry point
-            return root;
+            // This is a friend's sharing directory, create a wrapper to read the capabilities lazily from it
+            Supplier<CompletableFuture<FileTreeNode>> cacheDirSupplier =
+                    () -> root.getByPath(Paths.get(ourName).toString(), network).thenApply(opt -> opt.get());
+            return FriendSourcedTrieNode.build(cacheDirSupplier, fileCap, network, random, fragmenter)
+                    .thenApply(fromUser -> fromUser.map(userEntrie -> root.putNode(username, userEntrie)).orElse(root));
         });
     }
 
-    private static CompletableFuture<TrieNode> addEntryPoint(String ourName, TrieNode root, EntryPoint e, NetworkAccess network) {
+    private static CompletableFuture<TrieNode> addEntryPoint(String ourName,
+                                                             FileTreeNode ourRoot,
+                                                             TrieNode root,
+                                                             EntryPoint e,
+                                                             NetworkAccess network,
+                                                             SafeRandom random,
+                                                             Fragmenter fragmenter) {
         return network.retrieveEntryPoint(e).thenCompose(metadata -> {
             if (metadata.isPresent()) {
                 return metadata.get().getPath(network)
-                        .thenCompose(path -> {
-                            // check entrypoint doesn't forge the owner
-                            return  (e.owner.equals(ourName) ? CompletableFuture.completedFuture(true) :
-                             e.isValid(path, network)).thenApply(valid -> {
-
-                                LOG.info("Added entry point: " + metadata.get() + " at path " + path);
-                                String[] parts = path.split("/");
-                                if (parts.length < 3 || !parts[2].equals(SHARED_DIR_NAME))
-                                    return root.put(path, e);
-                                TrieNode rootWithMapping = parts[1].equals(ourName) ? root : root.addPathMapping("/" + parts[1] + "/", path + "/");
-                                return rootWithMapping.put(path, e);
-                            });
-                        }).exceptionally(t -> {
-                            LOG.log(Level.WARNING, t.getMessage(), t);
-                            LOG.severe("Couldn't add entry point (failed retrieving parent dir or it was invalid): " + metadata.get().getName());
-                            // Allow the system to continue without this entry point
-                            return root;
-                        });
+                        .thenCompose(path -> addRetrievedEntryPoint(ourName, root, e, path, network, random, fragmenter)
+                                .exceptionally(t -> {
+                                    LOG.log(Level.WARNING, t.getMessage(), t);
+                                    LOG.severe("Couldn't add entry point (failed retrieving parent dir or it was invalid): " + metadata.get().getName());
+                                    // Allow the system to continue without this entry point
+                                    return root;
+                                })
+                        );
             }
             return CompletableFuture.completedFuture(root);
         }).exceptionally(Futures::logError);
@@ -1207,7 +1192,7 @@ public class UserContext {
     }
 
     public void logout() {
-        entrie = entrie.clear();
+        entrie = TrieNodeImpl.empty();
     }
 
     @JsMethod

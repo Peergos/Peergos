@@ -236,7 +236,8 @@ public class NetworkAccess {
     public CompletableFuture<Optional<FileTreeNode>> retrieveEntryPoint(EntryPoint e) {
         return downloadEntryPoint(e)
                 .thenApply(faOpt ->faOpt.map(fa -> new FileTreeNode(new RetrievedFilePointer(e.pointer, fa), e.owner,
-                        e.readers, e.writers, e.pointer.writer)));
+                        e.readers, e.writers, e.pointer.writer)))
+                .exceptionally(t -> Optional.empty());
     }
 
     private CompletableFuture<Optional<CryptreeNode>> downloadEntryPoint(EntryPoint entry) {

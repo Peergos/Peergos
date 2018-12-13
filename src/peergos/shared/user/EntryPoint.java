@@ -18,11 +18,11 @@ import java.util.stream.*;
 @JsType
 public class EntryPoint implements Cborable{
 
-    public final FilePointer pointer;
+    public final Capability pointer;
     public final String owner;
     public final Set<String> readers, writers;
 
-    public EntryPoint(FilePointer pointer, String owner, Set<String> readers, Set<String> writers) {
+    public EntryPoint(Capability pointer, String owner, Set<String> readers, Set<String> writers) {
         this.pointer = pointer;
         this.owner = owner;
         this.readers = readers;
@@ -76,7 +76,7 @@ public class EntryPoint implements Cborable{
             throw new IllegalStateException("Incorrect cbor type for EntryPoint: " + cbor);
 
         List<? extends Cborable> value = ((CborObject.CborList) cbor).value;
-        FilePointer pointer = FilePointer.fromCbor(value.get(0));
+        Capability pointer = Capability.fromCbor(value.get(0));
         String owner = ((CborObject.CborString) value.get(1)).value;
         Set<String> readers = ((CborObject.CborList) value.get(2)).value
                 .stream()

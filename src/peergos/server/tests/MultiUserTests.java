@@ -66,8 +66,8 @@ public class MultiUserTests {
 
     @Test
     public void safeCopyOfFriendsFile() throws Exception {
-        UserContext u1 = PeergosNetworkUtils.ensureSignedUp("a", "a", network.clear(), crypto);
-        UserContext u2 = PeergosNetworkUtils.ensureSignedUp("b", "b", network.clear(), crypto);
+        UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
+        UserContext u2 = PeergosNetworkUtils.ensureSignedUp(random(), "b", network.clear(), crypto);
 
         // send follow requests from each other user to "a"
         u2.sendFollowRequest(u1.username, SymmetricKey.random()).get();
@@ -108,15 +108,14 @@ public class MultiUserTests {
 
         // check that the copied file has the correct contents
         UserTests.checkFileContents(data, copy, u2);
-        Assert.assertTrue("Different base key", ! copy.getPointer().filePointer.baseKey.equals(u1File.getPointer().filePointer.baseKey));
+        Assert.assertTrue("Different base key", ! copy.getPointer().capability.baseKey.equals(u1File.getPointer().capability.baseKey));
         Assert.assertTrue("Different metadata key", ! UserTests.getMetaKey(copy).equals(UserTests.getMetaKey(u1File)));
         Assert.assertTrue("Different data key", ! UserTests.getDataKey(copy).equals(UserTests.getDataKey(u1File)));
     }
 
-    @Ignore // until we figure out how to solve this issue
     @Test
     public void shareTwoFilesWithSameName() throws Exception {
-        UserContext u1 = PeergosNetworkUtils.ensureSignedUp("a", "a", network.clear(), crypto);
+        UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
 
         // send follow requests from each other user to "a"
         List<UserContext> userContexts = getUserContexts(1);
@@ -172,7 +171,8 @@ public class MultiUserTests {
 
         // check other users can read the file
         for (UserContext userContext : userContexts) {
-            Optional<FileTreeNode> sharedFile = userContext.getByPath(u1.username + "/" + "somefile[1].txt").get();
+            String expectedPath = Paths.get(u1.username, "subdir", filename).toString();
+            Optional<FileTreeNode> sharedFile = userContext.getByPath(expectedPath).get();
             Assert.assertTrue("shared file present", sharedFile.isPresent());
 
             AsyncReader inputStream = sharedFile.get().getInputStream(userContext.network,
@@ -238,7 +238,7 @@ public class MultiUserTests {
         UserContext userToUnshareWith = friends.stream().findFirst().get();
         String friendsPathToFile = u1.username + "/" + filename;
         Optional<FileTreeNode> priorUnsharedView = userToUnshareWith.getByPath(friendsPathToFile).get();
-        FilePointer priorPointer = priorUnsharedView.get().getPointer().filePointer;
+        Capability priorPointer = priorUnsharedView.get().getPointer().capability;
         CryptreeNode priorFileAccess = network.getMetadata(priorPointer.getLocation()).get().get();
         SymmetricKey priorMetaKey = priorFileAccess.getMetaKey(priorPointer.baseKey);
 

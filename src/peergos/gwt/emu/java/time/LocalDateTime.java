@@ -7,7 +7,7 @@ import java.time.format.DateTimeFormatter;
 
 @JsType
 @SuppressWarnings("unusable-by-js")
-public class LocalDateTime {
+public class LocalDateTime implements Comparable<LocalDateTime>{
 
 	private LocalDate date;
 	private LocalTime time;
@@ -75,6 +75,16 @@ public class LocalDateTime {
     public boolean isBefore(LocalDateTime other) {
     	return false;
     }
+
+    @Override
+    public int compareTo(LocalDateTime other) {
+        int cmp = date.compareTo(other.toLocalDate());
+        if (cmp == 0) {
+            cmp = time.compareTo(other.toLocalTime());
+        }
+        return cmp;
+    }
+
     @Override
     public boolean equals(Object obj) {
         if (this == obj) {
