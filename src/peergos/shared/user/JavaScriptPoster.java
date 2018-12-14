@@ -6,26 +6,38 @@ import java.util.*;
 import java.util.concurrent.*;
 
 public class JavaScriptPoster implements HttpPoster {
-    NativeJSHttp http = new NativeJSHttp();
+
+    private final NativeJSHttp http = new NativeJSHttp();
+    private final boolean isAbsolute;
+
+    public JavaScriptPoster(boolean isAbsolute) {
+        this.isAbsolute = isAbsolute;
+    }
+
+    private String canonicalise(String url) {
+        if (isAbsolute && ! url.startsWith("/"))
+            return "/" + url;
+        return url;
+    }
 
     @Override
     public CompletableFuture<byte[]> post(String url, byte[] payload, boolean unzip) {
-        return http.post(url, payload);
+        return http.post(canonicalise(url), payload);
     }
 
     @Override
     public CompletableFuture<byte[]> postUnzip(String url, byte[] payload) {
-        return post(url, payload, true);
+        return post(canonicalise(url), payload, true);
     }
 
     @Override
     public CompletableFuture<byte[]> postMultipart(String url, List<byte[]> files) {
-        return http.postMultipart(url, files);
+        return http.postMultipart(canonicalise(url), files);
     }
 
     @Override
     public CompletableFuture<byte[]> get(String url) {
-        return http.get(url);
+        return http.get(canonicalise(url));
     }
 
     @JsMethod

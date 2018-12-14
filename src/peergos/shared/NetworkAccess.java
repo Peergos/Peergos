@@ -100,9 +100,22 @@ public class NetworkAccess {
         Multihash pkiServerNodeId = Cid.decode(pkiNodeId);
         System.setOut(new ConsolePrintStream());
         System.setErr(new ConsolePrintStream());
-        JavaScriptPoster poster = new JavaScriptPoster();
+        JavaScriptPoster relative = new JavaScriptPoster(false);
+        JavaScriptPoster absolute = new JavaScriptPoster(true);
 
-        return build(poster, poster, pkiServerNodeId, true).thenApply(e -> e.withMutablePointerCache(7_000));
+        return isPeergosServer(relative)
+                .thenApply(isPeergosServer -> isPeergosServer ? relative : absolute)
+                .thenCompose(poster -> build(poster, poster, pkiServerNodeId, true))
+                .thenApply(e -> e.withMutablePointerCache(7_000));
+    }
+
+    private static CompletableFuture<Boolean> isPeergosServer(HttpPoster poster) {
+        CoreNode direct = buildDirectCorenode(poster);
+        CompletableFuture<Boolean> res = new CompletableFuture<>();
+        direct.getChain("peergos")
+                .thenApply(x -> res.complete(true))
+                .exceptionally(t -> res.complete(false));
+        return res;
     }
 
     public static CompletableFuture<NetworkAccess> buildJava(URL apiAddress, URL proxyAddress, String pkiNodeId) {
@@ -150,27 +163,29 @@ public class NetworkAccess {
                                                          List<String> usernames,
                                                          boolean isPeergosServer,
                                                          boolean isJavascript) {
-        return localDht.id().thenApply(nodeId -> {
-            ContentAddressedStorageProxy proxingDht = new ContentAddressedStorageProxy.HTTP(p2pPoster);
-            ContentAddressedStorage p2pDht = isPeergosServer ?
-                    localDht :
-                    new ContentAddressedStorage.Proxying(localDht, proxingDht, nodeId, core);
-            MutablePointersProxy httpMutable = new HttpMutablePointers(apiPoster, p2pPoster);
-            MutablePointers p2pMutable =
-                    isPeergosServer ?
-                            httpMutable :
-                            new ProxyingMutablePointers(nodeId, core, httpMutable, httpMutable);
+        return localDht.id()
+                .exceptionally(t -> new Multihash(Multihash.Type.sha2_256, new byte[32]))
+                .thenApply(nodeId -> {
+                    ContentAddressedStorageProxy proxingDht = new ContentAddressedStorageProxy.HTTP(p2pPoster);
+                    ContentAddressedStorage p2pDht = isPeergosServer ?
+                            localDht :
+                            new ContentAddressedStorage.Proxying(localDht, proxingDht, nodeId, core);
+                    MutablePointersProxy httpMutable = new HttpMutablePointers(apiPoster, p2pPoster);
+                    MutablePointers p2pMutable =
+                            isPeergosServer ?
+                                    httpMutable :
+                                    new ProxyingMutablePointers(nodeId, core, httpMutable, httpMutable);
 
-            SocialNetworkProxy httpSocial = new HttpSocialNetwork(apiPoster, p2pPoster);
-            SocialNetwork p2pSocial = isPeergosServer ?
-                    httpSocial :
-                    new ProxyingSocialNetwork(nodeId, core, httpSocial, httpSocial);
-            return build(p2pDht, core, p2pMutable, p2pSocial, usernames, isJavascript);
-        });
+                    SocialNetworkProxy httpSocial = new HttpSocialNetwork(apiPoster, p2pPoster);
+                    SocialNetwork p2pSocial = isPeergosServer ?
+                            httpSocial :
+                            new ProxyingSocialNetwork(nodeId, core, httpSocial, httpSocial);
+                    return build(p2pDht, core, p2pMutable, p2pSocial, usernames, isJavascript);
+                });
     }
 
     public static NetworkAccess build(ContentAddressedStorage dht,
-                                                         CoreNode coreNode,
+                                      CoreNode coreNode,
                                                          MutablePointers mutable,
                                                          SocialNetwork social,
                                                          List<String> usernames,
