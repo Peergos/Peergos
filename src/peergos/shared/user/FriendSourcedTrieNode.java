@@ -106,7 +106,8 @@ public class FriendSourcedTrieNode implements TrieNode {
     @Override
     public synchronized CompletableFuture<Optional<FileTreeNode>> getByPath(String path, NetworkAccess network) {
         if (path.isEmpty() || path.equals("/"))
-            return getFriendRoot(network);
+            return getFriendRoot(network)
+                    .thenApply(opt -> opt.map(f -> f.withTrieNode(this)));
         return ensureUptodate(network).thenCompose(x -> root.getByPath(path, network));
     }
 

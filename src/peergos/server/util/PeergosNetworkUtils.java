@@ -113,6 +113,17 @@ public class PeergosNetworkUtils {
             checkFileContents(originalFileContents, sharedFile.get(), userContext);
         }
 
+        // check other users can browser to the friend's root
+        for (UserContext userContext : shareeUsers) {
+            Optional<FileTreeNode> friendRoot = userContext.getByPath(sharerUser.username).get();
+            assertTrue("friend root present", friendRoot.isPresent());
+            Set<FileTreeNode> children = friendRoot.get().getChildren(userContext.network).get();
+            Optional<FileTreeNode> sharedFile = children.stream()
+                    .filter(file -> file.getName().equals(filename))
+                    .findAny();
+            assertTrue("Shared file present via root.getChildren()", sharedFile.isPresent());
+        }
+
         UserContext userToUnshareWith = shareeUsers.stream().findFirst().get();
 
         // unshare with a single user

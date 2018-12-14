@@ -338,6 +338,10 @@ public class MultiUserTests {
         Optional<FileTreeNode> u2ToU1 = u1.getByPath("/" + u2.username).get();
         assertTrue("Friend root present after accepted follow request", u2ToU1.isPresent());
 
+        Set<FileTreeNode> children = u2ToU1.get().getChildren(u2.network).get();
+
+        assertTrue("Browse to friend root", children.isEmpty());
+
         Set<String> u1Following = PeergosNetworkUtils.ensureSignedUp(username1, password1, network.clear(), crypto).getSocialState().get()
                 .followingRoots.stream().map(f -> f.getName())
                 .collect(Collectors.toSet());
@@ -347,6 +351,8 @@ public class MultiUserTests {
                 .followingRoots.stream().map(f -> f.getName())
                 .collect(Collectors.toSet());
         assertTrue("Following correct", u2Following.contains(u1.username));
+
+
     }
 
     @Test
