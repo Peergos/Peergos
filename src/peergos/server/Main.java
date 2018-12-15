@@ -343,9 +343,11 @@ public class Main {
             Optional<Path> webroot = a.hasArg("webroot") ?
                     Optional.of(Paths.get(a.getArg("webroot"))) :
                     Optional.empty();
-            boolean isPublicServer = a.hasArg("publicserver");
             boolean useWebAssetCache = a.getBoolean("webcache", true);
-            peergos.initAndStart(peergosAddress, webroot, isPublicServer, useWebAssetCache);
+            Optional<String> tlsHostname = hostname.equals("localhost") ? Optional.empty() : Optional.of(hostname);
+            Optional<UserService.TlsProperties> tlsProps =
+                    tlsHostname.map(host -> new UserService.TlsProperties(host, a.getArg("tls.keyfile.password")));
+            peergos.initAndStart(peergosAddress, tlsProps, webroot, useWebAssetCache);
             spaceChecker.loadAllOwnerAndUsage();
         } catch (Exception e) {
             e.printStackTrace();

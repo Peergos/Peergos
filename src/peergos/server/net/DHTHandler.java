@@ -26,14 +26,13 @@ public class DHTHandler implements HttpHandler {
     private final BiFunction<PublicKeyHash, Integer, Boolean> keyFilter;
     private final String apiPrefix;
 
-    public DHTHandler(ContentAddressedStorage dht, BiFunction<PublicKeyHash, Integer, Boolean> keyFilter, String apiPrefix) throws IOException
-    {
+    public DHTHandler(ContentAddressedStorage dht, BiFunction<PublicKeyHash, Integer, Boolean> keyFilter, String apiPrefix) {
         this.dht = dht;
         this.keyFilter = keyFilter;
         this.apiPrefix = apiPrefix;
     }
 
-    public DHTHandler(ContentAddressedStorage dht, BiFunction<PublicKeyHash, Integer, Boolean> keyFilter) throws IOException {
+    public DHTHandler(ContentAddressedStorage dht, BiFunction<PublicKeyHash, Integer, Boolean> keyFilter) {
         this(dht, keyFilter, "/api/v0/");
     }
 
