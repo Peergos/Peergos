@@ -310,7 +310,7 @@ public class Main {
             new UserFilePinner(userPath, core, p2mMutable, p2pDht, delayMs).start();
 
             UserService peergos = new UserService(p2pDht, corePropagator, p2pSocial, p2mMutable);
-            InetSocketAddress peergosAddress = new InetSocketAddress(hostname, userAPIAddress.getPort());
+            InetSocketAddress localAddress = new InetSocketAddress("localhost", userAPIAddress.getPort());
             Optional<Path> webroot = a.hasArg("webroot") ?
                     Optional.of(Paths.get(a.getArg("webroot"))) :
                     Optional.empty();
@@ -318,7 +318,7 @@ public class Main {
             Optional<String> tlsHostname = hostname.equals("localhost") ? Optional.empty() : Optional.of(hostname);
             Optional<UserService.TlsProperties> tlsProps =
                     tlsHostname.map(host -> new UserService.TlsProperties(host, a.getArg("tls.keyfile.password")));
-            peergos.initAndStart(peergosAddress, tlsProps, webroot, useWebAssetCache);
+            peergos.initAndStart(localAddress, tlsProps, webroot, useWebAssetCache);
             spaceChecker.loadAllOwnerAndUsage();
         } catch (Exception e) {
             e.printStackTrace();
