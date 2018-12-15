@@ -54,7 +54,11 @@ public abstract class UserTests {
             return Args.parse(new String[]{
                     "-port", Integer.toString(port),
                     "-logToConsole", "true",
-                    Main.PEERGOS_PATH, peergosDir.toString()});
+                    Main.PEERGOS_PATH, peergosDir.toString(),
+                    "peergos.password", "testpassword",
+                    "pki.keygen.password", "testpkipassword",
+                    "pki.keyfile.password", "testpassword"
+            });
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -106,7 +110,7 @@ public abstract class UserTests {
     }
 
     @Test
-    public void javascriptCompatible() throws IOException {
+    public void javascriptCompatible() {
         String username = generateUsername();
         String password = "test01";
 

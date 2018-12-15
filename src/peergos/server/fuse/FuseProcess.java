@@ -74,36 +74,4 @@ public class FuseProcess implements Runnable, AutoCloseable {
         if (isFinished)
             throw new IllegalStateException();
     }
-
-    public static void main(String[] args) throws Exception {
-        int WEB_PORT = 8000;
-        int CORE_PORT = 9999;
-
-        Args a = Args.parse(new String[]{"useIPFS", "false",
-                "-port", Integer.toString(WEB_PORT),
-                "-corenodePort", Integer.toString(CORE_PORT)});
-
-        Main.LOCAL.main(a);
-
-        a = Args.parse(args);
-        String username = a.getArg("username", "test01");
-        String password = a.getArg("password", "test01");
-        String mountPath = a.getArg("mountPoint", "/tmp/peergos/tmp");
-
-        Path path = Paths.get(mountPath);
-        path = path.resolve(UUID.randomUUID().toString());
-        path.toFile().mkdirs();
-
-        LOG.info("\n\nPeergos mounted at "+ path+"\n\n");
-
-        NetworkAccess network = NetworkAccess.buildJava(WEB_PORT).get();
-        Crypto crypto = Crypto.initJava();
-        UserContext userContext = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
-        PeergosFS peergosFS = new CachingPeergosFS( userContext);
-        FuseProcess fuseProcess = new FuseProcess(peergosFS, path);
-
-        Runtime.getRuntime().addShutdownHook(new Thread(()  -> fuseProcess.close()));
-
-        fuseProcess.start();
-    }
 }

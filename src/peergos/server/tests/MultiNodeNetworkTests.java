@@ -11,7 +11,6 @@ import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
-import peergos.shared.util.*;
 
 import java.net.*;
 import java.util.*;
@@ -66,7 +65,7 @@ public class MultiNodeNetworkTests {
     @BeforeClass
     public static void init() throws Exception {
         // start pki node
-        Main.LOCAL.main(args);
+        Main.PKI.main(args);
         NetworkAccess toPki = buildApi(args);
         Multihash pkiNodeId = toPki.dhtClient.id().get();
         nodes.add(toPki);

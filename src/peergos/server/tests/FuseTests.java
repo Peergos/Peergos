@@ -42,7 +42,7 @@ public class FuseTests {
         LOG.info("Using web-port "+ WEB_PORT);
         System.out.flush();
 
-        Main.LOCAL.main(args);
+        Main.PKI.main(args);
         NetworkAccess network = NetworkAccess.buildJava(WEB_PORT).get();
         UserContext userContext = UserContext.ensureSignedUp(username, password, network, Crypto.initJava()).get();
 

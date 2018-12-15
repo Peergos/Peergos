@@ -66,20 +66,6 @@ public class Main {
             )
     );
 
-    public static Command CORE_NODE = new Command("core",
-            "Start a Corenode.",
-            Main::startCoreNode,
-            Arrays.asList(
-                    new Command.Arg("corenodeFile", "Name of a local corenode sql file (created if it doesn't exist)", false, ":memory:"),
-                    new Command.Arg("keyfile", "Path to keyfile", false),
-                    new Command.Arg("passphrase", "Passphrase for keyfile", false),
-                    new Command.Arg("corenodePort", "Service port", true, "" + HttpCoreNodeServer.PORT),
-                    new Command.Arg("pki.public.key.path", "The path to the pki public key file", true),
-                    new Command.Arg("pki.secret.key.path", "The path to the pki secret key file", true),
-                    new Command.Arg("peergos.identity.hash", "The hash of the public identity key of the peergos user", true)
-            )
-    );
-
     public static final Command PEERGOS = new Command("peergos",
             "The user facing Peergos server",
             Main::startPeergos,
@@ -87,27 +73,10 @@ public class Main {
                     new Command.Arg("port", "service port", false, "8000"),
                     new Command.Arg("pki-node-id", "Ipfs node id of the pki node", true),
                     new Command.Arg("domain", "Domain name to bind to,", false, "localhost"),
-                    new Command.Arg("useIPFS", "Use IPFS for storage or ephemeral RAM store", false, "true"),
+                    new Command.Arg("useIPFS", "Use IPFS for storage or a local disk store", false, "true"),
                     new Command.Arg("webroot", "the path to the directory to serve as the web root", false),
-                    new Command.Arg("publicserver", "listen on all network interfaces, not just localhost", false),
                     new Command.Arg("default-quota", "default maximum storage per user", false, Long.toString(1024L * 1024 * 1024))
             ).collect(Collectors.toList())
-    );
-
-    public static final Command DEMO = new Command("demo",
-            "Run in demo server mode",
-            args -> {
-                args.setIfAbsent("domain", "demo.peergos.net");
-                args.setIfAbsent("corenodeFile", "core.sql");
-                args.setIfAbsent("socialnodeFile", "social.sql");
-                args.setIfAbsent("useIPFS", "true");
-                args.setIfAbsent("publicserver", "true");
-                CORE_NODE.main(args);
-                args.setArg("port", "443");
-                args.setIfAbsent("corenodeURL", "http://localhost:" + args.getArg("corenodePort"));
-                PEERGOS.main(args);
-            },
-            Collections.emptyList()
     );
 
     public static final Command BOOTSTRAP = new Command("bootstrap",
@@ -207,17 +176,13 @@ public class Main {
             )
     );
 
-    public static final Command LOCAL = new Command("local",
-            "Start an ephemeral Peergos Server and CoreNode server",
+    public static final Command PKI = new Command("pki",
+            "Bootstrap and start the Peergos PKI Server",
             args -> {
                 try {
-                    int peergosPort = args.getInt("port", 8000);
-                    int ipfsApiPort = 10001;
-                    int ipfsGatewayPort = 10002;
-                    args.setIfAbsent("ipfs-config-api-port", "" + ipfsApiPort);
-                    args.setIfAbsent("ipfs-config-gateway-port", "" + ipfsGatewayPort);
+                    int peergosPort = args.getInt("port");
+                    int ipfsApiPort = args.getInt("ipfs-config-api-port");
                     args.setIfAbsent("proxy-target", getLocalMultiAddress(peergosPort).toString());
-                    args.setIfAbsent("useIPFS", "false");
 
                     IpfsWrapper ipfs = null;
                     boolean useIPFS = args.getBoolean("useIPFS");
@@ -226,16 +191,8 @@ public class Main {
                         ipfs = startIpfs(args);
                     }
 
-                    args.setIfAbsent("peergos.password", "testpassword");
-                    args.setIfAbsent("pki.secret.key.path", "test.pki.secret.key");
-                    args.setIfAbsent("pki.public.key.path", "test.pki.public.key");
-                    args.setIfAbsent("pki.keygen.password", "testPkiPassword");
-                    args.setIfAbsent("pki.keyfile.password", "testPkiFilePassword");
                     args.setArg("ipfs-api-address", getLocalMultiAddress(ipfsApiPort).toString());
                     BOOTSTRAP.main(args);
-                    args.setIfAbsent("domain", "localhost");
-                    args.setIfAbsent("mutable-pointers-file", ":memory:");
-                    args.setIfAbsent("social-sql-file", ":memory:");
 
                     Multihash pkiIpfsNodeId = useIPFS ?
                             new IpfsDHT(getLocalMultiAddress(ipfsApiPort)).id().get() :
@@ -250,7 +207,21 @@ public class Main {
                     throw new RuntimeException(e.getMessage(), e);
                 }
             },
-            Collections.emptyList()
+            Arrays.asList(
+                    new Command.Arg("domain", "The hostname to listen on", true, "localhost"),
+                    new Command.Arg("port", "The port for the local non tls server to listen on", true, "8000"),
+                    new Command.Arg("useIPFS", "Whether to use IPFS or a local datastore", true, "false"),
+                    new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers (or :memory: or ram based)", true, ":memory:"),
+                    new Command.Arg("social-sql-file", "The filename for the follow requests (or :memory: or ram based)", true, ":memory:"),
+                    new Command.Arg("ipfs-config-api-port", "ipfs api port", true, "5001"),
+                    new Command.Arg("ipfs-config-gateway-port", "ipfs gateway port", true, "8080"),
+                    new Command.Arg("pki.secret.key.path", "The path to the pki secret key file", true, "test.pki.secret.key"),
+                    new Command.Arg("pki.public.key.path", "The path to the pki public key file", true, "test.pki.public.key"),
+                    // Secret parameters
+                    new Command.Arg("peergos.password", "The password for the 'peergos' user", true),
+                    new Command.Arg("pki.keygen.password", "The password to generate the pki key from", true),
+                    new Command.Arg("pki.keyfile.password", "The password protecting the pki keyfile", true)
+            )
     );
 
     public static final Command FUSE = new Command("fuse",
@@ -276,8 +247,8 @@ public class Main {
 
             int webPort = a.getInt("port");
             Multihash pkiServerNodeId = Cid.decode(a.getArg("pki-node-id"));
-            URL ipfsApiAddress = AddressUtil.getLocalAddress(a.getInt("ipfs-config-api-port", 5001));
-            URL ipfsGatewayAddress = AddressUtil.getLocalAddress(a.getInt("ipfs-config-gateway-port", 8080));
+            URL ipfsApiAddress = AddressUtil.getLocalAddress(a.getInt("ipfs-config-api-port"));
+            URL ipfsGatewayAddress = AddressUtil.getLocalAddress(a.getInt("ipfs-config-gateway-port"));
             String domain = a.getArg("domain");
             InetSocketAddress userAPIAddress = new InetSocketAddress(domain, webPort);
 
@@ -484,7 +455,7 @@ public class Main {
     }
 
     public static final Command MAIN = new Command("Main",
-            "Run a Peergos server",
+            "Run a Peergos command",
             args -> {
                 Optional<String> top = args.head();
                 if (!top.isPresent()) {
@@ -499,10 +470,8 @@ public class Main {
             },
             Collections.emptyList(),
             Arrays.asList(
-                    CORE_NODE,
+                    PKI,
                     PEERGOS,
-                    LOCAL,
-                    DEMO,
                     FUSE
             )
     );

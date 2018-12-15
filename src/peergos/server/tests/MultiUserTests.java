@@ -52,7 +52,7 @@ public class MultiUserTests {
 
     @BeforeClass
     public static void init() {
-        Main.LOCAL.main(args);
+        Main.PKI.main(args);
     }
 
     private List<UserContext> getUserContexts(int size) {

@@ -10,7 +10,6 @@ import peergos.shared.*;
 import peergos.shared.io.ipfs.multihash.Multihash;
 import peergos.shared.user.UserContext;
 import peergos.shared.user.fs.*;
-import peergos.shared.util.*;
 
 import java.net.URL;
 import java.util.*;
@@ -34,7 +33,7 @@ public class P2pStreamNetworkTests {
     @BeforeClass
     public static void init() throws Exception {
         // start pki node
-        Main.LOCAL.main(args);
+        Main.PKI.main(args);
         NetworkAccess toPki = buildApi(args);
         Multihash pkiNodeId = toPki.dhtClient.id().get();
         nodes.add(toPki);

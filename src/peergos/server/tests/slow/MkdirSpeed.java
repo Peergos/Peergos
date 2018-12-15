@@ -44,7 +44,7 @@ public class MkdirSpeed {
         int webPort = portMin + r.nextInt(portRange);
         int corePort = portMin + portRange + r.nextInt(portRange);
         Args args = Args.parse(new String[]{"useIPFS", "" + useIpfs, "-port", Integer.toString(webPort), "-corenodePort", Integer.toString(corePort)});
-        Main.LOCAL.main(args);
+        Main.PKI.main(args);
         return NetworkAccess.buildJava(new URL("http://localhost:" + webPort)).get();
     }
 
