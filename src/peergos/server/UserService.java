@@ -111,7 +111,7 @@ public class UserService {
             LOG.info("Starting Peergos TLS server on all interfaces.");
         HttpServer localhostServer = HttpServer.create(local, CONNECTION_BACKLOG);
         HttpsServer tlsServer = ! tlsProps.isPresent() ? null :
-                HttpsServer.create(new InetSocketAddress(allInterfaces, local.getPort()), CONNECTION_BACKLOG);
+                HttpsServer.create(new InetSocketAddress(allInterfaces, 443), CONNECTION_BACKLOG);
 
         if (tlsProps.isPresent()) {
             try {
