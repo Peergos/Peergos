@@ -74,6 +74,8 @@ public class Main {
                     new Command.Arg("pki-node-id", "Ipfs node id of the pki node", true),
                     new Command.Arg("domain", "Domain name to bind to,", false, "localhost"),
                     new Command.Arg("useIPFS", "Use IPFS for storage or a local disk store", false, "true"),
+                    new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers datastore", true, "mutable.sql"),
+                    new Command.Arg("social-sql-file", "The filename for the follow requests datastore", true, "social.sql"),
                     new Command.Arg("webroot", "the path to the directory to serve as the web root", false),
                     new Command.Arg("default-quota", "default maximum storage per user", false, Long.toString(1024L * 1024 * 1024))
             ).collect(Collectors.toList())
@@ -238,6 +240,8 @@ public class Main {
     public static void startPeergos(Args a) {
         try {
             PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, new Ed25519.Java());
+            int webPort = a.getInt("port");
+            a.setIfAbsent("proxy-target", getLocalMultiAddress(webPort).toString());
 
             boolean useIPFS = a.getBoolean("useIPFS");
             if (useIPFS) {
@@ -245,7 +249,6 @@ public class Main {
                 IPFS.main(a);
             }
 
-            int webPort = a.getInt("port");
             Multihash pkiServerNodeId = Cid.decode(a.getArg("pki-node-id"));
             URL ipfsApiAddress = AddressUtil.getLocalAddress(a.getInt("ipfs-config-api-port"));
             URL ipfsGatewayAddress = AddressUtil.getLocalAddress(a.getInt("ipfs-config-gateway-port"));
