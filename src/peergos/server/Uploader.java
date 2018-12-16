@@ -25,9 +25,13 @@ public class Uploader {
         Console console = System.console();
         String password = new String(console.readPassword("Enter password for " + username + ":"));
         UserContext context = UserContext.signIn(username, password, network, crypto).get();
-        ForkJoinPool pool = new ForkJoinPool(50);
+        ForkJoinPool pool = new ForkJoinPool(1);
         long t1 = System.currentTimeMillis();
-        uploadTo(context, Paths.get(fromPath), toPath, context.fragmenter(), props -> true, pool);
+        try {
+            uploadTo(context, Paths.get(fromPath), Paths.get(toPath), props -> true, pool);
+        } finally {
+            pool.shutdown();
+        }
         long t2 = System.currentTimeMillis();
         System.out.println("Upload took " + (t2-t1) + " mS");
     }
@@ -51,63 +55,52 @@ public class Uploader {
 
     /**
      *
-     * @param target the peergos entry point which can authorise writes
+     * @param context The target user to upload the files to
      * @param localSource path to a local file/directory to upload
      * @param targetDir the peergos path to upload to the subtree to
-     * @param fragmenter a file fragmenter
      * @param filter the selection of files/directories to upload
      * @param pool thread pool
      * @throws Exception
      */
-    public static void uploadTo(UserContext target, Path localSource, String targetDir, Fragmenter fragmenter,
-                                Predicate<File> filter, ForkJoinPool pool) throws Exception {
+    public static void uploadTo(UserContext context,
+                                Path localSource,
+                                Path targetDir,
+                                Predicate<File> filter,
+                                ForkJoinPool pool) throws Exception {
         if (! localSource.toFile().exists())
             throw new IllegalStateException("Local source " + localSource + " doesn't exist!");
-        Optional<FileTreeNode> file = target.getByPath(targetDir).get();
-        Path targetPath = Paths.get(targetDir);
-        Optional<FileTreeNode> fileParent = target.getByPath(targetPath.getParent().toString()).get();
+        Optional<FileTreeNode> file = context.getByPath(targetDir.toString()).get();
         if (! file.isPresent()) {
-            Optional<FileTreeNode> root = target.getByPath("/").get();
-            createPath(root.get(), targetPath, target.network, target.crypto.random);
-            Optional<FileTreeNode> created = target.getByPath(targetDir).get();
-            upload(created, fileParent, localSource, target.network, target.crypto.random, fragmenter, filter, pool);
+            Optional<FileTreeNode> root = context.getByPath("/").get();
+            createPath(root.get(), targetDir, context.network, context.crypto.random);
+            pool.submit(() -> uploadTo(context, localSource, targetDir, filter)).get();
         } else
-            upload(file, fileParent, localSource, target.network, target.crypto.random, fragmenter, filter, pool);
+            pool.submit(() -> uploadTo(context, localSource, targetDir, filter)).get();
     }
 
-    private static void upload(Optional<FileTreeNode> targetDir,
-                               Optional<FileTreeNode> targetParentDir,
-                               Path localSource,
-                               NetworkAccess network, SafeRandom random,
-                               Fragmenter fragmenter,
-                               Predicate<File> filter,
-                               ForkJoinPool pool) throws Exception {
-        pool.submit(() -> targetDir.ifPresent(f -> uploadTo(localSource, f, targetParentDir,
-                    network, random, fragmenter, filter))).get();
-    }
-
-    public static void uploadTo(Path source, FileTreeNode target, Optional<FileTreeNode> targetParent,
-                                NetworkAccess network, SafeRandom random,
-                                Fragmenter fragmenter, Predicate<File> filter) {
+    public static void uploadTo(UserContext context,
+                                Path source,
+                                Path targetParent,
+                                Predicate<File> filter) {
         File file = source.toFile();
         if (!filter.test(file))
             return;
-        Optional<FileTreeNode> existing = await(target.getChild(file.getName(), network));
+        Optional<FileTreeNode> existing = await(context.getByPath(targetParent.resolve(file.getName()).toString()));
 
+        System.out.println("Uploading " + file);
         if (file.isDirectory()) {
             try {
-                if (! existing.isPresent() && ! targetParent.isPresent())
-                    throw new IllegalStateException("We cannot create top level directories, they can only be created by signing up");
                 if (! existing.isPresent())
-                    target.mkdir(file.getName(), network, false, random).get();
-                Optional<FileTreeNode> updatedTarget = existing.isPresent() ? Optional.of(target) :
-                        targetParent.flatMap(f -> await(f.getChild(target.getName(), network)));
+                    await(context.getByPath(targetParent.toString())).get()
+                            .mkdir(file.getName(), context.network, false, context.crypto.random).get();
 
-                Optional<FileTreeNode> childDir = updatedTarget.flatMap(f -> await(f.getChild(file.getName(), network)));
-                childDir.ifPresent(newDir -> Stream.of(file.list())
+                Optional<FileTreeNode> childDir = await(context.getByPath(targetParent.resolve(source.getFileName()).toString()));
+                childDir.ifPresent(newDir -> Optional.ofNullable(file.list())
+                        .map(Stream::of)
+                        .orElse(Stream.empty())
                         .parallel()
-                        .map(childName -> source.resolve(childName))
-                        .forEach(childPath -> uploadTo(childPath, newDir, updatedTarget, network, random, fragmenter, filter)));
+                        .map(source::resolve)
+                        .forEach(childPath -> uploadTo(context, childPath, targetParent.resolve(file.getName()), filter)));
             } catch (Exception e) {
                 System.err.println("Error uploading children of " + source);
                 e.printStackTrace();
@@ -115,7 +108,9 @@ public class Uploader {
         } else {
             try {
                 ResetableFileInputStream fileData = new ResetableFileInputStream(file);
-                target.uploadFile(file.getName(), fileData, file.length(), network, random, c -> {}, fragmenter).get();
+                await(context.getByPath(targetParent.toString())).get()
+                        .uploadFile(file.getName(), fileData, file.length(),
+                                context.network, context.crypto.random, c -> {}, context.fragmenter).get();
             } catch (Exception e) {
                 System.err.println("Error uploading " + source);
                 e.printStackTrace();
