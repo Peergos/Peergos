@@ -17,7 +17,7 @@ import java.nio.file.*;
 public class IpfsInstaller {
 
     public enum DownloadTarget {
-        LINUX ("https://github.com/cboddy/ipfses/blob/master/linux/ipfs?raw=true",
+        LINUX_AMD64 ("https://github.com/cboddy/ipfses/blob/master/linux/ipfs?raw=true",
                 new Multihash(Multihash.Type.sha2_256, ArrayOps.hexToBytes("fd7c8d05b806c3e8c129f5938fa1bd39ba0659c7e57c06ec5f86029836570b22")));
 
         public final String url;
@@ -43,14 +43,16 @@ public class IpfsInstaller {
 
     private static DownloadTarget getForPlatform() {
         String os = System.getProperty("os.name");
+        String arch = System.getProperty("os.arch");
         DownloadTarget downloadTarget = null;
 
-        switch (os) {
-            case "Linux": {
-                return DownloadTarget.LINUX;
+        String type = os + "_" + arch;
+        switch (type) {
+            case "Linux_amd64": {
+                return DownloadTarget.LINUX_AMD64;
             }
             default:
-                throw new IllegalStateException("Unable to install IPFS for unknown Operating System: " + os);
+                throw new IllegalStateException("Unable to install IPFS for unknown Operating System + cpu architecture: " + type);
         }
     }
 
@@ -134,14 +136,5 @@ public class IpfsInstaller {
             Multihash computed = new Multihash(Multihash.Type.sha2_256, Hash.sha256(bytes));
             System.out.println(computed);
         }
-    }
-
-    public static Args testArgs() {
-        Args parse = Args.parse(new String[]{
-                "ipfs-exe-path",
-        });
-//        IpfsWrapper.getIpfsExePath()
-//        parse.with("ipfs-exe-path", )
-        return null;
     }
 }
