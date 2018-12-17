@@ -18,11 +18,11 @@ import java.util.stream.*;
 
 /** A DirAccess cryptree node controls read access to a directory.
  *
- * It contains the following distinct keys {base, parent, files, metadata}
+ * It contains the following distinct keys {base, parent, metadata}
+ *
  * The serialized encrypted form stores links from the base key to the other keys. With the base key one can decrypt
- * all the remaining keys. The base key is also known as the sub folders key as it encrypts the links to child
- * directories. The files key encrypts the links to all the child files. The parent key encrypts the link to the
- * parent's parent key. The metadata key encrypts the name of the directory.
+ * all the remaining keys. The base key encrypts the links to child directories and files. The parent key encrypts the
+ * link to the parent's parent key. The metadata key encrypts the name of the directory.
  *
  */
 public class DirAccess implements CryptreeNode {
@@ -31,37 +31,33 @@ public class DirAccess implements CryptreeNode {
 
     private final MaybeMultihash lastCommittedHash;
     private final int version;
-    private final SymmetricLink subfolders2files, subfolders2parent, parent2meta;
+    private final SymmetricLink base2parent, parent2meta;
     private final SymmetricLocationLink parentLink;
-    private final byte[] properties;
-    private final List<SymmetricLocationLink> subfolders, files;
+    private final List<SymmetricLocationLink> children;
     private final Optional<SymmetricLocationLink> moreFolderContents;
+    private final byte[] properties;
 
     public DirAccess(MaybeMultihash lastCommittedHash,
                      int version,
-                     SymmetricLink subfolders2files,
-                     SymmetricLink subfolders2parent,
+                     SymmetricLink base2parent,
                      SymmetricLink parent2meta,
                      SymmetricLocationLink parentLink,
                      byte[] properties,
-                     List<SymmetricLocationLink> subfolders,
-                     List<SymmetricLocationLink> files,
+                     List<SymmetricLocationLink> children,
                      Optional<SymmetricLocationLink> moreFolderContents) {
         this.lastCommittedHash = lastCommittedHash;
         this.version = version;
-        this.subfolders2files = subfolders2files;
-        this.subfolders2parent = subfolders2parent;
+        this.base2parent = base2parent;
         this.parent2meta = parent2meta;
         this.parentLink = parentLink;
         this.properties = properties;
-        this.subfolders = Collections.unmodifiableList(subfolders);
-        this.files = Collections.unmodifiableList(files);
+        this.children = Collections.unmodifiableList(children);
         this.moreFolderContents = moreFolderContents;
     }
 
     public DirAccess withHash(Multihash hash) {
-        return new DirAccess(MaybeMultihash.of(hash), version, subfolders2files, subfolders2parent, parent2meta, parentLink, properties,
-                subfolders, files, moreFolderContents);
+        return new DirAccess(MaybeMultihash.of(hash), version, base2parent, parent2meta, parentLink, properties,
+                children, moreFolderContents);
     }
 
     @Override
@@ -100,24 +96,19 @@ public class DirAccess implements CryptreeNode {
     }
 
     public DirAccess withNextBlob(Optional<SymmetricLocationLink> moreFolderContents) {
-        return new DirAccess(MaybeMultihash.empty(), version, subfolders2files, subfolders2parent, parent2meta, parentLink, properties,
-                subfolders, files, moreFolderContents);
+        return new DirAccess(MaybeMultihash.empty(), version, base2parent, parent2meta, parentLink, properties,
+                children, moreFolderContents);
     }
 
     @Override
     public CborObject toCbor() {
         return new CborObject.CborList(Arrays.asList(
                 new CborObject.CborLong(getVersionAndType()),
-                subfolders2parent.toCbor(),
-                subfolders2files.toCbor(),
+                base2parent.toCbor(),
                 parent2meta.toCbor(),
                 parentLink == null ? new CborObject.CborNull() : parentLink.toCbor(),
                 new CborObject.CborByteArray(properties),
-                new CborObject.CborList(subfolders
-                        .stream()
-                        .map(locLink -> locLink.toCbor())
-                        .collect(Collectors.toList())),
-                new CborObject.CborList(files
+                new CborObject.CborList(children
                         .stream()
                         .map(locLink -> locLink.toCbor())
                         .collect(Collectors.toList())),
@@ -134,84 +125,76 @@ public class DirAccess implements CryptreeNode {
         int index = 0;
         int version = (int) ((CborObject.CborLong) value.get(index++)).value >> 1;
         SymmetricLink subfoldersToParent = SymmetricLink.fromCbor(value.get(index++));
-        SymmetricLink subfoldersToFiles = SymmetricLink.fromCbor(value.get(index++));
         SymmetricLink parentToMeta = SymmetricLink.fromCbor(value.get(index++));
         Cborable parentLinkCbor = value.get(index++);
         SymmetricLocationLink parentLink = parentLinkCbor instanceof CborObject.CborNull ?
                 null :
                 SymmetricLocationLink.fromCbor(parentLinkCbor);
         byte[] properties = ((CborObject.CborByteArray)value.get(index++)).value;
-        List<SymmetricLocationLink> subfolders = ((CborObject.CborList)value.get(index++)).value
+        List<SymmetricLocationLink> children = ((CborObject.CborList)value.get(index++)).value
                 .stream()
                 .map(SymmetricLocationLink::fromCbor)
                 .collect(Collectors.toList());
-        List<SymmetricLocationLink> files = ((CborObject.CborList)value.get(index++)).value
-                .stream()
-                .map(SymmetricLocationLink::fromCbor)
-                .collect(Collectors.toList());
+
         Cborable linkToNext = value.get(index++);
         Optional<SymmetricLocationLink> moreFolderContents = linkToNext instanceof CborObject.CborNull ?
                 Optional.empty() :
                 Optional.of(SymmetricLocationLink.fromCbor(linkToNext));
-        return new DirAccess(MaybeMultihash.of(hash), version, subfoldersToFiles, subfoldersToParent, parentToMeta, parentLink,
-                properties, subfolders, files, moreFolderContents);
+        return new DirAccess(MaybeMultihash.of(hash), version, subfoldersToParent, parentToMeta, parentLink,
+                properties, children, moreFolderContents);
     }
 
-    public List<SymmetricLocationLink> getSubfolders() {
-        return Collections.unmodifiableList(subfolders);
-    }
-
-    public List<SymmetricLocationLink> getFiles() {
-        return Collections.unmodifiableList(files);
+    public List<SymmetricLocationLink> getChildren() {
+        return Collections.unmodifiableList(children);
     }
 
     public CompletableFuture<DirAccess> updateProperties(Capability writableCapability, FileProperties newProps, NetworkAccess network) {
-        if (!writableCapability.isWritable())
+        if (! writableCapability.isWritable())
             throw new IllegalStateException("Need a writable pointer!");
         SymmetricKey metaKey;
-        SymmetricKey parentKey = subfolders2parent.target(writableCapability.baseKey);
+        SymmetricKey parentKey = base2parent.target(writableCapability.baseKey);
         metaKey = this.getMetaKey(parentKey);
         byte[] metaNonce = metaKey.createNonce();
-        DirAccess updated = new DirAccess(lastCommittedHash, version, subfolders2files, subfolders2parent,
+        DirAccess updated = new DirAccess(lastCommittedHash, version, base2parent,
                 parent2meta, parentLink,
                 ArrayOps.concat(metaNonce, metaKey.encrypt(newProps.serialize(), metaNonce)),
-                subfolders, files, moreFolderContents
+                children, moreFolderContents
         );
         return network.uploadChunk(updated, writableCapability.location, writableCapability.signer())
                 .thenApply(b -> updated);
     }
 
-    public CompletableFuture<DirAccess> addFileAndCommit(Capability targetCAP, SymmetricKey ourSubfolders,
+    public CompletableFuture<DirAccess> addChildAndCommit(Capability targetCAP, SymmetricKey ourSubfolders,
                                                          Capability ourPointer, SigningPrivateKeyAndPublicHash signer,
                                                          NetworkAccess network, SafeRandom random) {
-        return addFilesAndCommit(Arrays.asList(targetCAP), ourSubfolders, ourPointer, signer, network, random);
+        return addChildrenAndCommit(Arrays.asList(targetCAP), ourSubfolders, ourPointer, signer, network, random);
     }
 
-    public CompletableFuture<DirAccess> addFilesAndCommit(List<Capability> targetCAPs, SymmetricKey ourSubfolders,
+    public CompletableFuture<DirAccess> addChildrenAndCommit(List<Capability> targetCAPs, SymmetricKey ourSubfolders,
                                                           Capability ourPointer, SigningPrivateKeyAndPublicHash signer,
                                                           NetworkAccess network, SafeRandom random) {
-        if (subfolders.size() + files.size() + targetCAPs.size() > MAX_CHILD_LINKS_PER_BLOB) {
+        if (children.size() + targetCAPs.size() > MAX_CHILD_LINKS_PER_BLOB) {
             return getNextMetablob(ourSubfolders, network).thenCompose(nextMetablob -> {
                 if (nextMetablob.size() >= 1) {
                     Capability nextPointer = nextMetablob.get(0).capability;
                     DirAccess nextBlob = (DirAccess) nextMetablob.get(0).fileAccess;
-                    return nextBlob.addFilesAndCommit(targetCAPs, ourSubfolders, nextPointer, signer, network, random);
+                    return nextBlob.addChildrenAndCommit(targetCAPs, ourSubfolders, nextPointer, signer, network, random);
                 } else {
                     // first fill this directory, then overflow into a new one
-                    int freeSlots = MAX_CHILD_LINKS_PER_BLOB - subfolders.size() - files.size();
+                    int freeSlots = MAX_CHILD_LINKS_PER_BLOB - children.size();
                     List<Capability> addToUs = targetCAPs.subList(0, freeSlots);
                     List<Capability> addToNext = targetCAPs.subList(freeSlots, targetCAPs.size());
-                    return addFilesAndCommit(addToUs, ourSubfolders, ourPointer, signer, network, random)
+                    return addChildrenAndCommit(addToUs, ourSubfolders, ourPointer, signer, network, random)
                             .thenCompose(newUs -> {
                                 // create and upload new metadata blob
                                 SymmetricKey nextSubfoldersKey = SymmetricKey.random();
-                                SymmetricKey ourParentKey = subfolders2parent.target(ourSubfolders);
+                                SymmetricKey ourParentKey = base2parent.target(ourSubfolders);
                                 DirAccess next = DirAccess.create(MaybeMultihash.empty(), nextSubfoldersKey, FileProperties.EMPTY,
                                         parentLink.targetLocation(ourParentKey), parentLink.target(ourParentKey), ourParentKey);
                                 byte[] nextMapKey = random.randomBytes(32);
                                 Location nextLocation = ourPointer.getLocation().withMapKey(nextMapKey);
                                 Capability nextPointer = new Capability(nextLocation, Optional.empty(), nextSubfoldersKey);
-                                return next.addFilesAndCommit(addToNext, nextSubfoldersKey, nextPointer, signer, network, random)
+                                return next.addChildrenAndCommit(addToNext, nextSubfoldersKey, nextPointer, signer, network, random)
                                         .thenCompose(nextBlob -> {
                                             // re-upload us with the link to the next DirAccess
                                             DirAccess withNext = newUs.withNextBlob(Optional.of(
@@ -223,64 +206,11 @@ public class DirAccess implements CryptreeNode {
                 }
             });
         } else {
-            SymmetricKey filesKey = this.subfolders2files.target(ourSubfolders);
-            ArrayList<SymmetricLocationLink> newFiles = new ArrayList<>(files);
+            ArrayList<SymmetricLocationLink> newFiles = new ArrayList<>(children);
             for (Capability targetCAP : targetCAPs)
-                newFiles.add(SymmetricLocationLink.create(filesKey, targetCAP.baseKey, targetCAP.getLocation()));
+                newFiles.add(SymmetricLocationLink.create(ourSubfolders, targetCAP.baseKey, targetCAP.getLocation()));
 
-            return withFiles(newFiles)
-                    .commit(ourPointer.getLocation(), signer, network);
-        }
-    }
-
-    public CompletableFuture<DirAccess> addSubdirAndCommit(Capability targetCAP, SymmetricKey ourSubfolders,
-                                                           Capability ourPointer, SigningPrivateKeyAndPublicHash signer,
-                                                           NetworkAccess network, SafeRandom random) {
-        return addSubdirsAndCommit(Arrays.asList(targetCAP), ourSubfolders, ourPointer, signer, network, random);
-    }
-    // returns new version of this directory
-    public CompletableFuture<DirAccess> addSubdirsAndCommit(List<Capability> targetCAPs, SymmetricKey ourSubfolders,
-                                                            Capability ourPointer, SigningPrivateKeyAndPublicHash signer,
-                                                            NetworkAccess network, SafeRandom random) {
-        if (subfolders.size() + files.size() + targetCAPs.size() > MAX_CHILD_LINKS_PER_BLOB) {
-            return getNextMetablob(ourSubfolders, network).thenCompose(nextMetablob -> {
-                if (nextMetablob.size() >= 1) {
-                    Capability nextPointer = nextMetablob.get(0).capability;
-                    DirAccess nextBlob = (DirAccess) nextMetablob.get(0).fileAccess;
-                    return nextBlob.addSubdirsAndCommit(targetCAPs, nextPointer.baseKey,
-                            nextPointer.withWritingKey(ourPointer.location.writer), signer, network, random);
-                } else {
-                    // first fill this directory, then overflow into a new one
-                    int freeSlots = MAX_CHILD_LINKS_PER_BLOB - subfolders.size() - files.size();
-                    List<Capability> addToUs = targetCAPs.subList(0, freeSlots);
-                    List<Capability> addToNext = targetCAPs.subList(freeSlots, targetCAPs.size());
-                    return addSubdirsAndCommit(addToUs, ourSubfolders, ourPointer, signer, network, random).thenCompose(newUs -> {
-                        // create and upload new metadata blob
-                        SymmetricKey nextSubfoldersKey = SymmetricKey.random();
-                        SymmetricKey ourParentKey = subfolders2parent.target(ourSubfolders);
-                        DirAccess next = DirAccess.create(MaybeMultihash.empty(), nextSubfoldersKey, FileProperties.EMPTY,
-                                parentLink != null ? parentLink.targetLocation(ourParentKey) : null,
-                                parentLink != null ? parentLink.target(ourParentKey) : null, ourParentKey);
-                        byte[] nextMapKey = random.randomBytes(32);
-                        Capability nextPointer = new Capability(ourPointer.location.withMapKey(nextMapKey), Optional.empty(), nextSubfoldersKey);
-                        return next.addSubdirsAndCommit(addToNext, nextSubfoldersKey, nextPointer, signer, network, random)
-                                .thenCompose(x -> {
-                                    // re-upload us with the link to the next DirAccess
-                                    DirAccess withNextBlob = newUs.withNextBlob(Optional.of(
-                                            SymmetricLocationLink.create(ourSubfolders,
-                                                    nextSubfoldersKey, nextPointer.getLocation())));
-                                    return withNextBlob.commit(ourPointer.getLocation(), signer, network);
-                                });
-                    });
-                }
-            });
-        } else {
-            ArrayList<SymmetricLocationLink> newSubfolders = new ArrayList<>(subfolders);
-            for (Capability targetCAP : targetCAPs)
-                newSubfolders.add(SymmetricLocationLink.create(ourSubfolders, targetCAP.baseKey, targetCAP.getLocation()));
-
-            return new DirAccess(lastCommittedHash, version, subfolders2files, subfolders2parent, parent2meta, parentLink, properties,
-                    newSubfolders, files, moreFolderContents)
+            return withChildren(newFiles)
                     .commit(ourPointer.getLocation(), signer, network);
         }
     }
@@ -296,82 +226,54 @@ public class DirAccess implements CryptreeNode {
                                                         NetworkAccess network, SafeRandom random) {
         return removeChild(original, ourPointer, signer, network)
                 .thenCompose(res -> {
-                    if (modified.fileAccess.isDirectory())
-                        return res.addSubdirAndCommit(modified.capability, ourPointer.baseKey, ourPointer, signer, network, random);
-                    else
-                        return res.addFileAndCommit(modified.capability, ourPointer.baseKey, ourPointer, signer, network, random);
+                    return res.addChildAndCommit(modified.capability, ourPointer.baseKey, ourPointer, signer, network, random);
                 });
     }
 
     public CompletableFuture<DirAccess> removeChild(RetrievedFilePointer childRetrievedPointer, Capability ourPointer,
                                                   SigningPrivateKeyAndPublicHash signer, NetworkAccess network) {
-        DirAccess updated;
-        if (childRetrievedPointer.fileAccess.isDirectory()) {
-            List<SymmetricLocationLink> newSubfolders = subfolders.stream().filter(e -> {
-                try {
-                    Location target = e.targetLocation(ourPointer.baseKey);
-                    boolean keep = true;
-                    if (Arrays.equals(target.getMapKey(), childRetrievedPointer.capability.location.getMapKey()))
-                        if (Arrays.equals(target.writer.serialize(), childRetrievedPointer.capability.location.writer.serialize()))
-                            if (Arrays.equals(target.owner.serialize(), childRetrievedPointer.capability.location.owner.serialize()))
-                                keep = false;
-                    return keep;
-                } catch (TweetNaCl.InvalidCipherTextException ex) {
-                    ex.printStackTrace();
-                    return false;
-                } catch (Exception f) {
-                    return false;
-                }
-            }).collect(Collectors.toList());
-            updated = this.withSubfolders(newSubfolders);
-        } else {
-            List<SymmetricLocationLink> newFiles = files.stream().filter(e -> {
-                SymmetricKey filesKey = subfolders2files.target(ourPointer.baseKey);
-                try {
-                    Location target = e.targetLocation(filesKey);
-                    boolean keep = true;
-                    if (Arrays.equals(target.getMapKey(), childRetrievedPointer.capability.location.getMapKey()))
-                        if (Arrays.equals(target.writer.serialize(), childRetrievedPointer.capability.location.writer.serialize()))
-                            if (Arrays.equals(target.owner.serialize(), childRetrievedPointer.capability.location.owner.serialize()))
-                                keep = false;
-                    return keep;
-                } catch (TweetNaCl.InvalidCipherTextException ex) {
-                    ex.printStackTrace();
-                    return false;
-                } catch (Exception f) {
-                    return false;
-                }
-            }).collect(Collectors.toList());
-            updated = this.withFiles(newFiles);
-        }
-        return updated.commit(ourPointer.getLocation(), signer, network);
+        List<SymmetricLocationLink> newSubfolders = children.stream().filter(e -> {
+            try {
+                Location target = e.targetLocation(ourPointer.baseKey);
+                boolean keep = true;
+                if (Arrays.equals(target.getMapKey(), childRetrievedPointer.capability.location.getMapKey()))
+                    if (Arrays.equals(target.writer.serialize(), childRetrievedPointer.capability.location.writer.serialize()))
+                        if (Arrays.equals(target.owner.serialize(), childRetrievedPointer.capability.location.owner.serialize()))
+                            keep = false;
+                return keep;
+            } catch (TweetNaCl.InvalidCipherTextException ex) {
+                ex.printStackTrace();
+                return false;
+            } catch (Exception f) {
+                return false;
+            }
+        }).collect(Collectors.toList());
+        return this.withChildren(newSubfolders)
+                .commit(ourPointer.getLocation(), signer, network);
     }
 
     // returns [RetrievedFilePointer]
     public CompletableFuture<Set<RetrievedFilePointer>> getChildren(NetworkAccess network, SymmetricKey baseKey) {
-        CompletableFuture<List<RetrievedFilePointer>> subdirsFuture = network.retrieveAllMetadata(this.subfolders, baseKey);
-        CompletableFuture<List<RetrievedFilePointer>> filesFuture = network.retrieveAllMetadata(this.files, this.subfolders2files.target(baseKey));
+        CompletableFuture<List<RetrievedFilePointer>> childrenFuture = network.retrieveAllMetadata(this.children, baseKey);
 
         CompletableFuture<List<RetrievedFilePointer>> moreChildrenFuture = moreFolderContents.isPresent() ?
                 network.retrieveAllMetadata(Arrays.asList(moreFolderContents.get()), baseKey) :
                 CompletableFuture.completedFuture(Collections.emptyList());
 
-        return subdirsFuture.thenCompose(subdirs -> filesFuture.thenCompose(files -> moreChildrenFuture.thenCompose(moreChildrenSource -> {
-            // this only has one or zero elements
-            Optional<RetrievedFilePointer> any = moreChildrenSource.stream().findAny();
-            CompletableFuture<Set<RetrievedFilePointer>> moreChildren = any.map(d -> ((DirAccess)d.fileAccess).getChildren(network, d.capability.baseKey))
-                    .orElse(CompletableFuture.completedFuture(Collections.emptySet()));
-            return moreChildren.thenApply(moreRetrievedChildren -> {
-                Set<RetrievedFilePointer> results = Stream.concat(
-                        Stream.concat(
-                                subdirs.stream(),
-                                files.stream()),
-                        moreRetrievedChildren.stream())
-                        .collect(Collectors.toSet());
-                return results;
-            });
-        })
-        )
+        return childrenFuture.thenCompose(children -> moreChildrenFuture.thenCompose(moreChildrenSource -> {
+                    // this only has one or zero elements
+                    Optional<RetrievedFilePointer> any = moreChildrenSource.stream().findAny();
+                    CompletableFuture<Set<RetrievedFilePointer>> moreChildren = any
+                            .map(d -> ((DirAccess)d.fileAccess).getChildren(network, d.capability.baseKey))
+                            .orElse(CompletableFuture.completedFuture(Collections.emptySet()));
+                    return moreChildren.thenApply(moreRetrievedChildren -> {
+                        Set<RetrievedFilePointer> results = Stream.concat(
+                                children.stream(),
+                                moreRetrievedChildren.stream())
+                                .collect(Collectors.toSet());
+                        return results;
+                    });
+                })
         );
     }
 
@@ -379,59 +281,40 @@ public class DirAccess implements CryptreeNode {
                                                                SymmetricKey baseKey,
                                                                Capability ourPointer,
                                                                SigningPrivateKeyAndPublicHash signer) {
-        CompletableFuture<List<RetrievedFilePointer>> subdirsFuture = network.retrieveAllMetadata(this.subfolders, baseKey);
-        CompletableFuture<List<RetrievedFilePointer>> filesFuture = network.retrieveAllMetadata(this.files, this.subfolders2files.target(baseKey));
-
         CompletableFuture<List<RetrievedFilePointer>> moreChildrenFuture = moreFolderContents.isPresent() ?
                 network.retrieveAllMetadata(Arrays.asList(moreFolderContents.get()), baseKey) :
                 CompletableFuture.completedFuture(Collections.emptyList());
 
         return getChildren(network, baseKey)
-                .thenCompose(reachable -> subdirsFuture
-                        .thenCompose(subdirs -> filesFuture
-                                .thenCompose(files -> moreChildrenFuture
-                                        .thenCompose(moreChildrenSource -> {
-                                            // this only has one or zero elements
-                                            Optional<RetrievedFilePointer> any = moreChildrenSource.stream().findAny();
-                                            CompletableFuture<DirAccess> moreChildren = any
-                                                    .map(d -> ((DirAccess)d.fileAccess)
-                                                            .cleanUnreachableChildren(network, d.capability.baseKey, d.capability, signer))
-                                                    .orElse(CompletableFuture.completedFuture(this));
-                                            return moreChildren.thenCompose(moreRetrievedChildren -> {
-                                                List<SymmetricLocationLink> reachableDirLinks = subfolders
-                                                        .stream()
-                                                        .filter(sym -> reachable.stream()
-                                                                .anyMatch(rfp -> rfp.capability.equals(sym.toReadableFilePointer(baseKey))))
-                                                        .collect(Collectors.toList());
+                .thenCompose(reachable -> moreChildrenFuture
+                                .thenCompose(moreChildrenSource -> {
+                                    // this only has one or zero elements
+                                    Optional<RetrievedFilePointer> any = moreChildrenSource.stream().findAny();
+                                    CompletableFuture<DirAccess> moreChildren = any
+                                            .map(d -> ((DirAccess)d.fileAccess)
+                                                    .cleanUnreachableChildren(network, d.capability.baseKey, d.capability, signer))
+                                            .orElse(CompletableFuture.completedFuture(this));
+                                    return moreChildren.thenCompose(moreRetrievedChildren -> {
+                                        List<SymmetricLocationLink> reachableChildLinks = children
+                                                .stream()
+                                                .filter(sym -> reachable.stream()
+                                                        .anyMatch(rfp -> rfp.capability.equals(sym.toReadableFilePointer(baseKey))))
+                                                .collect(Collectors.toList());
 
-                                                List<SymmetricLocationLink> reachableFileLinks = this.files
-                                                        .stream()
-                                                        .filter(sym -> reachable.stream()
-                                                                .anyMatch(rfp -> rfp.capability.equals(sym.toReadableFilePointer(subfolders2files.target(baseKey)))))
-                                                        .collect(Collectors.toList());
-
-                                                return withSubfolders(reachableDirLinks)
-                                                        .withFiles(reachableFileLinks)
-                                                        .commit(ourPointer.getLocation(), signer, network);
-                                            });
-                                        })
-                                )
-                        ));
+                                        return withChildren(reachableChildLinks)
+                                                .commit(ourPointer.getLocation(), signer, network);
+                                    });
+                                })
+                );
     }
 
     public Set<Location> getChildrenLocations(SymmetricKey baseKey) {
-        SymmetricKey filesKey = this.subfolders2files.target(baseKey);
-        return Stream.concat(subfolders.stream().map(d -> d.targetLocation(baseKey)),
-                files.stream().map(f -> f.targetLocation(filesKey)))
+        return children.stream().map(d -> d.targetLocation(baseKey))
                 .collect(Collectors.toSet());
     }
 
     public SymmetricKey getParentKey(SymmetricKey subfoldersKey) {
-        return this.subfolders2parent.target(subfoldersKey);
-    }
-
-    public SymmetricKey getFilesKey(SymmetricKey subfoldersKey) {
-        return this.subfolders2files.target(subfoldersKey);
+        return this.base2parent.target(subfoldersKey);
     }
 
     // returns pointer to new child directory
@@ -452,7 +335,7 @@ public class DirAccess implements CryptreeNode {
         return network.uploadChunk(dir, chunkLocation, writer).thenCompose(resultHash -> {
             Capability ourPointer = new Capability(ownerPublic, writer.publicKeyHash, ourMapKey, baseKey);
             Capability subdirPointer = new Capability(chunkLocation, Optional.empty(), dirReadKey);
-            return addSubdirAndCommit(subdirPointer, baseKey, ourPointer, writer, network, random)
+            return addChildAndCommit(subdirPointer, baseKey, ourPointer, writer, network, random)
                     .thenApply(modified -> new Capability(ownerPublic, writer.publicKeyHash, dirMapKey, dirReadKey));
         });
     }
@@ -490,44 +373,33 @@ public class DirAccess implements CryptreeNode {
                         .thenCompose(newChildFileAccess -> {
                             Capability ourNewPointer = new Capability(ourNewLocation.owner, entryWriterKey.publicKeyHash, newMapKey, newBaseKey);
                             Capability newChildPointer = new Capability(newChildLocation, Optional.empty(), newChildBaseKey);
-                            if (newChildFileAccess.isDirectory())
-                                return dirFuture.thenCompose(dirAccess ->
-                                        dirAccess.addSubdirAndCommit(newChildPointer, newBaseKey, ourNewPointer, entryWriterKey, network, random));
-                            else
-                                return dirFuture.thenCompose(dirAccess ->
-                                        dirAccess.addFileAndCommit(newChildPointer, newBaseKey, ourNewPointer, entryWriterKey, network, random));
+                            return dirFuture.thenCompose(dirAccess ->
+                                    dirAccess.addChildAndCommit(newChildPointer, newBaseKey, ourNewPointer, entryWriterKey, network, random));
                         });
             }, (a, b) -> a.thenCompose(x -> b)); // TODO Think about this combiner function
             return reduce;
         }).thenCompose(finalDir -> finalDir.commit(new Location(newParentLocation.owner, entryWriterKey.publicKeyHash, newMapKey), entryWriterKey, network));
     }
 
-    private DirAccess withSubfolders(List<SymmetricLocationLink> newSubfolders) {
-        return new DirAccess(lastCommittedHash, version, subfolders2files, subfolders2parent, parent2meta, parentLink, properties,
-                newSubfolders, files, moreFolderContents);
-    }
-
-    private DirAccess withFiles(List<SymmetricLocationLink> newFiles) {
-        return new DirAccess(lastCommittedHash, version, subfolders2files, subfolders2parent, parent2meta, parentLink, properties,
-                subfolders, newFiles, moreFolderContents);
+    private DirAccess withChildren(List<SymmetricLocationLink> newChildren) {
+        return new DirAccess(lastCommittedHash, version, base2parent, parent2meta, parentLink, properties,
+                newChildren, moreFolderContents);
     }
 
     public static DirAccess create(MaybeMultihash lastCommittedHash, SymmetricKey subfoldersKey, FileProperties metadata, Location parentLocation, SymmetricKey parentParentKey, SymmetricKey parentKey) {
         SymmetricKey metaKey = SymmetricKey.random();
         if (parentKey == null)
             parentKey = SymmetricKey.random();
-        SymmetricKey filesKey = SymmetricKey.random();
         byte[] metaNonce = metaKey.createNonce();
         SymmetricLocationLink parentLink = parentLocation == null ? null : SymmetricLocationLink.create(parentKey, parentParentKey, parentLocation);
         return new DirAccess(
                 lastCommittedHash,
                 CryptreeNode.CURRENT_DIR_VERSION,
-                SymmetricLink.fromPair(subfoldersKey, filesKey),
                 SymmetricLink.fromPair(subfoldersKey, parentKey),
                 SymmetricLink.fromPair(parentKey, metaKey),
                 parentLink,
                 ArrayOps.concat(metaNonce, metaKey.encrypt(metadata.serialize(), metaNonce)),
-                new ArrayList<>(), new ArrayList<>(),
+                new ArrayList<>(),
                 Optional.empty()
         );
     }

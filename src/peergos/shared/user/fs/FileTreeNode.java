@@ -170,37 +170,29 @@ public class FileTreeNode {
                     parent.getParentKey(), newParentKey);
             // re add children
 
-            List<Capability> subdirs = existing.getSubfolders().stream().map(link ->
+            List<Capability> children = existing.getChildren().stream().map(link ->
                     new Capability(link.targetLocation(pointer.capability.baseKey),
                             Optional.empty(), link.target(pointer.capability.baseKey))).collect(Collectors.toList());
-            return newDirAccess.addSubdirsAndCommit(subdirs, newSubfoldersKey, ourNewPointer, getSigner(), network, random)
+            return newDirAccess.addChildrenAndCommit(children, newSubfoldersKey, ourNewPointer, getSigner(), network, random)
                     .thenCompose(updatedDirAccess -> {
+                        readers.removeAll(readersToRemove);
+                        RetrievedFilePointer ourNewRetrievedPointer = new RetrievedFilePointer(ourNewPointer, updatedDirAccess);
+                        FileTreeNode theNewUs = new FileTreeNode(ourNewRetrievedPointer,
+                                ownername, readers, writers, entryWriterKey);
 
-                        SymmetricKey filesKey = existing.getFilesKey(pointer.capability.baseKey);
-                        List<Capability> files = existing.getFiles().stream()
-                                .map(link -> new Capability(link.targetLocation(filesKey), Optional.empty(), link.target(filesKey)))
-                                .collect(Collectors.toList());
-                        return updatedDirAccess.addFilesAndCommit(files, newSubfoldersKey, ourNewPointer, getSigner(), network, random)
-                                .thenCompose(fullyUpdatedDirAccess -> {
+                        // clean all subtree keys except file dataKeys (lazily re-key and re-encrypt them)
+                        return getChildren(network).thenCompose(childFiles -> {
+                            List<CompletableFuture<FileTreeNode>> cleanedChildren = childFiles.stream()
+                                    .map(child -> child.makeDirty(network, random, theNewUs, readersToRemove))
+                                    .collect(Collectors.toList());
 
-                                    readers.removeAll(readersToRemove);
-                                    RetrievedFilePointer ourNewRetrievedPointer = new RetrievedFilePointer(ourNewPointer, fullyUpdatedDirAccess);
-                                    FileTreeNode theNewUs = new FileTreeNode(ourNewRetrievedPointer,
-                                            ownername, readers, writers, entryWriterKey);
-
-                                    // clean all subtree keys except file dataKeys (lazily re-key and re-encrypt them)
-                                    return getChildren(network).thenCompose(children -> {
-                                        for (FileTreeNode child : children) {
-                                            child.makeDirty(network, random, theNewUs, readersToRemove);
-                                        }
-
-                                        // update pointer from parent to us
-                                        return ((DirAccess) parent.pointer.fileAccess)
-                                                .updateChildLink(parent.pointer.capability, this.pointer,
-                                                        ourNewRetrievedPointer, getSigner(), network, random)
-                                                .thenApply(x -> theNewUs);
-                                    });
-                                });
+                            return Futures.combineAll(cleanedChildren);
+                        }).thenCompose(finished ->
+                                // update pointer from parent to us
+                                ((DirAccess) parent.pointer.fileAccess)
+                                        .updateChildLink(parent.pointer.capability, this.pointer,
+                                                ourNewRetrievedPointer, getSigner(), network, random)
+                                        .thenApply(x -> theNewUs));
                     }).thenApply(x -> {
                         setModified();
                         return x;
@@ -255,11 +247,8 @@ public class FileTreeNode {
                 return error;
             }
             DirAccess toUpdate = (DirAccess) pointer.fileAccess;
-            return (file.isDirectory() ?
-                    toUpdate.addSubdirAndCommit(file.pointer.capability, this.getKey(),
-                            pointer.capability, getSigner(), network, random) :
-                    toUpdate.addFileAndCommit(file.pointer.capability, this.getKey(),
-                            pointer.capability, getSigner(), network, random))
+            return toUpdate.addChildAndCommit(file.pointer.capability, this.getKey(),
+                    pointer.capability, getSigner(), network, random)
                     .thenApply(dirAccess -> new FileTreeNode(this.pointer, ownername, readers, writers, entryWriterKey));
         });
     }
@@ -581,7 +570,7 @@ public class FileTreeNode {
                                                             SafeRandom random,
                                                             int retries) {
         CompletableFuture<FileTreeNode> result = new CompletableFuture<>();
-        ((DirAccess) pointer.fileAccess).addFileAndCommit(childPointer, pointer.capability.baseKey, pointer.capability, getSigner(), network, random)
+        ((DirAccess) pointer.fileAccess).addChildAndCommit(childPointer, pointer.capability.baseKey, pointer.capability, getSigner(), network, random)
                 .thenAccept(uploadResult -> {
                     setModified();
                     result.complete(this.withCryptreeNode(uploadResult));
@@ -615,7 +604,7 @@ public class FileTreeNode {
                                     updatedChildPointer, ownername, readers, writers, entryWriterKey);
                             return toRename.rename(safeName, network, us).thenCompose(usAgain ->
                                     ((DirAccess) usAgain.pointer.fileAccess)
-                                            .addFileAndCommit(childPointer, pointer.capability.baseKey,
+                                            .addChildAndCommit(childPointer, pointer.capability.baseKey,
                                                     pointer.capability, getSigner(), network, random)
                                             .thenAccept(uploadResult -> {
                                                 setModified();
