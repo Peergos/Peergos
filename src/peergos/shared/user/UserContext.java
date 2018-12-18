@@ -273,7 +273,7 @@ public class UserContext {
             return invalidLink;
         }
         EntryPoint entry = new EntryPoint(entryPoint, "", Collections.emptySet(), Collections.emptySet());
-        WriterData empty = WriterData.createEmpty(entryPoint.location.owner, Optional.empty(), null);
+        WriterData empty = WriterData.createEmpty(entryPoint.location.owner);
         CommittedWriterData committed = new CommittedWriterData(MaybeMultihash.empty(), empty);
         CompletableFuture<CommittedWriterData> userData = CompletableFuture.completedFuture(committed);
         UserContext context = new UserContext(null, null, null, null, network.clear(), crypto, userData, TrieNodeImpl.empty());
