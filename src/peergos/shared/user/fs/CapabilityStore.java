@@ -71,7 +71,7 @@ public class CapabilityStore {
                 return getCacheFile(friendName, homeDirSupplier, network, random).thenCompose(optCachedFile -> {
                     long totalRecords = sharingFiles.stream().mapToLong(f -> f.getFileProperties().size).sum() / CAPABILITY_SIZE;
                     if(! optCachedFile.isPresent() ) {
-                        CompletableFuture<List<RetrievedCapability>> allFiles = Futures.reduceAll(sharingFiles,
+                        CompletableFuture<List<CapabilityWithPath>> allFiles = Futures.reduceAll(sharingFiles,
                                 Collections.emptyList(),
                                 (res, sharingFile) -> readSharingFile(friendSharedDir.getName(), sharingFile, network, random)
                                         .thenApply(retrievedCaps -> Stream.concat(res.stream(), retrievedCaps.stream()).collect(Collectors.toList())),
@@ -93,7 +93,7 @@ public class CapabilityStore {
                             int shareFileIndex = (int)(cache.getRecordsRead() * CAPABILITY_SIZE) / SHARING_FILE_MAX_SIZE;
                             int recordIndex = (int) ((cache.getRecordsRead() * CAPABILITY_SIZE) % SHARING_FILE_MAX_SIZE) / CAPABILITY_SIZE;
                             List<FileTreeNode> sharingFilesToRead = sharingFiles.subList(shareFileIndex, sharingFiles.size());
-                            CompletableFuture<List<RetrievedCapability>> allFiles = Futures.reduceAll(sharingFilesToRead.subList(0, sharingFilesToRead.size() - 1),
+                            CompletableFuture<List<CapabilityWithPath>> allFiles = Futures.reduceAll(sharingFilesToRead.subList(0, sharingFilesToRead.size() - 1),
                                     Collections.emptyList(),
                                     (res, sharingFile) -> readSharingFile(friendSharedDir.getName(), sharingFile, network, random)
                                             .thenApply(retrievedCaps -> Stream.concat(res.stream(), retrievedCaps.stream()).collect(Collectors.toList())),
@@ -133,7 +133,7 @@ public class CapabilityStore {
                     int recordIndex = (int) (capIndex % CAPS_PER_FILE);
                     List<FileTreeNode> sharingFilesToRead = sharingFiles.subList(shareFileIndex, sharingFiles.size());
 
-                    CompletableFuture<List<RetrievedCapability>> allFiles = Futures.reduceAll(sharingFilesToRead.subList(0, sharingFilesToRead.size() - 1),
+                    CompletableFuture<List<CapabilityWithPath>> allFiles = Futures.reduceAll(sharingFilesToRead.subList(0, sharingFilesToRead.size() - 1),
                             Collections.emptyList(),
                             (res, sharingFile) -> readSharingFile(friendSharedDir.getName(), sharingFile, network, random)
                                     .thenApply(retrievedCaps -> Stream.concat(res.stream(), retrievedCaps.stream()).collect(Collectors.toList())),
@@ -159,20 +159,20 @@ public class CapabilityStore {
                 .thenApply(capFiles -> capFiles.stream().mapToLong(f -> f.getFileProperties().size).sum() / CAPABILITY_SIZE);
     }
 
-    public static CompletableFuture<List<RetrievedCapability>> readSharingFile(String ownerName,
-                                                                               FileTreeNode file,
-                                                                               NetworkAccess network,
-                                                                               SafeRandom random) {
+    public static CompletableFuture<List<CapabilityWithPath>> readSharingFile(String ownerName,
+                                                                              FileTreeNode file,
+                                                                              NetworkAccess network,
+                                                                              SafeRandom random) {
         return readSharingFile(0, ownerName, file, network, random);
     }
-    public static CompletableFuture<List<RetrievedCapability>> readSharingFile(int offsetIndex,
-                                                                               String ownerName,
-                                                                               FileTreeNode file,
-                                                                               NetworkAccess network,
-                                                                               SafeRandom random) {
+    public static CompletableFuture<List<CapabilityWithPath>> readSharingFile(int offsetIndex,
+                                                                              String ownerName,
+                                                                              FileTreeNode file,
+                                                                              NetworkAccess network,
+                                                                              SafeRandom random) {
         return file.getInputStream(network, random, x -> {}).thenCompose(reader -> {
             int currentFileSize = (int) file.getSize();
-            List<CompletableFuture<Optional<RetrievedCapability>>> capabilities = IntStream.range(offsetIndex, currentFileSize / CAPABILITY_SIZE)
+            List<CompletableFuture<Optional<CapabilityWithPath>>> capabilities = IntStream.range(offsetIndex, currentFileSize / CAPABILITY_SIZE)
                     .mapToObj(e -> e * CAPABILITY_SIZE)
                     .map(offset -> readSharingRecord(ownerName, reader, offset, network))
                     .collect(Collectors.toList());
@@ -184,10 +184,10 @@ public class CapabilityStore {
         });
     }
 
-    private static CompletableFuture<Optional<RetrievedCapability>> readSharingRecord(String ownerName,
-                                                                                      AsyncReader reader,
-                                                                                      int offset,
-                                                                                      NetworkAccess network) {
+    private static CompletableFuture<Optional<CapabilityWithPath>> readSharingRecord(String ownerName,
+                                                                                     AsyncReader reader,
+                                                                                     int offset,
+                                                                                     NetworkAccess network) {
         byte[] serialisedFilePointer = new byte[CAPABILITY_SIZE];
         return reader.seek( 0, offset).thenCompose( currentPos ->
                 currentPos.readIntoArray(serialisedFilePointer, 0, CAPABILITY_SIZE)
@@ -199,7 +199,7 @@ public class CapabilityStore {
                                     FileTreeNode ftn = optFTN.get();
                                     try {
                                         return ftn.getPath(network)
-                                                .thenCompose(path -> CompletableFuture.completedFuture(Optional.of(new RetrievedCapability(path, pointer))));
+                                                .thenCompose(path -> CompletableFuture.completedFuture(Optional.of(new CapabilityWithPath(path, pointer))));
                                     } catch (NoSuchElementException nsee) {
                                         return Futures.errored(nsee); //file no longer exists
                                     }
@@ -236,7 +236,7 @@ public class CapabilityStore {
                                                                                        NetworkAccess network,
                                                                                        SafeRandom random,
                                                                                        Fragmenter fragmenter,
-                                                                                       List<RetrievedCapability> retrievedCapabilities) {
+                                                                                       List<CapabilityWithPath> retrievedCapabilities) {
         CapabilitiesFromUser capabilitiesFromUser = new CapabilitiesFromUser(recordsRead, retrievedCapabilities);
         byte[] data = capabilitiesFromUser.serialize();
         AsyncReader.ArrayBacked dataReader = new AsyncReader.ArrayBacked(data);

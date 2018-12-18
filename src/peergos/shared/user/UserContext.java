@@ -1067,7 +1067,7 @@ public class UserContext {
                 .exceptionally(Futures::logError);
     }
 
-    public static EntryPoint convert(String owner, RetrievedCapability cap) {
+    public static EntryPoint convert(String owner, CapabilityWithPath cap) {
         return new EntryPoint(cap.cap, owner, Collections.emptySet(), Collections.emptySet());
     }
 
