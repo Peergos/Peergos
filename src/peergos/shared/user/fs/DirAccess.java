@@ -27,7 +27,7 @@ import java.util.stream.*;
  */
 public class DirAccess implements CryptreeNode {
 
-    public static final int MAX_CHILD_LINKS_PER_BLOB = 500;
+    private static final int MAX_CHILD_LINKS_PER_BLOB = 500;
 
     private final MaybeMultihash lastCommittedHash;
     private final int version;
@@ -110,7 +110,7 @@ public class DirAccess implements CryptreeNode {
                 new CborObject.CborByteArray(properties),
                 new CborObject.CborList(children
                         .stream()
-                        .map(locLink -> locLink.toCbor())
+                        .map(SymmetricLocationLink::toCbor)
                         .collect(Collectors.toList())),
                 moreFolderContents.isPresent() ? moreFolderContents.get().toCbor() : new CborObject.CborNull()
         ));

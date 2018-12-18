@@ -101,7 +101,7 @@ public class EncryptedChunkRetriever implements FileRetriever {
     }
 
     public Optional<Location> getNext(SymmetricKey dataKey) {
-        return this.nextChunk.map(c -> c.decrypt(dataKey, raw -> Location.fromByteArray(raw)));
+        return this.nextChunk.map(c -> c.decrypt(dataKey, Location::fromCbor));
     }
 
     public byte[] getNonce() {

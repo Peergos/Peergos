@@ -17,7 +17,10 @@ public class CipherText implements Cborable {
 
     @Override
     public CborObject toCbor() {
-        return new CborObject.CborList(Arrays.asList(new CborObject.CborByteArray(nonce), new CborObject.CborByteArray(cipherText)));
+        return new CborObject.CborList(Arrays.asList(
+                new CborObject.CborByteArray(nonce),
+                new CborObject.CborByteArray(cipherText)
+        ));
     }
 
     public static CipherText fromCbor(Cborable cbor) {
@@ -25,10 +28,19 @@ public class CipherText implements Cborable {
             throw new IllegalStateException("Invalid cbor for cipher text: " + cbor);
 
         List<? extends Cborable> parts = ((CborObject.CborList) cbor).value;
-        return new CipherText(((CborObject.CborByteArray) parts.get(0)).value, ((CborObject.CborByteArray) parts.get(1)).value);
+        byte[] nonce = ((CborObject.CborByteArray) parts.get(0)).value;
+        byte[] cipherText = ((CborObject.CborByteArray) parts.get(1)).value;
+        return new CipherText(nonce, cipherText);
     }
 
-    public <T> T decrypt(SymmetricKey key, Function<byte[], T> converter) {
-        return converter.apply(key.decrypt(cipherText, nonce));
+    public static <T extends Cborable> CipherText build(SymmetricKey from, T secret) {
+        byte[] nonce = from.createNonce();
+        byte[] cipherText = from.encrypt(secret.serialize(), nonce);
+        return new CipherText(nonce, cipherText);
+    }
+
+    public <T extends Cborable> T decrypt(SymmetricKey from, Function<Cborable, T> fromCbor) {
+        byte[] secret = from.decrypt(cipherText, nonce);
+        return fromCbor.apply(CborObject.fromByteArray(secret));
     }
 }
