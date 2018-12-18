@@ -8,30 +8,23 @@ import peergos.shared.util.*;
 import java.util.*;
 
 public class SymmetricLocationLink implements Cborable {
-    public final SymmetricLink link;
-    public final byte[] loc;
+    private final CipherText cipherText;
 
-    public SymmetricLocationLink(SymmetricLink link, byte[] location) {
-        this.link = link;
-        this.loc = location;
+    public SymmetricLocationLink(CipherText cipherText) {
+        this.cipherText = cipherText;
     }
 
     public Location targetLocation(SymmetricKey from) {
-        byte[] nonce = Arrays.copyOfRange(loc, 0, TweetNaCl.SECRETBOX_NONCE_BYTES);
-        byte[] rest = Arrays.copyOfRange(loc, TweetNaCl.SECRETBOX_NONCE_BYTES, loc.length);
-        return Location.decrypt(from, nonce, rest);
+        return cipherText.decrypt(from, Capability::fromCbor).location;
     }
 
     public SymmetricKey target(SymmetricKey from) {
-        return link.target(from);
+        return cipherText.decrypt(from, Capability::fromCbor).baseKey;
     }
 
     @Override
     public CborObject toCbor() {
-        return new CborObject.CborList(Arrays.asList(
-                link.toCbor(),
-                new CborObject.CborByteArray(loc)
-        ));
+        return cipherText.toCbor();
     }
 
     public Capability toReadableFilePointer(SymmetricKey baseKey) {
@@ -41,16 +34,14 @@ public class SymmetricLocationLink implements Cborable {
     }
 
     public static SymmetricLocationLink fromCbor(Cborable cbor) {
-        if (! (cbor instanceof CborObject.CborList))
-            throw new IllegalStateException("Incorrect cbor type for SymmetricLocationLink: " + cbor);
-
-        List<? extends Cborable> value = ((CborObject.CborList) cbor).value;
-        return new SymmetricLocationLink(SymmetricLink.fromCbor(value.get(0)), ((CborObject.CborByteArray)value.get(1)).value);
+        return new SymmetricLocationLink(CipherText.fromCbor(cbor));
     }
 
-    public static SymmetricLocationLink create(SymmetricKey fromKey, SymmetricKey toKey, Location location) {
-        byte[] locNonce = fromKey.createNonce();
-        byte[] loc = ArrayOps.concat(locNonce, location.encrypt(fromKey, locNonce));
-        return new SymmetricLocationLink(SymmetricLink.fromPair(fromKey, toKey), loc);
+    public static SymmetricLocationLink create(SymmetricKey from, Capability cap) {
+        return new SymmetricLocationLink(CipherText.build(from, cap));
+    }
+
+    public static SymmetricLocationLink create(SymmetricKey from, SymmetricKey to, Location location) {
+        return create(from, new Capability(location, Optional.empty(), to));
     }
 }
