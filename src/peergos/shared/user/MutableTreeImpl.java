@@ -77,16 +77,13 @@ public class MutableTreeImpl implements MutableTree {
         return addToQueue(owner, publicWriterKey, lock)
                 .thenCompose(committed -> {
                     WriterData holder = committed.props;
-                    boolean isChamp = ! holder.btree.isPresent();
                     return (holder.tree.isPresent() ?
                             ChampWrapper.create(holder.tree.get(), hasher, dht) :
-                            isChamp ?
-                                    ChampWrapper.create(owner, writer, x -> x.data, dht) :
-                                    MerkleBTree.create(writer.publicKeyHash, holder.btree.get(), dht)
+                            ChampWrapper.create(owner, writer, x -> x.data, dht)
                     ).thenCompose(tree -> tree.put(owner, writer, mapKey, existing, value))
                             .thenApply(newRoot -> LOGGING ? log(newRoot, "TREE.put (" + ArrayOps.bytesToHex(mapKey)
                                     + ", " + value + ") => CAS(" + holder.tree + ", " + newRoot + ")") : newRoot)
-                            .thenCompose(newTreeRoot -> (isChamp ? holder.withChamp(newTreeRoot) : holder.withBtree(newTreeRoot))
+                            .thenCompose(newTreeRoot -> holder.withChamp(newTreeRoot)
                                     .commit(owner, writer, committed.hash, mutable, dht, lock::complete))
                             .thenApply(x -> true)
                             .exceptionally(e -> {
@@ -106,13 +103,9 @@ public class MutableTreeImpl implements MutableTree {
                 .thenCompose(committed -> {
                     lock.complete(committed);
                     WriterData holder = committed.props;
-                    if (! holder.tree.isPresent() && ! holder.btree.isPresent())
+                    if (! holder.tree.isPresent())
                         throw new IllegalStateException("Tree root not present for " + writer);
-                    boolean isChamp = ! holder.btree.isPresent();
-                    return (isChamp ?
-                            ChampWrapper.create(holder.tree.get(), hasher, dht) :
-                            MerkleBTree.create(writer, holder.btree.get(), dht)
-                    ).thenCompose(tree -> tree.get(mapKey))
+                    return ChampWrapper.create(holder.tree.get(), hasher, dht).thenCompose(tree -> tree.get(mapKey))
                             .thenApply(maybe -> LOGGING ?
                                     log(maybe, "TREE.get (" + ArrayOps.bytesToHex(mapKey) + ", root="+holder.tree.get()+" => " + maybe) : maybe);
                 });
@@ -126,15 +119,12 @@ public class MutableTreeImpl implements MutableTree {
         return addToQueue(owner, publicWriter, future)
                 .thenCompose(committed -> {
                     WriterData holder = committed.props;
-                    if (! holder.tree.isPresent() && ! holder.btree.isPresent())
+                    if (! holder.tree.isPresent())
                         throw new IllegalStateException("Tree root not present!");
-                    boolean isChamp = ! holder.btree.isPresent();
-                    return (isChamp ?
-                            ChampWrapper.create(holder.tree.get(), hasher, dht) :
-                            MerkleBTree.create(writer.publicKeyHash, holder.btree.get(), dht)
-                    ).thenCompose(tree -> tree.remove(owner, writer, mapKey, existing))
+                    return ChampWrapper.create(holder.tree.get(), hasher, dht)
+                            .thenCompose(tree -> tree.remove(owner, writer, mapKey, existing))
                             .thenApply(pair -> LOGGING ? log(pair, "TREE.rm (" + ArrayOps.bytesToHex(mapKey) + "  => " + pair) : pair)
-                            .thenCompose(newTreeRoot -> (isChamp ? holder.withChamp(newTreeRoot) : holder.withBtree(newTreeRoot))
+                            .thenCompose(newTreeRoot -> holder.withChamp(newTreeRoot)
                                     .commit(owner, writer, committed.hash, mutable, dht, future::complete))
                             .thenApply(x -> true);
                 });
