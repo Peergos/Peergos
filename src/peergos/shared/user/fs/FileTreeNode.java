@@ -32,7 +32,7 @@ public class FileTreeNode {
 
     final static int THUMBNAIL_SIZE = 100;
     private final NativeJSThumbnail thumbnail;
-    private final RetrievedFilePointer pointer;
+    private final RetrievedCapability pointer;
     private final FileProperties props;
     private final String ownername;
     private final Optional<TrieNode> globalRoot;
@@ -50,7 +50,7 @@ public class FileTreeNode {
      * @param writers
      * @param entryWriterKey
      */
-    public FileTreeNode(Optional<TrieNode> globalRoot, RetrievedFilePointer pointer, String ownername,
+    public FileTreeNode(Optional<TrieNode> globalRoot, RetrievedCapability pointer, String ownername,
                         Set<String> readers, Set<String> writers, Optional<SecretSigningKey> entryWriterKey) {
         this.globalRoot = globalRoot;
         this.pointer = pointer == null ? null : pointer.withWriter(entryWriterKey);
@@ -67,7 +67,7 @@ public class FileTreeNode {
         thumbnail = new NativeJSThumbnail();
     }
 
-    public FileTreeNode(RetrievedFilePointer pointer, String ownername,
+    public FileTreeNode(RetrievedCapability pointer, String ownername,
                         Set<String> readers, Set<String> writers, Optional<SecretSigningKey> entryWriterKey) {
         this(Optional.empty(), pointer, ownername, readers, writers, entryWriterKey);
     }
@@ -77,7 +77,7 @@ public class FileTreeNode {
     }
 
     private FileTreeNode withCryptreeNode(CryptreeNode access) {
-        return new FileTreeNode(globalRoot, new RetrievedFilePointer(getPointer().capability, access), ownername,
+        return new FileTreeNode(globalRoot, new RetrievedCapability(getPointer().capability, access), ownername,
                 readers, writers, entryWriterKey);
     }
 
@@ -90,7 +90,7 @@ public class FileTreeNode {
         return pointer.equals(((FileTreeNode) other).getPointer());
     }
 
-    public RetrievedFilePointer getPointer() {
+    public RetrievedCapability getPointer() {
         return pointer;
     }
 
@@ -174,7 +174,7 @@ public class FileTreeNode {
             return newDirAccess.addChildrenAndCommit(children, newSubfoldersKey, ourNewPointer, getSigner(), network, random)
                     .thenCompose(updatedDirAccess -> {
                         readers.removeAll(readersToRemove);
-                        RetrievedFilePointer ourNewRetrievedPointer = new RetrievedFilePointer(ourNewPointer, updatedDirAccess);
+                        RetrievedCapability ourNewRetrievedPointer = new RetrievedCapability(ourNewPointer, updatedDirAccess);
                         FileTreeNode theNewUs = new FileTreeNode(ourNewRetrievedPointer,
                                 ownername, readers, writers, entryWriterKey);
 
@@ -203,7 +203,7 @@ public class FileTreeNode {
                 // changing readers here will only affect the returned FileTreeNode, as the readers are derived from the entry point
                 TreeSet<String> newReaders = new TreeSet<>(readers);
                 newReaders.removeAll(readersToRemove);
-                RetrievedFilePointer newPointer = new RetrievedFilePointer(this.pointer.capability.withBaseKey(parentKey), newFileAccess);
+                RetrievedCapability newPointer = new RetrievedCapability(this.pointer.capability.withBaseKey(parentKey), newFileAccess);
 
                 // update link from parent folder to file to have new baseKey
                 return ((DirAccess) parent.pointer.fileAccess)
@@ -227,7 +227,7 @@ public class FileTreeNode {
         return ((DirAccess) pointer.fileAccess)
                 .removeChild(child.getPointer(), pointer.capability, getSigner(), network)
                 .thenApply(updated -> new FileTreeNode(globalRoot,
-                        new RetrievedFilePointer(getPointer().capability, updated), ownername, readers,
+                        new RetrievedCapability(getPointer().capability, updated), ownername, readers,
                         writers, entryWriterKey));
     }
 
@@ -334,7 +334,7 @@ public class FileTreeNode {
         if (pointer == null)
             return CompletableFuture.completedFuture(Optional.empty());
         SymmetricKey parentKey = getParentKey();
-        CompletableFuture<RetrievedFilePointer> parent = pointer.fileAccess.getParent(parentKey, network);
+        CompletableFuture<RetrievedCapability> parent = pointer.fileAccess.getParent(parentKey, network);
         return parent.thenApply(parentRFP -> {
             if (parentRFP == null)
                 return Optional.empty();
@@ -375,7 +375,7 @@ public class FileTreeNode {
                 .thenApply(children -> children.stream().filter(f -> f.getName().equals(name)).findAny());
     }
 
-    private CompletableFuture<Set<RetrievedFilePointer>> retrieveChildren(NetworkAccess network) {
+    private CompletableFuture<Set<RetrievedCapability>> retrieveChildren(NetworkAccess network) {
         Capability capability = pointer.capability;
         CryptreeNode fileAccess = pointer.fileAccess;
         SymmetricKey rootDirKey = capability.baseKey;
@@ -394,7 +394,7 @@ public class FileTreeNode {
         if (isReadable())
             return ((DirAccess) fileAccess).cleanUnreachableChildren(network, rootDirKey, capability, getSigner())
                     .thenApply(da -> new FileTreeNode(globalRoot,
-                            new RetrievedFilePointer(capability, da), ownername, readers, writers, entryWriterKey));
+                            new RetrievedCapability(capability, da), ownername, readers, writers, entryWriterKey));
         throw new IllegalStateException("No credentials to retrieve children!");
     }
 
@@ -580,7 +580,7 @@ public class FileTreeNode {
                     DirAccess updatedUs = (DirAccess) opt.get();
                     // Check another file of same name hasn't been added in the concurrent change
 
-                    RetrievedFilePointer updatedPointer = new RetrievedFilePointer(pointer.capability, updatedUs);
+                    RetrievedCapability updatedPointer = new RetrievedCapability(pointer.capability, updatedUs);
                     FileTreeNode us = new FileTreeNode(globalRoot, updatedPointer, ownername, readers, writers, entryWriterKey);
                     return us.getChildren(network).thenCompose(children -> {
                         Set<String> childNames = children.stream()
@@ -596,8 +596,8 @@ public class FileTreeNode {
                         // rename file in place as we've already uploaded it
                         return network.getMetadata(childPointer.location).thenCompose(renameOpt -> {
                             CryptreeNode fileToRename = renameOpt.get();
-                            RetrievedFilePointer updatedChildPointer =
-                                    new RetrievedFilePointer(childPointer, fileToRename);
+                            RetrievedCapability updatedChildPointer =
+                                    new RetrievedCapability(childPointer, fileToRename);
                             FileTreeNode toRename = new FileTreeNode(Optional.empty(),
                                     updatedChildPointer, ownername, readers, writers, entryWriterKey);
                             return toRename.rename(safeName, network, us).thenCompose(usAgain ->
@@ -906,8 +906,8 @@ public class FileTreeNode {
                         target.getLocation().writer, getSigner(), newMapKey, network, random)
                         .thenCompose(newAccess -> {
                             // upload new metadatablob
-                            RetrievedFilePointer newRetrievedFilePointer = new RetrievedFilePointer(newRFP, newAccess);
-                            FileTreeNode newFileTreeNode = new FileTreeNode(newRetrievedFilePointer, target.getOwner(),
+                            RetrievedCapability newRetrievedCapability = new RetrievedCapability(newRFP, newAccess);
+                            FileTreeNode newFileTreeNode = new FileTreeNode(newRetrievedCapability, target.getOwner(),
                                     Collections.emptySet(), Collections.emptySet(), target.getEntryWriterKey());
                             return target.addLinkTo(newFileTreeNode, network, random);
                         });
@@ -928,7 +928,7 @@ public class FileTreeNode {
     @JsMethod
     public CompletableFuture<FileTreeNode> remove(NetworkAccess network, FileTreeNode parent) {
         ensureUnmodified();
-        Supplier<CompletableFuture<Boolean>> supplier = () -> new RetrievedFilePointer(writableFilePointer(), pointer.fileAccess)
+        Supplier<CompletableFuture<Boolean>> supplier = () -> new RetrievedCapability(writableFilePointer(), pointer.fileAccess)
                 .remove(network, null, getSigner());
 
         if (parent != null) {

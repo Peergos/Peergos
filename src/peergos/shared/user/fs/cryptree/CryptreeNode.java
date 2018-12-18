@@ -52,14 +52,14 @@ public interface CryptreeNode extends Cborable {
                                                    NetworkAccess network,
                                                    SafeRandom random);
 
-    default CompletableFuture<RetrievedFilePointer> getParent(SymmetricKey baseKey, NetworkAccess network) {
+    default CompletableFuture<RetrievedCapability> getParent(SymmetricKey baseKey, NetworkAccess network) {
         EncryptedCapability parentLink = getParentLink();
         if (parentLink == null)
             return CompletableFuture.completedFuture(null);
 
         return network.retrieveAllMetadata(Arrays.asList(parentLink.toCapability(baseKey))).thenApply(res -> {
-            RetrievedFilePointer retrievedFilePointer = res.stream().findAny().get();
-            return retrievedFilePointer;
+            RetrievedCapability retrievedCapability = res.stream().findAny().get();
+            return retrievedCapability;
         });
     }
 

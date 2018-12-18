@@ -3,15 +3,10 @@ import java.util.logging.*;
 
 import jsinterop.annotations.*;
 import peergos.client.*;
-import peergos.server.corenode.*;
-import peergos.server.mutable.*;
-import peergos.server.social.*;
-import peergos.server.storage.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.mutable.*;
@@ -214,8 +209,8 @@ public class NetworkAccess {
         }
     }
 
-    public CompletableFuture<List<RetrievedFilePointer>> retrieveAllMetadata(List<Capability> links) {
-        List<CompletableFuture<Optional<RetrievedFilePointer>>> all = links.stream()
+    public CompletableFuture<List<RetrievedCapability>> retrieveAllMetadata(List<Capability> links) {
+        List<CompletableFuture<Optional<RetrievedCapability>>> all = links.stream()
                 .map(link -> {
                     Location loc = link.location;
                     return tree.get(loc.owner, loc.writer, loc.getMapKey())
@@ -223,11 +218,11 @@ public class NetworkAccess {
                                 if (key.isPresent())
                                     return dhtClient.get(key.get())
                                             .thenApply(dataOpt ->  dataOpt
-                                                    .map(cbor -> new RetrievedFilePointer(
+                                                    .map(cbor -> new RetrievedCapability(
                                                             link,
                                                             CryptreeNode.fromCbor(cbor, key.get()))));
                                 LOG.severe("Couldn't download link at: " + loc);
-                                Optional<RetrievedFilePointer> result = Optional.empty();
+                                Optional<RetrievedCapability> result = Optional.empty();
                                 return CompletableFuture.completedFuture(result);
                             });
                 }).collect(Collectors.toList());
@@ -249,7 +244,7 @@ public class NetworkAccess {
 
     public CompletableFuture<Optional<FileTreeNode>> retrieveEntryPoint(EntryPoint e) {
         return downloadEntryPoint(e)
-                .thenApply(faOpt ->faOpt.map(fa -> new FileTreeNode(new RetrievedFilePointer(e.pointer, fa), e.owner,
+                .thenApply(faOpt ->faOpt.map(fa -> new FileTreeNode(new RetrievedCapability(e.pointer, fa), e.owner,
                         e.readers, e.writers, e.pointer.writer)))
                 .exceptionally(t -> Optional.empty());
     }

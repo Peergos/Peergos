@@ -508,7 +508,7 @@ public class UserContext {
                 });
     }
 
-    public CompletableFuture<RetrievedFilePointer> createEntryDirectory(SigningPrivateKeyAndPublicHash owner, String directoryName) {
+    public CompletableFuture<RetrievedCapability> createEntryDirectory(SigningPrivateKeyAndPublicHash owner, String directoryName) {
         long t1 = System.currentTimeMillis();
         SigningKeyPair writer = SigningKeyPair.random(crypto.random, crypto.signer);
         LOG.info("Random User generation took " + (System.currentTimeMillis()-t1) + " mS");
@@ -537,7 +537,7 @@ public class UserContext {
                             LOG.info("Uploading root dir metadata took " + (t3 - t2) + " mS");
 
                             LOG.info("Committing static data took " + (System.currentTimeMillis() - t3) + " mS");
-                            return new RetrievedFilePointer(rootPointer, root.withHash(chunkHash));
+                            return new RetrievedCapability(rootPointer, root.withHash(chunkHash));
                         });
                     }).thenCompose(x -> addToStaticDataAndCommit(entry).thenApply(y -> x));
         });
