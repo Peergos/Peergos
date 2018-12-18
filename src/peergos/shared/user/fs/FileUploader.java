@@ -86,7 +86,7 @@ public class FileUploader implements AutoCloseable {
         int length =  isLastChunk ? (int)(fileLength -  position) : Chunk.MAX_SIZE;
         byte[] data = new byte[length];
         return reader.readIntoArray(data, 0, data.length).thenCompose(b -> {
-            byte[] nonce = random.randomBytes(TweetNaCl.SECRETBOX_NONCE_BYTES);
+            byte[] nonce = metaKey.createNonce();
             Chunk chunk = new Chunk(data, metaKey, currentLocation.getMapKey(), nonce);
             LocatedChunk locatedChunk = new LocatedChunk(new Location(owner, writer.publicKeyHash, chunk.mapKey()), ourExistingHash, chunk);
             byte[] mapKey = random.randomBytes(32);

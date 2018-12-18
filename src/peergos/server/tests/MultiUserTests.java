@@ -256,10 +256,8 @@ public class MultiUserTests {
         CryptreeNode fileAccess = network.getMetadata(priorPointer.getLocation()).get().get();
         try {
             // Try decrypting the new metadata with the old key
-            byte[] properties = ((CborObject.CborByteArray) ((CborObject.CborList) fileAccess.toCbor()).value.get(1)).value;
-            byte[] nonce = Arrays.copyOfRange(properties, 0, TweetNaCl.SECRETBOX_NONCE_BYTES);
-            byte[] cipher = Arrays.copyOfRange(properties, TweetNaCl.SECRETBOX_NONCE_BYTES, properties.length);
-            FileProperties props =  FileProperties.fromCbor(CborObject.fromByteArray(priorMetaKey.decrypt(cipher, nonce)));
+            PaddedCipherText properties = PaddedCipherText.fromCbor(((CborObject.CborList) fileAccess.toCbor()).value.get(4));
+            FileProperties props =  properties.decrypt(priorMetaKey, FileProperties::fromCbor);
             throw new IllegalStateException("We shouldn't be able to decrypt this after a rename! new name = " + props.name);
         } catch (TweetNaCl.InvalidCipherTextException e) {}
         try {

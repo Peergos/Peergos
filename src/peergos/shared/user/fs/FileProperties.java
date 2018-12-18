@@ -76,12 +76,6 @@ public class FileProperties implements Cborable {
         return new FileProperties(name, mimeType, size, LocalDateTime.ofEpochSecond(modified, 0, ZoneOffset.UTC), isHidden, thumbnail);
     }
 
-    public static FileProperties decrypt(byte[] raw, SymmetricKey metaKey) {
-        byte[] nonce = Arrays.copyOfRange(raw, 0, TweetNaCl.SECRETBOX_NONCE_BYTES);
-        byte[] cipher = Arrays.copyOfRange(raw, TweetNaCl.SECRETBOX_NONCE_BYTES, raw.length);
-        return FileProperties.fromCbor(CborObject.fromByteArray(metaKey.decrypt(cipher, nonce)));
-    }
-
     @JsIgnore
     public FileProperties withSize(long newSize) {
         return new FileProperties(name, mimeType, newSize, modified, isHidden, thumbnail);

@@ -713,9 +713,7 @@ public class FileTreeNode {
 
                             return fileData.readIntoArray(raw, internalStart, internalEnd - internalStart).thenCompose(read -> {
 
-                                byte[] nonce = random.randomBytes(TweetNaCl.SECRETBOX_NONCE_BYTES);
-
-                                Chunk updated = new Chunk(raw, dataKey, currentOriginal.location.getMapKey(), nonce);
+                                Chunk updated = new Chunk(raw, dataKey, currentOriginal.location.getMapKey(), dataKey.createNonce());
                                 LocatedChunk located = new LocatedChunk(currentOriginal.location, currentOriginal.existingHash, updated);
                                 long currentSize = filesSize.get();
                                 FileProperties newProps = new FileProperties(childProps.name, childProps.mimeType,
@@ -735,7 +733,7 @@ public class FileTreeNode {
 
                                         if (updatedLength > Chunk.MAX_SIZE) {
                                             // update file size in FileProperties of first chunk
-                                            CompletableFuture<Boolean> updatedSize = getChildren(network).thenCompose(children -> {
+                                            return getChildren(network).thenCompose(children -> {
                                                 Optional<FileTreeNode> updatedChild = children.stream()
                                                         .filter(f -> f.getFileProperties().name.equals(filename))
                                                         .findAny();
