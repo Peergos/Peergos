@@ -61,7 +61,7 @@ public class FileProperties implements Cborable {
     }
 
     @SuppressWarnings("unusable-by-js")
-    public static FileProperties fromCbor(CborObject cbor) {
+    public static FileProperties fromCbor(Cborable cbor) {
         List<? extends Cborable> elements = ((CborObject.CborList) cbor).value;
         String name = ((CborObject.CborString)elements.get(0)).value;
         String mimeType = ((CborObject.CborString)elements.get(1)).value;

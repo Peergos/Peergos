@@ -25,12 +25,13 @@ import java.util.concurrent.*;
  * erasure coding scheme, nonce and auth for this section as well as an encrypted link to the next section.
  */
 public class FileAccess implements CryptreeNode {
+    private static final int META_DATA_PADDING_BLOCKSIZE = 16;
 
     protected final MaybeMultihash lastCommittedHash;
     protected final int version;
     protected final SymmetricLink parent2meta;
     protected final SymmetricLink parent2data;
-    protected final byte[] properties;
+    protected final PaddedCipherText properties;
     protected final FileRetriever retriever;
     protected final SymmetricLocationLink parentLink;
 
@@ -38,7 +39,7 @@ public class FileAccess implements CryptreeNode {
                       int version,
                       SymmetricLink parent2Meta,
                       SymmetricLink parent2Data,
-                      byte[] fileProperties,
+                      PaddedCipherText fileProperties,
                       FileRetriever fileRetriever,
                       SymmetricLocationLink parentLink) {
         this.lastCommittedHash = lastCommittedHash;
@@ -63,7 +64,7 @@ public class FileAccess implements CryptreeNode {
                         parent2meta.toCbor(),
                         parent2data.toCbor(),
                         parentLink == null ? new CborObject.CborNull() : parentLink.toCbor(),
-                        new CborObject.CborByteArray(properties),
+                        properties.toCbor(),
                         retriever == null ? new CborObject.CborNull() : retriever.toCbor()
                 ));
     }
@@ -95,7 +96,7 @@ public class FileAccess implements CryptreeNode {
 
     @Override
     public FileProperties getProperties(SymmetricKey baseKey) {
-        return FileProperties.decrypt(properties, getMetaKey(baseKey));
+        return properties.decrypt(getMetaKey(baseKey), FileProperties::fromCbor);
     }
 
     public SymmetricKey getDataKey(SymmetricKey baseKey) {
@@ -120,8 +121,8 @@ public class FileAccess implements CryptreeNode {
                 SymmetricLink.fromPair(writableCapability.baseKey, metaKey) :
                 this.parent2meta;
 
-        byte[] nonce = metaKey.createNonce();
-        FileAccess fa = new FileAccess(lastCommittedHash, version, toMeta, this.parent2data, ArrayOps.concat(nonce, metaKey.encrypt(newProps.serialize(), nonce)),
+        PaddedCipherText encryptedProperties = PaddedCipherText.build(metaKey, newProps, META_DATA_PADDING_BLOCKSIZE);
+        FileAccess fa = new FileAccess(lastCommittedHash, version, toMeta, this.parent2data, encryptedProperties,
                 this.retriever, this.parentLink);
         return network.uploadChunk(fa, writableCapability.location, writableCapability.signer())
                 .thenApply(b -> fa);
@@ -184,7 +185,7 @@ public class FileAccess implements CryptreeNode {
                 null :
                 SymmetricLocationLink.fromCbor(parentLinkCbor);
 
-        byte[] properties = ((CborObject.CborByteArray)value.get(index++)).value;
+        PaddedCipherText properties = PaddedCipherText.fromCbor(value.get(index++));
         Cborable retrieverCbor = value.get(index++);
         FileRetriever retriever = retrieverCbor instanceof CborObject.CborNull ?
                 null :
@@ -202,13 +203,12 @@ public class FileAccess implements CryptreeNode {
                                     FileRetriever retriever,
                                     Location parentLocation,
                                     SymmetricKey parentparentKey) {
-        byte[] nonce = metaKey.createNonce();
         return new FileAccess(
                 existingHash,
                 CryptreeNode.CURRENT_FILE_VERSION,
                 SymmetricLink.fromPair(parentKey, metaKey),
                 SymmetricLink.fromPair(parentKey, dataKey),
-                ArrayOps.concat(nonce, metaKey.encrypt(props.serialize(), nonce)),
+                PaddedCipherText.build(metaKey, props, META_DATA_PADDING_BLOCKSIZE),
                 retriever,
                 SymmetricLocationLink.create(parentKey, parentparentKey, parentLocation));
     }

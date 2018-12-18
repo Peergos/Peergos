@@ -23,7 +23,7 @@ public class PaddedCipherText implements Cborable {
         return cipherText.toCbor();
     }
 
-    public PaddedCipherText fromCbor(Cborable cbor) {
+    public static PaddedCipherText fromCbor(Cborable cbor) {
         return new PaddedCipherText(CipherText.fromCbor(cbor));
     }
 
@@ -32,10 +32,10 @@ public class PaddedCipherText implements Cborable {
         return Arrays.copyOfRange(input, 0, nBlocks * blockSize);
     }
 
-    public static <T extends Cborable> CipherText build(SymmetricKey from, T secret, int paddingBlockSize) {
+    public static <T extends Cborable> PaddedCipherText build(SymmetricKey from, T secret, int paddingBlockSize) {
         byte[] nonce = from.createNonce();
         byte[] cipherText = from.encrypt(pad(secret.serialize(), paddingBlockSize), nonce);
-        return new CipherText(nonce, cipherText);
+        return new PaddedCipherText(new CipherText(nonce, cipherText));
     }
 
     public <T extends Cborable> T decrypt(SymmetricKey from, Function<Cborable, T> fromCbor) {

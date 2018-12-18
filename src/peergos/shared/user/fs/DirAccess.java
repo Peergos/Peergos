@@ -27,6 +27,7 @@ import java.util.stream.*;
  */
 public class DirAccess implements CryptreeNode {
 
+    private static final int META_DATA_PADDING_BLOCKSIZE = 16;
     private static final int MAX_CHILD_LINKS_PER_BLOB = 500;
 
     private final MaybeMultihash lastCommittedHash;
@@ -35,14 +36,14 @@ public class DirAccess implements CryptreeNode {
     private final SymmetricLocationLink parentLink;
     private final List<SymmetricLocationLink> children;
     private final Optional<SymmetricLocationLink> moreFolderContents;
-    private final byte[] properties;
+    private final PaddedCipherText properties;
 
     public DirAccess(MaybeMultihash lastCommittedHash,
                      int version,
                      SymmetricLink base2parent,
                      SymmetricLink parent2meta,
                      SymmetricLocationLink parentLink,
-                     byte[] properties,
+                     PaddedCipherText properties,
                      List<SymmetricLocationLink> children,
                      Optional<SymmetricLocationLink> moreFolderContents) {
         this.lastCommittedHash = lastCommittedHash;
@@ -87,7 +88,7 @@ public class DirAccess implements CryptreeNode {
 
     @Override
     public FileProperties getProperties(SymmetricKey baseKey) {
-        return FileProperties.decrypt(properties, getMetaKey(baseKey));
+        return properties.decrypt(getMetaKey(baseKey), FileProperties::fromCbor);
     }
 
     @Override
@@ -107,7 +108,7 @@ public class DirAccess implements CryptreeNode {
                 base2parent.toCbor(),
                 parent2meta.toCbor(),
                 parentLink == null ? new CborObject.CborNull() : parentLink.toCbor(),
-                new CborObject.CborByteArray(properties),
+                properties.toCbor(),
                 new CborObject.CborList(children
                         .stream()
                         .map(SymmetricLocationLink::toCbor)
@@ -130,7 +131,7 @@ public class DirAccess implements CryptreeNode {
         SymmetricLocationLink parentLink = parentLinkCbor instanceof CborObject.CborNull ?
                 null :
                 SymmetricLocationLink.fromCbor(parentLinkCbor);
-        byte[] properties = ((CborObject.CborByteArray)value.get(index++)).value;
+        PaddedCipherText properties = PaddedCipherText.fromCbor(value.get(index++));
         List<SymmetricLocationLink> children = ((CborObject.CborList)value.get(index++)).value
                 .stream()
                 .map(SymmetricLocationLink::fromCbor)
@@ -154,10 +155,10 @@ public class DirAccess implements CryptreeNode {
         SymmetricKey metaKey;
         SymmetricKey parentKey = base2parent.target(writableCapability.baseKey);
         metaKey = this.getMetaKey(parentKey);
-        byte[] metaNonce = metaKey.createNonce();
+        PaddedCipherText encryptedProperties = PaddedCipherText.build(metaKey, newProps, META_DATA_PADDING_BLOCKSIZE);
         DirAccess updated = new DirAccess(lastCommittedHash, version, base2parent,
                 parent2meta, parentLink,
-                ArrayOps.concat(metaNonce, metaKey.encrypt(newProps.serialize(), metaNonce)),
+                encryptedProperties,
                 children, moreFolderContents
         );
         return network.uploadChunk(updated, writableCapability.location, writableCapability.signer())
@@ -386,19 +387,21 @@ public class DirAccess implements CryptreeNode {
                 newChildren, moreFolderContents);
     }
 
-    public static DirAccess create(MaybeMultihash lastCommittedHash, SymmetricKey subfoldersKey, FileProperties metadata, Location parentLocation, SymmetricKey parentParentKey, SymmetricKey parentKey) {
+    public static DirAccess create(MaybeMultihash lastCommittedHash, SymmetricKey subfoldersKey, FileProperties props,
+                                   Location parentLocation, SymmetricKey parentParentKey, SymmetricKey parentKey) {
         SymmetricKey metaKey = SymmetricKey.random();
         if (parentKey == null)
             parentKey = SymmetricKey.random();
-        byte[] metaNonce = metaKey.createNonce();
-        SymmetricLocationLink parentLink = parentLocation == null ? null : SymmetricLocationLink.create(parentKey, parentParentKey, parentLocation);
+        SymmetricLocationLink parentLink = parentLocation == null ?
+                null :
+                SymmetricLocationLink.create(parentKey, parentParentKey, parentLocation);
         return new DirAccess(
                 lastCommittedHash,
                 CryptreeNode.CURRENT_DIR_VERSION,
                 SymmetricLink.fromPair(subfoldersKey, parentKey),
                 SymmetricLink.fromPair(parentKey, metaKey),
                 parentLink,
-                ArrayOps.concat(metaNonce, metaKey.encrypt(metadata.serialize(), metaNonce)),
+                PaddedCipherText.build(metaKey, props, META_DATA_PADDING_BLOCKSIZE),
                 new ArrayList<>(),
                 Optional.empty()
         );
