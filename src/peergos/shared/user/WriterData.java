@@ -7,13 +7,11 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
-import peergos.shared.hamt.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.merklebtree.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.fs.*;
-import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
@@ -121,12 +119,12 @@ public class WriterData implements Cborable {
         return new CommittedWriterData(hash, this);
     }
 
-    public CompletableFuture<CommittedWriterData> removeFromStaticData(FileTreeNode fileTreeNode,
+    public CompletableFuture<CommittedWriterData> removeFromStaticData(FileWrapper fileWrapper,
                                                                        SigningPrivateKeyAndPublicHash signer,
                                                                        MaybeMultihash currentHash,
                                                                        NetworkAccess network,
                                                                        Consumer<CommittedWriterData> updater) {
-        Capability pointer = fileTreeNode.getPointer().capability;
+        Capability pointer = fileWrapper.getPointer().capability;
 
         return staticData.map(sd -> {
             boolean isRemoved = sd.remove(pointer);

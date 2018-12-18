@@ -84,27 +84,27 @@ public class MultiUserTests {
         u2.processFollowRequests().get();//needed for side effect
 
         // upload a file to "a"'s space
-        FileTreeNode u1Root = u1.getUserRoot().get();
+        FileWrapper u1Root = u1.getUserRoot().get();
         String filename = "somefile.txt";
         byte[] data = UserTests.randomData(10*1024*1024);
 
-        FileTreeNode uploaded = u1Root.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length,
+        FileWrapper uploaded = u1Root.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length,
                 u1.network, u1.crypto.random,l -> {}, u1.fragmenter()).get();
 
         // share the file from "a" to each of the others
-        FileTreeNode u1File = u1.getByPath(u1.username + "/" + filename).get().get();
+        FileWrapper u1File = u1.getByPath(u1.username + "/" + filename).get().get();
         u1.shareWith(Paths.get(u1.username, filename), Collections.singleton(u2.username)).get();
 
         // check other user can read the file
-        FileTreeNode sharedFile = u2.getByPath(u1.username + "/" + filename).get().get();
+        FileWrapper sharedFile = u2.getByPath(u1.username + "/" + filename).get().get();
         String dirname = "adir";
         u2.getUserRoot().get().mkdir(dirname, network, false, crypto.random).get();
-        FileTreeNode targetDir = u2.getByPath(Paths.get(u2.username, dirname).toString()).get().get();
+        FileWrapper targetDir = u2.getByPath(Paths.get(u2.username, dirname).toString()).get().get();
 
         // copy the friend's file to our own space, this should reupload the file encrypted with a new key
         // this prevents us exposing to the network our social graph by the fact that we pin the same file fragments
         sharedFile.copyTo(targetDir, network, crypto.random, u2.fragmenter()).get();
-        FileTreeNode copy = u2.getByPath(Paths.get(u2.username, dirname, filename).toString()).get().get();
+        FileWrapper copy = u2.getByPath(Paths.get(u2.username, dirname, filename).toString()).get().get();
 
         // check that the copied file has the correct contents
         UserTests.checkFileContents(data, copy, u2);
@@ -137,16 +137,16 @@ public class MultiUserTests {
         }
 
         // upload a file to "a"'s space
-        FileTreeNode u1Root = u1.getUserRoot().get();
+        FileWrapper u1Root = u1.getUserRoot().get();
         String filename = "somefile.txt";
         byte[] data1 = "Hello Peergos friend!".getBytes();
         AsyncReader file1Reader = new AsyncReader.ArrayBacked(data1);
-        FileTreeNode uploaded = u1Root.uploadFile(filename, file1Reader, data1.length,
+        FileWrapper uploaded = u1Root.uploadFile(filename, file1Reader, data1.length,
                 u1.network, u1.crypto.random,l -> {}, u1.fragmenter()).get();
 
         // upload a different file with the same name in a sub folder
         uploaded.mkdir("subdir", network, false, crypto.random).get();
-        FileTreeNode subdir = u1.getByPath("/" + u1.username + "/subdir").get().get();
+        FileWrapper subdir = u1.getByPath("/" + u1.username + "/subdir").get().get();
         byte[] data2 = "Goodbye Peergos friend!".getBytes();
         AsyncReader file2Reader = new AsyncReader.ArrayBacked(data2);
         subdir.uploadFile(filename, file2Reader, data2.length,
@@ -159,7 +159,7 @@ public class MultiUserTests {
 
         // check other users can read the file
         for (UserContext userContext : userContexts) {
-            Optional<FileTreeNode> sharedFile = userContext.getByPath(u1.username + "/" + filename).get();
+            Optional<FileWrapper> sharedFile = userContext.getByPath(u1.username + "/" + filename).get();
             Assert.assertTrue("shared file present", sharedFile.isPresent());
 
             AsyncReader inputStream = sharedFile.get().getInputStream(userContext.network,
@@ -172,7 +172,7 @@ public class MultiUserTests {
         // check other users can read the file
         for (UserContext userContext : userContexts) {
             String expectedPath = Paths.get(u1.username, "subdir", filename).toString();
-            Optional<FileTreeNode> sharedFile = userContext.getByPath(expectedPath).get();
+            Optional<FileWrapper> sharedFile = userContext.getByPath(expectedPath).get();
             Assert.assertTrue("shared file present", sharedFile.isPresent());
 
             AsyncReader inputStream = sharedFile.get().getInputStream(userContext.network,
@@ -209,23 +209,23 @@ public class MultiUserTests {
         }
 
         // upload a file to "a"'s space
-        FileTreeNode u1Root = u1.getUserRoot().get();
+        FileWrapper u1Root = u1.getUserRoot().get();
         String filename = "somefile.txt";
         File f = File.createTempFile("peergos", "");
         byte[] originalFileContents = "Hello Peergos friend!".getBytes();
         Files.write(f.toPath(), originalFileContents);
         ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(f);
-        FileTreeNode uploaded = u1Root.uploadFile(filename, resetableFileInputStream, f.length(),
+        FileWrapper uploaded = u1Root.uploadFile(filename, resetableFileInputStream, f.length(),
                 u1.network, u1.crypto.random,l -> {}, u1.fragmenter()).get();
 
         // share the file from "a" to each of the others
         String originalPath = u1.username + "/" + filename;
-        FileTreeNode u1File = u1.getByPath(originalPath).get().get();
+        FileWrapper u1File = u1.getByPath(originalPath).get().get();
         u1.shareWith(Paths.get(u1.username, filename), friends.stream().map(u -> u.username).collect(Collectors.toSet())).get();
 
         // check other users can read the file
         for (UserContext friend : friends) {
-            Optional<FileTreeNode> sharedFile = friend.getByPath(u1.username + "/" + filename).get();
+            Optional<FileWrapper> sharedFile = friend.getByPath(u1.username + "/" + filename).get();
             Assert.assertTrue("shared file present", sharedFile.isPresent());
 
             AsyncReader inputStream = sharedFile.get().getInputStream(friend.network,
@@ -237,7 +237,7 @@ public class MultiUserTests {
 
         UserContext userToUnshareWith = friends.stream().findFirst().get();
         String friendsPathToFile = u1.username + "/" + filename;
-        Optional<FileTreeNode> priorUnsharedView = userToUnshareWith.getByPath(friendsPathToFile).get();
+        Optional<FileWrapper> priorUnsharedView = userToUnshareWith.getByPath(friendsPathToFile).get();
         Capability priorPointer = priorUnsharedView.get().getPointer().capability;
         CryptreeNode priorFileAccess = network.getMetadata(priorPointer.getLocation()).get().get();
         SymmetricKey priorMetaKey = priorFileAccess.getMetaKey(priorPointer.baseKey);
@@ -246,13 +246,13 @@ public class MultiUserTests {
         u1.unShare(Paths.get(u1.username, filename), userToUnshareWith.username).get();
 
         String newname = "newname.txt";
-        FileTreeNode updatedParent = u1.getByPath(originalPath).get().get()
+        FileWrapper updatedParent = u1.getByPath(originalPath).get().get()
                 .rename(newname, network, u1.getUserRoot().get()).get();
 
         // check still logged in user can't read the new name
-        Optional<FileTreeNode> unsharedView = userToUnshareWith.getByPath(friendsPathToFile).get();
+        Optional<FileWrapper> unsharedView = userToUnshareWith.getByPath(friendsPathToFile).get();
         String friendsNewPathToFile = u1.username + "/" + newname;
-        Optional<FileTreeNode> unsharedView2 = userToUnshareWith.getByPath(friendsNewPathToFile).get();
+        Optional<FileWrapper> unsharedView2 = userToUnshareWith.getByPath(friendsNewPathToFile).get();
         CryptreeNode fileAccess = network.getMetadata(priorPointer.getLocation()).get().get();
         try {
             // Try decrypting the new metadata with the old key
@@ -287,18 +287,18 @@ public class MultiUserTests {
         // check remaining users can still read it
         for (UserContext userContext : remainingUsers) {
             String path = u1.username + "/" + newname;
-            Optional<FileTreeNode> sharedFile = userContext.getByPath(path).get();
+            Optional<FileWrapper> sharedFile = userContext.getByPath(path).get();
             Assert.assertTrue("path '"+ path +"' is still available", sharedFile.isPresent());
         }
 
         // test that u1 can still access the original file
-        Optional<FileTreeNode> fileWithNewBaseKey = u1New.getByPath(u1.username + "/" + newname).get();
+        Optional<FileWrapper> fileWithNewBaseKey = u1New.getByPath(u1.username + "/" + newname).get();
         Assert.assertTrue(fileWithNewBaseKey.isPresent());
 
         // Now modify the file
         byte[] suffix = "Some new data at the end".getBytes();
         AsyncReader suffixStream = new AsyncReader.ArrayBacked(suffix);
-        FileTreeNode parent = u1New.getByPath(u1New.username).get().get();
+        FileWrapper parent = u1New.getByPath(u1New.username).get().get();
         parent.uploadFileSection(newname, suffixStream, originalFileContents.length, originalFileContents.length + suffix.length,
                 Optional.empty(), true, u1New.network, u1New.crypto.random, l -> {}, u1New.fragmenter()).get();
         AsyncReader extendedContents = u1New.getByPath(u1.username + "/" + newname).get().get()
@@ -330,13 +330,13 @@ public class MultiUserTests {
         assertTrue("Receive a follow request", u1Requests.size() > 0);
         u1.sendReplyFollowRequest(u1Requests.get(0), true, true).get();
         List<FollowRequest> u2FollowRequests = u2.processFollowRequests().get();
-        Optional<FileTreeNode> u1ToU2 = u2.getByPath("/" + u1.username).get();
+        Optional<FileWrapper> u1ToU2 = u2.getByPath("/" + u1.username).get();
         assertTrue("Friend root present after accepted follow request", u1ToU2.isPresent());
 
-        Optional<FileTreeNode> u2ToU1 = u1.getByPath("/" + u2.username).get();
+        Optional<FileWrapper> u2ToU1 = u1.getByPath("/" + u2.username).get();
         assertTrue("Friend root present after accepted follow request", u2ToU1.isPresent());
 
-        Set<FileTreeNode> children = u2ToU1.get().getChildren(u2.network).get();
+        Set<FileWrapper> children = u2ToU1.get().getChildren(u2.network).get();
 
         assertTrue("Browse to friend root", children.isEmpty());
 
@@ -371,8 +371,8 @@ public class MultiUserTests {
         assertTrue("Receive a follow request", u1Requests.size() > 0);
         u1.sendReplyFollowRequest(u1Requests.get(0), true, false).get();
         List<FollowRequest> u2FollowRequests = u2.processFollowRequests().get();
-        Optional<FileTreeNode> u1Tou2 = u2.getByPath("/" + u1.username).get();
-        Optional<FileTreeNode> u2Tou1 = u1.getByPath("/" + u2.username).get();
+        Optional<FileWrapper> u1Tou2 = u2.getByPath("/" + u1.username).get();
+        Optional<FileWrapper> u2Tou1 = u1.getByPath("/" + u2.username).get();
 
         assertTrue("Friend root present after accepted follow request", u1Tou2.isPresent());
         assertTrue("Friend root not present after non reciprocated follow request", !u2Tou1.isPresent());
@@ -392,10 +392,10 @@ public class MultiUserTests {
         assertTrue("Receive a follow request", u1Requests.size() > 0);
         u1.sendReplyFollowRequest(u1Requests.get(0), false, false);
         List<FollowRequest> u2FollowRequests = u2.processFollowRequests().get();
-        Optional<FileTreeNode> u1Tou2 = u2.getByPath("/" + u1.username).get();
+        Optional<FileWrapper> u1Tou2 = u2.getByPath("/" + u1.username).get();
         assertTrue("Friend root not present after rejected follow request", ! u1Tou2.isPresent());
 
-        Optional<FileTreeNode> u2Tou1 = u1.getByPath("/" + u2.username).get();
+        Optional<FileWrapper> u2Tou1 = u1.getByPath("/" + u2.username).get();
         assertTrue("Friend root not present after non reciprocated follow request", !u2Tou1.isPresent());
     }
 
@@ -412,10 +412,10 @@ public class MultiUserTests {
         assertTrue("Receive a follow request", u1Requests.size() > 0);
         u1.sendReplyFollowRequest(u1Requests.get(0), true, true).get();
         List<FollowRequest> u2FollowRequests = u2.processFollowRequests().get();
-        Optional<FileTreeNode> u1ToU2 = u2.getByPath("/" + u1.username).get();
+        Optional<FileWrapper> u1ToU2 = u2.getByPath("/" + u1.username).get();
         assertTrue("Friend root present after accepted follow request", u1ToU2.isPresent());
 
-        Optional<FileTreeNode> u2ToU1 = u1.getByPath("/" + u2.username).get();
+        Optional<FileWrapper> u2ToU1 = u1.getByPath("/" + u2.username).get();
         assertTrue("Friend root present after accepted follow request", u2ToU1.isPresent());
 
         Set<String> u1Following = PeergosNetworkUtils.ensureSignedUp(username1, password1, network.clear(), crypto).getSocialState().get()
@@ -433,12 +433,12 @@ public class MultiUserTests {
 
         q.removeFollower(username2).get();
 
-        Optional<FileTreeNode> u2ToU1Again = q.getByPath("/" + u2.username).get();
+        Optional<FileWrapper> u2ToU1Again = q.getByPath("/" + u2.username).get();
         assertTrue("Friend root present after unfollow request", u2ToU1Again.isPresent());
 
         w = PeergosNetworkUtils.ensureSignedUp(username2, password2, network, crypto);
 
-        Optional<FileTreeNode> u1ToU2Again = w.getByPath("/" + u1.username).get();
+        Optional<FileWrapper> u1ToU2Again = w.getByPath("/" + u1.username).get();
         assertTrue("Friend root NOT present after unfollow", !u1ToU2Again.isPresent());
     }
 
@@ -455,10 +455,10 @@ public class MultiUserTests {
         assertTrue("Receive a follow request", u1Requests.size() > 0);
         u1.sendReplyFollowRequest(u1Requests.get(0), false, true);
         List<FollowRequest> u2FollowRequests = u2.processFollowRequests().get();
-        Optional<FileTreeNode> u1Tou2 = u2.getByPath("/" + u1.username).get();
+        Optional<FileWrapper> u1Tou2 = u2.getByPath("/" + u1.username).get();
         assertTrue("Friend root not present after rejected follow request", ! u1Tou2.isPresent());
 
-        Optional<FileTreeNode> u2Tou1 = u1.getByPath("/" + u2.username).get();
+        Optional<FileWrapper> u2Tou1 = u1.getByPath("/" + u2.username).get();
         assertTrue("Friend root present after reciprocated follow request", u2Tou1.isPresent());
     }
 

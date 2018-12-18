@@ -233,7 +233,7 @@ public class NetworkAccess {
                 .collect(Collectors.toList()));
     }
 
-    public CompletableFuture<Set<FileTreeNode>> retrieveAll(List<EntryPoint> entries) {
+    public CompletableFuture<Set<FileWrapper>> retrieveAll(List<EntryPoint> entries) {
         return Futures.reduceAll(entries, Collections.emptySet(),
                 (set, entry) -> retrieveEntryPoint(entry)
                         .thenApply(opt ->
@@ -242,9 +242,9 @@ public class NetworkAccess {
                 (a, b) -> Stream.concat(a.stream(), b.stream()).collect(Collectors.toSet()));
     }
 
-    public CompletableFuture<Optional<FileTreeNode>> retrieveEntryPoint(EntryPoint e) {
+    public CompletableFuture<Optional<FileWrapper>> retrieveEntryPoint(EntryPoint e) {
         return downloadEntryPoint(e)
-                .thenApply(faOpt ->faOpt.map(fa -> new FileTreeNode(new RetrievedCapability(e.pointer, fa), e.owner,
+                .thenApply(faOpt ->faOpt.map(fa -> new FileWrapper(new RetrievedCapability(e.pointer, fa), e.owner,
                         e.readers, e.writers, e.pointer.writer)))
                 .exceptionally(t -> Optional.empty());
     }

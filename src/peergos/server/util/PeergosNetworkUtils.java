@@ -1,15 +1,14 @@
 package peergos.server.util;
 
 import org.junit.Assert;
-import org.junit.Test;
 import peergos.server.storage.ResetableFileInputStream;
 import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
 import peergos.shared.crypto.symmetric.SymmetricKey;
 import peergos.shared.user.FollowRequest;
 import peergos.shared.user.UserContext;
-import peergos.shared.user.fs.AsyncReader;
-import peergos.shared.user.fs.FileTreeNode;
+import peergos.shared.user.fs.*;
+import peergos.shared.user.fs.FileWrapper;
 import peergos.shared.util.ArrayOps;
 import peergos.shared.util.Serialize;
 
@@ -41,7 +40,7 @@ public class PeergosNetworkUtils {
         return data;
     }
 
-    public static void checkFileContents(byte[] expected, FileTreeNode f, UserContext context) throws Exception {
+    public static void checkFileContents(byte[] expected, FileWrapper f, UserContext context) throws Exception {
         long size = f.getFileProperties().size;
         byte[] retrievedData = Serialize.readFully(f.getInputStream(context.network, context.crypto.random,
                 size, l -> {
@@ -92,33 +91,33 @@ public class PeergosNetworkUtils {
         }
 
         // upload a file to "a"'s space
-        FileTreeNode u1Root = sharerUser.getUserRoot().get();
+        FileWrapper u1Root = sharerUser.getUserRoot().get();
         String filename = "somefile.txt";
         File f = File.createTempFile("peergos", "");
         byte[] originalFileContents = "Hello Peergos friend!".getBytes();
         Files.write(f.toPath(), originalFileContents);
         ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(f);
-        FileTreeNode uploaded = u1Root.uploadFile(filename, resetableFileInputStream, f.length(),
+        FileWrapper uploaded = u1Root.uploadFile(filename, resetableFileInputStream, f.length(),
                 sharerUser.network, sharerUser.crypto.random, l -> {
                 }, sharerUser.fragmenter()).get();
 
         // share the file from sharer to each of the sharees
-        FileTreeNode u1File = sharerUser.getByPath(sharerUser.username + "/" + filename).get().get();
+        FileWrapper u1File = sharerUser.getByPath(sharerUser.username + "/" + filename).get().get();
         sharerUser.shareWith(Paths.get(sharerUser.username, filename), shareeUsers.stream().map(u -> u.username).collect(Collectors.toSet())).get();
 
         // check other users can read the file
         for (UserContext userContext : shareeUsers) {
-            Optional<FileTreeNode> sharedFile = userContext.getByPath(sharerUser.username + "/" + filename).get();
+            Optional<FileWrapper> sharedFile = userContext.getByPath(sharerUser.username + "/" + filename).get();
             Assert.assertTrue("shared file present", sharedFile.isPresent());
             checkFileContents(originalFileContents, sharedFile.get(), userContext);
         }
 
         // check other users can browser to the friend's root
         for (UserContext userContext : shareeUsers) {
-            Optional<FileTreeNode> friendRoot = userContext.getByPath(sharerUser.username).get();
+            Optional<FileWrapper> friendRoot = userContext.getByPath(sharerUser.username).get();
             assertTrue("friend root present", friendRoot.isPresent());
-            Set<FileTreeNode> children = friendRoot.get().getChildren(userContext.network).get();
-            Optional<FileTreeNode> sharedFile = children.stream()
+            Set<FileWrapper> children = friendRoot.get().getChildren(userContext.network).get();
+            Optional<FileWrapper> sharedFile = children.stream()
                     .filter(file -> file.getName().equals(filename))
                     .findAny();
             assertTrue("Shared file present via root.getChildren()", sharedFile.isPresent());
@@ -140,7 +139,7 @@ public class PeergosNetworkUtils {
                 }).collect(Collectors.toList());
 
         //test that the other user cannot access it from scratch
-        Optional<FileTreeNode> otherUserView = updatedShareeUsers.get(0).getByPath(sharerUser.username + "/" + filename).get();
+        Optional<FileWrapper> otherUserView = updatedShareeUsers.get(0).getByPath(sharerUser.username + "/" + filename).get();
         Assert.assertTrue(!otherUserView.isPresent());
 
         List<UserContext> remainingUsers = updatedShareeUsers.stream()
@@ -152,18 +151,18 @@ public class PeergosNetworkUtils {
         // check remaining users can still read it
         for (UserContext userContext : remainingUsers) {
             String path = sharerUser.username + "/" + filename;
-            Optional<FileTreeNode> sharedFile = userContext.getByPath(path).get();
+            Optional<FileWrapper> sharedFile = userContext.getByPath(path).get();
             Assert.assertTrue("path '" + path + "' is still available", sharedFile.isPresent());
         }
 
         // test that u1 can still access the original file
-        Optional<FileTreeNode> fileWithNewBaseKey = updatedSharerUser.getByPath(sharerUser.username + "/" + filename).get();
+        Optional<FileWrapper> fileWithNewBaseKey = updatedSharerUser.getByPath(sharerUser.username + "/" + filename).get();
         Assert.assertTrue(fileWithNewBaseKey.isPresent());
 
         // Now modify the file
         byte[] suffix = "Some new data at the end".getBytes();
         AsyncReader suffixStream = new AsyncReader.ArrayBacked(suffix);
-        FileTreeNode parent = updatedSharerUser.getByPath(updatedSharerUser.username).get().get();
+        FileWrapper parent = updatedSharerUser.getByPath(updatedSharerUser.username).get().get();
         parent.uploadFileSection(filename, suffixStream, originalFileContents.length, originalFileContents.length + suffix.length,
                 Optional.empty(), true, updatedSharerUser.network, updatedSharerUser.crypto.random, l -> {
                 }, updatedSharerUser.fragmenter()).get();
@@ -199,16 +198,16 @@ public class PeergosNetworkUtils {
 
         // friends are now connected
         // share a file from u1 to the others
-        FileTreeNode u1Root = sharer.getUserRoot().get();
+        FileWrapper u1Root = sharer.getUserRoot().get();
         String folderName = "afolder";
         u1Root.mkdir(folderName, sharer.network, SymmetricKey.random(), false, sharer.crypto.random).get();
         String path = Paths.get(sharerUsername, folderName).toString();
         System.out.println("PATH "+ path);
-        FileTreeNode folder = sharer.getByPath(path).get().get();
+        FileWrapper folder = sharer.getByPath(path).get().get();
         String filename = "somefile.txt";
         byte[] originalFileContents = "Hello Peergos friend!".getBytes();
         AsyncReader resetableFileInputStream = new AsyncReader.ArrayBacked(originalFileContents);
-        FileTreeNode updatedFolder = folder.uploadFile(filename, resetableFileInputStream, originalFileContents.length, sharer.network,
+        FileWrapper updatedFolder = folder.uploadFile(filename, resetableFileInputStream, originalFileContents.length, sharer.network,
                 sharer.crypto.random, l -> {
                 }, sharer.fragmenter()).get();
         String originalFilePath = sharer.username + "/" + folderName + "/" + filename;
@@ -219,10 +218,10 @@ public class PeergosNetworkUtils {
         // check each user can see the shared folder and directory
         for (UserContext sharee : shareeUsers) {
 
-            FileTreeNode sharedFolder = sharee.getByPath(sharer.username + "/" + folderName).get().orElseThrow(() -> new AssertionError("shared folder is present after sharing"));
+            FileWrapper sharedFolder = sharee.getByPath(sharer.username + "/" + folderName).get().orElseThrow(() -> new AssertionError("shared folder is present after sharing"));
             Assert.assertEquals(sharedFolder.getFileProperties().name, folderName);
 
-            FileTreeNode sharedFile = sharee.getByPath(sharer.username + "/" + folderName + "/" + filename).get().get();
+            FileWrapper sharedFile = sharee.getByPath(sharer.username + "/" + folderName + "/" + filename).get().get();
             checkFileContents(originalFileContents, sharedFile, sharee);
         }
 
@@ -242,21 +241,21 @@ public class PeergosNetworkUtils {
             UserContext user = updatedSharees.get(i);
             sharer.unShare(Paths.get(sharer.username, folderName), user.username).get();
 
-            Optional<FileTreeNode> updatedSharedFolder = user.getByPath(updatedSharer.username + "/" + folderName).get();
+            Optional<FileWrapper> updatedSharedFolder = user.getByPath(updatedSharer.username + "/" + folderName).get();
 
             // test that u1 can still access the original file, and user cannot
-            Optional<FileTreeNode> fileWithNewBaseKey = updatedSharer.getByPath(updatedSharer.username + "/" + folderName + "/" + filename).get();
+            Optional<FileWrapper> fileWithNewBaseKey = updatedSharer.getByPath(updatedSharer.username + "/" + folderName + "/" + filename).get();
             Assert.assertTrue(!updatedSharedFolder.isPresent());
             Assert.assertTrue(fileWithNewBaseKey.isPresent());
 
             // Now modify the file
             byte[] suffix = "Some new data at the end".getBytes();
             AsyncReader suffixStream = new AsyncReader.ArrayBacked(suffix);
-            FileTreeNode parent = updatedSharer.getByPath(updatedSharer.username + "/" + folderName).get().get();
+            FileWrapper parent = updatedSharer.getByPath(updatedSharer.username + "/" + folderName).get().get();
             parent.uploadFileSection(filename, suffixStream, originalFileContents.length, originalFileContents.length + suffix.length,
                     Optional.empty(), true, updatedSharer.network, updatedSharer.crypto.random, l -> {
                     }, updatedSharer.fragmenter()).get();
-            FileTreeNode extendedFile = updatedSharer.getByPath(originalFilePath).get().get();
+            FileWrapper extendedFile = updatedSharer.getByPath(originalFilePath).get().get();
             AsyncReader extendedContents = extendedFile.getInputStream(updatedSharer.network, updatedSharer.crypto.random, l -> {
             }).get();
             byte[] newFileContents = Serialize.readFully(extendedContents, extendedFile.getSize()).get();
@@ -267,10 +266,10 @@ public class PeergosNetworkUtils {
             for (int j = i + 1; j < updatedSharees.size(); j++) {
                 UserContext otherUser = updatedSharees.get(j);
 
-                Optional<FileTreeNode> sharedFolder = otherUser.getByPath(sharer.username + "/" + folderName).get();
+                Optional<FileWrapper> sharedFolder = otherUser.getByPath(sharer.username + "/" + folderName).get();
                 Assert.assertTrue("Shared folder present via direct path", sharedFolder.isPresent() && sharedFolder.get().getName().equals(folderName));
 
-                FileTreeNode sharedFile = otherUser.getByPath(sharer.username + "/" + folderName + "/" + filename).get().get();
+                FileWrapper sharedFile = otherUser.getByPath(sharer.username + "/" + folderName + "/" + filename).get().get();
                 checkFileContents(newFileContents, sharedFile, otherUser);
             }
         }
@@ -281,7 +280,7 @@ public class PeergosNetworkUtils {
         String username = generateUsername(random);
         String password = "test01";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, writerNode, crypto);
-        FileTreeNode userRoot = context.getUserRoot().get();
+        FileWrapper userRoot = context.getUserRoot().get();
 
         String filename = "mediumfile.bin";
         byte[] data = new byte[128*1024];
@@ -290,10 +289,10 @@ public class PeergosNetworkUtils {
         userRoot.uploadFileSection(filename, new AsyncReader.ArrayBacked(data), 0, data.length, context.network, context.crypto.random, l -> {}, context.fragmenter()).get();
         long t2 = System.currentTimeMillis();
         String path = "/" + username + "/" + filename;
-        FileTreeNode file = context.getByPath(path).get().get();
+        FileWrapper file = context.getByPath(path).get().get();
         String link = file.toLink();
         UserContext linkContext = UserContext.fromPublicLink(link, readerNode, crypto).get();
-        Optional<FileTreeNode> fileThroughLink = linkContext.getByPath(path).get();
+        Optional<FileWrapper> fileThroughLink = linkContext.getByPath(path).get();
         Assert.assertTrue("File present through link", fileThroughLink.isPresent());
     }
 

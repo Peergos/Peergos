@@ -121,10 +121,10 @@ public class MultiNodeNetworkTests {
         assertTrue("Receive a follow request", u1Requests.size() > 0);
         u1.sendReplyFollowRequest(u1Requests.get(0), true, true).get();
         List<FollowRequest> u2FollowRequests = u2.processFollowRequests().get();
-        Optional<FileTreeNode> u1ToU2 = u2.getByPath("/" + u1.username).get();
+        Optional<FileWrapper> u1ToU2 = u2.getByPath("/" + u1.username).get();
         assertTrue("Friend root present after accepted follow request", u1ToU2.isPresent());
 
-        Optional<FileTreeNode> u2ToU1 = u1.getByPath("/" + u2.username).get();
+        Optional<FileWrapper> u2ToU1 = u1.getByPath("/" + u2.username).get();
         assertTrue("Friend root present after accepted follow request", u2ToU1.isPresent());
 
         Set<String> u1Following = ensureSignedUp(username1, password1, getNode(iNode2).clear(), crypto).getSocialState().get()
@@ -146,9 +146,9 @@ public class MultiNodeNetworkTests {
 
         byte[] data = "G'day mate!".getBytes();
         String filename = "hey.txt";
-        FileTreeNode upload = u1.getUserRoot().get().uploadFile(filename,
+        FileWrapper upload = u1.getUserRoot().get().uploadFile(filename,
                 new AsyncReader.ArrayBacked(data), data.length, getNode(iNode1), crypto.random, x -> { }, u1.fragmenter).get();
-        Optional<FileTreeNode> file = u1.getByPath("/" + username1 + "/" + filename).get();
+        Optional<FileWrapper> file = u1.getByPath("/" + username1 + "/" + filename).get();
         Assert.assertTrue(file.isPresent());
     }
 

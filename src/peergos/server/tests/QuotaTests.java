@@ -54,10 +54,10 @@ public class QuotaTests {
         String password = "badpassword";
 
         UserContext context = ensureSignedUp(username, password, network, crypto);
-        FileTreeNode home = context.getByPath(Paths.get(username).toString()).get().get();
+        FileWrapper home = context.getByPath(Paths.get(username).toString()).get().get();
         byte[] data = new byte[1024*1024];
         random.nextBytes(data);
-        FileTreeNode newHome = home.uploadFile("file-1", new AsyncReader.ArrayBacked(data), data.length,
+        FileWrapper newHome = home.uploadFile("file-1", new AsyncReader.ArrayBacked(data), data.length,
                 network, crypto.random, x -> { }, context.fragmenter()).get();
 
         try {
@@ -73,14 +73,14 @@ public class QuotaTests {
         String password = "badpassword";
 
         UserContext context = ensureSignedUp(username, password, network, crypto);
-        FileTreeNode home = context.getByPath(Paths.get(username).toString()).get().get();
+        FileWrapper home = context.getByPath(Paths.get(username).toString()).get().get();
         byte[] data = new byte[1024 * 1024];
         random.nextBytes(data);
         for (int i=0; i < 5; i++) {
             String filename = "file-1";
             home = home.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length,
                     network, crypto.random, x -> {}, context.fragmenter()).get();
-            FileTreeNode file = context.getByPath("/" + username + "/" + filename).get().get();
+            FileWrapper file = context.getByPath("/" + username + "/" + filename).get().get();
             home = file.remove(network, home).get();
         }
     }
@@ -91,7 +91,7 @@ public class QuotaTests {
         String password = "badpassword";
 
         UserContext context = ensureSignedUp(username, password, network, crypto);
-        FileTreeNode home = context.getByPath(Paths.get(username).toString()).get().get();
+        FileWrapper home = context.getByPath(Paths.get(username).toString()).get().get();
         int used = context.getTotalSpaceUsed(context.signer.publicKeyHash, context.signer.publicKeyHash
         ).get().intValue();
         // use within a few KiB of our quota, before deletion
@@ -100,7 +100,7 @@ public class QuotaTests {
         String filename = "file-1";
         home = home.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length,
                 network, crypto.random, x -> {}, context.fragmenter()).get();
-        FileTreeNode file = context.getByPath("/" + username + "/" + filename).get().get();
+        FileWrapper file = context.getByPath("/" + username + "/" + filename).get().get();
         file.remove(network, home).get();
     }
 
@@ -110,14 +110,14 @@ public class QuotaTests {
         String password = "badpassword";
 
         UserContext context = ensureSignedUp(username, password, network, crypto);
-        FileTreeNode home = context.getByPath(Paths.get(username).toString()).get().get();
+        FileWrapper home = context.getByPath(Paths.get(username).toString()).get().get();
         // signing up uses just over 4k and the quota is 2 MiB, so use within 1 KiB of our quota
         byte[] data = new byte[2 * 1024 * 1024 - 10 * 1024];
         random.nextBytes(data);
         String filename = "file-1";
         home = home.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length,
                 network, crypto.random, x -> {}, context.fragmenter()).get();
-        FileTreeNode file = context.getByPath("/" + username + "/" + filename).get().get();
+        FileWrapper file = context.getByPath("/" + username + "/" + filename).get().get();
         try {
             home = home.uploadFile("file-2", new AsyncReader.ArrayBacked(data), data.length,
                     network, crypto.random, x -> {

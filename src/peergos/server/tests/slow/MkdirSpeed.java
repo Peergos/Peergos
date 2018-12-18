@@ -74,7 +74,7 @@ public class MkdirSpeed {
         String username = generateUsername();
         String password = "test01";
         UserContext context = ensureSignedUp(username, password, network, crypto);
-        FileTreeNode userRoot = context.getUserRoot().get();
+        FileWrapper userRoot = context.getUserRoot().get();
         List<String> names = new ArrayList<>();
         IntStream.range(0, 100).forEach(i -> names.add(randomString()));
 

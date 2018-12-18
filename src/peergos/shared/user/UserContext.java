@@ -71,12 +71,12 @@ public class UserContext {
     }
 
     @JsMethod
-    public boolean isShared(FileTreeNode file) {
+    public boolean isShared(FileWrapper file) {
         return false;
     }
     /*
     @JsMethod
-    public CompletableFuture<Boolean> isShared(FileTreeNode file) {
+    public CompletableFuture<Boolean> isShared(FileWrapper file) {
         return file.getPath(network).thenApply(pathString ->
                 sharedWithCache.containsKey(pathString)
         );
@@ -87,7 +87,7 @@ public class UserContext {
     }
 
     @JsMethod
-     public CompletableFuture<Boolean> unShare(FileTreeNode file, String readerToRemove) {
+     public CompletableFuture<Boolean> unShare(FileWrapper file, String readerToRemove) {
 
         return file.getPath(network).thenCompose(pathString ->
             unShare(Paths.get(pathString), Collections.singleton(readerToRemove))
@@ -260,19 +260,19 @@ public class UserContext {
         if (username != null)
             return CompletableFuture.completedFuture("/");
 
-        CompletableFuture<Optional<FileTreeNode>> dir = getByPath("/");
+        CompletableFuture<Optional<FileWrapper>> dir = getByPath("/");
         return dir.thenCompose(opt -> getLinkPath(opt.get()))
                 .thenApply(path -> path.substring(1)); // strip off extra slash at root
     }
 
-    private CompletableFuture<String> getLinkPath(FileTreeNode file) {
+    private CompletableFuture<String> getLinkPath(FileWrapper file) {
         if (! file.isDirectory())
             return CompletableFuture.completedFuture("");
         return file.getChildren(network)
                 .thenCompose(children -> {
                     if (children.size() != 1)
                         return CompletableFuture.completedFuture(file.getName());
-                    FileTreeNode child = children.stream().findAny().get();
+                    FileWrapper child = children.stream().findAny().get();
                     if (child.isReadable()) // case where a directory was shared with exactly one direct child
                         return CompletableFuture.completedFuture(file.getName() + "/" + child.getName());
                     return getLinkPath(child)
@@ -306,7 +306,7 @@ public class UserContext {
                         }));
     }
 
-    public CompletableFuture<Boolean> buildSharedWithCache(FileTreeNode sharedFolder, Supplier<CompletableFuture<FileTreeNode>> homeDirSupplier) {
+    public CompletableFuture<Boolean> buildSharedWithCache(FileWrapper sharedFolder, Supplier<CompletableFuture<FileWrapper>> homeDirSupplier) {
         return sharedFolder.getChildren(network)
                     .thenCompose(children ->
                             Futures.reduceAll(children,
@@ -336,7 +336,7 @@ public class UserContext {
                                 (a, b) -> a && b));
     }
 
-    public CompletableFuture<FileTreeNode> getSharingFolder() {
+    public CompletableFuture<FileWrapper> getSharingFolder() {
         return getByPath("/"+username + "/shared").thenApply(opt -> opt.get());
     }
 
@@ -589,8 +589,8 @@ public class UserContext {
     }
 
     @JsMethod
-    public CompletableFuture<Set<FileTreeNode>> getFriendRoots() {
-        List<CompletableFuture<Optional<FileTreeNode>>> friendRoots = entrie.getChildNames()
+    public CompletableFuture<Set<FileWrapper>> getFriendRoots() {
+        List<CompletableFuture<Optional<FileWrapper>>> friendRoots = entrie.getChildNames()
                 .stream()
                 .filter(p -> !p.startsWith(username))
                 .map(p -> getByPath(p)).collect(Collectors.toList());
@@ -612,7 +612,7 @@ public class UserContext {
         return getFollowerRoots().thenApply(m -> m.keySet());
     }
 
-    public CompletableFuture<Map<String, FileTreeNode>> getFollowerRoots() {
+    public CompletableFuture<Map<String, FileWrapper>> getFollowerRoots() {
         return getSharingFolder()
                 .thenCompose(sharing -> sharing.getChildren(network))
                 .thenApply(children -> children.stream()
@@ -805,7 +805,7 @@ public class UserContext {
     public CompletableFuture<Boolean> unShare(Path path, Set<String> readersToRemove) {
         String pathString = path.toString();
         return getByPath(pathString).thenCompose(opt -> {
-            FileTreeNode toUnshare = opt.orElseThrow(() -> new IllegalStateException("Specified un-shareWith path " + pathString + " does not exist"));
+            FileWrapper toUnshare = opt.orElseThrow(() -> new IllegalStateException("Specified un-shareWith path " + pathString + " does not exist"));
             // now change to new base keys, clean some keys and mark others as dirty
             return getByPath(path.getParent().toString())
                     .thenCompose(parent -> sharedWith(toUnshare)
@@ -820,7 +820,7 @@ public class UserContext {
     }
 
     @JsMethod
-    public CompletableFuture<Set<String>> sharedWith(FileTreeNode file) {
+    public CompletableFuture<Set<String>> sharedWith(FileWrapper file) {
         return file.getPath(network).thenCompose(path -> {
             Set<String> sharedWith = sharedWithCache.getOrDefault(path, new HashSet<>());
             return CompletableFuture.completedFuture(sharedWith);
@@ -832,7 +832,7 @@ public class UserContext {
                 .thenCompose(file -> shareWithAll(file.orElseThrow(() -> new IllegalStateException("Could not find path " + path.toString())), readersToAdd));
     }
 
-    public CompletableFuture<Boolean> shareWithAll(FileTreeNode file, Set<String> readersToAdd) {
+    public CompletableFuture<Boolean> shareWithAll(FileWrapper file, Set<String> readersToAdd) {
         return Futures.reduceAll(readersToAdd,
                 true,
                 (x, username) -> shareFileWith(file, username),
@@ -846,7 +846,7 @@ public class UserContext {
         });
     }
 
-    private CompletableFuture<Boolean> updatedSharedWithCache(FileTreeNode file, Set<String> readersToAdd) {
+    private CompletableFuture<Boolean> updatedSharedWithCache(FileWrapper file, Set<String> readersToAdd) {
         return file.getPath(network).thenCompose(path -> {
             Set<String> existingEntries = sharedWithCache.getOrDefault(path, new HashSet<>());
             sharedWithCache.put(path, existingEntries);
@@ -858,18 +858,18 @@ public class UserContext {
     }
 
     @JsMethod
-    public CompletableFuture<Boolean> shareWith(FileTreeNode file, String usernameToGrantReadAccess) {
+    public CompletableFuture<Boolean> shareWith(FileWrapper file, String usernameToGrantReadAccess) {
         Set<String> readersToAdd = new HashSet<>();
         readersToAdd.add(usernameToGrantReadAccess);
         return shareWithAll(file, readersToAdd);
     }
 
-    public CompletableFuture<Boolean> shareFileWith(FileTreeNode file, String usernameToGrantReadAccess) {
+    public CompletableFuture<Boolean> shareFileWith(FileWrapper file, String usernameToGrantReadAccess) {
         return getByPath("/" + username + "/shared/" + usernameToGrantReadAccess)
                 .thenCompose(shared -> {
                     if (!shared.isPresent())
                         return CompletableFuture.completedFuture(true);
-                    FileTreeNode sharedDir = shared.get();
+                    FileWrapper sharedDir = shared.get();
                     return sharedDir.addSharingLinkTo(file, network, crypto.random, fragmenter)
                         .thenCompose(ee -> CompletableFuture.completedFuture(true));
                 });
@@ -892,10 +892,10 @@ public class UserContext {
         });
     }
 
-    private CompletableFuture<CommittedWriterData> removeFromStaticData(FileTreeNode fileTreeNode) {
+    private CompletableFuture<CommittedWriterData> removeFromStaticData(FileWrapper fileWrapper) {
         CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
         return addToUserDataQueue(lock)
-                .thenCompose(wd -> wd.props.removeFromStaticData(fileTreeNode, signer, wd.hash, network, lock::complete));
+                .thenCompose(wd -> wd.props.removeFromStaticData(fileWrapper, signer, wd.hash, network, lock::complete));
     }
 
     /**
@@ -951,12 +951,12 @@ public class UserContext {
 
                     BiFunction<TrieNode, FollowRequest, CompletableFuture<TrieNode>> mozart = (trie, freq) -> {
                         // delete our folder if they didn't reciprocate
-                        FileTreeNode ourDirForThem = followerRoots.get(freq.entry.get().owner);
+                        FileWrapper ourDirForThem = followerRoots.get(freq.entry.get().owner);
                         byte[] ourKeyForThem = ourDirForThem.getKey().serialize();
                         byte[] keyFromResponse = freq.key.map(k -> k.serialize()).orElse(null);
                         if (keyFromResponse == null || !Arrays.equals(keyFromResponse, ourKeyForThem)) {
                             // They didn't reciprocate (follow us)
-                            CompletableFuture<FileTreeNode> removeDir = ourDirForThem.remove(network, sharing);
+                            CompletableFuture<FileWrapper> removeDir = ourDirForThem.remove(network, sharing);
                             // remove entry point as well
                             CompletableFuture<CommittedWriterData> cleanStatic = removeFromStaticData(ourDirForThem);
 
@@ -1010,18 +1010,18 @@ public class UserContext {
                 rawKey.length > 0 ? Optional.of(SymmetricKey.fromByteArray(rawKey)) : Optional.empty(), raw);
     }
 
-    public CompletableFuture<Set<FileTreeNode>> getChildren(String path) {
+    public CompletableFuture<Set<FileWrapper>> getChildren(String path) {
         return entrie.getChildren(path, network);
     }
 
     @JsMethod
-    public CompletableFuture<Optional<FileTreeNode>> getByPath(String path) {
+    public CompletableFuture<Optional<FileWrapper>> getByPath(String path) {
         if (path.equals("/"))
-            return CompletableFuture.completedFuture(Optional.of(FileTreeNode.createRoot(entrie)));
+            return CompletableFuture.completedFuture(Optional.of(FileWrapper.createRoot(entrie)));
         return entrie.getByPath(path.startsWith("/") ? path : "/" + path, network);
     }
 
-    public CompletableFuture<FileTreeNode> getUserRoot() {
+    public CompletableFuture<FileWrapper> getUserRoot() {
         return getByPath("/"+username).thenApply(opt -> opt.get());
     }
 
@@ -1088,7 +1088,7 @@ public class UserContext {
             if (username.endsWith(ourName)) // This is a sharing directory of ours for a friend
                 return CompletableFuture.completedFuture(root);
             // This is a friend's sharing directory, create a wrapper to read the capabilities lazily from it
-            Supplier<CompletableFuture<FileTreeNode>> cacheDirSupplier =
+            Supplier<CompletableFuture<FileWrapper>> cacheDirSupplier =
                     () -> root.getByPath(Paths.get(ourName).toString(), network).thenApply(opt -> opt.get());
             return FriendSourcedTrieNode.build(cacheDirSupplier, fileCap, network, random, fragmenter)
                     .thenApply(fromUser -> fromUser.map(userEntrie -> root.putNode(username, userEntrie)).orElse(root));
@@ -1096,7 +1096,7 @@ public class UserContext {
     }
 
     private static CompletableFuture<TrieNode> addEntryPoint(String ourName,
-                                                             FileTreeNode ourRoot,
+                                                             FileWrapper ourRoot,
                                                              TrieNode root,
                                                              EntryPoint e,
                                                              NetworkAccess network,
@@ -1124,7 +1124,7 @@ public class UserContext {
         return network.retrieveEntryPoint(e).thenCompose(fileOpt -> {
             if (! fileOpt.isPresent())
                 return CompletableFuture.completedFuture(true);
-            FileTreeNode file = fileOpt.get();
+            FileWrapper file = fileOpt.get();
             return file.getPath(network)
                     .thenApply(x -> true)
                     .exceptionally(t -> {
@@ -1132,7 +1132,7 @@ public class UserContext {
                         // and the dir/file it points to
                         // first make it writable by combining with the root writing key
                         getByPath("/" + username).thenCompose(rootDir ->
-                                new FileTreeNode(file.getPointer(), file.getOwner(), e.readers, e.writers, rootDir.get().getEntryWriterKey())
+                                new FileWrapper(file.getPointer(), file.getOwner(), e.readers, e.writers, rootDir.get().getEntryWriterKey())
                                         .remove(network, null)
                                         .thenApply(x -> removeFromStaticData(file)));
                         return true;

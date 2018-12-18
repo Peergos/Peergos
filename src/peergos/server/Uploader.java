@@ -36,9 +36,9 @@ public class Uploader {
         System.out.println("Upload took " + (t2-t1) + " mS");
     }
 
-    private static void createPath(FileTreeNode parent, Path path, NetworkAccess network, SafeRandom random) throws Exception {
+    private static void createPath(FileWrapper parent, Path path, NetworkAccess network, SafeRandom random) throws Exception {
         String name = path.getName(0).toString();
-        Optional<FileTreeNode> child = parent.getChild(name, network).get();
+        Optional<FileWrapper> child = parent.getChild(name, network).get();
         if (path.getNameCount() == 1) {
             if (! child.isPresent())
                 parent.mkdir(name, network, false, random).get();
@@ -69,9 +69,9 @@ public class Uploader {
                                 ForkJoinPool pool) throws Exception {
         if (! localSource.toFile().exists())
             throw new IllegalStateException("Local source " + localSource + " doesn't exist!");
-        Optional<FileTreeNode> file = context.getByPath(targetDir.toString()).get();
+        Optional<FileWrapper> file = context.getByPath(targetDir.toString()).get();
         if (! file.isPresent()) {
-            Optional<FileTreeNode> root = context.getByPath("/").get();
+            Optional<FileWrapper> root = context.getByPath("/").get();
             createPath(root.get(), targetDir, context.network, context.crypto.random);
             pool.submit(() -> uploadTo(context, localSource, targetDir, filter)).get();
         } else
@@ -85,7 +85,7 @@ public class Uploader {
         File file = source.toFile();
         if (!filter.test(file))
             return;
-        Optional<FileTreeNode> existing = await(context.getByPath(targetParent.resolve(file.getName()).toString()));
+        Optional<FileWrapper> existing = await(context.getByPath(targetParent.resolve(file.getName()).toString()));
 
         System.out.println("Uploading " + file);
         if (file.isDirectory()) {
@@ -94,7 +94,7 @@ public class Uploader {
                     await(context.getByPath(targetParent.toString())).get()
                             .mkdir(file.getName(), context.network, false, context.crypto.random).get();
 
-                Optional<FileTreeNode> childDir = await(context.getByPath(targetParent.resolve(source.getFileName()).toString()));
+                Optional<FileWrapper> childDir = await(context.getByPath(targetParent.resolve(source.getFileName()).toString()));
                 childDir.ifPresent(newDir -> Optional.ofNullable(file.list())
                         .map(Stream::of)
                         .orElse(Stream.empty())

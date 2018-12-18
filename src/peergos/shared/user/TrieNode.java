@@ -10,9 +10,9 @@ import java.util.concurrent.*;
 @JsType
 public interface TrieNode {
 
-    CompletableFuture<Optional<FileTreeNode>> getByPath(String path, NetworkAccess network);
+    CompletableFuture<Optional<FileWrapper>> getByPath(String path, NetworkAccess network);
 
-    CompletableFuture<Set<FileTreeNode>> getChildren(String path, NetworkAccess network);
+    CompletableFuture<Set<FileWrapper>> getChildren(String path, NetworkAccess network);
 
     Set<String> getChildNames();
 

@@ -11,14 +11,14 @@ import java.util.function.*;
 public class FriendSourcedTrieNode implements TrieNode {
 
     private final String owner;
-    private final Supplier<CompletableFuture<FileTreeNode>> homeDirSupplier;
+    private final Supplier<CompletableFuture<FileWrapper>> homeDirSupplier;
     private final EntryPoint sharedDir;
     private final SafeRandom random;
     private final Fragmenter fragmenter;
     private TrieNode root;
     private long capCount;
 
-    public FriendSourcedTrieNode(Supplier<CompletableFuture<FileTreeNode>> homeDirSupplier,
+    public FriendSourcedTrieNode(Supplier<CompletableFuture<FileWrapper>> homeDirSupplier,
                                  String owner,
                                  EntryPoint sharedDir,
                                  TrieNode root,
@@ -34,7 +34,7 @@ public class FriendSourcedTrieNode implements TrieNode {
         this.fragmenter = fragmenter;
     }
 
-    public static CompletableFuture<Optional<FriendSourcedTrieNode>> build(Supplier<CompletableFuture<FileTreeNode>> homeDirSupplier,
+    public static CompletableFuture<Optional<FriendSourcedTrieNode>> build(Supplier<CompletableFuture<FileWrapper>> homeDirSupplier,
                                                                            EntryPoint e,
                                                                            NetworkAccess network,
                                                                            SafeRandom random,
@@ -82,7 +82,7 @@ public class FriendSourcedTrieNode implements TrieNode {
                 });
     }
 
-    private CompletableFuture<Optional<FileTreeNode>> getFriendRoot(NetworkAccess network) {
+    private CompletableFuture<Optional<FileWrapper>> getFriendRoot(NetworkAccess network) {
         return network.retrieveEntryPoint(sharedDir)
                 .thenCompose(sharedDirOpt -> {
                     if (! sharedDirOpt.isPresent())
@@ -90,7 +90,7 @@ public class FriendSourcedTrieNode implements TrieNode {
                     return sharedDirOpt.get().retrieveParent(network)
                             .thenCompose(sharedOpt -> {
                                 if (! sharedOpt.isPresent()) {
-                                    CompletableFuture<Optional<FileTreeNode>> empty = CompletableFuture.completedFuture(Optional.empty());
+                                    CompletableFuture<Optional<FileWrapper>> empty = CompletableFuture.completedFuture(Optional.empty());
                                     return empty;
                                 }
                                 return sharedOpt.get().retrieveParent(network);
@@ -104,7 +104,7 @@ public class FriendSourcedTrieNode implements TrieNode {
     }
 
     @Override
-    public synchronized CompletableFuture<Optional<FileTreeNode>> getByPath(String path, NetworkAccess network) {
+    public synchronized CompletableFuture<Optional<FileWrapper>> getByPath(String path, NetworkAccess network) {
         if (path.isEmpty() || path.equals("/"))
             return getFriendRoot(network)
                     .thenApply(opt -> opt.map(f -> f.withTrieNode(this)));
@@ -112,7 +112,7 @@ public class FriendSourcedTrieNode implements TrieNode {
     }
 
     @Override
-    public synchronized CompletableFuture<Set<FileTreeNode>> getChildren(String path, NetworkAccess network) {
+    public synchronized CompletableFuture<Set<FileWrapper>> getChildren(String path, NetworkAccess network) {
         return ensureUptodate(network).thenCompose(x -> root.getChildren(path, network));
     }
 

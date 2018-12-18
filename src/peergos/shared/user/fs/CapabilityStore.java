@@ -31,7 +31,7 @@ public class CapabilityStore {
     public static final String READ_ONLY_SHARING_FILE_PREFIX = "sharing.r.";
     public static final String WRITE_SHARING_FILE_PREFIX = "sharing.w.";
 
-    private static final Comparator<FileTreeNode> indexOrder =
+    private static final Comparator<FileWrapper> indexOrder =
             Comparator.comparingInt(f -> filenameToIndex(f.getName()));
 
     private static int filenameToIndex(String filename) {
@@ -55,8 +55,8 @@ public class CapabilityStore {
      * @param saveCache
      * @return a pair of the current capability index, and the valid capabilities
      */
-    public static CompletableFuture<CapabilitiesFromUser> loadSharingLinks(Supplier<CompletableFuture<FileTreeNode>> homeDirSupplier,
-                                                                           FileTreeNode friendSharedDir,
+    public static CompletableFuture<CapabilitiesFromUser> loadSharingLinks(Supplier<CompletableFuture<FileWrapper>> homeDirSupplier,
+                                                                           FileWrapper friendSharedDir,
                                                                            String friendName,
                                                                            NetworkAccess network,
                                                                            SafeRandom random,
@@ -64,7 +64,7 @@ public class CapabilityStore {
                                                                            boolean saveCache) {
         return friendSharedDir.getChildren(network)
             .thenCompose(files -> {
-                List<FileTreeNode> sharingFiles = files.stream()
+                List<FileWrapper> sharingFiles = files.stream()
                         .filter(f -> isReadCapFile(f.getName()))
                         .sorted(indexOrder)
                         .collect(Collectors.toList());
@@ -86,13 +86,13 @@ public class CapabilityStore {
                             }
                         });
                     } else {
-                        FileTreeNode cachedFile = optCachedFile.get();
+                        FileWrapper cachedFile = optCachedFile.get();
                         return readRetrievedCapabilityCache(cachedFile, network, random).thenCompose(cache -> {
                             if (totalRecords == cache.getRecordsRead())
                                 return CompletableFuture.completedFuture(cache);
                             int shareFileIndex = (int)(cache.getRecordsRead() * CAPABILITY_SIZE) / SHARING_FILE_MAX_SIZE;
                             int recordIndex = (int) ((cache.getRecordsRead() * CAPABILITY_SIZE) % SHARING_FILE_MAX_SIZE) / CAPABILITY_SIZE;
-                            List<FileTreeNode> sharingFilesToRead = sharingFiles.subList(shareFileIndex, sharingFiles.size());
+                            List<FileWrapper> sharingFilesToRead = sharingFiles.subList(shareFileIndex, sharingFiles.size());
                             CompletableFuture<List<CapabilityWithPath>> allFiles = Futures.reduceAll(sharingFilesToRead.subList(0, sharingFilesToRead.size() - 1),
                                     Collections.emptyList(),
                                     (res, sharingFile) -> readSharingFile(friendSharedDir.getName(), sharingFile, network, random)
@@ -115,8 +115,8 @@ public class CapabilityStore {
             });
     }
 
-    public static CompletableFuture<CapabilitiesFromUser> loadSharingLinksFromIndex(Supplier<CompletableFuture<FileTreeNode>> homeDirSupplier,
-                                                                                    FileTreeNode friendSharedDir,
+    public static CompletableFuture<CapabilitiesFromUser> loadSharingLinksFromIndex(Supplier<CompletableFuture<FileWrapper>> homeDirSupplier,
+                                                                                    FileWrapper friendSharedDir,
                                                                                     String friendName,
                                                                                     NetworkAccess network,
                                                                                     SafeRandom random,
@@ -125,13 +125,13 @@ public class CapabilityStore {
                                                                                     boolean saveCache) {
         return friendSharedDir.getChildren(network)
                 .thenCompose(files -> {
-                    List<FileTreeNode> sharingFiles = files.stream()
+                    List<FileWrapper> sharingFiles = files.stream()
                             .sorted(indexOrder)
                             .collect(Collectors.toList());
                     long totalRecords = sharingFiles.stream().mapToLong(f -> f.getFileProperties().size).sum() / CAPABILITY_SIZE;
                     int shareFileIndex = (int) (capIndex * CAPABILITY_SIZE) / SHARING_FILE_MAX_SIZE;
                     int recordIndex = (int) (capIndex % CAPS_PER_FILE);
-                    List<FileTreeNode> sharingFilesToRead = sharingFiles.subList(shareFileIndex, sharingFiles.size());
+                    List<FileWrapper> sharingFilesToRead = sharingFiles.subList(shareFileIndex, sharingFiles.size());
 
                     CompletableFuture<List<CapabilityWithPath>> allFiles = Futures.reduceAll(sharingFilesToRead.subList(0, sharingFilesToRead.size() - 1),
                             Collections.emptyList(),
@@ -153,21 +153,21 @@ public class CapabilityStore {
                 });
     }
 
-    public static CompletableFuture<Long> getCapabilityCount(FileTreeNode friendSharedDir,
+    public static CompletableFuture<Long> getCapabilityCount(FileWrapper friendSharedDir,
                                                              NetworkAccess network) {
         return friendSharedDir.getChildren(network)
                 .thenApply(capFiles -> capFiles.stream().mapToLong(f -> f.getFileProperties().size).sum() / CAPABILITY_SIZE);
     }
 
     public static CompletableFuture<List<CapabilityWithPath>> readSharingFile(String ownerName,
-                                                                              FileTreeNode file,
+                                                                              FileWrapper file,
                                                                               NetworkAccess network,
                                                                               SafeRandom random) {
         return readSharingFile(0, ownerName, file, network, random);
     }
     public static CompletableFuture<List<CapabilityWithPath>> readSharingFile(int offsetIndex,
                                                                               String ownerName,
-                                                                              FileTreeNode file,
+                                                                              FileWrapper file,
                                                                               NetworkAccess network,
                                                                               SafeRandom random) {
         return file.getInputStream(network, random, x -> {}).thenCompose(reader -> {
@@ -196,7 +196,7 @@ public class CapabilityStore {
                             EntryPoint entry = new EntryPoint(pointer, ownerName, Collections.emptySet(), Collections.emptySet());
                             return network.retrieveEntryPoint(entry).thenCompose( optFTN -> {
                                 if(optFTN.isPresent()) {
-                                    FileTreeNode ftn = optFTN.get();
+                                    FileWrapper ftn = optFTN.get();
                                     try {
                                         return ftn.getPath(network)
                                                 .thenCompose(path -> CompletableFuture.completedFuture(Optional.of(new CapabilityWithPath(path, pointer))));
@@ -211,17 +211,17 @@ public class CapabilityStore {
         );
     }
 
-    private static CompletableFuture<Optional<FileTreeNode>> getCacheFile(String friendName,
-                                                                          Supplier<CompletableFuture<FileTreeNode>> getHome,
-                                                                          NetworkAccess network,
-                                                                          SafeRandom random) {
+    private static CompletableFuture<Optional<FileWrapper>> getCacheFile(String friendName,
+                                                                         Supplier<CompletableFuture<FileWrapper>> getHome,
+                                                                         NetworkAccess network,
+                                                                         SafeRandom random) {
         return getCapabilityCacheDir(getHome, network, random)
                 .thenCompose(cacheDir -> cacheDir.getChild(friendName, network));
     }
 
-    private static CompletableFuture<FileTreeNode> getCapabilityCacheDir(Supplier<CompletableFuture<FileTreeNode>> getHome,
-                                                                         NetworkAccess network,
-                                                                         SafeRandom random) {
+    private static CompletableFuture<FileWrapper> getCapabilityCacheDir(Supplier<CompletableFuture<FileWrapper>> getHome,
+                                                                        NetworkAccess network,
+                                                                        SafeRandom random) {
         return getHome.get()
                 .thenCompose(home -> home.getChild(CAPABILITY_CACHE_DIR, network)
                         .thenCompose(opt ->
@@ -231,7 +231,7 @@ public class CapabilityStore {
     }
 
     public static CompletableFuture<CapabilitiesFromUser> saveRetrievedCapabilityCache(long recordsRead,
-                                                                                       Supplier<CompletableFuture<FileTreeNode>> homeDirSupplier,
+                                                                                       Supplier<CompletableFuture<FileWrapper>> homeDirSupplier,
                                                                                        String friend,
                                                                                        NetworkAccess network,
                                                                                        SafeRandom random,
@@ -245,7 +245,7 @@ public class CapabilityStore {
                 true, network, random, x-> {}, fragmenter).thenApply(x -> capabilitiesFromUser));
     }
 
-    private static CompletableFuture<CapabilitiesFromUser> readRetrievedCapabilityCache(FileTreeNode cacheFile, NetworkAccess network, SafeRandom random) {
+    private static CompletableFuture<CapabilitiesFromUser> readRetrievedCapabilityCache(FileWrapper cacheFile, NetworkAccess network, SafeRandom random) {
         return cacheFile.getInputStream(network, random, x -> { })
                 .thenCompose(reader -> {
                     byte[] storeData = new byte[(int) cacheFile.getSize()];

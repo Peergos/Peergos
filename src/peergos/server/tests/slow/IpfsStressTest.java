@@ -99,7 +99,7 @@ public class IpfsStressTest {
                         context.network, context.crypto.random, x -> {}, context.fragmenter).get();
     }
 
-    public static void checkFileContents(byte[] expected, FileTreeNode f, UserContext context) throws Exception {
+    public static void checkFileContents(byte[] expected, FileWrapper f, UserContext context) throws Exception {
         long size = f.getFileProperties().size;
         byte[] retrievedData = Serialize.readFully(f.getInputStream(context.network, context.crypto.random,
             size, l-> {}).get(), f.getSize()).get();
@@ -107,7 +107,7 @@ public class IpfsStressTest {
         assertTrue("Correct contents", Arrays.equals(retrievedData, expected));
     }
 
-    private static void checkFileContentsChunked(byte[] expected, FileTreeNode f, UserContext context, int  nReads) throws Exception {
+    private static void checkFileContentsChunked(byte[] expected, FileWrapper f, UserContext context, int  nReads) throws Exception {
 
         AsyncReader in = f.getInputStream(context.network, context.crypto.random,
                 f.getFileProperties().size, l -> {}).get();
