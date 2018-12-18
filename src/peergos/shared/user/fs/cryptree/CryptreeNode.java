@@ -32,7 +32,7 @@ public interface CryptreeNode extends Cborable {
 
     SymmetricKey getMetaKey(SymmetricKey baseKey);
 
-    SymmetricLocationLink getParentLink();
+    EncryptedCapability getParentLink();
 
     FileProperties getProperties(SymmetricKey parentKey);
 
@@ -53,7 +53,7 @@ public interface CryptreeNode extends Cborable {
                                                    SafeRandom random);
 
     default CompletableFuture<RetrievedFilePointer> getParent(SymmetricKey baseKey, NetworkAccess network) {
-        SymmetricLocationLink parentLink = getParentLink();
+        EncryptedCapability parentLink = getParentLink();
         if (parentLink == null)
             return CompletableFuture.completedFuture(null);
 

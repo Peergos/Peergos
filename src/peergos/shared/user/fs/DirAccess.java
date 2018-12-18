@@ -33,19 +33,19 @@ public class DirAccess implements CryptreeNode {
     private final MaybeMultihash lastCommittedHash;
     private final int version;
     private final SymmetricLink base2parent, parent2meta;
-    private final SymmetricLocationLink parentLink;
+    private final EncryptedCapability parentLink;
     private final PaddedCipherText children;
-    private final Optional<SymmetricLocationLink> moreFolderContents;
+    private final Optional<EncryptedCapability> moreFolderContents;
     private final PaddedCipherText properties;
 
     public DirAccess(MaybeMultihash lastCommittedHash,
                      int version,
                      SymmetricLink base2parent,
                      SymmetricLink parent2meta,
-                     SymmetricLocationLink parentLink,
+                     EncryptedCapability parentLink,
                      PaddedCipherText properties,
                      PaddedCipherText children,
-                     Optional<SymmetricLocationLink> moreFolderContents) {
+                     Optional<EncryptedCapability> moreFolderContents) {
         this.lastCommittedHash = lastCommittedHash;
         this.version = version;
         this.base2parent = base2parent;
@@ -82,7 +82,7 @@ public class DirAccess implements CryptreeNode {
     }
 
     @Override
-    public SymmetricLocationLink getParentLink() {
+    public EncryptedCapability getParentLink() {
         return parentLink;
     }
 
@@ -96,7 +96,7 @@ public class DirAccess implements CryptreeNode {
         return false;
     }
 
-    public DirAccess withNextBlob(Optional<SymmetricLocationLink> moreFolderContents) {
+    public DirAccess withNextBlob(Optional<EncryptedCapability> moreFolderContents) {
         return new DirAccess(MaybeMultihash.empty(), version, base2parent, parent2meta, parentLink, properties,
                 children, moreFolderContents);
     }
@@ -125,16 +125,16 @@ public class DirAccess implements CryptreeNode {
         SymmetricLink subfoldersToParent = SymmetricLink.fromCbor(value.get(index++));
         SymmetricLink parentToMeta = SymmetricLink.fromCbor(value.get(index++));
         Cborable parentLinkCbor = value.get(index++);
-        SymmetricLocationLink parentLink = parentLinkCbor instanceof CborObject.CborNull ?
+        EncryptedCapability parentLink = parentLinkCbor instanceof CborObject.CborNull ?
                 null :
-                SymmetricLocationLink.fromCbor(parentLinkCbor);
+                EncryptedCapability.fromCbor(parentLinkCbor);
         PaddedCipherText properties = PaddedCipherText.fromCbor(value.get(index++));
         PaddedCipherText children = PaddedCipherText.fromCbor(value.get(index++));
 
         Cborable linkToNext = value.get(index++);
-        Optional<SymmetricLocationLink> moreFolderContents = linkToNext instanceof CborObject.CborNull ?
+        Optional<EncryptedCapability> moreFolderContents = linkToNext instanceof CborObject.CborNull ?
                 Optional.empty() :
-                Optional.of(SymmetricLocationLink.fromCbor(linkToNext));
+                Optional.of(EncryptedCapability.fromCbor(linkToNext));
         return new DirAccess(MaybeMultihash.of(hash), version, subfoldersToParent, parentToMeta, parentLink,
                 properties, children, moreFolderContents);
     }
@@ -211,7 +211,7 @@ public class DirAccess implements CryptreeNode {
                                         .thenCompose(nextBlob -> {
                                             // re-upload us with the link to the next DirAccess
                                             DirAccess withNext = newUs.withNextBlob(Optional.of(
-                                                    SymmetricLocationLink.create(ourBaseKey,
+                                                    EncryptedCapability.create(ourBaseKey,
                                                             nextSubfoldersKey, nextPointer.getLocation())));
                                             return withNext.commit(ourPointer.getLocation(), signer, network);
                                         });
@@ -404,9 +404,9 @@ public class DirAccess implements CryptreeNode {
         SymmetricKey metaKey = SymmetricKey.random();
         if (parentKey == null)
             parentKey = SymmetricKey.random();
-        SymmetricLocationLink parentLink = parentLocation == null ?
+        EncryptedCapability parentLink = parentLocation == null ?
                 null :
-                SymmetricLocationLink.create(parentKey, parentParentKey, parentLocation);
+                EncryptedCapability.create(parentKey, parentParentKey, parentLocation);
         return new DirAccess(
                 lastCommittedHash,
                 CryptreeNode.CURRENT_DIR_VERSION,
