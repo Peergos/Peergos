@@ -41,7 +41,7 @@ public class MutableTreeImpl implements MutableTree {
                 .thenApply(cborOpt -> {
                     if (! cborOpt.isPresent())
                         throw new IllegalStateException("Couldn't retrieve WriterData from dht! " + hash);
-                    return new CommittedWriterData(hash, WriterData.fromCbor(cborOpt.get(), null));
+                    return new CommittedWriterData(hash, WriterData.fromCbor(cborOpt.get()));
                 });
     }
 

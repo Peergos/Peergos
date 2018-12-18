@@ -2,92 +2,76 @@ package peergos.shared.user;
 import java.util.logging.*;
 
 import peergos.shared.cbor.*;
+import peergos.shared.crypto.*;
 import peergos.shared.crypto.symmetric.SymmetricKey;
-import peergos.shared.user.fs.Capability;
-import peergos.shared.util.*;
 
-import java.io.*;
 import java.util.*;
+import java.util.stream.*;
 
 public class UserStaticData implements Cborable {
 	private static final Logger LOG = Logger.getGlobal();
+	private static final int PADDING = 8192;
 
-    private final List<EntryPoint> staticData;
-    public final SymmetricKey rootKey;
+    private final PaddedCipherText allEntryPoints;
+
+
+    public UserStaticData(PaddedCipherText allEntryPoints) {
+        this.allEntryPoints = allEntryPoints;
+    }
 
     public UserStaticData(List<EntryPoint> staticData, SymmetricKey rootKey) {
-        this.staticData = staticData;
-        this.rootKey = rootKey;
+        this(PaddedCipherText.build(rootKey, new EntryPoints(EntryPoints.VERSION, staticData), PADDING));
     }
 
     public UserStaticData(SymmetricKey rootKey) {
         this(new ArrayList<>(), rootKey);
     }
 
-    public UserStaticData withKey(SymmetricKey newKey) {
-        return new UserStaticData(staticData, newKey);
-    }
-
-    public void clear() {
-        staticData.clear();
-    }
-
-    public int size() {
-        return staticData.size();
-    }
-
-    public void add(EntryPoint entryPoint) {
-        if (! staticData.contains(entryPoint))
-            staticData.add(entryPoint);
-    }
-
-    public boolean remove(Capability capability) {
-        for (Iterator<EntryPoint> it = staticData.iterator() ;it.hasNext();) {
-            EntryPoint entry = it.next();
-            if (entry.pointer.equals(capability)) {
-                it.remove();
-                return true;
-            }
-        }
-        return false;
-    }
-
-    public byte[] serialize() {
-        DataSink sink = new DataSink();
-        sink.writeInt(staticData.size());
-        staticData.forEach(ep -> sink.writeArray(ep.serializeAndSymmetricallyEncrypt(rootKey)));
-        return sink.toByteArray();
-    }
-
-    public static UserStaticData deserialize(byte[] raw, SymmetricKey rootKey) {
-        try {
-            DataSource source = new DataSource(raw);
-            int count = source.readInt();
-            LOG.info("Found "+count+" entry points");
-
-            UserStaticData staticData = new UserStaticData(rootKey);
-            for (int i = 0; i < count; i++) {
-                EntryPoint entry = EntryPoint.symmetricallyDecryptAndDeserialize(source.readArray(), rootKey);
-                staticData.add(entry);
-            }
-            return staticData;
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    public Set<EntryPoint> getEntryPoints() {
-        return new HashSet<>(staticData);
+    public List<EntryPoint> getEntryPoints(SymmetricKey rootKey) {
+        return allEntryPoints.decrypt(rootKey, EntryPoints::fromCbor).entries;
     }
 
     @Override
     public CborObject toCbor() {
-        return new CborObject.CborByteArray(serialize());
+        return allEntryPoints.toCbor();
     }
 
-    public static UserStaticData fromCbor(Cborable cbor, SymmetricKey rootKey) {
-        if (! (cbor instanceof CborObject.CborByteArray))
-            throw new IllegalStateException("UserStaticData cbor must be a byte[]! " + cbor);
-        return deserialize(((CborObject.CborByteArray) cbor).value, rootKey);
+    public static UserStaticData fromCbor(Cborable cbor) {
+        return new UserStaticData(PaddedCipherText.fromCbor(cbor));
+    }
+
+    private static class EntryPoints implements Cborable {
+        private static final int VERSION = 0;
+
+        private final long version;
+        private final List<EntryPoint> entries;
+
+        public EntryPoints(long version, List<EntryPoint> entries) {
+            this.version = version;
+            this.entries = entries;
+        }
+
+        @Override
+        public CborObject toCbor() {
+            Map<String, Cborable> res = new TreeMap<>();
+            res.put("v", new CborObject.CborLong(VERSION));
+            res.put("e", new CborObject.CborList(entries.stream()
+                    .map(EntryPoint::toCbor)
+                    .collect(Collectors.toList())));
+            return CborObject.CborMap.build(res);
+        }
+
+        public static EntryPoints fromCbor(Cborable cbor) {
+            if (! (cbor instanceof CborObject.CborMap))
+                throw new IllegalStateException("Incorrect cbor type for EntryPoints: " + cbor);
+            CborObject.CborLong version = (CborObject.CborLong)((CborObject.CborMap) cbor).values.get(new CborObject.CborString("v"));
+            if (version.value != VERSION)
+                throw new IllegalStateException("Unknown UserStaticData version: " + version.value);
+            return new EntryPoints(version.value,
+                    ((CborObject.CborList) ((CborObject.CborMap) cbor).values.get(new CborObject.CborString("e")))
+                            .value.stream()
+                            .map(EntryPoint::fromCbor)
+                            .collect(Collectors.toList()));
+        }
     }
 }

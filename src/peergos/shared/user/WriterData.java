@@ -91,6 +91,10 @@ public class WriterData implements Cborable {
         return new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver, ownedKeys, updated, staticData, tree);
     }
 
+    public WriterData withStaticData(Optional<UserStaticData> entryPoints) {
+        return new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver, ownedKeys, namedOwnedKeys, entryPoints, tree);
+    }
+
     public static WriterData createEmpty(PublicKeyHash controller) {
         return new WriterData(controller,
                 Optional.empty(),
@@ -120,6 +124,7 @@ public class WriterData implements Cborable {
     }
 
     public CompletableFuture<CommittedWriterData> removeFromStaticData(FileWrapper fileWrapper,
+                                                                       SymmetricKey rootKey,
                                                                        SigningPrivateKeyAndPublicHash signer,
                                                                        MaybeMultihash currentHash,
                                                                        NetworkAccess network,
@@ -127,10 +132,15 @@ public class WriterData implements Cborable {
         Capability pointer = fileWrapper.getPointer().capability;
 
         return staticData.map(sd -> {
-            boolean isRemoved = sd.remove(pointer);
+            List<EntryPoint> original = sd.getEntryPoints(rootKey);
+            List<EntryPoint> updated = original.stream()
+                    .filter(e -> !e.pointer.equals(pointer))
+                    .collect(Collectors.toList());
+            boolean isRemoved = updated.size() < original.size();
 
             if (isRemoved)
-                return commit(pointer.location.owner, signer, currentHash, network, updater);
+                return withStaticData(Optional.of(new UserStaticData(updated, rootKey)))
+                        .commit(pointer.location.owner, signer, currentHash, network, updater);
             CommittedWriterData committed = committed(currentHash);
             updater.accept(committed);
             return CompletableFuture.completedFuture(committed);
@@ -141,6 +151,7 @@ public class WriterData implements Cborable {
                                                              SigningPrivateKeyAndPublicHash signer,
                                                              MaybeMultihash currentHash,
                                                              PublicBoxingKey followRequestReceiver,
+                                                             SymmetricKey currentKey,
                                                              SymmetricKey newKey,
                                                              SecretGenerationAlgorithm newAlgorithm,
                                                              NetworkAccess network,
@@ -148,7 +159,8 @@ public class WriterData implements Cborable {
         // auth new key by adding to existing writer data first
         WriterData tmp = addOwnedKey(signer.publicKeyHash);
         return tmp.commit(oldSigner.publicKeyHash, oldSigner, currentHash, network, x -> {}).thenCompose(tmpCommited -> {
-            Optional<UserStaticData> newEntryPoints = staticData.map(sd -> sd.withKey(newKey));
+            Optional<UserStaticData> newEntryPoints = staticData
+                    .map(sd -> new UserStaticData(sd.getEntryPoints(currentKey), newKey));
             return network.dhtClient.putBoxingKey(oldSigner.publicKeyHash, oldSigner.secret.signatureOnly(followRequestReceiver.serialize()), followRequestReceiver)
                     .thenCompose(boxerHash -> {
                         WriterData updated = new WriterData(signer.publicKeyHash,
@@ -225,7 +237,7 @@ public class WriterData implements Cborable {
         return extract.apply("algorithm").map(SecretGenerationAlgorithm::fromCbor);
     }
 
-    public static WriterData fromCbor(CborObject cbor, SymmetricKey rootKey) {
+    public static WriterData fromCbor(CborObject cbor) {
         if (! ( cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Cbor for WriterData should be a map! " + cbor);
 
@@ -252,8 +264,7 @@ public class WriterData implements Cborable {
                                 e -> ((CborObject.CborString)e.getKey()).value,
                                 e -> new PublicKeyHash(((CborObject.CborMerkleLink) e.getValue()).target)));
 
-        // rootKey is null for other people parsing our WriterData who don't have our root key
-        Optional<UserStaticData> staticData = rootKey == null ? Optional.empty() : extract.apply("static").map(raw -> UserStaticData.fromCbor(raw, rootKey));
+        Optional<UserStaticData> staticData = extract.apply("static").map(UserStaticData::fromCbor);
         Optional<Multihash> tree = extract.apply("tree").map(val -> ((CborObject.CborMerkleLink)val).target);
         return new WriterData(controller, algo, publicData, followRequestReceiver, owned, named, staticData, tree);
     }
@@ -345,7 +356,7 @@ public class WriterData implements Cborable {
                 .thenApply(cborOpt -> {
                     if (! cborOpt.isPresent())
                         throw new IllegalStateException("Couldn't retrieve WriterData from dht! " + hash);
-                    return new CommittedWriterData(MaybeMultihash.of(hash), WriterData.fromCbor(cborOpt.get(), null));
+                    return new CommittedWriterData(MaybeMultihash.of(hash), WriterData.fromCbor(cborOpt.get()));
                 });
     }
 }

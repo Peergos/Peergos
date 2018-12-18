@@ -3,8 +3,6 @@ package peergos.shared.user;
 import jsinterop.annotations.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
-import peergos.shared.crypto.*;
-import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.user.fs.*;
@@ -16,7 +14,7 @@ import java.util.concurrent.*;
 import java.util.stream.*;
 
 @JsType
-public class EntryPoint implements Cborable{
+public class EntryPoint implements Cborable {
 
     public final Capability pointer;
     public final String owner;
@@ -27,11 +25,6 @@ public class EntryPoint implements Cborable{
         this.owner = owner;
         this.readers = readers;
         this.writers = writers;
-    }
-
-    @SuppressWarnings("unusable-by-js")
-    public byte[] serializeAndEncrypt(BoxingKeyPair user, PublicBoxingKey target) throws IOException {
-        return target.encryptMessageFor(this.serialize(), user.secretBoxingKey);
     }
 
     public byte[] serializeAndSymmetricallyEncrypt(SymmetricKey key) {
@@ -71,7 +64,7 @@ public class EntryPoint implements Cborable{
         ));
     }
 
-    static EntryPoint fromCbor(CborObject cbor) {
+    public static EntryPoint fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Incorrect cbor type for EntryPoint: " + cbor);
 
