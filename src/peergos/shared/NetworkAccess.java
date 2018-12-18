@@ -214,18 +214,17 @@ public class NetworkAccess {
         }
     }
 
-    public CompletableFuture<List<RetrievedFilePointer>> retrieveAllMetadata(List<SymmetricLocationLink> links,
-                                                                                    SymmetricKey baseKey) {
+    public CompletableFuture<List<RetrievedFilePointer>> retrieveAllMetadata(List<Capability> links) {
         List<CompletableFuture<Optional<RetrievedFilePointer>>> all = links.stream()
                 .map(link -> {
-                    Location loc = link.targetLocation(baseKey);
+                    Location loc = link.location;
                     return tree.get(loc.owner, loc.writer, loc.getMapKey())
                             .thenCompose(key -> {
                                 if (key.isPresent())
                                     return dhtClient.get(key.get())
                                             .thenApply(dataOpt ->  dataOpt
                                                     .map(cbor -> new RetrievedFilePointer(
-                                                            link.toReadableFilePointer(baseKey),
+                                                            link,
                                                             CryptreeNode.fromCbor(cbor, key.get()))));
                                 LOG.severe("Couldn't download link at: " + loc);
                                 Optional<RetrievedFilePointer> result = Optional.empty();

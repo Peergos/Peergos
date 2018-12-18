@@ -9,7 +9,6 @@ import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.merklebtree.*;
 import peergos.shared.user.fs.cryptree.*;
-import peergos.shared.util.*;
 
 import java.time.*;
 import java.util.*;
@@ -27,6 +26,7 @@ import java.util.stream.*;
  */
 public class DirAccess implements CryptreeNode {
 
+    private static final int CHILDREN_LINKS_PADDING_BLOCKSIZE = 1024;
     private static final int META_DATA_PADDING_BLOCKSIZE = 16;
     private static final int MAX_CHILD_LINKS_PER_BLOB = 500;
 
@@ -34,7 +34,7 @@ public class DirAccess implements CryptreeNode {
     private final int version;
     private final SymmetricLink base2parent, parent2meta;
     private final SymmetricLocationLink parentLink;
-    private final List<SymmetricLocationLink> children;
+    private final PaddedCipherText children;
     private final Optional<SymmetricLocationLink> moreFolderContents;
     private final PaddedCipherText properties;
 
@@ -44,7 +44,7 @@ public class DirAccess implements CryptreeNode {
                      SymmetricLink parent2meta,
                      SymmetricLocationLink parentLink,
                      PaddedCipherText properties,
-                     List<SymmetricLocationLink> children,
+                     PaddedCipherText children,
                      Optional<SymmetricLocationLink> moreFolderContents) {
         this.lastCommittedHash = lastCommittedHash;
         this.version = version;
@@ -52,7 +52,7 @@ public class DirAccess implements CryptreeNode {
         this.parent2meta = parent2meta;
         this.parentLink = parentLink;
         this.properties = properties;
-        this.children = Collections.unmodifiableList(children);
+        this.children = children;
         this.moreFolderContents = moreFolderContents;
     }
 
@@ -109,10 +109,7 @@ public class DirAccess implements CryptreeNode {
                 parent2meta.toCbor(),
                 parentLink == null ? new CborObject.CborNull() : parentLink.toCbor(),
                 properties.toCbor(),
-                new CborObject.CborList(children
-                        .stream()
-                        .map(SymmetricLocationLink::toCbor)
-                        .collect(Collectors.toList())),
+                children.toCbor(),
                 moreFolderContents.isPresent() ? moreFolderContents.get().toCbor() : new CborObject.CborNull()
         ));
     }
@@ -132,10 +129,7 @@ public class DirAccess implements CryptreeNode {
                 null :
                 SymmetricLocationLink.fromCbor(parentLinkCbor);
         PaddedCipherText properties = PaddedCipherText.fromCbor(value.get(index++));
-        List<SymmetricLocationLink> children = ((CborObject.CborList)value.get(index++)).value
-                .stream()
-                .map(SymmetricLocationLink::fromCbor)
-                .collect(Collectors.toList());
+        PaddedCipherText children = PaddedCipherText.fromCbor(value.get(index++));
 
         Cborable linkToNext = value.get(index++);
         Optional<SymmetricLocationLink> moreFolderContents = linkToNext instanceof CborObject.CborNull ?
@@ -145,8 +139,24 @@ public class DirAccess implements CryptreeNode {
                 properties, children, moreFolderContents);
     }
 
-    public List<SymmetricLocationLink> getChildren() {
-        return Collections.unmodifiableList(children);
+    public List<Capability> getChildren(SymmetricKey baseKey) {
+        return children.decrypt(baseKey, DirAccess::parseChildLinks);
+    }
+
+    private static List<Capability> parseChildLinks(Cborable cbor) {
+        if (! (cbor instanceof CborObject.CborList))
+            throw new IllegalStateException("Incorrect cbor for DirAccess child links: " + cbor);
+        return ((CborObject.CborList) cbor).value
+                .stream()
+                .map(Capability::fromCbor)
+                .collect(Collectors.toList());
+    }
+
+    private static PaddedCipherText encryptChildren(SymmetricKey baseKey, List<Capability> children) {
+        return PaddedCipherText.build(baseKey,
+                new CborObject.CborList(children.stream()
+                        .map(Capability::toCbor)
+                        .collect(Collectors.toList())), CHILDREN_LINKS_PADDING_BLOCKSIZE);
     }
 
     public CompletableFuture<DirAccess> updateProperties(Capability writableCapability, FileProperties newProps, NetworkAccess network) {
@@ -171,27 +181,29 @@ public class DirAccess implements CryptreeNode {
         return addChildrenAndCommit(Arrays.asList(targetCAP), ourSubfolders, ourPointer, signer, network, random);
     }
 
-    public CompletableFuture<DirAccess> addChildrenAndCommit(List<Capability> targetCAPs, SymmetricKey ourSubfolders,
+    public CompletableFuture<DirAccess> addChildrenAndCommit(List<Capability> targetCAPs, SymmetricKey ourBaseKey,
                                                           Capability ourPointer, SigningPrivateKeyAndPublicHash signer,
                                                           NetworkAccess network, SafeRandom random) {
+        List<Capability> children = getChildren(ourBaseKey);
         if (children.size() + targetCAPs.size() > MAX_CHILD_LINKS_PER_BLOB) {
-            return getNextMetablob(ourSubfolders, network).thenCompose(nextMetablob -> {
+            return getNextMetablob(ourBaseKey, network).thenCompose(nextMetablob -> {
                 if (nextMetablob.size() >= 1) {
                     Capability nextPointer = nextMetablob.get(0).capability;
                     DirAccess nextBlob = (DirAccess) nextMetablob.get(0).fileAccess;
-                    return nextBlob.addChildrenAndCommit(targetCAPs, ourSubfolders, nextPointer, signer, network, random);
+                    return nextBlob.addChildrenAndCommit(targetCAPs, ourBaseKey, nextPointer, signer, network, random);
                 } else {
                     // first fill this directory, then overflow into a new one
                     int freeSlots = MAX_CHILD_LINKS_PER_BLOB - children.size();
                     List<Capability> addToUs = targetCAPs.subList(0, freeSlots);
                     List<Capability> addToNext = targetCAPs.subList(freeSlots, targetCAPs.size());
-                    return addChildrenAndCommit(addToUs, ourSubfolders, ourPointer, signer, network, random)
+                    return addChildrenAndCommit(addToUs, ourBaseKey, ourPointer, signer, network, random)
                             .thenCompose(newUs -> {
                                 // create and upload new metadata blob
                                 SymmetricKey nextSubfoldersKey = SymmetricKey.random();
-                                SymmetricKey ourParentKey = base2parent.target(ourSubfolders);
+                                SymmetricKey ourParentKey = base2parent.target(ourBaseKey);
+                                Capability parentCap = parentLink.toCapability(ourParentKey);
                                 DirAccess next = DirAccess.create(MaybeMultihash.empty(), nextSubfoldersKey, FileProperties.EMPTY,
-                                        parentLink.targetLocation(ourParentKey), parentLink.target(ourParentKey), ourParentKey);
+                                        parentCap.location, parentCap.baseKey, ourParentKey);
                                 byte[] nextMapKey = random.randomBytes(32);
                                 Location nextLocation = ourPointer.getLocation().withMapKey(nextMapKey);
                                 Capability nextPointer = new Capability(nextLocation, Optional.empty(), nextSubfoldersKey);
@@ -199,7 +211,7 @@ public class DirAccess implements CryptreeNode {
                                         .thenCompose(nextBlob -> {
                                             // re-upload us with the link to the next DirAccess
                                             DirAccess withNext = newUs.withNextBlob(Optional.of(
-                                                    SymmetricLocationLink.create(ourSubfolders,
+                                                    SymmetricLocationLink.create(ourBaseKey,
                                                             nextSubfoldersKey, nextPointer.getLocation())));
                                             return withNext.commit(ourPointer.getLocation(), signer, network);
                                         });
@@ -207,11 +219,10 @@ public class DirAccess implements CryptreeNode {
                 }
             });
         } else {
-            ArrayList<SymmetricLocationLink> newFiles = new ArrayList<>(children);
-            for (Capability targetCAP : targetCAPs)
-                newFiles.add(SymmetricLocationLink.create(ourSubfolders, targetCAP.baseKey, targetCAP.getLocation()));
+            ArrayList<Capability> newFiles = new ArrayList<>(children);
+            newFiles.addAll(targetCAPs);
 
-            return withChildren(newFiles)
+            return withChildren(encryptChildren(ourBaseKey, newFiles))
                     .commit(ourPointer.getLocation(), signer, network);
         }
     }
@@ -219,7 +230,7 @@ public class DirAccess implements CryptreeNode {
     private CompletableFuture<List<RetrievedFilePointer>> getNextMetablob(SymmetricKey subfoldersKey, NetworkAccess network) {
         if (!moreFolderContents.isPresent())
             return CompletableFuture.completedFuture(Collections.emptyList());
-        return network.retrieveAllMetadata(Arrays.asList(moreFolderContents.get()), subfoldersKey);
+        return network.retrieveAllMetadata(Arrays.asList(moreFolderContents.get().toCapability(subfoldersKey)));
     }
 
     public CompletableFuture<DirAccess> updateChildLink(Capability ourPointer, RetrievedFilePointer original,
@@ -233,9 +244,9 @@ public class DirAccess implements CryptreeNode {
 
     public CompletableFuture<DirAccess> removeChild(RetrievedFilePointer childRetrievedPointer, Capability ourPointer,
                                                   SigningPrivateKeyAndPublicHash signer, NetworkAccess network) {
-        List<SymmetricLocationLink> newSubfolders = children.stream().filter(e -> {
+        List<Capability> newSubfolders = getChildren(ourPointer.baseKey).stream().filter(e -> {
             try {
-                Location target = e.targetLocation(ourPointer.baseKey);
+                Location target = e.location;
                 boolean keep = true;
                 if (Arrays.equals(target.getMapKey(), childRetrievedPointer.capability.location.getMapKey()))
                     if (Arrays.equals(target.writer.serialize(), childRetrievedPointer.capability.location.writer.serialize()))
@@ -249,16 +260,16 @@ public class DirAccess implements CryptreeNode {
                 return false;
             }
         }).collect(Collectors.toList());
-        return this.withChildren(newSubfolders)
+        return this.withChildren(encryptChildren(ourPointer.baseKey, newSubfolders))
                 .commit(ourPointer.getLocation(), signer, network);
     }
 
     // returns [RetrievedFilePointer]
     public CompletableFuture<Set<RetrievedFilePointer>> getChildren(NetworkAccess network, SymmetricKey baseKey) {
-        CompletableFuture<List<RetrievedFilePointer>> childrenFuture = network.retrieveAllMetadata(this.children, baseKey);
+        CompletableFuture<List<RetrievedFilePointer>> childrenFuture = network.retrieveAllMetadata(getChildren(baseKey));
 
         CompletableFuture<List<RetrievedFilePointer>> moreChildrenFuture = moreFolderContents.isPresent() ?
-                network.retrieveAllMetadata(Arrays.asList(moreFolderContents.get()), baseKey) :
+                network.retrieveAllMetadata(Arrays.asList(moreFolderContents.get().toCapability(baseKey))) :
                 CompletableFuture.completedFuture(Collections.emptyList());
 
         return childrenFuture.thenCompose(children -> moreChildrenFuture.thenCompose(moreChildrenSource -> {
@@ -279,38 +290,39 @@ public class DirAccess implements CryptreeNode {
     }
 
     public CompletableFuture<DirAccess> cleanUnreachableChildren(NetworkAccess network,
-                                                               SymmetricKey baseKey,
-                                                               Capability ourPointer,
-                                                               SigningPrivateKeyAndPublicHash signer) {
+                                                                 SymmetricKey baseKey,
+                                                                 Capability ourPointer,
+                                                                 SigningPrivateKeyAndPublicHash signer) {
         CompletableFuture<List<RetrievedFilePointer>> moreChildrenFuture = moreFolderContents.isPresent() ?
-                network.retrieveAllMetadata(Arrays.asList(moreFolderContents.get()), baseKey) :
+                network.retrieveAllMetadata(Arrays.asList(moreFolderContents.get().toCapability(baseKey))) :
                 CompletableFuture.completedFuture(Collections.emptyList());
 
         return getChildren(network, baseKey)
                 .thenCompose(reachable -> moreChildrenFuture
-                                .thenCompose(moreChildrenSource -> {
-                                    // this only has one or zero elements
-                                    Optional<RetrievedFilePointer> any = moreChildrenSource.stream().findAny();
-                                    CompletableFuture<DirAccess> moreChildren = any
-                                            .map(d -> ((DirAccess)d.fileAccess)
-                                                    .cleanUnreachableChildren(network, d.capability.baseKey, d.capability, signer))
-                                            .orElse(CompletableFuture.completedFuture(this));
-                                    return moreChildren.thenCompose(moreRetrievedChildren -> {
-                                        List<SymmetricLocationLink> reachableChildLinks = children
-                                                .stream()
-                                                .filter(sym -> reachable.stream()
-                                                        .anyMatch(rfp -> rfp.capability.equals(sym.toReadableFilePointer(baseKey))))
-                                                .collect(Collectors.toList());
+                        .thenCompose(moreChildrenSource -> {
+                            // this only has one or zero elements
+                            Optional<RetrievedFilePointer> any = moreChildrenSource.stream().findAny();
+                            CompletableFuture<DirAccess> moreChildren = any
+                                    .map(d -> ((DirAccess)d.fileAccess)
+                                            .cleanUnreachableChildren(network, d.capability.baseKey, d.capability, signer))
+                                    .orElse(CompletableFuture.completedFuture(this));
+                            return moreChildren.thenCompose(moreRetrievedChildren -> {
+                                List<Capability> reachableChildLinks = getChildren(baseKey)
+                                        .stream()
+                                        .filter(sym -> reachable.stream()
+                                                .anyMatch(rfp -> rfp.capability.equals(sym)))
+                                        .collect(Collectors.toList());
 
-                                        return withChildren(reachableChildLinks)
-                                                .commit(ourPointer.getLocation(), signer, network);
-                                    });
-                                })
+                                return withChildren(encryptChildren(baseKey, reachableChildLinks))
+                                        .commit(ourPointer.getLocation(), signer, network);
+                            });
+                        })
                 );
     }
 
     public Set<Location> getChildrenLocations(SymmetricKey baseKey) {
-        return children.stream().map(d -> d.targetLocation(baseKey))
+        return getChildren(baseKey).stream()
+                .map(cap -> cap.location)
                 .collect(Collectors.toSet());
     }
 
@@ -382,12 +394,12 @@ public class DirAccess implements CryptreeNode {
         }).thenCompose(finalDir -> finalDir.commit(new Location(newParentLocation.owner, entryWriterKey.publicKeyHash, newMapKey), entryWriterKey, network));
     }
 
-    private DirAccess withChildren(List<SymmetricLocationLink> newChildren) {
+    private DirAccess withChildren(PaddedCipherText newChildren) {
         return new DirAccess(lastCommittedHash, version, base2parent, parent2meta, parentLink, properties,
                 newChildren, moreFolderContents);
     }
 
-    public static DirAccess create(MaybeMultihash lastCommittedHash, SymmetricKey subfoldersKey, FileProperties props,
+    public static DirAccess create(MaybeMultihash lastCommittedHash, SymmetricKey baseKey, FileProperties props,
                                    Location parentLocation, SymmetricKey parentParentKey, SymmetricKey parentKey) {
         SymmetricKey metaKey = SymmetricKey.random();
         if (parentKey == null)
@@ -398,11 +410,11 @@ public class DirAccess implements CryptreeNode {
         return new DirAccess(
                 lastCommittedHash,
                 CryptreeNode.CURRENT_DIR_VERSION,
-                SymmetricLink.fromPair(subfoldersKey, parentKey),
+                SymmetricLink.fromPair(baseKey, parentKey),
                 SymmetricLink.fromPair(parentKey, metaKey),
                 parentLink,
                 PaddedCipherText.build(metaKey, props, META_DATA_PADDING_BLOCKSIZE),
-                new ArrayList<>(),
+                encryptChildren(baseKey, Collections.emptyList()),
                 Optional.empty()
         );
     }

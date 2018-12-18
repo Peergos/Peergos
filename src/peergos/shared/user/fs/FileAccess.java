@@ -137,8 +137,7 @@ public class FileAccess implements CryptreeNode {
         SymmetricLink newParentToData = SymmetricLink.fromPair(newBaseKey, dataKey);
 
         SymmetricLocationLink newParentLink = SymmetricLocationLink.create(newBaseKey,
-                parentLink.target(writableCapability.baseKey),
-                parentLink.targetLocation(writableCapability.baseKey));
+                parentLink.toCapability(writableCapability.baseKey));
         FileAccess fa = new FileAccess(committedHash(), version, newParentToMeta, newParentToData, properties, this.retriever, newParentLink);
         return network.uploadChunk(fa, writableCapability.location,
                 writableCapability.signer())

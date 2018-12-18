@@ -57,7 +57,7 @@ public interface CryptreeNode extends Cborable {
         if (parentLink == null)
             return CompletableFuture.completedFuture(null);
 
-        return network.retrieveAllMetadata(Arrays.asList(parentLink), baseKey).thenApply(res -> {
+        return network.retrieveAllMetadata(Arrays.asList(parentLink.toCapability(baseKey))).thenApply(res -> {
             RetrievedFilePointer retrievedFilePointer = res.stream().findAny().get();
             return retrievedFilePointer;
         });

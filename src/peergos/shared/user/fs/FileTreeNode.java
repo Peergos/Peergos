@@ -170,9 +170,7 @@ public class FileTreeNode {
                     parent.getParentKey(), newParentKey);
             // re add children
 
-            List<Capability> children = existing.getChildren().stream().map(link ->
-                    new Capability(link.targetLocation(pointer.capability.baseKey),
-                            Optional.empty(), link.target(pointer.capability.baseKey))).collect(Collectors.toList());
+            List<Capability> children = existing.getChildren(pointer.capability.baseKey);
             return newDirAccess.addChildrenAndCommit(children, newSubfoldersKey, ourNewPointer, getSigner(), network, random)
                     .thenCompose(updatedDirAccess -> {
                         readers.removeAll(readersToRemove);

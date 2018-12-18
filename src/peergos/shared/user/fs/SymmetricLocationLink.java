@@ -3,7 +3,6 @@ package peergos.shared.user.fs;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.symmetric.SymmetricKey;
-import peergos.shared.util.*;
 
 import java.util.*;
 
@@ -14,23 +13,13 @@ public class SymmetricLocationLink implements Cborable {
         this.cipherText = cipherText;
     }
 
-    public Location targetLocation(SymmetricKey from) {
-        return cipherText.decrypt(from, Capability::fromCbor).location;
-    }
-
-    public SymmetricKey target(SymmetricKey from) {
-        return cipherText.decrypt(from, Capability::fromCbor).baseKey;
+    public Capability toCapability(SymmetricKey baseKey) {
+        return cipherText.decrypt(baseKey, Capability::fromCbor);
     }
 
     @Override
     public CborObject toCbor() {
         return cipherText.toCbor();
-    }
-
-    public Capability toReadableFilePointer(SymmetricKey baseKey) {
-       Location loc =  targetLocation(baseKey);
-       SymmetricKey key = target(baseKey);
-       return new Capability(loc.owner, loc.writer, loc.getMapKey(), key);
     }
 
     public static SymmetricLocationLink fromCbor(Cborable cbor) {

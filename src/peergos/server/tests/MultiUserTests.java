@@ -29,7 +29,7 @@ import static peergos.server.util.PeergosNetworkUtils.getUserContextsForNode;
 @RunWith(Parameterized.class)
 public class MultiUserTests {
 
-    private static Args args = UserTests.buildArgs().with("useIPFS", "true");
+    private static Args args = UserTests.buildArgs();
     private Random random = new Random(666);
     private final NetworkAccess network;
     private static final Crypto crypto = Crypto.initJava();
