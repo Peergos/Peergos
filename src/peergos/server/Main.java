@@ -369,7 +369,7 @@ public class Main {
         // test if ipfs is already running
         int ipfsApiPort = IpfsWrapper.getApiPort(a);
         if (IpfsWrapper.isHttpApiListening(ipfsApiPort)) {
-            throw new IllegalStateException("IPFS is already running, using existing instance at " + ipfsApiPort);
+            throw new IllegalStateException("IPFS is already running on api port " + ipfsApiPort);
         }
 
         IpfsWrapper ipfs = IpfsWrapper.build(a);
