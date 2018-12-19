@@ -245,20 +245,13 @@ public class DirAccess implements CryptreeNode {
     public CompletableFuture<DirAccess> removeChild(RetrievedCapability childRetrievedPointer, Capability ourPointer,
                                                     SigningPrivateKeyAndPublicHash signer, NetworkAccess network) {
         List<Capability> newSubfolders = getChildren(ourPointer.baseKey).stream().filter(e -> {
-            try {
-                Location target = e.location;
-                boolean keep = true;
-                if (Arrays.equals(target.getMapKey(), childRetrievedPointer.capability.location.getMapKey()))
-                    if (Arrays.equals(target.writer.serialize(), childRetrievedPointer.capability.location.writer.serialize()))
-                        if (Arrays.equals(target.owner.serialize(), childRetrievedPointer.capability.location.owner.serialize()))
-                            keep = false;
-                return keep;
-            } catch (TweetNaCl.InvalidCipherTextException ex) {
-                ex.printStackTrace();
-                return false;
-            } catch (Exception f) {
-                return false;
-            }
+            Location target = e.location;
+            boolean keep = true;
+            if (Arrays.equals(target.getMapKey(), childRetrievedPointer.capability.location.getMapKey()))
+                if (Arrays.equals(target.writer.serialize(), childRetrievedPointer.capability.location.writer.serialize()))
+                    if (Arrays.equals(target.owner.serialize(), childRetrievedPointer.capability.location.owner.serialize()))
+                        keep = false;
+            return keep;
         }).collect(Collectors.toList());
         return this.withChildren(encryptChildren(ourPointer.baseKey, newSubfolders))
                 .commit(ourPointer.getLocation(), signer, network);
