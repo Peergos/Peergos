@@ -33,6 +33,8 @@ public class PaddedCipherText implements Cborable {
     }
 
     public static <T extends Cborable> PaddedCipherText build(SymmetricKey from, T secret, int paddingBlockSize) {
+        if (paddingBlockSize < 1)
+            throw new IllegalStateException("Invalid padding block size: " + paddingBlockSize);
         byte[] nonce = from.createNonce();
         byte[] cipherText = from.encrypt(pad(secret.serialize(), paddingBlockSize), nonce);
         return new PaddedCipherText(new CipherText(nonce, cipherText));
