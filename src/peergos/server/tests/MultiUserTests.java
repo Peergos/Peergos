@@ -255,9 +255,12 @@ public class MultiUserTests {
         Optional<FileWrapper> unsharedView2 = userToUnshareWith.getByPath(friendsNewPathToFile).get();
         CryptreeNode fileAccess = network.getMetadata(priorPointer.getLocation()).get().get();
         try {
+            // check we are trying to decrypt the correct thing
+            PaddedCipherText priorPropsCipherText = PaddedCipherText.fromCbor(((CborObject.CborList) priorFileAccess.toCbor()).value.get(4));
+            FileProperties priorProps =  priorPropsCipherText.decrypt(priorMetaKey, FileProperties::fromCbor);
             // Try decrypting the new metadata with the old key
-            PaddedCipherText properties = PaddedCipherText.fromCbor(((CborObject.CborList) fileAccess.toCbor()).value.get(4));
-            FileProperties props =  properties.decrypt(priorMetaKey, FileProperties::fromCbor);
+            PaddedCipherText propsCipherText = PaddedCipherText.fromCbor(((CborObject.CborList) fileAccess.toCbor()).value.get(4));
+            FileProperties props =  propsCipherText.decrypt(priorMetaKey, FileProperties::fromCbor);
             throw new IllegalStateException("We shouldn't be able to decrypt this after a rename! new name = " + props.name);
         } catch (TweetNaCl.InvalidCipherTextException e) {}
         try {
