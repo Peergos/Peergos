@@ -1,4 +1,4 @@
-package peergos.shared.merklebtree;
+package peergos.shared;
 
 import peergos.shared.cbor.*;
 import peergos.shared.io.ipfs.multihash.*;

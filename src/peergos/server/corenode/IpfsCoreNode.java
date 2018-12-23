@@ -3,7 +3,6 @@ import java.util.logging.*;
 
 import peergos.server.util.Logging;
 
-import peergos.server.mutable.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
@@ -12,14 +11,12 @@ import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.hamt.*;
 import peergos.shared.io.ipfs.multihash.*;
-import peergos.shared.merklebtree.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
 import java.io.*;
-import java.net.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
@@ -151,7 +148,9 @@ public class IpfsCoreNode implements CoreNode {
 
                 ChampWrapper champ = currentTree.isPresent() ?
                         ChampWrapper.create(currentTree.get(), identityHash, ipfs).get() :
-                        ChampWrapper.create(signer.publicKeyHash, signer, identityHash, ipfs).get();
+                        Transaction.run(peergosIdentity,
+                                (owner, tid) -> ChampWrapper.create(signer.publicKeyHash, signer, identityHash, tid, ipfs),
+                                ipfs).get();
                 MaybeMultihash existing = champ.get(username.getBytes()).get();
                 Optional<CborObject> cborOpt = existing.isPresent() ?
                         ipfs.get(existing.get()).get() :
@@ -169,20 +168,24 @@ public class IpfsCoreNode implements CoreNode {
                 CborObject.CborList mergedChainCbor = new CborObject.CborList(mergedChain.stream()
                         .map(Cborable::toCbor)
                         .collect(Collectors.toList()));
-                Multihash mergedChainHash = ipfs.put(peergosIdentity, signer, mergedChainCbor.toByteArray()).get();
+                Multihash mergedChainHash = Transaction.run(peergosIdentity,
+                        (owner, tid) -> ipfs.put(peergosIdentity, signer, mergedChainCbor.toByteArray(), tid),
+                        ipfs).get();
                 synchronized (this) {
-                    Multihash newPkiRoot = champ.put(signer.publicKeyHash, signer, username.getBytes(), existing, mergedChainHash).get();
-                    return current.props.withChamp(newPkiRoot)
-                            .commit(peergosIdentity, signer, currentRoot, mutable, ipfs, c -> {})
-                            .thenApply(committed -> {
-                                if (existingChain.isEmpty())
-                                    usernames.add(username);
-                                PublicKeyHash owner = updatedChain.get(updatedChain.size() - 1).owner;
-                                reverseLookup.put(owner, username);
-                                chains.put(username, mergedChain);
-                                currentRoot = committed.hash;
-                                return true;
-                            });
+                    return Transaction.run(peergosIdentity,
+                            (owner, tid) -> champ.put(signer.publicKeyHash, signer, username.getBytes(), existing, mergedChainHash, tid)
+                                    .thenCompose(newPkiRoot -> current.props.withChamp(newPkiRoot)
+                                            .commit(peergosIdentity, signer, currentRoot, mutable, ipfs, c -> {}, tid)),
+                            ipfs
+                    ).thenApply(committed -> {
+                        if (existingChain.isEmpty())
+                            usernames.add(username);
+                        PublicKeyHash owner = updatedChain.get(updatedChain.size() - 1).owner;
+                        reverseLookup.put(owner, username);
+                        chains.put(username, mergedChain);
+                        currentRoot = committed.hash;
+                        return true;
+                    });
                 }
             } catch (Exception e) {
                 throw new RuntimeException(e.getMessage(), e);

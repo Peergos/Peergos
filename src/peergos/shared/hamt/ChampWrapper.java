@@ -1,9 +1,9 @@
 package peergos.shared.hamt;
 
+import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
-import peergos.shared.merklebtree.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
@@ -29,7 +29,9 @@ public class ChampWrapper implements ImmutableTree
         this.bitWidth = bitWidth;
     }
 
-    public static CompletableFuture<ChampWrapper> create(Multihash rootHash, Function<ByteArrayWrapper, byte[]> hasher, ContentAddressedStorage dht) {
+    public static CompletableFuture<ChampWrapper> create(Multihash rootHash,
+                                                         Function<ByteArrayWrapper, byte[]> hasher,
+                                                         ContentAddressedStorage dht) {
         return dht.get(rootHash).thenApply(rawOpt -> {
             if (! rawOpt.isPresent())
                 throw new IllegalStateException("Null byte[] returned by DHT for hash: " + rootHash);
@@ -37,10 +39,14 @@ public class ChampWrapper implements ImmutableTree
         });
     }
 
-    public static CompletableFuture<ChampWrapper> create(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, Function<ByteArrayWrapper, byte[]> hasher, ContentAddressedStorage dht) {
+    public static CompletableFuture<ChampWrapper> create(PublicKeyHash owner,
+                                                         SigningPrivateKeyAndPublicHash writer,
+                                                         Function<ByteArrayWrapper, byte[]> hasher,
+                                                         TransactionId tid,
+                                                         ContentAddressedStorage dht) {
         Champ newRoot = Champ.empty();
         byte[] raw = newRoot.serialize();
-        return dht.put(owner, writer.publicKeyHash, writer.secret.signatureOnly(raw), raw)
+        return dht.put(owner, writer.publicKeyHash, writer.secret.signatureOnly(raw), raw, tid)
                 .thenApply(put -> new ChampWrapper(newRoot, put, hasher, dht, BIT_WIDTH));
     }
 
@@ -50,6 +56,7 @@ public class ChampWrapper implements ImmutableTree
      * @return value stored under rawKey
      * @throws IOException
      */
+    @Override
     public CompletableFuture<MaybeMultihash> get(byte[] rawKey) {
         ByteArrayWrapper key = new ByteArrayWrapper(rawKey);
         return root.left.get(key, hasher.apply(key), 0, BIT_WIDTH, storage);
@@ -62,10 +69,16 @@ public class ChampWrapper implements ImmutableTree
      * @return hash of new tree root
      * @throws IOException
      */
-    public CompletableFuture<Multihash> put(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, byte[] rawKey, MaybeMultihash existing, Multihash value) {
+    @Override
+    public CompletableFuture<Multihash> put(PublicKeyHash owner,
+                                            SigningPrivateKeyAndPublicHash writer,
+                                            byte[] rawKey,
+                                            MaybeMultihash existing,
+                                            Multihash value,
+                                            TransactionId tid) {
         ByteArrayWrapper key = new ByteArrayWrapper(rawKey);
         return root.left.put(owner, writer, key, hasher.apply(key), 0, existing, MaybeMultihash.of(value),
-                BIT_WIDTH, MAX_HASH_COLLISIONS_PER_LEVEL, hasher, storage, root.right)
+                BIT_WIDTH, MAX_HASH_COLLISIONS_PER_LEVEL, hasher, tid, storage, root.right)
                 .thenCompose(newRoot -> commit(writer, newRoot));
     }
 
@@ -75,10 +88,15 @@ public class ChampWrapper implements ImmutableTree
      * @return hash of new tree root
      * @throws IOException
      */
-    public CompletableFuture<Multihash> remove(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, byte[] rawKey, MaybeMultihash existing) {
+    @Override
+    public CompletableFuture<Multihash> remove(PublicKeyHash owner,
+                                               SigningPrivateKeyAndPublicHash writer,
+                                               byte[] rawKey,
+                                               MaybeMultihash existing,
+                                            TransactionId tid) {
         ByteArrayWrapper key = new ByteArrayWrapper(rawKey);
         return root.left.put(owner, writer, key, hasher.apply(key), 0, existing, MaybeMultihash.empty(),
-                BIT_WIDTH, MAX_HASH_COLLISIONS_PER_LEVEL, hasher, storage, root.right)
+                BIT_WIDTH, MAX_HASH_COLLISIONS_PER_LEVEL, hasher, tid, storage, root.right)
                 .thenCompose(newRoot -> commit(writer, newRoot));
     }
 

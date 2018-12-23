@@ -7,7 +7,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multihash.*;
-import peergos.shared.merklebtree.*;
+import peergos.shared.storage.*;
 import peergos.shared.user.fs.cryptree.*;
 
 import java.util.*;
@@ -123,8 +123,10 @@ public class FileAccess implements CryptreeNode {
         PaddedCipherText encryptedProperties = PaddedCipherText.build(metaKey, newProps, META_DATA_PADDING_BLOCKSIZE);
         FileAccess fa = new FileAccess(lastCommittedHash, version, toMeta, this.parent2data, encryptedProperties,
                 this.retriever, this.parentLink);
-        return network.uploadChunk(fa, writableCapability.location, writableCapability.signer())
-                .thenApply(b -> fa);
+        return Transaction.run(writableCapability.location.owner, (owner, tid) ->
+                network.uploadChunk(fa, writableCapability.location, writableCapability.signer(), tid)
+                        .thenApply(b -> fa),
+                network.dhtClient);
     }
 
     public CompletableFuture<FileAccess> markDirty(Capability writableCapability, SymmetricKey newBaseKey, NetworkAccess network) {
@@ -138,9 +140,10 @@ public class FileAccess implements CryptreeNode {
         EncryptedCapability newParentLink = EncryptedCapability.create(newBaseKey,
                 parentLink.toCapability(writableCapability.baseKey));
         FileAccess fa = new FileAccess(committedHash(), version, newParentToMeta, newParentToData, properties, this.retriever, newParentLink);
-        return network.uploadChunk(fa, writableCapability.location,
-                writableCapability.signer())
-                .thenApply(x -> fa);
+        return Transaction.run(writableCapability.location.owner, (owner, tid) ->
+                network.uploadChunk(fa, writableCapability.location, writableCapability.signer(), tid)
+                        .thenApply(x -> fa),
+                network.dhtClient);
     }
 
     @Override
@@ -163,8 +166,11 @@ public class FileAccess implements CryptreeNode {
         FileAccess fa = FileAccess.create(MaybeMultihash.empty(), newBaseKey, SymmetricKey.random(),
                 isDirectory ? SymmetricKey.random() : getDataKey(baseKey),
                 props, this.retriever, newParentLocation, parentparentKey);
-        return network.uploadChunk(fa, new Location(newParentLocation.owner, entryWriterKey.publicKeyHash, newMapKey), entryWriterKey)
-                .thenApply(b -> fa);
+        Location newLocation = new Location(newParentLocation.owner, entryWriterKey.publicKeyHash, newMapKey);
+        return Transaction.run(newParentLocation.owner,
+                (owner, tid) -> network.uploadChunk(fa, newLocation, entryWriterKey, tid)
+                        .thenApply(b -> fa),
+                network.dhtClient);
     }
 
     public static FileAccess fromCbor(CborObject cbor, Multihash hash) {

@@ -12,6 +12,7 @@ import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.storage.ContentAddressedStorage;
 import com.sun.net.httpserver.*;
 import peergos.shared.util.*;
+import peergos.shared.storage.TransactionId;
 
 import java.io.*;
 import java.util.*;
@@ -50,8 +51,24 @@ public class DHTHandler implements HttpHandler {
             Function<String, String> last = key -> params.get(key).get(params.get(key).size() - 1);
 
             switch (path) {
+                case "transaction/start": {
+                    PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
+                    dht.startTransaction(ownerHash).thenAccept(tid -> {
+                        replyJson(httpExchange, tid.toString(), Optional.empty());
+                    }).exceptionally(Futures::logError).get();
+                    break;
+                }
+                case "transaction/close": {
+                    PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
+                    TransactionId tid = new TransactionId(args.get(0));
+                    dht.closeTransaction(ownerHash, tid).thenAccept(b -> {
+                        replyJson(httpExchange, JSONParser.toString(b ? 1 : 0), Optional.empty());
+                    }).exceptionally(Futures::logError).get();
+                    break;
+                }
                 case "block/put": {
                     PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
+                    TransactionId tid = new TransactionId(last.apply("transaction"));
                     PublicKeyHash writerHash = PublicKeyHash.fromString(last.apply("writer"));
                     List<byte[]> signatures = Arrays.stream(last.apply("signatures").split(","))
                             .map(ArrayOps::hexToBytes)
@@ -104,8 +121,8 @@ public class DHTHandler implements HttpHandler {
                     }
 
                     List<Multihash> hashes = (isRaw ?
-                            dht.putRaw(ownerHash, writerHash, signatures, data) :
-                            dht.put(ownerHash, writerHash, signatures, data)).get();
+                            dht.putRaw(ownerHash, writerHash, signatures, data, tid) :
+                            dht.put(ownerHash, writerHash, signatures, data, tid)).get();
                     List<Object> json = hashes.stream()
                             .map(h -> wrapHash(h))
                             .collect(Collectors.toList());

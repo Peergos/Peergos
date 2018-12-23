@@ -3,7 +3,6 @@ package peergos.server;
 import peergos.shared.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.merklebtree.*;
 import peergos.shared.user.*;
 
 import java.net.*;

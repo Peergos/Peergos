@@ -27,6 +27,7 @@ public class FileContentAddressedStorage implements ContentAddressedStorage {
     private static final int CID_V1 = 1;
     private static final int DIRECTORY_DEPTH = 5;
     private final Path root;
+    private final Random r = new Random(1);
 
     public FileContentAddressedStorage(Path root) {
         this.root = root;
@@ -46,12 +47,30 @@ public class FileContentAddressedStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> put(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
+    public CompletableFuture<TransactionId> startTransaction(PublicKeyHash owner) {
+        return CompletableFuture.completedFuture(new TransactionId(ArrayOps.bytesToHex(ArrayOps.random(8))));
+    }
+
+    @Override
+    public CompletableFuture<Boolean> closeTransaction(PublicKeyHash owner, TransactionId tid) {
+        return CompletableFuture.completedFuture(true);
+    }
+
+    @Override
+    public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
+                                                  PublicKeyHash writer,
+                                                  List<byte[]> signatures,
+                                                  List<byte[]> blocks,
+                                                  TransactionId tid) {
         return put(writer, signatures, blocks, false);
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
+    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner,
+                                                     PublicKeyHash writer,
+                                                     List<byte[]> signatures,
+                                                     List<byte[]> blocks,
+                                                     TransactionId tid) {
         return put(writer, signatures, blocks, true);
     }
 

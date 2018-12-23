@@ -1,6 +1,6 @@
 package peergos.shared.user;
 
-import peergos.shared.merklebtree.*;
+import peergos.shared.*;
 
 public class CommittedWriterData {
 

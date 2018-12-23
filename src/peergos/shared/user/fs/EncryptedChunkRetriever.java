@@ -6,7 +6,6 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multihash.*;
-import peergos.shared.merklebtree.*;
 import peergos.shared.util.*;
 
 import java.util.*;
