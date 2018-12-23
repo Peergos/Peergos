@@ -37,7 +37,7 @@ public class RetrievedCapability {
         if (! fileAccess.isDirectory()) {
             CompletableFuture<Boolean> result = new CompletableFuture<>();
             Transaction.run(loc.owner,
-                    (owner, tid) -> network.tree.remove(loc.owner, signer, loc.getMapKey(), fileAccess.committedHash(), tid).thenAccept(removed -> {
+                    tid -> network.tree.remove(loc.owner, signer, loc.getMapKey(), fileAccess.committedHash(), tid).thenAccept(removed -> {
                         // remove from parent
                         if (parentRetrievedCapability != null)
                             ((DirAccess) parentRetrievedCapability.fileAccess)
@@ -51,7 +51,7 @@ public class RetrievedCapability {
                 file.remove(network, null, signer);
             CompletableFuture<Boolean> result = new CompletableFuture<>();
             Transaction.run(loc.owner,
-                    (owner, tid) -> network.tree.remove(loc.owner, signer, loc.getMapKey(), fileAccess.committedHash(), tid).thenAccept(removed -> {
+                    tid -> network.tree.remove(loc.owner, signer, loc.getMapKey(), fileAccess.committedHash(), tid).thenAccept(removed -> {
                         // remove from parent
                         if (parentRetrievedCapability != null)
                             ((DirAccess) parentRetrievedCapability.fileAccess).removeChild(this, parentRetrievedCapability.capability, signer, network);

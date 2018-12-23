@@ -139,7 +139,7 @@ public class WriterData implements Cborable {
 
             if (isRemoved) {
                 return Transaction.run(pointer.location.owner,
-                        (owner, tid) -> withStaticData(Optional.of(new UserStaticData(updated, rootKey)))
+                        tid -> withStaticData(Optional.of(new UserStaticData(updated, rootKey)))
                                 .commit(pointer.location.owner, signer, currentHash, network, updater, tid),
                         network.dhtClient);
             }
@@ -158,7 +158,7 @@ public class WriterData implements Cborable {
                                                              SecretGenerationAlgorithm newAlgorithm,
                                                              NetworkAccess network,
                                                              Consumer<CommittedWriterData> updater) {
-        return Transaction.run(oldSigner.publicKeyHash, (owner, tid) -> {
+        return Transaction.run(oldSigner.publicKeyHash, tid -> {
             // auth new key by adding to existing writer data first
             WriterData tmp = addOwnedKey(signer.publicKeyHash);
             return tmp.commit(oldSigner.publicKeyHash, oldSigner, currentHash, network, x -> {}, tid)

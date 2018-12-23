@@ -105,7 +105,7 @@ public class Main {
                     SigningKeyPair pkiKeys = UserUtil.generateUser(pkiUsername, pkiPassword, crypto.hasher, crypto.symmetricProvider,
                             crypto.random, crypto.signer, crypto.boxer, SecretGenerationAlgorithm.getDefault()).get().getUser();
                     Transaction.run(peergosPublicHash,
-                            (owner, tid) -> dht.putSigningKey(peergosIdentityKeys.secretSigningKey.signatureOnly(
+                            tid -> dht.putSigningKey(peergosIdentityKeys.secretSigningKey.signatureOnly(
                                     pkiKeys.publicSigningKey.serialize()),
                                     peergosPublicHash,
                                     pkiKeys.publicSigningKey, tid), dht).get();
@@ -164,7 +164,7 @@ public class Main {
                         context.addNamedOwnedKeyAndCommit("pki", pkiPublicHash).get();
                         // write pki public key to ipfs
                         Transaction.run(peergosPublicHash,
-                                (owner, tid) -> network.dhtClient.putSigningKey(peergosIdentityKeys.secretSigningKey
+                                tid -> network.dhtClient.putSigningKey(peergosIdentityKeys.secretSigningKey
                                 .signatureOnly(pkiPublic.serialize()), peergosPublicHash, pkiPublic, tid),
                                 network.dhtClient).get();
                     }

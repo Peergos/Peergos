@@ -211,7 +211,7 @@ public class UserContext {
                             LOG.info("Couldn't register username");
                             throw new IllegalStateException("Couldn't register username: " + username);
                         }
-                        return Transaction.run(signerHash, (owner, tid) -> network.dhtClient.putSigningKey(
+                        return Transaction.run(signerHash, tid -> network.dhtClient.putSigningKey(
                                 secretSigningKey.signatureOnly(publicSigningKey.serialize()),
                                 signerHash,
                                 publicSigningKey, tid).thenCompose(returnedSignerHash -> {
@@ -504,7 +504,7 @@ public class UserContext {
                                             PublicSigningKey newPublicSigningKey = updatedUser.getUser().publicSigningKey;
                                             PublicKeyHash existingOwner = ContentAddressedStorage.hashKey(existingUser.getUser().publicSigningKey);
                                             return Transaction.run(existingOwner,
-                                                    (owner, tid) -> network.dhtClient.putSigningKey(
+                                                    tid -> network.dhtClient.putSigningKey(
                                                             existingUser.getUser().secretSigningKey.signatureOnly(newPublicSigningKey.serialize()),
                                                             existingOwner,
                                                             newPublicSigningKey,
@@ -545,7 +545,7 @@ public class UserContext {
         long t1 = System.currentTimeMillis();
         SigningKeyPair writer = SigningKeyPair.random(crypto.random, crypto.signer);
         LOG.info("Random User generation took " + (System.currentTimeMillis()-t1) + " mS");
-        return Transaction.run(owner.publicKeyHash, (ownerHash, tid) -> network.dhtClient.putSigningKey(
+        return Transaction.run(owner.publicKeyHash, tid -> network.dhtClient.putSigningKey(
                 owner.secret.signatureOnly(writer.publicSigningKey.serialize()),
                 owner.publicKeyHash,
                 writer.publicSigningKey,
@@ -619,7 +619,7 @@ public class UserContext {
                 .thenCompose(wd -> {
                     WriterData writerData = wd.props.addNamedKey(keyName, owned);
                     return Transaction.run(signer.publicKeyHash,
-                            (owner, tid) -> writerData.commit(signer.publicKeyHash, signer, wd.hash, network, lock::complete, tid),
+                            tid -> writerData.commit(signer.publicKeyHash, signer, wd.hash, network, lock::complete, tid),
                             network.dhtClient);
                 });
     }
@@ -925,9 +925,8 @@ public class UserContext {
                 return new UserStaticData(entryPoints, rootKey);
             });
             return Transaction.run(signer.publicKeyHash,
-                    (owner, tid) ->
-                            wd.props.withStaticData(updated)
-                                    .commit(signer.publicKeyHash, signer, wd.hash, network, lock::complete, tid),
+                    tid -> wd.props.withStaticData(updated)
+                            .commit(signer.publicKeyHash, signer, wd.hash, network, lock::complete, tid),
                     network.dhtClient
             ).thenCompose(res -> getUserRoot()
                     .thenCompose(ourRoot -> addEntryPoint(username, ourRoot, root, entry, network, crypto.random, fragmenter))

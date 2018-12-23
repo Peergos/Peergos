@@ -172,7 +172,7 @@ public class DirAccess implements CryptreeNode {
                 children, moreFolderContents
         );
         return Transaction.run(writableCapability.location.owner,
-                (owner, tid) -> network.uploadChunk(updated, writableCapability.location, writableCapability.signer(), tid)
+                tid -> network.uploadChunk(updated, writableCapability.location, writableCapability.signer(), tid)
                         .thenApply(b -> updated),
                 network.dhtClient);
     }
@@ -217,7 +217,7 @@ public class DirAccess implements CryptreeNode {
                                                     EncryptedCapability.create(ourBaseKey,
                                                             nextSubfoldersKey, nextPointer.getLocation())));
                                             return Transaction.run(ourPointer.location.owner,
-                                                    (owner, tid) -> withNext.commit(ourPointer.getLocation(), signer, network, tid),
+                                                    tid -> withNext.commit(ourPointer.getLocation(), signer, network, tid),
                                                     network.dhtClient);
                                         });
                             });
@@ -228,7 +228,7 @@ public class DirAccess implements CryptreeNode {
             newFiles.addAll(targetCAPs);
 
             return Transaction.run(ourPointer.getLocation().owner,
-                    (owner, tid) -> withChildren(encryptChildren(ourBaseKey, newFiles))
+                    tid -> withChildren(encryptChildren(ourBaseKey, newFiles))
                             .commit(ourPointer.getLocation(), signer, network, tid),
                     network.dhtClient);
         }
@@ -261,7 +261,7 @@ public class DirAccess implements CryptreeNode {
             return keep;
         }).collect(Collectors.toList());
         return Transaction.run(ourPointer.getLocation().owner,
-                (owner, tid) -> withChildren(encryptChildren(ourPointer.baseKey, newSubfolders))
+                tid -> withChildren(encryptChildren(ourPointer.baseKey, newSubfolders))
                         .commit(ourPointer.getLocation(), signer, network, tid),
                 network.dhtClient);
     }
@@ -317,7 +317,7 @@ public class DirAccess implements CryptreeNode {
 
                                 DirAccess updated = withChildren(encryptChildren(baseKey, reachableChildLinks));
                                 return Transaction.run(ourPointer.getLocation().owner,
-                                        (owner, tid) -> updated
+                                        tid -> updated
                                                 .commit(ourPointer.getLocation(), signer, network, tid),
                                         network.dhtClient);
                             });
@@ -352,7 +352,7 @@ public class DirAccess implements CryptreeNode {
         Location chunkLocation = new Location(ownerPublic, writer.publicKeyHash, dirMapKey);
         // Use two transactions to to not expose the chiild linkage
         return Transaction.run(chunkLocation.owner,
-                (owner, tid) -> network.uploadChunk(dir, chunkLocation, writer, tid), network.dhtClient)
+                tid -> network.uploadChunk(dir, chunkLocation, writer, tid), network.dhtClient)
                 .thenCompose(resultHash -> {
                     Capability ourPointer = new Capability(ownerPublic, writer.publicKeyHash, ourMapKey, baseKey);
                     Capability subdirPointer = new Capability(chunkLocation, Optional.empty(), dirReadKey);
@@ -401,7 +401,7 @@ public class DirAccess implements CryptreeNode {
         }).thenCompose(finalDir -> {
             Location newLocation = new Location(newParentLocation.owner, entryWriterKey.publicKeyHash, newMapKey);
             return Transaction.run(newOwner,
-                    (owner, tid) -> finalDir.commit(newLocation, entryWriterKey, network, tid),
+                    tid -> finalDir.commit(newLocation, entryWriterKey, network, tid),
                     network.dhtClient);
         });
     }

@@ -149,7 +149,7 @@ public class IpfsCoreNode implements CoreNode {
                 ChampWrapper champ = currentTree.isPresent() ?
                         ChampWrapper.create(currentTree.get(), identityHash, ipfs).get() :
                         Transaction.run(peergosIdentity,
-                                (owner, tid) -> ChampWrapper.create(signer.publicKeyHash, signer, identityHash, tid, ipfs),
+                                tid -> ChampWrapper.create(signer.publicKeyHash, signer, identityHash, tid, ipfs),
                                 ipfs).get();
                 MaybeMultihash existing = champ.get(username.getBytes()).get();
                 Optional<CborObject> cborOpt = existing.isPresent() ?
@@ -169,11 +169,11 @@ public class IpfsCoreNode implements CoreNode {
                         .map(Cborable::toCbor)
                         .collect(Collectors.toList()));
                 Multihash mergedChainHash = Transaction.run(peergosIdentity,
-                        (owner, tid) -> ipfs.put(peergosIdentity, signer, mergedChainCbor.toByteArray(), tid),
+                        tid -> ipfs.put(peergosIdentity, signer, mergedChainCbor.toByteArray(), tid),
                         ipfs).get();
                 synchronized (this) {
                     return Transaction.run(peergosIdentity,
-                            (owner, tid) -> champ.put(signer.publicKeyHash, signer, username.getBytes(), existing, mergedChainHash, tid)
+                            tid -> champ.put(signer.publicKeyHash, signer, username.getBytes(), existing, mergedChainHash, tid)
                                     .thenCompose(newPkiRoot -> current.props.withChamp(newPkiRoot)
                                             .commit(peergosIdentity, signer, currentRoot, mutable, ipfs, c -> {}, tid)),
                             ipfs

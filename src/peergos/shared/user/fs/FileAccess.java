@@ -123,7 +123,7 @@ public class FileAccess implements CryptreeNode {
         PaddedCipherText encryptedProperties = PaddedCipherText.build(metaKey, newProps, META_DATA_PADDING_BLOCKSIZE);
         FileAccess fa = new FileAccess(lastCommittedHash, version, toMeta, this.parent2data, encryptedProperties,
                 this.retriever, this.parentLink);
-        return Transaction.run(writableCapability.location.owner, (owner, tid) ->
+        return Transaction.run(writableCapability.location.owner, tid ->
                 network.uploadChunk(fa, writableCapability.location, writableCapability.signer(), tid)
                         .thenApply(b -> fa),
                 network.dhtClient);
@@ -140,7 +140,7 @@ public class FileAccess implements CryptreeNode {
         EncryptedCapability newParentLink = EncryptedCapability.create(newBaseKey,
                 parentLink.toCapability(writableCapability.baseKey));
         FileAccess fa = new FileAccess(committedHash(), version, newParentToMeta, newParentToData, properties, this.retriever, newParentLink);
-        return Transaction.run(writableCapability.location.owner, (owner, tid) ->
+        return Transaction.run(writableCapability.location.owner, tid ->
                 network.uploadChunk(fa, writableCapability.location, writableCapability.signer(), tid)
                         .thenApply(x -> fa),
                 network.dhtClient);
@@ -168,7 +168,7 @@ public class FileAccess implements CryptreeNode {
                 props, this.retriever, newParentLocation, parentparentKey);
         Location newLocation = new Location(newParentLocation.owner, entryWriterKey.publicKeyHash, newMapKey);
         return Transaction.run(newParentLocation.owner,
-                (owner, tid) -> network.uploadChunk(fa, newLocation, entryWriterKey, tid)
+                tid -> network.uploadChunk(fa, newLocation, entryWriterKey, tid)
                         .thenApply(b -> fa),
                 network.dhtClient);
     }

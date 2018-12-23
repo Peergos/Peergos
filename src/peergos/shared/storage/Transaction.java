@@ -16,10 +16,10 @@ public class Transaction {
      * @return
      */
     public static <V> CompletableFuture<V> run(PublicKeyHash owner,
-                                               BiFunction<PublicKeyHash, TransactionId, CompletableFuture<V>> processor,
+                                               Function<TransactionId, CompletableFuture<V>> processor,
                                                ContentAddressedStorage ipfs) {
         CompletableFuture<V> res = new CompletableFuture<>();
-        ipfs.startTransaction(owner).thenCompose(tid -> processor.apply(owner, tid)
+        ipfs.startTransaction(owner).thenCompose(tid -> processor.apply(tid)
                 .thenCompose(v -> ipfs.closeTransaction(owner, tid)
                         .thenApply(x -> res.complete(v)))
                 .exceptionally(t -> {
