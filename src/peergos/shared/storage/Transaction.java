@@ -27,7 +27,7 @@ public class Transaction {
                             .thenApply(x -> res.completeExceptionally(t))
                             .exceptionally(e -> res.completeExceptionally(e));
                     return false;
-                }));
+                })).exceptionally(e -> res.completeExceptionally(e));
         return res;
     }
 }
