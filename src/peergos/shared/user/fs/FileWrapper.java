@@ -273,7 +273,7 @@ public class FileWrapper {
                                 .substring(CapabilityStore.READ_ONLY_SHARING_FILE_PREFIX.length()))))
                         .collect(Collectors.toList());
                 FileWrapper currentSharingFile = sharingFiles.isEmpty() ? null : sharingFiles.get(sharingFiles.size() - 1);
-                byte[] serializedCapability = file.pointer.capability.toCbor().toByteArray();
+                byte[] serializedCapability = file.pointer.capability.readOnly().toCbor().toByteArray();
                 if (serializedCapability.length != CapabilityStore.CAPABILITY_SIZE)
                     throw new IllegalArgumentException("Unexpected Capability length:" + serializedCapability.length);
                 AsyncReader.ArrayBacked newCapability = new AsyncReader.ArrayBacked(serializedCapability);
