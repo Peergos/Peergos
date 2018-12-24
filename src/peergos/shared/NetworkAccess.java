@@ -86,8 +86,8 @@ public class NetworkAccess {
         return new HTTPCoreNode(poster);
     }
 
-    public static ContentAddressedStorage buildLocalDht(HttpPoster apiPoster) {
-        return new CachingStorage(new ContentAddressedStorage.HTTP(apiPoster), 10_000, 50 * 1024);
+    public static ContentAddressedStorage buildLocalDht(HttpPoster apiPoster, boolean isPeergosServer) {
+        return new CachingStorage(new ContentAddressedStorage.HTTP(apiPoster, isPeergosServer), 10_000, 50 * 1024);
     }
 
     @JsMethod
@@ -121,7 +121,7 @@ public class NetworkAccess {
     }
 
     public static CompletableFuture<NetworkAccess> build(HttpPoster apiPoster, HttpPoster p2pPoster, Multihash pkiServerNodeId, boolean isJavascript) {
-        ContentAddressedStorage localDht = buildLocalDht(apiPoster);
+        ContentAddressedStorage localDht = buildLocalDht(apiPoster, true);
 
         CoreNode direct = buildDirectCorenode(apiPoster);
         CompletableFuture<NetworkAccess> result = new CompletableFuture<>();
@@ -138,9 +138,10 @@ public class NetworkAccess {
                 })
                 .exceptionally(t -> {
                     // We are not on a Peergos server, hopefully an IPFS gateway
+                    ContentAddressedStorage localIpfs = buildLocalDht(apiPoster, false);
                     CoreNode core = buildProxyingCorenode(p2pPoster, pkiServerNodeId);
                     core.getUsernames("").thenCompose(usernames ->
-                            build(core, localDht, apiPoster, p2pPoster, usernames, false, isJavascript)
+                            build(core, localIpfs, apiPoster, p2pPoster, usernames, false, isJavascript)
                                     .thenApply(result::complete))
                             .exceptionally(t2 -> {
                                 result.completeExceptionally(t2);
@@ -194,8 +195,9 @@ public class NetworkAccess {
         CoreNode direct = buildDirectCorenode(poster);
         try {
             List<String> usernames = direct.getUsernames("").get();
-            ContentAddressedStorage localDht = buildLocalDht(poster);
-            return build(direct, localDht, poster, poster, usernames, true, false);
+            boolean isPeergosServer = true;
+            ContentAddressedStorage localDht = buildLocalDht(poster, isPeergosServer);
+            return build(direct, localDht, poster, poster, usernames, isPeergosServer, false);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

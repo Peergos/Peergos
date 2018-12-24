@@ -170,9 +170,12 @@ public interface ContentAddressedStorage {
 
         private final HttpPoster poster;
         private final String apiPrefix = "api/v0/";
+        private final boolean isPeergosServer;
+        private final Random r = new Random();
 
-        public HTTP(HttpPoster poster) {
+        public HTTP(HttpPoster poster, boolean isPeergosServer) {
             this.poster = poster;
+            this.isPeergosServer = isPeergosServer;
         }
 
         private static Multihash getObjectHash(Object rawJson) {
@@ -199,12 +202,16 @@ public interface ContentAddressedStorage {
 
         @Override
         public CompletableFuture<TransactionId> startTransaction(PublicKeyHash owner) {
+            if (! isPeergosServer) // TODO remove once IPFS implements the transaction api
+                return CompletableFuture.completedFuture(new TransactionId(Long.toString(r.nextInt(Integer.MAX_VALUE))));
             return poster.get(apiPrefix + "transaction/start" + "?owner=" + encode(owner.toString()))
                     .thenApply(raw -> new TransactionId(new String(raw)));
         }
 
         @Override
         public CompletableFuture<Boolean> closeTransaction(PublicKeyHash owner, TransactionId tid) {
+            if (! isPeergosServer) // TODO remove once IPFS implements the transaction api
+                return CompletableFuture.completedFuture(true);
             return poster.get(apiPrefix + "transaction/close?arg=" + tid.toString() + "&owner=" + encode(owner.toString()))
                     .thenApply(raw -> new String(raw).equals("1"));
         }

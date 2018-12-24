@@ -263,7 +263,7 @@ public class Main {
             JavaPoster ipfsGateway = new JavaPoster(ipfsGatewayAddress);
 
             ContentAddressedStorage localDht = useIPFS ?
-                    new CachingStorage(new ContentAddressedStorage.HTTP(ipfsApi), dhtCacheEntries, maxValueSizeToCache) :
+                    new CachingStorage(new ContentAddressedStorage.HTTP(ipfsApi, false), dhtCacheEntries, maxValueSizeToCache) :
                     new FileContentAddressedStorage(blockstorePath(a));
 
             String hostname = a.getArg("domain");

@@ -178,7 +178,7 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
 
     public static boolean isHttpApiListening(int ipfsApiPort) {
         try {
-            ContentAddressedStorage.HTTP api = new ContentAddressedStorage.HTTP(new JavaPoster(getLocalAddress(ipfsApiPort)));
+            ContentAddressedStorage.HTTP api = new ContentAddressedStorage.HTTP(new JavaPoster(getLocalAddress(ipfsApiPort)), false);
             api.id().get();
             return true;
         } catch (Exception e) {}
