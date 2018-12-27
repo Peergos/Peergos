@@ -169,7 +169,18 @@ public interface ContentAddressedStorage {
     class HTTP implements ContentAddressedStorage {
 
         private final HttpPoster poster;
-        private final String apiPrefix = "api/v0/";
+        private static final String apiPrefix = "api/v0/";
+        public static final String ID = "id";
+        public static final String TRANSACTION_START = "transaction/start";
+        public static final String TRANSACTION_CLOSE = "transaction/close";
+        public static final String BLOCK_PUT = "block/put";
+        public static final String BLOCK_GET = "block/get";
+        public static final String BLOCK_STAT = "block/stat";
+        public static final String PIN_ADD = "pin/add";
+        public static final String PIN_RM = "pin/rm";
+        public static final String PIN_UPDATE = "pin/update";
+        public static final String REFS = "refs";
+
         private final boolean isPeergosServer;
         private final Random r = new Random();
 
@@ -196,7 +207,7 @@ public interface ContentAddressedStorage {
 
         @Override
         public CompletableFuture<Multihash> id() {
-            return poster.get(apiPrefix + "id")
+            return poster.get(apiPrefix + ID)
                     .thenApply(raw -> Multihash.fromBase58((String)((Map)JSONParser.parse(new String(raw))).get("ID")));
         }
 
@@ -204,7 +215,7 @@ public interface ContentAddressedStorage {
         public CompletableFuture<TransactionId> startTransaction(PublicKeyHash owner) {
             if (! isPeergosServer) // TODO remove once IPFS implements the transaction api
                 return CompletableFuture.completedFuture(new TransactionId(Long.toString(r.nextInt(Integer.MAX_VALUE))));
-            return poster.get(apiPrefix + "transaction/start" + "?owner=" + encode(owner.toString()))
+            return poster.get(apiPrefix + TRANSACTION_START + "?owner=" + encode(owner.toString()))
                     .thenApply(raw -> new TransactionId(new String(raw)));
         }
 
@@ -212,7 +223,7 @@ public interface ContentAddressedStorage {
         public CompletableFuture<Boolean> closeTransaction(PublicKeyHash owner, TransactionId tid) {
             if (! isPeergosServer) // TODO remove once IPFS implements the transaction api
                 return CompletableFuture.completedFuture(true);
-            return poster.get(apiPrefix + "transaction/close?arg=" + tid.toString() + "&owner=" + encode(owner.toString()))
+            return poster.get(apiPrefix + TRANSACTION_CLOSE + "?arg=" + tid.toString() + "&owner=" + encode(owner.toString()))
                     .thenApply(raw -> new String(raw).equals("1"));
         }
 
@@ -239,7 +250,7 @@ public interface ContentAddressedStorage {
                                                        List<byte[]> signatures,
                                                        List<byte[]> blocks, String format,
                                                        TransactionId tid) {
-            return poster.postMultipart(apiPrefix + "block/put?format=" + format
+            return poster.postMultipart(apiPrefix + BLOCK_PUT + "?format=" + format
                     + "&owner=" + encode(owner.toString())
                     + "&transaction=" + encode(tid.toString())
                     + "&writer=" + encode(writer.toString())
@@ -252,31 +263,31 @@ public interface ContentAddressedStorage {
 
         @Override
         public CompletableFuture<Optional<CborObject>> get(Multihash hash) {
-            return poster.get(apiPrefix + "block/get?stream-channels=true&arg=" + hash.toString())
+            return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash.toString())
                     .thenApply(raw -> raw.length == 0 ? Optional.empty() : Optional.of(CborObject.fromByteArray(raw)));
         }
 
         @Override
         public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash) {
-            return poster.get(apiPrefix + "block/get?stream-channels=true&arg=" + hash.toString())
+            return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash.toString())
                     .thenApply(raw -> raw.length == 0 ? Optional.empty() : Optional.of(raw));
         }
 
         @Override
         public CompletableFuture<List<Multihash>> recursivePin(PublicKeyHash owner, Multihash hash) {
-            return poster.get(apiPrefix + "pin/add?stream-channels=true&arg=" + hash.toString()
+            return poster.get(apiPrefix + PIN_ADD + "?stream-channels=true&arg=" + hash.toString()
                     + "&owner=" + encode(owner.toString())).thenApply(this::getPins);
         }
 
         @Override
         public CompletableFuture<List<Multihash>> recursiveUnpin(PublicKeyHash owner, Multihash hash) {
-            return poster.get(apiPrefix + "pin/rm?stream-channels=true&r=true&arg=" + hash.toString()
+            return poster.get(apiPrefix + PIN_RM + "?stream-channels=true&r=true&arg=" + hash.toString()
                     + "&owner=" + encode(owner.toString())).thenApply(this::getPins);
         }
 
         @Override
         public CompletableFuture<List<MultiAddress>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated) {
-            return poster.get(apiPrefix + "pin/update?stream-channels=true&arg=" + existing.toString()
+            return poster.get(apiPrefix + PIN_UPDATE + "?stream-channels=true&arg=" + existing.toString()
                     + "&arg=" + updated + "&unpin=false"
                     + "&owner=" + encode(owner.toString())).thenApply(this::getMultiAddr);
         }
@@ -295,7 +306,7 @@ public interface ContentAddressedStorage {
 
         @Override
         public CompletableFuture<List<Multihash>> getLinks(Multihash block) {
-            return poster.get(apiPrefix + "refs?arg=" + block.toString())
+            return poster.get(apiPrefix + REFS + "?arg=" + block.toString())
                     .thenApply(raw -> JSONParser.parseStream(new String(raw))
                             .stream()
                             .map(obj -> (String) (((Map) obj).get("Ref")))
@@ -305,7 +316,7 @@ public interface ContentAddressedStorage {
 
         @Override
         public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
-            return poster.get(apiPrefix + "block/stat?stream-channels=true&arg=" + block.toString())
+            return poster.get(apiPrefix + BLOCK_STAT + "?stream-channels=true&arg=" + block.toString())
                     .thenApply(raw -> Optional.of((Integer)((Map)JSONParser.parse(new String(raw))).get("Size")));
         }
     }
