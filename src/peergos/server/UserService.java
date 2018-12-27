@@ -28,6 +28,7 @@ import java.util.concurrent.*;
 public class UserService {
 	private static final Logger LOG = Logging.LOG();
 
+    public static final String MUTABLE_POINTERS_URL = "mutable/";
     public static final String DHT_URL = "/api/v0/";
     public static final String UI_URL = "/";
 
@@ -192,8 +193,8 @@ public class UserService {
                 new HttpCoreNodeServer.CoreNodeHandler(this.coreNode));
         addHandler.accept("/" + HttpSocialNetworkServer.SOCIAL_URL,
                 new HttpSocialNetworkServer.SocialHandler(this.social));
-        addHandler.accept("/" + HttpMutablePointerServer.MUTABLE_POINTERS_URL,
-                new HttpMutablePointerServer.MutationHandler(this.mutable));
+        addHandler.accept("/" + MUTABLE_POINTERS_URL,
+                new MutationHandler(this.mutable));
         addHandler.accept(UI_URL, handler);
 
         localhostServer.setExecutor(Executors.newFixedThreadPool(HANDLER_THREADS));
