@@ -1,5 +1,6 @@
 package peergos.server.corenode;
 
+import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
@@ -64,7 +65,23 @@ public class UserRepository implements CoreNode, SocialNetwork, MutablePointers 
     }
 
     @Override
-    public CompletableFuture<byte[]> getFollowRequests(PublicKeyHash owner) {
+    public CompletableFuture<byte[]> getFollowRequests(PublicKeyHash owner, byte[] signedTime) {
+        try {
+            Optional<PublicSigningKey> ownerOpt = ipfs.getSigningKey(owner).get();
+            if (! ownerOpt.isPresent())
+                throw new IllegalStateException("Couldn't retrieve owner key during getFollowRequests() call!");
+            byte[] raw = ownerOpt.get().unsignMessage(signedTime);
+            CborObject cbor = CborObject.fromByteArray(raw);
+            if (! (cbor instanceof CborObject.CborLong))
+                throw new IllegalStateException("Invalid cbor for getFollowRequests authorisation!");
+            long utcMillis = ((CborObject.CborLong) cbor).value;
+            long now = System.currentTimeMillis();
+            if (Math.abs(now - utcMillis) > 30_000)
+                throw new IllegalStateException("Stale auth in getFollowRequests, is this a replay attack?");
+            // This is a valid request
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
         return store.getFollowRequests(owner);
     }
 

@@ -1,8 +1,9 @@
 package peergos.server.social;
+import java.util.*;
+import java.util.function.*;
 import java.util.logging.*;
 
-import peergos.server.util.Args;
-import peergos.server.util.Logging;
+import peergos.server.util.*;
 
 import com.sun.net.httpserver.*;
 import peergos.shared.cbor.*;
@@ -20,11 +21,8 @@ public class HttpSocialNetworkServer  {
 	private static final Logger LOG = Logging.LOG();
 
     private static final boolean LOGGING = true;
-    private static final int CONNECTION_BACKLOG = 100;
-    private static final int HANDLER_THREAD_COUNT = 100;
 
     public static final String SOCIAL_URL = "social/";
-    public static final int PORT = 7777;
 
     public static class SocialHandler implements HttpHandler
     {
@@ -47,6 +45,8 @@ public class HttpSocialNetworkServer  {
                 path = path.substring(1);
             String[] subComponents = path.substring(SOCIAL_URL.length()).split("/");
             String method = subComponents[0];
+            Map<String, List<String>> params = HttpUtil.parseQuery(exchange.getRequestURI().getQuery());
+            Function<String, String> last = key -> params.get(key).get(params.get(key).size() - 1);
 //            LOG.info("social method "+ method +" from path "+ path);
 
             try {
@@ -56,7 +56,8 @@ public class HttpSocialNetworkServer  {
                         followRequest(din, dout);
                         break;
                     case "getFollowRequests":
-                        getFollowRequests(din, dout);
+                        byte[] signedTime = ArrayOps.hexToBytes(last.apply("auth"));
+                        getFollowRequests(din, dout, signedTime);
                         break;
                     case "removeFollowRequest":
                         removeFollowRequest(din, dout);
@@ -96,11 +97,11 @@ public class HttpSocialNetworkServer  {
             boolean followRequested = social.sendFollowRequest(target, encodedSharingPublicKey).get();
             dout.writeBoolean(followRequested);
         }
-        void getFollowRequests(DataInputStream din, DataOutputStream dout) throws Exception
+        void getFollowRequests(DataInputStream din, DataOutputStream dout, byte[] signedTime) throws Exception
         {
             byte[] encodedKey = Serialize.deserializeByteArray(din, PublicSigningKey.MAX_SIZE);
             PublicKeyHash ownerPublicKey = PublicKeyHash.fromCbor(CborObject.fromByteArray(encodedKey));
-            byte[] res = social.getFollowRequests(ownerPublicKey).get();
+            byte[] res = social.getFollowRequests(ownerPublicKey, signedTime).get();
             Serialize.serialize(res, dout);
         }
         void removeFollowRequest(DataInputStream din, DataOutputStream dout) throws Exception
@@ -111,51 +112,6 @@ public class HttpSocialNetworkServer  {
 
             boolean isRemoved = social.removeFollowRequest(owner, signedFollowRequest).get();
             dout.writeBoolean(isRemoved);
-        }
-    }
-
-    private final HttpServer server;
-    private final InetSocketAddress address;
-    private final SocialHandler ch;
-
-    public HttpSocialNetworkServer(SocialNetwork social, InetSocketAddress address) throws IOException
-    {
-
-        this.address = address;
-        if (address.getHostName().toLowerCase().contains("local"))
-            server = HttpServer.create(address, CONNECTION_BACKLOG);
-        else
-            server = HttpServer.create(new InetSocketAddress(InetAddress.getLocalHost(), address.getPort()), CONNECTION_BACKLOG);
-        ch = new SocialHandler(social);
-        server.createContext("/" + SOCIAL_URL, ch);
-        server.setExecutor(Executors.newFixedThreadPool(HANDLER_THREAD_COUNT));
-    }
-
-    public void start() throws IOException
-    {
-        server.start();
-    }
-    
-    public InetSocketAddress getAddress(){return address;}
-
-    public void close() throws IOException
-    {   
-        server.stop(5);
-    }
-
-
-    public static void createAndStart(int port, SocialNetwork social, Args args)
-    {
-        try {
-            String hostname = args.getArg("domain", "localhost");
-            LOG.info("Starting social network server listening on: " + hostname+":"+port +" proxying to "+social);
-            InetSocketAddress address = new InetSocketAddress(hostname, port);
-            HttpSocialNetworkServer server = new HttpSocialNetworkServer(social, address);
-            server.start();
-        } catch (Exception e)
-        {
-            LOG.log(Level.WARNING, e.getMessage(), e);
-            LOG.info("Couldn't start Social Network server!");
         }
     }
 }

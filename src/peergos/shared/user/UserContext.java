@@ -943,13 +943,10 @@ public class UserContext {
                 .thenCompose(wd -> wd.props.removeFromStaticData(fileWrapper, rootKey, signer, wd.hash, network, lock::complete));
     }
 
-    /**
-     * Process any responses to our follow requests.
-     *
-     * @return initial follow requests
-     */
-    public CompletableFuture<List<FollowRequest>> processFollowRequests() {
-        return network.social.getFollowRequests(signer.publicKeyHash).thenCompose(reqs -> {
+    private CompletableFuture<List<FollowRequest>> getFollowRequests() {
+        byte[] time = new CborObject.CborLong(System.currentTimeMillis()).serialize();
+        byte[] auth = signer.secret.signMessage(time);
+        return network.social.getFollowRequests(signer.publicKeyHash, auth).thenApply(reqs -> {
             DataSource din = new DataSource(reqs);
             List<FollowRequest> all;
             try {
@@ -968,8 +965,17 @@ public class UserContext {
                 throw new RuntimeException(e);
             }
 
-            return processFollowRequests(all);
+            return all;
         });
+    }
+
+    /**
+     * Process any responses to our follow requests.
+     *
+     * @return initial follow requests
+     */
+    public CompletableFuture<List<FollowRequest>> processFollowRequests() {
+        return getFollowRequests().thenCompose(this::processFollowRequests);
     }
 
     private CompletableFuture<List<FollowRequest>> processFollowRequests(List<FollowRequest> all) {

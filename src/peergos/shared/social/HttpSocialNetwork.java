@@ -64,16 +64,16 @@ public class HttpSocialNetwork implements SocialNetworkProxy {
     }
 
     @Override
-    public CompletableFuture<byte[]> getFollowRequests(PublicKeyHash owner) {
-        return getFollowRequests("", direct, owner);
+    public CompletableFuture<byte[]> getFollowRequests(PublicKeyHash owner, byte[] signedTime) {
+        return getFollowRequests("", direct, owner, signedTime);
     }
 
     @Override
-    public CompletableFuture<byte[]> getFollowRequests(Multihash targetServerId, PublicKeyHash owner) {
-        return getFollowRequests(getProxyUrlPrefix(targetServerId), p2p, owner);
+    public CompletableFuture<byte[]> getFollowRequests(Multihash targetServerId, PublicKeyHash owner, byte[] signedTime) {
+        return getFollowRequests(getProxyUrlPrefix(targetServerId), p2p, owner, signedTime);
     }
 
-    private CompletableFuture<byte[]> getFollowRequests(String urlPrefix, HttpPoster poster, PublicKeyHash owner)
+    private CompletableFuture<byte[]> getFollowRequests(String urlPrefix, HttpPoster poster, PublicKeyHash owner, byte[] signedTime)
     {
         try
         {
@@ -84,7 +84,7 @@ public class HttpSocialNetwork implements SocialNetworkProxy {
             Serialize.serialize(owner.serialize(), dout);
             dout.flush();
 
-            return poster.postUnzip(urlPrefix + "social/getFollowRequests", bout.toByteArray()).thenApply(res -> {
+            return poster.postUnzip(urlPrefix + "social/getFollowRequests?auth=" + ArrayOps.bytesToHex(signedTime), bout.toByteArray()).thenApply(res -> {
                 DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
                 try {
                     return CoreNodeUtils.deserializeByteArray(din);

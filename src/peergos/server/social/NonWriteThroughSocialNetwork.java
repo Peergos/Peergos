@@ -35,9 +35,9 @@ public class NonWriteThroughSocialNetwork implements SocialNetwork {
     }
 
     @Override
-    public CompletableFuture<byte[]> getFollowRequests(PublicKeyHash owner) {
+    public CompletableFuture<byte[]> getFollowRequests(PublicKeyHash owner, byte[] signedTime) {
         try {
-            byte[] reqs = source.getFollowRequests(owner).get();
+            byte[] reqs = source.getFollowRequests(owner, signedTime).get();
             DataSource din = new DataSource(reqs);
             List<byte[]> notDeleted = new ArrayList<>();
             List<ByteArrayWrapper> removed = removedFollowRequests.get(owner);
