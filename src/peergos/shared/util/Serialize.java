@@ -76,6 +76,16 @@ public class Serialize
         return bout.toByteArray();
     }
 
+    public static byte[] readFully(InputStream in, int maxSize) throws IOException {
+        ByteArrayOutputStream bout =  new ByteArrayOutputStream();
+        byte[] b =  new  byte[0x1000];
+        int nRead;
+        while ((nRead = in.read(b, 0, b.length)) != -1 )
+            bout.write(b, 0, nRead);
+        in.close();
+        return bout.toByteArray();
+    }
+
     public static byte[] read(InputStream in, int size) throws IOException {
         byte[] res = new byte[size];
         byte[] b =  new  byte[0x1000];

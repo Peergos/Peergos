@@ -49,18 +49,23 @@ public class HttpSocialNetworkServer  {
             Function<String, String> last = key -> params.get(key).get(params.get(key).size() - 1);
 //            LOG.info("social method "+ method +" from path "+ path);
 
+            PublicKeyHash owner = PublicKeyHash.fromString(last.apply("owner"));
             try {
-                switch (method)
-                {
+                switch (method) {
                     case "followRequest":
-                        followRequest(din, dout);
+                        byte[] encryptedCap = Serialize.readFully(din, 1024);
+                        boolean followRequested = social.sendFollowRequest(owner, encryptedCap).get();
+                        dout.writeBoolean(followRequested);
                         break;
                     case "getFollowRequests":
                         byte[] signedTime = ArrayOps.hexToBytes(last.apply("auth"));
-                        getFollowRequests(din, dout, signedTime);
+                        byte[] res = social.getFollowRequests(owner, signedTime).get();
+                        Serialize.serialize(res, dout);
                         break;
                     case "removeFollowRequest":
-                        removeFollowRequest(din, dout);
+                        byte[] signedFollowRequest = Serialize.readFully(din, 4096);
+                        boolean isRemoved = social.removeFollowRequest(owner, signedFollowRequest).get();
+                        dout.writeBoolean(isRemoved);
                         break;
                     default:
                         throw new IOException("Unknown method "+ method);
@@ -86,32 +91,6 @@ public class HttpSocialNetworkServer  {
                     LOG.info("Social Network server handled " + method + " request in: " + (t2 - t1) + " mS");
             }
 
-        }
-
-        void followRequest(DataInputStream din, DataOutputStream dout) throws Exception
-        {
-            byte[] encodedKey = Serialize.deserializeByteArray(din, PublicSigningKey.MAX_SIZE);
-            PublicKeyHash target = PublicKeyHash.fromCbor(CborObject.fromByteArray(encodedKey));
-            byte[] encodedSharingPublicKey = CoreNodeUtils.deserializeByteArray(din);
-
-            boolean followRequested = social.sendFollowRequest(target, encodedSharingPublicKey).get();
-            dout.writeBoolean(followRequested);
-        }
-        void getFollowRequests(DataInputStream din, DataOutputStream dout, byte[] signedTime) throws Exception
-        {
-            byte[] encodedKey = Serialize.deserializeByteArray(din, PublicSigningKey.MAX_SIZE);
-            PublicKeyHash ownerPublicKey = PublicKeyHash.fromCbor(CborObject.fromByteArray(encodedKey));
-            byte[] res = social.getFollowRequests(ownerPublicKey, signedTime).get();
-            Serialize.serialize(res, dout);
-        }
-        void removeFollowRequest(DataInputStream din, DataOutputStream dout) throws Exception
-        {
-            byte[] encodedKey = Serialize.deserializeByteArray(din, PublicSigningKey.MAX_SIZE);
-            PublicKeyHash owner = PublicKeyHash.fromCbor(CborObject.fromByteArray(encodedKey));
-            byte[] signedFollowRequest = CoreNodeUtils.deserializeByteArray(din);
-
-            boolean isRemoved = social.removeFollowRequest(owner, signedFollowRequest).get();
-            dout.writeBoolean(isRemoved);
         }
     }
 }

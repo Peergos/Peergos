@@ -40,27 +40,14 @@ public class HttpSocialNetwork implements SocialNetworkProxy {
 
     private CompletableFuture<Boolean> sendFollowRequest(String urlPrefix, HttpPoster poster, PublicKeyHash target, byte[] encryptedPermission)
     {
-        try
-        {
-            ByteArrayOutputStream bout = new ByteArrayOutputStream();
-            DataOutputStream dout = new DataOutputStream(bout);
-
-            Serialize.serialize(target.serialize(), dout);
-            Serialize.serialize(encryptedPermission, dout);
-            dout.flush();
-
-            return poster.postUnzip(urlPrefix + "social/followRequest", bout.toByteArray()).thenApply(res -> {
-                DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
-                try {
-                    return din.readBoolean();
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
-            });
-        } catch (IOException ioe) {
-            LOG.log(Level.WARNING, ioe.getMessage(), ioe);
-            return CompletableFuture.completedFuture(false);
-        }
+        return poster.postUnzip(urlPrefix + "social/followRequest?owner=" + encode(target.toString()), encryptedPermission).thenApply(res -> {
+            DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
+            try {
+                return din.readBoolean();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
     }
 
     @Override
@@ -75,27 +62,15 @@ public class HttpSocialNetwork implements SocialNetworkProxy {
 
     private CompletableFuture<byte[]> getFollowRequests(String urlPrefix, HttpPoster poster, PublicKeyHash owner, byte[] signedTime)
     {
-        try
-        {
-            ByteArrayOutputStream bout = new ByteArrayOutputStream();
-            DataOutputStream dout = new DataOutputStream(bout);
-
-
-            Serialize.serialize(owner.serialize(), dout);
-            dout.flush();
-
-            return poster.postUnzip(urlPrefix + "social/getFollowRequests?auth=" + ArrayOps.bytesToHex(signedTime), bout.toByteArray()).thenApply(res -> {
-                DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
-                try {
-                    return CoreNodeUtils.deserializeByteArray(din);
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
-            });
-        } catch (IOException ioe) {
-            LOG.log(Level.WARNING, ioe.getMessage(), ioe);
-            return null;
-        }
+        return poster.get(urlPrefix + "social/getFollowRequests?owner=" + encode(owner.toString())
+                + "&auth=" + ArrayOps.bytesToHex(signedTime)).thenApply(res -> {
+            DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
+            try {
+                return CoreNodeUtils.deserializeByteArray(din);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
     }
 
     @Override
@@ -110,26 +85,21 @@ public class HttpSocialNetwork implements SocialNetworkProxy {
 
     private CompletableFuture<Boolean> removeFollowRequest(String urlPrefix, HttpPoster poster, PublicKeyHash owner, byte[] signedRequest)
     {
-        try
-        {
-            ByteArrayOutputStream bout = new ByteArrayOutputStream();
-            DataOutputStream dout = new DataOutputStream(bout);
+        return poster.postUnzip(urlPrefix + "social/removeFollowRequest?owner=" + encode(owner.toString()), signedRequest).thenApply(res -> {
+            DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
+            try {
+                return din.readBoolean();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
 
-            Serialize.serialize(owner.serialize(), dout);
-            Serialize.serialize(signedRequest, dout);
-            dout.flush();
-
-            return poster.postUnzip(urlPrefix + "social/removeFollowRequest", bout.toByteArray()).thenApply(res -> {
-                DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
-                try {
-                    return din.readBoolean();
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
-            });
-        } catch (IOException ioe) {
-            LOG.log(Level.WARNING, ioe.getMessage(), ioe);
-            return CompletableFuture.completedFuture(false);
+    private static String encode(String component) {
+        try {
+            return URLEncoder.encode(component, "UTF-8");
+        } catch (UnsupportedEncodingException e) {
+            throw new RuntimeException(e);
         }
     }
 }
