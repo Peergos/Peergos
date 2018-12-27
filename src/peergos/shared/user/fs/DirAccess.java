@@ -350,7 +350,7 @@ public class DirAccess implements CryptreeNode {
         DirAccess dir = DirAccess.create(MaybeMultihash.empty(), dirReadKey, new FileProperties(name, "", 0, LocalDateTime.now(),
                 isSystemFolder, Optional.empty()), ourLocation, ourParentKey, null);
         Location chunkLocation = new Location(ownerPublic, writer.publicKeyHash, dirMapKey);
-        // Use two transactions to to not expose the chiild linkage
+        // Use two transactions to not expose the child linkage
         return Transaction.run(chunkLocation.owner,
                 tid -> network.uploadChunk(dir, chunkLocation, writer, tid), network.dhtClient)
                 .thenCompose(resultHash -> {
