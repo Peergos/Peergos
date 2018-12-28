@@ -847,7 +847,7 @@ public class UserContext {
             return getByPath(path.getParent().toString())
                     .thenCompose(parent -> sharedWith(toUnshare)
                             .thenCompose(sharedWithUsers ->
-                                    toUnshare.makeDirty(network, crypto.random, parent.get(), readersToRemove)
+                                    toUnshare.makeDirty(network, crypto.random, parent.get())
                                             .thenCompose(markedDirty -> {
                                                 Set<String> existingEntries = sharedWithCache.getOrDefault("/" + pathString, new HashSet<>());
                                                 existingEntries.removeAll(readersToRemove);
@@ -1185,7 +1185,7 @@ public class UserContext {
                         // and the dir/file it points to
                         // first make it writable by combining with the root writing key
                         getByPath("/" + username).thenCompose(rootDir ->
-                                new FileWrapper(file.getPointer(), file.getOwner(), e.readers, e.writers, rootDir.get().getEntryWriterKey())
+                                new FileWrapper(file.getPointer(), file.getOwner(), rootDir.get().getEntryWriterKey())
                                         .remove(network, null)
                                         .thenApply(x -> removeFromStaticData(file)));
                         return true;

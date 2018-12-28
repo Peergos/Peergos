@@ -247,7 +247,7 @@ public class NetworkAccess {
     public CompletableFuture<Optional<FileWrapper>> retrieveEntryPoint(EntryPoint e) {
         return downloadEntryPoint(e)
                 .thenApply(faOpt ->faOpt.map(fa -> new FileWrapper(new RetrievedCapability(e.pointer, fa), e.owner,
-                        e.readers, e.writers, e.pointer.writer)))
+                        e.pointer.writer)))
                 .exceptionally(t -> Optional.empty());
     }
 
@@ -286,7 +286,7 @@ public class NetworkAccess {
                                                               ProgressConsumer<Long> progressCounter,
                                                               double spaceIncreaseFactor,
                                                               TransactionId tid) {
-        // upload in groups of 10. This means in a browser we have 6 upload threads with erasure coding on, or 4 without
+        // upload one per query because IPFS doesn't support more than one
         int FRAGMENTs_PER_QUERY = 1;
         List<List<Fragment>> grouped = IntStream.range(0, (fragments.size() + FRAGMENTs_PER_QUERY - 1) / FRAGMENTs_PER_QUERY)
                 .mapToObj(i -> fragments.stream().skip(FRAGMENTs_PER_QUERY * i).limit(FRAGMENTs_PER_QUERY).collect(Collectors.toList()))
