@@ -33,8 +33,9 @@ import java.util.stream.*;
 public class FileWrapper {
 	private static final Logger LOG = Logger.getGlobal();
 
-    final static int THUMBNAIL_SIZE = 100;
-    private final NativeJSThumbnail thumbnail;
+    private final static int THUMBNAIL_SIZE = 100;
+    private static final NativeJSThumbnail thumbnail = new NativeJSThumbnail();
+
     private final RetrievedCapability pointer;
     private final FileProperties props;
     private final String ownername;
@@ -61,7 +62,6 @@ public class FileWrapper {
             SymmetricKey parentKey = this.getParentKey();
             props = pointer.fileAccess.getProperties(parentKey);
         }
-        thumbnail = new NativeJSThumbnail();
     }
 
     public FileWrapper(RetrievedCapability pointer, String ownername,
