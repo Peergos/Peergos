@@ -106,10 +106,12 @@ public class FileAccess implements CryptreeNode {
         return retriever;
     }
 
-    public CompletableFuture<FileAccess> updateProperties(Capability writableCapability,
+    public CompletableFuture<FileAccess> updateProperties(PublicKeyHash owner,
+                                                          PublicKeyHash writer,
+                                                          Capability writableCapability,
                                                           FileProperties newProps,
                                                           NetworkAccess network) {
-        if (!writableCapability.isWritable())
+        if (! writableCapability.isWritable())
             throw new IllegalStateException("Need a writable pointer!");
         SymmetricKey metaKey = this.getMetaKey(writableCapability.baseKey);
         boolean isDirty = metaKey.isDirty();
@@ -123,13 +125,17 @@ public class FileAccess implements CryptreeNode {
         PaddedCipherText encryptedProperties = PaddedCipherText.build(metaKey, newProps, META_DATA_PADDING_BLOCKSIZE);
         FileAccess fa = new FileAccess(lastCommittedHash, version, toMeta, this.parent2data, encryptedProperties,
                 this.retriever, this.parentLink);
-        return Transaction.run(writableCapability.location.owner, tid ->
-                network.uploadChunk(fa, writableCapability.location, writableCapability.signer(), tid)
+        return Transaction.run(owner, tid ->
+                network.uploadChunk(fa, owner, writableCapability.getMapKey(), writableCapability.signer(writer), tid)
                         .thenApply(b -> fa),
                 network.dhtClient);
     }
 
-    public CompletableFuture<FileAccess> markDirty(Capability writableCapability, SymmetricKey newBaseKey, NetworkAccess network) {
+    public CompletableFuture<FileAccess> markDirty(PublicKeyHash owner,
+                                                   PublicKeyHash writer,
+                                                   Capability writableCapability,
+                                                   SymmetricKey newBaseKey,
+                                                   NetworkAccess network) {
         // keep the same metakey and data key, just marked as dirty
         SymmetricKey metaKey = this.getMetaKey(writableCapability.baseKey).makeDirty();
         SymmetricLink newParentToMeta = SymmetricLink.fromPair(newBaseKey, metaKey);
@@ -140,8 +146,8 @@ public class FileAccess implements CryptreeNode {
         EncryptedCapability newParentLink = EncryptedCapability.create(newBaseKey,
                 parentLink.toCapability(writableCapability.baseKey));
         FileAccess fa = new FileAccess(committedHash(), version, newParentToMeta, newParentToData, properties, this.retriever, newParentLink);
-        return Transaction.run(writableCapability.location.owner, tid ->
-                network.uploadChunk(fa, writableCapability.location, writableCapability.signer(), tid)
+        return Transaction.run(owner, tid ->
+                network.uploadChunk(fa, owner, writableCapability.getMapKey(), writableCapability.signer(writer), tid)
                         .thenApply(x -> fa),
                 network.dhtClient);
     }
@@ -152,11 +158,12 @@ public class FileAccess implements CryptreeNode {
     }
 
     @Override
-    public CompletableFuture<? extends FileAccess> copyTo(SymmetricKey baseKey,
+    public CompletableFuture<? extends FileAccess> copyTo(PublicKeyHash currentOwner,
+                                                          PublicKeyHash currentWriter,
+                                                          SymmetricKey baseKey,
                                                           SymmetricKey newBaseKey,
                                                           Location newParentLocation,
                                                           SymmetricKey parentparentKey,
-                                                          PublicKeyHash newOwner,
                                                           SigningPrivateKeyAndPublicHash entryWriterKey,
                                                           byte[] newMapKey,
                                                           NetworkAccess network,
@@ -168,7 +175,7 @@ public class FileAccess implements CryptreeNode {
                 props, this.retriever, newParentLocation, parentparentKey);
         Location newLocation = new Location(newParentLocation.owner, entryWriterKey.publicKeyHash, newMapKey);
         return Transaction.run(newParentLocation.owner,
-                tid -> network.uploadChunk(fa, newLocation, entryWriterKey, tid)
+                tid -> network.uploadChunk(fa, newParentLocation.owner, newLocation.getMapKey(), entryWriterKey, tid)
                         .thenApply(b -> fa),
                 network.dhtClient);
     }
@@ -214,6 +221,6 @@ public class FileAccess implements CryptreeNode {
                 SymmetricLink.fromPair(parentKey, dataKey),
                 PaddedCipherText.build(metaKey, props, META_DATA_PADDING_BLOCKSIZE),
                 retriever,
-                EncryptedCapability.create(parentKey, parentparentKey, parentLocation));
+                EncryptedCapability.create(parentKey, parentparentKey, Optional.empty(), parentLocation.getMapKey()));
     }
 }

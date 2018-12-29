@@ -8,6 +8,7 @@ import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.user.fs.*;
+import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
@@ -35,28 +36,34 @@ public interface CryptreeNode extends Cborable {
 
     FileProperties getProperties(SymmetricKey parentKey);
 
-    CompletableFuture<? extends CryptreeNode> updateProperties(Capability writableCapability,
+    CompletableFuture<? extends CryptreeNode> updateProperties(PublicKeyHash owner,
+                                                               PublicKeyHash writer,
+                                                               Capability writableCapability,
                                                                FileProperties newProps,
                                                                NetworkAccess network);
 
     boolean isDirty(SymmetricKey baseKey);
 
-    CompletableFuture<? extends CryptreeNode> copyTo(SymmetricKey baseKey,
-                                                   SymmetricKey newBaseKey,
-                                                   Location newParentLocation,
-                                                   SymmetricKey parentparentKey,
-                                                   PublicKeyHash newOwner,
-                                                   SigningPrivateKeyAndPublicHash entryWriterKey,
-                                                   byte[] newMapKey,
-                                                   NetworkAccess network,
-                                                   SafeRandom random);
+    CompletableFuture<? extends CryptreeNode> copyTo(PublicKeyHash currentOwner,
+                                                     PublicKeyHash currentWriter,
+                                                     SymmetricKey baseKey,
+                                                     SymmetricKey newBaseKey,
+                                                     Location newParentLocation,
+                                                     SymmetricKey parentparentKey,
+                                                     SigningPrivateKeyAndPublicHash entryWriterKey,
+                                                     byte[] newMapKey,
+                                                     NetworkAccess network,
+                                                     SafeRandom random);
 
-    default CompletableFuture<RetrievedCapability> getParent(SymmetricKey baseKey, NetworkAccess network) {
+    default CompletableFuture<RetrievedCapability> getParent(PublicKeyHash owner,
+                                                             PublicKeyHash writer,
+                                                             SymmetricKey baseKey,
+                                                             NetworkAccess network) {
         EncryptedCapability parentLink = getParentLink();
         if (parentLink == null)
             return CompletableFuture.completedFuture(null);
 
-        return network.retrieveAllMetadata(Arrays.asList(parentLink.toCapability(baseKey))).thenApply(res -> {
+        return network.retrieveAllMetadata(Arrays.asList(new Triple<>(owner, writer, parentLink.toCapability(baseKey)))).thenApply(res -> {
             RetrievedCapability retrievedCapability = res.stream().findAny().get();
             return retrievedCapability;
         });

@@ -17,11 +17,15 @@ import java.util.stream.*;
 public class EntryPoint implements Cborable {
 
     public final Capability pointer;
-    public final String owner;
+    public final String ownerName;
+    public final PublicKeyHash owner;
     public final Set<String> readers, writers;
 
-    public EntryPoint(Capability pointer, String owner, Set<String> readers, Set<String> writers) {
+    public EntryPoint(Capability pointer, String ownerName, PublicKeyHash owner, Set<String> readers, Set<String> writers) {
+        if (! pointer.writer.isPresent())
+            throw new IllegalStateException("EntryPoint requires a non relative capability!");
         this.pointer = pointer;
+        this.ownerName = ownerName;
         this.owner = owner;
         this.readers = readers;
         this.writers = writers;
@@ -42,7 +46,7 @@ public class EntryPoint implements Cborable {
         String[] parts = path.split("/");
         String claimedOwner = parts[1];
         // check claimed owner actually owns the signing key
-        PublicKeyHash entryWriter = pointer.getLocation().writer;
+        PublicKeyHash entryWriter = pointer.writer.get();
         return network.coreNode.getPublicKeyHash(claimedOwner).thenCompose(ownerKey -> {
             if (! ownerKey.isPresent())
                 throw new IllegalStateException("No owner key present for user " + claimedOwner);
@@ -56,30 +60,32 @@ public class EntryPoint implements Cborable {
     @Override
     @SuppressWarnings("unusable-by-js")
     public CborObject toCbor() {
-        return new CborObject.CborList(Arrays.asList(
-                pointer.toCbor(),
-                new CborObject.CborString(owner),
-                new CborObject.CborList(readers.stream().sorted().map(CborObject.CborString::new).collect(Collectors.toList())),
-                new CborObject.CborList(writers.stream().sorted().map(CborObject.CborString::new).collect(Collectors.toList()))
-        ));
+        Map<String, CborObject> cbor = new TreeMap<>();
+        cbor.put("c", pointer.toCbor());
+        cbor.put("n", new CborObject.CborString(ownerName));
+        cbor.put("o", owner.toCbor());
+        cbor.put("r", new CborObject.CborList(readers.stream().sorted().map(CborObject.CborString::new).collect(Collectors.toList())));
+        cbor.put("w", new CborObject.CborList(writers.stream().sorted().map(CborObject.CborString::new).collect(Collectors.toList())));
+        return CborObject.CborMap.build(cbor);
     }
 
     public static EntryPoint fromCbor(Cborable cbor) {
-        if (! (cbor instanceof CborObject.CborList))
+        if (! (cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Incorrect cbor type for EntryPoint: " + cbor);
 
-        List<? extends Cborable> value = ((CborObject.CborList) cbor).value;
-        Capability pointer = Capability.fromCbor(value.get(0));
-        String owner = ((CborObject.CborString) value.get(1)).value;
-        Set<String> readers = ((CborObject.CborList) value.get(2)).value
+        SortedMap<CborObject, ? extends Cborable> map = ((CborObject.CborMap) cbor).values;
+        Capability pointer = Capability.fromCbor(map.get(new CborObject.CborString("c")));
+        String ownerName = ((CborObject.CborString) map.get(new CborObject.CborString("n"))).value;
+        PublicKeyHash owner = PublicKeyHash.fromCbor(map.get(new CborObject.CborString("o")));
+        Set<String> readers = ((CborObject.CborList) map.get(new CborObject.CborString("r"))).value
                 .stream()
                 .map(c -> ((CborObject.CborString) c).value)
                 .collect(Collectors.toSet());
-        Set<String> writers = ((CborObject.CborList) value.get(3)).value
+        Set<String> writers = ((CborObject.CborList) map.get(new CborObject.CborString("w"))).value
                 .stream()
                 .map(c -> ((CborObject.CborString) c).value)
                 .collect(Collectors.toSet());
-        return new EntryPoint(pointer, owner, readers, writers);
+        return new EntryPoint(pointer, ownerName, owner, readers, writers);
     }
 
     @Override
@@ -90,7 +96,7 @@ public class EntryPoint implements Cborable {
         EntryPoint that = (EntryPoint) o;
 
         if (pointer != null ? !pointer.equals(that.pointer) : that.pointer != null) return false;
-        if (owner != null ? !owner.equals(that.owner) : that.owner != null) return false;
+        if (ownerName != null ? !ownerName.equals(that.ownerName) : that.ownerName != null) return false;
         if (readers != null ? !readers.equals(that.readers) : that.readers != null) return false;
         return writers != null ? writers.equals(that.writers) : that.writers == null;
 
@@ -99,7 +105,7 @@ public class EntryPoint implements Cborable {
     @Override
     public int hashCode() {
         int result = pointer != null ? pointer.hashCode() : 0;
-        result = 31 * result + (owner != null ? owner.hashCode() : 0);
+        result = 31 * result + (ownerName != null ? ownerName.hashCode() : 0);
         result = 31 * result + (readers != null ? readers.hashCode() : 0);
         result = 31 * result + (writers != null ? writers.hashCode() : 0);
         return result;

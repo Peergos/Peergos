@@ -128,8 +128,8 @@ public class FileUploader implements AutoCloseable {
                                                 hashes, Optional.of(encryptedNextChunkLocation), fragmenter);
                                 FileAccess metaBlob = FileAccess.create(chunk.existingHash, baseKey, SymmetricKey.random(),
                                         chunkKey, props, retriever, parentLocation, parentparentKey);
-                                return network.uploadChunk(metaBlob, new Location(chunk.location.owner,
-                                        writer.publicKeyHash, chunk.chunk.mapKey()), writer, tid);
+                                return network.uploadChunk(metaBlob, chunk.location.owner,
+                                        chunk.chunk.mapKey(), writer, tid);
                             }),
                     network.dhtClient);
         });

@@ -138,9 +138,9 @@ public class WriterData implements Cborable {
             boolean isRemoved = updated.size() < original.size();
 
             if (isRemoved) {
-                return Transaction.run(pointer.location.owner,
+                return Transaction.run(fileWrapper.owner(),
                         tid -> withStaticData(Optional.of(new UserStaticData(updated, rootKey)))
-                                .commit(pointer.location.owner, signer, currentHash, network, updater, tid),
+                                .commit(fileWrapper.owner(), signer, currentHash, network, updater, tid),
                         network.dhtClient);
             }
             CommittedWriterData committed = committed(currentHash);

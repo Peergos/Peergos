@@ -211,19 +211,21 @@ public class NetworkAccess {
         }
     }
 
-    public CompletableFuture<List<RetrievedCapability>> retrieveAllMetadata(List<Capability> links) {
+    public CompletableFuture<List<RetrievedCapability>> retrieveAllMetadata(List<Triple<PublicKeyHash, PublicKeyHash, Capability>> links) {
         List<CompletableFuture<Optional<RetrievedCapability>>> all = links.stream()
                 .map(link -> {
-                    Location loc = link.location;
-                    return tree.get(loc.owner, loc.writer, loc.getMapKey())
+                    PublicKeyHash owner = link.left;
+                    PublicKeyHash writer = link.right.writer.orElse(link.middle);
+                    byte[] mapKey = link.right.getMapKey();
+                    return tree.get(owner, writer, mapKey)
                             .thenCompose(key -> {
                                 if (key.isPresent())
                                     return dhtClient.get(key.get())
                                             .thenApply(dataOpt ->  dataOpt
                                                     .map(cbor -> new RetrievedCapability(
-                                                            link,
+                                                            link.right,
                                                             CryptreeNode.fromCbor(cbor, key.get()))));
-                                LOG.severe("Couldn't download link at: " + loc);
+                                LOG.severe("Couldn't download link at: " + new Location(owner, writer, mapKey));
                                 Optional<RetrievedCapability> result = Optional.empty();
                                 return CompletableFuture.completedFuture(result);
                             });
@@ -246,14 +248,14 @@ public class NetworkAccess {
 
     public CompletableFuture<Optional<FileWrapper>> retrieveEntryPoint(EntryPoint e) {
         return downloadEntryPoint(e)
-                .thenApply(faOpt ->faOpt.map(fa -> new FileWrapper(new RetrievedCapability(e.pointer, fa), e.owner,
-                        e.pointer.writer)))
+                .thenApply(faOpt ->faOpt.map(fa -> new FileWrapper(new RetrievedCapability(e.pointer, fa), e.ownerName,
+                        e.owner, e.pointer.writer.get(), e.pointer.signer)))
                 .exceptionally(t -> Optional.empty());
     }
 
     private CompletableFuture<Optional<CryptreeNode>> downloadEntryPoint(EntryPoint entry) {
         // download the metadata blob for this entry point
-        return tree.get(entry.pointer.location.owner, entry.pointer.location.writer, entry.pointer.location.getMapKey()).thenCompose(btreeValue -> {
+        return tree.get(entry.owner, entry.pointer.writer.get(), entry.pointer.getMapKey()).thenCompose(btreeValue -> {
             if (btreeValue.isPresent())
                 return dhtClient.get(btreeValue.get())
                         .thenApply(value -> value.map(cbor -> CryptreeNode.fromCbor(cbor,  btreeValue.get())));
@@ -310,15 +312,14 @@ public class NetworkAccess {
     }
 
     public CompletableFuture<Multihash> uploadChunk(CryptreeNode metadata,
-                                                    Location location,
+                                                    PublicKeyHash owner,
+                                                    byte[] mapKey,
                                                     SigningPrivateKeyAndPublicHash writer,
                                                     TransactionId tid) {
-        if (! writer.publicKeyHash.equals(location.writer))
-            throw new IllegalStateException("Non matching location writer and signing writer key!");
         try {
             byte[] metaBlob = metadata.serialize();
-            return dhtClient.put(location.owner, location.writer, writer.secret.signatureOnly(metaBlob), metaBlob, tid)
-                    .thenCompose(blobHash -> tree.put(location.owner, writer, location.getMapKey(), metadata.committedHash(), blobHash, tid)
+            return dhtClient.put(owner, writer.publicKeyHash, writer.secret.signatureOnly(metaBlob), metaBlob, tid)
+                    .thenCompose(blobHash -> tree.put(owner, writer, mapKey, metadata.committedHash(), blobHash, tid)
                             .thenApply(res -> blobHash));
         } catch (Exception e) {
             LOG.severe(e.getMessage());
