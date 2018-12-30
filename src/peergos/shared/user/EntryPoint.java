@@ -92,26 +92,20 @@ public class EntryPoint implements Cborable {
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
-
         EntryPoint that = (EntryPoint) o;
-
-        if (pointer != null ? !pointer.equals(that.pointer) : that.pointer != null) return false;
-        if (ownerName != null ? !ownerName.equals(that.ownerName) : that.ownerName != null) return false;
-        if (readers != null ? !readers.equals(that.readers) : that.readers != null) return false;
-        return writers != null ? writers.equals(that.writers) : that.writers == null;
-
+        return Objects.equals(pointer, that.pointer) &&
+                Objects.equals(ownerName, that.ownerName) &&
+                Objects.equals(owner, that.owner) &&
+                Objects.equals(readers, that.readers) &&
+                Objects.equals(writers, that.writers);
     }
 
     @Override
     public int hashCode() {
-        int result = pointer != null ? pointer.hashCode() : 0;
-        result = 31 * result + (ownerName != null ? ownerName.hashCode() : 0);
-        result = 31 * result + (readers != null ? readers.hashCode() : 0);
-        result = 31 * result + (writers != null ? writers.hashCode() : 0);
-        return result;
+        return Objects.hash(pointer, ownerName, owner, readers, writers);
     }
 
-    static EntryPoint symmetricallyDecryptAndDeserialize(byte[] input, SymmetricKey key) throws IOException {
+    static EntryPoint symmetricallyDecryptAndDeserialize(byte[] input, SymmetricKey key) {
         byte[] nonce = Arrays.copyOfRange(input, 0, 24);
         byte[] raw = key.decrypt(Arrays.copyOfRange(input, 24, input.length), nonce);
         return fromCbor(CborObject.fromByteArray(raw));
