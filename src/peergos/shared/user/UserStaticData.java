@@ -10,7 +10,7 @@ import java.util.stream.*;
 
 public class UserStaticData implements Cborable {
 	private static final Logger LOG = Logger.getGlobal();
-	private static final int PADDING = 8192;
+	private static final int PADDING_BLOCK_SIZE = 8192;
 
     private final PaddedCipherText allEntryPoints;
 
@@ -20,7 +20,7 @@ public class UserStaticData implements Cborable {
     }
 
     public UserStaticData(List<EntryPoint> staticData, SymmetricKey rootKey) {
-        this(PaddedCipherText.build(rootKey, new EntryPoints(EntryPoints.VERSION, staticData), PADDING));
+        this(PaddedCipherText.build(rootKey, new EntryPoints(EntryPoints.VERSION, staticData), PADDING_BLOCK_SIZE));
     }
 
     public UserStaticData(SymmetricKey rootKey) {
