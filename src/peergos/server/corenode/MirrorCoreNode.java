@@ -7,7 +7,6 @@ import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
 
-import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -33,6 +32,10 @@ public class MirrorCoreNode implements CoreNode {
         this.ipfs = ipfs;
         this.mutable = mutable;
         this.pkiOwnerIdentity = pkiOwnerIdentity;
+    }
+
+    public void start() {
+        running = true;
         new Thread(() -> {
             while (running) {
                 try {
@@ -65,6 +68,11 @@ public class MirrorCoreNode implements CoreNode {
 
     @Override
     public CompletableFuture<List<UserPublicKeyLink>> getChain(String username) {
+        List<UserPublicKeyLink> chain = chains.get(username);
+        if (chain != null)
+            return CompletableFuture.completedFuture(chain);
+
+        update();
         return CompletableFuture.completedFuture(chains.getOrDefault(username, Collections.emptyList()));
     }
 
@@ -75,6 +83,10 @@ public class MirrorCoreNode implements CoreNode {
 
     @Override
     public CompletableFuture<String> getUsername(PublicKeyHash key) {
+        String username = reverseLookup.get(key);
+        if (username != null)
+            return CompletableFuture.completedFuture(username);
+        update();
         return CompletableFuture.completedFuture(reverseLookup.get(key));
     }
 
@@ -84,7 +96,7 @@ public class MirrorCoreNode implements CoreNode {
     }
 
     @Override
-    public void close() throws IOException {
+    public void close() {
         running = false;
     }
 }

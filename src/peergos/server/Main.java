@@ -273,11 +273,14 @@ public class Main {
                     mutablePointersSqlFile :
                     a.fromPeergosDir("mutable-pointers-file").toString();
             MutablePointers sqlMutable = UserRepository.buildSqlLite(path, localDht, maxUserCount);
+            MutablePointersProxy proxingMutable = new HttpMutablePointers(ipfsGateway, pkiServerNodeId);
 
-            // build a proxying corenode, unless we are the pki node
-            CoreNode core = nodeId.equals(pkiServerNodeId) ?
+            PublicKeyHash peergosId = PublicKeyHash.fromString(a.getArg("peergos.identity.hash"));
+            // build a mirroring proxying corenode, unless we are the pki node
+            boolean isPkiNode = nodeId.equals(pkiServerNodeId);
+            CoreNode core = isPkiNode ?
                     buildPkiCorenode(sqlMutable, localDht, a) :
-                    new HTTPCoreNode(ipfsGateway, pkiServerNodeId);
+                    new MirrorCoreNode(new HTTPCoreNode(ipfsGateway, pkiServerNodeId), localDht, proxingMutable, peergosId);
 
             long defaultQuota = a.getLong("default-quota");
             Logging.LOG().info("Using default user space quota of " + defaultQuota);
@@ -293,7 +296,6 @@ public class Main {
             ContentAddressedStorageProxy proxingDht = new ContentAddressedStorageProxy.HTTP(ipfsGateway);
             ContentAddressedStorage p2pDht = new ContentAddressedStorage.Proxying(filteringDht, proxingDht, nodeId, core);
 
-            MutablePointersProxy proxingMutable = new HttpMutablePointers(ipfsGateway, ipfsGateway);
             Path blacklistPath = a.fromPeergosDir("blacklist_file", "blacklist.txt");
             PublicKeyBlackList blacklist = new UserBasedBlacklist(blacklistPath, core, localMutable, p2pDht);
             MutablePointers blockingMutablePointers = new BlockingMutablePointers(new PinningMutablePointers(localMutable, p2pDht), blacklist);
@@ -322,6 +324,8 @@ public class Main {
             Optional<UserService.TlsProperties> tlsProps =
                     tlsHostname.map(host -> new UserService.TlsProperties(host, a.getArg("tls.keyfile.password")));
             peergos.initAndStart(localAddress, tlsProps, webroot, useWebAssetCache);
+            if (! isPkiNode)
+                ((MirrorCoreNode) core).start();
             spaceChecker.loadAllOwnerAndUsage();
         } catch (Exception e) {
             e.printStackTrace();
@@ -365,7 +369,7 @@ public class Main {
         // test if ipfs is already running
         int ipfsApiPort = IpfsWrapper.getApiPort(a);
         if (IpfsWrapper.isHttpApiListening(ipfsApiPort)) {
-            throw new IllegalStateException("IPFS is already running, using existing instance at " + ipfsApiPort);
+            throw new IllegalStateException("IPFS is already running on api port " + ipfsApiPort);
         }
 
         IpfsWrapper ipfs = IpfsWrapper.build(a);
