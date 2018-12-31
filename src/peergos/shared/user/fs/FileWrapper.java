@@ -534,7 +534,7 @@ public class FileWrapper {
                                         Location nextChunkLocation = new Location(getLocation().owner, getLocation().writer, mapKey);
                                         return chunks.upload(network, random, parentLocation.owner, getSigner(), nextChunkLocation)
                                                 .thenCompose(fileLocation -> {
-                                                    RelativeCapability relativeCapability = new RelativeCapability(fileLocation.writer, fileLocation.getMapKey(), fileKey, Optional.empty());
+                                                    RelativeCapability relativeCapability = new RelativeCapability(Optional.of(fileLocation.writer), fileLocation.getMapKey(), fileKey, Optional.empty());
                                                     return addChildPointer(filename, relativeCapability.toAbsolute(pointer.capability), network, random, 2);
                                                 });
                                     }))

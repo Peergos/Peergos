@@ -38,18 +38,6 @@ public class RelativeCapability implements Cborable {
         this(Optional.empty(), mapKey, baseKey, Optional.empty());
     }
 
-    public RelativeCapability(PublicKeyHash writer, byte[] mapKey, SymmetricKey baseKey, Optional<SecretSigningKey> signer) {
-        this(Optional.of(writer), mapKey, baseKey, signer);
-    }
-
-    public RelativeCapability(PublicKeyHash signer, byte[] mapKey, SymmetricKey baseKey) {
-        this(Optional.of(signer), mapKey, baseKey, Optional.empty());
-    }
-
-    public RelativeCapability(SigningPrivateKeyAndPublicHash signer, byte[] mapKey, SymmetricKey baseKey) {
-        this(Optional.of(signer.publicKeyHash), mapKey, baseKey, Optional.of(signer.secret));
-    }
-
     @JsMethod
     public byte[] getMapKey() {
         return Arrays.copyOf(mapKey, mapKey.length);
