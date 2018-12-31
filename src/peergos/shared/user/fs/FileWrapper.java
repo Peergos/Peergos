@@ -170,7 +170,7 @@ public class FileWrapper {
 
             // Create new DirAccess, but don't upload it
             DirAccess newDirAccess = DirAccess.create(existing.committedHash(), newSubfoldersKey, props,
-                    parent.pointer.capability.relativise(pointer.capability), newParentKey);
+                    pointer.capability.relativise(parent.pointer.capability), newParentKey);
             // re add children
 
             List<RelativeCapability> children = existing.getChildren(pointer.capability.baseKey);
