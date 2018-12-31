@@ -211,19 +211,19 @@ public class NetworkAccess {
         }
     }
 
-    public CompletableFuture<List<RetrievedCapability>> retrieveAllMetadata(List<Triple<PublicKeyHash, PublicKeyHash, Capability>> links) {
+    public CompletableFuture<List<RetrievedCapability>> retrieveAllMetadata(List<AbsoluteCapability> links) {
         List<CompletableFuture<Optional<RetrievedCapability>>> all = links.stream()
                 .map(link -> {
-                    PublicKeyHash owner = link.left;
-                    PublicKeyHash writer = link.right.writer.orElse(link.middle);
-                    byte[] mapKey = link.right.getMapKey();
+                    PublicKeyHash owner = link.owner;
+                    PublicKeyHash writer = link.writer;
+                    byte[] mapKey = link.getMapKey();
                     return tree.get(owner, writer, mapKey)
                             .thenCompose(key -> {
                                 if (key.isPresent())
                                     return dhtClient.get(key.get())
                                             .thenApply(dataOpt ->  dataOpt
                                                     .map(cbor -> new RetrievedCapability(
-                                                            link.right,
+                                                            link,
                                                             CryptreeNode.fromCbor(cbor, key.get()))));
                                 LOG.severe("Couldn't download link at: " + new Location(owner, writer, mapKey));
                                 Optional<RetrievedCapability> result = Optional.empty();
@@ -249,13 +249,13 @@ public class NetworkAccess {
     public CompletableFuture<Optional<FileWrapper>> retrieveEntryPoint(EntryPoint e) {
         return downloadEntryPoint(e)
                 .thenApply(faOpt ->faOpt.map(fa -> new FileWrapper(new RetrievedCapability(e.pointer, fa), e.ownerName,
-                        e.owner, e.pointer.writer.get(), e.pointer.signer)))
+                        e.pointer.signer)))
                 .exceptionally(t -> Optional.empty());
     }
 
     private CompletableFuture<Optional<CryptreeNode>> downloadEntryPoint(EntryPoint entry) {
         // download the metadata blob for this entry point
-        return tree.get(entry.owner, entry.pointer.writer.get(), entry.pointer.getMapKey()).thenCompose(btreeValue -> {
+        return tree.get(entry.pointer.owner, entry.pointer.writer, entry.pointer.getMapKey()).thenCompose(btreeValue -> {
             if (btreeValue.isPresent())
                 return dhtClient.get(btreeValue.get())
                         .thenApply(value -> value.map(cbor -> CryptreeNode.fromCbor(cbor,  btreeValue.get())));

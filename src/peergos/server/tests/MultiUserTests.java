@@ -238,8 +238,8 @@ public class MultiUserTests {
         UserContext userToUnshareWith = friends.stream().findFirst().get();
         String friendsPathToFile = u1.username + "/" + filename;
         Optional<FileWrapper> priorUnsharedView = userToUnshareWith.getByPath(friendsPathToFile).get();
-        Capability priorPointer = priorUnsharedView.get().getPointer().capability;
-        Location priorLocation = priorPointer.getLocation(priorUnsharedView.get().owner(), priorUnsharedView.get().writer());
+        AbsoluteCapability priorPointer = priorUnsharedView.get().getPointer().capability;
+        Location priorLocation = priorPointer.getLocation();
         CryptreeNode priorFileAccess = network.getMetadata(priorLocation).get().get();
         SymmetricKey priorMetaKey = priorFileAccess.getMetaKey(priorPointer.baseKey);
 

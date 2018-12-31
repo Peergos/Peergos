@@ -14,8 +14,8 @@ public class EncryptedCapability implements Cborable {
         this.cipherText = cipherText;
     }
 
-    public Capability toCapability(SymmetricKey baseKey) {
-        return cipherText.decrypt(baseKey, Capability::fromCbor);
+    public RelativeCapability toCapability(SymmetricKey baseKey) {
+        return cipherText.decrypt(baseKey, RelativeCapability::fromCbor);
     }
 
     @Override
@@ -27,11 +27,11 @@ public class EncryptedCapability implements Cborable {
         return new EncryptedCapability(CipherText.fromCbor(cbor));
     }
 
-    public static EncryptedCapability create(SymmetricKey from, Capability cap) {
+    public static EncryptedCapability create(SymmetricKey from, RelativeCapability cap) {
         return new EncryptedCapability(CipherText.build(from, cap));
     }
 
     public static EncryptedCapability create(SymmetricKey from, SymmetricKey to, Optional<PublicKeyHash> writer, byte[] mapKey) {
-        return create(from, new Capability(writer, mapKey, to, Optional.empty()));
+        return create(from, new RelativeCapability(writer, mapKey, to, Optional.empty()));
     }
 }

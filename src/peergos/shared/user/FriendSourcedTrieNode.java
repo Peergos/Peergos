@@ -12,7 +12,6 @@ import java.util.function.*;
 public class FriendSourcedTrieNode implements TrieNode {
 
     private final String ownerName;
-    private final PublicKeyHash owner;
     private final Supplier<CompletableFuture<FileWrapper>> homeDirSupplier;
     private final EntryPoint sharedDir;
     private final SafeRandom random;
@@ -22,7 +21,6 @@ public class FriendSourcedTrieNode implements TrieNode {
 
     public FriendSourcedTrieNode(Supplier<CompletableFuture<FileWrapper>> homeDirSupplier,
                                  String ownerName,
-                                 PublicKeyHash owner,
                                  EntryPoint sharedDir,
                                  TrieNode root,
                                  long capCount,
@@ -30,7 +28,6 @@ public class FriendSourcedTrieNode implements TrieNode {
                                  Fragmenter fragmenter) {
         this.homeDirSupplier = homeDirSupplier;
         this.ownerName = ownerName;
-        this.owner = owner;
         this.sharedDir = sharedDir;
         this.root = root;
         this.capCount = capCount;
@@ -52,11 +49,10 @@ public class FriendSourcedTrieNode implements TrieNode {
                                     .thenApply(caps ->
                                             Optional.of(new FriendSourcedTrieNode(homeDirSupplier,
                                                     e.ownerName,
-                                                    e.owner,
                                                     e,
                                                     caps.getRetrievedCapabilities().stream()
                                                             .reduce(TrieNodeImpl.empty(),
-                                                                    (root, cap) -> root.put(trimOwner(cap.path), UserContext.convert(e.ownerName, e.owner, cap)),
+                                                                    (root, cap) -> root.put(trimOwner(cap.path), UserContext.convert(e.ownerName, cap)),
                                                                     (a, b) -> a),
                                                     caps.getRecordsRead(),
                                                     random, fragmenter)));
@@ -79,7 +75,7 @@ public class FriendSourcedTrieNode implements TrieNode {
                                                             capCount += newCaps.getRecordsRead();
                                                             root = newCaps.getRetrievedCapabilities().stream()
                                                                     .reduce(root,
-                                                                            (root, cap) -> root.put(trimOwner(cap.path), UserContext.convert(ownerName, owner, cap)),
+                                                                            (root, cap) -> root.put(trimOwner(cap.path), UserContext.convert(ownerName, cap)),
                                                                             (a, b) -> a);
                                                             return true;
                                                         });

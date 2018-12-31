@@ -11,10 +11,10 @@ import java.util.*;
 import java.util.concurrent.*;
 
 public class RetrievedCapability {
-    public final Capability capability;
+    public final AbsoluteCapability capability;
     public final CryptreeNode fileAccess;
 
-    public RetrievedCapability(Capability capability, CryptreeNode fileAccess) {
+    public RetrievedCapability(AbsoluteCapability capability, CryptreeNode fileAccess) {
         if (fileAccess == null)
             throw new IllegalStateException("Null FileAccess!");
         this.capability = capability;
@@ -31,33 +31,31 @@ public class RetrievedCapability {
 
     public CompletableFuture<Boolean> remove(NetworkAccess network,
                                              RetrievedCapability parentRetrievedCapability,
-                                             PublicKeyHash owner,
-                                             PublicKeyHash writer,
                                              SigningPrivateKeyAndPublicHash signer) {
         if (! capability.isWritable())
             return CompletableFuture.completedFuture(false);
-        Location loc = this.capability.getLocation(owner, writer);
         if (! fileAccess.isDirectory()) {
             CompletableFuture<Boolean> result = new CompletableFuture<>();
-            Transaction.run(loc.owner,
-                    tid -> network.tree.remove(loc.owner, signer, loc.getMapKey(), fileAccess.committedHash(), tid).thenAccept(removed -> {
+            Transaction.run(capability.owner,
+                    tid -> network.tree.remove(capability.owner, signer, capability.getMapKey(), fileAccess.committedHash(), tid).thenAccept(removed -> {
                         // remove from parent
                         if (parentRetrievedCapability != null)
                             ((DirAccess) parentRetrievedCapability.fileAccess)
-                                    .removeChild(this, owner, parentRetrievedCapability.capability, signer, network);
+                                    .removeChild(this, parentRetrievedCapability.capability.toWritable(signer), network);
                         result.complete(true);
                     }), network.dhtClient);
             return result;
         }
-        return ((DirAccess) fileAccess).getChildren(network, owner, this.capability.writer.orElse(writer), this.capability.baseKey).thenCompose(files -> {
+        return ((DirAccess) fileAccess).getChildren(network, capability).thenCompose(files -> {
             for (RetrievedCapability file : files)
-                file.remove(network, null, owner, writer, signer);
+                file.remove(network, null, signer);
             CompletableFuture<Boolean> result = new CompletableFuture<>();
-            Transaction.run(loc.owner,
-                    tid -> network.tree.remove(loc.owner, signer, loc.getMapKey(), fileAccess.committedHash(), tid).thenAccept(removed -> {
+            Transaction.run(capability.owner,
+                    tid -> network.tree.remove(capability.owner, signer, capability.getMapKey(), fileAccess.committedHash(), tid).thenAccept(removed -> {
                         // remove from parent
                         if (parentRetrievedCapability != null)
-                            ((DirAccess) parentRetrievedCapability.fileAccess).removeChild(this, owner, parentRetrievedCapability.capability, signer, network);
+                            ((DirAccess) parentRetrievedCapability.fileAccess)
+                                    .removeChild(this, parentRetrievedCapability.capability.toWritable(signer), network);
                         result.complete(removed);
                     }), network.dhtClient);
             return result;
@@ -69,7 +67,7 @@ public class RetrievedCapability {
     }
 
     public RetrievedCapability withWriter(Optional<SecretSigningKey> writer) {
-        Capability cap = new Capability(capability.writer, capability.getMapKey(), capability.baseKey, writer);
+        AbsoluteCapability cap = new AbsoluteCapability(capability.owner, capability.writer, capability.getMapKey(), capability.baseKey, writer);
         return new RetrievedCapability(cap, this.fileAccess);
     }
 }

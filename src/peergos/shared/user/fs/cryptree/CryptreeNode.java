@@ -36,17 +36,13 @@ public interface CryptreeNode extends Cborable {
 
     FileProperties getProperties(SymmetricKey parentKey);
 
-    CompletableFuture<? extends CryptreeNode> updateProperties(PublicKeyHash owner,
-                                                               PublicKeyHash writer,
-                                                               Capability writableCapability,
+    CompletableFuture<? extends CryptreeNode> updateProperties(WritableAbsoluteCapability us,
                                                                FileProperties newProps,
                                                                NetworkAccess network);
 
     boolean isDirty(SymmetricKey baseKey);
 
-    CompletableFuture<? extends CryptreeNode> copyTo(PublicKeyHash currentOwner,
-                                                     PublicKeyHash currentWriter,
-                                                     SymmetricKey baseKey,
+    CompletableFuture<? extends CryptreeNode> copyTo(AbsoluteCapability us,
                                                      SymmetricKey newBaseKey,
                                                      Location newParentLocation,
                                                      SymmetricKey parentparentKey,
@@ -63,7 +59,8 @@ public interface CryptreeNode extends Cborable {
         if (parentLink == null)
             return CompletableFuture.completedFuture(null);
 
-        return network.retrieveAllMetadata(Arrays.asList(new Triple<>(owner, writer, parentLink.toCapability(baseKey)))).thenApply(res -> {
+        RelativeCapability relCap = parentLink.toCapability(baseKey);
+        return network.retrieveAllMetadata(Arrays.asList(new AbsoluteCapability(owner, writer, relCap.getMapKey(), relCap.baseKey, relCap.signer))).thenApply(res -> {
             RetrievedCapability retrievedCapability = res.stream().findAny().get();
             return retrievedCapability;
         });

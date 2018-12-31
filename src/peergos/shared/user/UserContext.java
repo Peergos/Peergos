@@ -245,10 +245,7 @@ public class UserContext {
                             return ((DirAccess) userRoot.fileAccess).mkdir(
                                     SHARED_DIR_NAME,
                                     network,
-                                    signerHash,
-                                    userRoot.capability.signer(null),
-                                    userRoot.capability.getMapKey(),
-                                    userRoot.capability.baseKey,
+                                    (WritableAbsoluteCapability) userRoot.capability,
                                     null,
                                     true,
                                     crypto.random)
@@ -265,17 +262,16 @@ public class UserContext {
 
     @JsMethod
     public static CompletableFuture<UserContext> fromPublicLink(String link, NetworkAccess network, Crypto crypto) {
-        Capability entryPoint = null;
+        AbsoluteCapability cap;
         try {
-            entryPoint = Capability.fromLink(link);
+            cap = AbsoluteCapability.fromLink(link);
         } catch (Exception e) { //link was invalid
             CompletableFuture<UserContext> invalidLink = new CompletableFuture<>();
             invalidLink.completeExceptionally(e);
             return invalidLink;
         }
-        PublicKeyHash owner = Capability.parseOwner(link);
-        EntryPoint entry = new EntryPoint(entryPoint, "", owner, Collections.emptySet(), Collections.emptySet());
-        WriterData empty = WriterData.createEmpty(owner);
+        EntryPoint entry = new EntryPoint(cap, "", Collections.emptySet(), Collections.emptySet());
+        WriterData empty = WriterData.createEmpty(cap.owner);
         CommittedWriterData committed = new CommittedWriterData(MaybeMultihash.empty(), empty);
         CompletableFuture<CommittedWriterData> userData = CompletableFuture.completedFuture(committed);
         UserContext context = new UserContext(null, null, null, null, network.clear(), crypto, userData, TrieNodeImpl.empty());
@@ -558,13 +554,13 @@ public class UserContext {
 
             // and authorise the writer key
             SigningPrivateKeyAndPublicHash writerWithHash = new SigningPrivateKeyAndPublicHash(writerHash, writer.secretSigningKey);
-            Capability rootPointer = new Capability(writerWithHash, rootMapKey, rootRKey);
-            EntryPoint entry = new EntryPoint(rootPointer, this.username, signer.publicKeyHash, Collections.emptySet(), Collections.emptySet());
-            return addOwnedKeyAndCommit(entry.pointer.writer.get(), tid)
+            WritableAbsoluteCapability rootPointer = new WritableAbsoluteCapability(owner.publicKeyHash, writerHash, rootMapKey, rootRKey, writer.secretSigningKey);
+            EntryPoint entry = new EntryPoint(rootPointer, this.username, Collections.emptySet(), Collections.emptySet());
+            return addOwnedKeyAndCommit(entry.pointer.writer, tid)
                     .thenCompose(x -> {
                         long t2 = System.currentTimeMillis();
                         DirAccess root = DirAccess.create(MaybeMultihash.empty(), rootRKey, new FileProperties(directoryName, "",
-                                0, LocalDateTime.now(), false, Optional.empty()), (Capability) null,null);
+                                0, LocalDateTime.now(), false, Optional.empty()), (RelativeCapability) null,null);
                         LOG.info("Uploading entry point directory");
                         return network.uploadChunk(root, this.signer.publicKeyHash, rootMapKey, writerWithHash, tid).thenApply(chunkHash -> {
                             long t3 = System.currentTimeMillis();
@@ -638,7 +634,7 @@ public class UserContext {
     public CompletableFuture<Set<String>> getFollowing() {
         return getFriendRoots()
                 .thenApply(set -> set.stream()
-                        .map(froot -> froot.getOwner())
+                        .map(froot -> froot.getOwnerName())
                         .filter(name -> !name.equals(username))
                         .collect(Collectors.toSet()));
     }
@@ -693,7 +689,7 @@ public class UserContext {
             // send a null entry and null key (full rejection)
             DataSink dout = new DataSink();
             // write a null entry point
-            EntryPoint entry = new EntryPoint(Capability.createNull(), username, signer.publicKeyHash, Collections.emptySet(), Collections.emptySet());
+            EntryPoint entry = new EntryPoint(AbsoluteCapability.createNull(), username, Collections.emptySet(), Collections.emptySet());
             dout.writeArray(entry.serialize());
             dout.writeArray(new byte[0]); // tell them we're not reciprocating
             byte[] plaintext = dout.toByteArray();
@@ -707,7 +703,7 @@ public class UserContext {
                 DataSink resp = new DataSink();
                 resp.writeArray(tmp.publicBoxingKey.serialize());
                 resp.writeArray(payload);
-                network.social.sendFollowRequest(initialRequest.entry.get().owner, resp.toByteArray());
+                network.social.sendFollowRequest(initialRequest.entry.get().pointer.owner, resp.toByteArray());
                 // remove pending follow request from them
                 return network.social.removeFollowRequest(signer.publicKeyHash, signer.secret.signMessage(initialRequest.rawCipher));
             });
@@ -720,8 +716,8 @@ public class UserContext {
                     return sharing.mkdir(theirUsername, network, initialRequest.key.get(), true, crypto.random)
                             .thenCompose(friendRoot -> {
                                 // add a note to our static data so we know who we sent the read access to
-                                EntryPoint entry = new EntryPoint(friendRoot.readOnly().withWritingKey(sharing.writer()),
-                                        username, signer.publicKeyHash, Collections.singleton(theirUsername), Collections.emptySet());
+                                EntryPoint entry = new EntryPoint(friendRoot.readOnly().withWritingKey(sharing.writer()).toAbsolute(sharing.getPointer().capability),
+                                        username, Collections.singleton(theirUsername), Collections.emptySet());
 
                                 return addToStaticDataAndCommit(entry).thenApply(trie -> {
                                     this.entrie = trie;
@@ -731,7 +727,7 @@ public class UserContext {
                             });
                 });
             } else {
-                EntryPoint entry = new EntryPoint(Capability.createNull(), username, signer.publicKeyHash, Collections.emptySet(), Collections.emptySet());
+                EntryPoint entry = new EntryPoint(AbsoluteCapability.createNull(), username, Collections.emptySet(), Collections.emptySet());
                 dout.writeArray(entry.serialize());
                 return CompletableFuture.completedFuture(dout);
             }
@@ -754,7 +750,7 @@ public class UserContext {
                 DataSink resp = new DataSink();
                 resp.writeArray(tmp.publicBoxingKey.serialize());
                 resp.writeArray(payload);
-                return network.social.sendFollowRequest(initialRequest.entry.get().owner, resp.toByteArray());
+                return network.social.sendFollowRequest(initialRequest.entry.get().pointer.owner, resp.toByteArray());
             });
         }).thenCompose(b -> {
             if (reciprocate)
@@ -789,8 +785,8 @@ public class UserContext {
                         return sharing.mkdir(targetUsername, network, null, true, crypto.random).thenCompose(friendRoot -> {
 
                             // if they accept the request we will add a note to our static data so we know who we sent the read access to
-                            EntryPoint entry = new EntryPoint(friendRoot.readOnly().withWritingKey(sharing.writer()),
-                                    username, signer.publicKeyHash, Collections.singleton(targetUsername), Collections.emptySet());
+                            EntryPoint entry = new EntryPoint(friendRoot.readOnly().withWritingKey(sharing.writer()).toAbsolute(sharing.getPointer().capability),
+                                    username, Collections.singleton(targetUsername), Collections.emptySet());
 
                             // send details to allow friend to follow us, and optionally let us follow them
                             // create a tmp keypair whose public key we can prepend to the request without leaking information
@@ -1018,14 +1014,14 @@ public class UserContext {
                         } else if (freq.entry.get().pointer.isNull()) {
                             // They reciprocated, but didn't accept (they follow us, but we can't follow them)
                             // add entry point to static data to signify their acceptance
-                            EntryPoint entryWeSentToThem = new EntryPoint(ourDirForThem.getPointer().capability.readOnly().withWritingKey(ourDirForThem.writer()),
-                                    username, signer.publicKeyHash, Collections.singleton(ourDirForThem.getName()), Collections.emptySet());
+                            EntryPoint entryWeSentToThem = new EntryPoint(ourDirForThem.getPointer().capability.readOnly(),
+                                    username, Collections.singleton(ourDirForThem.getName()), Collections.emptySet());
                             return addToStaticDataAndCommit(trie, entryWeSentToThem);
                         } else {
                             // they accepted and reciprocated
                             // add entry point to static data to signify their acceptance
-                            EntryPoint entryWeSentToThem = new EntryPoint(ourDirForThem.getPointer().capability.readOnly().withWritingKey(ourDirForThem.writer()),
-                                    username, signer.publicKeyHash, Collections.singleton(ourDirForThem.getName()), Collections.emptySet());
+                            EntryPoint entryWeSentToThem = new EntryPoint(ourDirForThem.getPointer().capability.readOnly(),
+                                    username, Collections.singleton(ourDirForThem.getName()), Collections.emptySet());
 
                             // add new entry point to tree root
                             EntryPoint entry = freq.entry.get();
@@ -1122,8 +1118,8 @@ public class UserContext {
                 .exceptionally(Futures::logError);
     }
 
-    public static EntryPoint convert(String ownerName, PublicKeyHash owner, CapabilityWithPath cap) {
-        return new EntryPoint(cap.cap, ownerName, owner, Collections.emptySet(), Collections.emptySet());
+    public static EntryPoint convert(String ownerName, CapabilityWithPath cap) {
+        return new EntryPoint(cap.cap, ownerName, Collections.emptySet(), Collections.emptySet());
     }
 
     private static CompletableFuture<TrieNode> addRetrievedEntryPoint(String ourName,
@@ -1187,7 +1183,7 @@ public class UserContext {
                         // and the dir/file it points to
                         // first make it writable by combining with the root writing key
                         getByPath("/" + username).thenCompose(rootDir ->
-                                new FileWrapper(file.getPointer(), file.getOwner(), file.owner(), file.writer(), rootDir.get().getEntryWriterKey())
+                                new FileWrapper(file.getPointer(), file.getOwnerName(), rootDir.get().getEntryWriterKey())
                                         .remove(network, null)
                                         .thenApply(x -> removeFromStaticData(file)));
                         return true;

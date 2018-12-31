@@ -25,7 +25,7 @@ import java.util.stream.*;
  * Each of these cache files is just a serialized CapabilitiesFromUser
  */
 public class CapabilityStore {
-    public static final int READ_CAPABILITY_SIZE = 119; // fp.toCbor().toByteArray() DOESN'T INCLUDE .secret
+    public static final int READ_CAPABILITY_SIZE = 162; // fp.toCbor().toByteArray() DOESN'T INCLUDE .secret
     public static final int CAPS_PER_FILE = 10000;
     public static final int SHARING_FILE_MAX_SIZE = READ_CAPABILITY_SIZE * CAPS_PER_FILE;
     public static final String CAPABILITY_CACHE_DIR = ".capabilitycache";
@@ -196,8 +196,8 @@ public class CapabilityStore {
         return reader.seek( 0, offset).thenCompose( currentPos ->
                 currentPos.readIntoArray(serialisedFilePointer, 0, READ_CAPABILITY_SIZE)
                         .thenCompose(bytesRead -> {
-                            Capability pointer = Capability.fromByteArray(serialisedFilePointer);
-                            EntryPoint entry = new EntryPoint(pointer, ownerName, owner, Collections.emptySet(), Collections.emptySet());
+                            AbsoluteCapability pointer = AbsoluteCapability.fromCbor(CborObject.fromByteArray(serialisedFilePointer));
+                            EntryPoint entry = new EntryPoint(pointer, ownerName, Collections.emptySet(), Collections.emptySet());
                             return network.retrieveEntryPoint(entry).thenCompose( optFTN -> {
                                 if(optFTN.isPresent()) {
                                     FileWrapper ftn = optFTN.get();
