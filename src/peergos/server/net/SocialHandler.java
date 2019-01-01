@@ -13,6 +13,11 @@ import java.util.*;
 import java.util.function.*;
 import java.util.logging.*;
 
+/** This is the http endpoint for SocialNetwork
+ *
+ * This receives calls to send, retrieve and remove follow requests.
+ *
+ */
 public class SocialHandler implements HttpHandler {
     private static final Logger LOG = Logging.LOG();
 

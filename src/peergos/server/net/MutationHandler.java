@@ -12,6 +12,9 @@ import java.io.*;
 import java.util.*;
 import java.util.logging.*;
 
+/** This is the http endpoint for MutablePointer calls
+ *
+ */
 public class MutationHandler implements HttpHandler {
     private static final Logger LOG = Logging.LOG();
 
@@ -54,8 +57,6 @@ public class MutationHandler implements HttpHandler {
                     throw new IOException("Unknown method "+ method);
             }
 
-            dout.flush();
-            dout.close();
             byte[] b = bout.toByteArray();
             exchange.sendResponseHeaders(200, b.length);
             exchange.getResponseBody().write(b);

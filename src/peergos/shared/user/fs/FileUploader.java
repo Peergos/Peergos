@@ -120,7 +120,7 @@ public class FileUploader implements AutoCloseable {
             LOG.info(StringUtils.format("Uploading chunk with %d fragments\n", fragments.size()));
             SymmetricKey chunkKey = chunk.chunk.key();
             CipherText encryptedNextChunkLocation = CipherText.build(chunkKey, nextChunkLocation);
-            return Transaction.run(chunk.location.owner, tid -> network
+            return Transaction.call(chunk.location.owner, tid -> network
                             .uploadFragments(fragments, chunk.location.owner, writer, monitor, fragmenter.storageIncreaseFactor(), tid)
                             .thenCompose(hashes -> {
                                 FileRetriever retriever =
@@ -128,8 +128,8 @@ public class FileUploader implements AutoCloseable {
                                                 hashes, Optional.of(encryptedNextChunkLocation), fragmenter);
                                 FileAccess metaBlob = FileAccess.create(chunk.existingHash, baseKey, SymmetricKey.random(),
                                         chunkKey, props, retriever, parentLocation, parentparentKey);
-                                return network.uploadChunk(metaBlob, new Location(chunk.location.owner,
-                                        writer.publicKeyHash, chunk.chunk.mapKey()), writer, tid);
+                                return network.uploadChunk(metaBlob, chunk.location.owner,
+                                        chunk.chunk.mapKey(), writer, tid);
                             }),
                     network.dhtClient);
         });
