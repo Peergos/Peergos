@@ -3,7 +3,6 @@ package peergos.shared.user.fs;
 import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
-import peergos.shared.crypto.hash.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.fs.cryptree.*;
 
@@ -36,7 +35,7 @@ public class RetrievedCapability {
             return CompletableFuture.completedFuture(false);
         if (! fileAccess.isDirectory()) {
             CompletableFuture<Boolean> result = new CompletableFuture<>();
-            Transaction.run(capability.owner,
+            Transaction.call(capability.owner,
                     tid -> network.tree.remove(capability.owner, signer, capability.getMapKey(), fileAccess.committedHash(), tid).thenAccept(removed -> {
                         // remove from parent
                         if (parentRetrievedCapability != null)
@@ -50,7 +49,7 @@ public class RetrievedCapability {
             for (RetrievedCapability file : files)
                 file.remove(network, null, signer);
             CompletableFuture<Boolean> result = new CompletableFuture<>();
-            Transaction.run(capability.owner,
+            Transaction.call(capability.owner,
                     tid -> network.tree.remove(capability.owner, signer, capability.getMapKey(), fileAccess.committedHash(), tid).thenAccept(removed -> {
                         // remove from parent
                         if (parentRetrievedCapability != null)

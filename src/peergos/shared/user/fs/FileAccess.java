@@ -3,7 +3,6 @@ package peergos.shared.user.fs;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
-import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multihash.*;
@@ -122,7 +121,7 @@ public class FileAccess implements CryptreeNode {
         PaddedCipherText encryptedProperties = PaddedCipherText.build(metaKey, newProps, META_DATA_PADDING_BLOCKSIZE);
         FileAccess fa = new FileAccess(lastCommittedHash, version, toMeta, this.parent2data, encryptedProperties,
                 this.retriever, this.parentLink);
-        return Transaction.run(us.owner, tid ->
+        return Transaction.call(us.owner, tid ->
                 network.uploadChunk(fa, us.owner, us.getMapKey(), us.signer(), tid)
                         .thenApply(b -> fa),
                 network.dhtClient);
@@ -141,7 +140,7 @@ public class FileAccess implements CryptreeNode {
         EncryptedCapability newParentLink = EncryptedCapability.create(newBaseKey,
                 parentLink.toCapability(us.baseKey));
         FileAccess fa = new FileAccess(committedHash(), version, newParentToMeta, newParentToData, properties, this.retriever, newParentLink);
-        return Transaction.run(us.owner, tid ->
+        return Transaction.call(us.owner, tid ->
                 network.uploadChunk(fa, us.owner, us.getMapKey(), us.signer(), tid)
                         .thenApply(x -> fa),
                 network.dhtClient);
@@ -166,7 +165,7 @@ public class FileAccess implements CryptreeNode {
         FileAccess fa = FileAccess.create(MaybeMultihash.empty(), newBaseKey, SymmetricKey.random(),
                 isDirectory ? SymmetricKey.random() : getDataKey(us.baseKey),
                 props, this.retriever, newParentLocation, parentparentKey);
-        return Transaction.run(newParentLocation.owner,
+        return Transaction.call(newParentLocation.owner,
                 tid -> network.uploadChunk(fa, newParentLocation.owner, newMapKey, entryWriterKey, tid)
                         .thenApply(b -> fa),
                 network.dhtClient);

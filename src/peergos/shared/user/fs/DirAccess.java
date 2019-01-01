@@ -3,13 +3,11 @@ package peergos.shared.user.fs;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
-import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.fs.cryptree.*;
-import peergos.shared.util.*;
 
 import java.time.*;
 import java.util.*;
@@ -173,7 +171,7 @@ public class DirAccess implements CryptreeNode {
                 encryptedProperties,
                 children, moreFolderContents
         );
-        return Transaction.run(us.owner,
+        return Transaction.call(us.owner,
                 tid -> network.uploadChunk(updated, us.owner, us.getMapKey(), us.signer(), tid)
                         .thenApply(b -> updated),
                 network.dhtClient);
@@ -218,7 +216,7 @@ public class DirAccess implements CryptreeNode {
                                             // re-upload us with the link to the next DirAccess
                                             DirAccess withNext = newUs.withNextBlob(Optional.of(
                                                     EncryptedCapability.create(us.baseKey, nextPointer.relativise(us))));
-                                            return Transaction.run(us.owner,
+                                            return Transaction.call(us.owner,
                                                     tid -> withNext.commit(us, network, tid),
                                                     network.dhtClient);
                                         });
@@ -229,7 +227,7 @@ public class DirAccess implements CryptreeNode {
             ArrayList<RelativeCapability> newFiles = new ArrayList<>(children);
             newFiles.addAll(targetCAPs);
 
-            return Transaction.run(us.owner,
+            return Transaction.call(us.owner,
                     tid -> withChildren(encryptChildren(us.baseKey, newFiles))
                             .commit(us, network, tid),
                     network.dhtClient);
@@ -263,7 +261,7 @@ public class DirAccess implements CryptreeNode {
                         keep = false;
             return keep;
         }).collect(Collectors.toList());
-        return Transaction.run(ourPointer.owner,
+        return Transaction.call(ourPointer.owner,
                 tid -> withChildren(encryptChildren(ourPointer.baseKey, newSubfolders))
                         .commit(ourPointer, network, tid),
                 network.dhtClient);
@@ -324,7 +322,7 @@ public class DirAccess implements CryptreeNode {
         DirAccess dir = DirAccess.create(MaybeMultihash.empty(), dirReadKey, new FileProperties(name, "", 0, LocalDateTime.now(),
                 isSystemFolder, Optional.empty()), ourCap, null);
         // Use two transactions to not expose the child linkage
-        return Transaction.run(us.owner,
+        return Transaction.call(us.owner,
                 tid -> network.uploadChunk(dir, us.owner, dirMapKey, us.getSigningPair(), tid), network.dhtClient)
                 .thenCompose(resultHash -> {
                     RelativeCapability subdirPointer = new RelativeCapability(dirMapKey, dirReadKey);
@@ -372,7 +370,7 @@ public class DirAccess implements CryptreeNode {
                         });
             }, (a, b) -> a.thenCompose(x -> b)); // TODO Think about this combiner function
             return reduce;
-        }).thenCompose(finalDir -> Transaction.run(newParentLocation.owner,
+        }).thenCompose(finalDir -> Transaction.call(newParentLocation.owner,
                 tid -> finalDir.commit(new WritableAbsoluteCapability(newParentLocation.owner, entryWriterKey.publicKeyHash, newMapKey, newBaseKey, entryWriterKey.secret), network, tid),
                 network.dhtClient));
     }
