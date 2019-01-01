@@ -12,6 +12,9 @@ import java.io.*;
 import java.util.*;
 import java.util.logging.*;
 
+/** This is the http endpoint for MutablePointer calls
+ *
+ */
 public class MutationHandler implements HttpHandler {
     private static final Logger LOG = Logging.LOG();
 
