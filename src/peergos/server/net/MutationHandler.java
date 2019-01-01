@@ -57,8 +57,6 @@ public class MutationHandler implements HttpHandler {
                     throw new IOException("Unknown method "+ method);
             }
 
-            dout.flush();
-            dout.close();
             byte[] b = bout.toByteArray();
             exchange.sendResponseHeaders(200, b.length);
             exchange.getResponseBody().write(b);
