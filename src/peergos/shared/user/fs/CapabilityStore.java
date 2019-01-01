@@ -197,7 +197,7 @@ public class CapabilityStore {
                 currentPos.readIntoArray(serialisedFilePointer, 0, READ_CAPABILITY_SIZE)
                         .thenCompose(bytesRead -> {
                             AbsoluteCapability pointer = AbsoluteCapability.fromCbor(CborObject.fromByteArray(serialisedFilePointer));
-                            EntryPoint entry = new EntryPoint(pointer, ownerName, Collections.emptySet(), Collections.emptySet());
+                            EntryPoint entry = new EntryPoint(pointer, ownerName);
                             return network.retrieveEntryPoint(entry).thenCompose( optFTN -> {
                                 if(optFTN.isPresent()) {
                                     FileWrapper ftn = optFTN.get();

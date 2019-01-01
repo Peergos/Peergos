@@ -17,13 +17,10 @@ public class EntryPoint implements Cborable {
 
     public final AbsoluteCapability pointer;
     public final String ownerName;
-    public final Set<String> readers, writers;
 
-    public EntryPoint(AbsoluteCapability pointer, String ownerName, Set<String> readers, Set<String> writers) {
+    public EntryPoint(AbsoluteCapability pointer, String ownerName) {
         this.pointer = pointer;
         this.ownerName = ownerName;
-        this.readers = readers;
-        this.writers = writers;
     }
 
     public byte[] serializeAndSymmetricallyEncrypt(SymmetricKey key) {
@@ -58,8 +55,6 @@ public class EntryPoint implements Cborable {
         Map<String, CborObject> cbor = new TreeMap<>();
         cbor.put("c", pointer.toCbor());
         cbor.put("n", new CborObject.CborString(ownerName));
-        cbor.put("r", new CborObject.CborList(readers.stream().sorted().map(CborObject.CborString::new).collect(Collectors.toList())));
-        cbor.put("w", new CborObject.CborList(writers.stream().sorted().map(CborObject.CborString::new).collect(Collectors.toList())));
         return CborObject.CborMap.build(cbor);
     }
 
@@ -70,15 +65,7 @@ public class EntryPoint implements Cborable {
         SortedMap<CborObject, ? extends Cborable> map = ((CborObject.CborMap) cbor).values;
         AbsoluteCapability pointer = AbsoluteCapability.fromCbor(map.get(new CborObject.CborString("c")));
         String ownerName = ((CborObject.CborString) map.get(new CborObject.CborString("n"))).value;
-        Set<String> readers = ((CborObject.CborList) map.get(new CborObject.CborString("r"))).value
-                .stream()
-                .map(c -> ((CborObject.CborString) c).value)
-                .collect(Collectors.toSet());
-        Set<String> writers = ((CborObject.CborList) map.get(new CborObject.CborString("w"))).value
-                .stream()
-                .map(c -> ((CborObject.CborString) c).value)
-                .collect(Collectors.toSet());
-        return new EntryPoint(pointer, ownerName, readers, writers);
+        return new EntryPoint(pointer, ownerName);
     }
 
     @Override
@@ -87,14 +74,12 @@ public class EntryPoint implements Cborable {
         if (o == null || getClass() != o.getClass()) return false;
         EntryPoint that = (EntryPoint) o;
         return Objects.equals(pointer, that.pointer) &&
-                Objects.equals(ownerName, that.ownerName) &&
-                Objects.equals(readers, that.readers) &&
-                Objects.equals(writers, that.writers);
+                Objects.equals(ownerName, that.ownerName);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(pointer, ownerName, readers, writers);
+        return Objects.hash(pointer, ownerName);
     }
 
     static EntryPoint symmetricallyDecryptAndDeserialize(byte[] input, SymmetricKey key) {

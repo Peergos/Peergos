@@ -52,7 +52,7 @@ public class FriendSourcedTrieNode implements TrieNode {
                                                     e,
                                                     caps.getRetrievedCapabilities().stream()
                                                             .reduce(TrieNodeImpl.empty(),
-                                                                    (root, cap) -> root.put(trimOwner(cap.path), UserContext.convert(e.ownerName, cap)),
+                                                                    (root, cap) -> root.put(trimOwner(cap.path), new EntryPoint(cap.cap, e.ownerName)),
                                                                     (a, b) -> a),
                                                     caps.getRecordsRead(),
                                                     random, fragmenter)));
@@ -75,7 +75,7 @@ public class FriendSourcedTrieNode implements TrieNode {
                                                             capCount += newCaps.getRecordsRead();
                                                             root = newCaps.getRetrievedCapabilities().stream()
                                                                     .reduce(root,
-                                                                            (root, cap) -> root.put(trimOwner(cap.path), UserContext.convert(ownerName, cap)),
+                                                                            (root, cap) -> root.put(trimOwner(cap.path), new EntryPoint(cap.cap, ownerName)),
                                                                             (a, b) -> a);
                                                             return true;
                                                         });
