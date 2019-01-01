@@ -6,14 +6,11 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.SymmetricKey;
-import peergos.shared.io.ipfs.multibase.*;
 import peergos.shared.util.*;
 
 import java.util.*;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
-/** This provides a relative crytographic capability for reading a file or folder. It is assumed the holder also has
+/** This provides a relative cryptographic capability for reading a file or folder. It is assumed the holder also has
  * the owner key, and possibly the writer key (if absent here) externally.
  *
  */
