@@ -1,7 +1,7 @@
-package peergos.shared.merklebtree;
+package peergos.shared.mutable;
 
+import peergos.shared.*;
 import peergos.shared.cbor.*;
-import peergos.shared.io.ipfs.cid.*;
 
 import java.util.*;
 

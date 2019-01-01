@@ -31,10 +31,10 @@ public class ProxyingSocialNetwork implements SocialNetwork {
     }
 
     @Override
-    public CompletableFuture<byte[]> getFollowRequests(PublicKeyHash owner) {
+    public CompletableFuture<byte[]> getFollowRequests(PublicKeyHash owner, byte[] signedTime) {
         return redirectCall(owner,
-                () -> local.getFollowRequests(owner),
-                targetServer -> p2p.getFollowRequests(targetServer, owner));
+                () -> local.getFollowRequests(owner, signedTime),
+                targetServer -> p2p.getFollowRequests(targetServer, owner, signedTime));
     }
 
     @Override

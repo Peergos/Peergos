@@ -4,8 +4,6 @@ import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
-import peergos.shared.merklebtree.*;
-import peergos.shared.user.*;
 import peergos.shared.util.*;
 
 import java.util.*;

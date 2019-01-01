@@ -24,13 +24,31 @@ public class NonWriteThroughStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> put(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
-        return modifications.put(owner, writer, signatures, blocks);
+    public CompletableFuture<TransactionId> startTransaction(PublicKeyHash owner) {
+        return modifications.startTransaction(owner);
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
-        return modifications.putRaw(owner, writer, signatures, blocks);
+    public CompletableFuture<Boolean> closeTransaction(PublicKeyHash owner, TransactionId tid) {
+        return modifications.closeTransaction(owner, tid);
+    }
+
+    @Override
+    public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
+                                                  PublicKeyHash writer,
+                                                  List<byte[]> signatures,
+                                                  List<byte[]> blocks,
+                                                  TransactionId tid) {
+        return modifications.put(owner, writer, signatures, blocks, tid);
+    }
+
+    @Override
+    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner,
+                                                     PublicKeyHash writer,
+                                                     List<byte[]> signatures,
+                                                     List<byte[]> blocks,
+                                                     TransactionId tid) {
+        return modifications.putRaw(owner, writer, signatures, blocks, tid);
     }
 
     @Override

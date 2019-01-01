@@ -1,14 +1,14 @@
 package peergos.shared.user;
 import java.util.logging.*;
 
+import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.hamt.*;
 import peergos.shared.io.ipfs.multihash.*;
-import peergos.shared.merklebtree.*;
 import peergos.shared.mutable.*;
-import peergos.shared.storage.ContentAddressedStorage;
+import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -70,7 +70,12 @@ public class MutableTreeImpl implements MutableTree {
     }
 
     @Override
-    public CompletableFuture<Boolean> put(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, byte[] mapKey, MaybeMultihash existing, Multihash value) {
+    public CompletableFuture<Boolean> put(PublicKeyHash owner,
+                                          SigningPrivateKeyAndPublicHash writer,
+                                          byte[] mapKey,
+                                          MaybeMultihash existing,
+                                          Multihash value,
+                                          TransactionId tid) {
         PublicKeyHash publicWriterKey = writer.publicKeyHash;
         CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
 
@@ -79,12 +84,12 @@ public class MutableTreeImpl implements MutableTree {
                     WriterData holder = committed.props;
                     return (holder.tree.isPresent() ?
                             ChampWrapper.create(holder.tree.get(), hasher, dht) :
-                            ChampWrapper.create(owner, writer, x -> x.data, dht)
-                    ).thenCompose(tree -> tree.put(owner, writer, mapKey, existing, value))
+                            ChampWrapper.create(owner, writer, x -> x.data, tid, dht)
+                    ).thenCompose(tree -> tree.put(owner, writer, mapKey, existing, value, tid))
                             .thenApply(newRoot -> LOGGING ? log(newRoot, "TREE.put (" + ArrayOps.bytesToHex(mapKey)
                                     + ", " + value + ") => CAS(" + holder.tree + ", " + newRoot + ")") : newRoot)
                             .thenCompose(newTreeRoot -> holder.withChamp(newTreeRoot)
-                                    .commit(owner, writer, committed.hash, mutable, dht, lock::complete))
+                                    .commit(owner, writer, committed.hash, mutable, dht, lock::complete, tid))
                             .thenApply(x -> true)
                             .exceptionally(e -> {
                                 lock.complete(committed);
@@ -112,7 +117,11 @@ public class MutableTreeImpl implements MutableTree {
     }
 
     @Override
-    public CompletableFuture<Boolean> remove(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, byte[] mapKey, MaybeMultihash existing) {
+    public CompletableFuture<Boolean> remove(PublicKeyHash owner,
+                                             SigningPrivateKeyAndPublicHash writer,
+                                             byte[] mapKey,
+                                             MaybeMultihash existing,
+                                             TransactionId tid) {
         PublicKeyHash publicWriter = writer.publicKeyHash;
         CompletableFuture<CommittedWriterData> future = new CompletableFuture<>();
 
@@ -122,10 +131,10 @@ public class MutableTreeImpl implements MutableTree {
                     if (! holder.tree.isPresent())
                         throw new IllegalStateException("Tree root not present!");
                     return ChampWrapper.create(holder.tree.get(), hasher, dht)
-                            .thenCompose(tree -> tree.remove(owner, writer, mapKey, existing))
+                            .thenCompose(tree -> tree.remove(owner, writer, mapKey, existing, tid))
                             .thenApply(pair -> LOGGING ? log(pair, "TREE.rm (" + ArrayOps.bytesToHex(mapKey) + "  => " + pair) : pair)
                             .thenCompose(newTreeRoot -> holder.withChamp(newTreeRoot)
-                                    .commit(owner, writer, committed.hash, mutable, dht, future::complete))
+                                    .commit(owner, writer, committed.hash, mutable, dht, future::complete, tid))
                             .thenApply(x -> true);
                 });
     }

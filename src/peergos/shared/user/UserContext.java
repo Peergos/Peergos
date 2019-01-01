@@ -10,7 +10,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.SafeRandom;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multihash.Multihash;
-import peergos.shared.merklebtree.*;
+import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
@@ -207,52 +207,50 @@ public class UserContext {
                     LOG.info("Registering username " + username);
                     progressCallback.accept("Registering username");
                     return UserContext.register(username, signer, network).thenCompose(registered -> {
-                        if (! registered) {
+                        if (!registered) {
                             LOG.info("Couldn't register username");
                             throw new IllegalStateException("Couldn't register username: " + username);
                         }
-                        return network.dhtClient.putSigningKey(
+                        return Transaction.call(signerHash, tid -> network.dhtClient.putSigningKey(
                                 secretSigningKey.signatureOnly(publicSigningKey.serialize()),
-                                ContentAddressedStorage.hashKey(publicSigningKey),
-                                publicSigningKey)
-                                .thenCompose(returnedSignerHash -> {
+                                signerHash,
+                                publicSigningKey, tid).thenCompose(returnedSignerHash -> {
                                     PublicBoxingKey publicBoxingKey = userWithRoot.getBoxingPair().publicBoxingKey;
-                                    return network.dhtClient.putBoxingKey(signerHash, secretSigningKey.signatureOnly(publicBoxingKey.serialize()), publicBoxingKey)
-                                        .thenCompose(boxerHash -> {
-                                            progressCallback.accept("Creating filesystem");
-                                            WriterData newUserData = WriterData.createEmpty(
-                                                    signerHash,
-                                                    Optional.of(new PublicKeyHash(boxerHash)),
-                                                    userWithRoot.getRoot());
+                                    return network.dhtClient.putBoxingKey(signerHash,
+                                            secretSigningKey.signatureOnly(publicBoxingKey.serialize()), publicBoxingKey, tid);
+                                }),
+                                network.dhtClient
+                        );
+                    }).thenCompose(boxerHash -> {
+                        progressCallback.accept("Creating filesystem");
+                        WriterData newUserData = WriterData.createEmpty(
+                                signerHash,
+                                Optional.of(new PublicKeyHash(boxerHash)),
+                                userWithRoot.getRoot());
 
-                                            CommittedWriterData notCommitted = new CommittedWriterData(MaybeMultihash.empty(), newUserData);
-                                            UserContext context = new UserContext(username,
-                                                    signer,
-                                                    userWithRoot.getBoxingPair(),
-                                                    userWithRoot.getRoot(),
-                                                    network,
-                                                    crypto,
-                                                    CompletableFuture.completedFuture(notCommitted),
-                                                    TrieNodeImpl.empty());
+                        CommittedWriterData notCommitted = new CommittedWriterData(MaybeMultihash.empty(), newUserData);
+                        UserContext context = new UserContext(username,
+                                signer,
+                                userWithRoot.getBoxingPair(),
+                                userWithRoot.getRoot(),
+                                network,
+                                crypto,
+                                CompletableFuture.completedFuture(notCommitted),
+                                TrieNodeImpl.empty());
 
-                                            LOG.info("Creating user's root directory");
-                                            long t1 = System.currentTimeMillis();
-                                            return context.createEntryDirectory(signer, username).thenCompose(userRoot -> {
-                                                LOG.info("Creating root directory took " + (System.currentTimeMillis() - t1) + " mS");
-                                                return ((DirAccess) userRoot.fileAccess).mkdir(
-                                                        SHARED_DIR_NAME,
-                                                        network,
-                                                        userRoot.capability.getLocation().owner,
-                                                        userRoot.capability.signer(),
-                                                        userRoot.capability.location.getMapKey(),
-                                                        userRoot.capability.baseKey,
-                                                        null,
-                                                        true,
-                                                        crypto.random)
-                                                        .thenCompose(x -> signIn(username, userWithRoot, network.clear(), crypto, progressCallback));
-                                            });
-                                        });
-                                });
+                        LOG.info("Creating user's root directory");
+                        long t1 = System.currentTimeMillis();
+                        return context.createEntryDirectory(signer, username).thenCompose(userRoot -> {
+                            LOG.info("Creating root directory took " + (System.currentTimeMillis() - t1) + " mS");
+                            return ((DirAccess) userRoot.fileAccess).mkdir(
+                                    SHARED_DIR_NAME,
+                                    network,
+                                    (WritableAbsoluteCapability) userRoot.capability,
+                                    null,
+                                    true,
+                                    crypto.random)
+                                    .thenCompose(x -> signIn(username, userWithRoot, network.clear(), crypto, progressCallback));
+                        });
                     });
                 }).thenCompose(context -> network.coreNode.getUsernames(PEERGOS_USERNAME)
                         .thenCompose(usernames -> usernames.contains(PEERGOS_USERNAME) && ! username.equals(PEERGOS_USERNAME) ?
@@ -264,16 +262,16 @@ public class UserContext {
 
     @JsMethod
     public static CompletableFuture<UserContext> fromPublicLink(String link, NetworkAccess network, Crypto crypto) {
-        Capability entryPoint = null;
+        AbsoluteCapability cap;
         try {
-            entryPoint = Capability.fromLink(link);
+            cap = AbsoluteCapability.fromLink(link);
         } catch (Exception e) { //link was invalid
             CompletableFuture<UserContext> invalidLink = new CompletableFuture<>();
             invalidLink.completeExceptionally(e);
             return invalidLink;
         }
-        EntryPoint entry = new EntryPoint(entryPoint, "", Collections.emptySet(), Collections.emptySet());
-        WriterData empty = WriterData.createEmpty(entryPoint.location.owner);
+        EntryPoint entry = new EntryPoint(cap, "");
+        WriterData empty = WriterData.createEmpty(cap.owner);
         CommittedWriterData committed = new CommittedWriterData(MaybeMultihash.empty(), empty);
         CompletableFuture<CommittedWriterData> userData = CompletableFuture.completedFuture(committed);
         UserContext context = new UserContext(null, null, null, null, network.clear(), crypto, userData, TrieNodeImpl.empty());
@@ -482,6 +480,7 @@ public class UserContext {
                     return changePassword(oldPassword, newPassword, algorithm, algorithm);
                 });
     }
+
     public CompletableFuture<UserContext> changePassword(String oldPassword, String newPassword,
                                                          SecretGenerationAlgorithm existingAlgorithm,
                                                          SecretGenerationAlgorithm newAlgorithm) {
@@ -500,39 +499,41 @@ public class UserContext {
                                 return addToUserDataQueue(lock)
                                         .thenCompose(wd -> {
                                             PublicSigningKey newPublicSigningKey = updatedUser.getUser().publicSigningKey;
-                                                    return network.dhtClient.putSigningKey(
+                                            PublicKeyHash existingOwner = ContentAddressedStorage.hashKey(existingUser.getUser().publicSigningKey);
+                                            return Transaction.call(existingOwner,
+                                                    tid -> network.dhtClient.putSigningKey(
                                                             existingUser.getUser().secretSigningKey.signatureOnly(newPublicSigningKey.serialize()),
-                                                            ContentAddressedStorage.hashKey(existingUser.getUser().publicSigningKey),
-                                                            newPublicSigningKey
-                                                    ).thenCompose(newSignerHash -> wd.props
-                                                            .changeKeys(
-                                                                    signer,
-                                                                    new SigningPrivateKeyAndPublicHash(newSignerHash, updatedUser.getUser().secretSigningKey),
-                                                                    wd.hash,
-                                                                    updatedUser.getBoxingPair().publicBoxingKey,
-                                                                    existingUser.getRoot(),
-                                                                    updatedUser.getRoot(),
-                                                                    newAlgorithm,
-                                                                    network,
-                                                                    lock::complete)
-                                                            .thenCompose(userData -> {
-                                                                SigningPrivateKeyAndPublicHash newUser =
-                                                                        new SigningPrivateKeyAndPublicHash(newSignerHash, updatedUser.getUser().secretSigningKey);
-                                                                return network.coreNode.getChain(username).thenCompose(existing -> {
-                                                                    List<Multihash> storage = existing.get(existing.size() - 1).claim.storageProviders;
-                                                                    List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createChain(signer, newUser, username, expiry, storage);
-                                                                    return network.coreNode.updateChain(username, claimChain)
-                                                                            .thenCompose(updatedChain -> {
-                                                                                if (!updatedChain)
-                                                                                    throw new IllegalStateException("Couldn't register new public keys during password change!");
+                                                            existingOwner,
+                                                            newPublicSigningKey,
+                                                            tid),
+                                                    network.dhtClient
+                                            ).thenCompose(newSignerHash -> wd.props.changeKeys(
+                                                    signer,
+                                                    new SigningPrivateKeyAndPublicHash(newSignerHash, updatedUser.getUser().secretSigningKey),
+                                                    wd.hash,
+                                                    updatedUser.getBoxingPair().publicBoxingKey,
+                                                    existingUser.getRoot(),
+                                                    updatedUser.getRoot(),
+                                                    newAlgorithm,
+                                                    network,
+                                                    lock::complete
+                                                    ).thenCompose(userData -> {
+                                                        SigningPrivateKeyAndPublicHash newUser =
+                                                                new SigningPrivateKeyAndPublicHash(newSignerHash, updatedUser.getUser().secretSigningKey);
+                                                        return network.coreNode.getChain(username).thenCompose(existing -> {
+                                                            List<Multihash> storage = existing.get(existing.size() - 1).claim.storageProviders;
+                                                            List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createChain(signer, newUser, username, expiry, storage);
+                                                            return network.coreNode.updateChain(username, claimChain)
+                                                                    .thenCompose(updatedChain -> {
+                                                                        if (!updatedChain)
+                                                                            throw new IllegalStateException("Couldn't register new public keys during password change!");
 
-                                                                                return UserContext.ensureSignedUp(username, newPassword, network, crypto);
-                                                                            });
-                                                                });
-                                                            })
-                                                    );
-                                                }
-                                        );
+                                                                        return UserContext.ensureSignedUp(username, newPassword, network, crypto);
+                                                                    });
+                                                        });
+                                                    })
+                                            );
+                                        });
                             });
                 });
     }
@@ -541,10 +542,11 @@ public class UserContext {
         long t1 = System.currentTimeMillis();
         SigningKeyPair writer = SigningKeyPair.random(crypto.random, crypto.signer);
         LOG.info("Random User generation took " + (System.currentTimeMillis()-t1) + " mS");
-        return network.dhtClient.putSigningKey(
+        return Transaction.call(owner.publicKeyHash, tid -> network.dhtClient.putSigningKey(
                 owner.secret.signatureOnly(writer.publicSigningKey.serialize()),
                 owner.publicKeyHash,
-                writer.publicSigningKey).thenCompose(writerHash -> {
+                writer.publicSigningKey,
+                tid).thenCompose(writerHash -> {
             byte[] rootMapKey = new byte[32]; // root will be stored under this in the core node
             crypto.random.randombytes(rootMapKey, 0, 32);
             SymmetricKey rootRKey = SymmetricKey.random();
@@ -552,16 +554,15 @@ public class UserContext {
 
             // and authorise the writer key
             SigningPrivateKeyAndPublicHash writerWithHash = new SigningPrivateKeyAndPublicHash(writerHash, writer.secretSigningKey);
-            Capability rootPointer = new Capability(this.signer.publicKeyHash, writerWithHash, rootMapKey, rootRKey);
-            EntryPoint entry = new EntryPoint(rootPointer, this.username, Collections.emptySet(), Collections.emptySet());
-            return addOwnedKeyAndCommit(entry.pointer.location.writer)
+            WritableAbsoluteCapability rootPointer = new WritableAbsoluteCapability(owner.publicKeyHash, writerHash, rootMapKey, rootRKey, writer.secretSigningKey);
+            EntryPoint entry = new EntryPoint(rootPointer, this.username);
+            return addOwnedKeyAndCommit(entry.pointer.writer, tid)
                     .thenCompose(x -> {
                         long t2 = System.currentTimeMillis();
                         DirAccess root = DirAccess.create(MaybeMultihash.empty(), rootRKey, new FileProperties(directoryName, "",
-                                0, LocalDateTime.now(), false, Optional.empty()), (Location) null, null, null);
-                        Location rootLocation = new Location(this.signer.publicKeyHash, writerHash, rootMapKey);
+                                0, LocalDateTime.now(), false, Optional.empty()), (RelativeCapability) null,null);
                         LOG.info("Uploading entry point directory");
-                        return network.uploadChunk(root, rootLocation, writerWithHash).thenApply(chunkHash -> {
+                        return network.uploadChunk(root, this.signer.publicKeyHash, rootMapKey, writerWithHash, tid).thenApply(chunkHash -> {
                             long t3 = System.currentTimeMillis();
                             LOG.info("Uploading root dir metadata took " + (t3 - t2) + " mS");
 
@@ -569,7 +570,7 @@ public class UserContext {
                             return new RetrievedCapability(rootPointer, root.withHash(chunkHash));
                         });
                     }).thenCompose(x -> addToStaticDataAndCommit(entry).thenApply(y -> x));
-        });
+        }), network.dhtClient);
     }
 
     public CompletableFuture<PublicSigningKey> getSigningKey(PublicKeyHash keyhash) {
@@ -594,7 +595,7 @@ public class UserContext {
         return existing;
     }
 
-    private CompletableFuture<CommittedWriterData> addOwnedKeyAndCommit(PublicKeyHash owned) {
+    private CompletableFuture<CommittedWriterData> addOwnedKeyAndCommit(PublicKeyHash owned, TransactionId tid) {
         CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
         return addToUserDataQueue(lock)
                 .thenCompose(wd -> {
@@ -604,7 +605,7 @@ public class UserContext {
                     ).collect(Collectors.toSet());
 
                     WriterData writerData = wd.props.withOwnedKeys(updated);
-                    return writerData.commit(signer.publicKeyHash, signer, wd.hash, network, lock::complete);
+                    return writerData.commit(signer.publicKeyHash, signer, wd.hash, network, lock::complete, tid);
                 });
     }
 
@@ -613,7 +614,9 @@ public class UserContext {
         return addToUserDataQueue(lock)
                 .thenCompose(wd -> {
                     WriterData writerData = wd.props.addNamedKey(keyName, owned);
-                    return writerData.commit(signer.publicKeyHash, signer, wd.hash, network, lock::complete);
+                    return Transaction.call(signer.publicKeyHash,
+                            tid -> writerData.commit(signer.publicKeyHash, signer, wd.hash, network, lock::complete, tid),
+                            network.dhtClient);
                 });
     }
 
@@ -631,7 +634,7 @@ public class UserContext {
     public CompletableFuture<Set<String>> getFollowing() {
         return getFriendRoots()
                 .thenApply(set -> set.stream()
-                        .map(froot -> froot.getOwner())
+                        .map(froot -> froot.getOwnerName())
                         .filter(name -> !name.equals(username))
                         .collect(Collectors.toSet()));
     }
@@ -655,7 +658,7 @@ public class UserContext {
             return wd.props.staticData.get()
                     .getEntryPoints(rootKey)
                     .stream()
-                    .map(e -> e.owner)
+                    .map(e -> e.ownerName)
                     .filter(name -> ! name.equals(username))
                     .collect(Collectors.toSet());
         });
@@ -680,18 +683,18 @@ public class UserContext {
 
     @JsMethod
     public CompletableFuture<Boolean> sendReplyFollowRequest(FollowRequest initialRequest, boolean accept, boolean reciprocate) {
-        String theirUsername = initialRequest.entry.get().owner;
+        String theirUsername = initialRequest.entry.get().ownerName;
         // if accept, create directory to share with them, note in entry points (they follow us)
         if (!accept && !reciprocate) {
             // send a null entry and null key (full rejection)
             DataSink dout = new DataSink();
             // write a null entry point
-            EntryPoint entry = new EntryPoint(Capability.createNull(), username, Collections.emptySet(), Collections.emptySet());
+            EntryPoint entry = new EntryPoint(AbsoluteCapability.createNull(), username);
             dout.writeArray(entry.serialize());
             dout.writeArray(new byte[0]); // tell them we're not reciprocating
             byte[] plaintext = dout.toByteArray();
 
-            return getPublicKeys(initialRequest.entry.get().owner).thenCompose(pair -> {
+            return getPublicKeys(initialRequest.entry.get().ownerName).thenCompose(pair -> {
                 PublicBoxingKey targetUser = pair.get().right;
                 // create a tmp keypair whose public key we can prepend to the request without leaking information
                 BoxingKeyPair tmp = BoxingKeyPair.random(crypto.random, crypto.boxer);
@@ -700,7 +703,7 @@ public class UserContext {
                 DataSink resp = new DataSink();
                 resp.writeArray(tmp.publicBoxingKey.serialize());
                 resp.writeArray(payload);
-                network.social.sendFollowRequest(initialRequest.entry.get().pointer.location.owner, resp.toByteArray());
+                network.social.sendFollowRequest(initialRequest.entry.get().pointer.owner, resp.toByteArray());
                 // remove pending follow request from them
                 return network.social.removeFollowRequest(signer.publicKeyHash, signer.secret.signMessage(initialRequest.rawCipher));
             });
@@ -713,7 +716,10 @@ public class UserContext {
                     return sharing.mkdir(theirUsername, network, initialRequest.key.get(), true, crypto.random)
                             .thenCompose(friendRoot -> {
                                 // add a note to our static data so we know who we sent the read access to
-                                EntryPoint entry = new EntryPoint(friendRoot.readOnly(), username, Collections.singleton(theirUsername), Collections.emptySet());
+                                EntryPoint entry = new EntryPoint(friendRoot.readOnly()
+                                        .withWritingKey(sharing.writer())
+                                        .toAbsolute(sharing.getPointer().capability),
+                                        username);
 
                                 return addToStaticDataAndCommit(entry).thenApply(trie -> {
                                     this.entrie = trie;
@@ -723,7 +729,7 @@ public class UserContext {
                             });
                 });
             } else {
-                EntryPoint entry = new EntryPoint(Capability.createNull(), username, Collections.emptySet(), Collections.emptySet());
+                EntryPoint entry = new EntryPoint(AbsoluteCapability.createNull(), username);
                 dout.writeArray(entry.serialize());
                 return CompletableFuture.completedFuture(dout);
             }
@@ -737,7 +743,7 @@ public class UserContext {
             }
             byte[] plaintext = dout.toByteArray();
 
-            return getPublicKeys(initialRequest.entry.get().owner).thenCompose(pair -> {
+            return getPublicKeys(initialRequest.entry.get().ownerName).thenCompose(pair -> {
                 PublicBoxingKey targetUser = pair.get().right;
                 // create a tmp keypair whose public key we can prepend to the request without leaking information
                 BoxingKeyPair tmp = BoxingKeyPair.random(crypto.random, crypto.boxer);
@@ -746,7 +752,7 @@ public class UserContext {
                 DataSink resp = new DataSink();
                 resp.writeArray(tmp.publicBoxingKey.serialize());
                 resp.writeArray(payload);
-                return network.social.sendFollowRequest(initialRequest.entry.get().pointer.location.owner, resp.toByteArray());
+                return network.social.sendFollowRequest(initialRequest.entry.get().pointer.owner, resp.toByteArray());
             });
         }).thenCompose(b -> {
             if (reciprocate)
@@ -781,7 +787,8 @@ public class UserContext {
                         return sharing.mkdir(targetUsername, network, null, true, crypto.random).thenCompose(friendRoot -> {
 
                             // if they accept the request we will add a note to our static data so we know who we sent the read access to
-                            EntryPoint entry = new EntryPoint(friendRoot.readOnly(), username, Collections.singleton(targetUsername), Collections.emptySet());
+                            EntryPoint entry = new EntryPoint(friendRoot.readOnly().withWritingKey(sharing.writer()).toAbsolute(sharing.getPointer().capability),
+                                    username);
 
                             // send details to allow friend to follow us, and optionally let us follow them
                             // create a tmp keypair whose public key we can prepend to the request without leaking information
@@ -840,7 +847,7 @@ public class UserContext {
             return getByPath(path.getParent().toString())
                     .thenCompose(parent -> sharedWith(toUnshare)
                             .thenCompose(sharedWithUsers ->
-                                    toUnshare.makeDirty(network, crypto.random, parent.get(), readersToRemove)
+                                    toUnshare.makeDirty(network, crypto.random, parent.get())
                                             .thenCompose(markedDirty -> {
                                                 Set<String> existingEntries = sharedWithCache.getOrDefault("/" + pathString, new HashSet<>());
                                                 existingEntries.removeAll(readersToRemove);
@@ -917,12 +924,16 @@ public class UserContext {
                 entryPoints.add(entry);
                 return new UserStaticData(entryPoints, rootKey);
             });
-            return wd.props.withStaticData(updated).commit(signer.publicKeyHash, signer, wd.hash, network, lock::complete)
-                    .thenCompose(res -> getUserRoot().thenCompose(ourRoot -> addEntryPoint(username, ourRoot, root, entry, network, crypto.random, fragmenter)))
-                    .exceptionally(t -> {
-                        lock.complete(wd);
-                        return root;
-                    });
+            return Transaction.call(signer.publicKeyHash,
+                    tid -> wd.props.withStaticData(updated)
+                            .commit(signer.publicKeyHash, signer, wd.hash, network, lock::complete, tid),
+                    network.dhtClient
+            ).thenCompose(res -> getUserRoot()
+                    .thenCompose(ourRoot -> addEntryPoint(username, ourRoot, root, entry, network, crypto.random, fragmenter))
+            ).exceptionally(t -> {
+                lock.complete(wd);
+                return root;
+            });
         });
     }
 
@@ -932,13 +943,10 @@ public class UserContext {
                 .thenCompose(wd -> wd.props.removeFromStaticData(fileWrapper, rootKey, signer, wd.hash, network, lock::complete));
     }
 
-    /**
-     * Process any responses to our follow requests.
-     *
-     * @return initial follow requests
-     */
-    public CompletableFuture<List<FollowRequest>> processFollowRequests() {
-        return network.social.getFollowRequests(signer.publicKeyHash).thenCompose(reqs -> {
+    private CompletableFuture<List<FollowRequest>> getFollowRequests() {
+        byte[] time = new CborObject.CborLong(System.currentTimeMillis()).serialize();
+        byte[] auth = signer.secret.signMessage(time);
+        return network.social.getFollowRequests(signer.publicKeyHash, auth).thenApply(reqs -> {
             DataSource din = new DataSource(reqs);
             List<FollowRequest> all;
             try {
@@ -957,20 +965,29 @@ public class UserContext {
                 throw new RuntimeException(e);
             }
 
-            return processFollowRequests(all);
+            return all;
         });
+    }
+
+    /**
+     * Process any responses to our follow requests.
+     *
+     * @return initial follow requests
+     */
+    public CompletableFuture<List<FollowRequest>> processFollowRequests() {
+        return getFollowRequests().thenCompose(this::processFollowRequests);
     }
 
     private CompletableFuture<List<FollowRequest>> processFollowRequests(List<FollowRequest> all) {
         return getSharingFolder().thenCompose(sharing ->
                 getFollowerRoots().thenCompose(followerRoots -> {
                     List<FollowRequest> replies = all.stream()
-                            .filter(freq -> followerRoots.containsKey(freq.entry.get().owner))
+                            .filter(freq -> followerRoots.containsKey(freq.entry.get().ownerName))
                             .collect(Collectors.toList());
 
                     BiFunction<TrieNode, FollowRequest, CompletableFuture<TrieNode>> addToStatic = (root, freq) -> {
                         if (!Arrays.equals(freq.entry.get().pointer.baseKey.serialize(), SymmetricKey.createNull().serialize())) {
-                            CompletableFuture<TrieNode> updatedRoot = freq.entry.get().owner.equals(username) ?
+                            CompletableFuture<TrieNode> updatedRoot = freq.entry.get().ownerName.equals(username) ?
                                     CompletableFuture.completedFuture(root) : // ignore responses claiming to be owned by us
                                     addToStaticDataAndCommit(root, freq.entry.get());
                             return updatedRoot.thenCompose(newRoot -> {
@@ -985,7 +1002,7 @@ public class UserContext {
 
                     BiFunction<TrieNode, FollowRequest, CompletableFuture<TrieNode>> mozart = (trie, freq) -> {
                         // delete our folder if they didn't reciprocate
-                        FileWrapper ourDirForThem = followerRoots.get(freq.entry.get().owner);
+                        FileWrapper ourDirForThem = followerRoots.get(freq.entry.get().ownerName);
                         byte[] ourKeyForThem = ourDirForThem.getKey().serialize();
                         byte[] keyFromResponse = freq.key.map(k -> k.serialize()).orElse(null);
                         if (keyFromResponse == null || !Arrays.equals(keyFromResponse, ourKeyForThem)) {
@@ -1000,17 +1017,17 @@ public class UserContext {
                             // They reciprocated, but didn't accept (they follow us, but we can't follow them)
                             // add entry point to static data to signify their acceptance
                             EntryPoint entryWeSentToThem = new EntryPoint(ourDirForThem.getPointer().capability.readOnly(),
-                                    username, Collections.singleton(ourDirForThem.getName()), Collections.emptySet());
+                                    username);
                             return addToStaticDataAndCommit(trie, entryWeSentToThem);
                         } else {
                             // they accepted and reciprocated
                             // add entry point to static data to signify their acceptance
                             EntryPoint entryWeSentToThem = new EntryPoint(ourDirForThem.getPointer().capability.readOnly(),
-                                    username, Collections.singleton(ourDirForThem.getName()), Collections.emptySet());
+                                    username);
 
                             // add new entry point to tree root
                             EntryPoint entry = freq.entry.get();
-                            if (entry.owner.equals(username))
+                            if (entry.ownerName.equals(username))
                                 throw new IllegalStateException("Received a follow request claiming to be owned by us!");
                             return addToStaticDataAndCommit(trie, entryWeSentToThem)
                                     .thenCompose(newRoot -> network.retrieveEntryPoint(entry)
@@ -1021,7 +1038,7 @@ public class UserContext {
                         }
                     };
                     List<FollowRequest> initialRequests = all.stream()
-                            .filter(freq -> !followerRoots.containsKey(freq.entry.get().owner))
+                            .filter(freq -> !followerRoots.containsKey(freq.entry.get().ownerName))
                             .collect(Collectors.toList());
                     return Futures.reduceAll(replies, entrie, mozart, (a, b) -> a)
                             .thenApply(newRoot -> {
@@ -1075,7 +1092,7 @@ public class UserContext {
         List<EntryPoint> ourFileSystemEntries = userData.staticData.get()
                 .getEntryPoints(rootKey)
                 .stream()
-                .filter(e -> e.owner.equals(ourName))
+                .filter(e -> e.ownerName.equals(ourName))
                 .collect(Collectors.toList());
         return Futures.reduceAll(ourFileSystemEntries, root, (t, e) -> addEntryPoint(ourName, null, t, e, network, random, fragmenter), (a, b) -> a)
                 .exceptionally(Futures::logError);
@@ -1095,16 +1112,12 @@ public class UserContext {
         List<EntryPoint> notOurFileSystemEntries = userData.staticData.get()
                 .getEntryPoints(rootKey)
                 .stream()
-                .filter(e -> ! e.owner.equals(ourName))
+                .filter(e -> ! e.ownerName.equals(ourName))
                 .collect(Collectors.toList());
 
         // need to to retrieve all the entry points of our friends
         return Futures.reduceAll(notOurFileSystemEntries, ourRoot, (t, e) -> addEntryPoint(ourName, null, t, e, network, random, fragmenter), (a, b) -> a)
                 .exceptionally(Futures::logError);
-    }
-
-    public static EntryPoint convert(String owner, CapabilityWithPath cap) {
-        return new EntryPoint(cap.cap, owner, Collections.emptySet(), Collections.emptySet());
     }
 
     private static CompletableFuture<TrieNode> addRetrievedEntryPoint(String ourName,
@@ -1115,7 +1128,7 @@ public class UserContext {
                                                                       SafeRandom random,
                                                                       Fragmenter fragmenter) {
         // check entrypoint doesn't forge the owner
-        return  (fileCap.owner.equals(ourName) ? CompletableFuture.completedFuture(true) :
+        return  (fileCap.ownerName.equals(ourName) ? CompletableFuture.completedFuture(true) :
                 fileCap.isValid(path, network)).thenCompose(valid -> {
             String[] parts = path.split("/");
             if (parts.length < 3 || !parts[2].equals(SHARED_DIR_NAME))
@@ -1155,7 +1168,7 @@ public class UserContext {
     }
 
     private CompletableFuture<Boolean> cleanOurEntryPoint(EntryPoint e) {
-        if (! e.owner.equals(username))
+        if (! e.ownerName.equals(username))
             return CompletableFuture.completedFuture(false);
         return network.retrieveEntryPoint(e).thenCompose(fileOpt -> {
             if (! fileOpt.isPresent())
@@ -1168,7 +1181,7 @@ public class UserContext {
                         // and the dir/file it points to
                         // first make it writable by combining with the root writing key
                         getByPath("/" + username).thenCompose(rootDir ->
-                                new FileWrapper(file.getPointer(), file.getOwner(), e.readers, e.writers, rootDir.get().getEntryWriterKey())
+                                new FileWrapper(file.getPointer(), file.getOwnerName(), rootDir.get().getEntryWriterKey())
                                         .remove(network, null)
                                         .thenApply(x -> removeFromStaticData(file)));
                         return true;

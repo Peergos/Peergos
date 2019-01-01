@@ -16,15 +16,36 @@ import java.util.stream.*;
 
 public interface ContentAddressedStorageProxy {
 
-    CompletableFuture<List<Multihash>> put(Multihash targetServerId, PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks);
+    CompletableFuture<TransactionId> startTransaction(Multihash targetServerId, PublicKeyHash owner);
 
-    CompletableFuture<List<Multihash>> putRaw(Multihash targetServerId, PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks);
+    CompletableFuture<Boolean> closeTransaction(Multihash targetServerId, PublicKeyHash owner, TransactionId tid);
 
-    CompletableFuture<List<MultiAddress>> pinUpdate(Multihash targetServerId, PublicKeyHash owner, Multihash existing, Multihash updated);
+    CompletableFuture<List<Multihash>> put(Multihash targetServerId,
+                                           PublicKeyHash owner,
+                                           PublicKeyHash writer,
+                                           List<byte[]> signatures,
+                                           List<byte[]> blocks,
+                                           TransactionId tid);
 
-    CompletableFuture<List<Multihash>> recursivePin(Multihash targetServerId, PublicKeyHash owner, Multihash h);
+    CompletableFuture<List<Multihash>> putRaw(Multihash targetServerId,
+                                              PublicKeyHash owner,
+                                              PublicKeyHash writer,
+                                              List<byte[]> signatures,
+                                              List<byte[]> blocks,
+                                              TransactionId tid);
 
-    CompletableFuture<List<Multihash>> recursiveUnpin(Multihash targetServerId, PublicKeyHash owner, Multihash h);
+    CompletableFuture<List<MultiAddress>> pinUpdate(Multihash targetServerId,
+                                                    PublicKeyHash owner,
+                                                    Multihash existing,
+                                                    Multihash updated);
+
+    CompletableFuture<List<Multihash>> recursivePin(Multihash targetServerId,
+                                                    PublicKeyHash owner,
+                                                    Multihash h);
+
+    CompletableFuture<List<Multihash>> recursiveUnpin(Multihash targetServerId,
+                                                      PublicKeyHash owner,
+                                                      Multihash h);
 
     class HTTP implements ContentAddressedStorageProxy {
         private static final String P2P_PROXY_PROTOCOL = "/http";
@@ -57,18 +78,52 @@ public interface ContentAddressedStorageProxy {
         }
 
         @Override
-        public CompletableFuture<List<Multihash>> put(Multihash targetServerId, PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
-            return put(targetServerId, owner, writer, signatures, blocks, "cbor");
+        public CompletableFuture<TransactionId> startTransaction(Multihash targetServerId,
+                                                                 PublicKeyHash owner) {
+            return poster.get(getProxyUrlPrefix(targetServerId) + apiPrefix
+                    + "transaction/start" + "?owner=" + encode(owner.toString()))
+                    .thenApply(raw -> new TransactionId(new String(raw)));
         }
 
         @Override
-        public CompletableFuture<List<Multihash>> putRaw(Multihash targetServerId, PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
-            return put(targetServerId, owner, writer, signatures, blocks, "raw");
+        public CompletableFuture<Boolean> closeTransaction(Multihash targetServerId,
+                                                           PublicKeyHash owner,
+                                                           TransactionId tid) {
+            return poster.get(getProxyUrlPrefix(targetServerId) + apiPrefix
+                    + "transaction/close?arg=" + tid.toString() + "&owner=" + encode(owner.toString()))
+                    .thenApply(raw -> new String(raw).equals("1"));
         }
 
-        private CompletableFuture<List<Multihash>> put(Multihash targetServerId, PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks, String format) {
+        @Override
+        public CompletableFuture<List<Multihash>> put(Multihash targetServerId,
+                                                      PublicKeyHash owner,
+                                                      PublicKeyHash writer,
+                                                      List<byte[]> signatures,
+                                                      List<byte[]> blocks,
+                                                      TransactionId tid) {
+            return put(targetServerId, owner, writer, signatures, blocks, "cbor", tid);
+        }
+
+        @Override
+        public CompletableFuture<List<Multihash>> putRaw(Multihash targetServerId,
+                                                         PublicKeyHash owner,
+                                                         PublicKeyHash writer,
+                                                         List<byte[]> signatures,
+                                                         List<byte[]> blocks,
+                                                         TransactionId tid) {
+            return put(targetServerId, owner, writer, signatures, blocks, "raw", tid);
+        }
+
+        private CompletableFuture<List<Multihash>> put(Multihash targetServerId,
+                                                       PublicKeyHash owner,
+                                                       PublicKeyHash writer,
+                                                       List<byte[]> signatures,
+                                                       List<byte[]> blocks,
+                                                       String format,
+                                                       TransactionId tid) {
             return poster.postMultipart(getProxyUrlPrefix(targetServerId) + apiPrefix + "block/put?format=" + format
                     + "&owner=" + encode(owner.toString())
+                    + "&transaction=" + encode(tid.toString())
                     + "&writer=" + encode(writer.toString())
                     + "&signatures=" + signatures.stream().map(ArrayOps::bytesToHex).reduce("", (a, b) -> a + "," + b).substring(1), blocks)
                     .thenApply(bytes -> JSONParser.parseStream(new String(bytes))

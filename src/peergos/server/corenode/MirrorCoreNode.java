@@ -1,8 +1,8 @@
 package peergos.server.corenode;
 
+import peergos.shared.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.merklebtree.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;

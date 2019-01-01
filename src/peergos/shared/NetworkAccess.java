@@ -86,8 +86,8 @@ public class NetworkAccess {
         return new HTTPCoreNode(poster);
     }
 
-    public static ContentAddressedStorage buildLocalDht(HttpPoster apiPoster) {
-        return new CachingStorage(new ContentAddressedStorage.HTTP(apiPoster), 10_000, 50 * 1024);
+    public static ContentAddressedStorage buildLocalDht(HttpPoster apiPoster, boolean isPeergosServer) {
+        return new CachingStorage(new ContentAddressedStorage.HTTP(apiPoster, isPeergosServer), 10_000, 50 * 1024);
     }
 
     @JsMethod
@@ -121,7 +121,7 @@ public class NetworkAccess {
     }
 
     public static CompletableFuture<NetworkAccess> build(HttpPoster apiPoster, HttpPoster p2pPoster, Multihash pkiServerNodeId, boolean isJavascript) {
-        ContentAddressedStorage localDht = buildLocalDht(apiPoster);
+        ContentAddressedStorage localDht = buildLocalDht(apiPoster, true);
 
         CoreNode direct = buildDirectCorenode(apiPoster);
         CompletableFuture<NetworkAccess> result = new CompletableFuture<>();
@@ -138,9 +138,10 @@ public class NetworkAccess {
                 })
                 .exceptionally(t -> {
                     // We are not on a Peergos server, hopefully an IPFS gateway
+                    ContentAddressedStorage localIpfs = buildLocalDht(apiPoster, false);
                     CoreNode core = buildProxyingCorenode(p2pPoster, pkiServerNodeId);
                     core.getUsernames("").thenCompose(usernames ->
-                            build(core, localDht, apiPoster, p2pPoster, usernames, false, isJavascript)
+                            build(core, localIpfs, apiPoster, p2pPoster, usernames, false, isJavascript)
                                     .thenApply(result::complete))
                             .exceptionally(t2 -> {
                                 result.completeExceptionally(t2);
@@ -194,8 +195,9 @@ public class NetworkAccess {
         CoreNode direct = buildDirectCorenode(poster);
         try {
             List<String> usernames = direct.getUsernames("").get();
-            ContentAddressedStorage localDht = buildLocalDht(poster);
-            return build(direct, localDht, poster, poster, usernames, true, false);
+            boolean isPeergosServer = true;
+            ContentAddressedStorage localDht = buildLocalDht(poster, isPeergosServer);
+            return build(direct, localDht, poster, poster, usernames, isPeergosServer, false);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -209,11 +211,13 @@ public class NetworkAccess {
         }
     }
 
-    public CompletableFuture<List<RetrievedCapability>> retrieveAllMetadata(List<Capability> links) {
+    public CompletableFuture<List<RetrievedCapability>> retrieveAllMetadata(List<AbsoluteCapability> links) {
         List<CompletableFuture<Optional<RetrievedCapability>>> all = links.stream()
                 .map(link -> {
-                    Location loc = link.location;
-                    return tree.get(loc.owner, loc.writer, loc.getMapKey())
+                    PublicKeyHash owner = link.owner;
+                    PublicKeyHash writer = link.writer;
+                    byte[] mapKey = link.getMapKey();
+                    return tree.get(owner, writer, mapKey)
                             .thenCompose(key -> {
                                 if (key.isPresent())
                                     return dhtClient.get(key.get())
@@ -221,7 +225,7 @@ public class NetworkAccess {
                                                     .map(cbor -> new RetrievedCapability(
                                                             link,
                                                             CryptreeNode.fromCbor(cbor, key.get()))));
-                                LOG.severe("Couldn't download link at: " + loc);
+                                LOG.severe("Couldn't download link at: " + new Location(owner, writer, mapKey));
                                 Optional<RetrievedCapability> result = Optional.empty();
                                 return CompletableFuture.completedFuture(result);
                             });
@@ -244,14 +248,14 @@ public class NetworkAccess {
 
     public CompletableFuture<Optional<FileWrapper>> retrieveEntryPoint(EntryPoint e) {
         return downloadEntryPoint(e)
-                .thenApply(faOpt ->faOpt.map(fa -> new FileWrapper(new RetrievedCapability(e.pointer, fa), e.owner,
-                        e.readers, e.writers, e.pointer.writer)))
+                .thenApply(faOpt ->faOpt.map(fa -> new FileWrapper(new RetrievedCapability(e.pointer, fa), e.ownerName,
+                        e.pointer.signer)))
                 .exceptionally(t -> Optional.empty());
     }
 
     private CompletableFuture<Optional<CryptreeNode>> downloadEntryPoint(EntryPoint entry) {
         // download the metadata blob for this entry point
-        return tree.get(entry.pointer.location.owner, entry.pointer.location.writer, entry.pointer.location.getMapKey()).thenCompose(btreeValue -> {
+        return tree.get(entry.pointer.owner, entry.pointer.writer, entry.pointer.getMapKey()).thenCompose(btreeValue -> {
             if (btreeValue.isPresent())
                 return dhtClient.get(btreeValue.get())
                         .thenApply(value -> value.map(cbor -> CryptreeNode.fromCbor(cbor,  btreeValue.get())));
@@ -259,23 +263,32 @@ public class NetworkAccess {
         });
     }
 
-    private CompletableFuture<Multihash> uploadFragment(Fragment f, PublicKeyHash owner, PublicKeyHash writer, byte[] signature) {
-        return dhtClient.putRaw(owner, writer, signature, f.data);
+    private CompletableFuture<Multihash> uploadFragment(Fragment f,
+                                                        PublicKeyHash owner,
+                                                        PublicKeyHash writer,
+                                                        byte[] signature,
+                                                        TransactionId tid) {
+        return dhtClient.putRaw(owner, writer, signature, f.data, tid);
     }
 
-    private CompletableFuture<List<Multihash>> bulkUploadFragments(List<Fragment> fragments, PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures) {
+    private CompletableFuture<List<Multihash>> bulkUploadFragments(List<Fragment> fragments,
+                                                                   PublicKeyHash owner,
+                                                                   PublicKeyHash writer,
+                                                                   List<byte[]> signatures,
+                                                                   TransactionId tid) {
         return dhtClient.putRaw(owner, writer, signatures, fragments
                 .stream()
                 .map(f -> f.data)
-                .collect(Collectors.toList()));
+                .collect(Collectors.toList()), tid);
     }
 
     public CompletableFuture<List<Multihash>> uploadFragments(List<Fragment> fragments,
                                                               PublicKeyHash owner,
                                                               SigningPrivateKeyAndPublicHash writer,
                                                               ProgressConsumer<Long> progressCounter,
-                                                              double spaceIncreaseFactor) {
-        // upload in groups of 10. This means in a browser we have 6 upload threads with erasure coding on, or 4 without
+                                                              double spaceIncreaseFactor,
+                                                              TransactionId tid) {
+        // upload one per query because IPFS doesn't support more than one
         int FRAGMENTs_PER_QUERY = 1;
         List<List<Fragment>> grouped = IntStream.range(0, (fragments.size() + FRAGMENTs_PER_QUERY - 1) / FRAGMENTs_PER_QUERY)
                 .mapToObj(i -> fragments.stream().skip(FRAGMENTs_PER_QUERY * i).limit(FRAGMENTs_PER_QUERY).collect(Collectors.toList()))
@@ -285,7 +298,8 @@ public class NetworkAccess {
                         g,
                         owner,
                         writer.publicKeyHash,
-                        g.stream().map(f -> writer.secret.signatureOnly(f.data)).collect(Collectors.toList())
+                        g.stream().map(f -> writer.secret.signatureOnly(f.data)).collect(Collectors.toList()),
+                        tid
                 ).thenApply(hash -> {
                     if (progressCounter != null)
                         progressCounter.accept((long)(g.stream().mapToInt(f -> f.data.length).sum() / spaceIncreaseFactor));
@@ -297,13 +311,15 @@ public class NetworkAccess {
                         .collect(Collectors.toList()));
     }
 
-    public CompletableFuture<Multihash> uploadChunk(CryptreeNode metadata, Location location, SigningPrivateKeyAndPublicHash writer) {
-        if (! writer.publicKeyHash.equals(location.writer))
-            throw new IllegalStateException("Non matching location writer and signing writer key!");
+    public CompletableFuture<Multihash> uploadChunk(CryptreeNode metadata,
+                                                    PublicKeyHash owner,
+                                                    byte[] mapKey,
+                                                    SigningPrivateKeyAndPublicHash writer,
+                                                    TransactionId tid) {
         try {
             byte[] metaBlob = metadata.serialize();
-            return dhtClient.put(location.owner, location.writer, writer.secret.signatureOnly(metaBlob), metaBlob)
-                    .thenCompose(blobHash -> tree.put(location.owner, writer, location.getMapKey(), metadata.committedHash(), blobHash)
+            return dhtClient.put(owner, writer.publicKeyHash, writer.secret.signatureOnly(metaBlob), metaBlob, tid)
+                    .thenCompose(blobHash -> tree.put(owner, writer, mapKey, metadata.committedHash(), blobHash, tid)
                             .thenApply(res -> blobHash));
         } catch (Exception e) {
             LOG.severe(e.getMessage());

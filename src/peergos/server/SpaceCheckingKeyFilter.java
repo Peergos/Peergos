@@ -5,10 +5,10 @@ import peergos.server.util.Logging;
 
 import peergos.server.corenode.*;
 import peergos.server.mutable.*;
+import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.merklebtree.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;

@@ -4,9 +4,8 @@ import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multiaddr.MultiAddress;
 import peergos.shared.io.ipfs.multihash.Multihash;
-import peergos.shared.storage.ContentAddressedStorage;
+import peergos.shared.storage.*;
 
-import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
@@ -45,16 +44,40 @@ public class IpfsDHT implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> put(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
-        return put(writer, signatures, blocks, "cbor");
+    public CompletableFuture<TransactionId> startTransaction(PublicKeyHash owner) {
+        // TODO Implement once IPFS has
+        return CompletableFuture.completedFuture(new TransactionId(Long.toString(System.currentTimeMillis())));
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
-        return put(writer, signatures, blocks, "raw");
+    public CompletableFuture<Boolean> closeTransaction(PublicKeyHash owner, TransactionId tid) {
+        // TODO Implement once IPFS has
+        return CompletableFuture.completedFuture(true);
     }
 
-    private CompletableFuture<List<Multihash>> put(PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks, String format) {
+    @Override
+    public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
+                                                  PublicKeyHash writer,
+                                                  List<byte[]> signatures,
+                                                  List<byte[]> blocks,
+                                                  TransactionId tid) {
+        return put(writer, signatures, blocks, "cbor", tid);
+    }
+
+    @Override
+    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner,
+                                                     PublicKeyHash writer,
+                                                     List<byte[]> signatures,
+                                                     List<byte[]> blocks,
+                                                     TransactionId tid) {
+        return put(writer, signatures, blocks, "raw", tid);
+    }
+
+    private CompletableFuture<List<Multihash>> put(PublicKeyHash writer,
+                                                   List<byte[]> signatures,
+                                                   List<byte[]> blocks,
+                                                   String format,
+                                                   TransactionId tid) {
         CompletableFuture<List<Multihash>> res = new CompletableFuture<>();
         try {
             res.complete(ipfs.block.put(blocks, Optional.of(format))

@@ -3,16 +3,12 @@ package peergos.shared.corenode;
 import java.util.logging.*;
 
 import peergos.shared.cbor.*;
-import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.api.*;
-import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
-import peergos.shared.merklebtree.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
-import java.net.*;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;

@@ -8,9 +8,9 @@ import java.util.TreeMap;
 
 public class CapabilityWithPath implements Cborable {
     public String path;
-    public Capability cap;
+    public AbsoluteCapability cap;
 
-    public CapabilityWithPath(String path, Capability cap) {
+    public CapabilityWithPath(String path, AbsoluteCapability cap) {
         this.path = path;
         this.cap = cap;
     }
@@ -28,7 +28,7 @@ public class CapabilityWithPath implements Cborable {
             throw new IllegalStateException("Incorrect cbor for CapabilityWithPath: " + cbor);
         SortedMap<CborObject, ? extends Cborable> map = ((CborObject.CborMap) cbor).values;
         CborObject.CborString path = (CborObject.CborString)map.get(new CborObject.CborString("p"));
-        Capability fp = Capability.fromCbor(map.get(new CborObject.CborString("c")));
+        AbsoluteCapability fp = AbsoluteCapability.fromCbor(map.get(new CborObject.CborString("c")));
         return new CapabilityWithPath(path.value, fp);
     }
 

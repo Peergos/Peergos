@@ -1,6 +1,7 @@
 package peergos.shared.user;
 
 import peergos.shared.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.user.fs.*;
 
@@ -10,7 +11,7 @@ import java.util.function.*;
 
 public class FriendSourcedTrieNode implements TrieNode {
 
-    private final String owner;
+    private final String ownerName;
     private final Supplier<CompletableFuture<FileWrapper>> homeDirSupplier;
     private final EntryPoint sharedDir;
     private final SafeRandom random;
@@ -19,14 +20,14 @@ public class FriendSourcedTrieNode implements TrieNode {
     private long capCount;
 
     public FriendSourcedTrieNode(Supplier<CompletableFuture<FileWrapper>> homeDirSupplier,
-                                 String owner,
+                                 String ownerName,
                                  EntryPoint sharedDir,
                                  TrieNode root,
                                  long capCount,
                                  SafeRandom random,
                                  Fragmenter fragmenter) {
         this.homeDirSupplier = homeDirSupplier;
-        this.owner = owner;
+        this.ownerName = ownerName;
         this.sharedDir = sharedDir;
         this.root = root;
         this.capCount = capCount;
@@ -43,15 +44,15 @@ public class FriendSourcedTrieNode implements TrieNode {
                 .thenCompose(sharedDirOpt -> {
                     if (! sharedDirOpt.isPresent())
                         return CompletableFuture.completedFuture(Optional.empty());
-                    return CapabilityStore.loadSharingLinks(homeDirSupplier, sharedDirOpt.get(), e.owner,
+                    return CapabilityStore.loadSharingLinks(homeDirSupplier, sharedDirOpt.get(), e.ownerName,
                                     network, random, fragmenter, true)
                                     .thenApply(caps ->
                                             Optional.of(new FriendSourcedTrieNode(homeDirSupplier,
-                                                    e.owner,
+                                                    e.ownerName,
                                                     e,
                                                     caps.getRetrievedCapabilities().stream()
                                                             .reduce(TrieNodeImpl.empty(),
-                                                                    (root, cap) -> root.put(trimOwner(cap.path), UserContext.convert(e.owner, cap)),
+                                                                    (root, cap) -> root.put(trimOwner(cap.path), new EntryPoint(cap.cap, e.ownerName)),
                                                                     (a, b) -> a),
                                                     caps.getRecordsRead(),
                                                     random, fragmenter)));
@@ -69,12 +70,12 @@ public class FriendSourcedTrieNode implements TrieNode {
                                 if (count == capCount)
                                     return CompletableFuture.completedFuture(true);
                                 return CapabilityStore.loadSharingLinksFromIndex(homeDirSupplier, sharedDirOpt.get(),
-                                                        owner, network, random, fragmenter, capCount, true)
+                                                        ownerName, network, random, fragmenter, capCount, true)
                                                         .thenApply(newCaps -> {
                                                             capCount += newCaps.getRecordsRead();
                                                             root = newCaps.getRetrievedCapabilities().stream()
                                                                     .reduce(root,
-                                                                            (root, cap) -> root.put(trimOwner(cap.path), UserContext.convert(owner, cap)),
+                                                                            (root, cap) -> root.put(trimOwner(cap.path), new EntryPoint(cap.cap, ownerName)),
                                                                             (a, b) -> a);
                                                             return true;
                                                         });

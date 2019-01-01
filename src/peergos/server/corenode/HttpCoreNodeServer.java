@@ -1,6 +1,8 @@
 package peergos.server.corenode;
 import java.util.logging.*;
 
+import peergos.server.*;
+import peergos.server.net.*;
 import peergos.server.util.Logging;
 
 import peergos.server.mutable.*;
@@ -176,7 +178,7 @@ public class HttpCoreNodeServer {
             server = HttpServer.create(new InetSocketAddress(InetAddress.getLocalHost(), address.getPort()), CONNECTION_BACKLOG);
         ch = new CoreNodeHandler(coreNode);
         server.createContext("/" + CORE_URL, ch);
-        server.createContext("/" + HttpMutablePointerServer.MUTABLE_POINTERS_URL, new HttpMutablePointerServer.MutationHandler(mutable));
+        server.createContext("/" + UserService.MUTABLE_POINTERS_URL, new MutationHandler(mutable));
         server.setExecutor(Executors.newFixedThreadPool(HANDLER_THREAD_COUNT));
     }
 

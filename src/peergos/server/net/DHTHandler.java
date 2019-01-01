@@ -12,6 +12,8 @@ import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.storage.ContentAddressedStorage;
 import com.sun.net.httpserver.*;
 import peergos.shared.util.*;
+import peergos.shared.storage.TransactionId;
+import static peergos.shared.storage.ContentAddressedStorage.HTTP.*;
 
 import java.io.*;
 import java.util.*;
@@ -50,8 +52,24 @@ public class DHTHandler implements HttpHandler {
             Function<String, String> last = key -> params.get(key).get(params.get(key).size() - 1);
 
             switch (path) {
-                case "block/put": {
+                case TRANSACTION_START: {
                     PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
+                    dht.startTransaction(ownerHash).thenAccept(tid -> {
+                        replyJson(httpExchange, tid.toString(), Optional.empty());
+                    }).exceptionally(Futures::logError).get();
+                    break;
+                }
+                case TRANSACTION_CLOSE: {
+                    PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
+                    TransactionId tid = new TransactionId(args.get(0));
+                    dht.closeTransaction(ownerHash, tid).thenAccept(b -> {
+                        replyJson(httpExchange, JSONParser.toString(b ? 1 : 0), Optional.empty());
+                    }).exceptionally(Futures::logError).get();
+                    break;
+                }
+                case BLOCK_PUT: {
+                    PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
+                    TransactionId tid = new TransactionId(last.apply("transaction"));
                     PublicKeyHash writerHash = PublicKeyHash.fromString(last.apply("writer"));
                     List<byte[]> signatures = Arrays.stream(last.apply("signatures").split(","))
                             .map(ArrayOps::hexToBytes)
@@ -104,8 +122,8 @@ public class DHTHandler implements HttpHandler {
                     }
 
                     List<Multihash> hashes = (isRaw ?
-                            dht.putRaw(ownerHash, writerHash, signatures, data) :
-                            dht.put(ownerHash, writerHash, signatures, data)).get();
+                            dht.putRaw(ownerHash, writerHash, signatures, data, tid) :
+                            dht.put(ownerHash, writerHash, signatures, data, tid)).get();
                     List<Object> json = hashes.stream()
                             .map(h -> wrapHash(h))
                             .collect(Collectors.toList());
@@ -116,7 +134,7 @@ public class DHTHandler implements HttpHandler {
                     replyJson(httpExchange, jsonStream, Optional.empty());
                     break;
                 }
-                case "block/get":{
+                case BLOCK_GET:{
                     Multihash hash = Cid.decode(args.get(0));
                     (hash instanceof Cid && ((Cid) hash).codec == Cid.Codec.Raw ?
                             dht.getRaw(hash) :
@@ -126,7 +144,7 @@ public class DHTHandler implements HttpHandler {
                             .exceptionally(Futures::logError).get();
                     break;
                 }
-                case "pin/add": {
+                case PIN_ADD: {
                     PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
                     Multihash hash = Cid.decode(args.get(0));
                     dht.recursivePin(ownerHash, hash).thenAccept(pinned -> {
@@ -136,7 +154,7 @@ public class DHTHandler implements HttpHandler {
                     }).exceptionally(Futures::logError).get();
                     break;
                 }
-                case "pin/update": {
+                case PIN_UPDATE: {
                     PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
                     Multihash existing = Cid.decode(args.get(0));
                     Multihash updated = Cid.decode(args.get(1));
@@ -147,7 +165,7 @@ public class DHTHandler implements HttpHandler {
                     }).exceptionally(Futures::logError).get();
                     break;
                 }
-                case "pin/rm": {
+                case PIN_RM: {
                     PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
                     boolean recursive = params.containsKey("r") && Boolean.parseBoolean(last.apply("r"));
                     if (!recursive)
@@ -160,7 +178,7 @@ public class DHTHandler implements HttpHandler {
                     }).exceptionally(Futures::logError).get();
                     break;
                 }
-                case "block/stat": {
+                case BLOCK_STAT: {
                     Multihash block = Cid.decode(args.get(0));
                     dht.getSize(block).thenAccept(sizeOpt -> {
                         Map<String, Object> res = new HashMap<>();
@@ -170,7 +188,7 @@ public class DHTHandler implements HttpHandler {
                     }).exceptionally(Futures::logError).get();
                     break;
                 }
-                case "refs": {
+                case REFS: {
                     Multihash block = Cid.decode(args.get(0));
                     dht.getLinks(block).thenAccept(links -> {
                         List<Object> json = links.stream().map(h -> wrapHash("Ref", h)).collect(Collectors.toList());
@@ -180,7 +198,7 @@ public class DHTHandler implements HttpHandler {
                     }).exceptionally(Futures::logError).get();
                     break;
                 }
-                case "id": {
+                case ID: {
                     dht.id().thenAccept(id -> {
                         Object json = wrapHash("ID", id);
                         replyJson(httpExchange, JSONParser.toString(json), Optional.empty());
