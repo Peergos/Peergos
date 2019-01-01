@@ -7,13 +7,10 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
-import peergos.shared.hamt.*;
 import peergos.shared.io.ipfs.multihash.*;
-import peergos.shared.merklebtree.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.fs.*;
-import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
@@ -31,7 +28,7 @@ public class WriterData implements Cborable {
     // publicly readable and present on owner keys
     public final Optional<SecretGenerationAlgorithm> generationAlgorithm;
     // accessible under IPFS address $hash/public
-    public final Optional<Capability> publicData;
+    public final Optional<RelativeCapability> publicData;
     // The public boxing key to encrypt follow requests to, accessible under IPFS address $hash/inbound
     public final Optional<PublicKeyHash> followRequestReceiver;
     // accessible under IPFS address $hash/owned
@@ -45,7 +42,6 @@ public class WriterData implements Cborable {
     public final Optional<UserStaticData> staticData;
     // accessible under IPFS address $hash/tree (present on writer keys)
     public final Optional<Multihash> tree;
-    public final Optional<Multihash> btree; // legacy only
 
     /**
      *
@@ -58,13 +54,12 @@ public class WriterData implements Cborable {
      */
     public WriterData(PublicKeyHash controller,
                       Optional<SecretGenerationAlgorithm> generationAlgorithm,
-                      Optional<Capability> publicData,
+                      Optional<RelativeCapability> publicData,
                       Optional<PublicKeyHash> followRequestReceiver,
                       Set<PublicKeyHash> ownedKeys,
                       Map<String, PublicKeyHash> namedOwnedKeys,
                       Optional<UserStaticData> staticData,
-                      Optional<Multihash> tree,
-                      Optional<Multihash> btree) {
+                      Optional<Multihash> tree) {
         this.controller = controller;
         this.generationAlgorithm = generationAlgorithm;
         this.publicData = publicData;
@@ -73,33 +68,30 @@ public class WriterData implements Cborable {
         this.namedOwnedKeys = namedOwnedKeys;
         this.staticData = staticData;
         this.tree = tree;
-        this.btree = btree;
-        if (tree.isPresent() && btree.isPresent())
-            throw new IllegalStateException("A writer cannot have both a legacy btree and a champ!");
-    }
-
-    public WriterData withBtree(Multihash treeRoot) {
-        return new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver, ownedKeys, namedOwnedKeys, staticData, Optional.empty(), Optional.of(treeRoot));
     }
 
     public WriterData withChamp(Multihash treeRoot) {
-        return new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver, ownedKeys, namedOwnedKeys, staticData, Optional.of(treeRoot), Optional.empty());
+        return new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver, ownedKeys, namedOwnedKeys, staticData, Optional.of(treeRoot));
     }
 
     public WriterData withOwnedKeys(Set<PublicKeyHash> owned) {
-        return new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver, owned, namedOwnedKeys, staticData, tree, btree);
+        return new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver, owned, namedOwnedKeys, staticData, tree);
     }
 
     public WriterData addOwnedKey(PublicKeyHash newOwned) {
         Set<PublicKeyHash> updated = new HashSet<>(ownedKeys);
         updated.add(newOwned);
-        return new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver, updated, namedOwnedKeys, staticData, tree, btree);
+        return new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver, updated, namedOwnedKeys, staticData, tree);
     }
 
     public WriterData addNamedKey(String name, PublicKeyHash newNamedKey) {
         Map<String, PublicKeyHash> updated = new TreeMap<>(namedOwnedKeys);
         updated.put(name, newNamedKey);
-        return new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver, ownedKeys, updated, staticData, tree, btree);
+        return new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver, ownedKeys, updated, staticData, tree);
+    }
+
+    public WriterData withStaticData(Optional<UserStaticData> entryPoints) {
+        return new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver, ownedKeys, namedOwnedKeys, entryPoints, tree);
     }
 
     public static WriterData createEmpty(PublicKeyHash controller) {
@@ -109,7 +101,6 @@ public class WriterData implements Cborable {
                 Optional.empty(),
                 Collections.emptySet(),
                 Collections.emptyMap(),
-                Optional.empty(),
                 Optional.empty(),
                 Optional.empty());
     }
@@ -124,7 +115,6 @@ public class WriterData implements Cborable {
                 Collections.emptySet(),
                 Collections.emptyMap(),
                 Optional.of(new UserStaticData(rootKey)),
-                Optional.empty(),
                 Optional.empty());
     }
 
@@ -132,18 +122,27 @@ public class WriterData implements Cborable {
         return new CommittedWriterData(hash, this);
     }
 
-    public CompletableFuture<CommittedWriterData> removeFromStaticData(FileTreeNode fileTreeNode,
+    public CompletableFuture<CommittedWriterData> removeFromStaticData(FileWrapper fileWrapper,
+                                                                       SymmetricKey rootKey,
                                                                        SigningPrivateKeyAndPublicHash signer,
                                                                        MaybeMultihash currentHash,
                                                                        NetworkAccess network,
                                                                        Consumer<CommittedWriterData> updater) {
-        Capability pointer = fileTreeNode.getPointer().capability;
+        AbsoluteCapability pointer = fileWrapper.getPointer().capability;
 
         return staticData.map(sd -> {
-            boolean isRemoved = sd.remove(pointer);
+            List<EntryPoint> original = sd.getEntryPoints(rootKey);
+            List<EntryPoint> updated = original.stream()
+                    .filter(e -> !e.pointer.equals(pointer))
+                    .collect(Collectors.toList());
+            boolean isRemoved = updated.size() < original.size();
 
-            if (isRemoved)
-                return commit(pointer.location.owner, signer, currentHash, network, updater);
+            if (isRemoved) {
+                return Transaction.call(fileWrapper.owner(),
+                        tid -> withStaticData(Optional.of(new UserStaticData(updated, rootKey)))
+                                .commit(fileWrapper.owner(), signer, currentHash, network, updater, tid),
+                        network.dhtClient);
+            }
             CommittedWriterData committed = committed(currentHash);
             updater.accept(committed);
             return CompletableFuture.completedFuture(committed);
@@ -154,80 +153,55 @@ public class WriterData implements Cborable {
                                                              SigningPrivateKeyAndPublicHash signer,
                                                              MaybeMultihash currentHash,
                                                              PublicBoxingKey followRequestReceiver,
+                                                             SymmetricKey currentKey,
                                                              SymmetricKey newKey,
                                                              SecretGenerationAlgorithm newAlgorithm,
                                                              NetworkAccess network,
                                                              Consumer<CommittedWriterData> updater) {
-        // auth new key by adding to existing writer data first
-        WriterData tmp = addOwnedKey(signer.publicKeyHash);
-        return tmp.commit(oldSigner.publicKeyHash, oldSigner, currentHash, network, x -> {}).thenCompose(tmpCommited -> {
-            Optional<UserStaticData> newEntryPoints = staticData.map(sd -> sd.withKey(newKey));
-            return network.dhtClient.putBoxingKey(oldSigner.publicKeyHash, oldSigner.secret.signatureOnly(followRequestReceiver.serialize()), followRequestReceiver)
-                    .thenCompose(boxerHash -> {
-                        WriterData updated = new WriterData(signer.publicKeyHash,
-                                Optional.of(newAlgorithm),
-                                publicData,
-                                Optional.of(new PublicKeyHash(boxerHash)),
-                                ownedKeys,
-                                namedOwnedKeys,
-                                newEntryPoints,
-                                tree,
-                                btree);
-                        return updated.commit(oldSigner.publicKeyHash, signer, MaybeMultihash.empty(), network, updater);
-                    });
-        });
-    }
-
-    public CompletableFuture<CommittedWriterData> migrateToChamp(PublicKeyHash owner,
-                                                                 SigningPrivateKeyAndPublicHash writer,
-                                                                 MaybeMultihash currentHash,
-                                                                 NetworkAccess network,
-                                                                 Consumer<CommittedWriterData> updater) {
-        CommittedWriterData original = this.committed(currentHash);
-        if (tree.isPresent())
-            return CompletableFuture.completedFuture(original);
-        if (! btree.isPresent())
-            throw new IllegalStateException("btree not present!");
-
-        Function<ByteArrayWrapper, byte[]> hasher = b -> b.data;
-        BiFunction<Pair<Champ, Multihash>,
-                Pair<ByteArrayWrapper, MaybeMultihash>,
-                CompletableFuture<Pair<Champ, Multihash>>> inserter =
-                (root, pair) -> root.left.put(owner, writer, pair.left, pair.left.data, 0, MaybeMultihash.empty(), pair.right,
-                            ChampWrapper.BIT_WIDTH, ChampWrapper.MAX_HASH_COLLISIONS_PER_LEVEL, hasher, network.dhtClient, root.right);
-
-        Champ newRoot = Champ.empty();
-        byte[] raw = newRoot.serialize();
-        return network.dhtClient.put(owner, writer.publicKeyHash, writer.secret.signatureOnly(raw), raw)
-                .thenApply(rootHash -> new Pair<>(newRoot, rootHash))
-                .thenCompose(empty -> MerkleBTree.create(writer.publicKeyHash, btree.get(), network.dhtClient)
-                        .thenCompose(mbtree -> mbtree.applyToAllMappings(empty, inserter))
-                        .thenCompose(champPair -> {
-                            WriterData updated = new WriterData(writer.publicKeyHash,
-                                    generationAlgorithm,
+        return Transaction.call(oldSigner.publicKeyHash, tid -> {
+            // auth new key by adding to existing writer data first
+            WriterData tmp = addOwnedKey(signer.publicKeyHash);
+            return tmp.commit(oldSigner.publicKeyHash, oldSigner, currentHash, network, x -> {}, tid)
+                    .thenCompose(tmpCommited -> {
+                        Optional<UserStaticData> newEntryPoints = staticData
+                                .map(sd -> new UserStaticData(sd.getEntryPoints(currentKey), newKey));
+                        return network.dhtClient.putBoxingKey(oldSigner.publicKeyHash,
+                                oldSigner.secret.signatureOnly(followRequestReceiver.serialize()),
+                                followRequestReceiver, tid
+                        ).thenCompose(boxerHash -> {
+                            WriterData updated = new WriterData(signer.publicKeyHash,
+                                    Optional.of(newAlgorithm),
                                     publicData,
-                                    followRequestReceiver,
+                                    Optional.of(new PublicKeyHash(boxerHash)),
                                     ownedKeys,
                                     namedOwnedKeys,
-                                    staticData,
-                                    Optional.of(champPair.right),
-                                    Optional.empty());
-                            return updated.commit(owner, writer, currentHash, network, updater);
-                        })
-                );
+                                    newEntryPoints,
+                                    tree);
+                            return updated.commit(oldSigner.publicKeyHash, signer, MaybeMultihash.empty(), network, updater, tid);
+                        });
+                    });
+        }, network.dhtClient);
     }
 
-    public CompletableFuture<CommittedWriterData> commit(PublicKeyHash owner, SigningPrivateKeyAndPublicHash signer, MaybeMultihash currentHash,
-                                                         NetworkAccess network, Consumer<CommittedWriterData> updater) {
-        return commit(owner, signer, currentHash, network.mutable, network.dhtClient, updater);
+    public CompletableFuture<CommittedWriterData> commit(PublicKeyHash owner,
+                                                         SigningPrivateKeyAndPublicHash signer,
+                                                         MaybeMultihash currentHash,
+                                                         NetworkAccess network,
+                                                         Consumer<CommittedWriterData> updater,
+                                                         TransactionId tid) {
+        return commit(owner, signer, currentHash, network.mutable, network.dhtClient, updater, tid);
     }
 
-    public CompletableFuture<CommittedWriterData> commit(PublicKeyHash owner, SigningPrivateKeyAndPublicHash signer, MaybeMultihash currentHash,
-                                                         MutablePointers mutable, ContentAddressedStorage immutable,
-                                                         Consumer<CommittedWriterData> updater) {
+    public CompletableFuture<CommittedWriterData> commit(PublicKeyHash owner,
+                                                         SigningPrivateKeyAndPublicHash signer,
+                                                         MaybeMultihash currentHash,
+                                                         MutablePointers mutable,
+                                                         ContentAddressedStorage immutable,
+                                                         Consumer<CommittedWriterData> updater,
+                                                         TransactionId tid) {
         byte[] raw = serialize();
 
-        return immutable.put(owner, signer.publicKeyHash, signer.secret.signatureOnly(raw), raw)
+        return immutable.put(owner, signer.publicKeyHash, signer.secret.signatureOnly(raw), raw, tid)
                 .thenCompose(blobHash -> {
                     MaybeMultihash newHash = MaybeMultihash.of(blobHash);
                     if (newHash.equals(currentHash)) {
@@ -266,7 +240,6 @@ public class WriterData implements Cborable {
                     .collect(Collectors.toMap(e -> new CborObject.CborString(e.getKey()), e -> e.getValue())))));
         staticData.ifPresent(sd -> result.put("static", sd.toCbor()));
         tree.ifPresent(tree -> result.put("tree", new CborObject.CborMerkleLink(tree)));
-        btree.ifPresent(btree -> result.put("btree", new CborObject.CborMerkleLink(btree)));
         return CborObject.CborMap.build(result);
     }
 
@@ -279,7 +252,7 @@ public class WriterData implements Cborable {
         return extract.apply("algorithm").map(SecretGenerationAlgorithm::fromCbor);
     }
 
-    public static WriterData fromCbor(CborObject cbor, SymmetricKey rootKey) {
+    public static WriterData fromCbor(CborObject cbor) {
         if (! ( cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Cbor for WriterData should be a map! " + cbor);
 
@@ -291,7 +264,7 @@ public class WriterData implements Cborable {
 
         PublicKeyHash controller = extract.apply("controller").map(PublicKeyHash::fromCbor).get();
         Optional<SecretGenerationAlgorithm> algo  = extractUserGenerationAlgorithm(cbor);
-        Optional<Capability> publicData = extract.apply("public").map(Capability::fromCbor);
+        Optional<RelativeCapability> publicData = extract.apply("public").map(RelativeCapability::fromCbor);
         Optional<PublicKeyHash> followRequestReceiver = extract.apply("inbound").map(PublicKeyHash::fromCbor);
         CborObject.CborList ownedList = (CborObject.CborList) map.values.get(new CborObject.CborString("owned"));
         Set<PublicKeyHash> owned = ownedList == null ?
@@ -306,11 +279,9 @@ public class WriterData implements Cborable {
                                 e -> ((CborObject.CborString)e.getKey()).value,
                                 e -> new PublicKeyHash(((CborObject.CborMerkleLink) e.getValue()).target)));
 
-        // rootKey is null for other people parsing our WriterData who don't have our root key
-        Optional<UserStaticData> staticData = rootKey == null ? Optional.empty() : extract.apply("static").map(raw -> UserStaticData.fromCbor(raw, rootKey));
+        Optional<UserStaticData> staticData = extract.apply("static").map(UserStaticData::fromCbor);
         Optional<Multihash> tree = extract.apply("tree").map(val -> ((CborObject.CborMerkleLink)val).target);
-        Optional<Multihash> btree = extract.apply("btree").map(val -> ((CborObject.CborMerkleLink)val).target);
-        return new WriterData(controller, algo, publicData, followRequestReceiver, owned, named, staticData, tree, btree);
+        return new WriterData(controller, algo, publicData, followRequestReceiver, owned, named, staticData, tree);
     }
 
     public static Set<PublicKeyHash> getOwnedKeysRecursive(String username,
@@ -400,7 +371,7 @@ public class WriterData implements Cborable {
                 .thenApply(cborOpt -> {
                     if (! cborOpt.isPresent())
                         throw new IllegalStateException("Couldn't retrieve WriterData from dht! " + hash);
-                    return new CommittedWriterData(MaybeMultihash.of(hash), WriterData.fromCbor(cborOpt.get(), null));
+                    return new CommittedWriterData(MaybeMultihash.of(hash), WriterData.fromCbor(cborOpt.get()));
                 });
     }
 }

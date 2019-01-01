@@ -61,7 +61,7 @@ public class FileProperties implements Cborable {
     }
 
     @SuppressWarnings("unusable-by-js")
-    public static FileProperties fromCbor(CborObject cbor) {
+    public static FileProperties fromCbor(Cborable cbor) {
         List<? extends Cborable> elements = ((CborObject.CborList) cbor).value;
         String name = ((CborObject.CborString)elements.get(0)).value;
         String mimeType = ((CborObject.CborString)elements.get(1)).value;
@@ -74,12 +74,6 @@ public class FileProperties implements Cborable {
                 Optional.of(thumb);
 
         return new FileProperties(name, mimeType, size, LocalDateTime.ofEpochSecond(modified, 0, ZoneOffset.UTC), isHidden, thumbnail);
-    }
-
-    public static FileProperties decrypt(byte[] raw, SymmetricKey metaKey) {
-        byte[] nonce = Arrays.copyOfRange(raw, 0, TweetNaCl.SECRETBOX_NONCE_BYTES);
-        byte[] cipher = Arrays.copyOfRange(raw, TweetNaCl.SECRETBOX_NONCE_BYTES, raw.length);
-        return FileProperties.fromCbor(CborObject.fromByteArray(metaKey.decrypt(cipher, nonce)));
     }
 
     @JsIgnore

@@ -3,7 +3,7 @@ package peergos.shared.user;
 import jsinterop.annotations.JsConstructor;
 import jsinterop.annotations.JsType;
 import peergos.shared.NetworkAccess;
-import peergos.shared.user.fs.FileTreeNode;
+import peergos.shared.user.fs.FileWrapper;
 import peergos.shared.util.Futures;
 
 import java.util.*;
@@ -24,7 +24,7 @@ public class TrieNodeImpl implements TrieNode {
     }
 
     @Override
-    public CompletableFuture<Optional<FileTreeNode>> getByPath(String path, NetworkAccess network) {
+    public CompletableFuture<Optional<FileWrapper>> getByPath(String path, NetworkAccess network) {
         LOG.info("GetByPath: " + path);
         String finalPath = TrieNode.canonicalise(path);
         if (finalPath.length() == 0) {
@@ -50,11 +50,11 @@ public class TrieNodeImpl implements TrieNode {
     }
 
     @Override
-    public CompletableFuture<Set<FileTreeNode>> getChildren(String path, NetworkAccess network) {
+    public CompletableFuture<Set<FileWrapper>> getChildren(String path, NetworkAccess network) {
         String trimmedPath = TrieNode.canonicalise(path);
         if (trimmedPath.length() == 0) {
             if (!value.isPresent()) { // find a child entry and traverse parent links
-                Set<CompletableFuture<Optional<FileTreeNode>>> kids = children.values().stream()
+                Set<CompletableFuture<Optional<FileWrapper>>> kids = children.values().stream()
                         .map(t -> t.getByPath("", network)).collect(Collectors.toSet());
                 return Futures.combineAll(kids)
                         .thenApply(set -> set.stream()

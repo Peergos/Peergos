@@ -4,8 +4,7 @@ import peergos.shared.cbor.CborObject;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
-import peergos.shared.merklebtree.HashCasPair;
-import peergos.shared.merklebtree.MaybeMultihash;
+import peergos.shared.MaybeMultihash;
 import peergos.shared.storage.ContentAddressedStorage;
 
 import java.util.*;

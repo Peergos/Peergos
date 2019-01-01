@@ -1,7 +1,6 @@
 package peergos.shared.storage;
 
 import peergos.shared.cbor.*;
-import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multiaddr.*;
 import peergos.shared.io.ipfs.multihash.*;
@@ -31,8 +30,22 @@ public class CachingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> put(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
-        return target.put(owner, writer, signatures, blocks);
+    public CompletableFuture<TransactionId> startTransaction(PublicKeyHash owner) {
+        return target.startTransaction(owner);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> closeTransaction(PublicKeyHash owner, TransactionId tid) {
+        return target.closeTransaction(owner, tid);
+    }
+
+    @Override
+    public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
+                                                  PublicKeyHash writer,
+                                                  List<byte[]> signatures,
+                                                  List<byte[]> blocks,
+                                                  TransactionId tid) {
+        return target.put(owner, writer, signatures, blocks, tid);
     }
 
     @Override
@@ -66,8 +79,12 @@ public class CachingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
-        return target.putRaw(owner, writer, signatures, blocks);
+    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner,
+                                                     PublicKeyHash writer,
+                                                     List<byte[]> signatures,
+                                                     List<byte[]> blocks,
+                                                     TransactionId tid) {
+        return target.putRaw(owner, writer, signatures, blocks, tid);
     }
 
     @Override

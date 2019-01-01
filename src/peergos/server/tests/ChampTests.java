@@ -7,7 +7,6 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.hamt.*;
 import peergos.shared.io.ipfs.multihash.*;
-import peergos.shared.merklebtree.*;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
@@ -33,7 +32,8 @@ public class ChampTests {
         Map<ByteArrayWrapper, MaybeMultihash> state = new HashMap<>();
 
         Champ current = Champ.empty();
-        Multihash currentHash = storage.put(user.publicKeyHash, user, current.serialize()).get();
+        TransactionId tid = storage.startTransaction(user.publicKeyHash).get();
+        Multihash currentHash = storage.put(user.publicKeyHash, user, current.serialize(), tid).get();
         int bitWidth = 5;
         int maxCollisions = 3;
         // build a random tree and keep track of the state
@@ -41,7 +41,8 @@ public class ChampTests {
         for (int i = 0; i < nKeys; i++) {
             ByteArrayWrapper key = new ByteArrayWrapper(randomHash.get().toBytes());
             Multihash value = randomHash.get();
-            Pair<Champ, Multihash> updated = current.put(user.publicKeyHash, user, key, key.data, 0, MaybeMultihash.empty(), MaybeMultihash.of(value), bitWidth, maxCollisions, x -> x.data, storage, currentHash).get();
+            Pair<Champ, Multihash> updated = current.put(user.publicKeyHash, user, key, key.data, 0,
+                    MaybeMultihash.empty(), MaybeMultihash.of(value), bitWidth, maxCollisions, x -> x.data, tid, storage, currentHash).get();
             MaybeMultihash result = updated.left.get(key, key.data, 0, bitWidth, storage).get();
             if (! result.equals(MaybeMultihash.of(value)))
                 throw new IllegalStateException("Incorrect result!");
@@ -66,7 +67,8 @@ public class ChampTests {
             ByteArrayWrapper key = e.getKey();
             Multihash value = randomHash.get();
             MaybeMultihash currentValue = current.get(e.getKey(), e.getKey().data, 0, bitWidth, storage).get();
-            Pair<Champ, Multihash> updated = current.put(user.publicKeyHash, user, key, key.data, 0, currentValue, MaybeMultihash.of(value), bitWidth, maxCollisions, x -> x.data, storage, currentHash).get();
+            Pair<Champ, Multihash> updated = current.put(user.publicKeyHash, user, key, key.data, 0, currentValue,
+                    MaybeMultihash.of(value), bitWidth, maxCollisions, x -> x.data, tid, storage, currentHash).get();
             MaybeMultihash result = updated.left.get(key, key.data, 0, bitWidth, storage).get();
             if (! result.equals(MaybeMultihash.of(value)))
                 throw new IllegalStateException("Incorrect result!");
@@ -79,7 +81,7 @@ public class ChampTests {
             ByteArrayWrapper key = e.getKey();
             MaybeMultihash currentValue = current.get(e.getKey(), e.getKey().data, 0, bitWidth, storage).get();
             Pair<Champ, Multihash> updated = current.remove(user.publicKeyHash, user, key, key.data, 0, currentValue,
-                    bitWidth, maxCollisions, storage, currentHash).get();
+                    bitWidth, maxCollisions, tid, storage, currentHash).get();
             MaybeMultihash result = updated.left.get(key, key.data, 0, bitWidth, storage).get();
             if (! result.equals(MaybeMultihash.empty()))
                 throw new IllegalStateException("Incorrect state!");
@@ -90,9 +92,9 @@ public class ChampTests {
             ByteArrayWrapper key = new ByteArrayWrapper(randomHash.get().toBytes());
             Multihash value = randomHash.get();
             Pair<Champ, Multihash> updated = current.put(user.publicKeyHash, user, key, key.data, 0, MaybeMultihash.empty(),
-                    MaybeMultihash.of(value), bitWidth, maxCollisions, x -> x.data, storage, currentHash).get();
+                    MaybeMultihash.of(value), bitWidth, maxCollisions, x -> x.data, tid, storage, currentHash).get();
             Pair<Champ, Multihash> removed = updated.left.remove(user.publicKeyHash, user, key, key.data, 0,
-                    MaybeMultihash.of(value), bitWidth, maxCollisions, storage, updated.right).get();
+                    MaybeMultihash.of(value), bitWidth, maxCollisions, tid, storage, updated.right).get();
             if (! removed.right.equals(currentHash))
                 throw new IllegalStateException("Non canonical state!");
         }
@@ -111,6 +113,7 @@ public class ChampTests {
             r.nextBytes(hash);
             return new Multihash(Multihash.Type.sha2_256, hash);
         };
+        TransactionId tid = storage.startTransaction(user.publicKeyHash).get();
 
         for (int prefixLen = 0; prefixLen < 5; prefixLen++)
             for (int i=0; i < 100; i++) {
@@ -121,8 +124,10 @@ public class ChampTests {
                 r.nextBytes(keyBytes);
                 ByteArrayWrapper key = new ByteArrayWrapper(keyBytes);
                 Multihash value = randomHash.get();
-                Pair<Champ, Multihash> added = root.left.put(user.publicKeyHash, user, key, keyBytes, 0, MaybeMultihash.empty(), MaybeMultihash.of(value), bitWidth, maxCollisions, x -> x.data, storage, root.right).get();
-                Pair<Champ, Multihash> removed = added.left.remove(user.publicKeyHash, user, key, keyBytes, 0, MaybeMultihash.of(value), bitWidth, maxCollisions, storage, added.right).get();
+                Pair<Champ, Multihash> added = root.left.put(user.publicKeyHash, user, key, keyBytes, 0,
+                        MaybeMultihash.empty(), MaybeMultihash.of(value), bitWidth, maxCollisions, x -> x.data, tid, storage, root.right).get();
+                Pair<Champ, Multihash> removed = added.left.remove(user.publicKeyHash, user, key, keyBytes, 0,
+                        MaybeMultihash.of(value), bitWidth, maxCollisions, tid, storage, added.right).get();
                 if (! removed.right.equals(root.right))
                     throw new IllegalStateException("Non canonical delete!");
             }
@@ -147,7 +152,8 @@ public class ChampTests {
                                                      Supplier<Multihash> randomHash,
                                                      RAMStorage storage) throws Exception {
         Champ current = Champ.empty();
-        Multihash currentHash = storage.put(user.publicKeyHash, user, current.serialize()).get();
+        TransactionId tid = storage.startTransaction(user.publicKeyHash).get();
+        Multihash currentHash = storage.put(user.publicKeyHash, user, current.serialize(), tid).get();
         // build a random tree and keep track of the state
         byte[] prefix = new byte[prefixLen];
         r.nextBytes(prefix);
@@ -155,7 +161,7 @@ public class ChampTests {
             ByteArrayWrapper key = new ByteArrayWrapper(randomKey(prefix, suffixLen, r));
             Multihash value = randomHash.get();
             Pair<Champ, Multihash> updated = current.put(user.publicKeyHash, user, key, key.data, 0, MaybeMultihash.empty(), MaybeMultihash.of(value),
-                    bitWidth, maxCollisions, x -> x.data, storage, currentHash).get();
+                    bitWidth, maxCollisions, x -> x.data, tid, storage, currentHash).get();
             current = updated.left;
             currentHash = updated.right;
         }
@@ -165,10 +171,12 @@ public class ChampTests {
     public static SigningPrivateKeyAndPublicHash createUser(RAMStorage storage, Crypto crypto) {
         SigningKeyPair random = SigningKeyPair.random(crypto.random, crypto.signer);
         try {
+            PublicKeyHash ownerHash = ContentAddressedStorage.hashKey(random.publicSigningKey);
+            TransactionId tid = storage.startTransaction(ownerHash).get();
             PublicKeyHash publicHash = storage.putSigningKey(
                     random.secretSigningKey.signatureOnly(random.publicSigningKey.serialize()),
-                    ContentAddressedStorage.hashKey(random.publicSigningKey),
-                    random.publicSigningKey).get();
+                    ownerHash,
+                    random.publicSigningKey, tid).get();
             return new SigningPrivateKeyAndPublicHash(publicHash, random.secretSigningKey);
         } catch (Exception e) {
             throw new RuntimeException(e);

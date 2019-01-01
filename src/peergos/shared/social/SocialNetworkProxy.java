@@ -21,7 +21,7 @@ public interface SocialNetworkProxy extends SocialNetwork {
      * @param owner
      * @return all the pending follow requests for the given public key
      */
-    CompletableFuture<byte[]> getFollowRequests(Multihash targetServerId, PublicKeyHash owner);
+    CompletableFuture<byte[]> getFollowRequests(Multihash targetServerId, PublicKeyHash owner, byte[] signedTime);
 
     /** Delete a follow request for a given public key
      *

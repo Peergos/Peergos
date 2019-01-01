@@ -16,7 +16,6 @@ import peergos.shared.crypto.password.*;
 import peergos.shared.io.ipfs.multiaddr.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
-import peergos.shared.merklebtree.*;
 import peergos.shared.mutable.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.*;
@@ -105,10 +104,11 @@ public class Main {
                     String pkiPassword = args.getArg("pki.keygen.password");
                     SigningKeyPair pkiKeys = UserUtil.generateUser(pkiUsername, pkiPassword, crypto.hasher, crypto.symmetricProvider,
                             crypto.random, crypto.signer, crypto.boxer, SecretGenerationAlgorithm.getDefault()).get().getUser();
-                    dht.putSigningKey(peergosIdentityKeys.secretSigningKey.signatureOnly(
-                            pkiKeys.publicSigningKey.serialize()),
-                            peergosPublicHash,
-                            pkiKeys.publicSigningKey).get();
+                    Transaction.call(peergosPublicHash,
+                            tid -> dht.putSigningKey(peergosIdentityKeys.secretSigningKey.signatureOnly(
+                                    pkiKeys.publicSigningKey.serialize()),
+                                    peergosPublicHash,
+                                    pkiKeys.publicSigningKey, tid), dht).get();
 
                     String pkiKeyfilePassword = args.getArg("pki.keyfile.password");
                     Cborable cipherTextCbor = PasswordProtected.encryptWithPassword(pkiKeys.secretSigningKey.toCbor().toByteArray(),
@@ -163,8 +163,10 @@ public class Main {
                     if (!existingPkiKey.isPresent() || existingPkiKey.get().equals(pkiPublicHash)) {
                         context.addNamedOwnedKeyAndCommit("pki", pkiPublicHash).get();
                         // write pki public key to ipfs
-                        network.dhtClient.putSigningKey(peergosIdentityKeys.secretSigningKey
-                                .signatureOnly(pkiPublic.serialize()), peergosPublicHash, pkiPublic).get();
+                        Transaction.call(peergosPublicHash,
+                                tid -> network.dhtClient.putSigningKey(peergosIdentityKeys.secretSigningKey
+                                .signatureOnly(pkiPublic.serialize()), peergosPublicHash, pkiPublic, tid),
+                                network.dhtClient).get();
                     }
                 } catch (Exception e) {
                     e.printStackTrace();
@@ -261,7 +263,7 @@ public class Main {
             JavaPoster ipfsGateway = new JavaPoster(ipfsGatewayAddress);
 
             ContentAddressedStorage localDht = useIPFS ?
-                    new CachingStorage(new ContentAddressedStorage.HTTP(ipfsApi), dhtCacheEntries, maxValueSizeToCache) :
+                    new CachingStorage(new ContentAddressedStorage.HTTP(ipfsApi, false), dhtCacheEntries, maxValueSizeToCache) :
                     new FileContentAddressedStorage(blockstorePath(a));
 
             String hostname = a.getArg("domain");

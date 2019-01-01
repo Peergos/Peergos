@@ -1,5 +1,6 @@
 package peergos.shared.storage;
 
+import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
@@ -9,7 +10,6 @@ import peergos.shared.io.ipfs.api.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multiaddr.*;
 import peergos.shared.io.ipfs.multihash.*;
-import peergos.shared.merklebtree.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
@@ -24,17 +24,28 @@ public interface ContentAddressedStorage {
 
     int MAX_OBJECT_LENGTH  = 1024*256;
 
-    default CompletableFuture<Multihash> put(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, byte[] block) {
-        return put(owner, writer.publicKeyHash, writer.secret.signatureOnly(block), block);
+    default CompletableFuture<Multihash> put(PublicKeyHash owner,
+                                             SigningPrivateKeyAndPublicHash writer,
+                                             byte[] block,
+                                             TransactionId tid) {
+        return put(owner, writer.publicKeyHash, writer.secret.signatureOnly(block), block, tid);
     }
 
-    default CompletableFuture<Multihash> put(PublicKeyHash owner, PublicKeyHash writer, byte[] signature, byte[] block) {
-        return put(owner, writer, Arrays.asList(signature), Arrays.asList(block))
+    default CompletableFuture<Multihash> put(PublicKeyHash owner,
+                                             PublicKeyHash writer,
+                                             byte[] signature,
+                                             byte[] block,
+                                             TransactionId tid) {
+        return put(owner, writer, Arrays.asList(signature), Arrays.asList(block), tid)
                 .thenApply(hashes -> hashes.get(0));
     }
 
-    default CompletableFuture<Multihash> putRaw(PublicKeyHash owner, PublicKeyHash writer, byte[] signature, byte[] block) {
-        return putRaw(owner, writer, Arrays.asList(signature), Arrays.asList(block))
+    default CompletableFuture<Multihash> putRaw(PublicKeyHash owner,
+                                                PublicKeyHash writer,
+                                                byte[] signature,
+                                                byte[] block,
+                                                TransactionId tid) {
+        return putRaw(owner, writer, Arrays.asList(signature), Arrays.asList(block), tid)
                 .thenApply(hashes -> hashes.get(0));
     }
 
@@ -44,11 +55,15 @@ public interface ContentAddressedStorage {
      */
     CompletableFuture<Multihash> id();
 
-    CompletableFuture<List<Multihash>> put(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks);
+    CompletableFuture<TransactionId> startTransaction(PublicKeyHash owner);
+
+    CompletableFuture<Boolean> closeTransaction(PublicKeyHash owner, TransactionId tid);
+
+    CompletableFuture<List<Multihash>> put(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks, TransactionId tid);
 
     CompletableFuture<Optional<CborObject>> get(Multihash object);
 
-    CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks);
+    CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks, TransactionId tid);
 
     CompletableFuture<Optional<byte[]>> getRaw(Multihash object);
 
@@ -64,8 +79,9 @@ public interface ContentAddressedStorage {
 
     default CompletableFuture<PublicKeyHash> putSigningKey(byte[] signature,
                                                            PublicKeyHash authKeyHash,
-                                                           PublicSigningKey newKey) {
-        return put(authKeyHash, authKeyHash, signature, newKey.toCbor().toByteArray())
+                                                           PublicSigningKey newKey,
+                                                           TransactionId tid) {
+        return put(authKeyHash, authKeyHash, signature, newKey.toCbor().toByteArray(), tid)
                 .thenApply(PublicKeyHash::new);
     }
 
@@ -75,8 +91,11 @@ public interface ContentAddressedStorage {
                             Hash.sha256(key.serialize()))));
     }
 
-    default CompletableFuture<PublicKeyHash> putBoxingKey(PublicKeyHash controller, byte[] signature, PublicBoxingKey key) {
-        return put(controller, controller, signature, key.toCbor().toByteArray())
+    default CompletableFuture<PublicKeyHash> putBoxingKey(PublicKeyHash controller,
+                                                          byte[] signature,
+                                                          PublicBoxingKey key,
+                                                          TransactionId tid) {
+        return put(controller, controller, signature, key.toCbor().toByteArray(), tid)
                 .thenApply(PublicKeyHash::new);
     }
 
@@ -150,10 +169,24 @@ public interface ContentAddressedStorage {
     class HTTP implements ContentAddressedStorage {
 
         private final HttpPoster poster;
-        private final String apiPrefix = "api/v0/";
+        private static final String apiPrefix = "api/v0/";
+        public static final String ID = "id";
+        public static final String TRANSACTION_START = "transaction/start";
+        public static final String TRANSACTION_CLOSE = "transaction/close";
+        public static final String BLOCK_PUT = "block/put";
+        public static final String BLOCK_GET = "block/get";
+        public static final String BLOCK_STAT = "block/stat";
+        public static final String PIN_ADD = "pin/add";
+        public static final String PIN_RM = "pin/rm";
+        public static final String PIN_UPDATE = "pin/update";
+        public static final String REFS = "refs";
 
-        public HTTP(HttpPoster poster) {
+        private final boolean isPeergosServer;
+        private final Random r = new Random();
+
+        public HTTP(HttpPoster poster, boolean isPeergosServer) {
             this.poster = poster;
+            this.isPeergosServer = isPeergosServer;
         }
 
         private static Multihash getObjectHash(Object rawJson) {
@@ -174,23 +207,52 @@ public interface ContentAddressedStorage {
 
         @Override
         public CompletableFuture<Multihash> id() {
-            return poster.get(apiPrefix + "id")
+            return poster.get(apiPrefix + ID)
                     .thenApply(raw -> Multihash.fromBase58((String)((Map)JSONParser.parse(new String(raw))).get("ID")));
         }
 
         @Override
-        public CompletableFuture<List<Multihash>> put(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
-            return put(owner, writer, signatures, blocks, "cbor");
+        public CompletableFuture<TransactionId> startTransaction(PublicKeyHash owner) {
+            if (! isPeergosServer) // TODO remove once IPFS implements the transaction api
+                return CompletableFuture.completedFuture(new TransactionId(Long.toString(r.nextInt(Integer.MAX_VALUE))));
+            return poster.get(apiPrefix + TRANSACTION_START + "?owner=" + encode(owner.toString()))
+                    .thenApply(raw -> new TransactionId(new String(raw)));
         }
 
         @Override
-        public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
-            return put(owner, writer, signatures, blocks, "raw");
+        public CompletableFuture<Boolean> closeTransaction(PublicKeyHash owner, TransactionId tid) {
+            if (! isPeergosServer) // TODO remove once IPFS implements the transaction api
+                return CompletableFuture.completedFuture(true);
+            return poster.get(apiPrefix + TRANSACTION_CLOSE + "?arg=" + tid.toString() + "&owner=" + encode(owner.toString()))
+                    .thenApply(raw -> new String(raw).equals("1"));
         }
 
-        private CompletableFuture<List<Multihash>> put(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks, String format) {
-            return poster.postMultipart(apiPrefix + "block/put?format=" + format
+        @Override
+        public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
+                                                      PublicKeyHash writer,
+                                                      List<byte[]> signatures,
+                                                      List<byte[]> blocks,
+                                                      TransactionId tid) {
+            return put(owner, writer, signatures, blocks, "cbor", tid);
+        }
+
+        @Override
+        public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner,
+                                                         PublicKeyHash writer,
+                                                         List<byte[]> signatures,
+                                                         List<byte[]> blocks,
+                                                         TransactionId tid) {
+            return put(owner, writer, signatures, blocks, "raw", tid);
+        }
+
+        private CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
+                                                       PublicKeyHash writer,
+                                                       List<byte[]> signatures,
+                                                       List<byte[]> blocks, String format,
+                                                       TransactionId tid) {
+            return poster.postMultipart(apiPrefix + BLOCK_PUT + "?format=" + format
                     + "&owner=" + encode(owner.toString())
+                    + "&transaction=" + encode(tid.toString())
                     + "&writer=" + encode(writer.toString())
                     + "&signatures=" + signatures.stream().map(ArrayOps::bytesToHex).reduce("", (a, b) -> a + "," + b).substring(1), blocks)
                     .thenApply(bytes -> JSONParser.parseStream(new String(bytes))
@@ -201,31 +263,31 @@ public interface ContentAddressedStorage {
 
         @Override
         public CompletableFuture<Optional<CborObject>> get(Multihash hash) {
-            return poster.get(apiPrefix + "block/get?stream-channels=true&arg=" + hash.toString())
+            return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash.toString())
                     .thenApply(raw -> raw.length == 0 ? Optional.empty() : Optional.of(CborObject.fromByteArray(raw)));
         }
 
         @Override
         public CompletableFuture<Optional<byte[]>> getRaw(Multihash hash) {
-            return poster.get(apiPrefix + "block/get?stream-channels=true&arg=" + hash.toString())
+            return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash.toString())
                     .thenApply(raw -> raw.length == 0 ? Optional.empty() : Optional.of(raw));
         }
 
         @Override
         public CompletableFuture<List<Multihash>> recursivePin(PublicKeyHash owner, Multihash hash) {
-            return poster.get(apiPrefix + "pin/add?stream-channels=true&arg=" + hash.toString()
+            return poster.get(apiPrefix + PIN_ADD + "?stream-channels=true&arg=" + hash.toString()
                     + "&owner=" + encode(owner.toString())).thenApply(this::getPins);
         }
 
         @Override
         public CompletableFuture<List<Multihash>> recursiveUnpin(PublicKeyHash owner, Multihash hash) {
-            return poster.get(apiPrefix + "pin/rm?stream-channels=true&r=true&arg=" + hash.toString()
+            return poster.get(apiPrefix + PIN_RM + "?stream-channels=true&r=true&arg=" + hash.toString()
                     + "&owner=" + encode(owner.toString())).thenApply(this::getPins);
         }
 
         @Override
         public CompletableFuture<List<MultiAddress>> pinUpdate(PublicKeyHash owner, Multihash existing, Multihash updated) {
-            return poster.get(apiPrefix + "pin/update?stream-channels=true&arg=" + existing.toString()
+            return poster.get(apiPrefix + PIN_UPDATE + "?stream-channels=true&arg=" + existing.toString()
                     + "&arg=" + updated + "&unpin=false"
                     + "&owner=" + encode(owner.toString())).thenApply(this::getMultiAddr);
         }
@@ -244,7 +306,7 @@ public interface ContentAddressedStorage {
 
         @Override
         public CompletableFuture<List<Multihash>> getLinks(Multihash block) {
-            return poster.get(apiPrefix + "refs?arg=" + block.toString())
+            return poster.get(apiPrefix + REFS + "?arg=" + block.toString())
                     .thenApply(raw -> JSONParser.parseStream(new String(raw))
                             .stream()
                             .map(obj -> (String) (((Map) obj).get("Ref")))
@@ -254,7 +316,7 @@ public interface ContentAddressedStorage {
 
         @Override
         public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
-            return poster.get(apiPrefix + "block/stat?stream-channels=true&arg=" + block.toString())
+            return poster.get(apiPrefix + BLOCK_STAT + "?stream-channels=true&arg=" + block.toString())
                     .thenApply(raw -> Optional.of((Integer)((Map)JSONParser.parse(new String(raw))).get("Size")));
         }
     }
@@ -278,6 +340,20 @@ public interface ContentAddressedStorage {
         }
 
         @Override
+        public CompletableFuture<TransactionId> startTransaction(PublicKeyHash owner) {
+            return redirectCall(owner,
+                    () -> local.startTransaction(owner),
+                    target -> p2p.startTransaction(target, owner));
+        }
+
+        @Override
+        public CompletableFuture<Boolean> closeTransaction(PublicKeyHash owner, TransactionId tid) {
+            return redirectCall(owner,
+                    () -> local.closeTransaction(owner, tid),
+                    target -> p2p.closeTransaction(target, owner, tid));
+        }
+
+        @Override
         public CompletableFuture<Optional<CborObject>> get(Multihash object) {
             return local.get(object);
         }
@@ -298,17 +374,17 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<List<Multihash>> put(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
+        public CompletableFuture<List<Multihash>> put(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks, TransactionId tid) {
             return redirectCall(owner,
-                () -> local.put(owner, writer, signatures, blocks),
-                target -> p2p.put(target, owner, writer, signatures, blocks));
+                () -> local.put(owner, writer, signatures, blocks, tid),
+                target -> p2p.put(target, owner, writer, signatures, blocks, tid));
         }
 
         @Override
-        public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
+        public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks, TransactionId tid) {
             return redirectCall(owner,
-                    () -> local.putRaw(owner, writer, signatures, blocks),
-                    target -> p2p.putRaw(target, owner, writer, signatures, blocks));
+                    () -> local.putRaw(owner, writer, signatures, blocks, tid),
+                    target -> p2p.putRaw(target, owner, writer, signatures, blocks, tid));
         }
 
         @Override

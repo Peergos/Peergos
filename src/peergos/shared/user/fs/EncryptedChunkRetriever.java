@@ -6,7 +6,6 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multihash.*;
-import peergos.shared.merklebtree.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -101,7 +100,7 @@ public class EncryptedChunkRetriever implements FileRetriever {
     }
 
     public Optional<Location> getNext(SymmetricKey dataKey) {
-        return this.nextChunk.map(c -> c.decrypt(dataKey, raw -> Location.fromByteArray(raw)));
+        return this.nextChunk.map(c -> c.decrypt(dataKey, Location::fromCbor));
     }
 
     public byte[] getNonce() {
@@ -123,7 +122,7 @@ public class EncryptedChunkRetriever implements FileRetriever {
                                 Optional.of(new LocatedChunk(unwrittenChunkLocation.get(), MaybeMultihash.empty(),
                                         new Chunk(new byte[Math.min(Chunk.MAX_SIZE, (int) (truncateTo - startIndex))],
                                                 dataKey, unwrittenChunkLocation.get().getMapKey(),
-                                                random.randomBytes(TweetNaCl.SECRETBOX_NONCE_BYTES)))));
+                                                dataKey.createNonce()))));
             }
 
             if (!fullEncryptedChunk.isPresent())
@@ -134,7 +133,7 @@ public class EncryptedChunkRetriever implements FileRetriever {
                 return cipherText.chunk.decrypt(dataKey, cipherText.nonce).thenCompose(original -> {
                     return CompletableFuture.completedFuture(Optional.of(new LocatedChunk(cipherText.location,
                             cipherText.existingHash,
-                            new Chunk(original, dataKey, cipherText.location.getMapKey(), random.randomBytes(TweetNaCl.SECRETBOX_NONCE_BYTES)))));
+                            new Chunk(original, dataKey, cipherText.location.getMapKey(), dataKey.createNonce()))));
                 });
             } catch (IllegalStateException e) {
                 throw new IllegalStateException("Couldn't decrypt chunk at mapkey: " + new ByteArrayWrapper(cipherText.location.getMapKey()), e);

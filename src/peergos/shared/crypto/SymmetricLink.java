@@ -2,46 +2,34 @@ package peergos.shared.crypto;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.symmetric.SymmetricKey;
-import peergos.shared.crypto.symmetric.TweetNaClKey;
-import peergos.shared.util.ArrayOps;
 
-import java.util.Arrays;
-
+/** A symmetric link is a link from one symmetric key to another, as defined in cryptree.
+ *
+ * This means the target key is encrypted with the source key.
+ *
+ */
 public class SymmetricLink implements Cborable
 {
-    private final byte[] nonce, link;
+    private final CipherText cipherText;
 
-    public SymmetricLink(byte[] link)
-    {
-        this.nonce = Arrays.copyOfRange(link, 0, TweetNaClKey.NONCE_BYTES);
-        this.link = Arrays.copyOfRange(link, TweetNaClKey.NONCE_BYTES, link.length);
-    }
-
-    public byte[] serialize()
-    {
-        return ArrayOps.concat(nonce, link);
+    public SymmetricLink(CipherText cipherText) {
+        this.cipherText = cipherText;
     }
 
     @Override
     public CborObject toCbor() {
-        return new CborObject.CborByteArray(serialize());
+        return cipherText.toCbor();
     }
 
-    public SymmetricKey target(SymmetricKey from)
-    {
-        byte[] encoded = from.decrypt(link, nonce);
-        return SymmetricKey.fromByteArray(encoded);
+    public SymmetricKey target(SymmetricKey from) {
+        return cipherText.decrypt(from, SymmetricKey::fromCbor);
     }
 
     public static SymmetricLink fromCbor(Cborable cbor) {
-        if (! (cbor instanceof CborObject.CborByteArray))
-            throw new IllegalStateException("Incorrect cbor type for SymmetricLink: " + cbor);
-
-        return new SymmetricLink(((CborObject.CborByteArray) cbor).value);
+        return new SymmetricLink(CipherText.fromCbor(cbor));
     }
 
     public static SymmetricLink fromPair(SymmetricKey from, SymmetricKey to) {
-        byte[] nonce = from.createNonce();
-        return new SymmetricLink(ArrayOps.concat(nonce, from.encrypt(to.serialize(), nonce)));
+        return new SymmetricLink(CipherText.build(from, to));
     }
 }

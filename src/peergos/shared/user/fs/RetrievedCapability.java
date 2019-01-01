@@ -1,57 +1,72 @@
 package peergos.shared.user.fs;
 
-import peergos.shared.cbor.CborObject;
-import peergos.shared.cbor.Cborable;
-import java.util.Map;
-import java.util.SortedMap;
-import java.util.TreeMap;
+import peergos.shared.*;
+import peergos.shared.crypto.*;
+import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.storage.*;
+import peergos.shared.user.fs.cryptree.*;
 
-public class RetrievedCapability implements Cborable {
-    public String path;
-    public Capability cap;
+import java.util.*;
+import java.util.concurrent.*;
 
-    public RetrievedCapability(String path, Capability cap) {
-        this.path = path;
-        this.cap = cap;
+public class RetrievedCapability {
+    public final AbsoluteCapability capability;
+    public final CryptreeNode fileAccess;
+
+    public RetrievedCapability(AbsoluteCapability capability, CryptreeNode fileAccess) {
+        if (fileAccess == null)
+            throw new IllegalStateException("Null FileAccess!");
+        this.capability = capability;
+        this.fileAccess = fileAccess;
     }
 
-    @Override
-    public CborObject toCbor() {
-        Map<String, CborObject> cbor = new TreeMap<>();
-        cbor.put("p", new CborObject.CborString(path));
-        cbor.put("c", cap.toCbor());
-        return CborObject.CborMap.build(cbor);
+    public boolean equals(Object that) {
+        if (that == null)
+            return false;
+        if (!(that instanceof RetrievedCapability))
+            return false;
+        return capability.equals(((RetrievedCapability)that).capability);
     }
 
-    public static RetrievedCapability fromCbor(Cborable cbor) {
-        if (! (cbor instanceof CborObject.CborMap))
-            throw new IllegalStateException("Incorrect cbor for RetrievedCapability: " + cbor);
-        SortedMap<CborObject, ? extends Cborable> map = ((CborObject.CborMap) cbor).values;
-        CborObject.CborString path = (CborObject.CborString)map.get(new CborObject.CborString("p"));
-        Capability fp = Capability.fromCbor(map.get(new CborObject.CborString("c")));
-        return new RetrievedCapability(path.value, fp);
+    public CompletableFuture<Boolean> remove(NetworkAccess network,
+                                             RetrievedCapability parentRetrievedCapability,
+                                             SigningPrivateKeyAndPublicHash signer) {
+        if (! capability.isWritable())
+            return CompletableFuture.completedFuture(false);
+        if (! fileAccess.isDirectory()) {
+            CompletableFuture<Boolean> result = new CompletableFuture<>();
+            Transaction.call(capability.owner,
+                    tid -> network.tree.remove(capability.owner, signer, capability.getMapKey(), fileAccess.committedHash(), tid).thenAccept(removed -> {
+                        // remove from parent
+                        if (parentRetrievedCapability != null)
+                            ((DirAccess) parentRetrievedCapability.fileAccess)
+                                    .removeChild(this, parentRetrievedCapability.capability.toWritable(signer), network);
+                        result.complete(true);
+                    }), network.dhtClient);
+            return result;
+        }
+        return ((DirAccess) fileAccess).getChildren(network, capability).thenCompose(files -> {
+            for (RetrievedCapability file : files)
+                file.remove(network, null, signer);
+            CompletableFuture<Boolean> result = new CompletableFuture<>();
+            Transaction.call(capability.owner,
+                    tid -> network.tree.remove(capability.owner, signer, capability.getMapKey(), fileAccess.committedHash(), tid).thenAccept(removed -> {
+                        // remove from parent
+                        if (parentRetrievedCapability != null)
+                            ((DirAccess) parentRetrievedCapability.fileAccess)
+                                    .removeChild(this, parentRetrievedCapability.capability.toWritable(signer), network);
+                        result.complete(removed);
+                    }), network.dhtClient);
+            return result;
+        });
     }
 
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-
-        RetrievedCapability that = (RetrievedCapability) o;
-
-        if (path != null ? !path.equals(that.path) : that.path != null) return false;
-        return cap != null ? cap.equals(that.cap) : that.cap == null;
+    public RetrievedCapability withCryptree(CryptreeNode fileAccess) {
+        return new RetrievedCapability(capability, fileAccess);
     }
 
-    @Override
-    public int hashCode() {
-        int result = (path != null ? path.hashCode() : 0);
-        result = 31 * result + (cap != null ? cap.hashCode() : 0);
-        return result;
-    }
-
-    @Override
-    public String toString() {
-        return " path:" + path;
+    public RetrievedCapability withWriter(Optional<SecretSigningKey> writer) {
+        AbsoluteCapability cap = new AbsoluteCapability(capability.owner, capability.writer, capability.getMapKey(), capability.baseKey, writer);
+        return new RetrievedCapability(cap, this.fileAccess);
     }
 }

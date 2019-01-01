@@ -1,14 +1,14 @@
 package peergos.shared.user;
 import java.util.logging.*;
 
+import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.hamt.*;
 import peergos.shared.io.ipfs.multihash.*;
-import peergos.shared.merklebtree.*;
 import peergos.shared.mutable.*;
-import peergos.shared.storage.ContentAddressedStorage;
+import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -41,7 +41,7 @@ public class MutableTreeImpl implements MutableTree {
                 .thenApply(cborOpt -> {
                     if (! cborOpt.isPresent())
                         throw new IllegalStateException("Couldn't retrieve WriterData from dht! " + hash);
-                    return new CommittedWriterData(hash, WriterData.fromCbor(cborOpt.get(), null));
+                    return new CommittedWriterData(hash, WriterData.fromCbor(cborOpt.get()));
                 });
     }
 
@@ -70,24 +70,26 @@ public class MutableTreeImpl implements MutableTree {
     }
 
     @Override
-    public CompletableFuture<Boolean> put(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, byte[] mapKey, MaybeMultihash existing, Multihash value) {
+    public CompletableFuture<Boolean> put(PublicKeyHash owner,
+                                          SigningPrivateKeyAndPublicHash writer,
+                                          byte[] mapKey,
+                                          MaybeMultihash existing,
+                                          Multihash value,
+                                          TransactionId tid) {
         PublicKeyHash publicWriterKey = writer.publicKeyHash;
         CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
 
         return addToQueue(owner, publicWriterKey, lock)
                 .thenCompose(committed -> {
                     WriterData holder = committed.props;
-                    boolean isChamp = ! holder.btree.isPresent();
                     return (holder.tree.isPresent() ?
                             ChampWrapper.create(holder.tree.get(), hasher, dht) :
-                            isChamp ?
-                                    ChampWrapper.create(owner, writer, x -> x.data, dht) :
-                                    MerkleBTree.create(writer.publicKeyHash, holder.btree.get(), dht)
-                    ).thenCompose(tree -> tree.put(owner, writer, mapKey, existing, value))
+                            ChampWrapper.create(owner, writer, x -> x.data, tid, dht)
+                    ).thenCompose(tree -> tree.put(owner, writer, mapKey, existing, value, tid))
                             .thenApply(newRoot -> LOGGING ? log(newRoot, "TREE.put (" + ArrayOps.bytesToHex(mapKey)
                                     + ", " + value + ") => CAS(" + holder.tree + ", " + newRoot + ")") : newRoot)
-                            .thenCompose(newTreeRoot -> (isChamp ? holder.withChamp(newTreeRoot) : holder.withBtree(newTreeRoot))
-                                    .commit(owner, writer, committed.hash, mutable, dht, lock::complete))
+                            .thenCompose(newTreeRoot -> holder.withChamp(newTreeRoot)
+                                    .commit(owner, writer, committed.hash, mutable, dht, lock::complete, tid))
                             .thenApply(x -> true)
                             .exceptionally(e -> {
                                 lock.complete(committed);
@@ -106,36 +108,33 @@ public class MutableTreeImpl implements MutableTree {
                 .thenCompose(committed -> {
                     lock.complete(committed);
                     WriterData holder = committed.props;
-                    if (! holder.tree.isPresent() && ! holder.btree.isPresent())
+                    if (! holder.tree.isPresent())
                         throw new IllegalStateException("Tree root not present for " + writer);
-                    boolean isChamp = ! holder.btree.isPresent();
-                    return (isChamp ?
-                            ChampWrapper.create(holder.tree.get(), hasher, dht) :
-                            MerkleBTree.create(writer, holder.btree.get(), dht)
-                    ).thenCompose(tree -> tree.get(mapKey))
+                    return ChampWrapper.create(holder.tree.get(), hasher, dht).thenCompose(tree -> tree.get(mapKey))
                             .thenApply(maybe -> LOGGING ?
                                     log(maybe, "TREE.get (" + ArrayOps.bytesToHex(mapKey) + ", root="+holder.tree.get()+" => " + maybe) : maybe);
                 });
     }
 
     @Override
-    public CompletableFuture<Boolean> remove(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, byte[] mapKey, MaybeMultihash existing) {
+    public CompletableFuture<Boolean> remove(PublicKeyHash owner,
+                                             SigningPrivateKeyAndPublicHash writer,
+                                             byte[] mapKey,
+                                             MaybeMultihash existing,
+                                             TransactionId tid) {
         PublicKeyHash publicWriter = writer.publicKeyHash;
         CompletableFuture<CommittedWriterData> future = new CompletableFuture<>();
 
         return addToQueue(owner, publicWriter, future)
                 .thenCompose(committed -> {
                     WriterData holder = committed.props;
-                    if (! holder.tree.isPresent() && ! holder.btree.isPresent())
+                    if (! holder.tree.isPresent())
                         throw new IllegalStateException("Tree root not present!");
-                    boolean isChamp = ! holder.btree.isPresent();
-                    return (isChamp ?
-                            ChampWrapper.create(holder.tree.get(), hasher, dht) :
-                            MerkleBTree.create(writer.publicKeyHash, holder.btree.get(), dht)
-                    ).thenCompose(tree -> tree.remove(owner, writer, mapKey, existing))
+                    return ChampWrapper.create(holder.tree.get(), hasher, dht)
+                            .thenCompose(tree -> tree.remove(owner, writer, mapKey, existing, tid))
                             .thenApply(pair -> LOGGING ? log(pair, "TREE.rm (" + ArrayOps.bytesToHex(mapKey) + "  => " + pair) : pair)
-                            .thenCompose(newTreeRoot -> (isChamp ? holder.withChamp(newTreeRoot) : holder.withBtree(newTreeRoot))
-                                    .commit(owner, writer, committed.hash, mutable, dht, future::complete))
+                            .thenCompose(newTreeRoot -> holder.withChamp(newTreeRoot)
+                                    .commit(owner, writer, committed.hash, mutable, dht, future::complete, tid))
                             .thenApply(x -> true);
                 });
     }

@@ -9,9 +9,9 @@ import java.util.stream.*;
 public class CapabilitiesFromUser implements Cborable {
 
     private final long recordsRead;
-    private final List<RetrievedCapability> retrievedCapabilities;
+    private final List<CapabilityWithPath> retrievedCapabilities;
 
-    public CapabilitiesFromUser(long recordsRead, List<RetrievedCapability> retrievedCapabilities) {
+    public CapabilitiesFromUser(long recordsRead, List<CapabilityWithPath> retrievedCapabilities) {
         this.recordsRead = recordsRead;
         this.retrievedCapabilities = retrievedCapabilities;
     }
@@ -20,7 +20,7 @@ public class CapabilitiesFromUser implements Cborable {
         return recordsRead;
     }
 
-    public List<RetrievedCapability> getRetrievedCapabilities() {
+    public List<CapabilityWithPath> getRetrievedCapabilities() {
         return retrievedCapabilities;
     }
 
@@ -36,9 +36,9 @@ public class CapabilitiesFromUser implements Cborable {
         if (! (cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("CapabilitiesFromUser cbor must be a Map! " + cbor);
         long count = ((CborObject.CborLong) (((CborObject.CborMap) cbor).values.get(new CborObject.CborString("count")))).value;
-        List<RetrievedCapability> caps = ((CborObject.CborList)((CborObject.CborMap) cbor).values.get(new CborObject.CborString("caps")))
+        List<CapabilityWithPath> caps = ((CborObject.CborList)((CborObject.CborMap) cbor).values.get(new CborObject.CborString("caps")))
                 .value.stream()
-                .map(RetrievedCapability::fromCbor)
+                .map(CapabilityWithPath::fromCbor)
                 .collect(Collectors.toList());
         return new CapabilitiesFromUser(count, caps);
     }

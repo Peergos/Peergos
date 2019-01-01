@@ -1,9 +1,10 @@
 package peergos.shared.user;
 
+import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
-import peergos.shared.merklebtree.*;
+import peergos.shared.storage.*;
 
 import java.io.*;
 import java.util.concurrent.*;
@@ -28,7 +29,12 @@ public interface ImmutableTree {
      * @return hash of new tree root
      * @throws IOException
      */
-    CompletableFuture<Multihash> put(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, byte[] rawKey, MaybeMultihash existing, Multihash value);
+    CompletableFuture<Multihash> put(PublicKeyHash owner,
+                                     SigningPrivateKeyAndPublicHash writer,
+                                     byte[] rawKey,
+                                     MaybeMultihash existing,
+                                     Multihash value,
+                                     TransactionId tid);
 
     /**
      *
@@ -36,5 +42,9 @@ public interface ImmutableTree {
      * @return hash of new tree root
      * @throws IOException
      */
-    CompletableFuture<Multihash> remove(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, byte[] rawKey, MaybeMultihash existing);
+    CompletableFuture<Multihash> remove(PublicKeyHash owner,
+                                        SigningPrivateKeyAndPublicHash writer,
+                                        byte[] rawKey,
+                                        MaybeMultihash existing,
+                                        TransactionId tid);
 }

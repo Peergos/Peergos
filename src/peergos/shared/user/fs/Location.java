@@ -33,11 +33,6 @@ public class Location implements Cborable {
     }
 
     @JsMethod
-    public byte[] encrypt(SymmetricKey key, byte[] nonce) {
-        return key.encrypt(serialize(), nonce);
-    }
-
-    @JsMethod
     public byte[] getMapKey() {
         return Arrays.copyOf(mapKey, mapKey.length);
     }
@@ -58,11 +53,6 @@ public class Location implements Cborable {
                 PublicKeyHash.fromCbor(values.get(0)),
                 PublicKeyHash.fromCbor(values.get(1)),
                 ((CborObject.CborByteArray) values.get(2)).value);
-    }
-
-    public static Location decrypt(SymmetricKey fromKey, byte[] nonce, byte[] location) {
-        byte[] bytes = fromKey.decrypt(location, nonce);
-        return Location.fromCbor(CborObject.fromByteArray(bytes));
     }
 
     public Location withWriter(PublicKeyHash newWriter) {

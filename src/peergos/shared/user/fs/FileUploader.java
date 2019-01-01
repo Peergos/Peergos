@@ -8,10 +8,9 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multihash.*;
-import peergos.shared.merklebtree.*;
+import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
-import java.io.*;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -86,7 +85,7 @@ public class FileUploader implements AutoCloseable {
         int length =  isLastChunk ? (int)(fileLength -  position) : Chunk.MAX_SIZE;
         byte[] data = new byte[length];
         return reader.readIntoArray(data, 0, data.length).thenCompose(b -> {
-            byte[] nonce = random.randomBytes(TweetNaCl.SECRETBOX_NONCE_BYTES);
+            byte[] nonce = metaKey.createNonce();
             Chunk chunk = new Chunk(data, metaKey, currentLocation.getMapKey(), nonce);
             LocatedChunk locatedChunk = new LocatedChunk(new Location(owner, writer.publicKeyHash, chunk.mapKey()), ourExistingHash, chunk);
             byte[] mapKey = random.randomBytes(32);
@@ -120,22 +119,23 @@ public class FileUploader implements AutoCloseable {
             List<Fragment> fragments = encryptedChunk.generateFragments(fragmenter);
             LOG.info(StringUtils.format("Uploading chunk with %d fragments\n", fragments.size()));
             SymmetricKey chunkKey = chunk.chunk.key();
-            byte[] nextLocationNonce = chunkKey.createNonce();
-            byte[] nextLocation = nextChunkLocation.encrypt(chunkKey, nextLocationNonce);
-            CipherText encryptedNextChunkLocation = new CipherText(nextLocationNonce, nextLocation);
-            return network.uploadFragments(fragments, chunk.location.owner, writer, monitor, fragmenter.storageIncreaseFactor())
-                    .thenCompose(hashes -> {
-                        FileRetriever retriever = new EncryptedChunkRetriever(chunk.chunk.nonce(), encryptedChunk.getAuth(),
-                                hashes, Optional.of(encryptedNextChunkLocation), fragmenter);
-                        FileAccess metaBlob = FileAccess.create(chunk.existingHash, baseKey, SymmetricKey.random(),
-                                chunkKey, props, retriever, parentLocation, parentparentKey);
-                        return network.uploadChunk(metaBlob, new Location(chunk.location.owner,
-                                writer.publicKeyHash, chunk.chunk.mapKey()), writer);
-                    });
+            CipherText encryptedNextChunkLocation = CipherText.build(chunkKey, nextChunkLocation);
+            return Transaction.call(chunk.location.owner, tid -> network
+                            .uploadFragments(fragments, chunk.location.owner, writer, monitor, fragmenter.storageIncreaseFactor(), tid)
+                            .thenCompose(hashes -> {
+                                FileRetriever retriever =
+                                        new EncryptedChunkRetriever(chunk.chunk.nonce(), encryptedChunk.getAuth(),
+                                                hashes, Optional.of(encryptedNextChunkLocation), fragmenter);
+                                FileAccess metaBlob = FileAccess.create(chunk.existingHash, baseKey, SymmetricKey.random(),
+                                        chunkKey, props, retriever, parentLocation, parentparentKey);
+                                return network.uploadChunk(metaBlob, chunk.location.owner,
+                                        chunk.chunk.mapKey(), writer, tid);
+                            }),
+                    network.dhtClient);
         });
     }
 
-    public void close() throws IOException  {
+    public void close() {
         reader.close();
     }
 }

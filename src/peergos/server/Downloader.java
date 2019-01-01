@@ -43,16 +43,16 @@ public class Downloader {
                                   Predicate<FileProperties> saveFile, ForkJoinPool pool) throws Exception {
         if (! targetDir.toFile().exists() && ! targetDir.toFile().mkdirs())
             throw new IllegalStateException("Couldn't create " + targetDir);
-        Optional<FileTreeNode> file = source.getByPath(origin).get();
+        Optional<FileWrapper> file = source.getByPath(origin).get();
         pool.submit(() -> file.ifPresent(f -> downloadTo(f, targetDir, source.network, source.crypto.random, saveFile))).get();
     }
 
-    public static void downloadTo(FileTreeNode source, Path target, NetworkAccess network, SafeRandom random,
+    public static void downloadTo(FileWrapper source, Path target, NetworkAccess network, SafeRandom random,
                                   Predicate<FileProperties> saveFile) {
         Path us = target.resolve(source.getName());
         if (source.isDirectory()) {
             try {
-                Set<FileTreeNode> children = source.getChildren(network).get();
+                Set<FileWrapper> children = source.getChildren(network).get();
                 if (! us.toFile().exists() && !us.toFile().mkdir())
                     throw new IllegalStateException("Couldn't create directory: " + us);
                 children.stream().parallel().forEach(child -> downloadTo(child, us, network, random, saveFile));

@@ -8,7 +8,6 @@ import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.hamt.*;
 import peergos.shared.io.ipfs.multihash.*;
-import peergos.shared.merklebtree.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -38,7 +37,6 @@ public class EfficiencyComparison {
             state.put(key, MaybeMultihash.of(value));
         }
         calculateChampOverhead(state);
-//        calculateBtreeOverhead(state);
     }
 
     public static void calculateChampOverhead(Map<ByteArrayWrapper, MaybeMultihash> state) throws Exception {
@@ -46,11 +44,13 @@ public class EfficiencyComparison {
             for (int maxCollisions = 1; maxCollisions <= 6; maxCollisions++) {
                 RAMStorage champStorage = new RAMStorage();
                 SigningPrivateKeyAndPublicHash champUser = ChampTests.createUser(champStorage, crypto);
-                Pair<Champ, Multihash> current = new Pair<>(Champ.empty(), champStorage.put(champUser.publicKeyHash, champUser, Champ.empty().serialize()).get());
+                Pair<Champ, Multihash> current = new Pair<>(Champ.empty(), champStorage.put(champUser.publicKeyHash,
+                        champUser, Champ.empty().serialize(), champStorage.startTransaction(champUser.publicKeyHash).get()).get());
 
                 for (Map.Entry<ByteArrayWrapper, MaybeMultihash> e : state.entrySet()) {
                     current = current.left.put(champUser.publicKeyHash, champUser, e.getKey(), e.getKey().data, 0, MaybeMultihash.empty(),
-                            e.getValue(), bitWidth, maxCollisions, x -> x.data, champStorage, current.right).get();
+                            e.getValue(), bitWidth, maxCollisions, x -> x.data,
+                            champStorage.startTransaction(champUser.publicKeyHash).get(), champStorage, current.right).get();
                 }
 
                 int champSize = champStorage.totalSize();
@@ -62,19 +62,5 @@ public class EfficiencyComparison {
                         + idealUsage + ", champ overhead: " + (double) (champUsage * 100 / idealUsage) / 100);
             }
         }
-    }
-
-    private static void calculateBtreeOverhead(Map<ByteArrayWrapper, MaybeMultihash> state) throws Exception {
-        RAMStorage btreeStorage = new RAMStorage();
-        SigningPrivateKeyAndPublicHash btreeUser = ChampTests.createUser(btreeStorage, crypto);
-        MerkleBTree btree = MerkleBTree.create(btreeUser.publicKeyHash, btreeUser, btreeStorage).get();
-        for (Map.Entry<ByteArrayWrapper, MaybeMultihash> e : state.entrySet()) {
-            btree.put(btreeUser.publicKeyHash, btreeUser, e.getKey().data, MaybeMultihash.empty(), e.getValue().get()).get();
-        }
-        int btreeSize = btreeStorage.totalSize();
-        long btreeUsage = btreeStorage.getRecursiveBlockSize(btree.root.hash.get()).get();
-        int idealUsage = state.size() * (32 + 34);
-        LOG.info("Btree used size: " + btreeSize + ", Btree usage after gc: " + btreeUsage + ", ideal: "
-                + idealUsage + ", btree overhead: " + (double)(btreeUsage * 100 / idealUsage)/100);
     }
 }

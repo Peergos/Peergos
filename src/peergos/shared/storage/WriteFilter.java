@@ -25,6 +25,16 @@ public class WriteFilter implements ContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<TransactionId> startTransaction(PublicKeyHash owner) {
+        return dht.startTransaction(owner);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> closeTransaction(PublicKeyHash owner, TransactionId tid) {
+        return dht.closeTransaction(owner, tid);
+    }
+
+    @Override
     public CompletableFuture<Optional<CborObject>> get(Multihash object) {
         return dht.get(object);
     }
@@ -45,17 +55,25 @@ public class WriteFilter implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> put(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
+    public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
+                                                  PublicKeyHash writer,
+                                                  List<byte[]> signatures,
+                                                  List<byte[]> blocks,
+                                                  TransactionId tid) {
         if (! keyFilter.apply(writer, blocks.stream().mapToInt(x -> x.length).sum()))
             throw new IllegalStateException("Key not allowed to write to this server: " + writer);
-        return dht.put(owner, writer, signatures, blocks);
+        return dht.put(owner, writer, signatures, blocks, tid);
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
+    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner,
+                                                     PublicKeyHash writer,
+                                                     List<byte[]> signatures,
+                                                     List<byte[]> blocks,
+                                                     TransactionId tid) {
         if (! keyFilter.apply(writer, blocks.stream().mapToInt(x -> x.length).sum()))
             throw new IllegalStateException("Key not allowed to write to this server: " + writer);
-        return dht.putRaw(owner, writer, signatures, blocks);
+        return dht.putRaw(owner, writer, signatures, blocks, tid);
     }
 
     @Override

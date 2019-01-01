@@ -1,6 +1,6 @@
 package peergos.shared.user.fs;
 
-import peergos.shared.merklebtree.*;
+import peergos.shared.*;
 
 public class LocatedEncryptedChunk {
     public final Location location;

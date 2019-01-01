@@ -62,21 +62,13 @@ public class HttpMutablePointers implements MutablePointersProxy {
 
     private CompletableFuture<Boolean> setPointer(String urlPrefix,
                                                   HttpPoster poster,
-                                                  PublicKeyHash ownerPublicKey,
-                                                  PublicKeyHash sharingPublicKey,
-                                                  byte[] sharingKeySignedPayload) {
+                                                  PublicKeyHash owner,
+                                                  PublicKeyHash writer,
+                                                  byte[] writerSignedPayload) {
         long t1 = System.currentTimeMillis();
         try
         {
-            ByteArrayOutputStream bout = new ByteArrayOutputStream();
-            DataOutputStream dout = new DataOutputStream(bout);
-
-            Serialize.serialize(ownerPublicKey.serialize(), dout);
-            Serialize.serialize(sharingPublicKey.serialize(), dout);
-            Serialize.serialize(sharingKeySignedPayload, dout);
-            dout.flush();
-
-            return poster.postUnzip(urlPrefix + "mutable/setPointer", bout.toByteArray()).thenApply(res -> {
+            return poster.postUnzip(urlPrefix + "mutable/setPointer?owner=" + owner + "&writer=" + writer, writerSignedPayload).thenApply(res -> {
                 DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
                 try {
                     return din.readBoolean();
@@ -84,9 +76,6 @@ public class HttpMutablePointers implements MutablePointersProxy {
                     throw new RuntimeException(e);
                 }
             });
-        } catch (IOException ioe) {
-            LOG.log(Level.WARNING, ioe.getMessage(), ioe);
-            return CompletableFuture.completedFuture(false);
         } finally {
             long t2 = System.currentTimeMillis();
             if (LOGGING)
@@ -107,7 +96,7 @@ public class HttpMutablePointers implements MutablePointersProxy {
     public CompletableFuture<Optional<byte[]>> getPointer(String urlPrefix, HttpPoster poster, PublicKeyHash owner, PublicKeyHash writer) {
         long t1 = System.currentTimeMillis();
         try {
-            return poster.postUnzip(urlPrefix + "mutable/getPointer?owner=" + owner, writer.serialize())
+            return poster.get(urlPrefix + "mutable/getPointer?owner=" + owner + "&writer=" + writer)
                     .thenApply(meta -> meta.length == 0 ? Optional.empty() : Optional.of(meta));
         } catch (Exception ioe) {
             LOG.log(Level.WARNING, ioe.getMessage(), ioe);

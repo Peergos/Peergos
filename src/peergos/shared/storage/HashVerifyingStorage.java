@@ -1,7 +1,6 @@
 package peergos.shared.storage;
 
 import peergos.shared.cbor.*;
-import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multiaddr.*;
@@ -41,8 +40,22 @@ public class HashVerifyingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> put(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
-        return source.put(owner, writer, signatures, blocks)
+    public CompletableFuture<TransactionId> startTransaction(PublicKeyHash owner) {
+        return source.startTransaction(owner);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> closeTransaction(PublicKeyHash owner, TransactionId tid) {
+        return source.closeTransaction(owner, tid);
+    }
+
+    @Override
+    public CompletableFuture<List<Multihash>> put(PublicKeyHash owner,
+                                                  PublicKeyHash writer,
+                                                  List<byte[]> signatures,
+                                                  List<byte[]> blocks,
+                                                  TransactionId tid) {
+        return source.put(owner, writer, signatures, blocks, tid)
                 .thenApply(hashes -> hashes.stream()
                         .map(h -> verify(blocks.get(hashes.indexOf(h)), h, () -> h))
                         .collect(Collectors.toList()));
@@ -55,8 +68,12 @@ public class HashVerifyingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks) {
-        return source.putRaw(owner, writer, signatures, blocks)
+    public CompletableFuture<List<Multihash>> putRaw(PublicKeyHash owner,
+                                                     PublicKeyHash writer,
+                                                     List<byte[]> signatures,
+                                                     List<byte[]> blocks,
+                                                     TransactionId tid) {
+        return source.putRaw(owner, writer, signatures, blocks, tid)
                 .thenApply(hashes -> hashes.stream()
                         .map(h -> verify(blocks.get(hashes.indexOf(h)), h, () -> h))
                         .collect(Collectors.toList()));
