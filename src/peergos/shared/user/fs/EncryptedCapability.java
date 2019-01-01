@@ -2,6 +2,7 @@ package peergos.shared.user.fs;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.SymmetricKey;
 
 import java.util.*;
@@ -13,8 +14,8 @@ public class EncryptedCapability implements Cborable {
         this.cipherText = cipherText;
     }
 
-    public Capability toCapability(SymmetricKey baseKey) {
-        return cipherText.decrypt(baseKey, Capability::fromCbor);
+    public RelativeCapability toCapability(SymmetricKey baseKey) {
+        return cipherText.decrypt(baseKey, RelativeCapability::fromCbor);
     }
 
     @Override
@@ -26,11 +27,11 @@ public class EncryptedCapability implements Cborable {
         return new EncryptedCapability(CipherText.fromCbor(cbor));
     }
 
-    public static EncryptedCapability create(SymmetricKey from, Capability cap) {
+    public static EncryptedCapability create(SymmetricKey from, RelativeCapability cap) {
         return new EncryptedCapability(CipherText.build(from, cap));
     }
 
-    public static EncryptedCapability create(SymmetricKey from, SymmetricKey to, Location location) {
-        return create(from, new Capability(location, Optional.empty(), to));
+    public static EncryptedCapability create(SymmetricKey from, SymmetricKey to, Optional<PublicKeyHash> writer, byte[] mapKey) {
+        return create(from, new RelativeCapability(writer, mapKey, to, Optional.empty()));
     }
 }

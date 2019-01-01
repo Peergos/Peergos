@@ -15,9 +15,9 @@ public class Transaction {
      * @param <V>
      * @return
      */
-    public static <V> CompletableFuture<V> run(PublicKeyHash owner,
-                                               Function<TransactionId, CompletableFuture<V>> processor,
-                                               ContentAddressedStorage ipfs) {
+    public static <V> CompletableFuture<V> call(PublicKeyHash owner,
+                                                Function<TransactionId, CompletableFuture<V>> processor,
+                                                ContentAddressedStorage ipfs) {
         CompletableFuture<V> res = new CompletableFuture<>();
         ipfs.startTransaction(owner).thenCompose(tid -> processor.apply(tid)
                 .thenCompose(v -> ipfs.closeTransaction(owner, tid)

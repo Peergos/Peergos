@@ -8,8 +8,6 @@ import java.util.logging.Level;
 
 import com.sun.net.httpserver.*;
 import peergos.server.corenode.*;
-import peergos.server.mutable.*;
-import peergos.server.social.*;
 import peergos.shared.corenode.*;
 import peergos.shared.mutable.*;
 import peergos.shared.social.*;
@@ -28,8 +26,10 @@ import java.util.concurrent.*;
 public class UserService {
 	private static final Logger LOG = Logging.LOG();
 
-    public static final String DHT_URL = "/api/v0/";
     public static final String UI_URL = "/";
+    public static final String DHT_URL = "/api/v0/";
+    public static final String MUTABLE_POINTERS_URL = "mutable/";
+    public static final String SOCIAL_URL = "social/";
 
     public static final int HANDLER_THREADS = 50;
     public static final int CONNECTION_BACKLOG = 100;
@@ -190,10 +190,10 @@ public class UserService {
         addHandler.accept(DHT_URL, new DHTHandler(storage, (h, i) -> true));
         addHandler.accept("/" + HttpCoreNodeServer.CORE_URL,
                 new HttpCoreNodeServer.CoreNodeHandler(this.coreNode));
-        addHandler.accept("/" + HttpSocialNetworkServer.SOCIAL_URL,
-                new HttpSocialNetworkServer.SocialHandler(this.social));
-        addHandler.accept("/" + HttpMutablePointerServer.MUTABLE_POINTERS_URL,
-                new HttpMutablePointerServer.MutationHandler(this.mutable));
+        addHandler.accept("/" + SOCIAL_URL,
+                new SocialHandler(this.social));
+        addHandler.accept("/" + MUTABLE_POINTERS_URL,
+                new MutationHandler(this.mutable));
         addHandler.accept(UI_URL, handler);
 
         localhostServer.setExecutor(Executors.newFixedThreadPool(HANDLER_THREADS));

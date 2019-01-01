@@ -3,7 +3,6 @@ package peergos.shared.user.fs;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
-import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multihash.*;
@@ -139,31 +138,32 @@ public class DirAccess implements CryptreeNode {
                 properties, children, moreFolderContents);
     }
 
-    public List<Capability> getChildren(SymmetricKey baseKey) {
+    public List<RelativeCapability> getChildren(SymmetricKey baseKey) {
         return children.decrypt(baseKey, DirAccess::parseChildLinks);
     }
 
-    private static List<Capability> parseChildLinks(Cborable cbor) {
+    private static List<RelativeCapability> parseChildLinks(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Incorrect cbor for DirAccess child links: " + cbor);
         return ((CborObject.CborList) cbor).value
                 .stream()
-                .map(Capability::fromCbor)
+                .map(RelativeCapability::fromCbor)
                 .collect(Collectors.toList());
     }
 
-    private static PaddedCipherText encryptChildren(SymmetricKey baseKey, List<Capability> children) {
+    private static PaddedCipherText encryptChildren(SymmetricKey baseKey, List<RelativeCapability> children) {
         return PaddedCipherText.build(baseKey,
                 new CborObject.CborList(children.stream()
-                        .map(Capability::toCbor)
+                        .map(RelativeCapability::toCbor)
                         .collect(Collectors.toList())), CHILDREN_LINKS_PADDING_BLOCKSIZE);
     }
 
-    public CompletableFuture<DirAccess> updateProperties(Capability writableCapability, FileProperties newProps, NetworkAccess network) {
-        if (! writableCapability.isWritable())
-            throw new IllegalStateException("Need a writable pointer!");
+    @Override
+    public CompletableFuture<DirAccess> updateProperties(WritableAbsoluteCapability us,
+                                                         FileProperties newProps,
+                                                         NetworkAccess network) {
         SymmetricKey metaKey;
-        SymmetricKey parentKey = base2parent.target(writableCapability.baseKey);
+        SymmetricKey parentKey = base2parent.target(us.baseKey);
         metaKey = this.getMetaKey(parentKey);
         PaddedCipherText encryptedProperties = PaddedCipherText.build(metaKey, newProps, META_DATA_PADDING_BLOCKSIZE);
         DirAccess updated = new DirAccess(lastCommittedHash, version, base2parent,
@@ -171,114 +171,122 @@ public class DirAccess implements CryptreeNode {
                 encryptedProperties,
                 children, moreFolderContents
         );
-        return Transaction.run(writableCapability.location.owner,
-                tid -> network.uploadChunk(updated, writableCapability.location, writableCapability.signer(), tid)
+        return Transaction.call(us.owner,
+                tid -> network.uploadChunk(updated, us.owner, us.getMapKey(), us.signer(), tid)
                         .thenApply(b -> updated),
                 network.dhtClient);
     }
 
-    public CompletableFuture<DirAccess> addChildAndCommit(Capability targetCAP, SymmetricKey ourSubfolders,
-                                                         Capability ourPointer, SigningPrivateKeyAndPublicHash signer,
-                                                         NetworkAccess network, SafeRandom random) {
-        return addChildrenAndCommit(Arrays.asList(targetCAP), ourSubfolders, ourPointer, signer, network, random);
+    public CompletableFuture<DirAccess> addChildAndCommit(RelativeCapability targetCAP,
+                                                          WritableAbsoluteCapability us,
+                                                          NetworkAccess network,
+                                                          SafeRandom random) {
+        return addChildrenAndCommit(Arrays.asList(targetCAP), us, network, random);
     }
 
-    public CompletableFuture<DirAccess> addChildrenAndCommit(List<Capability> targetCAPs, SymmetricKey ourBaseKey,
-                                                          Capability ourPointer, SigningPrivateKeyAndPublicHash signer,
-                                                          NetworkAccess network, SafeRandom random) {
+    public CompletableFuture<DirAccess> addChildrenAndCommit(List<RelativeCapability> targetCAPs,
+                                                             WritableAbsoluteCapability us,
+                                                             NetworkAccess network,
+                                                             SafeRandom random) {
         // Make sure subsequent blobs use a different transaction to obscure linkage of different parts of this dir
-        List<Capability> children = getChildren(ourBaseKey);
+        List<RelativeCapability> children = getChildren(us.baseKey);
         if (children.size() + targetCAPs.size() > MAX_CHILD_LINKS_PER_BLOB) {
-            return getNextMetablob(ourBaseKey, network).thenCompose(nextMetablob -> {
+            return getNextMetablob(us, network).thenCompose(nextMetablob -> {
                 if (nextMetablob.size() >= 1) {
-                    Capability nextPointer = nextMetablob.get(0).capability;
+                    AbsoluteCapability nextPointer = nextMetablob.get(0).capability;
                     DirAccess nextBlob = (DirAccess) nextMetablob.get(0).fileAccess;
-                    return nextBlob.addChildrenAndCommit(targetCAPs, ourBaseKey, nextPointer, signer, network, random);
+                    return nextBlob.addChildrenAndCommit(targetCAPs, nextPointer.toWritable(us.getSigningPair()), network, random);
                 } else {
                     // first fill this directory, then overflow into a new one
                     int freeSlots = MAX_CHILD_LINKS_PER_BLOB - children.size();
-                    List<Capability> addToUs = targetCAPs.subList(0, freeSlots);
-                    List<Capability> addToNext = targetCAPs.subList(freeSlots, targetCAPs.size());
-                    return addChildrenAndCommit(addToUs, ourBaseKey, ourPointer, signer, network, random)
+                    List<RelativeCapability> addToUs = targetCAPs.subList(0, freeSlots);
+                    List<RelativeCapability> addToNext = targetCAPs.subList(freeSlots, targetCAPs.size());
+                    return addChildrenAndCommit(addToUs, us, network, random)
                             .thenCompose(newUs -> {
                                 // create and upload new metadata blob
                                 SymmetricKey nextSubfoldersKey = SymmetricKey.random();
-                                SymmetricKey ourParentKey = base2parent.target(ourBaseKey);
-                                Capability parentCap = parentLink.toCapability(ourParentKey);
+                                SymmetricKey ourParentKey = base2parent.target(us.baseKey);
+                                RelativeCapability parentCap = parentLink.toCapability(ourParentKey);
                                 DirAccess next = DirAccess.create(MaybeMultihash.empty(), nextSubfoldersKey, FileProperties.EMPTY,
-                                        parentCap.location, parentCap.baseKey, ourParentKey);
+                                        parentCap, ourParentKey);
                                 byte[] nextMapKey = random.randomBytes(32);
-                                Location nextLocation = ourPointer.getLocation().withMapKey(nextMapKey);
-                                Capability nextPointer = new Capability(nextLocation, Optional.empty(), nextSubfoldersKey);
-                                return next.addChildrenAndCommit(addToNext, nextSubfoldersKey, nextPointer, signer, network, random)
+                                WritableAbsoluteCapability nextPointer = new WritableAbsoluteCapability(us.owner, us.writer, nextMapKey, nextSubfoldersKey, us.signer.get());
+                                return next.addChildrenAndCommit(addToNext, nextPointer, network, random)
                                         .thenCompose(nextBlob -> {
                                             // re-upload us with the link to the next DirAccess
                                             DirAccess withNext = newUs.withNextBlob(Optional.of(
-                                                    EncryptedCapability.create(ourBaseKey,
-                                                            nextSubfoldersKey, nextPointer.getLocation())));
-                                            return Transaction.run(ourPointer.location.owner,
-                                                    tid -> withNext.commit(ourPointer.getLocation(), signer, network, tid),
+                                                    EncryptedCapability.create(us.baseKey, nextPointer.relativise(us))));
+                                            return Transaction.call(us.owner,
+                                                    tid -> withNext.commit(us, network, tid),
                                                     network.dhtClient);
                                         });
                             });
                 }
             });
         } else {
-            ArrayList<Capability> newFiles = new ArrayList<>(children);
+            ArrayList<RelativeCapability> newFiles = new ArrayList<>(children);
             newFiles.addAll(targetCAPs);
 
-            return Transaction.run(ourPointer.getLocation().owner,
-                    tid -> withChildren(encryptChildren(ourBaseKey, newFiles))
-                            .commit(ourPointer.getLocation(), signer, network, tid),
+            return Transaction.call(us.owner,
+                    tid -> withChildren(encryptChildren(us.baseKey, newFiles))
+                            .commit(us, network, tid),
                     network.dhtClient);
         }
     }
 
-    private CompletableFuture<List<RetrievedCapability>> getNextMetablob(SymmetricKey subfoldersKey, NetworkAccess network) {
+    private CompletableFuture<List<RetrievedCapability>> getNextMetablob(AbsoluteCapability us,
+                                                                         NetworkAccess network) {
         if (!moreFolderContents.isPresent())
             return CompletableFuture.completedFuture(Collections.emptyList());
-        return network.retrieveAllMetadata(Arrays.asList(moreFolderContents.get().toCapability(subfoldersKey)));
+        RelativeCapability cap = moreFolderContents.get().toCapability(us.baseKey);
+        return network.retrieveAllMetadata(Arrays.asList(cap.toAbsolute(us)));
     }
 
-    public CompletableFuture<DirAccess> updateChildLink(Capability ourPointer, RetrievedCapability original,
-                                                        RetrievedCapability modified, SigningPrivateKeyAndPublicHash signer,
-                                                        NetworkAccess network, SafeRandom random) {
-        return removeChild(original, ourPointer, signer, network)
-                .thenCompose(res -> {
-                    return res.addChildAndCommit(modified.capability, ourPointer.baseKey, ourPointer, signer, network, random);
-                });
+    public CompletableFuture<DirAccess> updateChildLink(WritableAbsoluteCapability ourPointer,
+                                                        RetrievedCapability original,
+                                                        RetrievedCapability modified,
+                                                        NetworkAccess network,
+                                                        SafeRandom random) {
+        return removeChild(original, ourPointer, network)
+                .thenCompose(res -> res.addChildAndCommit(ourPointer.relativise(modified.capability), ourPointer, network, random));
     }
 
-    public CompletableFuture<DirAccess> removeChild(RetrievedCapability childRetrievedPointer, Capability ourPointer,
-                                                    SigningPrivateKeyAndPublicHash signer, NetworkAccess network) {
-        List<Capability> newSubfolders = getChildren(ourPointer.baseKey).stream().filter(e -> {
-            Location target = e.location;
+    public CompletableFuture<DirAccess> removeChild(RetrievedCapability childRetrievedPointer,
+                                                    WritableAbsoluteCapability ourPointer,
+                                                    NetworkAccess network) {
+        List<RelativeCapability> newSubfolders = getChildren(ourPointer.baseKey).stream().filter(e -> {
             boolean keep = true;
-            if (Arrays.equals(target.getMapKey(), childRetrievedPointer.capability.location.getMapKey()))
-                if (Arrays.equals(target.writer.serialize(), childRetrievedPointer.capability.location.writer.serialize()))
-                    if (Arrays.equals(target.owner.serialize(), childRetrievedPointer.capability.location.owner.serialize()))
+            if (Arrays.equals(e.getMapKey(), childRetrievedPointer.capability.getMapKey()))
+                if (Objects.equals(e.writer.orElse(ourPointer.writer), childRetrievedPointer.capability.writer))
                         keep = false;
             return keep;
         }).collect(Collectors.toList());
-        return Transaction.run(ourPointer.getLocation().owner,
+        return Transaction.call(ourPointer.owner,
                 tid -> withChildren(encryptChildren(ourPointer.baseKey, newSubfolders))
-                        .commit(ourPointer.getLocation(), signer, network, tid),
+                        .commit(ourPointer, network, tid),
                 network.dhtClient);
     }
 
     // returns [RetrievedCapability]
-    public CompletableFuture<Set<RetrievedCapability>> getChildren(NetworkAccess network, SymmetricKey baseKey) {
-        CompletableFuture<List<RetrievedCapability>> childrenFuture = network.retrieveAllMetadata(getChildren(baseKey));
+    public CompletableFuture<Set<RetrievedCapability>> getChildren(NetworkAccess network,
+                                                                   AbsoluteCapability us) {
+        CompletableFuture<List<RetrievedCapability>> childrenFuture =
+                network.retrieveAllMetadata(getChildren(us.baseKey).stream()
+                        .map(c -> c.toAbsolute(us))
+                        .collect(Collectors.toList()));
 
-        CompletableFuture<List<RetrievedCapability>> moreChildrenFuture = moreFolderContents.isPresent() ?
-                network.retrieveAllMetadata(Arrays.asList(moreFolderContents.get().toCapability(baseKey))) :
-                CompletableFuture.completedFuture(Collections.emptyList());
+        CompletableFuture<List<RetrievedCapability>> moreChildrenFuture = moreFolderContents
+                .map(moreCap -> {
+                    RelativeCapability cap = moreCap.toCapability(us.baseKey);
+                    return network.retrieveAllMetadata(Arrays.asList(cap.toAbsolute(us)));
+                })
+                .orElse(CompletableFuture.completedFuture(Collections.emptyList()));
 
         return childrenFuture.thenCompose(children -> moreChildrenFuture.thenCompose(moreChildrenSource -> {
                     // this only has one or zero elements
                     Optional<RetrievedCapability> any = moreChildrenSource.stream().findAny();
                     CompletableFuture<Set<RetrievedCapability>> moreChildren = any
-                            .map(d -> ((DirAccess)d.fileAccess).getChildren(network, d.capability.baseKey))
+                            .map(d -> ((DirAccess)d.fileAccess).getChildren(network, d.capability))
                             .orElse(CompletableFuture.completedFuture(Collections.emptySet()));
                     return moreChildren.thenApply(moreRetrievedChildren -> {
                         Set<RetrievedCapability> results = Stream.concat(
@@ -291,43 +299,9 @@ public class DirAccess implements CryptreeNode {
         );
     }
 
-    public CompletableFuture<DirAccess> cleanUnreachableChildren(NetworkAccess network,
-                                                                 SymmetricKey baseKey,
-                                                                 Capability ourPointer,
-                                                                 SigningPrivateKeyAndPublicHash signer) {
-        CompletableFuture<List<RetrievedCapability>> moreChildrenFuture = moreFolderContents.isPresent() ?
-                network.retrieveAllMetadata(Arrays.asList(moreFolderContents.get().toCapability(baseKey))) :
-                CompletableFuture.completedFuture(Collections.emptyList());
-
-        return getChildren(network, baseKey)
-                .thenCompose(reachable -> moreChildrenFuture
-                        .thenCompose(moreChildrenSource -> {
-                            // this only has one or zero elements
-                            Optional<RetrievedCapability> any = moreChildrenSource.stream().findAny();
-                            CompletableFuture<DirAccess> moreChildren = any
-                                    .map(d -> ((DirAccess)d.fileAccess)
-                                            .cleanUnreachableChildren(network, d.capability.baseKey, d.capability, signer))
-                                    .orElse(CompletableFuture.completedFuture(this));
-                            return moreChildren.thenCompose(moreRetrievedChildren -> {
-                                List<Capability> reachableChildLinks = getChildren(baseKey)
-                                        .stream()
-                                        .filter(sym -> reachable.stream()
-                                                .anyMatch(rfp -> rfp.capability.equals(sym)))
-                                        .collect(Collectors.toList());
-
-                                DirAccess updated = withChildren(encryptChildren(baseKey, reachableChildLinks));
-                                return Transaction.run(ourPointer.getLocation().owner,
-                                        tid -> updated
-                                                .commit(ourPointer.getLocation(), signer, network, tid),
-                                        network.dhtClient);
-                            });
-                        })
-                );
-    }
-
-    public Set<Location> getChildrenLocations(SymmetricKey baseKey) {
-        return getChildren(baseKey).stream()
-                .map(cap -> cap.location)
+    public Set<Location> getChildrenLocations(AbsoluteCapability us) {
+        return getChildren(us.baseKey).stream()
+                .map(cap -> cap.getLocation(us.owner, us.writer))
                 .collect(Collectors.toSet());
     }
 
@@ -336,74 +310,69 @@ public class DirAccess implements CryptreeNode {
     }
 
     // returns pointer to new child directory
-    public CompletableFuture<Capability> mkdir(String name, NetworkAccess network,
-                                               PublicKeyHash ownerPublic,
-                                               SigningPrivateKeyAndPublicHash writer,
-                                               byte[] ourMapKey,
-                                               SymmetricKey baseKey, SymmetricKey optionalBaseKey,
-                                               boolean isSystemFolder, SafeRandom random) {
+    public CompletableFuture<RelativeCapability> mkdir(String name,
+                                                       NetworkAccess network,
+                                                       WritableAbsoluteCapability us,
+                                                       SymmetricKey optionalBaseKey,
+                                                       boolean isSystemFolder, SafeRandom random) {
         SymmetricKey dirReadKey = optionalBaseKey != null ? optionalBaseKey : SymmetricKey.random();
-        byte[] dirMapKey = new byte[32]; // root will be stored under this in the tree
-        random.randombytes(dirMapKey, 0, 32);
-        SymmetricKey ourParentKey = this.getParentKey(baseKey);
-        Location ourLocation = new Location(ownerPublic, writer.publicKeyHash, ourMapKey);
+        byte[] dirMapKey = random.randomBytes(32); // root will be stored under this in the tree
+        SymmetricKey ourParentKey = this.getParentKey(us.baseKey);
+        RelativeCapability ourCap = new RelativeCapability(us.getMapKey(), ourParentKey);
         DirAccess dir = DirAccess.create(MaybeMultihash.empty(), dirReadKey, new FileProperties(name, "", 0, LocalDateTime.now(),
-                isSystemFolder, Optional.empty()), ourLocation, ourParentKey, null);
-        Location chunkLocation = new Location(ownerPublic, writer.publicKeyHash, dirMapKey);
+                isSystemFolder, Optional.empty()), ourCap, null);
         // Use two transactions to not expose the child linkage
-        return Transaction.run(chunkLocation.owner,
-                tid -> network.uploadChunk(dir, chunkLocation, writer, tid), network.dhtClient)
+        return Transaction.call(us.owner,
+                tid -> network.uploadChunk(dir, us.owner, dirMapKey, us.getSigningPair(), tid), network.dhtClient)
                 .thenCompose(resultHash -> {
-                    Capability ourPointer = new Capability(ownerPublic, writer.publicKeyHash, ourMapKey, baseKey);
-                    Capability subdirPointer = new Capability(chunkLocation, Optional.empty(), dirReadKey);
-                    return addChildAndCommit(subdirPointer, baseKey, ourPointer, writer, network, random)
-                            .thenApply(modified -> new Capability(ownerPublic, writer.publicKeyHash, dirMapKey, dirReadKey));
+                    RelativeCapability subdirPointer = new RelativeCapability(dirMapKey, dirReadKey);
+                    return addChildAndCommit(subdirPointer, us, network, random)
+                            .thenApply(modified -> new RelativeCapability(dirMapKey, dirReadKey));
                 });
     }
 
-    public CompletableFuture<DirAccess> commit(Location ourLocation, SigningPrivateKeyAndPublicHash signer, NetworkAccess network, TransactionId tid) {
-        return network.uploadChunk(this, ourLocation, signer, tid)
+    public CompletableFuture<DirAccess> commit(WritableAbsoluteCapability us,
+                                               NetworkAccess network,
+                                               TransactionId tid) {
+        return network.uploadChunk(this, us.owner, us.getMapKey(), us.getSigningPair(), tid)
                 .thenApply(this::withHash);
     }
 
     @Override
-    public CompletableFuture<DirAccess> copyTo(SymmetricKey baseKey,
+    public CompletableFuture<DirAccess> copyTo(AbsoluteCapability us,
                                                SymmetricKey newBaseKey,
                                                Location newParentLocation,
                                                SymmetricKey parentparentKey,
-                                               PublicKeyHash newOwner,
                                                SigningPrivateKeyAndPublicHash entryWriterKey,
                                                byte[] newMapKey,
                                                NetworkAccess network,
                                                SafeRandom random) {
-        SymmetricKey parentKey = getParentKey(baseKey);
+        SymmetricKey parentKey = getParentKey(us.baseKey);
         FileProperties props = getProperties(parentKey);
-        DirAccess da = DirAccess.create(MaybeMultihash.empty(), newBaseKey, props, newParentLocation, parentparentKey, parentKey);
+        DirAccess da = DirAccess.create(MaybeMultihash.empty(), newBaseKey, props,
+                new RelativeCapability(newParentLocation.getMapKey(), parentparentKey), parentKey);
         SymmetricKey ourNewParentKey = da.getParentKey(newBaseKey);
-        Location ourNewLocation = new Location(newOwner, entryWriterKey.publicKeyHash, newMapKey);
+        Location ourNewLocation = new Location(newParentLocation.owner, entryWriterKey.publicKeyHash, newMapKey);
 
-        return this.getChildren(network, baseKey).thenCompose(RFPs -> {
+        return this.getChildren(network, us).thenCompose(RFPs -> {
             // upload new metadata blob for each child and re-add child
             CompletableFuture<DirAccess> reduce = RFPs.stream().reduce(CompletableFuture.completedFuture(da), (dirFuture, rfp) -> {
                 SymmetricKey newChildBaseKey = rfp.fileAccess.isDirectory() ? SymmetricKey.random() : rfp.capability.baseKey;
                 byte[] newChildMapKey = random.randomBytes(32);
-                Location newChildLocation = new Location(newOwner, entryWriterKey.publicKeyHash, newChildMapKey);
-                return rfp.fileAccess.copyTo(rfp.capability.baseKey, newChildBaseKey,
-                        ourNewLocation, ourNewParentKey, newOwner, entryWriterKey, newChildMapKey, network, random)
+                Location newChildLocation = new Location(newParentLocation.owner, entryWriterKey.publicKeyHash, newChildMapKey);
+                return rfp.fileAccess.copyTo(rfp.capability, newChildBaseKey,
+                        ourNewLocation, ourNewParentKey, entryWriterKey, newChildMapKey, network, random)
                         .thenCompose(newChildFileAccess -> {
-                            Capability ourNewPointer = new Capability(ourNewLocation.owner, entryWriterKey.publicKeyHash, newMapKey, newBaseKey);
-                            Capability newChildPointer = new Capability(newChildLocation, Optional.empty(), newChildBaseKey);
+                            AbsoluteCapability ourNewPointer = new AbsoluteCapability(ourNewLocation.owner, entryWriterKey.publicKeyHash, newMapKey, newBaseKey);
+                            RelativeCapability newChildPointer = new RelativeCapability(newChildLocation.getMapKey(), newChildBaseKey);
                             return dirFuture.thenCompose(dirAccess ->
-                                    dirAccess.addChildAndCommit(newChildPointer, newBaseKey, ourNewPointer, entryWriterKey, network, random));
+                                    dirAccess.addChildAndCommit(newChildPointer, ourNewPointer.toWritable(entryWriterKey), network, random));
                         });
             }, (a, b) -> a.thenCompose(x -> b)); // TODO Think about this combiner function
             return reduce;
-        }).thenCompose(finalDir -> {
-            Location newLocation = new Location(newParentLocation.owner, entryWriterKey.publicKeyHash, newMapKey);
-            return Transaction.run(newOwner,
-                    tid -> finalDir.commit(newLocation, entryWriterKey, network, tid),
-                    network.dhtClient);
-        });
+        }).thenCompose(finalDir -> Transaction.call(newParentLocation.owner,
+                tid -> finalDir.commit(new WritableAbsoluteCapability(newParentLocation.owner, entryWriterKey.publicKeyHash, newMapKey, newBaseKey, entryWriterKey.secret), network, tid),
+                network.dhtClient));
     }
 
     private DirAccess withChildren(PaddedCipherText newChildren) {
@@ -412,13 +381,13 @@ public class DirAccess implements CryptreeNode {
     }
 
     public static DirAccess create(MaybeMultihash lastCommittedHash, SymmetricKey baseKey, FileProperties props,
-                                   Location parentLocation, SymmetricKey parentParentKey, SymmetricKey parentKey) {
+                                   RelativeCapability parentCap, SymmetricKey parentKey) {
         SymmetricKey metaKey = SymmetricKey.random();
         if (parentKey == null)
             parentKey = SymmetricKey.random();
-        EncryptedCapability parentLink = parentLocation == null ?
+        EncryptedCapability parentLink = parentCap == null ?
                 null :
-                EncryptedCapability.create(parentKey, parentParentKey, parentLocation);
+                EncryptedCapability.create(parentKey, parentCap);
         return new DirAccess(
                 lastCommittedHash,
                 CryptreeNode.CURRENT_DIR_VERSION,

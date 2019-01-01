@@ -21,7 +21,7 @@ public interface SocialNetwork {
      * @param owner
      * @return all the pending follow requests for the given public key
      */
-    CompletableFuture<byte[]> getFollowRequests(PublicKeyHash owner);
+    CompletableFuture<byte[]> getFollowRequests(PublicKeyHash owner, byte[] signedTime);
 
     /** Delete a follow request for a given public key
      *

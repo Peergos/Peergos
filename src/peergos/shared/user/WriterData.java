@@ -28,7 +28,7 @@ public class WriterData implements Cborable {
     // publicly readable and present on owner keys
     public final Optional<SecretGenerationAlgorithm> generationAlgorithm;
     // accessible under IPFS address $hash/public
-    public final Optional<Capability> publicData;
+    public final Optional<RelativeCapability> publicData;
     // The public boxing key to encrypt follow requests to, accessible under IPFS address $hash/inbound
     public final Optional<PublicKeyHash> followRequestReceiver;
     // accessible under IPFS address $hash/owned
@@ -54,7 +54,7 @@ public class WriterData implements Cborable {
      */
     public WriterData(PublicKeyHash controller,
                       Optional<SecretGenerationAlgorithm> generationAlgorithm,
-                      Optional<Capability> publicData,
+                      Optional<RelativeCapability> publicData,
                       Optional<PublicKeyHash> followRequestReceiver,
                       Set<PublicKeyHash> ownedKeys,
                       Map<String, PublicKeyHash> namedOwnedKeys,
@@ -128,7 +128,7 @@ public class WriterData implements Cborable {
                                                                        MaybeMultihash currentHash,
                                                                        NetworkAccess network,
                                                                        Consumer<CommittedWriterData> updater) {
-        Capability pointer = fileWrapper.getPointer().capability;
+        AbsoluteCapability pointer = fileWrapper.getPointer().capability;
 
         return staticData.map(sd -> {
             List<EntryPoint> original = sd.getEntryPoints(rootKey);
@@ -138,9 +138,9 @@ public class WriterData implements Cborable {
             boolean isRemoved = updated.size() < original.size();
 
             if (isRemoved) {
-                return Transaction.run(pointer.location.owner,
+                return Transaction.call(fileWrapper.owner(),
                         tid -> withStaticData(Optional.of(new UserStaticData(updated, rootKey)))
-                                .commit(pointer.location.owner, signer, currentHash, network, updater, tid),
+                                .commit(fileWrapper.owner(), signer, currentHash, network, updater, tid),
                         network.dhtClient);
             }
             CommittedWriterData committed = committed(currentHash);
@@ -158,7 +158,7 @@ public class WriterData implements Cborable {
                                                              SecretGenerationAlgorithm newAlgorithm,
                                                              NetworkAccess network,
                                                              Consumer<CommittedWriterData> updater) {
-        return Transaction.run(oldSigner.publicKeyHash, tid -> {
+        return Transaction.call(oldSigner.publicKeyHash, tid -> {
             // auth new key by adding to existing writer data first
             WriterData tmp = addOwnedKey(signer.publicKeyHash);
             return tmp.commit(oldSigner.publicKeyHash, oldSigner, currentHash, network, x -> {}, tid)
@@ -264,7 +264,7 @@ public class WriterData implements Cborable {
 
         PublicKeyHash controller = extract.apply("controller").map(PublicKeyHash::fromCbor).get();
         Optional<SecretGenerationAlgorithm> algo  = extractUserGenerationAlgorithm(cbor);
-        Optional<Capability> publicData = extract.apply("public").map(Capability::fromCbor);
+        Optional<RelativeCapability> publicData = extract.apply("public").map(RelativeCapability::fromCbor);
         Optional<PublicKeyHash> followRequestReceiver = extract.apply("inbound").map(PublicKeyHash::fromCbor);
         CborObject.CborList ownedList = (CborObject.CborList) map.values.get(new CborObject.CborString("owned"));
         Set<PublicKeyHash> owned = ownedList == null ?
