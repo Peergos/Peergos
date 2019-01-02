@@ -597,17 +597,10 @@ public class JDBCCoreNode {
         if (requests == null)
             return CompletableFuture.completedFuture(new byte[4]);
 
-        ByteArrayOutputStream bout = new ByteArrayOutputStream();
-        DataOutput dout = new DataOutputStream(bout);
-        try {
-            dout.writeInt(requests.length);
-            for (RowData req : requests)
-                Serialize.serialize(req.data, dout);
-            return CompletableFuture.completedFuture(bout.toByteArray());
-        } catch (IOException e) {
-            LOG.log(Level.WARNING, e.getMessage(), e);
-            return null;
-        }
+        CborObject.CborList resp = new CborObject.CborList(Arrays.asList(requests).stream()
+                .map(req -> CborObject.fromByteArray(req.data))
+                .collect(Collectors.toList()));
+        return CompletableFuture.completedFuture(resp.serialize());
     }
 
     public CompletableFuture<Boolean> setPointer(PublicKeyHash owner, PublicKeyHash writerHash, byte[] writingKeySignedHash) {

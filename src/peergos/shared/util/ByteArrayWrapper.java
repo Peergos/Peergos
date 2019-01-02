@@ -2,6 +2,9 @@ package peergos.shared.util;
 
 import java.util.Arrays;
 
+/** A convenience wrapper for using byte arrays in collections and sorted collections.
+ *
+ */
 public class ByteArrayWrapper implements Comparable<ByteArrayWrapper>
 {
     public final byte[] data;

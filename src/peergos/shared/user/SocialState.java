@@ -1,6 +1,7 @@
 package peergos.shared.user;
 
 import jsinterop.annotations.*;
+import peergos.shared.social.*;
 import peergos.shared.user.fs.*;
 
 import java.util.*;
@@ -9,12 +10,12 @@ import java.util.stream.*;
 @JsType
 public class SocialState {
 
-    public final List<FollowRequest> pendingIncoming;
+    public final List<FollowRequestWithCipherText> pendingIncoming;
     public final Map<String, FileWrapper> followerRoots;
     public final Set<FileWrapper> followingRoots;
     public final Map<String, FileWrapper> pendingOutgoingFollowRequests;
 
-    public SocialState(List<FollowRequest> pendingIncoming,
+    public SocialState(List<FollowRequestWithCipherText> pendingIncoming,
                        Set<String> actualFollowers,
                        Map<String, FileWrapper> followerRoots,
                        Set<FileWrapper> followingRoots) {

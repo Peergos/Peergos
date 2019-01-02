@@ -1,5 +1,7 @@
 package peergos.shared.util;
 
+import jsinterop.annotations.*;
+
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
@@ -72,4 +74,8 @@ public class Futures {
         return err;
     }
 
+    @JsMethod
+    public static <T>CompletableFuture<T> incomplete() {
+        return new CompletableFuture<>();
+    }
 }

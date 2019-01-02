@@ -12,6 +12,7 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.stream.*;
 
 public class HTTPCoreNode implements CoreNode {
 	private static final Logger LOG = Logger.getGlobal();
@@ -103,17 +104,12 @@ public class HTTPCoreNode implements CoreNode {
             dout.flush();
 
             return poster.postUnzip(urlPrefix + "core/getChain", bout.toByteArray()).thenApply(res -> {
-                DataSource din = new DataSource(res);
-                try {
-                    int count = din.readInt();
-                    List<UserPublicKeyLink> result = new ArrayList<>();
-                    for (int i = 0; i < count; i++) {
-                        result.add(UserPublicKeyLink.fromCbor(CborObject.fromByteArray(Serialize.deserializeByteArray(din, UserPublicKeyLink.MAX_SIZE))));
-                    }
-                    return result;
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
+                CborObject cbor = CborObject.fromByteArray(res);
+                if (! (cbor instanceof CborObject.CborList))
+                    throw new IllegalStateException("Invalid cbor for claim chain: " + cbor);
+                return ((CborObject.CborList) cbor).value.stream()
+                        .map(UserPublicKeyLink::fromCbor)
+                        .collect(Collectors.toList());
             });
         } catch (IOException ioe) {
             LOG.log(Level.WARNING, ioe.getMessage(), ioe);

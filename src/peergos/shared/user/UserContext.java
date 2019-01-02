@@ -11,6 +11,7 @@ import peergos.shared.crypto.random.SafeRandom;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multihash.Multihash;
 import peergos.shared.mutable.*;
+import peergos.shared.social.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
@@ -682,35 +683,28 @@ public class UserContext {
     }
 
     @JsMethod
-    public CompletableFuture<Boolean> sendReplyFollowRequest(FollowRequest initialRequest, boolean accept, boolean reciprocate) {
+    public CompletableFuture<Boolean> sendReplyFollowRequest(FollowRequestWithCipherText initialRequestAndRaw, boolean accept, boolean reciprocate) {
+        FollowRequest initialRequest = initialRequestAndRaw.req;
         String theirUsername = initialRequest.entry.get().ownerName;
         // if accept, create directory to share with them, note in entry points (they follow us)
         if (!accept && !reciprocate) {
-            // send a null entry and null key (full rejection)
-            DataSink dout = new DataSink();
-            // write a null entry point
+            // send a null entry and absent key (full rejection)
+            // write a null entry point and tell them we're not reciprocating with an absent key
             EntryPoint entry = new EntryPoint(AbsoluteCapability.createNull(), username);
-            dout.writeArray(entry.serialize());
-            dout.writeArray(new byte[0]); // tell them we're not reciprocating
-            byte[] plaintext = dout.toByteArray();
+            FollowRequest reply = new FollowRequest(Optional.of(entry), Optional.empty());
 
             return getPublicKeys(initialRequest.entry.get().ownerName).thenCompose(pair -> {
                 PublicBoxingKey targetUser = pair.get().right;
-                // create a tmp keypair whose public key we can prepend to the request without leaking information
-                BoxingKeyPair tmp = BoxingKeyPair.random(crypto.random, crypto.boxer);
-                byte[] payload = targetUser.encryptMessageFor(plaintext, tmp.secretBoxingKey);
 
-                DataSink resp = new DataSink();
-                resp.writeArray(tmp.publicBoxingKey.serialize());
-                resp.writeArray(payload);
-                network.social.sendFollowRequest(initialRequest.entry.get().pointer.owner, resp.toByteArray());
-                // remove pending follow request from them
-                return network.social.removeFollowRequest(signer.publicKeyHash, signer.secret.signMessage(initialRequest.rawCipher));
+                return blindAndSendFollowRequest(initialRequest.entry.get().pointer.owner, targetUser, reply)
+                        .thenCompose(b ->
+                                // remove pending follow request from them
+                                network.social.removeFollowRequest(signer.publicKeyHash, signer.secret.signMessage(initialRequestAndRaw.cipher.serialize()))
+                        );
             });
         }
 
         return CompletableFuture.completedFuture(true).thenCompose(b -> {
-            DataSink dout = new DataSink();
             if (accept) {
                 return getSharingFolder().thenCompose(sharing -> {
                     return sharing.mkdir(theirUsername, network, initialRequest.key.get(), true, crypto.random)
@@ -723,36 +717,28 @@ public class UserContext {
 
                                 return addToStaticDataAndCommit(entry).thenApply(trie -> {
                                     this.entrie = trie;
-                                    dout.writeArray(entry.serialize());
-                                    return dout;
+                                    return entry;
                                 });
                             });
                 });
             } else {
                 EntryPoint entry = new EntryPoint(AbsoluteCapability.createNull(), username);
-                dout.writeArray(entry.serialize());
-                return CompletableFuture.completedFuture(dout);
+                return CompletableFuture.completedFuture(entry);
             }
-        }).thenCompose(dout -> {
+        }).thenCompose(entry -> {
 
-            if (!reciprocate) {
-                dout.writeArray(new byte[0]); // tell them we're not reciprocating
+            Optional<SymmetricKey> baseKey;
+            if (! reciprocate) {
+                baseKey = Optional.empty(); // tell them we're not reciprocating
             } else {
                 // if reciprocate, add entry point to their shared directory (we follow them) and then
-                dout.writeArray(initialRequest.entry.get().pointer.baseKey.serialize()); // tell them we are reciprocating
+                baseKey = Optional.of(initialRequest.entry.get().pointer.baseKey); // tell them we are reciprocating
             }
-            byte[] plaintext = dout.toByteArray();
+            FollowRequest reply = new FollowRequest(Optional.of(entry), baseKey);
 
             return getPublicKeys(initialRequest.entry.get().ownerName).thenCompose(pair -> {
                 PublicBoxingKey targetUser = pair.get().right;
-                // create a tmp keypair whose public key we can prepend to the request without leaking information
-                BoxingKeyPair tmp = BoxingKeyPair.random(crypto.random, crypto.boxer);
-                byte[] payload = targetUser.encryptMessageFor(plaintext, tmp.secretBoxingKey);
-
-                DataSink resp = new DataSink();
-                resp.writeArray(tmp.publicBoxingKey.serialize());
-                resp.writeArray(payload);
-                return network.social.sendFollowRequest(initialRequest.entry.get().pointer.owner, resp.toByteArray());
+                return blindAndSendFollowRequest(initialRequest.entry.get().pointer.owner, targetUser, reply);
             });
         }).thenCompose(b -> {
             if (reciprocate)
@@ -761,8 +747,17 @@ public class UserContext {
         }).thenCompose(trie -> {
             // remove original request
             entrie = trie;
-            return network.social.removeFollowRequest(signer.publicKeyHash, signer.secret.signMessage(initialRequest.rawCipher));
+            return network.social.removeFollowRequest(signer.publicKeyHash, signer.secret.signMessage(initialRequestAndRaw.cipher.serialize()));
         });
+    }
+
+    private CompletableFuture<Boolean> blindAndSendFollowRequest(PublicKeyHash targetIdentity, PublicBoxingKey targetUser, FollowRequest req) {
+        // create a tmp keypair whose public key we can prepend to the request without leaking information
+        BoxingKeyPair tmp = BoxingKeyPair.random(crypto.random, crypto.boxer);
+
+        BlindFollowRequest blindReply = new BlindFollowRequest(tmp.publicBoxingKey,
+                PaddedAsymmetricCipherText.build(tmp.secretBoxingKey, targetUser, req, 34 * 6));
+        return network.social.sendFollowRequest(targetIdentity, blindReply.serialize());
     }
 
     public CompletableFuture<Boolean> sendFollowRequest(String targetUsername, SymmetricKey requestedKey) {
@@ -787,23 +782,22 @@ public class UserContext {
                         return sharing.mkdir(targetUsername, network, null, true, crypto.random).thenCompose(friendRoot -> {
 
                             // if they accept the request we will add a note to our static data so we know who we sent the read access to
-                            EntryPoint entry = new EntryPoint(friendRoot.readOnly().withWritingKey(sharing.writer()).toAbsolute(sharing.getPointer().capability),
+                            EntryPoint entry = new EntryPoint(friendRoot.readOnly()
+                                    .withWritingKey(sharing.writer())
+                                    .toAbsolute(sharing.getPointer().capability),
                                     username);
 
                             // send details to allow friend to follow us, and optionally let us follow them
                             // create a tmp keypair whose public key we can prepend to the request without leaking information
                             BoxingKeyPair tmp = BoxingKeyPair.random(crypto.random, crypto.boxer);
-                            DataSink buf = new DataSink();
-                            buf.writeArray(entry.serialize());
-                            buf.writeArray(requestedKey != null ? requestedKey.serialize() : new byte[0]);
-                            byte[] plaintext = buf.toByteArray();
-                            byte[] payload = targetUser.encryptMessageFor(plaintext, tmp.secretBoxingKey);
+                            FollowRequest followReq = new FollowRequest(Optional.of(entry), Optional.ofNullable(requestedKey));
 
-                            DataSink res = new DataSink();
-                            res.writeArray(tmp.publicBoxingKey.serialize());
-                            res.writeArray(payload);
+                            //TODO figure out correct padding value here that doesn't leak anything
+                            PaddedAsymmetricCipherText cipher = PaddedAsymmetricCipherText.build(tmp.secretBoxingKey, targetUser, followReq, 34 * 6);
+
+                            BlindFollowRequest blindReq = new BlindFollowRequest(tmp.publicBoxingKey, cipher);
                             PublicKeyHash targetSigner = targetUserOpt.get().left;
-                            return network.social.sendFollowRequest(targetSigner, res.toByteArray());
+                            return network.social.sendFollowRequest(targetSigner, blindReq.serialize());
                         });
                     });
                 });
@@ -943,29 +937,16 @@ public class UserContext {
                 .thenCompose(wd -> wd.props.removeFromStaticData(fileWrapper, rootKey, signer, wd.hash, network, lock::complete));
     }
 
-    private CompletableFuture<List<FollowRequest>> getFollowRequests() {
+    private CompletableFuture<List<BlindFollowRequest>> getFollowRequests() {
         byte[] time = new CborObject.CborLong(System.currentTimeMillis()).serialize();
         byte[] auth = signer.secret.signMessage(time);
         return network.social.getFollowRequests(signer.publicKeyHash, auth).thenApply(reqs -> {
-            DataSource din = new DataSource(reqs);
-            List<FollowRequest> all;
-            try {
-                int n = din.readInt();
-                all = IntStream.range(0, n)
-                        .mapToObj(i -> i)
-                        .flatMap(i -> {
-                            try {
-                                return Stream.of(decodeFollowRequest(din.readArray()));
-                            } catch (IOException ioe) {
-                                return Stream.empty();
-                            }
-                        })
-                        .collect(Collectors.toList());
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-
-            return all;
+            CborObject cbor = CborObject.fromByteArray(reqs);
+            if (! (cbor instanceof CborObject.CborList))
+                throw new IllegalStateException("Invalid cbor for list of follow requests: " + cbor);
+            return ((CborObject.CborList) cbor).value.stream()
+                    .map(BlindFollowRequest::fromCbor)
+                    .collect(Collectors.toList());
         });
     }
 
@@ -974,18 +955,23 @@ public class UserContext {
      *
      * @return initial follow requests
      */
-    public CompletableFuture<List<FollowRequest>> processFollowRequests() {
+    public CompletableFuture<List<FollowRequestWithCipherText>> processFollowRequests() {
         return getFollowRequests().thenCompose(this::processFollowRequests);
     }
 
-    private CompletableFuture<List<FollowRequest>> processFollowRequests(List<FollowRequest> all) {
+    private CompletableFuture<List<FollowRequestWithCipherText>> processFollowRequests(List<BlindFollowRequest> all) {
         return getSharingFolder().thenCompose(sharing ->
                 getFollowerRoots().thenCompose(followerRoots -> {
-                    List<FollowRequest> replies = all.stream()
-                            .filter(freq -> followerRoots.containsKey(freq.entry.get().ownerName))
+                    List<FollowRequestWithCipherText> withDecrypted = all.stream()
+                            .map(b -> new FollowRequestWithCipherText(b.cipher.decrypt(boxer.secretBoxingKey, b.dummySource, FollowRequest::fromCbor), b))
                             .collect(Collectors.toList());
 
-                    BiFunction<TrieNode, FollowRequest, CompletableFuture<TrieNode>> addToStatic = (root, freq) -> {
+                    List<FollowRequestWithCipherText> replies = withDecrypted.stream()
+                            .filter(p -> followerRoots.containsKey(p.req.entry.get().ownerName))
+                            .collect(Collectors.toList());
+
+                    BiFunction<TrieNode, FollowRequestWithCipherText, CompletableFuture<TrieNode>> addToStatic = (root, p) -> {
+                        FollowRequest freq = p.req;
                         if (!Arrays.equals(freq.entry.get().pointer.baseKey.serialize(), SymmetricKey.createNull().serialize())) {
                             CompletableFuture<TrieNode> updatedRoot = freq.entry.get().ownerName.equals(username) ?
                                     CompletableFuture.completedFuture(root) : // ignore responses claiming to be owned by us
@@ -993,14 +979,15 @@ public class UserContext {
                             return updatedRoot.thenCompose(newRoot -> {
                                 entrie = newRoot;
                                 // clear their response follow req too
-                                return network.social.removeFollowRequest(signer.publicKeyHash, signer.secret.signMessage(freq.rawCipher))
+                                return network.social.removeFollowRequest(signer.publicKeyHash, signer.secret.signMessage(p.cipher.serialize()))
                                         .thenApply(b -> newRoot);
                             });
                         }
                         return CompletableFuture.completedFuture(root);
                     };
 
-                    BiFunction<TrieNode, FollowRequest, CompletableFuture<TrieNode>> mozart = (trie, freq) -> {
+                    BiFunction<TrieNode, FollowRequestWithCipherText, CompletableFuture<TrieNode>> mozart = (trie, p) -> {
+                        FollowRequest freq = p.req;
                         // delete our folder if they didn't reciprocate
                         FileWrapper ourDirForThem = followerRoots.get(freq.entry.get().ownerName);
                         byte[] ourKeyForThem = ourDirForThem.getKey().serialize();
@@ -1012,7 +999,7 @@ public class UserContext {
                             CompletableFuture<CommittedWriterData> cleanStatic = removeFromStaticData(ourDirForThem);
 
                             return removeDir.thenCompose(x -> cleanStatic)
-                                    .thenCompose(b -> addToStatic.apply(trie, freq));
+                                    .thenCompose(b -> addToStatic.apply(trie, p));
                         } else if (freq.entry.get().pointer.isNull()) {
                             // They reciprocated, but didn't accept (they follow us, but we can't follow them)
                             // add entry point to static data to signify their acceptance
@@ -1034,11 +1021,11 @@ public class UserContext {
                                             .thenCompose(treeNode ->
                                                     treeNode.get().getPath(network))
                                             .thenApply(path -> newRoot.put(path, entry)
-                                    ).thenCompose(trieres -> addToStatic.apply(trieres, freq)));
+                                    ).thenCompose(trieres -> addToStatic.apply(trieres, p)));
                         }
                     };
-                    List<FollowRequest> initialRequests = all.stream()
-                            .filter(freq -> !followerRoots.containsKey(freq.entry.get().ownerName))
+                    List<FollowRequestWithCipherText> initialRequests = withDecrypted.stream()
+                            .filter(p -> !followerRoots.containsKey(p.req.entry.get().ownerName))
                             .collect(Collectors.toList());
                     return Futures.reduceAll(replies, entrie, mozart, (a, b) -> a)
                             .thenApply(newRoot -> {
@@ -1047,18 +1034,6 @@ public class UserContext {
                             });
                 })
         );
-    }
-
-    private FollowRequest decodeFollowRequest(byte[] raw) throws IOException {
-        DataSource buf = new DataSource(raw);
-        PublicBoxingKey tmp = PublicBoxingKey.fromCbor(CborObject.fromByteArray(Serialize.deserializeByteArray(buf, 4096)));
-        byte[] cipher = buf.readArray();
-        byte[] plaintext = boxer.secretBoxingKey.decryptMessage(cipher, tmp);
-        DataSource input = new DataSource(plaintext);
-        byte[] rawEntry = input.readArray();
-        byte[] rawKey = input.readArray();
-        return new FollowRequest(rawEntry.length > 0 ? Optional.of(EntryPoint.fromCbor(CborObject.fromByteArray(rawEntry))) : Optional.empty(),
-                rawKey.length > 0 ? Optional.of(SymmetricKey.fromByteArray(rawKey)) : Optional.empty(), raw);
     }
 
     public CompletableFuture<Set<FileWrapper>> getChildren(String path) {

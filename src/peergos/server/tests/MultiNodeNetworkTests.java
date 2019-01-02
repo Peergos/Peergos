@@ -10,6 +10,7 @@ import peergos.shared.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.social.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 
@@ -119,10 +120,10 @@ public class MultiNodeNetworkTests {
         UserContext u2 = ensureSignedUp(username2, password2, getNode(iNode1), crypto);
 
         u2.sendFollowRequest(username1, SymmetricKey.random()).get();
-        List<FollowRequest> u1Requests = u1.processFollowRequests().get();
+        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
         assertTrue("Receive a follow request", u1Requests.size() > 0);
         u1.sendReplyFollowRequest(u1Requests.get(0), true, true).get();
-        List<FollowRequest> u2FollowRequests = u2.processFollowRequests().get();
+        List<FollowRequestWithCipherText> u2FollowRequests = u2.processFollowRequests().get();
         Optional<FileWrapper> u1ToU2 = u2.getByPath("/" + u1.username).get();
         assertTrue("Friend root present after accepted follow request", u1ToU2.isPresent());
 
