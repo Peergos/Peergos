@@ -39,7 +39,7 @@ public class CipherText implements Cborable {
         return new CipherText(nonce, cipherText);
     }
 
-    public <T> T decrypt(SymmetricKey from, Function<Cborable, T> fromCbor) {
+    public <T> T decrypt(SymmetricKey from, Function<CborObject, T> fromCbor) {
         byte[] secret = from.decrypt(cipherText, nonce);
         return fromCbor.apply(CborObject.fromByteArray(secret));
     }
