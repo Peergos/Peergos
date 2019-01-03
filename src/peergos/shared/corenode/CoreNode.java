@@ -8,7 +8,7 @@ import java.util.*;
 import java.util.concurrent.*;
 
 public interface CoreNode {
-    int MAX_USERNAME_SIZE = 100;
+    int MAX_USERNAME_SIZE = 64;
     int MAX_USERNAME_COUNT = 1024;
 
     /**

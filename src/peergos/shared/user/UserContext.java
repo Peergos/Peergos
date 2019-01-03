@@ -751,13 +751,18 @@ public class UserContext {
         });
     }
 
-    private CompletableFuture<Boolean> blindAndSendFollowRequest(PublicKeyHash targetIdentity, PublicBoxingKey targetUser, FollowRequest req) {
-        // create a tmp keypair whose public key we can prepend to the request without leaking information
-        BoxingKeyPair tmp = BoxingKeyPair.random(crypto.random, crypto.boxer);
+    /** Send details to allow friend to follow us, and optionally let us follow them
+        create a tmp keypair whose public key we can prepend to the request without leaking information
 
-        BlindFollowRequest blindReply = new BlindFollowRequest(tmp.publicBoxingKey,
-                PaddedAsymmetricCipherText.build(tmp.secretBoxingKey, targetUser, req, 34 * 6));
-        return network.social.sendFollowRequest(targetIdentity, blindReply.serialize());
+     *
+     * @param targetIdentity
+     * @param targetBoxer
+     * @param req
+     * @return
+     */
+    private CompletableFuture<Boolean> blindAndSendFollowRequest(PublicKeyHash targetIdentity, PublicBoxingKey targetBoxer, FollowRequest req) {
+        BlindFollowRequest blindRequest = BlindFollowRequest.build(targetBoxer, req, crypto.random, crypto.boxer);
+        return network.social.sendFollowRequest(targetIdentity, blindRequest.serialize());
     }
 
     public CompletableFuture<Boolean> sendFollowRequest(String targetUsername, SymmetricKey requestedKey) {
@@ -787,17 +792,10 @@ public class UserContext {
                                     .toAbsolute(sharing.getPointer().capability),
                                     username);
 
-                            // send details to allow friend to follow us, and optionally let us follow them
-                            // create a tmp keypair whose public key we can prepend to the request without leaking information
-                            BoxingKeyPair tmp = BoxingKeyPair.random(crypto.random, crypto.boxer);
                             FollowRequest followReq = new FollowRequest(Optional.of(entry), Optional.ofNullable(requestedKey));
 
-                            //TODO figure out correct padding value here that doesn't leak anything
-                            PaddedAsymmetricCipherText cipher = PaddedAsymmetricCipherText.build(tmp.secretBoxingKey, targetUser, followReq, 34 * 6);
-
-                            BlindFollowRequest blindReq = new BlindFollowRequest(tmp.publicBoxingKey, cipher);
                             PublicKeyHash targetSigner = targetUserOpt.get().left;
-                            return network.social.sendFollowRequest(targetSigner, blindReq.serialize());
+                            return blindAndSendFollowRequest(targetSigner, targetUser, followReq);
                         });
                     });
                 });
