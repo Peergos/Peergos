@@ -11,27 +11,27 @@ import java.util.*;
 public class BlindFollowRequest implements Cborable {
 
     public final PublicBoxingKey dummySource;
-    public final PaddedAsymmetricCipherText cipher;
+    public final PaddedAsymmetricCipherText followRequest;
 
-    public BlindFollowRequest(PublicBoxingKey dummySource, PaddedAsymmetricCipherText cipher) {
+    public BlindFollowRequest(PublicBoxingKey dummySource, PaddedAsymmetricCipherText followRequest) {
         this.dummySource = dummySource;
-        this.cipher = cipher;
+        this.followRequest = followRequest;
     }
 
     @Override
     public CborObject toCbor() {
         Map<String, CborObject> result = new TreeMap<>();
-        result.put("b", dummySource.toCbor());
-        result.put("k", cipher.toCbor());
+        result.put("k", dummySource.toCbor());
+        result.put("f", followRequest.toCbor());
         return CborObject.CborMap.build(result);
     }
 
     public static BlindFollowRequest fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Invalid cbor for BlindFollowRequest: "+  cbor);
-        PublicBoxingKey dummysource = PublicBoxingKey.fromCbor(((CborObject.CborMap) cbor).get("b"));
-        PaddedAsymmetricCipherText cipher = PaddedAsymmetricCipherText.fromCbor(((CborObject.CborMap) cbor).get("k"));
-        return new BlindFollowRequest(dummysource, cipher);
+        PublicBoxingKey dummysource = PublicBoxingKey.fromCbor(((CborObject.CborMap) cbor).get("k"));
+        PaddedAsymmetricCipherText followRequest = PaddedAsymmetricCipherText.fromCbor(((CborObject.CborMap) cbor).get("f"));
+        return new BlindFollowRequest(dummysource, followRequest);
     }
 
     public static BlindFollowRequest build(PublicBoxingKey targetBoxer, FollowRequest request, SafeRandom random, Curve25519 boxer) {

@@ -16,7 +16,6 @@ import peergos.shared.storage.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
-import java.io.*;
 import java.nio.file.*;
 import java.time.*;
 import java.util.*;
@@ -961,7 +960,7 @@ public class UserContext {
         return getSharingFolder().thenCompose(sharing ->
                 getFollowerRoots().thenCompose(followerRoots -> {
                     List<FollowRequestWithCipherText> withDecrypted = all.stream()
-                            .map(b -> new FollowRequestWithCipherText(b.cipher.decrypt(boxer.secretBoxingKey, b.dummySource, FollowRequest::fromCbor), b))
+                            .map(b -> new FollowRequestWithCipherText(b.followRequest.decrypt(boxer.secretBoxingKey, b.dummySource, FollowRequest::fromCbor), b))
                             .collect(Collectors.toList());
 
                     List<FollowRequestWithCipherText> replies = withDecrypted.stream()
