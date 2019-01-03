@@ -1,5 +1,6 @@
 package peergos.server.social;
 
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.social.*;
@@ -38,12 +39,12 @@ public class NonWriteThroughSocialNetwork implements SocialNetwork {
     public CompletableFuture<byte[]> getFollowRequests(PublicKeyHash owner, byte[] signedTime) {
         try {
             byte[] reqs = source.getFollowRequests(owner, signedTime).get();
-            DataSource din = new DataSource(reqs);
+            CborObject cbor = CborObject.fromByteArray(reqs);
             List<byte[]> notDeleted = new ArrayList<>();
             List<ByteArrayWrapper> removed = removedFollowRequests.get(owner);
-            int n = din.readInt();
-            for (int i = 0; i < n; i++) {
-                byte[] req = din.readArray();
+            CborObject.CborList list = (CborObject.CborList) cbor;
+            for (Cborable reqCbor: list.value) {
+                byte[] req = reqCbor.serialize();
                 ByteArrayWrapper wrapped = new ByteArrayWrapper(req);
                 if (! removed.contains(wrapped))
                     notDeleted.add(req);

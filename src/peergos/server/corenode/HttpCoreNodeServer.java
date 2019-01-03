@@ -108,10 +108,7 @@ public class HttpCoreNodeServer {
             String username = CoreNodeUtils.deserializeString(din);
 
             List<UserPublicKeyLink> chain = coreNode.getChain(username).get();
-            dout.writeInt(chain.size());
-            for (UserPublicKeyLink link : chain) {
-                Serialize.serialize(link.serialize(), dout);
-            }
+            dout.write(new CborObject.CborList(chain).serialize());
         }
 
         void updateChain(DataInputStream din, DataOutputStream dout) throws Exception

@@ -120,6 +120,10 @@ public interface CborObject extends Cborable {
             return new CborMap(transformed);
         }
 
+        public Cborable get(String key) {
+            return values.get(new CborString(key));
+        }
+
         @Override
         public void serialize(CborEncoder encoder) {
             try {

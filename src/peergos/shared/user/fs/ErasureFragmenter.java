@@ -41,12 +41,6 @@ public class ErasureFragmenter implements Fragmenter {
         return CborObject.CborMap.build(res);
     }
 
-    public void serialize(DataSink dout) {
-        dout.writeInt(Type.ERASURE_CODING.val);
-        dout.writeInt(nOriginalFragments);
-        dout.writeInt(nAllowedFailures);
-    }
-
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;

@@ -17,7 +17,7 @@ import java.util.stream.*;
 
 public class UserPublicKeyLink implements Cborable{
     public static final int MAX_SIZE = 2*1024*1024;
-    public static final int MAX_USERNAME_SIZE = 64;
+    public static final int MAX_USERNAME_SIZE = CoreNode.MAX_USERNAME_SIZE;
 
     public final PublicKeyHash owner;
     public final Claim claim;

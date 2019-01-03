@@ -5,7 +5,7 @@ import peergos.server.storage.ResetableFileInputStream;
 import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
 import peergos.shared.crypto.symmetric.SymmetricKey;
-import peergos.shared.user.FollowRequest;
+import peergos.shared.social.*;
 import peergos.shared.user.UserContext;
 import peergos.shared.user.fs.*;
 import peergos.shared.user.fs.FileWrapper;
@@ -78,8 +78,8 @@ public class PeergosNetworkUtils {
         }
 
         // make sharer reciprocate all the follow requests
-        List<FollowRequest> sharerRequests = sharerUser.processFollowRequests().get();
-        for (FollowRequest u1Request : sharerRequests) {
+        List<FollowRequestWithCipherText> sharerRequests = sharerUser.processFollowRequests().get();
+        for (FollowRequestWithCipherText u1Request : sharerRequests) {
             boolean accept = true;
             boolean reciprocate = true;
             sharerUser.sendReplyFollowRequest(u1Request, accept, reciprocate).get();
@@ -185,8 +185,8 @@ public class PeergosNetworkUtils {
         for (UserContext sharee : shareeUsers)
             sharee.sendFollowRequest(sharer.username, SymmetricKey.random()).get();
 
-        List<FollowRequest> sharerRequests = sharer.processFollowRequests().get();
-        for (FollowRequest u1Request : sharerRequests) {
+        List<FollowRequestWithCipherText> sharerRequests = sharer.processFollowRequests().get();
+        for (FollowRequestWithCipherText u1Request : sharerRequests) {
             boolean accept = true;
             boolean reciprocate = true;
             sharer.sendReplyFollowRequest(u1Request, accept, reciprocate).get();

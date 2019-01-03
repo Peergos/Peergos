@@ -11,6 +11,7 @@ import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.server.*;
+import peergos.shared.social.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.user.fs.cryptree.*;
@@ -73,8 +74,8 @@ public class MultiUserTests {
         u2.sendFollowRequest(u1.username, SymmetricKey.random()).get();
 
         // make "a" reciprocate all the follow requests
-        List<FollowRequest> u1Requests = u1.processFollowRequests().get();
-        for (FollowRequest u1Request : u1Requests) {
+        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
+        for (FollowRequestWithCipherText u1Request : u1Requests) {
             boolean accept = true;
             boolean reciprocate = true;
             u1.sendReplyFollowRequest(u1Request, accept, reciprocate).get();
@@ -124,8 +125,8 @@ public class MultiUserTests {
         }
 
         // make "a" reciprocate all the follow requests
-        List<FollowRequest> u1Requests = u1.processFollowRequests().get();
-        for (FollowRequest u1Request : u1Requests) {
+        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
+        for (FollowRequestWithCipherText u1Request : u1Requests) {
             boolean accept = true;
             boolean reciprocate = true;
             u1.sendReplyFollowRequest(u1Request, accept, reciprocate).get();
@@ -196,8 +197,8 @@ public class MultiUserTests {
         }
 
         // make "a" reciprocate all the follow requests
-        List<FollowRequest> u1Requests = u1.processFollowRequests().get();
-        for (FollowRequest u1Request : u1Requests) {
+        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
+        for (FollowRequestWithCipherText u1Request : u1Requests) {
             boolean accept = true;
             boolean reciprocate = true;
             u1.sendReplyFollowRequest(u1Request, accept, reciprocate).get();
@@ -330,10 +331,10 @@ public class MultiUserTests {
         String password2 = random();
         UserContext u2 = PeergosNetworkUtils.ensureSignedUp(username2, password2, network, crypto);
         u2.sendFollowRequest(u1.username, SymmetricKey.random()).get();
-        List<FollowRequest> u1Requests = u1.processFollowRequests().get();
+        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
         assertTrue("Receive a follow request", u1Requests.size() > 0);
         u1.sendReplyFollowRequest(u1Requests.get(0), true, true).get();
-        List<FollowRequest> u2FollowRequests = u2.processFollowRequests().get();
+        List<FollowRequestWithCipherText> u2FollowRequests = u2.processFollowRequests().get();
         Optional<FileWrapper> u1ToU2 = u2.getByPath("/" + u1.username).get();
         assertTrue("Friend root present after accepted follow request", u1ToU2.isPresent());
 
@@ -362,7 +363,7 @@ public class MultiUserTests {
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp("peergos", "testpassword", network, crypto);
         UserContext u2 = PeergosNetworkUtils.ensureSignedUp("w", "w", network, crypto);
 
-        List<FollowRequest> u1Requests = u1.processFollowRequests().get();
+        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
         assertTrue("Receive a follow request", u1Requests.size() > 0);
     }
 
@@ -371,10 +372,10 @@ public class MultiUserTests {
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto);
         UserContext u2 = PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto);
         u2.sendFollowRequest(u1.username, SymmetricKey.random()).get();
-        List<FollowRequest> u1Requests = u1.processFollowRequests().get();
+        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
         assertTrue("Receive a follow request", u1Requests.size() > 0);
         u1.sendReplyFollowRequest(u1Requests.get(0), true, false).get();
-        List<FollowRequest> u2FollowRequests = u2.processFollowRequests().get();
+        List<FollowRequestWithCipherText> u2FollowRequests = u2.processFollowRequests().get();
         Optional<FileWrapper> u1Tou2 = u2.getByPath("/" + u1.username).get();
         Optional<FileWrapper> u2Tou1 = u1.getByPath("/" + u2.username).get();
 
@@ -392,10 +393,10 @@ public class MultiUserTests {
         String password2 = random();
         UserContext u2 = PeergosNetworkUtils.ensureSignedUp(username2, password2, network, crypto);
         u2.sendFollowRequest(u1.username, SymmetricKey.random());
-        List<FollowRequest> u1Requests = u1.processFollowRequests().get();
+        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
         assertTrue("Receive a follow request", u1Requests.size() > 0);
         u1.sendReplyFollowRequest(u1Requests.get(0), false, false);
-        List<FollowRequest> u2FollowRequests = u2.processFollowRequests().get();
+        List<FollowRequestWithCipherText> u2FollowRequests = u2.processFollowRequests().get();
         Optional<FileWrapper> u1Tou2 = u2.getByPath("/" + u1.username).get();
         assertTrue("Friend root not present after rejected follow request", ! u1Tou2.isPresent());
 
@@ -412,10 +413,10 @@ public class MultiUserTests {
         String password2 = random();
         UserContext u2 = PeergosNetworkUtils.ensureSignedUp(username2, password2, network, crypto);
         u2.sendFollowRequest(u1.username, SymmetricKey.random()).get();
-        List<FollowRequest> u1Requests = u1.processFollowRequests().get();
+        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
         assertTrue("Receive a follow request", u1Requests.size() > 0);
         u1.sendReplyFollowRequest(u1Requests.get(0), true, true).get();
-        List<FollowRequest> u2FollowRequests = u2.processFollowRequests().get();
+        List<FollowRequestWithCipherText> u2FollowRequests = u2.processFollowRequests().get();
         Optional<FileWrapper> u1ToU2 = u2.getByPath("/" + u1.username).get();
         assertTrue("Friend root present after accepted follow request", u1ToU2.isPresent());
 
@@ -455,10 +456,10 @@ public class MultiUserTests {
         String password2 = random();
         UserContext u2 = PeergosNetworkUtils.ensureSignedUp(username2, password2, network, crypto);
         u2.sendFollowRequest(u1.username, SymmetricKey.random());
-        List<FollowRequest> u1Requests = u1.processFollowRequests().get();
+        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
         assertTrue("Receive a follow request", u1Requests.size() > 0);
         u1.sendReplyFollowRequest(u1Requests.get(0), false, true);
-        List<FollowRequest> u2FollowRequests = u2.processFollowRequests().get();
+        List<FollowRequestWithCipherText> u2FollowRequests = u2.processFollowRequests().get();
         Optional<FileWrapper> u1Tou2 = u2.getByPath("/" + u1.username).get();
         assertTrue("Friend root not present after rejected follow request", ! u1Tou2.isPresent());
 
@@ -471,9 +472,9 @@ public class MultiUserTests {
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto);
         UserContext u2 = PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto);
         u2.sendFollowRequest(u1.username, SymmetricKey.random());
-        List<FollowRequest> u1Requests = u1.processFollowRequests().get();
+        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
         u1.sendReplyFollowRequest(u1Requests.get(0), true, true);
-        List<FollowRequest> u2FollowRequests = u2.processFollowRequests().get();
+        List<FollowRequestWithCipherText> u2FollowRequests = u2.processFollowRequests().get();
 
         Set<String> u1Following = u1.getFollowing().get();
         Assert.assertTrue("u1 following u2", u1Following.contains(u2.username));
@@ -489,9 +490,9 @@ public class MultiUserTests {
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto);
         UserContext u2 = PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto);
         u2.sendFollowRequest(u1.username, SymmetricKey.random());
-        List<FollowRequest> u1Requests = u1.processFollowRequests().get();
+        List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
         u1.sendReplyFollowRequest(u1Requests.get(0), true, true);
-        List<FollowRequest> u2FollowRequests = u2.processFollowRequests().get();
+        List<FollowRequestWithCipherText> u2FollowRequests = u2.processFollowRequests().get();
 
         Set<String> u1Followers = u1.getFollowerNames().get();
         Assert.assertTrue("u1 following u2", u1Followers.contains(u2.username));
@@ -501,7 +502,4 @@ public class MultiUserTests {
         Set<String> newU1Followers = u1.getFollowerNames().get();
         Assert.assertTrue("u1 no longer has u2 as follower", ! newU1Followers.contains(u2.username));
     }
-
-
-
 }
