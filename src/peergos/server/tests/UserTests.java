@@ -822,15 +822,24 @@ public abstract class UserTests {
         userRoot.mkdir(folderName, context.network, isSystemFolder, context.crypto.random).get();
 
         FileWrapper updatedUserRoot = context.getUserRoot().get();
-        FileWrapper folderTreeNode = updatedUserRoot.getChildren(context.network)
+        FileWrapper directory = updatedUserRoot.getChildren(context.network)
                 .get()
                 .stream()
                 .filter(e -> e.getFileProperties().name.equals(folderName))
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException("Missing created folder " + folderName));
 
+        // check the parent link doesn't include write access
+        AbsoluteCapability cap = directory.getPointer().capability;
+        CryptreeNode fileAccess = directory.getPointer().fileAccess;
+        RelativeCapability toParent = fileAccess.getParentLink().toCapability(fileAccess.getParentKey(cap.rBaseKey));
+        Assert.assertTrue("parent link shouldn't include write access",
+                ! toParent.wBaseKeyLink.isPresent() && ! toParent.signer.isPresent());
+        Assert.assertTrue("parent link shouldn't include public write key",
+                ! toParent.writer.isPresent());
+
         //remove the directory
-        folderTreeNode.remove(context.network, updatedUserRoot).get();
+        directory.remove(context.network, updatedUserRoot).get();
 
         //ensure folder directory not  present
         boolean isPresent = context.getUserRoot().get().getChildren(context.network)
