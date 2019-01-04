@@ -702,7 +702,7 @@ public class UserContext {
                                 // add a note to our static data so we know who we sent the read access to
                                 EntryPoint entry = new EntryPoint(friendRoot.readOnly()
                                         .withWritingKey(sharing.writer())
-                                        .toAbsolute(sharing.getPointer().capability),
+                                        .toAbsolute(sharing.getPointer().capability.readOnly()),
                                         username);
 
                                 return addToStaticDataAndCommit(entry).thenApply(trie -> {
@@ -779,8 +779,7 @@ public class UserContext {
                             // if they accept the request we will add a note to our static data so we know who we sent the read access to
                             EntryPoint entry = new EntryPoint(friendRoot.readOnly()
                                     .withWritingKey(sharing.writer())
-                                    .toAbsolute(sharing.getPointer().capability),
-                                    username);
+                                    .toAbsolute(sharing.getPointer().capability.readOnly()), username);
 
                             FollowRequest followReq = new FollowRequest(Optional.of(entry), Optional.ofNullable(requestedKey));
 

@@ -92,8 +92,6 @@ public class AbsoluteCapability implements Cborable {
     }
 
     public AbsoluteCapability readOnly() {
-        if (!isWritable())
-            return this;
         return new AbsoluteCapability(owner, writer, mapKey, rBaseKey, Optional.empty(), Optional.empty());
     }
 

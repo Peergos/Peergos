@@ -80,6 +80,8 @@ public class PeergosNetworkUtils {
         // make sharer reciprocate all the follow requests
         List<FollowRequestWithCipherText> sharerRequests = sharerUser.processFollowRequests().get();
         for (FollowRequestWithCipherText u1Request : sharerRequests) {
+            AbsoluteCapability pointer = u1Request.req.entry.get().pointer;
+            Assert.assertTrue("Read only capabilities are shared", ! pointer.signer.isPresent() && ! pointer.wBaseKey.isPresent());
             boolean accept = true;
             boolean reciprocate = true;
             sharerUser.sendReplyFollowRequest(u1Request, accept, reciprocate).get();
@@ -109,6 +111,7 @@ public class PeergosNetworkUtils {
         for (UserContext userContext : shareeUsers) {
             Optional<FileWrapper> sharedFile = userContext.getByPath(sharerUser.username + "/" + filename).get();
             Assert.assertTrue("shared file present", sharedFile.isPresent());
+            Assert.assertTrue("File is read only", ! sharedFile.get().isWritable());
             checkFileContents(originalFileContents, sharedFile.get(), userContext);
         }
 
