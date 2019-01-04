@@ -352,16 +352,6 @@ public class UserContext {
                                     }, (a, b) -> a && b).thenApply(done -> done));
     }
 
-    public CompletableFuture<Boolean> cleanEntryPoints() {
-        CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
-        return addToUserDataQueue(lock)
-                .thenCompose(wd -> Futures.reduceAll(
-                                wd.props.staticData.get().getEntryPoints(rootKey),
-                                true,
-                                (t, e) -> cleanOurEntryPoint(e),
-                                (a, b) -> a && b));
-    }
-
     public CompletableFuture<FileWrapper> getSharingFolder() {
         return getByPath("/"+username + "/shared").thenApply(opt -> opt.get());
     }
@@ -550,11 +540,12 @@ public class UserContext {
             byte[] rootMapKey = new byte[32]; // root will be stored under this in the core node
             crypto.random.randombytes(rootMapKey, 0, 32);
             SymmetricKey rootRKey = SymmetricKey.random();
+            SymmetricKey rootWKey = SymmetricKey.random();
             LOG.info("Random keys generation took " + (System.currentTimeMillis() - t1) + " mS");
 
             // and authorise the writer key
             SigningPrivateKeyAndPublicHash writerWithHash = new SigningPrivateKeyAndPublicHash(writerHash, writer.secretSigningKey);
-            WritableAbsoluteCapability rootPointer = new WritableAbsoluteCapability(owner.publicKeyHash, writerHash, rootMapKey, rootRKey, writer.secretSigningKey);
+            WritableAbsoluteCapability rootPointer = new WritableAbsoluteCapability(owner.publicKeyHash, writerHash, rootMapKey, rootRKey, rootWKey, writer.secretSigningKey);
             EntryPoint entry = new EntryPoint(rootPointer, this.username);
             return addOwnedKeyAndCommit(entry.pointer.writer, tid)
                     .thenCompose(x -> {
@@ -731,7 +722,7 @@ public class UserContext {
                 baseKey = Optional.empty(); // tell them we're not reciprocating
             } else {
                 // if reciprocate, add entry point to their shared directory (we follow them) and then
-                baseKey = Optional.of(initialRequest.entry.get().pointer.baseKey); // tell them we are reciprocating
+                baseKey = Optional.of(initialRequest.entry.get().pointer.rBaseKey); // tell them we are reciprocating
             }
             FollowRequest reply = new FollowRequest(Optional.of(entry), baseKey);
 
@@ -969,7 +960,7 @@ public class UserContext {
 
                     BiFunction<TrieNode, FollowRequestWithCipherText, CompletableFuture<TrieNode>> addToStatic = (root, p) -> {
                         FollowRequest freq = p.req;
-                        if (!Arrays.equals(freq.entry.get().pointer.baseKey.serialize(), SymmetricKey.createNull().serialize())) {
+                        if (!Arrays.equals(freq.entry.get().pointer.rBaseKey.serialize(), SymmetricKey.createNull().serialize())) {
                             CompletableFuture<TrieNode> updatedRoot = freq.entry.get().ownerName.equals(username) ?
                                     CompletableFuture.completedFuture(root) : // ignore responses claiming to be owned by us
                                     addToStaticDataAndCommit(root, freq.entry.get());
@@ -1137,28 +1128,6 @@ public class UserContext {
             }
             return CompletableFuture.completedFuture(root);
         }).exceptionally(Futures::logError);
-    }
-
-    private CompletableFuture<Boolean> cleanOurEntryPoint(EntryPoint e) {
-        if (! e.ownerName.equals(username))
-            return CompletableFuture.completedFuture(false);
-        return network.retrieveEntryPoint(e).thenCompose(fileOpt -> {
-            if (! fileOpt.isPresent())
-                return CompletableFuture.completedFuture(true);
-            FileWrapper file = fileOpt.get();
-            return file.getPath(network)
-                    .thenApply(x -> true)
-                    .exceptionally(t -> {
-                        // If the inaccessible entry point is into our space, remove the entry point,
-                        // and the dir/file it points to
-                        // first make it writable by combining with the root writing key
-                        getByPath("/" + username).thenCompose(rootDir ->
-                                new FileWrapper(file.getPointer(), file.getOwnerName(), rootDir.get().getEntryWriterKey())
-                                        .remove(network, null)
-                                        .thenApply(x -> removeFromStaticData(file)));
-                        return true;
-                    });
-        });
     }
 
     public static CompletableFuture<CommittedWriterData> getWriterData(NetworkAccess network, PublicKeyHash owner, PublicKeyHash writer) {

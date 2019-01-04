@@ -18,21 +18,27 @@ public class RelativeCapability implements Cborable {
     // writer is only present when it is not implicit (an entry point, or a child link to a different writing key)
     public final Optional<PublicKeyHash> writer;
     private final byte[] mapKey;
-    public final SymmetricKey baseKey;
+    public final SymmetricKey rBaseKey;
+    public final Optional<SymmetricLink> wBaseKeyLink;
     public final Optional<SecretSigningKey> signer;
 
     @JsConstructor
-    public RelativeCapability(Optional<PublicKeyHash> writer, byte[] mapKey, SymmetricKey baseKey, Optional<SecretSigningKey> signer) {
+    public RelativeCapability(Optional<PublicKeyHash> writer,
+                              byte[] mapKey,
+                              SymmetricKey rBaseKey,
+                              Optional<SymmetricLink> wBaseKeyLink,
+                              Optional<SecretSigningKey> signer) {
         this.writer = writer;
         if (mapKey.length != Location.MAP_KEY_LENGTH)
             throw new IllegalStateException("Invalid map key length: " + mapKey.length);
         this.mapKey = mapKey;
-        this.baseKey = baseKey;
+        this.rBaseKey = rBaseKey;
+        this.wBaseKeyLink = wBaseKeyLink;
         this.signer = signer;
     }
 
-    public RelativeCapability(byte[] mapKey, SymmetricKey baseKey) {
-        this(Optional.empty(), mapKey, baseKey, Optional.empty());
+    public RelativeCapability(byte[] mapKey, SymmetricKey rBaseKey, SymmetricLink wBaseKeyLink) {
+        this(Optional.empty(), mapKey, rBaseKey, Optional.ofNullable(wBaseKeyLink), Optional.empty());
     }
 
     @JsMethod
@@ -50,16 +56,26 @@ public class RelativeCapability implements Cborable {
         return new SigningPrivateKeyAndPublicHash(this.writer.orElse(writer), signer.get());
     }
 
-    public AbsoluteCapability toAbsolute(AbsoluteCapability source) {
-        return new AbsoluteCapability(source.owner, writer.orElse(source.writer), mapKey, baseKey, signer);
+    public SymmetricKey getWriteBaseKey(SymmetricKey sourceBaseKey) {
+        return wBaseKeyLink.get().target(sourceBaseKey);
     }
 
-    public RelativeCapability withBaseKey(SymmetricKey newBaseKey) {
-        return new RelativeCapability(writer, mapKey, newBaseKey, signer);
+    public AbsoluteCapability toAbsolute(AbsoluteCapability source) {
+        Optional<SymmetricKey> wBaseKey = source.wBaseKey.flatMap(w -> wBaseKeyLink.map(link -> link.target(w)));
+        PublicKeyHash writer = this.writer.orElse(source.writer);
+        if (wBaseKey.isPresent() && source.signer.isPresent())
+            return new WritableAbsoluteCapability(source.owner, writer, mapKey, rBaseKey, wBaseKey.get(),
+                    signer.orElse(source.signer.get()));
+        return new AbsoluteCapability(source.owner, writer, mapKey, rBaseKey,
+                wBaseKey, signer);
+    }
+
+    public RelativeCapability withBaseKey(SymmetricKey newReadBaseKey) {
+        return new RelativeCapability(writer, mapKey, newReadBaseKey, wBaseKeyLink, signer);
     }
 
     public RelativeCapability withWritingKey(PublicKeyHash writingKey) {
-        return new RelativeCapability(Optional.of(writingKey), mapKey, baseKey, Optional.empty());
+        return new RelativeCapability(Optional.of(writingKey), mapKey, rBaseKey, wBaseKeyLink, Optional.empty());
     }
 
     @Override
@@ -67,7 +83,8 @@ public class RelativeCapability implements Cborable {
         Map<String, CborObject> cbor = new TreeMap<>();
         writer.ifPresent(w -> cbor.put("w", w.toCbor()));
         cbor.put("m", new CborObject.CborByteArray(mapKey));
-        cbor.put("k", baseKey.toCbor());
+        cbor.put("k", rBaseKey.toCbor());
+        wBaseKeyLink.ifPresent(w -> cbor.put("l", w.toCbor()));
         signer.ifPresent(secret -> cbor.put("s", secret.toCbor()));
         return CborObject.CborMap.build(cbor);
     }
@@ -79,21 +96,22 @@ public class RelativeCapability implements Cborable {
     public static RelativeCapability fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Incorrect cbor for RelativeCapability: " + cbor);
-        SortedMap<CborObject, ? extends Cborable> map = ((CborObject.CborMap) cbor).values;
+        CborObject.CborMap map = ((CborObject.CborMap) cbor);
 
-        Optional<PublicKeyHash> writer = Optional.ofNullable(map.get(new CborObject.CborString("w")))
+        Optional<PublicKeyHash> writer = Optional.ofNullable(map.get("w"))
                 .map(PublicKeyHash::fromCbor);
-        byte[] mapKey = ((CborObject.CborByteArray)map.get(new CborObject.CborString("m"))).value;
-        SymmetricKey baseKey = SymmetricKey.fromCbor(map.get(new CborObject.CborString("k")));
-        Optional<SecretSigningKey> signer = Optional.ofNullable(map.get(new CborObject.CborString("s")))
+        byte[] mapKey = ((CborObject.CborByteArray)map.get("m")).value;
+        SymmetricKey baseKey = SymmetricKey.fromCbor(map.get("k"));
+        Optional<SecretSigningKey> signer = Optional.ofNullable(map.get("s"))
                 .map(SecretSigningKey::fromCbor);
-        return new RelativeCapability(writer, mapKey, baseKey, signer);
+        Optional<SymmetricLink> writerLink = Optional.ofNullable(map.get("l")).map(SymmetricLink::fromCbor);
+        return new RelativeCapability(writer, mapKey, baseKey, writerLink, signer);
     }
 
     public RelativeCapability readOnly() {
         if (!isWritable())
             return this;
-        return new RelativeCapability(writer, mapKey, baseKey, Optional.empty());
+        return new RelativeCapability(writer, mapKey, rBaseKey, wBaseKeyLink, Optional.empty());
     }
 
     public boolean isWritable() {
@@ -107,13 +125,13 @@ public class RelativeCapability implements Cborable {
         RelativeCapability that = (RelativeCapability) o;
         return Objects.equals(writer, that.writer) &&
                 Arrays.equals(mapKey, that.mapKey) &&
-                Objects.equals(baseKey, that.baseKey) &&
+                Objects.equals(rBaseKey, that.rBaseKey) &&
                 Objects.equals(signer, that.signer);
     }
 
     @Override
     public int hashCode() {
-        int result = Objects.hash(writer, baseKey, signer);
+        int result = Objects.hash(writer, rBaseKey, signer);
         result = 31 * result + Arrays.hashCode(mapKey);
         return result;
     }

@@ -8,7 +8,6 @@ import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.user.fs.*;
-import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
@@ -44,9 +43,8 @@ public interface CryptreeNode extends Cborable {
 
     CompletableFuture<? extends CryptreeNode> copyTo(AbsoluteCapability us,
                                                      SymmetricKey newBaseKey,
-                                                     Location newParentLocation,
+                                                     WritableAbsoluteCapability newParentCap,
                                                      SymmetricKey parentparentKey,
-                                                     SigningPrivateKeyAndPublicHash entryWriterKey,
                                                      byte[] newMapKey,
                                                      NetworkAccess network,
                                                      SafeRandom random);
@@ -60,7 +58,8 @@ public interface CryptreeNode extends Cborable {
             return CompletableFuture.completedFuture(null);
 
         RelativeCapability relCap = parentLink.toCapability(baseKey);
-        return network.retrieveAllMetadata(Arrays.asList(new AbsoluteCapability(owner, writer, relCap.getMapKey(), relCap.baseKey, relCap.signer))).thenApply(res -> {
+        return network.retrieveAllMetadata(Arrays.asList(new AbsoluteCapability(owner, writer, relCap.getMapKey(),
+                relCap.rBaseKey, Optional.empty(), Optional.empty()))).thenApply(res -> {
             RetrievedCapability retrievedCapability = res.stream().findAny().get();
             return retrievedCapability;
         });

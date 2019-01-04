@@ -771,18 +771,18 @@ public abstract class UserTests {
         FileWrapper subfolder = context.getByPath(home.resolve(foldername).toString()).get().get();
         FileWrapper parentDir = original.copyTo(subfolder, network, crypto.random, context.fragmenter()).get();
         FileWrapper copy = context.getByPath(home.resolve(foldername).resolve(filename).toString()).get().get();
-        Assert.assertTrue("Different base key", ! copy.getPointer().capability.baseKey.equals(original.getPointer().capability.baseKey));
+        Assert.assertTrue("Different base key", ! copy.getPointer().capability.rBaseKey.equals(original.getPointer().capability.rBaseKey));
         Assert.assertTrue("Different metadata key", ! getMetaKey(copy).equals(getMetaKey(original)));
         Assert.assertTrue("Same data key", getDataKey(copy).equals(getDataKey(original)));
         checkFileContents(data, copy, context);
     }
 
     public static SymmetricKey getDataKey(FileWrapper file) {
-        return ((FileAccess)file.getPointer().fileAccess).getDataKey(file.getPointer().capability.baseKey);
+        return ((FileAccess)file.getPointer().fileAccess).getDataKey(file.getPointer().capability.rBaseKey);
     }
 
     public static SymmetricKey getMetaKey(FileWrapper file) {
-        return file.getPointer().fileAccess.getMetaKey(file.getPointer().capability.baseKey);
+        return file.getPointer().fileAccess.getMetaKey(file.getPointer().capability.rBaseKey);
     }
 
     @Test
