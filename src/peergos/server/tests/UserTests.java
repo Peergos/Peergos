@@ -19,6 +19,7 @@ import peergos.shared.crypto.symmetric.*;
 import peergos.server.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
+import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.*;
 import peergos.shared.util.Exceptions;
 
@@ -438,6 +439,13 @@ public abstract class UserTests {
         FileWrapper file = context.getByPath(Paths.get(username, filename).toString()).get().get();
         String mimeType = file.getFileProperties().mimeType;
         Assert.assertTrue("Incorrect mimetype: " + mimeType, mimeType.equals("text/plain"));
+        AbsoluteCapability cap = file.getPointer().capability;
+        CryptreeNode fileAccess = file.getPointer().fileAccess;
+        RelativeCapability toParent = fileAccess.getParentLink().toCapability(fileAccess.getParentKey(cap.rBaseKey));
+        Assert.assertTrue("parent link shouldn't include write access",
+                ! toParent.wBaseKeyLink.isPresent() && ! toParent.signer.isPresent());
+        Assert.assertTrue("parent link shouldn't include public write key",
+                ! toParent.writer.isPresent());
 
         FileWrapper home = context.getByPath(Paths.get(username).toString()).get().get();
         RetrievedCapability homePointer = home.getPointer();
