@@ -574,6 +574,30 @@ public abstract class UserTests {
     }
 
     @Test
+    public void publiclySharedDirectory() throws Exception {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = context.getUserRoot().get();
+
+        String filename = "afile.bin";
+        byte[] data = new byte[128*1024];
+        random.nextBytes(data);
+        String dirName = "subdir";
+        userRoot.mkdir(dirName, network, false, crypto.random).get();
+        String dirPath = "/" + username + "/" + dirName;
+        FileWrapper subdir = context.getByPath(dirPath).get().get();
+        FileWrapper updatedSubdir = subdir.uploadFileSection(filename, new AsyncReader.ArrayBacked(data), 0,
+                data.length, context.network, context.crypto.random, l -> { }, context.fragmenter()).get();
+        context.makePublic(updatedSubdir).get();
+
+        String path = "/" + username + "/" + dirName + "/" + filename;
+        InputStream in = peergosUrl.toURI().resolve("/public" + path).toURL().openStream();
+        byte[] returnedData = Serialize.readFully(in);
+        Assert.assertTrue("Correct data returned for publicly shared file", Arrays.equals(data, returnedData));
+    }
+
+    @Test
     public void publicLinkToFile() throws Exception {
         PeergosNetworkUtils.publicLinkToFile(random, network, network);
     }

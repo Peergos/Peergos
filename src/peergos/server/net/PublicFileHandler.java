@@ -45,6 +45,7 @@ public class PublicFileHandler implements HttpHandler {
             if (! path.startsWith(PATH_PREFIX))
                 throw new IllegalStateException("Public file urls must start with /public/");
             path = path.substring(PATH_PREFIX.length());
+            String originalPath = path;
 
             String ownerName = path.substring(0, path.indexOf("/"));
 
@@ -63,15 +64,21 @@ public class PublicFileHandler implements HttpHandler {
             MaybeMultihash capHash = champ.get(("/" + path).getBytes()).get();
             // The user might have published an ancestor directory of the requested path, so drop path elements until we
             // either find a capability, or have none left
-            // TODO
+            String subPath = "";
+            while (! capHash.isPresent() && path.length() > 0) {
+                String lastElement = path.substring(path.lastIndexOf("/"));
+                subPath = lastElement + subPath;
+                path = path.substring(0, path.length() - lastElement.length());
+                capHash = champ.get(("/" + path).getBytes()).get();
+            }
             if (! capHash.isPresent())
-                throw new IllegalStateException("User " + ownerName + " has not published a file at " + path);
+                throw new IllegalStateException("User " + ownerName + " has not published a file at " + originalPath);
 
             Optional<CborObject> capCbor = dht.get(capHash.get()).get();
             AbsoluteCapability cap = AbsoluteCapability.fromCbor(capCbor.get());
 
             TrieNodeImpl trieRoot = TrieNodeImpl.empty().put(path, new EntryPoint(cap, ownerName));
-            Optional<FileWrapper> fileOpt = trieRoot.getByPath(path, network).get();
+            Optional<FileWrapper> fileOpt = trieRoot.getByPath(originalPath, network).get();
 
             if (! fileOpt.isPresent())
                 throw new IllegalStateException("Couldn't retrieve file: " + path);
