@@ -27,20 +27,19 @@ public class WriterData implements Cborable {
 
     // publicly readable and present on owner keys
     public final Optional<SecretGenerationAlgorithm> generationAlgorithm;
-    // accessible under IPFS address $hash/public
-    public final Optional<RelativeCapability> publicData;
-    // The public boxing key to encrypt follow requests to, accessible under IPFS address $hash/inbound
+    // This is the root of a champ containing publicly shared files and folders (a lookup from path to capability)
+    public final Optional<Multihash> publicData;
+    // The public boxing key to encrypt follow requests to
     public final Optional<PublicKeyHash> followRequestReceiver;
-    // accessible under IPFS address $hash/owned
+    // Any keys directly owned by the controller, that aren't named
     public final Set<PublicKeyHash> ownedKeys;
 
-    // accessible under IPFS address $hash/named
+    // Any keys directly owned by the controller that have specific labels
     public final Map<String, PublicKeyHash> namedOwnedKeys;
 
-    // Encrypted
-    // accessible under IPFS address $hash/static (present on owner keys)
+    // Encrypted entry points to our and our friends file systems (present on owner keys)
     public final Optional<UserStaticData> staticData;
-    // accessible under IPFS address $hash/tree (present on writer keys)
+    // This is the root of a champ containing the controller's filesystem (present on writer keys)
     public final Optional<Multihash> tree;
 
     /**
@@ -54,7 +53,7 @@ public class WriterData implements Cborable {
      */
     public WriterData(PublicKeyHash controller,
                       Optional<SecretGenerationAlgorithm> generationAlgorithm,
-                      Optional<RelativeCapability> publicData,
+                      Optional<Multihash> publicData,
                       Optional<PublicKeyHash> followRequestReceiver,
                       Set<PublicKeyHash> ownedKeys,
                       Map<String, PublicKeyHash> namedOwnedKeys,
@@ -229,7 +228,7 @@ public class WriterData implements Cborable {
 
         result.put("controller", new CborObject.CborMerkleLink(controller));
         generationAlgorithm.ifPresent(alg -> result.put("algorithm", alg.toCbor()));
-        publicData.ifPresent(rfp -> result.put("public", rfp.toCbor()));
+        publicData.ifPresent(root -> result.put("public", new CborObject.CborMerkleLink(root)));
         followRequestReceiver.ifPresent(boxer -> result.put("inbound", new CborObject.CborMerkleLink(boxer)));
         List<CborObject> ownedKeyStrings = ownedKeys.stream().map(CborObject.CborMerkleLink::new).collect(Collectors.toList());
         if (! ownedKeyStrings.isEmpty())
@@ -264,7 +263,7 @@ public class WriterData implements Cborable {
 
         PublicKeyHash controller = extract.apply("controller").map(PublicKeyHash::fromCbor).get();
         Optional<SecretGenerationAlgorithm> algo  = extractUserGenerationAlgorithm(cbor);
-        Optional<RelativeCapability> publicData = extract.apply("public").map(RelativeCapability::fromCbor);
+        Optional<Multihash> publicData = extract.apply("public").map(val -> ((CborObject.CborMerkleLink)val).target);
         Optional<PublicKeyHash> followRequestReceiver = extract.apply("inbound").map(PublicKeyHash::fromCbor);
         CborObject.CborList ownedList = (CborObject.CborList) map.values.get(new CborObject.CborString("owned"));
         Set<PublicKeyHash> owned = ownedList == null ?
