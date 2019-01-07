@@ -85,17 +85,32 @@ public class PublicFileHandler implements HttpHandler {
 
             FileWrapper file = fileOpt.get();
 
-            httpExchange.sendResponseHeaders(200, file.getSize());
-            AsyncReader reader = file.getInputStream(network, null, x -> {}).get();
-            byte[] buf = new byte[(int) Math.min(file.getSize(), 5*1024*1024)];
-            long read = 0;
-            OutputStream out = httpExchange.getResponseBody();
-            while (read < file.getSize()) {
-                int r = reader.readIntoArray(buf, 0, buf.length).get();
-                out.write(buf, 0, r);
+            if (file.isDirectory()) {
+                Set<FileWrapper> children = file.getChildren(network).get();
+                StringBuilder resp = new StringBuilder();
+                resp.append("<!DOCTYPE html><html lang=\"en\">");
+                resp.append("<body>");
+                children.forEach(child -> resp.append("<a href=\""+child.getName()+"\">" + child.getName() + "</a><br/>"));
+                resp.append("</body>");
+                resp.append("</html>");
+
+                byte[] body = resp.toString().getBytes();
+                httpExchange.sendResponseHeaders(200, body.length);
+                OutputStream out = httpExchange.getResponseBody();
+                out.write(body);
+                out.close();
+            } else {
+                httpExchange.sendResponseHeaders(200, file.getSize());
+                AsyncReader reader = file.getInputStream(network, null, x -> {}).get();
+                byte[] buf = new byte[(int) Math.min(file.getSize(), 5 * 1024 * 1024)];
+                long read = 0;
+                OutputStream out = httpExchange.getResponseBody();
+                while (read < file.getSize()) {
+                    int r = reader.readIntoArray(buf, 0, buf.length).get();
+                    out.write(buf, 0, r);
+                }
+                out.close();
             }
-            out.flush();
-            out.close();
         } catch (Exception e) {
             LOG.severe("Error handling " +httpExchange.getRequestURI());
             LOG.log(Level.WARNING, e.getMessage(), e);
