@@ -33,28 +33,31 @@ public class RetrievedCapability {
                                              SigningPrivateKeyAndPublicHash signer) {
         if (! capability.isWritable())
             return CompletableFuture.completedFuture(false);
+        WritableAbsoluteCapability parentCap = parentRetrievedCapability != null ?
+                (WritableAbsoluteCapability) parentRetrievedCapability.capability :
+                null;
         if (! fileAccess.isDirectory()) {
             CompletableFuture<Boolean> result = new CompletableFuture<>();
-            Transaction.call(capability.owner,
-                    tid -> network.tree.remove(capability.owner, signer, capability.getMapKey(), fileAccess.committedHash(), tid).thenAccept(removed -> {
+            Transaction.call(this.capability.owner,
+                    tid -> network.tree.remove(this.capability.owner, signer, this.capability.getMapKey(), fileAccess.committedHash(), tid).thenAccept(removed -> {
                         // remove from parent
-                        if (parentRetrievedCapability != null)
+                        if (parentCap != null)
                             ((DirAccess) parentRetrievedCapability.fileAccess)
-                                    .removeChild(this, parentRetrievedCapability.capability.toWritable(signer), network);
+                                    .removeChild(this, parentCap, network);
                         result.complete(true);
                     }), network.dhtClient);
             return result;
         }
-        return ((DirAccess) fileAccess).getChildren(network, capability).thenCompose(files -> {
+        return ((DirAccess) fileAccess).getChildren(network, this.capability).thenCompose(files -> {
             for (RetrievedCapability file : files)
                 file.remove(network, null, signer);
             CompletableFuture<Boolean> result = new CompletableFuture<>();
-            Transaction.call(capability.owner,
-                    tid -> network.tree.remove(capability.owner, signer, capability.getMapKey(), fileAccess.committedHash(), tid).thenAccept(removed -> {
+            Transaction.call(this.capability.owner,
+                    tid -> network.tree.remove(this.capability.owner, signer, this.capability.getMapKey(), fileAccess.committedHash(), tid).thenAccept(removed -> {
                         // remove from parent
-                        if (parentRetrievedCapability != null)
+                        if (parentCap != null)
                             ((DirAccess) parentRetrievedCapability.fileAccess)
-                                    .removeChild(this, parentRetrievedCapability.capability.toWritable(signer), network);
+                                    .removeChild(this, parentCap, network);
                         result.complete(removed);
                     }), network.dhtClient);
             return result;
@@ -63,10 +66,5 @@ public class RetrievedCapability {
 
     public RetrievedCapability withCryptree(CryptreeNode fileAccess) {
         return new RetrievedCapability(capability, fileAccess);
-    }
-
-    public RetrievedCapability withWriter(Optional<SecretSigningKey> writer) {
-        AbsoluteCapability cap = new AbsoluteCapability(capability.owner, capability.writer, capability.getMapKey(), capability.baseKey, writer);
-        return new RetrievedCapability(cap, this.fileAccess);
     }
 }

@@ -109,7 +109,7 @@ public class MultiUserTests {
 
         // check that the copied file has the correct contents
         UserTests.checkFileContents(data, copy, u2);
-        Assert.assertTrue("Different base key", ! copy.getPointer().capability.baseKey.equals(u1File.getPointer().capability.baseKey));
+        Assert.assertTrue("Different base key", ! copy.getPointer().capability.rBaseKey.equals(u1File.getPointer().capability.rBaseKey));
         Assert.assertTrue("Different metadata key", ! UserTests.getMetaKey(copy).equals(UserTests.getMetaKey(u1File)));
         Assert.assertTrue("Different data key", ! UserTests.getDataKey(copy).equals(UserTests.getDataKey(u1File)));
     }
@@ -242,7 +242,7 @@ public class MultiUserTests {
         AbsoluteCapability priorPointer = priorUnsharedView.get().getPointer().capability;
         Location priorLocation = priorPointer.getLocation();
         CryptreeNode priorFileAccess = network.getMetadata(priorLocation).get().get();
-        SymmetricKey priorMetaKey = priorFileAccess.getMetaKey(priorPointer.baseKey);
+        SymmetricKey priorMetaKey = priorFileAccess.getMetaKey(priorPointer.rBaseKey);
 
         // unshare with a single user
         u1.unShare(Paths.get(u1.username, filename), userToUnshareWith.username).get();
@@ -266,7 +266,7 @@ public class MultiUserTests {
             throw new IllegalStateException("We shouldn't be able to decrypt this after a rename! new name = " + props.name);
         } catch (TweetNaCl.InvalidCipherTextException e) {}
         try {
-            FileProperties freshProperties = fileAccess.getProperties(priorPointer.baseKey);
+            FileProperties freshProperties = fileAccess.getProperties(priorPointer.rBaseKey);
             throw new IllegalStateException("We shouldn't be able to decrypt this after a rename!");
         } catch (TweetNaCl.InvalidCipherTextException e) {}
 

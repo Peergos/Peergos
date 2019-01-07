@@ -32,6 +32,7 @@ public class FileAccess implements CryptreeNode {
     protected final PaddedCipherText properties;
     protected final FileRetriever retriever;
     protected final EncryptedCapability parentLink;
+    protected final Optional<SymmetricLinkToSigner> writerLink;
 
     public FileAccess(MaybeMultihash lastCommittedHash,
                       int version,
@@ -39,7 +40,8 @@ public class FileAccess implements CryptreeNode {
                       SymmetricLink parent2Data,
                       PaddedCipherText fileProperties,
                       FileRetriever fileRetriever,
-                      EncryptedCapability parentLink) {
+                      EncryptedCapability parentLink,
+                      Optional<SymmetricLinkToSigner> writerLink) {
         this.lastCommittedHash = lastCommittedHash;
         this.version = version;
         this.parent2meta = parent2Meta;
@@ -47,24 +49,12 @@ public class FileAccess implements CryptreeNode {
         this.properties = fileProperties;
         this.retriever = fileRetriever;
         this.parentLink = parentLink;
+        this.writerLink = writerLink;
     }
 
     @Override
     public MaybeMultihash committedHash() {
         return lastCommittedHash;
-    }
-
-    @Override
-    public CborObject toCbor() {
-        return new CborObject.CborList(
-                Arrays.asList(
-                        new CborObject.CborLong(getVersionAndType()),
-                        parent2meta.toCbor(),
-                        parent2data.toCbor(),
-                        parentLink == null ? new CborObject.CborNull() : parentLink.toCbor(),
-                        properties.toCbor(),
-                        retriever == null ? new CborObject.CborNull() : retriever.toCbor()
-                ));
     }
 
     @Override
@@ -109,18 +99,18 @@ public class FileAccess implements CryptreeNode {
     public CompletableFuture<FileAccess> updateProperties(WritableAbsoluteCapability us,
                                                           FileProperties newProps,
                                                           NetworkAccess network) {
-        SymmetricKey metaKey = this.getMetaKey(us.baseKey);
+        SymmetricKey metaKey = this.getMetaKey(us.rBaseKey);
         boolean isDirty = metaKey.isDirty();
         // if the meta key is dirty then we need to generate a new one to not expose the new metadata
         if (isDirty)
             metaKey = SymmetricKey.random();
         SymmetricLink toMeta = isDirty ?
-                SymmetricLink.fromPair(us.baseKey, metaKey) :
+                SymmetricLink.fromPair(us.rBaseKey, metaKey) :
                 this.parent2meta;
 
         PaddedCipherText encryptedProperties = PaddedCipherText.build(metaKey, newProps, META_DATA_PADDING_BLOCKSIZE);
         FileAccess fa = new FileAccess(lastCommittedHash, version, toMeta, this.parent2data, encryptedProperties,
-                this.retriever, this.parentLink);
+                this.retriever, this.parentLink, writerLink);
         return Transaction.call(us.owner, tid ->
                 network.uploadChunk(fa, us.owner, us.getMapKey(), us.signer(), tid)
                         .thenApply(b -> fa),
@@ -131,15 +121,16 @@ public class FileAccess implements CryptreeNode {
                                                    SymmetricKey newBaseKey,
                                                    NetworkAccess network) {
         // keep the same metakey and data key, just marked as dirty
-        SymmetricKey metaKey = this.getMetaKey(us.baseKey).makeDirty();
+        SymmetricKey metaKey = this.getMetaKey(us.rBaseKey).makeDirty();
         SymmetricLink newParentToMeta = SymmetricLink.fromPair(newBaseKey, metaKey);
 
-        SymmetricKey dataKey = this.getDataKey(us.baseKey).makeDirty();
+        SymmetricKey dataKey = this.getDataKey(us.rBaseKey).makeDirty();
         SymmetricLink newParentToData = SymmetricLink.fromPair(newBaseKey, dataKey);
 
         EncryptedCapability newParentLink = EncryptedCapability.create(newBaseKey,
-                parentLink.toCapability(us.baseKey));
-        FileAccess fa = new FileAccess(committedHash(), version, newParentToMeta, newParentToData, properties, this.retriever, newParentLink);
+                parentLink.toCapability(us.rBaseKey));
+        FileAccess fa = new FileAccess(committedHash(), version, newParentToMeta, newParentToData, properties,
+                this.retriever, newParentLink, writerLink);
         return Transaction.call(us.owner, tid ->
                 network.uploadChunk(fa, us.owner, us.getMapKey(), us.signer(), tid)
                         .thenApply(x -> fa),
@@ -154,21 +145,34 @@ public class FileAccess implements CryptreeNode {
     @Override
     public CompletableFuture<? extends FileAccess> copyTo(AbsoluteCapability us,
                                                           SymmetricKey newBaseKey,
-                                                          Location newParentLocation,
+                                                          WritableAbsoluteCapability newParentCap,
                                                           SymmetricKey parentparentKey,
-                                                          SigningPrivateKeyAndPublicHash entryWriterKey,
                                                           byte[] newMapKey,
                                                           NetworkAccess network,
                                                           SafeRandom random) {
-        FileProperties props = getProperties(us.baseKey);
+        FileProperties props = getProperties(us.rBaseKey);
         boolean isDirectory = isDirectory();
         FileAccess fa = FileAccess.create(MaybeMultihash.empty(), newBaseKey, SymmetricKey.random(),
-                isDirectory ? SymmetricKey.random() : getDataKey(us.baseKey),
-                props, this.retriever, newParentLocation, parentparentKey);
-        return Transaction.call(newParentLocation.owner,
-                tid -> network.uploadChunk(fa, newParentLocation.owner, newMapKey, entryWriterKey, tid)
+                isDirectory ? SymmetricKey.random() : getDataKey(us.rBaseKey),
+                props, this.retriever, newParentCap.getLocation(), parentparentKey);
+        return Transaction.call(newParentCap.owner,
+                tid -> network.uploadChunk(fa, newParentCap.owner, newMapKey, newParentCap.getSigningPair(), tid)
                         .thenApply(b -> fa),
                 network.dhtClient);
+    }
+
+    @Override
+    public CborObject toCbor() {
+        return new CborObject.CborList(
+                Arrays.asList(
+                        new CborObject.CborLong(getVersionAndType()),
+                        parent2meta.toCbor(),
+                        parent2data.toCbor(),
+                        parentLink == null ? new CborObject.CborNull() : parentLink.toCbor(),
+                        properties.toCbor(),
+                        retriever == null ? new CborObject.CborNull() : retriever.toCbor(),
+                        writerLink.isPresent() ? writerLink.get().toCbor() : new CborObject.CborNull()
+                ));
     }
 
     public static FileAccess fromCbor(CborObject cbor, Multihash hash) {
@@ -193,8 +197,13 @@ public class FileAccess implements CryptreeNode {
                 null :
                 FileRetriever.fromCbor(retrieverCbor);
 
+        Cborable writeLinkCbor = value.get(index++);
+        Optional<SymmetricLinkToSigner> writeLink = writeLinkCbor instanceof CborObject.CborNull ?
+                Optional.empty() :
+                Optional.of(writeLinkCbor).map(SymmetricLinkToSigner::fromCbor);
 
-        return new FileAccess(MaybeMultihash.of(hash), versionAndType >> 1, parentToMeta, parentToData, properties, retriever, parentLink);
+        return new FileAccess(MaybeMultihash.of(hash), versionAndType >> 1, parentToMeta, parentToData,
+                properties, retriever, parentLink, writeLink);
     }
 
     public static FileAccess create(MaybeMultihash existingHash,
@@ -212,6 +221,7 @@ public class FileAccess implements CryptreeNode {
                 SymmetricLink.fromPair(parentKey, dataKey),
                 PaddedCipherText.build(metaKey, props, META_DATA_PADDING_BLOCKSIZE),
                 retriever,
-                EncryptedCapability.create(parentKey, parentparentKey, Optional.empty(), parentLocation.getMapKey()));
+                EncryptedCapability.create(parentKey, parentparentKey, Optional.empty(), parentLocation.getMapKey()),
+                Optional.empty());
     }
 }

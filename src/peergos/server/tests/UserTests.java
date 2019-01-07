@@ -19,6 +19,7 @@ import peergos.shared.crypto.symmetric.*;
 import peergos.server.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
+import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.*;
 import peergos.shared.util.Exceptions;
 
@@ -435,8 +436,24 @@ public abstract class UserTests {
         byte[] data = "G'day mate".getBytes();
         userRoot.uploadFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
                 context.crypto.random, l -> {}, context.fragmenter()).get();
-        String mimeType = context.getByPath(Paths.get(username, filename).toString()).get().get().getFileProperties().mimeType;
+        FileWrapper file = context.getByPath(Paths.get(username, filename).toString()).get().get();
+        String mimeType = file.getFileProperties().mimeType;
         Assert.assertTrue("Incorrect mimetype: " + mimeType, mimeType.equals("text/plain"));
+        AbsoluteCapability cap = file.getPointer().capability;
+        CryptreeNode fileAccess = file.getPointer().fileAccess;
+        RelativeCapability toParent = fileAccess.getParentLink().toCapability(fileAccess.getParentKey(cap.rBaseKey));
+        Assert.assertTrue("parent link shouldn't include write access",
+                ! toParent.wBaseKeyLink.isPresent() && ! toParent.signer.isPresent());
+        Assert.assertTrue("parent link shouldn't include public write key",
+                ! toParent.writer.isPresent());
+
+        FileWrapper home = context.getByPath(Paths.get(username).toString()).get().get();
+        RetrievedCapability homePointer = home.getPointer();
+        List<RelativeCapability> children = ((DirAccess) homePointer.fileAccess).getChildren(homePointer.capability.rBaseKey);
+        for (RelativeCapability child : children) {
+            Assert.assertTrue("child pointer is minimal",
+                    ! child.signer.isPresent() && ! child.writer.isPresent() && child.wBaseKeyLink.isPresent());
+        }
     }
 
     @Test
@@ -771,18 +788,18 @@ public abstract class UserTests {
         FileWrapper subfolder = context.getByPath(home.resolve(foldername).toString()).get().get();
         FileWrapper parentDir = original.copyTo(subfolder, network, crypto.random, context.fragmenter()).get();
         FileWrapper copy = context.getByPath(home.resolve(foldername).resolve(filename).toString()).get().get();
-        Assert.assertTrue("Different base key", ! copy.getPointer().capability.baseKey.equals(original.getPointer().capability.baseKey));
+        Assert.assertTrue("Different base key", ! copy.getPointer().capability.rBaseKey.equals(original.getPointer().capability.rBaseKey));
         Assert.assertTrue("Different metadata key", ! getMetaKey(copy).equals(getMetaKey(original)));
         Assert.assertTrue("Same data key", getDataKey(copy).equals(getDataKey(original)));
         checkFileContents(data, copy, context);
     }
 
     public static SymmetricKey getDataKey(FileWrapper file) {
-        return ((FileAccess)file.getPointer().fileAccess).getDataKey(file.getPointer().capability.baseKey);
+        return ((FileAccess)file.getPointer().fileAccess).getDataKey(file.getPointer().capability.rBaseKey);
     }
 
     public static SymmetricKey getMetaKey(FileWrapper file) {
-        return file.getPointer().fileAccess.getMetaKey(file.getPointer().capability.baseKey);
+        return file.getPointer().fileAccess.getMetaKey(file.getPointer().capability.rBaseKey);
     }
 
     @Test
@@ -805,15 +822,24 @@ public abstract class UserTests {
         userRoot.mkdir(folderName, context.network, isSystemFolder, context.crypto.random).get();
 
         FileWrapper updatedUserRoot = context.getUserRoot().get();
-        FileWrapper folderTreeNode = updatedUserRoot.getChildren(context.network)
+        FileWrapper directory = updatedUserRoot.getChildren(context.network)
                 .get()
                 .stream()
                 .filter(e -> e.getFileProperties().name.equals(folderName))
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException("Missing created folder " + folderName));
 
+        // check the parent link doesn't include write access
+        AbsoluteCapability cap = directory.getPointer().capability;
+        CryptreeNode fileAccess = directory.getPointer().fileAccess;
+        RelativeCapability toParent = fileAccess.getParentLink().toCapability(fileAccess.getParentKey(cap.rBaseKey));
+        Assert.assertTrue("parent link shouldn't include write access",
+                ! toParent.wBaseKeyLink.isPresent() && ! toParent.signer.isPresent());
+        Assert.assertTrue("parent link shouldn't include public write key",
+                ! toParent.writer.isPresent());
+
         //remove the directory
-        folderTreeNode.remove(context.network, updatedUserRoot).get();
+        directory.remove(context.network, updatedUserRoot).get();
 
         //ensure folder directory not  present
         boolean isPresent = context.getUserRoot().get().getChildren(context.network)
