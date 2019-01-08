@@ -36,12 +36,14 @@ public abstract class UserTests {
     public static int RANDOM_SEED = 666;
     private final NetworkAccess network;
     private final Crypto crypto = Crypto.initJava();
+    private final URL peergosUrl;
 
     private static Random random = new Random(RANDOM_SEED);
 
     public UserTests(Args args) {
         try {
-            this.network = NetworkAccess.buildJava(new URL("http://localhost:" + args.getInt("port"))).get();
+            this.peergosUrl = new URL("http://localhost:" + args.getInt("port"));
+            this.network = NetworkAccess.buildJava(peergosUrl).get();
         } catch (Exception ex) {
             throw new IllegalStateException(ex.getMessage(), ex);
         }
@@ -549,6 +551,50 @@ public abstract class UserTests {
         long t2 = System.currentTimeMillis();
         LOG.info("Write time per chunk " + (t2-t1)/2 + "mS");
         Assert.assertTrue("Timely write", (t2-t1)/2 < 20000);
+    }
+
+    @Test
+    public void publiclySharedFile() throws Exception {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = context.getUserRoot().get();
+
+        String filename = "afile.bin";
+        byte[] data = new byte[128*1024];
+        random.nextBytes(data);
+        userRoot.uploadFileSection(filename, new AsyncReader.ArrayBacked(data), 0, data.length, context.network, context.crypto.random, l -> {}, context.fragmenter()).get();
+        String path = "/" + username + "/" + filename;
+        FileWrapper file = context.getByPath(path).get().get();
+        context.makePublic(file).get();
+
+        InputStream in = peergosUrl.toURI().resolve("/public" + path).toURL().openStream();
+        byte[] returnedData = Serialize.readFully(in);
+        Assert.assertTrue("Correct data returned for publicly shared file", Arrays.equals(data, returnedData));
+    }
+
+    @Test
+    public void publiclySharedDirectory() throws Exception {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = context.getUserRoot().get();
+
+        String filename = "afile.bin";
+        byte[] data = new byte[128*1024];
+        random.nextBytes(data);
+        String dirName = "subdir";
+        userRoot.mkdir(dirName, network, false, crypto.random).get();
+        String dirPath = "/" + username + "/" + dirName;
+        FileWrapper subdir = context.getByPath(dirPath).get().get();
+        FileWrapper updatedSubdir = subdir.uploadFileSection(filename, new AsyncReader.ArrayBacked(data), 0,
+                data.length, context.network, context.crypto.random, l -> { }, context.fragmenter()).get();
+        context.makePublic(updatedSubdir).get();
+
+        String path = "/" + username + "/" + dirName + "/" + filename;
+        InputStream in = peergosUrl.toURI().resolve("/public" + path).toURL().openStream();
+        byte[] returnedData = Serialize.readFully(in);
+        Assert.assertTrue("Correct data returned for publicly shared file", Arrays.equals(data, returnedData));
     }
 
     @Test

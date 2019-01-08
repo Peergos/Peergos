@@ -9,6 +9,7 @@ import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.SafeRandom;
 import peergos.shared.crypto.symmetric.*;
+import peergos.shared.hamt.*;
 import peergos.shared.io.ipfs.multihash.Multihash;
 import peergos.shared.mutable.*;
 import peergos.shared.social.*;
@@ -609,6 +610,29 @@ public class UserContext {
                             tid -> writerData.commit(signer.publicKeyHash, signer, wd.hash, network, lock::complete, tid),
                             network.dhtClient);
                 });
+    }
+
+    public CompletableFuture<CommittedWriterData> makePublic(FileWrapper file) {
+        CompletableFuture<CommittedWriterData> lock = new CompletableFuture<>();
+        return addToUserDataQueue(lock)
+                .thenCompose(wd -> file.getPath(network).thenCompose(path -> Transaction.call(signer.publicKeyHash,
+                        tid -> {
+                            Optional<Multihash> publicData = wd.props.publicData;
+
+                            Function<ByteArrayWrapper, byte[]> hasher = x -> Hash.sha256(x.data);
+                            CompletableFuture<ChampWrapper> champ = publicData.isPresent() ?
+                                    ChampWrapper.create(publicData.get(), hasher, network.dhtClient) :
+                                    ChampWrapper.create(signer.publicKeyHash, signer, hasher, tid, network.dhtClient);
+
+                            AbsoluteCapability cap = file.getPointer().capability.readOnly();
+                            return network.dhtClient.put(signer.publicKeyHash, signer, cap.serialize(), tid)
+                                    .thenCompose(capHash ->
+                                            champ.thenCompose(c -> c.put(signer.publicKeyHash, signer, path.getBytes(),
+                                                    MaybeMultihash.empty(), capHash, tid))
+                                    .thenCompose(newRoot -> wd.props.withPublicRoot(newRoot)
+                                            .commit(signer.publicKeyHash, signer, wd.hash, network, lock::complete, tid)));
+                        },
+                        network.dhtClient)));
     }
 
     @JsMethod
