@@ -13,6 +13,7 @@ import java.util.*;
 
 @JsType
 public class FileProperties implements Cborable {
+    public static final int MAX_FILE_NAME_SIZE = 255;
     public static final FileProperties EMPTY = new FileProperties("", "", 0, LocalDateTime.MIN, false, Optional.empty());
 
     public final String name;
@@ -25,6 +26,8 @@ public class FileProperties implements Cborable {
 
     public FileProperties(String name, String mimeType, int sizeHi, int sizeLo,
                           LocalDateTime modified, boolean isHidden, Optional<byte[]> thumbnail) {
+        if (name.length() > MAX_FILE_NAME_SIZE)
+            throw new IllegalStateException("File and directory names must be less than 256 characters.");
         this.name = name;
         this.mimeType = mimeType;
         this.size = sizeLo | ((sizeHi | 0L) << 32);
