@@ -1,5 +1,8 @@
 package peergos.shared.user.fs;
 
+/** A Fragment is a part of an EncryptedChunk which is stored directly in IPFS in raw format
+ *
+ */
 public class Fragment {
     public static final int MAX_LENGTH = 1024*128;
 

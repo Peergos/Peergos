@@ -7,6 +7,13 @@ import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+/** A Fragmenter decides how the fragments of a chunk are created.
+ *
+ *  The default implementation, SplitFragmenter simply splits the chunk into 128 KiB fragments
+ *
+ *  The ErasureFragmenter uses a Reed-Solomon erasure code to also generate more fragments according to the parameters.
+ *
+ */
 @JsType
 public interface Fragmenter extends Cborable {
 

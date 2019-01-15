@@ -7,6 +7,9 @@ import peergos.shared.crypto.symmetric.SymmetricKey;
 
 import java.util.*;
 
+/** The EncryptedCapability class represents a symmetrically encrypted RelativeCapability
+ *
+ */
 public class EncryptedCapability implements Cborable {
     private final CipherText cipherText;
 

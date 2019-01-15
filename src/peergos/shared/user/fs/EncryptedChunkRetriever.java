@@ -12,6 +12,10 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
 
+/** An instance of EncryptedChunkRetriever holds a list of fragment hashes for a chunk, and the nonce and auth used in
+ *  decrypting the resulting chunk, along with an encrypted link to the next chunk (if any).
+ *
+ */
 public class EncryptedChunkRetriever implements FileRetriever {
 
     private final byte[] chunkNonce, chunkAuth;

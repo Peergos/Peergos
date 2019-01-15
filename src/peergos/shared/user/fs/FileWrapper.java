@@ -28,7 +28,8 @@ import java.util.concurrent.atomic.*;
 import java.util.function.*;
 import java.util.stream.*;
 
-/** This class is used to read and modify files and directories and represents a single file or directory
+/** This class is used to read and modify files and directories and represents a single file or directory and the keys
+ *  to access it.
  *
  */
 public class FileWrapper {

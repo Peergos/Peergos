@@ -26,6 +26,10 @@ import java.util.stream.*;
 
 import jsinterop.annotations.*;
 
+/** The UserContext class represents a logged in user, or a retrieved public link and the resulting view of the global
+ *  filesystem.
+ *
+ */
 public class UserContext {
 	private static final Logger LOG = Logger.getGlobal();
 
@@ -42,6 +46,7 @@ public class UserContext {
 
     private HashMap<String, Set<String>> sharedWithCache = new HashMap<>(); //path to friends SharedWith
 
+    // The root of the global filesystem as viewed by this context
     @JsProperty
     public TrieNode entrie; // ba dum che!
 

@@ -7,6 +7,9 @@ import peergos.shared.util.*;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
+/** An encrypted chunk is the ciphertext and auth for a Chunk of data up to 5 MiB in size
+ *
+ */
 public class EncryptedChunk {
 
     private final byte[] auth, cipher;

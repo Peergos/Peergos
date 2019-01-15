@@ -11,6 +11,11 @@ import java.io.*;
 import java.time.*;
 import java.util.*;
 
+/** The FileProperties class represents metadata for a file or directory
+ *
+ *  In the case of a directory, the only properties present are the name, modification time and isHidden.
+ *
+ */
 @JsType
 public class FileProperties implements Cborable {
     public static final int MAX_FILE_NAME_SIZE = 255;

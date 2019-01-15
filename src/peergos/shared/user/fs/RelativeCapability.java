@@ -10,9 +10,10 @@ import peergos.shared.util.*;
 
 import java.util.*;
 
-/** This provides a relative cryptographic capability for reading a file or folder. It is assumed the holder also has
- * the owner key, and possibly the writer key (if absent here) externally.
+/** This provides a relative cryptographic capability (read only or read and write) for a file or folder.
  *
+ *  Here, relative means that the holder has the owner and writer public key from another source, typically the parent
+ *  folder or entry point. This also includes the relative link between the symmetric write base key.
  */
 public class RelativeCapability implements Cborable {
     // writer is only present when it is not implicit (an entry point, or a child link to a different writing key)
